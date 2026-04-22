@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use NGB in your work, please cite it using the metadata below."
+title: "NGB"
+authors:
+  - name: "NGB Platform"
+repository-code: "https://github.com/ngbplatform/NGB"
+url: "https://ngbplatform.com"
+license: "Apache-2.0"
+keywords:
+  - "metadata-driven"
+  - "business-platform"
+  - "accounting"
+  - "documents"
+  - "registers"
+  - "reporting"
+abstract: "NGB is a metadata-driven business platform for accounting, documents, registers, workflows, and reporting."
