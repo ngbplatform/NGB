@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Project website
+  - name: Security vulnerability report
+    url: https://github.com/ngbplatform/NGB/security/advisories/new
+    about: Report suspected vulnerabilities privately. Do not open public security issues.
+  - name: NGB Platform website
     url: https://ngbplatform.com
-    about: Learn more about NGB Platform.
+    about: Learn more about NGB Platform and explore live demos.

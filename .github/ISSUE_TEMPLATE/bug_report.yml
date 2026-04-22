@@ -1,0 +1,109 @@
+name: Bug report
+description: Report a reproducible bug in NGB Platform
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        Please provide enough detail for maintainers to reproduce and diagnose the issue.
+
+        **Do not use this form for security vulnerabilities.**
+        Follow the instructions in [`SECURITY.md`](../SECURITY.md) instead.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: A short and clear description of the bug.
+      placeholder: Account Card report returns an incorrect opening balance when paging forward
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: The opening balance should equal the running balance from the previous page cursor.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+      description: What actually happened?
+      placeholder: The opening balance is recalculated incorrectly and differs from the previous page running balance.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact reproduction steps.
+      placeholder: |
+        1. Open the Account Card report.
+        2. Apply filters for account X and date range Y.
+        3. Scroll to the next page.
+        4. Observe the incorrect opening balance.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Affected area
+      description: Which part of NGB is affected?
+      placeholder: Runtime reporting / PostgreSQL reader / PM web client / docs / Docker environment
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How serious is the impact?
+      options:
+        - Low
+        - Medium
+        - High
+        - Critical
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, screenshots, or evidence
+      description: Paste logs, screenshots, stack traces, or API responses if available.
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide environment details.
+      placeholder: |
+        - OS: macOS 15 / Windows 11 / Ubuntu 24.04
+        - .NET SDK: 10.x
+        - PostgreSQL: 16.x
+        - Browser: Chrome 147
+        - Deployment: local Docker Compose / custom / demo
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I included enough detail to reproduce the problem.
+          required: true
+        - label: This report does not disclose an unreported security vulnerability.
+          required: true

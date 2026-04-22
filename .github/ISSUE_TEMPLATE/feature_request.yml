@@ -1,0 +1,77 @@
+name: Feature request
+description: Suggest a platform or product improvement for NGB Platform
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement.
+
+        NGB is a long-lived platform, so the most useful requests explain **why the change belongs in the platform**, not only why it helps a single project.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: A short description of the requested feature.
+      placeholder: Add cursor-based paging support for receivables aging canonical report
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What business or technical problem are you trying to solve?
+      placeholder: Full materialization causes latency and memory pressure on large datasets.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the solution you would like to see.
+      placeholder: Introduce a canonical cursor paging path aligned with accounting report paging conventions.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any alternatives or workarounds you considered.
+      placeholder: Keep in-memory paging but hard-cap result size; move report to composable dataset path.
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Platform scope and impact
+      description: Explain why this belongs in NGB Platform rather than in a single vertical solution.
+      placeholder: This pattern is reusable across verticals and should live in shared reporting infrastructure.
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and migration impact
+      description: Note any possible breaking changes, migration concerns, or rollout considerations.
+      placeholder: Existing cursor format may need backward compatibility support.
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Add examples, prior art, mockups, screenshots, or references if helpful.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I explained why this should belong in the platform or shared repository.
+          required: true

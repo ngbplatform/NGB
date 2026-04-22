@@ -1,0 +1,60 @@
+name: Documentation improvement
+description: Suggest an improvement or correction to docs, onboarding, or examples
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve NGB documentation.
+
+        Use this form for missing explanations, inaccurate instructions, broken examples, or onboarding gaps.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: A short description of the documentation issue.
+      placeholder: README does not explain how to run the Agency Billing demo locally
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is unclear or incorrect?
+      description: Explain what is missing, confusing, or wrong.
+      placeholder: The docs mention the demo but do not show the required Docker Compose command or env file.
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Affected location
+      description: Identify the file, page, section, or command.
+      placeholder: README.md / docs/getting-started.md / docker-compose.ab.yml section
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested_change
+    attributes:
+      label: Suggested improvement
+      description: Describe the change you recommend.
+      placeholder: Add a short Agency Billing quick-start section with the exact command and prerequisites.
+
+  - type: textarea
+    id: audience
+    attributes:
+      label: Who is affected?
+      description: Describe who would benefit from the clarification.
+      placeholder: First-time contributors, evaluators, developers setting up the demo locally
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
