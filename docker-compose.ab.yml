@@ -21,7 +21,7 @@ services:
       APP_DB_USER: ${AB_DB_USER}
       APP_DB_PASSWORD: ${AB_DB_PASSWORD}
     volumes:
-      - pg-ab-data:/var/lib/postgresql/data
+      - pg-ab-data:/var/lib/postgresql
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
     healthcheck:
