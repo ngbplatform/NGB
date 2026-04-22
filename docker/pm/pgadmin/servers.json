@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Property Management PostgreSQL",
+      "Group": "Property Management",
+      "Host": "ngb.pm.postgres",
+      "Port": 5432,
+      "MaintenanceDB": "postgres",
+      "Username": "ngb_platform_admin",
+      "SSLMode": "prefer"
+    }
+  }
+}

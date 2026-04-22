@@ -1,0 +1,116 @@
+{
+  "realm": "ngb-pm-tests",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 3600,
+  "roles": {
+    "realm": [
+      {
+        "name": "ngb-admin",
+        "description": "Administrative role for NGB PM integration tests."
+      },
+      {
+        "name": "ngb-user",
+        "description": "Regular user role for NGB PM integration tests."
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "ngb-api-main",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "bearerOnly": true
+    },
+    {
+      "clientId": "ngb-web-client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "https://localhost/*"
+      ],
+      "webOrigins": [
+        "https://localhost",
+        "+"
+      ]
+    },
+    {
+      "clientId": "ngb-tester",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "ngb-pm-tester-secret-2026",
+      "publicClient": false,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false
+    },
+    {
+      "clientId": "ngb-watchdog",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "https://localhost:7075/*"
+      ],
+      "webOrigins": [
+        "https://localhost:7075"
+      ]
+    },
+    {
+      "clientId": "ngb-background-jobs",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "https://localhost:7074/*"
+      ],
+      "webOrigins": [
+        "https://localhost:7074"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "pm-admin",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "PM",
+      "lastName": "Admin",
+      "email": "pm-admin@integration.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "PmAdmin!2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ngb-admin",
+        "ngb-user"
+      ]
+    },
+    {
+      "username": "pm-analyst",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "PM",
+      "lastName": "Analyst",
+      "email": "pm-analyst@integration.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "PmAnalyst!2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ngb-user"
+      ]
+    }
+  ]
+}

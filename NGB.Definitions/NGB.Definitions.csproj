@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPublishable>false</IsPublishable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
+        <ProjectReference Include="..\NGB.Metadata\NGB.Metadata.csproj" />
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj" />
+        <ProjectReference Include="..\NGB.Accounting\NGB.Accounting.csproj" />
+        <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj" />
+        <ProjectReference Include="..\NGB.ReferenceRegisters\NGB.ReferenceRegisters.csproj" />
+        <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj" />
+    </ItemGroup>
+
+</Project>

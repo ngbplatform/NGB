@@ -1,0 +1,385 @@
+name: ngb-pm
+
+services:
+  ngb.pm.postgres:
+    container_name: ngb.pm.postgres
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+      args:
+        POSTGRES_IMAGE_TAG: ${POSTGRES_IMAGE_TAG}
+    image: ngb.pm.postgres:${POSTGRES_IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      APP_DB_NAME: ${PM_DB_NAME}
+      APP_DB_USER: ${PM_DB_USER}
+      APP_DB_PASSWORD: ${PM_DB_PASSWORD}
+    volumes:
+      - pg-pm-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.postgres.bootstrap:
+    container_name: ngb.pm.postgres.bootstrap
+    image: postgres:${POSTGRES_IMAGE_TAG}
+    restart: "no"
+    depends_on:
+      ngb.pm.postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: ngb.pm.postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      APP_DB_NAME: ${PM_DB_NAME}
+      APP_DB_USER: ${PM_DB_USER}
+      APP_DB_PASSWORD: ${PM_DB_PASSWORD}
+    entrypoint: ["sh", "/bootstrap/bootstrap-application-databases.sh"]
+    volumes:
+      - ./docker/postgres/bootstrap-application-databases.sh:/bootstrap/bootstrap-application-databases.sh:ro
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.keycloak.init:
+    container_name: ngb.pm.keycloak.init
+    build:
+      context: .
+      dockerfile: docker/keycloak/Dockerfile
+      args:
+        KEYCLOAK_VERSION: ${KEYCLOAK_IMAGE_TAG}
+    image: ngb.pm.keycloak:${KEYCLOAK_IMAGE_TAG}
+    restart: "no"
+    depends_on:
+      ngb.pm.postgres.bootstrap:
+        condition: service_completed_successfully
+    entrypoint: ["/opt/keycloak/bootstrap/import-realm.sh"]
+    environment:
+      KC_DB: postgres
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_MASTER_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_MASTER_ADMIN_PASSWORD}
+      KC_DB_URL_HOST: ngb.pm.postgres
+      KC_DB_URL_PORT: "5432"
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_REALM_DISPLAY_NAME: ${KEYCLOAK_REALM_DISPLAY_NAME}
+      KEYCLOAK_REALM_DISPLAY_NAME_HTML: ${KEYCLOAK_REALM_DISPLAY_NAME_HTML}
+      KEYCLOAK_SSL_REQUIRED: ${KEYCLOAK_SSL_REQUIRED}
+      KEYCLOAK_THEME_NAME: ${KEYCLOAK_THEME_NAME}
+      KEYCLOAK_ACCESS_TOKEN_LIFESPAN_SECONDS: ${KEYCLOAK_ACCESS_TOKEN_LIFESPAN_SECONDS}
+      KEYCLOAK_LOGIN_WITH_EMAIL_ALLOWED: ${KEYCLOAK_LOGIN_WITH_EMAIL_ALLOWED}
+      KEYCLOAK_REGISTRATION_ALLOWED: ${KEYCLOAK_REGISTRATION_ALLOWED}
+      KEYCLOAK_REGISTRATION_EMAIL_AS_USERNAME: ${KEYCLOAK_REGISTRATION_EMAIL_AS_USERNAME}
+      KEYCLOAK_RESET_PASSWORD_ALLOWED: ${KEYCLOAK_RESET_PASSWORD_ALLOWED}
+      KEYCLOAK_VERIFY_EMAIL: ${KEYCLOAK_VERIFY_EMAIL}
+      KEYCLOAK_REMEMBER_ME: ${KEYCLOAK_REMEMBER_ME}
+      KEYCLOAK_BRUTE_FORCE_PROTECTED: ${KEYCLOAK_BRUTE_FORCE_PROTECTED}
+      KEYCLOAK_API_CLIENT_ID: ${KEYCLOAK_PM_API_CLIENT_ID}
+      KEYCLOAK_WEB_CLIENT_ID: ${KEYCLOAK_PM_WEB_CLIENT_ID}
+      KEYCLOAK_BACKGROUND_JOBS_CLIENT_ID: ${KEYCLOAK_PM_BACKGROUND_JOBS_CLIENT_ID}
+      KEYCLOAK_WATCHDOG_CLIENT_ID: ${KEYCLOAK_PM_WATCHDOG_CLIENT_ID}
+      KEYCLOAK_TESTER_CLIENT_ID: ${KEYCLOAK_TESTER_CLIENT_ID}
+      KEYCLOAK_TESTER_CLIENT_SECRET: ${KEYCLOAK_TESTER_CLIENT_SECRET}
+      WEB_HTTP_PORT: ${PM_WEB_HTTP_PORT}
+      BACKGROUND_JOBS_HTTPS_PORT: ${PM_BACKGROUNDJOBS_HTTPS_PORT}
+      WATCHDOG_HTTPS_PORT: ${PM_WATCHDOG_HTTPS_PORT}
+      KEYCLOAK_DEMO_ADMIN_USERNAME: ${KEYCLOAK_DEMO_ADMIN_USERNAME}
+      KEYCLOAK_DEMO_ADMIN_FIRST_NAME: ${KEYCLOAK_DEMO_ADMIN_FIRST_NAME}
+      KEYCLOAK_DEMO_ADMIN_LAST_NAME: ${KEYCLOAK_DEMO_ADMIN_LAST_NAME}
+      KEYCLOAK_DEMO_ADMIN_EMAIL: ${KEYCLOAK_DEMO_ADMIN_EMAIL}
+      KEYCLOAK_DEMO_ADMIN_PASSWORD: ${KEYCLOAK_DEMO_ADMIN_PASSWORD}
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.keycloak:
+    container_name: ngb.pm.keycloak
+    build:
+      context: .
+      dockerfile: docker/keycloak/Dockerfile
+      args:
+        KEYCLOAK_VERSION: ${KEYCLOAK_IMAGE_TAG}
+    image: ngb.pm.keycloak:${KEYCLOAK_IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      ngb.pm.postgres:
+        condition: service_healthy
+      ngb.pm.keycloak.init:
+        condition: service_completed_successfully
+    command: ["start", "--optimized"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: ngb.pm.postgres
+      KC_DB_URL_PORT: "5432"
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_MASTER_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_MASTER_ADMIN_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL}
+      KC_HOSTNAME_STRICT: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_HEALTH_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_PORT: "9000"
+      KC_LOG_LEVEL: ${KEYCLOAK_LOG_LEVEL}
+    ports:
+      - "127.0.0.1:${KEYCLOAK_HTTP_HOST_PORT}:8080"
+    expose:
+      - "9000"
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.seq:
+    container_name: ngb.pm.seq
+    image: datalust/seq:${SEQ_IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_APIKEY: ${SEQ_API_KEY}
+      SEQ_FIRSTRUN_ADMINUSERNAME: ${SEQ_DEFAULT_ADMIN_NAME}
+      SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_DEFAULT_ADMIN_PASSWORD}
+    volumes:
+      - seq-pm-data:/data
+    ports:
+      - "127.0.0.1:${SEQ_HTTP_HOST_PORT}:80"
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.migrator:
+    container_name: ngb.pm.migrator
+    build:
+      context: .
+      dockerfile: NGB.PropertyManagement.Migrator/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION}
+    image: ngb.pm.migrator
+    restart: "no"
+    depends_on:
+      ngb.pm.postgres.bootstrap:
+        condition: service_completed_successfully
+    environment:
+      PM_DB_HOST: ngb.pm.postgres
+      PM_DB_PORT: "5432"
+      PM_DB_NAME: ${PM_DB_NAME}
+      PM_DB_USER: ${PM_DB_USER}
+      PM_DB_PASSWORD: ${PM_DB_PASSWORD}
+      PM_DEMO_SEED_ENABLED: ${PM_DEMO_SEED_ENABLED}
+      PM_DEMO_DATASET: ${PM_DEMO_DATASET}
+      PM_DEMO_SEED: ${PM_DEMO_SEED}
+      PM_DEMO_SEED_FROM: ${PM_DEMO_SEED_FROM}
+      PM_DEMO_SEED_TO: ${PM_DEMO_SEED_TO}
+      PM_DEMO_BUILDINGS: ${PM_DEMO_BUILDINGS}
+      PM_DEMO_UNITS_MIN: ${PM_DEMO_UNITS_MIN}
+      PM_DEMO_UNITS_MAX: ${PM_DEMO_UNITS_MAX}
+      PM_DEMO_TENANTS: ${PM_DEMO_TENANTS}
+      PM_DEMO_VENDORS: ${PM_DEMO_VENDORS}
+      PM_DEMO_OCCUPANCY_RATE: ${PM_DEMO_OCCUPANCY_RATE}
+    entrypoint: ["sh", "/bootstrap/seed-and-migrate.sh"]
+    volumes:
+      - ./docker/pm/migrator/seed-and-migrate.sh:/bootstrap/seed-and-migrate.sh:ro
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.api:
+    container_name: ngb.pm.api
+    image: ngb.pm.api
+    build:
+      context: .
+      dockerfile: NGB.PropertyManagement.Api/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PM_API_HTTP_PORT}:80"
+      - "127.0.0.1:${PM_API_HTTPS_PORT}:443"
+    depends_on:
+      ngb.pm.seq:
+        condition: service_started
+      ngb.pm.keycloak:
+        condition: service_started
+      ngb.pm.migrator:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "${KEYCLOAK_PUBLIC_HOST}:host-gateway"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: https://+;http://+
+      ASPNETCORE_HTTPS_PORTS: "443"
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${ASPNET_CERT_PASS}
+      ASPNETCORE_Kestrel__Certificates__Default__Path: ${ASPNET_CERT_PATH}
+      ConnectionStrings__DefaultConnection: Host=ngb.pm.postgres;Port=5432;Database=${PM_DB_NAME};Username=${PM_DB_USER};Password=${PM_DB_PASSWORD}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
+      KeycloakSettings__RequireHttpsMetadata: "false"
+      ExternalLinksSettings__HealthUiUrl: https://localhost:${PM_WATCHDOG_HTTPS_PORT}/health-ui
+      ExternalLinksSettings__BackgroundJobsUiUrl: https://localhost:${PM_BACKGROUNDJOBS_HTTPS_PORT}/hangfire
+    volumes:
+      - ${HOME}/.aspnet/https:/https/:ro
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.backgroundjobs:
+    container_name: ngb.pm.backgroundjobs
+    image: ngb.pm.backgroundjobs
+    build:
+      context: .
+      dockerfile: NGB.PropertyManagement.BackgroundJobs/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PM_BACKGROUNDJOBS_HTTP_PORT}:80"
+      - "127.0.0.1:${PM_BACKGROUNDJOBS_HTTPS_PORT}:443"
+    depends_on:
+      ngb.pm.seq:
+        condition: service_started
+      ngb.pm.keycloak:
+        condition: service_started
+      ngb.pm.migrator:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "${KEYCLOAK_PUBLIC_HOST}:host-gateway"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: https://+;http://+
+      ASPNETCORE_HTTPS_PORTS: "443"
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${ASPNET_CERT_PASS}
+      ASPNETCORE_Kestrel__Certificates__Default__Path: ${ASPNET_CERT_PATH}
+      ConnectionStrings__DefaultConnection: Host=ngb.pm.postgres;Port=5432;Database=${PM_DB_NAME};Username=${PM_DB_USER};Password=${PM_DB_PASSWORD}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
+      KeycloakSettings__RequireHttpsMetadata: "false"
+    volumes:
+      - ${HOME}/.aspnet/https:/https/:ro
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.watchdog:
+    container_name: ngb.pm.watchdog
+    image: ngb.pm.watchdog
+    build:
+      context: .
+      dockerfile: NGB.PropertyManagement.Watchdog/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PM_WATCHDOG_HTTP_PORT}:80"
+      - "127.0.0.1:${PM_WATCHDOG_HTTPS_PORT}:443"
+    depends_on:
+      ngb.pm.seq:
+        condition: service_started
+      ngb.pm.keycloak:
+        condition: service_started
+      ngb.pm.migrator:
+        condition: service_completed_successfully
+      ngb.pm.api:
+        condition: service_started
+      ngb.pm.backgroundjobs:
+        condition: service_started
+      ngb.pm.web:
+        condition: service_started
+    extra_hosts:
+      - "${KEYCLOAK_PUBLIC_HOST}:host-gateway"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: https://+;http://+
+      ASPNETCORE_HTTPS_PORTS: "443"
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${ASPNET_CERT_PASS}
+      ASPNETCORE_Kestrel__Certificates__Default__Path: ${ASPNET_CERT_PATH}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
+      KeycloakSettings__RequireHttpsMetadata: "false"
+      WebClient: http://ngb.pm.web:8080/
+      HealthChecksUI__HealthChecks__0__Name: Property Management Watchdog
+      HealthChecksUI__HealthChecks__0__Uri: https://ngb.pm.watchdog/health
+      HealthChecksUI__HealthChecks__1__Name: Property Management API
+      HealthChecksUI__HealthChecks__1__Uri: https://ngb.pm.api/health
+      HealthChecksUI__HealthChecks__2__Name: Property Management Background Jobs
+      HealthChecksUI__HealthChecks__2__Uri: https://ngb.pm.backgroundjobs/health
+    volumes:
+      - ${HOME}/.aspnet/https:/https/:ro
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.web:
+    container_name: ngb.pm.web
+    image: ngb.pm.web
+    build:
+      context: ./ui
+      dockerfile: ngb-property-management-web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PM_WEB_HTTP_PORT}:8080"
+    depends_on:
+      ngb.pm.api:
+        condition: service_started
+      ngb.pm.keycloak:
+        condition: service_started
+    environment:
+      VITE_API_BASE_URL: ""
+      VITE_KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL}
+      VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_PM_WEB_CLIENT_ID}
+      VITE_KEYCLOAK_ROLE_ADMIN: ngb-admin
+      VITE_KEYCLOAK_REDIRECT_URL: http://localhost:${PM_WEB_HTTP_PORT}/
+      VITE_KEYCLOAK_POST_LOGOUT_REDIRECT_URL: http://localhost:${PM_WEB_HTTP_PORT}/
+      VITE_BACKGROUND_JOB_URL: https://localhost:${PM_BACKGROUNDJOBS_HTTPS_PORT}/hangfire
+      VITE_WATCHDOG_URL: https://localhost:${PM_WATCHDOG_HTTPS_PORT}/health-ui
+    networks:
+      - ngb_pm_network
+
+  ngb.pm.pgadmin:
+    container_name: ngb.pm.pgadmin
+    image: dpage/pgadmin4:${PGADMIN_IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      ngb.pm.postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "127.0.0.1:${PGADMIN_HTTP_HOST_PORT}:80"
+    volumes:
+      - pgadmin-pm-data:/var/lib/pgadmin
+      - ./docker/pm/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - ngb_pm_network
+
+volumes:
+  pg-pm-data:
+    name: pg-pm-data
+  pgadmin-pm-data:
+    name: pgadmin-pm-data
+  seq-pm-data:
+    name: seq-pm-data
+
+networks:
+  ngb_pm_network:
+    name: ngb_pm_network
+    driver: bridge

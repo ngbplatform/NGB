@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPublishable>false</IsPublishable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Dapper" Version="2.1.72" />
+        <PackageReference Include="Evolve" Version="3.2.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.5" />
+        <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.5" />
+        <PackageReference Include="Npgsql" Version="10.0.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj"/>
+        <ProjectReference Include="..\NGB.Accounting\NGB.Accounting.csproj"/>
+        <ProjectReference Include="..\NGB.Metadata\NGB.Metadata.csproj"/>
+        <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj"/>
+        <ProjectReference Include="..\NGB.ReferenceRegisters\NGB.ReferenceRegisters.csproj"/>
+        <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj"/>
+        <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj"/>
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="db/migrations/**/*.sql" />
+    </ItemGroup>
+
+</Project>

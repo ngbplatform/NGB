@@ -1,0 +1,165 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* NGB Design Tokens (CSS vars for theming) */
+:root {
+  /* Make native form controls (date picker, number spinners, etc.) render in a light theme by default. */
+  color-scheme: light;
+  --ngb-blue: #0B3C5D;
+  --ngb-blue-dark: #072A40;
+  --ngb-blue-hover: #0E4A75;
+  --ngb-primary-rgb: 11 60 93;
+  --ngb-primary-hover-rgb: 14 74 117;
+
+  /* Brand logo */
+  --ngb-logo: #0B3C5D;
+  --ngb-logo-accent: #0F766E;
+
+  --ngb-text: #1F2933;
+  --ngb-muted: #4B5563;
+  --ngb-border: #CBD5E1;
+  --ngb-bg: #F5F7FA;
+  --ngb-card: #FFFFFF;
+
+  --ngb-danger: #9B1C1C;
+  --ngb-warn: #B45309;
+  --ngb-success: #2E7D32;
+  --ngb-neutral-subtle: #F1F5F9;
+  --ngb-success-subtle: #F3FBF4;
+  --ngb-warn-subtle: #FFF7ED;
+  --ngb-danger-subtle: #FEF2F2;
+  --ngb-success-border: rgba(46,125,50,.35);
+  --ngb-warn-border: rgba(180,83,9,.35);
+  --ngb-danger-border: rgba(155,28,28,.35);
+
+  --ngb-accent-1: #006D6F;
+  --ngb-accent-2: #5B2D8B;
+  --ngb-accent-3: #C05621;
+  --ngb-accent-4: #B45309;
+
+  /* Spacing scale (4/8/12/16/24/32) */
+  --ngb-space-4: 4px;
+  --ngb-space-8: 8px;
+  --ngb-space-12: 12px;
+  --ngb-space-16: 16px;
+  --ngb-space-24: 24px;
+  --ngb-space-32: 32px;
+
+  /* Minimal elevation */
+  --ngb-shadow-0: none;
+  --ngb-shadow-1: 0 6px 24px rgba(0,0,0,.08);
+  --ngb-shadow-2: 0 12px 38px rgba(0,0,0,.12);
+
+  --ngb-radius: 4px;
+
+  /* Grid surfaces */
+  --ngb-grid-header: #F1F5F9;
+  --ngb-row-hover: #F8FAFC;
+  --ngb-row-selected: #EEF6FF;
+}
+
+/* Dark theme (minimal, ERP-friendly) */
+html.dark {
+  /* Native form controls (date picker, number spinners, etc.) should follow dark theme. */
+  color-scheme: dark;
+  --ngb-text: #E5E7EB;
+  --ngb-muted: #9CA3AF;
+  --ngb-border: #1F2937;
+  --ngb-bg: #0B1220;
+  --ngb-card: #0F172A;
+
+  /* brand */
+  --ngb-blue-hover: #0F5F95;
+  --ngb-primary-hover-rgb: 15 95 149;
+
+  /* Brand logo: lighter for contrast in dark mode */
+  --ngb-logo: #93C5FD;
+  --ngb-logo-accent: #34D399;
+
+  /* statuses */
+  --ngb-danger: #F87171;
+  --ngb-warn: #FBBF24;
+  --ngb-success: #34D399;
+  --ngb-neutral-subtle: rgba(255,255,255,.06);
+  --ngb-success-subtle: rgba(52,211,153,.12);
+  --ngb-warn-subtle: rgba(251,191,36,.12);
+  --ngb-danger-subtle: rgba(248,113,113,.12);
+  --ngb-success-border: rgba(52,211,153,.35);
+  --ngb-warn-border: rgba(251,191,36,.35);
+  --ngb-danger-border: rgba(248,113,113,.35);
+
+  --ngb-shadow-1: 0 10px 34px rgba(0,0,0,.45);
+  --ngb-shadow-2: 0 18px 52px rgba(0,0,0,.55);
+
+  /* Grid surfaces */
+  --ngb-grid-header: #0B1220;
+  --ngb-row-hover: #101B33;
+  --ngb-row-selected: #122A46;
+}
+
+/* --------------------------------------
+   Native inputs: dark-mode ergonomics
+   -------------------------------------- */
+
+/* Keep number inputs ERP-clean: remove native spinners (they render poorly across OS/themes). */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@layer base {
+  html, body { height: 100%; }
+  body {
+    @apply bg-ngb-bg text-ngb-text;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  }
+}
+
+@layer utilities {
+  .ngb-focus {
+    @apply outline-none ring-0 focus-visible:ring-4 focus-visible:ring-[rgba(11,60,93,.12)] focus-visible:border-[rgba(11,60,93,.55)];
+  }
+
+  /* Icon-only button (ChatGPT/QuickBooks-like) */
+  .ngb-iconbtn {
+    @apply h-9 w-9 rounded-[var(--ngb-radius)] flex items-center justify-center
+      text-ngb-muted hover:text-ngb-text hover:bg-ngb-bg
+      transition-colors cursor-pointer ngb-focus
+      disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ngb-muted;
+  }
+
+  .ngb-card {
+    @apply rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card shadow-card;
+  }
+
+  .ngb-divider { @apply bg-ngb-border; }
+
+  .ngb-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  }
+
+  /* Numeric alignment (ERP-like) */
+  .ngb-num { font-variant-numeric: tabular-nums; text-align: right; }
+  .ngb-num-inline { font-variant-numeric: tabular-nums; }
+
+  .ngb-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(11,60,93,.18);
+    border-top-color: rgba(11,60,93,.65);
+    border-radius: 999px;
+    animation: ngb-spin 700ms linear infinite;
+  }
+  @keyframes ngb-spin { to { transform: rotate(360deg); } }
+
+  .ngb-kbd {
+    @apply px-1.5 py-0.5 rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card text-[11px] text-ngb-muted;
+    font-variant-numeric: tabular-nums;
+  }
+}

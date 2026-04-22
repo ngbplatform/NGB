@@ -1,0 +1,42 @@
+export const PM_TEST_IDS = {
+  accountingPolicyId: '0a0a0a0a-1111-4111-8111-111111111111',
+  receivablesLeaseId: '11111111-1111-4111-8111-111111111111',
+  receivablesPartyId: '22222222-2222-4222-8222-222222222222',
+  receivablesPropertyId: '33333333-3333-4333-8333-333333333333',
+  payableVendorId: '44444444-4444-4444-8444-444444444444',
+  payablePropertyId: '55555555-5555-4555-8555-555555555555',
+  generalJournalEntryId: '44444444-dddd-4ddd-8ddd-444444444444',
+  propertyBuildingId: '77777777-7777-4777-8777-777777777777',
+  propertyUnitAId: '88888888-8888-4888-8888-888888888888',
+  propertyUnitBId: '99999999-9999-4999-8999-999999999999',
+  partyCatalogPrimaryId: 'aaaa1111-1111-4111-8111-111111111111',
+  partyCatalogSecondaryId: 'bbbb2222-2222-4222-8222-222222222222',
+  partyCatalogCreatedId: 'cccc3333-3333-4333-8333-333333333333',
+  receivablePaymentDocumentId: 'dddd4444-4444-4444-8444-444444444444',
+  receivablePaymentSecondaryDocumentId: 'eeee5555-5555-4555-8555-555555555555',
+  receivablePaymentCreatedDocumentId: 'ffff6666-6666-4666-8666-666666666666',
+} as const
+
+export const PM_TEST_ROUTES = {
+  home: '/home?asOf=2026-04-07',
+  accountingPolicy: '/catalogs/pm.accounting_policy',
+  accountingPeriodClosing: '/admin/accounting/period-closing?year=2026&month=2026-04&fy=2026-03',
+  chartOfAccounts: '/admin/chart-of-accounts',
+  generalJournalEntries: '/accounting/general-journal-entries?periodFrom=2026-01&periodTo=2026-12',
+  newGeneralJournalEntry: '/accounting/general-journal-entries/new',
+  legacyReceivableApplyCreate: '/documents/pm.receivable_apply/new',
+  legacyPayableApplyCreate: '/documents/pm.payable_apply/new',
+  legacyGeneralJournalEntries: '/documents/general_journal_entry',
+  legacyAccountingGeneralJournalEntries: '/documents/accounting.general_journal_entry',
+  genericPartyCatalog: '/catalogs/pm.party',
+  genericReceivablePayments: '/documents/pm.receivable_payment?periodFrom=2026-01&periodTo=2026-12',
+  properties: `/catalogs/pm.property?buildingId=${PM_TEST_IDS.propertyBuildingId}`,
+  occupancySummaryReport: '/reports/pm.occupancy.summary',
+  receivablesReconciliation: '/receivables/reconciliation?fromMonth=2026-03&toMonth=2026-04&mode=Balance',
+  payablesReconciliation: '/payables/reconciliation?fromMonth=2026-03&toMonth=2026-04&mode=Balance',
+  receivablesOpenItems:
+    `/receivables/open-items?leaseId=${PM_TEST_IDS.receivablesLeaseId}&focusItemId=66666666-6666-4666-8666-666666666666`,
+  payablesOpenItems:
+    `/payables/open-items?partyId=${PM_TEST_IDS.payableVendorId}&propertyId=${PM_TEST_IDS.payablePropertyId}`,
+  existingGeneralJournalEntry: `/accounting/general-journal-entries/${PM_TEST_IDS.generalJournalEntryId}`,
+} as const

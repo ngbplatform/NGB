@@ -1,0 +1,41 @@
+{
+  "name": "ngb-ui-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:ab-web": "npm --workspace ngb-agency-billing-web run build",
+    "build:pm-web": "npm --workspace ngb-property-management-web run build",
+    "build:trade-web": "npm --workspace ngb-trade-web run build",
+    "dev:ab-web": "npm --workspace ngb-agency-billing-web run dev",
+    "dev:pm-web": "npm --workspace ngb-property-management-web run dev",
+    "dev:trade-web": "npm --workspace ngb-trade-web run dev",
+    "test:all": "npm run test:unit && npm run test:browser && npm run test:e2e",
+    "test:browser": "npm run test:browser:framework && npm run test:browser:ab-web && npm run test:browser:pm-web && npm run test:browser:trade-web",
+    "test:browser:ab-web": "vitest run --config ngb-agency-billing-web/vitest.browser.config.ts",
+    "test:browser:framework": "npm run test:browser:framework:cross-browser",
+    "test:browser:framework:chromium": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config ngb-ui-framework/vitest.browser.config.ts",
+    "test:browser:framework:cross-browser": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=all vitest run --config ngb-ui-framework/vitest.browser.config.ts",
+    "test:browser:pm-web": "vitest run --config ngb-property-management-web/vitest.browser.config.ts",
+    "test:browser:trade-web": "vitest run --config ngb-trade-web/vitest.browser.config.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:cross-browser": "playwright test --project desktop-firefox --project desktop-webkit",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:unit": "vitest run --config vitest.config.ts",
+    "test:unit:watch": "vitest --config vitest.config.ts"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.3",
+    "@vitest/browser": "^4.1.3",
+    "@vitest/browser-playwright": "^4.1.3",
+    "@playwright/test": "^1.56.1",
+    "vitest": "^4.1.3",
+    "vitest-browser-vue": "^2.1.0"
+  },
+  "workspaces": [
+    "ngb-agency-billing-web",
+    "ngb-ui-framework",
+    "ngb-property-management-web",
+    "ngb-trade-web"
+  ]
+}

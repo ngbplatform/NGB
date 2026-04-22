@@ -1,0 +1,321 @@
+:root {
+  color-scheme: light;
+  --ngb-blue: #0B3C5D;
+  --ngb-blue-hover: #0E4A75;
+  --ngb-text: #1F2933;
+  --ngb-muted: #4B5563;
+  --ngb-border: #CBD5E1;
+  --ngb-bg: #F5F7FA;
+  --ngb-card: #FFFFFF;
+  --ngb-field-bg: #FFFFFF;
+  --ngb-surface-soft: #F8FAFC;
+  --ngb-logo: #0B3C5D;
+  --ngb-logo-accent: #0F766E;
+  --ngb-button-text: #FFFFFF;
+  --ngb-radius: 4px;
+  --ngb-focus-border-weak: rgba(11, 60, 93, .38);
+  --ngb-focus-border-strong: rgba(11, 60, 93, .55);
+  --ngb-focus-ring: 0 0 0 3px rgba(11, 60, 93, .10);
+}
+
+html.dark {
+  color-scheme: dark;
+  --ngb-blue: #93C5FD;
+  --ngb-blue-hover: #BFDBFE;
+  --ngb-text: #E5E7EB;
+  --ngb-muted: #9CA3AF;
+  --ngb-border: #1F2937;
+  --ngb-bg: #0B1220;
+  --ngb-card: #0F172A;
+  --ngb-field-bg: #111827;
+  --ngb-surface-soft: #101B33;
+  --ngb-logo: #93C5FD;
+  --ngb-logo-accent: #34D399;
+  --ngb-button-text: #0B1220;
+  --ngb-focus-border-weak: rgba(147, 197, 253, .45);
+  --ngb-focus-border-strong: rgba(147, 197, 253, .65);
+  --ngb-focus-ring: 0 0 0 3px rgba(147, 197, 253, .16);
+}
+
+html, body {
+  min-height: 100%;
+}
+
+body.ngb-auth-body {
+  margin: 0 !important;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ngb-text);
+  background: var(--ngb-bg) !important;
+}
+
+#kc-header,
+#kc-header-wrapper,
+.pf-v5-c-login,
+.pf-v5-c-login__main,
+.pf-v5-c-login__main-header,
+.pf-v5-c-login__main-body,
+.pf-v5-c-login__main-footer-band,
+.pf-v5-c-login__container,
+.login-pf-page,
+.login-pf-page-header,
+.login-pf-page .card-pf,
+.kc-login-header,
+.kc-header-wrapper,
+.kc-content-wrapper__header {
+  all: unset;
+}
+
+.ngb-auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  box-sizing: border-box;
+  background: var(--ngb-bg);
+}
+
+.ngb-auth-card {
+  width: 100%;
+  max-width: 484px;
+  background: var(--ngb-card);
+  border: 1px solid var(--ngb-border);
+  border-radius: var(--ngb-radius);
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.ngb-auth-card__header {
+  padding: 24px 24px 0;
+  text-align: center;
+}
+
+.ngb-auth-card__logo {
+  display: block;
+  width: 148px;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto 18px;
+  color: var(--ngb-logo);
+}
+
+.ngb-auth-card__title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 700;
+  color: var(--ngb-text);
+}
+
+.ngb-attempted-wrapper,
+.ngb-attempted-username {
+  margin-bottom: 12px;
+  color: var(--ngb-muted);
+  font-size: 14px;
+}
+
+.ngb-auth-card__content {
+  padding: 20px 24px 24px;
+}
+
+.ngb-auth-card__footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--ngb-border);
+  text-align: center;
+  color: var(--ngb-muted);
+  font-size: 14px;
+}
+
+.ngb-footer-caption {
+  display: inline-block;
+}
+
+body.ngb-auth-body a {
+  color: var(--ngb-blue);
+  text-decoration: none;
+}
+body.ngb-auth-body a:hover { text-decoration: underline; color: var(--ngb-blue-hover); }
+
+#kc-form, #kc-form-wrapper, form { width: 100%; }
+
+.pf-v5-c-form__label,
+label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--ngb-muted);
+}
+
+.pf-v5-c-form-control,
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]),
+select,
+textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--ngb-border) !important;
+  border-radius: var(--ngb-radius) !important;
+  background: var(--ngb-field-bg) !important;
+  color: var(--ngb-text) !important;
+  box-sizing: border-box;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-form-control:hover,
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):hover,
+select:hover,
+textarea:hover {
+  border-color: var(--ngb-focus-border-weak) !important;
+}
+
+.pf-v5-c-form-control:focus,
+.pf-v5-c-form-control:focus-visible,
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):focus,
+input:not([type="checkbox"]):not([type="radio"]):not([type="submit"]):focus-visible,
+select:focus,
+select:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  border-color: var(--ngb-focus-border-strong) !important;
+  box-shadow: var(--ngb-focus-ring) !important;
+  outline: none !important;
+}
+
+.pf-v5-c-input-group {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.pf-v5-c-input-group > .pf-v5-c-form-control {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.pf-v5-c-input-group > .pf-v5-c-button {
+  min-width: 46px;
+  border: 1px solid var(--ngb-border) !important;
+  border-left: 0 !important;
+  border-top-right-radius: var(--ngb-radius) !important;
+  border-bottom-right-radius: var(--ngb-radius) !important;
+  background: var(--ngb-field-bg) !important;
+  color: var(--ngb-muted) !important;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-button.pf-m-primary,
+input[type="submit"],
+button[type="submit"] {
+  width: 100%;
+  min-height: 42px;
+  border: 0 !important;
+  border-radius: var(--ngb-radius) !important;
+  background: var(--ngb-blue) !important;
+  color: var(--ngb-button-text) !important;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: none !important;
+}
+
+.pf-v5-c-button.pf-m-primary:hover,
+input[type="submit"]:hover,
+button[type="submit"]:hover { background: var(--ngb-blue-hover) !important; }
+
+input[type="checkbox"] { accent-color: var(--ngb-blue); }
+
+.pf-v5-c-check__label,
+.pf-v5-c-check label,
+.pf-v5-c-check__description {
+  color: var(--ngb-text);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+
+.ngb-auth-alert {
+  margin: 0 24px 18px;
+  padding: 12px 14px;
+  border-radius: var(--ngb-radius);
+  border: 1px solid var(--ngb-border);
+  font-size: 14px;
+}
+.ngb-auth-alert--error { background: #FEF2F2; border-color: #FECACA; color: #991B1B; }
+.ngb-auth-alert--success { background: #F0FDF4; border-color: #BBF7D0; color: #166534; }
+.ngb-auth-alert--warning { background: #FFFBEB; border-color: #FDE68A; color: #92400E; }
+.ngb-auth-alert--info { background: #EFF6FF; border-color: #BFDBFE; color: #1D4ED8; }
+
+html.dark .ngb-auth-alert--error { background: rgba(127, 29, 29, .22); border-color: rgba(248, 113, 113, .35); color: #FCA5A5; }
+html.dark .ngb-auth-alert--success { background: rgba(6, 78, 59, .22); border-color: rgba(52, 211, 153, .35); color: #A7F3D0; }
+html.dark .ngb-auth-alert--warning { background: rgba(120, 53, 15, .24); border-color: rgba(251, 191, 36, .35); color: #FCD34D; }
+html.dark .ngb-auth-alert--info { background: rgba(30, 64, 175, .22); border-color: rgba(147, 197, 253, .35); color: #BFDBFE; }
+
+.ngb-auth-info,
+#kc-info,
+#kc-info-wrapper {
+  margin-top: 16px;
+  color: var(--ngb-muted);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.ngb-auth-locale {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 20;
+}
+
+#kc-locale-dropdown > button {
+  min-height: 36px;
+  border: 1px solid var(--ngb-border);
+  border-radius: var(--ngb-radius);
+  background: var(--ngb-field-bg);
+  color: var(--ngb-text);
+  padding: 0 12px;
+}
+
+#language-switch1 {
+  margin: 8px 0 0;
+  padding: 6px 0;
+  list-style: none;
+  border: 1px solid var(--ngb-border);
+  border-radius: var(--ngb-radius);
+  background: var(--ngb-card);
+}
+
+#language-switch1 li a {
+  display: block;
+  padding: 8px 12px;
+  color: var(--ngb-text);
+}
+
+#language-switch1 li a:hover { background: var(--ngb-surface-soft); text-decoration: none; }
+
+.pf-v5-c-input-group > .pf-v5-c-button[data-password-visible] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ngb-password-toggle-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .ngb-auth-locale {
+    top: 12px;
+    right: 12px;
+  }
+  .ngb-auth-shell { padding: 20px 12px; }
+  .ngb-auth-card__header { padding: 20px 20px 0; }
+  .ngb-auth-card__content { padding: 18px 20px 20px; }
+  .ngb-auth-card__footer { padding: 12px 20px; }
+  .ngb-auth-card__logo { width: 132px; margin-bottom: 14px; }
+}

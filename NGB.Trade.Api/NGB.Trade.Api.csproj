@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Api\NGB.Api.csproj"/>
+        <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj"/>
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
+        <ProjectReference Include="..\NGB.Trade\NGB.Trade.csproj"/>
+        <ProjectReference Include="..\NGB.Trade.PostgreSql\NGB.Trade.PostgreSql.csproj"/>
+        <ProjectReference Include="..\NGB.Trade.Runtime\NGB.Trade.Runtime.csproj"/>
+        <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj"/>
+        <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Serilog.AspNetCore" Version="10.0.0"/>
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Update="appsettings.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="..\.dockerignore">
+            <Link>.dockerignore</Link>
+        </Content>
+    </ItemGroup>
+
+</Project>

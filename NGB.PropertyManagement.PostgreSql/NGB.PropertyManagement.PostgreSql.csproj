@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsPublishable>false</IsPublishable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj"/>
+        <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj"/>
+        <ProjectReference Include="..\NGB.PropertyManagement\NGB.PropertyManagement.csproj"/>
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Dapper" Version="2.1.72" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.5" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="db/migrations/**/*.sql"/>
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsPublishable>false</IsPublishable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.AgencyBilling\NGB.AgencyBilling.csproj" />
+        <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj" />
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj" />
+        <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj" />
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
+    </ItemGroup>
+
+</Project>

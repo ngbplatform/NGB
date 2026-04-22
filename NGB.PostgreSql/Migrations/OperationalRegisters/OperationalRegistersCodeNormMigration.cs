@@ -1,0 +1,44 @@
+using NGB.Persistence.Migrations;
+
+namespace NGB.PostgreSql.Migrations.OperationalRegisters;
+
+/// <summary>
+/// Case-insensitive UX for operational_registers.code:
+/// - Adds a generated normalized column: code_norm = lower(btrim(code))
+/// - Enforces trimming constraints on code/name
+///
+/// Uniqueness is enforced by an index on code_norm (see indexes migration).
+/// </summary>
+public sealed class OperationalRegistersCodeNormMigration : IDdlObject
+{
+    public string Name => "operational_registers_code_norm";
+
+    public string Generate() => """
+                                ALTER TABLE operational_registers
+                                    ADD COLUMN IF NOT EXISTS code_norm TEXT GENERATED ALWAYS AS (lower(btrim(code))) STORED;
+
+                                DO $$
+                                BEGIN
+                                    IF NOT EXISTS (
+                                        SELECT 1
+                                        FROM pg_constraint
+                                        WHERE conname = 'ck_operational_registers_code_trimmed'
+                                    ) THEN
+                                        ALTER TABLE operational_registers
+                                            ADD CONSTRAINT ck_operational_registers_code_trimmed
+                                            CHECK (code = btrim(code));
+                                    END IF;
+
+                                    IF NOT EXISTS (
+                                        SELECT 1
+                                        FROM pg_constraint
+                                        WHERE conname = 'ck_operational_registers_name_trimmed'
+                                    ) THEN
+                                        ALTER TABLE operational_registers
+                                            ADD CONSTRAINT ck_operational_registers_name_trimmed
+                                            CHECK (name = btrim(name));
+                                    END IF;
+                                END
+                                $$;
+                                """;
+}

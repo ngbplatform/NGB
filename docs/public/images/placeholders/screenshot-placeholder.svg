@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none">
+  <rect width="1600" height="900" rx="28" fill="#F8FAFC"/>
+  <rect x="40" y="40" width="1520" height="820" rx="24" fill="white" stroke="#CBD5E1" stroke-width="3"/>
+  <rect x="84" y="96" width="320" height="22" rx="11" fill="#0F172A" fill-opacity="0.08"/>
+  <rect x="84" y="138" width="220" height="18" rx="9" fill="#0F172A" fill-opacity="0.08"/>
+  <rect x="84" y="206" width="1432" height="72" rx="20" fill="#DBEAFE"/>
+  <rect x="116" y="230" width="260" height="18" rx="9" fill="#1D4ED8" fill-opacity="0.22"/>
+  <rect x="84" y="320" width="320" height="440" rx="20" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <rect x="436" y="320" width="1080" height="440" rx="20" fill="#F8FAFC" stroke="#E2E8F0"/>
+  <rect x="116" y="360" width="200" height="18" rx="9" fill="#0F172A" fill-opacity="0.08"/>
+  <rect x="116" y="400" width="240" height="14" rx="7" fill="#0F172A" fill-opacity="0.05"/>
+  <rect x="116" y="428" width="180" height="14" rx="7" fill="#0F172A" fill-opacity="0.05"/>
+  <rect x="468" y="360" width="260" height="18" rx="9" fill="#0F172A" fill-opacity="0.08"/>
+  <rect x="468" y="408" width="996" height="46" rx="14" fill="#E2E8F0"/>
+  <rect x="468" y="476" width="996" height="46" rx="14" fill="#E2E8F0"/>
+  <rect x="468" y="544" width="996" height="46" rx="14" fill="#E2E8F0"/>
+  <rect x="468" y="612" width="996" height="46" rx="14" fill="#E2E8F0"/>
+  <text x="800" y="740" text-anchor="middle" fill="#0F172A" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700">
+    Replace with real screenshot
+  </text>
+  <text x="800" y="784" text-anchor="middle" fill="#475569" font-family="Arial, Helvetica, sans-serif" font-size="24">
+    Use a focused image that explains the workflow, not just the screen chrome.
+  </text>
+</svg>
