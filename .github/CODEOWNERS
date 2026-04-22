@@ -1,0 +1,17 @@
+# Global owners
+* @ngbplatform @Perkovsky
+
+# Repository governance and community files
+/.github/ @ngbplatform @Perkovsky
+/README.md @ngbplatform @Perkovsky
+/LICENSE @ngbplatform @Perkovsky
+/NOTICE @ngbplatform @Perkovsky
+/SECURITY.md @ngbplatform @Perkovsky
+/CONTRIBUTING.md @ngbplatform @Perkovsky
+/CODE_OF_CONDUCT.md @ngbplatform @Perkovsky
+
+# Platform and vertical source areas
+/NGB.* @ngbplatform @Perkovsky
+/ui/ @ngbplatform @Perkovsky
+/docs/ @ngbplatform @Perkovsky
+/docker-compose*.yml @ngbplatform @Perkovsky
