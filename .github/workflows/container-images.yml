@@ -135,3 +135,106 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  propose-infra-deploy:
+    name: propose infra deploy
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      INFRA_REPOSITORY: ngbplatform/ngb-platform-infra
+      NGB_SOURCE_SHA: ${{ github.sha }}
+      IMAGE_TAG: sha-${{ github.sha }}
+
+    steps:
+      - name: Validate deploy PR credentials
+        env:
+          APP_ID: ${{ secrets.NGB_PLATFORM_INFRA_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.NGB_PLATFORM_INFRA_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_ID}" ] || [ -z "${APP_PRIVATE_KEY}" ]; then
+            echo "::error::Configure NGB_PLATFORM_INFRA_APP_ID and NGB_PLATFORM_INFRA_APP_PRIVATE_KEY repository secrets."
+            exit 1
+          fi
+
+      - name: Create infra GitHub App token
+        id: infra-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.NGB_PLATFORM_INFRA_APP_ID }}
+          private-key: ${{ secrets.NGB_PLATFORM_INFRA_APP_PRIVATE_KEY }}
+          owner: ngbplatform
+          repositories: ngb-platform-infra
+
+      - name: Checkout infra repository
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ env.INFRA_REPOSITORY }}
+          token: ${{ steps.infra-token.outputs.token }}
+          path: ngb-platform-infra
+
+      - name: Update platform workload image tags
+        id: update
+        working-directory: ngb-platform-infra
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          tag = os.environ["IMAGE_TAG"]
+          workloads = ("pm", "trade", "ab")
+          pattern = re.compile(r"(?m)^(\s*imageTag:\s*&imageTag\s+).+$")
+
+          for workload in workloads:
+              path = Path(f"apps/{workload}/envs/prod/values.yaml")
+              text = path.read_text(encoding="utf-8")
+              updated, count = pattern.subn(lambda match: match.group(1) + tag, text, count=1)
+              if count != 1:
+                  raise SystemExit(f"Could not update imageTag in {path}")
+              path.write_text(updated, encoding="utf-8")
+          PY
+
+          if git diff --quiet -- apps/pm/envs/prod/values.yaml apps/trade/envs/prod/values.yaml apps/ab/envs/prod/values.yaml; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Open infra deploy PR
+        if: steps.update.outputs.changed == 'true'
+        working-directory: ngb-platform-infra
+        env:
+          GH_TOKEN: ${{ steps.infra-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          branch="deploy/ngb-${NGB_SOURCE_SHA}"
+          title="Deploy NGB ${IMAGE_TAG}"
+          body="$(mktemp)"
+          cat > "${body}" <<EOF
+          Automated deployment proposal after a successful NGB container image build.
+
+          Source repository: https://github.com/ngbplatform/NGB
+          Source commit: ${NGB_SOURCE_SHA}
+          Image tag: ${IMAGE_TAG}
+
+          This PR updates PM, Trade, and AB production image tags in ngb-platform-infra.
+          Merge it to let Argo CD deploy. PM/Trade/AB PreSync migrator hooks run before workload rollout.
+          EOF
+
+          git config user.name "ngb-deploy-bot"
+          git config user.email "ngb-deploy-bot@users.noreply.github.com"
+          git checkout -B "${branch}"
+          git add apps/pm/envs/prod/values.yaml apps/trade/envs/prod/values.yaml apps/ab/envs/prod/values.yaml
+          git commit -m "Deploy NGB ${IMAGE_TAG}"
+          git push --force-with-lease origin "${branch}"
+
+          pr_number="$(gh pr list --repo "${INFRA_REPOSITORY}" --head "${branch}" --json number --jq '.[0].number')"
+          if [ -n "${pr_number}" ]; then
+            gh pr edit "${pr_number}" --repo "${INFRA_REPOSITORY}" --title "${title}" --body-file "${body}"
+          else
+            gh pr create --repo "${INFRA_REPOSITORY}" --base main --head "${branch}" --title "${title}" --body-file "${body}"
+          fi
