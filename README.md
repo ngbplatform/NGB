@@ -17,11 +17,13 @@
 <p align="center">
   <a href="https://ngbplatform.com">Website</a>
   ·
-  <a href="https://pm-demo.ngbplatform.com">Property Management (Demo)</a>
+  <a href="https://docs.ngbplatform.com">Docs</a>
   ·
-  <a href="https://trade-demo.ngbplatform.com">Trade (Demo)</a>
+  <a href="https://pm-demo.ngbplatform.com">Property Management (Live Demo)</a>
   ·
-  <a href="https://ab-demo.ngbplatform.com">Agency Billing (Demo)</a>
+  <a href="https://trade-demo.ngbplatform.com">Trade (Live Demo)</a>
+  ·
+  <a href="https://ab-demo.ngbplatform.com">Agency Billing (Live Demo)</a>
 </p>
 
 ---
@@ -582,8 +584,9 @@ See:
 ## Links
 
 - **Website:** https://ngbplatform.com
-- **Property Management Live Demo:** https://pm-demo.ngbplatform.com
-- **Trade Live Demo:** https://trade-demo.ngbplatform.com
-- **Agency Billing Live Demo:** https://ab-demo.ngbplatform.com
+- **Docs:** https://docs.ngbplatform.com
+- **Property Management (Live Demo):** https://pm-demo.ngbplatform.com
+- **Trade (Live Demo):** https://trade-demo.ngbplatform.com
+- **Agency Billing (Live Demo):** https://ab-demo.ngbplatform.com
 
 If you are evaluating NGB, start with the live demos, then explore the monorepo structure and the platform architecture described above.
