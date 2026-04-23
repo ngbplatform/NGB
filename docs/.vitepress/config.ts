@@ -11,6 +11,13 @@ const asset = (relativePath: string) => `${base}${relativePath}`
 const page = (text: string, link: string) => ({ text, link })
 const section = (text: string, items: Array<ReturnType<typeof page>>, collapsed = false) => ({ text, items, collapsed })
 const sitemapHostname = base === '/' ? `${docsHostname}/` : `${docsHostname}${base}`
+const gtmContainerId = 'GTM-WFZ2RMM7'
+const gtmHeadSnippet = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','${gtmContainerId}');`
+
 
 export default defineConfig({
   base,
@@ -23,7 +30,8 @@ export default defineConfig({
   },
   head: [
     ['link', { rel: 'icon', href: asset('favicon.svg'), type: 'image/svg+xml' }],
-    ['meta', { name: 'theme-color', content: '#0B3C5D' }]
+    ['meta', { name: 'theme-color', content: '#0B3C5D' }],
+    ['script', {}, gtmHeadSnippet]
   ],
   themeConfig: {
     logo: asset('images/ngb-logo-color.svg'),
