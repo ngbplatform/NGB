@@ -149,29 +149,19 @@ jobs:
     steps:
       - name: Validate deploy PR credentials
         env:
-          APP_ID: ${{ secrets.NGB_PLATFORM_INFRA_APP_ID }}
-          APP_PRIVATE_KEY: ${{ secrets.NGB_PLATFORM_INFRA_APP_PRIVATE_KEY }}
+          INFRA_PR_TOKEN: ${{ secrets.NGB_PLATFORM_INFRA_PR_TOKEN }}
         run: |
           set -euo pipefail
-          if [ -z "${APP_ID}" ] || [ -z "${APP_PRIVATE_KEY}" ]; then
-            echo "::error::Configure NGB_PLATFORM_INFRA_APP_ID and NGB_PLATFORM_INFRA_APP_PRIVATE_KEY repository secrets."
+          if [ -z "${INFRA_PR_TOKEN}" ]; then
+            echo "::error::Configure NGB_PLATFORM_INFRA_PR_TOKEN repository secret."
             exit 1
           fi
-
-      - name: Create infra GitHub App token
-        id: infra-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.NGB_PLATFORM_INFRA_APP_ID }}
-          private-key: ${{ secrets.NGB_PLATFORM_INFRA_APP_PRIVATE_KEY }}
-          owner: ngbplatform
-          repositories: ngb-platform-infra
 
       - name: Checkout infra repository
         uses: actions/checkout@v5
         with:
           repository: ${{ env.INFRA_REPOSITORY }}
-          token: ${{ steps.infra-token.outputs.token }}
+          token: ${{ secrets.NGB_PLATFORM_INFRA_PR_TOKEN }}
           path: ngb-platform-infra
 
       - name: Update platform workload image tags
@@ -207,7 +197,7 @@ jobs:
         if: steps.update.outputs.changed == 'true'
         working-directory: ngb-platform-infra
         env:
-          GH_TOKEN: ${{ steps.infra-token.outputs.token }}
+          GH_TOKEN: ${{ secrets.NGB_PLATFORM_INFRA_PR_TOKEN }}
         run: |
           set -euo pipefail
 
