@@ -1,0 +1,137 @@
+name: container-images
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.dockerignore'
+      - '.github/workflows/container-images.yml'
+      - 'Directory.Build.props'
+      - 'NGB.*/**'
+      - 'ui/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: container-images-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ngbplatform
+  BUILD_CONFIGURATION: Release
+
+jobs:
+  build:
+    name: build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ngb-pm-api
+            context: .
+            dockerfile: ./NGB.PropertyManagement.Api/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-pm-backgroundjobs
+            context: .
+            dockerfile: ./NGB.PropertyManagement.BackgroundJobs/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-pm-watchdog
+            context: .
+            dockerfile: ./NGB.PropertyManagement.Watchdog/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-pm-migrator
+            context: .
+            dockerfile: ./NGB.PropertyManagement.Migrator/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-pm-web
+            context: ./ui
+            dockerfile: ./ui/ngb-property-management-web/Dockerfile
+            build_args: ""
+          - image: ngb-trade-api
+            context: .
+            dockerfile: ./NGB.Trade.Api/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-trade-backgroundjobs
+            context: .
+            dockerfile: ./NGB.Trade.BackgroundJobs/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-trade-watchdog
+            context: .
+            dockerfile: ./NGB.Trade.Watchdog/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-trade-migrator
+            context: .
+            dockerfile: ./NGB.Trade.Migrator/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-trade-web
+            context: ./ui
+            dockerfile: ./ui/ngb-trade-web/Dockerfile
+            build_args: ""
+          - image: ngb-ab-api
+            context: .
+            dockerfile: ./NGB.AgencyBilling.Api/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-ab-backgroundjobs
+            context: .
+            dockerfile: ./NGB.AgencyBilling.BackgroundJobs/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-ab-watchdog
+            context: .
+            dockerfile: ./NGB.AgencyBilling.Watchdog/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-ab-migrator
+            context: .
+            dockerfile: ./NGB.AgencyBilling.Migrator/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+          - image: ngb-ab-web
+            context: ./ui
+            dockerfile: ./ui/ngb-agency-billing-web/Dockerfile
+            build_args: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          build-args: ${{ matrix.build_args }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
