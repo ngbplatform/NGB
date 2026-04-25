@@ -28,6 +28,14 @@
 
 ---
 
+## NGB Platform Intro
+
+[![NGB Platform Intro — Accounting-First Industry Solutions](https://img.youtube.com/vi/jeZZZaD8OoM/maxresdefault.jpg)](https://youtu.be/jeZZZaD8OoM)
+
+▶️ [Watch the intro video on YouTube](https://youtu.be/jeZZZaD8OoM)
+
+---
+
 ## Table of Contents
 
 - [What is NGB Platform](#what-is-ngb-platform)
