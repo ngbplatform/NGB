@@ -4,6 +4,13 @@
 This site is the consolidated platform documentation for <strong>NGB Platform</strong> — a reusable foundation for accounting-centric business applications on <strong>.NET</strong> and <strong>PostgreSQL</strong>.
 </div>
 
+## Short-form architecture and ecosystem guides
+
+- [NGB Platform Architecture Brief](/architecture/architecture-brief)
+- [NGB for ERP and Accounting Software Ecosystem Teams](/ecosystem/erp-accounting-software-teams)
+- [Integration and Extension Opportunities](/ecosystem/integration-and-extension-opportunities)
+- [Evaluation Guide](/ecosystem/evaluation-guide)
+
 ## Start here
 
 - [Platform overview](/start-here/overview)

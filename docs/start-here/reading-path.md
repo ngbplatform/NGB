@@ -7,6 +7,17 @@ description: Recommended reading routes through the NGB documentation site for o
 
 Use this page when you want the shortest route through the docs instead of the full inventory in the documentation map.
 
+## Fast path for architects and ecosystem readers
+
+For architects, ERP/accounting software teams, ISV teams, consultants, and external reviewers, start with:
+
+1. [NGB Platform Architecture Brief](/architecture/architecture-brief)
+2. [NGB for ERP and Accounting Software Ecosystem Teams](/ecosystem/erp-accounting-software-teams)
+3. [Integration and Extension Opportunities](/ecosystem/integration-and-extension-opportunities)
+4. [Architecture Overview](/architecture/overview)
+5. [Evaluation Guide](/ecosystem/evaluation-guide)
+6. Deep technical chapters as needed
+
 ## Core onboarding path
 
 1. [Platform Overview](/start-here/overview)

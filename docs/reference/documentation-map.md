@@ -7,12 +7,14 @@ description: Complete navigation map of the NGB Platform documentation site.
 const readingChart = String.raw`flowchart TB
     Home["Documentation home"] --> StartHere["Start Here"]
     Home --> Architecture["Architecture"]
+    Home --> Ecosystem["Ecosystem"]
     Home --> Platform["Platform"]
     Home --> Guides["Guides"]
     Home --> Reference["Reference"]
 
     StartHere --> StartHereDetail["Onboarding, runbooks, reading order"]
     Architecture --> ArchitectureDetail["Layering, execution, business concepts"]
+    Ecosystem --> EcosystemDetail["External evaluation, integration, ecosystem fit"]
     Platform --> PlatformDetail["Modules, source maps, deep dives, collaborator maps"]
     Guides --> GuidesDetail["Extension workflows and scenario guides"]
     Reference --> ReferenceDetail["Site guide, operational lookup, source indexes"]`
@@ -37,6 +39,8 @@ This page is the complete navigation hub for the NGB Platform documentation site
 |---|---|
 | I am new to NGB and need the shortest onboarding path | [Reading Path](/start-here/reading-path) |
 | I need local startup instructions | [Run Locally](/start-here/run-locally) |
+| I need a short architecture entry point | [NGB Platform Architecture Brief](/architecture/architecture-brief) |
+| I am evaluating NGB from an ERP/accounting ecosystem angle | [NGB for ERP and Accounting Software Ecosystem Teams](/ecosystem/erp-accounting-software-teams) |
 | I need the high-level architecture | [Architecture Overview](/architecture/overview) |
 | I need module boundaries and dependency rules | [Layering and Dependencies](/architecture/layering-and-dependencies) |
 | I need to trace runtime orchestration | [Runtime Source Map](/platform/runtime-source-map) |
@@ -71,6 +75,7 @@ Use Start Here before deep-diving into individual modules.
 
 ### Core architecture
 
+- [NGB Platform Architecture Brief](/architecture/architecture-brief)
 - [Architecture Overview](/architecture/overview)
 - [Layering and Dependencies](/architecture/layering-and-dependencies)
 - [Definitions and Metadata](/architecture/definitions-and-metadata)
@@ -94,6 +99,14 @@ Use Start Here before deep-diving into individual modules.
 - [Idempotency and Concurrency](/architecture/idempotency-and-concurrency)
 
 Use Architecture when the question is “how the platform works” rather than “where a file lives”.
+
+## Ecosystem
+
+- [NGB for ERP and Accounting Software Ecosystem Teams](/ecosystem/erp-accounting-software-teams)
+- [Integration and Extension Opportunities](/ecosystem/integration-and-extension-opportunities)
+- [Evaluation Guide](/ecosystem/evaluation-guide)
+
+Use Ecosystem when the question is how NGB should be evaluated by architects, ERP/accounting software teams, ISVs, consultants, or external reviewers.
 
 ## Platform
 

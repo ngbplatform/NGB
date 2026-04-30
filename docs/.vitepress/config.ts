@@ -38,8 +38,9 @@ export default defineConfig({
     nav: [
       { text: 'Overview', link: '/' },
       { text: 'Start Here', link: '/start-here/overview' },
-      { text: 'Architecture', link: '/architecture/overview' },
-      { text: 'Platform Modules', link: '/platform/runtime' },
+      { text: 'Architecture', link: '/architecture/architecture-brief' },
+      { text: 'Ecosystem', link: '/ecosystem/erp-accounting-software-teams' },
+      { text: 'Platform Modules', link: '/platform/core-and-tools' },
       { text: 'Guides', link: '/guides/developer-workflows' },
       { text: 'Reference', link: '/reference/documentation-map' },
       { text: 'Website', link: 'https://ngbplatform.com' }
@@ -59,6 +60,7 @@ export default defineConfig({
       ],
       '/architecture/': [
         section('Core Architecture', [
+          page('Architecture Brief', '/architecture/architecture-brief'),
           page('Architecture Overview', '/architecture/overview'),
           page('Layering and Dependencies', '/architecture/layering-and-dependencies'),
           page('Definitions and Metadata', '/architecture/definitions-and-metadata'),
@@ -80,6 +82,13 @@ export default defineConfig({
           page('Append-only and Storno', '/architecture/append-only-and-storno'),
           page('Idempotency and Concurrency', '/architecture/idempotency-and-concurrency')
         ], true)
+      ],
+      '/ecosystem/': [
+        section('Ecosystem', [
+          page('ERP and Accounting Software Teams', '/ecosystem/erp-accounting-software-teams'),
+          page('Integration and Extension Opportunities', '/ecosystem/integration-and-extension-opportunities'),
+          page('Evaluation Guide', '/ecosystem/evaluation-guide')
+        ])
       ],
       '/platform/': [
         section('Platform Modules', [
@@ -197,6 +206,9 @@ export default defineConfig({
           page('Platform Overview', '/start-here/overview'),
           page('Reading Path', '/start-here/reading-path'),
           page('Architecture Overview', '/architecture/overview'),
+          page('Architecture Brief', '/architecture/architecture-brief'),
+          page('ERP and Accounting Software Teams', '/ecosystem/erp-accounting-software-teams'),
+          page('Evaluation Guide', '/ecosystem/evaluation-guide'),
           page('Topic Chapters Index', '/platform/topic-chapters-index'),
           page('Configuration Reference', '/reference/configuration-reference'),
           page('Documentation Map', '/reference/documentation-map')
