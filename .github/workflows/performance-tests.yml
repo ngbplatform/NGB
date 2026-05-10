@@ -1,0 +1,94 @@
+name: performance-tests
+
+on:
+  pull_request:
+    paths:
+      - 'performance-tests/**'
+      - '.github/workflows/performance-tests.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'performance-tests/**'
+      - '.github/workflows/performance-tests.yml'
+  workflow_dispatch:
+    inputs:
+      run_pm_smoke:
+        description: 'Run live Property Management k6 smoke test when secrets are configured'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: performance-tests/package-lock.json
+
+      - name: Install dependencies
+        working-directory: performance-tests
+        run: npm ci
+
+      - name: Type-check
+        working-directory: performance-tests
+        run: npm run typecheck
+
+  pm-smoke:
+    needs: typecheck
+    if: github.event_name == 'workflow_dispatch' && inputs.run_pm_smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Check smoke secrets
+        id: smoke-secrets
+        env:
+          NGB_API_BASE_URL: ${{ secrets.NGB_API_BASE_URL }}
+          KEYCLOAK_TOKEN_URL: ${{ secrets.KEYCLOAK_TOKEN_URL }}
+          KEYCLOAK_TESTER_CLIENT_ID: ${{ secrets.KEYCLOAK_TESTER_CLIENT_ID }}
+          KEYCLOAK_TESTER_CLIENT_SECRET: ${{ secrets.KEYCLOAK_TESTER_CLIENT_SECRET }}
+          NGB_TEST_USERNAME: ${{ secrets.NGB_TEST_USERNAME }}
+          NGB_TEST_PASSWORD: ${{ secrets.NGB_TEST_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${NGB_API_BASE_URL}" ] \
+            && [ -n "${KEYCLOAK_TOKEN_URL}" ] \
+            && [ -n "${KEYCLOAK_TESTER_CLIENT_ID}" ] \
+            && [ -n "${KEYCLOAK_TESTER_CLIENT_SECRET}" ] \
+            && [ -n "${NGB_TEST_USERNAME}" ] \
+            && [ -n "${NGB_TEST_PASSWORD}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Live PM smoke skipped because required secrets are not configured."
+          fi
+
+      - name: Run PM smoke
+        if: steps.smoke-secrets.outputs.enabled == 'true'
+        working-directory: performance-tests
+        env:
+          NGB_BASE_URL: ${{ secrets.NGB_BASE_URL }}
+          NGB_API_BASE_URL: ${{ secrets.NGB_API_BASE_URL }}
+          NGB_VERTICAL: property-management
+          KEYCLOAK_TOKEN_URL: ${{ secrets.KEYCLOAK_TOKEN_URL }}
+          KEYCLOAK_TESTER_CLIENT_ID: ${{ secrets.KEYCLOAK_TESTER_CLIENT_ID }}
+          KEYCLOAK_TESTER_CLIENT_SECRET: ${{ secrets.KEYCLOAK_TESTER_CLIENT_SECRET }}
+          NGB_TEST_USERNAME: ${{ secrets.NGB_TEST_USERNAME }}
+          NGB_TEST_PASSWORD: ${{ secrets.NGB_TEST_PASSWORD }}
+          NGB_K6_ENV: ci
+          NGB_PERF_ENABLE_WRITES: 'false'
+        run: k6 run ngb-property-management-perf/src/tests/smoke.ts

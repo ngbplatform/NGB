@@ -1,0 +1,29 @@
+{
+  "name": "ngb-performance-tests",
+  "private": true,
+  "version": "1.1.0",
+  "type": "module",
+  "workspaces": [
+    "ngb-performance-tests-framework",
+    "ngb-property-management-perf",
+    "ngb-trade-perf",
+    "ngb-agency-billing-perf"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b",
+    "pm:smoke": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/smoke.ts",
+    "pm:baseline": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/baseline.ts",
+    "pm:load": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/load.ts",
+    "pm:stress": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/stress.ts",
+    "pm:spike": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/spike.ts",
+    "pm:soak": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/soak.ts",
+    "pm:business-day": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/business-day.ts",
+    "pm:reporting-regression": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/reporting-regression.ts",
+    "trade:smoke": "./scripts/run-k6.sh --env-file ngb-trade-perf/.env.local --test ngb-trade-perf/src/tests/smoke.ts",
+    "ab:smoke": "./scripts/run-k6.sh --env-file ngb-agency-billing-perf/.env.local --test ngb-agency-billing-perf/src/tests/smoke.ts"
+  },
+  "devDependencies": {
+    "@types/k6": "latest",
+    "typescript": "latest"
+  }
+}

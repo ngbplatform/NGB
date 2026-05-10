@@ -48,6 +48,7 @@
 - [Architecture flow](#architecture-flow)
 - [Monorepo structure](#monorepo-structure)
 - [Technology stack](#technology-stack)
+- [Performance testing](#performance-testing)
 - [Getting started](#getting-started)
 - [Design principles](#design-principles)
 - [Contributing](#contributing)
@@ -396,6 +397,12 @@ NGB.sln
 │  ├─ docker-compose.pm.yml
 │  └─ docker-compose.trade.yml
 │
+├─ Performance tests
+│  ├─ performance-tests/ngb-performance-tests-framework
+│  ├─ performance-tests/ngb-property-management-perf
+│  ├─ performance-tests/ngb-trade-perf
+│  └─ performance-tests/ngb-agency-billing-perf
+│
 └─ Tests
    ├─ Platform unit and integration tests
    └─ Vertical unit and integration tests
@@ -415,6 +422,22 @@ NGB is built with a practical, production-oriented stack:
 - **Logging / observability:** Serilog + Seq-friendly structured logging setup
 - **Frontend:** Vue 3 + Vite + Tailwind CSS + shared UI workspace
 - **Containerized local environments:** Docker Compose
+
+---
+
+## Performance testing
+
+NGB includes a reusable Grafana k6 + TypeScript performance testing framework under [`performance-tests`](./performance-tests).
+
+The framework validates platform-level behavior and vertical-specific workloads with realistic business scenarios such as dashboard usage, document lifecycle operations, posting, accounting effects, document flow, command palette search, and report execution.
+
+Initial vertical coverage is provided for Property Management, with Trade and Agency Billing structured as extensions.
+
+See:
+
+- [`performance-tests/README.md`](./performance-tests/README.md)
+- [`performance-tests/ngb-performance-tests-framework/README.md`](./performance-tests/ngb-performance-tests-framework/README.md)
+- [Performance Testing docs](./docs/platform/performance-testing.md)
 
 ---
 

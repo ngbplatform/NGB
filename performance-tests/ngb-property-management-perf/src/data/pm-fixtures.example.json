@@ -1,0 +1,21 @@
+{
+  "leases": [
+    {
+      "code": "PERF-LEASE-001",
+      "description": "Stable lease fixture for PM performance tests"
+    }
+  ],
+  "reports": [
+    "accounting.trial_balance",
+    "accounting.general_journal",
+    "accounting.account_card",
+    "pm.occupancy.summary",
+    "pm.receivables.aging",
+    "pm.receivables.open_items"
+  ],
+  "documents": {
+    "lease": "replace-with-non-production-lease-id",
+    "rentCharge": "replace-with-non-production-rent-charge-id",
+    "receivablePayment": "replace-with-non-production-receivable-payment-id"
+  }
+}
