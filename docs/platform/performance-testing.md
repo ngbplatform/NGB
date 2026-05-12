@@ -2,7 +2,7 @@
 
 NGB includes a reusable Grafana k6 + TypeScript performance testing workspace under `performance-tests/`.
 
-Performance testing is part of production readiness for NGB because the platform is built around business workflows that can be expensive in real systems: metadata loading, dashboard reads, document lifecycle operations, posting, accounting effects, document flow, command palette search, and report execution.
+Performance testing is part of production readiness for NGB because the platform is built around business workflows that can be expensive in real systems: metadata loading, document lifecycle operations, posting, accounting effects, document flow, and report execution.
 
 ## Directory Structure
 
@@ -102,11 +102,10 @@ The framework emits custom metrics:
 - `ngb_report_execution_duration`
 - `ngb_accounting_effects_duration`
 - `ngb_document_flow_duration`
-- `ngb_command_palette_duration`
 
 Standard tags include `app`, `vertical`, `profile`, `area`, `operation`, `scenario`, `documentType`, `reportId`, and `catalogType`.
 
-Thresholds include common reliability checks and operation-specific latency budgets for auth, health, dashboard reads, document reads/posts, reports, accounting effects, document flow, and command palette search.
+Thresholds include common reliability checks and operation-specific latency budgets for auth, health, document reads/posts, reports, accounting effects, and document flow.
 
 ## Grafana Integration
 

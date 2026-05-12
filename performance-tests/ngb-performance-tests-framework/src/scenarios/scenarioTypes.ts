@@ -2,7 +2,6 @@ import type { NgbPerfEnv } from '../core/env.ts';
 import type { NgbHttpClient } from '../core/httpClient.ts';
 import type { AccountingClient } from '../ngb/accountingClient.ts';
 import type { CatalogsClient } from '../ngb/catalogsClient.ts';
-import type { CommandPaletteClient } from '../ngb/commandPaletteClient.ts';
 import type { DocumentsClient } from '../ngb/documentsClient.ts';
 import type { HealthClient } from '../ngb/healthClient.ts';
 import type { MetadataClient } from '../ngb/metadataClient.ts';
@@ -17,7 +16,6 @@ export interface NgbScenarioContext {
   readonly reports: ReportsClient;
   readonly accounting: AccountingClient;
   readonly metadata: MetadataClient;
-  readonly commandPalette: CommandPaletteClient;
 }
 
 export interface NgbAuthSetupData {

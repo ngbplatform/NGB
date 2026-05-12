@@ -3,8 +3,6 @@ import { buildBaselineProfile } from '../../../ngb-performance-tests-framework/s
 import { getNgbScenarioContext, setupNgbAccessToken } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioBuilder.ts';
 import type { NgbAuthSetupData } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioTypes.ts';
 import { pmAccountingEffectsFlow } from '../flows/pmAccountingEffectsFlow.ts';
-import { pmCommandPaletteFlow } from '../flows/pmCommandPaletteFlow.ts';
-import { pmDashboardFlow } from '../flows/pmDashboardFlow.ts';
 import { pmDocumentFlowReadFlow } from '../flows/pmDocumentFlowReadFlow.ts';
 import { pmLeaseBrowseFlow } from '../flows/pmLeaseBrowseFlow.ts';
 import { pmReportsFlow } from '../flows/pmReportsFlow.ts';
@@ -20,9 +18,7 @@ export function setup(): NgbAuthSetupData {
 
 export function pmBaseline(data: NgbAuthSetupData): void {
   const context = getNgbScenarioContext(data);
-  pmDashboardFlow(context);
   pmLeaseBrowseFlow(context);
-  pmCommandPaletteFlow(context);
   pmReportsFlow(context);
   pmAccountingEffectsFlow(context);
   pmDocumentFlowReadFlow(context);

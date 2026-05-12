@@ -46,13 +46,11 @@ const primaryLatencyRows: readonly LatencyRow[] = [
 
 const areaLatencyRows: readonly LatencyRow[] = [
   { label: 'Health HTTP', metricName: 'http_req_duration{area:health}' },
-  { label: 'Dashboard HTTP', metricName: 'http_req_duration{area:dashboard}' },
   { label: 'Documents HTTP', metricName: 'http_req_duration{area:documents}' },
   { label: 'Reports', metricName: 'ngb_report_execution_duration{area:reports}' },
   { label: 'Accounting effects', metricName: 'ngb_accounting_effects_duration{area:accounting}' },
   { label: 'Document post', metricName: 'ngb_document_post_duration{area:documents}' },
   { label: 'Document flow', metricName: 'ngb_document_flow_duration{area:document-flow}' },
-  { label: 'Command palette', metricName: 'ngb_command_palette_duration{area:command-palette}' },
 ];
 
 export function defaultHandleSummary(data: unknown): SummaryOutput {

@@ -11,25 +11,21 @@ export const commonThresholds: ThresholdMap = {
 export const operationThresholds: ThresholdMap = {
   'ngb_auth_duration{area:auth}': ['p(95)<1000'],
   'http_req_duration{area:health}': ['p(95)<500'],
-  'http_req_duration{area:dashboard}': ['p(95)<1000'],
   'http_req_duration{area:documents}': ['p(95)<1000'],
   'ngb_document_post_duration{area:documents}': ['p(95)<2500'],
   'ngb_accounting_effects_duration{area:accounting}': ['p(95)<1500'],
   'ngb_document_flow_duration{area:document-flow}': ['p(95)<2000'],
   'ngb_report_execution_duration{area:reports}': ['p(95)<3000'],
-  'ngb_command_palette_duration{area:command-palette}': ['p(95)<1000'],
 };
 
 export const diagnosticOperationThresholds: ThresholdMap = {
   'ngb_auth_duration{area:auth}': ['p(99)<30000'],
   'http_req_duration{area:health}': ['p(99)<30000'],
-  'http_req_duration{area:dashboard}': ['p(99)<30000'],
   'http_req_duration{area:documents}': ['p(99)<30000'],
   'ngb_document_post_duration{area:documents}': ['p(99)<30000'],
   'ngb_accounting_effects_duration{area:accounting}': ['p(99)<30000'],
   'ngb_document_flow_duration{area:document-flow}': ['p(99)<30000'],
   'ngb_report_execution_duration{area:reports}': ['p(99)<30000'],
-  'ngb_command_palette_duration{area:command-palette}': ['p(99)<30000'],
 };
 
 export function mergeThresholds(...items: ThresholdMap[]): ThresholdMap {

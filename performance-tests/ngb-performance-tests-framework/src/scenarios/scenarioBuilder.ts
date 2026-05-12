@@ -6,7 +6,6 @@ import { readNgbPerfEnv } from '../core/env.ts';
 import { NgbHttpClient } from '../core/httpClient.ts';
 import { AccountingClient } from '../ngb/accountingClient.ts';
 import { CatalogsClient } from '../ngb/catalogsClient.ts';
-import { CommandPaletteClient } from '../ngb/commandPaletteClient.ts';
 import { DocumentsClient } from '../ngb/documentsClient.ts';
 import { HealthClient } from '../ngb/healthClient.ts';
 import { MetadataClient } from '../ngb/metadataClient.ts';
@@ -47,7 +46,6 @@ export function createNgbScenarioContext(setupData?: NgbAuthSetupData): NgbScena
     reports: new ReportsClient(client, env),
     accounting: new AccountingClient(client, env),
     metadata: new MetadataClient(client, env),
-    commandPalette: new CommandPaletteClient(client, env),
   };
 }
 

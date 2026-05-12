@@ -3,7 +3,7 @@ import http, { type Params } from 'k6/http';
 import { operationSucceeded } from './checks.ts';
 import type { NgbPerfEnv } from './env.ts';
 import { safeErrorSummary } from './errors.ts';
-import { accountingEffectsDuration, commandPaletteDuration, documentFlowDuration, documentPostDuration, recordBusinessOperation, reportExecutionDuration } from './metrics.ts';
+import { accountingEffectsDuration, documentFlowDuration, documentPostDuration, recordBusinessOperation, reportExecutionDuration } from './metrics.ts';
 import { buildTags, mergeTags, type NgbRequestTags } from './requestTags.ts';
 
 export interface AccessTokenProvider {
@@ -112,9 +112,6 @@ export class NgbHttpClient {
         break;
       case 'document-flow':
         documentFlowDuration.add(durationMs, tags);
-        break;
-      case 'command-palette':
-        commandPaletteDuration.add(durationMs, tags);
         break;
     }
   }

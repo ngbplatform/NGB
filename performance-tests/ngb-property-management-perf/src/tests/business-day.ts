@@ -3,8 +3,6 @@ import { getNgbScenarioContext, setupNgbAccessToken } from '../../../ngb-perform
 import type { NgbAuthSetupData, NgbScenarioContext } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioTypes.ts';
 import { buildBusinessDayWorkload } from '../../../ngb-performance-tests-framework/src/scenarios/workloadModels.ts';
 import { pmAccountingEffectsFlow } from '../flows/pmAccountingEffectsFlow.ts';
-import { pmCommandPaletteFlow } from '../flows/pmCommandPaletteFlow.ts';
-import { pmDashboardFlow } from '../flows/pmDashboardFlow.ts';
 import { pmDocumentFlowReadFlow } from '../flows/pmDocumentFlowReadFlow.ts';
 import { pmLeaseBrowseFlow } from '../flows/pmLeaseBrowseFlow.ts';
 import { pmReceivablePaymentApplyFlow } from '../flows/pmReceivablePaymentApplyFlow.ts';
@@ -12,16 +10,6 @@ import { pmRentChargePostingFlow } from '../flows/pmRentChargePostingFlow.ts';
 import { pmReportsFlow } from '../flows/pmReportsFlow.ts';
 
 export const options = buildBusinessDayWorkload({
-  dashboard: {
-    executor: 'constant-arrival-rate',
-    rate: 4,
-    timeUnit: '1s',
-    duration: '10m',
-    preAllocatedVUs: 10,
-    maxVUs: 40,
-    exec: 'dashboard',
-    tags: { profile: 'business-day', vertical: 'property-management', scenario: 'pm.business_day.dashboard' },
-  },
   browsing: {
     executor: 'constant-arrival-rate',
     rate: 3,
@@ -31,16 +19,6 @@ export const options = buildBusinessDayWorkload({
     maxVUs: 40,
     exec: 'browsing',
     tags: { profile: 'business-day', vertical: 'property-management', scenario: 'pm.business_day.browsing' },
-  },
-  command_palette: {
-    executor: 'constant-arrival-rate',
-    rate: 1,
-    timeUnit: '1s',
-    duration: '10m',
-    preAllocatedVUs: 5,
-    maxVUs: 20,
-    exec: 'commandPalette',
-    tags: { profile: 'business-day', vertical: 'property-management', scenario: 'pm.business_day.command_palette' },
   },
   reports: {
     executor: 'constant-arrival-rate',
@@ -88,16 +66,8 @@ export function setup(): NgbAuthSetupData {
   return setupNgbAccessToken();
 }
 
-export function dashboard(data: NgbAuthSetupData): void {
-  pmDashboardFlow(context(data));
-}
-
 export function browsing(data: NgbAuthSetupData): void {
   pmLeaseBrowseFlow(context(data));
-}
-
-export function commandPalette(data: NgbAuthSetupData): void {
-  pmCommandPaletteFlow(context(data));
 }
 
 export function reports(data: NgbAuthSetupData): void {

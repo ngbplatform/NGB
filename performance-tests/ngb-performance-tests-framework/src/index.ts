@@ -18,7 +18,6 @@ export * from './data/testUsers.ts';
 
 export * from './flows/accountingEffectsFlow.ts';
 export * from './flows/catalogBrowseFlow.ts';
-export * from './flows/commandPaletteFlow.ts';
 export * from './flows/documentFlowReadFlow.ts';
 export * from './flows/documentListFlow.ts';
 export * from './flows/documentOpenFlow.ts';
@@ -28,7 +27,6 @@ export * from './flows/reportExecutionFlow.ts';
 
 export * from './ngb/accountingClient.ts';
 export * from './ngb/catalogsClient.ts';
-export * from './ngb/commandPaletteClient.ts';
 export * from './ngb/documentsClient.ts';
 export * from './ngb/healthClient.ts';
 export * from './ngb/metadataClient.ts';

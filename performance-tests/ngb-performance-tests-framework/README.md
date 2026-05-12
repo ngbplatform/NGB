@@ -17,7 +17,7 @@ The framework contains only shared NGB concepts:
 - custom k6 metrics
 - profile builders
 - scenario helpers
-- generic NGB clients for health, metadata, catalogs, documents, reports, accounting effects, document flow, and command palette search
+- generic NGB clients for health, metadata, catalogs, documents, reports, accounting effects, and document flow
 
 Vertical-specific projects provide business flows, document type codes, catalog type codes, report IDs, fixture strategy, and scenario mixes.
 
@@ -103,7 +103,6 @@ Custom metrics:
 - `ngb_report_execution_duration`
 - `ngb_accounting_effects_duration`
 - `ngb_document_flow_duration`
-- `ngb_command_palette_duration`
 
 Standard tags:
 
@@ -121,7 +120,7 @@ Do not add high-cardinality tags such as document IDs, user IDs, random suffixes
 
 ## Thresholds
 
-Common thresholds enforce low HTTP failure rates and high check success rates. Operation thresholds cover auth, health, dashboard reads, document operations, report execution, accounting effects, document flow, and command palette search.
+Common thresholds enforce low HTTP failure rates and high check success rates. Operation thresholds cover auth, health, document operations, report execution, accounting effects, and document flow.
 
 If a new environment cannot meet a target yet, document the temporary relaxation in the vertical project rather than silently removing the threshold.
 

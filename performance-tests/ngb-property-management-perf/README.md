@@ -6,11 +6,9 @@ Initial coverage focuses on safe read-first flows:
 
 - auth and health
 - metadata loading
-- PM dashboard-equivalent reads
 - property and party browsing
 - lease list/open flows
 - rent charge and receivable payment read paths
-- command palette search
 - accounting reports
 - PM receivables reports when a stable lease fixture is available
 - accounting effects and document flow when stable fixture documents are available
@@ -60,9 +58,9 @@ cd performance-tests
 ## Test Files
 
 - `smoke.ts`: login, health, metadata, document list, report definition, trial balance, occupancy summary
-- `baseline.ts`: dashboard read path, document browsing, command palette, reports, accounting effects, document flow
+- `baseline.ts`: document browsing, reports, accounting effects, document flow
 - `load.ts`, `stress.ts`, `spike.ts`, `soak.ts`: profile-specific read-heavy PM workload
-- `business-day.ts`: multi-scenario mix for dashboard, browsing, command palette, reports, posting scaffold, payment/apply scaffold, heavy reads
+- `business-day.ts`: multi-scenario mix for browsing, reports, posting scaffold, payment/apply scaffold, heavy reads
 - `reporting-regression.ts`: trial balance, general journal, account card definition, aging, open items
 
 ## Fixtures

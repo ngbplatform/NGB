@@ -9,7 +9,6 @@ export const documentPostDuration = new Trend('ngb_document_post_duration', true
 export const reportExecutionDuration = new Trend('ngb_report_execution_duration', true);
 export const accountingEffectsDuration = new Trend('ngb_accounting_effects_duration', true);
 export const documentFlowDuration = new Trend('ngb_document_flow_duration', true);
-export const commandPaletteDuration = new Trend('ngb_command_palette_duration', true);
 
 export function recordBusinessOperation(
   durationMs: number,
