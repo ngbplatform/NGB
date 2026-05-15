@@ -26,13 +26,18 @@ export * from './flows/platformSmokeFlow.ts';
 export * from './flows/reportExecutionFlow.ts';
 
 export * from './ngb/accountingClient.ts';
+export * from './ngb/adminClient.ts';
+export * from './ngb/auditClient.ts';
 export * from './ngb/catalogsClient.ts';
 export * from './ngb/documentsClient.ts';
 export * from './ngb/healthClient.ts';
 export * from './ngb/metadataClient.ts';
+export * from './ngb/periodClosingClient.ts';
 export * from './ngb/reportsClient.ts';
 
 export * from './profiles/baseline.ts';
+export * from './profiles/breakpoint.ts';
+export * from './profiles/capacity.ts';
 export * from './profiles/load.ts';
 export * from './profiles/smoke.ts';
 export * from './profiles/soak.ts';

@@ -4,11 +4,14 @@ import { KeycloakPasswordGrantAuth } from '../auth/keycloakPasswordGrantAuth.ts'
 import { StaticAccessTokenProvider } from '../auth/staticAccessTokenProvider.ts';
 import { readNgbPerfEnv } from '../core/env.ts';
 import { NgbHttpClient } from '../core/httpClient.ts';
+import { AdminClient } from '../ngb/adminClient.ts';
 import { AccountingClient } from '../ngb/accountingClient.ts';
+import { AuditClient } from '../ngb/auditClient.ts';
 import { CatalogsClient } from '../ngb/catalogsClient.ts';
 import { DocumentsClient } from '../ngb/documentsClient.ts';
 import { HealthClient } from '../ngb/healthClient.ts';
 import { MetadataClient } from '../ngb/metadataClient.ts';
+import { PeriodClosingClient } from '../ngb/periodClosingClient.ts';
 import { ReportsClient } from '../ngb/reportsClient.ts';
 import type { NgbAuthSetupData, NgbScenarioContext, ScenarioDescriptor } from './scenarioTypes.ts';
 
@@ -46,6 +49,9 @@ export function createNgbScenarioContext(setupData?: NgbAuthSetupData): NgbScena
     reports: new ReportsClient(client, env),
     accounting: new AccountingClient(client, env),
     metadata: new MetadataClient(client, env),
+    admin: new AdminClient(client, env),
+    audit: new AuditClient(client, env),
+    periodClosing: new PeriodClosingClient(client, env),
   };
 }
 

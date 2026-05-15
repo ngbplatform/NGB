@@ -37,6 +37,17 @@ interface LatencyRow {
   readonly metricName: string;
 }
 
+interface ParsedTaggedMetric {
+  readonly root: string;
+  readonly tags: Record<string, string>;
+}
+
+interface OperationBreakdownRow {
+  readonly label: string;
+  readonly metricName: string;
+  readonly tags: Record<string, string>;
+}
+
 const primaryLatencyRows: readonly LatencyRow[] = [
   { label: 'HTTP overall', metricName: 'http_req_duration' },
   { label: 'Business operation', metricName: 'ngb_business_operation_duration' },
@@ -46,11 +57,18 @@ const primaryLatencyRows: readonly LatencyRow[] = [
 
 const areaLatencyRows: readonly LatencyRow[] = [
   { label: 'Health HTTP', metricName: 'http_req_duration{area:health}' },
+  { label: 'Metadata HTTP', metricName: 'http_req_duration{area:metadata}' },
+  { label: 'Catalogs HTTP', metricName: 'http_req_duration{area:catalogs}' },
   { label: 'Documents HTTP', metricName: 'http_req_duration{area:documents}' },
+  { label: 'Admin HTTP', metricName: 'http_req_duration{area:admin}' },
+  { label: 'Chart of accounts HTTP', metricName: 'http_req_duration{area:chart-of-accounts}' },
   { label: 'Reports', metricName: 'ngb_report_execution_duration{area:reports}' },
+  { label: 'Report export HTTP', metricName: 'http_req_duration{area:report-export}' },
   { label: 'Accounting effects', metricName: 'ngb_accounting_effects_duration{area:accounting}' },
   { label: 'Document post', metricName: 'ngb_document_post_duration{area:documents}' },
   { label: 'Document flow', metricName: 'ngb_document_flow_duration{area:document-flow}' },
+  { label: 'Audit HTTP', metricName: 'http_req_duration{area:audit}' },
+  { label: 'Period closing HTTP', metricName: 'http_req_duration{area:period-closing}' },
 ];
 
 export function defaultHandleSummary(data: unknown): SummaryOutput {
@@ -127,6 +145,18 @@ function buildTextSummary(data: K6SummaryData): string {
     'Latency By Area',
     ...nonEmptyOrFallback(latencyLines(metrics, areaLatencyRows), '  no area-specific samples'),
     '',
+    'HTTP By Operation',
+    ...nonEmptyOrFallback(operationBreakdownLines(metrics), '  no operation breakdown samples (configure diagnosticBreakdowns in the test profile)'),
+    '',
+    'Failures By Status',
+    ...nonEmptyOrFallback(failureStatusLines(metrics), '  no status breakdown samples'),
+    '',
+    'Report Execution By Id',
+    ...nonEmptyOrFallback(
+      latencyLines(metrics, reportExecutionLatencyRows(metrics)),
+      '  no report-id samples (configure reportBreakdownIds in the vertical test profile)',
+    ),
+    '',
     'Thresholds',
     ...nonEmptyOrFallback(thresholdLines(metrics), '  no thresholds configured'),
     '',
@@ -184,6 +214,18 @@ function buildMarkdownSummary(data: K6SummaryData): string {
     '',
     markdownLatencyTable(metrics, areaLatencyRows),
     '',
+    '## HTTP By Operation',
+    '',
+    markdownOperationBreakdownTable(metrics),
+    '',
+    '## Failures By Status',
+    '',
+    markdownFailureStatusTable(metrics),
+    '',
+    '## Report Execution By Id',
+    '',
+    markdownLatencyTable(metrics, reportExecutionLatencyRows(metrics), 'Report ID'),
+    '',
     '## Thresholds',
     '',
     markdownThresholdTable(metrics),
@@ -204,16 +246,204 @@ function latencyLines(metrics: Record<string, K6Metric>, rows: readonly LatencyR
     });
 }
 
+function reportExecutionLatencyRows(metrics: Record<string, K6Metric>): LatencyRow[] {
+  return Object.keys(metrics)
+    .map((metricName) => {
+      const tags = parseMetricTags(metricName);
+      const reportId = tags?.reportId;
+      if (
+        !metricName.startsWith('ngb_report_execution_duration{')
+        || tags?.area !== 'reports'
+        || tags?.operation !== 'platform.reports.execute'
+        || !reportId
+      ) {
+        return null;
+      }
+
+      const periodProfile = tags?.periodProfile;
+      return { label: periodProfile ? `${reportId} [${periodProfile}]` : reportId, metricName };
+    })
+    .filter((row): row is LatencyRow => row !== null && trendHasSamples(metrics[row.metricName]))
+    .sort((left, right) => {
+      const leftValues = metrics[left.metricName]?.values ?? {};
+      const rightValues = metrics[right.metricName]?.values ?? {};
+      return (rightValues['p(95)'] ?? 0) - (leftValues['p(95)'] ?? 0)
+        || left.label.localeCompare(right.label);
+    });
+}
+
+function operationBreakdownRows(metrics: Record<string, K6Metric>): OperationBreakdownRow[] {
+  return Object.keys(metrics)
+    .map((metricName) => {
+      const parsed = parseTaggedMetricName(metricName);
+      if (
+        parsed?.root !== 'http_req_duration'
+        || !parsed.tags.operation
+        || parsed.tags.status
+        || !trendHasSamples(metrics[metricName])
+      ) {
+        return null;
+      }
+
+      return {
+        label: operationBreakdownLabel(parsed.tags),
+        metricName,
+        tags: parsed.tags,
+      };
+    })
+    .filter((row): row is OperationBreakdownRow => row !== null)
+    .sort((left, right) => {
+      const leftFailed = rateCount(findMatchingTaggedMetric(metrics, 'http_req_failed', left.tags));
+      const rightFailed = rateCount(findMatchingTaggedMetric(metrics, 'http_req_failed', right.tags));
+      const leftValues = metrics[left.metricName]?.values ?? {};
+      const rightValues = metrics[right.metricName]?.values ?? {};
+      return rightFailed - leftFailed
+        || (rightValues['p(95)'] ?? 0) - (leftValues['p(95)'] ?? 0)
+        || left.label.localeCompare(right.label);
+    });
+}
+
+function operationBreakdownLines(metrics: Record<string, K6Metric>): string[] {
+  return operationBreakdownRows(metrics)
+    .slice(0, 25)
+    .map((row) => {
+      const values = metrics[row.metricName]?.values ?? {};
+      const httpFailed = findMatchingTaggedMetric(metrics, 'http_req_failed', row.tags);
+      return `  ${row.label}: fail_rate=${formatPercent(rateValue(httpFailed))} failed=${formatInteger(rateCount(httpFailed))} p95=${formatMs(values['p(95)'])} p99=${formatMs(values['p(99)'])} max=${formatMs(values.max)}`;
+    });
+}
+
+function failureStatusRows(metrics: Record<string, K6Metric>): OperationBreakdownRow[] {
+  return Object.keys(metrics)
+    .map((metricName) => {
+      const parsed = parseTaggedMetricName(metricName);
+      if (
+        parsed?.root !== 'ngb_business_operation_failed'
+        || !parsed.tags.status
+        || !rateHasSamples(metrics[metricName])
+      ) {
+        return null;
+      }
+
+      return {
+        label: operationBreakdownLabel(parsed.tags),
+        metricName,
+        tags: parsed.tags,
+      };
+    })
+    .filter((row): row is OperationBreakdownRow => row !== null)
+    .sort((left, right) => {
+      const leftMetric = metrics[left.metricName];
+      const rightMetric = metrics[right.metricName];
+      return rateCount(rightMetric) - rateCount(leftMetric)
+        || rateValue(rightMetric) - rateValue(leftMetric)
+        || left.label.localeCompare(right.label);
+    });
+}
+
+function failureStatusLines(metrics: Record<string, K6Metric>): string[] {
+  return failureStatusRows(metrics)
+    .filter((row) => rateCount(metrics[row.metricName]) > 0)
+    .slice(0, 25)
+    .map((row) => {
+      const metric = metrics[row.metricName];
+      return `  ${row.label}: fail_rate=${formatPercent(rateValue(metric))} failed=${formatInteger(rateCount(metric))} total=${formatInteger(rateTotal(metric))}`;
+    });
+}
+
+function operationBreakdownLabel(tags: Record<string, string>): string {
+  const qualifiers = [
+    tags.documentType ? `doc=${tags.documentType}` : '',
+    tags.catalogType ? `catalog=${tags.catalogType}` : '',
+    tags.reportId ? `report=${tags.reportId}` : '',
+    tags.entityKind ? `entity=${tags.entityKind}` : '',
+    tags.periodProfile ? `period=${tags.periodProfile}` : '',
+    tags.status ? `status=${tags.status}` : '',
+  ].filter(Boolean);
+
+  return qualifiers.length > 0
+    ? `${tags.operation ?? tags.area ?? 'operation'} [${qualifiers.join(', ')}]`
+    : (tags.operation ?? tags.area ?? 'operation');
+}
+
+function parseMetricTags(metricName: string): Record<string, string> | null {
+  return parseTaggedMetricName(metricName)?.tags ?? null;
+}
+
+function parseTaggedMetricName(metricName: string): ParsedTaggedMetric | null {
+  const match = metricName.match(/^([^{]+){(.+)}$/);
+  if (!match) {
+    return null;
+  }
+
+  const root = match[1];
+  const tagList = match[2];
+  if (!root || !tagList) {
+    return null;
+  }
+
+  const tags: Record<string, string> = {};
+  for (const pair of tagList.split(',')) {
+    const separator = pair.indexOf(':');
+    if (separator <= 0) {
+      continue;
+    }
+
+    const key = pair.slice(0, separator).trim();
+    const value = pair.slice(separator + 1).trim();
+    if (key && value) {
+      tags[key] = value;
+    }
+  }
+
+  return { root, tags };
+}
+
+function findMatchingTaggedMetric(
+  metrics: Record<string, K6Metric>,
+  root: string,
+  tags: Record<string, string>,
+): K6Metric | undefined {
+  for (const [metricName, metric] of Object.entries(metrics)) {
+    const parsed = parseTaggedMetricName(metricName);
+    if (parsed?.root === root && sameTags(parsed.tags, tags)) {
+      return metric;
+    }
+  }
+
+  return undefined;
+}
+
+function sameTags(left: Record<string, string>, right: Record<string, string>): boolean {
+  const leftEntries = Object.entries(left).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+  const rightEntries = Object.entries(right).sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+  return leftEntries.length === rightEntries.length
+    && leftEntries.every(([key, value], index) => {
+      const [rightKey, rightValue] = rightEntries[index] ?? [];
+      return key === rightKey && value === rightValue;
+    });
+}
+
 function thresholdLines(metrics: Record<string, K6Metric>): string[] {
   const lines: string[] = [];
 
   for (const [metricName, metric] of Object.entries(metrics)) {
     for (const [expression, result] of Object.entries(metric.thresholds ?? {})) {
+      if (isDiagnosticMaterializationThreshold(expression)) {
+        continue;
+      }
+
       lines.push(`  ${result.ok ? 'PASS' : 'FAIL'} ${metricName} ${expression}`);
     }
   }
 
   return lines.sort((left, right) => left.localeCompare(right));
+}
+
+function isDiagnosticMaterializationThreshold(expression: string): boolean {
+  return expression === 'max<600000'
+    || expression === 'rate<1.01'
+    || expression === 'rate<1';
 }
 
 function checkLines(rootGroup: K6Group | undefined): string[] {
@@ -236,18 +466,55 @@ function collectChecks(group: K6Group | undefined): K6Check[] {
   return checks;
 }
 
-function markdownLatencyTable(metrics: Record<string, K6Metric>, rows: readonly LatencyRow[]): string {
+function markdownLatencyTable(
+  metrics: Record<string, K6Metric>,
+  rows: readonly LatencyRow[],
+  labelHeader = 'Area',
+): string {
   const sampledRows = rows.filter((row) => trendHasSamples(metrics[row.metricName]));
   if (sampledRows.length === 0) {
     return '_No samples._';
   }
 
   return [
-    '| Area | Avg | Med | P90 | P95 | P99 | Max |',
+    `| ${labelHeader} | Avg | Med | P90 | P95 | P99 | Max |`,
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...sampledRows.map((row) => {
       const values = metrics[row.metricName]?.values ?? {};
       return `| ${row.label} | ${formatMs(values.avg)} | ${formatMs(values.med)} | ${formatMs(values['p(90)'])} | ${formatMs(values['p(95)'])} | ${formatMs(values['p(99)'])} | ${formatMs(values.max)} |`;
+    }),
+  ].join('\n');
+}
+
+function markdownOperationBreakdownTable(metrics: Record<string, K6Metric>): string {
+  const rows = operationBreakdownRows(metrics).slice(0, 50);
+  if (rows.length === 0) {
+    return '_No operation breakdown samples. Configure `diagnosticBreakdowns` in the test profile._';
+  }
+
+  return [
+    '| Operation | Failed | Failure Rate | P95 | P99 | Max |',
+    '| --- | ---: | ---: | ---: | ---: | ---: |',
+    ...rows.map((row) => {
+      const values = metrics[row.metricName]?.values ?? {};
+      const httpFailed = findMatchingTaggedMetric(metrics, 'http_req_failed', row.tags);
+      return `| ${escapeMarkdownCell(row.label)} | ${formatInteger(rateCount(httpFailed))} | ${formatPercent(rateValue(httpFailed))} | ${formatMs(values['p(95)'])} | ${formatMs(values['p(99)'])} | ${formatMs(values.max)} |`;
+    }),
+  ].join('\n');
+}
+
+function markdownFailureStatusTable(metrics: Record<string, K6Metric>): string {
+  const rows = failureStatusRows(metrics).filter((row) => rateCount(metrics[row.metricName]) > 0).slice(0, 50);
+  if (rows.length === 0) {
+    return '_No failed status samples._';
+  }
+
+  return [
+    '| Operation | Status | Failed | Total | Failure Rate |',
+    '| --- | ---: | ---: | ---: | ---: |',
+    ...rows.map((row) => {
+      const metric = metrics[row.metricName];
+      return `| ${escapeMarkdownCell(operationBreakdownLabel({ ...row.tags, status: '' }))} | ${row.tags.status ?? 'n/a'} | ${formatInteger(rateCount(metric))} | ${formatInteger(rateTotal(metric))} | ${formatPercent(rateValue(metric))} |`;
     }),
   ].join('\n');
 }
@@ -302,6 +569,23 @@ function trendHasSamples(metric: K6Metric | undefined): boolean {
   return ['avg', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'].some((key) => (values[key] ?? 0) > 0);
 }
 
+function rateHasSamples(metric: K6Metric | undefined): boolean {
+  return rateTotal(metric) > 0;
+}
+
+function rateValue(metric: K6Metric | undefined): number {
+  return metric?.values?.rate ?? 0;
+}
+
+function rateCount(metric: K6Metric | undefined): number {
+  return metric?.values?.passes ?? 0;
+}
+
+function rateTotal(metric: K6Metric | undefined): number {
+  const values = metric?.values;
+  return (values?.passes ?? 0) + (values?.fails ?? 0);
+}
+
 function ratio(value: number, total: number): number {
   return total > 0 ? value / total : 0;
 }
@@ -350,6 +634,10 @@ function formatBytes(value: number): string {
   }
 
   return `${current.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
+}
+
+function escapeMarkdownCell(value: string): string {
+  return value.replace(/\|/g, '\\|');
 }
 
 function deriveMarkdownPath(summaryExportPath: string): string {

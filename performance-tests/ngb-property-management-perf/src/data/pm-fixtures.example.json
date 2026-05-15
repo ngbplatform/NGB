@@ -7,15 +7,23 @@
   ],
   "reports": [
     "accounting.trial_balance",
+    "accounting.balance_sheet",
+    "accounting.income_statement",
+    "accounting.cash_flow_statement_indirect",
+    "accounting.statement_of_changes_in_equity",
     "accounting.general_journal",
     "accounting.account_card",
-    "pm.occupancy.summary",
-    "pm.receivables.aging",
-    "pm.receivables.open_items"
+    "accounting.general_ledger_aggregated",
+    "accounting.ledger.analysis",
+    "accounting.posting_log",
+    "accounting.consistency"
   ],
   "documents": {
     "lease": "replace-with-non-production-lease-id",
     "rentCharge": "replace-with-non-production-rent-charge-id",
     "receivablePayment": "replace-with-non-production-receivable-payment-id"
+  },
+  "accounts": {
+    "account": "replace-with-non-production-account-id"
   }
 }

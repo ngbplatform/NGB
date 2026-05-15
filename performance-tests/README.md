@@ -51,5 +51,15 @@ Copy-Item ngb-property-management-perf/.env.example ngb-property-management-perf
 - `npm run pm:soak`
 - `npm run pm:business-day`
 - `npm run pm:reporting-regression`
+- `npm run pm:platform-read`
+- `npm run pm:platform-read-capacity`
+- `npm run pm:platform-mixed-capacity`
+- `npm run pm:platform-breakpoint`
+- `npm run pm:platform-reporting`
+- `npm run pm:document-lifecycle`
+- `npm run pm:audit`
+- `npm run pm:maintenance`
+- `npm run pm:concurrency`
+- `npm run pm:max`
 
 Use `scripts/run-k6.*` when you need `.env` loading, summary export, Grafana Cloud, or Prometheus remote write output.

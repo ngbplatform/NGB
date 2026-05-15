@@ -1,13 +1,22 @@
 import type { Options } from 'k6/options';
 
 import { withSummaryTrendStats } from '../core/summary.ts';
-import { commonThresholds, mergeThresholds, operationThresholds } from './thresholds.ts';
+import {
+  commonThresholds,
+  diagnosticBreakdownThresholds,
+  type DiagnosticBreakdownSelector,
+  mergeThresholds,
+  operationThresholds,
+  reportExecutionBreakdownThresholds,
+} from './thresholds.ts';
 
 export interface SingleScenarioProfileArgs {
   readonly exec?: string;
   readonly scenarioName?: string;
   readonly tags?: Record<string, string>;
   readonly env?: Record<string, string>;
+  readonly reportBreakdownIds?: readonly string[];
+  readonly diagnosticBreakdowns?: readonly DiagnosticBreakdownSelector[];
 }
 
 export function buildSmokeProfile(args: SingleScenarioProfileArgs = {}): Options {
@@ -24,6 +33,11 @@ export function buildSmokeProfile(args: SingleScenarioProfileArgs = {}): Options
         tags: { profile: 'smoke', ...(args.tags ?? {}) },
       },
     },
-    thresholds: mergeThresholds(commonThresholds, operationThresholds),
+    thresholds: mergeThresholds(
+      commonThresholds,
+      operationThresholds,
+      reportExecutionBreakdownThresholds(args.reportBreakdownIds),
+      diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
+    ),
   });
 }

@@ -1,7 +1,12 @@
 import type { Options } from 'k6/options';
 
 import { withSummaryTrendStats } from '../core/summary.ts';
-import { diagnosticOperationThresholds, relaxedThresholds } from './thresholds.ts';
+import {
+  diagnosticBreakdownThresholds,
+  diagnosticOperationThresholds,
+  relaxedThresholds,
+  reportExecutionBreakdownThresholds,
+} from './thresholds.ts';
 import type { SingleScenarioProfileArgs } from './smoke.ts';
 
 export function buildStressProfile(args: SingleScenarioProfileArgs = {}): Options {
@@ -25,6 +30,8 @@ export function buildStressProfile(args: SingleScenarioProfileArgs = {}): Option
     thresholds: {
       ...relaxedThresholds(),
       ...diagnosticOperationThresholds,
+      ...reportExecutionBreakdownThresholds(args.reportBreakdownIds),
+      ...diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
       http_req_duration: ['p(99)<30000'],
       http_reqs: ['rate>0.1'],
     },

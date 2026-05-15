@@ -78,11 +78,12 @@ export class NgbHttpClient {
     };
     const requestBody = options.body === undefined ? null : JSON.stringify(options.body);
     const response = http.request(method, url, requestBody, params);
+    const resultTags = { ...tags, status: String(response.status) };
     const expectedStatuses = options.expectedStatuses ?? [200, 201, 202, 204];
     const ok = operationSucceeded(response, expectedStatuses, tags);
 
-    recordBusinessOperation(response.timings.duration, !ok, tags);
-    this.recordSpecializedDuration(response.timings.duration, tags);
+    recordBusinessOperation(response.timings.duration, !ok, resultTags);
+    this.recordSpecializedDuration(response.timings.duration, resultTags);
 
     if (!ok) {
       console.warn(`[ngb-perf] HTTP request failed: ${JSON.stringify(safeErrorSummary(response))}`);

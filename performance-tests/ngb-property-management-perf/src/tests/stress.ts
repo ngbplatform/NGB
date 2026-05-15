@@ -2,12 +2,15 @@ import { defaultHandleSummary } from '../../../ngb-performance-tests-framework/s
 import { buildStressProfile } from '../../../ngb-performance-tests-framework/src/profiles/stress.ts';
 import { getNgbScenarioContext, setupNgbAccessToken } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioBuilder.ts';
 import type { NgbAuthSetupData } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioTypes.ts';
-import { pmLeaseBrowseFlow } from '../flows/pmLeaseBrowseFlow.ts';
-import { pmReportsFlow } from '../flows/pmReportsFlow.ts';
+import { PM_REPORT_BREAKDOWN_IDS } from '../clients/pmReportIds.ts';
+import { PM_PLATFORM_READ_DIAGNOSTIC_BREAKDOWNS } from '../flows/pmPlatformReadFlow.ts';
+import { pmPlatformStressFlow } from '../flows/pmPlatformMixedFlow.ts';
 
 export const options = buildStressProfile({
   exec: 'pmStress',
   tags: { vertical: 'property-management', scenario: 'pm.stress' },
+  reportBreakdownIds: PM_REPORT_BREAKDOWN_IDS,
+  diagnosticBreakdowns: PM_PLATFORM_READ_DIAGNOSTIC_BREAKDOWNS,
 });
 
 export function setup(): NgbAuthSetupData {
@@ -16,8 +19,7 @@ export function setup(): NgbAuthSetupData {
 
 export function pmStress(data: NgbAuthSetupData): void {
   const context = getNgbScenarioContext(data);
-  pmLeaseBrowseFlow(context);
-  pmReportsFlow(context);
+  pmPlatformStressFlow(context);
 }
 
 export function handleSummary(data: unknown): Record<string, string> {

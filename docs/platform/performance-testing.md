@@ -107,6 +107,8 @@ Standard tags include `app`, `vertical`, `profile`, `area`, `operation`, `scenar
 
 Thresholds include common reliability checks and operation-specific latency budgets for auth, health, document reads/posts, reports, accounting effects, and document flow.
 
+Vertical suites can opt into per-report diagnostics by passing stable report codes as `reportBreakdownIds` to a profile builder. This creates low-risk diagnostic submetrics for `platform.reports.execute` and adds `Report Execution By Id` to exported summaries, while keeping the shared framework vertical-neutral.
+
 ## Grafana Integration
 
 Local terminal output is the default. To export a summary:

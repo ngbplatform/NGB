@@ -1,7 +1,13 @@
 import type { Options } from 'k6/options';
 
 import { withSummaryTrendStats } from '../core/summary.ts';
-import { commonThresholds, mergeThresholds, operationThresholds } from './thresholds.ts';
+import {
+  commonThresholds,
+  diagnosticBreakdownThresholds,
+  mergeThresholds,
+  operationThresholds,
+  reportExecutionBreakdownThresholds,
+} from './thresholds.ts';
 import type { SingleScenarioProfileArgs } from './smoke.ts';
 
 export function buildBaselineProfile(args: SingleScenarioProfileArgs = {}): Options {
@@ -21,6 +27,11 @@ export function buildBaselineProfile(args: SingleScenarioProfileArgs = {}): Opti
         tags: { profile: 'baseline', ...(args.tags ?? {}) },
       },
     },
-    thresholds: mergeThresholds(commonThresholds, operationThresholds),
+    thresholds: mergeThresholds(
+      commonThresholds,
+      operationThresholds,
+      reportExecutionBreakdownThresholds(args.reportBreakdownIds),
+      diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
+    ),
   });
 }

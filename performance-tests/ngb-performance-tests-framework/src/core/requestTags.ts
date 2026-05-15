@@ -8,6 +8,9 @@ export interface NgbRequestTags {
   readonly documentType?: string;
   readonly reportId?: string;
   readonly catalogType?: string;
+  readonly entityKind?: string;
+  readonly periodProfile?: string;
+  readonly status?: string;
 }
 
 export function buildTags(tags: NgbRequestTags): Record<string, string> {
@@ -23,6 +26,9 @@ export function buildTags(tags: NgbRequestTags): Record<string, string> {
   addTag(normalized, 'documentType', tags.documentType);
   addTag(normalized, 'reportId', tags.reportId);
   addTag(normalized, 'catalogType', tags.catalogType);
+  addTag(normalized, 'entityKind', tags.entityKind);
+  addTag(normalized, 'periodProfile', tags.periodProfile);
+  addTag(normalized, 'status', tags.status);
 
   return normalized;
 }

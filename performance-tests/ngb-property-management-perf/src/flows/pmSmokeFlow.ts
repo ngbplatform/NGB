@@ -6,7 +6,7 @@ import type { NgbScenarioContext } from '../../../ngb-performance-tests-framewor
 import { PM_CATALOG_TYPES } from '../clients/pmCatalogTypes.ts';
 import { PM_DOCUMENT_TYPES } from '../clients/pmDocumentTypes.ts';
 import { PM_REPORT_IDS } from '../clients/pmReportIds.ts';
-import { accountingDateRangeRequest, asOfDateRequest } from './pmFlowSupport.ts';
+import { accountingDateRangeRequest, reportTags } from './pmFlowSupport.ts';
 
 export function pmSmokeFlow(context: NgbScenarioContext): void {
   platformSmokeFlow(context);
@@ -14,6 +14,8 @@ export function pmSmokeFlow(context: NgbScenarioContext): void {
   documentListFlow(context, PM_DOCUMENT_TYPES.lease);
   context.reports.listReports();
   context.reports.getReportDefinition(PM_REPORT_IDS.trialBalance);
-  reportExecutionFlow(context, PM_REPORT_IDS.trialBalance, accountingDateRangeRequest());
-  reportExecutionFlow(context, PM_REPORT_IDS.occupancySummary, asOfDateRequest());
+  context.admin.getMainMenu();
+  context.admin.getChartOfAccountsMetadata();
+  reportExecutionFlow(context, PM_REPORT_IDS.trialBalance, accountingDateRangeRequest('open'), reportTags('open'));
+  reportExecutionFlow(context, PM_REPORT_IDS.ledgerAnalysis, accountingDateRangeRequest('open'), reportTags('open'));
 }

@@ -1,7 +1,12 @@
 import type { Options } from 'k6/options';
 
 import { withSummaryTrendStats } from '../core/summary.ts';
-import { diagnosticOperationThresholds, relaxedThresholds } from './thresholds.ts';
+import {
+  diagnosticBreakdownThresholds,
+  diagnosticOperationThresholds,
+  relaxedThresholds,
+  reportExecutionBreakdownThresholds,
+} from './thresholds.ts';
 import type { SingleScenarioProfileArgs } from './smoke.ts';
 
 export function buildSpikeProfile(args: SingleScenarioProfileArgs = {}): Options {
@@ -26,6 +31,8 @@ export function buildSpikeProfile(args: SingleScenarioProfileArgs = {}): Options
     thresholds: {
       ...relaxedThresholds(),
       ...diagnosticOperationThresholds,
+      ...reportExecutionBreakdownThresholds(args.reportBreakdownIds),
+      ...diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
       http_reqs: ['rate>0.1'],
       checks: ['rate>0.90'],
     },

@@ -1,7 +1,13 @@
 import type { Options } from 'k6/options';
 
 import { withSummaryTrendStats } from '../core/summary.ts';
-import { commonThresholds, mergeThresholds, operationThresholds } from './thresholds.ts';
+import {
+  commonThresholds,
+  diagnosticBreakdownThresholds,
+  mergeThresholds,
+  operationThresholds,
+  reportExecutionBreakdownThresholds,
+} from './thresholds.ts';
 import type { SingleScenarioProfileArgs } from './smoke.ts';
 
 export function buildLoadProfile(args: SingleScenarioProfileArgs = {}): Options {
@@ -24,8 +30,12 @@ export function buildLoadProfile(args: SingleScenarioProfileArgs = {}): Options 
         tags: { profile: 'load', ...(args.tags ?? {}) },
       },
     },
-    thresholds: mergeThresholds(commonThresholds, operationThresholds, {
-      http_reqs: ['rate>1'],
-    }),
+    thresholds: mergeThresholds(
+      commonThresholds,
+      operationThresholds,
+      { http_reqs: ['rate>1'] },
+      reportExecutionBreakdownThresholds(args.reportBreakdownIds),
+      diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
+    ),
   });
 }

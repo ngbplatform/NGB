@@ -2,28 +2,20 @@ import { defaultHandleSummary } from '../../../ngb-performance-tests-framework/s
 import { buildBaselineProfile } from '../../../ngb-performance-tests-framework/src/profiles/baseline.ts';
 import { getNgbScenarioContext, setupNgbAccessToken } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioBuilder.ts';
 import type { NgbAuthSetupData } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioTypes.ts';
-import { PM_REPORT_BREAKDOWN_IDS } from '../clients/pmReportIds.ts';
-import { pmReportsFlow } from '../flows/pmReportsFlow.ts';
+import { pmDocumentLifecycleFlow } from '../flows/pmDocumentLifecycleFlow.ts';
 
 export const options = buildBaselineProfile({
-  exec: 'reportingRegression',
-  scenarioName: 'reporting_regression',
-  tags: { vertical: 'property-management', scenario: 'pm.reporting_regression' },
-  reportBreakdownIds: PM_REPORT_BREAKDOWN_IDS,
+  exec: 'documentLifecycle',
+  scenarioName: 'document_lifecycle',
+  tags: { vertical: 'property-management', scenario: 'pm.document_lifecycle' },
 });
 
 export function setup(): NgbAuthSetupData {
   return setupNgbAccessToken();
 }
 
-export function reportingRegression(data: NgbAuthSetupData): void {
-  const context = getNgbScenarioContext(data);
-  pmReportsFlow(context, {
-    periodProfiles: ['open', 'closed', 'long'],
-    includeAccountScopedReports: true,
-    includeLedgerAnalysisVariants: true,
-    includeXlsxExport: true,
-  });
+export function documentLifecycle(data: NgbAuthSetupData): void {
+  pmDocumentLifecycleFlow(getNgbScenarioContext(data));
 }
 
 export function handleSummary(data: unknown): Record<string, string> {

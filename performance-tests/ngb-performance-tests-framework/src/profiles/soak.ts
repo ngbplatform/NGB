@@ -1,7 +1,13 @@
 import type { Options } from 'k6/options';
 
 import { withSummaryTrendStats } from '../core/summary.ts';
-import { commonThresholds, mergeThresholds, operationThresholds } from './thresholds.ts';
+import {
+  commonThresholds,
+  diagnosticBreakdownThresholds,
+  mergeThresholds,
+  operationThresholds,
+  reportExecutionBreakdownThresholds,
+} from './thresholds.ts';
 import type { SingleScenarioProfileArgs } from './smoke.ts';
 
 export function buildSoakProfile(args: SingleScenarioProfileArgs = {}): Options {
@@ -21,9 +27,15 @@ export function buildSoakProfile(args: SingleScenarioProfileArgs = {}): Options 
         tags: { profile: 'soak', ...(args.tags ?? {}) },
       },
     },
-    thresholds: mergeThresholds(commonThresholds, operationThresholds, {
-      http_req_failed: ['rate<0.02'],
-      ngb_business_operation_failed: ['rate<0.02'],
-    }),
+    thresholds: mergeThresholds(
+      commonThresholds,
+      operationThresholds,
+      {
+        http_req_failed: ['rate<0.02'],
+        ngb_business_operation_failed: ['rate<0.02'],
+      },
+      reportExecutionBreakdownThresholds(args.reportBreakdownIds),
+      diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
+    ),
   });
 }
