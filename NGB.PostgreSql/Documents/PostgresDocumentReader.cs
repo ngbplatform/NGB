@@ -263,10 +263,14 @@ internal sealed class PostgresDocumentReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
+        var normalizedQuery = (query ?? string.Empty).Trim();
+        var hasQuery = normalizedQuery.Length > 0;
+
         var p = new DynamicParameters();
-        p.Add("q", (query ?? string.Empty).Trim(), dbType: DbType.String);
         p.Add("perTypeLimit", perTypeLimit, dbType: DbType.Int32);
         p.Add("deletedStatus", (short)DocumentStatus.MarkedForDeletion, dbType: DbType.Int16);
+        if (hasQuery)
+            p.Add("q", normalizedQuery, dbType: DbType.String);
 
         var subqueries = new List<string>(distinctHeads.Length);
 
@@ -277,7 +281,33 @@ internal sealed class PostgresDocumentReader(
             p.Add(typeCodeParam, head.TypeCode, dbType: DbType.String);
 
             var activeFilterSql = activeOnly ? "AND d.status <> @deletedStatus" : string.Empty;
-            var displaySql = $"COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text)";
+            var headDisplaySql = $"h.{Qi(head.DisplayColumn)}";
+            var labelSql = $"COALESCE({headDisplaySql}, d.id::text)";
+            var fromSql = hasQuery
+                ? $"documents d LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id"
+                : $"{Qi(head.HeadTableName)} h JOIN documents d ON d.id = h.document_id";
+            var searchFilterSql = hasQuery
+                ? $"""
+                  AND (
+                      d.number ILIKE ('%' || @q::text || '%')
+                      OR {labelSql} ILIKE ('%' || @q::text || '%')
+                  )
+                  """
+                : string.Empty;
+            var orderBySql = hasQuery
+                ? $"""
+                  CASE
+                      WHEN d.number IS NOT NULL AND d.number ILIKE ('%' || @q::text || '%') THEN 0
+                      WHEN {labelSql} ILIKE ('%' || @q::text || '%') THEN 1
+                      ELSE 2
+                  END,
+                  {labelSql},
+                  d.id
+                  """
+                : $"""
+                  {headDisplaySql} NULLS LAST,
+                  d.id
+                  """;
 
             subqueries.Add($"""
                             (
@@ -287,24 +317,13 @@ internal sealed class PostgresDocumentReader(
                                     d.status AS "Status",
                                     d.status = @deletedStatus AS "IsMarkedForDeletion",
                                     d.number AS "Number",
-                                    {displaySql} AS "Label"
-                                FROM documents d
-                                LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id
+                                    {labelSql} AS "Label"
+                                FROM {fromSql}
                                 WHERE d.type_code = @{typeCodeParam}
                                   {activeFilterSql}
-                                  AND (
-                                      @q = ''
-                                      OR d.number ILIKE ('%' || @q::text || '%')
-                                      OR {displaySql} ILIKE ('%' || @q::text || '%')
-                                  )
+                                  {searchFilterSql}
                                 ORDER BY
-                                    CASE
-                                        WHEN d.number IS NOT NULL AND d.number ILIKE ('%' || @q::text || '%') THEN 0
-                                        WHEN {displaySql} ILIKE ('%' || @q::text || '%') THEN 1
-                                        ELSE 2
-                                    END,
-                                    {displaySql},
-                                    d.id
+                                    {orderBySql}
                                 LIMIT @perTypeLimit
                             )
                             """);
@@ -428,15 +447,13 @@ internal sealed class PostgresDocumentReader(
     {
         var p = new DynamicParameters();
 
-        // IMPORTANT: when the search value is NULL, PostgreSQL can't infer the parameter type in
-        // expressions like ("%" || @search || "%"). Bind the parameter as text explicitly and also
-        // cast in SQL below to avoid 42P08.
-        p.Add("search", string.IsNullOrWhiteSpace(query.Search) ? null : query.Search, dbType: DbType.String);
-
-        var clauses = new List<string>
+        var clauses = new List<string>();
+        if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            $"(@search IS NULL OR {PostgresDocumentFilterSql.Qualify("h", head.DisplayColumn)} ILIKE ('%' || @search::text || '%'))"
-        };
+            // IMPORTANT: bind the parameter as text explicitly and cast in SQL to avoid 42P08.
+            p.Add("search", query.Search.Trim(), dbType: DbType.String);
+            clauses.Add($"{PostgresDocumentFilterSql.Qualify("h", head.DisplayColumn)} ILIKE ('%' || @search::text || '%')");
+        }
 
         p.Add("deletedStatus", (short)DocumentStatus.MarkedForDeletion, dbType: DbType.Int16);
 
@@ -478,7 +495,7 @@ internal sealed class PostgresDocumentReader(
             }
         }
 
-        return (string.Join(" AND ", clauses), p);
+        return (clauses.Count == 0 ? "TRUE" : string.Join(" AND ", clauses), p);
     }
 
     private string BuildFilterClause(

@@ -121,17 +121,25 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var q = query ?? string.Empty;
+        var q = (query ?? string.Empty).Trim();
+        var hasQuery = q.Length > 0;
+        var headDisplaySql = $"h.{Qi(head.DisplayColumn)}";
+        var labelSql = $"COALESCE({headDisplaySql}, c.id::text)";
+        var fromSql = hasQuery
+            ? $"catalogs c LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id"
+            : $"{Qi(head.HeadTableName)} h JOIN catalogs c ON c.id = h.catalog_id";
+        var searchFilterSql = hasQuery
+            ? $"AND {headDisplaySql} ILIKE ('%' || @q::text || '%')"
+            : string.Empty;
 
         var sql = $"""
                   SELECT c.id AS "Id",
-                         COALESCE(h.{Qi(head.DisplayColumn)}, c.id::text) AS "Label"
-                    FROM catalogs c
-                    LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id
-                   WHERE c.catalog_code = @catalogCode
+                         {labelSql} AS "Label"
+                   FROM {fromSql}
+                  WHERE c.catalog_code = @catalogCode
                      AND c.is_deleted = FALSE
-                     AND (@q = '' OR h.{Qi(head.DisplayColumn)} ILIKE ('%' || @q || '%'))
-                   ORDER BY h.{Qi(head.DisplayColumn)} NULLS LAST, c.updated_at_utc DESC, c.id DESC
+                     {searchFilterSql}
+                   ORDER BY {headDisplaySql} NULLS LAST, c.updated_at_utc DESC, c.id DESC
                    LIMIT @limit;
                   """;
 
@@ -208,9 +216,13 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
 
         await uow.EnsureConnectionOpenAsync(ct);
 
+        var normalizedQuery = (query ?? string.Empty).Trim();
+        var hasQuery = normalizedQuery.Length > 0;
+
         var p = new DynamicParameters();
-        p.Add("q", (query ?? string.Empty).Trim(), dbType: DbType.String);
         p.Add("perTypeLimit", perTypeLimit, dbType: DbType.Int32);
+        if (hasQuery)
+            p.Add("q", normalizedQuery, dbType: DbType.String);
 
         var subqueries = new List<string>(distinctHeads.Length);
 
@@ -221,7 +233,27 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
             p.Add(catalogCodeParam, head.CatalogCode, dbType: DbType.String);
 
             var activeFilterSql = activeOnly ? "AND c.is_deleted = FALSE" : string.Empty;
-            var displaySql = $"COALESCE(h.{Qi(head.DisplayColumn)}, c.id::text)";
+            var headDisplaySql = $"h.{Qi(head.DisplayColumn)}";
+            var labelSql = $"COALESCE({headDisplaySql}, c.id::text)";
+            var fromSql = hasQuery
+                ? $"catalogs c LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id"
+                : $"{Qi(head.HeadTableName)} h JOIN catalogs c ON c.id = h.catalog_id";
+            var searchFilterSql = hasQuery
+                ? $"AND {labelSql} ILIKE ('%' || @q::text || '%')"
+                : string.Empty;
+            var orderBySql = hasQuery
+                ? $"""
+                  CASE
+                      WHEN {labelSql} ILIKE ('%' || @q::text || '%') THEN 0
+                      ELSE 1
+                  END,
+                  {labelSql},
+                  c.id
+                  """
+                : $"""
+                  {headDisplaySql} NULLS LAST,
+                  c.id
+                  """;
 
             subqueries.Add($"""
                             (
@@ -229,19 +261,13 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
                                     c.id AS "Id",
                                     @{catalogCodeParam} AS "CatalogCode",
                                     c.is_deleted AS "IsMarkedForDeletion",
-                                    {displaySql} AS "Label"
-                                FROM catalogs c
-                                LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id
+                                    {labelSql} AS "Label"
+                                FROM {fromSql}
                                 WHERE c.catalog_code = @{catalogCodeParam}
                                   {activeFilterSql}
-                                  AND (@q = '' OR {displaySql} ILIKE ('%' || @q::text || '%'))
+                                  {searchFilterSql}
                                 ORDER BY
-                                    CASE
-                                        WHEN {displaySql} ILIKE ('%' || @q::text || '%') THEN 0
-                                        ELSE 1
-                                    END,
-                                    {displaySql},
-                                    c.id
+                                    {orderBySql}
                                 LIMIT @perTypeLimit
                             )
                             """);
@@ -280,15 +306,13 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
     {
         var p = new DynamicParameters();
         
-        // IMPORTANT: when the search value is NULL, PostgreSQL can't infer the parameter type in
-        // expressions like ("%" || @search || "%"). Bind the parameter as text explicitly and also
-        // cast in SQL below to avoid 42P08.
-        p.Add("search", string.IsNullOrWhiteSpace(query.Search) ? null : query.Search, dbType: DbType.String);
-
-        var clauses = new List<string>
+        var clauses = new List<string>();
+        if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            $"(@search IS NULL OR h.{Qi(head.DisplayColumn)} ILIKE ('%' || @search::text || '%'))"
-        };
+            // IMPORTANT: bind the parameter as text explicitly and cast in SQL to avoid 42P08.
+            p.Add("search", query.Search.Trim(), dbType: DbType.String);
+            clauses.Add($"h.{Qi(head.DisplayColumn)} ILIKE ('%' || @search::text || '%')");
+        }
 
         switch (query.SoftDeleteFilterMode)
         {
@@ -314,7 +338,7 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
             }
         }
 
-        return (string.Join(" AND ", clauses), p);
+        return (clauses.Count == 0 ? "TRUE" : string.Join(" AND ", clauses), p);
     }
 
     private static string BuildSelectFields(CatalogHeadDescriptor head)
