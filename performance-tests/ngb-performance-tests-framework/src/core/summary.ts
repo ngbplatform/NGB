@@ -10,6 +10,7 @@ interface K6SummaryData {
   };
   readonly metrics?: Record<string, K6Metric>;
   readonly root_group?: K6Group;
+  readonly setup_data?: unknown;
 }
 
 interface K6Metric {
@@ -71,6 +72,15 @@ const areaLatencyRows: readonly LatencyRow[] = [
   { label: 'Period closing HTTP', metricName: 'http_req_duration{area:period-closing}' },
 ];
 
+const sensitiveSummaryKeys = new Set([
+  'accesstoken',
+  'authorization',
+  'clientsecret',
+  'idtoken',
+  'password',
+  'refreshtoken',
+]);
+
 export function defaultHandleSummary(data: unknown): SummaryOutput {
   const env = readNgbPerfEnv();
   const summary = asK6SummaryData(data);
@@ -81,11 +91,34 @@ export function defaultHandleSummary(data: unknown): SummaryOutput {
   };
 
   if (env.summaryExportPath) {
-    output[env.summaryExportPath] = JSON.stringify(data, null, 2);
+    output[env.summaryExportPath] = JSON.stringify(sanitizeSummaryData(data), null, 2);
     output[deriveMarkdownPath(env.summaryExportPath)] = markdown;
   }
 
   return output;
+}
+
+function sanitizeSummaryData(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeSummaryData(item));
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return value;
+  }
+
+  const output: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    output[key] = sensitiveSummaryKeys.has(normalizeSensitiveKey(key))
+      ? '[redacted]'
+      : sanitizeSummaryData(child);
+  }
+
+  return output;
+}
+
+function normalizeSensitiveKey(key: string): string {
+  return key.replace(/[_-]/g, '').toLowerCase();
 }
 
 export function withSummaryTrendStats(options: Options): Options {

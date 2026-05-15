@@ -50,10 +50,13 @@ internal static class ExceptionExtensions
                 .Build();
         }
 
-        // 4) PostgreSQL common constraint errors (when they bubble up without wrapping).
+        // 4) PostgreSQL common constraint/resource errors (when they bubble up without wrapping).
         // NGB.Api already depends on a PostgreSQL health check package, so Npgsql is available.
         if (ex is Npgsql.PostgresException pg)
             return MapPostgresException(pg);
+
+        if (ex is Npgsql.NpgsqlException npgsql)
+            return MapNpgsqlException(npgsql);
 
         // Status = 500 (fallback)
         return new ProblemDetailsBuilder(StatusCodes.Status500InternalServerError)
@@ -88,6 +91,9 @@ internal static class ExceptionExtensions
             "23503" => (StatusCodes.Status409Conflict, "ngb.conflict.foreign_key_violation"),
             "40001" => (StatusCodes.Status409Conflict, "ngb.conflict.serialization_failure"),
             "40P01" => (StatusCodes.Status409Conflict, "ngb.conflict.deadlock_detected"),
+            "53300" => (StatusCodes.Status503ServiceUnavailable, "ngb.db.too_many_connections"),
+            "53400" => (StatusCodes.Status503ServiceUnavailable, "ngb.db.configuration_limit_exceeded"),
+            "57P03" => (StatusCodes.Status503ServiceUnavailable, "ngb.db.cannot_connect_now"),
             _ => (StatusCodes.Status500InternalServerError, "ngb.db.error")
         };
 
@@ -113,6 +119,35 @@ internal static class ExceptionExtensions
             .Extensions(BuildExtensions(errorCode, kind, ctx, errors: null, issues: null))
             // Do not leak pg.MessageText; it can contain SQL fragments.
             .Build();
+    }
+
+    private static ProblemDetails MapNpgsqlException(Npgsql.NpgsqlException npgsql)
+    {
+        var errorCode = HasTimeoutCause(npgsql)
+            ? "ngb.db.connection_pool_exhausted"
+            : "ngb.db.unavailable";
+
+        return new ProblemDetailsBuilder(StatusCodes.Status503ServiceUnavailable)
+            .Extensions(BuildExtensions(errorCode, NgbErrorKind.Infrastructure, context: null, errors: null, issues: null))
+            .Build();
+    }
+
+    private static bool HasTimeoutCause(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException!)
+        {
+            if (current is TimeoutException)
+                return true;
+
+            if (current.Message.Contains("pool", StringComparison.OrdinalIgnoreCase)
+                && current.Message.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (current.InnerException is null)
+                break;
+        }
+
+        return false;
     }
 
     private static IReadOnlyDictionary<string, string[]>? TryBuildValidationErrors(Exception ex, INgbError ngb)

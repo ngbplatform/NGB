@@ -1,7 +1,7 @@
 import { group } from 'k6';
 
 import { KeycloakPasswordGrantAuth } from '../auth/keycloakPasswordGrantAuth.ts';
-import { StaticAccessTokenProvider } from '../auth/staticAccessTokenProvider.ts';
+import { SeededAccessTokenProvider } from '../auth/seededAccessTokenProvider.ts';
 import { readNgbPerfEnv } from '../core/env.ts';
 import { NgbHttpClient } from '../core/httpClient.ts';
 import { AdminClient } from '../ngb/adminClient.ts';
@@ -20,9 +20,7 @@ let cachedScenarioContext: NgbScenarioContext | undefined;
 export function setupNgbAccessToken(): NgbAuthSetupData {
   const env = readNgbPerfEnv();
   const auth = new KeycloakPasswordGrantAuth(env);
-  return {
-    accessToken: auth.getAccessToken(),
-  };
+  return auth.getAccessTokenGrant();
 }
 
 export function getNgbScenarioContext(setupData?: NgbAuthSetupData): NgbScenarioContext {
@@ -32,9 +30,10 @@ export function getNgbScenarioContext(setupData?: NgbAuthSetupData): NgbScenario
 
 export function createNgbScenarioContext(setupData?: NgbAuthSetupData): NgbScenarioContext {
   const env = readNgbPerfEnv();
+  const refreshAuth = new KeycloakPasswordGrantAuth(env);
   const auth = setupData?.accessToken
-    ? new StaticAccessTokenProvider(setupData.accessToken)
-    : new KeycloakPasswordGrantAuth(env);
+    ? new SeededAccessTokenProvider(setupData, refreshAuth, env.authSeedRefreshJitterSeconds)
+    : refreshAuth;
   const client = new NgbHttpClient({
     env,
     tokenProvider: auth,

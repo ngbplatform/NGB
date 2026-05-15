@@ -58,6 +58,9 @@ NGB_K6_ENV=local
 NGB_K6_HOST_ALIASES=identity.localhost=127.0.0.1
 NGB_K6_INSECURE_SKIP_TLS_VERIFY=true
 NGB_AUTH_INITIAL_JITTER_SECONDS=10
+NGB_AUTH_SEED_REFRESH_JITTER_SECONDS=600
+NGB_AUTH_TOKEN_MAX_ATTEMPTS=3
+NGB_AUTH_TOKEN_RETRY_BACKOFF_SECONDS=1
 NGB_PERF_ENABLE_WRITES=false
 ```
 
@@ -65,7 +68,12 @@ The framework never logs passwords, client secrets, access tokens, or refresh to
 
 For local macOS/Linux runs, a vertical package can map its local identity hostnames to `127.0.0.1` through k6 `hosts` options by setting `NGB_K6_HOST_ALIASES`. Local HTTPS environments that use development certificates can set `NGB_K6_INSECURE_SKIP_TLS_VERIFY=true`.
 
-Profiles that start multiple VUs should avoid a synchronized identity-provider burst. `NGB_AUTH_INITIAL_JITTER_SECONDS` staggers the first password-grant request per VU; the baseline profile sets this automatically.
+Profiles that start multiple VUs should avoid synchronized identity-provider bursts.
+`NGB_AUTH_INITIAL_JITTER_SECONDS` staggers the first password-grant request per VU; the baseline
+profile sets this automatically. Long-running profiles seed VUs from `setup()` and refresh that seed
+token through a randomized per-VU window controlled by `NGB_AUTH_SEED_REFRESH_JITTER_SECONDS`.
+Transient token endpoint failures are retried up to `NGB_AUTH_TOKEN_MAX_ATTEMPTS` with full-jitter
+backoff based on `NGB_AUTH_TOKEN_RETRY_BACKOFF_SECONDS`.
 
 ## Authentication
 
@@ -76,7 +84,10 @@ KEYCLOAK_TESTER_CLIENT_ID=ngb-tester
 KEYCLOAK_TESTER_CLIENT_SECRET=replace-me
 ```
 
-It calls the token endpoint with `grant_type=password`, sends `application/x-www-form-urlencoded` payloads, caches the access token per VU, and refreshes before expiry with a safety buffer.
+It calls the token endpoint with `grant_type=password`, sends `application/x-www-form-urlencoded`
+payloads, seeds VUs with the setup token, and refreshes per VU before expiry with a safety buffer.
+Long-running capacity, breakpoint, stress, spike, business-day, and soak profiles must not rely on a
+single static setup token.
 
 ## Profiles
 

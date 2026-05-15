@@ -17,6 +17,9 @@ export interface NgbPerfEnv {
   readonly hostAliases: Record<string, string>;
   readonly insecureSkipTlsVerify: boolean;
   readonly authInitialJitterSeconds: number;
+  readonly authSeedRefreshJitterSeconds: number;
+  readonly authTokenMaxAttempts: number;
+  readonly authTokenRetryBackoffSeconds: number;
 }
 
 export function readNgbPerfEnv(overrides: Record<string, string | undefined> = __ENV): NgbPerfEnv {
@@ -54,6 +57,9 @@ export function readNgbPerfEnv(overrides: Record<string, string | undefined> = _
     hostAliases: readK6HostAliases(overrides),
     insecureSkipTlsVerify: readK6InsecureSkipTlsVerify(overrides),
     authInitialJitterSeconds: readAuthInitialJitterSeconds(overrides),
+    authSeedRefreshJitterSeconds: readAuthSeedRefreshJitterSeconds(overrides),
+    authTokenMaxAttempts: readAuthTokenMaxAttempts(overrides),
+    authTokenRetryBackoffSeconds: readAuthTokenRetryBackoffSeconds(overrides),
     ...(tenantCode ? { tenantCode } : {}),
     ...(companyCode ? { companyCode } : {}),
     ...(summaryExportPath ? { summaryExportPath } : {}),
@@ -77,6 +83,18 @@ export function readAuthInitialJitterSeconds(overrides: Record<string, string | 
   return parseNonNegativeNumber(optionalEnv(overrides, 'NGB_AUTH_INITIAL_JITTER_SECONDS'));
 }
 
+export function readAuthSeedRefreshJitterSeconds(overrides: Record<string, string | undefined> = __ENV): number {
+  return parseNonNegativeNumber(optionalEnv(overrides, 'NGB_AUTH_SEED_REFRESH_JITTER_SECONDS')) || 600;
+}
+
+export function readAuthTokenMaxAttempts(overrides: Record<string, string | undefined> = __ENV): number {
+  return parsePositiveInteger(optionalEnv(overrides, 'NGB_AUTH_TOKEN_MAX_ATTEMPTS')) || 3;
+}
+
+export function readAuthTokenRetryBackoffSeconds(overrides: Record<string, string | undefined> = __ENV): number {
+  return parseNonNegativeNumber(optionalEnv(overrides, 'NGB_AUTH_TOKEN_RETRY_BACKOFF_SECONDS')) || 1;
+}
+
 export function safeEnvNameList(env: NgbPerfEnv): string[] {
   return [
     'NGB_BASE_URL',
@@ -93,6 +111,9 @@ export function safeEnvNameList(env: NgbPerfEnv): string[] {
     'NGB_K6_HOST_ALIASES',
     'NGB_K6_INSECURE_SKIP_TLS_VERIFY',
     'NGB_AUTH_INITIAL_JITTER_SECONDS',
+    'NGB_AUTH_SEED_REFRESH_JITTER_SECONDS',
+    'NGB_AUTH_TOKEN_MAX_ATTEMPTS',
+    'NGB_AUTH_TOKEN_RETRY_BACKOFF_SECONDS',
   ].filter((name) => envValueIsPresent(env, name));
 }
 
@@ -132,6 +153,12 @@ function envValueIsPresent(env: NgbPerfEnv, name: string): boolean {
       return env.insecureSkipTlsVerify;
     case 'NGB_AUTH_INITIAL_JITTER_SECONDS':
       return env.authInitialJitterSeconds > 0;
+    case 'NGB_AUTH_SEED_REFRESH_JITTER_SECONDS':
+      return env.authSeedRefreshJitterSeconds > 0;
+    case 'NGB_AUTH_TOKEN_MAX_ATTEMPTS':
+      return env.authTokenMaxAttempts > 0;
+    case 'NGB_AUTH_TOKEN_RETRY_BACKOFF_SECONDS':
+      return env.authTokenRetryBackoffSeconds > 0;
     default:
       return false;
   }
@@ -175,6 +202,19 @@ function parseNonNegativeNumber(value: string | undefined): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
     throw new Error(`Expected a non-negative number but received: ${value}`);
+  }
+
+  return parsed;
+}
+
+function parsePositiveInteger(value: string | undefined): number {
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`Expected a positive integer but received: ${value}`);
   }
 
   return parsed;

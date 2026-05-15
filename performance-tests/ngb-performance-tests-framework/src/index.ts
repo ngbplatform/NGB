@@ -1,5 +1,5 @@
 export * from './auth/keycloakPasswordGrantAuth.ts';
-export * from './auth/staticAccessTokenProvider.ts';
+export * from './auth/seededAccessTokenProvider.ts';
 export * from './auth/tokenCache.ts';
 
 export * from './core/checks.ts';

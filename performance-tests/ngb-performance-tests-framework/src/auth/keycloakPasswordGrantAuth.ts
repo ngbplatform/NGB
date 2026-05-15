@@ -15,6 +15,11 @@ interface KeycloakTokenResponse {
   readonly expires_in?: number;
 }
 
+export interface AccessTokenGrant {
+  readonly accessToken: string;
+  readonly expiresAtUnixMs: number;
+}
+
 export class KeycloakPasswordGrantAuth {
   private readonly env: NgbPerfEnv;
   private readonly cache = new TokenCache();
@@ -27,13 +32,20 @@ export class KeycloakPasswordGrantAuth {
   }
 
   getAccessToken(): string {
-    const cached = this.cache.getValidToken();
+    return this.getAccessTokenGrant().accessToken;
+  }
+
+  getAccessTokenGrant(): AccessTokenGrant {
+    const cached = this.cache.getValidTokenDetails();
     if (cached) {
       return cached;
     }
 
     this.applyInitialJitter();
+    return this.requestAccessTokenWithRetry();
+  }
 
+  private requestAccessTokenWithRetry(): AccessTokenGrant {
     const tags = buildTags({
       app: 'ngb',
       vertical: this.env.vertical,
@@ -48,38 +60,53 @@ export class KeycloakPasswordGrantAuth {
       tags,
       timeout: '30s',
     };
-
-    const response = http.post(this.env.keycloakTokenUrl, formUrlEncode({
+    const body = formUrlEncode({
       grant_type: 'password',
       client_id: this.env.keycloakClientId,
       client_secret: this.env.keycloakClientSecret,
       username: this.env.username,
       password: this.env.password,
-    }), params);
+    });
+    let lastResponse: ReturnType<typeof http.post> | null = null;
+    let lastTokenResponse: KeycloakTokenResponse = {};
 
-    authDuration.add(response.timings.duration, tags);
+    for (let attempt = 1; attempt <= this.env.authTokenMaxAttempts; attempt += 1) {
+      const response = http.post(this.env.keycloakTokenUrl, body, params);
+      const tokenResponse = readTokenResponse(response);
+      lastResponse = response;
+      lastTokenResponse = tokenResponse;
+      authDuration.add(response.timings.duration, tags);
 
-    const ok = check(response, {
-      'keycloak token status is 200': (res) => res.status === 200,
-      'keycloak token response has access token': (res) => {
-        const token = readTokenResponse(res).access_token;
-        return typeof token === 'string' && token.length > 0;
-      },
-    }, tags);
+      if (response.status === 200 && tokenResponse.access_token) {
+        checkTokenResponse(response, tags);
+        return this.cache.set(tokenResponse.access_token, tokenResponse.expires_in ?? 60, this.safetyBufferSeconds);
+      }
+
+      if (attempt < this.env.authTokenMaxAttempts) {
+        console.warn(
+          `[ngb-perf] Keycloak password grant attempt ${attempt}/${this.env.authTokenMaxAttempts} failed: ${JSON.stringify(safeErrorSummary(response))}`,
+        );
+        this.sleepBeforeRetry(attempt);
+      }
+    }
+
+    if (!lastResponse) {
+      abortTest('[ngb-perf] Keycloak password grant was not attempted.');
+    }
+
+    const ok = checkTokenResponse(lastResponse, tags);
 
     if (!ok) {
       this.cache.clear();
-      abortTest(`[ngb-perf] Keycloak password grant failed: ${JSON.stringify(safeErrorSummary(response))}`);
+      abortTest(`[ngb-perf] Keycloak password grant failed: ${JSON.stringify(safeErrorSummary(lastResponse))}`);
     }
 
-    const tokenResponse = readTokenResponse(response);
-    const accessToken = tokenResponse.access_token;
+    const accessToken = lastTokenResponse.access_token;
     if (!accessToken) {
       abortTest('[ngb-perf] Keycloak token response did not include an access token.');
     }
 
-    this.cache.set(accessToken, tokenResponse.expires_in ?? 60, this.safetyBufferSeconds);
-    return accessToken;
+    return this.cache.set(accessToken, lastTokenResponse.expires_in ?? 60, this.safetyBufferSeconds);
   }
 
   private applyInitialJitter(): void {
@@ -98,6 +125,15 @@ export class KeycloakPasswordGrantAuth {
       sleep(jitterMillis / 1000);
     }
   }
+
+  private sleepBeforeRetry(failedAttempt: number): void {
+    const maxDelayMillis = Math.round(this.env.authTokenRetryBackoffSeconds * 1_000 * (2 ** Math.max(0, failedAttempt - 1)));
+    if (maxDelayMillis <= 0) {
+      return;
+    }
+
+    sleep(randomInt(0, maxDelayMillis) / 1000);
+  }
 }
 
 function readTokenResponse(response: { json(): unknown }): KeycloakTokenResponse {
@@ -109,6 +145,16 @@ function readTokenResponse(response: { json(): unknown }): KeycloakTokenResponse
   } catch {
     return {};
   }
+}
+
+function checkTokenResponse(response: ReturnType<typeof http.post>, tags: Record<string, string>): boolean {
+  return check(response, {
+    'keycloak token status is 200': (res) => res.status === 200,
+    'keycloak token response has access token': (res) => {
+      const token = readTokenResponse(res).access_token;
+      return typeof token === 'string' && token.length > 0;
+    },
+  }, tags);
 }
 
 function formUrlEncode(values: Record<string, string>): string {

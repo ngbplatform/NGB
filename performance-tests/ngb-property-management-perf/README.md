@@ -109,6 +109,43 @@ flows gated by `NGB_PERF_ENABLE_WRITES`. `pm:platform-breakpoint` uses the same 
 ramps scheduled iterations/second until the environment starts dropping iterations or breaching
 reliability/latency thresholds.
 
+`pm:business-day` is a multi-scenario arrival-rate workload. Defaults intentionally reserve extra
+VUs so a healthy backend is measured without synthetic k6 scheduler drops:
+
+```env
+NGB_PM_BUSINESS_DAY_DURATION=10m
+
+NGB_PM_BUSINESS_DAY_BROWSING_RATE=3
+NGB_PM_BUSINESS_DAY_BROWSING_TIME_UNIT=1s
+NGB_PM_BUSINESS_DAY_BROWSING_PRE_ALLOCATED_VUS=48
+NGB_PM_BUSINESS_DAY_BROWSING_MAX_VUS=96
+
+NGB_PM_BUSINESS_DAY_REPORTS_RATE=1
+NGB_PM_BUSINESS_DAY_REPORTS_TIME_UNIT=10s
+NGB_PM_BUSINESS_DAY_REPORTS_PRE_ALLOCATED_VUS=8
+NGB_PM_BUSINESS_DAY_REPORTS_MAX_VUS=30
+
+NGB_PM_BUSINESS_DAY_POSTING_RATE=1
+NGB_PM_BUSINESS_DAY_POSTING_TIME_UNIT=30s
+NGB_PM_BUSINESS_DAY_POSTING_PRE_ALLOCATED_VUS=4
+NGB_PM_BUSINESS_DAY_POSTING_MAX_VUS=20
+
+NGB_PM_BUSINESS_DAY_PAYMENT_APPLY_RATE=1
+NGB_PM_BUSINESS_DAY_PAYMENT_APPLY_TIME_UNIT=30s
+NGB_PM_BUSINESS_DAY_PAYMENT_APPLY_PRE_ALLOCATED_VUS=4
+NGB_PM_BUSINESS_DAY_PAYMENT_APPLY_MAX_VUS=20
+
+NGB_PM_BUSINESS_DAY_HEAVY_READ_RATE=1
+NGB_PM_BUSINESS_DAY_HEAVY_READ_TIME_UNIT=20s
+NGB_PM_BUSINESS_DAY_HEAVY_READ_PRE_ALLOCATED_VUS=4
+NGB_PM_BUSINESS_DAY_HEAVY_READ_MAX_VUS=20
+```
+
+If a business-day run reports dropped iterations while HTTP failures remain zero, increase the
+affected `*_PRE_ALLOCATED_VUS` first and keep `*_MAX_VUS` as the emergency ceiling. That means k6
+could not schedule enough warmed workers for the requested arrival rate, not necessarily that NGB
+hit a backend error.
+
 ## Fixtures
 
 Read scenarios resolve seeded demo data from list endpoints. For stable heavy-read or write-enabled flows, provide explicit IDs:
@@ -139,6 +176,14 @@ NGB_PERF_ENABLE_POSTING=true
 NGB_PERF_ENABLE_PERIOD_CLOSE=true
 ```
 
-`accounting.cash_flow_statement_indirect` runs on the `open` profile by default. Enable `NGB_PERF_ENABLE_EXTENDED_CASH_FLOW=true` only when `closed`/`long` seed periods reconcile correctly; otherwise the report returns a functional 400 and pollutes the performance signal.
+`accounting.cash_flow_statement_indirect` is reconciliation-sensitive. Keep it disabled for generic
+performance runs unless the selected seed window is known to reconcile:
+
+```env
+NGB_PERF_ENABLE_CASH_FLOW=true
+```
+
+`NGB_PERF_ENABLE_EXTENDED_CASH_FLOW=true` is retained for backward compatibility with older
+environments that relied on executing cash flow for non-open period profiles.
 
 Enable writes/posting/period close only for disposable non-production data. Shared demo environments should stay read-only.

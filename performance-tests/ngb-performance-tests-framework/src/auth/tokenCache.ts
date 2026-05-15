@@ -6,20 +6,31 @@ export interface CachedAccessToken {
 export class TokenCache {
   private token: CachedAccessToken | null = null;
 
-  getValidToken(nowUnixMs = Date.now()): string | null {
+  getValidTokenDetails(nowUnixMs = Date.now()): CachedAccessToken | null {
     if (!this.token || this.token.expiresAtUnixMs <= nowUnixMs) {
       return null;
     }
 
-    return this.token.accessToken;
+    return this.token;
   }
 
-  set(accessToken: string, expiresInSeconds: number, safetyBufferSeconds: number, nowUnixMs = Date.now()): void {
+  getValidToken(nowUnixMs = Date.now()): string | null {
+    return this.getValidTokenDetails(nowUnixMs)?.accessToken ?? null;
+  }
+
+  set(
+    accessToken: string,
+    expiresInSeconds: number,
+    safetyBufferSeconds: number,
+    nowUnixMs = Date.now(),
+  ): CachedAccessToken {
     const safeExpiresIn = Math.max(1, expiresInSeconds - safetyBufferSeconds);
-    this.token = {
+    const token = {
       accessToken,
       expiresAtUnixMs: nowUnixMs + safeExpiresIn * 1000,
     };
+    this.token = token;
+    return token;
   }
 
   clear(): void {

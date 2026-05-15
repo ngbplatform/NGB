@@ -26,6 +26,7 @@ export interface NgbScenarioContext {
 
 export interface NgbAuthSetupData {
   readonly accessToken: string;
+  readonly expiresAtUnixMs: number;
 }
 
 export type NgbScenarioFlow = (context: NgbScenarioContext) => void;

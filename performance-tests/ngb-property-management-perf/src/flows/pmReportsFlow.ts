@@ -45,11 +45,20 @@ function executeCanonicalAccountingReports(context: NgbScenarioContext, profile:
   reportExecutionFlow(context, PM_REPORT_IDS.trialBalance, accountingDateRangeRequest(profile), reportTags(profile));
   reportExecutionFlow(context, PM_REPORT_IDS.balanceSheet, asOfDateRequest(profile), reportTags(profile));
   reportExecutionFlow(context, PM_REPORT_IDS.incomeStatement, accountingDateRangeRequest(profile), reportTags(profile));
-  if (profile === 'open' || readBooleanEnv('NGB_PERF_ENABLE_EXTENDED_CASH_FLOW', false)) {
+  if (cashFlowExecutionEnabled(profile)) {
     reportExecutionFlow(context, PM_REPORT_IDS.cashFlowStatementIndirect, accountingDateRangeRequest(profile), reportTags(profile));
   }
   reportExecutionFlow(context, PM_REPORT_IDS.statementOfChangesInEquity, accountingDateRangeRequest(profile), reportTags(profile));
   reportExecutionFlow(context, PM_REPORT_IDS.generalJournal, accountingDateRangeRequest(profile, 100), reportTags(profile));
+}
+
+function cashFlowExecutionEnabled(profile: PmPeriodProfile): boolean {
+  const explicit = __ENV.NGB_PERF_ENABLE_CASH_FLOW?.trim();
+  if (explicit) {
+    return ['1', 'true', 'yes', 'on'].includes(explicit.toLowerCase());
+  }
+
+  return profile === 'open' || readBooleanEnv('NGB_PERF_ENABLE_EXTENDED_CASH_FLOW', false);
 }
 
 function executeLedgerAnalysis(

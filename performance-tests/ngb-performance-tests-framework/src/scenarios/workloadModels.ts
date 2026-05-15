@@ -31,6 +31,7 @@ export function buildBusinessDayWorkload(
       {
         [`http_req_failed{profile:${profileName}}`]: ['rate<0.02'],
         [`checks{profile:${profileName}}`]: ['rate>0.98'],
+        [`dropped_iterations{profile:${profileName}}`]: ['count<1'],
       },
       reportExecutionBreakdownThresholds(args.reportBreakdownIds),
       diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
