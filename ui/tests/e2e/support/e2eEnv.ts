@@ -2,8 +2,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 type EnvMap = Record<string, string>
+type EnvSource = Record<string, string | undefined>
 
-const PLAYWRIGHT_ENV_FILES = ['.env.e2e.local'] as const
+type E2eEnvOptions = {
+  rootDir?: string
+  appDirectory: string
+  envFiles?: readonly string[]
+}
+
+const DEFAULT_E2E_ENV_FILES = ['.env.e2e.local'] as const
 
 function stripWrappingQuotes(value: string): string {
   if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
@@ -32,16 +39,30 @@ function parseEnvFile(contents: string): EnvMap {
   return entries
 }
 
-export function loadPmWebE2eEnv(rootDir: string = process.cwd()): EnvMap {
-  const appDir = path.join(rootDir, 'ngb-property-management-web')
+function readEnvFile(filePath: string): EnvMap {
+  if (!fs.existsSync(filePath)) return {}
+  return parseEnvFile(fs.readFileSync(filePath, 'utf8'))
+}
+
+function resolveUiWorkspaceDir(rootDir: string): string {
+  if (fs.existsSync(path.join(rootDir, 'package.json'))) return rootDir
+
+  const nestedUiDir = path.join(rootDir, 'ui')
+  if (fs.existsSync(path.join(nestedUiDir, 'package.json'))) return nestedUiDir
+
+  return rootDir
+}
+
+export function loadE2eEnv(options: E2eEnvOptions): EnvMap {
+  const rootDir = options.rootDir ?? process.cwd()
+  const uiWorkspaceDir = resolveUiWorkspaceDir(rootDir)
+  const appDir = path.join(uiWorkspaceDir, options.appDirectory)
+  const envFiles = options.envFiles ?? DEFAULT_E2E_ENV_FILES
   const loaded: EnvMap = {}
 
-  for (const fileName of PLAYWRIGHT_ENV_FILES) {
+  for (const fileName of envFiles) {
     const filePath = path.join(appDir, fileName)
-    if (!fs.existsSync(filePath)) continue
-
-    const parsed = parseEnvFile(fs.readFileSync(filePath, 'utf8'))
-    Object.assign(loaded, parsed)
+    Object.assign(loaded, readEnvFile(filePath))
   }
 
   for (const [key, value] of Object.entries(loaded)) {
@@ -57,12 +78,18 @@ export function loadPmWebE2eEnv(rootDir: string = process.cwd()): EnvMap {
   }
 }
 
-export function requireE2eEnv(env: EnvMap, name: string): string {
+export function requireE2eEnv(env: EnvSource, name: string): string {
   const value = String(env[name] ?? '').trim()
   if (!value) throw new Error(`Missing required e2e env var: ${name}`)
   return value
 }
 
-export function resolvePlaywrightAuthFile(rootDir: string = process.cwd()): string {
-  return path.join(rootDir, 'playwright', '.auth', 'ngb-tester.json')
+export function resolvePlaywrightAuthFile(
+  rootDir: string = process.cwd(),
+  browserName?: string,
+): string {
+  const uiWorkspaceDir = resolveUiWorkspaceDir(rootDir)
+  const suffix = String(browserName ?? '').trim()
+  const fileName = suffix ? `e2e-user-${suffix}.json` : 'e2e-user.json'
+  return path.join(uiWorkspaceDir, 'playwright', '.auth', fileName)
 }
