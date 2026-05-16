@@ -1,4 +1,4 @@
-import http, { type Params } from 'k6/http';
+import http, { expectedStatuses, type Params } from 'k6/http';
 
 import { operationSucceeded } from './checks.ts';
 import type { NgbPerfEnv } from './env.ts';
@@ -8,6 +8,7 @@ import { buildTags, mergeTags, type NgbRequestTags } from './requestTags.ts';
 
 export interface AccessTokenProvider {
   getAccessToken(): string;
+  invalidateAccessToken?(accessToken: string): void;
 }
 
 export interface NgbHttpClientOptions {
@@ -67,20 +68,26 @@ export class NgbHttpClient {
       options.tags,
     ));
     const url = this.buildUrl(path, options.query);
-    const params: Params = {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${this.tokenProvider.getAccessToken()}`,
-        ...(method === 'GET' || method === 'DELETE' ? {} : { 'Content-Type': 'application/json' }),
-      },
-      tags,
-      timeout: this.timeout,
-    };
+    const expectedStatusCodes = options.expectedStatuses ?? [200, 201, 202, 204];
     const requestBody = options.body === undefined ? null : JSON.stringify(options.body);
-    const response = http.request(method, url, requestBody, params);
+    const canRetryUnauthorized = typeof this.tokenProvider.invalidateAccessToken === 'function';
+    const firstToken = this.tokenProvider.getAccessToken();
+    const firstResponse = http.request(
+      method,
+      url,
+      requestBody,
+      this.buildParams(
+        method,
+        firstToken,
+        tags,
+        canRetryUnauthorized ? [...expectedStatusCodes, 401] : expectedStatusCodes,
+      ),
+    );
+    const response = this.shouldRetryUnauthorized(firstResponse)
+      ? this.retryAfterUnauthorized(method, url, requestBody, tags, expectedStatusCodes, firstToken)
+      : firstResponse;
     const resultTags = { ...tags, status: String(response.status) };
-    const expectedStatuses = options.expectedStatuses ?? [200, 201, 202, 204];
-    const ok = operationSucceeded(response, expectedStatuses, tags);
+    const ok = operationSucceeded(response, expectedStatusCodes, tags);
 
     recordBusinessOperation(response.timings.duration, !ok, resultTags);
     this.recordSpecializedDuration(response.timings.duration, resultTags);
@@ -90,6 +97,56 @@ export class NgbHttpClient {
     }
 
     return response;
+  }
+
+  private buildParams(
+    method: string,
+    accessToken: string,
+    tags: Record<string, string>,
+    expectedStatusCodes: readonly number[],
+  ): Params {
+    return {
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        ...(method === 'GET' || method === 'DELETE' ? {} : { 'Content-Type': 'application/json' }),
+      },
+      tags,
+      timeout: this.timeout,
+      responseCallback: expectedStatuses(...expectedStatusCodes),
+    };
+  }
+
+  private shouldRetryUnauthorized(response: NgbHttpResponse): boolean {
+    return response.status === 401 && typeof this.tokenProvider.invalidateAccessToken === 'function';
+  }
+
+  private retryAfterUnauthorized(
+    method: string,
+    url: string,
+    requestBody: string | null,
+    tags: Record<string, string>,
+    expectedStatusCodes: readonly number[],
+    failedAccessToken: string,
+  ): NgbHttpResponse {
+    this.tokenProvider.invalidateAccessToken?.(failedAccessToken);
+    const retryToken = this.tokenProvider.getAccessToken();
+
+    if (retryToken === failedAccessToken) {
+      return http.request(
+        method,
+        url,
+        requestBody,
+        this.buildParams(method, retryToken, tags, expectedStatusCodes),
+      );
+    }
+
+    return http.request(
+      method,
+      url,
+      requestBody,
+      this.buildParams(method, retryToken, { ...tags, auth_retry: 'true' }, expectedStatusCodes),
+    );
   }
 
   private buildUrl(path: string, query?: Record<string, QueryValue>): string {

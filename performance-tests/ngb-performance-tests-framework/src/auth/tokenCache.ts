@@ -36,4 +36,10 @@ export class TokenCache {
   clear(): void {
     this.token = null;
   }
+
+  clearIfMatches(accessToken: string): void {
+    if (this.token?.accessToken === accessToken) {
+      this.token = null;
+    }
+  }
 }

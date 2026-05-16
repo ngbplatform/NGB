@@ -25,6 +25,7 @@ export class KeycloakPasswordGrantAuth {
   private readonly cache = new TokenCache();
   private readonly safetyBufferSeconds: number;
   private firstTokenRequestAttempted = false;
+  private lastFailureMessage = '[ngb-perf] Keycloak password grant failed.';
 
   constructor(env: NgbPerfEnv, safetyBufferSeconds = 30) {
     this.env = env;
@@ -35,7 +36,20 @@ export class KeycloakPasswordGrantAuth {
     return this.getAccessTokenGrant().accessToken;
   }
 
+  invalidateAccessToken(accessToken: string): void {
+    this.cache.clearIfMatches(accessToken);
+  }
+
   getAccessTokenGrant(): AccessTokenGrant {
+    const grant = this.tryGetAccessTokenGrant();
+    if (grant) {
+      return grant;
+    }
+
+    abortTest(this.lastFailureMessage);
+  }
+
+  tryGetAccessTokenGrant(): AccessTokenGrant | null {
     const cached = this.cache.getValidTokenDetails();
     if (cached) {
       return cached;
@@ -45,7 +59,7 @@ export class KeycloakPasswordGrantAuth {
     return this.requestAccessTokenWithRetry();
   }
 
-  private requestAccessTokenWithRetry(): AccessTokenGrant {
+  private requestAccessTokenWithRetry(): AccessTokenGrant | null {
     const tags = buildTags({
       app: 'ngb',
       vertical: this.env.vertical,
@@ -91,19 +105,22 @@ export class KeycloakPasswordGrantAuth {
     }
 
     if (!lastResponse) {
-      abortTest('[ngb-perf] Keycloak password grant was not attempted.');
+      this.lastFailureMessage = '[ngb-perf] Keycloak password grant was not attempted.';
+      return null;
     }
 
     const ok = checkTokenResponse(lastResponse, tags);
 
     if (!ok) {
       this.cache.clear();
-      abortTest(`[ngb-perf] Keycloak password grant failed: ${JSON.stringify(safeErrorSummary(lastResponse))}`);
+      this.lastFailureMessage = `[ngb-perf] Keycloak password grant failed: ${JSON.stringify(safeErrorSummary(lastResponse))}`;
+      return null;
     }
 
     const accessToken = lastTokenResponse.access_token;
     if (!accessToken) {
-      abortTest('[ngb-perf] Keycloak token response did not include an access token.');
+      this.lastFailureMessage = '[ngb-perf] Keycloak token response did not include an access token.';
+      return null;
     }
 
     return this.cache.set(accessToken, lastTokenResponse.expires_in ?? 60, this.safetyBufferSeconds);
