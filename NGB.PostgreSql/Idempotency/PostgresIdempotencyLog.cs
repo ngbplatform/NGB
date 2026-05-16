@@ -45,6 +45,12 @@ internal static class PostgresIdempotencyLog
         public DateTime? CompletedAtUtc { get; init; }
     }
 
+    private sealed class CompletedRow
+    {
+        public Guid? AttemptId { get; init; }
+        public DateTime CompletedAtUtc { get; init; }
+    }
+
     internal static async Task<PostingStateBeginResult> TryBeginAsync(
         IUnitOfWork uow,
         string table,
@@ -178,17 +184,19 @@ internal static class PostgresIdempotencyLog
         var sql = $"""
                   WITH updated AS (
                       UPDATE {table}
-                      SET completed_at_utc = @CompletedAtUtc
+                      SET completed_at_utc = GREATEST(@CompletedAtUtc, started_at_utc)
                       WHERE {predicates}
                         AND completed_at_utc IS NULL
-                      RETURNING attempt_id
+                      RETURNING attempt_id AS "AttemptId",
+                                completed_at_utc AS "CompletedAtUtc"
                   )
-                  SELECT attempt_id AS "AttemptId"
+                  SELECT "AttemptId",
+                         "CompletedAtUtc"
                   FROM updated;
                   """;
 
         var cmd = new CommandDefinition(sql, p, transaction: uow.Transaction, cancellationToken: ct);
-        var rows = (await uow.Connection.QueryAsync<Guid?>(cmd)).ToArray();
+        var rows = (await uow.Connection.QueryAsync<CompletedRow>(cmd)).ToArray();
 
         if (rows.Length > 1)
         {
@@ -200,8 +208,8 @@ internal static class PostgresIdempotencyLog
             throw new NgbInvariantViolationException(multiRowMessage(), ctx);
         }
 
-        if (rows.Length == 1 && rows[0].HasValue)
-            await InsertHistoryEventAsync(uow, historyTable, keys, rows[0]!.Value, HistoryEventKind.Completed, completedAtUtc, ct);
+        if (rows is [{ AttemptId: not null }])
+            await InsertHistoryEventAsync(uow, historyTable, keys, rows[0].AttemptId!.Value, HistoryEventKind.Completed, rows[0].CompletedAtUtc, ct);
     }
 
     private static async Task InsertHistoryEventAsync(
