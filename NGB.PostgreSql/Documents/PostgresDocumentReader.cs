@@ -23,17 +23,20 @@ internal sealed class PostgresDocumentReader(
 
         var where = BuildWhere(head, query);
         var p = where.Params;
-        var joinSql = where.HasHeadCriteria
-            ? $"JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id"
-            : $"LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id";
-
-        var sql = $"""
-                  SELECT COUNT(*)
-                    FROM documents d
-                    {joinSql}
-                   WHERE d.type_code = @typeCode
-                     AND ({where.Sql});
-                  """;
+        var sql = where.HasHeadCriteria
+            ? $"""
+               SELECT COUNT(*)
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql});
+               """
+            : $"""
+               SELECT COUNT(*)
+                 FROM documents d
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql});
+               """;
 
         p.Add("typeCode", head.TypeCode);
 
@@ -63,20 +66,21 @@ internal sealed class PostgresDocumentReader(
 
         var where = BuildWhere(head, query);
         var p = where.Params;
+
+        if (!where.HasHeadCriteria)
+            return await GetPageWithoutHeadCriteriaAsync(head, where, offset, limit, ct);
+
         p.Add("typeCode", head.TypeCode);
         p.Add("offset", offset);
         p.Add("limit", limit);
-        var joinSql = where.HasHeadCriteria
-            ? $"JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id"
-            : $"LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id";
 
         var selectSql = $"""
                          SELECT d.id     AS "Id",
                                 d.status AS "Status",
                                 d.number AS "Number",
                                 COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display"{BuildSelectFields(head)}
-                           FROM documents d
-                           {joinSql}
+                           FROM {Qi(head.HeadTableName)} h
+                           JOIN documents d ON d.id = h.document_id
                           WHERE d.type_code = @typeCode
                             AND ({where.Sql})
                           ORDER BY h.{Qi(head.DisplayColumn)} NULLS LAST, d.id
@@ -93,6 +97,110 @@ internal sealed class PostgresDocumentReader(
         return rows
             .Select(r => ToRow(head, (IDictionary<string, object?>)r))
             .ToList();
+    }
+
+    private async Task<IReadOnlyList<DocumentHeadRow>> GetPageWithoutHeadCriteriaAsync(
+        DocumentHeadDescriptor head,
+        DocumentWhere where,
+        int offset,
+        int limit,
+        CancellationToken ct)
+    {
+        var rows = new List<DocumentHeadRow>(limit);
+
+        var p = where.Params;
+        p.Add("typeCode", head.TypeCode);
+        p.Add("offset", offset);
+        p.Add("limit", limit);
+
+        var nonNullHeadSql = $"""
+                              SELECT d.id     AS "Id",
+                                     d.status AS "Status",
+                                     d.number AS "Number",
+                                     h.{Qi(head.DisplayColumn)} AS "Display"{BuildSelectFields(head)}
+                                FROM {Qi(head.HeadTableName)} h
+                                JOIN documents d ON d.id = h.document_id
+                               WHERE d.type_code = @typeCode
+                                 AND ({where.Sql})
+                                 AND h.{Qi(head.DisplayColumn)} IS NOT NULL
+                               ORDER BY h.{Qi(head.DisplayColumn)}, d.id
+                               OFFSET @offset
+                                LIMIT @limit;
+                              """;
+
+        var nonNullRows = await uow.Connection.QueryAsync(new CommandDefinition(
+            nonNullHeadSql,
+            p,
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        rows.AddRange(nonNullRows.Select(r => ToRow(head, (IDictionary<string, object?>)r)));
+
+        if (rows.Count == limit)
+            return rows;
+
+        var nonNullCountSql = $"""
+                               SELECT COUNT(*)
+                                 FROM {Qi(head.HeadTableName)} h
+                                 JOIN documents d ON d.id = h.document_id
+                                WHERE d.type_code = @typeCode
+                                  AND ({where.Sql})
+                                  AND h.{Qi(head.DisplayColumn)} IS NOT NULL;
+                               """;
+
+        var nonNullCount = await uow.Connection.ExecuteScalarAsync<long>(new CommandDefinition(
+            nonNullCountSql,
+            p,
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        var nullOffset = Math.Max(0L, offset - nonNullCount);
+        var remaining = limit - rows.Count;
+        if (remaining <= 0)
+            return rows;
+
+        p.Add("nullOffset", nullOffset);
+        p.Add("remaining", remaining);
+
+        var nullRowsSql = $"""
+                           SELECT *
+                             FROM (
+                                 SELECT d.id     AS "Id",
+                                        d.status AS "Status",
+                                        d.number AS "Number",
+                                        d.id::text AS "Display"{BuildSelectFields(head)}
+                                   FROM {Qi(head.HeadTableName)} h
+                                   JOIN documents d ON d.id = h.document_id
+                                  WHERE d.type_code = @typeCode
+                                    AND ({where.Sql})
+                                    AND h.{Qi(head.DisplayColumn)} IS NULL
+                                 UNION ALL
+                                 SELECT d.id     AS "Id",
+                                        d.status AS "Status",
+                                        d.number AS "Number",
+                                        d.id::text AS "Display"{BuildNullSelectFields(head)}
+                                   FROM documents d
+                                  WHERE d.type_code = @typeCode
+                                    AND ({where.Sql})
+                                    AND NOT EXISTS (
+                                        SELECT 1
+                                          FROM {Qi(head.HeadTableName)} h
+                                         WHERE h.document_id = d.id
+                                    )
+                             ) rows
+                            ORDER BY "Id"
+                            OFFSET @nullOffset
+                             LIMIT @remaining;
+                           """;
+
+        var nullRows = await uow.Connection.QueryAsync(new CommandDefinition(
+            nullRowsSql,
+            p,
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        rows.AddRange(nullRows.Select(r => ToRow(head, (IDictionary<string, object?>)r)));
+        return rows;
     }
 
     public async Task<DocumentHeadRow?> GetByIdAsync(
@@ -550,6 +658,18 @@ internal sealed class PostgresDocumentReader(
 
         // Include the display column also as a field.
         cols.Insert(0, $",\n       {PostgresDocumentFilterSql.Qualify("h", head.DisplayColumn)} AS \"{head.DisplayColumn}\"");
+
+        return string.Concat(cols);
+    }
+
+    private static string BuildNullSelectFields(DocumentHeadDescriptor head)
+    {
+        var cols = head.Columns
+            .Where(c => !string.Equals(c.ColumnName, head.DisplayColumn, StringComparison.OrdinalIgnoreCase))
+            .Select(c => $",\n       NULL AS \"{c.ColumnName}\"")
+            .ToList();
+
+        cols.Insert(0, $",\n       NULL AS \"{head.DisplayColumn}\"");
 
         return string.Concat(cols);
     }
