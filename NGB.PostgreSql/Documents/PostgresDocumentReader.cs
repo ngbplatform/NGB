@@ -21,14 +21,18 @@ internal sealed class PostgresDocumentReader(
         EnsureValid(head);
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var (whereSql, p) = BuildWhere(head, query);
+        var where = BuildWhere(head, query);
+        var p = where.Params;
+        var joinSql = where.HasHeadCriteria
+            ? $"JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id"
+            : $"LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id";
 
         var sql = $"""
                   SELECT COUNT(*)
                     FROM documents d
-                    LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id
+                    {joinSql}
                    WHERE d.type_code = @typeCode
-                     AND ({whereSql});
+                     AND ({where.Sql});
                   """;
 
         p.Add("typeCode", head.TypeCode);
@@ -57,10 +61,14 @@ internal sealed class PostgresDocumentReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var (whereSql, p) = BuildWhere(head, query);
+        var where = BuildWhere(head, query);
+        var p = where.Params;
         p.Add("typeCode", head.TypeCode);
         p.Add("offset", offset);
         p.Add("limit", limit);
+        var joinSql = where.HasHeadCriteria
+            ? $"JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id"
+            : $"LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id";
 
         var selectSql = $"""
                          SELECT d.id     AS "Id",
@@ -68,9 +76,9 @@ internal sealed class PostgresDocumentReader(
                                 d.number AS "Number",
                                 COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display"{BuildSelectFields(head)}
                            FROM documents d
-                           LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id
+                           {joinSql}
                           WHERE d.type_code = @typeCode
-                            AND ({whereSql})
+                            AND ({where.Sql})
                           ORDER BY h.{Qi(head.DisplayColumn)} NULLS LAST, d.id
                           OFFSET @offset
                            LIMIT @limit;
@@ -443,16 +451,18 @@ internal sealed class PostgresDocumentReader(
             throw new NgbArgumentRequiredException(nameof(head.DisplayColumn));
     }
 
-    private (string WhereSql, DynamicParameters Params) BuildWhere(DocumentHeadDescriptor head, DocumentQuery query)
+    private DocumentWhere BuildWhere(DocumentHeadDescriptor head, DocumentQuery query)
     {
         var p = new DynamicParameters();
 
         var clauses = new List<string>();
+        var hasHeadCriteria = false;
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
             // IMPORTANT: bind the parameter as text explicitly and cast in SQL to avoid 42P08.
             p.Add("search", query.Search.Trim(), dbType: DbType.String);
             clauses.Add($"{PostgresDocumentFilterSql.Qualify("h", head.DisplayColumn)} ILIKE ('%' || @search::text || '%')");
+            hasHeadCriteria = true;
         }
 
         p.Add("deletedStatus", (short)DocumentStatus.MarkedForDeletion, dbType: DbType.Int16);
@@ -476,12 +486,14 @@ internal sealed class PostgresDocumentReader(
             foreach (var f in query.Filters)
             {
                 clauses.Add(BuildFilterClause(head, f, $"f{i}", p));
+                hasHeadCriteria = true;
                 i++;
             }
         }
 
         if (query.PeriodFilter is not null)
         {
+            hasHeadCriteria = true;
             if (query.PeriodFilter.FromInclusive is not null)
             {
                 p.Add("periodFrom", query.PeriodFilter.FromInclusive.Value.ToDateTime(TimeOnly.MinValue), dbType: DbType.Date);
@@ -495,7 +507,10 @@ internal sealed class PostgresDocumentReader(
             }
         }
 
-        return (clauses.Count == 0 ? "TRUE" : string.Join(" AND ", clauses), p);
+        return new DocumentWhere(
+            Sql: clauses.Count == 0 ? "TRUE" : string.Join(" AND ", clauses),
+            Params: p,
+            HasHeadCriteria: hasHeadCriteria);
     }
 
     private string BuildFilterClause(
@@ -558,6 +573,11 @@ internal sealed class PostgresDocumentReader(
         public string? Number { get; init; }
         public string? FieldsJson { get; init; }
     }
+
+    private sealed record DocumentWhere(
+        string Sql,
+        DynamicParameters Params,
+        bool HasHeadCriteria);
 
     private static DocumentHeadRow ToRow(DocumentHeadDescriptor head, IDictionary<string, object?> row)
     {

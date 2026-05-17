@@ -94,6 +94,10 @@ load_env_file() {
       exit 1
     fi
 
+    if [[ -n "${!key+x}" ]]; then
+      continue
+    fi
+
     value="${value%$'\r'}"
     if [[ "$value" =~ ^\".*\"$ || "$value" =~ ^\'.*\'$ ]]; then
       value="${value:1:${#value}-2}"
