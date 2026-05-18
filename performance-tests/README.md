@@ -60,6 +60,14 @@ Copy-Item ngb-property-management-perf/.env.example ngb-property-management-perf
 - `npm run pm:audit`
 - `npm run pm:maintenance`
 - `npm run pm:concurrency`
+- `npm run pm:write-heavy`
 - `npm run pm:max`
+- `npm run pm:all`
 
 Use `scripts/run-k6.*` when you need `.env` loading, summary export, Grafana Cloud, or Prometheus remote write output.
+Both `run-k6.sh` and `run-k6.ps1` treat the env file as defaults: an already-set process
+environment variable wins over the value in `.env.local` or `.env.write.local`.
+
+`pm:all` is the standard read-mostly PM validation chain. `pm:write-heavy` is destructive,
+uses `ngb-property-management-perf/.env.write.local`, and is intentionally excluded from
+`pm:all`.

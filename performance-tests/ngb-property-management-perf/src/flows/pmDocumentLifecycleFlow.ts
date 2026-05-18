@@ -13,16 +13,16 @@ import {
 } from './pmFlowSupport.ts';
 import { pmPlatformAuditFlow } from './pmPlatformAuditFlow.ts';
 
-export function pmDocumentLifecycleFlow(context: NgbScenarioContext): void {
+export function pmDocumentLifecycleFlow(context: NgbScenarioContext): boolean {
   if (!context.env.enableWrites) {
     readLifecycleSurfaces(context);
-    return;
+    return false;
   }
 
   const fixture = resolveMaintenanceRequestFixture(context);
   if (!fixture) {
     readLifecycleSurfaces(context);
-    return;
+    return false;
   }
 
   const period = resolvePeriodProfile('open');
@@ -39,7 +39,7 @@ export function pmDocumentLifecycleFlow(context: NgbScenarioContext): void {
 
   const documentId = responseDocumentId(createResponse);
   if (!documentId) {
-    return;
+    return false;
   }
 
   const updateResponse = context.documents.updateDocument(
@@ -57,12 +57,14 @@ export function pmDocumentLifecycleFlow(context: NgbScenarioContext): void {
     operationSucceeded(context.documents.postDocument(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]);
     operationSucceeded(context.documents.getDocumentFlow(PM_DOCUMENT_TYPES.maintenanceRequest, documentId, 2, 100), [200]);
     pmPlatformAuditFlow(context, documentId);
-    return;
+    return true;
   }
 
   if (cleanupCreatedDraftsEnabled()) {
     operationSucceeded(context.documents.deleteDraft(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200, 202, 204]);
   }
+
+  return true;
 }
 
 function readLifecycleSurfaces(context: NgbScenarioContext): void {

@@ -12,15 +12,17 @@ import {
 
 export type WorkloadScenario = Scenario;
 
-export interface BusinessDayWorkloadArgs {
+export interface MultiScenarioWorkloadArgs {
   readonly reportBreakdownIds?: readonly string[];
   readonly diagnosticBreakdowns?: readonly DiagnosticBreakdownSelector[];
   readonly profileName?: string;
 }
 
-export function buildBusinessDayWorkload(
+export type BusinessDayWorkloadArgs = MultiScenarioWorkloadArgs;
+
+export function buildMultiScenarioWorkload(
   scenarios: Record<string, WorkloadScenario>,
-  args: BusinessDayWorkloadArgs = {},
+  args: MultiScenarioWorkloadArgs = {},
 ): Options {
   const profileName = args.profileName ?? 'business-day';
   return withSummaryTrendStats({
@@ -36,5 +38,15 @@ export function buildBusinessDayWorkload(
       reportExecutionBreakdownThresholds(args.reportBreakdownIds),
       diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
     ),
+  });
+}
+
+export function buildBusinessDayWorkload(
+  scenarios: Record<string, WorkloadScenario>,
+  args: BusinessDayWorkloadArgs = {},
+): Options {
+  return buildMultiScenarioWorkload(scenarios, {
+    profileName: 'business-day',
+    ...args,
   });
 }

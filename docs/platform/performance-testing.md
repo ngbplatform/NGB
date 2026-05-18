@@ -39,17 +39,79 @@ Copy-Item ngb-property-management-perf/.env.example ngb-property-management-perf
 ./scripts/run-k6.ps1 -EnvFile ngb-property-management-perf/.env.local -TestFile ngb-property-management-perf/src/tests/smoke.ts
 ```
 
-## Load, Stress, Spike, and Soak
+## PM Platform Workloads
 
 PM provides:
 
+- `src/tests/smoke.ts`
+- `src/tests/baseline.ts`
 - `src/tests/load.ts`
 - `src/tests/stress.ts`
 - `src/tests/spike.ts`
 - `src/tests/soak.ts`
 - `src/tests/business-day.ts`
+- `src/tests/platform-read.ts`
+- `src/tests/platform-read-capacity.ts`
+- `src/tests/platform-mixed-capacity.ts`
+- `src/tests/platform-breakpoint.ts`
+- `src/tests/platform-reporting.ts`
+- `src/tests/reporting-regression.ts`
+- `src/tests/document-lifecycle.ts`
+- `src/tests/audit.ts`
+- `src/tests/maintenance.ts`
+- `src/tests/concurrency.ts`
+- `src/tests/write-heavy.ts`
 
-Run these only against dedicated non-production environments. Stress, spike, soak, and write-enabled scenarios can distort shared demo data and operational metrics.
+The default PM validation chain is:
+
+```bash
+npm run pm:all
+```
+
+`pm:all` runs smoke, baseline, platform-read, platform-reporting, document-lifecycle,
+audit, maintenance, load, stress, spike, and business-day. It uses `.env.local` and remains
+read-mostly unless write gates are explicitly enabled.
+
+Capacity and ceiling discovery are separate:
+
+```bash
+npm run pm:platform-read-capacity
+npm run pm:platform-mixed-capacity
+npm run pm:platform-breakpoint
+npm run pm:max
+```
+
+`platform-read-capacity` isolates platform read concurrency. `platform-mixed-capacity`
+uses a representative user mix. `platform-breakpoint` raises scheduled throughput until
+the environment drops iterations or breaches reliability/latency thresholds.
+
+Run stress, spike, soak, capacity, breakpoint, and write-enabled scenarios only against
+dedicated non-production environments. They can distort shared demo data and operational
+metrics.
+
+## Write-Heavy Workload
+
+`pm:write-heavy` is destructive and intentionally excluded from `pm:all`:
+
+```bash
+npm run pm:write-heavy
+```
+
+It uses `ngb-property-management-perf/.env.write.local` by default and aborts unless
+`NGB_PERF_ENABLE_WRITES=true`. Set `NGB_PERF_ENABLE_POSTING=true` when the test should
+exercise posting, idempotency, accounting effects, and document graph readback.
+
+The workload mixes:
+
+- document create/update/delete-draft lifecycle
+- rent charge posting and accounting effects
+- read-after-write verification
+- audit log reads
+- canonical report execution during write pressure
+
+Tune it with `NGB_PM_WRITE_HEAVY_*` variables documented in the PM README. Keep these
+values in `.env.write.local`, CI secrets, or the process environment, never in committed
+local env files.
 
 ## Keycloak Tester Client
 
@@ -87,9 +149,25 @@ NGB_PM_FIXTURE_LEASE_ID=
 NGB_PM_FIXTURE_RENT_CHARGE_ID=
 NGB_PM_FIXTURE_RECEIVABLE_PAYMENT_ID=
 NGB_PERF_ENABLE_WRITES=false
+NGB_PERF_ENABLE_POSTING=false
+NGB_PERF_ENABLE_PERIOD_CLOSE=false
+NGB_PERF_ENABLE_CASH_FLOW=false
 ```
 
 For local runs, each vertical `.env.example` can provide k6 `hosts` aliases for the Keycloak `*.localhost` names used by that vertical Docker Compose setup. Set `NGB_K6_HOST_ALIASES=none` to disable aliases, or provide comma-separated overrides such as `pm-keycloak.localhost=127.0.0.1`. Local HTTPS uses development certificates, so local profiles set `NGB_K6_INSECURE_SKIP_TLS_VERIFY=true`.
+
+Both `run-k6.sh` and `run-k6.ps1` load env files as defaults. If a variable already exists
+in the process environment, the runner preserves it. This keeps macOS/Linux and PowerShell
+behavior aligned for one-off capacity overrides:
+
+```bash
+NGB_CAPACITY_VUS=800,1000,1200,1400 npm run pm:platform-read-capacity
+```
+
+```powershell
+$env:NGB_CAPACITY_VUS = '800,1000,1200,1400'
+npm run pm:platform-read-capacity
+```
 
 ## Metrics and Thresholds
 
@@ -97,6 +175,7 @@ The framework emits custom metrics:
 
 - `ngb_business_operation_duration`
 - `ngb_business_operation_failed`
+- `ngb_business_operation_count`
 - `ngb_auth_duration`
 - `ngb_document_post_duration`
 - `ngb_report_execution_duration`

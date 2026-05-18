@@ -1,7 +1,7 @@
 {
   "name": "ngb-performance-tests",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "workspaces": [
     "ngb-performance-tests-framework",
@@ -29,6 +29,7 @@
     "pm:audit": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/audit.ts",
     "pm:maintenance": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/maintenance.ts",
     "pm:concurrency": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/concurrency.ts",
+    "pm:write-heavy": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.write.local --test ngb-property-management-perf/src/tests/write-heavy.ts",
     "pm:all": "npm run pm:smoke && npm run pm:baseline && npm run pm:platform-read && npm run pm:platform-reporting && npm run pm:document-lifecycle && npm run pm:audit && npm run pm:maintenance && npm run pm:load && npm run pm:stress && npm run pm:spike && npm run pm:business-day",
     "trade:smoke": "./scripts/run-k6.sh --env-file ngb-trade-perf/.env.local --test ngb-trade-perf/src/tests/smoke.ts",
     "ab:smoke": "./scripts/run-k6.sh --env-file ngb-agency-billing-perf/.env.local --test ngb-agency-billing-perf/src/tests/smoke.ts"

@@ -103,6 +103,9 @@ Built-in profiles:
 - `soak`: long-running stability profile
 
 Each profile adds `profile=<name>` tags and summary trend stats.
+Verticals can combine multiple executors with `buildMultiScenarioWorkload` for realistic
+business mixes such as business-day or write-heavy runs while keeping all vertical-specific
+flows outside the shared framework.
 
 The capacity profile defaults to `80,160,240,320` VU plateaus with `5m` ramps, `10m`
 holds, and a `5m` ramp-down. Override it without changing test code:
@@ -200,6 +203,18 @@ PowerShell:
 cd performance-tests
 Copy-Item <vertical-package>/.env.example <vertical-package>/.env.local
 ./scripts/run-k6.ps1 -EnvFile <vertical-package>/.env.local -TestFile <vertical-package>/src/tests/smoke.ts
+```
+
+Both runners load env files as defaults. Already-set process environment variables are
+preserved, so one-off overrides win over `.env` values:
+
+```bash
+NGB_CAPACITY_VUS=800,1000,1200,1400 ./scripts/run-k6.sh --env-file <vertical-package>/.env.local --test <vertical-package>/src/tests/platform-read-capacity.ts
+```
+
+```powershell
+$env:NGB_CAPACITY_VUS = '800,1000,1200,1400'
+./scripts/run-k6.ps1 -EnvFile <vertical-package>/.env.local -TestFile <vertical-package>/src/tests/platform-read-capacity.ts
 ```
 
 ## Summary Export

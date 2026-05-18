@@ -52,6 +52,10 @@ function Import-EnvFile {
             $value = $value.Substring(1, $value.Length - 2)
         }
 
+        if ([Environment]::GetEnvironmentVariable($key, 'Process') -ne $null) {
+            continue
+        }
+
         [Environment]::SetEnvironmentVariable($key, $value, 'Process')
     }
 }

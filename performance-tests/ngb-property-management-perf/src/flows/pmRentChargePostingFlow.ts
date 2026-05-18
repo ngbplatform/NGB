@@ -6,13 +6,16 @@ import type { NgbScenarioContext } from '../../../ngb-performance-tests-framewor
 import { PM_DOCUMENT_TYPES } from '../clients/pmDocumentTypes.ts';
 import { postingEnabled } from './pmFlowSupport.ts';
 
-export function pmRentChargePostingFlow(context: NgbScenarioContext): void {
+export function pmRentChargePostingFlow(context: NgbScenarioContext): boolean {
   const fixtureId = __ENV.NGB_PM_FIXTURE_RENT_CHARGE_ID?.trim() || null;
   documentListFlow(context, PM_DOCUMENT_TYPES.rentCharge);
+  let posted = false;
+
   if (postingEnabled(context)) {
-    documentPostFlow(context, PM_DOCUMENT_TYPES.rentCharge, fixtureId);
+    posted = documentPostFlow(context, PM_DOCUMENT_TYPES.rentCharge, fixtureId);
   }
 
   accountingEffectsFlow(context, PM_DOCUMENT_TYPES.rentCharge, fixtureId);
   documentFlowReadFlow(context, PM_DOCUMENT_TYPES.rentCharge, fixtureId);
+  return posted;
 }

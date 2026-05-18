@@ -429,9 +429,9 @@ NGB is built with a practical, production-oriented stack:
 
 NGB includes a reusable Grafana k6 + TypeScript performance testing framework under [`performance-tests`](./performance-tests).
 
-The framework validates platform-level behavior and vertical-specific workloads with realistic business scenarios such as document lifecycle operations, posting, accounting effects, document flow, and report execution.
+The framework validates platform-level behavior and vertical-specific workloads with realistic business scenarios such as metadata and menu loading, document reads, document lifecycle operations, posting, audit reads, accounting effects, document flow, report execution, capacity staircases, breakpoint discovery, and opt-in write-heavy pressure.
 
-Initial vertical coverage is provided for Property Management, with Trade and Agency Billing structured as extensions.
+Initial vertical coverage is provided for Property Management, with Trade and Agency Billing structured as extensions. Destructive write-heavy profiles are opt-in and excluded from the normal `pm:all` chain.
 
 See:
 

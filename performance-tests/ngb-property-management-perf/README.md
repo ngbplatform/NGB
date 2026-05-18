@@ -83,6 +83,7 @@ cd performance-tests
 - `audit.ts`: audit log read workload
 - `maintenance.ts`: period-closing/status/calendar read workload
 - `concurrency.ts`: concurrent reads, reports, and opt-in writes
+- `write-heavy.ts`: destructive write-heavy workload for create/update/post/read-after-write, audit, accounting effects, and reporting under write pressure
 
 The report workload is platform-focused: canonical accounting reports plus the composable Ledger Analysis report. PM-domain reports such as receivables aging/open-items are intentionally excluded from the primary performance profiles. Report-level summary diagnostics include `Report Execution By Id`; when period profiles are used, rows are labeled like `accounting.ledger.analysis [closed]`.
 
@@ -108,6 +109,45 @@ uses a weighted user-workload mix: browsing, heavy read, reports, audit/maintena
 flows gated by `NGB_PERF_ENABLE_WRITES`. `pm:platform-breakpoint` uses the same mixed workload but
 ramps scheduled iterations/second until the environment starts dropping iterations or breaching
 reliability/latency thresholds.
+
+`pm:write-heavy` is intentionally excluded from `pm:all` and uses `.env.write.local` by default:
+
+```bash
+npm run pm:write-heavy
+```
+
+It is destructive and should run only against disposable performance data. Defaults create/update/post
+maintenance request documents, exercise the rent charge posting/effects/graph path, and keep platform
+read/reporting surfaces active while writes are running:
+
+```env
+NGB_PM_WRITE_HEAVY_DURATION=15m
+
+NGB_PM_WRITE_HEAVY_LIFECYCLE_RATE=4
+NGB_PM_WRITE_HEAVY_LIFECYCLE_TIME_UNIT=1s
+NGB_PM_WRITE_HEAVY_LIFECYCLE_PRE_ALLOCATED_VUS=64
+NGB_PM_WRITE_HEAVY_LIFECYCLE_MAX_VUS=160
+
+NGB_PM_WRITE_HEAVY_POSTING_RATE=1
+NGB_PM_WRITE_HEAVY_POSTING_TIME_UNIT=2s
+NGB_PM_WRITE_HEAVY_POSTING_PRE_ALLOCATED_VUS=16
+NGB_PM_WRITE_HEAVY_POSTING_MAX_VUS=64
+
+NGB_PM_WRITE_HEAVY_READBACK_RATE=2
+NGB_PM_WRITE_HEAVY_READBACK_TIME_UNIT=1s
+NGB_PM_WRITE_HEAVY_READBACK_PRE_ALLOCATED_VUS=48
+NGB_PM_WRITE_HEAVY_READBACK_MAX_VUS=128
+
+NGB_PM_WRITE_HEAVY_REPORTING_RATE=1
+NGB_PM_WRITE_HEAVY_REPORTING_TIME_UNIT=10s
+NGB_PM_WRITE_HEAVY_REPORTING_PRE_ALLOCATED_VUS=8
+NGB_PM_WRITE_HEAVY_REPORTING_MAX_VUS=32
+```
+
+The test aborts unless `NGB_PERF_ENABLE_WRITES=true`. Set `NGB_PERF_ENABLE_POSTING=true` when the
+goal is to include the platform posting/idempotency/accounting-effects path. A passing write-heavy
+run should have zero business failures, zero dropped iterations, no duplicate/invalid posting side
+effects, and document post/accounting/audit p95 inside the shared platform thresholds.
 
 `pm:business-day` is a multi-scenario arrival-rate workload. Defaults intentionally reserve extra
 VUs so a healthy backend is measured without synthetic k6 scheduler drops:
