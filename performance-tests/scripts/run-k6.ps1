@@ -45,7 +45,7 @@ function Import-EnvFile {
         $value = $line.Substring($separator + 1).TrimEnd("`r")
 
         if ($key -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
-            throw "Invalid env key in $Path: $key"
+            throw "Invalid env key in ${Path}: $key"
         }
 
         if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
