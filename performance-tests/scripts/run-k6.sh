@@ -9,7 +9,7 @@ Usage:
 Options:
   --env-file, -e          Path to a local env file.
   --test, -t              k6 test file to run.
-  --output, -o            Output mode. Defaults to local.
+  --output, -o            Output mode. Defaults to local. Cloud mode uses local execution.
   --summary-export, -s    Optional k6 summary JSON export path.
   --help, -h              Show this help.
 USAGE
@@ -132,7 +132,7 @@ case "$OUTPUT_MODE" in
     k6 run "$TEST_FILE"
     ;;
   cloud)
-    k6 cloud "$TEST_FILE"
+    k6 cloud run --local-execution --include-system-env-vars "$TEST_FILE"
     ;;
   prometheus-remote-write)
     if [[ -z "${K6_PROMETHEUS_RW_SERVER_URL:-}" ]]; then

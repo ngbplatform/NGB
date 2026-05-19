@@ -236,7 +236,7 @@ When a vertical configures `diagnosticBreakdowns`, summaries also include `HTTP 
 
 ## Grafana and Prometheus
 
-Local terminal output is the default. Grafana Cloud can be used when the user has already configured k6 cloud authentication:
+Local terminal output is the default. Grafana Cloud can be used when the user has already configured k6 cloud authentication. The runner keeps execution on the current machine and uploads results with `k6 cloud run --local-execution --include-system-env-vars`, so variables loaded from the env file are visible to the k6 script:
 
 ```bash
 ./scripts/run-k6.sh --env-file <vertical-package>/.env.local --test <vertical-package>/src/tests/smoke.ts --output cloud

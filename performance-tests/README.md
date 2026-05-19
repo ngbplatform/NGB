@@ -65,6 +65,8 @@ Copy-Item ngb-property-management-perf/.env.example ngb-property-management-perf
 - `npm run pm:all`
 
 Use `scripts/run-k6.*` when you need `.env` loading, summary export, Grafana Cloud, or Prometheus remote write output.
+Cloud mode runs on the current machine and uploads results with `k6 cloud run --local-execution --include-system-env-vars`,
+so variables loaded from `.env.local` or `.env.write.local` are visible to the k6 script.
 Both `run-k6.sh` and `run-k6.ps1` treat the env file as defaults: an already-set process
 environment variable wins over the value in `.env.local` or `.env.write.local`.
 

@@ -199,10 +199,17 @@ Local terminal output is the default. To export a summary:
   --summary-export artifacts/pm-baseline.summary.json
 ```
 
-Grafana Cloud can be used when k6 cloud auth is already configured:
+Grafana Cloud can be used when k6 cloud auth is already configured. The runner keeps execution on the current machine and uploads results with `k6 cloud run --local-execution --include-system-env-vars`, so variables loaded from the env file are visible to the k6 script.
+
+Set `K6_CLOUD_PROJECT_ID` to route the run to a specific Grafana Cloud k6 project. `K6_CLOUD_NAME` is optional, but recommended so the run is easy to find:
 
 ```bash
-./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/load.ts --output cloud
+K6_CLOUD_PROJECT_ID=<grafana-cloud-k6-project-id> \
+K6_CLOUD_NAME="NGB PM baseline $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+./scripts/run-k6.sh \
+  --env-file ngb-property-management-perf/.env.local \
+  --test ngb-property-management-perf/src/tests/baseline.ts \
+  --output cloud
 ```
 
 Prometheus remote write requires `K6_PROMETHEUS_RW_SERVER_URL`:

@@ -90,7 +90,7 @@ switch ($Output) {
         & k6 run $TestFile
     }
     'cloud' {
-        & k6 cloud $TestFile
+        & k6 cloud run --local-execution --include-system-env-vars $TestFile
     }
     'prometheus-remote-write' {
         if (-not [Environment]::GetEnvironmentVariable('K6_PROMETHEUS_RW_SERVER_URL', 'Process')) {
