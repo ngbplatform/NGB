@@ -7,11 +7,11 @@
 <h1 align="center">NGB Platform</h1>
 
 <p align="center">
-  <strong>Open-source platform for building accounting-centric business applications and industry solutions.</strong>
+  <strong>Open-source .NET + PostgreSQL platform for document-driven business applications.</strong>
 </p>
 
 <p align="center">
-  Built on <strong>.NET</strong> and <strong>PostgreSQL</strong>, designed for modular business systems, production-grade accounting, metadata-driven UI, and vertical solutions.
+  Built for modular business systems with catalogs, documents, lifecycle actions, operational and reference registers, audit history, reporting, metadata-driven UI, and optional accounting.
 </p>
 
 <p align="center">
@@ -58,7 +58,7 @@
 
 ## What is NGB Platform
 
-**NGB Platform** is an open-source platform for building **accounting-centric business applications** and **industry-specific solutions**.
+**NGB Platform** is an open-source platform for building **document-driven business applications** and **industry-specific vertical solutions** on **.NET** and **PostgreSQL**
 
 NGB provides a production-oriented foundation for systems built around:
 
@@ -85,7 +85,8 @@ NGB exists to offer a third path:
 
 - a **modular platform** instead of one-off project scaffolding;
 - a **business-application architecture** instead of generic MVC plumbing;
-- an **accounting-aware domain foundation** instead of bolted-on finance logic;
+- a **document-driven business foundation** instead of ad-hoc CRUD screens and one-off workflow logic;
+- **accounting capabilities** when a vertical needs financial posting and reporting;
 - a **shared platform core + vertical solutions** model instead of duplicating infrastructure across products.
 
 The goal is simple: help developers and product teams build production-grade business systems faster, with fewer architectural compromises and a stronger long-term foundation.
@@ -123,7 +124,7 @@ With NGB, teams can build:
 
 - vertical business applications;
 - finance and operations platforms;
-- accounting-centric SaaS products;
+- accounting-enabled SaaS products;
 - internal enterprise systems;
 - industry-specific ERP-style solutions;
 - workflow-heavy back-office applications;
