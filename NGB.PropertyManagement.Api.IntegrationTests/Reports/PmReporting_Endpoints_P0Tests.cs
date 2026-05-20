@@ -292,14 +292,16 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
     public async Task PostingLog_Cursor_Paging_Stays_Stable_And_Duplicate_Free_EndToEnd()
     {
         await using var factory = new PmApiFactory(_fixture);
+        var fromUtc = DateTime.UtcNow.AddHours(-1);
         await SeedLedgerAnalysisScenarioAsync(factory);
+        var toUtc = DateTime.UtcNow.AddHours(1);
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
 
         var request = new ReportExecutionRequestDto(
             Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["from_utc"] = "2026-02-01",
-                ["to_utc"] = "2026-04-30"
+                ["from_utc"] = fromUtc.ToString("O"),
+                ["to_utc"] = toUtc.ToString("O")
             },
             Filters: new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase)
             {

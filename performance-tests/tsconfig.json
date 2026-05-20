@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./ngb-performance-tests-framework" },
+    { "path": "./ngb-property-management-perf" },
+    { "path": "./ngb-trade-perf" },
+    { "path": "./ngb-agency-billing-perf" }
+  ]
+}

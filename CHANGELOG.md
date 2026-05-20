@@ -8,7 +8,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [Unreleased]
 
 ### Added
-- Initial public repository structure and community health files.
+- N/A
 
 ### Changed
 - N/A
@@ -25,6 +25,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Security
 - N/A
 
+## [1.1.1] - 2026-05-18
+
+### Added
+- Grafana k6 + TypeScript performance testing workspace under `performance-tests`.
+- Reusable vertical-neutral NGB performance framework with Keycloak auth, typed env parsing, HTTP client wrapper, custom metrics, profiles, thresholds, summary export, and generic NGB API clients.
+- Property Management smoke, baseline, business-day, reporting regression, load, stress, spike, and soak performance scenarios.
+- Property Management platform-read, platform-read-capacity, platform-mixed-capacity, platform-breakpoint, platform-reporting, document-lifecycle, audit, maintenance, concurrency, and destructive write-heavy performance scenarios.
+- Initial Trade and Agency Billing performance smoke scaffolds.
+- Performance testing documentation, runner scripts, and CI type-check workflow.
+- Reusable multi-scenario workload composition for vertical packages while keeping the shared performance framework vertical-neutral.
+- Write-heavy profile overrides in the PM performance `.env.example` and documented `.env.write.local` workflow.
+
 ## [1.0.0] - 2026-04-14
 
 ### Added
@@ -39,5 +51,6 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Notes
 - This release establishes the first public baseline of the NGB Platform repository.
 
-[Unreleased]: https://github.com/ngbplatform/ngb/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ngbplatform/ngb/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/ngbplatform/ngb/compare/v1.0.0...v1.1.1
 [1.0.0]: https://github.com/ngbplatform/ngb/releases/tag/v1.0.0

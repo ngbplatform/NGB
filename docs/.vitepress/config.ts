@@ -101,6 +101,7 @@ export default defineConfig({
           page('PostgreSQL', '/platform/postgresql'),
           page('Accounting and Registers', '/platform/accounting-and-registers'),
           page('Background Jobs', '/platform/background-jobs'),
+          page('Performance Testing', '/platform/performance-testing'),
           page('Migrator', '/platform/migrator'),
           page('Watchdog', '/platform/watchdog'),
           page('Security and SSO', '/platform/security-and-sso'),

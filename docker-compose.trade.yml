@@ -10,6 +10,7 @@ services:
         POSTGRES_IMAGE_TAG: ${POSTGRES_IMAGE_TAG}
     image: ngb.trade.postgres:${POSTGRES_IMAGE_TAG}
     restart: unless-stopped
+    shm_size: ${POSTGRES_SHM_SIZE:-4gb}
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: ${POSTGRES_ADMIN_USER}

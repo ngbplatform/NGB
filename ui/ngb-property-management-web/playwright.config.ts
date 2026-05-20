@@ -1,10 +1,21 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
 import { defineConfig, devices } from '@playwright/test'
-import { PM_WEB_DEV_BASE_URL, PM_WEB_DEV_HOST, PM_WEB_DEV_PORT } from './ngb-property-management-web/devServer.config'
-import { loadPmWebE2eEnv, resolvePlaywrightAuthFile } from './tests/e2e/support/e2eEnv'
 
-loadPmWebE2eEnv(process.cwd())
+import { PM_WEB_DEV_BASE_URL, PM_WEB_DEV_HOST, PM_WEB_DEV_PORT } from './devServer.config'
+import { loadE2eEnv, resolvePlaywrightAuthFile } from '../tests/e2e/support/e2eEnv'
 
-const authFile = resolvePlaywrightAuthFile(process.cwd())
+const uiWorkspaceDir = fileURLToPath(new URL('..', import.meta.url))
+
+loadE2eEnv({
+  rootDir: uiWorkspaceDir,
+  appDirectory: 'ngb-property-management-web',
+})
+
+const chromiumAuthFile = resolvePlaywrightAuthFile(uiWorkspaceDir, 'chromium')
+const firefoxAuthFile = resolvePlaywrightAuthFile(uiWorkspaceDir, 'firefox')
+const webkitAuthFile = resolvePlaywrightAuthFile(uiWorkspaceDir, 'webkit')
 const mobileSpecs = /pm-web\/(mobile-layout|home|reconciliation|properties|accounting-policy|reports)\.spec\.ts/
 const tabletSpecs = /pm-web\/(tablet-topbar|command-palette)\.spec\.ts/
 const desktopChromiumSpecs =
@@ -13,7 +24,7 @@ const desktopCrossBrowserSmokeSpecs =
   /pm-web\/(desktop-shell|home|command-palette|open-items-workflow|metadata-routes|metadata-resilience|metadata-states|metadata-access-errors|router-redirects|document-side-flows)\.spec\.ts/
 
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: '../tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -29,66 +40,83 @@ export default defineConfig({
     command: `npm --workspace ngb-property-management-web run dev -- --host ${PM_WEB_DEV_HOST} --port ${PM_WEB_DEV_PORT} --strictPort --mode e2e`,
     port: PM_WEB_DEV_PORT,
     reuseExistingServer: !process.env.CI,
-    cwd: process.cwd(),
+    cwd: path.resolve(uiWorkspaceDir),
   },
   projects: [
     {
-      name: 'setup',
+      name: 'setup-chromium',
       testMatch: /auth\.setup\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+      },
+    },
+    {
+      name: 'setup-firefox',
+      testMatch: /auth\.setup\.ts/,
+      use: {
+        ...devices['Desktop Firefox'],
+      },
+    },
+    {
+      name: 'setup-webkit',
+      testMatch: /auth\.setup\.ts/,
+      use: {
+        ...devices['Desktop Safari'],
+      },
     },
     {
       name: 'mobile-narrow',
-      dependencies: ['setup'],
+      dependencies: ['setup-chromium'],
       testMatch: mobileSpecs,
       use: {
-        storageState: authFile,
+        storageState: chromiumAuthFile,
         viewport: { width: 320, height: 740 },
       },
     },
     {
       name: 'mobile-standard',
-      dependencies: ['setup'],
+      dependencies: ['setup-webkit'],
       testMatch: mobileSpecs,
       use: {
-        storageState: authFile,
+        storageState: webkitAuthFile,
         ...devices['iPhone 13'],
       },
     },
     {
       name: 'tablet-standard',
-      dependencies: ['setup'],
+      dependencies: ['setup-chromium'],
       testMatch: tabletSpecs,
       use: {
-        storageState: authFile,
+        storageState: chromiumAuthFile,
         viewport: { width: 768, height: 1024 },
       },
     },
     {
       name: 'desktop-standard',
-      dependencies: ['setup'],
+      dependencies: ['setup-chromium'],
       testMatch: desktopChromiumSpecs,
       use: {
-        storageState: authFile,
+        storageState: chromiumAuthFile,
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 900 },
       },
     },
     {
       name: 'desktop-firefox',
-      dependencies: ['setup'],
+      dependencies: ['setup-firefox'],
       testMatch: desktopCrossBrowserSmokeSpecs,
       use: {
-        storageState: authFile,
+        storageState: firefoxAuthFile,
         ...devices['Desktop Firefox'],
         viewport: { width: 1440, height: 900 },
       },
     },
     {
       name: 'desktop-webkit',
-      dependencies: ['setup'],
+      dependencies: ['setup-webkit'],
       testMatch: desktopCrossBrowserSmokeSpecs,
       use: {
-        storageState: authFile,
+        storageState: webkitAuthFile,
         ...devices['Desktop Safari'],
         viewport: { width: 1440, height: 900 },
       },

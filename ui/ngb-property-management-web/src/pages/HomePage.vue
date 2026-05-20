@@ -34,6 +34,16 @@ const {
 })
 
 const monthLabel = computed(() => dashboard.value?.monthLabel ?? '')
+const showDashboardSkeleton = computed(() => loading.value && !dashboard.value)
+const attentionSkeletonCards = [0, 1, 2, 3, 4, 5]
+const kpiSkeletonCards = [0, 1, 2, 3, 4, 5]
+const chartSkeletonCards = [
+  { key: 'collections', wide: false },
+  { key: 'occupancy', wide: false },
+  { key: 'maintenance', wide: true },
+]
+const snapshotSkeletonCards = [0, 1, 2]
+
 const headerSummary = computed(() => {
   const data = dashboard.value
   if (!data) return null
@@ -209,229 +219,349 @@ function snapshotBadgeTone(kind: string): Tone {
       <div class="mx-auto flex w-full max-w-[1680px] flex-col gap-5 p-6">
         <NgbDashboardStatusBanner :error="error" :warnings="warnings" error-title="Home data failed to load" />
 
-        <section class="space-y-4">
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div class="home-section-label">Requires Attention</div>
-              <h2 class="home-section-title">What needs action today</h2>
+        <template v-if="showDashboardSkeleton">
+          <section class="space-y-4" aria-hidden="true">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="home-skeleton-block home-skeleton-eyebrow"></div>
+                <div class="home-skeleton-block mt-2 h-8 w-72 max-w-full"></div>
+              </div>
+              <div class="home-skeleton-block h-5 w-64 max-w-full"></div>
             </div>
-            <div class="text-sm text-ngb-muted">
-              {{ loading ? 'Refreshing live portfolio signals…' : `Operational focus for ${monthLabel || 'the selected period'}` }}
-            </div>
-          </div>
 
-          <div data-testid="home-attention-grid" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <button
-              v-for="card in attentionCards"
-              :key="card.title"
-              type="button"
-              class="home-panel home-attention-card"
-              :class="actionCardClass(card.tone)"
-              @click="openRoute(card.route)"
-            >
-              <div class="flex items-start justify-between gap-4">
-                <div class="min-w-0">
-                  <div class="home-tone-pill">{{ toneLabel(card.tone) }}</div>
-                  <div class="mt-3 text-sm font-semibold text-ngb-text">{{ card.title }}</div>
-                  <div class="mt-3 text-[1.9rem] font-semibold tracking-[-0.03em] text-ngb-text">{{ card.value }}</div>
-                </div>
-
-                <span class="home-action-arrow" aria-hidden="true">
-                  <NgbIcon name="arrow-right" :size="16" />
-                </span>
-              </div>
-
-              <div class="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-ngb-muted">{{ card.meta }}</div>
-              <div class="mt-2 text-sm leading-6 text-ngb-muted">{{ card.description }}</div>
-            </button>
-          </div>
-        </section>
-
-        <section class="space-y-4">
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div class="home-section-label">KPI Strip</div>
-              <h2 class="home-section-title">Portfolio health at a glance</h2>
-            </div>
-            <div class="text-sm text-ngb-muted">Compact, role-ready indicators instead of a BI wall.</div>
-          </div>
-
-          <div data-testid="home-kpi-grid" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
-            <div v-for="kpi in kpis" :key="kpi.label" class="home-panel home-kpi-card">
-              <div class="text-[11px] font-semibold uppercase tracking-[0.12em] text-ngb-muted">{{ kpi.label }}</div>
-              <div class="mt-3 text-[1.65rem] font-semibold tracking-[-0.03em] text-ngb-text">{{ kpi.value }}</div>
-              <div class="mt-2 text-sm leading-6 text-ngb-muted">{{ kpi.context }}</div>
-            </div>
-          </div>
-        </section>
-
-        <section class="space-y-4">
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div class="home-section-label">Trends</div>
-              <h2 class="home-section-title">Signals that are worth watching</h2>
-            </div>
-            <div class="text-sm text-ngb-muted">Each chart should lead to a workflow, not just decorate the page.</div>
-          </div>
-
-          <div v-if="dashboard" class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <button type="button" class="home-panel home-chart-card" @click="openRoute(dashboard.charts.collections.route)">
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-base font-semibold text-ngb-text">{{ dashboard.charts.collections.title }}</h3>
-                  <p class="mt-1 text-sm text-ngb-muted">{{ dashboard.charts.collections.subtitle }}</p>
-                </div>
-                <span class="home-chart-tag">Receivables</span>
-              </div>
-
-              <div class="home-chart-frame">
-                <NgbTrendChart
-                  :labels="dashboard.charts.collections.labels"
-                  :series="dashboard.charts.collections.series"
-                  mode="line"
-                />
-              </div>
-            </button>
-
-            <button type="button" class="home-panel home-chart-card" @click="openRoute(dashboard.charts.occupancy.route)">
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-base font-semibold text-ngb-text">{{ dashboard.charts.occupancy.title }}</h3>
-                  <p class="mt-1 text-sm text-ngb-muted">{{ dashboard.charts.occupancy.subtitle }}</p>
-                </div>
-                <span class="home-chart-tag">Portfolio</span>
-              </div>
-
-              <div class="home-chart-frame">
-                <NgbTrendChart
-                  :labels="dashboard.charts.occupancy.labels"
-                  :series="dashboard.charts.occupancy.series"
-                  mode="line"
-                />
-              </div>
-            </button>
-
-            <button type="button" class="home-panel home-chart-card xl:col-span-2" @click="openRoute(dashboard.charts.maintenanceAging.route)">
-              <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-base font-semibold text-ngb-text">{{ dashboard.charts.maintenanceAging.title }}</h3>
-                  <p class="mt-1 text-sm text-ngb-muted">{{ dashboard.charts.maintenanceAging.subtitle }}</p>
-                </div>
-                <span class="home-chart-tag">Maintenance</span>
-              </div>
-
-              <div class="home-chart-frame home-chart-frame-wide">
-                <NgbTrendChart
-                  :labels="dashboard.charts.maintenanceAging.labels"
-                  :series="dashboard.charts.maintenanceAging.series"
-                  mode="bar"
-                />
-              </div>
-            </button>
-          </div>
-        </section>
-
-        <section v-if="dashboard" class="space-y-4">
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div class="home-section-label">Operational Snapshots</div>
-              <h2 class="home-section-title">Live queues, not just aggregates</h2>
-            </div>
-            <div class="text-sm text-ngb-muted">Short lists that help you jump straight into work.</div>
-          </div>
-
-          <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <div class="home-panel home-snapshot-card">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-base font-semibold text-ngb-text">Upcoming move-ins / move-outs</h3>
-                  <p class="mt-1 text-sm text-ngb-muted">Next 14 days of lease activity</p>
-                </div>
-                <NgbBadge tone="neutral">{{ dashboard.leases.events.length }}</NgbBadge>
-              </div>
-
-              <div v-if="dashboard.leases.events.length" class="mt-5 space-y-3">
-                <button
-                  v-for="event in dashboard.leases.events"
-                  :key="`${event.kind}:${event.route}`"
-                  type="button"
-                  class="home-list-item"
-                  @click="openRoute(event.route)"
-                >
-                  <div class="flex min-w-0 items-center gap-2">
-                    <NgbBadge :tone="snapshotBadgeTone(event.kind)">{{ event.kind }}</NgbBadge>
-                    <span class="truncate text-sm font-medium text-ngb-text">{{ event.leaseDisplay }}</span>
+            <div data-testid="home-attention-skeleton" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div v-for="index in attentionSkeletonCards" :key="`attention-skeleton:${index}`" class="home-panel home-attention-card home-skeleton-card">
+                <div class="flex items-start justify-between gap-4">
+                  <div class="min-w-0 flex-1">
+                    <div class="home-skeleton-block h-7 w-20 rounded-full"></div>
+                    <div class="home-skeleton-block mt-4 h-5 w-36 max-w-full"></div>
+                    <div class="home-skeleton-block mt-4 h-10 w-32 max-w-full"></div>
                   </div>
-                  <div class="mt-2 flex items-center justify-between gap-3 text-sm text-ngb-muted">
-                    <span class="min-w-0 truncate">{{ event.propertyDisplay }}</span>
-                    <span class="shrink-0">{{ event.date }}</span>
-                  </div>
-                </button>
-              </div>
-              <div v-else class="mt-5 text-sm text-ngb-muted">No move-ins or move-outs are scheduled in the next 14 days.</div>
-            </div>
-
-            <div class="home-panel home-snapshot-card">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-base font-semibold text-ngb-text">Maintenance queue snapshot</h3>
-                  <p class="mt-1 text-sm text-ngb-muted">Open items sorted by urgency and aging</p>
+                  <div class="home-skeleton-block h-8 w-8 rounded-full"></div>
                 </div>
-                <NgbBadge tone="neutral">{{ dashboard.maintenance.openItemCount }}</NgbBadge>
-              </div>
 
-              <div v-if="dashboard.maintenance.items.length" class="mt-5 space-y-3">
-                <button
-                  v-for="item in dashboard.maintenance.items"
-                  :key="`${item.requestDisplay}:${item.subject}`"
-                  type="button"
-                  class="home-list-item"
-                  @click="openRoute(item.route)"
-                >
-                  <div class="flex min-w-0 items-center gap-2">
-                    <NgbBadge :tone="snapshotBadgeTone(item.queueState)">{{ item.queueState }}</NgbBadge>
-                    <span class="truncate text-sm font-medium text-ngb-text">{{ item.subject }}</span>
-                  </div>
-                  <div class="mt-2 flex items-center justify-between gap-3 text-sm text-ngb-muted">
-                    <span class="min-w-0 truncate">{{ item.propertyDisplay }}</span>
-                    <span class="shrink-0">{{ item.dueBy || item.requestedAt || 'No date' }}</span>
-                  </div>
-                </button>
+                <div class="home-skeleton-block mt-4 h-4 w-48 max-w-full"></div>
+                <div class="home-skeleton-block mt-3 h-4 w-full"></div>
+                <div class="home-skeleton-block mt-2 h-4 w-3/4"></div>
               </div>
-              <div v-else class="mt-5 text-sm text-ngb-muted">No open maintenance items right now.</div>
+            </div>
+          </section>
+
+          <section class="space-y-4" aria-hidden="true">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="home-skeleton-block home-skeleton-eyebrow"></div>
+                <div class="home-skeleton-block mt-2 h-8 w-72 max-w-full"></div>
+              </div>
+              <div class="home-skeleton-block h-5 w-80 max-w-full"></div>
             </div>
 
-            <div class="home-panel home-snapshot-card">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-base font-semibold text-ngb-text">Receivables exceptions</h3>
-                  <p class="mt-1 text-sm text-ngb-muted">Largest open mismatches in the current month</p>
+            <div data-testid="home-kpi-skeleton" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <div v-for="index in kpiSkeletonCards" :key="`kpi-skeleton:${index}`" class="home-panel home-kpi-card">
+                <div class="home-skeleton-block h-4 w-24 max-w-full"></div>
+                <div class="home-skeleton-block mt-4 h-9 w-24 max-w-full"></div>
+                <div class="home-skeleton-block mt-3 h-4 w-full"></div>
+                <div class="home-skeleton-block mt-2 h-4 w-3/4"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="space-y-4" aria-hidden="true">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="home-skeleton-block home-skeleton-eyebrow"></div>
+                <div class="home-skeleton-block mt-2 h-8 w-72 max-w-full"></div>
+              </div>
+              <div class="home-skeleton-block h-5 w-80 max-w-full"></div>
+            </div>
+
+            <div data-testid="home-chart-skeleton" class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div
+                v-for="chart in chartSkeletonCards"
+                :key="`chart-skeleton:${chart.key}`"
+                class="home-panel home-chart-card"
+                :class="{ 'xl:col-span-2': chart.wide }"
+              >
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="home-skeleton-block h-5 w-56 max-w-full"></div>
+                    <div class="home-skeleton-block mt-3 h-4 w-80 max-w-full"></div>
+                  </div>
+                  <div class="home-skeleton-block h-7 w-28 rounded-full"></div>
                 </div>
-                <NgbBadge tone="neutral">{{ dashboard.receivables.mismatchRowCount }}</NgbBadge>
+                <div class="home-chart-frame" :class="{ 'home-chart-frame-wide': chart.wide }">
+                  <div class="home-skeleton-chart">
+                    <div class="home-skeleton-axis"></div>
+                    <div class="home-skeleton-bars">
+                      <span v-for="bar in 10" :key="`chart-skeleton:${chart.key}:bar:${bar}`" :style="{ height: `${28 + ((bar * 17) % 62)}%` }"></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="space-y-4" aria-hidden="true">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="home-skeleton-block home-skeleton-eyebrow"></div>
+                <div class="home-skeleton-block mt-2 h-8 w-72 max-w-full"></div>
+              </div>
+              <div class="home-skeleton-block h-5 w-72 max-w-full"></div>
+            </div>
+
+            <div data-testid="home-snapshot-skeleton" class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <div v-for="index in snapshotSkeletonCards" :key="`snapshot-skeleton:${index}`" class="home-panel home-snapshot-card">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="home-skeleton-block h-5 w-56 max-w-full"></div>
+                    <div class="home-skeleton-block mt-3 h-4 w-64 max-w-full"></div>
+                  </div>
+                  <div class="home-skeleton-block h-6 w-10 rounded-full"></div>
+                </div>
+
+                <div class="mt-5 space-y-3">
+                  <div v-for="row in 4" :key="`snapshot-skeleton:${index}:row:${row}`" class="home-list-item">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <div class="home-skeleton-block h-6 w-20 rounded-full"></div>
+                      <div class="home-skeleton-block h-4 flex-1"></div>
+                    </div>
+                    <div class="mt-3 flex items-center justify-between gap-3">
+                      <div class="home-skeleton-block h-4 w-44 max-w-full"></div>
+                      <div class="home-skeleton-block h-4 w-20"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </template>
+
+        <template v-else>
+          <section class="space-y-4">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="home-section-label">Requires Attention</div>
+                <h2 class="home-section-title">What needs action today</h2>
+              </div>
+              <div class="text-sm text-ngb-muted">
+                {{ loading ? 'Refreshing live portfolio signals…' : `Operational focus for ${monthLabel || 'the selected period'}` }}
+              </div>
+            </div>
+
+            <div data-testid="home-attention-grid" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <button
+                v-for="card in attentionCards"
+                :key="card.title"
+                type="button"
+                class="home-panel home-attention-card"
+                :class="actionCardClass(card.tone)"
+                @click="openRoute(card.route)"
+              >
+                <div class="flex items-start justify-between gap-4">
+                  <div class="min-w-0">
+                    <div class="home-tone-pill">{{ toneLabel(card.tone) }}</div>
+                    <div class="mt-3 text-sm font-semibold text-ngb-text">{{ card.title }}</div>
+                    <div class="mt-3 text-[1.9rem] font-semibold tracking-[-0.03em] text-ngb-text">{{ card.value }}</div>
+                  </div>
+
+                  <span class="home-action-arrow" aria-hidden="true">
+                    <NgbIcon name="arrow-right" :size="16" />
+                  </span>
+                </div>
+
+                <div class="mt-3 text-xs font-semibold uppercase tracking-[0.12em] text-ngb-muted">{{ card.meta }}</div>
+                <div class="mt-2 text-sm leading-6 text-ngb-muted">{{ card.description }}</div>
+              </button>
+            </div>
+          </section>
+
+          <section class="space-y-4">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="home-section-label">KPI Strip</div>
+                <h2 class="home-section-title">Portfolio health at a glance</h2>
+              </div>
+              <div class="text-sm text-ngb-muted">Compact, role-ready indicators instead of a BI wall.</div>
+            </div>
+
+            <div data-testid="home-kpi-grid" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+              <div v-for="kpi in kpis" :key="kpi.label" class="home-panel home-kpi-card">
+                <div class="text-[11px] font-semibold uppercase tracking-[0.12em] text-ngb-muted">{{ kpi.label }}</div>
+                <div class="mt-3 text-[1.65rem] font-semibold tracking-[-0.03em] text-ngb-text">{{ kpi.value }}</div>
+                <div class="mt-2 text-sm leading-6 text-ngb-muted">{{ kpi.context }}</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="space-y-4">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="home-section-label">Trends</div>
+                <h2 class="home-section-title">Signals that are worth watching</h2>
+              </div>
+              <div class="text-sm text-ngb-muted">Each chart should lead to a workflow, not just decorate the page.</div>
+            </div>
+
+            <div v-if="dashboard" class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <button type="button" class="home-panel home-chart-card" @click="openRoute(dashboard.charts.collections.route)">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-semibold text-ngb-text">{{ dashboard.charts.collections.title }}</h3>
+                    <p class="mt-1 text-sm text-ngb-muted">{{ dashboard.charts.collections.subtitle }}</p>
+                  </div>
+                  <span class="home-chart-tag">Receivables</span>
+                </div>
+
+                <div class="home-chart-frame">
+                  <NgbTrendChart
+                    :labels="dashboard.charts.collections.labels"
+                    :series="dashboard.charts.collections.series"
+                    mode="line"
+                  />
+                </div>
+              </button>
+
+              <button type="button" class="home-panel home-chart-card" @click="openRoute(dashboard.charts.occupancy.route)">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-semibold text-ngb-text">{{ dashboard.charts.occupancy.title }}</h3>
+                    <p class="mt-1 text-sm text-ngb-muted">{{ dashboard.charts.occupancy.subtitle }}</p>
+                  </div>
+                  <span class="home-chart-tag">Portfolio</span>
+                </div>
+
+                <div class="home-chart-frame">
+                  <NgbTrendChart
+                    :labels="dashboard.charts.occupancy.labels"
+                    :series="dashboard.charts.occupancy.series"
+                    mode="line"
+                  />
+                </div>
+              </button>
+
+              <button type="button" class="home-panel home-chart-card xl:col-span-2" @click="openRoute(dashboard.charts.maintenanceAging.route)">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-semibold text-ngb-text">{{ dashboard.charts.maintenanceAging.title }}</h3>
+                    <p class="mt-1 text-sm text-ngb-muted">{{ dashboard.charts.maintenanceAging.subtitle }}</p>
+                  </div>
+                  <span class="home-chart-tag">Maintenance</span>
+                </div>
+
+                <div class="home-chart-frame home-chart-frame-wide">
+                  <NgbTrendChart
+                    :labels="dashboard.charts.maintenanceAging.labels"
+                    :series="dashboard.charts.maintenanceAging.series"
+                    mode="bar"
+                  />
+                </div>
+              </button>
+            </div>
+          </section>
+
+          <section v-if="dashboard" class="space-y-4">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div class="home-section-label">Operational Snapshots</div>
+                <h2 class="home-section-title">Live queues, not just aggregates</h2>
+              </div>
+              <div class="text-sm text-ngb-muted">Short lists that help you jump straight into work.</div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <div class="home-panel home-snapshot-card">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-semibold text-ngb-text">Upcoming move-ins / move-outs</h3>
+                    <p class="mt-1 text-sm text-ngb-muted">Next 14 days of lease activity</p>
+                  </div>
+                  <NgbBadge tone="neutral">{{ dashboard.leases.events.length }}</NgbBadge>
+                </div>
+
+                <div v-if="dashboard.leases.events.length" class="mt-5 space-y-3">
+                  <button
+                    v-for="event in dashboard.leases.events"
+                    :key="`${event.kind}:${event.route}`"
+                    type="button"
+                    class="home-list-item"
+                    @click="openRoute(event.route)"
+                  >
+                    <div class="flex min-w-0 items-center gap-2">
+                      <NgbBadge :tone="snapshotBadgeTone(event.kind)">{{ event.kind }}</NgbBadge>
+                      <span class="truncate text-sm font-medium text-ngb-text">{{ event.leaseDisplay }}</span>
+                    </div>
+                    <div class="mt-2 flex items-center justify-between gap-3 text-sm text-ngb-muted">
+                      <span class="min-w-0 truncate">{{ event.propertyDisplay }}</span>
+                      <span class="shrink-0">{{ event.date }}</span>
+                    </div>
+                  </button>
+                </div>
+                <div v-else class="mt-5 text-sm text-ngb-muted">No move-ins or move-outs are scheduled in the next 14 days.</div>
               </div>
 
-              <div v-if="dashboard.receivables.mismatches.length" class="mt-5 space-y-3">
-                <button
-                  v-for="row in dashboard.receivables.mismatches"
-                  :key="`${row.leaseDisplay}:${row.route}`"
-                  type="button"
-                  class="home-list-item"
-                  @click="openRoute(row.route)"
-                >
-                  <div class="flex min-w-0 items-center gap-2">
-                    <NgbBadge :tone="snapshotBadgeTone(row.rowKind)">{{ row.rowKind }}</NgbBadge>
-                    <span class="truncate text-sm font-medium text-ngb-text">{{ row.leaseDisplay }}</span>
+              <div class="home-panel home-snapshot-card">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-semibold text-ngb-text">Maintenance queue snapshot</h3>
+                    <p class="mt-1 text-sm text-ngb-muted">Open items sorted by urgency and aging</p>
                   </div>
-                  <div class="mt-2 flex items-center justify-between gap-3 text-sm text-ngb-muted">
-                    <span class="min-w-0 truncate">{{ row.propertyDisplay }}</span>
-                    <span class="shrink-0">{{ formatDashboardMoneyCompact(Math.abs(row.diff)) }}</span>
-                  </div>
-                </button>
+                  <NgbBadge tone="neutral">{{ dashboard.maintenance.openItemCount }}</NgbBadge>
+                </div>
+
+                <div v-if="dashboard.maintenance.items.length" class="mt-5 space-y-3">
+                  <button
+                    v-for="item in dashboard.maintenance.items"
+                    :key="`${item.requestDisplay}:${item.subject}`"
+                    type="button"
+                    class="home-list-item"
+                    @click="openRoute(item.route)"
+                  >
+                    <div class="flex min-w-0 items-center gap-2">
+                      <NgbBadge :tone="snapshotBadgeTone(item.queueState)">{{ item.queueState }}</NgbBadge>
+                      <span class="truncate text-sm font-medium text-ngb-text">{{ item.subject }}</span>
+                    </div>
+                    <div class="mt-2 flex items-center justify-between gap-3 text-sm text-ngb-muted">
+                      <span class="min-w-0 truncate">{{ item.propertyDisplay }}</span>
+                      <span class="shrink-0">{{ item.dueBy || item.requestedAt || 'No date' }}</span>
+                    </div>
+                  </button>
+                </div>
+                <div v-else class="mt-5 text-sm text-ngb-muted">No open maintenance items right now.</div>
               </div>
-              <div v-else class="mt-5 text-sm text-ngb-muted">Receivables are currently aligned for the selected month.</div>
+
+              <div class="home-panel home-snapshot-card">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-semibold text-ngb-text">Receivables exceptions</h3>
+                    <p class="mt-1 text-sm text-ngb-muted">Largest open mismatches in the current month</p>
+                  </div>
+                  <NgbBadge tone="neutral">{{ dashboard.receivables.mismatchRowCount }}</NgbBadge>
+                </div>
+
+                <div v-if="dashboard.receivables.mismatches.length" class="mt-5 space-y-3">
+                  <button
+                    v-for="row in dashboard.receivables.mismatches"
+                    :key="`${row.leaseDisplay}:${row.route}`"
+                    type="button"
+                    class="home-list-item"
+                    @click="openRoute(row.route)"
+                  >
+                    <div class="flex min-w-0 items-center gap-2">
+                      <NgbBadge :tone="snapshotBadgeTone(row.rowKind)">{{ row.rowKind }}</NgbBadge>
+                      <span class="truncate text-sm font-medium text-ngb-text">{{ row.leaseDisplay }}</span>
+                    </div>
+                    <div class="mt-2 flex items-center justify-between gap-3 text-sm text-ngb-muted">
+                      <span class="min-w-0 truncate">{{ row.propertyDisplay }}</span>
+                      <span class="shrink-0">{{ formatDashboardMoneyCompact(Math.abs(row.diff)) }}</span>
+                    </div>
+                  </button>
+                </div>
+                <div v-else class="mt-5 text-sm text-ngb-muted">Receivables are currently aligned for the selected month.</div>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </template>
       </div>
     </div>
   </div>
@@ -586,14 +716,107 @@ function snapshotBadgeTone(kind: string): Tone {
   text-align: left;
 }
 
+.home-skeleton-card {
+  min-height: 178px;
+  pointer-events: none;
+}
+
+.home-skeleton-eyebrow {
+  height: 0.72rem;
+  width: 9rem;
+}
+
+.home-skeleton-block {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--ngb-border) 54%, var(--ngb-card));
+}
+
+.home-skeleton-block::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--ngb-card) 72%, transparent),
+    transparent
+  );
+  animation: home-skeleton-shimmer 1.25s ease-in-out infinite;
+}
+
+.home-skeleton-chart {
+  position: relative;
+  display: flex;
+  height: 100%;
+  align-items: flex-end;
+  padding: 1.25rem 0.8rem 0.9rem;
+}
+
+.home-skeleton-axis {
+  position: absolute;
+  inset: 1rem 0.75rem 0.75rem;
+  border-left: 1px solid color-mix(in srgb, var(--ngb-border) 78%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ngb-border) 78%, transparent);
+}
+
+.home-skeleton-bars {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.home-skeleton-bars span {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.45rem 0.45rem 0 0;
+  background: color-mix(in srgb, var(--ngb-accent-1) 18%, var(--ngb-border));
+}
+
+.home-skeleton-bars span::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--ngb-card) 64%, transparent),
+    transparent
+  );
+  animation: home-skeleton-shimmer 1.25s ease-in-out infinite;
+}
+
+@keyframes home-skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 :global(html.dark) .home-panel {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.3);
+}
+
+:global(html.dark) .home-skeleton-block {
+  background: color-mix(in srgb, var(--ngb-border) 42%, var(--ngb-card));
 }
 
 :global(html.dark) .home-attention-card:hover,
 :global(html.dark) .home-chart-card:hover,
 :global(html.dark) .home-list-item:hover {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.34);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-skeleton-block::after,
+  .home-skeleton-bars span::after {
+    animation: none;
+  }
 }
 
 @media (max-width: 768px) {

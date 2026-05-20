@@ -232,7 +232,7 @@ public sealed class CatalogService(
             // and the statement ends up in the DO UPDATE path.
             //
             // Therefore, for partial updates we must build a *full* head row value set (existing + updates),
-            // otherwise catalogs with strict invariants (like pm.property kind/address rules) would fail on update.
+            // otherwise catalogs with strict typed-head invariants would fail on update.
             var updates = ParseAndValidateFields(model, payload, requireAllRequired: false);
 
             // Enforce required columns: if a required column is present in the payload, it must not be null.

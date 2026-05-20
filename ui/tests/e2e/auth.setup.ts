@@ -4,16 +4,16 @@ import path from 'node:path'
 import { expect, test as setup } from '@playwright/test'
 
 import { mockCommonPmApis, rejectUnhandledApiRequests } from './support/mockApi'
-import { loadPmWebE2eEnv, requireE2eEnv, resolvePlaywrightAuthFile } from './support/e2eEnv'
+import { requireE2eEnv, resolvePlaywrightAuthFile } from './support/e2eEnv'
 
 setup.setTimeout(60_000)
 
-const env = loadPmWebE2eEnv(process.cwd())
-const authFile = resolvePlaywrightAuthFile(process.cwd())
-const username = requireE2eEnv(env, 'PLAYWRIGHT_AUTH_USERNAME')
-const password = requireE2eEnv(env, 'PLAYWRIGHT_AUTH_PASSWORD')
+const username = requireE2eEnv(process.env, 'PLAYWRIGHT_AUTH_USERNAME')
+const password = requireE2eEnv(process.env, 'PLAYWRIGHT_AUTH_PASSWORD')
 
-setup('authenticate ngb tester', async ({ page }) => {
+setup('authenticate e2e user', async ({ page, browserName }) => {
+  const authFile = resolvePlaywrightAuthFile(process.cwd(), browserName)
+
   await mockCommonPmApis(page)
   await rejectUnhandledApiRequests(page, ['/api/main-menu'])
 

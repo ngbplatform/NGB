@@ -49,7 +49,11 @@ internal static class PropertyManagementSeedDemoCli
 
             services
                 .AddNgbRuntime()
-                .AddNgbPostgres(options.ConnectionString)
+                .AddPostgres(postgres =>
+                {
+                    postgres.ConnectionString = options.ConnectionString;
+                    postgres.AdvisoryLockWaitTimeoutSeconds = options.AdvisoryLockWaitTimeoutSeconds;
+                })
                 .AddPropertyManagementModule()
                 .AddPropertyManagementRuntimeModule()
                 .AddPropertyManagementPostgresModule();
@@ -150,6 +154,8 @@ internal sealed record PropertyManagementDemoSeedOptions(
     int Tenants,
     int Vendors,
     double OccupancyRate,
+    int ProgressEvery,
+    int AdvisoryLockWaitTimeoutSeconds,
     bool SkipIfDatasetExists)
 {
     public static PropertyManagementDemoSeedOptions Parse(string[] args)
@@ -166,6 +172,8 @@ internal sealed record PropertyManagementDemoSeedOptions(
         var tenants = PropertyManagementSeedCliArgs.GetInt(args, "--tenants", 150);
         var vendors = PropertyManagementSeedCliArgs.GetInt(args, "--vendors", 28);
         var occupancyRate = PropertyManagementSeedCliArgs.GetDouble(args, "--occupancy-rate", 0.74d);
+        var progressEvery = PropertyManagementSeedCliArgs.GetInt(args, "--progress-every", 0);
+        var advisoryLockWaitTimeoutSeconds = PropertyManagementSeedCliArgs.GetInt(args, "--advisory-lock-timeout-seconds", 600);
         var skipIfDatasetExists = PropertyManagementSeedCliArgs.GetBool(args, "--skip-if-dataset-exists", false);
 
         if (string.IsNullOrWhiteSpace(datasetCode))
@@ -174,23 +182,29 @@ internal sealed record PropertyManagementDemoSeedOptions(
         if (fromDate > toDate)
             throw new NgbArgumentInvalidException("--from", "'--from' must be less than or equal to '--to'.");
 
-        if (buildings is <= 0 or > 10)
-            throw new NgbArgumentOutOfRangeException("--buildings", buildings, "'--buildings' must be between 1 and 10.");
+        if (buildings is <= 0 or > 100)
+            throw new NgbArgumentOutOfRangeException("--buildings", buildings, "'--buildings' must be between 1 and 100.");
 
-        if (unitsMin is <= 0 or > 500)
-            throw new NgbArgumentOutOfRangeException("--units-min", unitsMin, "'--units-min' must be between 1 and 500.");
+        if (unitsMin is <= 0 or > 1000)
+            throw new NgbArgumentOutOfRangeException("--units-min", unitsMin, "'--units-min' must be between 1 and 1000.");
 
-        if (unitsMax < unitsMin || unitsMax > 500)
-            throw new NgbArgumentOutOfRangeException("--units-max", unitsMax, "'--units-max' must be between '--units-min' and 500.");
+        if (unitsMax < unitsMin || unitsMax > 1000)
+            throw new NgbArgumentOutOfRangeException("--units-max", unitsMax, "'--units-max' must be between '--units-min' and 1000.");
 
-        if (tenants is <= 0 or > 1000)
-            throw new NgbArgumentOutOfRangeException("--tenants", tenants, "'--tenants' must be between 1 and 1000.");
+        if (tenants is <= 0 or > 50_000)
+            throw new NgbArgumentOutOfRangeException("--tenants", tenants, "'--tenants' must be between 1 and 50000.");
 
-        if (vendors is <= 0 or > 200)
-            throw new NgbArgumentOutOfRangeException("--vendors", vendors, "'--vendors' must be between 1 and 200.");
+        if (vendors is <= 0 or > 5_000)
+            throw new NgbArgumentOutOfRangeException("--vendors", vendors, "'--vendors' must be between 1 and 5000.");
 
         if (occupancyRate is <= 0d or > 1d)
             throw new NgbArgumentOutOfRangeException("--occupancy-rate", occupancyRate, "'--occupancy-rate' must be > 0 and <= 1.");
+
+        if (progressEvery < 0)
+            throw new NgbArgumentOutOfRangeException("--progress-every", progressEvery, "'--progress-every' must be greater than or equal to 0.");
+
+        if (advisoryLockWaitTimeoutSeconds is <= 0 or > 3600)
+            throw new NgbArgumentOutOfRangeException("--advisory-lock-timeout-seconds", advisoryLockWaitTimeoutSeconds, "'--advisory-lock-timeout-seconds' must be between 1 and 3600.");
 
         return new PropertyManagementDemoSeedOptions(
             connectionString,
@@ -204,6 +218,8 @@ internal sealed record PropertyManagementDemoSeedOptions(
             tenants,
             vendors,
             occupancyRate,
+            progressEvery,
+            advisoryLockWaitTimeoutSeconds,
             skipIfDatasetExists);
     }
 }
@@ -250,6 +266,7 @@ internal sealed class PropertyManagementDemoSeeder(
     private readonly Random _random = new(options.Seed);
     private readonly HashSet<string> _usedPartyDisplays = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedPartyEmails = new(StringComparer.OrdinalIgnoreCase);
+    private int _postedDocuments;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -1294,7 +1311,18 @@ internal sealed class PropertyManagementDemoSeeder(
     {
         var created = await documents.CreateDraftAsync(typeCode, payload, ct);
         await drafts.UpdateDraftAsync(created.Id, number: null, dateUtc: dateUtc, manageTransaction: true, ct: ct);
-        return await documents.PostAsync(typeCode, created.Id, ct);
+        var posted = await documents.PostAsync(typeCode, created.Id, ct);
+        TrackDocumentProgress(typeCode);
+        return posted;
+    }
+
+    private void TrackDocumentProgress(string typeCode)
+    {
+        _postedDocuments++;
+        if (options.ProgressEvery <= 0 || _postedDocuments % options.ProgressEvery != 0)
+            return;
+
+        Console.WriteLine($"- Progress: posted_documents={_postedDocuments}, last_type={typeCode}, dataset={options.DatasetCode}");
     }
 
     private async Task<PeriodClosingSummary> SeedPeriodClosingsAsync(Guid retainedEarningsAccountId, CancellationToken ct)
@@ -1368,34 +1396,56 @@ internal sealed class PropertyManagementDemoSeeder(
         int requiredCount,
         string label)
     {
+        var baseDisplayList = baseDisplays.ToList();
+        if (baseDisplayList.Count == 0)
+            throw new NgbConfigurationViolationException($"Unable to allocate {requiredCount} {label} identities. No base identities configured.");
+
         var selected = new List<PartyIdentity>(requiredCount);
         var usedDisplays = new HashSet<string>(_usedPartyDisplays, StringComparer.OrdinalIgnoreCase);
         var usedEmails = new HashSet<string>(_usedPartyEmails, StringComparer.OrdinalIgnoreCase);
+        var datasetToken = BuildEmailToken(options.DatasetCode);
+        var batch = 0;
 
-        foreach (var display in baseDisplays.OrderBy(_ => _random.Next()))
+        while (selected.Count < requiredCount)
         {
-            var identity = CreatePartyIdentity(display);
-            if (usedDisplays.Contains(identity.Display) || usedEmails.Contains(identity.Email))
-                continue;
+            var beforeBatch = selected.Count;
+            var candidates = baseDisplayList
+                .Select((display, index) => new { Display = display, Index = index })
+                .OrderBy(_ => _random.Next())
+                .ToList();
 
-            usedDisplays.Add(identity.Display);
-            usedEmails.Add(identity.Email);
-            selected.Add(identity);
+            foreach (var candidate in candidates)
+            {
+                var identity = batch == 0
+                    ? CreatePartyIdentity(candidate.Display)
+                    : CreatePartyIdentity(
+                        $"{candidate.Display} {options.DatasetCode.ToUpperInvariant()} {batch:0000}",
+                        $"{label}.{datasetToken}.{batch:0000}.{candidate.Index:0000}");
 
-            if (selected.Count == requiredCount)
-                break;
-        }
+                if (usedDisplays.Contains(identity.Display) || usedEmails.Contains(identity.Email))
+                    continue;
 
-        if (selected.Count < requiredCount)
-        {
-            throw new NgbConfigurationViolationException(
-                $"Unable to allocate {requiredCount} clean unique {label} identities. Available unique candidates: {selected.Count}.",
-                context: new Dictionary<string, object?>
-                {
-                    ["label"] = label,
-                    ["requested"] = requiredCount,
-                    ["allocated"] = selected.Count
-                });
+                usedDisplays.Add(identity.Display);
+                usedEmails.Add(identity.Email);
+                selected.Add(identity);
+
+                if (selected.Count == requiredCount)
+                    break;
+            }
+
+            if (selected.Count == beforeBatch && batch > requiredCount + 10)
+            {
+                throw new NgbConfigurationViolationException(
+                    $"Unable to allocate {requiredCount} clean unique {label} identities.",
+                    context: new Dictionary<string, object?>
+                    {
+                        ["label"] = label,
+                        ["requested"] = requiredCount,
+                        ["allocated"] = selected.Count
+                    });
+            }
+
+            batch++;
         }
 
         foreach (var identity in selected)
@@ -1429,11 +1479,23 @@ internal sealed class PropertyManagementDemoSeeder(
         }
     }
 
-    private static PartyIdentity CreatePartyIdentity(string display)
+    private static PartyIdentity CreatePartyIdentity(string display, string? emailLocalPart = null)
     {
         var normalizedDisplay = display.Trim();
-        var email = $"{BuildEmailLocalPart(normalizedDisplay)}@ngbplatform.com";
+        var email = $"{emailLocalPart ?? BuildEmailLocalPart(normalizedDisplay)}@ngbplatform.com";
         return new PartyIdentity(normalizedDisplay, email);
+    }
+
+    private static string BuildEmailToken(string value)
+    {
+        var token = new StringBuilder();
+        foreach (var ch in value)
+        {
+            if (char.IsLetterOrDigit(ch))
+                token.Append(char.ToLowerInvariant(ch));
+        }
+
+        return token.Length == 0 ? "dataset" : token.ToString();
     }
 
     private static string BuildEmailLocalPart(string display)

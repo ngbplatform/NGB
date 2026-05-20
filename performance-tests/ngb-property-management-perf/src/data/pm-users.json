@@ -1,0 +1,14 @@
+[
+  {
+    "username": "perf.manager@example.com",
+    "persona": "property-manager"
+  },
+  {
+    "username": "perf.accountant@example.com",
+    "persona": "accountant"
+  },
+  {
+    "username": "perf.reporting@example.com",
+    "persona": "reporting"
+  }
+]

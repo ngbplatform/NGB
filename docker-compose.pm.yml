@@ -10,6 +10,15 @@ services:
         POSTGRES_IMAGE_TAG: ${POSTGRES_IMAGE_TAG}
     image: ngb.pm.postgres:${POSTGRES_IMAGE_TAG}
     restart: unless-stopped
+    shm_size: ${POSTGRES_SHM_SIZE:-4gb}
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-300}
+      - -c
+      - superuser_reserved_connections=${POSTGRES_SUPERUSER_RESERVED_CONNECTIONS:-5}
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-1GB}
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: ${POSTGRES_ADMIN_USER}
@@ -144,6 +153,9 @@ services:
       KC_HTTP_MANAGEMENT_HEALTH_ENABLED: "true"
       KC_HTTP_MANAGEMENT_PORT: "9000"
       KC_LOG_LEVEL: ${KEYCLOAK_LOG_LEVEL}
+      KC_DB_POOL_INITIAL_SIZE: ${KEYCLOAK_DB_POOL_INITIAL_SIZE:-2}
+      KC_DB_POOL_MIN_SIZE: ${KEYCLOAK_DB_POOL_MIN_SIZE:-2}
+      KC_DB_POOL_MAX_SIZE: ${KEYCLOAK_DB_POOL_MAX_SIZE:-20}
     ports:
       - "127.0.0.1:${KEYCLOAK_HTTP_HOST_PORT}:8080"
     expose:
@@ -229,7 +241,7 @@ services:
       ASPNETCORE_HTTPS_PORTS: "443"
       ASPNETCORE_Kestrel__Certificates__Default__Password: ${ASPNET_CERT_PASS}
       ASPNETCORE_Kestrel__Certificates__Default__Path: ${ASPNET_CERT_PATH}
-      ConnectionStrings__DefaultConnection: Host=ngb.pm.postgres;Port=5432;Database=${PM_DB_NAME};Username=${PM_DB_USER};Password=${PM_DB_PASSWORD}
+      ConnectionStrings__DefaultConnection: Host=ngb.pm.postgres;Port=5432;Database=${PM_DB_NAME};Username=${PM_DB_USER};Password=${PM_DB_PASSWORD};Pooling=true;Minimum Pool Size=${PM_API_DB_POOL_MIN:-20};Maximum Pool Size=${PM_API_DB_POOL_MAX:-160};Timeout=${PM_API_DB_CONNECT_TIMEOUT_SECONDS:-15};Command Timeout=${PM_API_DB_COMMAND_TIMEOUT_SECONDS:-60};Application Name=ngb.pm.api
       Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
       KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
       KeycloakSettings__RequireHttpsMetadata: "false"
@@ -267,7 +279,7 @@ services:
       ASPNETCORE_HTTPS_PORTS: "443"
       ASPNETCORE_Kestrel__Certificates__Default__Password: ${ASPNET_CERT_PASS}
       ASPNETCORE_Kestrel__Certificates__Default__Path: ${ASPNET_CERT_PATH}
-      ConnectionStrings__DefaultConnection: Host=ngb.pm.postgres;Port=5432;Database=${PM_DB_NAME};Username=${PM_DB_USER};Password=${PM_DB_PASSWORD}
+      ConnectionStrings__DefaultConnection: Host=ngb.pm.postgres;Port=5432;Database=${PM_DB_NAME};Username=${PM_DB_USER};Password=${PM_DB_PASSWORD};Pooling=true;Minimum Pool Size=${PM_BACKGROUNDJOBS_DB_POOL_MIN:-2};Maximum Pool Size=${PM_BACKGROUNDJOBS_DB_POOL_MAX:-20};Timeout=${PM_BACKGROUNDJOBS_DB_CONNECT_TIMEOUT_SECONDS:-15};Command Timeout=${PM_BACKGROUNDJOBS_DB_COMMAND_TIMEOUT_SECONDS:-120};Application Name=ngb.pm.backgroundjobs
       Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
       KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
       KeycloakSettings__RequireHttpsMetadata: "false"

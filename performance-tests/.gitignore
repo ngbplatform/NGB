@@ -1,0 +1,10 @@
+node_modules/
+dist/
+artifacts/
+results/
+*.tsbuildinfo
+*.summary.json
+*.html
+.env
+.env.*
+!.env.example

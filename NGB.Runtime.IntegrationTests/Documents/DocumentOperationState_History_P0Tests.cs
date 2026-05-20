@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 using NGB.Accounting.PostingState;
 using NGB.Persistence.Documents;
@@ -13,6 +14,10 @@ namespace NGB.Runtime.IntegrationTests.Documents;
 public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
+    private const short StartedEvent = 1;
+    private const short CompletedEvent = 2;
+    private const short SupersededEvent = 3;
+
     [Fact]
     public async Task TryBeginAndMarkCompleted_WritesStartedAndCompletedHistory()
     {
@@ -45,7 +50,7 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
         }
 
         var events = await ReadHistoryEventsAsync(Fixture.ConnectionString, documentId, PostingOperation.Post);
-        events.Should().ContainInOrder((short)1, (short)2);
+        events.Should().ContainInOrder(StartedEvent, CompletedEvent);
     }
 
     [Fact]
@@ -86,8 +91,83 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
         }
 
         var events = await ReadHistoryEventsAsync(Fixture.ConnectionString, documentId, PostingOperation.Unpost);
-        events.Should().Contain((short)3);
-        events.Should().Contain((short)1);
+        events.Should().Contain(SupersededEvent);
+        events.Should().Contain(StartedEvent);
+    }
+
+    [Fact]
+    public async Task MarkCompleted_WhenCompletedTimePrecedesStarted_ClampsStateAndCompletedHistoryToStartedAt()
+    {
+        await Fixture.ResetDatabaseAsync();
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+
+        var documentId = Guid.CreateVersion7();
+        var operation = PostingOperation.Post;
+        var startedAtUtc = new DateTime(2026, 3, 7, 12, 0, 0, DateTimeKind.Utc);
+        var completedAtUtc = startedAtUtc.AddSeconds(-15);
+
+        await InsertDraftDocumentAsync(Fixture.ConnectionString, documentId, "test.doc.history.clock_skew");
+        await BeginAndCompleteAsync(host, documentId, operation, startedAtUtc, completedAtUtc);
+
+        var state = await ReadStateAsync(Fixture.ConnectionString, documentId, operation);
+        state.Should().NotBeNull();
+        state!.StartedAtUtc.Should().Be(startedAtUtc);
+        state.CompletedAtUtc.Should().Be(startedAtUtc);
+
+        var events = await ReadHistoryEventRowsAsync(Fixture.ConnectionString, documentId, operation);
+        events.Select(x => x.EventKind).Should().ContainInOrder(StartedEvent, CompletedEvent);
+        events.Single(x => x.EventKind == StartedEvent).OccurredAtUtc.Should().Be(startedAtUtc);
+        events.Single(x => x.EventKind == CompletedEvent).OccurredAtUtc.Should().Be(startedAtUtc);
+    }
+
+    [Fact]
+    public async Task MarkCompleted_WhenCompletedTimeIsAfterStarted_UsesProvidedCompletedTimeForStateAndHistory()
+    {
+        await Fixture.ResetDatabaseAsync();
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+
+        var documentId = Guid.CreateVersion7();
+        var operation = PostingOperation.Repost;
+        var startedAtUtc = new DateTime(2026, 3, 7, 12, 0, 0, DateTimeKind.Utc);
+        var completedAtUtc = startedAtUtc.AddSeconds(42);
+
+        await InsertDraftDocumentAsync(Fixture.ConnectionString, documentId, "test.doc.history.normal_completion");
+        await BeginAndCompleteAsync(host, documentId, operation, startedAtUtc, completedAtUtc);
+
+        var state = await ReadStateAsync(Fixture.ConnectionString, documentId, operation);
+        state.Should().NotBeNull();
+        state!.StartedAtUtc.Should().Be(startedAtUtc);
+        state.CompletedAtUtc.Should().Be(completedAtUtc);
+
+        var events = await ReadHistoryEventRowsAsync(Fixture.ConnectionString, documentId, operation);
+        events.Select(x => x.EventKind).Should().ContainInOrder(StartedEvent, CompletedEvent);
+        events.Single(x => x.EventKind == CompletedEvent).OccurredAtUtc.Should().Be(completedAtUtc);
+    }
+
+    [Fact]
+    public async Task MarkCompleted_WhenAlreadyCompleted_DoesNotAppendDuplicateCompletedHistory()
+    {
+        await Fixture.ResetDatabaseAsync();
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+
+        var documentId = Guid.CreateVersion7();
+        var operation = PostingOperation.Unpost;
+        var startedAtUtc = new DateTime(2026, 3, 7, 12, 0, 0, DateTimeKind.Utc);
+        var completedAtUtc = startedAtUtc.AddSeconds(10);
+        var secondCompletedAtUtc = startedAtUtc.AddMinutes(5);
+
+        await InsertDraftDocumentAsync(Fixture.ConnectionString, documentId, "test.doc.history.duplicate_completion");
+        await BeginAndCompleteAsync(host, documentId, operation, startedAtUtc, completedAtUtc);
+        await MarkCompletedAsync(host, documentId, operation, secondCompletedAtUtc);
+
+        var state = await ReadStateAsync(Fixture.ConnectionString, documentId, operation);
+        state.Should().NotBeNull();
+        state!.CompletedAtUtc.Should().Be(completedAtUtc);
+
+        var events = await ReadHistoryEventRowsAsync(Fixture.ConnectionString, documentId, operation);
+        events.Count(x => x.EventKind == StartedEvent).Should().Be(1);
+        events.Count(x => x.EventKind == CompletedEvent).Should().Be(1);
+        events.Single(x => x.EventKind == CompletedEvent).OccurredAtUtc.Should().Be(completedAtUtc);
     }
 
     private static async Task InsertDraftDocumentAsync(string connectionString, Guid documentId, string typeCode)
@@ -138,6 +218,122 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
         await cmd.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
+    private static async Task BeginAndCompleteAsync(
+        IHost host,
+        Guid documentId,
+        PostingOperation operation,
+        DateTime startedAtUtc,
+        DateTime completedAtUtc)
+    {
+        await using var scope = host.Services.CreateAsyncScope();
+
+        var sp = scope.ServiceProvider;
+        var uow = sp.GetRequiredService<IUnitOfWork>();
+        var repo = sp.GetRequiredService<IDocumentOperationStateRepository>();
+
+        await uow.BeginTransactionAsync(CancellationToken.None);
+        try
+        {
+            var begin = await repo.TryBeginAsync(documentId, operation, startedAtUtc, CancellationToken.None);
+            begin.Should().Be(PostingStateBeginResult.Begun);
+
+            await repo.MarkCompletedAsync(documentId, operation, completedAtUtc, CancellationToken.None);
+            await uow.CommitAsync(CancellationToken.None);
+        }
+        catch
+        {
+            await uow.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private static async Task MarkCompletedAsync(
+        IHost host,
+        Guid documentId,
+        PostingOperation operation,
+        DateTime completedAtUtc)
+    {
+        await using var scope = host.Services.CreateAsyncScope();
+
+        var sp = scope.ServiceProvider;
+        var uow = sp.GetRequiredService<IUnitOfWork>();
+        var repo = sp.GetRequiredService<IDocumentOperationStateRepository>();
+
+        await uow.BeginTransactionAsync(CancellationToken.None);
+        try
+        {
+            await repo.MarkCompletedAsync(documentId, operation, completedAtUtc, CancellationToken.None);
+            await uow.CommitAsync(CancellationToken.None);
+        }
+        catch
+        {
+            await uow.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private static async Task<OperationStateRow?> ReadStateAsync(
+        string connectionString,
+        Guid documentId,
+        PostingOperation operation)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(CancellationToken.None);
+
+        const string sql = """
+                           SELECT started_at_utc,
+                                  completed_at_utc
+                           FROM platform_document_operation_state
+                           WHERE document_id = @document_id
+                             AND operation = @operation;
+                           """;
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("document_id", documentId);
+        cmd.Parameters.AddWithValue("operation", (short)operation);
+
+        await using var reader = await cmd.ExecuteReaderAsync(CancellationToken.None);
+        if (!await reader.ReadAsync(CancellationToken.None))
+            return null;
+
+        return new OperationStateRow(
+            reader.GetDateTime(0),
+            reader.IsDBNull(1) ? null : reader.GetDateTime(1));
+    }
+
+    private static async Task<IReadOnlyList<HistoryEventRow>> ReadHistoryEventRowsAsync(
+        string connectionString,
+        Guid documentId,
+        PostingOperation operation)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(CancellationToken.None);
+
+        const string sql = """
+                           SELECT event_kind,
+                                  occurred_at_utc
+                           FROM platform_document_operation_history
+                           WHERE document_id = @document_id
+                             AND operation = @operation
+                           ORDER BY occurred_at_utc, history_id;
+                           """;
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("document_id", documentId);
+        cmd.Parameters.AddWithValue("operation", (short)operation);
+
+        var list = new List<HistoryEventRow>();
+        await using var reader = await cmd.ExecuteReaderAsync(CancellationToken.None);
+        while (await reader.ReadAsync(CancellationToken.None))
+        {
+            list.Add(new HistoryEventRow(
+                reader.GetInt16(0),
+                reader.GetDateTime(1)));
+        }
+
+        return list;
+    }
+
     private static async Task<IReadOnlyList<short>> ReadHistoryEventsAsync(
         string connectionString,
         Guid documentId,
@@ -165,4 +361,8 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
 
         return list;
     }
+
+    private sealed record OperationStateRow(DateTime StartedAtUtc, DateTime? CompletedAtUtc);
+
+    private sealed record HistoryEventRow(short EventKind, DateTime OccurredAtUtc);
 }
