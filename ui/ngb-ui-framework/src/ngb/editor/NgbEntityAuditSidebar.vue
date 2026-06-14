@@ -35,6 +35,11 @@ const explicitFieldLabels = computed(() => {
   const entries = Object.entries(behavior.value.explicitFieldLabels ?? {});
   return Object.fromEntries(entries.map(([key, value]) => [key.toLowerCase(), value]));
 });
+const explicitActionTitles = computed(() => {
+  const entries = Object.entries(behavior.value.actionTitles ?? {});
+  return Object.fromEntries(entries.map(([key, value]) => [key.toLowerCase(), value]));
+});
+type AuditRow = { field: string; before: string; after: string };
 
 function formatDateTime(v: string): string {
   const d = new Date(v);
@@ -132,6 +137,8 @@ function formatAuditValue(parsed: unknown): string {
       const value = parsed[key];
       if (typeof value === 'string' && value.trim()) return value;
     }
+    const permissionDisplay = formatPermissionLikeRecord(parsed);
+    if (permissionDisplay) return permissionDisplay;
     return stableStringify(parsed);
   }
   return String(parsed);
@@ -143,6 +150,8 @@ function valueText(v?: string | null): string {
 
 function actionTitle(actionCode: string): string {
   const code = String(actionCode ?? '').toLowerCase();
+  const explicitTitle = explicitActionTitles.value[code];
+  if (explicitTitle) return explicitTitle;
   if (code.endsWith('.create') || code.includes('.create_')) return 'Created';
   if (code.endsWith('.update') || code.includes('.update_') || code.includes('.replace_')) return 'Updated';
   if (code.endsWith('.submit')) return 'Submitted';
@@ -167,7 +176,7 @@ function sameText(a: string, b: string): boolean {
   return a.trim() === b.trim();
 }
 
-function eventRows(item: AuditEvent): Array<{ field: string; before: string; after: string }> {
+function eventRows(item: AuditEvent): AuditRow[] {
   const changes = Array.isArray(item.changes) ? item.changes : [];
 
   const rows = changes
@@ -180,10 +189,22 @@ function eventRows(item: AuditEvent): Array<{ field: string; before: string; aft
       before: valueText(change.oldValueJson),
       after: valueText(change.newValueJson),
     }))
-    .filter((row) => !(sameText(row.before, row.after) && row.before !== '—'));
+    .filter((row) => !sameText(row.before, row.after));
 
   if (rows.length > 0) return rows;
   return [{ field: 'Details', before: '—', after: 'No business-field changes recorded.' }];
+}
+
+function formatPermissionLikeRecord(value: Record<string, unknown>): string | null {
+  const resourceCode = getString(value.resourceCode ?? value.resource);
+  const actionCode = getString(value.actionCode ?? value.action);
+  if (!resourceCode || !actionCode) return null;
+
+  return `${humanizeLooseText(resourceCode)}: ${humanizeLooseText(actionCode)}`;
+}
+
+function getString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 async function load() {

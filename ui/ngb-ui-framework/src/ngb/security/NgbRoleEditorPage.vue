@@ -15,6 +15,7 @@ import NgbPageHeader from '../site/NgbPageHeader.vue'
 import { toErrorMessage } from '../utils/errorMessage'
 import NgbAccessDeniedState from './NgbAccessDeniedState.vue'
 import NgbPermissionMatrix from './NgbPermissionMatrix.vue'
+import { ROLE_AUDIT_BEHAVIOR } from './audit'
 import {
   createRole,
   deactivateRole,
@@ -309,6 +310,7 @@ watch(
         :entity-kind="AUDIT_ENTITY_KIND_SECURITY_ROLE"
         :entity-id="role?.roleId ?? null"
         :entity-title="auditEntityTitle"
+        :behavior="ROLE_AUDIT_BEHAVIOR"
         @back="closeAuditLog"
         @close="closeAuditLog"
       />

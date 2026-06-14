@@ -254,6 +254,7 @@ export type EditorAuditLoadOptions = {
 export type EditorAuditBehavior = {
   hiddenFieldNames?: string[];
   explicitFieldLabels?: Record<string, string>;
+  actionTitles?: Record<string, string>;
 };
 
 export type EditorDocumentEffectsBehavior = {

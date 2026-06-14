@@ -137,7 +137,7 @@ export { default as NgbEffectiveAccessPanel } from './ngb/security/NgbEffectiveA
 export { default as NgbAccessAuditPanel } from './ngb/security/NgbAccessAuditPanel.vue';
 export { useAccessStore } from './ngb/security/useAccessStore';
 export {
-  SYSTEM_PERMISSION_KEYS,
+  SYSTEM_PERMISSIONS,
   buildPermissionAssignment,
   buildPermissionKey,
   groupPermissionDefinitions,

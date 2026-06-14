@@ -17,6 +17,7 @@ import NgbPageHeader from '../site/NgbPageHeader.vue'
 import { toErrorMessage } from '../utils/errorMessage'
 import NgbAccessDeniedState from './NgbAccessDeniedState.vue'
 import NgbEffectiveAccessPanel from './NgbEffectiveAccessPanel.vue'
+import { USER_AUDIT_BEHAVIOR } from './audit'
 import {
   createUser,
   deactivateUser,
@@ -605,6 +606,7 @@ watch(
         :entity-kind="AUDIT_ENTITY_KIND_SECURITY_USER"
         :entity-id="user?.userId ?? null"
         :entity-title="auditEntityTitle"
+        :behavior="USER_AUDIT_BEHAVIOR"
         @back="closeAuditLog"
         @close="closeAuditLog"
       />

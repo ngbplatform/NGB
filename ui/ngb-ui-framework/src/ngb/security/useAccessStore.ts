@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { toErrorMessage } from '../utils/errorMessage'
 import { getCurrentAccess } from './api'
-import { buildPermissionKey, hasPermission, SYSTEM_PERMISSION_KEYS, toPermissionKeySet, type PermissionKeyLike } from './permissions'
+import { buildPermissionKey, hasPermission, SYSTEM_PERMISSIONS, toPermissionKeySet, type PermissionKeyLike } from './permissions'
 import type { CurrentAccessDto } from './types'
 
 export const useAccessStore = defineStore('access', {
@@ -14,11 +14,11 @@ export const useAccessStore = defineStore('access', {
   }),
   getters: {
     isActive: (state) => state.current?.isActive === true,
-    canViewUsers: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSION_KEYS.usersView),
-    canManageUsers: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSION_KEYS.usersManage),
-    canViewRoles: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSION_KEYS.rolesView),
-    canManageRoles: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSION_KEYS.rolesManage),
-    canViewPermissions: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSION_KEYS.permissionsView),
+    canViewUsers: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSIONS.usersView),
+    canManageUsers: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSIONS.usersManage),
+    canViewRoles: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSIONS.rolesView),
+    canManageRoles: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSIONS.rolesManage),
+    canViewPermissions: (state) => state.current?.isBootstrapAdmin === true || hasPermission(state.current?.permissions, SYSTEM_PERMISSIONS.permissionsView),
     applicationRoleNames: (state) => {
       const seen = new Set<string>()
       return (state.current?.roles ?? [])
