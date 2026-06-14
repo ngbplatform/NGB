@@ -3,6 +3,7 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
+using NGB.Core.Reporting;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.Readers.Reports;
@@ -16,7 +17,7 @@ public sealed class AccountingConsistencyCanonicalReportExecutor(
     IDimensionValueEnrichmentReader dimensionValueEnrichmentReader)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "accounting.consistency";
+    public string ReportCode => AccountingReportCodes.Consistency;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

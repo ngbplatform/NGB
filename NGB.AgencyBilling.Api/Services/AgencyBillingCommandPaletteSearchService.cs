@@ -4,6 +4,7 @@ using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Search;
 using NGB.Contracts.Services;
+using NGB.Core.Reporting;
 
 namespace NGB.AgencyBilling.Api.Services;
 
@@ -328,8 +329,8 @@ public sealed class AgencyBillingCommandPaletteSearchService(
                            definition.ReportCode.StartsWith("ab.", StringComparison.OrdinalIgnoreCase)
                            || definition.ReportCode.StartsWith("accounting.", StringComparison.OrdinalIgnoreCase))
                        .Where(static definition =>
-                           !string.Equals(definition.ReportCode, "accounting.posting_log", StringComparison.OrdinalIgnoreCase)
-                           && !string.Equals(definition.ReportCode, "accounting.consistency", StringComparison.OrdinalIgnoreCase))
+                           !string.Equals(definition.ReportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase)
+                           && !string.Equals(definition.ReportCode, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase))
                        .ToArray();
                })
            ?? [];

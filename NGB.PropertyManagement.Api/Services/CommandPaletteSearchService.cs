@@ -4,7 +4,9 @@ using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Search;
 using NGB.Contracts.Services;
+using NGB.Core.Reporting;
 using NGB.Core.Security;
+using NGB.PropertyManagement.Definitions;
 using NGB.Runtime.Catalogs;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Security;
@@ -207,7 +209,7 @@ internal sealed class CommandPaletteSearchService(
 
         return new CommandPaletteResultItemDto(
             Key: $"document:{descriptor.Code}:{document.Id}",
-            Kind: "document",
+            Kind: NgbResourceKinds.Document,
             Title: title,
             Subtitle: string.Join(" · ", subtitleParts),
             Icon: descriptor.Icon,
@@ -253,7 +255,7 @@ internal sealed class CommandPaletteSearchService(
 
         return new CommandPaletteResultItemDto(
             Key: $"catalog:{descriptor.Code}:{catalogItem.Id}",
-            Kind: "catalog",
+            Kind: NgbResourceKinds.Catalog,
             Title: title,
             Subtitle: string.Join(" · ", subtitleParts),
             Icon: descriptor.Icon,
@@ -297,7 +299,7 @@ internal sealed class CommandPaletteSearchService(
 
         return new CommandPaletteResultItemDto(
             Key: $"report:{definition.ReportCode}",
-            Kind: "report",
+            Kind: NgbResourceKinds.Report,
             Title: definition.Name,
             Subtitle: subtitleParts.Count > 0 ? string.Join(" · ", subtitleParts) : "Report",
             Icon: ResolveReportIcon(definition),
@@ -348,8 +350,8 @@ internal sealed class CommandPaletteSearchService(
                          definition.ReportCode.StartsWith("pm.", StringComparison.OrdinalIgnoreCase)
                          || definition.ReportCode.StartsWith("accounting.", StringComparison.OrdinalIgnoreCase))
                      .Where(static definition =>
-                         !string.Equals(definition.ReportCode, "accounting.posting_log", StringComparison.OrdinalIgnoreCase)
-                         && !string.Equals(definition.ReportCode, "accounting.consistency", StringComparison.OrdinalIgnoreCase)))
+                         !string.Equals(definition.ReportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase)
+                         && !string.Equals(definition.ReportCode, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase)))
         {
             if (await access.HasAsync(NgbResourceKinds.Report, definition.ReportCode, NgbPermissionActions.View, ct)
                 || await access.HasAsync(NgbResourceKinds.Report, definition.ReportCode, NgbPermissionActions.Execute, ct))
@@ -435,12 +437,12 @@ internal sealed class CommandPaletteSearchService(
         return reportCode switch
         {
             "pm.tenant.statement" => "file-text",
-            "pm.maintenance.queue" => "list",
-            "pm.receivables.open_items" => "list",
-            "pm.receivables.open_items.details" => "file-text",
-            "accounting.general_journal" => "receipt",
-            "accounting.account_card" => "book-open",
-            "accounting.general_ledger_aggregated" => "book-open",
+            PropertyManagementSecurityDefaults.MaintenanceQueueReport => "list",
+            PropertyManagementSecurityDefaults.ReceivablesOpenItemsReport => "list",
+            PropertyManagementSecurityDefaults.ReceivablesOpenItemsDetailsReport => "file-text",
+            AccountingReportCodes.GeneralJournal => "receipt",
+            AccountingReportCodes.AccountCard => "book-open",
+            AccountingReportCodes.GeneralLedgerAggregated => "book-open",
             _ => "bar-chart",
         };
     }

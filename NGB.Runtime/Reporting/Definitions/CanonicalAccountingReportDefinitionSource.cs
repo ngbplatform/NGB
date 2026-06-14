@@ -3,6 +3,7 @@ using NGB.Accounting.PostingState.Readers;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Runtime.Ui;
 
 namespace NGB.Runtime.Reporting.Definitions;
@@ -13,9 +14,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
         =>
         [
             new(
-                ReportCode: "accounting.trial_balance",
+                ReportCode: AccountingReportCodes.TrialBalance,
                 Name: "Trial Balance",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Complete summary of ledger accounts",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -41,9 +42,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                 Parameters: CreateCanonicalDateRangeParameters(),
                 Filters: []),
             new(
-                ReportCode: "accounting.balance_sheet",
+                ReportCode: AccountingReportCodes.BalanceSheet,
                 Name: "Balance Sheet",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Statement of assets, liabilities, and equity as of month end",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -69,9 +70,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                 Parameters: CreateBalanceSheetParameters(),
                 Filters: []),
             new(
-                ReportCode: "accounting.income_statement",
+                ReportCode: AccountingReportCodes.IncomeStatement,
                 Name: "Income Statement",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Profit & loss",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -97,9 +98,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                 Parameters: CreateCanonicalDateRangeParameters(),
                 Filters: []),
             new(
-                ReportCode: "accounting.cash_flow_statement_indirect",
+                ReportCode: AccountingReportCodes.CashFlowStatementIndirect,
                 Name: "Cash Flow Statement",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Indirect cash flow from operating, investing, and financing",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -125,9 +126,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                 Parameters: CreateCanonicalDateRangeParameters(),
                 Filters: []),
             new(
-                ReportCode: "accounting.statement_of_changes_in_equity",
+                ReportCode: AccountingReportCodes.StatementOfChangesInEquity,
                 Name: "Statement of Changes in Equity",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Rollforward of equity from opening to closing period",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -153,9 +154,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                 Parameters: CreateCanonicalDateRangeParameters(),
                 Filters: []),
             new(
-                ReportCode: "accounting.general_journal",
+                ReportCode: AccountingReportCodes.GeneralJournal,
                 Name: "General Journal",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Transaction Log",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -201,9 +202,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                         Options: ReportFilterOptionTools.ToReportFilterOptions<YesNo>())
                 ]),
             new(
-                ReportCode: "accounting.account_card",
+                ReportCode: AccountingReportCodes.AccountCard,
                 Name: "Account Card",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Detailed register lines with running balance",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -241,9 +242,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                         Lookup: new ChartOfAccountsLookupSourceDto())
                 ]),
             new(
-                ReportCode: "accounting.general_ledger_aggregated",
+                ReportCode: AccountingReportCodes.GeneralLedgerAggregated,
                 Name: "General Ledger",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Summary of all account balances and totals",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -281,9 +282,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                         Lookup: new ChartOfAccountsLookupSourceDto())
                 ]),
             new(
-                ReportCode: "accounting.posting_log",
+                ReportCode: AccountingReportCodes.PostingLog,
                 Name: "Posting Log",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Posting engine activity log for diagnostics and support",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(
@@ -325,9 +326,9 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                         Options: ReportFilterOptionTools.ToReportFilterOptions<PostingStateStatus>())
                 ]),
             new(
-                ReportCode: "accounting.consistency",
+                ReportCode: AccountingReportCodes.Consistency,
                 Name: "Integrity Checks",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Turnover & balance diagnostics",
                 Mode: ReportExecutionMode.Canonical,
                 Capabilities: new ReportCapabilitiesDto(

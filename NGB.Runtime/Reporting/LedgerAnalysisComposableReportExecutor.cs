@@ -1,6 +1,7 @@
 using NGB.Accounting.Reports.LedgerAnalysis;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Tools.Exceptions;
@@ -19,7 +20,7 @@ public sealed class LedgerAnalysisComposableReportExecutor(
     ILedgerAnalysisFlatDetailReader flatDetailReader)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "accounting.ledger.analysis";
+    public string ReportCode => AccountingReportCodes.LedgerAnalysis;
 
     private readonly ReportExecutionPlanner _planner = planner ?? throw new NgbConfigurationViolationException("Ledger analysis cursor executor requires a planner registration.");
     private readonly ITabularReportPlanExecutor _tabularExecutor = tabularExecutor ?? throw new NgbConfigurationViolationException("Ledger analysis cursor executor requires a tabular executor registration.");

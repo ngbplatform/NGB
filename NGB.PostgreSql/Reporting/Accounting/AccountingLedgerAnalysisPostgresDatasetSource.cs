@@ -1,3 +1,5 @@
+using NGB.Core.Reporting;
+
 namespace NGB.PostgreSql.Reporting.Accounting;
 
 public sealed class AccountingLedgerAnalysisPostgresDatasetSource : IPostgresReportDatasetSource
@@ -6,7 +8,7 @@ public sealed class AccountingLedgerAnalysisPostgresDatasetSource : IPostgresRep
         =>
         [
             new PostgresReportDatasetBinding(
-                datasetCode: "accounting.ledger.analysis",
+                datasetCode: AccountingReportCodes.LedgerAnalysis,
                 fromSql: """
                          (
                              SELECT

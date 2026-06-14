@@ -1,6 +1,7 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.Core.Dimensions;
+using NGB.Core.Reporting;
 using NGB.Metadata.Base;
 using NGB.Metadata.Catalogs.Storage;
 using NGB.Persistence.Catalogs;
@@ -28,12 +29,12 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
 
     private static readonly HashSet<string> SupportedReportCodes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "accounting.trial_balance",
-        "accounting.balance_sheet",
-        "accounting.income_statement",
-        "accounting.general_journal",
-        "accounting.account_card",
-        "accounting.general_ledger_aggregated"
+        AccountingReportCodes.TrialBalance,
+        AccountingReportCodes.BalanceSheet,
+        AccountingReportCodes.IncomeStatement,
+        AccountingReportCodes.GeneralJournal,
+        AccountingReportCodes.AccountCard,
+        AccountingReportCodes.GeneralLedgerAggregated
     };
 
     private static readonly Guid PropertyDimensionId = DeterministicGuid.Create(

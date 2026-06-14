@@ -1,6 +1,7 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Runtime.Reporting.Datasets;
 
 namespace NGB.Runtime.Reporting.Definitions;
@@ -13,7 +14,7 @@ public sealed class AccountingLedgerAnalysisDefinitionSource : IReportDefinition
             new ReportDefinitionDto(
                 ReportCode: AccountingLedgerAnalysisDatasetModel.DatasetCode,
                 Name: "Ledger Analysis",
-                Group: "Accounting",
+                Group: AccountingReportGroupCodes.Accounting,
                 Description: "Composable accounting ledger analysis",
                 Mode: ReportExecutionMode.Composable,
                 Dataset: AccountingLedgerAnalysisDatasetModel.Create(),

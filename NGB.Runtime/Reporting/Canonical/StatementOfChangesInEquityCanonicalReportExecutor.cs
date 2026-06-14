@@ -1,6 +1,7 @@
 using NGB.Accounting.Reports.StatementOfChangesInEquity;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Internal;
 
@@ -9,7 +10,7 @@ namespace NGB.Runtime.Reporting.Canonical;
 public sealed class StatementOfChangesInEquityCanonicalReportExecutor(IStatementOfChangesInEquityReportReader reader)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "accounting.statement_of_changes_in_equity";
+    public string ReportCode => AccountingReportCodes.StatementOfChangesInEquity;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

@@ -3,6 +3,7 @@ using NGB.Accounting.Reports.GeneralJournal;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.Core.Dimensions;
+using NGB.Core.Reporting;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Internal;
@@ -15,7 +16,7 @@ public sealed class GeneralJournalCanonicalReportExecutor(
     IAccountByIdResolver accountByIdResolver)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "accounting.general_journal";
+    public string ReportCode => AccountingReportCodes.GeneralJournal;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

@@ -1,22 +1,22 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Tools.Exceptions;
 
 namespace NGB.PropertyManagement.Runtime.Reporting;
 
 public sealed class PropertyManagementAccountingReportDefinitionEnricher : IReportDefinitionEnricher
 {
-    private const string LedgerAnalysisReportCode = "accounting.ledger.analysis";
     private const string PmLedgerAnalysisDatasetCode = "pm.accounting.ledger.analysis";
 
     private static readonly HashSet<string> SupportedReportCodes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "accounting.trial_balance",
-        "accounting.general_journal",
-        "accounting.account_card",
-        "accounting.general_ledger_aggregated",
-        LedgerAnalysisReportCode
+        AccountingReportCodes.TrialBalance,
+        AccountingReportCodes.GeneralJournal,
+        AccountingReportCodes.AccountCard,
+        AccountingReportCodes.GeneralLedgerAggregated,
+        AccountingReportCodes.LedgerAnalysis
     };
 
     public ReportDefinitionDto Enrich(ReportDefinitionDto definition)
@@ -34,7 +34,7 @@ public sealed class PropertyManagementAccountingReportDefinitionEnricher : IRepo
         Upsert(filters, CreateLeaseFilter());
         Upsert(filters, CreatePartyFilter());
 
-        if (string.Equals(definition.ReportCode, LedgerAnalysisReportCode, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(definition.ReportCode, AccountingReportCodes.LedgerAnalysis, StringComparison.OrdinalIgnoreCase))
             dataset = BuildPmLedgerAnalysisDataset(definition.Dataset);
 
         return definition with

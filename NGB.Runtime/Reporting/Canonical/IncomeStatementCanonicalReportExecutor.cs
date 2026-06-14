@@ -2,6 +2,7 @@ using NGB.Accounting.Reports.IncomeStatement;
 using NGB.Accounting.Accounts;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Internal;
 
@@ -10,7 +11,7 @@ namespace NGB.Runtime.Reporting.Canonical;
 public sealed class IncomeStatementCanonicalReportExecutor(IIncomeStatementReportReader reader)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "accounting.income_statement";
+    public string ReportCode => AccountingReportCodes.IncomeStatement;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

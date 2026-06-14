@@ -1,3 +1,4 @@
+using NGB.Core.Reporting;
 using NGB.Tools.Exceptions;
 
 namespace NGB.Runtime.Reporting.Exceptions;
@@ -8,8 +9,6 @@ public sealed class AccountingReportValidationException(
     IReadOnlyDictionary<string, object?>? context = null)
     : NgbValidationException(message, errorCode, context)
 {
-    private const string CashFlowIndirectReportCode = "accounting.cash_flow_statement_indirect";
-
     public static AccountingReportValidationException CashFlowIndirectReconciliationFailed(
         decimal beginningCash,
         decimal endingCash,
@@ -26,7 +25,7 @@ public sealed class AccountingReportValidationException(
             "accounting.validation.cash_flow_indirect.reconciliation_failed",
             BuildContext("report", message, new Dictionary<string, object?>
             {
-                ["reportCode"] = CashFlowIndirectReportCode,
+                ["reportCode"] = AccountingReportCodes.CashFlowStatementIndirect,
                 ["beginningCash"] = beginningCash,
                 ["endingCash"] = endingCash,
                 ["operating"] = operating,
@@ -47,7 +46,7 @@ public sealed class AccountingReportValidationException(
             "accounting.validation.cash_flow_indirect.unclassified_cash",
             BuildContext("report", message, new Dictionary<string, object?>
             {
-                ["reportCode"] = CashFlowIndirectReportCode,
+                ["reportCode"] = AccountingReportCodes.CashFlowStatementIndirect,
                 ["rowCount"] = rowCount,
                 ["rows"] = details
             }));
