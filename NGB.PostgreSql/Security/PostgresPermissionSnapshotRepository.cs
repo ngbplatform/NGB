@@ -93,23 +93,24 @@ public sealed class PostgresPermissionSnapshotRepository(IUnitOfWork uow, TimePr
         const string insertSql = """
                                  INSERT INTO platform_role_permissions
                                  (role_id, resource_kind, resource_code, action_code, created_at_utc)
-                                 VALUES
-                                 (@RoleId, @ResourceKind, @ResourceCode, @ActionCode, @NowUtc)
+                                 SELECT @RoleId, p.resource_kind, p.resource_code, p.action_code, @NowUtc
+                                 FROM unnest(
+                                     @ResourceKinds::text[],
+                                     @ResourceCodes::text[],
+                                     @ActionCodes::text[]) AS p(resource_kind, resource_code, action_code)
                                  ON CONFLICT (role_id, resource_kind, resource_code, action_code) DO NOTHING;
                                  """;
 
-        var rows = distinct.Select(x => new
-        {
-            RoleId = roleId,
-            x.ResourceKind,
-            x.ResourceCode,
-            x.ActionCode,
-            NowUtc = nowUtc
-        });
-
         var insertCmd = new CommandDefinition(
             insertSql,
-            rows,
+            new
+            {
+                RoleId = roleId,
+                ResourceKinds = distinct.Select(static x => x.ResourceKind).ToArray(),
+                ResourceCodes = distinct.Select(static x => x.ResourceCode).ToArray(),
+                ActionCodes = distinct.Select(static x => x.ActionCode).ToArray(),
+                NowUtc = nowUtc
+            },
             transaction: uow.Transaction,
             cancellationToken: ct);
 

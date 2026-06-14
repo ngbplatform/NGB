@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -15,6 +16,9 @@ public sealed class KeycloakAdminClient(
     KeycloakAdminClientSettings settings)
     : IIdentityProviderUserAdminClient
 {
+    private const int MinAdminBatchConcurrency = 1;
+    private const int MaxAdminBatchConcurrency = 32;
+    
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -144,6 +148,40 @@ public sealed class KeycloakAdminClient(
         return dto is null ? null : Map(dto);
     }
 
+    public async Task<IReadOnlyDictionary<string, IdentityProviderUserDto>> GetUsersByIdsAsync(
+        IReadOnlyList<string> identityProviderUserIds,
+        CancellationToken ct)
+    {
+        if (identityProviderUserIds is null)
+            throw new NgbArgumentRequiredException(nameof(identityProviderUserIds));
+
+        var ids = identityProviderUserIds
+            .Where(static x => !string.IsNullOrWhiteSpace(x))
+            .Select(static x => x.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (ids.Length == 0)
+            return new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
+
+        var result = new ConcurrentDictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
+        await Parallel.ForEachAsync(
+            ids,
+            new ParallelOptions
+            {
+                CancellationToken = ct,
+                MaxDegreeOfParallelism = ResolveBatchConcurrency()
+            },
+            async (id, innerCt) =>
+            {
+                var user = await GetUserByIdAsync(id, innerCt);
+                if (user is not null)
+                    result.TryAdd(id, user);
+            });
+
+        return new Dictionary<string, IdentityProviderUserDto>(result, StringComparer.Ordinal);
+    }
+
     public async Task<IdentityProviderUserDto?> FindUserByEmailAsync(string email, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -180,6 +218,40 @@ public sealed class KeycloakAdminClient(
         var usernameRows = await usernameResponse.Content.ReadFromJsonAsync<KeycloakUserDto[]>(Json, ct) ?? [];
         var usernameMatch = FindUserByEmailOrUsername(usernameRows, normalizedEmail);
         return usernameMatch is null ? null : Map(usernameMatch);
+    }
+
+    public async Task<IReadOnlyDictionary<string, IdentityProviderUserDto>> FindUsersByEmailsAsync(
+        IReadOnlyList<string> emails,
+        CancellationToken ct)
+    {
+        if (emails is null)
+            throw new NgbArgumentRequiredException(nameof(emails));
+
+        var normalizedEmails = emails
+            .Where(static x => !string.IsNullOrWhiteSpace(x))
+            .Select(static x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (normalizedEmails.Length == 0)
+            return new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+
+        var result = new ConcurrentDictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+        await Parallel.ForEachAsync(
+            normalizedEmails,
+            new ParallelOptions
+            {
+                CancellationToken = ct,
+                MaxDegreeOfParallelism = ResolveBatchConcurrency()
+            },
+            async (email, innerCt) =>
+            {
+                var user = await FindUserByEmailAsync(email, innerCt);
+                if (user is not null)
+                    result.TryAdd(email, user);
+            });
+
+        return new Dictionary<string, IdentityProviderUserDto>(result, StringComparer.OrdinalIgnoreCase);
     }
 
     public async Task SetTemporaryPasswordAsync(
@@ -286,6 +358,9 @@ public sealed class KeycloakAdminClient(
             throw new NgbConfigurationViolationException("Keycloak Admin client settings are required.");
         }
     }
+
+    private int ResolveBatchConcurrency()
+        => Math.Clamp(settings.AdminBatchConcurrency, MinAdminBatchConcurrency, MaxAdminBatchConcurrency);
 
     private static Dictionary<string, string[]>? BuildAttributes(string? displayName)
         => string.IsNullOrWhiteSpace(displayName)

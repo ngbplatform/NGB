@@ -281,6 +281,9 @@ public sealed class UserAccessManagementServiceTests
         operations.VerifyAll();
     }
 
+    private static readonly string[] UserIds = ["deleted-kc-user"];
+    private static readonly string[] UserEmails = ["allo@example.com"];
+
     [Fact]
     public async Task GetUsersAsync_WhenIdentityProviderUserWasDeleted_ReturnsKeycloakDisabled()
     {
@@ -309,11 +312,15 @@ public sealed class UserAccessManagementServiceTests
 
         var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
         identityProvider
-            .Setup(x => x.GetUserByIdAsync("deleted-kc-user", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IdentityProviderUserDto?)null);
+            .Setup(x => x.GetUsersByIdsAsync(
+                It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(UserIds)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal));
         identityProvider
-            .Setup(x => x.FindUserByEmailAsync("allo@example.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IdentityProviderUserDto?)null);
+            .Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(UserEmails)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase));
 
         var service = CreateService(
             users.Object,
@@ -326,6 +333,81 @@ public sealed class UserAccessManagementServiceTests
         result.Should().ContainSingle();
         result[0].KeycloakEnabled.Should().BeFalse();
 
+        users.VerifyAll();
+        userRoles.VerifyAll();
+        identityProvider.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetUsersAsync_UsesIdentityProviderBatchLookups()
+    {
+        var firstUserId = Guid.NewGuid();
+        var secondUserId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        PlatformUser[] platformUsers =
+        [
+            new(
+                firstUserId,
+                "kc-first-user",
+                "first@example.com",
+                "First User",
+                IsActive: true,
+                now,
+                now),
+            new(
+                secondUserId,
+                "kc-second-user",
+                "second@example.com",
+                "Second User",
+                IsActive: true,
+                now,
+                now)
+        ];
+
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        users
+            .Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(platformUsers);
+
+        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        userRoles
+            .Setup(x => x.GetRolesForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { firstUserId, secondUserId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+
+        var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
+        identityProvider
+            .Setup(x => x.GetUsersByIdsAsync(
+                It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "kc-first-user", "kc-second-user" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal)
+            {
+                ["kc-first-user"] = new("kc-first-user", "first@example.com", null, null, "First User", Enabled: true)
+            });
+        identityProvider
+            .Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "second@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["second@example.com"] = new("kc-second-user-rebound", "second@example.com", null, null, "Second User", Enabled: false)
+            });
+
+        var service = CreateService(
+            users.Object,
+            userRoles.Object,
+            new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
+            identityProvider.Object);
+
+        var result = await service.GetUsersAsync(CancellationToken.None);
+
+        result.Should().HaveCount(2);
+        result.Single(x => x.UserId == firstUserId).KeycloakEnabled.Should().BeTrue();
+        result.Single(x => x.UserId == secondUserId).KeycloakEnabled.Should().BeFalse();
+
+        identityProvider.Verify(x => x.GetUserByIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        identityProvider.Verify(x => x.FindUserByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         users.VerifyAll();
         userRoles.VerifyAll();
         identityProvider.VerifyAll();
@@ -573,10 +655,9 @@ public sealed class UserAccessManagementServiceTests
             .Returns(Task.CompletedTask);
         userRoles
             .Setup(x => x.GetRolesForUserAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[]
-            {
+            .ReturnsAsync([
                 new PlatformRole(roleId, "pm-ap-clerk", "PM AP Clerk", null, IsSystem: true, IsActive: true, now, now)
-            });
+            ]);
 
         var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
         versions
@@ -705,10 +786,9 @@ public sealed class UserAccessManagementServiceTests
             .Returns(Task.CompletedTask);
         userRoles
             .Setup(x => x.GetRolesForUserAsync(userId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[]
-            {
+            .ReturnsAsync([
                 new PlatformRole(roleId, "pm-ap-clerk", "PM AP Clerk", null, IsSystem: true, IsActive: true, now, now)
-            });
+            ]);
 
         var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
         versions

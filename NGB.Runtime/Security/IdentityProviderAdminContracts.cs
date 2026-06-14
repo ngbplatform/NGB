@@ -34,7 +34,15 @@ public interface IIdentityProviderUserAdminClient
 
     Task<IdentityProviderUserDto?> GetUserByIdAsync(string identityProviderUserId, CancellationToken ct);
 
+    Task<IReadOnlyDictionary<string, IdentityProviderUserDto>> GetUsersByIdsAsync(
+        IReadOnlyList<string> identityProviderUserIds,
+        CancellationToken ct);
+
     Task<IdentityProviderUserDto?> FindUserByEmailAsync(string email, CancellationToken ct);
+
+    Task<IReadOnlyDictionary<string, IdentityProviderUserDto>> FindUsersByEmailsAsync(
+        IReadOnlyList<string> emails,
+        CancellationToken ct);
 
     Task SetTemporaryPasswordAsync(
         string identityProviderUserId,

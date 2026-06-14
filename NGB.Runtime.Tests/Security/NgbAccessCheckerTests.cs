@@ -9,6 +9,30 @@ namespace NGB.Runtime.Tests.Security;
 public sealed class NgbAccessCheckerTests
 {
     [Fact]
+    public async Task GetSnapshotAsync_ReturnsCurrentSnapshot()
+    {
+        var snapshot = new PermissionSnapshot(
+            userId: Guid.NewGuid(),
+            authSubject: "user-1",
+            isAuthenticated: true,
+            isActive: true,
+            isBootstrapAdmin: false,
+            accessVersion: 3,
+            permissions: [new NgbPermissionKey("document", "pm.lease", "view")]);
+
+        var provider = new Mock<IPermissionSnapshotProvider>();
+        provider
+            .Setup(x => x.GetCurrentAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(snapshot);
+
+        var checker = new NgbAccessChecker(provider.Object);
+
+        var result = await checker.GetSnapshotAsync(CancellationToken.None);
+
+        result.Should().BeSameAs(snapshot);
+    }
+
+    [Fact]
     public async Task HasAsync_ReturnsFalse_WhenSnapshotDoesNotContainPermission()
     {
         var provider = new Mock<IPermissionSnapshotProvider>();
