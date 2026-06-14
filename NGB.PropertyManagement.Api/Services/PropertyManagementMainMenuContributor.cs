@@ -1,8 +1,10 @@
 using NGB.Api.Models;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Admin;
+using NGB.Core.Security;
 using NGB.Metadata.Catalogs.Storage;
 using NGB.Metadata.Documents.Storage;
+using NGB.PropertyManagement.Definitions;
 
 namespace NGB.PropertyManagement.Api.Services;
 
@@ -34,7 +36,7 @@ internal sealed class PropertyManagementMainMenuContributor(
                 label: "Dashboard",
                 icon: "home",
                 ordinal: 10,
-                CreatePageItem("pm.home", "Dashboard", "/home", "home", 10)),
+                CreatePageItem(PropertyManagementSecurityDefaults.HomePage, "Dashboard", "/home", "home", 10)),
             CreateGroup(
                 label: "Portfolio",
                 icon: "building-2",
@@ -42,14 +44,14 @@ internal sealed class PropertyManagementMainMenuContributor(
                 CreateCatalogItem(availableCatalogs, PropertyManagementCodes.Property, "Properties & Units", "building-2", 10),
                 CreateCatalogItem(availableCatalogs, PropertyManagementCodes.Party, "Parties", "users", 20),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.Lease, "Leases", "file-text", 30),
-                CreatePageItem("pm.building.summary", "Building Summary", "/reports/pm.building.summary", "bar-chart", 40),
-                CreatePageItem("pm.occupancy.summary", "Occupancy Summary", "/reports/pm.occupancy.summary", "bar-chart", 50)),
+                CreatePageItem(PropertyManagementSecurityDefaults.BuildingSummaryReport, "Building Summary", "/reports/pm.building.summary", "bar-chart", 40),
+                CreatePageItem(PropertyManagementSecurityDefaults.OccupancySummaryReport, "Occupancy Summary", "/reports/pm.occupancy.summary", "bar-chart", 50)),
             CreateGroup(
                 label: "Receivables",
                 icon: "coins",
                 ordinal: 30,
-                CreatePageItem("pm.receivables.open_items.page", "Open Items", "/receivables/open-items", "list", 10),
-                CreatePageItem("pm.receivables.reconciliation", "Reconciliation", "/receivables/reconciliation", "scale", 20),
+                CreatePageItem(PropertyManagementSecurityDefaults.ReceivablesOpenItemsPage, "Open Items", "/receivables/open-items", "list", 10),
+                CreatePageItem(PropertyManagementSecurityDefaults.ReceivablesReconciliationPage, "Reconciliation", "/receivables/reconciliation", "scale", 20),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.RentCharge, "Rent Charges", "file-text", 30),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.ReceivableCharge, "Other Charges", "file-text", 40),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.LateFeeCharge, "Late Fees", "file-text", 50),
@@ -57,16 +59,16 @@ internal sealed class PropertyManagementMainMenuContributor(
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.ReceivableReturnedPayment, "Returned Payments", "receipt", 70),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.ReceivableCreditMemo, "Credit Memos", "file-text", 80),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.ReceivableApply, "Allocations", "git-merge", 90),
-                CreatePageItem(PropertyManagementCodes.TenantStatement, "Tenant Statement", "/reports/pm.tenant.statement", "bar-chart", 100),
-                CreatePageItem("pm.receivables.aging", "Aging", "/reports/pm.receivables.aging", "bar-chart", 110),
-                CreatePageItem("pm.receivables.open_items", "Open Items Report", "/reports/pm.receivables.open_items", "bar-chart", 120),
-                CreatePageItem("pm.receivables.open_items.details", "Open Items Detail", "/reports/pm.receivables.open_items.details", "bar-chart", 130)),
+                CreatePageItem(PropertyManagementSecurityDefaults.TenantStatementReport, "Tenant Statement", "/reports/pm.tenant.statement", "bar-chart", 100),
+                CreatePageItem(PropertyManagementSecurityDefaults.ReceivablesAgingReport, "Aging", "/reports/pm.receivables.aging", "bar-chart", 110),
+                CreatePageItem(PropertyManagementSecurityDefaults.ReceivablesOpenItemsReport, "Open Items Report", "/reports/pm.receivables.open_items", "bar-chart", 120),
+                CreatePageItem(PropertyManagementSecurityDefaults.ReceivablesOpenItemsDetailsReport, "Open Items Detail", "/reports/pm.receivables.open_items.details", "bar-chart", 130)),
             CreateGroup(
                 label: "Payables",
                 icon: "wallet",
                 ordinal: 40,
-                CreatePageItem("pm.payables.open_items", "Open Items", "/payables/open-items", "list", 10),
-                CreatePageItem("pm.payables.reconciliation", "Reconciliation", "/payables/reconciliation", "scale", 20),
+                CreatePageItem(PropertyManagementSecurityDefaults.PayablesOpenItemsPage, "Open Items", "/payables/open-items", "list", 10),
+                CreatePageItem(PropertyManagementSecurityDefaults.PayablesReconciliationPage, "Reconciliation", "/payables/reconciliation", "scale", 20),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.PayableCharge, "Charges", "file-text", 30),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.PayablePayment, "Payments", "receipt", 40),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.PayableCreditMemo, "Credit Memos", "file-text", 50),
@@ -78,7 +80,7 @@ internal sealed class PropertyManagementMainMenuContributor(
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.MaintenanceRequest, "Requests", "clipboard-list", 10),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.WorkOrder, "Work Orders", "wrench", 20),
                 CreateDocumentItem(availableDocuments, PropertyManagementCodes.WorkOrderCompletion, "Completions", "check-square", 30),
-                CreatePageItem("pm.maintenance.queue", "Open Queue", "/reports/pm.maintenance.queue", "bar-chart", 40),
+                CreatePageItem(PropertyManagementSecurityDefaults.MaintenanceQueueReport, "Open Queue", "/reports/pm.maintenance.queue", "bar-chart", 40),
                 CreateCatalogItem(availableCatalogs, PropertyManagementCodes.MaintenanceCategory, "Categories", "tag", 50)),
             CreateGroup(
                 label: "Setup & Controls",
@@ -109,7 +111,7 @@ internal sealed class PropertyManagementMainMenuContributor(
     }
 
     private static MainMenuItemDto CreatePageItem(string code, string label, string route, string icon, int ordinal)
-        => new(Kind: "page", Code: code, Label: label, Route: route, Icon: icon, Ordinal: ordinal);
+        => new(Kind: NgbResourceKinds.Page, Code: code, Label: label, Route: route, Icon: icon, Ordinal: ordinal);
 
     private static MainMenuItemDto? CreateExternalItem(
         string? url,
@@ -120,7 +122,7 @@ internal sealed class PropertyManagementMainMenuContributor(
         => string.IsNullOrWhiteSpace(url)
             ? null
             : new MainMenuItemDto(
-                Kind: "external",
+                Kind: NgbResourceKinds.External,
                 Code: code,
                 Label: label,
                 Route: url,
@@ -135,7 +137,7 @@ internal sealed class PropertyManagementMainMenuContributor(
         int ordinal)
         => availableCatalogs.Contains(catalogCode)
             ? new MainMenuItemDto(
-                Kind: "catalog",
+                Kind: NgbResourceKinds.Catalog,
                 Code: catalogCode,
                 Label: label,
                 Route: $"/catalogs/{catalogCode}",
@@ -151,7 +153,7 @@ internal sealed class PropertyManagementMainMenuContributor(
         int ordinal)
         => availableDocuments.Contains(documentType)
             ? new MainMenuItemDto(
-                Kind: "document",
+                Kind: NgbResourceKinds.Document,
                 Code: documentType,
                 Label: label,
                 Route: $"/documents/{documentType}",

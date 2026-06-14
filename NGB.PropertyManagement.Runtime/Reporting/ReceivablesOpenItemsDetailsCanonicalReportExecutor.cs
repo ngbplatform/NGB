@@ -1,5 +1,6 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Runtime.Receivables;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
@@ -9,7 +10,7 @@ namespace NGB.PropertyManagement.Runtime.Reporting;
 public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(IReceivablesOpenItemsDetailsService details)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "pm.receivables.open_items.details";
+    public string ReportCode => PropertyManagementSecurityDefaults.ReceivablesOpenItemsDetailsReport;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

@@ -25,7 +25,7 @@ public sealed class AdminController(PermissionAwareAdminService service, INgbAcc
         [FromServices] PropertyManagementSecuritySeeder securitySeeder,
         CancellationToken ct)
     {
-        await access.RequireAsync(NgbResourceKinds.Admin, "chart_of_accounts", NgbPermissionActions.Manage, ct);
+        await access.RequireAsync(NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.Manage, ct);
         var result = await setupService.EnsureDefaultsAsync(ct);
         await securitySeeder.EnsureSeededAsync(ct);
         return result;

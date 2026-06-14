@@ -1,6 +1,7 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
 using NGB.Runtime.Reporting.Definitions;
 
@@ -12,7 +13,7 @@ public sealed class PropertyManagementCanonicalReportDefinitionSource : IReportD
         =>
         [
             new(
-                ReportCode: "pm.building.summary",
+                ReportCode: PropertyManagementSecurityDefaults.BuildingSummaryReport,
                 Name: "Building Summary",
                 Group: "Portfolio",
                 Description: "Canonical PM building summary",
@@ -54,7 +55,7 @@ public sealed class PropertyManagementCanonicalReportDefinitionSource : IReportD
                         Lookup: new CatalogLookupSourceDto("pm.property"))
                 ]),
             new(
-                ReportCode: "pm.occupancy.summary",
+                ReportCode: PropertyManagementSecurityDefaults.OccupancySummaryReport,
                 Name: "Occupancy Summary",
                 Group: "Portfolio",
                 Description: "Canonical PM occupancy summary by building",
@@ -96,7 +97,7 @@ public sealed class PropertyManagementCanonicalReportDefinitionSource : IReportD
                         Lookup: new CatalogLookupSourceDto("pm.property"))
                 ]),
             new(
-                ReportCode: "pm.maintenance.queue",
+                ReportCode: PropertyManagementSecurityDefaults.MaintenanceQueueReport,
                 Name: "Open Queue",
                 Group: "Maintenance",
                 Description: "Canonical log of all open maintenance tasks",
@@ -130,7 +131,7 @@ public sealed class PropertyManagementCanonicalReportDefinitionSource : IReportD
                 ],
                 Filters: CreateMaintenanceQueueFilters()),
             new(
-                ReportCode: PropertyManagementCodes.TenantStatement,
+                ReportCode: PropertyManagementSecurityDefaults.TenantStatementReport,
                 Name: "Tenant Statement",
                 Group: "Receivables",
                 Description: "Canonical tenant statement for a lease",
@@ -169,7 +170,7 @@ public sealed class PropertyManagementCanonicalReportDefinitionSource : IReportD
                 ],
                 Filters: CreateReceivablesLeaseFilter()),
             new(
-                ReportCode: "pm.receivables.aging",
+                ReportCode: PropertyManagementSecurityDefaults.ReceivablesAgingReport,
                 Name: "Aging",
                 Group: "Receivables",
                 Description: "Canonical receivables aging buckets",
@@ -203,7 +204,7 @@ public sealed class PropertyManagementCanonicalReportDefinitionSource : IReportD
                 ],
                 Filters: CreateReceivablesLeaseFilter()),
             new(
-                ReportCode: "pm.receivables.open_items",
+                ReportCode: PropertyManagementSecurityDefaults.ReceivablesOpenItemsReport,
                 Name: "Open Items Report",
                 Group: "Receivables",
                 Description: "Canonical receivables open-items list",
@@ -229,7 +230,7 @@ public sealed class PropertyManagementCanonicalReportDefinitionSource : IReportD
                     ShowGrandTotals: true),
                 Filters: CreateReceivablesLeaseFilter()),
             new(
-                ReportCode: "pm.receivables.open_items.details",
+                ReportCode: PropertyManagementSecurityDefaults.ReceivablesOpenItemsDetailsReport,
                 Name: "Open Items Detail",
                 Group: "Receivables",
                 Description: "Canonical receivables open-items details",

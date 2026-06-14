@@ -5,6 +5,7 @@ using NGB.Contracts.Reporting;
 using NGB.Core.Catalogs.Exceptions;
 using NGB.Core.Documents.Exceptions;
 using NGB.Core.Reporting.Exceptions;
+using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
@@ -19,7 +20,7 @@ public sealed class TenantStatementCanonicalReportExecutor(
     ICatalogService catalogs)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => PropertyManagementCodes.TenantStatement;
+    public string ReportCode => PropertyManagementSecurityDefaults.TenantStatementReport;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

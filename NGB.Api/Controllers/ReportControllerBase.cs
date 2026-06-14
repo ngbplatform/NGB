@@ -204,7 +204,7 @@ public abstract class ReportControllerBase(
             ReportCellActionKinds.OpenReport when action.Report is not null
                 => await CanViewOrExecuteReportAsync(action.Report.ReportCode, ct),
             ReportCellActionKinds.OpenAccount
-                => await access.HasAsync(NgbResourceKinds.Admin, "chart_of_accounts", NgbPermissionActions.View, ct),
+                => await access.HasAsync(NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.View, ct),
             _ => false
         };
     }

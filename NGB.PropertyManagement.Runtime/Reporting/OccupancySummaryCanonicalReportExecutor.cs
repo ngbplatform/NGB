@@ -1,5 +1,6 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
@@ -9,7 +10,7 @@ namespace NGB.PropertyManagement.Runtime.Reporting;
 public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryReader reader)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "pm.occupancy.summary";
+    public string ReportCode => PropertyManagementSecurityDefaults.OccupancySummaryReport;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

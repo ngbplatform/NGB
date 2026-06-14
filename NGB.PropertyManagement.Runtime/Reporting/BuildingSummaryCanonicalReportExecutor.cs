@@ -1,5 +1,6 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
@@ -9,7 +10,7 @@ namespace NGB.PropertyManagement.Runtime.Reporting;
 public sealed class BuildingSummaryCanonicalReportExecutor(IBuildingSummaryReader reader)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "pm.building.summary";
+    public string ReportCode => PropertyManagementSecurityDefaults.BuildingSummaryReport;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

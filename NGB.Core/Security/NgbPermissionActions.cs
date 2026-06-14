@@ -27,4 +27,8 @@ public static class NgbPermissionActions
     public const string SavePrivateVariant = "save_private_variant";
     public const string ManageSharedVariants = "manage_shared_variants";
     public const string DeleteVariant = "delete_variant";
+    
+    public const string CloseMonth = "close_month";
+    public const string ReopenMonth = "reopen_month";
+    public const string CloseFiscalYear = "close_fiscal_year";
 }
