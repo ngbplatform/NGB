@@ -105,6 +105,7 @@ services:
       WEB_HTTP_PORT: ${AB_WEB_HTTP_PORT}
       BACKGROUND_JOBS_HTTPS_PORT: ${AB_BACKGROUNDJOBS_HTTPS_PORT}
       WATCHDOG_HTTPS_PORT: ${AB_WATCHDOG_HTTPS_PORT}
+      KEYCLOAK_DEMO_ADMIN_ID: ${KEYCLOAK_DEMO_ADMIN_ID}
       KEYCLOAK_DEMO_ADMIN_USERNAME: ${KEYCLOAK_DEMO_ADMIN_USERNAME}
       KEYCLOAK_DEMO_ADMIN_FIRST_NAME: ${KEYCLOAK_DEMO_ADMIN_FIRST_NAME}
       KEYCLOAK_DEMO_ADMIN_LAST_NAME: ${KEYCLOAK_DEMO_ADMIN_LAST_NAME}
@@ -233,6 +234,10 @@ services:
       Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
       KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
       KeycloakSettings__RequireHttpsMetadata: "false"
+      KeycloakAdminClientSettings__BaseUrl: ${KEYCLOAK_INTERNAL_URL}
+      KeycloakAdminClientSettings__Realm: ${KEYCLOAK_REALM}
+      KeycloakAdminClientSettings__ClientId: ${KEYCLOAK_TESTER_CLIENT_ID}
+      KeycloakAdminClientSettings__ClientSecret: ${KEYCLOAK_TESTER_CLIENT_SECRET}
       ExternalLinksSettings__HealthUiUrl: https://localhost:${AB_WATCHDOG_HTTPS_PORT}/health-ui
       ExternalLinksSettings__BackgroundJobsUiUrl: https://localhost:${AB_BACKGROUNDJOBS_HTTPS_PORT}/hangfire
     volumes:

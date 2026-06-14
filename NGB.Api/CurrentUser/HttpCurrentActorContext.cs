@@ -27,8 +27,17 @@ public sealed class HttpCurrentActorContext(IHttpContextAccessor httpContextAcce
             AuthSubject: authSubject,
             Email: email,
             DisplayName: displayName,
-            IsActive: isActive);
+            IsActive: isActive,
+            AuthRoles: ResolveRoles(principal));
     }
+
+    private static IReadOnlySet<string> ResolveRoles(ClaimsPrincipal principal)
+        => principal
+            .FindAll(ClaimTypes.Role)
+            .Select(static x => x.Value)
+            .Where(static x => !string.IsNullOrWhiteSpace(x))
+            .Select(static x => x.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private static string? ResolveDisplayName(ClaimsPrincipal principal, string? email)
     {

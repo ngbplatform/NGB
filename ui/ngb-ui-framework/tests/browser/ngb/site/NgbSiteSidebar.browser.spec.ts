@@ -78,6 +78,43 @@ const SidebarHarness = defineComponent({
   },
 })
 
+const AsyncNodesSidebarHarness = defineComponent({
+  setup() {
+    const nodes = ref<SiteNavNode[]>([])
+
+    return () => h('div', { class: 'flex gap-4' }, [
+      h('button', {
+        'data-testid': 'load-sidebar-menu',
+        type: 'button',
+        onClick: () => {
+          nodes.value = [
+            {
+              id: 'setup',
+              label: 'Setup & Controls',
+              icon: 'cogs',
+              children: [
+                { id: 'users', label: 'Users', route: '/admin/security/users', icon: 'users' },
+                { id: 'roles', label: 'Roles & Permissions', route: '/admin/security/roles', icon: 'shield' },
+              ],
+            },
+          ]
+        },
+      }, 'Load menu'),
+      h('div', { class: 'h-[900px] w-[320px]' }, [
+        h(NgbSiteSidebar, {
+          productTitle: 'NGB',
+          brandSubtitle: 'Property Management',
+          pinned: [],
+          recent: [],
+          nodes: nodes.value,
+          selectedId: null,
+          collapsed: false,
+        }),
+      ]),
+    ])
+  },
+})
+
 test('collapses into icon mode and opens a flyout for section children', async () => {
   await page.viewport(1280, 900)
 
@@ -125,6 +162,18 @@ test('toggles expanded sections and emits navigation for visible leaf entries', 
 
   expect(text(view.getByTestId('sidebar-last-selected'))).toBe('payments:/receivables/payments')
   expect(text(view.getByTestId('sidebar-last-route'))).toBe('/receivables/payments')
+})
+
+test('expands section roots when menu nodes arrive after mount', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(AsyncNodesSidebarHarness)
+
+  expect(document.body.textContent?.includes('Roles & Permissions')).toBe(false)
+
+  await view.getByTestId('load-sidebar-menu').click()
+
+  await expect.element(view.getByText('Roles & Permissions', { exact: true })).toBeVisible()
 })
 
 test('switches collapsed flyout content between section roots and closes the same flyout on a second click', async () => {

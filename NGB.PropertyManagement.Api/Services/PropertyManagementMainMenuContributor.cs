@@ -88,6 +88,8 @@ internal sealed class PropertyManagementMainMenuContributor(
                 CreateCatalogItem(availableCatalogs, PropertyManagementCodes.BankAccount, "Bank Accounts", "landmark", 30),
                 CreateCatalogItem(availableCatalogs, PropertyManagementCodes.ReceivableChargeType, "Receivable Charge Types", "tag", 40),
                 CreateCatalogItem(availableCatalogs, PropertyManagementCodes.PayableChargeType, "Payable Charge Types", "tag", 50),
+                CreatePageItem("system.users", "Users", "/admin/security/users", "users", 55),
+                CreatePageItem("system.roles", "Roles & Permissions", "/admin/security/roles", "shield", 56),
                 CreateExternalItem(externalLinks.HealthUiUrl, PropertyManagementCodes.Watchdog, "Health", "heart-pulse", 90),
                 CreateExternalItem(externalLinks.BackgroundJobsUiUrl, PropertyManagementCodes.BackgroundJobs, "Background Jobs", "cogs", 100))
         ];

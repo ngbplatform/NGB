@@ -147,6 +147,14 @@ export type CatalogTypeMetadata = {
   list?: ListMetadata | null
   form?: FormMetadata | null
   parts?: PartMetadata[] | null
+  capabilities?: CatalogCapabilities | null
+}
+
+export type CatalogCapabilities = {
+  canCreate?: boolean
+  canEdit?: boolean
+  canDelete?: boolean
+  canMarkForDeletion?: boolean
 }
 
 export type DocumentCapabilities = {
@@ -158,6 +166,8 @@ export type DocumentCapabilities = {
   canRepost?: boolean
   canMarkForDeletion?: boolean
   supportsActions?: boolean
+  canViewEffects?: boolean
+  canViewFlow?: boolean
 }
 
 export type DocumentPresentation = {

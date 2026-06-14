@@ -169,6 +169,7 @@ The demo solutions included in this repository show a few possible applications 
 - Watchdog / health surface.
 - Structured observability hooks.
 - SSO integration through Keycloak.
+- Role-based application authorization with Keycloak identity integration, NGB-managed roles and permissions, backend-enforced access checks, and permission-aware menu/metadata/report filtering. See [Security and Permissions](docs/platform/security-and-permissions.md).
 
 ### Frontend and UX foundation
 

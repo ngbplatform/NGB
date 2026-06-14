@@ -84,4 +84,65 @@ public sealed class AuditLog_PlatformUsersRepository_P0Tests(PostgresTestFixture
 
         id2.Should().Be(id1);
     }
+
+    [Fact]
+    public async Task UpsertDifferentAuthSubjectSameEmail_ReusesExistingUserIdAndUpdatesAuthSubject()
+    {
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+
+        var unique = Guid.NewGuid().ToString("N");
+        var email = $"p0.user3.{unique}@example.com";
+        var firstSubject = $"kc|p0-user-3-first-{unique}";
+        var secondSubject = $"kc|p0-user-3-second-{unique}";
+
+        Guid id1;
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var users = scope.ServiceProvider.GetRequiredService<IPlatformUserRepository>();
+
+            await uow.BeginTransactionAsync(CancellationToken.None);
+            id1 = await users.UpsertAsync(
+                authSubject: firstSubject,
+                email: email.ToUpperInvariant(),
+                displayName: "P0 User 3",
+                isActive: true,
+                ct: CancellationToken.None);
+            await uow.CommitAsync(CancellationToken.None);
+        }
+
+        Guid id2;
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var users = scope.ServiceProvider.GetRequiredService<IPlatformUserRepository>();
+
+            await uow.BeginTransactionAsync(CancellationToken.None);
+            id2 = await users.UpsertAsync(
+                authSubject: secondSubject,
+                email: email.ToLowerInvariant(),
+                displayName: "P0 User 3 Updated",
+                isActive: true,
+                ct: CancellationToken.None);
+            await uow.CommitAsync(CancellationToken.None);
+        }
+
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<IPlatformUserRepository>();
+
+            id2.Should().Be(id1);
+            (await users.GetByAuthSubjectAsync(firstSubject, CancellationToken.None)).Should().BeNull();
+
+            var updated = await users.GetByAuthSubjectAsync(secondSubject, CancellationToken.None);
+            updated.Should().NotBeNull();
+            updated!.UserId.Should().Be(id1);
+            updated.Email.Should().Be(email.ToLowerInvariant());
+
+            var matchingUsers = (await users.GetAllAsync(CancellationToken.None))
+                .Where(x => string.Equals(x.Email, email, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            matchingUsers.Should().ContainSingle();
+        }
+    }
 }

@@ -112,6 +112,7 @@ const InteractiveCatalogEditor = defineComponent({
           `type:${props.typeCode}`,
           `id:${props.id ?? 'new'}`,
           `expand:${String(props.expandTo ?? '')}`,
+          `dirty:${String(isDirty.value)}`,
         ].join(';'),
       ),
       h('button', {
@@ -481,6 +482,7 @@ test('confirms discard before closing dirty real catalog drawers and cancels dir
   })
 
   await view.getByRole('button', { name: 'Mark editor dirty' }).click()
+  await expect.element(view.getByTestId('interactive-catalog-editor-state')).toHaveTextContent('dirty:true')
   dispatchEscape()
   await expect.element(view.getByText('Discard changes?', { exact: true })).toBeVisible()
 
@@ -496,6 +498,7 @@ test('confirms discard before closing dirty real catalog drawers and cancels dir
   await view.getByText('Riverfront Tower', { exact: true }).click()
   await expect.element(view.getByTestId('interactive-catalog-editor-state')).toHaveTextContent('id:prop-river')
   await view.getByRole('button', { name: 'Mark editor dirty' }).click()
+  await expect.element(view.getByTestId('interactive-catalog-editor-state')).toHaveTextContent('dirty:true')
 
   void router.push('/catalogs/pm.property?panel=edit&id=prop-harbor')
   await expect.element(view.getByText('Discard changes?', { exact: true })).toBeVisible()
@@ -514,6 +517,7 @@ test('switches to the requested catalog record after confirming discard on a dir
   await expect.element(view.getByTestId('interactive-catalog-editor-state')).toHaveTextContent('id:prop-river')
 
   await view.getByRole('button', { name: 'Mark editor dirty' }).click()
+  await expect.element(view.getByTestId('interactive-catalog-editor-state')).toHaveTextContent('dirty:true')
 
   void router.push('/catalogs/pm.property?panel=edit&id=prop-created')
   await expect.element(view.getByText('Discard changes?', { exact: true })).toBeVisible()

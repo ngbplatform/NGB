@@ -42,6 +42,7 @@ using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Definitions;
 using NGB.Runtime.Reporting.Datasets;
 using NGB.Runtime.ReferenceRegisters;
+using NGB.Runtime.Security;
 using NGB.Runtime.Ui;
 using NGB.Tools.Exceptions;
 
@@ -123,6 +124,18 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IAuditLogService, AuditLogService>();
         services.TryAddScoped<IAuditLogQueryService, AuditLogQueryService>();
 
+        // Security / access management
+        services.TryAddSingleton<IMemoryCache, MemoryCache>();
+        services.TryAddScoped<IPermissionSnapshotProvider, PermissionSnapshotProvider>();
+        services.TryAddScoped<INgbAccessChecker, NgbAccessChecker>();
+        services.TryAddScoped<ICurrentAccessService, CurrentAccessService>();
+        services.TryAddScoped<IRoleManagementService, RoleManagementService>();
+        services.TryAddScoped<IEffectiveAccessService, EffectiveAccessService>();
+        services.TryAddScoped<PermissionDefinitionRegistry>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, PlatformPermissionDefinitionSource>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, MetadataPermissionDefinitionSource>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, ReportPermissionDefinitionSource>());
+
         // Dimensions (platform-wide Dimension Sets)
         services.TryAddScoped<IDimensionSetService, DimensionSetService>();
 
@@ -146,6 +159,7 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMainMenuContributor, AccountingDocumentsMainMenuContributor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMainMenuContributor, AccountingReportsMainMenuContributor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IMainMenuContributor, AccountingAdminMainMenuContributor>());
+        services.TryAddScoped<AdminService>();
         services.TryAddScoped<IAdminService, AdminService>();
 
         // UI payload enrichment (reference values -> { id, display })
@@ -153,6 +167,7 @@ public static class RuntimeServiceCollectionExtensions
 
         // Catalogs
         services.TryAddScoped<ICatalogDraftService, CatalogDraftService>();
+        services.TryAddScoped<CatalogService>();
         services.TryAddScoped<ICatalogService, CatalogService>();
         services.TryAddScoped<ICatalogValidatorResolver, DefinitionsCatalogValidatorResolver>();
 
@@ -164,6 +179,7 @@ public static class RuntimeServiceCollectionExtensions
 
         // Documents
         services.TryAddScoped<IDocumentDraftService, DocumentDraftService>();
+        services.TryAddScoped<DocumentService>();
         services.TryAddScoped<IDocumentService, DocumentService>();
         services.TryAddScoped<IDocumentEffectsQueryService, DocumentEffectsQueryService>();
         services.TryAddScoped<IDocumentRelationshipService, DocumentRelationshipService>();
@@ -291,6 +307,20 @@ public static class RuntimeServiceCollectionExtensions
 
         // Maintenance/repair (rebuild derived accounting data)
         services.TryAddScoped<IAccountingRebuildService, AccountingRebuildService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Enables request-boundary authorization wrappers for API hosts.
+    /// Runtime, migrators, background jobs, and non-security-focused tests can keep using raw runtime services.
+    /// </summary>
+    public static IServiceCollection AddNgbRuntimeAuthorization(this IServiceCollection services)
+    {
+        services.TryAddScoped<IUserAccessManagementService, UserAccessManagementService>();
+        services.TryAddScoped<PermissionAwareAdminService>();
+        services.TryAddScoped<PermissionAwareCatalogService>();
+        services.TryAddScoped<PermissionAwareDocumentService>();
 
         return services;
     }

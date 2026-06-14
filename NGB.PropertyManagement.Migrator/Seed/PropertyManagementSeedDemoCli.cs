@@ -18,6 +18,7 @@ using NGB.PropertyManagement.Runtime;
 using NGB.PropertyManagement.Runtime.Catalogs;
 using NGB.PropertyManagement.Runtime.DependencyInjection;
 using NGB.Runtime.Accounts;
+using NGB.Runtime.CurrentActor;
 using NGB.Runtime.Periods;
 using NGB.Runtime.DependencyInjection;
 using NGB.Runtime.Documents;
@@ -58,6 +59,7 @@ internal static class PropertyManagementSeedDemoCli
                 .AddPropertyManagementRuntimeModule()
                 .AddPropertyManagementPostgresModule();
             services.AddSingleton(effectiveTimeProvider);
+            services.AddScoped<ICurrentActorContext>(_ => new SeedCurrentActorContext());
 
             await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
             {
@@ -127,6 +129,16 @@ internal static class PropertyManagementSeedDemoCli
         Console.WriteLine($"- Maintenance Request documents posted: {summary.MaintenanceRequestsPosted}");
         Console.WriteLine($"- Work Order documents posted: {summary.WorkOrdersPosted}");
         Console.WriteLine($"- Work Order Completion documents posted: {summary.WorkOrderCompletionsPosted}");
+    }
+
+    private sealed class SeedCurrentActorContext : ICurrentActorContext
+    {
+        public ActorIdentity Current { get; } = new(
+            AuthSubject: "ngb-seed-demo",
+            Email: null,
+            DisplayName: "NGB Seed Demo",
+            IsActive: true,
+            AuthRoles: new HashSet<string>(["ngb-admin"], StringComparer.OrdinalIgnoreCase));
     }
 }
 

@@ -209,6 +209,7 @@ const expandTo = computed(() => {
     :loading="loading"
     :error="error"
     :show-filter="false"
+    :disable-create="metadata?.capabilities?.canCreate === false"
     :disable-prev="offset === 0"
     :disable-next="(page?.items?.length ?? 0) < limit"
     :columns="columns"

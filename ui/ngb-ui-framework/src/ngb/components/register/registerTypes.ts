@@ -7,6 +7,7 @@ export type RegisterColumn = {
   pinned?: 'left';
   sortable?: boolean;
   wrap?: boolean;
+  type?: 'text' | 'checkbox';
   format?: (value: unknown, row: RegisterDataRow) => string;
 };
 
@@ -15,6 +16,7 @@ export type RegisterDataRow = Record<string, unknown> & {
   debit?: number;
   credit?: number;
   __status?: 'active' | 'saved' | 'posted' | 'marked';
+  __statusTitle?: string;
   isMarkedForDeletion?: boolean;
   isDeleted?: boolean;
   isActive?: boolean;

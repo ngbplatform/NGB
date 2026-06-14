@@ -13,5 +13,9 @@ public sealed class PlatformUsersIndexesMigration : IDdlObject
                                 CREATE INDEX IF NOT EXISTS ix_platform_users_email
                                     ON platform_users(email)
                                     WHERE email IS NOT NULL;
+
+                                CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_users_normalized_email
+                                    ON platform_users(lower(trim(email)))
+                                    WHERE email IS NOT NULL;
                                 """;
 }

@@ -187,6 +187,39 @@ describe('keycloak auth adapter', () => {
     expect(module.getAuthSnapshot()).toEqual(snapshot)
   })
 
+  it('uses deterministic e2e auth without contacting Keycloak when the bypass flag is enabled', async () => {
+    const instance = createMockKeycloakInstance()
+    const { module } = await importKeycloakModule({
+      env: {
+        VITE_NGB_E2E_AUTH_BYPASS: 'true',
+        VITE_NGB_E2E_AUTH_DISPLAY_NAME: 'Alex Carter',
+        VITE_NGB_E2E_AUTH_EMAIL: 'alex.carter@demo.ngbplatform.com',
+        VITE_NGB_E2E_AUTH_ROLES: 'ngb-admin ngb-user',
+        VITE_NGB_E2E_AUTH_SUBJECT: 'ngb-e2e-user',
+        VITE_NGB_E2E_AUTH_TOKEN: 'e2e-token',
+        VITE_NGB_E2E_AUTH_USERNAME: 'alex.carter',
+      },
+      instance,
+    })
+
+    const snapshot = await module.initializeAuth()
+
+    expect(instance.init).not.toHaveBeenCalled()
+    expect(snapshot).toMatchObject({
+      initialized: true,
+      authenticated: true,
+      token: 'e2e-token',
+      subject: 'ngb-e2e-user',
+      displayName: 'Alex Carter',
+      preferredUsername: 'alex.carter',
+      email: 'alex.carter@demo.ngbplatform.com',
+      roles: ['ngb-admin', 'ngb-user'],
+    })
+    await expect(module.getAccessToken()).resolves.toBe('e2e-token')
+    await module.loginWithKeycloak('/home')
+    expect(instance.login).not.toHaveBeenCalled()
+  })
+
   it('deduplicates concurrent token refreshes and supports forced refresh requests', async () => {
     let resolveRefresh!: () => void
     const refreshPromise = new Promise<void>((resolve) => {

@@ -54,4 +54,18 @@ public static class AuditActionCodes
 
     public const string ReferenceRegisterRecordsUpsert = "refreg.records.upsert";
     public const string ReferenceRegisterRecordsTombstone = "refreg.records.tombstone";
+
+    // Security / Access Management
+    public const string SecurityUserCreate = "security.user.create";
+    public const string SecurityUserUpdate = "security.user.update";
+    public const string SecurityUserDeactivate = "security.user.deactivate";
+    public const string SecurityUserReactivate = "security.user.reactivate";
+    public const string SecurityUserRolesReplace = "security.user.roles.replace";
+    public const string SecurityRoleCreate = "security.role.create";
+    public const string SecurityRoleUpdate = "security.role.update";
+    public const string SecurityRoleDeactivate = "security.role.deactivate";
+    public const string SecurityRoleReactivate = "security.role.reactivate";
+    public const string SecurityRolePermissionsReplace = "security.role.permissions.replace";
+    public const string SecurityProvisioningFailed = "security.provisioning.failed";
+    public const string SecurityProvisioningCompensated = "security.provisioning.compensated";
 }

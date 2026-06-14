@@ -5,6 +5,7 @@ import {
   NgbCommandPaletteDialog,
   NgbSiteShell,
   normalizeNgbRouteAliasPath,
+  useAccessStore,
   useAuthStore,
   useCommandPaletteHotkeys,
   useCommandPaletteStore,
@@ -15,6 +16,7 @@ import type { SiteNavNode, SiteQuickLink } from 'ngb-ui-framework'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const access = useAccessStore()
 const menu = useMainMenuStore()
 const palette = useCommandPaletteStore()
 const shellHydrated = ref(false)
@@ -24,10 +26,17 @@ useCommandPaletteHotkeys()
 watch(
   () => auth.authenticated,
   async (authenticated) => {
-    if (!authenticated || shellHydrated.value) return
+    if (!authenticated) {
+      access.reset()
+      shellHydrated.value = false
+      return
+    }
+
+    if (shellHydrated.value) return
 
     shellHydrated.value = true
     await Promise.all([
+      access.load(true),
       menu.load(),
       palette.hydrate(),
     ])
@@ -144,6 +153,11 @@ const selectedId = computed<string | null>(() => {
 
 const pinned = computed<SiteQuickLink[]>(() => [])
 const recent = computed<SiteQuickLink[]>(() => [])
+const applicationRoleNames = computed(() => access.applicationRoleNames)
+const profileMetaLabel = computed(() => {
+  if (applicationRoleNames.value.length > 0) return ''
+  return access.current?.isBootstrapAdmin ? 'Bootstrap admin' : ''
+})
 const isBareRoute = computed(() => route.matched.some((record) => record.meta?.bare === true))
 const showBlockingAuthState = computed(() => auth.initializing || auth.redirecting || (!auth.authenticated && !!auth.error))
 const authStateTitle = computed(() => {
@@ -191,8 +205,9 @@ const authStateDetail = computed(() => {
     product-title="NGB"
     :user-name="auth.userName"
     :user-email="auth.email"
-    :user-meta="auth.primaryRoleLabel"
-    :user-meta-icon="auth.primaryRoleIcon"
+    :user-roles="applicationRoleNames"
+    :user-meta="profileMetaLabel"
+    user-meta-icon="shield"
     :pinned="pinned"
     :recent="recent"
     :nodes="nodes"

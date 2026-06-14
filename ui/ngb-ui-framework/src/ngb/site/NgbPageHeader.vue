@@ -21,7 +21,7 @@
               <span>{{ b }}</span><span v-if="i < breadcrumbs.length - 1"> / </span>
             </span>
           </div>
-          <div class="truncate font-semibold" :class="variant === 'compact' ? 'text-base' : 'text-lg'">{{ title }}</div>
+          <h1 class="truncate font-semibold" :class="variant === 'compact' ? 'text-base' : 'text-lg'">{{ title }}</h1>
           <div v-if="variant !== 'compact'" class="mt-1 flex min-h-[1.25rem] min-w-0 items-center">
             <slot name="secondary" />
           </div>

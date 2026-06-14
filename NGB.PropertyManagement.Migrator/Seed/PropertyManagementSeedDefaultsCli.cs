@@ -3,7 +3,9 @@ using NGB.PropertyManagement.DependencyInjection;
 using NGB.PropertyManagement.Runtime;
 using NGB.PropertyManagement.Runtime.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
+using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.PostgreSql.DependencyInjection;
+using NGB.Runtime.CurrentActor;
 using NGB.Runtime.DependencyInjection;
 
 namespace NGB.PropertyManagement.Migrator.Seed;
@@ -39,6 +41,7 @@ internal static class PropertyManagementSeedDefaultsCli
                 .AddPropertyManagementModule()
                 .AddPropertyManagementRuntimeModule()
                 .AddPropertyManagementPostgresModule();
+            services.AddScoped<ICurrentActorContext>(_ => new SeedCurrentActorContext());
 
             await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
             {
@@ -49,6 +52,7 @@ internal static class PropertyManagementSeedDefaultsCli
             var setupService = scope.ServiceProvider.GetRequiredService<IPropertyManagementSetupService>();
 
             var result = await setupService.EnsureDefaultsAsync();
+            await scope.ServiceProvider.GetRequiredService<PropertyManagementSecuritySeeder>().EnsureSeededAsync();
             PrintSummary(result);
             return 0;
         }
@@ -92,5 +96,15 @@ internal static class PropertyManagementSeedDefaultsCli
         Console.WriteLine("- Catalog / pm.receivable_charge_type defaults: Rent, Late Fee, Utility, Parking, Damage, Move out, Misc");
         Console.WriteLine("- Catalog / pm.payable_charge_type defaults: Repair, Utility, Cleaning, Supply, Misc");
         Console.WriteLine("- Catalog / pm.maintenance_category defaults: Plumbing, Electrical, HVAC, Appliance, General, Lock / Security");
+    }
+
+    private sealed class SeedCurrentActorContext : ICurrentActorContext
+    {
+        public ActorIdentity Current { get; } = new(
+            AuthSubject: "ngb-seed-defaults",
+            Email: null,
+            DisplayName: "NGB Seed Defaults",
+            IsActive: true,
+            AuthRoles: new HashSet<string>(["ngb-admin"], StringComparer.OrdinalIgnoreCase));
     }
 }

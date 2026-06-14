@@ -10,6 +10,10 @@ vi.mock('../../../../../src/ngb/primitives/NgbStatusIcon.vue', () => ({
         type: String,
         default: '',
       },
+      title: {
+        type: String,
+        default: '',
+      },
     },
     template: '<span :data-testid="`status-${status}`">status:{{ status }}</span>',
   },
@@ -462,6 +466,37 @@ test('keeps pinned left cells anchored while horizontally scrolling wide registe
   expect(nameCell!.style.position).toBe('sticky')
   expect(nameCell!.style.left).toBe('40px')
   expect(amountTextAfter).toBeLessThan(amountTextBefore - 100)
+})
+
+test('renders checkbox columns as disabled boolean cells', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(defineComponent({
+    setup() {
+      return () => h(NgbRegisterGrid, {
+        showPanel: false,
+        showTotals: false,
+        heightPx: 180,
+        columns: [
+          { key: 'name', title: 'Name', width: 180 },
+          { key: 'enabled', title: 'Keycloak', width: 120, type: 'checkbox', align: 'center' },
+        ],
+        rows: [
+          { key: 'row-1', name: 'Alex Carter', enabled: true },
+          { key: 'row-2', name: 'Casey Morgan', enabled: false },
+        ],
+      })
+    },
+  }))
+
+  await expect.element(view.getByText('Alex Carter')).toBeVisible()
+  const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[]
+
+  expect(checkboxes).toHaveLength(2)
+  expect(checkboxes[0].checked).toBe(true)
+  expect(checkboxes[0].disabled).toBe(true)
+  expect(checkboxes[1].checked).toBe(false)
+  expect(checkboxes[1].disabled).toBe(true)
 })
 
 test('virtualizes large register datasets without leaking page overflow and can jump to deep rows', async () => {

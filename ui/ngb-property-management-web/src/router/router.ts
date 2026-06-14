@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { buildChartOfAccountsPath, createAuthGuard, ngbRouteAliasRedirectRoutes, NgbAccountingPeriodClosingPage, NgbChartOfAccountsPage, NgbDocumentEffectsPage, NgbDocumentFlowPage, NgbDocumentPrintPage, NgbGeneralJournalEntryEditPage, NgbGeneralJournalEntryListPage, NgbReportPage, useAuthStore } from 'ngb-ui-framework'
+import { buildChartOfAccountsPath, createAuthGuard, ngbRouteAliasRedirectRoutes, NgbAccountingPeriodClosingPage, NgbChartOfAccountsPage, NgbDocumentEffectsPage, NgbDocumentFlowPage, NgbDocumentPrintPage, NgbGeneralJournalEntryEditPage, NgbGeneralJournalEntryListPage, NgbReportPage, NgbRoleEditorPage, NgbRolesPage, NgbUserEditorPage, NgbUsersPage, useAuthStore, useMainMenuStore } from 'ngb-ui-framework'
 import { createPmRouteFrameworkConfig } from './framework'
+import { resolvePermissionAwareLanding } from './permissionAwareLanding'
 
 import HomePage from '../pages/HomePage.vue'
 import AccountingPolicySettingsPage from '../pages/AccountingPolicySettingsPage.vue'
@@ -53,7 +54,25 @@ export const router = createRouter({
       },
     },
     { path: '/admin/chart-of-accounts', component: NgbChartOfAccountsPage },
+    { path: '/admin/security/users', component: NgbUsersPage },
+    { path: '/admin/security/users/:userId', component: NgbUserEditorPage },
+    { path: '/admin/security/roles', component: NgbRolesPage },
+    { path: '/admin/security/roles/:roleId', component: NgbRoleEditorPage },
   ],
 })
 
 router.beforeEach(createAuthGuard(() => useAuthStore()))
+
+router.beforeEach(async (to) => {
+  if (to.meta?.bare === true) return true
+
+  const auth = useAuthStore()
+  if (!auth.authenticated) return true
+
+  const menu = useMainMenuStore()
+  if (menu.groups.length === 0 && !menu.isLoading) {
+    await menu.load()
+  }
+
+  return resolvePermissionAwareLanding(menu.groups, to.path) ?? true
+})

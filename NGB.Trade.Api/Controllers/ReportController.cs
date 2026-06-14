@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NGB.Api.Controllers;
 using NGB.Application.Abstractions.Services;
+using NGB.Runtime.Security;
 
 namespace NGB.Trade.Api.Controllers;
 
@@ -11,5 +12,6 @@ public sealed class ReportController(
     IReportDefinitionProvider definitions,
     IReportEngine engine,
     IReportVariantService variants,
-    IReportExportService exports)
-    : ReportControllerBase(definitions, engine, variants, exports);
+    IReportExportService exports,
+    INgbAccessChecker access)
+    : ReportControllerBase(definitions, engine, variants, exports, access);

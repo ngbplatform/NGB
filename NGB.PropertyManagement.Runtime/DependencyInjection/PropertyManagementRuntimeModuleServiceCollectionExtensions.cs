@@ -14,7 +14,9 @@ using NGB.PropertyManagement.Runtime.Posting;
 using NGB.PropertyManagement.Runtime.Payables;
 using NGB.PropertyManagement.Runtime.Receivables;
 using NGB.PropertyManagement.Runtime.Reporting;
+using NGB.PropertyManagement.Runtime.Security;
 using NGB.Runtime.Documents.Validation;
+using NGB.Runtime.Security;
 
 namespace NGB.PropertyManagement.Runtime.DependencyInjection;
 
@@ -23,6 +25,7 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
     public static IServiceCollection AddPropertyManagementRuntimeModule(this IServiceCollection services)
     {
         services.TryAddScoped<IPropertyManagementSetupService, PropertyManagementSetupService>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, PropertyManagementPermissionDefinitionSource>());
 
         services.TryAddScoped<IPropertyManagementAccountingPolicyReader, PropertyManagementAccountingPolicyReader>();
         services.TryAddScoped<IPropertyManagementBankAccountReader, PropertyManagementBankAccountReader>();

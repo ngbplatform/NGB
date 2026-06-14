@@ -64,6 +64,7 @@ const TopBarEventHarness = defineComponent({
         userEmail: 'alex.carter@example.com',
         userMeta: 'Admin access',
         userMetaIcon: 'shield-check',
+        userRoles: ['PM Administrator', 'PM Accountant', 'PM Auditor', 'PM Test'],
         hasSettings: true,
         showMainMenu: true,
         onOpenMainMenu: () => { mainMenu.value += 1 },
@@ -126,7 +127,12 @@ test('emits desktop actions and exposes the full user menu state', async () => {
   await expect.element(view.getByText('Signed in', { exact: true })).toBeVisible()
   await expect.element(view.getByText('Alex Carter', { exact: true })).toBeVisible()
   await expect.element(view.getByText('alex.carter@example.com', { exact: true })).toBeVisible()
-  await expect.element(view.getByText('Admin access', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('Application roles', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('PM Administrator', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('PM Accountant', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('PM Auditor', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('+1 more', { exact: true })).toBeVisible()
+  expect(hasVisibleText('Admin access')).toBe(false)
 
   await visibleButtonContainingText('Sign out').click()
 

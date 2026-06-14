@@ -118,7 +118,9 @@ const resolvedStorageKey = computed(() =>
   String(props.resolveStorageKey?.(documentType.value) ?? '').trim() || `ngb:document:${documentType.value}`,
 )
 const resolvedWarning = computed(() => props.resolveWarning?.(documentType.value, metadata.value) ?? null)
-const createDisabled = computed(() => props.isCreateDisabled?.(documentType.value, metadata.value) ?? false)
+const createDisabled = computed(() => metadata.value?.capabilities?.canCreate === false
+  || (props.isCreateDisabled?.(documentType.value, metadata.value) ?? false),
+)
 
 const {
   filterDraft,

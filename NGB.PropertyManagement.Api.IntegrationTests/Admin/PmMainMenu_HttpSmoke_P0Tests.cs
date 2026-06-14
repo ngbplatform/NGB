@@ -147,6 +147,8 @@ public sealed class PmMainMenu_HttpSmoke_P0Tests : IAsyncLifetime
             "Bank Accounts",
             "Receivable Charge Types",
             "Payable Charge Types",
+            "Users",
+            "Roles & Permissions",
             "Period Close",
             "Posting Log",
             "Integrity Checks",
@@ -154,6 +156,8 @@ public sealed class PmMainMenu_HttpSmoke_P0Tests : IAsyncLifetime
             "Background Jobs");
         setupGroup.Items.Should().ContainSingle(i => i.Code == PropertyManagementCodes.AccountingPolicy && i.Route == "/catalogs/pm.accounting_policy");
         setupGroup.Items.Should().Contain(i => i.Code == "chart-of-accounts" && i.Route == "/admin/chart-of-accounts" && i.Label == "Chart of Accounts");
+        setupGroup.Items.Should().Contain(i => i.Code == "system.users" && i.Route == "/admin/security/users" && i.Label == "Users");
+        setupGroup.Items.Should().Contain(i => i.Code == "system.roles" && i.Route == "/admin/security/roles" && i.Label == "Roles & Permissions");
         setupGroup.Items.Should().Contain(i => i.Code == "accounting.period_closing" && i.Route == "/admin/accounting/period-closing" && i.Label == "Period Close");
         setupGroup.Items.Should().Contain(i => i.Code == "accounting.consistency" && i.Route == "/admin/accounting/consistency" && i.Label == "Integrity Checks" && i.Icon == "shield-check");
         setupGroup.Items.Should().Contain(i => i.Code == "pm.health" && i.Route == "https://localhost:7075/health-ui" && i.Label == "Health" && i.Icon == "heart-pulse");

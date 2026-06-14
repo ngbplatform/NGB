@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-vue'
 
 const mocks = vi.hoisted(() => ({
   authStore: null as AuthStore | null,
+  accessStore: null as AccessStore | null,
   menuStore: null as MenuStore | null,
   paletteStore: null as PaletteStore | null,
   route: null as RouteState | null,
@@ -31,6 +32,7 @@ vi.mock('ngb-ui-framework', () => ({
   },
   normalizeNgbRouteAliasPath: (value: string | null | undefined) => String(value ?? '').trim(),
   useAuthStore: () => mocks.authStore,
+  useAccessStore: () => mocks.accessStore,
   useCommandPaletteHotkeys: () => undefined,
   useCommandPaletteStore: () => mocks.paletteStore,
   useMainMenuStore: () => mocks.menuStore,
@@ -53,6 +55,15 @@ type AuthStore = {
   logout: ReturnType<typeof vi.fn>
 }
 
+type AccessStore = {
+  current: {
+    isBootstrapAdmin: boolean
+  } | null
+  applicationRoleNames: string[]
+  load: ReturnType<typeof vi.fn>
+  reset: ReturnType<typeof vi.fn>
+}
+
 type MenuStore = {
   groups: unknown[]
   load: ReturnType<typeof vi.fn>
@@ -68,6 +79,18 @@ type RouteState = {
   fullPath: string
   path: string
   matched: Array<{ meta?: Record<string, unknown> }>
+}
+
+function createAccessStore(overrides: Partial<AccessStore> = {}): AccessStore {
+  return reactive({
+    current: {
+      isBootstrapAdmin: false,
+    },
+    applicationRoleNames: ['PM Administrator'],
+    load: vi.fn(async () => undefined),
+    reset: vi.fn(),
+    ...overrides,
+  }) as AccessStore
 }
 
 function createAuthStore(overrides: Partial<AuthStore> = {}): AuthStore {
@@ -112,6 +135,7 @@ beforeEach(() => {
     groups: [],
     load: vi.fn(async () => undefined),
   }
+  mocks.accessStore = createAccessStore()
   mocks.paletteStore = {
     hydrate: vi.fn(async () => undefined),
     open: vi.fn(),

@@ -191,7 +191,8 @@ const emit = defineEmits<{
   (e: 'toggleCollapsed'): void;
 }>();
 
-const expanded = ref(new Set<string>(props.nodes.map(x => x.id)));
+const expanded = ref(new Set<string>());
+const seenExpandableRootIds = new Set<string>();
 const flyoutRootId = ref<string | null>(null);
 
 const collapsed = computed(() => !!props.collapsed);
@@ -203,6 +204,23 @@ watch(
     // when selection changes, close flyout in collapsed mode
     flyoutRootId.value = null;
   },
+);
+
+watch(
+  () => props.nodes,
+  (nodes) => {
+    const next = new Set(expanded.value);
+
+    for (const node of nodes) {
+      if (!node.children?.length || seenExpandableRootIds.has(node.id)) continue;
+
+      seenExpandableRootIds.add(node.id);
+      next.add(node.id);
+    }
+
+    expanded.value = next;
+  },
+  { immediate: true },
 );
 
 const flyoutRoot = computed(() => props.nodes.find(x => x.id === flyoutRootId.value) ?? null);

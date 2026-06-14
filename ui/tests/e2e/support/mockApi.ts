@@ -531,6 +531,21 @@ function unapplyPayablesAllocation(details: PayablesOpenItemsDetailsResponseDto,
 }
 
 export async function mockCommonPmApis(page: Page): Promise<void> {
+  await page.route('**/api/security/me/access', async (route) => {
+    await fulfillJson(route, {
+      userId: 'ngb-e2e-user',
+      authSubject: 'ngb-e2e-user',
+      isAuthenticated: true,
+      isActive: true,
+      isBootstrapAdmin: true,
+      accessVersion: 1,
+      roles: [
+        { roleId: '11111111-1111-4111-8111-111111111111', code: 'pm-administrator', name: 'PM Administrator', isSystem: true, isActive: true },
+      ],
+      permissions: [],
+    })
+  })
+
   await page.route('**/api/main-menu', async (route) => {
     await fulfillJson(route, mainMenuFixture)
   })
@@ -1433,16 +1448,33 @@ export async function mockChartOfAccountsApis(page: Page): Promise<void> {
 }
 
 export async function rejectUnhandledApiRequests(page: Page, allowedPathPrefixes: readonly string[]): Promise<void> {
+  const implicitAllowedPathPrefixes = [
+    '/api/security/me/access',
+  ]
+  const effectiveAllowedPathPrefixes = [
+    ...implicitAllowedPathPrefixes,
+    ...allowedPathPrefixes,
+  ]
+
   await page.route('**/*', async (route) => {
     const request = route.request()
     const { pathname } = new URL(request.url())
+
+    if (pathname === '/runtime-config.js') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/javascript',
+        body: buildE2eRuntimeConfigScript(),
+      })
+      return
+    }
 
     if (!pathname.startsWith('/api/')) {
       await route.fallback()
       return
     }
 
-    if (allowedPathPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    if (effectiveAllowedPathPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
       await route.fallback()
       return
     }
@@ -1453,4 +1485,17 @@ export async function rejectUnhandledApiRequests(page: Page, allowedPathPrefixes
       status: 501,
     }, 501)
   })
+}
+
+function buildE2eRuntimeConfigScript(): string {
+  const config = Object.fromEntries(
+    Object.entries(process.env)
+      .filter((entry): entry is [string, string] => (
+        entry[0].startsWith('VITE_')
+        && typeof entry[1] === 'string'
+        && entry[1].trim().length > 0
+      )),
+  )
+
+  return `window.__NGB_RUNTIME_CONFIG__ = Object.assign({}, window.__NGB_RUNTIME_CONFIG__ || {}, ${JSON.stringify(config)});\n`
 }

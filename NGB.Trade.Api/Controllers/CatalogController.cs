@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NGB.Api.Controllers;
-using NGB.Application.Abstractions.Services;
+using NGB.Runtime.Catalogs;
 
 namespace NGB.Trade.Api.Controllers;
 
 [Authorize]
 [ApiController]
 [Route("api/catalogs/{catalogType}")]
-public sealed class CatalogController(ICatalogService service) : CatalogControllerBase(service);
+public sealed class CatalogController(PermissionAwareCatalogService service) : CatalogControllerBase(service);
