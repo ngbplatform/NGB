@@ -93,7 +93,12 @@ public sealed class PmKeycloakFixture : IAsyncDisposable
                 new FormUrlEncodedContent(formFields),
                 cancellationToken);
 
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                throw new InvalidOperationException(
+                    $"Keycloak token request failed with {(int)response.StatusCode} ({response.StatusCode}): {body}");
+            }
 
             var payload = await response.Content.ReadFromJsonAsync<TokenResponse>(cancellationToken)
                 ?? throw new InvalidOperationException("Keycloak token endpoint returned no payload.");

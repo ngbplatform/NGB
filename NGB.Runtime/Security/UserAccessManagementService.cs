@@ -78,13 +78,9 @@ public sealed class UserAccessManagementService(
     public async Task<UserDetailsDto> GetUserAsync(Guid userId, CancellationToken ct)
     {
         var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
-        var rolesTask = userRoles.GetRolesForUserAsync(userId, ct);
-        var versionTask = versions.GetAsync(userId, ct);
         var identityProviderUserTask = identityProvider.GetUserByIdAsync(user.AuthSubject, ct);
-        await Task.WhenAll(rolesTask, versionTask, identityProviderUserTask);
-
-        var roles = await rolesTask;
-        var version = await versionTask;
+        var roles = await userRoles.GetRolesForUserAsync(userId, ct);
+        var version = await versions.GetAsync(userId, ct);
         var idp = await identityProviderUserTask;
 
         return ToDetails(user, idp, roles, version?.Version ?? 1);

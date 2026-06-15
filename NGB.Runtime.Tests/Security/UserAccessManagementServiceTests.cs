@@ -472,6 +472,77 @@ public sealed class UserAccessManagementServiceTests
     }
 
     [Fact]
+    public async Task GetUserAsync_DoesNotRunMultipleRepositoryQueriesConcurrentlyOnSameUnitOfWork()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var platformUser = new PlatformUser(
+            userId,
+            "kc-user",
+            "pm-tester@example.com",
+            "Tester",
+            IsActive: true,
+            now,
+            now);
+        var idpUser = new IdentityProviderUserDto(
+            "kc-user",
+            "pm-tester@example.com",
+            null,
+            null,
+            "Tester",
+            Enabled: true);
+
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        users
+            .Setup(x => x.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(platformUser);
+
+        var rolesStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRoles = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        userRoles
+            .Setup(x => x.GetRolesForUserAsync(userId, It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                rolesStarted.SetResult();
+                await releaseRoles.Task;
+                return Array.Empty<PlatformRole>();
+            });
+
+        var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
+        versions
+            .Setup(x => x.GetAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserAccessVersion(userId, 3, now));
+
+        var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
+        identityProvider
+            .Setup(x => x.GetUserByIdAsync("kc-user", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(idpUser);
+
+        var service = CreateService(
+            users.Object,
+            userRoles.Object,
+            versions.Object,
+            identityProvider.Object);
+
+        var resultTask = service.GetUserAsync(userId, CancellationToken.None);
+
+        await rolesStarted.Task;
+        versions.Verify(x => x.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        releaseRoles.SetResult();
+        var result = await resultTask;
+
+        result.AccessVersion.Should().Be(3);
+        versions.Verify(x => x.GetAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
+        users.VerifyAll();
+        userRoles.VerifyAll();
+        versions.VerifyAll();
+        identityProvider.VerifyAll();
+    }
+
+    [Fact]
     public async Task UpdateUserAsync_WhenChangingPasswordWithoutNames_PreservesIdentityProviderNames()
     {
         var userId = Guid.NewGuid();
@@ -571,6 +642,92 @@ public sealed class UserAccessManagementServiceTests
         identityProvider.VerifyAll();
         userRoles.VerifyAll();
         versions.VerifyAll();
+    }
+
+    [Fact]
+    public async Task UpdateUserAsync_WhenIdentityProviderUpdateFails_DoesNotPersistProjectionRolesOrAccessVersion()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var currentUser = new PlatformUser(
+            userId,
+            "kc-user",
+            "resident@example.com",
+            "Resident User",
+            IsActive: true,
+            now,
+            now);
+
+        var idpUser = new IdentityProviderUserDto(
+            "kc-user",
+            "resident@example.com",
+            "Resident",
+            "User",
+            "Resident User",
+            Enabled: true);
+
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        users
+            .Setup(x => x.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(currentUser);
+
+        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        userRoles
+            .Setup(x => x.GetRolesForUserAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
+
+        var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
+        identityProvider
+            .SetupSequence(x => x.GetUserByIdAsync("kc-user", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(idpUser)
+            .ReturnsAsync(idpUser);
+        identityProvider
+            .Setup(x => x.UpdateUserAsync(
+                "kc-user",
+                It.IsAny<UpdateIdentityProviderUserRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("keycloak update failed"));
+
+        var service = CreateService(
+            users.Object,
+            userRoles.Object,
+            versions.Object,
+            identityProvider.Object);
+
+        var act = () => service.UpdateUserAsync(
+            userId,
+            new UpdateUserRequestDto(
+                "resident@example.com",
+                FirstName: null,
+                LastName: null,
+                DisplayName: "Resident User",
+                Enabled: true,
+                TemporaryPassword: null,
+                RequirePasswordUpdate: false,
+                []),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("keycloak update failed");
+
+        users.Verify(x => x.UpsertAsync(
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        userRoles.Verify(x => x.ReplaceUserRolesAsync(
+            It.IsAny<Guid>(),
+            It.IsAny<IReadOnlyList<Guid>>(),
+            It.IsAny<Guid?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        versions.Verify(x => x.IncrementAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        users.VerifyAll();
+        userRoles.VerifyAll();
+        identityProvider.VerifyAll();
     }
 
     [Fact]
@@ -925,6 +1082,67 @@ public sealed class UserAccessManagementServiceTests
         userRoles.VerifyAll();
         versions.VerifyAll();
         audit.VerifyAll();
+    }
+
+    [Fact]
+    public async Task DeactivateUserAsync_WhenIdentityProviderDisableFails_DoesNotPersistInactiveProjectionOrVersion()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var currentUser = new PlatformUser(
+            userId,
+            "kc-user",
+            "resident@example.com",
+            "Resident User",
+            IsActive: true,
+            now,
+            now);
+
+        var idpUser = new IdentityProviderUserDto(
+            "kc-user",
+            "resident@example.com",
+            "Resident",
+            "User",
+            "Resident User",
+            Enabled: true);
+
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        users
+            .Setup(x => x.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(currentUser);
+
+        var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
+        identityProvider
+            .Setup(x => x.GetUserByIdAsync("kc-user", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(idpUser);
+        identityProvider
+            .Setup(x => x.SetUserEnabledAsync("kc-user", false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("keycloak disable failed"));
+
+        var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
+
+        var service = CreateService(
+            users.Object,
+            new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict).Object,
+            versions.Object,
+            identityProvider.Object);
+
+        var act = () => service.DeactivateUserAsync(userId, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("keycloak disable failed");
+
+        users.Verify(x => x.SetActiveAsync(userId, false, It.IsAny<CancellationToken>()), Times.Never);
+        users.Verify(x => x.UpsertAsync(
+            It.IsAny<string>(),
+            It.IsAny<string?>(),
+            It.IsAny<string?>(),
+            It.IsAny<bool>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        versions.Verify(x => x.IncrementAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        users.VerifyAll();
+        identityProvider.VerifyAll();
     }
 
     [Fact]
