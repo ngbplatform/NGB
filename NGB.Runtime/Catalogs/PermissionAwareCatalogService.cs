@@ -7,29 +7,42 @@ using NGB.Runtime.Security;
 
 namespace NGB.Runtime.Catalogs;
 
-public sealed class PermissionAwareCatalogService(CatalogService inner, INgbAccessChecker access) : ICatalogService
+public sealed class PermissionAwareCatalogService(
+    CatalogService inner,
+    INgbAccessChecker access,
+    NgbSecurityCache cache)
+    : ICatalogService
 {
     public async Task<IReadOnlyList<CatalogTypeMetadataDto>> GetAllMetadataAsync(CancellationToken ct)
     {
-        var metadata = await inner.GetAllMetadataAsync(ct);
-        var result = new List<CatalogTypeMetadataDto>(metadata.Count);
         var snapshot = await access.GetSnapshotAsync(ct);
+        if (!snapshot.HasAny(NgbResourceKinds.Catalog, NgbPermissionActions.View))
+            return [];
 
-        foreach (var item in metadata)
-        {
-            if (Has(snapshot, item.CatalogType, NgbPermissionActions.View))
-                result.Add(ApplyCapabilities(item, snapshot));
-        }
-
-        return result;
+        return await cache.GetOrCreateCatalogMetadataAsync(
+            snapshot,
+            async token =>
+            {
+                var metadata = await inner.GetAllMetadataAsync(token);
+                return FilterMetadata(metadata, snapshot);
+            },
+            ct) ?? [];
     }
 
     public async Task<CatalogTypeMetadataDto> GetTypeMetadataAsync(string catalogType, CancellationToken ct)
     {
         var snapshot = await access.GetSnapshotAsync(ct);
         Require(snapshot, catalogType, NgbPermissionActions.View);
-        var metadata = await inner.GetTypeMetadataAsync(catalogType, ct);
-        return ApplyCapabilities(metadata, snapshot);
+
+        return await cache.GetOrCreateCatalogTypeMetadataAsync(
+            snapshot,
+            catalogType,
+            async token =>
+            {
+                var metadata = await inner.GetTypeMetadataAsync(catalogType, token);
+                return ApplyCapabilities(metadata, snapshot);
+            },
+            ct) ?? throw new InvalidOperationException("Catalog metadata cache returned no value.");
     }
 
     public async Task<PageResponseDto<CatalogItemDto>> GetPageAsync(
@@ -109,6 +122,20 @@ public sealed class PermissionAwareCatalogService(CatalogService inner, INgbAcce
 
     private Task RequireAsync(string catalogType, string action, CancellationToken ct)
         => access.RequireAsync(NgbResourceKinds.Catalog, catalogType, action, ct);
+
+    private static IReadOnlyList<CatalogTypeMetadataDto> FilterMetadata(
+        IReadOnlyList<CatalogTypeMetadataDto> metadata,
+        PermissionSnapshot snapshot)
+    {
+        var result = new List<CatalogTypeMetadataDto>(metadata.Count);
+        foreach (var item in metadata)
+        {
+            if (Has(snapshot, item.CatalogType, NgbPermissionActions.View))
+                result.Add(ApplyCapabilities(item, snapshot));
+        }
+
+        return result;
+    }
 
     private static CatalogTypeMetadataDto ApplyCapabilities(
         CatalogTypeMetadataDto metadata,

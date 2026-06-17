@@ -23,6 +23,8 @@ public sealed class PermissionSnapshot(
 
     public long AccessVersion { get; } = accessVersion;
 
+    public string AccessCacheKey { get; } = BuildAccessCacheKey(userId, isAuthenticated, isActive, isBootstrapAdmin, accessVersion);
+
     public IReadOnlySet<NgbPermissionKey> Permissions { get; } = permissions.ToHashSet();
 
     private IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlySet<string>>> PermissionIndex { get; }
@@ -47,6 +49,24 @@ public sealed class PermissionSnapshot(
         return PermissionIndex.TryGetValue(normalizedResourceKind, out var resources)
                && resources.TryGetValue(normalizedResourceCode, out var actions)
                && actions.Contains(normalizedActionCode);
+    }
+
+    public bool HasAny(string resourceKind, string actionCode)
+    {
+        if (!TryNormalizeLookupPart(resourceKind, allowDots: false, out var normalizedResourceKind)
+            || !TryNormalizeLookupPart(actionCode, allowDots: false, out var normalizedActionCode))
+        {
+            return false;
+        }
+
+        if (!IsAuthenticated || !IsActive)
+            return false;
+
+        if (IsBootstrapAdmin)
+            return true;
+
+        return PermissionIndex.TryGetValue(normalizedResourceKind, out var resources)
+               && resources.Values.Any(actions => actions.Contains(normalizedActionCode));
     }
 
     public static PermissionSnapshot Anonymous { get; } = new(
@@ -87,6 +107,27 @@ public sealed class PermissionSnapshot(
                 static y => (IReadOnlySet<string>)y.Value,
                 StringComparer.OrdinalIgnoreCase),
             StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string BuildAccessCacheKey(
+        Guid? userId,
+        bool isAuthenticated,
+        bool isActive,
+        bool isBootstrapAdmin,
+        long accessVersion)
+    {
+        if (!isAuthenticated)
+            return "anonymous";
+
+        if (!isActive)
+            return "inactive";
+
+        if (isBootstrapAdmin)
+            return "bootstrap-admin";
+
+        return userId is null
+            ? "authenticated-without-user"
+            : $"user:{userId.Value:N}:v{Math.Max(accessVersion, 0)}";
     }
 
     private static bool TryNormalizeLookupPart(string? value, bool allowDots, out string normalized)

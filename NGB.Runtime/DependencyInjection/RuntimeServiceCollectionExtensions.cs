@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Balances;
 using NGB.Accounting.Posting.Validators;
@@ -126,6 +127,9 @@ public static class RuntimeServiceCollectionExtensions
 
         // Security / access management
         services.TryAddSingleton<IMemoryCache, MemoryCache>();
+        services.AddOptions<NgbSecurityCacheOptions>().ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NgbSecurityCacheOptions>, NgbSecurityCacheOptionsValidator>());
+        services.TryAddSingleton<NgbSecurityCache>();
         services.TryAddScoped<IPermissionSnapshotProvider, PermissionSnapshotProvider>();
         services.TryAddScoped<INgbAccessChecker, NgbAccessChecker>();
         services.TryAddScoped<ICurrentAccessService, CurrentAccessService>();

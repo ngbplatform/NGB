@@ -9,29 +9,42 @@ using NGB.Runtime.Security;
 
 namespace NGB.Runtime.Documents;
 
-public sealed class PermissionAwareDocumentService(DocumentService inner, INgbAccessChecker access) : IDocumentService
+public sealed class PermissionAwareDocumentService(
+    DocumentService inner,
+    INgbAccessChecker access,
+    NgbSecurityCache cache)
+    : IDocumentService
 {
     public async Task<IReadOnlyList<DocumentTypeMetadataDto>> GetAllMetadataAsync(CancellationToken ct)
     {
-        var metadata = await inner.GetAllMetadataAsync(ct);
-        var result = new List<DocumentTypeMetadataDto>(metadata.Count);
         var snapshot = await access.GetSnapshotAsync(ct);
+        if (!snapshot.HasAny(NgbResourceKinds.Document, NgbPermissionActions.View))
+            return [];
 
-        foreach (var item in metadata)
-        {
-            if (Has(snapshot, item.DocumentType, NgbPermissionActions.View))
-                result.Add(ApplyCapabilities(item, snapshot));
-        }
-
-        return result;
+        return await cache.GetOrCreateDocumentMetadataAsync(
+            snapshot,
+            async token =>
+            {
+                var metadata = await inner.GetAllMetadataAsync(token);
+                return FilterMetadata(metadata, snapshot);
+            },
+            ct) ?? [];
     }
 
     public async Task<DocumentTypeMetadataDto> GetTypeMetadataAsync(string documentType, CancellationToken ct)
     {
         var snapshot = await access.GetSnapshotAsync(ct);
         Require(snapshot, documentType, NgbPermissionActions.View);
-        var metadata = await inner.GetTypeMetadataAsync(documentType, ct);
-        return ApplyCapabilities(metadata, snapshot);
+
+        return await cache.GetOrCreateDocumentTypeMetadataAsync(
+            snapshot,
+            documentType,
+            async token =>
+            {
+                var metadata = await inner.GetTypeMetadataAsync(documentType, token);
+                return ApplyCapabilities(metadata, snapshot);
+            },
+            ct) ?? throw new InvalidOperationException("Document metadata cache returned no value.");
     }
 
     public async Task<PageResponseDto<DocumentDto>> GetPageAsync(
@@ -170,6 +183,20 @@ public sealed class PermissionAwareDocumentService(DocumentService inner, INgbAc
 
     private Task RequireAsync(string documentType, string action, CancellationToken ct)
         => access.RequireAsync(NgbResourceKinds.Document, documentType, action, ct);
+
+    private static IReadOnlyList<DocumentTypeMetadataDto> FilterMetadata(
+        IReadOnlyList<DocumentTypeMetadataDto> metadata,
+        PermissionSnapshot snapshot)
+    {
+        var result = new List<DocumentTypeMetadataDto>(metadata.Count);
+        foreach (var item in metadata)
+        {
+            if (Has(snapshot, item.DocumentType, NgbPermissionActions.View))
+                result.Add(ApplyCapabilities(item, snapshot));
+        }
+
+        return result;
+    }
 
     private static DocumentTypeMetadataDto ApplyCapabilities(
         DocumentTypeMetadataDto metadata,

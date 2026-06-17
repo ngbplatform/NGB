@@ -7,31 +7,26 @@ using NGB.Runtime.Security;
 
 namespace NGB.Runtime.Admin;
 
-public sealed class PermissionAwareAdminService(AdminService inner, INgbAccessChecker access) : IAdminService
+public sealed class PermissionAwareAdminService(
+    AdminService inner,
+    INgbAccessChecker access,
+    NgbSecurityCache cache)
+    : IAdminService
 {
     public async Task<MainMenuDto> GetMainMenuAsync(CancellationToken ct)
     {
-        var menu = await inner.GetMainMenuAsync(ct);
-        if (menu.Groups.Count == 0)
-            return menu;
-
         var snapshot = await access.GetSnapshotAsync(ct);
-        var groups = new List<MainMenuGroupDto>(menu.Groups.Count);
+        if (!snapshot.IsAuthenticated || !snapshot.IsActive)
+            return new MainMenuDto([]);
 
-        foreach (var group in menu.Groups)
-        {
-            var items = new List<MainMenuItemDto>(group.Items.Count);
-            foreach (var item in group.Items)
+        return await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            async token =>
             {
-                if (IsAuthorized(item, snapshot))
-                    items.Add(item);
-            }
-
-            if (items.Count > 0)
-                groups.Add(group with { Items = items });
-        }
-
-        return new MainMenuDto(groups);
+                var menu = await inner.GetMainMenuAsync(token);
+                return FilterMainMenu(menu, snapshot);
+            },
+            ct) ?? new MainMenuDto([]);
     }
 
     public async Task<ChartOfAccountsMetadataDto> GetChartOfAccountsMetadataAsync(CancellationToken ct)
@@ -102,6 +97,29 @@ public sealed class PermissionAwareAdminService(AdminService inner, INgbAccessCh
 
     private Task RequireCoaManageAsync(CancellationToken ct)
         => access.RequireAsync(NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.Manage, ct);
+
+    private static MainMenuDto FilterMainMenu(MainMenuDto menu, PermissionSnapshot snapshot)
+    {
+        if (menu.Groups.Count == 0)
+            return menu;
+
+        var groups = new List<MainMenuGroupDto>(menu.Groups.Count);
+
+        foreach (var group in menu.Groups)
+        {
+            var items = new List<MainMenuItemDto>(group.Items.Count);
+            foreach (var item in group.Items)
+            {
+                if (IsAuthorized(item, snapshot))
+                    items.Add(item);
+            }
+
+            if (items.Count > 0)
+                groups.Add(group with { Items = items });
+        }
+
+        return new MainMenuDto(groups);
+    }
 
     private static bool IsAuthorized(MainMenuItemDto item, PermissionSnapshot snapshot)
     {

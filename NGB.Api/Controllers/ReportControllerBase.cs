@@ -12,22 +12,27 @@ public abstract class ReportControllerBase(
     IReportEngine engine,
     IReportVariantService variants,
     IReportExportService exports,
-    INgbAccessChecker access) : ControllerBase
+    INgbAccessChecker access,
+    NgbSecurityCache cache) : ControllerBase
 {
     [HttpGet("~/api/report-definitions")]
     public async Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
     {
-        var all = await definitions.GetAllDefinitionsAsync(ct);
         var snapshot = await access.GetSnapshotAsync(ct);
-        var result = new List<ReportDefinitionDto>(all.Count);
-       
-        foreach (var definition in all)
+        if (!snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.View)
+            && !snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.Execute))
         {
-            if (CanViewOrExecuteReport(snapshot, definition.ReportCode))
-                result.Add(definition);
+            return [];
         }
 
-        return result;
+        return await cache.GetOrCreateReportDefinitionsAsync(
+            snapshot,
+            async token =>
+            {
+                var all = await definitions.GetAllDefinitionsAsync(token);
+                return FilterDefinitions(all, snapshot);
+            },
+            ct) ?? [];
     }
 
     [HttpGet("~/api/report-definitions/{reportCode}")]
@@ -169,12 +174,31 @@ public abstract class ReportControllerBase(
         throw new NgbPermissionDeniedException(new NgbPermissionKey(NgbResourceKinds.Report, reportCode, actions[0]));
     }
 
+    private static IReadOnlyList<ReportDefinitionDto> FilterDefinitions(
+        IReadOnlyList<ReportDefinitionDto> definitions,
+        PermissionSnapshot snapshot)
+    {
+        var result = new List<ReportDefinitionDto>(definitions.Count);
+        foreach (var definition in definitions)
+        {
+            if (CanViewOrExecuteReport(snapshot, definition.ReportCode))
+                result.Add(definition);
+        }
+
+        return result;
+    }
+
     private static ReportSheetDto ScrubForbiddenCellActions(ReportSheetDto sheet, PermissionSnapshot snapshot)
-        => sheet with
+    {
+        if (snapshot.IsBootstrapAdmin)
+            return sheet;
+
+        return sheet with
         {
             Rows = ScrubRows(sheet.Rows, snapshot),
             HeaderRows = sheet.HeaderRows is null ? null : ScrubRows(sheet.HeaderRows, snapshot)
         };
+    }
 
     private static IReadOnlyList<ReportSheetRowDto> ScrubRows(
         IReadOnlyList<ReportSheetRowDto> rows,

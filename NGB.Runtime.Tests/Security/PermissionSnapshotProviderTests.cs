@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using Moq;
 using NGB.Core.Security;
 using NGB.Persistence.Security;
@@ -42,6 +43,34 @@ public sealed class PermissionSnapshotProviderTests
         snapshot.IsBootstrapAdmin.Should().BeTrue();
         snapshot.IsActive.Should().BeTrue();
         snapshot.Has(new NgbPermissionKey("system", "roles", "manage")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetCurrentAsync_DoesNotLoadEffectivePermissions_ForBootstrapAdminPlatformUser()
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var userId = Guid.NewGuid();
+        var permissions = new Mock<IPermissionSnapshotRepository>(MockBehavior.Strict);
+        permissions
+            .Setup(x => x.GetUserAccessStateByAuthSubjectAsync("admin-subject", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserAccessState(
+                userId,
+                "admin-subject",
+                "admin@example.test",
+                "Admin",
+                IsActive: true,
+                AccessVersion: 7));
+
+        var provider = CreateProvider(
+            new ActorIdentity("admin-subject", "admin@example.test", "Admin", AuthRoles: new HashSet<string> { "ngb-admin" }),
+            cache,
+            permissions);
+
+        var snapshot = await provider.GetCurrentAsync(CancellationToken.None);
+
+        snapshot.IsBootstrapAdmin.Should().BeTrue();
+        snapshot.Has(new NgbPermissionKey("system", "roles", "manage")).Should().BeTrue();
+        permissions.Verify(x => x.GetEffectivePermissionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -96,11 +125,23 @@ public sealed class PermissionSnapshotProviderTests
         return new PermissionSnapshotProvider(
             new TestCurrentActorContext(currentActor),
             (permissions ?? new Mock<IPermissionSnapshotRepository>()).Object,
-            cache);
+            CreateSecurityCache(cache));
     }
+
+    private static NgbSecurityCache CreateSecurityCache(IMemoryCache cache)
+        => new(cache, new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
 
     private sealed class TestCurrentActorContext(ActorIdentity? current) : ICurrentActorContext
     {
         public ActorIdentity? Current { get; } = current;
+    }
+
+    private sealed class TestOptionsMonitor<T>(T value) : IOptionsMonitor<T>
+    {
+        public T CurrentValue { get; } = value;
+
+        public T Get(string? name) => CurrentValue;
+
+        public IDisposable? OnChange(Action<T, string?> listener) => null;
     }
 }

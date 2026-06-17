@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Caching.Memory;
 using NGB.Persistence.Security;
 
 namespace NGB.Runtime.Security;
@@ -6,11 +5,10 @@ namespace NGB.Runtime.Security;
 public sealed class PermissionSnapshotProvider(
     ICurrentActorContext currentActor,
     IPermissionSnapshotRepository permissions,
-    IMemoryCache cache)
+    NgbSecurityCache cache)
     : IPermissionSnapshotProvider
 {
     private const string BootstrapAdminRole = "ngb-admin";
-    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(45);
     private Task<PermissionSnapshot>? _currentSnapshotTask;
 
     public async Task<PermissionSnapshot> GetCurrentAsync(CancellationToken ct)
@@ -76,24 +74,25 @@ public sealed class PermissionSnapshotProvider(
         }
 
         var accessVersion = platformUser.AccessVersion <= 0 ? 1 : platformUser.AccessVersion;
-        var cacheKey = $"ngb:security:snapshot:{platformUser.UserId:N}:{accessVersion}";
 
-        return await cache.GetOrCreateAsync(cacheKey, async entry =>
-        {
-            entry.AbsoluteExpirationRelativeToNow = CacheTtl;
+        return await cache.GetOrCreatePermissionSnapshotAsync(
+            platformUser.UserId,
+            accessVersion,
+            async token =>
+            {
+                var effectivePermissions = isBootstrapAdmin
+                    ? []
+                    : await permissions.GetEffectivePermissionsAsync(platformUser.UserId, token);
 
-            var effectivePermissions = isBootstrapAdmin
-                ? []
-                : await permissions.GetEffectivePermissionsAsync(platformUser.UserId, ct);
-
-            return new PermissionSnapshot(
-                userId: platformUser.UserId,
-                authSubject: actor.AuthSubject,
-                isAuthenticated: true,
-                isActive: true,
-                isBootstrapAdmin: isBootstrapAdmin,
-                accessVersion: accessVersion,
-                permissions: effectivePermissions);
-        }) ?? PermissionSnapshot.Anonymous;
+                return new PermissionSnapshot(
+                    userId: platformUser.UserId,
+                    authSubject: actor.AuthSubject,
+                    isAuthenticated: true,
+                    isActive: true,
+                    isBootstrapAdmin: isBootstrapAdmin,
+                    accessVersion: accessVersion,
+                    permissions: effectivePermissions);
+            },
+            ct) ?? PermissionSnapshot.Anonymous;
     }
 }
