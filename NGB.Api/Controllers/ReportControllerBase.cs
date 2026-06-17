@@ -218,13 +218,14 @@ public abstract class ReportControllerBase(
 
     private static void Require(PermissionSnapshot snapshot, string resourceKind, string resourceCode, string actionCode)
     {
-        var permission = new NgbPermissionKey(resourceKind, resourceCode, actionCode);
-        if (!snapshot.Has(permission))
-            throw new NgbPermissionDeniedException(permission);
+        if (snapshot.Has(resourceKind, resourceCode, actionCode))
+            return;
+
+        throw new NgbPermissionDeniedException(new NgbPermissionKey(resourceKind, resourceCode, actionCode));
     }
 
     private static bool Has(PermissionSnapshot snapshot, string resourceKind, string resourceCode, string actionCode)
-        => snapshot.Has(new NgbPermissionKey(resourceKind, resourceCode, actionCode));
+        => snapshot.Has(resourceKind, resourceCode, actionCode);
 
     private static string BuildExportFileName(string reportCode, string? title)
     {

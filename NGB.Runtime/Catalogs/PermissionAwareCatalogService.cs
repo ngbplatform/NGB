@@ -156,5 +156,5 @@ public sealed class PermissionAwareCatalogService(CatalogService inner, INgbAcce
     }
 
     private static bool Has(PermissionSnapshot snapshot, string catalogType, string action)
-        => snapshot.Has(new NgbPermissionKey(NgbResourceKinds.Catalog, catalogType, action));
+        => snapshot.Has(NgbResourceKinds.Catalog, catalogType, action);
 }

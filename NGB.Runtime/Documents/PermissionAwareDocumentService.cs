@@ -242,5 +242,5 @@ public sealed class PermissionAwareDocumentService(DocumentService inner, INgbAc
     }
 
     private static bool Has(PermissionSnapshot snapshot, string documentType, string action)
-        => snapshot.Has(new NgbPermissionKey(NgbResourceKinds.Document, documentType, action));
+        => snapshot.Has(NgbResourceKinds.Document, documentType, action);
 }

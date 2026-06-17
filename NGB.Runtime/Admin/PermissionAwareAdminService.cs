@@ -151,5 +151,5 @@ public sealed class PermissionAwareAdminService(AdminService inner, INgbAccessCh
     }
 
     private static bool Has(PermissionSnapshot snapshot, string resourceKind, string resourceCode, string actionCode)
-        => snapshot.Has(new NgbPermissionKey(resourceKind, resourceCode, actionCode));
+        => snapshot.Has(resourceKind, resourceCode, actionCode);
 }

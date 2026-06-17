@@ -1,13 +1,10 @@
 using Microsoft.Extensions.Caching.Memory;
-using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 
 namespace NGB.Runtime.Security;
 
 public sealed class PermissionSnapshotProvider(
     ICurrentActorContext currentActor,
-    IPlatformUserRepository users,
-    IUserAccessVersionRepository versions,
     IPermissionSnapshotRepository permissions,
     IMemoryCache cache)
     : IPermissionSnapshotProvider
@@ -52,7 +49,7 @@ public sealed class PermissionSnapshotProvider(
                 permissions: []);
         }
 
-        var platformUser = await users.GetByAuthSubjectAsync(actor.AuthSubject, ct);
+        var platformUser = await permissions.GetUserAccessStateByAuthSubjectAsync(actor.AuthSubject, ct);
 
         if (platformUser is null)
         {
@@ -78,8 +75,7 @@ public sealed class PermissionSnapshotProvider(
                 permissions: []);
         }
 
-        var version = await versions.GetAsync(platformUser.UserId, ct);
-        var accessVersion = version?.Version ?? 1;
+        var accessVersion = platformUser.AccessVersion <= 0 ? 1 : platformUser.AccessVersion;
         var cacheKey = $"ngb:security:snapshot:{platformUser.UserId:N}:{accessVersion}";
 
         return await cache.GetOrCreateAsync(cacheKey, async entry =>

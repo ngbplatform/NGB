@@ -77,6 +77,23 @@ public sealed class NgbAccessCheckerTests
     }
 
     [Fact]
+    public void SnapshotHas_UsesCaseInsensitiveTrimmedLookup_WithoutWeakeningInvalidSegments()
+    {
+        var snapshot = new PermissionSnapshot(
+            userId: Guid.NewGuid(),
+            authSubject: "user-1",
+            isAuthenticated: true,
+            isActive: true,
+            isBootstrapAdmin: false,
+            accessVersion: 3,
+            permissions: [new NgbPermissionKey("document", "pm.lease", "view")]);
+
+        snapshot.Has(" Document ", " PM.Lease ", " VIEW ").Should().BeTrue();
+        snapshot.Has("document.owner", "pm.lease", "view").Should().BeFalse();
+        snapshot.Has("document", "pm.lease", "view.owner").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task RequireAsync_ThrowsPermissionDenied_WhenPermissionIsMissing()
     {
         var provider = new Mock<IPermissionSnapshotProvider>();

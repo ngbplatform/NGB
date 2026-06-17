@@ -4,6 +4,10 @@ namespace NGB.Persistence.Security;
 
 public interface IPermissionSnapshotRepository
 {
+    Task<PlatformUserAccessState?> GetUserAccessStateByAuthSubjectAsync(
+        string authSubject,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<NgbPermissionKey>> GetEffectivePermissionsAsync(Guid userId, CancellationToken ct = default);
 
     Task<IReadOnlyList<NgbPermissionKey>> GetRolePermissionsAsync(Guid roleId, CancellationToken ct = default);

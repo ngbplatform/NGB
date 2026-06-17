@@ -3,6 +3,7 @@ using NGB.Core.Security;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.UnitOfWork;
+using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
 namespace NGB.PostgreSql.Security;
@@ -10,6 +11,37 @@ namespace NGB.PostgreSql.Security;
 public sealed class PostgresPermissionSnapshotRepository(IUnitOfWork uow, TimeProvider timeProvider)
     : IPermissionSnapshotRepository
 {
+    public async Task<PlatformUserAccessState?> GetUserAccessStateByAuthSubjectAsync(
+        string authSubject,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(authSubject))
+            throw new NgbArgumentRequiredException(nameof(authSubject));
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+                           SELECT
+                               u.user_id AS UserId,
+                               u.auth_subject AS AuthSubject,
+                               u.email AS Email,
+                               u.display_name AS DisplayName,
+                               u.is_active AS IsActive,
+                               COALESCE(v.version, 1) AS AccessVersion
+                           FROM platform_users u
+                           LEFT JOIN platform_user_access_versions v ON v.user_id = u.user_id
+                           WHERE u.auth_subject = @AuthSubject;
+                           """;
+
+        var cmd = new CommandDefinition(
+            sql,
+            new { AuthSubject = authSubject.Trim() },
+            transaction: uow.Transaction,
+            cancellationToken: ct);
+
+        return await uow.Connection.QuerySingleOrDefaultAsync<PlatformUserAccessState>(cmd);
+    }
+
     public async Task<IReadOnlyList<NgbPermissionKey>> GetEffectivePermissionsAsync(
         Guid userId,
         CancellationToken ct = default)

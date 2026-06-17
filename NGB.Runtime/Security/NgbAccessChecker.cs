@@ -15,9 +15,10 @@ public sealed class NgbAccessChecker(IPermissionSnapshotProvider snapshots) : IN
 
     public async Task RequireAsync(string resourceKind, string resourceCode, string actionCode, CancellationToken ct)
     {
-        var permission = new NgbPermissionKey(resourceKind, resourceCode, actionCode);
         var snapshot = await GetSnapshotAsync(ct);
-        if (!snapshot.Has(permission))
-            throw new NgbPermissionDeniedException(permission);
+        if (snapshot.Has(resourceKind, resourceCode, actionCode))
+            return;
+
+        throw new NgbPermissionDeniedException(new NgbPermissionKey(resourceKind, resourceCode, actionCode));
     }
 }
