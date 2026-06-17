@@ -14,8 +14,26 @@ public sealed class PermissionSnapshotProvider(
 {
     private const string BootstrapAdminRole = "ngb-admin";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(45);
+    private Task<PermissionSnapshot>? _currentSnapshotTask;
 
     public async Task<PermissionSnapshot> GetCurrentAsync(CancellationToken ct)
+    {
+        var task = _currentSnapshotTask ??= LoadCurrentAsync(ct);
+
+        try
+        {
+            return await task;
+        }
+        catch
+        {
+            if (ReferenceEquals(_currentSnapshotTask, task))
+                _currentSnapshotTask = null;
+
+            throw;
+        }
+    }
+
+    private async Task<PermissionSnapshot> LoadCurrentAsync(CancellationToken ct)
     {
         var actor = currentActor.Current;
         if (actor is null)

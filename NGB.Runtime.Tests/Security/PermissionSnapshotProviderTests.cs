@@ -69,7 +69,6 @@ public sealed class PermissionSnapshotProviderTests
         versions
             .SetupSequence(x => x.GetAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformUserAccessVersion(userId, 7, DateTime.UtcNow))
-            .ReturnsAsync(new PlatformUserAccessVersion(userId, 7, DateTime.UtcNow))
             .ReturnsAsync(new PlatformUserAccessVersion(userId, 8, DateTime.UtcNow));
 
         var permissions = new Mock<IPermissionSnapshotRepository>();
@@ -87,11 +86,20 @@ public sealed class PermissionSnapshotProviderTests
 
         var first = await provider.GetCurrentAsync(CancellationToken.None);
         var second = await provider.GetCurrentAsync(CancellationToken.None);
-        var third = await provider.GetCurrentAsync(CancellationToken.None);
+        var nextRequestProvider = CreateProvider(
+            new ActorIdentity("kc-user", "user@example.test", "User"),
+            cache,
+            users,
+            versions,
+            permissions);
+        var third = await nextRequestProvider.GetCurrentAsync(CancellationToken.None);
 
         first.Has(new NgbPermissionKey("document", "pm.lease", "view")).Should().BeTrue();
+        second.Should().BeSameAs(first);
         second.Has(new NgbPermissionKey("document", "pm.lease", "view")).Should().BeTrue();
         third.Has(new NgbPermissionKey("document", "pm.lease", "post")).Should().BeTrue();
+        users.Verify(x => x.GetByAuthSubjectAsync("kc-user", It.IsAny<CancellationToken>()), Times.Exactly(2));
+        versions.Verify(x => x.GetAsync(userId, It.IsAny<CancellationToken>()), Times.Exactly(2));
         permissions.Verify(x => x.GetEffectivePermissionsAsync(userId, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 

@@ -18,11 +18,12 @@ public abstract class ReportControllerBase(
     public async Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
     {
         var all = await definitions.GetAllDefinitionsAsync(ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
         var result = new List<ReportDefinitionDto>(all.Count);
        
         foreach (var definition in all)
         {
-            if (await CanViewOrExecuteReportAsync(definition.ReportCode, ct))
+            if (CanViewOrExecuteReport(snapshot, definition.ReportCode))
                 result.Add(definition);
         }
 
@@ -32,7 +33,8 @@ public abstract class ReportControllerBase(
     [HttpGet("~/api/report-definitions/{reportCode}")]
     public async Task<ReportDefinitionDto> GetDefinition([FromRoute] string reportCode, CancellationToken ct)
     {
-        await RequireViewOrExecuteReportAsync(reportCode, ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
+        RequireViewOrExecuteReport(snapshot, reportCode);
         return await definitions.GetDefinitionAsync(reportCode, ct);
     }
 
@@ -49,7 +51,8 @@ public abstract class ReportControllerBase(
         [FromBody] ReportExportRequestDto request,
         CancellationToken ct)
     {
-        await access.RequireAsync(NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export, ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
+        Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export);
         var sheet = await engine.ExecuteExportSheetAsync(reportCode, request, ct);
         var bytes = await exports.ExportXlsxAsync(sheet, sheet.Meta?.Title, ct);
 
@@ -62,7 +65,8 @@ public abstract class ReportControllerBase(
     [HttpGet("~/api/reports/{reportCode}/variants")]
     public async Task<IReadOnlyList<ReportVariantDto>> GetVariants([FromRoute] string reportCode, CancellationToken ct)
     {
-        await RequireViewOrExecuteReportAsync(reportCode, ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
+        RequireViewOrExecuteReport(snapshot, reportCode);
         return await variants.GetAllAsync(reportCode, ct);
     }
 
@@ -72,7 +76,8 @@ public abstract class ReportControllerBase(
         [FromRoute] string variantCode,
         CancellationToken ct)
     {
-        await RequireViewOrExecuteReportAsync(reportCode, ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
+        RequireViewOrExecuteReport(snapshot, reportCode);
         var variant = await variants.GetAsync(reportCode, variantCode, ct);
 
         return variant is null
@@ -95,17 +100,17 @@ public abstract class ReportControllerBase(
         CancellationToken ct)
     {
         var existing = await variants.GetAsync(reportCode, variantCode, ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
         if (existing?.IsShared == true)
         {
-            await access.RequireAsync(NgbResourceKinds.Report, reportCode, NgbPermissionActions.ManageSharedVariants, ct);
+            Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.ManageSharedVariants);
         }
         else
         {
-            
-            await RequireAnyReportPermissionAsync(
+            RequireAnyReportPermission(
+                snapshot,
                 reportCode,
-                [NgbPermissionActions.DeleteVariant, NgbPermissionActions.ManageSharedVariants],
-                ct);
+                [NgbPermissionActions.DeleteVariant, NgbPermissionActions.ManageSharedVariants]);
         }
 
         await variants.DeleteAsync(reportCode, variantCode, ct);
@@ -117,9 +122,10 @@ public abstract class ReportControllerBase(
         ReportExecutionRequestDto request,
         CancellationToken ct)
     {
-        await access.RequireAsync(NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute, ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
+        Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute);
         var response = await engine.ExecuteAsync(reportCode, request, ct);
-        var sheet = await ScrubForbiddenCellActionsAsync(response.Sheet, ct);
+        var sheet = ScrubForbiddenCellActions(response.Sheet, snapshot);
         return response with { Sheet = sheet };
     }
 
@@ -129,49 +135,50 @@ public abstract class ReportControllerBase(
         ReportVariantDto variant,
         CancellationToken ct)
     {
-        await access.RequireAsync(
+        var snapshot = await access.GetSnapshotAsync(ct);
+        Require(
+            snapshot,
             NgbResourceKinds.Report,
             reportCode,
-            variant.IsShared ? NgbPermissionActions.ManageSharedVariants : NgbPermissionActions.SavePrivateVariant,
-            ct);
+            variant.IsShared ? NgbPermissionActions.ManageSharedVariants : NgbPermissionActions.SavePrivateVariant);
 
         return await variants.SaveAsync(variant with { ReportCode = reportCode, VariantCode = variantCode }, ct);
     }
 
-    private async Task RequireViewOrExecuteReportAsync(string reportCode, CancellationToken ct)
+    private static void RequireViewOrExecuteReport(PermissionSnapshot snapshot, string reportCode)
     {
-        if (!await CanViewOrExecuteReportAsync(reportCode, ct))
+        if (!CanViewOrExecuteReport(snapshot, reportCode))
             throw new NgbPermissionDeniedException(new NgbPermissionKey(NgbResourceKinds.Report, reportCode, NgbPermissionActions.View));
     }
 
-    private async Task<bool> CanViewOrExecuteReportAsync(string reportCode, CancellationToken ct)
-        => await access.HasAsync(NgbResourceKinds.Report, reportCode, NgbPermissionActions.View, ct)
-           || await access.HasAsync(NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute, ct);
+    private static bool CanViewOrExecuteReport(PermissionSnapshot snapshot, string reportCode)
+        => Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.View)
+           || Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute);
 
-    private async Task RequireAnyReportPermissionAsync(
+    private static void RequireAnyReportPermission(
+        PermissionSnapshot snapshot,
         string reportCode,
-        IReadOnlyList<string> actions,
-        CancellationToken ct)
+        IReadOnlyList<string> actions)
     {
         foreach (var action in actions)
         {
-            if (await access.HasAsync(NgbResourceKinds.Report, reportCode, action, ct))
+            if (Has(snapshot, NgbResourceKinds.Report, reportCode, action))
                 return;
         }
 
         throw new NgbPermissionDeniedException(new NgbPermissionKey(NgbResourceKinds.Report, reportCode, actions[0]));
     }
 
-    private async Task<ReportSheetDto> ScrubForbiddenCellActionsAsync(ReportSheetDto sheet, CancellationToken ct)
+    private static ReportSheetDto ScrubForbiddenCellActions(ReportSheetDto sheet, PermissionSnapshot snapshot)
         => sheet with
         {
-            Rows = await ScrubRowsAsync(sheet.Rows, ct),
-            HeaderRows = sheet.HeaderRows is null ? null : await ScrubRowsAsync(sheet.HeaderRows, ct)
+            Rows = ScrubRows(sheet.Rows, snapshot),
+            HeaderRows = sheet.HeaderRows is null ? null : ScrubRows(sheet.HeaderRows, snapshot)
         };
 
-    private async Task<IReadOnlyList<ReportSheetRowDto>> ScrubRowsAsync(
+    private static IReadOnlyList<ReportSheetRowDto> ScrubRows(
         IReadOnlyList<ReportSheetRowDto> rows,
-        CancellationToken ct)
+        PermissionSnapshot snapshot)
     {
         var result = new ReportSheetRowDto[rows.Count];
         for (var i = 0; i < rows.Count; i++)
@@ -182,7 +189,7 @@ public abstract class ReportControllerBase(
             for (var j = 0; j < row.Cells.Count; j++)
             {
                 var cell = row.Cells[j];
-                cells[j] = cell.Action is null || await IsCellActionAllowedAsync(cell.Action, ct)
+                cells[j] = cell.Action is null || IsCellActionAllowed(cell.Action, snapshot)
                     ? cell
                     : cell with { Action = null };
             }
@@ -193,21 +200,31 @@ public abstract class ReportControllerBase(
         return result;
     }
 
-    private async Task<bool> IsCellActionAllowedAsync(ReportCellActionDto action, CancellationToken ct)
+    private static bool IsCellActionAllowed(ReportCellActionDto action, PermissionSnapshot snapshot)
     {
         return action.Kind switch
         {
             ReportCellActionKinds.OpenDocument when !string.IsNullOrWhiteSpace(action.DocumentType)
-                => await access.HasAsync(NgbResourceKinds.Document, action.DocumentType, NgbPermissionActions.View, ct),
+                => Has(snapshot, NgbResourceKinds.Document, action.DocumentType, NgbPermissionActions.View),
             ReportCellActionKinds.OpenCatalog when !string.IsNullOrWhiteSpace(action.CatalogType)
-                => await access.HasAsync(NgbResourceKinds.Catalog, action.CatalogType, NgbPermissionActions.View, ct),
+                => Has(snapshot, NgbResourceKinds.Catalog, action.CatalogType, NgbPermissionActions.View),
             ReportCellActionKinds.OpenReport when action.Report is not null
-                => await CanViewOrExecuteReportAsync(action.Report.ReportCode, ct),
+                => CanViewOrExecuteReport(snapshot, action.Report.ReportCode),
             ReportCellActionKinds.OpenAccount
-                => await access.HasAsync(NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.View, ct),
+                => Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.View),
             _ => false
         };
     }
+
+    private static void Require(PermissionSnapshot snapshot, string resourceKind, string resourceCode, string actionCode)
+    {
+        var permission = new NgbPermissionKey(resourceKind, resourceCode, actionCode);
+        if (!snapshot.Has(permission))
+            throw new NgbPermissionDeniedException(permission);
+    }
+
+    private static bool Has(PermissionSnapshot snapshot, string resourceKind, string resourceCode, string actionCode)
+        => snapshot.Has(new NgbPermissionKey(resourceKind, resourceCode, actionCode));
 
     private static string BuildExportFileName(string reportCode, string? title)
     {
