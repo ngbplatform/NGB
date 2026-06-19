@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.Core.Security;
 using NGB.Runtime.Security;
@@ -20,7 +21,8 @@ public abstract class ReportControllerBase(
     {
         var snapshot = await access.GetSnapshotAsync(ct);
         if (!snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.View)
-            && !snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.Execute))
+            && !snapshot.HasAny(NgbResourceKinds.Report, NgbPermissionActions.Execute)
+            && !HasAnyAdminBackedReportAccess(snapshot))
         {
             return [];
         }
@@ -128,7 +130,7 @@ public abstract class ReportControllerBase(
         CancellationToken ct)
     {
         var snapshot = await access.GetSnapshotAsync(ct);
-        Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute);
+        RequireExecuteReport(snapshot, reportCode);
         var response = await engine.ExecuteAsync(reportCode, request, ct);
         var sheet = ScrubForbiddenCellActions(response.Sheet, snapshot);
         return response with { Sheet = sheet };
@@ -158,7 +160,35 @@ public abstract class ReportControllerBase(
 
     private static bool CanViewOrExecuteReport(PermissionSnapshot snapshot, string reportCode)
         => Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.View)
-           || Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute);
+           || Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute)
+           || HasAdminBackedReportAccess(snapshot, reportCode);
+
+    private static void RequireExecuteReport(PermissionSnapshot snapshot, string reportCode)
+    {
+        if (Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute)
+            || HasAdminBackedReportAccess(snapshot, reportCode))
+        {
+            return;
+        }
+
+        throw new NgbPermissionDeniedException(
+            new NgbPermissionKey(NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute));
+    }
+
+    private static bool HasAnyAdminBackedReportAccess(PermissionSnapshot snapshot)
+        => Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.PostingLog, NgbPermissionActions.View)
+           || Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.Integrity, NgbPermissionActions.View);
+
+    private static bool HasAdminBackedReportAccess(PermissionSnapshot snapshot, string reportCode)
+    {
+        if (string.Equals(reportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase))
+            return Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.PostingLog, NgbPermissionActions.View);
+
+        if (string.Equals(reportCode, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase))
+            return Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.Integrity, NgbPermissionActions.View);
+
+        return false;
+    }
 
     private static void RequireAnyReportPermission(
         PermissionSnapshot snapshot,

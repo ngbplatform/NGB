@@ -15,6 +15,7 @@ public static class NgbSystemPermissions
     public static readonly NgbPermissionKey PeriodClosingCloseMonth = new(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.CloseMonth);
     public static readonly NgbPermissionKey PeriodClosingReopenMonth = new(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.ReopenMonth);
     public static readonly NgbPermissionKey PeriodClosingCloseFiscalYear = new(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.CloseFiscalYear);
+    public static readonly NgbPermissionKey PeriodClosingReopenFiscalYear = new(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.ReopenFiscalYear);
     public static readonly NgbPermissionKey IntegrityView = new(NgbResourceKinds.Admin, NgbPermissionResources.Integrity, NgbPermissionActions.View);
     public static readonly NgbPermissionKey PostingLogView = new(NgbResourceKinds.Admin, NgbPermissionResources.PostingLog, NgbPermissionActions.View);
 
@@ -32,6 +33,7 @@ public static class NgbSystemPermissions
         PeriodClosingCloseMonth,
         PeriodClosingReopenMonth,
         PeriodClosingCloseFiscalYear,
+        PeriodClosingReopenFiscalYear,
         IntegrityView,
         PostingLogView
     ];

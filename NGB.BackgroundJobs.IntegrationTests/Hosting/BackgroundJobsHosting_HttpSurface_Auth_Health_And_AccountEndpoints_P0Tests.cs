@@ -152,6 +152,15 @@ public sealed class BackgroundJobsHosting_HttpSurface_Auth_Health_And_AccountEnd
             var html = await dashboardResponse.Content.ReadAsStringAsync();
             html.Should().Contain("NGB: Protected Jobs");
         }
+
+        using (var applicationUserClient = app.GetTestClient())
+        {
+            applicationUserClient.BaseAddress = new Uri("https://localhost");
+            applicationUserClient.DefaultRequestHeaders.Add("X-Test-Auth", "user");
+
+            using var forbiddenResponse = await applicationUserClient.GetAsync("/hangfire");
+            forbiddenResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        }
     }
 
     [Fact]
@@ -296,15 +305,15 @@ public sealed class BackgroundJobsHosting_HttpSurface_Auth_Health_And_AccountEnd
             if (!Request.Headers.TryGetValue("X-Test-Auth", out var value))
                 return Task.FromResult(AuthenticateResult.NoResult());
 
-            if (!string.Equals(value.ToString(), "admin", StringComparison.Ordinal))
+            if (!string.Equals(value.ToString(), "admin", StringComparison.Ordinal)
+                && !string.Equals(value.ToString(), "user", StringComparison.Ordinal))
                 return Task.FromResult(AuthenticateResult.Fail("Unknown test user."));
 
-            var identity = new ClaimsIdentity(
-                [
-                    new Claim(ClaimTypes.Name, "Test Admin"),
-                    new Claim(ClaimTypes.Role, "ngb-admin")
-                ],
-                authenticationType: TestAuthScheme);
+            var claims = new List<Claim> { new(ClaimTypes.Name, "Test User") };
+            if (string.Equals(value.ToString(), "admin", StringComparison.Ordinal))
+                claims.Add(new Claim(ClaimTypes.Role, "ngb-admin"));
+
+            var identity = new ClaimsIdentity(claims, authenticationType: TestAuthScheme);
 
             var principal = new ClaimsPrincipal(identity);
             var ticket = new AuthenticationTicket(principal, TestAuthScheme);
@@ -314,6 +323,12 @@ public sealed class BackgroundJobsHosting_HttpSurface_Auth_Health_And_AccountEnd
         protected override Task HandleChallengeAsync(AuthenticationProperties properties)
         {
             Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+
+        protected override Task HandleForbiddenAsync(AuthenticationProperties properties)
+        {
+            Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         }
     }

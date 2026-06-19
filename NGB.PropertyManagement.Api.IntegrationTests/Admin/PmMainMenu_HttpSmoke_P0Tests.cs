@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using NGB.Api.Models;
 using NGB.Accounting.Documents;
 using NGB.Contracts.Admin;
+using NGB.Core.Security;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using Xunit;
 
@@ -132,9 +133,10 @@ public sealed class PmMainMenu_HttpSmoke_P0Tests : IAsyncLifetime
             "General Ledger",
             "Ledger Analysis");
         accountingGroup.Items.Should().Contain(i =>
-            i.Code == AccountingDocumentTypeCodes.GeneralJournalEntry
+            i.Kind == NgbResourceKinds.Document
+            && i.Code == AccountingDocumentTypeCodes.GeneralJournalEntry
             && i.Label == "Journal Entries"
-            && i.Route == "/documents/accounting.general_journal_entry"
+            && i.Route == "/accounting/general-journal-entries"
             && i.Icon == "book-open");
         accountingGroup.Items.Should().Contain(i => i.Code == "accounting.cash_flow_statement_indirect" && i.Label == "Cash Flow Statement");
         accountingGroup.Items.Should().Contain(i => i.Code == "accounting.general_ledger_aggregated" && i.Label == "General Ledger");

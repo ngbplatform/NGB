@@ -123,7 +123,8 @@ public static class RuntimeServiceCollectionExtensions
         // Business AuditLog
         services.TryAddScoped<ICurrentActorContext, NullCurrentActorContext>();
         services.TryAddScoped<IAuditLogService, AuditLogService>();
-        services.TryAddScoped<IAuditLogQueryService, AuditLogQueryService>();
+        services.TryAddScoped<AuditLogQueryService>();
+        services.TryAddScoped<IAuditLogQueryService>(sp => sp.GetRequiredService<AuditLogQueryService>());
 
         // Security / access management
         services.TryAddSingleton<IMemoryCache, MemoryCache>();
@@ -325,6 +326,7 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<PermissionAwareAdminService>();
         services.TryAddScoped<PermissionAwareCatalogService>();
         services.TryAddScoped<PermissionAwareDocumentService>();
+        services.TryAddScoped<PermissionAwareAuditLogQueryService>();
 
         return services;
     }

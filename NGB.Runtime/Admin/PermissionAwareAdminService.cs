@@ -148,24 +148,27 @@ public sealed class PermissionAwareAdminService(
            || Has(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Execute);
 
     private static bool IsAdminAuthorized(MainMenuItemDto item, PermissionSnapshot snapshot)
+        => Has(snapshot, NgbResourceKinds.Admin, ResolveAdminPermissionResource(item), NgbPermissionActions.View);
+
+    private static string ResolveAdminPermissionResource(MainMenuItemDto item)
     {
         if (string.Equals(item.Code, NgbPermissionResources.ChartOfAccounts, StringComparison.OrdinalIgnoreCase)
             || item.Route.StartsWith("/admin/chart-of-accounts", StringComparison.OrdinalIgnoreCase))
-            return Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.View);
+            return NgbPermissionResources.ChartOfAccounts;
 
         if (string.Equals(item.Code, "accounting.period_closing", StringComparison.OrdinalIgnoreCase)
             || item.Route.StartsWith("/admin/accounting/period-closing", StringComparison.OrdinalIgnoreCase))
-            return Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.View);
+            return NgbPermissionResources.PeriodClosing;
 
         if (string.Equals(item.Code, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase)
             || item.Route.StartsWith("/admin/accounting/posting-log", StringComparison.OrdinalIgnoreCase))
-            return Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.View);
+            return NgbPermissionResources.PostingLog;
 
         if (string.Equals(item.Code, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase)
             || item.Route.StartsWith("/admin/accounting/consistency", StringComparison.OrdinalIgnoreCase))
-            return Has(snapshot, NgbResourceKinds.Admin, NgbPermissionResources.Integrity, NgbPermissionActions.View);
+            return NgbPermissionResources.Integrity;
 
-        return Has(snapshot, NgbResourceKinds.Admin, item.Code, NgbPermissionActions.View);
+        return item.Code;
     }
 
     private static bool Has(PermissionSnapshot snapshot, string resourceKind, string resourceCode, string actionCode)

@@ -5,11 +5,17 @@ using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using NGB.Api.Models;
+using NGB.Accounting.Documents;
+using NGB.Contracts.Accounting;
 using NGB.Contracts.Admin;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Security;
 using NGB.Core.AuditLog;
+using NGB.Core.Reporting;
+using NGB.Core.Security;
+using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.Persistence.AuditLog;
@@ -75,6 +81,509 @@ public sealed class PmSecurityAccessManagement_Http_P0Tests(PmIntegrationFixture
         var menuLabels = menu!.Groups.SelectMany(group => group.Items).Select(item => item.Label).ToArray();
         menuLabels.Should().NotContain("Users");
         menuLabels.Should().NotContain("Roles & Permissions");
+    }
+
+    [Fact]
+    public async Task MainMenu_WhenUserHasBalanceSheetPostingLogAndExternalTools_ShowsOnlyThoseItems()
+    {
+        await using var factory = new PmApiFactory(fixture, new Dictionary<string, string?>
+        {
+            [$"{nameof(ExternalLinksSettings)}:{nameof(ExternalLinksSettings.HealthUiUrl)}"] = "https://localhost:7075/health-ui",
+            [$"{nameof(ExternalLinksSettings)}:{nameof(ExternalLinksSettings.BackgroundJobsUiUrl)}"] = "https://localhost:7074/hangfire"
+        });
+        await SeedSecurityDefaultsAsync(factory);
+
+        using var adminClient = CreateHttpsClient(factory);
+
+        var role = await CreateRoleAsync(
+            adminClient,
+            $"pm-menu-probe-{Guid.NewGuid():N}",
+            "Menu Probe",
+            [
+                new PermissionAssignmentDto(NgbResourceKinds.Report, AccountingReportCodes.BalanceSheet, NgbPermissionActions.View),
+                new PermissionAssignmentDto(NgbResourceKinds.Report, AccountingReportCodes.BalanceSheet, NgbPermissionActions.Execute),
+                new PermissionAssignmentDto(NgbResourceKinds.Report, AccountingReportCodes.PostingLog, NgbPermissionActions.View),
+                new PermissionAssignmentDto(NgbResourceKinds.Report, AccountingReportCodes.PostingLog, NgbPermissionActions.Execute),
+                new PermissionAssignmentDto(NgbResourceKinds.Admin, NgbPermissionResources.PostingLog, NgbPermissionActions.View),
+                new PermissionAssignmentDto(NgbResourceKinds.External, PropertyManagementCodes.Watchdog, NgbPermissionActions.View),
+                new PermissionAssignmentDto(NgbResourceKinds.External, PropertyManagementCodes.BackgroundJobs, NgbPermissionActions.View)
+            ]);
+
+        var (email, password, _) = await CreateUserAsync(
+            adminClient,
+            "menu-probe",
+            "Menu Probe",
+            [role.RoleId]);
+
+        using var limitedClient = CreateHttpsClient(factory, new PmKeycloakTestUser(email, password));
+
+        var menu = await limitedClient.GetFromJsonAsync<MainMenuDto>("/api/main-menu");
+        menu.Should().NotBeNull();
+
+        var items = menu!.Groups.SelectMany(group => group.Items).ToArray();
+        items.Select(item => item.Label).Should().Contain([
+            "Balance Sheet",
+            "Posting Log",
+            "Health",
+            "Background Jobs"
+        ]);
+        items.Select(item => item.Label).Should().NotContain([
+            "Period Close",
+            "Integrity Checks",
+            "Users",
+            "Roles & Permissions"
+        ]);
+        items.Should().ContainSingle(item =>
+            item.Label == "Posting Log"
+            && item.Kind == NgbResourceKinds.Admin
+            && item.Code == AccountingReportCodes.PostingLog
+            && item.Route == "/admin/accounting/posting-log");
+    }
+
+    [Fact]
+    public async Task MainMenu_EachCanonicalPermissionMapsToExactlyItsOwnItem()
+    {
+        await using var factory = new PmApiFactory(fixture, new Dictionary<string, string?>
+        {
+            [$"{nameof(ExternalLinksSettings)}:{nameof(ExternalLinksSettings.HealthUiUrl)}"] = "https://localhost:7075/health-ui",
+            [$"{nameof(ExternalLinksSettings)}:{nameof(ExternalLinksSettings.BackgroundJobsUiUrl)}"] = "https://localhost:7074/hangfire"
+        });
+        await SeedSecurityDefaultsAsync(factory);
+
+        using var adminClient = CreateHttpsClient(factory);
+        var role = await CreateRoleAsync(
+            adminClient,
+            $"pm-menu-mapping-{Guid.NewGuid():N}",
+            "Menu Mapping",
+            []);
+        var (email, password, _) = await CreateUserAsync(
+            adminClient,
+            "menu-mapping",
+            "Menu Mapping",
+            [role.RoleId]);
+        using var limitedClient = CreateHttpsClient(factory, new PmKeycloakTestUser(email, password));
+
+        var cases = new[]
+        {
+            new MenuPermissionMapping(
+                new(NgbResourceKinds.Document, AccountingDocumentTypeCodes.GeneralJournalEntry, NgbPermissionActions.View),
+                NgbResourceKinds.Document,
+                AccountingDocumentTypeCodes.GeneralJournalEntry,
+                "/accounting/general-journal-entries"),
+            new MenuPermissionMapping(
+                new(NgbResourceKinds.Catalog, PropertyManagementCodes.Party, NgbPermissionActions.View),
+                NgbResourceKinds.Catalog,
+                PropertyManagementCodes.Party,
+                $"/catalogs/{PropertyManagementCodes.Party}"),
+            new MenuPermissionMapping(
+                new(NgbResourceKinds.Report, AccountingReportCodes.BalanceSheet, NgbPermissionActions.View),
+                NgbResourceKinds.Page,
+                AccountingReportCodes.BalanceSheet,
+                $"/reports/{AccountingReportCodes.BalanceSheet}"),
+            new MenuPermissionMapping(
+                new(NgbResourceKinds.Page, PropertyManagementSecurityDefaults.ReceivablesOpenItemsPage, NgbPermissionActions.View),
+                NgbResourceKinds.Page,
+                PropertyManagementSecurityDefaults.ReceivablesOpenItemsPage,
+                "/receivables/open-items"),
+            new MenuPermissionMapping(
+                NgbSystemPermissions.UsersView,
+                NgbResourceKinds.Page,
+                "system.users",
+                "/admin/security/users"),
+            new MenuPermissionMapping(
+                NgbSystemPermissions.RolesView,
+                NgbResourceKinds.Page,
+                "system.roles",
+                "/admin/security/roles"),
+            new MenuPermissionMapping(
+                NgbSystemPermissions.ChartOfAccountsView,
+                NgbResourceKinds.Admin,
+                "chart-of-accounts",
+                "/admin/chart-of-accounts"),
+            new MenuPermissionMapping(
+                NgbSystemPermissions.PeriodClosingView,
+                NgbResourceKinds.Admin,
+                "accounting.period_closing",
+                "/admin/accounting/period-closing"),
+            new MenuPermissionMapping(
+                NgbSystemPermissions.PostingLogView,
+                NgbResourceKinds.Admin,
+                AccountingReportCodes.PostingLog,
+                "/admin/accounting/posting-log"),
+            new MenuPermissionMapping(
+                NgbSystemPermissions.IntegrityView,
+                NgbResourceKinds.Admin,
+                AccountingReportCodes.Consistency,
+                "/admin/accounting/consistency"),
+            new MenuPermissionMapping(
+                new(NgbResourceKinds.External, PropertyManagementCodes.Watchdog, NgbPermissionActions.View),
+                NgbResourceKinds.External,
+                PropertyManagementCodes.Watchdog,
+                "https://localhost:7075/health-ui"),
+            new MenuPermissionMapping(
+                new(NgbResourceKinds.External, PropertyManagementCodes.BackgroundJobs, NgbPermissionActions.View),
+                NgbResourceKinds.External,
+                PropertyManagementCodes.BackgroundJobs,
+                "https://localhost:7074/hangfire")
+        };
+
+        foreach (var mapping in cases)
+        {
+            using (var replaceResponse = await adminClient.PutAsJsonAsync(
+                       $"/api/security/roles/{role.RoleId}/permissions",
+                       new ReplaceRolePermissionsRequestDto(
+                       [
+                           new PermissionAssignmentDto(
+                               mapping.Permission.ResourceKind,
+                               mapping.Permission.ResourceCode,
+                               mapping.Permission.ActionCode)
+                       ])))
+            {
+                replaceResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, mapping.Permission.ToString());
+            }
+
+            var currentAccess = await GetCurrentAccessAsync(limitedClient);
+            currentAccess.Permissions.Should().ContainSingle(permission =>
+                permission.ResourceKind == mapping.Permission.ResourceKind
+                && permission.ResourceCode == mapping.Permission.ResourceCode
+                && permission.ActionCode == mapping.Permission.ActionCode,
+                mapping.Permission.ToString());
+
+            var menu = await limitedClient.GetFromJsonAsync<MainMenuDto>("/api/main-menu");
+            menu.Should().NotBeNull();
+            var items = menu!.Groups.SelectMany(group => group.Items).ToArray();
+
+            items.Should().ContainSingle(mapping.Permission.ToString());
+            items.Should().ContainSingle(item =>
+                item.Kind == mapping.ExpectedKind
+                && item.Code == mapping.ExpectedCode
+                && item.Route == mapping.ExpectedRoute,
+                mapping.Permission.ToString());
+        }
+    }
+
+    [Theory]
+    [InlineData(NgbPermissionResources.PeriodClosing, "Period Close", "/admin/accounting/period-closing", "Posting Log", "Integrity Checks")]
+    [InlineData(NgbPermissionResources.PostingLog, "Posting Log", "/admin/accounting/posting-log", "Period Close", "Integrity Checks")]
+    [InlineData(NgbPermissionResources.Integrity, "Integrity Checks", "/admin/accounting/consistency", "Period Close", "Posting Log")]
+    public async Task MainMenu_AdminDiagnosticsUseDistinctAdminPermissions(
+        string adminResource,
+        string allowedLabel,
+        string allowedRoute,
+        string hiddenLabelA,
+        string hiddenLabelB)
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await SeedSecurityDefaultsAsync(factory);
+
+        using var adminClient = CreateHttpsClient(factory);
+
+        var role = await CreateRoleAsync(
+            adminClient,
+            $"pm-admin-menu-{Guid.NewGuid():N}",
+            $"Admin Menu {adminResource}",
+            [
+                new PermissionAssignmentDto(NgbResourceKinds.Admin, adminResource, NgbPermissionActions.View)
+            ]);
+
+        var (email, password, _) = await CreateUserAsync(
+            adminClient,
+            $"admin-menu-{adminResource.Replace('_', '-')}",
+            $"Admin Menu {adminResource}",
+            [role.RoleId]);
+
+        using var limitedClient = CreateHttpsClient(factory, new PmKeycloakTestUser(email, password));
+
+        var menu = await limitedClient.GetFromJsonAsync<MainMenuDto>("/api/main-menu");
+        menu.Should().NotBeNull();
+
+        var setupItems = menu!.Groups
+            .Should()
+            .ContainSingle(group => group.Label == "Setup & Controls")
+            .Subject
+            .Items;
+
+        setupItems.Should().ContainSingle(item =>
+            item.Label == allowedLabel
+            && item.Route == allowedRoute);
+        setupItems.Select(item => item.Label).Should().NotContain([hiddenLabelA, hiddenLabelB]);
+    }
+
+    [Theory]
+    [InlineData(NgbPermissionResources.PostingLog, AccountingReportCodes.PostingLog, AccountingReportCodes.Consistency)]
+    [InlineData(NgbPermissionResources.Integrity, AccountingReportCodes.Consistency, AccountingReportCodes.PostingLog)]
+    public async Task AdminBackedDiagnosticPermission_AuthorizesOnlyItsMatchingReport(
+        string adminResource,
+        string allowedReportCode,
+        string deniedReportCode)
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await SeedSecurityDefaultsAsync(factory);
+
+        using var adminClient = CreateHttpsClient(factory);
+
+        var role = await CreateRoleAsync(
+            adminClient,
+            $"pm-diagnostics-{Guid.NewGuid():N}",
+            "Diagnostics",
+            [
+                new PermissionAssignmentDto(
+                    NgbResourceKinds.Admin,
+                    adminResource,
+                    NgbPermissionActions.View)
+            ]);
+
+        var (email, password, _) = await CreateUserAsync(
+            adminClient,
+            "diagnostics",
+            "Diagnostics User",
+            [role.RoleId]);
+
+        using var limitedClient = CreateHttpsClient(factory, new PmKeycloakTestUser(email, password));
+
+        var definitions = await limitedClient.GetFromJsonAsync<IReadOnlyList<ReportDefinitionDto>>(
+            "/api/report-definitions",
+            Json);
+        definitions.Should().NotBeNull();
+        definitions!.Select(definition => definition.ReportCode).Should().ContainSingle().Which.Should().Be(allowedReportCode);
+
+        using (var response = await limitedClient.GetAsync($"/api/report-definitions/{allowedReportCode}"))
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using (var response = await limitedClient.GetAsync($"/api/report-definitions/{deniedReportCode}"))
+        {
+            await AssertPermissionDeniedAsync(response, NgbResourceKinds.Report, deniedReportCode);
+        }
+
+        var request = string.Equals(allowedReportCode, AccountingReportCodes.Consistency, StringComparison.Ordinal)
+            ? new ReportExecutionRequestDto(
+                       Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                       {
+                           ["period_utc"] = "2026-01-01"
+                       },
+                       Offset: 0,
+                       Limit: 10)
+            : new ReportExecutionRequestDto(Offset: 0, Limit: 10);
+
+        using (var response = await limitedClient.PostAsJsonAsync(
+                   $"/api/reports/{allowedReportCode}/execute",
+                   request))
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+    }
+
+    [Fact]
+    public async Task PeriodClosingEndpoints_DenyEveryReadAndMutationWithoutItsCanonicalPermission()
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await SeedSecurityDefaultsAsync(factory);
+
+        using var adminClient = CreateHttpsClient(factory);
+        var role = await CreateRoleAsync(
+            adminClient,
+            $"pm-period-denied-{Guid.NewGuid():N}",
+            "Period Denied",
+            [
+                new PermissionAssignmentDto(
+                    NgbResourceKinds.Report,
+                    AccountingReportCodes.BalanceSheet,
+                    NgbPermissionActions.View)
+            ]);
+        var (email, password, _) = await CreateUserAsync(
+            adminClient,
+            "period-denied",
+            "Period Denied",
+            [role.RoleId]);
+        using var limitedClient = CreateHttpsClient(factory, new PmKeycloakTestUser(email, password));
+
+        var readRequests = new[]
+        {
+            "/api/accounting/period-closing/month?period=2026-01-01",
+            "/api/accounting/period-closing/calendar?year=2026",
+            "/api/accounting/period-closing/fiscal-year?fiscalYearEndPeriod=2026-12-01",
+            "/api/accounting/period-closing/retained-earnings-accounts?q=retained&limit=10"
+        };
+
+        foreach (var request in readRequests)
+        {
+            using var response = await limitedClient.GetAsync(request);
+            await AssertPermissionDeniedAsync(
+                response,
+                NgbResourceKinds.Admin,
+                NgbPermissionResources.PeriodClosing,
+                NgbPermissionActions.View);
+        }
+
+        var mutationRequests = new (string Route, object Body, string Action)[]
+        {
+            ("/api/accounting/period-closing/month/close", new CloseMonthRequestDto(new DateOnly(2026, 1, 1)), NgbPermissionActions.CloseMonth),
+            ("/api/accounting/period-closing/month/reopen", new ReopenMonthRequestDto(new DateOnly(2026, 1, 1), "Security probe"), NgbPermissionActions.ReopenMonth),
+            ("/api/accounting/period-closing/fiscal-year/close", new CloseFiscalYearRequestDto(new DateOnly(2026, 12, 1), Guid.Empty), NgbPermissionActions.CloseFiscalYear),
+            ("/api/accounting/period-closing/fiscal-year/reopen", new ReopenFiscalYearRequestDto(new DateOnly(2026, 12, 1), "Security probe"), NgbPermissionActions.ReopenFiscalYear)
+        };
+
+        foreach (var request in mutationRequests)
+        {
+            using var response = await limitedClient.PostAsJsonAsync(request.Route, request.Body);
+            await AssertPermissionDeniedAsync(
+                response,
+                NgbResourceKinds.Admin,
+                NgbPermissionResources.PeriodClosing,
+                request.Action);
+        }
+    }
+
+    [Fact]
+    public async Task PeriodClosingDefinitionsAndAdministratorRole_ContainEveryEndpointPermission()
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await SeedSecurityDefaultsAsync(factory);
+
+        using var adminClient = CreateHttpsClient(factory);
+        var expectedActions = new[]
+        {
+            NgbPermissionActions.View,
+            NgbPermissionActions.CloseMonth,
+            NgbPermissionActions.ReopenMonth,
+            NgbPermissionActions.CloseFiscalYear,
+            NgbPermissionActions.ReopenFiscalYear
+        };
+
+        var definitions = await adminClient.GetFromJsonAsync<PermissionDefinitionDto[]>(
+            "/api/security/permissions/definitions");
+        definitions.Should().NotBeNull();
+        definitions!
+            .Where(definition =>
+                definition.ResourceKind == NgbResourceKinds.Admin
+                && definition.ResourceCode == NgbPermissionResources.PeriodClosing)
+            .Select(definition => definition.ActionCode)
+            .Should()
+            .BeEquivalentTo(expectedActions);
+
+        var administrator = (await GetRolesAsync(adminClient))
+            .Should()
+            .ContainSingle(role => role.Code == "pm-administrator")
+            .Subject;
+        var details = await adminClient.GetFromJsonAsync<RoleDetailsDto>(
+            $"/api/security/roles/{administrator.RoleId}");
+        details.Should().NotBeNull();
+        details!.Permissions
+            .Where(permission =>
+                permission.ResourceKind == NgbResourceKinds.Admin
+                && permission.ResourceCode == NgbPermissionResources.PeriodClosing)
+            .Select(permission => permission.ActionCode)
+            .Should()
+            .BeEquivalentTo(expectedActions);
+    }
+
+    [Fact]
+    public async Task GeneralJournalEntryEndpoints_DenyEveryOperationWithoutItsCanonicalDocumentPermission()
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await SeedSecurityDefaultsAsync(factory);
+
+        using var adminClient = CreateHttpsClient(factory);
+        var role = await CreateRoleAsync(
+            adminClient,
+            $"pm-gje-denied-{Guid.NewGuid():N}",
+            "GJE Denied",
+            [
+                new PermissionAssignmentDto(
+                    NgbResourceKinds.Report,
+                    AccountingReportCodes.BalanceSheet,
+                    NgbPermissionActions.View)
+            ]);
+        var (email, password, _) = await CreateUserAsync(
+            adminClient,
+            "gje-denied",
+            "GJE Denied",
+            [role.RoleId]);
+        using var limitedClient = CreateHttpsClient(factory, new PmKeycloakTestUser(email, password));
+
+        var id = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var requests = new (HttpMethod Method, string Route, object? Body, string Action)[]
+        {
+            (HttpMethod.Get, "/api/accounting/general-journal-entries", null, NgbPermissionActions.View),
+            (HttpMethod.Get, $"/api/accounting/general-journal-entries/{id}", null, NgbPermissionActions.View),
+            (HttpMethod.Post, "/api/accounting/general-journal-entries", new CreateGeneralJournalEntryDraftRequestDto(DateTime.UtcNow), NgbPermissionActions.Create),
+            (HttpMethod.Put, $"/api/accounting/general-journal-entries/{id}/header", new UpdateGeneralJournalEntryHeaderRequestDto("Security probe"), NgbPermissionActions.EditDraft),
+            (HttpMethod.Put, $"/api/accounting/general-journal-entries/{id}/lines", new ReplaceGeneralJournalEntryLinesRequestDto("Security probe", []), NgbPermissionActions.EditDraft),
+            (HttpMethod.Post, $"/api/accounting/general-journal-entries/{id}/submit", null, NgbPermissionActions.EditDraft),
+            (HttpMethod.Post, $"/api/accounting/general-journal-entries/{id}/approve", null, NgbPermissionActions.Post),
+            (HttpMethod.Post, $"/api/accounting/general-journal-entries/{id}/reject", new GeneralJournalEntryRejectRequestDto("Security probe"), NgbPermissionActions.Post),
+            (HttpMethod.Post, $"/api/accounting/general-journal-entries/{id}/post", null, NgbPermissionActions.Post),
+            (HttpMethod.Post, $"/api/accounting/general-journal-entries/{id}/reverse", new GeneralJournalEntryReverseRequestDto(DateTime.UtcNow), NgbPermissionActions.Unpost),
+            (HttpMethod.Post, $"/api/accounting/general-journal-entries/{id}/mark-for-deletion", null, NgbPermissionActions.MarkForDeletion),
+            (HttpMethod.Post, $"/api/accounting/general-journal-entries/{id}/unmark-for-deletion", null, NgbPermissionActions.UnmarkForDeletion),
+            (HttpMethod.Get, $"/api/accounting/general-journal-entries/accounts/{accountId}", null, NgbPermissionActions.View)
+        };
+
+        foreach (var request in requests)
+        {
+            using var message = new HttpRequestMessage(request.Method, request.Route)
+            {
+                Content = request.Body is null ? null : JsonContent.Create(request.Body)
+            };
+            using var response = await limitedClient.SendAsync(message);
+            await AssertPermissionDeniedAsync(
+                response,
+                NgbResourceKinds.Document,
+                AccountingDocumentTypeCodes.GeneralJournalEntry,
+                request.Action);
+        }
+    }
+
+    [Fact]
+    public async Task GeneralJournalEntryDefaults_AreAssignedOnlyToAccountingCapableRoles()
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await SeedSecurityDefaultsAsync(factory);
+
+        using var adminClient = CreateHttpsClient(factory);
+        var roles = await GetRolesAsync(adminClient);
+
+        foreach (var roleCode in new[] { "pm-administrator", "pm-accountant", "pm-auditor", "pm-read-only" })
+        {
+            var role = roles.Should().ContainSingle(candidate => candidate.Code == roleCode).Subject;
+            var details = await adminClient.GetFromJsonAsync<RoleDetailsDto>($"/api/security/roles/{role.RoleId}");
+            details.Should().NotBeNull();
+
+            var actions = details!.Permissions
+                .Where(permission =>
+                    permission.ResourceKind == NgbResourceKinds.Document
+                    && permission.ResourceCode == AccountingDocumentTypeCodes.GeneralJournalEntry)
+                .Select(permission => permission.ActionCode)
+                .ToArray();
+
+            actions.Should().Contain([NgbPermissionActions.View, NgbPermissionActions.Lookup], roleCode);
+            if (roleCode is "pm-administrator" or "pm-accountant")
+            {
+                actions.Should().Contain(
+                    [NgbPermissionActions.Create, NgbPermissionActions.EditDraft, NgbPermissionActions.Post, NgbPermissionActions.Unpost],
+                    roleCode);
+            }
+            else
+            {
+                actions.Should().NotContain(
+                    [NgbPermissionActions.Create, NgbPermissionActions.EditDraft, NgbPermissionActions.Post, NgbPermissionActions.Unpost],
+                    roleCode);
+            }
+        }
+
+        foreach (var roleCode in new[] { "pm-ar-clerk", "pm-ap-clerk", "pm-property-manager", "pm-maintenance-coordinator" })
+        {
+            var role = roles.Should().ContainSingle(candidate => candidate.Code == roleCode).Subject;
+            var details = await adminClient.GetFromJsonAsync<RoleDetailsDto>($"/api/security/roles/{role.RoleId}");
+            details.Should().NotBeNull();
+            details!.Permissions.Should().NotContain(permission =>
+                permission.ResourceKind == NgbResourceKinds.Document
+                && permission.ResourceCode == AccountingDocumentTypeCodes.GeneralJournalEntry,
+                roleCode);
+        }
     }
 
     [Fact]
@@ -523,14 +1032,23 @@ public sealed class PmSecurityAccessManagement_Http_P0Tests(PmIntegrationFixture
     private static async Task AssertPermissionDeniedAsync(
         HttpResponseMessage response,
         string resourceKind,
-        string resourceCode)
+        string resourceCode,
+        string? actionCode = null)
     {
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         var body = await response.Content.ReadAsStringAsync();
         body.Should().Contain("permission_denied");
         body.Should().Contain(resourceKind);
         body.Should().Contain(resourceCode);
+        if (actionCode is not null)
+            body.Should().Contain(actionCode);
     }
+
+    private sealed record MenuPermissionMapping(
+        NgbPermissionKey Permission,
+        string ExpectedKind,
+        string ExpectedCode,
+        string ExpectedRoute);
 
     private static async Task<IReadOnlyList<AuditEvent>> ReadAuditEventsAsync(
         PmApiFactory factory,

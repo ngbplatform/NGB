@@ -17,10 +17,10 @@ public sealed class AccountingDocumentsMainMenuContributor : IMainMenuContributo
             Items:
             [
                 new MainMenuItemDto(
-                    Kind: NgbResourceKinds.Page,
+                    Kind: NgbResourceKinds.Document,
                     Code: AccountingDocumentTypeCodes.GeneralJournalEntry,
                     Label: "Journal Entries",
-                    Route: "/documents/accounting.general_journal_entry",
+                    Route: "/accounting/general-journal-entries",
                     Icon: "book-open",
                     Ordinal: 10)
             ],

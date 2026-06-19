@@ -26,6 +26,7 @@ public sealed class PlatformPermissionDefinitionSource : INgbPermissionDefinitio
             Def(NgbSystemPermissions.PeriodClosingCloseMonth, "Close month", accountingGroup),
             Def(NgbSystemPermissions.PeriodClosingReopenMonth, "Reopen month", accountingGroup),
             Def(NgbSystemPermissions.PeriodClosingCloseFiscalYear, "Close fiscal year", accountingGroup),
+            Def(NgbSystemPermissions.PeriodClosingReopenFiscalYear, "Reopen fiscal year", accountingGroup),
             
             Def(NgbSystemPermissions.IntegrityView, "View integrity diagnostics", adminGroup),
             Def(NgbSystemPermissions.PostingLogView, "View posting log", adminGroup)

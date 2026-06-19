@@ -31,4 +31,5 @@ public static class NgbPermissionActions
     public const string CloseMonth = "close_month";
     public const string ReopenMonth = "reopen_month";
     public const string CloseFiscalYear = "close_fiscal_year";
+    public const string ReopenFiscalYear = "reopen_fiscal_year";
 }

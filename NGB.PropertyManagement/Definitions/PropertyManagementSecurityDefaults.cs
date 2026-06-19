@@ -1,3 +1,4 @@
+using NGB.Accounting.Documents;
 using NGB.Core.Reporting;
 using NGB.Core.Security;
 
@@ -61,6 +62,11 @@ public static class PropertyManagementSecurityDefaults
         PropertyManagementCodes.Lease
     ];
 
+    private static readonly string[] AccountingDocuments =
+    [
+        AccountingDocumentTypeCodes.GeneralJournalEntry
+    ];
+
     private static readonly string[] Catalogs =
     [
         PropertyManagementCodes.Property,
@@ -118,14 +124,15 @@ public static class PropertyManagementSecurityDefaults
                     P(NgbResourceKinds.System, NgbPermissionResources.Users, NgbPermissionActions.Manage),
                     P(NgbResourceKinds.System, NgbPermissionResources.Roles, NgbPermissionActions.View),
                     P(NgbResourceKinds.System, NgbPermissionResources.Roles, NgbPermissionActions.Manage),
-                    P(NgbResourceKinds.System, NgbPermissionResources.Permissions, NgbPermissionActions.View)])
+                    P(NgbResourceKinds.System, NgbPermissionResources.Permissions, NgbPermissionActions.View),
+                    P(NgbResourceKinds.System, NgbPermissionResources.Audit, NgbPermissionActions.View)])
                 .ToArray()),
 
         new(
             "pm-accountant",
             "PM Accountant",
             "Accounting-focused PM access across receivables, payables and financial reports.",
-            DocumentOps(ReceivableDocuments.Concat(PayableDocuments), canPost: true)
+            DocumentOps(ReceivableDocuments.Concat(PayableDocuments).Concat(AccountingDocuments), canPost: true)
                 .Concat(CatalogViewAndLookup(Catalogs))
                 .Concat(ReportExecuteExport(AccountingReports.Concat(PmReports.Where(static x => x.StartsWith("pm.receivables", StringComparison.OrdinalIgnoreCase)))))
                 .Concat(AdminAccounting(manage: true))
@@ -177,7 +184,7 @@ public static class PropertyManagementSecurityDefaults
             "pm-auditor",
             "PM Auditor",
             "Read-only PM audit access with effects and flow visibility.",
-            DocumentRead(ReceivableDocuments.Concat(PayableDocuments).Concat(MaintenanceDocuments).Concat(PortfolioDocuments), includeAudit: true)
+            DocumentRead(ReceivableDocuments.Concat(PayableDocuments).Concat(MaintenanceDocuments).Concat(PortfolioDocuments).Concat(AccountingDocuments), includeAudit: true)
                 .Concat(CatalogViewAndLookup(Catalogs))
                 .Concat(ReportExecute(PmReports.Concat(AccountingReports)))
                 .Concat(AdminAccounting(manage: false))
@@ -188,7 +195,7 @@ public static class PropertyManagementSecurityDefaults
             "pm-read-only",
             "PM Read Only",
             "Read-only operational access without exports.",
-            DocumentRead(ReceivableDocuments.Concat(PayableDocuments).Concat(MaintenanceDocuments).Concat(PortfolioDocuments))
+            DocumentRead(ReceivableDocuments.Concat(PayableDocuments).Concat(MaintenanceDocuments).Concat(PortfolioDocuments).Concat(AccountingDocuments))
                 .Concat(CatalogViewAndLookup(Catalogs))
                 .Concat(ReportExecute(PmReports))
                 .Concat(PageView(Pages))
@@ -196,7 +203,7 @@ public static class PropertyManagementSecurityDefaults
     ];
 
     private static IEnumerable<PropertyManagementSecurityPermissionDefault> AllPmPermissions()
-        => DocumentOps(ReceivableDocuments.Concat(PayableDocuments).Concat(MaintenanceDocuments).Concat(PortfolioDocuments), canPost: true)
+        => DocumentOps(ReceivableDocuments.Concat(PayableDocuments).Concat(MaintenanceDocuments).Concat(PortfolioDocuments).Concat(AccountingDocuments), canPost: true)
             .Concat(CatalogEdit(Catalogs))
             .Concat(ReportExecuteExport(PmReports.Concat(AccountingReports)))
             .Concat(PageView(Pages))
@@ -301,6 +308,7 @@ public static class PropertyManagementSecurityDefaults
         yield return P(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.CloseMonth);
         yield return P(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.ReopenMonth);
         yield return P(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.CloseFiscalYear);
+        yield return P(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.ReopenFiscalYear);
     }
 
     private static PropertyManagementSecurityPermissionDefault P(string kind, string code, string action)

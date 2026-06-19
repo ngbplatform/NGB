@@ -1,11 +1,16 @@
 using System.Net;
+using System.Security.Claims;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NGB.Watchdog.HealthChecks;
 using NGB.Watchdog.Hosting;
 using Xunit;
@@ -14,6 +19,8 @@ namespace NGB.Watchdog.IntegrationTests.Hosting;
 
 public sealed class WatchdogHosting_HttpSurface_And_WebClientHealth_P0Tests
 {
+    private const string TestAuthScheme = "TestAdmin";
+
     [Fact]
     public async Task Health_Endpoint_Returns_Healthy_When_WebClient_Is_Reachable()
     {
@@ -157,6 +164,43 @@ public sealed class WatchdogHosting_HttpSurface_And_WebClientHealth_P0Tests
         }
     }
 
+    [Fact]
+    public async Task Ui_RequiresInfrastructureAdminRole_WhenAuthorizationIsEnabled()
+    {
+        await using var target = await StartProbeServerAsync(_ => Results.Ok(new { status = "ok" }));
+        await using var watchdog = await StartWatchdogAsync(
+            target,
+            options =>
+            {
+                options.RequireAuthorization = true;
+                options.MapAccountEndpoints = false;
+            },
+            useTestAuth: true);
+
+        using (var anonymousClient = watchdog.GetTestClient())
+        {
+            anonymousClient.BaseAddress = new Uri("https://localhost");
+            using var response = await anonymousClient.GetAsync("/health-ui");
+            response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        }
+
+        using (var applicationUserClient = watchdog.GetTestClient())
+        {
+            applicationUserClient.BaseAddress = new Uri("https://localhost");
+            applicationUserClient.DefaultRequestHeaders.Add("X-Test-Auth", "user");
+            using var response = await applicationUserClient.GetAsync("/health-ui");
+            response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        }
+
+        using (var adminClient = watchdog.GetTestClient())
+        {
+            adminClient.BaseAddress = new Uri("https://localhost");
+            adminClient.DefaultRequestHeaders.Add("X-Test-Auth", "admin");
+            using var response = await adminClient.GetAsync("/health-ui");
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+    }
+
     private static async Task<WebApplication> StartProbeServerAsync(Func<HttpContext, IResult> handler)
     {
         var builder = WebApplication.CreateBuilder();
@@ -172,7 +216,8 @@ public sealed class WatchdogHosting_HttpSurface_And_WebClientHealth_P0Tests
     private static async Task<WebApplication> StartWatchdogAsync(
         WebApplication target,
         Action<WatchdogOptions> configure,
-        bool addWebClient = false)
+        bool addWebClient = false,
+        bool useTestAuth = false)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -187,6 +232,18 @@ public sealed class WatchdogHosting_HttpSurface_And_WebClientHealth_P0Tests
         var healthChecks = builder.AddNgbWatchdog(configure);
         if (addWebClient)
             healthChecks.AddWebClient();
+
+        if (useTestAuth)
+        {
+            builder.Services
+                .AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestAuthScheme;
+                    options.DefaultChallengeScheme = TestAuthScheme;
+                    options.DefaultForbidScheme = TestAuthScheme;
+                })
+                .AddScheme<AuthenticationSchemeOptions, TestAdminAuthHandler>(TestAuthScheme, _ => { });
+        }
 
         builder.Services
             .AddHttpClient("HealthCheckHttpClient")
@@ -204,5 +261,42 @@ public sealed class WatchdogHosting_HttpSurface_And_WebClientHealth_P0Tests
     {
         var json = await response.Content.ReadAsStringAsync();
         return JsonDocument.Parse(json);
+    }
+
+    private sealed class TestAdminAuthHandler(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder)
+        : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    {
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync()
+        {
+            if (!Request.Headers.TryGetValue("X-Test-Auth", out var value))
+                return Task.FromResult(AuthenticateResult.NoResult());
+
+            var claims = new List<Claim>
+            {
+                new(ClaimTypes.NameIdentifier, $"test-{value}"),
+                new(ClaimTypes.Name, $"Test {value}")
+            };
+            if (string.Equals(value, "admin", StringComparison.Ordinal))
+                claims.Add(new Claim(ClaimTypes.Role, "ngb-admin"));
+
+            var identity = new ClaimsIdentity(claims, TestAuthScheme);
+            var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), TestAuthScheme);
+            return Task.FromResult(AuthenticateResult.Success(ticket));
+        }
+
+        protected override Task HandleChallengeAsync(AuthenticationProperties properties)
+        {
+            Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+
+        protected override Task HandleForbiddenAsync(AuthenticationProperties properties)
+        {
+            Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
     }
 }
