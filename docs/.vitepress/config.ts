@@ -105,6 +105,7 @@ export default defineConfig({
           page('Migrator', '/platform/migrator'),
           page('Watchdog', '/platform/watchdog'),
           page('Security and SSO', '/platform/security-and-sso'),
+          page('Security and Permissions', '/platform/security-and-permissions'),
           page('Audit Log', '/platform/audit-log')
         ]),
         section('Source Maps', [
