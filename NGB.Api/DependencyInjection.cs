@@ -15,6 +15,7 @@ using Swashbuckle.AspNetCore.SwaggerUI;
 using NGB.Api.CurrentUser;
 using NGB.Api.Models;
 using NGB.Api.Sso;
+using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 
 namespace NGB.Api;
@@ -40,6 +41,7 @@ public static class DependencyInjection
         services
             .AddCompletelyAllowedCorsPolicy()
             .AddKeycloak(configuration)
+            .AddKeycloakAdminClient(configuration)
             .AddSwagger(projectName)
             .AddCurrentUserInfrastructure();
 
@@ -52,6 +54,26 @@ public static class DependencyInjection
         
         services.RemoveAll<ICurrentActorContext>();
         services.AddScoped<ICurrentActorContext, HttpCurrentActorContext>();
+
+        return services;
+    }
+
+    public static IServiceCollection AddKeycloakAdminClient(this IServiceCollection services, IConfiguration configuration)
+    {
+        var section = configuration.GetSection(nameof(KeycloakAdminClientSettings));
+        var settings = section.Exists()
+            ? section.Get<KeycloakAdminClientSettings>() ?? new KeycloakAdminClientSettings()
+            : new KeycloakAdminClientSettings();
+
+        services.TryAddSingleton(settings);
+        services.TryAddSingleton(new KeycloakApiClientSettings(
+            settings.BaseUrl,
+            settings.Realm,
+            settings.ClientId,
+            settings.ClientSecret));
+
+        services.AddHttpClient<TokenCacheService>();
+        services.AddHttpClient<IIdentityProviderUserAdminClient, KeycloakAdminClient>();
 
         return services;
     }

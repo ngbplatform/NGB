@@ -1,5 +1,7 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Admin;
+using NGB.Core.Reporting;
+using NGB.Core.Security;
 
 namespace NGB.Runtime.Admin;
 
@@ -15,29 +17,29 @@ public sealed class AccountingAdminMainMenuContributor : IMainMenuContributor
             Items:
             [
                 new MainMenuItemDto(
-                    Kind: "admin",
+                    Kind: NgbResourceKinds.Admin,
                     Code: "chart-of-accounts",
                     Label: "Chart of Accounts",
                     Route: "/admin/chart-of-accounts",
                     Icon: "book-open",
                     Ordinal: 20),
                 new MainMenuItemDto(
-                    Kind: "admin",
+                    Kind: NgbResourceKinds.Admin,
                     Code: "accounting.period_closing",
                     Label: "Period Close",
                     Route: "/admin/accounting/period-closing",
                     Icon: "calendar-check",
                     Ordinal: 60),
                 new MainMenuItemDto(
-                    Kind: "admin",
-                    Code: "accounting.posting_log",
+                    Kind: NgbResourceKinds.Admin,
+                    Code: AccountingReportCodes.PostingLog,
                     Label: "Posting Log",
                     Route: "/admin/accounting/posting-log",
                     Icon: "history",
                     Ordinal: 70),
                 new MainMenuItemDto(
-                    Kind: "admin",
-                    Code: "accounting.consistency",
+                    Kind: NgbResourceKinds.Admin,
+                    Code: AccountingReportCodes.Consistency,
                     Label: "Integrity Checks",
                     Route: "/admin/accounting/consistency",
                     Icon: "shield-check",

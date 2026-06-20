@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using NGB.Api.Models;
 using NGB.Accounting.Documents;
 using NGB.Contracts.Admin;
+using NGB.Core.Security;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using Xunit;
 
@@ -132,9 +133,10 @@ public sealed class PmMainMenu_HttpSmoke_P0Tests : IAsyncLifetime
             "General Ledger",
             "Ledger Analysis");
         accountingGroup.Items.Should().Contain(i =>
-            i.Code == AccountingDocumentTypeCodes.GeneralJournalEntry
+            i.Kind == NgbResourceKinds.Document
+            && i.Code == AccountingDocumentTypeCodes.GeneralJournalEntry
             && i.Label == "Journal Entries"
-            && i.Route == "/documents/accounting.general_journal_entry"
+            && i.Route == "/accounting/general-journal-entries"
             && i.Icon == "book-open");
         accountingGroup.Items.Should().Contain(i => i.Code == "accounting.cash_flow_statement_indirect" && i.Label == "Cash Flow Statement");
         accountingGroup.Items.Should().Contain(i => i.Code == "accounting.general_ledger_aggregated" && i.Label == "General Ledger");
@@ -147,6 +149,8 @@ public sealed class PmMainMenu_HttpSmoke_P0Tests : IAsyncLifetime
             "Bank Accounts",
             "Receivable Charge Types",
             "Payable Charge Types",
+            "Users",
+            "Roles & Permissions",
             "Period Close",
             "Posting Log",
             "Integrity Checks",
@@ -154,6 +158,8 @@ public sealed class PmMainMenu_HttpSmoke_P0Tests : IAsyncLifetime
             "Background Jobs");
         setupGroup.Items.Should().ContainSingle(i => i.Code == PropertyManagementCodes.AccountingPolicy && i.Route == "/catalogs/pm.accounting_policy");
         setupGroup.Items.Should().Contain(i => i.Code == "chart-of-accounts" && i.Route == "/admin/chart-of-accounts" && i.Label == "Chart of Accounts");
+        setupGroup.Items.Should().Contain(i => i.Code == "system.users" && i.Route == "/admin/security/users" && i.Label == "Users");
+        setupGroup.Items.Should().Contain(i => i.Code == "system.roles" && i.Route == "/admin/security/roles" && i.Label == "Roles & Permissions");
         setupGroup.Items.Should().Contain(i => i.Code == "accounting.period_closing" && i.Route == "/admin/accounting/period-closing" && i.Label == "Period Close");
         setupGroup.Items.Should().Contain(i => i.Code == "accounting.consistency" && i.Route == "/admin/accounting/consistency" && i.Label == "Integrity Checks" && i.Icon == "shield-check");
         setupGroup.Items.Should().Contain(i => i.Code == "pm.health" && i.Route == "https://localhost:7075/health-ui" && i.Label == "Health" && i.Icon == "heart-pulse");

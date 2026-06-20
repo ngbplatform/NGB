@@ -27,6 +27,7 @@
         :userEmail="resolvedUserEmail"
         :userMeta="resolvedUserMeta"
         :userMetaIcon="resolvedUserMetaIcon"
+        :userRoles="resolvedUserRoles"
         :themeResolved="themeResolved"
         :hasSettings="settingsSections.length > 0"
         :showMainMenu="nodes.length > 0"
@@ -197,7 +198,8 @@ const props = defineProps<{
   userName?: string;
   userEmail?: string;
   userMeta?: string;
-  userMetaIcon?: 'shield-check' | 'user';
+  userMetaIcon?: 'shield-check' | 'shield' | 'user';
+  userRoles?: string[];
   unreadNotifications?: number;
   canBack?: boolean;
   pageTitle?: string;
@@ -265,7 +267,13 @@ function findNodeLabel(nodes: SiteNavNode[], id: string): string | null {
 const resolvedUserName = computed(() => (props.userName?.trim() ? props.userName.trim() : 'User'));
 const resolvedUserEmail = computed(() => (props.userEmail?.trim() ? props.userEmail.trim() : ''));
 const resolvedUserMeta = computed(() => (props.userMeta?.trim() ? props.userMeta.trim() : ''));
-const resolvedUserMetaIcon = computed<'shield-check' | 'user'>(() => props.userMetaIcon === 'shield-check' ? 'shield-check' : 'user');
+const resolvedUserMetaIcon = computed<'shield-check' | 'shield' | 'user'>(() => {
+  if (props.userMetaIcon === 'shield-check' || props.userMetaIcon === 'shield') return props.userMetaIcon;
+  return 'user';
+});
+const resolvedUserRoles = computed(() => (props.userRoles ?? [])
+  .map((role) => String(role ?? '').trim())
+  .filter((role) => role.length > 0));
 
 const resolvedPageTitle = computed(() => {
   if (props.pageTitle?.trim()) return props.pageTitle.trim();

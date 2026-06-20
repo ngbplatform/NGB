@@ -32,6 +32,7 @@ if (string.IsNullOrWhiteSpace(cs))
 
 builder.Services
     .AddNgbRuntime()
+    .AddNgbRuntimeAuthorization()
     .AddNgbPostgres(cs)
     .AddTradeModule()
     .AddTradeRuntimeModule()

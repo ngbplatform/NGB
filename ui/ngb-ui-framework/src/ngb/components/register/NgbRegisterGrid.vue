@@ -114,7 +114,7 @@
               @click="onRowClick(row.key, row.__index, $event)"
             >
               <div v-if="showStatusColumn" class="px-3 py-2 flex items-center justify-center">
-                <NgbStatusIcon v-if="showRowStatusIcons" :status="inferRowStatus(row)" />
+                <NgbStatusIcon v-if="showRowStatusIcons" :status="inferRowStatus(row)" :title="statusTitle(row)" />
               </div>
 
               <div
@@ -124,7 +124,7 @@
                 :class="cellClass(col, row[col.key])"
                 :style="cellStickyStyle(col)"
               >
-                <div class="flex h-full min-w-0 gap-2 items-center">
+                <div class="flex h-full min-w-0 gap-2 items-center" :class="cellInnerClass(col)">
                   <template v-if="Array.isArray(row[col.key])">
                     <div class="min-w-0 py-0.5 self-center" :class="col.wrap ? 'whitespace-normal break-words' : ''">
                       <div
@@ -135,7 +135,15 @@
                     </div>
                   </template>
                   <template v-else>
-                    <span :class="col.wrap ? 'whitespace-normal break-words leading-5' : 'truncate'">{{ formatCell(col, row[col.key], row) }}</span>
+                    <input
+                      v-if="col.type === 'checkbox'"
+                      type="checkbox"
+                      class="h-4 w-4 rounded border-ngb-border text-ngb-blue"
+                      :checked="asBool(row[col.key])"
+                      :aria-label="`${col.title}: ${asBool(row[col.key]) ? 'Yes' : 'No'}`"
+                      disabled
+                    >
+                    <span v-else :class="col.wrap ? 'whitespace-normal break-words leading-5' : 'truncate'">{{ formatCell(col, row[col.key], row) }}</span>
                   </template>
                 </div>
               </div>
@@ -325,6 +333,12 @@ function rowClass(row: RegisterDataRow) {
   ].join(' ');
 }
 
+function statusTitle(row: RegisterDataRow): string | undefined {
+  return typeof row.__statusTitle === 'string' && row.__statusTitle.trim()
+    ? row.__statusTitle
+    : undefined;
+}
+
 function onRowClick(key: string, index: number, ev: MouseEvent) {
   // ignore group rows (they don't call this)
   const mult = ev.metaKey || ev.ctrlKey;
@@ -422,10 +436,20 @@ function formatCellLines(col: RegisterColumn, v: unknown, row: RegisterDataRow):
   return [formatCell(col, v, row)];
 }
 
+function asBool(v: unknown): boolean {
+  return v === true || v === 'true' || v === 1 || v === '1';
+}
+
 function cellClass(col: RegisterColumn, v: unknown) {
   const align = col.align === 'right' ? 'text-right tabular-nums' : col.align === 'center' ? 'text-center' : '';
   const neg = typeof v === 'number' && v < 0 ? 'text-ngb-danger' : '';
   return [align, neg].filter(Boolean).join(' ');
+}
+
+function cellInnerClass(col: RegisterColumn) {
+  if (col.align === 'right') return 'justify-end';
+  if (col.align === 'center') return 'justify-center';
+  return '';
 }
 
 /* ---------------- Column reorder (drag) ---------------- */

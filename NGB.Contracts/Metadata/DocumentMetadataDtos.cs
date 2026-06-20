@@ -15,7 +15,9 @@ public sealed record DocumentCapabilitiesDto(
     bool CanUnpost = true,
     bool CanRepost = true,
     bool CanMarkForDeletion = true,
-    bool SupportsActions = false);
+    bool SupportsActions = false,
+    bool CanViewEffects = true,
+    bool CanViewFlow = true);
 
 public sealed record DocumentPresentationDto(
     string? DisplayName = null,

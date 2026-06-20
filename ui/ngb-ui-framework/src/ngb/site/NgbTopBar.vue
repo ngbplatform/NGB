@@ -73,7 +73,26 @@
                   <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-ngb-muted">Signed in</div>
                   <div class="mt-1 truncate text-sm font-semibold text-ngb-text">{{ resolvedUserName }}</div>
                   <div v-if="hasUserEmail" class="mt-1 truncate text-xs text-ngb-muted">{{ userEmail }}</div>
-                  <div v-if="hasUserMeta" class="mt-3 inline-flex items-center gap-2 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text">
+                  <div v-if="hasUserRoles" class="mt-3">
+                    <div class="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ngb-muted">Application roles</div>
+                    <div class="flex flex-wrap gap-1.5" :title="userRolesTitle">
+                      <span
+                        v-for="role in visibleUserRoles"
+                        :key="role"
+                        class="inline-flex max-w-full items-center gap-1.5 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text"
+                      >
+                        <NgbIcon name="shield" :size="13" />
+                        <span class="max-w-[210px] truncate">{{ role }}</span>
+                      </span>
+                      <span
+                        v-if="hiddenUserRoleCount > 0"
+                        class="inline-flex items-center rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-muted"
+                      >
+                        +{{ hiddenUserRoleCount }} more
+                      </span>
+                    </div>
+                  </div>
+                  <div v-else-if="hasUserMeta" class="mt-3 inline-flex items-center gap-2 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text">
                     <NgbIcon :name="userMetaIcon" :size="14" />
                     <span>{{ userMeta }}</span>
                   </div>
@@ -155,7 +174,26 @@
                 <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-ngb-muted">Signed in</div>
                 <div class="mt-1 truncate text-sm font-semibold text-ngb-text">{{ resolvedUserName }}</div>
                 <div v-if="hasUserEmail" class="mt-1 truncate text-xs text-ngb-muted">{{ userEmail }}</div>
-                <div v-if="hasUserMeta" class="mt-3 inline-flex items-center gap-2 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text">
+                <div v-if="hasUserRoles" class="mt-3">
+                  <div class="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ngb-muted">Application roles</div>
+                  <div class="flex flex-wrap gap-1.5" :title="userRolesTitle">
+                    <span
+                      v-for="role in visibleUserRoles"
+                      :key="role"
+                      class="inline-flex max-w-full items-center gap-1.5 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text"
+                    >
+                      <NgbIcon name="shield" :size="13" />
+                      <span class="max-w-[210px] truncate">{{ role }}</span>
+                    </span>
+                    <span
+                      v-if="hiddenUserRoleCount > 0"
+                      class="inline-flex items-center rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-muted"
+                    >
+                      +{{ hiddenUserRoleCount }} more
+                    </span>
+                  </div>
+                </div>
+                <div v-else-if="hasUserMeta" class="mt-3 inline-flex items-center gap-2 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text">
                   <NgbIcon :name="userMetaIcon" :size="14" />
                   <span>{{ userMeta }}</span>
                 </div>
@@ -260,7 +298,26 @@
                 <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-ngb-muted">Signed in</div>
                 <div class="mt-1 truncate text-sm font-semibold text-ngb-text">{{ resolvedUserName }}</div>
                 <div v-if="hasUserEmail" class="mt-1 truncate text-xs text-ngb-muted">{{ userEmail }}</div>
-                <div v-if="hasUserMeta" class="mt-3 inline-flex items-center gap-2 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text">
+                <div v-if="hasUserRoles" class="mt-3">
+                  <div class="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-ngb-muted">Application roles</div>
+                  <div class="flex flex-wrap gap-1.5" :title="userRolesTitle">
+                    <span
+                      v-for="role in visibleUserRoles"
+                      :key="role"
+                      class="inline-flex max-w-full items-center gap-1.5 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text"
+                    >
+                      <NgbIcon name="shield" :size="13" />
+                      <span class="max-w-[210px] truncate">{{ role }}</span>
+                    </span>
+                    <span
+                      v-if="hiddenUserRoleCount > 0"
+                      class="inline-flex items-center rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-muted"
+                    >
+                      +{{ hiddenUserRoleCount }} more
+                    </span>
+                  </div>
+                </div>
+                <div v-else-if="hasUserMeta" class="mt-3 inline-flex items-center gap-2 rounded-[var(--ngb-radius)] bg-ngb-card px-2.5 py-1 text-[11px] font-semibold text-ngb-text">
                   <NgbIcon :name="userMetaIcon" :size="14" />
                   <span>{{ userMeta }}</span>
                 </div>
@@ -306,7 +363,8 @@ const props = defineProps<{
   userName?: string;
   userEmail?: string;
   userMeta?: string;
-  userMetaIcon?: 'shield-check' | 'user';
+  userMetaIcon?: 'shield-check' | 'shield' | 'user';
+  userRoles?: string[];
   hasSettings?: boolean;
   showMainMenu?: boolean;
 }>();
@@ -330,9 +388,27 @@ const isMac = computed(() => {
 const primaryModifier = computed(() => (isMac.value ? '⌘' : 'Ctrl'));
 const userEmail = computed(() => String(props.userEmail ?? '').trim());
 const userMeta = computed(() => String(props.userMeta ?? '').trim());
-const userMetaIcon = computed<'shield-check' | 'user'>(() => props.userMetaIcon === 'shield-check' ? 'shield-check' : 'user');
+const userMetaIcon = computed<'shield-check' | 'shield' | 'user'>(() => {
+  if (props.userMetaIcon === 'shield-check' || props.userMetaIcon === 'shield') return props.userMetaIcon;
+  return 'user';
+});
+const userRoles = computed(() => {
+  const seen = new Set<string>();
+  return (props.userRoles ?? [])
+    .map((role) => String(role ?? '').trim())
+    .filter((role) => {
+      const key = role.toLowerCase();
+      if (!role || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+});
+const visibleUserRoles = computed(() => userRoles.value.slice(0, 3));
+const hiddenUserRoleCount = computed(() => Math.max(0, userRoles.value.length - visibleUserRoles.value.length));
+const userRolesTitle = computed(() => userRoles.value.join(', '));
 const hasUserEmail = computed(() => userEmail.value.length > 0);
-const hasUserMeta = computed(() => userMeta.value.length > 0);
+const hasUserRoles = computed(() => userRoles.value.length > 0);
+const hasUserMeta = computed(() => !hasUserRoles.value && userMeta.value.length > 0);
 const resolvedUserName = computed(() => {
   const value = String(props.userName ?? '').trim();
   return value || 'User';

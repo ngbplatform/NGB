@@ -2,6 +2,7 @@ using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.GeneralLedgerAggregated;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Internal;
@@ -14,7 +15,7 @@ public sealed class GeneralLedgerAggregatedCanonicalReportExecutor(
     IAccountByIdResolver accountByIdResolver)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "accounting.general_ledger_aggregated";
+    public string ReportCode => AccountingReportCodes.GeneralLedgerAggregated;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

@@ -10,4 +10,8 @@ public sealed record ActorIdentity(
     string AuthSubject,
     string? Email,
     string? DisplayName,
-    bool IsActive = true);
+    bool IsActive = true,
+    IReadOnlySet<string>? AuthRoles = null)
+{
+    public bool HasAuthRole(string role) => !string.IsNullOrWhiteSpace(role) && AuthRoles?.Contains(role.Trim()) == true;
+}

@@ -30,6 +30,7 @@ using NGB.Persistence.Readers.Documents;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.Readers.Periods;
 using NGB.Persistence.Schema;
+using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.Writers;
 using NGB.PostgreSql.Catalogs;
@@ -51,6 +52,7 @@ using NGB.PostgreSql.Readers;
 using NGB.PostgreSql.Reporting;
 using NGB.PostgreSql.Reporting.Accounting;
 using NGB.PostgreSql.Schema;
+using NGB.PostgreSql.Security;
 using NGB.PostgreSql.UnitOfWork;
 using NGB.PostgreSql.Writers;
 using NGB.Tools.Exceptions;
@@ -113,6 +115,13 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IPlatformUserRepository, PostgresPlatformUserRepository>();
         services.TryAddScoped<IAuditEventWriter, PostgresAuditEventWriter>();
         services.TryAddScoped<IAuditEventReader, PostgresAuditEventReader>();
+
+        // Security / access management (NGB-owned application authorization)
+        services.TryAddScoped<IPlatformRoleRepository, PostgresPlatformRoleRepository>();
+        services.TryAddScoped<IPlatformUserRoleRepository, PostgresPlatformUserRoleRepository>();
+        services.TryAddScoped<IPermissionSnapshotRepository, PostgresPermissionSnapshotRepository>();
+        services.TryAddScoped<IUserAccessVersionRepository, PostgresUserAccessVersionRepository>();
+        services.TryAddScoped<IUserProvisioningOperationRepository, PostgresUserProvisioningOperationRepository>();
 
         // Dimensions (platform-wide Dimension Sets)
         services.TryAddScoped<IDimensionSetWriter, PostgresDimensionSetWriter>();

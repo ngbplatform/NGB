@@ -5,6 +5,7 @@ import { useMainMenuStore, type MainMenuGroup } from '../site/mainMenuStore'
 import { getConfiguredNgbCommandPalette } from './config'
 import { loadCommandPaletteRecent, saveCommandPaletteRecent } from './storage'
 import { defaultSearchFields, groupOrder, parseCommandPaletteQuery, scoreSearchText } from './search'
+import { normalizeNgbRouteAliasPath } from '../router/routeAliases'
 import type {
   CommandPaletteExecutionMode,
   CommandPaletteExplicitContext,
@@ -356,7 +357,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
   }
 
   function buildFavoriteItems(): CommandPaletteItem[] {
-    return materializeLocalItems(config.favoriteItems ?? [], {
+    return materializeLocalItems((config.favoriteItems ?? []).filter(isStaticNavigationItemAllowed), {
       source: 'local',
       score: 0,
       isFavorite: true,
@@ -366,7 +367,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
   }
 
   function buildCreateCommandItems(): CommandPaletteItem[] {
-    return materializeLocalItems(config.createItems ?? [], {
+    return materializeLocalItems((config.createItems ?? []).filter(isStaticNavigationItemAllowed), {
       source: 'local',
       score: 0,
       rankFrom: 780,
@@ -384,6 +385,10 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
   }
 
   function buildGoToItems(groups: MainMenuGroup[]): CommandPaletteItem[] {
+    const allowedNormalizedRoutes = new Set(
+      groups.flatMap((group) => group.items.map((item) => normalizeRouteForPermissionFiltering(item.route))),
+    )
+
     const items = groups
       .flatMap((group, groupIndex) => group.items.map((item, itemIndex) => ({ group, item, groupIndex, itemIndex })))
       .filter(({ item }) => !String(item.route ?? '').startsWith('/reports/'))
@@ -407,9 +412,12 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
         source: 'local' as const,
       }))
 
-    const existingRoutes = new Set(items.map((item) => item.route))
+    const existingRoutes = new Set(items.map((item) => normalizeRouteForPermissionFiltering(item.route)))
     const fallbackPages = materializeLocalItems(
-      (config.specialPageItems ?? []).filter((item) => !existingRoutes.has(item.route ?? '')),
+      (config.specialPageItems ?? []).filter((item) => {
+        const route = normalizeRouteForPermissionFiltering(item.route)
+        return !!route && allowedNormalizedRoutes.has(route) && !existingRoutes.has(route)
+      }),
       {
         source: 'local',
         score: 0,
@@ -422,26 +430,48 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
   }
 
   function buildRecentItems(): CommandPaletteItem[] {
-    return recentEntries.value.map((entry, index) => ({
-      key: `recent:${entry.key}`,
-      group: 'recent',
-      kind: 'recent',
-      scope: entry.scope,
-      title: entry.title,
-      subtitle: entry.subtitle ?? null,
-      icon: resolveIconName(entry.icon, entry.scope === 'reports' ? 'bar-chart' : 'file-text'),
-      badge: entry.badge ?? null,
-      hint: null,
-      route: entry.route ?? null,
-      commandCode: null,
-      status: entry.status ?? null,
-      openInNewTabSupported: entry.openInNewTabSupported,
-      keywords: [],
-      defaultRank: 500 - index,
-      score: 0,
-      isRecent: true,
-      source: 'local',
-    }))
+    return recentEntries.value
+      .filter((entry) => isRouteAllowedByCurrentAccess(entry.route))
+      .map((entry, index) => ({
+        key: `recent:${entry.key}`,
+        group: 'recent',
+        kind: 'recent',
+        scope: entry.scope,
+        title: entry.title,
+        subtitle: entry.subtitle ?? null,
+        icon: resolveIconName(entry.icon, entry.scope === 'reports' ? 'bar-chart' : 'file-text'),
+        badge: entry.badge ?? null,
+        hint: null,
+        route: entry.route ?? null,
+        commandCode: null,
+        status: entry.status ?? null,
+        openInNewTabSupported: entry.openInNewTabSupported,
+        keywords: [],
+        defaultRank: 500 - index,
+        score: 0,
+        isRecent: true,
+        source: 'local',
+      }))
+  }
+
+  function isStaticNavigationItemAllowed(item: CommandPaletteItemSeed): boolean {
+    if (!item.route) return true
+    return isRouteAllowedByCurrentAccess(item.route)
+  }
+
+  function isRouteAllowedByCurrentAccess(route: string | null | undefined): boolean {
+    const candidate = normalizeRouteForPermissionFiltering(route)
+    if (!candidate) return false
+
+    const allowedRoutes = [
+      ...menuStore.groups.flatMap((group) => group.items.map((item) => item.route)),
+      ...reportItems.value.map((item) => item.route),
+    ]
+
+    return allowedRoutes.some((allowedRoute) => {
+      const allowed = normalizeRouteForPermissionFiltering(allowedRoute)
+      return !!allowed && (candidate === allowed || candidate.startsWith(`${allowed}/`))
+    })
   }
 
   return {
@@ -547,6 +577,10 @@ function limitGroupItems(code: CommandPaletteGroupCode, items: CommandPaletteIte
   return items
     .sort((a, b) => b.score - a.score || b.defaultRank - a.defaultRank || a.title.localeCompare(b.title))
     .slice(0, visibleLimitForGroup(code, query))
+}
+
+function normalizeRouteForPermissionFiltering(route: string | null | undefined): string {
+  return normalizeNgbRouteAliasPath(route).split(/[?#]/, 1)[0] ?? ''
 }
 
 function scoreItems(items: CommandPaletteItem[], query: string, scope: CommandPaletteScope | null): CommandPaletteItem[] {
@@ -680,4 +714,3 @@ function resolveIconName(icon: string | null | undefined, fallback: NgbIconName)
       return fallback
   }
 }
-

@@ -199,6 +199,12 @@ public sealed class ReportVariantService_P0Tests
         public Task<PlatformUser?> GetByAuthSubjectAsync(string authSubject, CancellationToken ct = default)
             => Task.FromResult(_byAuthSubject.GetValueOrDefault(authSubject.Trim()));
 
+        public Task<PlatformUser?> GetByIdAsync(Guid userId, CancellationToken ct = default)
+            => Task.FromResult(_byId.GetValueOrDefault(userId));
+
+        public Task<IReadOnlyList<PlatformUser>> GetAllAsync(CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<PlatformUser>>(_byId.Values.ToArray());
+
         public Task<IReadOnlyDictionary<Guid, PlatformUser>> GetByIdsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct = default)
         {
             var result = userIds
@@ -207,6 +213,17 @@ public sealed class ReportVariantService_P0Tests
                 .ToDictionary(userId => userId, userId => _byId[userId]);
 
             return Task.FromResult<IReadOnlyDictionary<Guid, PlatformUser>>(result);
+        }
+
+        public Task SetActiveAsync(Guid userId, bool isActive, CancellationToken ct = default)
+        {
+            if (!_byId.TryGetValue(userId, out var existing))
+                return Task.CompletedTask;
+
+            var updated = existing with { IsActive = isActive, UpdatedAtUtc = DateTime.UtcNow };
+            _byId[userId] = updated;
+            _byAuthSubject[updated.AuthSubject] = updated;
+            return Task.CompletedTask;
         }
     }
 

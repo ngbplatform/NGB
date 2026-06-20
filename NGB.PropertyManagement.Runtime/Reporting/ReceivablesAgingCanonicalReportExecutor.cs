@@ -1,6 +1,7 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Contracts.Receivables;
+using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Runtime.Receivables;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
@@ -10,7 +11,7 @@ namespace NGB.PropertyManagement.Runtime.Reporting;
 public sealed class ReceivablesAgingCanonicalReportExecutor(IReceivablesOpenItemsDetailsService details)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "pm.receivables.aging";
+    public string ReportCode => PropertyManagementSecurityDefaults.ReceivablesAgingReport;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

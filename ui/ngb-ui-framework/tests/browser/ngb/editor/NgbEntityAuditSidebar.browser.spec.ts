@@ -13,7 +13,8 @@ vi.mock('../../../../src/ngb/editor/config', () => ({
   getConfiguredNgbEditor: () => ({
     loadEntityAuditLog: auditSidebarMocks.loadEntityAuditLog,
   }),
-  resolveNgbEditorAuditBehavior: (override?: { hiddenFieldNames?: string[]; explicitFieldLabels?: Record<string, string> }) => ({
+  resolveNgbEditorAuditBehavior: (override?: { actionTitles?: Record<string, string>; hiddenFieldNames?: string[]; explicitFieldLabels?: Record<string, string> }) => ({
+    actionTitles: { ...(override?.actionTitles ?? {}) },
     hiddenFieldNames: [...(override?.hiddenFieldNames ?? [])],
     explicitFieldLabels: { ...(override?.explicitFieldLabels ?? {}) },
   }),
@@ -238,6 +239,49 @@ test('maps document workflow action codes to readable titles', async () => {
   await expect.element(view.getByText('Updated by Alex Carter', { exact: true })).toBeVisible()
   await expect.element(view.getByText('Submitted by Alex Carter', { exact: true })).toBeVisible()
   await expect.element(view.getByText('Approved by Alex Carter', { exact: true })).toBeVisible()
+})
+
+test('uses configured audit action titles without domain-specific sidebar maps', async () => {
+  await page.viewport(1280, 900)
+
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({
+    limit: 100,
+    items: [
+      {
+        auditEventId: 'evt-security',
+        entityKind: 8,
+        entityId: 'user-1',
+        actionCode: 'security.user.roles.replace',
+        actor: {
+          displayName: 'Alex Carter',
+        },
+        occurredAtUtc: '2026-04-08T12:00:00Z',
+        changes: [
+          {
+            fieldPath: 'roles',
+            oldValueJson: JSON.stringify(['PM Read Only']),
+            newValueJson: JSON.stringify(['PM Administrator']),
+          },
+        ],
+      },
+    ],
+  })
+
+  const view = await render(NgbEntityAuditSidebar, {
+    props: {
+      open: true,
+      entityKind: 8,
+      entityId: 'user-1',
+      entityTitle: 'Alex Carter',
+      behavior: {
+        actionTitles: {
+          'security.user.roles.replace': 'User roles changed',
+        },
+      },
+    },
+  })
+
+  await expect.element(view.getByText('User roles changed by Alex Carter', { exact: true })).toBeVisible()
 })
 
 test('shows the save-first empty state when no entity id is available', async () => {

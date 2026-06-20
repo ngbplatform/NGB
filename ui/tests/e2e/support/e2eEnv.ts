@@ -10,7 +10,7 @@ type E2eEnvOptions = {
   envFiles?: readonly string[]
 }
 
-const DEFAULT_E2E_ENV_FILES = ['.env.e2e.local'] as const
+const DEFAULT_E2E_ENV_FILES = ['.env', '.env.local', '.env.e2e', '.env.e2e.local'] as const
 
 function stripWrappingQuotes(value: string): string {
   if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {

@@ -7,7 +7,7 @@ using NGB.Tools.Extensions;
 
 namespace NGB.Runtime.AuditLog;
 
-internal sealed class AuditLogQueryService(IAuditEventReader reader, IPlatformUserRepository? platformUsers = null)
+public sealed class AuditLogQueryService(IAuditEventReader reader, IPlatformUserRepository? platformUsers = null)
     : IAuditLogQueryService
 {
     public async Task<AuditLogPageDto> GetEntityAuditLogAsync(

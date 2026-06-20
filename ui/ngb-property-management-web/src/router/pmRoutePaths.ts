@@ -27,6 +27,16 @@ export function buildPmOpenItemsPath(kind: PmOpenItemsKind): string {
   return kind === 'payables' ? '/payables/open-items' : '/receivables/open-items'
 }
 
+export function buildPmSecurityUsersPath(userId?: string | null): string {
+  const normalized = String(userId ?? '').trim()
+  return normalized ? `/admin/security/users/${encodeURIComponent(normalized)}` : '/admin/security/users'
+}
+
+export function buildPmSecurityRolesPath(roleId?: string | null): string {
+  const normalized = String(roleId ?? '').trim()
+  return normalized ? `/admin/security/roles/${encodeURIComponent(normalized)}` : '/admin/security/roles'
+}
+
 export function buildPmReconciliationPath(
   kind: PmReconciliationKind,
   options: PmReconciliationRouteOptions = {},

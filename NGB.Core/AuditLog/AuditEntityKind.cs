@@ -16,4 +16,7 @@ public enum AuditEntityKind : short
     OperationalRegister = 5,
     DocumentRelationship = 6,
     ReferenceRegister = 7,
+    SecurityUser = 8,
+    SecurityRole = 9,
+    SecurityProvisioningOperation = 10,
 }

@@ -2,6 +2,7 @@ using NGB.Accounting.CashFlow;
 using NGB.Accounting.Reports.CashFlowIndirect;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Persistence.Readers.Reports;
 
 namespace NGB.Runtime.Reporting.Canonical;
@@ -9,7 +10,7 @@ namespace NGB.Runtime.Reporting.Canonical;
 public sealed class CashFlowIndirectCanonicalReportExecutor(ICashFlowIndirectReportReader reader)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "accounting.cash_flow_statement_indirect";
+    public string ReportCode => AccountingReportCodes.CashFlowStatementIndirect;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

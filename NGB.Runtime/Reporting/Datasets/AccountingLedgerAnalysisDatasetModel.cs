@@ -1,12 +1,13 @@
 using NGB.Accounting.Documents;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 
 namespace NGB.Runtime.Reporting.Datasets;
 
 public static class AccountingLedgerAnalysisDatasetModel
 {
-    public const string DatasetCode = "accounting.ledger.analysis";
+    public const string DatasetCode = AccountingReportCodes.LedgerAnalysis;
 
     public static ReportDatasetDto Create()
         => new(

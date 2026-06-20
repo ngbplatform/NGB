@@ -521,6 +521,7 @@ cat >"$output_file" <<EOF
       "clientAuthenticatorType": "client-secret",
       "secret": "$(json_escape "${KEYCLOAK_TESTER_CLIENT_SECRET}")",
       "publicClient": false,
+      "serviceAccountsEnabled": true,
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": false,
       "defaultClientScopes": [
@@ -597,6 +598,7 @@ cat >"$output_file" <<EOF
   ],
   "users": [
     {
+      "id": "$(json_escape "${KEYCLOAK_DEMO_ADMIN_ID}")",
       "username": "$(json_escape "${KEYCLOAK_DEMO_ADMIN_USERNAME}")",
       "enabled": true,
       "emailVerified": true,
@@ -614,6 +616,18 @@ cat >"$output_file" <<EOF
         "ngb-admin",
         "ngb-user"
       ]
+    },
+    {
+      "username": "service-account-$(json_escape "${KEYCLOAK_TESTER_CLIENT_ID}")",
+      "enabled": true,
+      "serviceAccountClientId": "$(json_escape "${KEYCLOAK_TESTER_CLIENT_ID}")",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "query-users",
+          "view-users"
+        ]
+      }
     }
   ]
 }

@@ -1,18 +1,23 @@
 using System.Text;
-using Microsoft.Extensions.Caching.Memory;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Search;
 using NGB.Contracts.Services;
+using NGB.Core.Reporting;
+using NGB.Core.Security;
+using NGB.PropertyManagement.Definitions;
+using NGB.Runtime.Catalogs;
+using NGB.Runtime.Documents;
+using NGB.Runtime.Security;
 
 namespace NGB.PropertyManagement.Api.Services;
 
 internal sealed class CommandPaletteSearchService(
-    IDocumentService documents,
-    ICatalogService catalogs,
+    PermissionAwareDocumentService documents,
+    PermissionAwareCatalogService catalogs,
     IReportDefinitionProvider reports,
-    IMemoryCache cache,
+    INgbAccessChecker access,
     ILogger<CommandPaletteSearchService> logger)
     : ICommandPaletteSearchService
 {
@@ -20,8 +25,6 @@ internal sealed class CommandPaletteSearchService(
     private const string CatalogsCode = "catalogs";
     private const string ReportsCode = "reports";
     
-    private static readonly TimeSpan MetadataCacheTtl = TimeSpan.FromMinutes(10);
-
     public async Task<CommandPaletteSearchResponseDto> SearchAsync(
         CommandPaletteSearchRequestDto request,
         CancellationToken ct)
@@ -206,7 +209,7 @@ internal sealed class CommandPaletteSearchService(
 
         return new CommandPaletteResultItemDto(
             Key: $"document:{descriptor.Code}:{document.Id}",
-            Kind: "document",
+            Kind: NgbResourceKinds.Document,
             Title: title,
             Subtitle: string.Join(" · ", subtitleParts),
             Icon: descriptor.Icon,
@@ -252,7 +255,7 @@ internal sealed class CommandPaletteSearchService(
 
         return new CommandPaletteResultItemDto(
             Key: $"catalog:{descriptor.Code}:{catalogItem.Id}",
-            Kind: "catalog",
+            Kind: NgbResourceKinds.Catalog,
             Title: title,
             Subtitle: string.Join(" · ", subtitleParts),
             Icon: descriptor.Icon,
@@ -296,7 +299,7 @@ internal sealed class CommandPaletteSearchService(
 
         return new CommandPaletteResultItemDto(
             Key: $"report:{definition.ReportCode}",
-            Kind: "report",
+            Kind: NgbResourceKinds.Report,
             Title: definition.Name,
             Subtitle: subtitleParts.Count > 0 ? string.Join(" · ", subtitleParts) : "Report",
             Icon: ResolveReportIcon(definition),
@@ -309,64 +312,56 @@ internal sealed class CommandPaletteSearchService(
     }
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetDocumentDescriptorsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
-               "command-palette:documents",
-               async entry =>
-               {
-                   entry.AbsoluteExpirationRelativeToNow = MetadataCacheTtl;
-
-                   var metadata = await documents.GetAllMetadataAsync(ct);
-                   return metadata
-                       .Where(static item =>
-                           item.DocumentType.StartsWith("pm.", StringComparison.OrdinalIgnoreCase)
-                           || item.DocumentType.StartsWith("accounting.", StringComparison.OrdinalIgnoreCase))
-                       .Select(item => new SearchableDescriptor(
-                           item.DocumentType,
-                           item.DisplayName,
-                           ResolveItemIcon(item.Icon, fallback: "file-text"),
-                           ResolveAliases(item.DocumentType, item.DisplayName)))
-                       .ToArray();
-               })
-           ?? [];
+    {
+        var metadata = await documents.GetAllMetadataAsync(ct);
+        return metadata
+            .Where(static item =>
+                item.DocumentType.StartsWith("pm.", StringComparison.OrdinalIgnoreCase)
+                || item.DocumentType.StartsWith("accounting.", StringComparison.OrdinalIgnoreCase))
+            .Select(item => new SearchableDescriptor(
+                item.DocumentType,
+                item.DisplayName,
+                ResolveItemIcon(item.Icon, fallback: "file-text"),
+                ResolveAliases(item.DocumentType, item.DisplayName)))
+            .ToArray();
+    }
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetCatalogDescriptorsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
-               "command-palette:catalogs",
-               async entry =>
-               {
-                   entry.AbsoluteExpirationRelativeToNow = MetadataCacheTtl;
-
-                   var metadata = await catalogs.GetAllMetadataAsync(ct);
-                   return metadata
-                       .Where(static item => item.CatalogType.StartsWith("pm.", StringComparison.OrdinalIgnoreCase))
-                       .Where(static item => !string.Equals(item.CatalogType, PropertyManagementCodes.AccountingPolicy, StringComparison.OrdinalIgnoreCase))
-                       .Select(item => new SearchableDescriptor(
-                           item.CatalogType,
-                           item.DisplayName,
-                           ResolveItemIcon(item.Icon, fallback: "grid"),
-                           ResolveAliases(item.CatalogType, item.DisplayName)))
-                       .ToArray();
-               })
-           ?? [];
+    {
+        var metadata = await catalogs.GetAllMetadataAsync(ct);
+        return metadata
+            .Where(static item => item.CatalogType.StartsWith("pm.", StringComparison.OrdinalIgnoreCase))
+            .Where(static item => !string.Equals(item.CatalogType, PropertyManagementCodes.AccountingPolicy, StringComparison.OrdinalIgnoreCase))
+            .Select(item => new SearchableDescriptor(
+                item.CatalogType,
+                item.DisplayName,
+                ResolveItemIcon(item.Icon, fallback: "grid"),
+                ResolveAliases(item.CatalogType, item.DisplayName)))
+            .ToArray();
+    }
 
     private async Task<IReadOnlyList<ReportDefinitionDto>> GetReportDefinitionsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
-               "command-palette:reports",
-               async entry =>
-               {
-                   entry.AbsoluteExpirationRelativeToNow = MetadataCacheTtl;
+    {
+        var definitions = await reports.GetAllDefinitionsAsync(ct);
+        var result = new List<ReportDefinitionDto>();
 
-                   var definitions = await reports.GetAllDefinitionsAsync(ct);
-                   return definitions
-                       .Where(static definition =>
-                           definition.ReportCode.StartsWith("pm.", StringComparison.OrdinalIgnoreCase)
-                           || definition.ReportCode.StartsWith("accounting.", StringComparison.OrdinalIgnoreCase))
-                       .Where(static definition =>
-                           !string.Equals(definition.ReportCode, "accounting.posting_log", StringComparison.OrdinalIgnoreCase)
-                           && !string.Equals(definition.ReportCode, "accounting.consistency", StringComparison.OrdinalIgnoreCase))
-                       .ToArray();
-               })
-           ?? [];
+        foreach (var definition in definitions
+                     .Where(static definition =>
+                         definition.ReportCode.StartsWith("pm.", StringComparison.OrdinalIgnoreCase)
+                         || definition.ReportCode.StartsWith("accounting.", StringComparison.OrdinalIgnoreCase))
+                     .Where(static definition =>
+                         !string.Equals(definition.ReportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase)
+                         && !string.Equals(definition.ReportCode, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (await access.HasAsync(NgbResourceKinds.Report, definition.ReportCode, NgbPermissionActions.View, ct)
+                || await access.HasAsync(NgbResourceKinds.Report, definition.ReportCode, NgbPermissionActions.Execute, ct))
+            {
+                result.Add(definition);
+            }
+        }
+
+        return result;
+    }
 
     private static string? NormalizeScope(string? scope)
         => (scope ?? string.Empty).Trim().ToLowerInvariant() switch
@@ -442,12 +437,12 @@ internal sealed class CommandPaletteSearchService(
         return reportCode switch
         {
             "pm.tenant.statement" => "file-text",
-            "pm.maintenance.queue" => "list",
-            "pm.receivables.open_items" => "list",
-            "pm.receivables.open_items.details" => "file-text",
-            "accounting.general_journal" => "receipt",
-            "accounting.account_card" => "book-open",
-            "accounting.general_ledger_aggregated" => "book-open",
+            PropertyManagementSecurityDefaults.MaintenanceQueueReport => "list",
+            PropertyManagementSecurityDefaults.ReceivablesOpenItemsReport => "list",
+            PropertyManagementSecurityDefaults.ReceivablesOpenItemsDetailsReport => "file-text",
+            AccountingReportCodes.GeneralJournal => "receipt",
+            AccountingReportCodes.AccountCard => "book-open",
+            AccountingReportCodes.GeneralLedgerAggregated => "book-open",
             _ => "bar-chart",
         };
     }

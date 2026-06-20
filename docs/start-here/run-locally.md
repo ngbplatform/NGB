@@ -153,6 +153,17 @@ export KeycloakSettings__RequireHttpsMetadata="false"
 export Serilog__WriteTo__1__Args__serverUrl="http://localhost:5342"
 ```
 
+To create, update, deactivate, and reactivate users from the NGB UI, also configure the Keycloak Admin client for the API:
+
+```bash
+export KeycloakAdminClientSettings__BaseUrl="http://pm-keycloak.localhost:7012"
+export KeycloakAdminClientSettings__Realm="ngb-demo"
+export KeycloakAdminClientSettings__ClientId="<admin-client-id>"
+export KeycloakAdminClientSettings__ClientSecret="<admin-client-secret>"
+```
+
+Application roles and permissions are stored in NGB, not in the Keycloak token. See [Security and Permissions](../platform/security-and-permissions.md).
+
 Then run the hosts you need:
 
 ```bash

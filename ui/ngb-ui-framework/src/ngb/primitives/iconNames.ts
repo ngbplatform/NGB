@@ -34,6 +34,8 @@ export const NGB_ICON_NAMES = [
   'log-out',
   'history',
   'circle-x',
+  'eye',
+  'eye-off',
   'home',
   'grid',
   'list',

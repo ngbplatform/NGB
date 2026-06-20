@@ -19,7 +19,13 @@ public interface IPlatformUserRepository
 
     Task<PlatformUser?> GetByAuthSubjectAsync(string authSubject, CancellationToken ct = default);
 
+    Task<PlatformUser?> GetByIdAsync(Guid userId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<PlatformUser>> GetAllAsync(CancellationToken ct = default);
+
     Task<IReadOnlyDictionary<Guid, PlatformUser>> GetByIdsAsync(
         IReadOnlyList<Guid> userIds,
         CancellationToken ct = default);
+
+    Task SetActiveAsync(Guid userId, bool isActive, CancellationToken ct = default);
 }

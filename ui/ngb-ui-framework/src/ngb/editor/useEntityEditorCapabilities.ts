@@ -7,6 +7,18 @@ import type { EditorKind } from './types';
 type EntityEditorCapabilitiesMetadata = {
   displayName?: string | null;
   form?: unknown | null;
+  capabilities?: {
+    canCreate?: boolean;
+    canEdit?: boolean;
+    canEditDraft?: boolean;
+    canDelete?: boolean;
+    canDeleteDraft?: boolean;
+    canPost?: boolean;
+    canUnpost?: boolean;
+    canMarkForDeletion?: boolean;
+    canViewEffects?: boolean;
+    canViewFlow?: boolean;
+  } | null;
 };
 
 export type UseEntityEditorCapabilitiesArgs<
@@ -27,15 +39,26 @@ export type UseEntityEditorCapabilitiesArgs<
 export function useEntityEditorCapabilities<
   TMetadata extends EntityEditorCapabilitiesMetadata = EntityEditorCapabilitiesMetadata,
 >(args: UseEntityEditorCapabilitiesArgs<TMetadata>) {
+  const capabilities = computed(() => args.metadata.value?.capabilities ?? null);
   const canOpenAudit = computed(() => !args.isNew.value && !!args.currentId.value);
   const canShareLink = computed(() => !args.isNew.value && !!args.currentId.value);
 
   const canOpenEffectsPage = computed(() =>
-    args.kind.value === 'document' && !args.isNew.value && !!args.currentId.value && !args.loading.value && !args.saving.value,
+    args.kind.value === 'document'
+    && capabilities.value?.canViewEffects !== false
+    && !args.isNew.value
+    && !!args.currentId.value
+    && !args.loading.value
+    && !args.saving.value,
   );
 
   const canOpenDocumentFlowPage = computed(() =>
-    args.kind.value === 'document' && !args.isNew.value && !!args.currentId.value && !args.loading.value && !args.saving.value,
+    args.kind.value === 'document'
+    && capabilities.value?.canViewFlow !== false
+    && !args.isNew.value
+    && !!args.currentId.value
+    && !args.loading.value
+    && !args.saving.value,
   );
 
   const canPrintDocument = computed(() =>
@@ -46,6 +69,7 @@ export function useEntityEditorCapabilities<
     if (args.isNew.value) return false;
     if (args.loading.value || args.saving.value) return false;
     if (args.isMarkedForDeletion.value) return false;
+    if (capabilities.value?.canMarkForDeletion === false) return false;
     if (args.kind.value === 'document' && !args.isDraft.value) return false;
     return true;
   });
@@ -54,11 +78,13 @@ export function useEntityEditorCapabilities<
     if (args.isNew.value) return false;
     if (args.loading.value || args.saving.value) return false;
     if (!args.isMarkedForDeletion.value) return false;
+    if (capabilities.value?.canMarkForDeletion === false) return false;
     return true;
   });
 
   const canDelete = computed(() =>
     args.kind.value === 'catalog'
+    && capabilities.value?.canDelete !== false
     && !args.isNew.value
     && !args.loading.value
     && !args.saving.value
@@ -67,6 +93,7 @@ export function useEntityEditorCapabilities<
 
   const canPost = computed(() => {
     if (args.kind.value !== 'document') return false;
+    if (capabilities.value?.canPost === false) return false;
     if (args.isNew.value) return false;
     if (args.loading.value || args.saving.value) return false;
     return args.isDraft.value && !args.isMarkedForDeletion.value;
@@ -74,6 +101,7 @@ export function useEntityEditorCapabilities<
 
   const canUnpost = computed(() => {
     if (args.kind.value !== 'document') return false;
+    if (capabilities.value?.canUnpost === false) return false;
     if (args.isNew.value) return false;
     if (args.loading.value || args.saving.value) return false;
     return args.status.value === 2;
@@ -82,8 +110,13 @@ export function useEntityEditorCapabilities<
   const canSave = computed(() => {
     if (!args.metadata.value?.form) return false;
     if (!args.isNew.value && args.isMarkedForDeletion.value) return false;
-    if (args.kind.value !== 'document') return true;
-    if (args.isNew.value) return true;
+    if (args.kind.value !== 'document') {
+      return args.isNew.value
+        ? capabilities.value?.canCreate !== false
+        : capabilities.value?.canEdit !== false;
+    }
+    if (args.isNew.value) return capabilities.value?.canCreate !== false;
+    if (capabilities.value?.canEditDraft === false) return false;
     return args.isDraft.value;
   });
 

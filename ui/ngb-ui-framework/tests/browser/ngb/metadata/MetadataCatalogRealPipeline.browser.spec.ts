@@ -2,7 +2,7 @@ import { page } from 'vitest/browser'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createPinia } from 'pinia'
-import { defineComponent, h, ref, watch } from 'vue'
+import { defineComponent, h, nextTick, ref, watch } from 'vue'
 import { createMemoryHistory, createRouter, RouterView, useRoute } from 'vue-router'
 
 import { configureNgbMetadata } from '../../../../src/ngb/metadata/config'
@@ -17,10 +17,26 @@ function dispatchEscape() {
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
 }
 
-function headerButtonByTitle(title: string): HTMLButtonElement {
-  const button = document.querySelector(`[data-testid="drawer-header"] button[title="${title}"]`)
-  if (!(button instanceof HTMLButtonElement)) throw new Error(`Drawer header button not found: ${title}`)
+function findDrawerButtonByTitle(state: HTMLElement, title: string): HTMLButtonElement | null {
+  const drawerPanel = state.closest<HTMLElement>('[data-testid="drawer-panel"]')
+  const header = drawerPanel?.querySelector<HTMLElement>('[data-testid="drawer-header"]')
+  return Array.from(header?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+    .find((candidate) => candidate.title === title)
+    ?? null
+}
+
+function drawerButtonByTitle(state: HTMLElement, title: string): HTMLButtonElement {
+  const button = findDrawerButtonByTitle(state, title)
+  if (!button) throw new Error(`Drawer header button not found: ${title}`)
   return button
+}
+
+function markInteractiveCatalogEditorDirty(state: HTMLElement): void {
+  const button = state.parentElement?.querySelector<HTMLButtonElement>(
+    '[data-testid="interactive-catalog-editor-mark-dirty"]',
+  )
+  if (!button) throw new Error('Interactive catalog editor dirty button not found')
+  button.click()
 }
 
 function makeCatalogMetadata(): CatalogTypeMetadata {
@@ -112,10 +128,12 @@ const InteractiveCatalogEditor = defineComponent({
           `type:${props.typeCode}`,
           `id:${props.id ?? 'new'}`,
           `expand:${String(props.expandTo ?? '')}`,
+          `dirty:${String(isDirty.value)}`,
         ].join(';'),
       ),
       h('button', {
         type: 'button',
+        'data-testid': 'interactive-catalog-editor-mark-dirty',
         onClick: () => {
           isDirty.value = true
         },
@@ -480,7 +498,9 @@ test('confirms discard before closing dirty real catalog drawers and cancels dir
     id: 'prop-river',
   })
 
-  await view.getByRole('button', { name: 'Mark editor dirty' }).click()
+  const firstEditorState = view.getByTestId('interactive-catalog-editor-state').element() as HTMLElement
+  markInteractiveCatalogEditorDirty(firstEditorState)
+  await expect.element(firstEditorState).toHaveTextContent('dirty:true')
   dispatchEscape()
   await expect.element(view.getByText('Discard changes?', { exact: true })).toBeVisible()
 
@@ -495,7 +515,11 @@ test('confirms discard before closing dirty real catalog drawers and cancels dir
 
   await view.getByText('Riverfront Tower', { exact: true }).click()
   await expect.element(view.getByTestId('interactive-catalog-editor-state')).toHaveTextContent('id:prop-river')
-  await view.getByRole('button', { name: 'Mark editor dirty' }).click()
+  await expect.poll(() => String(router.currentRoute.value.query.id ?? '')).toBe('prop-river')
+  await nextTick()
+  const reopenedEditorState = view.getByTestId('interactive-catalog-editor-state').element() as HTMLElement
+  markInteractiveCatalogEditorDirty(reopenedEditorState)
+  await expect.element(reopenedEditorState).toHaveTextContent('dirty:true')
 
   void router.push('/catalogs/pm.property?panel=edit&id=prop-harbor')
   await expect.element(view.getByText('Discard changes?', { exact: true })).toBeVisible()
@@ -513,7 +537,9 @@ test('switches to the requested catalog record after confirming discard on a dir
   await view.getByText('Riverfront Tower', { exact: true }).click()
   await expect.element(view.getByTestId('interactive-catalog-editor-state')).toHaveTextContent('id:prop-river')
 
-  await view.getByRole('button', { name: 'Mark editor dirty' }).click()
+  const editorState = view.getByTestId('interactive-catalog-editor-state').element() as HTMLElement
+  markInteractiveCatalogEditorDirty(editorState)
+  await expect.element(editorState).toHaveTextContent('dirty:true')
 
   void router.push('/catalogs/pm.property?panel=edit&id=prop-created')
   await expect.element(view.getByText('Discard changes?', { exact: true })).toBeVisible()
@@ -569,23 +595,24 @@ test('routes real drawer action buttons to the current editor handle and extra a
 
   await view.getByText('Riverfront Tower', { exact: true }).click()
   await expect.element(view.getByTestId('interactive-catalog-action-state')).toHaveTextContent('id:prop-river')
+  const actionState = view.getByTestId('interactive-catalog-action-state').element() as HTMLElement
 
-  await expect.element(view.getByTitle('Open full page')).toBeVisible()
-  await expect.element(view.getByTitle('Share link')).toBeVisible()
-  await expect.element(view.getByTitle('Audit log')).toBeVisible()
-  await expect.element(view.getByTitle('Mark for deletion')).toBeVisible()
-  await expect.element(view.getByTitle('Archive')).toBeVisible()
-  await expect.poll(() => headerButtonByTitle('Save').disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Open full page')).toBeVisible()
+  expect(drawerButtonByTitle(actionState, 'Share link')).toBeVisible()
+  expect(drawerButtonByTitle(actionState, 'Audit log')).toBeVisible()
+  expect(drawerButtonByTitle(actionState, 'Mark for deletion')).toBeVisible()
+  expect(drawerButtonByTitle(actionState, 'Archive')).toBeVisible()
+  await expect.poll(() => drawerButtonByTitle(actionState, 'Save').disabled).toBe(false)
 
-  await view.getByTitle('Open full page').click()
-  await view.getByTitle('Share link').click()
-  await view.getByTitle('Audit log').click()
-  await view.getByTitle('Mark for deletion').click()
-  await expect.element(view.getByTitle('Unmark for deletion')).toBeVisible()
-  await view.getByTitle('Unmark for deletion').click()
-  await expect.element(view.getByTitle('Mark for deletion')).toBeVisible()
-  headerButtonByTitle('Save').click()
-  await view.getByTitle('Archive').click()
+  drawerButtonByTitle(actionState, 'Open full page').click()
+  drawerButtonByTitle(actionState, 'Share link').click()
+  drawerButtonByTitle(actionState, 'Audit log').click()
+  drawerButtonByTitle(actionState, 'Mark for deletion').click()
+  await expect.poll(() => Boolean(findDrawerButtonByTitle(actionState, 'Unmark for deletion'))).toBe(true)
+  drawerButtonByTitle(actionState, 'Unmark for deletion').click()
+  await expect.poll(() => Boolean(findDrawerButtonByTitle(actionState, 'Mark for deletion'))).toBe(true)
+  drawerButtonByTitle(actionState, 'Save').click()
+  drawerButtonByTitle(actionState, 'Archive').click()
 
   await expect.element(view.getByTestId('interactive-catalog-action-state')).toHaveTextContent('marked:false')
   await expect.element(view.getByTestId('interactive-catalog-action-log')).toHaveTextContent(
@@ -617,31 +644,32 @@ test('reactively disables built-in drawer actions and recomputes extra actions f
 
   await view.getByText('Riverfront Tower', { exact: true }).click()
   await expect.element(view.getByTestId('interactive-catalog-action-state')).toHaveTextContent('id:prop-river')
+  const actionState = view.getByTestId('interactive-catalog-action-state').element() as HTMLElement
 
-  await expect.element(view.getByTitle('Archive clean')).toBeVisible()
-  expect((view.getByTitle('Open full page').element() as HTMLButtonElement).disabled).toBe(false)
-  expect(headerButtonByTitle('Save').disabled).toBe(false)
-  expect((view.getByTitle('Archive clean').element() as HTMLButtonElement).disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Archive clean')).toBeVisible()
+  expect(drawerButtonByTitle(actionState, 'Open full page').disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Save').disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Archive clean').disabled).toBe(false)
 
   await view.getByRole('button', { name: 'Set dirty true' }).click()
-  await expect.element(view.getByTitle('Archive dirty')).toBeVisible()
+  expect(drawerButtonByTitle(actionState, 'Archive dirty')).toBeVisible()
 
   await view.getByRole('button', { name: 'Set saving true' }).click()
   await expect.element(view.getByTestId('interactive-catalog-action-state')).toHaveTextContent('saving:true')
-  expect((view.getByTitle('Open full page').element() as HTMLButtonElement).disabled).toBe(true)
-  expect((view.getByTitle('Share link').element() as HTMLButtonElement).disabled).toBe(true)
-  expect((view.getByTitle('Audit log').element() as HTMLButtonElement).disabled).toBe(true)
-  expect((view.getByTitle('Mark for deletion').element() as HTMLButtonElement).disabled).toBe(true)
-  expect(headerButtonByTitle('Save').disabled).toBe(true)
-  expect((view.getByTitle('Archive dirty').element() as HTMLButtonElement).disabled).toBe(true)
+  expect(drawerButtonByTitle(actionState, 'Open full page').disabled).toBe(true)
+  expect(drawerButtonByTitle(actionState, 'Share link').disabled).toBe(true)
+  expect(drawerButtonByTitle(actionState, 'Audit log').disabled).toBe(true)
+  expect(drawerButtonByTitle(actionState, 'Mark for deletion').disabled).toBe(true)
+  expect(drawerButtonByTitle(actionState, 'Save').disabled).toBe(true)
+  expect(drawerButtonByTitle(actionState, 'Archive dirty').disabled).toBe(true)
 
   await view.getByRole('button', { name: 'Set saving false' }).click()
   await view.getByRole('button', { name: 'Set can save false' }).click()
   await expect.element(view.getByTestId('interactive-catalog-action-state')).toHaveTextContent('canSave:false')
-  expect((view.getByTitle('Open full page').element() as HTMLButtonElement).disabled).toBe(false)
-  expect((view.getByTitle('Share link').element() as HTMLButtonElement).disabled).toBe(false)
-  expect((view.getByTitle('Audit log').element() as HTMLButtonElement).disabled).toBe(false)
-  expect((view.getByTitle('Mark for deletion').element() as HTMLButtonElement).disabled).toBe(false)
-  expect((view.getByTitle('Archive dirty').element() as HTMLButtonElement).disabled).toBe(false)
-  expect(headerButtonByTitle('Save').disabled).toBe(true)
+  expect(drawerButtonByTitle(actionState, 'Open full page').disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Share link').disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Audit log').disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Mark for deletion').disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Archive dirty').disabled).toBe(false)
+  expect(drawerButtonByTitle(actionState, 'Save').disabled).toBe(true)
 })

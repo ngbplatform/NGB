@@ -101,6 +101,9 @@ public sealed class PmApiFactory : WebApplicationFactory<Program>
 
     private IReadOnlyDictionary<string, string?> BuildEffectiveConfiguration()
     {
+        if (!PmKeycloakTestClients.TryGetClientSecret(PmKeycloakTestClients.Tester, out var adminClientSecret))
+            throw new InvalidOperationException("PM Keycloak tester client secret is required for integration tests.");
+
         var overrides = new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] = _connectionString,
@@ -109,7 +112,11 @@ public sealed class PmApiFactory : WebApplicationFactory<Program>
             ["Serilog:WriteTo:1:Args:serverUrl"] = TestSeqServerUrl,
             ["KeycloakSettings:ClientIds:0"] = PmKeycloakTestClients.Api,
             ["KeycloakSettings:ClientIds:1"] = PmKeycloakTestClients.WebClient,
-            ["KeycloakSettings:ClientIds:2"] = PmKeycloakTestClients.Tester
+            ["KeycloakSettings:ClientIds:2"] = PmKeycloakTestClients.Tester,
+            ["KeycloakAdminClientSettings:BaseUrl"] = _fixture.Keycloak.BaseUrl,
+            ["KeycloakAdminClientSettings:Realm"] = _fixture.Keycloak.Realm,
+            ["KeycloakAdminClientSettings:ClientId"] = PmKeycloakTestClients.Tester,
+            ["KeycloakAdminClientSettings:ClientSecret"] = adminClientSecret
         };
 
         foreach (var pair in _configurationOverrides)

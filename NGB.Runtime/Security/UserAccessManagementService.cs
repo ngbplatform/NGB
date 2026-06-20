@@ -1,0 +1,638 @@
+using System.Net.Mail;
+using NGB.Contracts.Security;
+using NGB.Core.AuditLog;
+using NGB.Core.Security;
+using NGB.Persistence.AuditLog;
+using NGB.Persistence.Security;
+using NGB.Persistence.UnitOfWork;
+using NGB.Runtime.AuditLog;
+using NGB.Runtime.UnitOfWork;
+using NGB.Tools.Exceptions;
+
+namespace NGB.Runtime.Security;
+
+public sealed class UserAccessManagementService(
+    IUnitOfWork uow,
+    IPlatformUserRepository users,
+    IPlatformUserRoleRepository userRoles,
+    IUserAccessVersionRepository versions,
+    IUserProvisioningOperationRepository operations,
+    IIdentityProviderUserAdminClient identityProvider,
+    IAuditLogService audit)
+    : IUserAccessManagementService
+{
+    public async Task<IReadOnlyList<UserListItemDto>> GetUsersAsync(CancellationToken ct)
+    {
+        var platformUsers = await users.GetAllAsync(ct);
+        var userIds = platformUsers.Select(x => x.UserId).ToArray();
+        var identityProviderIds = platformUsers
+            .Select(static x => NormalizeIdentityProviderId(x.AuthSubject))
+            .OfType<string>()
+            .ToArray();
+
+        var rolesByUserTask = userRoles.GetRolesForUsersAsync(userIds, ct);
+        var identityProviderUsersByIdTask = identityProvider.GetUsersByIdsAsync(identityProviderIds, ct);
+        await Task.WhenAll(rolesByUserTask, identityProviderUsersByIdTask);
+
+        var rolesByUser = await rolesByUserTask;
+        var identityProviderUsersById = await identityProviderUsersByIdTask;
+        var fallbackEmails = platformUsers
+            .Where(user => !HasIdentityProviderUser(identityProviderUsersById, user.AuthSubject))
+            .Select(static user => NormalizeIdentityProviderEmail(user.Email))
+            .OfType<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var identityProviderUsersByEmail = fallbackEmails.Length == 0
+            ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+            : await identityProvider.FindUsersByEmailsAsync(fallbackEmails, ct);
+
+        return platformUsers
+            .Select(user =>
+            {
+                rolesByUser.TryGetValue(user.UserId, out var assignedRoles);
+                var keycloakEnabled = ResolveIdentityProviderEnabled(
+                    user,
+                    identityProviderUsersById,
+                    identityProviderUsersByEmail);
+
+                var roles = (assignedRoles ?? [])
+                    .OrderBy(static role => role.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                return new UserListItemDto(
+                    UserId: user.UserId,
+                    AuthSubject: user.AuthSubject,
+                    Email: user.Email,
+                    DisplayName: user.DisplayName,
+                    IsActive: user.IsActive,
+                    KeycloakEnabled: keycloakEnabled,
+                    Roles: roles.Select(ToRoleBadge).ToArray(),
+                    CreatedAtUtc: user.CreatedAtUtc,
+                    UpdatedAtUtc: user.UpdatedAtUtc);
+            })
+            .OrderBy(static x => x.DisplayName ?? x.Email ?? x.AuthSubject, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public async Task<UserDetailsDto> GetUserAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
+        var identityProviderUserTask = identityProvider.GetUserByIdAsync(user.AuthSubject, ct);
+        var roles = await userRoles.GetRolesForUserAsync(userId, ct);
+        var version = await versions.GetAsync(userId, ct);
+        var idp = await identityProviderUserTask;
+
+        return ToDetails(user, idp, roles, version?.Version ?? 1);
+    }
+
+    public async Task<UserDetailsDto> CreateUserAsync(CreateUserRequestDto request, CancellationToken ct)
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        var email = NormalizeRequiredEmail(request.Email, nameof(request.Email));
+        var temporaryPassword = string.IsNullOrWhiteSpace(request.TemporaryPassword)
+            ? null
+            : request.TemporaryPassword;
+
+        var operationId = Guid.CreateVersion7();
+
+        await WriteOperationAsync(operationId, "CreateUser", email, null, null, "Pending", null, ct);
+
+        IdentityProviderUserDto idpUser;
+        try
+        {
+            var existingIdpUser = await identityProvider.FindUserByEmailAsync(email, ct);
+            if (existingIdpUser is null)
+            {
+                idpUser = await identityProvider.CreateUserAsync(
+                    new CreateIdentityProviderUserRequest(
+                        email,
+                        request.FirstName,
+                        request.LastName,
+                        request.DisplayName,
+                        request.Enabled,
+                        temporaryPassword,
+                        request.RequirePasswordUpdate),
+                    ct);
+            }
+            else
+            {
+                await identityProvider.UpdateUserAsync(
+                    existingIdpUser.UserId,
+                    new UpdateIdentityProviderUserRequest(
+                        email,
+                        request.FirstName,
+                        request.LastName,
+                        request.DisplayName,
+                        request.Enabled),
+                    ct);
+
+                idpUser = await identityProvider.GetUserByIdAsync(existingIdpUser.UserId, ct)
+                          ?? existingIdpUser with
+                          {
+                              Email = email,
+                              FirstName = request.FirstName,
+                              LastName = request.LastName,
+                              DisplayName = ResolveDisplayName(request.DisplayName, request.FirstName, request.LastName, email),
+                              Enabled = request.Enabled
+                          };
+            }
+
+            if (!string.IsNullOrWhiteSpace(temporaryPassword))
+            {
+                await identityProvider.SetTemporaryPasswordAsync(
+                    idpUser.UserId,
+                    temporaryPassword,
+                    request.RequirePasswordUpdate,
+                    ct);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            await WriteOperationAsync(operationId, "CreateUser", email, null, null, "Failed", ex.GetType().Name, ct);
+            throw;
+        }
+
+        var platformUserId = Guid.Empty;
+
+        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        {
+            await operations.UpsertAsync(operationId, "CreateUser", email, idpUser.UserId, null, "KeycloakApplied", null, null, innerCt);
+            var savedDisplayName = ResolveDisplayName(request.DisplayName, idpUser.DisplayName, idpUser.Email ?? email);
+
+            platformUserId = await users.UpsertAsync(
+                authSubject: idpUser.UserId,
+                email: idpUser.Email ?? email,
+                displayName: savedDisplayName,
+                isActive: idpUser.Enabled,
+                innerCt);
+
+            await userRoles.ReplaceUserRolesAsync(platformUserId, request.RoleIds, assignedByUserId: null, innerCt);
+            var newRoles = await userRoles.GetRolesForUserAsync(platformUserId, innerCt);
+            await versions.GetOrCreateAsync(platformUserId, innerCt);
+            await operations.UpsertAsync(operationId, "CreateUser", email, idpUser.UserId, platformUserId, "Completed", null, null, innerCt);
+
+            await audit.WriteAsync(
+                AuditEntityKind.SecurityUser,
+                platformUserId,
+                AuditActionCodes.SecurityUserCreate,
+                changes: BuildUserAuditChanges(
+                    oldUser: null,
+                    newEmail: idpUser.Email ?? email,
+                    newDisplayName: savedDisplayName,
+                    newIsActive: idpUser.Enabled,
+                    oldRoles: [],
+                    newRoles,
+                    passwordChanged: !string.IsNullOrWhiteSpace(temporaryPassword)),
+                metadata: new
+                {
+                    email = idpUser.Email ?? email,
+                    roleIds = request.RoleIds
+                },
+                ct: innerCt);
+
+            await WriteRoleAssignmentAuditEventsAsync(
+                oldRoles: [],
+                newRoles,
+                ToAuditUser(platformUserId, idpUser.Email ?? email, savedDisplayName),
+                innerCt);
+        }, ct);
+
+        return await GetUserAsync(platformUserId, ct);
+    }
+
+    public async Task<UserDetailsDto> UpdateUserAsync(Guid userId, UpdateUserRequestDto request, CancellationToken ct)
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
+        var email = NormalizeOptionalEmail(request.Email, nameof(request.Email))
+            ?? NormalizeRequiredEmail(user.Email, nameof(request.Email));
+        var temporaryPassword = string.IsNullOrWhiteSpace(request.TemporaryPassword)
+            ? null
+            : request.TemporaryPassword;
+        var oldRoles = await userRoles.GetRolesForUserAsync(userId, ct);
+        var identityProviderUserId = await ResolveIdentityProviderUserIdAsync(
+            user,
+            [user.Email, email],
+            provisioningEmail => new CreateIdentityProviderUserRequest(
+                provisioningEmail,
+                request.FirstName,
+                request.LastName,
+                request.DisplayName,
+                request.Enabled,
+                TemporaryPassword: null,
+                RequirePasswordUpdate: false),
+            ct);
+        var currentIdentityProviderUser = await identityProvider.GetUserByIdAsync(identityProviderUserId, ct);
+
+        await identityProvider.UpdateUserAsync(
+            identityProviderUserId,
+            new UpdateIdentityProviderUserRequest(
+                email,
+                request.FirstName ?? currentIdentityProviderUser?.FirstName,
+                request.LastName ?? currentIdentityProviderUser?.LastName,
+                request.DisplayName,
+                request.Enabled),
+            ct);
+
+        var passwordChanged = temporaryPassword is not null;
+        if (passwordChanged)
+        {
+            await identityProvider.SetTemporaryPasswordAsync(
+                identityProviderUserId,
+                temporaryPassword!,
+                request.RequirePasswordUpdate,
+                ct);
+        }
+
+        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        {
+            var savedUserId = await users.UpsertAsync(
+                identityProviderUserId,
+                email,
+                ResolveDisplayName(request.DisplayName, user.DisplayName, email),
+                request.Enabled,
+                innerCt);
+
+            EnsureSamePlatformUser(userId, savedUserId);
+
+            await userRoles.ReplaceUserRolesAsync(userId, request.RoleIds, assignedByUserId: null, innerCt);
+            var newRoles = await userRoles.GetRolesForUserAsync(userId, innerCt);
+            await versions.IncrementAsync(userId, innerCt);
+
+            await audit.WriteAsync(
+                AuditEntityKind.SecurityUser,
+                userId,
+                AuditActionCodes.SecurityUserUpdate,
+                changes: BuildUserAuditChanges(
+                    user,
+                    email,
+                    ResolveDisplayName(request.DisplayName, user.DisplayName, email),
+                    request.Enabled,
+                    oldRoles,
+                    newRoles,
+                    passwordChanged),
+                metadata: new
+                {
+                    email,
+                    displayName = request.DisplayName,
+                    enabled = request.Enabled,
+                    roleIds = request.RoleIds,
+                    passwordChanged
+                },
+                ct: innerCt);
+
+            await WriteRoleAssignmentAuditEventsAsync(
+                oldRoles,
+                newRoles,
+                ToAuditUser(userId, email, ResolveDisplayName(request.DisplayName, user.DisplayName, email)),
+                innerCt);
+        }, ct);
+
+        return await GetUserAsync(userId, ct);
+    }
+
+    public Task DeactivateUserAsync(Guid userId, CancellationToken ct)
+        => SetUserActiveAsync(userId, isActive: false, AuditActionCodes.SecurityUserDeactivate, ct);
+
+    public Task ReactivateUserAsync(Guid userId, CancellationToken ct)
+        => SetUserActiveAsync(userId, isActive: true, AuditActionCodes.SecurityUserReactivate, ct);
+
+    public async Task ReplaceUserRolesAsync(Guid userId, ReplaceUserRolesRequestDto request, CancellationToken ct)
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
+        var oldRoles = await userRoles.GetRolesForUserAsync(userId, ct);
+
+        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        {
+            await userRoles.ReplaceUserRolesAsync(userId, request.RoleIds, assignedByUserId: null, innerCt);
+            var newRoles = await userRoles.GetRolesForUserAsync(userId, innerCt);
+            await versions.IncrementAsync(userId, innerCt);
+            await audit.WriteAsync(
+                AuditEntityKind.SecurityUser,
+                userId,
+                AuditActionCodes.SecurityUserRolesReplace,
+                changes:
+                [
+                    AuditLogService.Change("roles", ToAuditRoles(oldRoles), ToAuditRoles(newRoles))
+                ],
+                metadata: new
+                {
+                    roleIds = request.RoleIds
+                },
+                ct: innerCt);
+
+            await WriteRoleAssignmentAuditEventsAsync(oldRoles, newRoles, ToAuditUser(user), innerCt);
+        }, ct);
+    }
+
+    private async Task SetUserActiveAsync(Guid userId, bool isActive, string auditAction, CancellationToken ct)
+    {
+        var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
+        var identityProviderUserId = await ResolveIdentityProviderUserIdAsync(
+            user,
+            [user.Email],
+            email => new CreateIdentityProviderUserRequest(
+                email,
+                null,
+                null,
+                user.DisplayName,
+                isActive,
+                null,
+                false),
+            ct);
+
+        await identityProvider.SetUserEnabledAsync(identityProviderUserId, isActive, ct);
+
+        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        {
+            if (StringComparer.Ordinal.Equals(identityProviderUserId, user.AuthSubject))
+            {
+                await users.SetActiveAsync(userId, isActive, innerCt);
+            }
+            else
+            {
+                var savedUserId = await users.UpsertAsync(
+                    identityProviderUserId,
+                    user.Email,
+                    user.DisplayName,
+                    isActive,
+                    innerCt);
+
+                EnsureSamePlatformUser(userId, savedUserId);
+            }
+
+            await versions.IncrementAsync(userId, innerCt);
+            await audit.WriteAsync(
+                AuditEntityKind.SecurityUser,
+                userId,
+                auditAction,
+                changes:
+                [
+                    AuditLogService.Change("status", ToAuditStatus(user.IsActive), ToAuditStatus(isActive))
+                ],
+                metadata: new { isActive },
+                ct: innerCt);
+        }, ct);
+    }
+
+    private async Task WriteOperationAsync(
+        Guid operationId,
+        string type,
+        string? email,
+        string? keycloakUserId,
+        Guid? platformUserId,
+        string status,
+        string? error,
+        CancellationToken ct)
+    {
+        await uow.ExecuteInUowTransactionAsync(innerCt => operations.UpsertAsync(
+            operationId,
+            type,
+            email,
+            keycloakUserId,
+            platformUserId,
+            status,
+            error,
+            requestedByUserId: null,
+            innerCt), ct);
+    }
+
+    private static UserDetailsDto ToDetails(
+        PlatformUser user,
+        IdentityProviderUserDto? idp,
+        IReadOnlyList<PlatformRole> roles,
+        long accessVersion)
+        => new(
+            UserId: user.UserId,
+            AuthSubject: user.AuthSubject,
+            Email: idp?.Email ?? user.Email,
+            FirstName: idp?.FirstName,
+            LastName: idp?.LastName,
+            DisplayName: ResolveDisplayName(user.DisplayName, idp?.DisplayName, idp?.Email ?? user.Email),
+            IsActive: user.IsActive,
+            KeycloakEnabled: idp?.Enabled,
+            Roles: roles.Select(ToRoleBadge).ToArray(),
+            AccessVersion: accessVersion,
+            CreatedAtUtc: user.CreatedAtUtc,
+            UpdatedAtUtc: user.UpdatedAtUtc);
+
+    private static RoleBadgeDto ToRoleBadge(PlatformRole role)
+        => new(role.RoleId, role.Code, role.Name, role.IsSystem, role.IsActive);
+
+    private async Task<string> ResolveIdentityProviderUserIdAsync(
+        PlatformUser user,
+        IReadOnlyList<string?> emailCandidates,
+        Func<string, CreateIdentityProviderUserRequest> createRequest,
+        CancellationToken ct)
+    {
+        var bySubject = await identityProvider.GetUserByIdAsync(user.AuthSubject, ct);
+        if (bySubject is not null)
+            return bySubject.UserId;
+
+        var normalizedEmails = emailCandidates
+            .Where(static x => !string.IsNullOrWhiteSpace(x))
+            .Select(static x => x!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var email in normalizedEmails)
+        {
+            var byEmail = await identityProvider.FindUserByEmailAsync(email, ct);
+            if (byEmail is not null)
+                return byEmail.UserId;
+        }
+
+        var provisioningEmail = normalizedEmails.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(provisioningEmail))
+        {
+            var created = await identityProvider.CreateUserAsync(createRequest(provisioningEmail), ct);
+            return created.UserId;
+        }
+
+        throw new NgbConfigurationViolationException(
+            "Linked identity provider user could not be found.",
+            new Dictionary<string, object?>
+            {
+                ["platformUserId"] = user.UserId,
+                ["authSubject"] = user.AuthSubject,
+                ["email"] = user.Email
+        });
+    }
+
+    private static void EnsureSamePlatformUser(Guid expectedUserId, Guid savedUserId)
+    {
+        if (savedUserId == expectedUserId)
+            return;
+
+        throw new NgbInvariantViolationException(
+            "Identity provider user rebind resolved to a different platform user.",
+            new Dictionary<string, object?>
+            {
+                ["expectedUserId"] = expectedUserId,
+                ["savedUserId"] = savedUserId
+            });
+    }
+
+    private static string NormalizeRequiredEmail(string? email, string paramName)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            throw new NgbArgumentRequiredException(paramName);
+
+        var normalized = email.Trim();
+
+        try
+        {
+            var parsed = new MailAddress(normalized);
+            if (!string.Equals(parsed.Address, normalized, StringComparison.OrdinalIgnoreCase))
+                throw new FormatException();
+        }
+        catch (FormatException)
+        {
+            throw new NgbArgumentInvalidException(paramName, "Email must be a valid email address.");
+        }
+
+        return normalized;
+    }
+
+    private static string? NormalizeOptionalEmail(string? email, string paramName)
+        => string.IsNullOrWhiteSpace(email)
+            ? null
+            : NormalizeRequiredEmail(email, paramName);
+
+    private static string? ResolveDisplayName(params string?[] candidates)
+        => candidates.FirstOrDefault(static x => !string.IsNullOrWhiteSpace(x))?.Trim();
+
+    private static bool HasIdentityProviderUser(
+        IReadOnlyDictionary<string, IdentityProviderUserDto> usersById,
+        string? authSubject)
+    {
+        var key = NormalizeIdentityProviderId(authSubject);
+        return key is not null && usersById.ContainsKey(key);
+    }
+
+    private static bool? ResolveIdentityProviderEnabled(
+        PlatformUser user,
+        IReadOnlyDictionary<string, IdentityProviderUserDto> usersById,
+        IReadOnlyDictionary<string, IdentityProviderUserDto> usersByEmail)
+    {
+        var identityProviderId = NormalizeIdentityProviderId(user.AuthSubject);
+        if (identityProviderId is not null && usersById.TryGetValue(identityProviderId, out var byId))
+            return byId.Enabled;
+
+        var email = NormalizeIdentityProviderEmail(user.Email);
+        if (email is not null && usersByEmail.TryGetValue(email, out var byEmail))
+            return byEmail.Enabled;
+
+        return false;
+    }
+
+    private static string? NormalizeIdentityProviderId(string? identityProviderUserId)
+        => string.IsNullOrWhiteSpace(identityProviderUserId) ? null : identityProviderUserId.Trim();
+
+    private static string? NormalizeIdentityProviderEmail(string? email)
+        => string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+
+    private async Task WriteRoleAssignmentAuditEventsAsync(
+        IReadOnlyList<PlatformRole> oldRoles,
+        IReadOnlyList<PlatformRole> newRoles,
+        object auditUser,
+        CancellationToken ct)
+    {
+        var oldRoleIds = oldRoles.Select(static role => role.RoleId).ToHashSet();
+        var newRoleIds = newRoles.Select(static role => role.RoleId).ToHashSet();
+
+        foreach (var role in newRoles.Where(role => !oldRoleIds.Contains(role.RoleId)))
+        {
+            await audit.WriteAsync(
+                AuditEntityKind.SecurityRole,
+                role.RoleId,
+                AuditActionCodes.SecurityRoleUpdate,
+                changes:
+                [
+                    AuditLogService.Change("assigned_users", null, auditUser)
+                ],
+                metadata: new
+                {
+                    assignment = "added",
+                    roleCode = role.Code,
+                    user = auditUser
+                },
+                ct: ct);
+        }
+
+        foreach (var role in oldRoles.Where(role => !newRoleIds.Contains(role.RoleId)))
+        {
+            await audit.WriteAsync(
+                AuditEntityKind.SecurityRole,
+                role.RoleId,
+                AuditActionCodes.SecurityRoleUpdate,
+                changes:
+                [
+                    AuditLogService.Change("assigned_users", auditUser, null)
+                ],
+                metadata: new
+                {
+                    assignment = "removed",
+                    roleCode = role.Code,
+                    user = auditUser
+                },
+                ct: ct);
+        }
+    }
+
+    private static IReadOnlyList<AuditFieldChange> BuildUserAuditChanges(
+        PlatformUser? oldUser,
+        string? newEmail,
+        string? newDisplayName,
+        bool newIsActive,
+        IReadOnlyList<PlatformRole> oldRoles,
+        IReadOnlyList<PlatformRole> newRoles,
+        bool passwordChanged)
+    {
+        var changes = new List<AuditFieldChange>
+        {
+            AuditLogService.Change("email", oldUser?.Email, newEmail),
+            AuditLogService.Change("display_name", oldUser?.DisplayName, newDisplayName),
+            AuditLogService.Change("status", oldUser is null ? null : ToAuditStatus(oldUser.IsActive), ToAuditStatus(newIsActive)),
+            AuditLogService.Change("roles", ToAuditRoles(oldRoles), ToAuditRoles(newRoles))
+        };
+
+        if (passwordChanged)
+            changes.Add(AuditLogService.Change("password", null, "Changed"));
+
+        return changes;
+    }
+
+    private static object ToAuditUser(PlatformUser user) => ToAuditUser(user.UserId, user.Email, user.DisplayName);
+
+    private static object ToAuditUser(Guid userId, string? email, string? displayName)
+        => new
+        {
+            display = ResolveDisplayName(displayName, email, userId.ToString()),
+            email,
+            userId
+        };
+
+    private static object[] ToAuditRoles(IReadOnlyList<PlatformRole> roles)
+        => roles
+            .OrderBy(static role => role.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static role => role.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(static role => new
+            {
+                display = role.Name,
+                code = role.Code,
+                status = ToAuditStatus(role.IsActive)
+            })
+            .Cast<object>()
+            .ToArray();
+
+    private static string ToAuditStatus(bool isActive) => isActive ? "Active" : "Inactive";
+}

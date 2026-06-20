@@ -37,6 +37,14 @@ const menuGroups: MainMenuGroup[] = [
       { kind: 'page', code: 'payables-open-items', label: 'Payables', route: '/payables/open-items', icon: 'wallet', ordinal: 0 },
     ],
   },
+  {
+    label: 'Administration',
+    ordinal: 20,
+    icon: 'settings',
+    items: [
+      { kind: 'page', code: 'settings', label: 'Settings', route: '/settings', icon: 'settings', ordinal: 0 },
+    ],
+  },
 ]
 
 const specialPageItems: NonNullable<CommandPaletteStoreConfig['specialPageItems']> = [
@@ -554,7 +562,7 @@ test('opens the active item in a new tab when Ctrl/Cmd+Enter is pressed', async 
   await expect.poll(() => document.querySelector('[data-testid="command-palette-dialog"]')).toBeNull()
 })
 
-test('renders special pages from store config and persists them as recents across store instances', async () => {
+test('renders authorized pages and persists them as recents across store instances', async () => {
   await page.viewport(1024, 900)
 
   const first = await renderPaletteHarness()
@@ -579,9 +587,9 @@ test('renders special pages from store config and persists them as recents acros
   await second.getByTestId('palette-opener').click()
   await expect.element(second.getByTestId('command-palette-dialog')).toBeVisible()
   await expect.element(second.getByText('Recent')).toBeVisible()
-  await expect.poll(() => optionByItemKey('recent:page:special-settings')).toBeTruthy()
+  await expect.poll(() => optionByItemKey('recent:page:settings')).toBeTruthy()
 
-  optionByItemKey('recent:page:special-settings').dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  optionByItemKey('recent:page:settings').dispatchEvent(new MouseEvent('click', { bubbles: true }))
   await wait(180)
 
   expect(second.getByTestId('current-route').element().textContent).toBe('/settings')

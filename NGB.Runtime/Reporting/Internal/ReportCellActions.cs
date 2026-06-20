@@ -1,5 +1,6 @@
 using System.Text.Json;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 
 namespace NGB.Runtime.Reporting.Internal;
 
@@ -40,7 +41,7 @@ public static class ReportCellActions
         filters["account_id"] = new ReportFilterValueDto(JsonSerializer.SerializeToElement(accountId));
 
         return BuildReportAction(
-            reportCode: "accounting.account_card",
+            reportCode: AccountingReportCodes.AccountCard,
             parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["from_utc"] = fromInclusive.ToString("yyyy-MM-dd"),

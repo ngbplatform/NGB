@@ -57,6 +57,7 @@ internal sealed class MainMenuService(IEnumerable<IMainMenuContributor> contribu
         }
 
         var result = merged.Values
+            .Where(g => g.Items.Count > 0)
             .Select(g => new MainMenuGroupDto(
                 Label: g.Label,
                 Items: g.Items.Values

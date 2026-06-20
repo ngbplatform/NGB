@@ -3,6 +3,7 @@ using NGB.Accounting.PostingState;
 using NGB.Accounting.PostingState.Readers;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.Persistence.Documents;
 using NGB.Runtime.Reporting.Internal;
@@ -14,7 +15,7 @@ public sealed class PostingLogCanonicalReportExecutor(
     IDocumentDisplayReader documentDisplayReader)
     : IReportSpecializedPlanExecutor
 {
-    public string ReportCode => "accounting.posting_log";
+    public string ReportCode => AccountingReportCodes.PostingLog;
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

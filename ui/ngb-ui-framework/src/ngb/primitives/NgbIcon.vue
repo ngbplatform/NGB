@@ -427,6 +427,20 @@
       <path d="M12 7v5l3 2" />
     </template>
 
+    <!-- Eye -->
+    <template v-else-if="name === 'eye'">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="3" />
+    </template>
+
+    <!-- Eye off -->
+    <template v-else-if="name === 'eye-off'">
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+      <path d="M9.9 5.2A10.7 10.7 0 0 1 12 5c6 0 9.5 7 9.5 7a17 17 0 0 1-2.8 3.7" />
+      <path d="M6.1 6.8A17.5 17.5 0 0 0 2.5 12s3.5 7 9.5 7c1.7 0 3.2-.4 4.5-1" />
+    </template>
+
     <!-- Effects flow -->
     <template v-else-if="name === 'effects-flow'">
       <path d="M4 8h12" />

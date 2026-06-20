@@ -228,6 +228,10 @@ export function resolveNgbEditorAuditBehavior(override?: EditorAuditBehavior): E
       ...(editorFrameworkConfig?.audit?.explicitFieldLabels ?? {}),
       ...(override?.explicitFieldLabels ?? {}),
     },
+    actionTitles: {
+      ...(editorFrameworkConfig?.audit?.actionTitles ?? {}),
+      ...(override?.actionTitles ?? {}),
+    },
   };
 }
 

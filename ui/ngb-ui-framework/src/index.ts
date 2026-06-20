@@ -128,6 +128,62 @@ export { default as NgbAccountingPeriodClosingPage } from './ngb/accounting/NgbA
 export { default as NgbGeneralJournalEntryListPage } from './ngb/accounting/NgbGeneralJournalEntryListPage.vue';
 export { default as NgbGeneralJournalEntryEditPage } from './ngb/accounting/NgbGeneralJournalEntryEditPage.vue';
 export { default as NgbGeneralJournalEntryLinesEditor } from './ngb/accounting/NgbGeneralJournalEntryLinesEditor.vue';
+export { default as NgbUsersPage } from './ngb/security/NgbUsersPage.vue';
+export { default as NgbUserEditorPage } from './ngb/security/NgbUserEditorPage.vue';
+export { default as NgbRolesPage } from './ngb/security/NgbRolesPage.vue';
+export { default as NgbRoleEditorPage } from './ngb/security/NgbRoleEditorPage.vue';
+export { default as NgbPermissionMatrix } from './ngb/security/NgbPermissionMatrix.vue';
+export { default as NgbEffectiveAccessPanel } from './ngb/security/NgbEffectiveAccessPanel.vue';
+export { default as NgbAccessAuditPanel } from './ngb/security/NgbAccessAuditPanel.vue';
+export { useAccessStore } from './ngb/security/useAccessStore';
+export {
+  SYSTEM_PERMISSIONS,
+  buildPermissionAssignment,
+  buildPermissionKey,
+  groupPermissionDefinitions,
+  hasPermission,
+  toPermissionKeySet,
+} from './ngb/security/permissions';
+export {
+  createRole,
+  createUser,
+  deactivateRole,
+  deactivateUser,
+  getCurrentAccess,
+  getPermissionDefinitions,
+  getRole,
+  getRoles,
+  getUser,
+  getUserEffectiveAccess,
+  getUsers,
+  reactivateRole,
+  reactivateUser,
+  replaceRolePermissions,
+  replaceUserRoles,
+  updateRole,
+  updateUser,
+} from './ngb/security/api';
+export type {
+  CreateRoleRequestDto,
+  CreateUserRequestDto,
+  CurrentAccessDto,
+  EffectiveAccessDto,
+  EffectiveAccessGroupDto,
+  EffectiveAccessResourceDto,
+  PermissionAssignmentDto,
+  PermissionDefinitionDto,
+  PermissionGroupDto,
+  ReplaceRolePermissionsRequestDto,
+  ReplaceUserRolesRequestDto,
+  RoleBadgeDto,
+  RoleDetailsDto,
+  RoleListItemDto,
+  UpdateRoleRequestDto,
+  UpdateUserRequestDto,
+  UserBadgeDto,
+  UserDetailsDto,
+  UserListItemDto,
+} from './ngb/security/types';
 
 export { default as NgbToastHost } from './ngb/primitives/NgbToastHost.vue';
 export { provideToasts, useToasts } from './ngb/primitives/toast';

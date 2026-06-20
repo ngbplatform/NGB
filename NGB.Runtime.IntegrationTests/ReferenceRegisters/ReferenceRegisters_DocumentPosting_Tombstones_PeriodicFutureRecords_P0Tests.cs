@@ -44,9 +44,12 @@ public sealed class ReferenceRegisters_DocumentPosting_Tombstones_PeriodicFuture
 
         var keyA = await CreateDimensionSetAsync(host);
 
-        // Same key, two periods (one in the future).
-        var period1 = new DateTime(2026, 2, 10, 0, 0, 0, DateTimeKind.Utc);
-        var period2 = new DateTime(2026, 5, 10, 0, 0, 0, DateTimeKind.Utc); // future effective
+        // Same key, two periods (one in the future). Keep dates relative so temporal reads stay
+        // after the append timestamp regardless of the calendar date when the test is executed.
+        var monthBaseUtc = DateTime.UtcNow;
+        var currentMonthStartUtc = new DateTime(monthBaseUtc.Year, monthBaseUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var period1 = currentMonthStartUtc.AddMonths(1).AddDays(9);
+        var period2 = currentMonthStartUtc.AddMonths(4).AddDays(9); // future effective
 
         var scenario = host.Services.GetRequiredService<Scenario>();
         scenario.Set(ReferenceRegisterWriteOperation.Post,
@@ -55,7 +58,7 @@ public sealed class ReferenceRegisters_DocumentPosting_Tombstones_PeriodicFuture
 
         scenario.Set(ReferenceRegisterWriteOperation.Unpost); // rely on platform auto-tombstones
 
-        var docDateUtc = new DateTime(2026, 2, 1, 12, 0, 0, DateTimeKind.Utc);
+        var docDateUtc = currentMonthStartUtc.AddMonths(1).AddHours(12);
         var docId = await CreateDraftAsync(host, docDateUtc, number: "RR-SUB-MONTH-1");
         await PostCashRevenueAsync(host, docId, docDateUtc, amount: 1m);
 
@@ -63,7 +66,7 @@ public sealed class ReferenceRegisters_DocumentPosting_Tombstones_PeriodicFuture
         {
             var reads = scope.ServiceProvider.GetRequiredService<IReferenceRegisterReadService>();
 
-            var asOfFuture = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+            var asOfFuture = currentMonthStartUtc.AddMonths(5);
             var before = await reads.SliceLastByDimensionSetIdAsync(
                 regId,
                 dimensionSetId: keyA,
@@ -83,7 +86,7 @@ public sealed class ReferenceRegisters_DocumentPosting_Tombstones_PeriodicFuture
         await using (var scope = host.Services.CreateAsyncScope())
         {
             var reads = scope.ServiceProvider.GetRequiredService<IReferenceRegisterReadService>();
-            var asOfFuture = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+            var asOfFuture = currentMonthStartUtc.AddMonths(5);
 
             var active = await reads.SliceLastByDimensionSetIdAsync(
                 regId,

@@ -38,8 +38,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
             var defs = await resp.Content.ReadFromJsonAsync<IReadOnlyList<ReportDefinitionDto>>(Json);
             defs.Should().NotBeNull();
-            defs!.Select(x => x.ReportCode).Should().Contain(new[]
-            {
+            defs!.Select(x => x.ReportCode).Should().Contain([
                 "pm.building.summary",
                 "pm.occupancy.summary",
                 "pm.maintenance.queue",
@@ -47,7 +46,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
                 "pm.receivables.aging",
                 "pm.receivables.open_items",
                 "pm.receivables.open_items.details"
-            });
+            ]);
         }
 
         using (var resp = await client.GetAsync("/api/report-definitions/pm.occupancy.summary"))

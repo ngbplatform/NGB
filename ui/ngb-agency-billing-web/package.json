@@ -1,6 +1,6 @@
 {
   "name": "ngb-agency-billing-web",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "keycloak-js": "^26.2.3",
-    "ngb-ui-framework": "1.0.0",
+    "ngb-ui-framework": "1.2.0",
     "pinia": "^3.0.3",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0"

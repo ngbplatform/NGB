@@ -60,3 +60,7 @@ export function useToasts(): ToastApi {
   if (!api) throw new Error('useToasts(): missing provideToasts()');
   return api;
 }
+
+export function useOptionalToasts(): ToastApi | null {
+  return inject<ToastApi>(KEY, null);
+}

@@ -8,8 +8,14 @@ import { requireE2eEnv, resolvePlaywrightAuthFile } from './support/e2eEnv'
 
 setup.setTimeout(60_000)
 
-const username = requireE2eEnv(process.env, 'PLAYWRIGHT_AUTH_USERNAME')
-const password = requireE2eEnv(process.env, 'PLAYWRIGHT_AUTH_PASSWORD')
+function parseBoolean(value: string | undefined): boolean {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on'
+}
+
+const e2eAuthBypass = parseBoolean(process.env.VITE_NGB_E2E_AUTH_BYPASS)
+const username = e2eAuthBypass ? '' : requireE2eEnv(process.env, 'PLAYWRIGHT_AUTH_USERNAME')
+const password = e2eAuthBypass ? '' : requireE2eEnv(process.env, 'PLAYWRIGHT_AUTH_PASSWORD')
 
 setup('authenticate e2e user', async ({ page, browserName }) => {
   const authFile = resolvePlaywrightAuthFile(process.cwd(), browserName)
@@ -17,7 +23,16 @@ setup('authenticate e2e user', async ({ page, browserName }) => {
   await mockCommonPmApis(page)
   await rejectUnhandledApiRequests(page, ['/api/main-menu'])
 
-  await page.goto('/')
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+
+  if (e2eAuthBypass) {
+    await expect(page).toHaveURL((url) => url.pathname === '/home', { timeout: 30_000 })
+    await expect(page.getByTestId('site-shell')).toBeVisible({ timeout: 30_000 })
+
+    fs.mkdirSync(path.dirname(authFile), { recursive: true })
+    await page.context().storageState({ path: authFile })
+    return
+  }
 
   const usernameField = page.locator('input[name="username"]')
   const passwordField = page.locator('input[name="password"]')

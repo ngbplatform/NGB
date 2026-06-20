@@ -44,6 +44,7 @@
       "clientAuthenticatorType": "client-secret",
       "secret": "ngb-pm-tester-secret-2026",
       "publicClient": false,
+      "serviceAccountsEnabled": true,
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": false
     },
@@ -109,8 +110,21 @@
         }
       ],
       "realmRoles": [
+        "ngb-admin",
         "ngb-user"
       ]
+    },
+    {
+      "username": "service-account-ngb-tester",
+      "enabled": true,
+      "serviceAccountClientId": "ngb-tester",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "query-users",
+          "view-users"
+        ]
+      }
     }
   ]
 }

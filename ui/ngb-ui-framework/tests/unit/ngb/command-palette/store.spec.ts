@@ -282,6 +282,108 @@ describe('command palette store', () => {
     )
   })
 
+  it('does not re-add denied special pages, favorites, or recent routes', async () => {
+    mocks.config.favoriteItems = [
+      {
+        key: 'favorite:period-closing',
+        group: 'actions',
+        kind: 'page',
+        scope: 'pages',
+        title: 'Period Close',
+        subtitle: 'Setup & Controls',
+        icon: 'calendar-check',
+        badge: 'Favorite',
+        hint: null,
+        route: '/admin/accounting/period-closing',
+        commandCode: null,
+        status: null,
+        openInNewTabSupported: true,
+        keywords: ['period close'],
+        defaultRank: 820,
+      },
+    ]
+    mocks.config.createItems = []
+    mocks.config.loadReportItems = vi.fn().mockResolvedValue([])
+    mocks.config.buildHeuristicCurrentActions = vi.fn().mockReturnValue([])
+    mocks.config.specialPageItems = [
+      {
+        key: 'page:posting-log',
+        group: 'go-to',
+        kind: 'page',
+        scope: 'pages',
+        title: 'Posting Log',
+        subtitle: 'Setup & Controls',
+        icon: 'history',
+        badge: 'Page',
+        hint: null,
+        route: '/reports/accounting.posting_log',
+        commandCode: null,
+        status: null,
+        openInNewTabSupported: true,
+        keywords: ['posting log'],
+        defaultRank: 560,
+      },
+      {
+        key: 'page:period-closing',
+        group: 'go-to',
+        kind: 'page',
+        scope: 'pages',
+        title: 'Period Close',
+        subtitle: 'Setup & Controls',
+        icon: 'calendar-check',
+        badge: 'Page',
+        hint: null,
+        route: '/admin/accounting/period-closing',
+        commandCode: null,
+        status: null,
+        openInNewTabSupported: true,
+        keywords: ['period close'],
+        defaultRank: 559,
+      },
+    ]
+    mocks.menuStore.groups = [
+      {
+        label: 'Setup & Controls',
+        ordinal: 10,
+        icon: 'settings',
+        items: [
+          {
+            kind: 'admin',
+            code: 'accounting.posting_log',
+            label: 'Posting Log',
+            route: '/admin/accounting/posting-log',
+            icon: 'history',
+            ordinal: 10,
+          },
+        ],
+      },
+    ]
+    mocks.loadRecent.mockReturnValue([
+      {
+        key: 'page:period-closing',
+        kind: 'page',
+        scope: 'pages',
+        title: 'Period Close',
+        subtitle: 'Recent page',
+        icon: 'calendar-check',
+        badge: 'Recent',
+        route: '/admin/accounting/period-closing',
+        status: null,
+        openInNewTabSupported: true,
+        timestamp: '2026-06-19T12:00:00.000Z',
+      },
+    ])
+
+    const store = useCommandPaletteStore()
+
+    store.open()
+    await flushMicrotasks()
+
+    const titles = store.flatItems.map((item) => item.title)
+    expect(titles.filter((title) => title === 'Posting Log')).toHaveLength(1)
+    expect(titles).not.toContain('Period Close')
+  })
+
   it('opens route items in a new tab when requested and skips in-app navigation', async () => {
     const previousWindow = globalThis.window
     const open = vi.fn()

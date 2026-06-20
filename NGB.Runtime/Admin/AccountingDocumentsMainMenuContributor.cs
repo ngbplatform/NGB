@@ -1,6 +1,7 @@
 using NGB.Accounting.Documents;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Admin;
+using NGB.Core.Security;
 
 namespace NGB.Runtime.Admin;
 
@@ -16,10 +17,10 @@ public sealed class AccountingDocumentsMainMenuContributor : IMainMenuContributo
             Items:
             [
                 new MainMenuItemDto(
-                    Kind: "page",
+                    Kind: NgbResourceKinds.Document,
                     Code: AccountingDocumentTypeCodes.GeneralJournalEntry,
                     Label: "Journal Entries",
-                    Route: "/documents/accounting.general_journal_entry",
+                    Route: "/accounting/general-journal-entries",
                     Icon: "book-open",
                     Ordinal: 10)
             ],
