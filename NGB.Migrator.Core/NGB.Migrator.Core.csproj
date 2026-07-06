@@ -4,7 +4,9 @@
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
-        <IsPackable>false</IsPackable>
+        <IsPackable>true</IsPackable>
+        <PackageId>NGB.Platform.Migrator.Core</PackageId>
+        <Description>Shared schema migrator CLI engine for NGB Platform migration-pack discovery, planning, execution, repair, validation, and schema locking.</Description>
     </PropertyGroup>
 
     <ItemGroup>

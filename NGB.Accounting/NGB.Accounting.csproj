@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Accounting</PackageId>
+        <Description>Accounting domain primitives, ledger semantics, posting contracts, and financial reporting models for NGB Platform.</Description>
     </PropertyGroup>
 
     <ItemGroup>

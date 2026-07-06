@@ -5,3 +5,11 @@ riderModule.iml
 /_ReSharper.Caches/
 .idea/
 NGB.sln.DotSettings.user
+
+# Build/package outputs
+/artifacts/*
+!/artifacts/nuget/
+!/artifacts/nuget/.gitkeep
+*.nupkg
+*.snupkg
+*.symbols.nupkg

@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Application.Abstractions</PackageId>
+        <Description>Application-facing service abstractions for NGB Platform modules, hosts, reports, menus, and metadata contributors.</Description>
     </PropertyGroup>
 
     <ItemGroup>

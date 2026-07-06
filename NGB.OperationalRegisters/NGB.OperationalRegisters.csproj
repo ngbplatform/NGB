@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.OperationalRegisters</PackageId>
+        <Description>Operational register contracts, naming, period helpers, and validation exceptions for NGB Platform register-based state.</Description>
     </PropertyGroup>
 
     <ItemGroup>

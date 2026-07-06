@@ -1,0 +1,397 @@
+name: ngb-crm
+
+services:
+  ngb.crm.postgres:
+    container_name: ngb.crm.postgres
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+      args:
+        POSTGRES_IMAGE_TAG: ${POSTGRES_IMAGE_TAG}
+    image: ngb.crm.postgres:${POSTGRES_IMAGE_TAG}
+    restart: unless-stopped
+    shm_size: ${POSTGRES_SHM_SIZE:-4gb}
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-300}
+      - -c
+      - superuser_reserved_connections=${POSTGRES_SUPERUSER_RESERVED_CONNECTIONS:-5}
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-1GB}
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      APP_DB_NAME: ${CRM_DB_NAME}
+      APP_DB_USER: ${CRM_DB_USER}
+      APP_DB_PASSWORD: ${CRM_DB_PASSWORD}
+    volumes:
+      - pg-crm-data:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_ADMIN_USER} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.postgres.bootstrap:
+    container_name: ngb.crm.postgres.bootstrap
+    image: postgres:${POSTGRES_IMAGE_TAG}
+    restart: "no"
+    depends_on:
+      ngb.crm.postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: ngb.crm.postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      APP_DB_NAME: ${CRM_DB_NAME}
+      APP_DB_USER: ${CRM_DB_USER}
+      APP_DB_PASSWORD: ${CRM_DB_PASSWORD}
+    entrypoint: ["sh", "/bootstrap/bootstrap-application-databases.sh"]
+    volumes:
+      - ./docker/postgres/bootstrap-application-databases.sh:/bootstrap/bootstrap-application-databases.sh:ro
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.keycloak.init:
+    container_name: ngb.crm.keycloak.init
+    build:
+      context: .
+      dockerfile: docker/keycloak/Dockerfile
+      args:
+        KEYCLOAK_VERSION: ${KEYCLOAK_IMAGE_TAG}
+    image: ngb.crm.keycloak:${KEYCLOAK_IMAGE_TAG}
+    restart: "no"
+    depends_on:
+      ngb.crm.postgres.bootstrap:
+        condition: service_completed_successfully
+    entrypoint: ["/opt/keycloak/bootstrap/import-realm.sh"]
+    environment:
+      KC_DB: postgres
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_MASTER_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_MASTER_ADMIN_PASSWORD}
+      KC_DB_URL_HOST: ngb.crm.postgres
+      KC_DB_URL_PORT: "5432"
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_REALM_DISPLAY_NAME: ${KEYCLOAK_REALM_DISPLAY_NAME}
+      KEYCLOAK_REALM_DISPLAY_NAME_HTML: ${KEYCLOAK_REALM_DISPLAY_NAME_HTML}
+      KEYCLOAK_SSL_REQUIRED: ${KEYCLOAK_SSL_REQUIRED}
+      KEYCLOAK_THEME_NAME: ${KEYCLOAK_THEME_NAME}
+      KEYCLOAK_ACCESS_TOKEN_LIFESPAN_SECONDS: ${KEYCLOAK_ACCESS_TOKEN_LIFESPAN_SECONDS}
+      KEYCLOAK_LOGIN_WITH_EMAIL_ALLOWED: ${KEYCLOAK_LOGIN_WITH_EMAIL_ALLOWED}
+      KEYCLOAK_REGISTRATION_ALLOWED: ${KEYCLOAK_REGISTRATION_ALLOWED}
+      KEYCLOAK_REGISTRATION_EMAIL_AS_USERNAME: ${KEYCLOAK_REGISTRATION_EMAIL_AS_USERNAME}
+      KEYCLOAK_RESET_PASSWORD_ALLOWED: ${KEYCLOAK_RESET_PASSWORD_ALLOWED}
+      KEYCLOAK_VERIFY_EMAIL: ${KEYCLOAK_VERIFY_EMAIL}
+      KEYCLOAK_REMEMBER_ME: ${KEYCLOAK_REMEMBER_ME}
+      KEYCLOAK_BRUTE_FORCE_PROTECTED: ${KEYCLOAK_BRUTE_FORCE_PROTECTED}
+      KEYCLOAK_API_CLIENT_ID: ${KEYCLOAK_CRM_API_CLIENT_ID}
+      KEYCLOAK_WEB_CLIENT_ID: ${KEYCLOAK_CRM_WEB_CLIENT_ID}
+      KEYCLOAK_BACKGROUND_JOBS_CLIENT_ID: ${KEYCLOAK_CRM_BACKGROUND_JOBS_CLIENT_ID}
+      KEYCLOAK_WATCHDOG_CLIENT_ID: ${KEYCLOAK_CRM_WATCHDOG_CLIENT_ID}
+      KEYCLOAK_TESTER_CLIENT_ID: ${KEYCLOAK_TESTER_CLIENT_ID}
+      KEYCLOAK_TESTER_CLIENT_SECRET: ${KEYCLOAK_TESTER_CLIENT_SECRET}
+      WEB_HTTP_PORT: ${CRM_WEB_HTTP_PORT}
+      BACKGROUND_JOBS_HTTPS_PORT: ${CRM_BACKGROUNDJOBS_HTTPS_PORT}
+      WATCHDOG_HTTPS_PORT: ${CRM_WATCHDOG_HTTPS_PORT}
+      KEYCLOAK_DEMO_ADMIN_ID: ${KEYCLOAK_DEMO_ADMIN_ID}
+      KEYCLOAK_DEMO_ADMIN_USERNAME: ${KEYCLOAK_DEMO_ADMIN_USERNAME}
+      KEYCLOAK_DEMO_ADMIN_FIRST_NAME: ${KEYCLOAK_DEMO_ADMIN_FIRST_NAME}
+      KEYCLOAK_DEMO_ADMIN_LAST_NAME: ${KEYCLOAK_DEMO_ADMIN_LAST_NAME}
+      KEYCLOAK_DEMO_ADMIN_EMAIL: ${KEYCLOAK_DEMO_ADMIN_EMAIL}
+      KEYCLOAK_DEMO_ADMIN_PASSWORD: ${KEYCLOAK_DEMO_ADMIN_PASSWORD}
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.keycloak:
+    container_name: ngb.crm.keycloak
+    build:
+      context: .
+      dockerfile: docker/keycloak/Dockerfile
+      args:
+        KEYCLOAK_VERSION: ${KEYCLOAK_IMAGE_TAG}
+    image: ngb.crm.keycloak:${KEYCLOAK_IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      ngb.crm.postgres:
+        condition: service_healthy
+      ngb.crm.keycloak.init:
+        condition: service_completed_successfully
+    command: ["start", "--optimized"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: ngb.crm.postgres
+      KC_DB_URL_PORT: "5432"
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_MASTER_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_MASTER_ADMIN_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL}
+      KC_HOSTNAME_STRICT: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_HEALTH_ENABLED: "true"
+      KC_HTTP_MANAGEMENT_PORT: "9000"
+      KC_LOG_LEVEL: ${KEYCLOAK_LOG_LEVEL}
+      KC_DB_POOL_INITIAL_SIZE: ${KEYCLOAK_DB_POOL_INITIAL_SIZE:-2}
+      KC_DB_POOL_MIN_SIZE: ${KEYCLOAK_DB_POOL_MIN_SIZE:-2}
+      KC_DB_POOL_MAX_SIZE: ${KEYCLOAK_DB_POOL_MAX_SIZE:-20}
+    ports:
+      - "127.0.0.1:${KEYCLOAK_HTTP_HOST_PORT}:8080"
+    expose:
+      - "9000"
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.seq:
+    container_name: ngb.crm.seq
+    image: datalust/seq:${SEQ_IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      SEQ_APIKEY: ${SEQ_API_KEY}
+      SEQ_FIRSTRUN_ADMINUSERNAME: ${SEQ_DEFAULT_ADMIN_NAME}
+      SEQ_FIRSTRUN_ADMINPASSWORD: ${SEQ_DEFAULT_ADMIN_PASSWORD}
+    volumes:
+      - seq-crm-data:/data
+    ports:
+      - "127.0.0.1:${SEQ_HTTP_HOST_PORT}:80"
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.migrator:
+    container_name: ngb.crm.migrator
+    build:
+      context: .
+      dockerfile: NGB.CRM.Migrator/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION}
+    image: ngb.crm.migrator
+    restart: "no"
+    depends_on:
+      ngb.crm.postgres.bootstrap:
+        condition: service_completed_successfully
+    environment:
+      CRM_DB_HOST: ngb.crm.postgres
+      CRM_DB_PORT: "5432"
+      CRM_DB_NAME: ${CRM_DB_NAME}
+      CRM_DB_USER: ${CRM_DB_USER}
+      CRM_DB_PASSWORD: ${CRM_DB_PASSWORD}
+      CRM_DEMO_SEED_ENABLED: ${CRM_DEMO_SEED_ENABLED}
+      CRM_DEMO_SEED: ${CRM_DEMO_SEED}
+      KEYCLOAK_DEMO_ADMIN_ID: ${KEYCLOAK_DEMO_ADMIN_ID}
+      KEYCLOAK_DEMO_ADMIN_EMAIL: ${KEYCLOAK_DEMO_ADMIN_EMAIL}
+      KEYCLOAK_DEMO_ADMIN_FIRST_NAME: ${KEYCLOAK_DEMO_ADMIN_FIRST_NAME}
+      KEYCLOAK_DEMO_ADMIN_LAST_NAME: ${KEYCLOAK_DEMO_ADMIN_LAST_NAME}
+    entrypoint: ["sh", "/bootstrap/seed-and-migrate.sh"]
+    volumes:
+      - ./docker/crm/migrator/seed-and-migrate.sh:/bootstrap/seed-and-migrate.sh:ro
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.api:
+    container_name: ngb.crm.api
+    image: ngb.crm.api
+    build:
+      context: .
+      dockerfile: NGB.CRM.Api/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CRM_API_HTTP_PORT}:80"
+      - "127.0.0.1:${CRM_API_HTTPS_PORT}:443"
+    depends_on:
+      ngb.crm.seq:
+        condition: service_started
+      ngb.crm.keycloak:
+        condition: service_started
+      ngb.crm.migrator:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "${KEYCLOAK_PUBLIC_HOST}:host-gateway"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: https://+;http://+
+      ASPNETCORE_HTTPS_PORTS: "443"
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${ASPNET_CERT_PASS}
+      ASPNETCORE_Kestrel__Certificates__Default__Path: ${ASPNET_CERT_PATH}
+      ConnectionStrings__DefaultConnection: Host=ngb.crm.postgres;Port=5432;Database=${CRM_DB_NAME};Username=${CRM_DB_USER};Password=${CRM_DB_PASSWORD};Pooling=true;Minimum Pool Size=${CRM_API_DB_POOL_MIN:-20};Maximum Pool Size=${CRM_API_DB_POOL_MAX:-160};Timeout=${CRM_API_DB_CONNECT_TIMEOUT_SECONDS:-15};Command Timeout=${CRM_API_DB_COMMAND_TIMEOUT_SECONDS:-60};Application Name=ngb.crm.api
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
+      KeycloakSettings__RequireHttpsMetadata: "false"
+      KeycloakAdminClientSettings__BaseUrl: ${KEYCLOAK_INTERNAL_URL}
+      KeycloakAdminClientSettings__Realm: ${KEYCLOAK_REALM}
+      KeycloakAdminClientSettings__ClientId: ${KEYCLOAK_TESTER_CLIENT_ID}
+      KeycloakAdminClientSettings__ClientSecret: ${KEYCLOAK_TESTER_CLIENT_SECRET}
+      ExternalLinksSettings__HealthUiUrl: https://localhost:${CRM_WATCHDOG_HTTPS_PORT}/health-ui
+      ExternalLinksSettings__BackgroundJobsUiUrl: https://localhost:${CRM_BACKGROUNDJOBS_HTTPS_PORT}/hangfire
+    volumes:
+      - ${HOME}/.aspnet/https:/https/:ro
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.backgroundjobs:
+    container_name: ngb.crm.backgroundjobs
+    image: ngb.crm.backgroundjobs
+    build:
+      context: .
+      dockerfile: NGB.CRM.BackgroundJobs/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CRM_BACKGROUNDJOBS_HTTP_PORT}:80"
+      - "127.0.0.1:${CRM_BACKGROUNDJOBS_HTTPS_PORT}:443"
+    depends_on:
+      ngb.crm.seq:
+        condition: service_started
+      ngb.crm.keycloak:
+        condition: service_started
+      ngb.crm.migrator:
+        condition: service_completed_successfully
+    extra_hosts:
+      - "${KEYCLOAK_PUBLIC_HOST}:host-gateway"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: https://+;http://+
+      ASPNETCORE_HTTPS_PORTS: "443"
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${ASPNET_CERT_PASS}
+      ASPNETCORE_Kestrel__Certificates__Default__Path: ${ASPNET_CERT_PATH}
+      ConnectionStrings__DefaultConnection: Host=ngb.crm.postgres;Port=5432;Database=${CRM_DB_NAME};Username=${CRM_DB_USER};Password=${CRM_DB_PASSWORD};Pooling=true;Minimum Pool Size=${CRM_BACKGROUNDJOBS_DB_POOL_MIN:-2};Maximum Pool Size=${CRM_BACKGROUNDJOBS_DB_POOL_MAX:-20};Timeout=${CRM_BACKGROUNDJOBS_DB_CONNECT_TIMEOUT_SECONDS:-15};Command Timeout=${CRM_BACKGROUNDJOBS_DB_COMMAND_TIMEOUT_SECONDS:-120};Application Name=ngb.crm.backgroundjobs
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
+      KeycloakSettings__RequireHttpsMetadata: "false"
+    volumes:
+      - ${HOME}/.aspnet/https:/https/:ro
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.watchdog:
+    container_name: ngb.crm.watchdog
+    image: ngb.crm.watchdog
+    build:
+      context: .
+      dockerfile: NGB.CRM.Watchdog/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CRM_WATCHDOG_HTTP_PORT}:80"
+      - "127.0.0.1:${CRM_WATCHDOG_HTTPS_PORT}:443"
+    depends_on:
+      ngb.crm.seq:
+        condition: service_started
+      ngb.crm.keycloak:
+        condition: service_started
+      ngb.crm.migrator:
+        condition: service_completed_successfully
+      ngb.crm.api:
+        condition: service_started
+      ngb.crm.backgroundjobs:
+        condition: service_started
+      ngb.crm.web:
+        condition: service_started
+    extra_hosts:
+      - "${KEYCLOAK_PUBLIC_HOST}:host-gateway"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: https://+;http://+
+      ASPNETCORE_HTTPS_PORTS: "443"
+      ASPNETCORE_Kestrel__Certificates__Default__Password: ${ASPNET_CERT_PASS}
+      ASPNETCORE_Kestrel__Certificates__Default__Path: ${ASPNET_CERT_PATH}
+      Serilog__WriteTo__1__Args__serverUrl: ${SEQ_URL}
+      KeycloakSettings__Issuer: ${KEYCLOAK_PUBLIC_URL}/realms/${KEYCLOAK_REALM}
+      KeycloakSettings__RequireHttpsMetadata: "false"
+      WebClient: http://ngb.crm.web:8080/
+      HealthChecksUI__HealthChecks__0__Name: CRM Watchdog
+      HealthChecksUI__HealthChecks__0__Uri: https://ngb.crm.watchdog/health
+      HealthChecksUI__HealthChecks__1__Name: CRM API
+      HealthChecksUI__HealthChecks__1__Uri: https://ngb.crm.api/health
+      HealthChecksUI__HealthChecks__2__Name: CRM Background Jobs
+      HealthChecksUI__HealthChecks__2__Uri: https://ngb.crm.backgroundjobs/health
+    volumes:
+      - ${HOME}/.aspnet/https:/https/:ro
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.web:
+    container_name: ngb.crm.web
+    image: ngb.crm.web
+    build:
+      context: ./ui
+      dockerfile: ngb-crm-web/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CRM_WEB_HTTP_PORT}:8080"
+    depends_on:
+      ngb.crm.api:
+        condition: service_started
+      ngb.crm.keycloak:
+        condition: service_started
+    environment:
+      VITE_API_BASE_URL: ""
+      VITE_KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL}
+      VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      VITE_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CRM_WEB_CLIENT_ID}
+      VITE_KEYCLOAK_ROLE_ADMIN: ngb-admin
+      VITE_KEYCLOAK_REDIRECT_URL: http://localhost:${CRM_WEB_HTTP_PORT}/
+      VITE_KEYCLOAK_POST_LOGOUT_REDIRECT_URL: http://localhost:${CRM_WEB_HTTP_PORT}/
+      VITE_BACKGROUND_JOB_URL: https://localhost:${CRM_BACKGROUNDJOBS_HTTPS_PORT}/hangfire
+      VITE_WATCHDOG_URL: https://localhost:${CRM_WATCHDOG_HTTPS_PORT}/health-ui
+    networks:
+      - ngb_crm_network
+
+  ngb.crm.pgadmin:
+    container_name: ngb.crm.pgadmin
+    image: dpage/pgadmin4:${PGADMIN_IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      ngb.crm.postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "127.0.0.1:${PGADMIN_HTTP_HOST_PORT}:80"
+    volumes:
+      - pgadmin-crm-data:/var/lib/pgadmin
+      - ./docker/crm/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - ngb_crm_network
+
+volumes:
+  pg-crm-data:
+    name: pg-crm-data
+  pgadmin-crm-data:
+    name: pgadmin-crm-data
+  seq-crm-data:
+    name: seq-crm-data
+
+networks:
+  ngb_crm_network:
+    name: ngb_crm_network
+    driver: bridge

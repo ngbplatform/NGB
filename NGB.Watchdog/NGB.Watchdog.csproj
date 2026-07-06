@@ -5,6 +5,8 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Watchdog</PackageId>
+        <Description>Reusable health and operability hosting surface for NGB Platform environments.</Description>
     </PropertyGroup>
 
     <ItemGroup>

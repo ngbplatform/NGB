@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Tools</PackageId>
+        <Description>Foundational utilities, exception types, normalization helpers, and low-level extensions for NGB Platform.</Description>
     </PropertyGroup>
 
     <ItemGroup>
@@ -12,4 +14,3 @@
     </ItemGroup>
 
 </Project>
-

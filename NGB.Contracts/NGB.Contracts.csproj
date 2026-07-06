@@ -5,6 +5,8 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Contracts</PackageId>
+        <Description>Public DTOs and transport contracts for NGB Platform APIs and clients.</Description>
     </PropertyGroup>
 
     <ItemGroup>

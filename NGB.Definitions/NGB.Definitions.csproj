@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Definitions</PackageId>
+        <Description>Definition builders and registries for NGB Platform catalogs, documents, relationships, derivations, validation, and posting behavior.</Description>
     </PropertyGroup>
 
     <ItemGroup>

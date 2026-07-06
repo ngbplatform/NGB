@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.ReferenceRegisters</PackageId>
+        <Description>Reference register contracts, metadata integration, naming, periodicity, and validation exceptions for NGB Platform.</Description>
     </PropertyGroup>
 
     <ItemGroup>
