@@ -10,6 +10,9 @@ NGB.sln.DotSettings.user
 /artifacts/*
 !/artifacts/nuget/
 !/artifacts/nuget/.gitkeep
+!/artifacts/npm/
+/artifacts/npm/*
+!/artifacts/npm/.gitkeep
 *.nupkg
 *.snupkg
 *.symbols.nupkg

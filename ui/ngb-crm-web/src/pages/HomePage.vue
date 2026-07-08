@@ -11,7 +11,7 @@ import {
   NgbIcon,
   NgbPageHeader,
   useDashboardPageState,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { loadHomeDashboard, type CrmHomeDashboardData } from '../home/homeData'
 

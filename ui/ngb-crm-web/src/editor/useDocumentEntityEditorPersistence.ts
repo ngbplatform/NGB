@@ -17,7 +17,7 @@ import {
   unpostDocument,
   updateDraft,
   type DocumentEntityPersistenceAdapter,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import type { CRMEntityEditorPersistenceContext } from './crmEntityEditorPersistenceContext'
 import {

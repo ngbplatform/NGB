@@ -40,7 +40,7 @@ import {
   useMetadataStore,
   useToasts,
   normalizeEntityEditorError,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { crmMetadataFormBehavior } from '../metadata/framework'
 import { type CRMDocumentPartErrors } from './documentParts'

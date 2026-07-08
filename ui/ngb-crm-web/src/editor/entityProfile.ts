@@ -1,5 +1,5 @@
-import type { EditorEntityProfile, EntityEditorContext, EntityFormModel } from 'ngb-ui-framework'
-import { asTrimmedString } from 'ngb-ui-framework'
+import type { EditorEntityProfile, EntityEditorContext, EntityFormModel } from '@ngbplatform/ui'
+import { asTrimmedString } from '@ngbplatform/ui'
 
 const dateOnlyRe = /^\d{4}-\d{2}-\d{2}$/
 

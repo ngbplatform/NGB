@@ -35,7 +35,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: `npm --workspace ngb-crm-web run dev -- --host ${e2eHost} --port ${e2ePort} --strictPort --mode e2e`,
+    command: `npm --prefix ngb-crm-web run dev -- --host ${e2eHost} --port ${e2ePort} --strictPort --mode e2e`,
     port: e2ePort,
     reuseExistingServer: false,
     cwd: path.resolve(uiWorkspaceDir),

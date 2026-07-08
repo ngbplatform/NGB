@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { FieldMetadata } from 'ngb-ui-framework'
+import type { FieldMetadata } from '@ngbplatform/ui'
 
 import { isFieldHidden, isFieldReadonly } from '../../../src/metadata/formBehavior'
 

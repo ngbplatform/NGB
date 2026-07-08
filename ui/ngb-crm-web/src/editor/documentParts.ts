@@ -13,7 +13,7 @@ import {
   type PartMetadata,
   type RecordPartRow,
   type RecordParts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 type PendingPartLookupHydration = {
   row: RecordPartRow

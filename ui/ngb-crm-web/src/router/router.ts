@@ -11,7 +11,7 @@ import {
   NgbUserEditorPage,
   NgbUsersPage,
   useAuthStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { createCRMRouteFrameworkConfig } from './framework'
 

@@ -8,7 +8,7 @@ import {
   useLookupStore,
   type MetadataFrameworkConfig,
   type MetadataFormBehavior,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getCRMLookupHint } from '../lookup/hints'
 import { findDisplayField, isFieldHidden, isFieldReadonly } from './formBehavior'

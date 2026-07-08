@@ -20,7 +20,7 @@ vi.mock('vue-router', async () => {
   }
 })
 
-vi.mock('ngb-ui-framework', async () => {
+vi.mock('@ngbplatform/ui', async () => {
   const { h } = await vi.importActual<typeof import('vue')>('vue')
 
   return {

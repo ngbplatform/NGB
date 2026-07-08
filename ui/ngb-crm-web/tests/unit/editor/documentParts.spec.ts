@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { PartMetadata, RecordParts } from 'ngb-ui-framework'
+import type { PartMetadata, RecordParts } from '@ngbplatform/ui'
 
 import {
   buildCRMDocumentPartsPayload,

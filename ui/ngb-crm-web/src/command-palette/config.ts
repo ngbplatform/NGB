@@ -1,4 +1,4 @@
-import { buildReportPageUrl, getReportDefinitions, searchCommandPalette, type CommandPaletteItemSeed, type CommandPaletteStoreConfig } from 'ngb-ui-framework'
+import { buildReportPageUrl, getReportDefinitions, searchCommandPalette, type CommandPaletteItemSeed, type CommandPaletteStoreConfig } from '@ngbplatform/ui'
 import type { Router } from 'vue-router'
 
 import {

@@ -8,7 +8,7 @@ export default {
     files: [
       './index.html',
       './src/**/*.{vue,ts}',
-      '../ngb-ui-framework/src/**/*.{vue,ts}',
+      './node_modules/@ngbplatform/ui/src/**/*.{vue,ts}',
     ],
   },
 }

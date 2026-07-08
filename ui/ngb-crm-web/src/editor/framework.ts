@@ -1,4 +1,4 @@
-import type { DocumentEffects, EditorFrameworkConfig, LookupHint, LookupStoreApi } from 'ngb-ui-framework'
+import type { DocumentEffects, EditorFrameworkConfig, LookupHint, LookupStoreApi } from '@ngbplatform/ui'
 import {
   getDocumentById,
   getDocumentEffects,
@@ -8,7 +8,7 @@ import {
   isReferenceValue,
   shortGuid,
   useLookupStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getCRMLookupHint } from '../lookup/hints'
 import { resolveCRMEditorEntityProfile } from './entityProfile'

@@ -8,7 +8,9 @@ on:
       - '.github/workflows/container-images.yml'
       - 'Directory.Build.props'
       - 'NGB.*/**'
+      - '!NGB.CRM*/**'
       - 'ui/**'
+      - '!ui/ngb-crm-web/**'
   workflow_dispatch:
 
 permissions:

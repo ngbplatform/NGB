@@ -15,7 +15,7 @@ import {
   type ReportExecutionRequestDto,
   type ReportExecutionResponseDto,
   type ReportSheetRowDto,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 export type CrmHomePipelineItem = {
   opportunity: string

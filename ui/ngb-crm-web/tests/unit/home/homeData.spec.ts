@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const executeReportMock = vi.hoisted(() => vi.fn())
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   ReportRowKind: {
     Detail: 3,
   },

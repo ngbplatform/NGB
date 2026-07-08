@@ -12,7 +12,7 @@ import {
   type MetadataCatalogListPageProps,
   type MetadataDocumentEditPageProps,
   type MetadataDocumentListPageProps,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getCRMLookupHint } from '../lookup/hints'
 import CRMEntityEditor from '../editor/CRMEntityEditor.vue'
