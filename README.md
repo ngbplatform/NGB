@@ -384,18 +384,21 @@ NGB.sln
 │
 ├─ Vertical solutions
 │  ├─ NGB.AgencyBilling.*
+│  ├─ NGB.CRM.*
 │  ├─ NGB.PropertyManagement.*
 │  └─ NGB.Trade.*
 │
 ├─ UI workspace
 │  ├─ ui/ngb-ui-framework
 │  ├─ ui/ngb-agency-billing-web
+│  ├─ ui/ngb-crm-web
 │  ├─ ui/ngb-property-management-web
 │  ├─ ui/ngb-trade-web
 │  └─ ui/ngb-auth-theme
 │
 ├─ Docker environments
 │  ├─ docker-compose.ab.yml
+│  ├─ docker-compose.crm.yml
 │  ├─ docker-compose.pm.yml
 │  └─ docker-compose.trade.yml
 │
@@ -514,6 +517,13 @@ docker compose -f docker-compose.trade.yml --env-file .env.trade up --build
 docker compose -f docker-compose.ab.yml --env-file .env.ab up --build
 ```
 
+### Run the CRM demo locally
+
+```bash
+npm --prefix ui run pack:platform-ui -- --version 1.3.0
+docker compose -f docker-compose.crm.yml --env-file .env.crm up --build
+```
+
 ### Build the .NET solution
 
 ```bash
@@ -590,7 +600,7 @@ If you want to explore NGB, the best starting points are:
 
 - the live demos;
 - the platform core projects in the solution;
-- the vertical solutions in `NGB.PropertyManagement.*`, `NGB.Trade.*` and `NGB.AgencyBilling.*`;
+- the vertical solutions in `NGB.PropertyManagement.*`, `NGB.Trade.*`, `NGB.AgencyBilling.*`, and `NGB.CRM.*`;
 - the shared UI workspace under `ui/`.
 
 Suggested contribution areas:
