@@ -83,10 +83,11 @@ const DETAIL_REPORT_LAYOUTS: Record<string, ReportExecutionRequestDto> = {
     offset: 0,
     limit: DASHBOARD_REPORT_LIMIT,
     layout: {
-      rowGroups: [],
-      detailFields: ['event_at_utc', 'funnel_step', 'lead_source', 'industry', 'document_id', 'document_display'],
+      rowGroups: [{ fieldCode: 'funnel_step' }],
+      detailFields: [],
       measures: [{ measureCode: 'lead_count' }],
-      showDetails: true,
+      sorts: [{ fieldCode: 'funnel_step' }],
+      showDetails: false,
       showGrandTotals: true,
     },
   },
@@ -133,6 +134,16 @@ function detailRows(response: ReportExecutionResponseDto): ReportSheetRowDto[] {
   return (response.sheet.rows ?? []).filter((row) => isDashboardReportRowKind(row, ReportRowKind.Detail))
 }
 
+function groupRows(response: ReportExecutionResponseDto): ReportSheetRowDto[] {
+  return (response.sheet.rows ?? []).filter((row) => isDashboardReportRowKind(row, ReportRowKind.Group))
+}
+
+function rowLabelDisplay(row: ReportSheetRowDto, columns: Map<string, number>, columnKey: string): string {
+  return dashboardReportCellDisplay(row, columns, columnKey)
+    || dashboardReportCellDisplay(row, columns, '__row_hierarchy')
+    || String(row.cells?.[0]?.display ?? '').trim()
+}
+
 async function safeExecuteReport(
   reportCode: string,
   warnings: string[],
@@ -155,8 +166,11 @@ function sumColumn(response: ReportExecutionResponseDto | null, columnKey: strin
 function funnelCount(response: ReportExecutionResponseDto | null, stepPrefix: string): number {
   if (!response) return 0
   const columns = dashboardReportColumnIndexMap(response)
-  return detailRows(response)
-    .filter((row) => dashboardReportCellDisplay(row, columns, 'funnel_step').startsWith(stepPrefix))
+  const rows = detailRows(response)
+  const sourceRows = rows.length > 0 ? rows : groupRows(response)
+
+  return sourceRows
+    .filter((row) => rowLabelDisplay(row, columns, 'funnel_step').startsWith(stepPrefix))
     .reduce((sum, row) => sum + measureCellNumber(row, columns, 'lead_count'), 0)
 }
 

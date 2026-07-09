@@ -4,6 +4,7 @@ const executeReportMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@ngbplatform/ui', () => ({
   ReportRowKind: {
+    Group: 2,
     Detail: 3,
   },
   buildDocumentFullPageUrl: (typeCode: string, id: string) => `/documents/${typeCode}/${id}`,
@@ -25,7 +26,12 @@ vi.mock('@ngbplatform/ui', () => ({
     new Map((response.sheet.columns ?? []).map((column: any, index: number) => [String(column.code ?? ''), index])),
   executeReport: executeReportMock,
   formatDashboardMonthLabel: (monthKey: string) => monthKey,
-  isDashboardReportRowKind: (row: any) => String(row.rowKind).toLowerCase() === 'detail',
+  isDashboardReportRowKind: (row: any, kind: number) => {
+    const normalized = String(row.rowKind).toLowerCase()
+    if (kind === 2) return normalized === 'group'
+    if (kind === 3) return normalized === 'detail'
+    return false
+  },
   resolveReportCellActionUrl: (action: any) =>
     action?.kind === 'open_document' ? `/documents/${action.documentType}/${action.documentId}` : null,
   startOfDashboardUtcMonth: (date: Date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)),
@@ -38,12 +44,12 @@ import { loadHomeDashboard } from '../../../src/home/homeData'
 
 type CellValue = string | number
 
-function report(columns: string[], rows: CellValue[][], actions: Record<string, any> = {}) {
+function report(columns: string[], rows: CellValue[][], actions: Record<string, any> = {}, rowKind = 'Detail') {
   return {
     sheet: {
       columns: columns.map((code) => ({ code })),
       rows: rows.map((values) => ({
-        rowKind: 'Detail',
+        rowKind,
         cells: values.map((value, index) => {
           const code = columns[index]
           return { value, display: String(value), action: actions[code] ?? null }
@@ -111,5 +117,46 @@ describe('CRM home dashboard data', () => {
         route: '/documents/crm.lead_conversion/opp-1',
       },
     ])
+
+    const funnelRequest = executeReportMock.mock.calls.find(([reportCode]) => reportCode === 'crm.lead_conversion_funnel')?.[1]
+    expect(funnelRequest.layout.rowGroups).toEqual([{ fieldCode: 'funnel_step' }])
+    expect(funnelRequest.layout.detailFields).toEqual([])
+    expect(funnelRequest.layout.showDetails).toBe(false)
+  })
+
+  it('reads funnel counts from grouped rows without requesting document detail fields', async () => {
+    executeReportMock.mockImplementation((reportCode: string) => {
+      switch (reportCode) {
+        case 'crm.sales_pipeline':
+          return Promise.resolve(report(['amount__sum', 'weighted_amount__sum'], [[0, 0]]))
+        case 'crm.lead_conversion_funnel':
+          return Promise.resolve(report(
+            ['__row_hierarchy', 'lead_count__sum'],
+            [
+              ['01 Intake', 12],
+              ['02 Qualified', 7],
+              ['03 Converted', 4],
+            ],
+            {},
+            'Group',
+          ))
+        case 'crm.activity_summary':
+          return Promise.resolve(report(['activity_count__sum'], [[0]]))
+        case 'crm.quote_register':
+          return Promise.resolve(report(['amount__sum', 'quote_count__sum'], [[0, 0]]))
+        default:
+          throw new Error(`Unexpected report ${reportCode}`)
+      }
+    })
+
+    const data = await loadHomeDashboard('2026-07-05')
+
+    expect(data.leadCount).toBe(12)
+    expect(data.qualifiedLeadCount).toBe(7)
+    expect(data.convertedLeadCount).toBe(4)
+
+    const funnelRequest = executeReportMock.mock.calls.find(([reportCode]) => reportCode === 'crm.lead_conversion_funnel')?.[1]
+    expect(funnelRequest.layout.detailFields).not.toContain('document_id')
+    expect(funnelRequest.layout.detailFields).not.toContain('document_display')
   })
 })

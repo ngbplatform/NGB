@@ -78,6 +78,16 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
             && permission.ResourceCode == CrmCodes.BackgroundJobs
             && permission.ActionCode == NgbPermissionActions.View);
 
+        var definitions = await scope.ServiceProvider
+            .GetRequiredService<PermissionDefinitionRegistry>()
+            .GetAllAsync(CancellationToken.None);
+
+        definitions.Should().Contain(static definition =>
+            definition.ResourceKind == NgbResourceKinds.Page
+            && definition.ResourceCode == CrmCodes.Dashboard
+            && definition.ActionCode == NgbPermissionActions.View
+            && definition.DisplayName == "View CRM dashboard");
+
         var sales = await roles.GetRoleAsync(
             roleList.Single(static role => role.Code == "crm.sales_rep").RoleId,
             CancellationToken.None);

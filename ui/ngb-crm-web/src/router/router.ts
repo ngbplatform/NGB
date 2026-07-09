@@ -11,9 +11,11 @@ import {
   NgbUserEditorPage,
   NgbUsersPage,
   useAuthStore,
+  useMainMenuStore,
 } from '@ngbplatform/ui'
 
 import { createCRMRouteFrameworkConfig } from './framework'
+import { resolvePermissionAwareLanding } from './permissionAwareLanding'
 
 import HomePage from '../pages/HomePage.vue'
 
@@ -41,3 +43,17 @@ export const router = createRouter({
 })
 
 router.beforeEach(createAuthGuard(() => useAuthStore()))
+
+router.beforeEach(async (to) => {
+  if (to.meta?.bare === true) return true
+
+  const auth = useAuthStore()
+  if (!auth.authenticated) return true
+
+  const menu = useMainMenuStore()
+  if (menu.groups.length === 0 && !menu.isLoading) {
+    await menu.load()
+  }
+
+  return resolvePermissionAwareLanding(menu.groups, to.path) ?? true
+})
