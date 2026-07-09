@@ -1,0 +1,133 @@
+name: platform-packages
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/platform-packages.yml'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'NGB.Accounting/**'
+      - 'NGB.Api/**'
+      - 'NGB.Application.Abstractions/**'
+      - 'NGB.BackgroundJobs/**'
+      - 'NGB.Contracts/**'
+      - 'NGB.Core/**'
+      - 'NGB.Definitions/**'
+      - 'NGB.Metadata/**'
+      - 'NGB.Migrator.Core/**'
+      - 'NGB.OperationalRegisters/**'
+      - 'NGB.Persistence/**'
+      - 'NGB.PostgreSql/**'
+      - 'NGB.ReferenceRegisters/**'
+      - 'NGB.Runtime/**'
+      - 'NGB.Tools/**'
+      - 'NGB.Watchdog/**'
+      - 'packaging/**'
+      - 'ui/package.json'
+      - 'ui/package-lock.json'
+      - 'ui/ngb-ui-framework/**'
+      - 'ui/scripts/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/platform-packages.yml'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'NGB.Accounting/**'
+      - 'NGB.Api/**'
+      - 'NGB.Application.Abstractions/**'
+      - 'NGB.BackgroundJobs/**'
+      - 'NGB.Contracts/**'
+      - 'NGB.Core/**'
+      - 'NGB.Definitions/**'
+      - 'NGB.Metadata/**'
+      - 'NGB.Migrator.Core/**'
+      - 'NGB.OperationalRegisters/**'
+      - 'NGB.Persistence/**'
+      - 'NGB.PostgreSql/**'
+      - 'NGB.ReferenceRegisters/**'
+      - 'NGB.Runtime/**'
+      - 'NGB.Tools/**'
+      - 'NGB.Watchdog/**'
+      - 'packaging/**'
+      - 'ui/package.json'
+      - 'ui/package-lock.json'
+      - 'ui/ngb-ui-framework/**'
+      - 'ui/scripts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-packages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  npm:
+    name: validate @ngbplatform/ui
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.14.0
+          package-manager-cache: false
+
+      - name: Install UI workspace
+        working-directory: ui
+        run: npm ci
+
+      - name: Test UI framework
+        working-directory: ui
+        run: npm exec -- vitest run --config ngb-ui-framework/vitest.config.ts
+
+      - name: Pack scoped public package
+        working-directory: ui
+        run: npm run pack:platform-ui -- --version 1.3.0
+
+      - name: Verify CRM registry lock against package bytes
+        working-directory: ui
+        run: |
+          npm run lock:crm-web:bootstrap
+          git diff --exit-code -- ngb-crm-web/package-lock.json
+
+      - name: Upload npm package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngbplatform-ui-1.3.0
+          path: artifacts/npm/ngbplatform-ui-1.3.0.tgz
+          if-no-files-found: error
+          retention-days: 14
+
+  nuget:
+    name: validate NGB.Platform NuGet packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Pack platform packages
+        run: bash packaging/nuget/pack-platform.sh 1.3.0
+
+      - name: Upload NuGet packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: ngb-platform-nuget-1.3.0
+          path: |
+            artifacts/nuget-release/*.nupkg
+            artifacts/nuget-release/*.snupkg
+          if-no-files-found: error
+          retention-days: 14

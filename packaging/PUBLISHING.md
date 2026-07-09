@@ -54,15 +54,29 @@ then configure the trusted publisher and disallow token-based publishing.
 
 ## NuGet Trusted Publishing
 
-Create a nuget.org trusted publishing policy with:
+NuGet packages must be published through nuget.org Trusted Publishing, not through stored API keys.
+The workflow uses GitHub OIDC to request a short-lived NuGet credential with `NuGet/login@v1`.
 
+Create a nuget.org trusted publishing policy:
+
+- Package owner: `ngb_platform`
+- Package ID pattern: `NGB.Platform.*` if the UI asks for one; otherwise the policy applies to the selected owner.
+- Trusted publisher: GitHub Actions
 - Repository owner: `ngbplatform`
-- Repository: `NGB`
-- Workflow: `publish-platform-nuget.yml`
+- Repository name: `NGB`
+- Workflow filename: `publish-platform-nuget.yml`
 - Environment: `nuget`
 
-Create the GitHub environment `nuget` and add `NUGET_USER` containing the nuget.org profile name.
-The workflow exchanges the GitHub OIDC token for a short-lived API key through `NuGet/login`.
+Create the GitHub environment `nuget` before the first run. Recommended environment settings:
+
+- Deployment branches/tags: `main` and release tags only.
+- Required reviewers: enabled for production releases.
+- Variables: `NUGET_USER=ngb_platform` if the NuGet owner/profile name changes from the default.
+- Secrets: none required for NuGet publishing.
+
+Run `.github/workflows/publish-platform-nuget.yml` with the exact version after the release commit is
+on `main`. The workflow packs the platform projects, verifies all 16 packages and symbol packages,
+then publishes in dependency order with `--skip-duplicate` so a partially completed run can be retried.
 
 ## Release Order
 

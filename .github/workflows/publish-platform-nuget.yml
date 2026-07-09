@@ -1,0 +1,115 @@
+name: publish-platform-nuget
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact NGB.Platform package version to publish
+        required: true
+        default: 1.3.0
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-platform-nuget
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish NGB.Platform packages
+    runs-on: ubuntu-latest
+    environment: nuget
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Pack platform packages
+        run: bash packaging/nuget/pack-platform.sh "${{ inputs.version }}"
+
+      - name: Verify package set
+        run: |
+          set -euo pipefail
+
+          packages=(
+            NGB.Platform.Tools
+            NGB.Platform.Core
+            NGB.Platform.Contracts
+            NGB.Platform.Accounting
+            NGB.Platform.Metadata
+            NGB.Platform.OperationalRegisters
+            NGB.Platform.Application.Abstractions
+            NGB.Platform.ReferenceRegisters
+            NGB.Platform.Persistence
+            NGB.Platform.Definitions
+            NGB.Platform.PostgreSql
+            NGB.Platform.Runtime
+            NGB.Platform.Api
+            NGB.Platform.BackgroundJobs
+            NGB.Platform.Migrator.Core
+            NGB.Platform.Watchdog
+          )
+
+          for package in "${packages[@]}"; do
+            test -f "artifacts/nuget-release/${package}.${{ inputs.version }}.nupkg"
+            test -f "artifacts/nuget-release/${package}.${{ inputs.version }}.snupkg"
+          done
+
+          package_count="$(find artifacts/nuget-release -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' | wc -l | tr -d ' ')"
+          symbol_count="$(find artifacts/nuget-release -maxdepth 1 -type f -name '*.snupkg' | wc -l | tr -d ' ')"
+
+          if [[ "${package_count}" != "${#packages[@]}" || "${symbol_count}" != "${#packages[@]}" ]]; then
+            echo "Expected ${#packages[@]} packages and symbols, found ${package_count} packages and ${symbol_count} symbols." >&2
+            exit 1
+          fi
+
+      - name: Request short-lived NuGet credential
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER || 'ngb_platform' }}
+
+      - name: Publish packages and symbols
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          packages=(
+            NGB.Platform.Tools
+            NGB.Platform.Core
+            NGB.Platform.Contracts
+            NGB.Platform.Accounting
+            NGB.Platform.Metadata
+            NGB.Platform.OperationalRegisters
+            NGB.Platform.Application.Abstractions
+            NGB.Platform.ReferenceRegisters
+            NGB.Platform.Persistence
+            NGB.Platform.Definitions
+            NGB.Platform.PostgreSql
+            NGB.Platform.Runtime
+            NGB.Platform.Api
+            NGB.Platform.BackgroundJobs
+            NGB.Platform.Migrator.Core
+            NGB.Platform.Watchdog
+          )
+
+          for package in "${packages[@]}"; do
+            dotnet nuget push "artifacts/nuget-release/${package}.${{ inputs.version }}.nupkg" \
+              --api-key "${NUGET_API_KEY}" \
+              --source https://api.nuget.org/v3/index.json \
+              --symbol-api-key "${NUGET_API_KEY}" \
+              --symbol-source https://api.nuget.org/v3/index.json \
+              --skip-duplicate \
+              --timeout 600 \
+              --configfile NuGet.Registry.Config
+          done
