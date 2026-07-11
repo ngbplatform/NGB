@@ -5,7 +5,7 @@ Reusable Vue UI building blocks for NGB Platform vertical applications.
 ## Install
 
 ```bash
-npm install @ngbplatform/ui@1.3.0
+npm install @ngbplatform/ui@1.3.1
 ```
 
 Applications must provide the Vue runtime peers:

@@ -12,8 +12,8 @@ packages in release builds.
 ## Validate Locally
 
 ```bash
-bash packaging/nuget/pack-platform.sh 1.3.0
-npm --prefix ui run pack:platform-ui -- --version 1.3.0
+bash packaging/nuget/pack-platform.sh
+npm --prefix ui run pack:platform-ui
 docker compose -f docker-compose.crm.yml --env-file .env.crm build ngb.crm.web
 ```
 
@@ -23,7 +23,7 @@ The CRM lockfile is resolved from npmjs.com and is not regenerated while validat
 platform package. Update it only when CRM intentionally moves to another published package version:
 
 ```bash
-npm --prefix ui/ngb-crm-web install --save-exact @ngbplatform/ui@1.3.0
+npm --prefix ui/ngb-crm-web install --save-exact @ngbplatform/ui@1.3.1
 ```
 
 ## npm Trusted Publishing
@@ -77,7 +77,7 @@ then publishes in dependency order with `--skip-duplicate` so a partially comple
 1. Run `platform-packages` and review both package artifacts.
 2. Publish `NGB.Platform.*`.
 3. Publish `@ngbplatform/ui`.
-4. Run `crm-container-images` after both registries expose version `1.3.0`.
+4. Run the CRM image jobs in `container-images` after NuGet and npm expose version `1.3.1`.
 
 The CRM release workflow restores with `NuGet.Registry.Config` and its own npm lockfile, so local package
 outputs cannot leak into production images.

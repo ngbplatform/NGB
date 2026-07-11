@@ -39,9 +39,16 @@ public sealed class CrmPackageReferenceGuard_P0Tests
     }
 
     [Fact]
-    public void Crm_Platform_PackageReferences_Are_NgbPlatform_Version_1_3_0()
+    public void Crm_Platform_PackageReferences_Use_Central_NgbPlatform_Version()
     {
         var root = FindRepositoryRoot();
+        var buildProps = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
+        var releaseVersion = buildProps.Descendants("Version").Single().Value;
+        var platformVersion = buildProps.Descendants("NgbPlatformPackageVersion").Single().Value;
+
+        releaseVersion.Should().Be("1.3.1");
+        platformVersion.Should().Be("$(Version)");
+
         var crmProjects = Directory.EnumerateDirectories(root, "NGB.CRM*", SearchOption.TopDirectoryOnly)
             .SelectMany(directory => Directory.EnumerateFiles(directory, "*.csproj"))
             .OrderBy(path => path, StringComparer.Ordinal)
@@ -63,7 +70,7 @@ public sealed class CrmPackageReferenceGuard_P0Tests
         }
 
         platformPackageRefs.Should().NotBeEmpty();
-        platformPackageRefs.Should().OnlyContain(x => x.Version == "1.3.0");
+        platformPackageRefs.Should().OnlyContain(x => x.Version == "$(NgbPlatformPackageVersion)");
     }
 
     private static string FindRepositoryRoot()

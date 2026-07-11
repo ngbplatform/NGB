@@ -507,6 +507,7 @@ jobs:
           branch="deploy/ngb-${NGB_SOURCE_SHA}"
           title="Deploy NGB ${IMAGE_TAG}"
           body="$(mktemp)"
+          remote_sha="$(git ls-remote --heads origin "refs/heads/${branch}" | awk 'NR == 1 { print $1 }')"
           cat > "${body}" <<EOF
           Automated deployment proposal after a successful NGB container image build.
 
@@ -523,10 +524,25 @@ jobs:
           git checkout -B "${branch}"
           git add $(cat .ngb-updated-files)
           git commit -m "Deploy NGB ${IMAGE_TAG}"
-          git push --force-with-lease origin "${branch}"
+          if [ -n "${remote_sha}" ]; then
+            git push \
+              --force-with-lease="refs/heads/${branch}:${remote_sha}" \
+              origin "HEAD:refs/heads/${branch}"
+          else
+            git push origin "HEAD:refs/heads/${branch}"
+          fi
 
-          pr_number="$(gh pr list --repo "${INFRA_REPOSITORY}" --head "${branch}" --json number --jq '.[0].number')"
+          pr_number="$(gh pr list \
+            --repo "${INFRA_REPOSITORY}" \
+            --head "${branch}" \
+            --state all \
+            --json number,state \
+            --jq 'map(select(.state != "MERGED")) | .[0].number // empty')"
           if [ -n "${pr_number}" ]; then
+            pr_state="$(gh pr view "${pr_number}" --repo "${INFRA_REPOSITORY}" --json state --jq '.state')"
+            if [ "${pr_state}" = "CLOSED" ]; then
+              gh pr reopen "${pr_number}" --repo "${INFRA_REPOSITORY}"
+            fi
             gh pr edit "${pr_number}" --repo "${INFRA_REPOSITORY}" --title "${title}" --body-file "${body}"
           else
             gh pr create --repo "${INFRA_REPOSITORY}" --base main --head "${branch}" --title "${title}" --body-file "${body}"

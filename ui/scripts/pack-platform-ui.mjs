@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,7 +86,11 @@ try {
   )
 
   await mkdir(outputRoot, { recursive: true })
-  await rm(join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`), { force: true })
+  for (const entry of await readdir(outputRoot)) {
+    if (entry.startsWith('ngbplatform-ui-') && entry.endsWith('.tgz')) {
+      await rm(join(outputRoot, entry), { force: true })
+    }
+  }
 
   execFileSync(
     process.platform === 'win32' ? 'npm.cmd' : 'npm',
@@ -99,6 +103,11 @@ try {
       },
       stdio: 'inherit',
     },
+  )
+
+  await cp(
+    join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`),
+    join(outputRoot, 'ngbplatform-ui-local.tgz'),
   )
 } finally {
   await rm(stagingRoot, { recursive: true, force: true })

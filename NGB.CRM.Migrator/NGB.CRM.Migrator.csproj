@@ -16,10 +16,10 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="NGB.Platform.Migrator.Core" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.PostgreSql" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.Runtime" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.Tools" Version="1.3.0" />
+        <PackageReference Include="NGB.Platform.Migrator.Core" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.PostgreSql" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Runtime" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Tools" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
         <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.9" />
     </ItemGroup>

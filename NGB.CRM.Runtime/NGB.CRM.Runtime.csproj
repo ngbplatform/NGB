@@ -13,13 +13,13 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="NGB.Platform.Application.Abstractions" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.Contracts" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.Definitions" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.Metadata" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.ReferenceRegisters" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.Runtime" Version="1.3.0" />
-        <PackageReference Include="NGB.Platform.Tools" Version="1.3.0" />
+        <PackageReference Include="NGB.Platform.Application.Abstractions" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Contracts" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Definitions" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Metadata" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.ReferenceRegisters" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Runtime" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Tools" Version="$(NgbPlatformPackageVersion)" />
     </ItemGroup>
 
 </Project>

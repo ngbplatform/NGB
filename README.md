@@ -532,7 +532,7 @@ docker compose -f docker-compose.ab.yml --env-file .env.ab up --build
 ### Run the CRM demo locally
 
 ```bash
-npm --prefix ui run pack:platform-ui -- --version 1.3.0
+npm --prefix ui run pack:platform-ui
 docker compose -f docker-compose.crm.yml --env-file .env.crm up --build
 ```
 
