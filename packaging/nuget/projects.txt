@@ -1,0 +1,16 @@
+NGB.Accounting/NGB.Accounting.csproj
+NGB.Api/NGB.Api.csproj
+NGB.Application.Abstractions/NGB.Application.Abstractions.csproj
+NGB.BackgroundJobs/NGB.BackgroundJobs.csproj
+NGB.Contracts/NGB.Contracts.csproj
+NGB.Core/NGB.Core.csproj
+NGB.Definitions/NGB.Definitions.csproj
+NGB.Metadata/NGB.Metadata.csproj
+NGB.Migrator.Core/NGB.Migrator.Core.csproj
+NGB.OperationalRegisters/NGB.OperationalRegisters.csproj
+NGB.Persistence/NGB.Persistence.csproj
+NGB.PostgreSql/NGB.PostgreSql.csproj
+NGB.ReferenceRegisters/NGB.ReferenceRegisters.csproj
+NGB.Runtime/NGB.Runtime.csproj
+NGB.Tools/NGB.Tools.csproj
+NGB.Watchdog/NGB.Watchdog.csproj

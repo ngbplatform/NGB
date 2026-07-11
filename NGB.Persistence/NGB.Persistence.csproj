@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Persistence</PackageId>
+        <Description>Provider-agnostic persistence contracts for NGB Platform documents, catalogs, accounting, registers, reporting, audit, and unit-of-work boundaries.</Description>
     </PropertyGroup>
 
     <ItemGroup>

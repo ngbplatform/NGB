@@ -1,0 +1,21 @@
+<Project>
+  <ItemGroup Condition="'$(IsPackable)' != 'false' and '$(PackageId)' != ''">
+    <None Include="$(MSBuildThisFileDirectory)packaging/nuget/readme/$(PackageId).md"
+          Pack="true"
+          PackagePath="README.md"
+          Visible="false"
+          Condition="Exists('$(MSBuildThisFileDirectory)packaging/nuget/readme/$(PackageId).md')" />
+    <None Include="$(MSBuildThisFileDirectory)packaging/nuget/icon.png"
+          Pack="true"
+          PackagePath="icon.png"
+          Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)LICENSE"
+          Pack="true"
+          PackagePath=""
+          Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)NOTICE"
+          Pack="true"
+          PackagePath=""
+          Visible="false" />
+  </ItemGroup>
+</Project>

@@ -15,6 +15,15 @@
 </p>
 
 <p align="center">
+  <a href="https://www.nuget.org/profiles/ngb_platform">
+    <img src="https://img.shields.io/badge/nuget-NGB.Platform.*-004880?logo=nuget" alt="NGB Platform NuGet packages" />
+  </a>
+  <a href="https://www.npmjs.com/package/@ngbplatform/ui">
+    <img src="https://img.shields.io/npm/v/@ngbplatform/ui?label=npm%20%40ngbplatform%2Fui&logo=npm" alt="@ngbplatform/ui npm package" />
+  </a>
+</p>
+
+<p align="center">
   <a href="https://ngbplatform.com">Website</a>
   ·
   <a href="https://docs.ngbplatform.com">Docs</a>
@@ -24,6 +33,8 @@
   <a href="https://trade-demo.ngbplatform.com">Trade (Live Demo)</a>
   ·
   <a href="https://ab-demo.ngbplatform.com">Agency Billing (Live Demo)</a>
+  ·
+  <a href="https://crm-demo.ngbplatform.com">CRM (Live Demo)</a>
 </p>
 
 ---
@@ -198,6 +209,7 @@ This account is intended for demo and evaluation use only.
 - **Property Management** — https://pm-demo.ngbplatform.com
 - **Trade** — https://trade-demo.ngbplatform.com
 - **Agency Billing** — https://ab-demo.ngbplatform.com
+- **CRM** — https://crm-demo.ngbplatform.com
 
 The repository currently contains the platform core and source code for the demo solutions in this monorepo. Live demos are intended to show how one platform can support multiple business domains with a shared architectural base.
 
@@ -384,18 +396,21 @@ NGB.sln
 │
 ├─ Vertical solutions
 │  ├─ NGB.AgencyBilling.*
+│  ├─ NGB.CRM.*
 │  ├─ NGB.PropertyManagement.*
 │  └─ NGB.Trade.*
 │
 ├─ UI workspace
 │  ├─ ui/ngb-ui-framework
 │  ├─ ui/ngb-agency-billing-web
+│  ├─ ui/ngb-crm-web
 │  ├─ ui/ngb-property-management-web
 │  ├─ ui/ngb-trade-web
 │  └─ ui/ngb-auth-theme
 │
 ├─ Docker environments
 │  ├─ docker-compose.ab.yml
+│  ├─ docker-compose.crm.yml
 │  ├─ docker-compose.pm.yml
 │  └─ docker-compose.trade.yml
 │
@@ -514,6 +529,13 @@ docker compose -f docker-compose.trade.yml --env-file .env.trade up --build
 docker compose -f docker-compose.ab.yml --env-file .env.ab up --build
 ```
 
+### Run the CRM demo locally
+
+```bash
+npm --prefix ui run pack:platform-ui -- --version 1.3.0
+docker compose -f docker-compose.crm.yml --env-file .env.crm up --build
+```
+
 ### Build the .NET solution
 
 ```bash
@@ -590,7 +612,7 @@ If you want to explore NGB, the best starting points are:
 
 - the live demos;
 - the platform core projects in the solution;
-- the vertical solutions in `NGB.PropertyManagement.*`, `NGB.Trade.*` and `NGB.AgencyBilling.*`;
+- the vertical solutions in `NGB.PropertyManagement.*`, `NGB.Trade.*`, `NGB.AgencyBilling.*`, and `NGB.CRM.*`;
 - the shared UI workspace under `ui/`.
 
 Suggested contribution areas:
@@ -621,5 +643,6 @@ See:
 - **Property Management (Live Demo):** https://pm-demo.ngbplatform.com
 - **Trade (Live Demo):** https://trade-demo.ngbplatform.com
 - **Agency Billing (Live Demo):** https://ab-demo.ngbplatform.com
+- **CRM (Live Demo):** https://crm-demo.ngbplatform.com
 
 If you are evaluating NGB, start with the live demos, then explore the monorepo structure and the platform architecture described above.

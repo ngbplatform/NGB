@@ -1,0 +1,51 @@
+name: publish-platform-ui
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact @ngbplatform/ui version to publish
+        required: true
+        default: 1.3.0
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-platform-ui
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish @ngbplatform/ui
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install UI workspace
+        working-directory: ui
+        run: npm ci
+
+      - name: Test UI framework
+        working-directory: ui
+        run: npm exec -- vitest run --config ngb-ui-framework/vitest.config.ts
+
+      - name: Pack scoped public package
+        working-directory: ui
+        run: npm run pack:platform-ui -- --version "${{ inputs.version }}"
+
+      - name: Publish with npm trusted publishing
+        run: npm publish "artifacts/npm/ngbplatform-ui-${{ inputs.version }}.tgz" --access public

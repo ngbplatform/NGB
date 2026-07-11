@@ -7,6 +7,8 @@ on:
       - '.dockerignore'
       - '.github/workflows/container-images.yml'
       - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'NuGet.Registry.Config'
       - 'NGB.*/**'
       - 'ui/**'
   workflow_dispatch:
@@ -25,8 +27,193 @@ env:
   BUILD_CONFIGURATION: Release
 
 jobs:
-  build:
+  changes:
+    name: detect changed workloads
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      platform: ${{ steps.filter.outputs.platform }}
+      crm: ${{ steps.filter.outputs.crm }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed workload groups
+        id: filter
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "platform=true" >> "${GITHUB_OUTPUT}"
+            echo "crm=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          before="${{ github.event.before }}"
+          after="${{ github.sha }}"
+          if [ -z "${before}" ] || [[ "${before}" =~ ^0+$ ]]; then
+            git diff-tree --no-commit-id --name-only -r "${after}" > changed-files.txt
+          else
+            git diff --name-only "${before}" "${after}" > changed-files.txt
+          fi
+
+          platform=false
+          crm=false
+
+          while IFS= read -r path; do
+            case "${path}" in
+              .dockerignore|.github/workflows/container-images.yml|Directory.Build.props)
+                platform=true
+                crm=true
+                ;;
+              Directory.Build.targets|NuGet.Registry.Config)
+                crm=true
+                ;;
+              NGB.CRM*)
+                crm=true
+                ;;
+              ui/ngb-crm-web/*)
+                crm=true
+                ;;
+              ui/postcss.shared.config.js|ui/tailwind.shared.config.js)
+                platform=true
+                crm=true
+                ;;
+              NGB.*)
+                platform=true
+                ;;
+              ui/*)
+                platform=true
+                ;;
+            esac
+          done < changed-files.txt
+
+          echo "Changed workload groups: platform=${platform}, crm=${crm}"
+          echo "platform=${platform}" >> "${GITHUB_OUTPUT}"
+          echo "crm=${crm}" >> "${GITHUB_OUTPUT}"
+
+  crm-registry-dependencies:
+    name: verify CRM registry dependencies
+    needs: changes
+    if: needs.changes.outputs.crm == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      registries_available: ${{ steps.registry.outputs.available }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22.14.0
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: ui/ngb-crm-web/package-lock.json
+
+      - name: Check CRM registry package availability
+        id: registry
+        run: |
+          set -euo pipefail
+
+          platform_version="$(sed -nE 's:.*<Version>([^<]+)</Version>.*:\1:p' Directory.Build.props | head -n 1)"
+          ui_version="$(node -p "require('./ui/ngb-crm-web/package.json').dependencies['@ngbplatform/ui']")"
+
+          if [ -z "${platform_version}" ]; then
+            echo "::error::Could not read platform package version from Directory.Build.props."
+            exit 1
+          fi
+
+          if [ -z "${ui_version}" ]; then
+            echo "::error::Could not read @ngbplatform/ui version from ui/ngb-crm-web/package.json."
+            exit 1
+          fi
+
+          packages=(
+            NGB.Platform.Tools
+            NGB.Platform.Core
+            NGB.Platform.Contracts
+            NGB.Platform.Accounting
+            NGB.Platform.Metadata
+            NGB.Platform.OperationalRegisters
+            NGB.Platform.Application.Abstractions
+            NGB.Platform.ReferenceRegisters
+            NGB.Platform.Persistence
+            NGB.Platform.Definitions
+            NGB.Platform.PostgreSql
+            NGB.Platform.Runtime
+            NGB.Platform.Api
+            NGB.Platform.BackgroundJobs
+            NGB.Platform.Migrator.Core
+            NGB.Platform.Watchdog
+          )
+
+          missing=()
+          missing_nuget=0
+
+          if ! npm view "@ngbplatform/ui@${ui_version}" version --silent >/dev/null 2>&1; then
+            missing+=("@ngbplatform/ui@${ui_version}")
+          fi
+
+          for package in "${packages[@]}"; do
+            package_path="$(printf '%s' "${package}" | tr '[:upper:]' '[:lower:]')"
+            package_url="https://api.nuget.org/v3-flatcontainer/${package_path}/${platform_version}/${package_path}.${platform_version}.nupkg"
+            if ! curl --fail --silent --show-error --location --output /dev/null "${package_url}"; then
+              missing+=("${package}@${platform_version}")
+              missing_nuget=$((missing_nuget + 1))
+            fi
+          done
+
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          printf 'Missing CRM registry packages:\n'
+          printf ' - %s\n' "${missing[@]}"
+
+          if [ "${missing_nuget}" -eq "${#packages[@]}" ]; then
+            echo "::notice::NGB.Platform NuGet packages ${platform_version} are not published yet. Skipping CRM image build for this run; publish NuGet packages from main and rerun container-images."
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "::error::CRM registry dependency set is partially available. Finish publishing all packages before building CRM images."
+          exit 1
+
+      - name: Restore CRM UI from npm
+        if: steps.registry.outputs.available == 'true'
+        working-directory: ui/ngb-crm-web
+        run: npm ci
+
+      - name: Build CRM UI
+        if: steps.registry.outputs.available == 'true'
+        working-directory: ui/ngb-crm-web
+        run: npm run build
+
+      - name: Set up .NET
+        if: steps.registry.outputs.available == 'true'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore CRM backend from nuget.org
+        if: steps.registry.outputs.available == 'true'
+        run: |
+          dotnet restore NGB.CRM.Api/NGB.CRM.Api.csproj --configfile NuGet.Registry.Config
+          dotnet restore NGB.CRM.BackgroundJobs/NGB.CRM.BackgroundJobs.csproj --configfile NuGet.Registry.Config
+          dotnet restore NGB.CRM.Watchdog/NGB.CRM.Watchdog.csproj --configfile NuGet.Registry.Config
+          dotnet restore NGB.CRM.Migrator/NGB.CRM.Migrator.csproj --configfile NuGet.Registry.Config
+
+  build-platform:
     name: build ${{ matrix.image }}
+    needs: changes
+    if: needs.changes.outputs.platform == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -136,15 +323,101 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
+  build-crm:
+    name: build ${{ matrix.image }}
+    needs:
+      - changes
+      - crm-registry-dependencies
+    if: >-
+      ${{
+        needs.changes.outputs.crm == 'true' &&
+        needs.crm-registry-dependencies.result == 'success' &&
+        needs.crm-registry-dependencies.outputs.registries_available == 'true'
+      }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ngb-crm-api
+            context: .
+            dockerfile: ./NGB.CRM.Api/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+              NUGET_CONFIG=NuGet.Registry.Config
+          - image: ngb-crm-backgroundjobs
+            context: .
+            dockerfile: ./NGB.CRM.BackgroundJobs/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+              NUGET_CONFIG=NuGet.Registry.Config
+          - image: ngb-crm-watchdog
+            context: .
+            dockerfile: ./NGB.CRM.Watchdog/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+              NUGET_CONFIG=NuGet.Registry.Config
+          - image: ngb-crm-migrator
+            context: .
+            dockerfile: ./NGB.CRM.Migrator/Dockerfile
+            build_args: |
+              BUILD_CONFIGURATION=Release
+              NUGET_CONFIG=NuGet.Registry.Config
+          - image: ngb-crm-web
+            context: .
+            dockerfile: ./ui/ngb-crm-web/Dockerfile
+            build_args: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          build-args: ${{ matrix.build_args }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
   propose-infra-deploy:
     name: propose infra deploy
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - build-platform
+      - build-crm
+    if: >-
+      ${{
+        always() &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        (needs.build-platform.result == 'success' || needs.build-crm.result == 'success')
+      }}
     runs-on: ubuntu-latest
     env:
       INFRA_REPOSITORY: ngbplatform/ngb-platform-infra
       NGB_SOURCE_SHA: ${{ github.sha }}
       IMAGE_TAG: sha-${{ github.sha }}
+      PLATFORM_BUILD_RESULT: ${{ needs.build-platform.result }}
+      CRM_BUILD_RESULT: ${{ needs.build-crm.result }}
 
     steps:
       - name: Validate deploy PR credentials
@@ -175,19 +448,49 @@ jobs:
           from pathlib import Path
 
           tag = os.environ["IMAGE_TAG"]
-          workloads = ("pm", "trade", "ab")
+          workloads = []
+          if os.environ["PLATFORM_BUILD_RESULT"] == "success":
+              workloads.extend(("pm", "trade", "ab"))
+          if os.environ["CRM_BUILD_RESULT"] == "success":
+              workloads.append("crm")
+
+          if not workloads:
+              raise SystemExit("No successfully built workloads to deploy")
+
           pattern = re.compile(r"(?m)^(\s*imageTag:\s*&imageTag\s+).+$")
+          updated_paths = []
 
           for workload in workloads:
               path = Path(f"apps/{workload}/envs/prod/values.yaml")
+              if not path.exists():
+                  raise SystemExit(f"Missing infra values file: {path}")
               text = path.read_text(encoding="utf-8")
               updated, count = pattern.subn(lambda match: match.group(1) + tag, text, count=1)
               if count != 1:
                   raise SystemExit(f"Could not update imageTag in {path}")
               path.write_text(updated, encoding="utf-8")
+              updated_paths.append(path)
+
+          Path(".ngb-updated-files").write_text(
+              "\n".join(str(path) for path in updated_paths) + "\n",
+              encoding="utf-8",
+          )
+
+          labels = {"pm": "PM", "trade": "Trade", "ab": "AB", "crm": "CRM"}
+          names = [labels[workload] for workload in workloads]
+          if len(names) == 1:
+              workloads_label = names[0]
+          elif len(names) == 2:
+              workloads_label = f"{names[0]} and {names[1]}"
+          else:
+              workloads_label = f"{', '.join(names[:-1])}, and {names[-1]}"
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"workloads={','.join(workloads)}\n")
+              output.write(f"workloads_label={workloads_label}\n")
           PY
 
-          if git diff --quiet -- apps/pm/envs/prod/values.yaml apps/trade/envs/prod/values.yaml apps/ab/envs/prod/values.yaml; then
+          if git diff --quiet -- $(cat .ngb-updated-files); then
             echo "changed=false" >> "${GITHUB_OUTPUT}"
           else
             echo "changed=true" >> "${GITHUB_OUTPUT}"
@@ -211,14 +514,14 @@ jobs:
           Source commit: ${NGB_SOURCE_SHA}
           Image tag: ${IMAGE_TAG}
 
-          This PR updates PM, Trade, and AB production image tags in ngb-platform-infra.
-          Merge it to let Argo CD deploy. PM/Trade/AB PreSync migrator hooks run before workload rollout.
+          This PR updates ${{ steps.update.outputs.workloads_label }} production image tags in ngb-platform-infra.
+          Merge it to let Argo CD deploy. The selected workload PreSync migrator hooks run before workload rollout.
           EOF
 
           git config user.name "ngb-deploy-bot"
           git config user.email "ngb-deploy-bot@users.noreply.github.com"
           git checkout -B "${branch}"
-          git add apps/pm/envs/prod/values.yaml apps/trade/envs/prod/values.yaml apps/ab/envs/prod/values.yaml
+          git add $(cat .ngb-updated-files)
           git commit -m "Deploy NGB ${IMAGE_TAG}"
           git push --force-with-lease origin "${branch}"
 

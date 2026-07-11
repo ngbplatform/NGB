@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.PostgreSql</PackageId>
+        <Description>PostgreSQL provider implementations, reporting SQL execution, Evolve migration support, and embedded platform schema migrations for NGB Platform.</Description>
     </PropertyGroup>
 
     <ItemGroup>

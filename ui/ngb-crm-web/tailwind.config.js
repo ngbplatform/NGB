@@ -1,0 +1,14 @@
+import { ngbTailwindBaseConfig } from '../tailwind.shared.config.js'
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  ...ngbTailwindBaseConfig,
+  content: {
+    relative: true,
+    files: [
+      './index.html',
+      './src/**/*.{vue,ts}',
+      './node_modules/@ngbplatform/ui/src/**/*.{vue,ts}',
+    ],
+  },
+}

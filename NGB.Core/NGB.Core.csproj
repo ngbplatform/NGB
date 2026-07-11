@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Core</PackageId>
+        <Description>Core NGB Platform primitives for documents, catalogs, audit log, security, dimensions, and reporting.</Description>
     </PropertyGroup>
 
     <ItemGroup>

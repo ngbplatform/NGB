@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Metadata</PackageId>
+        <Description>Metadata model and descriptors for NGB Platform catalogs, documents, fields, tables, lookups, and UI surfaces.</Description>
     </PropertyGroup>
 
     <ItemGroup>

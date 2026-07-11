@@ -5,6 +5,8 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Api</PackageId>
+        <Description>Reusable ASP.NET Core API building blocks for NGB Platform hosts, including base controllers, SSO integration, health checks, and global error handling.</Description>
     </PropertyGroup>
 
     <ItemGroup>

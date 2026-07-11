@@ -5,6 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Runtime</PackageId>
+        <Description>NGB Platform execution core for catalogs, documents, lifecycle actions, posting, reporting, validation, security, and workflow orchestration.</Description>
     </PropertyGroup>
 
     <ItemGroup>
