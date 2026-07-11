@@ -47,11 +47,5 @@ jobs:
         working-directory: ui
         run: npm run pack:platform-ui -- --version "${{ inputs.version }}"
 
-      - name: Verify CRM registry lock against package bytes
-        working-directory: ui
-        run: |
-          npm run lock:crm-web:bootstrap
-          git diff --exit-code -- ngb-crm-web/package-lock.json
-
       - name: Publish with npm trusted publishing
         run: npm publish "artifacts/npm/ngbplatform-ui-${{ inputs.version }}.tgz" --access public

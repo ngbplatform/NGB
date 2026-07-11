@@ -11,7 +11,6 @@
     "dev:crm-web": "npm --prefix ngb-crm-web run dev",
     "dev:pm-web": "npm --workspace ngb-property-management-web run dev",
     "dev:trade-web": "npm --workspace ngb-trade-web run dev",
-    "lock:crm-web:bootstrap": "node scripts/create-crm-registry-lock.mjs",
     "test:all": "npm run test:unit && npm run test:browser && npm run test:e2e",
     "test:browser": "npm run test:browser:framework && npm run test:browser:ab-web && npm run test:browser:crm-web && npm run test:browser:pm-web && npm run test:browser:trade-web",
     "test:browser:ab-web": "vitest run --config ngb-agency-billing-web/vitest.browser.config.ts",

@@ -19,17 +19,11 @@ docker compose -f docker-compose.crm.yml --env-file .env.crm build ngb.crm.web
 
 Generated packages are written below `artifacts/` and are ignored by Git.
 
-For the first npm release only, generate the CRM registry lock from the reviewed deterministic tarball:
+The CRM lockfile is resolved from npmjs.com and is not regenerated while validating or publishing the
+platform package. Update it only when CRM intentionally moves to another published package version:
 
 ```bash
-npm --prefix ui run lock:crm-web:bootstrap
-```
-
-After `@ngbplatform/ui@1.3.0` is public, refresh and verify the same lock through the registry:
-
-```bash
-npm --prefix ui/ngb-crm-web install --package-lock-only
-git diff --exit-code -- ui/ngb-crm-web/package-lock.json
+npm --prefix ui/ngb-crm-web install --save-exact @ngbplatform/ui@1.3.0
 ```
 
 ## npm Trusted Publishing
