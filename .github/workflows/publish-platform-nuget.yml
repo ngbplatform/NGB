@@ -6,7 +6,7 @@ on:
       version:
         description: Exact NGB.Platform package version to publish
         required: true
-        default: 1.3.0
+        default: 1.3.1
         type: string
 
 permissions:
@@ -37,40 +37,7 @@ jobs:
         run: bash packaging/nuget/pack-platform.sh "${{ inputs.version }}"
 
       - name: Verify package set
-        run: |
-          set -euo pipefail
-
-          packages=(
-            NGB.Platform.Tools
-            NGB.Platform.Core
-            NGB.Platform.Contracts
-            NGB.Platform.Accounting
-            NGB.Platform.Metadata
-            NGB.Platform.OperationalRegisters
-            NGB.Platform.Application.Abstractions
-            NGB.Platform.ReferenceRegisters
-            NGB.Platform.Persistence
-            NGB.Platform.Definitions
-            NGB.Platform.PostgreSql
-            NGB.Platform.Runtime
-            NGB.Platform.Api
-            NGB.Platform.BackgroundJobs
-            NGB.Platform.Migrator.Core
-            NGB.Platform.Watchdog
-          )
-
-          for package in "${packages[@]}"; do
-            test -f "artifacts/nuget-release/${package}.${{ inputs.version }}.nupkg"
-            test -f "artifacts/nuget-release/${package}.${{ inputs.version }}.snupkg"
-          done
-
-          package_count="$(find artifacts/nuget-release -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' | wc -l | tr -d ' ')"
-          symbol_count="$(find artifacts/nuget-release -maxdepth 1 -type f -name '*.snupkg' | wc -l | tr -d ' ')"
-
-          if [[ "${package_count}" != "${#packages[@]}" || "${symbol_count}" != "${#packages[@]}" ]]; then
-            echo "Expected ${#packages[@]} packages and symbols, found ${package_count} packages and ${symbol_count} symbols." >&2
-            exit 1
-          fi
+        run: bash packaging/nuget/verify-platform-packages.sh "${{ inputs.version }}"
 
       - name: Request short-lived NuGet credential
         id: nuget-login

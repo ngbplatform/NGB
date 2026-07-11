@@ -34,6 +34,9 @@
     <ItemGroup>
         <None Update="hangfire-dashboard.css">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Pack>true</Pack>
+            <PackagePath>contentFiles/any/any</PackagePath>
+            <PackageCopyToOutput>true</PackageCopyToOutput>
         </None>
     </ItemGroup>
 

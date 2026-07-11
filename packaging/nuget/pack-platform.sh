@@ -3,10 +3,11 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-version="${1:-1.3.0}"
 output_directory="${repository_root}/artifacts/nuget-release"
+local_feed_directory="${repository_root}/artifacts/nuget"
 project_list="${repository_root}/packaging/nuget/projects.txt"
-project_version="$(dotnet msbuild "${repository_root}/NGB.Tools/NGB.Tools.csproj" -nologo -getProperty:Version)"
+project_version="$(dotnet msbuild "${repository_root}/NGB.Tools/NGB.Tools.csproj" -nologo -getProperty:PackageVersion)"
+version="${1:-${project_version}}"
 
 if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
   echo "Invalid package version: ${version}" >&2
@@ -20,6 +21,7 @@ fi
 
 rm -rf "${output_directory}"
 mkdir -p "${output_directory}"
+mkdir -p "${local_feed_directory}"
 
 while IFS= read -r project; do
   [[ -z "${project}" ]] && continue
@@ -40,4 +42,9 @@ if [[ "${package_count}" != "${expected_count}" || "${symbol_count}" != "${expec
   exit 1
 fi
 
+find "${local_feed_directory}" -maxdepth 1 -type f \( -name '*.nupkg' -o -name '*.snupkg' \) -delete
+cp "${output_directory}"/*.nupkg "${local_feed_directory}/"
+cp "${output_directory}"/*.snupkg "${local_feed_directory}/"
+
 echo "Packed ${package_count} NGB.Platform packages and ${symbol_count} symbol packages for version ${version}."
+echo "Refreshed local NuGet feed in ${local_feed_directory}."
