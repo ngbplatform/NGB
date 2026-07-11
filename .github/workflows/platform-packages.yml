@@ -92,7 +92,9 @@ jobs:
       - name: Resolve package version
         id: npm-version
         working-directory: ui
-        run: echo "version=$(node -p \"require('./ngb-ui-framework/package.json').version\")" >> "${GITHUB_OUTPUT}"
+        run: |
+          version="$(node -p 'require("./ngb-ui-framework/package.json").version')"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Pack scoped public package
         working-directory: ui
