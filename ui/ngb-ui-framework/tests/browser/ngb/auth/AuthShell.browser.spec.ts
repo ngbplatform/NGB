@@ -28,6 +28,8 @@ const authShellMocks = vi.hoisted(() => {
     state,
     getAuthSnapshot: vi.fn(() => state.snapshot),
     initializeAuth: vi.fn(),
+    getAccessToken: vi.fn(async () => state.snapshot.token),
+    forceRefreshAccessToken: vi.fn(async () => state.snapshot.token),
     loginWithKeycloak: vi.fn(),
     logoutFromKeycloak: vi.fn(),
     subscribeAuth: vi.fn((listener: (snapshot: AuthSnapshot) => void) => {
@@ -39,6 +41,8 @@ const authShellMocks = vi.hoisted(() => {
 vi.mock('../../../../src/ngb/auth/keycloak', () => ({
   getAuthSnapshot: authShellMocks.getAuthSnapshot,
   initializeAuth: authShellMocks.initializeAuth,
+  getAccessToken: authShellMocks.getAccessToken,
+  forceRefreshAccessToken: authShellMocks.forceRefreshAccessToken,
   loginWithKeycloak: authShellMocks.loginWithKeycloak,
   logoutFromKeycloak: authShellMocks.logoutFromKeycloak,
   subscribeAuth: authShellMocks.subscribeAuth,

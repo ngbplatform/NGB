@@ -12,7 +12,7 @@ import {
   type MetadataCatalogListPageProps,
   type MetadataDocumentEditPageProps,
   type MetadataDocumentListPageProps,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getTradeLookupHint } from '../lookup/hints'
 import TradeEntityEditor from '../editor/TradeEntityEditor.vue'

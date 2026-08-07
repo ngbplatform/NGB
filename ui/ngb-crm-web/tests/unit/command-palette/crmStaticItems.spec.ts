@@ -1,4 +1,18 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@ngbplatform/ui', async () => {
+  const [documentNavigation, reportingNavigation, staticItems] = await Promise.all([
+    import('../../../../ngb-ui-framework/src/ngb/editor/documentNavigation'),
+    import('../../../../ngb-ui-framework/src/ngb/reporting/navigation'),
+    import('../../../../ngb-ui-framework/src/ngb/command-palette/staticItems'),
+  ])
+
+  return {
+    buildDocumentFullPageUrl: documentNavigation.buildDocumentFullPageUrl,
+    buildNgbHeuristicCurrentActions: staticItems.buildNgbHeuristicCurrentActions,
+    buildReportPageUrl: reportingNavigation.buildReportPageUrl,
+  }
+})
 
 import {
   CRM_CREATE_COMMAND_ITEMS,

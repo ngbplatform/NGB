@@ -162,26 +162,10 @@ export type ReferenceRegisterWriteEffect = {
   isTombstone: boolean;
 };
 
-export type DocumentUiActionReason = {
-  errorCode: string;
-  message: string;
-};
-
-export type DocumentUiEffects = {
-  isPosted: boolean;
-  canEdit: boolean;
-  canPost: boolean;
-  canUnpost: boolean;
-  canRepost: boolean;
-  canApply: boolean;
-  disabledReasons?: Record<string, DocumentUiActionReason[]> | null;
-};
-
 export type DocumentEffects = {
   accountingEntries: AccountingEntryEffect[];
   operationalRegisterMovements: OperationalRegisterMovementEffect[];
   referenceRegisterWrites: ReferenceRegisterWriteEffect[];
-  ui?: DocumentUiEffects | null;
 };
 
 export type EntityEditorHandle<TDocumentEffects = DocumentEffects | null> = {

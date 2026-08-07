@@ -12,7 +12,7 @@ import {
   type MetadataCatalogListPageProps,
   type MetadataDocumentEditPageProps,
   type MetadataDocumentListPageProps,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import PmEntityEditor from '../editor/pm/PmEntityEditor.vue'
 import { getLookupHint } from '../lookup/hints'

@@ -16,7 +16,7 @@ import {
   useGuidQueryParam,
   useRouteLookupSelection,
   useToasts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { applyReceivablesBatch, getReceivablesOpenItemsDetails, suggestLeaseFifoApply, unapplyReceivablesApply } from '../api/clients/receivables'
 import type {

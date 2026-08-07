@@ -1,4 +1,4 @@
-import { httpPost } from 'ngb-ui-framework'
+import { httpPost } from '@ngbplatform/ui'
 
 export type PmPropertyBulkCreateUnitsRequest = {
   buildingId: string

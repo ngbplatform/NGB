@@ -120,6 +120,7 @@ public static class DatabaseBootstrapper
         new PlatformUserRolesMigration(),
         new PlatformUserAccessVersionsMigration(),
         new PlatformUserProvisioningOperationsMigration(),
+        new PlatformDocumentActionsWorkCenterMigration(),
 
         // Accounting (dimension rules)
         new AccountingAccountDimensionRulesMigration(),
@@ -244,6 +245,7 @@ public static class DatabaseBootstrapper
         new PlatformUserRolesMigration(),
         new PlatformUserAccessVersionsMigration(),
         new PlatformUserProvisioningOperationsMigration(),
+        new PlatformDocumentActionsWorkCenterMigration(),
 
         // Audit: append-only guards + paging/index contracts.
         new PlatformAuditAppendOnlyGuardMigration(),

@@ -12,7 +12,7 @@ import {
   type MetadataCatalogListPageProps,
   type MetadataDocumentEditPageProps,
   type MetadataDocumentListPageProps,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import AgencyBillingEntityEditor from '../editor/AgencyBillingEntityEditor.vue'
 import { getAgencyBillingLookupHint } from '../lookup/hints'

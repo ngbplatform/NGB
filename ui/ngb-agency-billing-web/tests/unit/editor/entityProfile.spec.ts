@@ -1,102 +1,44 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@ngbplatform/ui', () => ({
+  asTrimmedString: (value: unknown) => value == null ? null : String(value).trim() || null,
+}))
 
 import { resolveAgencyBillingEditorEntityProfile } from '../../../src/editor/entityProfile'
 
-describe('agency billing editor entity profile', () => {
-  it('builds client display from name only', () => {
-    const profile = resolveAgencyBillingEditorEntityProfile({
-      kind: 'catalog',
-      typeCode: 'ab.client',
-    } as never)
+function sync(typeCode: string, model: Record<string, unknown>) {
+  const profile = resolveAgencyBillingEditorEntityProfile({ kind: 'catalog', typeCode } as never)
+  profile?.syncComputedDisplay?.({ model } as never)
+  return { profile, display: model.display }
+}
 
-    const model = {
-      client_code: 'CLI-100',
-      name: 'Northwind Studio',
-      display: '',
-    }
-
-    profile?.syncComputedDisplay?.({ model } as never)
-
-    expect(profile?.computedDisplayMode).toBe('always')
-    expect(profile?.computedDisplayWatchFields).toEqual(['name'])
-    expect(model.display).toBe('Northwind Studio')
+describe('agency billing entity profiles', () => {
+  it('returns null outside supported catalog types', () => {
+    expect(resolveAgencyBillingEditorEntityProfile({ kind: 'document', typeCode: 'ab.timesheet' } as never)).toBeNull()
+    expect(resolveAgencyBillingEditorEntityProfile({ kind: 'catalog', typeCode: 'ab.unknown' } as never)).toBeNull()
   })
 
-  it('builds affected catalog displays from their name fields only', () => {
-    const teamMemberProfile = resolveAgencyBillingEditorEntityProfile({
-      kind: 'catalog',
-      typeCode: 'ab.team_member',
-    } as never)
-    const projectProfile = resolveAgencyBillingEditorEntityProfile({
-      kind: 'catalog',
-      typeCode: 'ab.project',
-    } as never)
-    const serviceItemProfile = resolveAgencyBillingEditorEntityProfile({
-      kind: 'catalog',
-      typeCode: 'ab.service_item',
-    } as never)
-    const paymentTermsProfile = resolveAgencyBillingEditorEntityProfile({
-      kind: 'catalog',
-      typeCode: 'ab.payment_terms',
-    } as never)
-
-    const teamMemberModel = {
-      member_code: 'TM-100',
-      full_name: 'Ava Stone',
-      display: '',
-    }
-    const projectModel = {
-      project_code: 'PRJ-100',
-      name: 'Website Refresh',
-      display: '',
-    }
-    const serviceItemModel = {
-      code: 'DESIGN',
-      name: 'Design',
-      display: '',
-    }
-    const paymentTermsModel = {
-      code: 'NET30',
-      name: 'Net 30',
-      display: '',
-    }
-
-    teamMemberProfile?.syncComputedDisplay?.({ model: teamMemberModel } as never)
-    projectProfile?.syncComputedDisplay?.({ model: projectModel } as never)
-    serviceItemProfile?.syncComputedDisplay?.({ model: serviceItemModel } as never)
-    paymentTermsProfile?.syncComputedDisplay?.({ model: paymentTermsModel } as never)
-
-    expect(teamMemberProfile?.computedDisplayWatchFields).toEqual(['full_name'])
-    expect(projectProfile?.computedDisplayWatchFields).toEqual(['name'])
-    expect(serviceItemProfile?.computedDisplayWatchFields).toEqual(['name'])
-    expect(paymentTermsProfile?.computedDisplayWatchFields).toEqual(['name'])
-    expect(teamMemberModel.display).toBe('Ava Stone')
-    expect(projectModel.display).toBe('Website Refresh')
-    expect(serviceItemModel.display).toBe('Design')
-    expect(paymentTermsModel.display).toBe('Net 30')
+  it.each([
+    ['ab.client', 'name'],
+    ['ab.project', 'name'],
+    ['ab.service_item', 'name'],
+    ['ab.payment_terms', 'name'],
+    ['ab.team_member', 'full_name'],
+  ])('syncs %s from %s', (typeCode, field) => {
+    const model = { [field]: ' Display value ' }
+    const result = sync(typeCode, model)
+    expect(result.profile).toMatchObject({ computedDisplayMode: 'always' })
+    expect(result.display).toBe('Display value')
   })
 
-  it('builds rate card display from its key descriptive fields', () => {
-    const rateCardProfile = resolveAgencyBillingEditorEntityProfile({
-      kind: 'catalog',
-      typeCode: 'ab.rate_card',
-    } as never)
-
-    const rateCardModel = {
-      name: 'Senior Consultant',
-      service_title: 'Strategy',
-      display: '',
-    }
-
-    rateCardProfile?.syncComputedDisplay?.({ model: rateCardModel } as never)
-
-    expect(rateCardModel.display).toBe('Senior Consultant · Strategy')
-  })
-
-  it('returns null for unsupported agency billing contexts', () => {
-    expect(resolveAgencyBillingEditorEntityProfile({
-      kind: 'document',
-      typeCode: 'ab.sales_invoice',
-    } as never)).toBeNull()
+  it.each([
+    [{}, null],
+    [{ name: ' Standard ' }, 'Standard'],
+    [{ service_title: ' Consulting ' }, 'Consulting'],
+    [{ name: ' Standard ', service_title: ' Consulting ' }, 'Standard · Consulting'],
+  ])('computes rate-card display %#', (model, expected) => {
+    const result = sync('ab.rate_card', model)
+    expect(result.profile?.computedDisplayWatchFields).toEqual(['name', 'service_title'])
+    expect(result.display).toBe(expected)
   })
 })

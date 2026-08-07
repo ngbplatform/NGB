@@ -5,7 +5,7 @@ import {
   clonePlainData,
   createDraft,
   ensureModelKeys,
-  getDocumentById,
+  getDocumentEditorState,
   getDocumentEffects,
   hydrateEntityReferenceFieldsForEditing,
   markDocumentForDeletion,
@@ -17,7 +17,7 @@ import {
   unpostDocument,
   updateDraft,
   type DocumentEntityPersistenceAdapter,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import type { AgencyBillingEntityEditorPersistenceContext } from './agencyBillingEntityEditorPersistenceContext'
 import {
@@ -72,10 +72,9 @@ export function useDocumentEntityEditorPersistence(
       return
     }
 
-    const document = await getDocumentById(args.typeCode.value, args.currentId.value!)
+    const { document } = await getDocumentEditorState(args.typeCode.value, args.currentId.value!)
     args.doc.value = document
     args.partsModel.value = clonePlainData(document.payload?.parts ?? null)
-    await loadEffectsSnapshot(args.typeCode.value, args.currentId.value!)
     setModelFromFields(args.model, document.payload?.fields)
     ensureModelKeys(args.docMeta.value.form, args.model.value)
     await hydrateEntityReferenceFieldsForEditing({
@@ -126,10 +125,6 @@ export function useDocumentEntityEditorPersistence(
       args.emitCreated(created.id)
       args.resetInitialSnapshot()
 
-      if (!shouldNavigateOnCreate) {
-        await loadEffectsSnapshot(args.typeCode.value, created.id)
-      }
-
       if (shouldNavigateOnCreate) {
         await args.router.replace(buildDocumentFullPageUrl(args.typeCode.value, created.id))
       }
@@ -161,7 +156,6 @@ export function useDocumentEntityEditorPersistence(
     })
     syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value)
     args.resetInitialSnapshot()
-    await loadEffectsSnapshot(args.typeCode.value, args.currentId.value!)
     args.emitSaved()
   }
 

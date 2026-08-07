@@ -1,4 +1,4 @@
-import type { EditorFrameworkConfig, DocumentEffects, EffectDimensionValue } from 'ngb-ui-framework'
+import type { EditorFrameworkConfig, DocumentEffects, EffectDimensionValue } from '@ngbplatform/ui'
 import {
   buildGeneralJournalEntriesPath,
   getDocumentById,
@@ -10,10 +10,10 @@ import {
   isNonEmptyGuid,
   shortGuid,
   useLookupStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getLookupHint } from '../lookup/hints'
-import { resolvePmEditorDocumentActions } from './documentActions'
+import { buildPmOpenItemsPath } from '../router/pmRoutePaths'
 import { resolvePmEditorEntityProfile } from './entityProfile'
 
 const PM_EFFECT_DIMENSION_DOCUMENT_TYPES = [
@@ -45,19 +45,15 @@ function defaultBuildDocumentFullPageUrl(documentType: string, id?: string | nul
   return `/documents/${type}/${encodeURIComponent(normalizedId)}`
 }
 
-function looksLikeGuidLabel(value: string | null | undefined): boolean {
-  const s = String(value ?? '').trim()
+function looksLikeGuidLabel(value: string): boolean {
+  const s = value.trim()
   return isNonEmptyGuid(s) && !isEmptyGuid(s)
 }
 
-function looksLikeSyntheticDocumentLabel(display: string | null | undefined, valueId: string | null | undefined): boolean {
-  const label = String(display ?? '').trim()
-  const id = String(valueId ?? '').trim()
-  if (!label || !isNonEmptyGuid(id) || isEmptyGuid(id)) return false
-
-  const short = id.slice(0, 8).toLowerCase()
-  const normalized = label.toLowerCase()
-  return normalized.endsWith(short) || normalized.endsWith(`…${id.slice(-4).toLowerCase()}`)
+function looksLikeSyntheticDocumentLabel(display: string, valueId: string): boolean {
+  const short = valueId.slice(0, 8).toLowerCase()
+  const normalized = display.toLowerCase()
+  return normalized.endsWith(short) || normalized.endsWith(`…${valueId.slice(-4).toLowerCase()}`)
 }
 
 async function prefetchDimensionDocumentLabels(snapshot: DocumentEffects, lookupStore: ReturnType<typeof useLookupStore>): Promise<void> {
@@ -120,6 +116,25 @@ export function createPmEditorConfig(): EditorFrameworkConfig {
         return defaultBuildDocumentFullPageUrl(documentType, id)
       },
     },
+    resolveDocumentActionTarget(target) {
+      if (target.code === 'pm.receivables.reconciliation') {
+        const paymentId = String(target.parameters.paymentId ?? '').trim()
+        return paymentId
+          ? `/receivables/reconciliation?paymentId=${encodeURIComponent(paymentId)}`
+          : '/receivables/reconciliation'
+      }
+      if (target.code === 'pm.receivables.apply' || target.code === 'pm.payables.apply') {
+        const parameters = new URLSearchParams()
+        for (const [key, value] of Object.entries(target.parameters)) {
+          const normalized = String(value ?? '').trim()
+          if (normalized) parameters.set(key, normalized)
+        }
+        const side = target.code === 'pm.receivables.apply' ? 'receivables' : 'payables'
+        const query = parameters.toString()
+        return `${buildPmOpenItemsPath(side)}${query ? `?${query}` : ''}`
+      }
+      return null
+    },
     loadDocumentById: getDocumentById,
     loadDocumentEffects: getDocumentEffects,
     loadDocumentGraph: getDocumentGraph,
@@ -147,7 +162,6 @@ export function createPmEditorConfig(): EditorFrameworkConfig {
     print: {
       resolveLookupHint: ({ documentType, fieldKey, lookup }) => getLookupHint(documentType, fieldKey, lookup),
     },
-    resolveDocumentActions: resolvePmEditorDocumentActions,
     resolveEntityProfile: resolvePmEditorEntityProfile,
   }
 }

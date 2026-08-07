@@ -8,7 +8,7 @@ import {
   type ColumnMetadata,
   type MetadataFormBehavior,
   type MetadataFrameworkConfig,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getAgencyBillingLookupHint } from '../lookup/hints'
 import { findDisplayField, isFieldHidden, isFieldReadonly } from './formBehavior'

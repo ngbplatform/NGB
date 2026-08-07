@@ -1,6 +1,6 @@
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 
-import { normalizeTrashMode, useRouteQueryMigration } from 'ngb-ui-framework'
+import { normalizeTrashMode, useRouteQueryMigration } from '@ngbplatform/ui'
 
 export function usePropertiesLegacyQueryCompat(
   route: RouteLocationNormalizedLoaded,

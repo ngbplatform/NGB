@@ -18,7 +18,7 @@ vi.mock('vue-router', () => ({
   }),
 }))
 
-vi.mock('ngb-ui-framework', async () => {
+vi.mock('@ngbplatform/ui', async () => {
   const { defineComponent, h } = await import('vue')
 
   const StubPageHeader = defineComponent({

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using NGB.Contracts.Documents;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
@@ -24,7 +25,7 @@ public sealed class DocumentController_RouteContracts_P0Tests : IAsyncLifetime
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
-    public async Task Metadata_And_Derive_Routes_Work_Over_Http()
+    public async Task Metadata_And_EditorState_Routes_Work_Over_Http()
     {
         using var factory = new PmApiFactory(_fixture);
         using var client = CreateHttpsClient(factory);
@@ -51,47 +52,21 @@ public sealed class DocumentController_RouteContracts_P0Tests : IAsyncLifetime
         var unit = await CreateUnitAsync(client, building.Id, "101");
         var source = await CreateLeaseDraftAsync(client, unit.Id, party.Id, "2026-02-01", memo: "source");
 
-        var deriveResponse = await client.PostAsJsonAsync(
-            $"/api/documents/{PropertyManagementCodes.Lease}/derive",
-            new
-            {
-                sourceDocumentId = source.Id,
-                relationshipType = "based_on",
-                initialPayload = new
-                {
-                    fields = new
-                    {
-                        property_id = unit.Id,
-                        start_on_utc = "2026-03-01",
-                        rent_amount = 1100.00m,
-                        memo = "derived"
-                    },
-                    parts = new
-                    {
-                        parties = new
-                        {
-                            rows = new object[]
-                            {
-                                new
-                                {
-                                    party_id = party.Id,
-                                    role = "PrimaryTenant",
-                                    is_primary = true,
-                                    ordinal = 1
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+        using var editorStateResponse = await client.GetAsync(
+            $"/api/documents/{PropertyManagementCodes.Lease}/{source.Id:D}/editor-state");
+        editorStateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var editorState = await editorStateResponse.Content.ReadFromJsonAsync<DocumentEditorStateDto>(Json);
+        editorState.Should().NotBeNull();
+        editorState!.Document.Id.Should().Be(source.Id);
+        editorState.DocumentVersion.Should().BePositive();
+        editorState.Actions.Should().Contain(x => x.Code == "post");
 
-        deriveResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var derived = await deriveResponse.Content.ReadFromJsonAsync<DocumentDto>(Json);
-        derived.Should().NotBeNull();
-        derived!.Id.Should().NotBe(source.Id);
-        derived.Status.Should().Be(DocumentStatus.Draft);
-        derived.Payload.Fields!["start_on_utc"].GetString().Should().Be("2026-03-01");
-        derived.Payload.Fields["memo"].GetString().Should().Be("derived");
+        using var removedLegacyRoute = await client.PostAsJsonAsync(
+            $"/api/documents/{PropertyManagementCodes.Lease}/derive",
+            new { sourceDocumentId = source.Id, relationshipType = "based_on" });
+        removedLegacyRoute.StatusCode.Should().BeOneOf(
+            HttpStatusCode.NotFound,
+            HttpStatusCode.MethodNotAllowed);
     }
 
     [Fact]
@@ -105,13 +80,21 @@ public sealed class DocumentController_RouteContracts_P0Tests : IAsyncLifetime
         var unit = await CreateUnitAsync(client, building.Id, "202");
         var lease = await CreateLeaseDraftAsync(client, unit.Id, party.Id, "2026-04-01", memo: "route lifecycle");
 
-        var postResponse = await client.PostAsync($"/api/documents/{PropertyManagementCodes.Lease}/{lease.Id}/post", content: null);
+        using var postRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/documents/{PropertyManagementCodes.Lease}/{lease.Id}/post");
+        postRequest.Headers.Add("Idempotency-Key", $"legacy-route:{lease.Id:D}:post");
+        var postResponse = await client.SendAsync(postRequest);
         postResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var posted = await postResponse.Content.ReadFromJsonAsync<DocumentDto>(Json);
         posted.Should().NotBeNull();
         posted!.Status.Should().Be(DocumentStatus.Posted);
 
-        var repostResponse = await client.PostAsync($"/api/documents/{PropertyManagementCodes.Lease}/{lease.Id}/repost", content: null);
+        using var repostRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/documents/{PropertyManagementCodes.Lease}/{lease.Id}/repost");
+        repostRequest.Headers.TryAddWithoutValidation("Idempotency-Key", " ");
+        var repostResponse = await client.SendAsync(repostRequest);
         repostResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var reposted = await repostResponse.Content.ReadFromJsonAsync<DocumentDto>(Json);
         reposted.Should().NotBeNull();
@@ -121,7 +104,7 @@ public sealed class DocumentController_RouteContracts_P0Tests : IAsyncLifetime
         {
             postedMarkResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
             using var problem = await ReadJsonAsync(postedMarkResponse);
-            problem.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("doc.workflow.state_mismatch");
+            problem.RootElement.GetProperty("error").GetProperty("code").GetString().Should().Be("document_action.unavailable");
         }
 
         using (var postedDeleteResponse = await client.DeleteAsync($"/api/documents/{PropertyManagementCodes.Lease}/{lease.Id}"))
@@ -149,6 +132,58 @@ public sealed class DocumentController_RouteContracts_P0Tests : IAsyncLifetime
         unmarked.Should().NotBeNull();
         unmarked!.Status.Should().Be(DocumentStatus.Draft);
         unmarked.IsMarkedForDeletion.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Canonical_Action_Route_Uses_ExpectedVersion_And_Idempotency_Key()
+    {
+        using var factory = new PmApiFactory(_fixture);
+        using var client = CreateHttpsClient(factory);
+
+        var party = await CreatePartyAsync(client, "Canonical Action Tenant");
+        var building = await CreateBuildingAsync(client, "Canonical Action Building");
+        var unit = await CreateUnitAsync(client, building.Id, "250");
+        var lease = await CreateLeaseDraftAsync(client, unit.Id, party.Id, "2026-05-01", memo: "canonical action");
+
+        using var editorStateResponse = await client.GetAsync(
+            $"/api/documents/{PropertyManagementCodes.Lease}/{lease.Id:D}/editor-state");
+        editorStateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var editorState = await editorStateResponse.Content.ReadFromJsonAsync<DocumentEditorStateDto>(Json);
+        editorState.Should().NotBeNull();
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/documents/{PropertyManagementCodes.Lease}/{lease.Id:D}/actions/post")
+        {
+            Content = JsonContent.Create(new ExecuteDocumentActionRequestDto(editorState!.DocumentVersion))
+        };
+        request.Headers.Add("Idempotency-Key", $"route-contract:{lease.Id:D}:post");
+
+        using var response = await client.SendAsync(request);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content.ReadFromJsonAsync<ExecuteDocumentActionResultDto>(Json);
+        result.Should().NotBeNull();
+        result!.Document.Id.Should().Be(lease.Id);
+        result.Document.Status.Should().Be(DocumentStatus.Posted);
+
+        using var duplicateRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/documents/{PropertyManagementCodes.Lease}/{lease.Id:D}/actions/post")
+        {
+            Content = JsonContent.Create(new ExecuteDocumentActionRequestDto(editorState.DocumentVersion))
+        };
+        duplicateRequest.Headers.Add("Idempotency-Key", $"route-contract:{lease.Id:D}:post");
+
+        using var duplicateResponse = await client.SendAsync(duplicateRequest);
+        duplicateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var duplicate = await duplicateResponse.Content.ReadFromJsonAsync<ExecuteDocumentActionResultDto>(Json);
+        duplicate.Should().NotBeNull();
+        duplicate!.ExecutionId.Should().Be(result.ExecutionId);
+        duplicate.ActionCode.Should().Be(result.ActionCode);
+        duplicate!.Document.Id.Should().Be(result.Document.Id);
+        duplicate.Document.Status.Should().Be(result.Document.Status);
+        duplicate.DocumentVersion.Should().Be(result.DocumentVersion);
+        duplicate.WorkCenterMayChange.Should().Be(result.WorkCenterMayChange);
     }
 
     [Fact]

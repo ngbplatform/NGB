@@ -277,14 +277,6 @@ export const receivablePaymentEffectsFixture: DocumentEffectsDto = {
       isTombstone: false,
     },
   ],
-  ui: {
-    isPosted: false,
-    canEdit: true,
-    canPost: true,
-    canUnpost: false,
-    canRepost: false,
-    canApply: false,
-  },
 }
 
 export const receivablePaymentGraphFixture: RelationshipGraphDto = {

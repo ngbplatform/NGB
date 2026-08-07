@@ -87,7 +87,9 @@ jobs:
 
       - name: Test UI framework
         working-directory: ui
-        run: npm exec -- vitest run --config ngb-ui-framework/vitest.config.ts
+        run: |
+          npm run test:api-compat
+          npm exec -- vitest run --config ngb-ui-framework/vitest.config.ts
 
       - name: Resolve package version
         id: npm-version

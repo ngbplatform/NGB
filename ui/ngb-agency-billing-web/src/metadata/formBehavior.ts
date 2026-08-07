@@ -1,4 +1,4 @@
-import type { EntityFormModel, FieldMetadata, FormMetadata } from 'ngb-ui-framework'
+import type { EntityFormModel, FieldMetadata, FormMetadata } from '@ngbplatform/ui'
 
 const AGENCY_BILLING_DOCUMENT_TYPES_WITH_COMPUTED_AMOUNT = new Set<string>([
   'ab.timesheet',

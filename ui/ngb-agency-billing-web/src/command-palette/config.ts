@@ -4,7 +4,7 @@ import {
   type CommandPaletteItemSeed,
   type CommandPaletteStoreConfig,
   buildReportPageUrl,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 import type { Router } from 'vue-router'
 
 import {

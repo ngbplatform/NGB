@@ -16,7 +16,7 @@ import type {
   EditorMode,
   LookupStoreApi,
   RecordPayload,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 import type { LeasePartyRow } from './leasePartyTypes'
 
 export type PmEntityEditorLeaseAdapter = {

@@ -50,6 +50,8 @@ const props = withDefaults(defineProps<{
   leaveOpen?: boolean;
   markConfirmOpen?: boolean;
   markConfirmMessage?: string;
+  unpostConfirmOpen?: boolean;
+  unpostConfirmMessage?: string;
 }>(), {
   canBack: true,
   subtitle: undefined,
@@ -73,6 +75,8 @@ const props = withDefaults(defineProps<{
   leaveOpen: false,
   markConfirmOpen: false,
   markConfirmMessage: '',
+  unpostConfirmOpen: false,
+  unpostConfirmMessage: 'Existing effects will be reversed.',
 });
 
 const emit = defineEmits<{
@@ -84,6 +88,8 @@ const emit = defineEmits<{
   (e: 'confirmLeave'): void;
   (e: 'cancelMarkForDeletion'): void;
   (e: 'confirmMarkForDeletion'): void;
+  (e: 'cancelUnpost'): void;
+  (e: 'confirmUnpost'): void;
 }>();
 
 const formRef = ref<InstanceType<typeof NgbEntityForm> | null>(null);
@@ -245,6 +251,18 @@ function normalizeBannerText(value: string | null | undefined): string {
       danger
       @update:open="(value) => (!value ? emit('cancelMarkForDeletion') : null)"
       @confirm="emit('confirmMarkForDeletion')"
+    />
+
+    <NgbConfirmDialog
+      :open="unpostConfirmOpen"
+      title="Unpost document?"
+      :message="unpostConfirmMessage"
+      confirm-text="Unpost"
+      cancel-text="Cancel"
+      icon="undo"
+      danger
+      @update:open="(value) => (!value ? emit('cancelUnpost') : null)"
+      @confirm="emit('confirmUnpost')"
     />
   </div>
 </template>

@@ -13,8 +13,8 @@ import type {
   EntityEditorContext,
   EntityFormModel,
   RecordPayload,
-} from 'ngb-ui-framework'
-import { useLookupStore, useMetadataStore, useToasts } from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
+import { useLookupStore, useMetadataStore, useToasts } from '@ngbplatform/ui'
 
 export type AgencyBillingEntityEditorPersistenceContext = {
   kind: ComputedRef<EditorKind>

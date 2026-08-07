@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NgbBadge, NgbButton, NgbIcon, NgbLookup, NgbPageHeader, NgbRegisterGrid, NgbTabs } from 'ngb-ui-framework'
+import { NgbBadge, NgbButton, NgbIcon, NgbLookup, NgbPageHeader, NgbRegisterGrid, NgbTabs } from '@ngbplatform/ui'
 
 import { applyDocumentLabel, docLabel, fmtDateOnly, fmtMoney, type OpenItemsApplyResultLine, type OpenItemsLookupItem } from './shared'
 import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsTabKey } from './presentation'

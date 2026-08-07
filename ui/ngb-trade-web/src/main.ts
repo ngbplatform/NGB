@@ -9,9 +9,9 @@ import {
   createDefaultNgbLookupConfig,
   createDefaultNgbReportingConfig,
   useAuthStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
-import 'ngb-ui-framework/styles'
+import '@ngbplatform/ui/styles'
 
 async function bootstrap(): Promise<void> {
   const pinia = createPinia()

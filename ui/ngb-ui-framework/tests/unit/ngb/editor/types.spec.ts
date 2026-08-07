@@ -37,14 +37,6 @@ describe('editor types', () => {
       ],
       operationalRegisterMovements: [],
       referenceRegisterWrites: [],
-      ui: {
-        isPosted: false,
-        canEdit: true,
-        canPost: true,
-        canUnpost: false,
-        canRepost: false,
-        canApply: true,
-      },
     }
     const auditPage: AuditLogPage = {
       items: [
@@ -78,7 +70,7 @@ describe('editor types', () => {
 
     expect(action.icon).toBe('share')
     expect(record.payload.fields?.total).toBe(1250)
-    expect(effects.ui?.canPost).toBe(true)
+    expect(effects.accountingEntries[0]?.amount).toBe(1250)
     expect(auditPage.items[0]?.changes[0]?.fieldPath).toBe('payload.total')
     expect(printBehavior.resolveLookupHint?.({
       documentType: 'pm.invoice',

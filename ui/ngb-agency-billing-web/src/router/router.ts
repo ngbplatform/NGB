@@ -9,10 +9,12 @@ import {
   NgbDocumentPrintPage,
   NgbGeneralJournalEntryEditPage,
   NgbGeneralJournalEntryListPage,
+  NgbNotificationPreferencesPage,
   ngbRouteAliasRedirectRoutes,
   NgbReportPage,
+  NgbWorkCenterPage,
   useAuthStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { createAgencyBillingRouteFrameworkConfig } from './framework'
 
@@ -26,6 +28,8 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/home' },
     { path: '/home', component: HomePage },
+    { path: '/work-center', component: NgbWorkCenterPage, props: { vertical: 'ab' } },
+    { path: '/settings/notifications', component: NgbNotificationPreferencesPage },
 
     { path: '/catalogs/ab.accounting_policy', component: AccountingPolicySettingsPage },
     { path: '/catalogs/ab.accounting_policy/new', redirect: '/catalogs/ab.accounting_policy' },

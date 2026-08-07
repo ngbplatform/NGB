@@ -7,6 +7,8 @@
         <ListboxButton
           ref="btnRef"
           :class="[buttonClass, disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer']"
+          :aria-label="ariaLabel || label || undefined"
+          :title="title || undefined"
           @mousedown.capture="updatePosition"
           @keydown.enter.capture="updatePosition"
           @keydown.space.capture="updatePosition"
@@ -58,6 +60,7 @@ import { useFloatingDropdownPosition } from './useFloatingDropdownPosition'
 export type SelectOption = {
   value: unknown
   label: string
+  selectedLabel?: string
 }
 
 type SelectVariant = 'default' | 'grid' | 'compact'
@@ -68,6 +71,8 @@ const props = withDefaults(defineProps<{
   options: SelectOption[]
   label?: string
   hint?: string
+  ariaLabel?: string
+  title?: string
   disabled?: boolean
   // Visual variant.
   // - default: standard select (bordered)
@@ -77,6 +82,8 @@ const props = withDefaults(defineProps<{
 }>(), {
   label: '',
   hint: '',
+  ariaLabel: '',
+  title: '',
   disabled: false,
   variant: 'default',
 })
@@ -87,7 +94,7 @@ const emit = defineEmits<{
 
 const displayValue = computed(() => {
   const found = props.options.find((option) => option.value === props.modelValue)
-  return found ? found.label : 'Select…'
+  return found ? (found.selectedLabel ?? found.label) : 'Select…'
 })
 
 const buttonClass = computed(() => {

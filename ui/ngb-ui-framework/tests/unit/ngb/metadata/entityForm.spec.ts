@@ -99,6 +99,51 @@ describe('metadata entity form helpers', () => {
     })
   })
 
+  it('converts datetime-local values to ISO UTC while preserving empty and invalid values', () => {
+    const dateTimeForm = {
+      sections: [{
+        title: 'Schedule',
+        rows: [{
+          fields: [
+            {
+              key: 'due_at_utc',
+              label: 'Due At',
+              dataType: 'DateTime',
+              uiControl: 7,
+              isRequired: false,
+              isReadOnly: false,
+            },
+            {
+              key: 'completed_at_utc',
+              label: 'Completed At',
+              dataType: 'DateTime',
+              uiControl: 7,
+              isRequired: false,
+              isReadOnly: false,
+            },
+          ],
+        }],
+      }],
+    }
+
+    const localDueAt = '2026-08-01T11:58'
+    expect(buildFieldsPayload(dateTimeForm, {
+      due_at_utc: localDueAt,
+      completed_at_utc: null,
+    })).toEqual({
+      due_at_utc: new Date(localDueAt).toISOString(),
+      completed_at_utc: null,
+    })
+
+    expect(buildFieldsPayload(dateTimeForm, {
+      due_at_utc: 'not-a-date',
+      completed_at_utc: '2026-08-01T15:58:00Z',
+    })).toEqual({
+      due_at_utc: 'not-a-date',
+      completed_at_utc: '2026-08-01T15:58:00.000Z',
+    })
+  })
+
   it('respects force and status-based readonly rules', () => {
     expect(defaultIsFieldReadonly({
       entityTypeCode: 'pm.invoice',

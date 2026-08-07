@@ -7,7 +7,7 @@
             class="w-9 h-9 rounded-full flex items-center justify-center"
             :class="danger ? 'bg-[rgba(155,28,28,.08)] text-ngb-danger' : 'bg-[rgba(11,60,93,.08)] text-ngb-blue'"
           >
-            <NgbIcon :name="danger ? 'trash' : 'help-circle'" />
+            <NgbIcon :name="icon ?? (danger ? 'trash' : 'help-circle')" />
           </div>
         </div>
 
@@ -34,6 +34,7 @@ import { DialogTitle } from '@headlessui/vue'
 import NgbModalShell from './NgbModalShell.vue'
 import NgbButton from '../primitives/NgbButton.vue'
 import NgbIcon from '../primitives/NgbIcon.vue'
+import type { NgbIconName } from '../primitives/iconNames'
 
 const props = defineProps<{
   open: boolean
@@ -43,6 +44,7 @@ const props = defineProps<{
   cancelText?: string
   danger?: boolean
   confirmLoading?: boolean
+  icon?: NgbIconName
 }>()
 
 const emit = defineEmits<{

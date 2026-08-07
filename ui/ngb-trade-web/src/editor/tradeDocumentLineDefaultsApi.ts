@@ -1,4 +1,4 @@
-import { httpPost, type ReferenceValue } from 'ngb-ui-framework'
+import { httpPost, type ReferenceValue } from '@ngbplatform/ui'
 
 export type TradeDocumentLineDefaultsRequest = {
   documentType: string

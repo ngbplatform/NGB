@@ -1,3 +1,4 @@
+using NGB.Core.Documents.Actions;
 using NGB.Tools.Exceptions;
 
 namespace NGB.Runtime.Documents;
@@ -12,8 +13,8 @@ public sealed class DocumentActionsNotSupportedException(string documentTypeCode
         errorCode: ErrorCodeConst,
         context: new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            ["documentTypeCode"] = documentTypeCode,
-            ["actionCode"] = actionCode,
+            [StandardDocumentActionCodes.DocumentTypeCode] = documentTypeCode,
+            [StandardDocumentActionCodes.DocumentActionCode] = actionCode,
         })
 {
     public const string ErrorCodeConst = "documents.actions.not_supported";

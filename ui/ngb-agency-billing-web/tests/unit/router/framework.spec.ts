@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   getDocumentPage: vi.fn(async () => ({ items: [], total: 0 })),
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   NgbMetadataCatalogEditPage: { name: 'NgbMetadataCatalogEditPage' },
   NgbMetadataCatalogListPage: { name: 'NgbMetadataCatalogListPage' },
   NgbMetadataDocumentEditPage: { name: 'NgbMetadataDocumentEditPage' },

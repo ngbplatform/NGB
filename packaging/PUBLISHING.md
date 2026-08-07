@@ -13,6 +13,7 @@ packages in release builds.
 
 ```bash
 bash packaging/nuget/pack-platform.sh
+npm --prefix ui run test:api-compat
 npm --prefix ui run pack:platform-ui
 docker compose -f docker-compose.crm.yml --env-file .env.crm build ngb.crm.web
 ```
@@ -23,8 +24,35 @@ The CRM lockfile is resolved from npmjs.com and is not regenerated while validat
 platform package. Update it only when CRM intentionally moves to another published package version:
 
 ```bash
-npm --prefix ui/ngb-crm-web install --save-exact @ngbplatform/ui@1.3.1
+npm --prefix ui/ngb-crm-web install --save-exact @ngbplatform/ui@2.0.0
 ```
+
+## SemVer and API compatibility
+
+`Directory.Build.props` is the canonical version for all `NGB.Platform.*` packages. The
+`NgbPlatformApiCompatibilityBaselineVersion` property identifies the first stable package in the
+current major line. For 2.x it is `2.0.0`.
+
+Every `dotnet pack` enables the .NET SDK package-validation and ApiCompat rules. Packing `2.0.0`
+validates the package itself; packing a later `2.x` release also downloads the published `2.0.0`
+package with the same ID and rejects binary/source contract breaks. Do not add ApiCompat
+suppressions for a minor or patch release. An intentional incompatible change requires a new major
+version, an updated compatibility baseline, changelog breaking-change entries, and a migration
+guide.
+
+`NgbPlatformAssemblyVersion` remains `2.0.0.0` for the complete 2.x line so minor and patch package
+updates preserve assembly identity. `FileVersion` and `InformationalVersion` continue to identify
+the exact build. Change the assembly version only with the next major release.
+
+The `@ngbplatform/ui` top-level export snapshot is checked with:
+
+```bash
+npm --prefix ui run test:api-compat
+```
+
+Additive or breaking export changes require explicit review and snapshot regeneration with
+`npm --prefix ui run update:api-compat`. Updating the snapshot does not make a breaking change
+SemVer-compatible; removals and incompatible type changes still require a new major release.
 
 ## npm Trusted Publishing
 
@@ -77,7 +105,7 @@ then publishes in dependency order with `--skip-duplicate` so a partially comple
 1. Run `platform-packages` and review both package artifacts.
 2. Publish `NGB.Platform.*`.
 3. Publish `@ngbplatform/ui`.
-4. Run the CRM image jobs in `container-images` after NuGet and npm expose version `1.3.1`.
+4. Run the CRM image jobs in `container-images` after NuGet and npm expose version `2.0.0`.
 
 The CRM release workflow restores with `NuGet.Registry.Config` and its own npm lockfile, so local package
 outputs cannot leak into production images.

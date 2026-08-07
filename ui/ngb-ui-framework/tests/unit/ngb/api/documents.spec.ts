@@ -17,9 +17,10 @@ vi.mock('../../../../src/ngb/api/http', () => ({
 import {
   createDraft,
   deleteDraft,
+  executeDocumentAction,
   getDocumentById,
-  getDocumentDerivationActions,
   getDocumentEffects,
+  getDocumentEditorState,
   getDocumentGraph,
   getDocumentLookupByIds,
   getDocumentPage,
@@ -100,28 +101,135 @@ describe('documents api', () => {
     )
   })
 
-  it('loads derive actions for a specific document', async () => {
-    httpMocks.httpGet.mockResolvedValueOnce([
-      {
-        code: 'ab.generate_invoice_draft',
-        name: 'Generate Invoice Draft',
-        fromTypeCode: 'ab.timesheet',
-        toTypeCode: 'ab.sales_invoice',
-        relationshipCodes: ['created_from'],
-      },
-    ])
+  it('preserves canonical statuses and tolerates omitted paging data from the transport', async () => {
+    const canonicalDocument = createDocument(2)
+    const canonicalLookup = {
+      id: 'doc-2',
+      display: 'Invoice 2',
+      documentType: 'pm.invoice',
+      status: 2,
+      isMarkedForDeletion: false,
+      number: 'INV-002',
+    }
+    httpMocks.httpGet
+      .mockResolvedValueOnce({ items: undefined, offset: 0, limit: 20 })
+      .mockResolvedValueOnce({ items: [canonicalDocument], offset: 0, limit: 1 })
+      .mockResolvedValueOnce(canonicalDocument)
+    httpMocks.httpPost.mockResolvedValueOnce([canonicalLookup])
 
-    await expect(getDocumentDerivationActions('ab.timesheet', 'doc/1')).resolves.toEqual([
-      {
-        code: 'ab.generate_invoice_draft',
-        name: 'Generate Invoice Draft',
-        fromTypeCode: 'ab.timesheet',
-        toTypeCode: 'ab.sales_invoice',
-        relationshipCodes: ['created_from'],
-      },
-    ])
+    const emptyPage = await getDocumentPage('pm.invoice', null as never)
+    const page = await getDocumentPage('pm.invoice', { offset: 0, limit: 1 })
+    const document = await getDocumentById('pm.invoice', 'doc-1')
+    const lookups = await getDocumentLookupByIds({
+      documentTypes: ['pm.invoice'],
+      ids: ['doc-2'],
+    })
 
-    expect(httpMocks.httpGet).toHaveBeenCalledWith('/api/documents/ab.timesheet/doc%2F1/derive-actions')
+    expect(emptyPage.items).toEqual([])
+    expect(page.items[0]).toBe(canonicalDocument)
+    expect(document).toBe(canonicalDocument)
+    expect(lookups[0]).toBe(canonicalLookup)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(1, '/api/documents/pm.invoice', undefined)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(2, '/api/documents/pm.invoice', {
+      offset: 0,
+      limit: 1,
+      search: undefined,
+    })
+  })
+
+  it('loads unified editor state and sends idempotent action commands with the expected version', async () => {
+    httpMocks.httpGet.mockResolvedValueOnce({
+      document: createDocument('posted'),
+      documentVersion: 4,
+      actions: [],
+    })
+    httpMocks.httpPost.mockResolvedValueOnce({
+      executionId: 'execution-1',
+      actionCode: 'crm.create_qualification',
+      document: createDocument('posted'),
+      documentVersion: 5,
+      actions: [],
+      workCenterMayChange: true,
+      createdDocument: createDocument('draft'),
+    })
+
+    const state = await getDocumentEditorState('crm.lead_intake', 'doc/1')
+    const result = await executeDocumentAction(
+      'crm.lead_intake',
+      'doc/1',
+      'crm.create_qualification',
+      { expectedVersion: state.documentVersion },
+      'idem-1',
+    )
+
+    expect(state.document.status).toBe(2)
+    expect(result.createdDocument?.status).toBe(1)
+    expect(httpMocks.httpGet).toHaveBeenCalledWith(
+      '/api/documents/crm.lead_intake/doc%2F1/editor-state',
+    )
+    expect(httpMocks.httpPost).toHaveBeenCalledWith(
+      '/api/documents/crm.lead_intake/doc%2F1/actions/crm.create_qualification',
+      { expectedVersion: 4 },
+      { headers: { 'Idempotency-Key': 'idem-1' } },
+    )
+  })
+
+  it('deduplicates concurrent editor-state reads and releases failed requests for retry', async () => {
+    let resolveRequest!: (value: ReturnType<typeof createDocument> & Record<string, never>) => void
+    const pendingDocument = new Promise<ReturnType<typeof createDocument> & Record<string, never>>((resolve) => {
+      resolveRequest = resolve
+    })
+    httpMocks.httpGet.mockReturnValueOnce(
+      pendingDocument.then((document) => ({
+        document,
+        documentVersion: 1,
+        actions: [],
+      })),
+    )
+
+    const first = getDocumentEditorState('pm.invoice', 'same-id')
+    const second = getDocumentEditorState('pm.invoice', 'same-id')
+    expect(httpMocks.httpGet).toHaveBeenCalledTimes(1)
+
+    resolveRequest(createDocument('draft') as never)
+    await expect(first).resolves.toMatchObject({ documentVersion: 1 })
+    await expect(second).resolves.toMatchObject({ documentVersion: 1 })
+
+    httpMocks.httpGet
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce({
+        document: createDocument('draft'),
+        documentVersion: 2,
+        actions: [],
+      })
+    await expect(getDocumentEditorState('pm.invoice', 'retry-id')).rejects.toThrow('temporary failure')
+    await expect(getDocumentEditorState('pm.invoice', 'retry-id')).resolves.toMatchObject({ documentVersion: 2 })
+  })
+
+  it('uses a generated idempotency key and preserves an absent created document', async () => {
+    httpMocks.httpPost.mockResolvedValueOnce({
+      executionId: 'execution-2',
+      actionCode: 'post',
+      document: createDocument('posted'),
+      documentVersion: 2,
+      actions: [],
+      workCenterMayChange: false,
+      createdDocument: null,
+    })
+
+    const result = await executeDocumentAction(
+      'pm.invoice',
+      'doc-1',
+      'post',
+      { expectedVersion: 1, reason: null },
+    )
+
+    expect(result.createdDocument).toBeNull()
+    expect(httpMocks.httpPost).toHaveBeenCalledWith(
+      '/api/documents/pm.invoice/doc-1/actions/post',
+      { expectedVersion: 1, reason: null },
+      { headers: { 'Idempotency-Key': expect.any(String) } },
+    )
   })
 
   it('normalizes document statuses across draft, posting, and deletion mutations', async () => {

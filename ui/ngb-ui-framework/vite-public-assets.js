@@ -39,7 +39,7 @@ export function ngbUiFrameworkPublicAssetsPlugin(options = {}) {
   const assets = buildPublicAssets(options)
 
   return {
-    name: 'ngb-ui-framework-public-assets',
+    name: '@ngbplatform/ui-public-assets',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const pathname = requestPathname(req.url)

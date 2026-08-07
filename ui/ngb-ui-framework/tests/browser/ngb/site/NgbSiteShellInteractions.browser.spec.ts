@@ -138,8 +138,8 @@ test('switches shell drawers, navigates from settings, toggles theme, and forwar
   await view.getByRole('button', { name: /Search pages, records, reports, or run a command/i }).click()
   await expect.element(view.getByTestId('site-shell-palette-count')).toHaveTextContent('1')
 
-  await visibleButtonByTitle('Notifications').click()
-  await expect.element(view.getByText('No notifications', { exact: true })).toBeVisible()
+  await visibleButtonByTitle('Work Center').click()
+  await expect.element(view.getByText('You’re all caught up', { exact: true })).toBeVisible()
 
   await visibleButtonByTitle('Help').click()
   await expect.element(view.getByText('Help is coming soon', { exact: true })).toBeVisible()

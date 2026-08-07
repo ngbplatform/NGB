@@ -6,6 +6,7 @@ import NgbInput from '../primitives/NgbInput.vue'
 import NgbSelect from '../primitives/NgbSelect.vue'
 import { dataTypeKind } from './dataTypes'
 import { isReferenceValue } from './entityModel'
+import { toDateTimeLocalInputValue } from './entityForm'
 import { resolveFieldRendererState } from './fieldRendererState'
 import type { EntityFormModel, FieldMetadata, MetadataFormBehavior } from './types'
 import NgbMetadataLookupControl from './NgbMetadataLookupControl.vue'
@@ -56,6 +57,9 @@ const selectOptions = computed(() =>
 )
 
 const selectValue = computed(() => normalizeSelectValue(props.modelValue))
+const inputValue = computed(() => rendererState.value.inputType === 'datetime-local'
+  ? toDateTimeLocalInputValue(props.modelValue)
+  : (props.modelValue ?? ''))
 </script>
 
 <template>
@@ -113,7 +117,7 @@ const selectValue = computed(() => normalizeSelectValue(props.modelValue))
     <NgbInput
       v-else
       :type="rendererState.inputType"
-      :model-value="modelValue ?? ''"
+      :model-value="inputValue"
       :disabled="disabled"
       :readonly="readonly"
       @update:modelValue="update"

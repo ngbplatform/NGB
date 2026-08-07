@@ -1,4 +1,4 @@
-import type { LookupHint, LookupSource } from 'ngb-ui-framework'
+import type { LookupHint, LookupSource } from '@ngbplatform/ui'
 
 const PM_TENANT_PARTY_DOCUMENTS = new Set([
   'pm.rent_charge',

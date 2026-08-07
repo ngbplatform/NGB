@@ -31,6 +31,13 @@ public interface IDocumentRepository
         CancellationToken ct = default);
 
     /// <summary>
+    /// Increments and returns the stable document concurrency version.
+    /// Requires an active transaction and a locked document row.
+    /// </summary>
+    Task<long> IncrementVersionAsync(Guid documentId, DateTime updatedAtUtc, CancellationToken ct = default)
+        => throw new NotSupportedException("The configured document repository does not support concurrency versions.");
+
+    /// <summary>
     /// Updates draft header fields stored in the common document registry (documents).
     /// Requires an active transaction.
     /// </summary>

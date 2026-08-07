@@ -29,31 +29,29 @@ describe('editor config', () => {
     const routing = config.resolveNgbEditorRouting()
     expect(routing.buildCatalogListUrl('pm.property')).toBe('/catalogs/pm.property')
     expect(routing.buildCatalogFullPageUrl('pm.property', 'cat/1')).toBe('/catalogs/pm.property/cat%2F1')
+    expect(routing.buildCatalogFullPageUrl('pm.property', null)).toBe('/catalogs/pm.property/new')
     expect(routing.buildCatalogCompactPageUrl('pm.property')).toBe('/catalogs/pm.property?panel=new')
+    expect(routing.buildCatalogCompactPageUrl('pm.property', 'cat/1')).toBe('/catalogs/pm.property?panel=edit&id=cat%2F1')
     expect(routing.buildDocumentFullPageUrl('pm.invoice', 'doc/1')).toBe('/documents/pm.invoice/doc%2F1')
+    expect(routing.buildDocumentFullPageUrl('pm.invoice')).toBe('/documents/pm.invoice/new')
     expect(routing.buildDocumentCompactPageUrl('pm.invoice')).toBe('/documents/pm.invoice?panel=new')
+    expect(routing.buildDocumentCompactPageUrl('pm.invoice', 'doc/1')).toBe('/documents/pm.invoice?panel=edit&id=doc%2F1')
     expect(routing.buildDocumentEffectsPageUrl('pm.invoice', 'doc/1')).toBe('/documents/pm.invoice/doc%2F1/effects')
     expect(routing.buildDocumentFlowPageUrl('pm.invoice', 'doc/1')).toBe('/documents/pm.invoice/doc%2F1/flow')
     expect(routing.buildDocumentPrintPageUrl('pm.invoice', 'doc/1', { autoPrint: true })).toBe(
       '/documents/pm.invoice/doc%2F1/print?autoprint=1',
     )
+    expect(routing.buildDocumentPrintPageUrl('pm.invoice', 'doc/1')).toBe(
+      '/documents/pm.invoice/doc%2F1/print',
+    )
   })
 
-  it('returns configured routing/profile/action helpers and merges audit/effects/print overrides', async () => {
+  it('returns configured routing/profile helpers and merges audit/effects/print overrides', async () => {
     vi.resetModules()
     const config = await import('../../../../src/ngb/editor/config')
 
     const sanitizeModelForEditing = vi.fn()
     const syncComputedDisplay = vi.fn()
-    const resolveDocumentActions = vi.fn(() => [{
-      item: {
-        key: 'share',
-        title: 'Share',
-        icon: 'share',
-      },
-      run: vi.fn(),
-    }])
-
     const frameworkConfig = {
       routing: {
         buildCatalogListUrl: vi.fn((catalogType: string) => `/custom/catalogs/${catalogType}`),
@@ -80,7 +78,6 @@ describe('editor config', () => {
         sanitizeModelForEditing,
         syncComputedDisplay,
       })),
-      resolveDocumentActions,
     }
 
     config.configureNgbEditor(frameworkConfig as never)
@@ -104,16 +101,6 @@ describe('editor config', () => {
 
     expect(sanitizeModelForEditing).toHaveBeenCalledWith({ context, model })
     expect(syncComputedDisplay).toHaveBeenCalledWith({ context, model })
-    expect(config.resolveNgbEditorDocumentActions({
-      context,
-      documentId: 'doc-1',
-      model,
-      uiEffects: null,
-      loading: false,
-      saving: false,
-      navigate: vi.fn(),
-    } as never)).toHaveLength(1)
-
     const auditBehavior = config.resolveNgbEditorAuditBehavior({
       hiddenFieldNames: ['runtime_hidden'],
       explicitFieldLabels: {
@@ -141,5 +128,106 @@ describe('editor config', () => {
       hideAuditFields: true,
       includeSystemFields: true,
     })
+  })
+
+  it('uses every configured routing override and safe empty behavior defaults', async () => {
+    vi.resetModules()
+    const config = await import('../../../../src/ngb/editor/config')
+    const names = [
+      'buildCatalogListUrl',
+      'buildCatalogFullPageUrl',
+      'buildCatalogCompactPageUrl',
+      'buildDocumentFullPageUrl',
+      'buildDocumentCompactPageUrl',
+      'buildDocumentEffectsPageUrl',
+      'buildDocumentFlowPageUrl',
+      'buildDocumentPrintPageUrl',
+    ] as const
+    const routing = Object.fromEntries(names.map((name) => [name, vi.fn(() => `/${name}`)]))
+    config.configureNgbEditor({
+      routing,
+      loadDocumentById: vi.fn(),
+      loadDocumentEffects: vi.fn(),
+      loadDocumentGraph: vi.fn(),
+      loadEntityAuditLog: vi.fn(),
+    } as never)
+
+    const resolved = config.resolveNgbEditorRouting()
+    expect(resolved.buildCatalogListUrl('catalog')).toBe('/buildCatalogListUrl')
+    expect(resolved.buildCatalogFullPageUrl('catalog', 'id')).toBe('/buildCatalogFullPageUrl')
+    expect(resolved.buildCatalogCompactPageUrl('catalog', 'id')).toBe('/buildCatalogCompactPageUrl')
+    expect(resolved.buildDocumentFullPageUrl('document', 'id')).toBe('/buildDocumentFullPageUrl')
+    expect(resolved.buildDocumentCompactPageUrl('document', 'id')).toBe('/buildDocumentCompactPageUrl')
+    expect(resolved.buildDocumentEffectsPageUrl('document', 'id')).toBe('/buildDocumentEffectsPageUrl')
+    expect(resolved.buildDocumentFlowPageUrl('document', 'id')).toBe('/buildDocumentFlowPageUrl')
+    expect(resolved.buildDocumentPrintPageUrl('document', 'id')).toBe('/buildDocumentPrintPageUrl')
+
+    const context = { kind: 'document', typeCode: 'pm.invoice', mode: 'page', status: 1 }
+    const model = { memo: 'unchanged' }
+    expect(config.resolveNgbEditorEntityProfile(context as never)).toEqual({})
+    expect(() => config.sanitizeNgbEditorModelForEditing(context as never, model)).not.toThrow()
+    expect(() => config.syncNgbEditorComputedDisplay(context as never, model)).not.toThrow()
+    expect(config.resolveNgbEditorAuditBehavior()).toEqual({
+      hiddenFieldNames: [
+        'created_at_utc',
+        'updated_at_utc',
+        'deleted_at_utc',
+        'marked_for_deletion_at_utc',
+      ],
+      explicitFieldLabels: {},
+      actionTitles: {},
+    })
+    expect(config.resolveNgbEditorEffectsBehavior()).toEqual({})
+    expect(config.resolveNgbEditorPrintBehavior()).toEqual({})
+  })
+
+  it('resolves server action targets through configured, explicit, and platform routes', async () => {
+    vi.resetModules()
+    const config = await import('../../../../src/ngb/editor/config')
+    const context = { documentType: 'pm.invoice', documentId: 'doc/1' }
+
+    config.configureNgbEditor({
+      loadDocumentById: vi.fn(),
+      loadDocumentEffects: vi.fn(),
+      loadDocumentGraph: vi.fn(),
+      loadEntityAuditLog: vi.fn(),
+      resolveDocumentActionTarget: vi.fn((target) => target.code === 'custom' ? '/custom' : null),
+    } as never)
+
+    expect(config.resolveNgbDocumentActionTarget(
+      { code: 'custom', parameters: {} },
+      context,
+    )).toBe('/custom')
+    expect(config.resolveNgbDocumentActionTarget(
+      { code: 'unknown', parameters: { path: '/explicit/path' } },
+      context,
+    )).toBe('/explicit/path')
+    expect(config.resolveNgbDocumentActionTarget(
+      {
+        code: 'document.editor',
+        parameters: { documentType: 'crm.lead', documentId: 'lead/1' },
+      },
+      context,
+    )).toBe('/documents/crm.lead/lead%2F1')
+    expect(config.resolveNgbDocumentActionTarget(
+      { code: 'document.effects', parameters: {} },
+      context,
+    )).toBe('/documents/pm.invoice/doc%2F1/effects')
+    expect(config.resolveNgbDocumentActionTarget(
+      { code: 'document.flow', parameters: { documentId: 'flow/1' } },
+      context,
+    )).toBe('/documents/pm.invoice/flow%2F1/flow')
+    expect(config.resolveNgbDocumentActionTarget(
+      { code: 'document.print', parameters: { documentType: '   ', documentId: 'print/1' } },
+      context,
+    )).toBe('/documents/pm.invoice/print%2F1/print')
+    expect(config.resolveNgbDocumentActionTarget(
+      { code: 'unknown', parameters: { path: 'relative' } },
+      context,
+    )).toBeNull()
+    expect(config.resolveNgbDocumentActionTarget(
+      { code: 'unknown', parameters: undefined as never },
+      context,
+    )).toBeNull()
   })
 })

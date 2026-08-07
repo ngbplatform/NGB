@@ -1,5 +1,23 @@
-import { describe, expect, it, vi } from 'vitest'
-import type { LookupStoreApi, PartMetadata, RecordPartRow } from 'ngb-ui-framework'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { LookupStoreApi, PartMetadata, RecordPartRow } from '@ngbplatform/ui'
+
+vi.mock('@ngbplatform/ui', async () => {
+  const [dataTypes, entityForm, entityModel, guid, lookup] = await Promise.all([
+    import('../../../../ngb-ui-framework/src/ngb/metadata/dataTypes'),
+    import('../../../../ngb-ui-framework/src/ngb/metadata/entityForm'),
+    import('../../../../ngb-ui-framework/src/ngb/metadata/entityModel'),
+    import('../../../../ngb-ui-framework/src/ngb/utils/guid'),
+    import('../../../../ngb-ui-framework/src/ngb/metadata/lookup'),
+  ])
+
+  return {
+    buildFieldsPayload: entityForm.buildFieldsPayload,
+    dataTypeKind: dataTypes.dataTypeKind,
+    isNonEmptyGuid: guid.isNonEmptyGuid,
+    isReferenceValue: entityModel.isReferenceValue,
+    resolveLookupHint: lookup.resolveLookupHint,
+  }
+})
 
 import {
   buildTradeDocumentPartsPayload,
@@ -7,7 +25,9 @@ import {
   calculateTradeDocumentPartAmount,
   ensureTradeDocumentPartRowKey,
   hydrateTradeDocumentPartLookupRows,
+  listTradeDocumentPartFields,
   normalizeTradeDocumentPartRows,
+  resolveTradeDocumentAmountSourceField,
   syncTradeDocumentAmountField,
 } from '../../../src/editor/documentParts'
 
@@ -56,6 +76,91 @@ function createLookupStore(): LookupStoreApi {
 }
 
 describe('trade document parts', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('maps every metadata data type and handles absent lists', () => {
+    const part = {
+      partCode: 'all', title: 'All', list: { columns: [
+        { key: 'ordinal', label: '#', dataType: 'Int32' },
+        { key: 'flag', label: 'Flag', dataType: 'Boolean' },
+        { key: 'count', label: 'Count', dataType: 'Int32' },
+        { key: 'quantity', label: 'Quantity', dataType: 'Decimal' },
+        { key: 'price', label: 'Price', dataType: 'Money' },
+        { key: 'on', label: 'On', dataType: 'Date' },
+        { key: 'at', label: 'At', dataType: 'DateTime' },
+        { key: 'memo', label: 'Memo', dataType: 'String' },
+      ] },
+    } as PartMetadata
+    expect(listTradeDocumentPartFields(part).map((field) => field.uiControl)).toEqual([5, 3, 3, 4, 6, 7, 1])
+    expect(listTradeDocumentPartFields({ ...part, list: null as never })).toEqual([])
+  })
+
+  it('uses fallback row keys and accepts absent rows', () => {
+    vi.stubGlobal('crypto', {})
+    expect(ensureTradeDocumentPartRowKey({})).toMatch(/^row_/)
+    expect(ensureTradeDocumentPartRowKey({ __row_key: 4 })).toMatch(/^row_/)
+    expect(normalizeTradeDocumentPartRows(null)).toEqual([])
+    expect(normalizeTradeDocumentPartRows(undefined)).toEqual([])
+  })
+
+  it('resolves amount source priority and missing sources', () => {
+    const part = (...keys: string[]) => ({
+      partCode: 'p', title: 'P', list: { columns: keys.map((key) => ({ key, label: key, dataType: 'Decimal' })) },
+    }) as PartMetadata
+    expect(resolveTradeDocumentAmountSourceField(part('amount', 'line_amount'))).toBe('line_amount')
+    expect(resolveTradeDocumentAmountSourceField(part('amount'))).toBe('amount')
+    expect(resolveTradeDocumentAmountSourceField(part('memo'))).toBeNull()
+    expect(resolveTradeDocumentAmountSourceField({ ...part('amount'), list: null as never })).toBeNull()
+    expect(calculateTradeDocumentPartAmount(part('memo'), [])).toBeNull()
+    expect(calculateTradeDocumentAmount(null, null)).toBeNull()
+    expect(calculateTradeDocumentAmount([], {})).toBeNull()
+    expect(calculateTradeDocumentAmount([part('memo')], {})).toBeNull()
+  })
+
+  it('covers all decimal parsing outcomes', () => {
+    expect(calculateTradeDocumentPartAmount(linesPart, [
+      { line_amount: null },
+      { line_amount: Number.NaN },
+      { line_amount: Number.POSITIVE_INFINITY },
+      { line_amount: ' ' },
+      { line_amount: 'invalid' },
+      { line_amount: 2 },
+    ])).toBe(2)
+  })
+
+  it('skips amount sync and payload building when inputs are absent', () => {
+    syncTradeDocumentAmountField({ partsMeta: [], partsModel: null, model: null })
+    const untouched = { amount: 7 }
+    syncTradeDocumentAmountField({ partsMeta: [], partsModel: null, model: untouched })
+    expect(untouched.amount).toBe(7)
+    expect(buildTradeDocumentPartsPayload(null, null)).toBeNull()
+    const existing = { lines: { rows: [{ amount: 1 }] } }
+    expect(buildTradeDocumentPartsPayload([], existing)).toBe(existing)
+    expect(buildTradeDocumentPartsPayload([linesPart], null)).toEqual({ lines: { rows: [] } })
+  })
+
+  it('skips lookup hydration without pending ids and falls back to raw ids for blank labels', async () => {
+    const lookupStore = createLookupStore()
+    await hydrateTradeDocumentPartLookupRows({ entityTypeCode: 'trd.sales_invoice', partsMeta: null, partsModel: null, lookupStore })
+    await hydrateTradeDocumentPartLookupRows({ entityTypeCode: 'trd.sales_invoice', partsMeta: null, partsModel: {}, lookupStore })
+    await hydrateTradeDocumentPartLookupRows({ entityTypeCode: 'trd.sales_invoice', partsMeta: [linesPart], partsModel: null, lookupStore })
+    await hydrateTradeDocumentPartLookupRows({
+      entityTypeCode: 'trd.sales_invoice',
+      partsMeta: [linesPart],
+      partsModel: { lines: { rows: [{ item_id: itemIdA, source_document_id: 'bad', revenue_account_id: null }] } },
+      lookupStore,
+      behavior: { resolveLookupHint: () => false as never },
+    })
+    await hydrateTradeDocumentPartLookupRows({ entityTypeCode: 'trd.sales_invoice', partsMeta: [linesPart], partsModel: {}, lookupStore })
+    expect(lookupStore.ensureCatalogLabels).not.toHaveBeenCalled()
+
+    ;(lookupStore.labelForCatalog as ReturnType<typeof vi.fn>).mockReturnValue(' ')
+    const rows = [{ item_id: itemIdA }]
+    await hydrateTradeDocumentPartLookupRows({
+      entityTypeCode: 'trd.sales_invoice', partsMeta: [linesPart], partsModel: { lines: { rows } }, lookupStore,
+    })
+    expect(rows[0].item_id).toEqual({ id: itemIdA, display: itemIdA })
+  })
   it('keeps stable row keys and normalizes ordinals', () => {
     const firstRow: RecordPartRow = { item_id: itemIdA }
     const secondRow: RecordPartRow = { __row_key: 'persisted-key', item_id: itemIdB }

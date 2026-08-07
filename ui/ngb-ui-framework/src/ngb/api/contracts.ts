@@ -77,6 +77,64 @@ export type DocumentDto = {
   isMarkedForDeletion: boolean
 }
 
+export type DocumentActionKindDto = 'Primary' | 'Secondary' | 'Dangerous'
+export type DocumentActionExecutionKindDto = 'Command' | 'Derivation' | 'Navigation' | 'View'
+export type DocumentActionConfirmationModeDto = 'None' | 'Confirm' | 'RequireReason'
+
+export type DocumentActionDisabledReasonDto = {
+  code: string
+  message: string
+}
+
+export type DocumentActionConfirmationDto = {
+  mode: DocumentActionConfirmationModeDto
+  title: string
+  message: string
+  confirmLabel: string
+}
+
+export type DocumentActionTargetDto = {
+  code: string
+  parameters: Record<string, string | null>
+}
+
+export type DocumentActionDto = {
+  code: string
+  label: string
+  labelKey?: string | null
+  description?: string | null
+  icon?: string | null
+  kind: DocumentActionKindDto
+  executionKind: DocumentActionExecutionKindDto
+  order: number
+  isAllowed: boolean
+  disabledReasons: DocumentActionDisabledReasonDto[]
+  confirmation?: DocumentActionConfirmationDto | null
+  target?: DocumentActionTargetDto | null
+}
+
+export type DocumentEditorStateDto = {
+  document: DocumentDto
+  documentVersion: number
+  actions: DocumentActionDto[]
+}
+
+export type ExecuteDocumentActionRequestDto = {
+  expectedVersion: number
+  payload?: unknown
+  reason?: string | null
+}
+
+export type ExecuteDocumentActionResultDto = {
+  executionId: string
+  actionCode: string
+  document: DocumentDto
+  documentVersion: number
+  actions: DocumentActionDto[]
+  workCenterMayChange: boolean
+  createdDocument?: DocumentDto | null
+}
+
 export type GraphNodeDto = {
   nodeId: string
   kind: EntityKind
@@ -99,21 +157,6 @@ export type GraphEdgeDto = {
 export type RelationshipGraphDto = {
   nodes: GraphNodeDto[]
   edges: GraphEdgeDto[]
-}
-
-export type DocumentUiActionReasonDto = {
-  errorCode: string
-  message: string
-}
-
-export type DocumentUiEffectsDto = {
-  isPosted: boolean
-  canEdit: boolean
-  canPost: boolean
-  canUnpost: boolean
-  canRepost: boolean
-  canApply: boolean
-  disabledReasons?: Record<string, DocumentUiActionReasonDto[]> | null
 }
 
 export type EffectAccountDto = {
@@ -182,7 +225,6 @@ export type DocumentEffectsDto = {
   accountingEntries: AccountingEntryEffectDto[]
   operationalRegisterMovements: OperationalRegisterMovementEffectDto[]
   referenceRegisterWrites: ReferenceRegisterWriteEffectDto[]
-  ui?: DocumentUiEffectsDto | null
 }
 
 export type PageResponseDto<T> = {
@@ -212,14 +254,6 @@ export type DocumentLookupDto = {
   status: DocumentStatus
   isMarkedForDeletion: boolean
   number?: string | null
-}
-
-export type DocumentDerivationActionDto = {
-  code: string
-  name: string
-  fromTypeCode: string
-  toTypeCode: string
-  relationshipCodes: string[]
 }
 
 export type DocumentLookupAcrossTypesRequestDto = {

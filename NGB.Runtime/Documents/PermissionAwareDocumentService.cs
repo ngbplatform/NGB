@@ -144,15 +144,6 @@ public sealed class PermissionAwareDocumentService(
         return await inner.ExecuteActionAsync(documentType, id, actionCode, ct);
     }
 
-    public async Task<IReadOnlyList<DocumentDerivationActionDto>> GetDerivationActionsAsync(
-        string documentType,
-        Guid id,
-        CancellationToken ct)
-    {
-        await RequireAsync(documentType, NgbPermissionActions.View, ct);
-        return await inner.GetDerivationActionsAsync(documentType, id, ct);
-    }
-
     public async Task<RelationshipGraphDto> GetRelationshipGraphAsync(
         string documentType,
         Guid id,

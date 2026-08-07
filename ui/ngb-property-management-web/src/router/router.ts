@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { buildChartOfAccountsPath, createAuthGuard, ngbRouteAliasRedirectRoutes, NgbAccountingPeriodClosingPage, NgbChartOfAccountsPage, NgbDocumentEffectsPage, NgbDocumentFlowPage, NgbDocumentPrintPage, NgbGeneralJournalEntryEditPage, NgbGeneralJournalEntryListPage, NgbReportPage, NgbRoleEditorPage, NgbRolesPage, NgbUserEditorPage, NgbUsersPage, useAuthStore, useMainMenuStore } from 'ngb-ui-framework'
+import { buildChartOfAccountsPath, createAuthGuard, ngbRouteAliasRedirectRoutes, NgbAccountingPeriodClosingPage, NgbChartOfAccountsPage, NgbDocumentEffectsPage, NgbDocumentFlowPage, NgbDocumentPrintPage, NgbGeneralJournalEntryEditPage, NgbGeneralJournalEntryListPage, NgbNotificationPreferencesPage, NgbReportPage, NgbRoleEditorPage, NgbRolesPage, NgbUserEditorPage, NgbUsersPage, NgbWorkCenterPage, useAuthStore, useMainMenuStore } from '@ngbplatform/ui'
 import { createPmRouteFrameworkConfig } from './framework'
 import { resolvePermissionAwareLanding } from './permissionAwareLanding'
 
@@ -17,6 +17,8 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/home' },
     { path: '/home', component: HomePage },
+    { path: '/work-center', component: NgbWorkCenterPage, props: { vertical: 'pm' } },
+    { path: '/settings/notifications', component: NgbNotificationPreferencesPage },
 
     // Property Management: Accounting Policy is a single-record settings screen.
     { path: '/catalogs/pm.accounting_policy', component: AccountingPolicySettingsPage },

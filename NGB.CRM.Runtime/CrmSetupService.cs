@@ -271,12 +271,11 @@ public sealed class CrmSetupService(
 
     private async Task EnsureDefaultRolesAsync(CancellationToken ct)
     {
-        var existingCodes = (await roles.GetRolesAsync(ct))
-            .Select(static x => x.Code)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var existingRoles = (await roles.GetRolesAsync(ct))
+            .ToDictionary(static x => x.Code, StringComparer.OrdinalIgnoreCase);
 
         await EnsureRoleAsync(
-            existingCodes,
+            existingRoles,
             "crm.administrator",
             "CRM Administrator",
             "Full CRM operations, setup, reports, users, roles, health, and background jobs.",
@@ -284,7 +283,7 @@ public sealed class CrmSetupService(
             ct);
 
         await EnsureRoleAsync(
-            existingCodes,
+            existingRoles,
             "crm.manager",
             "CRM Manager",
             "Manage CRM customers, pipeline documents, quotes, reports, health, and operational review.",
@@ -292,7 +291,7 @@ public sealed class CrmSetupService(
             ct);
 
         await EnsureRoleAsync(
-            existingCodes,
+            existingRoles,
             "crm.sales_rep",
             "CRM Sales Representative",
             "Create and post CRM sales documents, maintain customer lookups, and execute CRM reports.",
@@ -328,18 +327,36 @@ public sealed class CrmSetupService(
     }
 
     private async Task EnsureRoleAsync(
-        IReadOnlySet<string> existingCodes,
+        IReadOnlyDictionary<string, RoleListItemDto> existingRoles,
         string code,
         string name,
         string description,
         IReadOnlyList<PermissionAssignmentDto> permissions,
         CancellationToken ct)
     {
-        if (existingCodes.Contains(code))
+        if (!existingRoles.TryGetValue(code, out var existingRole))
+        {
+            await roles.CreateRoleAsync(new CreateRoleRequestDto(code, name, description, permissions), ct);
+            return;
+        }
+
+        var currentRole = await roles.GetRoleAsync(existingRole.RoleId, ct);
+        var currentPermissionKeys = currentRole.Permissions
+            .Select(PermissionKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (permissions.All(permission => currentPermissionKeys.Contains(PermissionKey(permission))))
             return;
 
-        await roles.CreateRoleAsync(new CreateRoleRequestDto(code, name, description, permissions), ct);
+        var mergedPermissions = DistinctPermissions(currentRole.Permissions.Concat(permissions));
+        await roles.ReplaceRolePermissionsAsync(
+            existingRole.RoleId,
+            new ReplaceRolePermissionsRequestDto(mergedPermissions),
+            ct);
     }
+
+    private static string PermissionKey(PermissionAssignmentDto permission)
+        => $"{permission.ResourceKind}\u001f{permission.ResourceCode}\u001f{permission.ActionCode}";
 
     private async Task<Guid> UpsertRegisterAsync(string code, string name, CancellationToken ct)
     {
@@ -594,6 +611,7 @@ public sealed class CrmSetupService(
         NgbPermissionActions.MarkForDeletion,
         NgbPermissionActions.UnmarkForDeletion,
         NgbPermissionActions.Post,
+        NgbPermissionActions.Unpost,
         NgbPermissionActions.Repost,
         NgbPermissionActions.ViewEffects,
         NgbPermissionActions.ViewFlow,
@@ -609,6 +627,7 @@ public sealed class CrmSetupService(
         NgbPermissionActions.EditDraft,
         NgbPermissionActions.DeleteDraft,
         NgbPermissionActions.Post,
+        NgbPermissionActions.Unpost,
         NgbPermissionActions.ViewEffects,
         NgbPermissionActions.ViewFlow,
         NgbPermissionActions.Print

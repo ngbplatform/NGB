@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   lookupStore: { id: 'lookup-store' },
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   buildLookupFieldTargetUrl: mocks.buildLookupFieldTargetUrl,
   getCatalogTypeMetadata: mocks.getCatalogTypeMetadata,
   getDocumentTypeMetadata: mocks.getDocumentTypeMetadata,

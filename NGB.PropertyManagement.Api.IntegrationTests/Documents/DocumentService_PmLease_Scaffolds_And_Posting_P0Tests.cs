@@ -347,13 +347,6 @@ public sealed class DocumentService_PmLease_Scaffolds_And_Posting_P0Tests : IAsy
             effects.AccountingEntries.Should().BeEmpty();
             effects.OperationalRegisterMovements.Should().BeEmpty();
             effects.ReferenceRegisterWrites.Should().BeEmpty();
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.IsPosted.Should().BeFalse();
-            effects.Ui.CanEdit.Should().BeTrue();
-            effects.Ui.CanPost.Should().BeTrue();
-            effects.Ui.CanUnpost.Should().BeFalse();
-            effects.Ui.CanRepost.Should().BeFalse();
-            effects.Ui.CanApply.Should().BeFalse();
         }
         finally
         {

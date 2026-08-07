@@ -1,35 +1,9 @@
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { afterEach, expect, test } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h, ref } from 'vue'
 
 import NgbSelect from '../../../../src/ngb/primitives/NgbSelect.vue'
-
-function dispatchKey(target: HTMLElement, key: string) {
-  const keyCodeMap: Record<string, number> = {
-    ArrowDown: 40,
-    Enter: 13,
-    ' ': 32,
-  }
-  const keyCode = keyCodeMap[key] ?? 0
-
-  target.dispatchEvent(new KeyboardEvent('keydown', {
-    key,
-    code: key,
-    keyCode,
-    which: keyCode,
-    bubbles: true,
-    cancelable: true,
-  }))
-  target.dispatchEvent(new KeyboardEvent('keyup', {
-    key,
-    code: key,
-    keyCode,
-    which: keyCode,
-    bubbles: true,
-    cancelable: true,
-  }))
-}
 
 async function waitForUi(ms: number = 0) {
   await new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -99,7 +73,7 @@ test('opens from the keyboard and updates aria-expanded for assistive navigation
 
   button.focus()
   await waitForUi()
-  dispatchKey(button, 'ArrowDown')
+  await userEvent.keyboard('{ArrowDown}')
   await expect.element(view.getByText('Closed', { exact: true })).toBeVisible()
   expect(button.getAttribute('aria-expanded')).toBe('true')
 })

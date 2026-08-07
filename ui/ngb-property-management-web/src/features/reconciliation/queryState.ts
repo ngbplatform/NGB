@@ -1,6 +1,6 @@
 import type { RouteLocationNormalizedLoaded, Router } from 'vue-router'
 
-import { useRouteQueryMigration } from 'ngb-ui-framework'
+import { useRouteQueryMigration } from '@ngbplatform/ui'
 import type { ReconciliationMode, ReconciliationStatusFilter } from './types'
 
 export function normalizeReconciliationMode(value: unknown): ReconciliationMode {

@@ -25,6 +25,7 @@ using NGB.Runtime.Definitions.Validation;
 using NGB.Runtime.Dimensions;
 using NGB.Runtime.Documents.Storage;
 using NGB.Runtime.Documents;
+using NGB.Runtime.Documents.Actions;
 using NGB.Runtime.Documents.Derivations;
 using NGB.Runtime.Documents.Posting;
 using NGB.Runtime.Documents.Numbering;
@@ -45,6 +46,7 @@ using NGB.Runtime.Reporting.Datasets;
 using NGB.Runtime.ReferenceRegisters;
 using NGB.Runtime.Security;
 using NGB.Runtime.Ui;
+using NGB.Runtime.WorkCenter;
 using NGB.Tools.Exceptions;
 
 namespace NGB.Runtime.DependencyInjection;
@@ -190,6 +192,10 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IDocumentRelationshipService, DocumentRelationshipService>();
         services.TryAddScoped<IDocumentRelationshipGraphReadService, DocumentRelationshipGraphReadService>();
         services.TryAddScoped<IDocumentDerivationService, DocumentDerivationService>();
+        services.TryAddSingleton<DocumentActionRegistry>();
+        services.TryAddScoped<DocumentActionEvaluator>();
+        services.TryAddScoped<IDocumentActionQueryService, DocumentActionQueryService>();
+        services.TryAddScoped<IDocumentActionDispatcher, DocumentActionDispatcher>();
         services.TryAddScoped<IDocumentPostingActionResolver, DefinitionsDocumentPostingActionResolver>();
         services.TryAddScoped<IDocumentOperationalRegisterPostingActionResolver, DefinitionsDocumentOperationalRegisterPostingActionResolver>();
         services.TryAddScoped<IDocumentReferenceRegisterPostingActionResolver, DefinitionsDocumentReferenceRegisterPostingActionResolver>();
@@ -211,6 +217,16 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IDocumentPostingService, DocumentPostingService>();
         services.TryAddScoped<IDocumentSchemaValidationService, DocumentSchemaValidationService>();
         services.TryAddScoped<DocumentWriteEngine>();
+
+        // Work Center and transactional outbox projection.
+        services.TryAddSingleton<WorkCenterPreferenceDefinitionRegistry>();
+        services.TryAddScoped<WorkCenterPreferenceRecipientResolver>();
+        services.TryAddScoped<IWorkCenterTaskService, WorkCenterTaskService>();
+        services.TryAddScoped<INotificationService, NotificationService>();
+        services.TryAddScoped<IWorkCenterQueryService, WorkCenterQueryService>();
+        services.TryAddScoped<IOutboxProcessor, OutboxProcessor>();
+        services.TryAddSingleton<IWorkCenterRealtimeNotifier, NullWorkCenterRealtimeNotifier>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, WorkCenterOutboxHostedService>());
 
         // Document numbering (platform-wide)
         services.TryAddSingleton<IDocumentNumberFormatter, DefaultDocumentNumberFormatter>();

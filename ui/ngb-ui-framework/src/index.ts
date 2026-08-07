@@ -8,6 +8,36 @@ export { default as NgbPageHeader } from './ngb/site/NgbPageHeader.vue';
 export { default as NgbDashboardAsOfToolbar } from './ngb/site/NgbDashboardAsOfToolbar.vue';
 export { default as NgbDashboardStatusBanner } from './ngb/site/NgbDashboardStatusBanner.vue';
 export { default as NgbTrendChart } from './ngb/site/NgbTrendChart.vue';
+export { default as NgbWorkCenterDrawer } from './ngb/work-center/NgbWorkCenterDrawer.vue';
+export { default as NgbWorkCenterPage } from './ngb/work-center/NgbWorkCenterPage.vue';
+export { default as NgbNotificationPreferencesPage } from './ngb/work-center/NgbNotificationPreferencesPage.vue';
+export { useWorkCenter } from './ngb/work-center/useWorkCenter';
+export {
+  claimWorkCenterTask,
+  dismissWorkCenterNotification,
+  getNotificationPreferences,
+  getWorkCenterItems,
+  getWorkCenterSummary,
+  markWorkCenterNotificationRead,
+  markWorkCenterTaskRead,
+  snoozeWorkCenterTask,
+  updateNotificationPreferences,
+} from './ngb/work-center/api';
+export type {
+  NotificationChannel,
+  NotificationPreference,
+  NotificationSeverity,
+  WorkCenterAssignment,
+  WorkCenterItem,
+  WorkCenterItemKind,
+  WorkCenterPage,
+  WorkCenterPreferenceKind,
+  WorkCenterPriority,
+  WorkCenterQuery,
+  WorkCenterSource,
+  WorkCenterSummary,
+  WorkCenterTaskStatus,
+} from './ngb/work-center/types';
 export { useMainMenuStore } from './ngb/site/mainMenuStore';
 export { useDashboardPageState } from './ngb/site/useDashboardPageState';
 export {
@@ -260,7 +290,7 @@ export {
   configureNgbEditor,
   getConfiguredNgbEditor,
   maybeGetConfiguredNgbEditor,
-  resolveNgbEditorDocumentActions,
+  resolveNgbDocumentActionTarget,
   resolveNgbEditorEntityProfile,
   sanitizeNgbEditorModelForEditing,
   syncNgbEditorComputedDisplay,
@@ -282,13 +312,10 @@ export type {
   LookupSearchOptions,
 } from './ngb/lookup/config';
 export type {
-  EditorConfiguredDocumentAction,
-  EditorDocumentActionGroup,
   EditorComputedDisplayMode,
   EditorEntityBehaviorArgs,
   EditorEntityProfile,
   EditorFrameworkConfig,
-  ResolveEditorDocumentActionsArgs,
   EditorRoutingConfig,
 } from './ngb/editor/config';
 export type {
@@ -448,6 +475,9 @@ export {
 export {
   useEntityEditorHeaderActions,
 } from './ngb/editor/useEntityEditorHeaderActions';
+export {
+  useEntityEditorLifecycleConfirmations,
+} from './ngb/editor/useEntityEditorLifecycleConfirmations';
 export {
   useEntityEditorLeaveGuard,
 } from './ngb/editor/useEntityEditorLeaveGuard';
@@ -729,8 +759,6 @@ export type {
   DocumentHeaderActionItem,
   DocumentHeaderActionKey,
   DocumentRecord,
-  DocumentUiActionReason,
-  DocumentUiEffects,
   EditorAuditBehavior,
   EditorAuditLoadOptions,
   EditorChangeReason,
@@ -849,10 +877,10 @@ export {
 } from './ngb/api/catalogs';
 export {
   createDraft,
-  deriveDocument,
   deleteDraft,
+  executeDocumentAction,
   getDocumentById,
-  getDocumentDerivationActions,
+  getDocumentEditorState,
   getDocumentEffects,
   getDocumentGraph,
   getDocumentPage,
@@ -882,18 +910,25 @@ export type {
   ChartOfAccountsLookupSourceDto,
   ColumnMetadataDto,
   DocumentCapabilitiesDto,
+  DocumentActionConfirmationDto,
+  DocumentActionConfirmationModeDto,
+  DocumentActionDisabledReasonDto,
+  DocumentActionDto,
+  DocumentActionExecutionKindDto,
+  DocumentActionKindDto,
+  DocumentActionTargetDto,
   DocumentDto,
-  DocumentDerivationActionDto,
+  DocumentEditorStateDto,
   DocumentEffectsDto,
   DocumentLookupSourceDto,
   DocumentPresentationDto,
   DocumentStatus,
   DocumentTypeMetadataDto,
-  DocumentUiActionReasonDto,
-  DocumentUiEffectsDto,
   EffectAccountDto,
   EffectDimensionValueDto,
   EffectResourceValueDto,
+  ExecuteDocumentActionRequestDto,
+  ExecuteDocumentActionResultDto,
   FieldMetadataDto,
   FieldValidationDto,
   FormMetadataDto,

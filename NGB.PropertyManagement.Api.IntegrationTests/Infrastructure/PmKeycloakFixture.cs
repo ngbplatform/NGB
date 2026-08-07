@@ -175,6 +175,8 @@ public static class PmKeycloakTestUsers
     public static readonly PmKeycloakTestUser Admin = new("pm-admin", "PmAdmin!2026");
 
     public static readonly PmKeycloakTestUser Analyst = new("pm-analyst", "PmAnalyst!2026");
+
+    public static readonly PmKeycloakTestUser Viewer = new("pm-viewer", "PmViewer!2026");
 }
 
 public static class PmKeycloakTestClients

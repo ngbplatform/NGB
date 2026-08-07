@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { NgbBadge, NgbIcon, NgbPageHeader } from 'ngb-ui-framework'
+import { NgbBadge, NgbIcon, NgbPageHeader } from '@ngbplatform/ui'
 
 import { createAgencyBillingHomeData } from '../home/homeData'
 

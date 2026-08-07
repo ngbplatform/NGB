@@ -1,4 +1,4 @@
-import { executeReport, ReportRowKind, type ReportExecutionResponseDto } from 'ngb-ui-framework'
+import { executeReport, ReportRowKind, type ReportExecutionResponseDto } from '@ngbplatform/ui'
 
 export type PmBuildingSummaryDto = {
   buildingDisplay: string

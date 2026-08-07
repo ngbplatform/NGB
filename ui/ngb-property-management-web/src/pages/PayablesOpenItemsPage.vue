@@ -15,7 +15,7 @@ import {
   useGuidQueryParam,
   useRouteLookupSelection,
   useToasts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import {
   applyPayablesBatch,

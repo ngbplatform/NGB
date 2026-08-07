@@ -9,6 +9,7 @@ import type { HealthClient } from '../ngb/healthClient.ts';
 import type { MetadataClient } from '../ngb/metadataClient.ts';
 import type { PeriodClosingClient } from '../ngb/periodClosingClient.ts';
 import type { ReportsClient } from '../ngb/reportsClient.ts';
+import type { WorkCenterClient } from '../ngb/workCenterClient.ts';
 
 export interface NgbScenarioContext {
   readonly env: NgbPerfEnv;
@@ -22,6 +23,7 @@ export interface NgbScenarioContext {
   readonly admin: AdminClient;
   readonly audit: AuditClient;
   readonly periodClosing: PeriodClosingClient;
+  readonly workCenter: WorkCenterClient;
 }
 
 export interface NgbAuthSetupData {

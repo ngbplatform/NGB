@@ -1,5 +1,5 @@
 import { onBeforeUnmount, onMounted, type ComputedRef } from 'vue'
-import { readStorageString, removeStorageItem, writeStorageString } from 'ngb-ui-framework'
+import { readStorageString, removeStorageItem, writeStorageString } from '@ngbplatform/ui'
 
 type UseOpenItemsNavigationRefreshArgs = {
   enabled: ComputedRef<boolean>

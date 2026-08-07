@@ -43,6 +43,7 @@ type UseEntityEditorHeaderActionsArgs = {
   onCopyShareLink: ActionHandler;
   extraPrimaryActions?: ComputedRef<DocumentHeaderActionItem[]>;
   extraMoreActionGroups?: ComputedRef<DocumentHeaderActionGroup[]>;
+  suppressBuiltInDocumentLifecycleActions?: ComputedRef<boolean>;
   extraActionHandlers?: Record<string, ActionHandler>;
   onUnhandledAction?: (action: string) => void | Promise<void>;
 };
@@ -101,7 +102,8 @@ export function useEntityEditorHeaderActions(args: UseEntityEditorHeaderActionsA
       });
     }
 
-    if (args.canMarkForDeletion.value || args.canUnmarkForDeletion.value) {
+    if (!args.suppressBuiltInDocumentLifecycleActions?.value
+        && (args.canMarkForDeletion.value || args.canUnmarkForDeletion.value)) {
       actions.push({
         key: 'toggleMarkForDeletion',
         title: args.canUnmarkForDeletion.value ? 'Unmark for deletion' : 'Mark for deletion',
@@ -117,7 +119,8 @@ export function useEntityEditorHeaderActions(args: UseEntityEditorHeaderActionsA
       disabled: args.loading.value || args.saving.value || !args.canSave.value,
     });
 
-    if (args.canPost.value || args.canUnpost.value) {
+    if (!args.suppressBuiltInDocumentLifecycleActions?.value
+        && (args.canPost.value || args.canUnpost.value)) {
       actions.push({
         key: 'togglePost',
         title: args.canUnpost.value ? 'Unpost' : 'Post',

@@ -53,4 +53,21 @@ public sealed class PmApi_KeycloakAuthentication_P0Tests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
+
+    [Fact]
+    public async Task Work_Center_Hub_Accepts_Real_Keycloak_Token_From_Query_String()
+    {
+        await using var factory = new PmApiFactory(_fixture);
+        using var client = factory.CreateAnonymousClient();
+        var accessToken = await _fixture.Keycloak.GetAccessTokenAsync(
+            clientId: PmKeycloakTestClients.WebClient);
+
+        using var response = await client.GetAsync(
+            $"/hubs/work-center?access_token={Uri.EscapeDataString(accessToken)}");
+        using var nonHubResponse = await client.GetAsync(
+            $"/api/main-menu?access_token={Uri.EscapeDataString(accessToken)}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        nonHubResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
 }

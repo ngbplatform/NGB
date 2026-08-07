@@ -3,9 +3,14 @@ import type {
   ReportExecutionRequestDto,
   ReportVariantDto,
 } from '../../../ngb-ui-framework/src/ngb/reporting/types'
+import type {
+  NotificationPreference,
+  WorkCenterItem,
+} from '../../../ngb-ui-framework/src/ngb/work-center/types'
 import type { ChartOfAccountsUpsertRequestDto } from '../../../ngb-ui-framework/src/ngb/accounting/types'
 import type {
   CatalogItemDto,
+  DocumentActionDto,
   DocumentDto,
 } from '../../../ngb-ui-framework/src/ngb/api/contracts'
 import type {
@@ -149,6 +154,10 @@ type MockPayablesOpenItemsWorkflowApisOptions = {
   suggestFailure?: MockApiFailure | null
   executeFailure?: MockApiFailure | null
   unapplyFailure?: MockApiFailure | null
+}
+
+export type MockWorkCenterApisResult = {
+  getPreferenceUpdates: () => Array<{ code: string; channel: string; isEnabled: boolean }>
 }
 
 async function waitForMockDelay(delayMs?: number): Promise<void> {
@@ -549,6 +558,172 @@ export async function mockCommonPmApis(page: Page): Promise<void> {
   await page.route('**/api/main-menu', async (route) => {
     await fulfillJson(route, mainMenuFixture)
   })
+
+  await page.route('**/api/work-center/summary**', async (route) => {
+    await fulfillJson(route, {
+      attentionCount: 0,
+      openTaskCount: 0,
+      overdueTaskCount: 0,
+      notificationCount: 0,
+      unreadNotificationCount: 0,
+      version: 1,
+    })
+  })
+}
+
+export async function mockWorkCenterApis(page: Page): Promise<MockWorkCenterApisResult> {
+  await mockCommonPmApis(page)
+
+  let taskClaimed = false
+  let notificationDismissed = false
+  let notificationRead = false
+  const preferenceUpdates: Array<{ code: string; channel: string; isEnabled: boolean }> = []
+  let preferences: NotificationPreference[] = [
+    {
+      code: 'pm.payment.review',
+      kind: 'Task',
+      displayName: 'Review unapplied payment',
+      category: 'Property Management Tasks',
+      channel: 'InApp',
+      isEnabled: true,
+      defaultEnabled: true,
+      userCanDisable: true,
+      isMandatory: false,
+    },
+    {
+      code: 'security.access.changed',
+      kind: 'Notification',
+      displayName: 'Security access changes',
+      category: 'Platform Notifications',
+      channel: 'InApp',
+      isEnabled: true,
+      defaultEnabled: true,
+      userCanDisable: false,
+      isMandatory: true,
+    },
+  ]
+
+  const task = (): WorkCenterItem => ({
+    id: '11111111-aaaa-4111-8111-111111111111',
+    kind: 'Task',
+    code: 'pm.payment.review',
+    title: 'Review unapplied payment',
+    description: 'A payment needs to be matched before the period can close.',
+    source: {
+      resourceKind: 'Document',
+      resourceCode: 'pm.receivable_payment',
+      entityId: 'dddd4444-4444-4444-8444-444444444444',
+      title: 'Receivable Payment RP-2026-0007',
+      subtitle: 'Northwind Apartments',
+    },
+    priority: 'High',
+    severity: null,
+    taskStatus: taskClaimed ? 'InProgress' : 'Open',
+    sortAtUtc: '2026-07-26T18:00:00Z',
+    dueAtUtc: '2026-07-25T18:00:00Z',
+    isOverdue: true,
+    isRead: false,
+    snoozedUntilUtc: null,
+    assignment: {
+      assignedUserId: null,
+      assignedRoleId: '11111111-1111-4111-8111-111111111111',
+      claimedByUserId: taskClaimed ? 'ngb-e2e-user' : null,
+      isRoleAssigned: true,
+    },
+    primaryActionCode: 'post',
+    target: null,
+    version: taskClaimed ? 2 : 1,
+  })
+
+  const notification = (): WorkCenterItem => ({
+    id: '22222222-bbbb-4222-8222-222222222222',
+    kind: 'Notification',
+    code: 'pm.payment.exception',
+    title: 'Payment exception detected',
+    description: 'The imported payment reference could not be reconciled.',
+    source: {
+      resourceKind: 'Document',
+      resourceCode: 'pm.receivable_payment',
+      entityId: 'dddd4444-4444-4444-8444-444444444444',
+      title: 'Receivable Payment RP-2026-0007',
+      subtitle: null,
+    },
+    priority: null,
+    severity: 'Warning',
+    taskStatus: null,
+    sortAtUtc: '2026-07-26T18:05:00Z',
+    dueAtUtc: null,
+    isOverdue: false,
+    isRead: notificationRead,
+    snoozedUntilUtc: null,
+    assignment: null,
+    primaryActionCode: null,
+    target: null,
+    version: notificationRead ? 2 : 1,
+  })
+
+  await page.route('**/api/work-center/summary**', async (route) => {
+    await fulfillJson(route, {
+      attentionCount: 1 + (!notificationDismissed && !notificationRead ? 1 : 0),
+      openTaskCount: 1,
+      overdueTaskCount: 1,
+      notificationCount: notificationDismissed ? 0 : 1,
+      unreadNotificationCount: !notificationDismissed && !notificationRead ? 1 : 0,
+      version: 4,
+    })
+  })
+
+  await page.route('**/api/work-center/items**', async (route) => {
+    const items = [task(), ...(!notificationDismissed ? [notification()] : [])]
+    const tab = new URL(route.request().url()).searchParams.get('tab')
+    await fulfillJson(route, {
+      items: tab === 'tasks'
+        ? items.filter((item) => item.kind === 'Task')
+        : tab === 'notifications'
+          ? items.filter((item) => item.kind === 'Notification')
+          : items,
+      nextCursor: null,
+      limit: 30,
+    })
+  })
+
+  await page.route('**/api/work-center/tasks/*/claim', async (route) => {
+    taskClaimed = true
+    await fulfillEmpty(route)
+  })
+
+  await page.route('**/api/work-center/notifications/*/read', async (route) => {
+    notificationRead = true
+    await fulfillEmpty(route)
+  })
+
+  await page.route('**/api/work-center/notifications/*/dismiss', async (route) => {
+    notificationDismissed = true
+    await fulfillEmpty(route)
+  })
+
+  await page.route('**/api/me/notification-preferences', async (route) => {
+    if (route.request().method() === 'GET') {
+      await fulfillJson(route, preferences)
+      return
+    }
+
+    const payload = parseRequestJson<{
+      preferences?: Array<{ code: string; channel: string; isEnabled: boolean }>
+    }>(route)
+    const updates = payload?.preferences ?? []
+    preferenceUpdates.push(...updates)
+    preferences = preferences.map((preference) => {
+      const update = updates.find((item) =>
+        item.code === preference.code && item.channel === preference.channel)
+      return update ? { ...preference, isEnabled: update.isEnabled } : preference
+    })
+    await fulfillEmpty(route)
+  })
+
+  return {
+    getPreferenceUpdates: () => [...preferenceUpdates],
+  }
 }
 
 export async function mockCommandPaletteApis(page: Page): Promise<void> {
@@ -994,6 +1169,101 @@ export async function mockGenericMetadataCatalogApis(
   })
 }
 
+function createDocumentAction(
+  code: string,
+  label: string,
+  order: number,
+  overrides: Partial<DocumentActionDto> = {},
+): DocumentActionDto {
+  return {
+    code,
+    label,
+    labelKey: null,
+    description: null,
+    icon: 'play',
+    kind: 'Secondary',
+    executionKind: 'Command',
+    order,
+    isAllowed: true,
+    disabledReasons: [],
+    confirmation: null,
+    target: null,
+    ...overrides,
+  }
+}
+
+function createReceivablePaymentActions(document: DocumentDto): DocumentActionDto[] {
+  const actions: DocumentActionDto[] = []
+
+  if (document.status === 1 && !document.isMarkedForDeletion) {
+    actions.push(
+      createDocumentAction('post', 'Post', 100, {
+        icon: 'upload',
+        kind: 'Primary',
+      }),
+      createDocumentAction('mark_for_deletion', 'Mark for deletion', 800, {
+        icon: 'trash-2',
+        kind: 'Dangerous',
+        confirmation: {
+          mode: 'Confirm',
+          title: 'Mark for deletion?',
+          message: 'The draft will be hidden from active work.',
+          confirmLabel: 'Mark',
+        },
+      }),
+    )
+  } else if (document.status === 2) {
+    actions.push(
+      createDocumentAction('unpost', 'Unpost', 110, {
+        icon: 'undo',
+        kind: 'Dangerous',
+        confirmation: {
+          mode: 'Confirm',
+          title: 'Unpost document?',
+          message: 'Existing effects will be reversed.',
+          confirmLabel: 'Unpost',
+        },
+      }),
+      createDocumentAction('repost', 'Repost', 120, { icon: 'refresh-cw' }),
+    )
+  } else if (document.isMarkedForDeletion) {
+    actions.push(createDocumentAction('unmark_for_deletion', 'Restore', 810, {
+      icon: 'rotate-ccw',
+    }))
+  }
+
+  actions.push(
+    createDocumentAction('view_effects', 'Effects', 900, {
+      executionKind: 'View',
+      target: { code: 'document.effects', parameters: {} },
+    }),
+    createDocumentAction('view_flow', 'Document flow', 910, {
+      executionKind: 'View',
+      target: { code: 'document.flow', parameters: {} },
+    }),
+    createDocumentAction('view_audit', 'Audit', 920, {
+      executionKind: 'View',
+      target: { code: 'document.audit', parameters: {} },
+    }),
+    createDocumentAction('print', 'Print', 930, {
+      executionKind: 'View',
+      target: { code: 'document.print', parameters: {} },
+    }),
+  )
+
+  return actions
+}
+
+function applyReceivablePaymentAction(document: DocumentDto, actionCode: string): DocumentDto {
+  if (actionCode === 'post' || actionCode === 'repost') {
+    return { ...document, status: 2, isMarkedForDeletion: false }
+  }
+  if (actionCode === 'unpost') return { ...document, status: 1 }
+  if (actionCode === 'mark_for_deletion') return { ...document, isMarkedForDeletion: true }
+  if (actionCode === 'unmark_for_deletion') return { ...document, isMarkedForDeletion: false }
+  return document
+}
+
 export async function mockGenericMetadataDocumentApis(
   page: Page,
   options: MockGenericMetadataDocumentApisOptions = {},
@@ -1053,6 +1323,47 @@ export async function mockGenericMetadataDocumentApis(
         await fulfillJson(route, created)
         return
       }
+    }
+
+    const editorStateMatch = pathname.match(
+      /^\/api\/documents\/pm\.receivable_payment\/([^/]+)\/editor-state$/,
+    )
+    if (editorStateMatch && request.method() === 'GET') {
+      await waitForMockDelay(options.detailsDelayMs)
+      if (options.detailsFailure) {
+        await fulfillApiFailure(route, options.detailsFailure, 'Receivable payment details unavailable')
+        return
+      }
+
+      const documentId = editorStateMatch[1] ?? ''
+      const current = documents.find((entry) => entry.id === documentId) ?? createdReceivablePaymentFixture
+      await fulfillJson(route, {
+        document: current,
+        documentVersion: 1,
+        actions: createReceivablePaymentActions(current),
+      })
+      return
+    }
+
+    const actionMatch = pathname.match(
+      /^\/api\/documents\/pm\.receivable_payment\/([^/]+)\/actions\/([^/]+)$/,
+    )
+    if (actionMatch && request.method() === 'POST') {
+      const documentId = actionMatch[1] ?? ''
+      const actionCode = decodeURIComponent(actionMatch[2] ?? '')
+      const current = documents.find((entry) => entry.id === documentId) ?? createdReceivablePaymentFixture
+      const updated = applyReceivablePaymentAction(current, actionCode)
+      documents = documents.map((entry) => (entry.id === documentId ? updated : entry))
+      await fulfillJson(route, {
+        executionId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        actionCode,
+        document: updated,
+        documentVersion: 2,
+        actions: createReceivablePaymentActions(updated),
+        workCenterMayChange: true,
+        createdDocument: null,
+      })
+      return
     }
 
     const graphMatch = pathname.match(/^\/api\/documents\/pm\.receivable_payment\/([^/]+)\/graph$/)
@@ -1450,6 +1761,7 @@ export async function mockChartOfAccountsApis(page: Page): Promise<void> {
 export async function rejectUnhandledApiRequests(page: Page, allowedPathPrefixes: readonly string[]): Promise<void> {
   const implicitAllowedPathPrefixes = [
     '/api/security/me/access',
+    '/api/work-center',
   ]
   const effectiveAllowedPathPrefixes = [
     ...implicitAllowedPathPrefixes,

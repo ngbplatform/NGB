@@ -1,7 +1,9 @@
 import { normalizeDocumentStatusValue } from '../editor/documentStatus'
 import { httpDelete, httpGet, httpPost, httpPut } from './http'
 import type {
-  DocumentDerivationActionDto,
+  DocumentEditorStateDto,
+  ExecuteDocumentActionRequestDto,
+  ExecuteDocumentActionResultDto,
   DocumentDto,
   DocumentEffectsDto,
   DocumentLookupAcrossTypesRequestDto,
@@ -43,6 +45,12 @@ function normalizeDocumentPage(page: PageResponseDto<DocumentDto>): PageResponse
   }
 }
 
+const editorStateRequests = new Map<string, Promise<DocumentEditorStateDto>>()
+
+function documentKey(documentType: string, id: string): string {
+  return `${documentType}\u0000${id}`
+}
+
 export async function getDocumentTypeMetadata(documentType: string): Promise<DocumentTypeMetadataDto> {
   return await httpGet<DocumentTypeMetadataDto>(`/api/documents/${encodeURIComponent(documentType)}/metadata`)
 }
@@ -65,13 +73,47 @@ export async function getDocumentById(documentType: string, id: string): Promise
   return normalizeDocumentDto(document)
 }
 
-export async function getDocumentDerivationActions(
+export async function getDocumentEditorState(
   documentType: string,
   id: string,
-): Promise<DocumentDerivationActionDto[]> {
-  return await httpGet<DocumentDerivationActionDto[]>(
-    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/derive-actions`,
+): Promise<DocumentEditorStateDto> {
+  const key = documentKey(documentType, id)
+  const pending = editorStateRequests.get(key)
+  if (pending) return await pending
+
+  const request = httpGet<DocumentEditorStateDto>(
+    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/editor-state`,
+  ).then((state) => ({
+    ...state,
+    document: normalizeDocumentDto(state.document),
+  }))
+  editorStateRequests.set(key, request)
+
+  try {
+    return await request
+  } finally {
+    editorStateRequests.delete(key)
+  }
+}
+
+export async function executeDocumentAction(
+  documentType: string,
+  id: string,
+  actionCode: string,
+  request: ExecuteDocumentActionRequestDto,
+  idempotencyKey: string = globalThis.crypto.randomUUID(),
+): Promise<ExecuteDocumentActionResultDto> {
+  const result = await httpPost<ExecuteDocumentActionResultDto>(
+    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/actions/${encodeURIComponent(actionCode)}`,
+    request,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
   )
+
+  return {
+    ...result,
+    document: normalizeDocumentDto(result.document),
+    createdDocument: result.createdDocument ? normalizeDocumentDto(result.createdDocument) : result.createdDocument,
+  }
 }
 
 export async function lookupDocumentsAcrossTypes(
@@ -88,25 +130,6 @@ export async function getDocumentLookupByIds(
 
 export async function createDraft(documentType: string, payload: RecordPayload): Promise<DocumentDto> {
   const document = await httpPost<DocumentDto>(`/api/documents/${encodeURIComponent(documentType)}`, payload)
-  return normalizeDocumentDto(document)
-}
-
-export async function deriveDocument(
-  targetDocumentType: string,
-  request: {
-    sourceDocumentId: string
-    relationshipType: string
-    initialPayload?: RecordPayload | null
-  },
-): Promise<DocumentDto> {
-  const document = await httpPost<DocumentDto>(
-    `/api/documents/${encodeURIComponent(targetDocumentType)}/derive`,
-    {
-      sourceDocumentId: request.sourceDocumentId,
-      relationshipType: request.relationshipType,
-      initialPayload: request.initialPayload ?? null,
-    },
-  )
   return normalizeDocumentDto(document)
 }
 

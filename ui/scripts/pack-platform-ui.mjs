@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -8,13 +9,14 @@ import { fileURLToPath } from 'node:url'
 
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = join(uiRoot, 'ngb-ui-framework')
+const crmRoot = join(uiRoot, 'ngb-crm-web')
 const outputRoot = resolve(uiRoot, '..', 'artifacts', 'npm')
 const sourceManifest = JSON.parse(await readFile(join(sourceRoot, 'package.json'), 'utf8'))
 const requestedVersion = readVersionArgument(process.argv.slice(2)) ?? sourceManifest.version
 
 if (requestedVersion !== sourceManifest.version) {
   throw new Error(
-    `Requested version ${requestedVersion} does not match ngb-ui-framework version ${sourceManifest.version}.`,
+    `Requested version ${requestedVersion} does not match @ngbplatform/ui source version ${sourceManifest.version}.`,
   )
 }
 
@@ -55,6 +57,7 @@ const packageManifest = {
   },
   dependencies: {
     '@headlessui/vue': sourceManifest.dependencies['@headlessui/vue'],
+    '@microsoft/signalr': sourceManifest.dependencies['@microsoft/signalr'],
     echarts: sourceManifest.dependencies.echarts,
     'vue-echarts': sourceManifest.dependencies['vue-echarts'],
   },
@@ -109,8 +112,37 @@ try {
     join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`),
     join(outputRoot, 'ngbplatform-ui-local.tgz'),
   )
+  await verifyCrmConsumerLock(
+    join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`),
+    requestedVersion,
+  )
 } finally {
   await rm(stagingRoot, { recursive: true, force: true })
+}
+
+async function verifyCrmConsumerLock(tarballPath, version) {
+  const crmManifest = JSON.parse(await readFile(join(crmRoot, 'package.json'), 'utf8'))
+  const crmLock = JSON.parse(await readFile(join(crmRoot, 'package-lock.json'), 'utf8'))
+  const locked = crmLock.packages?.['node_modules/@ngbplatform/ui']
+  const expectedResolved = `https://registry.npmjs.org/@ngbplatform/ui/-/ui-${version}.tgz`
+  const expectedIntegrity = `sha512-${createHash('sha512')
+    .update(await readFile(tarballPath))
+    .digest('base64')}`
+
+  if (crmManifest.dependencies?.['@ngbplatform/ui'] !== version) {
+    throw new Error(`CRM must reference @ngbplatform/ui ${version} exactly.`)
+  }
+  if (
+    crmLock.packages?.['']?.dependencies?.['@ngbplatform/ui'] !== version
+    || locked?.version !== version
+    || locked?.resolved !== expectedResolved
+    || locked?.integrity !== expectedIntegrity
+  ) {
+    throw new Error(
+      `CRM package-lock must reference the exact @ngbplatform/ui ${version} release candidate `
+        + 'including its registry URL and SHA-512 integrity.',
+    )
+  }
 }
 
 function readVersionArgument(args) {

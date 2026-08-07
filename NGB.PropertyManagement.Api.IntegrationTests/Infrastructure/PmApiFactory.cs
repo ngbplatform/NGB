@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 
-public sealed class PmApiFactory : WebApplicationFactory<Program>
+public class PmApiFactory : WebApplicationFactory<Program>
 {
     private const string TestSeqServerUrl = "http://127.0.0.1:5341";
 

@@ -1,8 +1,8 @@
 import { createApp } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { configureNgbCommandPalette, configureNgbEditor, configureNgbLookup, configureNgbMetadata, configureNgbReporting, createDefaultNgbLookupConfig, createDefaultNgbReportingConfig, useAuthStore } from 'ngb-ui-framework'
+import { configureNgbCommandPalette, configureNgbEditor, configureNgbLookup, configureNgbMetadata, configureNgbReporting, createDefaultNgbLookupConfig, createDefaultNgbReportingConfig, useAuthStore } from '@ngbplatform/ui'
 
-import 'ngb-ui-framework/styles'
+import '@ngbplatform/ui/styles'
 
 async function bootstrap(): Promise<void> {
   const pinia = createPinia()

@@ -12,7 +12,7 @@ import {
   NgbPageHeader,
   NgbTrendChart,
   useDashboardPageState,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { loadHomeDashboard, type TradeHomeDashboardData } from '../home/homeData'
 

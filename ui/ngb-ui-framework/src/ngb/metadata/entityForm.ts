@@ -3,6 +3,45 @@ import { resolveNgbMetadataFormBehavior } from './config'
 import { tryExtractReferenceId } from './entityModel'
 import type { EntityFormModel, FieldHiddenArgs, FieldMetadata, FieldReadonlyArgs, FormMetadata, JsonValue, MetadataFormBehavior, RecordFields } from './types'
 
+const ISO_DATE_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})?$/
+
+function padDateTimePart(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+export function toDateTimeLocalInputValue(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+
+  const normalized = value.trim()
+  if (!ISO_DATE_TIME_RE.test(normalized)) return value
+
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return value
+
+  const minuteValue = [
+    date.getFullYear(),
+    padDateTimePart(date.getMonth() + 1),
+    padDateTimePart(date.getDate()),
+  ].join('-') + `T${padDateTimePart(date.getHours())}:${padDateTimePart(date.getMinutes())}`
+
+  if (date.getSeconds() === 0 && date.getMilliseconds() === 0) return minuteValue
+
+  const secondValue = `${minuteValue}:${padDateTimePart(date.getSeconds())}`
+  return date.getMilliseconds() === 0
+    ? secondValue
+    : `${secondValue}.${String(date.getMilliseconds()).padStart(3, '0')}`
+}
+
+export function toUtcDateTimePayloadValue(value: unknown): JsonValue {
+  if (typeof value !== 'string') return value as JsonValue
+
+  const normalized = value.trim()
+  if (!ISO_DATE_TIME_RE.test(normalized)) return value
+
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? value : date.toISOString()
+}
+
 export function flattenFormFields(form?: FormMetadata | null): FieldMetadata[] {
   if (!form?.sections) return []
 
@@ -56,6 +95,10 @@ function normalizeValue(field: FieldMetadata, value: unknown): JsonValue {
   normalized = tryFlattenRef(normalized)
 
   if (normalized === null) return null
+
+  if (field.uiControl === 7 || dataTypeKind(field.dataType) === 'DateTime') {
+    return toUtcDateTimePayloadValue(normalized)
+  }
 
   switch (field.uiControl) {
     case 5:

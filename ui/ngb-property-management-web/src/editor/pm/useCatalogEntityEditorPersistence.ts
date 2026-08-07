@@ -14,7 +14,7 @@ import {
   unmarkCatalogForDeletion,
   updateCatalog,
   type CatalogEntityPersistenceAdapter,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 import type { PmEntityEditorPersistenceContext } from './pmEntityEditorPersistenceContext'
 
 export function useCatalogEntityEditorPersistence(args: PmEntityEditorPersistenceContext): CatalogEntityPersistenceAdapter {

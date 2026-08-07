@@ -149,7 +149,7 @@ test('exposes named shell controls and labeled drawer dialogs for platform chrom
   const view = await render(SiteShellAccessibilityHarness)
 
   await expect.element(view.getByRole('button', { name: 'Main menu' })).toBeVisible()
-  await expect.element(view.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'Work Center' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Help' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Settings' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible()

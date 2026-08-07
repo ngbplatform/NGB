@@ -1,0 +1,296 @@
+using System.Text.Json;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
+using NGB.Contracts.Metadata;
+using NGB.Contracts.Services;
+using NGB.Core.Events;
+using NGB.PropertyManagement.Documents;
+using NGB.PropertyManagement.Runtime.DocumentActions;
+using NGB.PropertyManagement.Runtime.Receivables;
+using NGB.PropertyManagement.Runtime.WorkCenter;
+using Xunit;
+
+namespace NGB.PropertyManagement.Api.IntegrationTests.WorkCenter;
+
+public sealed class PropertyManagementWorkCenterPolicyTests
+{
+    private static readonly DateTimeOffset Now =
+        new(2026, 7, 26, 19, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void Exposes_document_action_completed_event_type()
+    {
+        CreatePolicy().Policy.EventType.Should().Be("ngb.document.action.completed");
+    }
+
+    [Theory]
+    [InlineData("pm.unrelated", "post")]
+    [InlineData(PropertyManagementCodes.ReceivablePayment, "approve")]
+    [InlineData(PropertyManagementCodes.ReceivableApply, "approve")]
+    public async Task Ignores_unrelated_document_action_events(string documentType, string actionCode)
+    {
+        var sut = CreatePolicy();
+
+        await sut.Policy.HandleAsync(Context(Guid.NewGuid(), documentType, actionCode), CancellationToken.None);
+
+        sut.Documents.VerifyNoOtherCalls();
+        sut.TypedDocuments.VerifyNoOtherCalls();
+        sut.Availability.VerifyNoOtherCalls();
+        sut.Tasks.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Unposting_payment_cancels_open_apply_task_case_insensitively()
+    {
+        var paymentId = Guid.NewGuid();
+        var sut = CreatePolicy();
+        sut.Tasks
+            .Setup(service => service.CancelByDeduplicationKeyAsync(
+                $"pm:receivable-payment:{paymentId:D}:apply",
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+
+        await sut.Policy.HandleAsync(
+            Context(paymentId, PropertyManagementCodes.ReceivablePayment.ToUpperInvariant(), "UNPOST"),
+            CancellationToken.None);
+
+        sut.Tasks.VerifyAll();
+        sut.Documents.VerifyNoOtherCalls();
+        sut.Availability.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("post", "Payment RP-100", "RP-100", "Payment RP-100")]
+    [InlineData("repost", null, "RP-101", "RP-101")]
+    [InlineData("post", null, null, "Receivable payment")]
+    public async Task Posting_payment_with_remaining_credit_creates_apply_task(
+        string actionCode,
+        string? display,
+        string? number,
+        string expectedSourceTitle)
+    {
+        var paymentId = Guid.NewGuid();
+        var sut = CreatePolicy();
+        var document = Document(paymentId, display, number);
+        CreateWorkCenterTaskRequest? captured = null;
+        sut.Documents
+            .Setup(service => service.GetByIdAsync(
+                PropertyManagementCodes.ReceivablePayment,
+                paymentId,
+                CancellationToken.None))
+            .ReturnsAsync(document);
+        sut.Availability
+            .Setup(source => source.EvaluateAsync(
+                PropertyManagementCodes.ReceivablePayment,
+                paymentId,
+                DocumentStatus.Posted,
+                CancellationToken.None))
+            .ReturnsAsync(DocumentActionAvailabilityResult.Allowed);
+        sut.Tasks
+            .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
+            .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(Guid.NewGuid());
+
+        await sut.Policy.HandleAsync(
+            Context(paymentId, PropertyManagementCodes.ReceivablePayment, actionCode),
+            CancellationToken.None);
+
+        captured.Should().NotBeNull();
+        captured!.TaskCode.Should().Be("pm.apply_receivable_payment");
+        captured.Source.ResourceCode.Should().Be(PropertyManagementCodes.ReceivablePayment);
+        captured.Source.EntityId.Should().Be(paymentId);
+        captured.Source.TitleSnapshot.Should().Be(expectedSourceTitle);
+        captured.Source.SubtitleSnapshot.Should().Be(number);
+        captured.AssignedRoleCode.Should().Be("pm-ar-clerk");
+        captured.DueAtUtc.Should().Be(Now.AddDays(3).UtcDateTime);
+        captured.PrimaryActionCode.Should().Be(
+            PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value);
+        captured.NavigationTargetCode.Should().Be("pm.receivables.reconciliation");
+        captured.NavigationParameters["paymentId"].Should().Be(paymentId.ToString());
+        captured.DeduplicationKey.Should().Be($"pm:receivable-payment:{paymentId:D}:apply");
+        captured.CorrelationId.Should().NotBeNull();
+        captured.CausationId.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Posting_fully_applied_payment_completes_any_stale_task_instead_of_creating_one()
+    {
+        var paymentId = Guid.NewGuid();
+        var sut = CreatePolicy();
+        sut.Documents
+            .Setup(service => service.GetByIdAsync(
+                PropertyManagementCodes.ReceivablePayment,
+                paymentId,
+                CancellationToken.None))
+            .ReturnsAsync(Document(paymentId, "Payment", "RP-200"));
+        sut.Availability
+            .Setup(source => source.EvaluateAsync(
+                PropertyManagementCodes.ReceivablePayment,
+                paymentId,
+                DocumentStatus.Posted,
+                CancellationToken.None))
+            .ReturnsAsync(Disabled());
+        sut.Tasks
+            .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                $"pm:receivable-payment:{paymentId:D}:apply",
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+
+        await sut.Policy.HandleAsync(
+            Context(paymentId, PropertyManagementCodes.ReceivablePayment, "post"),
+            CancellationToken.None);
+
+        sut.Tasks.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData("post")]
+    [InlineData("repost")]
+    [InlineData("unpost")]
+    public async Task Apply_event_recreates_payment_task_when_credit_still_needs_application(string actionCode)
+    {
+        var applyId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+        var sut = CreatePolicy();
+        sut.TypedDocuments
+            .Setup(readers => readers.ReadReceivableApplyHeadAsync(applyId, CancellationToken.None))
+            .ReturnsAsync(Apply(applyId, paymentId));
+        sut.Documents
+            .Setup(service => service.GetByIdAsync(
+                PropertyManagementCodes.ReceivablePayment,
+                paymentId,
+                CancellationToken.None))
+            .ReturnsAsync(Document(paymentId, "Payment", "RP-300"));
+        sut.Availability
+            .Setup(source => source.EvaluateAsync(
+                PropertyManagementCodes.ReceivablePayment,
+                paymentId,
+                DocumentStatus.Posted,
+                CancellationToken.None))
+            .ReturnsAsync(DocumentActionAvailabilityResult.Allowed);
+        sut.Tasks
+            .Setup(service => service.CreateAsync(
+                It.Is<CreateWorkCenterTaskRequest>(request =>
+                    request.DeduplicationKey == $"pm:receivable-payment:{paymentId:D}:apply"),
+                CancellationToken.None))
+            .ReturnsAsync(Guid.NewGuid());
+
+        await sut.Policy.HandleAsync(
+            Context(applyId, PropertyManagementCodes.ReceivableApply, actionCode),
+            CancellationToken.None);
+
+        sut.Tasks.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Apply_event_completes_payment_task_when_no_credit_remains()
+    {
+        var applyId = Guid.NewGuid();
+        var paymentId = Guid.NewGuid();
+        var sut = CreatePolicy();
+        sut.TypedDocuments
+            .Setup(readers => readers.ReadReceivableApplyHeadAsync(applyId, CancellationToken.None))
+            .ReturnsAsync(Apply(applyId, paymentId));
+        sut.Documents
+            .Setup(service => service.GetByIdAsync(
+                PropertyManagementCodes.ReceivablePayment,
+                paymentId,
+                CancellationToken.None))
+            .ReturnsAsync(Document(paymentId, "Payment", "RP-400"));
+        sut.Availability
+            .Setup(source => source.EvaluateAsync(
+                PropertyManagementCodes.ReceivablePayment,
+                paymentId,
+                DocumentStatus.Posted,
+                CancellationToken.None))
+            .ReturnsAsync(Disabled());
+        sut.Tasks
+            .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                $"pm:receivable-payment:{paymentId:D}:apply",
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+
+        await sut.Policy.HandleAsync(
+            Context(applyId, PropertyManagementCodes.ReceivableApply, "post"),
+            CancellationToken.None);
+
+        sut.Tasks.VerifyAll();
+    }
+
+    private static (
+        PropertyManagementWorkCenterPolicy Policy,
+        Mock<IDocumentService> Documents,
+        Mock<IPropertyManagementDocumentReaders> TypedDocuments,
+        Mock<IReceivablesApplyAvailabilitySource> Availability,
+        Mock<IWorkCenterTaskService> Tasks) CreatePolicy()
+    {
+        var documents = new Mock<IDocumentService>(MockBehavior.Strict);
+        var typedDocuments = new Mock<IPropertyManagementDocumentReaders>(MockBehavior.Strict);
+        var availability = new Mock<IReceivablesApplyAvailabilitySource>(MockBehavior.Strict);
+        var tasks = new Mock<IWorkCenterTaskService>(MockBehavior.Strict);
+        var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
+        var synchronizer = new ReceivablePaymentWorkCenterSynchronizer(
+            documents.Object,
+            availability.Object,
+            tasks.Object,
+            realtime.Object,
+            new FixedTimeProvider(Now),
+            NullLogger<ReceivablePaymentWorkCenterSynchronizer>.Instance);
+        return (
+            new PropertyManagementWorkCenterPolicy(
+                typedDocuments.Object,
+                synchronizer),
+            documents,
+            typedDocuments,
+            availability,
+            tasks);
+    }
+
+    private static WorkCenterEventContext Context(Guid documentId, string documentType, string actionCode)
+    {
+        var eventId = Guid.NewGuid();
+        return new WorkCenterEventContext(new PlatformOutboxEvent(
+            eventId,
+            "ngb.document.action.completed",
+            1,
+            Now.UtcDateTime,
+            "tests",
+            $"document:{documentId:D}",
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            eventId,
+            JsonSerializer.Serialize(new
+            {
+                data = new
+                {
+                    documentId,
+                    documentType,
+                    actionCode
+                }
+            }),
+            Now.UtcDateTime));
+    }
+
+    private static DocumentDto Document(Guid id, string? display, string? number)
+        => new(id, display, new RecordPayload(), DocumentStatus.Posted, false, number);
+
+    private static PmReceivableApplyHead Apply(Guid applyId, Guid paymentId)
+        => new(
+            applyId,
+            paymentId,
+            Guid.NewGuid(),
+            new DateOnly(2026, 7, 26),
+            10m,
+            null);
+
+    private static DocumentActionAvailabilityResult Disabled()
+        => new([new("pm.receivables.apply.no_credit", "Nothing to apply.")]);
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+}

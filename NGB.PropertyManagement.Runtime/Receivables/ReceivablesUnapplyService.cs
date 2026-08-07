@@ -4,6 +4,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Runtime.Exceptions;
+using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Documents.Workflow;
 using NGB.Runtime.UnitOfWork;
@@ -24,7 +25,8 @@ public sealed class ReceivablesUnapplyService(
     IDocumentService documentService,
     IDocumentPostingService posting,
     IPropertyManagementDocumentReaders readers,
-    IUnitOfWork uow)
+    IUnitOfWork uow,
+    IReceivablePaymentWorkCenterSynchronizer workCenter)
     : IReceivablesUnapplyService
 {
     public async Task<ReceivablesUnapplyResponse> ExecuteAsync(Guid applyId, CancellationToken ct = default)
@@ -51,7 +53,17 @@ public sealed class ReceivablesUnapplyService(
             head = await readers.ReadReceivableApplyHeadAsync(applyId, innerCt);
         }, ct);
 
-        await posting.UnpostAsync(applyId, ct);
+        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        {
+            await posting.UnpostAsync(applyId, manageTransaction: false, innerCt);
+            await workCenter.SynchronizeAsync(
+                head.CreditDocumentId,
+                correlationId: Guid.CreateVersion7(),
+                causationId: applyId,
+                innerCt);
+        }, ct);
+
+        await workCenter.NotifyChangedAsync(ct);
 
         return new ReceivablesUnapplyResponse(
             ApplyId: applyId,

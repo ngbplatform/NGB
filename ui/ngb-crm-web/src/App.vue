@@ -188,6 +188,7 @@ const authStateDetail = computed(() => {
   <NgbSiteShell
     v-else
     module-title="CRM"
+    work-center-vertical="crm"
     product-title="NGB"
     :user-name="auth.userName"
     :user-email="auth.email"

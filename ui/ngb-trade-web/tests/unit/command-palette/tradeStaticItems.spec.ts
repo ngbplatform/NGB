@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   buildReportPageUrl: vi.fn((reportCode: string) => `/reports/${reportCode}`),
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   buildDocumentFullPageUrl: mocks.buildDocumentFullPageUrl,
   buildNgbHeuristicCurrentActions: mocks.buildNgbHeuristicCurrentActions,
   buildReportPageUrl: mocks.buildReportPageUrl,

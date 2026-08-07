@@ -1,43 +1,33 @@
 import { computed, ref } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { DocumentDerivationActionDto } from '../../../../src/ngb/api/contracts'
+import type { DocumentEditorStateDto } from '../../../../src/ngb/api/contracts'
 import { useConfiguredEntityEditorDocumentActions } from '../../../../src/ngb/editor/useConfiguredEntityEditorDocumentActions'
 
-const resolveNgbEditorDocumentActionsMock = vi.hoisted(() => vi.fn())
-const deriveDocumentMock = vi.hoisted(() => vi.fn())
-const getDocumentDerivationActionsMock = vi.hoisted(() => vi.fn())
+const executeDocumentActionMock = vi.hoisted(() => vi.fn())
+const getDocumentEditorStateMock = vi.hoisted(() => vi.fn())
 
-vi.mock('../../../../src/ngb/editor/config', async () => {
-  const actual = await vi.importActual('../../../../src/ngb/editor/config')
-  return {
-    ...actual,
-    resolveNgbEditorDocumentActions: resolveNgbEditorDocumentActionsMock,
-  }
-})
+vi.mock('../../../../src/ngb/api/documents', () => ({
+  executeDocumentAction: executeDocumentActionMock,
+  getDocumentEditorState: getDocumentEditorStateMock,
+}))
 
-vi.mock('../../../../src/ngb/api/documents', () => {
-  return {
-    deriveDocument: deriveDocumentMock,
-    getDocumentDerivationActions: getDocumentDerivationActionsMock,
-  }
-})
+const emptyState: DocumentEditorStateDto = {
+  document: {
+    id: 'doc-1',
+    display: 'Invoice INV-001',
+    payload: { fields: {} },
+    status: 1,
+    isMarkedForDeletion: false,
+  },
+  documentVersion: 7,
+  actions: [],
+}
 
-function createArgs() {
+function createArgs(state: DocumentEditorStateDto = emptyState) {
   const kind = ref<'catalog' | 'document'>('document')
   const typeCode = ref('pm.invoice')
   const currentId = ref<string | null>('doc-1')
-  const model = ref({
-    customer_id: 'customer-1',
-  })
-  const uiEffects = ref({
-    isPosted: false,
-    canEdit: true,
-    canPost: true,
-    canUnpost: false,
-    canRepost: false,
-    canApply: false,
-  })
   const loading = ref(false)
   const saving = ref(false)
   const requestNavigate = vi.fn()
@@ -46,227 +36,576 @@ function createArgs() {
     summary: cause instanceof Error ? cause.message : 'normalized',
     issues: [],
   }))
-  const metadataStore = {
-    ensureDocumentType: vi.fn(async (documentType: string) => ({
-      documentType,
-      displayName: documentType === 'ab.credit_note' ? 'Credit Note' : 'Sales Invoice',
-      kind: 2,
-      form: null,
-      list: null,
-      parts: null,
-      actions: null,
-      presentation: null,
-      capabilities: null,
-    })),
-  }
-  const loadDerivationActions = vi
-    .fn<(documentType: string, id: string) => Promise<DocumentDerivationActionDto[]>>()
-    .mockResolvedValue([])
+  const applyActionDocument = vi.fn()
+  const reloadDocument = vi.fn()
+  const loadEditorState = vi.fn().mockResolvedValue(state)
 
   return {
-    state: {
-      kind,
-      typeCode,
-      currentId,
-      model,
-      uiEffects,
-      loading,
-      saving,
-    },
+    kind,
+    typeCode,
+    currentId,
+    loading,
+    saving,
     requestNavigate,
     setEditorError,
     normalizeEditorError,
-    metadataStore,
-    loadDerivationActions,
+    applyActionDocument,
+    reloadDocument,
+    loadEditorState,
     args: {
       kind: computed(() => kind.value),
       typeCode: computed(() => typeCode.value),
       currentId: computed(() => currentId.value),
-      model,
-      uiEffects: computed(() => uiEffects.value),
       loading: computed(() => loading.value),
       saving: computed(() => saving.value),
       requestNavigate,
-      metadataStore,
       setEditorError,
       normalizeEditorError,
-      loadDerivationActions,
+      applyActionDocument,
+      reloadDocument,
+      loadEditorState,
     },
   }
 }
 
+async function flushAsyncWork() {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 describe('configured entity editor document actions', () => {
-  async function flushAsyncWork() {
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  }
+  beforeEach(() => {
+    executeDocumentActionMock.mockReset()
+    getDocumentEditorStateMock.mockReset()
+  })
 
-  it('projects configured actions into primary and grouped buckets and dispatches matches', () => {
-    const approveRun = vi.fn()
-    const emailRun = vi.fn()
-    const printRun = vi.fn()
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
 
-    resolveNgbEditorDocumentActionsMock.mockReturnValueOnce([
-      {
-        item: { key: 'approve', title: 'Approve', icon: 'check' },
-        run: approveRun,
-      },
-      {
-        item: { key: 'email', title: 'Email', icon: 'mail' },
-        group: { key: 'output', label: 'Output' },
-        run: emailRun,
-      },
-      {
-        item: { key: 'printPacket', title: 'Print packet', icon: 'printer' },
-        group: { key: 'output', label: 'Output' },
-        run: printRun,
-      },
-    ])
+  it('projects server metadata into primary and grouped header actions', async () => {
+    const state: DocumentEditorStateDto = {
+      ...emptyState,
+      actions: [
+        {
+          code: 'approve',
+          label: 'Approve',
+          icon: 'check',
+          kind: 'Primary',
+          executionKind: 'Command',
+          order: 100,
+          isAllowed: true,
+          disabledReasons: [],
+        },
+        {
+          code: 'email',
+          label: 'Email',
+          icon: 'mail',
+          kind: 'Secondary',
+          executionKind: 'Command',
+          order: 200,
+          isAllowed: false,
+          disabledReasons: [{ code: 'email.unavailable', message: 'Recipient is missing.' }],
+        },
+      ],
+    }
 
-    const { args, requestNavigate } = createArgs()
+    const { args } = createArgs(state)
     const actions = useConfiguredEntityEditorDocumentActions(args)
+    await flushAsyncWork()
+
+    expect(actions.hasUnifiedActionState.value).toBe(true)
     expect(actions.extraPrimaryActions.value).toEqual([
-      { key: 'approve', title: 'Approve', icon: 'check' },
+      { key: 'document-action:approve', title: 'Approve', icon: 'check', disabled: false },
     ])
-
-    expect(resolveNgbEditorDocumentActionsMock).toHaveBeenCalledWith({
-      context: {
-        kind: 'document',
-        typeCode: 'pm.invoice',
-      },
-      documentId: 'doc-1',
-      model: {
-        customer_id: 'customer-1',
-      },
-      uiEffects: {
-        isPosted: false,
-        canEdit: true,
-        canPost: true,
-        canUnpost: false,
-        canRepost: false,
-        canApply: false,
-      },
-      loading: false,
-      saving: false,
-      navigate: requestNavigate,
-    })
     expect(actions.extraMoreActionGroups.value).toEqual([
       {
-        key: 'output',
-        label: 'Output',
-        items: [
-          { key: 'email', title: 'Email', icon: 'mail' },
-          { key: 'printPacket', title: 'Print packet', icon: 'printer' },
-        ],
+        key: 'actions',
+        label: 'Actions',
+        items: [{
+          key: 'document-action:email',
+          title: 'Email — Recipient is missing.',
+          icon: 'play',
+          disabled: true,
+        }],
       },
     ])
-
-    expect(actions.handleConfiguredAction('email')).toBe(true)
-    expect(emailRun).toHaveBeenCalledTimes(1)
     expect(actions.handleConfiguredAction('missing')).toBe(false)
+    expect(actions.handleConfiguredAction('document-action:email')).toBe(true)
+    expect(executeDocumentActionMock).not.toHaveBeenCalled()
   })
 
-  it('loads derive actions into the create group sorted by target document display name and navigates to the created draft', async () => {
-    resolveNgbEditorDocumentActionsMock.mockReturnValueOnce([])
-    deriveDocumentMock.mockResolvedValueOnce({
-      id: 'derived-1',
-      display: 'Sales Invoice SI-001',
-      payload: { fields: {} },
-      status: 1,
-      isMarkedForDeletion: false,
+  it('executes a derivation with optimistic concurrency, applies the returned document, and navigates', async () => {
+    const state: DocumentEditorStateDto = {
+      ...emptyState,
+      actions: [{
+        code: 'crm.create_qualification',
+        label: 'Create qualification',
+        icon: 'file-plus',
+        kind: 'Secondary',
+        executionKind: 'Derivation',
+        order: 500,
+        isAllowed: true,
+        disabledReasons: [],
+        target: {
+          code: 'document.editor',
+          parameters: {
+            documentType: 'crm.lead_qualification',
+            documentId: '{createdDocumentId}',
+          },
+        },
+      }],
+    }
+    const resultDocument = {
+      ...emptyState.document,
+      status: 2,
+    }
+    executeDocumentActionMock.mockResolvedValueOnce({
+      executionId: 'execution-1',
+      actionCode: 'crm.create_qualification',
+      document: resultDocument,
+      documentVersion: 8,
+      actions: [],
+      workCenterMayChange: true,
+      createdDocument: {
+        id: 'qualification-1',
+        display: 'Qualification Q-001',
+        payload: { fields: {} },
+        status: 1,
+        isMarkedForDeletion: false,
+      },
     })
 
-    const { args, requestNavigate, metadataStore, loadDerivationActions } = createArgs()
-    loadDerivationActions.mockResolvedValueOnce([
-      {
-        code: 'derive-sales-invoice',
-        name: 'Generate Invoice Draft',
-        fromTypeCode: 'ab.timesheet',
-        toTypeCode: 'ab.sales_invoice',
-        relationshipCodes: ['created_from'],
-      },
-      {
-        code: 'derive-credit-note',
-        name: 'Create Credit Note',
-        fromTypeCode: 'ab.timesheet',
-        toTypeCode: 'ab.credit_note',
-        relationshipCodes: ['based_on'],
-      },
-    ])
-
+    const { args, applyActionDocument, requestNavigate, reloadDocument } = createArgs(state)
     const actions = useConfiguredEntityEditorDocumentActions(args)
     await flushAsyncWork()
 
-    expect(metadataStore.ensureDocumentType).toHaveBeenCalledWith('ab.sales_invoice')
-    expect(metadataStore.ensureDocumentType).toHaveBeenCalledWith('ab.credit_note')
-    expect(actions.extraMoreActionGroups.value).toEqual([
-      {
-        key: 'create',
-        label: 'Create',
-        items: [
-          { key: 'derive:derive-credit-note', title: 'Credit Note', icon: 'file-text', disabled: false },
-          { key: 'derive:derive-sales-invoice', title: 'Sales Invoice', icon: 'file-text', disabled: false },
-        ],
-      },
-    ])
-
-    expect(actions.handleConfiguredAction('derive:derive-sales-invoice')).toBe(true)
+    expect(actions.extraMoreActionGroups.value[0]?.items[0]?.key)
+      .toBe('document-action:crm.create_qualification')
+    expect(actions.handleConfiguredAction('document-action:crm.create_qualification')).toBe(true)
+    expect(actions.handleConfiguredAction('document-action:crm.create_qualification')).toBe(true)
     await flushAsyncWork()
 
-    expect(deriveDocumentMock).toHaveBeenCalledWith('ab.sales_invoice', {
-      sourceDocumentId: 'doc-1',
-      relationshipType: 'created_from',
-    })
-    expect(requestNavigate).toHaveBeenCalledWith('/documents/ab.sales_invoice/derived-1')
+    expect(executeDocumentActionMock).toHaveBeenCalledTimes(1)
+    expect(executeDocumentActionMock).toHaveBeenCalledWith(
+      'pm.invoice',
+      'doc-1',
+      'crm.create_qualification',
+      { expectedVersion: 7, reason: null },
+    )
+    expect(applyActionDocument).toHaveBeenCalledWith(resultDocument, 'crm.create_qualification')
+    expect(reloadDocument).not.toHaveBeenCalled()
+    expect(requestNavigate).toHaveBeenCalledWith('/documents/crm.lead_qualification/qualification-1')
+    expect(actions.executingDocumentAction.value).toBe(false)
   })
 
-  it('normalizes derive-action failures into editor errors instead of leaking unhandled promise rejections', async () => {
-    const apiError = new Error('An invoice draft or posted invoice already exists for this timesheet.')
-
-    resolveNgbEditorDocumentActionsMock.mockReturnValueOnce([])
-    deriveDocumentMock.mockRejectedValueOnce(apiError)
-
-    const { args, setEditorError, normalizeEditorError, loadDerivationActions } = createArgs()
-    loadDerivationActions.mockResolvedValueOnce([
-      {
-        code: 'derive-sales-invoice',
-        name: 'Generate Invoice Draft',
-        fromTypeCode: 'ab.timesheet',
-        toTypeCode: 'ab.sales_invoice',
-        relationshipCodes: ['created_from'],
-      },
-    ])
-
-    const actions = useConfiguredEntityEditorDocumentActions(args)
+  it('normalizes initial-load and execution failures into editor errors', async () => {
+    const loadFailure = new Error('Editor state failed')
+    const failedLoad = createArgs()
+    failedLoad.loadEditorState.mockRejectedValueOnce(loadFailure)
+    useConfiguredEntityEditorDocumentActions(failedLoad.args)
     await flushAsyncWork()
 
-    expect(actions.handleConfiguredAction('derive:derive-sales-invoice')).toBe(true)
+    expect(failedLoad.normalizeEditorError).toHaveBeenCalledWith(loadFailure)
+    expect(failedLoad.setEditorError).toHaveBeenCalledWith({
+      summary: loadFailure.message,
+      issues: [],
+    })
+
+    const state: DocumentEditorStateDto = {
+      ...emptyState,
+      actions: [{
+        code: 'approve',
+        label: 'Approve',
+        icon: 'check',
+        kind: 'Primary',
+        executionKind: 'Command',
+        order: 100,
+        isAllowed: true,
+        disabledReasons: [],
+      }],
+    }
+    const executionFailure = new Error('Version conflict')
+    executeDocumentActionMock.mockRejectedValueOnce(executionFailure)
+    const execution = createArgs(state)
+    const actions = useConfiguredEntityEditorDocumentActions(execution.args)
     await flushAsyncWork()
 
-    expect(setEditorError).toHaveBeenNthCalledWith(1, null)
-    expect(normalizeEditorError).toHaveBeenCalledWith(apiError)
-    expect(setEditorError).toHaveBeenNthCalledWith(2, {
-      summary: apiError.message,
+    expect(actions.handleConfiguredAction('document-action:approve')).toBe(true)
+    await flushAsyncWork()
+    expect(execution.setEditorError).toHaveBeenNthCalledWith(1, null)
+    expect(execution.normalizeEditorError).toHaveBeenCalledWith(executionFailure)
+    expect(execution.setEditorError).toHaveBeenNthCalledWith(2, {
+      summary: executionFailure.message,
       issues: [],
     })
   })
 
-  it('returns no configured actions for non-documents or missing entity ids', () => {
-    resolveNgbEditorDocumentActionsMock.mockClear()
-
-    const { args, state } = createArgs()
-    state.kind.value = 'catalog'
-
-    const catalogActions = useConfiguredEntityEditorDocumentActions(args)
+  it('does not load actions for catalogs or missing document ids', async () => {
+    const catalog = createArgs()
+    catalog.kind.value = 'catalog'
+    const catalogActions = useConfiguredEntityEditorDocumentActions(catalog.args)
+    await flushAsyncWork()
+    expect(catalog.loadEditorState).not.toHaveBeenCalled()
     expect(catalogActions.extraPrimaryActions.value).toEqual([])
-    expect(catalogActions.extraMoreActionGroups.value).toEqual([])
-    expect(resolveNgbEditorDocumentActionsMock).not.toHaveBeenCalled()
 
-    state.kind.value = 'document'
-    state.currentId.value = null
-
-    const missingIdActions = useConfiguredEntityEditorDocumentActions(args)
-    expect(missingIdActions.extraPrimaryActions.value).toEqual([])
+    const missingId = createArgs()
+    missingId.currentId.value = null
+    const missingIdActions = useConfiguredEntityEditorDocumentActions(missingId.args)
+    await flushAsyncWork()
+    expect(missingId.loadEditorState).not.toHaveBeenCalled()
     expect(missingIdActions.extraMoreActionGroups.value).toEqual([])
-    expect(resolveNgbEditorDocumentActionsMock).not.toHaveBeenCalled()
+  })
+
+  it('uses the platform loader, ignores stale loads, filters local view actions, and refreshes', async () => {
+    let resolveFirst!: (state: DocumentEditorStateDto) => void
+    const first = new Promise<DocumentEditorStateDto>((resolve) => { resolveFirst = resolve })
+    const latest = {
+      ...emptyState,
+      documentVersion: 9,
+      actions: [{
+        code: 'danger',
+        label: 'Danger',
+        icon: '',
+        kind: 'Dangerous',
+        executionKind: 'Command',
+        order: 300,
+        isAllowed: true,
+        disabledReasons: [],
+      }, {
+        code: 'alpha',
+        label: 'Alpha',
+        icon: 'play',
+        kind: 'Secondary',
+        executionKind: 'Command',
+        order: 300,
+        isAllowed: true,
+        disabledReasons: [],
+      }, {
+        code: 'view_effects',
+        label: 'Effects',
+        icon: 'eye',
+        kind: 'Secondary',
+        executionKind: 'View',
+        order: 1,
+        isAllowed: true,
+        disabledReasons: [],
+      }],
+    } satisfies DocumentEditorStateDto
+    getDocumentEditorStateMock
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce(latest)
+      .mockResolvedValueOnce({ ...latest, documentVersion: 10 })
+
+    const values = createArgs()
+    delete (values.args as Partial<typeof values.args>).loadEditorState
+    const actions = useConfiguredEntityEditorDocumentActions(values.args)
+    values.currentId.value = 'doc-2'
+    await flushAsyncWork()
+    resolveFirst(emptyState)
+    await flushAsyncWork()
+
+    expect(actions.extraMoreActionGroups.value).toEqual([
+      {
+        key: 'actions',
+        label: 'Actions',
+        items: [{
+          key: 'document-action:alpha',
+          title: 'Alpha',
+          icon: 'play',
+          disabled: false,
+        }],
+      },
+      {
+        key: 'danger-zone',
+        label: 'Danger zone',
+        items: [{
+          key: 'document-action:danger',
+          title: 'Danger',
+          icon: 'play',
+          disabled: false,
+        }],
+      },
+    ])
+    await actions.refreshDocumentActions()
+    expect(getDocumentEditorStateMock).toHaveBeenLastCalledWith('pm.invoice', 'doc-2')
+
+    values.kind.value = 'catalog'
+    await flushAsyncWork()
+    await actions.refreshDocumentActions()
+    values.kind.value = 'document'
+    values.currentId.value = null
+    await flushAsyncWork()
+    await actions.refreshDocumentActions()
+    expect(getDocumentEditorStateMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('suppresses an initial-load failure after the watched document changes', async () => {
+    let rejectStale!: (cause: unknown) => void
+    const stale = new Promise<DocumentEditorStateDto>((_, reject) => { rejectStale = reject })
+    const values = createArgs()
+    values.loadEditorState
+      .mockReturnValueOnce(stale)
+      .mockResolvedValueOnce(emptyState)
+    useConfiguredEntityEditorDocumentActions(values.args)
+
+    values.currentId.value = 'doc-2'
+    await flushAsyncWork()
+    rejectStale(new Error('stale failure'))
+    await flushAsyncWork()
+
+    expect(values.setEditorError).not.toHaveBeenCalled()
+  })
+
+  it('navigates view actions only when a target resolves', async () => {
+    const state = {
+      ...emptyState,
+      actions: [{
+        code: 'open',
+        label: 'Open',
+        icon: 'external-link',
+        kind: 'Secondary',
+        executionKind: 'Navigation',
+        order: 1,
+        isAllowed: true,
+        disabledReasons: [],
+        target: {
+          code: 'document.flow',
+          parameters: {},
+        },
+      }, {
+        code: 'no-target',
+        label: 'No target',
+        icon: 'external-link',
+        kind: 'Secondary',
+        executionKind: 'Navigation',
+        order: 2,
+        isAllowed: true,
+        disabledReasons: [],
+      }, {
+        code: 'unknown-target',
+        label: 'Unknown target',
+        icon: 'external-link',
+        kind: 'Secondary',
+        executionKind: 'View',
+        order: 3,
+        isAllowed: true,
+        disabledReasons: [],
+        target: {
+          code: 'unknown',
+          parameters: {},
+        },
+      }],
+    } satisfies DocumentEditorStateDto
+    const values = createArgs(state)
+    const actions = useConfiguredEntityEditorDocumentActions(values.args)
+    await flushAsyncWork()
+
+    for (const key of ['open', 'no-target', 'unknown-target']) {
+      expect(actions.handleConfiguredAction(`document-action:${key}`)).toBe(true)
+    }
+    await flushAsyncWork()
+
+    expect(values.requestNavigate).toHaveBeenCalledTimes(1)
+    expect(values.requestNavigate).toHaveBeenCalledWith('/documents/pm.invoice/doc-1/flow')
+    expect(executeDocumentActionMock).not.toHaveBeenCalled()
+  })
+
+  it('enforces confirm and required-reason contracts before commands', async () => {
+    const state = {
+      ...emptyState,
+      actions: [{
+        code: 'confirm',
+        label: 'Confirm',
+        icon: 'check',
+        kind: 'Primary',
+        executionKind: 'Command',
+        order: 1,
+        isAllowed: true,
+        disabledReasons: [],
+        confirmation: { mode: 'Confirm', message: 'Continue?' },
+      }, {
+        code: 'reason',
+        label: 'Reason',
+        icon: 'check',
+        kind: 'Primary',
+        executionKind: 'Command',
+        order: 2,
+        isAllowed: true,
+        disabledReasons: [],
+        confirmation: { mode: 'RequireReason', message: 'Why?' },
+      }],
+    } satisfies DocumentEditorStateDto
+    const confirm = vi.fn()
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true)
+    const prompt = vi.fn()
+      .mockReturnValueOnce('   ')
+      .mockReturnValueOnce('  approved  ')
+      .mockReturnValueOnce(null)
+    vi.stubGlobal('window', { confirm, prompt })
+    executeDocumentActionMock.mockResolvedValue({
+      executionId: 'execution',
+      actionCode: 'confirm',
+      document: emptyState.document,
+      documentVersion: 8,
+      actions: state.actions,
+      workCenterMayChange: false,
+      createdDocument: null,
+    })
+    const values = createArgs(state)
+    const actions = useConfiguredEntityEditorDocumentActions(values.args)
+    await flushAsyncWork()
+
+    actions.handleConfiguredAction('document-action:confirm')
+    actions.handleConfiguredAction('document-action:confirm')
+    await flushAsyncWork()
+    actions.handleConfiguredAction('document-action:reason')
+    actions.handleConfiguredAction('document-action:reason')
+    await flushAsyncWork()
+    actions.handleConfiguredAction('document-action:reason')
+    await flushAsyncWork()
+
+    expect(executeDocumentActionMock).toHaveBeenCalledTimes(2)
+    expect(executeDocumentActionMock).toHaveBeenNthCalledWith(
+      2,
+      'pm.invoice',
+      'doc-1',
+      'reason',
+      { expectedVersion: 8, reason: 'approved' },
+    )
+  })
+
+  it('disables all actions while busy and reloads when no document applicator is supplied', async () => {
+    let resolveExecution!: (result: {
+      executionId: string
+      actionCode: string
+      document: typeof emptyState.document
+      documentVersion: number
+      actions: DocumentEditorStateDto['actions']
+      workCenterMayChange: boolean
+      createdDocument: null
+    }) => void
+    executeDocumentActionMock.mockReturnValueOnce(new Promise((resolve) => {
+      resolveExecution = resolve
+    }))
+    const state = {
+      ...emptyState,
+      actions: [{
+        code: 'approve',
+        label: 'Approve',
+        icon: 'check',
+        kind: 'Primary',
+        executionKind: 'Command',
+        order: 1,
+        isAllowed: true,
+        disabledReasons: [],
+      }, {
+        code: 'secondary',
+        label: 'Secondary',
+        icon: 'play',
+        kind: 'Secondary',
+        executionKind: 'Command',
+        order: 2,
+        isAllowed: true,
+        disabledReasons: [],
+      }],
+    } satisfies DocumentEditorStateDto
+    const values = createArgs(state)
+    delete (values.args as Partial<typeof values.args>).applyActionDocument
+    const actions = useConfiguredEntityEditorDocumentActions(values.args)
+    await flushAsyncWork()
+
+    values.loading.value = true
+    expect(actions.extraPrimaryActions.value[0]?.disabled).toBe(true)
+    values.loading.value = false
+    values.saving.value = true
+    expect(actions.extraPrimaryActions.value[0]?.disabled).toBe(true)
+    values.saving.value = false
+
+    actions.handleConfiguredAction('document-action:approve')
+    await flushAsyncWork()
+    expect(actions.executingDocumentAction.value).toBe(true)
+    expect(actions.extraMoreActionGroups.value[0]?.items[0]?.disabled).toBe(true)
+    expect(actions.handleConfiguredAction('document-action:secondary')).toBe(true)
+    expect(executeDocumentActionMock).toHaveBeenCalledTimes(1)
+
+    resolveExecution({
+      executionId: 'execution',
+      actionCode: 'approve',
+      document: emptyState.document,
+      documentVersion: 8,
+      actions: [],
+      workCenterMayChange: false,
+      createdDocument: null,
+    })
+    await flushAsyncWork()
+    expect(values.reloadDocument).toHaveBeenCalledOnce()
+  })
+
+  it('leaves lifecycle actions to the fixed editor toolbar and hides repost duplicates', async () => {
+    const state = {
+      ...emptyState,
+      actions: [
+        'post',
+        'unpost',
+        'repost',
+        'mark_for_deletion',
+        'unmark_for_deletion',
+      ].map((code, order) => ({
+        code,
+        label: code,
+        icon: 'play',
+        kind: 'Primary' as const,
+        executionKind: 'Command' as const,
+        order,
+        isAllowed: true,
+        disabledReasons: [],
+      })),
+    } satisfies DocumentEditorStateDto
+    const values = createArgs(state)
+    const actions = useConfiguredEntityEditorDocumentActions(values.args)
+    await flushAsyncWork()
+
+    expect(actions.hasUnifiedActionState.value).toBe(true)
+    expect(actions.extraPrimaryActions.value).toEqual([])
+    expect(actions.extraMoreActionGroups.value).toEqual([])
+    expect(actions.handleConfiguredAction('document-action:post')).toBe(false)
+    expect(actions.handleConfiguredAction('document-action:repost')).toBe(false)
+  })
+
+  it('does nothing when execution loses its document state or a derivation has no route', async () => {
+    const state = {
+      ...emptyState,
+      actions: [{
+        code: 'derive',
+        label: 'Derive',
+        icon: 'file-text',
+        kind: 'Secondary',
+        executionKind: 'Derivation',
+        order: 1,
+        isAllowed: true,
+        disabledReasons: [],
+      }],
+    } satisfies DocumentEditorStateDto
+    executeDocumentActionMock.mockResolvedValueOnce({
+      executionId: 'execution',
+      actionCode: 'derive',
+      document: emptyState.document,
+      documentVersion: 8,
+      actions: state.actions,
+      workCenterMayChange: false,
+      createdDocument: { ...emptyState.document, id: 'created-1' },
+    })
+    const values = createArgs(state)
+    const actions = useConfiguredEntityEditorDocumentActions(values.args)
+    await flushAsyncWork()
+    actions.handleConfiguredAction('document-action:derive')
+    await flushAsyncWork()
+    expect(values.requestNavigate).not.toHaveBeenCalled()
+
+    values.currentId.value = null
+    expect(actions.handleConfiguredAction('document-action:derive')).toBe(true)
+    await flushAsyncWork()
+    expect(executeDocumentActionMock).toHaveBeenCalledTimes(1)
   })
 })

@@ -1,4 +1,4 @@
-import type { NgbIconName } from 'ngb-ui-framework'
+import type { NgbIconName } from '@ngbplatform/ui'
 
 export type AgencyBillingHomeAction = {
   title: string

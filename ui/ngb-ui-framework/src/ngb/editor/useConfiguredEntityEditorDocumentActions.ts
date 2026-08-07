@@ -1,183 +1,211 @@
-import { computed, type ComputedRef, type Ref, ref, watch } from 'vue';
+import { computed, type ComputedRef, type Ref, ref, watch } from 'vue'
 
-import { getDocumentDerivationActions, deriveDocument } from '../api/documents';
-import type { DocumentDerivationActionDto } from '../api/contracts';
-import type { EntityFormModel } from '../metadata/types';
-import type { DocumentTypeMetadata } from '../metadata/types';
-import { resolveNgbEditorDocumentActions, resolveNgbEditorRouting } from './config';
-import type { EditorErrorState } from './entityEditorErrors';
-import type { DocumentHeaderActionGroup, DocumentHeaderActionItem, DocumentUiEffects, EditorKind } from './types';
-
-type DocumentMetadataStoreLike = {
-  ensureDocumentType: (documentType: string) => Promise<DocumentTypeMetadata>;
-};
+import { executeDocumentAction, getDocumentEditorState } from '../api/documents'
+import type {
+  DocumentActionDto,
+  DocumentEditorStateDto,
+} from '../api/contracts'
+import { coerceNgbIconName } from '../primitives/iconNames'
+import {
+  resolveNgbDocumentActionTarget,
+  resolveNgbEditorRouting,
+} from './config'
+import type { EditorErrorState } from './entityEditorErrors'
+import type { DocumentHeaderActionGroup, DocumentHeaderActionItem, EditorKind } from './types'
 
 type UseConfiguredEntityEditorDocumentActionsArgs = {
-  kind: ComputedRef<EditorKind>;
-  typeCode: ComputedRef<string>;
-  currentId: ComputedRef<string | null>;
-  model: Ref<EntityFormModel>;
-  uiEffects: ComputedRef<DocumentUiEffects | null>;
-  loading: ComputedRef<boolean>;
-  saving: ComputedRef<boolean>;
-  requestNavigate: (to: string | null | undefined) => void;
-  metadataStore: DocumentMetadataStoreLike;
-  setEditorError: (value: EditorErrorState | null) => void;
-  normalizeEditorError: (cause: unknown) => EditorErrorState;
-  loadDerivationActions?: (documentType: string, id: string) => Promise<DocumentDerivationActionDto[]>;
-};
+  kind: ComputedRef<EditorKind>
+  typeCode: ComputedRef<string>
+  currentId: ComputedRef<string | null>
+  loading: ComputedRef<boolean>
+  saving: ComputedRef<boolean>
+  requestNavigate: (to: string | null | undefined) => void
+  setEditorError: (value: EditorErrorState | null) => void
+  normalizeEditorError: (cause: unknown) => EditorErrorState
+  applyActionDocument?: (document: DocumentEditorStateDto['document'], actionCode: string) => void | Promise<void>
+  reloadDocument?: () => Promise<void>
+  loadEditorState?: (documentType: string, id: string) => Promise<DocumentEditorStateDto>
+}
+
+const locallyRenderedViewActionCodes = new Set([
+  'view_effects',
+  'view_flow',
+  'view_audit',
+  'print',
+])
+
+// Document lifecycle controls have a stable, state-driven toolbar contract:
+// Draft -> Post + Mark, Posted -> Unpost, Marked -> Unmark. They are rendered
+// by useEntityEditorHeaderActions so they keep their fixed positions, icons,
+// and platform confirmation dialogs. The action catalog remains the execution
+// source on the API, but it must not duplicate or replace those controls.
+const locallyRenderedLifecycleActionCodes = new Set([
+  'post',
+  'unpost',
+  'repost',
+  'mark_for_deletion',
+  'unmark_for_deletion',
+])
 
 export function useConfiguredEntityEditorDocumentActions(
   args: UseConfiguredEntityEditorDocumentActionsArgs,
 ) {
-  const configuredActions = computed(() => {
-    if (args.kind.value !== 'document') return [];
-    if (!args.currentId.value) return [];
-
-    return resolveNgbEditorDocumentActions({
-      context: {
-        kind: 'document',
-        typeCode: args.typeCode.value,
-      },
-      documentId: args.currentId.value,
-      model: args.model.value,
-      uiEffects: args.uiEffects.value,
-      loading: args.loading.value,
-      saving: args.saving.value,
-      navigate: args.requestNavigate,
-    });
-  });
-
-  const derivationActions = ref<DocumentDerivationActionDto[]>([]);
-  const derivationTitles = ref<Record<string, string>>({});
-  const loadDerivationActions = args.loadDerivationActions ?? getDocumentDerivationActions;
+  const unifiedState = ref<DocumentEditorStateDto | null>(null)
+  const executingActionCode = ref<string | null>(null)
+  const loadEditorState = args.loadEditorState ?? getDocumentEditorState
 
   watch(
     [args.kind, args.typeCode, args.currentId],
     ([kind, typeCode, documentId], _, onCleanup) => {
-      derivationActions.value = [];
-      derivationTitles.value = {};
+      unifiedState.value = null
+      if (kind !== 'document' || !documentId) return
 
-      if (kind !== 'document' || !documentId) return;
-
-      let cancelled = false;
-      onCleanup(() => {
-        cancelled = true;
-      });
+      let cancelled = false
+      onCleanup(() => { cancelled = true })
 
       void (async () => {
         try {
-          const actions = await loadDerivationActions(typeCode, documentId);
-          const titleEntries = await Promise.all(actions.map(async (action) => {
-            const title = await resolveDerivationTitle(args.metadataStore, action);
-            return [action.code, title] as const;
-          }));
-
-          if (cancelled) return;
-
-          derivationActions.value = actions;
-          derivationTitles.value = Object.fromEntries(titleEntries);
-        } catch {
-          if (cancelled) return;
-          derivationActions.value = [];
-          derivationTitles.value = {};
+          const state = await loadEditorState(typeCode, documentId)
+          if (!cancelled) unifiedState.value = state
+        } catch (cause) {
+          if (!cancelled) args.setEditorError(args.normalizeEditorError(cause))
         }
-      })();
+      })()
     },
     { immediate: true },
-  );
+  )
 
-  const derivedCreateActions = computed(() =>
-    derivationActions.value
-      .map((action) => ({
-        action,
-        title: derivationTitles.value[action.code] ?? action.name,
-      }))
-      .sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }))
-      .map(({ action, title }) => ({
-        item: {
-          key: `derive:${action.code}`,
-          title,
-          icon: 'file-text' as const,
-          disabled: args.loading.value || args.saving.value,
-        },
-        group: {
-          key: 'create',
-          label: 'Create',
-        },
-        run: async () => {
-          const relationshipType = action.relationshipCodes
-            .map((value) => String(value ?? '').trim())
-            .find((value) => value.length > 0);
+  const metadataActions = computed(() =>
+    (unifiedState.value?.actions ?? [])
+      .filter((action) =>
+        !locallyRenderedViewActionCodes.has(action.code)
+        && !locallyRenderedLifecycleActionCodes.has(action.code))
+      .sort((left, right) => left.order - right.order || left.code.localeCompare(right.code))
+      .map((action) => toConfiguredAction(action)))
 
-          if (!relationshipType || !args.currentId.value) return;
+  function toConfiguredAction(action: DocumentActionDto) {
+    const disabled = !action.isAllowed
+      || args.loading.value
+      || args.saving.value
+      || executingActionCode.value !== null
+    return {
+      item: {
+        key: `document-action:${action.code}`,
+        title: disabled && action.disabledReasons?.[0]
+          ? `${action.label} — ${action.disabledReasons[0].message}`
+          : action.label,
+        icon: coerceNgbIconName(action.icon, action.executionKind === 'Derivation' ? 'file-text' : 'play'),
+        disabled,
+      },
+      group: action.kind === 'Primary'
+        ? null
+        : {
+            key: action.kind === 'Dangerous' ? 'danger-zone' : action.executionKind === 'Derivation' ? 'create' : 'actions',
+            label: action.kind === 'Dangerous' ? 'Danger zone' : action.executionKind === 'Derivation' ? 'Create' : 'Actions',
+          },
+      run: () => executeUnifiedAction(action),
+    }
+  }
 
-          const document = await deriveDocument(action.toTypeCode, {
-            sourceDocumentId: args.currentId.value,
-            relationshipType,
-          });
+  async function executeUnifiedAction(action: DocumentActionDto): Promise<void> {
+    const documentId = args.currentId.value
+    const state = unifiedState.value
+    if (!documentId || !state) return
 
-          args.requestNavigate(resolveNgbEditorRouting().buildDocumentFullPageUrl(action.toTypeCode, document.id));
-        },
-      })));
+    if (action.executionKind === 'Navigation' || action.executionKind === 'View') {
+      const route = action.target
+        ? resolveNgbDocumentActionTarget(action.target, { documentType: args.typeCode.value, documentId })
+        : null
+      if (route) args.requestNavigate(route)
+      return
+    }
 
-  const actions = computed(() => [...configuredActions.value, ...derivedCreateActions.value]);
+    let reason: string | null = null
+    if (action.confirmation?.mode === 'RequireReason') {
+      reason = window.prompt(action.confirmation.message, '')?.trim() ?? null
+      if (!reason) return
+    } else if (action.confirmation?.mode === 'Confirm') {
+      if (!window.confirm(action.confirmation.message)) return
+    }
+
+    executingActionCode.value = action.code
+    try {
+      const result = await executeDocumentAction(
+        args.typeCode.value,
+        documentId,
+        action.code,
+        { expectedVersion: state.documentVersion, reason },
+      )
+      unifiedState.value = {
+        document: result.document,
+        documentVersion: result.documentVersion,
+        actions: result.actions,
+      }
+      await args.applyActionDocument?.(result.document, action.code)
+
+      if (result.createdDocument) {
+        const target = action.target
+          ? {
+              ...action.target,
+              parameters: {
+                ...action.target.parameters,
+                documentId: result.createdDocument.id,
+              },
+            }
+          : null
+        const route = target
+          ? resolveNgbDocumentActionTarget(target, { documentType: args.typeCode.value, documentId })
+          : null
+        if (route) args.requestNavigate(route)
+        return
+      }
+
+      if (!args.applyActionDocument) await args.reloadDocument?.()
+    } finally {
+      executingActionCode.value = null
+    }
+  }
+
+  const actions = computed(() => metadataActions.value)
 
   const extraPrimaryActions = computed<DocumentHeaderActionItem[]>(() =>
-    actions.value
-      .filter((action) => !action.group)
-      .map((action) => action.item),
-  );
+    actions.value.filter((action) => !action.group).map((action) => action.item))
 
   const extraMoreActionGroups = computed<DocumentHeaderActionGroup[]>(() => {
-    const buckets = new Map<string, DocumentHeaderActionGroup>();
-
+    const buckets = new Map<string, DocumentHeaderActionGroup>()
     for (const action of actions.value) {
-      if (!action.group) continue;
-
+      if (!action.group) continue
       const current = buckets.get(action.group.key) ?? {
         key: action.group.key,
         label: action.group.label,
         items: [],
-      };
-
-      current.items.push(action.item);
-      buckets.set(action.group.key, current);
+      }
+      current.items.push(action.item)
+      buckets.set(action.group.key, current)
     }
-
-    return Array.from(buckets.values());
-  });
+    return Array.from(buckets.values())
+  })
 
   function handleConfiguredAction(actionKey: string): boolean {
-    const match = actions.value.find((action) => action.item.key === actionKey);
-    if (!match) return false;
-    if (match.item.disabled) return true;
-
-    args.setEditorError(null);
+    const match = actions.value.find((action) => action.item.key === actionKey)
+    if (!match) return false
+    if (match.item.disabled) return true
+    args.setEditorError(null)
     void Promise.resolve(match.run()).catch((cause) => {
-      args.setEditorError(args.normalizeEditorError(cause));
-    });
-    return true;
+      args.setEditorError(args.normalizeEditorError(cause))
+    })
+    return true
   }
 
   return {
     extraPrimaryActions,
     extraMoreActionGroups,
     handleConfiguredAction,
-  };
-}
-
-async function resolveDerivationTitle(
-  metadataStore: DocumentMetadataStoreLike,
-  action: DocumentDerivationActionDto,
-): Promise<string> {
-  try {
-    const metadata = await metadataStore.ensureDocumentType(action.toTypeCode);
-    const title = String(metadata.displayName ?? '').trim();
-    if (title) return title;
-  } catch {
-    // Ignore metadata lookup failures and fall back to the derivation definition name.
+    hasUnifiedActionState: computed(() => unifiedState.value !== null),
+    executingDocumentAction: computed(() => executingActionCode.value !== null),
+    refreshDocumentActions: async () => {
+      if (args.kind.value !== 'document' || !args.currentId.value) return
+      unifiedState.value = await loadEditorState(args.typeCode.value, args.currentId.value)
+    },
   }
-
-  return String(action.name ?? '').trim() || action.toTypeCode;
 }

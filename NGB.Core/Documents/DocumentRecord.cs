@@ -24,6 +24,11 @@ public sealed class DocumentRecord : Entity
 
     public required DocumentStatus Status { get; init; }
 
+    /// <summary>
+    /// Stable optimistic-concurrency token exposed through document action contracts.
+    /// </summary>
+    public long Version { get; init; } = 1;
+
     public DateTime CreatedAtUtc { get; init; }
     public DateTime UpdatedAtUtc { get; init; }
 

@@ -92,9 +92,6 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);
@@ -192,7 +189,6 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
         effects.AccountingEntries.Should().BeEmpty();
         effects.OperationalRegisterMovements.Should().BeEmpty();
         effects.ReferenceRegisterWrites.Should().BeEmpty();
-        effects.Ui.Should().NotBeNull();
     }
 
     [Fact]
@@ -395,9 +391,6 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);
@@ -472,9 +465,6 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);

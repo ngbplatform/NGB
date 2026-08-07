@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   searchCommandPalette: vi.fn(async () => [{ key: 'remote:1' }]),
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   buildReportPageUrl: mocks.buildReportPageUrl,
   getReportDefinitions: mocks.getReportDefinitions,
   searchCommandPalette: mocks.searchCommandPalette,

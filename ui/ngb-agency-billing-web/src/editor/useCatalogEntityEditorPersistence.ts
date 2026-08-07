@@ -14,7 +14,7 @@ import {
   unmarkCatalogForDeletion,
   updateCatalog,
   type CatalogEntityPersistenceAdapter,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import type { AgencyBillingEntityEditorPersistenceContext } from './agencyBillingEntityEditorPersistenceContext'
 

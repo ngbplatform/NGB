@@ -19,6 +19,7 @@ import {
   useEntityEditorCommandPalette,
   useConfiguredEntityEditorDocumentActions,
   useEntityEditorHeaderActions,
+  useEntityEditorLifecycleConfirmations,
   useEntityEditorLeaveGuard,
   useEntityEditorNavigationActions,
   useEntityEditorOutputs,
@@ -35,7 +36,7 @@ import {
   type EntityHeaderIconAction,
   useMetadataStore,
   useToasts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 import LeaseTenantsGrid from '../../components/lease/LeaseTenantsGrid.vue'
 import PmPropertyBulkCreateUnitsDialog from '../../components/property/PmPropertyBulkCreateUnitsDialog.vue'
 import { PM_EDITOR_TAGS } from '../entityProfile'
@@ -157,7 +158,6 @@ const isLeaseDocument = computed(() => hasTag(PM_EDITOR_TAGS.LEASE_DOCUMENT))
 const leaseEditor = useEntityEditorLeasePart({ isLeaseDocument })
 const { leasePartiesRows, buildCopyParts } = leaseEditor
 
-const docEffectsUi = computed(() => docEffects.value?.ui ?? null)
 const {
   canOpenAudit,
   canShareLink,
@@ -295,22 +295,6 @@ function openBulkCreateUnitsWizard() {
   bulkUnitsOpen.value = true
 }
 
-const markConfirmOpen = ref(false)
-const markConfirmMessage = computed(() => {
-  const base = editorKind.value === 'catalog' ? 'record' : 'document'
-  const extra = isDirty.value ? ' Unsaved changes will be lost.' : ''
-  return `This will mark the ${base} for deletion.${extra}`
-})
-
-function requestMarkForDeletion() {
-  if (!canMarkForDeletion.value) return
-  markConfirmOpen.value = true
-}
-
-function cancelMarkForDeletion() {
-  markConfirmOpen.value = false
-}
-
 const persistenceContext: PmEntityEditorPersistenceContext = {
   kind: editorKind,
   typeCode: editorTypeCode,
@@ -386,10 +370,24 @@ const {
   },
 })
 
-function confirmMarkForDeletion() {
-  markConfirmOpen.value = false
-  void markForDeletion()
-}
+const {
+  markConfirmOpen,
+  markConfirmMessage,
+  requestMarkForDeletion,
+  cancelMarkForDeletion,
+  confirmMarkForDeletion,
+  unpostConfirmOpen,
+  requestUnpost,
+  cancelUnpost,
+  confirmUnpost,
+} = useEntityEditorLifecycleConfirmations({
+  kind: editorKind,
+  isDirty,
+  canMarkForDeletion,
+  canUnpost,
+  onMarkForDeletion: markForDeletion,
+  onUnpost: unpost,
+})
 
 const {
   auditOpen,
@@ -435,7 +433,7 @@ function toggleMarkForDeletion() {
 }
 
 function togglePost() {
-  if (canUnpost.value) void unpost()
+  if (canUnpost.value) requestUnpost()
   else if (canPost.value) void post()
 }
 
@@ -443,18 +441,30 @@ const {
   extraPrimaryActions: configuredDocumentPrimaryActions,
   extraMoreActionGroups: configuredDocumentMoreActionGroups,
   handleConfiguredAction,
+  executingDocumentAction,
+  refreshDocumentActions,
 } = useConfiguredEntityEditorDocumentActions({
   kind: editorKind,
   typeCode: editorTypeCode,
   currentId: currentIdValue,
-  model,
-  uiEffects: docEffectsUi,
   loading: computed(() => loading.value),
   saving: computed(() => saving.value),
   requestNavigate,
-  metadataStore: metaStore,
   setEditorError,
   normalizeEditorError,
+  applyActionDocument: (document) => {
+    doc.value = document
+    model.value = { ...(document.payload?.fields ?? {}) }
+    resetInitialSnapshot()
+    emit('changed')
+  },
+})
+
+watch(status, () => {
+  if (editorKind.value !== 'document' || !currentId.value) return
+  void refreshDocumentActions().catch((cause) => {
+    setEditorError(normalizeEditorError(cause))
+  })
 })
 
 const extraPageActions = computed<EntityHeaderIconAction[]>(() =>
@@ -479,7 +489,7 @@ const {
   expandTo: editorExpandTo,
   currentId: currentIdValue,
   loading: computed(() => loading.value),
-  saving: computed(() => saving.value),
+  saving: computed(() => saving.value || executingDocumentAction.value),
   isNew,
   isMarkedForDeletion,
   canSave,
@@ -525,7 +535,7 @@ useEntityEditorCommandPalette({
   openDocumentEffectsPage,
   openDocumentPrintPage,
   post,
-  unpost,
+  unpost: requestUnpost,
 })
 
 const pageActions = useEntityEditorPageActions({
@@ -681,7 +691,7 @@ defineExpose({
     :document-status-label="documentStatusLabel"
     :document-status-tone="documentStatusTone"
     :loading="loading"
-    :saving="saving"
+    :saving="saving || executingDocumentAction"
     :page-actions="pageActions"
     :document-primary-actions="documentPrimaryActions"
     :document-more-action-groups="documentMoreActionGroups"
@@ -704,6 +714,7 @@ defineExpose({
     :leave-open="leaveOpen"
     :mark-confirm-open="markConfirmOpen"
     :mark-confirm-message="markConfirmMessage"
+    :unpost-confirm-open="unpostConfirmOpen"
     @back="navigateBack(router, route, props.closeTo ?? fallbackCloseTarget)"
     @close="closePage"
     @action="handleHeaderAction"
@@ -712,5 +723,7 @@ defineExpose({
     @confirmLeave="confirmLeave"
     @cancelMarkForDeletion="cancelMarkForDeletion"
     @confirmMarkForDeletion="confirmMarkForDeletion"
+    @cancelUnpost="cancelUnpost"
+    @confirmUnpost="confirmUnpost"
   />
 </template>

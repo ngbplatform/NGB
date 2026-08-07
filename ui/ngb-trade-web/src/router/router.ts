@@ -10,9 +10,11 @@ import {
   NgbDocumentPrintPage,
   NgbGeneralJournalEntryEditPage,
   NgbGeneralJournalEntryListPage,
+  NgbNotificationPreferencesPage,
   NgbReportPage,
+  NgbWorkCenterPage,
   useAuthStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { createTradeRouteFrameworkConfig } from './framework'
 
@@ -26,6 +28,8 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/home' },
     { path: '/home', component: HomePage },
+    { path: '/work-center', component: NgbWorkCenterPage, props: { vertical: 'trade' } },
+    { path: '/settings/notifications', component: NgbNotificationPreferencesPage },
 
     { path: '/catalogs/trd.accounting_policy', component: AccountingPolicySettingsPage },
     { path: '/catalogs/trd.accounting_policy/new', redirect: '/catalogs/trd.accounting_policy' },

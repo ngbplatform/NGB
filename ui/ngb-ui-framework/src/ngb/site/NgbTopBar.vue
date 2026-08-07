@@ -23,8 +23,8 @@
         </button>
 
         <div class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
-          <!-- Notifications -->
-          <button class="ngb-iconbtn relative" title="Notifications" aria-label="Notifications" @click="$emit('openNotifications')">
+          <!-- Work Center -->
+          <button class="ngb-iconbtn relative" title="Work Center" aria-label="Work Center" @click="$emit('openNotifications')">
             <NgbIcon name="bell" />
             <span
               v-if="unreadNotifications > 0"
@@ -124,7 +124,7 @@
       </div>
 
       <div class="order-1 hidden min-w-0 items-center justify-end gap-1 md:flex lg:hidden">
-        <button class="ngb-iconbtn relative" title="Notifications" aria-label="Notifications" @click="$emit('openNotifications')">
+        <button class="ngb-iconbtn relative" title="Work Center" aria-label="Work Center" @click="$emit('openNotifications')">
           <NgbIcon name="bell" />
           <span
             v-if="unreadNotifications > 0"
@@ -244,7 +244,7 @@
       <!-- Right -->
       <div class="hidden min-w-0 flex-wrap items-center justify-end gap-1 lg:flex lg:order-none lg:flex-nowrap">
         <!-- Notifications -->
-        <button class="ngb-iconbtn relative" title="Notifications" aria-label="Notifications" @click="$emit('openNotifications')">
+        <button class="ngb-iconbtn relative" title="Work Center" aria-label="Work Center" @click="$emit('openNotifications')">
           <NgbIcon name="bell" />
           <span
             v-if="unreadNotifications > 0"
@@ -381,10 +381,7 @@ defineEmits<{
 }>();
 
 const isDark = computed(() => props.themeResolved === 'dark');
-const isMac = computed(() => {
-  if (typeof navigator === 'undefined') return false;
-  return /Mac|iPhone|iPad|iPod/i.test(String(navigator.platform ?? ''));
-});
+const isMac = computed(() => /Mac|iPhone|iPad|iPod/i.test(navigator.platform));
 const primaryModifier = computed(() => (isMac.value ? '⌘' : 'Ctrl'));
 const userEmail = computed(() => String(props.userEmail ?? '').trim());
 const userMeta = computed(() => String(props.userMeta ?? '').trim());
@@ -395,7 +392,7 @@ const userMetaIcon = computed<'shield-check' | 'shield' | 'user'>(() => {
 const userRoles = computed(() => {
   const seen = new Set<string>();
   return (props.userRoles ?? [])
-    .map((role) => String(role ?? '').trim())
+    .map((role) => role.trim())
     .filter((role) => {
       const key = role.toLowerCase();
       if (!role || seen.has(key)) return false;
@@ -416,10 +413,10 @@ const resolvedUserName = computed(() => {
 
 const initials = computed(() => {
   const n = resolvedUserName.value;
-  if (!n) return 'U';
   const parts = n.split(/\s+/g).filter(Boolean);
-  const a = parts[0]?.[0] ?? 'U';
-  const b = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : (parts[0]?.[1] ?? '');
+  const first = parts[0]!;
+  const a = first[0]!;
+  const b = parts.length > 1 ? parts[parts.length - 1]![0]! : (first[1] ?? '');
   return (a + b).toUpperCase();
 });
 </script>

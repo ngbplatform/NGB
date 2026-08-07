@@ -117,6 +117,36 @@ public sealed class PermissionSnapshotProviderTests
         permissions.Verify(x => x.GetEffectivePermissionsAsync(userId, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
+    [Fact]
+    public async Task RefreshCurrentAsync_ReloadsAccessVersionWithinTheSameRequestScope()
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var userId = Guid.NewGuid();
+        var permissions = new Mock<IPermissionSnapshotRepository>();
+        permissions
+            .SetupSequence(x => x.GetUserAccessStateByAuthSubjectAsync("kc-user", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserAccessState(
+                userId, "kc-user", "user@example.test", "User", IsActive: true, AccessVersion: 7))
+            .ReturnsAsync(new PlatformUserAccessState(
+                userId, "kc-user", "user@example.test", "User", IsActive: true, AccessVersion: 8));
+        permissions
+            .SetupSequence(x => x.GetEffectivePermissionsAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new NgbPermissionKey("document", "pm.lease", "view")])
+            .ReturnsAsync([new NgbPermissionKey("document", "pm.lease", "post")]);
+        var provider = CreateProvider(
+            new ActorIdentity("kc-user", "user@example.test", "User"),
+            cache,
+            permissions);
+
+        var first = await provider.GetCurrentAsync(CancellationToken.None);
+        var refreshed = await provider.RefreshCurrentAsync(CancellationToken.None);
+
+        first.Has("document", "pm.lease", "view").Should().BeTrue();
+        refreshed.Has("document", "pm.lease", "view").Should().BeFalse();
+        refreshed.Has("document", "pm.lease", "post").Should().BeTrue();
+        refreshed.AccessVersion.Should().Be(8);
+    }
+
     private static PermissionSnapshotProvider CreateProvider(
         ActorIdentity? currentActor,
         IMemoryCache cache,

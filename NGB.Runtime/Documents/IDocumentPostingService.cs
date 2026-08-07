@@ -27,11 +27,13 @@ public interface IDocumentPostingService
     Task PostAsync(Guid documentId, CancellationToken ct = default);
 
     Task UnpostAsync(Guid documentId, CancellationToken ct = default);
+    Task UnpostAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default);
 
     Task RepostAsync(
         Guid documentId,
         Func<IAccountingPostingContext, CancellationToken, Task> postNew,
         CancellationToken ct = default);
+    Task RepostAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default);
 
     /// <summary>
     /// Moves a Draft document into the MarkedForDeletion state.
@@ -42,6 +44,7 @@ public interface IDocumentPostingService
     /// - Posted documents cannot be marked for deletion.
     /// </summary>
     Task MarkForDeletionAsync(Guid documentId, CancellationToken ct = default);
+    Task MarkForDeletionAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default);
 
     /// <summary>
     /// Moves a Draft document from MarkedForDeletion back to Draft.
@@ -52,4 +55,5 @@ public interface IDocumentPostingService
     /// - Posted documents cannot be unmarked.
     /// </summary>
     Task UnmarkForDeletionAsync(Guid documentId, CancellationToken ct = default);
+    Task UnmarkForDeletionAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default);
 }

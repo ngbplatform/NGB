@@ -37,11 +37,6 @@ public interface IDocumentService
 
     Task<DocumentDto> ExecuteActionAsync(string documentType, Guid id, string actionCode, CancellationToken ct);
 
-    Task<IReadOnlyList<DocumentDerivationActionDto>> GetDerivationActionsAsync(
-        string documentType,
-        Guid id,
-        CancellationToken ct);
-
     Task<RelationshipGraphDto> GetRelationshipGraphAsync(
         string documentType,
         Guid id,
