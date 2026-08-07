@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { createSSRApp, defineComponent, effectScope, h } from 'vue'
+import { renderToString } from '@vue/server-renderer'
 
 import type {
   WorkCenterItem,
@@ -10,16 +11,21 @@ import type {
 const api = vi.hoisted(() => ({
   claim: vi.fn(),
   dismiss: vi.fn(),
+  getPreferences: vi.fn(),
   items: vi.fn(),
   markNotificationRead: vi.fn(),
   markTaskRead: vi.fn(),
   snooze: vi.fn(),
   summary: vi.fn(),
+  updatePreferences: vi.fn(),
 }))
 
 const auth = vi.hoisted(() => ({
   getAccessToken: vi.fn(),
   getSnapshot: vi.fn(),
+  listener: null as null | ((snapshot: { authenticated: boolean; subject?: string | null }) => void),
+  subscribe: vi.fn(),
+  unsubscribe: vi.fn(),
 }))
 
 const environment = vi.hoisted(() => ({
@@ -53,11 +59,23 @@ vi.mock('../../../../src/ngb/work-center/api', () => ({
   markWorkCenterNotificationRead: api.markNotificationRead,
   markWorkCenterTaskRead: api.markTaskRead,
   snoozeWorkCenterTask: api.snooze,
+  workCenterHttpGateway: {
+    claimTask: api.claim,
+    dismissNotification: api.dismiss,
+    getItems: api.items,
+    getSummary: api.summary,
+    markNotificationRead: api.markNotificationRead,
+    markTaskRead: api.markTaskRead,
+    snoozeTask: api.snooze,
+    getPreferences: api.getPreferences,
+    updatePreferences: api.updatePreferences,
+  },
 }))
 
 vi.mock('../../../../src/ngb/auth/keycloak', () => ({
   getAccessToken: auth.getAccessToken,
   getAuthSnapshot: auth.getSnapshot,
+  subscribeAuth: auth.subscribe,
 }))
 
 vi.mock('../../../../src/ngb/env/runtimeConfig', () => ({
@@ -162,7 +180,11 @@ function installWindow(origin = 'https://app.example') {
 
 async function freshWorkCenter() {
   vi.resetModules()
-  return await import('../../../../src/ngb/work-center/useWorkCenter')
+  const workCenter = await import('../../../../src/ngb/work-center/useWorkCenter')
+  const { configureNgbWorkCenter } = await import('../../../../src/ngb/work-center/config')
+  const { createDefaultNgbWorkCenterConfig } = await import('../../../../src/ngb/work-center/defaultConfig')
+  configureNgbWorkCenter(createDefaultNgbWorkCenterConfig())
+  return workCenter
 }
 
 async function createApiError(status: number, message = `HTTP ${status}`) {
@@ -185,9 +207,11 @@ beforeEach(() => {
   api.summary.mockResolvedValue(summary())
   api.claim.mockResolvedValue(undefined)
   api.dismiss.mockResolvedValue(undefined)
+  api.getPreferences.mockResolvedValue([])
   api.markNotificationRead.mockResolvedValue(undefined)
   api.markTaskRead.mockResolvedValue(undefined)
   api.snooze.mockResolvedValue(undefined)
+  api.updatePreferences.mockResolvedValue(undefined)
 
   auth.getSnapshot.mockReturnValue({
     initialized: true,
@@ -195,6 +219,11 @@ beforeEach(() => {
     token: 'snapshot-token',
   })
   auth.getAccessToken.mockResolvedValue('fresh-token')
+  auth.listener = null
+  auth.subscribe.mockImplementation((listener) => {
+    auth.listener = listener
+    return auth.unsubscribe
+  })
   environment.read.mockReturnValue('')
 
   signalr.handlers.clear()
@@ -247,6 +276,7 @@ describe('useWorkCenter', () => {
       tab: 'tasks',
       limit: 1,
       cursor: 'cursor-2',
+      vertical: null,
     }, expect.any(AbortSignal))
     expect(workCenter.items.value).toEqual([task(), notification()])
     expect(workCenter.nextCursor.value).toBeNull()
@@ -421,27 +451,55 @@ describe('useWorkCenter', () => {
     expect(workCenter.summary.value?.version).toBe(9)
   })
 
-  it('keeps the newest summary when different vertical requests finish out of order', async () => {
+  it('does not let an in-flight summary from the previous identity block or overwrite the next identity', async () => {
+    installWindow()
+    auth.getSnapshot.mockReturnValue({ authenticated: true, subject: 'user-1' })
+    const previousIdentity = deferred<WorkCenterSummary>()
+    const nextIdentity = deferred<WorkCenterSummary>()
+    api.summary
+      .mockReturnValueOnce(previousIdentity.promise)
+      .mockReturnValueOnce(nextIdentity.promise)
+    const { createNgbWorkCenterRuntime } = await freshWorkCenter()
+    const runtime = createNgbWorkCenterRuntime()
+
+    const previousLoad = runtime.refreshSummary()
+    auth.listener?.({ authenticated: true, subject: 'user-2' })
+    const nextLoad = runtime.refreshSummary()
+
+    expect(api.summary).toHaveBeenCalledTimes(2)
+    nextIdentity.resolve(summary({ attentionCount: 7, version: 12 }))
+    await nextLoad
+    previousIdentity.resolve(summary({ attentionCount: 99, version: 11 }))
+    await previousLoad
+
+    expect(runtime.summary.value).toEqual(summary({ attentionCount: 7, version: 12 }))
+    await runtime.dispose()
+  })
+
+  it('isolates summary state between vertical runtimes', async () => {
     installWindow()
     const pmSummary = deferred<WorkCenterSummary>()
     const crmSummary = deferred<WorkCenterSummary>()
     api.summary.mockImplementation((vertical: string | null) =>
       vertical === 'pm' ? pmSummary.promise : crmSummary.promise)
     const { useWorkCenter } = await freshWorkCenter()
-    const workCenter = useWorkCenter()
+    const pm = useWorkCenter({ vertical: 'pm' })
+    const crm = useWorkCenter({ vertical: 'crm' })
 
-    const staleRequest = workCenter.refreshSummary(' pm ')
-    const currentRequest = workCenter.refreshSummary('crm')
+    const pmRequest = pm.refreshSummary()
+    const crmRequest = crm.refreshSummary()
     pmSummary.resolve(summary({ attentionCount: 99, version: 10 }))
-    await staleRequest
-    expect(workCenter.summary.value).toBeNull()
+    await pmRequest
+    expect(pm.summary.value?.attentionCount).toBe(99)
+    expect(crm.summary.value).toBeNull()
 
     crmSummary.resolve(summary({ attentionCount: 7, version: 11 }))
-    await currentRequest
+    await crmRequest
     expect(api.summary).toHaveBeenNthCalledWith(1, 'pm')
     expect(api.summary).toHaveBeenNthCalledWith(2, 'crm')
-    expect(workCenter.summary.value?.attentionCount).toBe(7)
-    expect(workCenter.summary.value?.version).toBe(11)
+    expect(pm.summary.value?.version).toBe(10)
+    expect(crm.summary.value?.attentionCount).toBe(7)
+    expect(crm.summary.value?.version).toBe(11)
   })
 
   it('claims and snoozes tasks, refreshes after success, and preserves actionable errors', async () => {
@@ -600,23 +658,6 @@ describe('useWorkCenter', () => {
     const options = signalr.builder.withUrl.mock.calls[0]?.[1] as {
       accessTokenFactory: () => Promise<string>
     }
-    auth.getSnapshot.mockReturnValueOnce({
-      initialized: false,
-      authenticated: false,
-      token: 'bootstrap-token',
-    })
-    await expect(options.accessTokenFactory()).resolves.toBe('bootstrap-token')
-    auth.getSnapshot.mockReturnValueOnce({
-      initialized: true,
-      authenticated: false,
-      token: undefined,
-    })
-    await expect(options.accessTokenFactory()).resolves.toBe('')
-    auth.getSnapshot.mockReturnValueOnce({
-      initialized: true,
-      authenticated: true,
-      token: 'stale',
-    })
     await expect(options.accessTokenFactory()).resolves.toBe('fresh-token')
     auth.getAccessToken.mockResolvedValueOnce(null)
     await expect(options.accessTokenFactory()).resolves.toBe('')
@@ -710,5 +751,288 @@ describe('useWorkCenter', () => {
     await flush()
 
     expect(signalr.connection.start).toHaveBeenCalledTimes(2)
+    signalr.closeHandler?.()
+    await flush()
+  })
+
+  it('fully owns the direct SignalR client lifecycle across pending, closed, failed, and repeated stops', async () => {
+    installWindow()
+    const { createSignalRWorkCenterClient } = await import(
+      '../../../../src/ngb/work-center/signalr'
+    )
+    const handlers = {
+      changed: vi.fn(),
+      reconnected: vi.fn(),
+      disconnected: vi.fn(),
+    }
+    const pendingStart = deferred<void>()
+    signalr.connection.start.mockReturnValueOnce(pendingStart.promise)
+    const client = createSignalRWorkCenterClient({
+      baseUrl: 'https://api.example',
+      getAccessToken: auth.getAccessToken,
+    })
+
+    const firstStart = client.start(handlers)
+    const concurrentStart = client.start(handlers)
+    pendingStart.resolve()
+    await Promise.all([firstStart, concurrentStart])
+    await client.start(handlers)
+
+    const closeAfterStop = signalr.closeHandler
+    signalr.connection.stop.mockRejectedValueOnce(new Error('transport already closed'))
+    await expect(client.stop()).resolves.toBeUndefined()
+    closeAfterStop?.()
+    expect(handlers.disconnected).toHaveBeenCalledTimes(1)
+    await expect(client.stop()).resolves.toBeUndefined()
+
+    signalr.connection.stop.mockResolvedValue(undefined)
+    await client.start(handlers)
+    signalr.closeHandler?.()
+    expect(handlers.disconnected).toHaveBeenCalledTimes(2)
+  })
+
+  it('cleans a pending SignalR start when an owner stops before the transport rejects', async () => {
+    installWindow()
+    const { createSignalRWorkCenterClient } = await import(
+      '../../../../src/ngb/work-center/signalr'
+    )
+    const pendingStart = deferred<void>()
+    signalr.connection.start.mockReturnValueOnce(pendingStart.promise)
+    const client = createSignalRWorkCenterClient({
+      baseUrl: 'https://api.example',
+      getAccessToken: auth.getAccessToken,
+    })
+    const handlers = {
+      changed: vi.fn(),
+      reconnected: vi.fn(),
+      disconnected: vi.fn(),
+    }
+
+    const failedStart = client.start(handlers)
+    await client.stop()
+    pendingStart.reject(new Error('start cancelled'))
+
+    await expect(failedStart).rejects.toThrow('start cancelled')
+    expect(signalr.connection.stop).toHaveBeenCalledTimes(2)
+  })
+
+  it('rebinds realtime identity, clears user-scoped state, and stops on sign-out', async () => {
+    installWindow()
+    auth.getSnapshot.mockReturnValue({ authenticated: true, subject: 'user-1' })
+    api.items.mockResolvedValue(page([task()]))
+    const { useWorkCenter } = await freshWorkCenter()
+    const workCenter = useWorkCenter()
+    await workCenter.load()
+    await workCenter.connectRealtime()
+
+    auth.listener?.({ authenticated: true, subject: 'user-2' })
+    await vi.waitFor(() => expect(signalr.connection.start).toHaveBeenCalledTimes(2))
+    expect(signalr.connection.stop).toHaveBeenCalledTimes(1)
+    expect(workCenter.items.value).toEqual([])
+    expect(workCenter.summary.value).toBeNull()
+
+    auth.listener?.({ authenticated: false, subject: 'user-2' })
+    await vi.waitFor(() => expect(signalr.connection.stop).toHaveBeenCalledTimes(2))
+    expect(workCenter.summary.value).toBeNull()
+  })
+
+  it('cancels scheduled reconnects on sign-out and reconnects when the same identity signs in', async () => {
+    vi.useFakeTimers()
+    installWindow()
+    auth.getSnapshot.mockReturnValue({ authenticated: true, subject: 'user-1' })
+    signalr.connection.start.mockRejectedValueOnce(new Error('offline'))
+    const { useWorkCenter } = await freshWorkCenter()
+    const workCenter = useWorkCenter()
+
+    await workCenter.connectRealtime()
+    auth.listener?.({ authenticated: false, subject: 'user-1' })
+    await flush()
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(signalr.connection.start).toHaveBeenCalledTimes(1)
+
+    auth.listener?.({ authenticated: true, subject: 'user-1' })
+    await flush()
+    expect(signalr.connection.start).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores stale summary completion and stale transport callbacks after disposal', async () => {
+    installWindow()
+    const summaryRequest = deferred<WorkCenterSummary>()
+    const startRequest = deferred<void>()
+    api.summary.mockReturnValueOnce(summaryRequest.promise)
+    signalr.connection.start.mockReturnValueOnce(startRequest.promise)
+    const { createNgbWorkCenterRuntime } = await freshWorkCenter()
+    const runtime = createNgbWorkCenterRuntime()
+
+    const summaryLoad = runtime.refreshSummary()
+    const realtimeStart = runtime.connectRealtime()
+    const closeAfterDispose = signalr.closeHandler
+    await runtime.dispose()
+    closeAfterDispose?.()
+    summaryRequest.resolve(summary({ version: 99 }))
+    startRequest.reject(new Error('disposed start'))
+
+    await summaryLoad
+    await realtimeStart
+    await runtime.dispose()
+    expect(runtime.summary.value).toBeNull()
+    expect(auth.unsubscribe).toHaveBeenCalledTimes(1)
+  })
+
+  it('supports explicit runtimes, provider use outside a scope, optional authorization, and preferences ownership', async () => {
+    installWindow()
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const {
+      createNgbWorkCenterRuntime,
+      provideNgbWorkCenterRuntime,
+      useNgbWorkCenterRuntime,
+      useWorkCenterPreferences,
+    } = await freshWorkCenter()
+    const runtime = createNgbWorkCenterRuntime()
+
+    expect(useNgbWorkCenterRuntime({ runtime })).toEqual({ runtime, owned: false })
+    runtime.clearUnauthorized(new Error('not an auth error'))
+
+    const providedOutsideScope = provideNgbWorkCenterRuntime()
+    await providedOutsideScope.dispose()
+    warning.mockRestore()
+
+    let injectedRuntime: unknown = null
+    let providerRuntime: ReturnType<typeof createNgbWorkCenterRuntime> | null = null
+    const Consumer = defineComponent({
+      setup() {
+        injectedRuntime = useNgbWorkCenterRuntime().runtime
+        return () => h('span', 'consumer')
+      },
+    })
+    const Provider = defineComponent({
+      setup() {
+        providerRuntime = provideNgbWorkCenterRuntime()
+        return () => h(Consumer)
+      },
+    })
+    await renderToString(createSSRApp(Provider))
+    expect(injectedRuntime).toBe(providerRuntime)
+    await providerRuntime?.dispose()
+
+    const explicitPreferences = useWorkCenterPreferences({ runtime })
+    await explicitPreferences.load()
+    await explicitPreferences.save([{
+      code: 'crm.qualify_lead',
+      channel: 'InApp',
+      isEnabled: false,
+    }])
+    expect(api.getPreferences).toHaveBeenCalledTimes(1)
+    expect(api.updatePreferences).toHaveBeenCalledWith([{
+      code: 'crm.qualify_lead',
+      channel: 'InApp',
+      isEnabled: false,
+    }])
+
+    const outsideScopePreferences = useWorkCenterPreferences()
+    await outsideScopePreferences.load()
+
+    const scope = effectScope()
+    const scopedPreferences = scope.run(() => useWorkCenterPreferences())!
+    await scopedPreferences.save([])
+    scope.stop()
+    await flush()
+    await runtime.dispose()
+  })
+
+  it('serializes stale session cleanup and contains realtime factory failures', async () => {
+    installWindow()
+    let listener: ((snapshot: { authenticated: boolean; subject?: string | null }) => void) | null = null
+    const stopRequest = deferred<void>()
+    const { createNgbWorkCenterRuntime } = await freshWorkCenter()
+    const baseConfig = (await import('../../../../src/ngb/work-center/defaultConfig'))
+      .createDefaultNgbWorkCenterConfig()
+    const runtime = createNgbWorkCenterRuntime({
+      config: {
+        ...baseConfig,
+        session: {
+          ...baseConfig.session,
+          getSnapshot: () => ({ authenticated: true, subject: 'user-1' }),
+          subscribe: (next) => {
+            listener = next
+            return () => undefined
+          },
+        },
+        createRealtimeClient: () => ({
+          start: async () => undefined,
+          stop: () => stopRequest.promise,
+        }),
+      },
+    })
+    await runtime.connectRealtime()
+
+    listener?.({ authenticated: true, subject: 'user-2' })
+    await runtime.dispose()
+    stopRequest.resolve()
+    await flush()
+    expect(runtime.summary.value).toBeNull()
+
+    const rejectedStopRuntime = createNgbWorkCenterRuntime({
+      config: {
+        ...baseConfig,
+        session: {
+          ...baseConfig.session,
+          getSnapshot: () => ({ authenticated: true, subject: 'user-stop-error' }),
+        },
+        createRealtimeClient: () => ({
+          start: async () => undefined,
+          stop: async () => { throw new Error('stop failed') },
+        }),
+      },
+    })
+    await rejectedStopRuntime.connectRealtime()
+    await expect(rejectedStopRuntime.dispose()).resolves.toBeUndefined()
+
+    let failureListener: ((snapshot: { authenticated: boolean; subject?: string | null }) => void) | null = null
+    const factoryFailureRuntime = createNgbWorkCenterRuntime({
+      config: {
+        ...baseConfig,
+        session: {
+          ...baseConfig.session,
+          getSnapshot: () => ({ authenticated: false, subject: 'user-3' }),
+          subscribe: (next) => {
+            failureListener = next
+            return () => undefined
+          },
+        },
+        createRealtimeClient: () => {
+          throw new Error('realtime factory failed')
+        },
+      },
+    })
+    await factoryFailureRuntime.connectRealtime()
+    failureListener?.({ authenticated: true, subject: 'user-3' })
+    await flush()
+    await factoryFailureRuntime.dispose()
+  })
+
+  it('covers the complete default configuration contract in browser and server environments', async () => {
+    installWindow()
+    const { createDefaultNgbWorkCenterConfig } = await import(
+      '../../../../src/ngb/work-center/defaultConfig'
+    )
+    const browserConfig = createDefaultNgbWorkCenterConfig()
+    expect(browserConfig.session.getSnapshot()).toEqual(auth.getSnapshot())
+    await expect(browserConfig.session.getAccessToken()).resolves.toBe('fresh-token')
+    expect(browserConfig.session.subscribe(vi.fn())).toBe(auth.unsubscribe)
+    expect(browserConfig.isUnauthorizedError?.(new Error('network'))).toBe(false)
+    expect(browserConfig.isUnauthorizedError?.(await createApiError(500))).toBe(false)
+    expect(browserConfig.isUnauthorizedError?.(await createApiError(401))).toBe(true)
+    expect(browserConfig.isUnauthorizedError?.(await createApiError(403))).toBe(true)
+
+    vi.unstubAllGlobals()
+    const serverConfig = createDefaultNgbWorkCenterConfig()
+    const serverClient = serverConfig.createRealtimeClient()
+    await expect(serverClient.start({
+      changed: vi.fn(),
+      reconnected: vi.fn(),
+      disconnected: vi.fn(),
+    })).resolves.toBeUndefined()
+    await expect(serverClient.stop()).resolves.toBeUndefined()
   })
 })

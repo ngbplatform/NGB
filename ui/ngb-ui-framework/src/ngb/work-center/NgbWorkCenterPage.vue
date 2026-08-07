@@ -218,12 +218,22 @@ import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue'
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { resolveNgbDocumentActionTarget } from '../editor/config'
-import { getAuthSnapshot } from '../auth/keycloak'
 import NgbIcon from '../primitives/NgbIcon.vue'
 import NgbSelect from '../primitives/NgbSelect.vue'
 import NgbPageHeader from '../site/NgbPageHeader.vue'
-import { formatWorkCenterTimestamp, workCenterItemBadge, workCenterItemTone } from './presentation'
+import {
+  canClaimWorkCenterItem,
+  canSnoozeWorkCenterItem,
+  formatWorkCenterTimestamp,
+  hasWorkCenterItemActions,
+  isWorkCenterItemSnoozed,
+  resolveWorkCenterItemRoute,
+  workCenterItemBadge,
+  workCenterItemTone,
+  workCenterTabCount,
+  workCenterTabs,
+  type WorkCenterTab,
+} from './presentation'
 import type {
   NotificationSeverity,
   WorkCenterItem,
@@ -233,8 +243,6 @@ import type {
 import { useWorkCenter } from './useWorkCenter'
 import { useWorkCenterInfiniteScroll } from './useWorkCenterInfiniteScroll'
 
-type WorkCenterTab = NonNullable<WorkCenterQuery['tab']>
-
 const props = withDefaults(defineProps<{
   vertical?: string
 }>(), {
@@ -243,7 +251,7 @@ const props = withDefaults(defineProps<{
 
 const route = useRoute()
 const router = useRouter()
-const workCenter = useWorkCenter()
+const workCenter = useWorkCenter({ vertical: props.vertical })
 const { sentinel: infiniteScrollSentinel } = useWorkCenterInfiniteScroll({
   nextCursor: workCenter.nextCursor,
   loading: workCenter.loading,
@@ -268,24 +276,10 @@ const severityOptions = [
   { value: '', label: 'All', selectedLabel: 'Severity: All' },
   ...severities.map((value) => ({ value, label: value, selectedLabel: `Severity: ${value}` })),
 ]
-const tabs: Array<{ value: WorkCenterTab; label: string }> = [
-  { value: 'attention', label: 'Needs Attention' },
-  { value: 'tasks', label: 'Tasks' },
-  { value: 'notifications', label: 'Notifications' },
-  { value: 'completed', label: 'Completed' },
-]
+const tabs = workCenterTabs
 
 function tabCount(value: WorkCenterTab): number | null {
-  switch (value) {
-    case 'attention':
-      return workCenter.summary.value?.attentionCount ?? 0
-    case 'tasks':
-      return workCenter.summary.value?.openTaskCount ?? 0
-    case 'notifications':
-      return workCenter.summary.value?.notificationCount ?? 0
-    default:
-      return null
-  }
+  return workCenterTabCount(value, workCenter.summary.value)
 }
 
 function reload() {
@@ -319,41 +313,22 @@ function setTab(value: WorkCenterTab) {
   void reload()
 }
 
-function itemRoute(item: WorkCenterItem): string | null {
-  if (item.target) {
-    return resolveNgbDocumentActionTarget(item.target, {
-      documentType: item.source.resourceCode,
-      documentId: item.source.entityId,
-    })
-  }
-  return item.source.resourceKind.toLowerCase() === 'document'
-    ? `/documents/${encodeURIComponent(item.source.resourceCode)}/${encodeURIComponent(item.source.entityId)}`
-    : null
-}
-
 async function openItem(item: WorkCenterItem) {
   if (!item.isRead) await workCenter.markRead(item).catch(() => undefined)
-  const target = itemRoute(item)
+  const target = resolveWorkCenterItemRoute(item)
   if (target) await router.push(target)
 }
 
 function canClaim(item: WorkCenterItem): boolean {
-  return item.kind === 'Task'
-    && item.taskStatus !== 'Completed'
-    && item.taskStatus !== 'Cancelled'
-    && !!item.assignment?.isRoleAssigned
-    && !item.assignment.claimedByUserId
+  return canClaimWorkCenterItem(item)
 }
 
 function canSnooze(item: WorkCenterItem): boolean {
-  return item.kind === 'Task'
-    && item.taskStatus !== 'Completed'
-    && item.taskStatus !== 'Cancelled'
+  return canSnoozeWorkCenterItem(item)
 }
 
 function hasItemActions(item: WorkCenterItem): boolean {
-  return item.kind === 'Notification'
-    || (item.taskStatus !== 'Completed' && item.taskStatus !== 'Cancelled')
+  return hasWorkCenterItemActions(item)
 }
 
 function claim(item: WorkCenterItem) {
@@ -369,9 +344,7 @@ function snooze(item: WorkCenterItem) {
 }
 
 function isSnoozed(item: WorkCenterItem): boolean {
-  return item.kind === 'Task'
-    && !!item.snoozedUntilUtc
-    && Date.parse(item.snoozedUntilUtc) > Date.now()
+  return isWorkCenterItemSnoozed(item)
 }
 
 function showNow(item: WorkCenterItem) {
@@ -379,8 +352,6 @@ function showNow(item: WorkCenterItem) {
 }
 
 onMounted(() => {
-  const auth = getAuthSnapshot()
-  if (!auth.initialized || !auth.authenticated) return
   void reload()
   void workCenter.connectRealtime()
 })

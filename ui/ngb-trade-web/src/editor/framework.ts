@@ -1,7 +1,9 @@
 import type { DocumentEffects, EditorFrameworkConfig } from '@ngbplatform/ui'
 import {
   buildGeneralJournalEntriesPath,
+  executeDocumentAction,
   getDocumentById,
+  getDocumentEditorState,
   getDocumentEffects,
   getDocumentGraph,
   getEntityAuditLog,
@@ -94,6 +96,10 @@ export function createTradeEditorConfig(): EditorFrameworkConfig {
   const lookupStore = useLookupStore()
 
   return {
+    documentActions: {
+      loadEditorState: getDocumentEditorState,
+      execute: executeDocumentAction,
+    },
     routing: {
       buildDocumentFullPageUrl(documentType, id) {
         if (isGeneralJournalEntryDocumentType(documentType)) {

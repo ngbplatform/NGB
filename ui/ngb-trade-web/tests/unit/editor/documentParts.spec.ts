@@ -1,24 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { LookupStoreApi, PartMetadata, RecordPartRow } from '@ngbplatform/ui'
 
-vi.mock('@ngbplatform/ui', async () => {
-  const [dataTypes, entityForm, entityModel, guid, lookup] = await Promise.all([
-    import('../../../../ngb-ui-framework/src/ngb/metadata/dataTypes'),
-    import('../../../../ngb-ui-framework/src/ngb/metadata/entityForm'),
-    import('../../../../ngb-ui-framework/src/ngb/metadata/entityModel'),
-    import('../../../../ngb-ui-framework/src/ngb/utils/guid'),
-    import('../../../../ngb-ui-framework/src/ngb/metadata/lookup'),
-  ])
-
-  return {
-    buildFieldsPayload: entityForm.buildFieldsPayload,
-    dataTypeKind: dataTypes.dataTypeKind,
-    isNonEmptyGuid: guid.isNonEmptyGuid,
-    isReferenceValue: entityModel.isReferenceValue,
-    resolveLookupHint: lookup.resolveLookupHint,
-  }
-})
-
 import {
   buildTradeDocumentPartsPayload,
   calculateTradeDocumentAmount,

@@ -10,6 +10,8 @@ import type { EntityEditorRenderExtension } from './extensions';
 import NgbEntityAuditSidebar from './NgbEntityAuditSidebar.vue';
 import NgbEditorDiscardDialog from './NgbEditorDiscardDialog.vue';
 import NgbEntityEditorHeader from './NgbEntityEditorHeader.vue';
+import NgbDocumentActionConfirmationDialog from './NgbDocumentActionConfirmationDialog.vue';
+import type { DocumentActionConfirmationState } from './useConfiguredEntityEditorDocumentActions';
 import type {
   DocumentHeaderActionGroup,
   DocumentHeaderActionItem,
@@ -52,6 +54,7 @@ const props = withDefaults(defineProps<{
   markConfirmMessage?: string;
   unpostConfirmOpen?: boolean;
   unpostConfirmMessage?: string;
+  documentActionConfirmation?: DocumentActionConfirmationState | null;
 }>(), {
   canBack: true,
   subtitle: undefined,
@@ -77,6 +80,7 @@ const props = withDefaults(defineProps<{
   markConfirmMessage: '',
   unpostConfirmOpen: false,
   unpostConfirmMessage: 'Existing effects will be reversed.',
+  documentActionConfirmation: null,
 });
 
 const emit = defineEmits<{
@@ -90,6 +94,8 @@ const emit = defineEmits<{
   (e: 'confirmMarkForDeletion'): void;
   (e: 'cancelUnpost'): void;
   (e: 'confirmUnpost'): void;
+  (e: 'cancelDocumentAction'): void;
+  (e: 'confirmDocumentAction', reason: string | null): void;
 }>();
 
 const formRef = ref<InstanceType<typeof NgbEntityForm> | null>(null);
@@ -263,6 +269,12 @@ function normalizeBannerText(value: string | null | undefined): string {
       danger
       @update:open="(value) => (!value ? emit('cancelUnpost') : null)"
       @confirm="emit('confirmUnpost')"
+    />
+
+    <NgbDocumentActionConfirmationDialog
+      :confirmation="documentActionConfirmation"
+      @cancel="emit('cancelDocumentAction')"
+      @confirm="(reason) => emit('confirmDocumentAction', reason)"
     />
   </div>
 </template>

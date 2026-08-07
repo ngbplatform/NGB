@@ -1,4 +1,4 @@
-import type { DocumentActionTargetDto } from '../api/contracts'
+import type { NgbNavigationTarget } from '../navigation/types'
 
 export type WorkCenterItemKind = 'Task' | 'Notification'
 export type WorkCenterTaskStatus = 'Open' | 'InProgress' | 'Completed' | 'Cancelled'
@@ -48,7 +48,7 @@ export type WorkCenterItem = {
   snoozedUntilUtc?: string | null
   assignment?: WorkCenterAssignment | null
   primaryActionCode?: string | null
-  target?: DocumentActionTargetDto | null
+  target?: NgbNavigationTarget | null
   version: number
 }
 

@@ -33,11 +33,6 @@ import { useEntityEditorHeaderActions } from '../../../../src/ngb/editor/useEnti
 const executeDocumentActionMock = vi.hoisted(() => vi.fn())
 const getDocumentEditorStateMock = vi.hoisted(() => vi.fn())
 
-vi.mock('../../../../src/ngb/api/documents', () => ({
-  executeDocumentAction: executeDocumentActionMock,
-  getDocumentEditorState: getDocumentEditorStateMock,
-}))
-
 const ConfiguredActionsHarness = defineComponent({
   setup() {
     const loading = ref(false)
@@ -61,42 +56,10 @@ const ConfiguredActionsHarness = defineComponent({
       requestNavigate,
       setEditorError: () => undefined,
       normalizeEditorError: () => ({ summary: 'normalized', issues: [] }),
-      loadEditorState: async () => ({
-        document: {
-          id: 'doc-1',
-          display: 'Invoice INV-001',
-          payload: { fields: {} },
-          status: 1,
-          isMarkedForDeletion: false,
-        },
-        documentVersion: 7,
-        actions: [
-          {
-            code: 'approve_document',
-            label: 'Approve document',
-            icon: 'check',
-            kind: 'Primary',
-            executionKind: 'Command',
-            order: 100,
-            isAllowed: true,
-            disabledReasons: [],
-          },
-          {
-            code: 'email_packet',
-            label: 'Email packet',
-            icon: 'mail',
-            kind: 'Secondary',
-            executionKind: 'Navigation',
-            order: 200,
-            isAllowed: true,
-            disabledReasons: [],
-            target: {
-              code: 'route',
-              parameters: { path: '/emails/doc-1' },
-            },
-          },
-        ],
-      }),
+      gateway: {
+        loadEditorState: getDocumentEditorStateMock,
+        execute: executeDocumentActionMock,
+      },
     })
 
     const {
@@ -174,6 +137,42 @@ const ConfiguredActionsHarness = defineComponent({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  getDocumentEditorStateMock.mockResolvedValue({
+    document: {
+      id: 'doc-1',
+      display: 'Invoice INV-001',
+      payload: { fields: {} },
+      status: 1,
+      isMarkedForDeletion: false,
+    },
+    documentVersion: 7,
+    actions: [
+      {
+        code: 'approve_document',
+        label: 'Approve document',
+        icon: 'check',
+        kind: 'Primary',
+        executionKind: 'Command',
+        order: 100,
+        isAllowed: true,
+        disabledReasons: [],
+      },
+      {
+        code: 'email_packet',
+        label: 'Email packet',
+        icon: 'mail',
+        kind: 'Secondary',
+        executionKind: 'Navigation',
+        order: 200,
+        isAllowed: true,
+        disabledReasons: [],
+        target: {
+          code: 'route',
+          parameters: { path: '/emails/doc-1' },
+        },
+      },
+    ],
+  })
   executeDocumentActionMock.mockResolvedValue({
     executionId: 'execution-1',
     actionCode: 'approve_document',
@@ -237,6 +236,10 @@ beforeEach(() => {
       limit: 50,
       nextCursor: null,
     }),
+    documentActions: {
+      loadEditorState: getDocumentEditorStateMock,
+      execute: executeDocumentActionMock,
+    },
   })
 })
 

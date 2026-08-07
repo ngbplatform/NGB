@@ -107,26 +107,30 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
+import { resolveNgbNavigationRoutes } from '../navigation/config'
 import NgbIcon from '../primitives/NgbIcon.vue'
-import { getAuthSnapshot } from '../auth/keycloak'
-import { resolveNgbDocumentActionTarget } from '../editor/config'
-import { formatWorkCenterTimestamp, workCenterItemBadge, workCenterItemTone } from './presentation'
-import type { WorkCenterItem, WorkCenterQuery } from './types'
+import {
+  canClaimWorkCenterItem,
+  canSnoozeWorkCenterItem,
+  formatWorkCenterTimestamp,
+  hasWorkCenterItemActions,
+  isWorkCenterItemSnoozed,
+  resolveWorkCenterItemRoute,
+  workCenterItemBadge,
+  workCenterItemTone,
+  workCenterTabs,
+  type WorkCenterTab,
+} from './presentation'
+import type { WorkCenterItem } from './types'
 import { useWorkCenter } from './useWorkCenter'
 import { useWorkCenterInfiniteScroll } from './useWorkCenterInfiniteScroll'
 
 const emit = defineEmits<{ (event: 'close'): void }>()
 const props = withDefaults(defineProps<{ vertical?: string }>(), { vertical: '' })
 const router = useRouter()
-const workCenter = useWorkCenter()
-type WorkCenterTab = NonNullable<WorkCenterQuery['tab']>
+const workCenter = useWorkCenter({ vertical: props.vertical })
 const tab = ref<WorkCenterTab>('attention')
-const tabs: Array<{ value: WorkCenterTab; label: string }> = [
-  { value: 'attention' as const, label: 'Needs Attention' },
-  { value: 'tasks' as const, label: 'Tasks' },
-  { value: 'notifications' as const, label: 'Notifications' },
-  { value: 'completed' as const, label: 'Completed' },
-]
+const tabs = workCenterTabs
 const { sentinel: infiniteScrollSentinel } = useWorkCenterInfiniteScroll({
   nextCursor: workCenter.nextCursor,
   loading: workCenter.loading,
@@ -136,8 +140,6 @@ const { sentinel: infiniteScrollSentinel } = useWorkCenterInfiniteScroll({
 })
 
 async function reload() {
-  const auth = getAuthSnapshot()
-  if (!auth.initialized || !auth.authenticated) return
   await workCenter.load({
     tab: tab.value,
     limit: 20,
@@ -148,22 +150,9 @@ async function reload() {
 watch(tab, () => { void reload() })
 onMounted(() => { void reload() })
 
-function itemRoute(item: WorkCenterItem): string | null {
-  if (item.target) {
-    return resolveNgbDocumentActionTarget(item.target, {
-      documentType: item.source.resourceCode,
-      documentId: item.source.entityId,
-    })
-  }
-  if (item.source.resourceKind.toLowerCase() === 'document') {
-    return `/documents/${encodeURIComponent(item.source.resourceCode)}/${encodeURIComponent(item.source.entityId)}`
-  }
-  return null
-}
-
 async function openItem(item: WorkCenterItem) {
   if (!item.isRead) await workCenter.markRead(item).catch(() => undefined)
-  const route = itemRoute(item)
+  const route = resolveWorkCenterItemRoute(item)
   if (route) {
     emit('close')
     await router.push(route)
@@ -172,7 +161,7 @@ async function openItem(item: WorkCenterItem) {
 
 function openFullPage() {
   emit('close')
-  void router.push({ path: '/work-center', query: { tab: tab.value } })
+  void router.push({ path: resolveNgbNavigationRoutes().workCenter, query: { tab: tab.value } })
 }
 
 function claim(item: WorkCenterItem) {
@@ -180,22 +169,15 @@ function claim(item: WorkCenterItem) {
 }
 
 function canClaim(item: WorkCenterItem): boolean {
-  return item.kind === 'Task'
-    && item.taskStatus !== 'Completed'
-    && item.taskStatus !== 'Cancelled'
-    && !!item.assignment?.isRoleAssigned
-    && !item.assignment.claimedByUserId
+  return canClaimWorkCenterItem(item)
 }
 
 function canSnooze(item: WorkCenterItem): boolean {
-  return item.kind === 'Task'
-    && item.taskStatus !== 'Completed'
-    && item.taskStatus !== 'Cancelled'
+  return canSnoozeWorkCenterItem(item)
 }
 
 function hasItemActions(item: WorkCenterItem): boolean {
-  return item.kind === 'Notification'
-    || (item.taskStatus !== 'Completed' && item.taskStatus !== 'Cancelled')
+  return hasWorkCenterItemActions(item)
 }
 
 function dismiss(item: WorkCenterItem) {
@@ -203,9 +185,7 @@ function dismiss(item: WorkCenterItem) {
 }
 
 function isSnoozed(item: WorkCenterItem): boolean {
-  return item.kind === 'Task'
-    && !!item.snoozedUntilUtc
-    && Date.parse(item.snoozedUntilUtc) > Date.now()
+  return isWorkCenterItemSnoozed(item)
 }
 
 function showNow(item: WorkCenterItem) {

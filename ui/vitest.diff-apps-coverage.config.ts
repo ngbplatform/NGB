@@ -5,8 +5,6 @@ export default defineConfig({
     fileParallelism: false,
     maxWorkers: 1,
     projects: [
-      './ngb-ui-framework/vitest.diff-unit.config.ts',
-      './ngb-ui-framework/vitest.browser.config.ts',
       './ngb-agency-billing-web/vitest.config.ts',
       './ngb-agency-billing-web/vitest.browser.config.ts',
       './ngb-property-management-web/vitest.config.ts',
@@ -18,17 +16,10 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      allowExternal: true,
-      reportsDirectory: '../artifacts/coverage/frontend-diff',
-      reporter: ['text', 'html', 'json-summary', 'lcov'],
+      reportsDirectory: '../artifacts/coverage/frontend-diff-apps',
+      reporter: ['text', 'json'],
       reportOnFailure: true,
       include: [
-        'ngb-ui-framework/src/ngb/api/contracts.ts',
-        'ngb-ui-framework/src/ngb/api/documents.ts',
-        'ngb-ui-framework/src/ngb/editor/config.ts',
-        'ngb-ui-framework/src/ngb/editor/useConfiguredEntityEditorDocumentActions.ts',
-        'ngb-ui-framework/src/ngb/site/NgbSiteShell.vue',
-        'ngb-ui-framework/src/ngb/site/NgbTopBar.vue',
         'ngb-agency-billing-web/src/editor/**/*.{ts,vue}',
         'ngb-agency-billing-web/src/router/router.ts',
         'ngb-property-management-web/src/editor/**/*.{ts,vue}',

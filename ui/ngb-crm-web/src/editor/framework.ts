@@ -1,6 +1,8 @@
 import type { DocumentEffects, EditorFrameworkConfig, LookupHint, LookupStoreApi } from '@ngbplatform/ui'
 import {
+  executeDocumentAction,
   getDocumentById,
+  getDocumentEditorState,
   getDocumentEffects,
   getDocumentGraph,
   getEntityAuditLog,
@@ -125,6 +127,10 @@ export function createCRMEditorConfig(): EditorFrameworkConfig {
   const lookupStore = useLookupStore()
 
   return {
+    documentActions: {
+      loadEditorState: getDocumentEditorState,
+      execute: executeDocumentAction,
+    },
     routing: {
       buildDocumentFullPageUrl,
     },

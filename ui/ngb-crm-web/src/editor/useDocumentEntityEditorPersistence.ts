@@ -8,13 +8,9 @@ import {
   getDocumentEditorState,
   getDocumentEffects,
   hydrateEntityReferenceFieldsForEditing,
-  markDocumentForDeletion,
-  postDocument,
   resolveNavigateOnCreate,
   setModelFromFields,
   syncNgbEditorComputedDisplay,
-  unmarkDocumentForDeletion,
-  unpostDocument,
   updateDraft,
   type DocumentEntityPersistenceAdapter,
 } from '@ngbplatform/ui'
@@ -155,31 +151,9 @@ export function useDocumentEntityEditorPersistence(
     args.emitSaved()
   }
 
-  async function markForDeletion() {
-    args.doc.value = await markDocumentForDeletion(args.typeCode.value, args.currentId.value!)
-    args.toasts.push({ title: 'Deleted', message: 'Document marked for deletion.', tone: 'warn' })
-  }
-
-  async function unmarkForDeletion() {
-    args.doc.value = await unmarkDocumentForDeletion(args.typeCode.value, args.currentId.value!)
-    args.toasts.push({ title: 'Restored', message: 'Document restored.', tone: 'success' })
-  }
-
-  async function post() {
-    args.doc.value = await postDocument(args.typeCode.value, args.currentId.value!)
-  }
-
-  async function unpost() {
-    args.doc.value = await unpostDocument(args.typeCode.value, args.currentId.value!)
-  }
-
   return {
     loadEffectsSnapshot,
     load,
     save,
-    markForDeletion,
-    unmarkForDeletion,
-    post,
-    unpost,
   }
 }

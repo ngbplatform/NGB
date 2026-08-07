@@ -13,16 +13,33 @@ export { default as NgbWorkCenterPage } from './ngb/work-center/NgbWorkCenterPag
 export { default as NgbNotificationPreferencesPage } from './ngb/work-center/NgbNotificationPreferencesPage.vue';
 export { useWorkCenter } from './ngb/work-center/useWorkCenter';
 export {
-  claimWorkCenterTask,
-  dismissWorkCenterNotification,
-  getNotificationPreferences,
-  getWorkCenterItems,
-  getWorkCenterSummary,
-  markWorkCenterNotificationRead,
-  markWorkCenterTaskRead,
-  snoozeWorkCenterTask,
-  updateNotificationPreferences,
-} from './ngb/work-center/api';
+  createNgbWorkCenterRuntime,
+  provideNgbWorkCenterRuntime,
+  useNgbWorkCenterRuntime,
+  useWorkCenterPreferences,
+} from './ngb/work-center/useWorkCenter';
+export { configureNgbWorkCenter, getConfiguredNgbWorkCenter } from './ngb/work-center/config';
+export { createDefaultNgbWorkCenterConfig } from './ngb/work-center/defaultConfig';
+export type {
+  NgbWorkCenterConfig,
+  WorkCenterRealtimeClient,
+  WorkCenterRealtimeHandlers,
+  WorkCenterSessionAdapter,
+  WorkCenterSessionSnapshot,
+} from './ngb/work-center/config';
+export type { WorkCenterGateway } from './ngb/work-center/gateway';
+export type { NgbWorkCenterRuntime } from './ngb/work-center/useWorkCenter';
+export {
+  configureNgbNavigation,
+  resolveNgbNavigationRoutes,
+  resolveNgbNavigationTarget,
+} from './ngb/navigation/config';
+export type {
+  NgbNavigationConfig,
+  NgbNavigationContext,
+  NgbNavigationRoutes,
+  NgbNavigationTarget,
+} from './ngb/navigation/types';
 export type {
   NotificationChannel,
   NotificationPreference,
@@ -290,7 +307,6 @@ export {
   configureNgbEditor,
   getConfiguredNgbEditor,
   maybeGetConfiguredNgbEditor,
-  resolveNgbDocumentActionTarget,
   resolveNgbEditorEntityProfile,
   sanitizeNgbEditorModelForEditing,
   syncNgbEditorComputedDisplay,
@@ -312,6 +328,7 @@ export type {
   LookupSearchOptions,
 } from './ngb/lookup/config';
 export type {
+  DocumentActionsGateway,
   EditorComputedDisplayMode,
   EditorEntityBehaviorArgs,
   EditorEntityProfile,
@@ -885,10 +902,6 @@ export {
   getDocumentGraph,
   getDocumentPage,
   getDocumentTypeMetadata,
-  markDocumentForDeletion,
-  postDocument,
-  unmarkDocumentForDeletion,
-  unpostDocument,
   updateDraft,
 } from './ngb/api/documents';
 export {

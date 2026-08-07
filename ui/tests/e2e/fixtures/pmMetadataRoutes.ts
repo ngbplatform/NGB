@@ -7,7 +7,7 @@ import type {
   DocumentTypeMetadataDto,
   PageResponseDto,
   RelationshipGraphDto,
-} from '../../../ngb-ui-framework/src/ngb/api/contracts'
+} from '@ngbplatform/ui/contracts'
 import { PM_TEST_IDS } from '../support/routes'
 
 export const partyCatalogMetadataFixture: CatalogTypeMetadataDto = {

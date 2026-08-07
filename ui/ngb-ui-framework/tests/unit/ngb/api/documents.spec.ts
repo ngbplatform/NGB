@@ -26,10 +26,6 @@ import {
   getDocumentPage,
   getDocumentTypeMetadata,
   lookupDocumentsAcrossTypes,
-  markDocumentForDeletion,
-  postDocument,
-  unmarkDocumentForDeletion,
-  unpostDocument,
   updateDraft,
 } from '../../../../src/ngb/api/documents'
 
@@ -232,7 +228,7 @@ describe('documents api', () => {
     )
   })
 
-  it('normalizes document statuses across draft, posting, and deletion mutations', async () => {
+  it('normalizes document statuses across draft persistence operations', async () => {
     const payload = {
       fields: {
         memo: 'Test',
@@ -241,27 +237,15 @@ describe('documents api', () => {
 
     httpMocks.httpPost
       .mockResolvedValueOnce(createDocument('draft'))
-      .mockResolvedValueOnce(createDocument('posted'))
-      .mockResolvedValueOnce(createDocument('draft'))
-      .mockResolvedValueOnce(createDocument('marked_for_deletion'))
-      .mockResolvedValueOnce(createDocument(1))
     httpMocks.httpPut.mockResolvedValueOnce(createDocument('posted'))
     httpMocks.httpDelete.mockResolvedValueOnce(undefined)
 
     expect((await createDraft('pm.invoice', payload)).status).toBe(1)
     expect((await updateDraft('pm.invoice', 'doc/1', payload)).status).toBe(2)
-    expect((await postDocument('pm.invoice', 'doc/1')).status).toBe(2)
-    expect((await unpostDocument('pm.invoice', 'doc/1')).status).toBe(1)
-    expect((await markDocumentForDeletion('pm.invoice', 'doc/1')).status).toBe(3)
-    expect((await unmarkDocumentForDeletion('pm.invoice', 'doc/1')).status).toBe(1)
     await deleteDraft('pm.invoice', 'doc/1')
 
     expect(httpMocks.httpPost).toHaveBeenNthCalledWith(1, '/api/documents/pm.invoice', payload)
     expect(httpMocks.httpPut).toHaveBeenCalledWith('/api/documents/pm.invoice/doc%2F1', payload)
-    expect(httpMocks.httpPost).toHaveBeenNthCalledWith(2, '/api/documents/pm.invoice/doc%2F1/post')
-    expect(httpMocks.httpPost).toHaveBeenNthCalledWith(3, '/api/documents/pm.invoice/doc%2F1/unpost')
-    expect(httpMocks.httpPost).toHaveBeenNthCalledWith(4, '/api/documents/pm.invoice/doc%2F1/mark-for-deletion')
-    expect(httpMocks.httpPost).toHaveBeenNthCalledWith(5, '/api/documents/pm.invoice/doc%2F1/unmark-for-deletion')
     expect(httpMocks.httpDelete).toHaveBeenCalledWith('/api/documents/pm.invoice/doc%2F1')
   })
 

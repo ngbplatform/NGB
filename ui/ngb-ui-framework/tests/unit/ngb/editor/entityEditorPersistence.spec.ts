@@ -17,10 +17,7 @@ function createPersistenceHarness() {
   const canMarkForDeletion = ref(true)
   const canUnmarkForDeletion = ref(true)
   const canDelete = ref(true)
-  const canPost = ref(true)
-  const canUnpost = ref(true)
   const isNew = ref(false)
-  const isDirty = ref(false)
   const error = ref<{ summary: string } | null>(null)
   const emitChanged = vi.fn()
   const emitDeleted = vi.fn()
@@ -36,10 +33,6 @@ function createPersistenceHarness() {
   const document = {
     load: vi.fn().mockResolvedValue(undefined),
     save: vi.fn().mockResolvedValue(undefined),
-    markForDeletion: vi.fn().mockResolvedValue(undefined),
-    unmarkForDeletion: vi.fn().mockResolvedValue(undefined),
-    post: vi.fn().mockResolvedValue(undefined),
-    unpost: vi.fn().mockResolvedValue(undefined),
     loadEffectsSnapshot: vi.fn().mockResolvedValue(undefined),
   }
 
@@ -61,11 +54,7 @@ function createPersistenceHarness() {
     canMarkForDeletion: computed(() => canMarkForDeletion.value),
     canUnmarkForDeletion: computed(() => canUnmarkForDeletion.value),
     canDelete: computed(() => canDelete.value),
-    canPost: computed(() => canPost.value),
-    canUnpost: computed(() => canUnpost.value),
     isNew: computed(() => isNew.value),
-    isDirty: computed(() => isDirty.value),
-    error,
     setEditorError,
     normalizeEditorError,
     emitChanged,
@@ -86,10 +75,7 @@ function createPersistenceHarness() {
       canMarkForDeletion,
       canUnmarkForDeletion,
       canDelete,
-      canPost,
-      canUnpost,
       isNew,
-      isDirty,
       error,
     },
     adapters: {
@@ -194,43 +180,12 @@ describe('entity editor persistence', () => {
     expect(spies.emitDeleted).toHaveBeenCalledTimes(1)
   })
 
-  it('posts documents after saving dirty drafts and unposts posted documents', async () => {
-    const { state, adapters, spies, persistence } = createPersistenceHarness()
-
-    state.kind.value = 'document'
-    state.isDirty.value = true
-
-    await persistence.post()
-
-    expect(adapters.document.save).toHaveBeenCalledTimes(1)
-    expect(adapters.document.post).toHaveBeenCalledTimes(1)
-    expect(adapters.document.load).toHaveBeenCalledTimes(1)
-    expect(spies.emitChanged).toHaveBeenCalledWith('post')
-
-    await persistence.unpost()
-
-    expect(adapters.document.unpost).toHaveBeenCalledTimes(1)
-    expect(adapters.document.load).toHaveBeenCalledTimes(2)
-    expect(spies.emitChanged).toHaveBeenCalledWith('unpost')
-  })
-
-  it('stops posting when dirty-save fails and exposes the effects snapshot loader', async () => {
-    const { state, adapters, persistence } = createPersistenceHarness()
-
-    state.kind.value = 'document'
-    state.isDirty.value = true
-    adapters.document.save.mockImplementationOnce(async () => {
-      state.error.value = {
-        summary: 'save failed',
-      }
-    })
-
-    await persistence.post()
-
-    expect(adapters.document.save).toHaveBeenCalledTimes(1)
-    expect(adapters.document.post).not.toHaveBeenCalled()
-
+  it('exposes document effects loading without owning server lifecycle mutations', async () => {
+    const { adapters, persistence } = createPersistenceHarness()
     await persistence.loadDocumentEffectsSnapshot('pm.invoice', 'doc-1')
     expect(adapters.document.loadEffectsSnapshot).toHaveBeenCalledWith('pm.invoice', 'doc-1')
+    expect(adapters.document).not.toHaveProperty('post')
+    expect(adapters.document).not.toHaveProperty('unpost')
+    expect(adapters.document).not.toHaveProperty('markForDeletion')
   })
 })

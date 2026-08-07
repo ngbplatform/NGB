@@ -181,53 +181,51 @@ describe('editor config', () => {
     expect(config.resolveNgbEditorPrintBehavior()).toEqual({})
   })
 
-  it('resolves server action targets through configured, explicit, and platform routes', async () => {
+  it('keeps server action target navigation independent from editor configuration', async () => {
     vi.resetModules()
-    const config = await import('../../../../src/ngb/editor/config')
-    const context = { documentType: 'pm.invoice', documentId: 'doc/1' }
+    const navigation = await import('../../../../src/ngb/navigation/config')
+    const context = { resourceCode: 'pm.invoice', entityId: 'doc/1' }
 
-    config.configureNgbEditor({
-      loadDocumentById: vi.fn(),
-      loadDocumentEffects: vi.fn(),
-      loadDocumentGraph: vi.fn(),
-      loadEntityAuditLog: vi.fn(),
-      resolveDocumentActionTarget: vi.fn((target) => target.code === 'custom' ? '/custom' : null),
-    } as never)
+    navigation.configureNgbNavigation({
+      resolveTarget: vi.fn((target) => target.code === 'custom' ? '/custom' : null),
+    })
 
-    expect(config.resolveNgbDocumentActionTarget(
+    expect(navigation.resolveNgbNavigationTarget(
       { code: 'custom', parameters: {} },
       context,
     )).toBe('/custom')
-    expect(config.resolveNgbDocumentActionTarget(
+    expect(navigation.resolveNgbNavigationTarget(
       { code: 'unknown', parameters: { path: '/explicit/path' } },
       context,
     )).toBe('/explicit/path')
-    expect(config.resolveNgbDocumentActionTarget(
+    expect(navigation.resolveNgbNavigationTarget(
       {
         code: 'document.editor',
         parameters: { documentType: 'crm.lead', documentId: 'lead/1' },
       },
       context,
     )).toBe('/documents/crm.lead/lead%2F1')
-    expect(config.resolveNgbDocumentActionTarget(
+    expect(navigation.resolveNgbNavigationTarget(
       { code: 'document.effects', parameters: {} },
       context,
     )).toBe('/documents/pm.invoice/doc%2F1/effects')
-    expect(config.resolveNgbDocumentActionTarget(
+    expect(navigation.resolveNgbNavigationTarget(
       { code: 'document.flow', parameters: { documentId: 'flow/1' } },
       context,
     )).toBe('/documents/pm.invoice/flow%2F1/flow')
-    expect(config.resolveNgbDocumentActionTarget(
+    expect(navigation.resolveNgbNavigationTarget(
       { code: 'document.print', parameters: { documentType: '   ', documentId: 'print/1' } },
       context,
     )).toBe('/documents/pm.invoice/print%2F1/print')
-    expect(config.resolveNgbDocumentActionTarget(
+    expect(navigation.resolveNgbNavigationTarget(
       { code: 'unknown', parameters: { path: 'relative' } },
       context,
     )).toBeNull()
-    expect(config.resolveNgbDocumentActionTarget(
+    expect(navigation.resolveNgbNavigationTarget(
       { code: 'unknown', parameters: undefined as never },
       context,
     )).toBeNull()
+
+    navigation.configureNgbNavigation()
   })
 })

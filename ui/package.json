@@ -34,7 +34,9 @@
     "test:unit": "vitest run --config vitest.config.ts && npm --workspace ngb-crm-web run test:unit",
     "test:unit:watch": "vitest --config vitest.config.ts",
     "test:coverage:feature": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.feature-coverage.config.ts --coverage ngb-ui-framework/tests/unit/ngb/work-center ngb-ui-framework/tests/browser/ngb/work-center",
-    "test:coverage:diff": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-coverage.config.ts --coverage"
+    "test:coverage:diff": "npm run test:coverage:diff:framework && npm run test:coverage:diff:apps && node scripts/merge-frontend-diff-coverage.mjs",
+    "test:coverage:diff:apps": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-apps-coverage.config.ts --coverage",
+    "test:coverage:diff:framework": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-framework-coverage.config.ts --coverage"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.3",
@@ -42,6 +44,9 @@
     "@vitest/browser-playwright": "^4.1.10",
     "@vitest/coverage-v8": "4.1.10",
     "@playwright/test": "^1.56.1",
+    "istanbul-lib-coverage": "3.2.2",
+    "istanbul-lib-report": "3.0.1",
+    "istanbul-reports": "3.2.0",
     "typescript": "^5.7.3",
     "vitest": "^4.1.10",
     "vitest-browser-vue": "^2.1.0"

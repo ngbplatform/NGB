@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   getDocumentById: vi.fn(),
   getDocumentEffects: vi.fn(),
   getDocumentGraph: vi.fn(),
+  getDocumentEditorState: vi.fn(),
+  executeDocumentAction: vi.fn(),
   getEntityAuditLog: vi.fn(),
   getLookupHint: vi.fn(),
   isGeneralJournalEntryDocumentType: vi.fn(() => false),
@@ -24,6 +26,8 @@ vi.mock('@ngbplatform/ui', () => ({
   getDocumentById: mocks.getDocumentById,
   getDocumentEffects: mocks.getDocumentEffects,
   getDocumentGraph: mocks.getDocumentGraph,
+  getDocumentEditorState: mocks.getDocumentEditorState,
+  executeDocumentAction: mocks.executeDocumentAction,
   getEntityAuditLog: mocks.getEntityAuditLog,
   isEmptyGuid: (value: string) => value === EMPTY_GUID,
   isGeneralJournalEntryDocumentType: mocks.isGeneralJournalEntryDocumentType,
@@ -41,6 +45,7 @@ vi.mock('../../../src/editor/entityProfile', () => ({
 }))
 
 import { createPmEditorConfig } from '../../../src/editor/framework'
+import { createPmNavigationConfig } from '../../../src/navigation/framework'
 
 describe('property-management editor framework', () => {
   beforeEach(() => {
@@ -74,7 +79,7 @@ describe('property-management editor framework', () => {
   })
 
   it('routes reconciliation with and without a payment', () => {
-    const resolve = createPmEditorConfig().resolveDocumentActionTarget!
+    const resolve = createPmNavigationConfig().resolveTarget!
     expect(resolve({ code: 'pm.receivables.reconciliation', parameters: { paymentId: ' payment/1 ' } }, {} as never))
       .toBe('/receivables/reconciliation?paymentId=payment%2F1')
     expect(resolve({ code: 'pm.receivables.reconciliation', parameters: { paymentId: ' ' } }, {} as never))
@@ -84,7 +89,7 @@ describe('property-management editor framework', () => {
   })
 
   it('routes receivable and payable apply targets with normalized parameters', () => {
-    const resolve = createPmEditorConfig().resolveDocumentActionTarget!
+    const resolve = createPmNavigationConfig().resolveTarget!
     expect(resolve({
       code: 'pm.receivables.apply',
       parameters: { documentId: ' payment/1 ', empty: null, blank: ' ' },

@@ -31,6 +31,10 @@ function createEditorFrameworkConfig() {
     loadDocumentEffects: vi.fn(async () => ({} as never)),
     loadDocumentGraph: vi.fn(async () => ({} as never)),
     loadEntityAuditLog: vi.fn(async () => ({} as never)),
+    documentActions: {
+      loadEditorState: vi.fn(async () => ({} as never)),
+      execute: vi.fn(async () => ({} as never)),
+    },
   }
 }
 

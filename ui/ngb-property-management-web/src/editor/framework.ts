@@ -1,7 +1,9 @@
 import type { EditorFrameworkConfig, DocumentEffects, EffectDimensionValue } from '@ngbplatform/ui'
 import {
   buildGeneralJournalEntriesPath,
+  executeDocumentAction,
   getDocumentById,
+  getDocumentEditorState,
   getDocumentEffects,
   getDocumentGraph,
   getEntityAuditLog,
@@ -13,7 +15,6 @@ import {
 } from '@ngbplatform/ui'
 
 import { getLookupHint } from '../lookup/hints'
-import { buildPmOpenItemsPath } from '../router/pmRoutePaths'
 import { resolvePmEditorEntityProfile } from './entityProfile'
 
 const PM_EFFECT_DIMENSION_DOCUMENT_TYPES = [
@@ -107,6 +108,10 @@ export function createPmEditorConfig(): EditorFrameworkConfig {
   const lookupStore = useLookupStore()
 
   return {
+    documentActions: {
+      loadEditorState: getDocumentEditorState,
+      execute: executeDocumentAction,
+    },
     routing: {
       buildDocumentFullPageUrl(documentType, id) {
         if (isGeneralJournalEntryDocumentType(documentType)) {
@@ -115,25 +120,6 @@ export function createPmEditorConfig(): EditorFrameworkConfig {
 
         return defaultBuildDocumentFullPageUrl(documentType, id)
       },
-    },
-    resolveDocumentActionTarget(target) {
-      if (target.code === 'pm.receivables.reconciliation') {
-        const paymentId = String(target.parameters.paymentId ?? '').trim()
-        return paymentId
-          ? `/receivables/reconciliation?paymentId=${encodeURIComponent(paymentId)}`
-          : '/receivables/reconciliation'
-      }
-      if (target.code === 'pm.receivables.apply' || target.code === 'pm.payables.apply') {
-        const parameters = new URLSearchParams()
-        for (const [key, value] of Object.entries(target.parameters)) {
-          const normalized = String(value ?? '').trim()
-          if (normalized) parameters.set(key, normalized)
-        }
-        const side = target.code === 'pm.receivables.apply' ? 'receivables' : 'payables'
-        const query = parameters.toString()
-        return `${buildPmOpenItemsPath(side)}${query ? `?${query}` : ''}`
-      }
-      return null
     },
     loadDocumentById: getDocumentById,
     loadDocumentEffects: getDocumentEffects,

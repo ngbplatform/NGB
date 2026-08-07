@@ -17,13 +17,9 @@ vi.mock('@ngbplatform/ui', () => ({
   getDocumentEditorState: mocks.getDocumentEditorState,
   getDocumentEffects: mocks.getDocumentEffects,
   hydrateEntityReferenceFieldsForEditing: vi.fn(),
-  markDocumentForDeletion: vi.fn(),
-  postDocument: vi.fn(),
   resolveNavigateOnCreate: vi.fn(),
   setModelFromFields: (model: { value: unknown }, fields: unknown) => { model.value = fields },
   syncNgbEditorComputedDisplay: vi.fn(),
-  unmarkDocumentForDeletion: vi.fn(),
-  unpostDocument: vi.fn(),
   updateDraft: vi.fn(),
 }))
 

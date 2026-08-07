@@ -12,7 +12,8 @@ vi.mock('../../../../src/ngb/auth/keycloak', () => ({
   getAuthSnapshot: mocks.getAuthSnapshot,
 }))
 
-vi.mock('../../../../src/ngb/work-center/useWorkCenter', () => ({
+vi.mock('../../../../src/ngb/work-center/useWorkCenter', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../src/ngb/work-center/useWorkCenter')>(),
   useWorkCenter: () => ({
     summary: ref({ attentionCount: 7 }),
     refreshSummary: mocks.refreshSummary,
@@ -37,25 +38,31 @@ function shellProps() {
   }
 }
 
-test('adds notification preferences without caller settings and starts Work Center only for authenticated users', async () => {
+test('adds notification preferences without caller settings and delegates session handling to Work Center', async () => {
+  mocks.refreshSummary.mockReset().mockResolvedValue(undefined)
+  mocks.connectRealtime.mockReset().mockResolvedValue(undefined)
   mocks.getAuthSnapshot.mockReturnValueOnce({
     initialized: true,
     authenticated: false,
   })
   await render(NgbSiteShell, { props: shellProps() })
-  expect(mocks.refreshSummary).not.toHaveBeenCalled()
-  expect(mocks.connectRealtime).not.toHaveBeenCalled()
+  await vi.waitFor(() => {
+    expect(mocks.refreshSummary).toHaveBeenCalledOnce()
+    expect(mocks.connectRealtime).toHaveBeenCalledOnce()
+  })
 
   mocks.getAuthSnapshot.mockReturnValueOnce({
     initialized: true,
     authenticated: true,
   })
+  mocks.refreshSummary.mockClear()
+  mocks.connectRealtime.mockClear()
   mocks.refreshSummary.mockRejectedValueOnce(new Error('temporary'))
   await render(NgbSiteShell, { props: shellProps() })
 
   await vi.waitFor(() => {
     expect(mocks.refreshSummary).toHaveBeenCalledOnce()
-    expect(mocks.refreshSummary).toHaveBeenCalledWith(null)
+    expect(mocks.refreshSummary).toHaveBeenCalledWith()
     expect(mocks.connectRealtime).toHaveBeenCalledOnce()
   })
 })

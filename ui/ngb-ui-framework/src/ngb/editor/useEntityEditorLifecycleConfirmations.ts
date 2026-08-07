@@ -8,9 +8,7 @@ type UseEntityEditorLifecycleConfirmationsArgs = {
   kind: ComputedRef<EditorKind>
   isDirty: ComputedRef<boolean>
   canMarkForDeletion: ComputedRef<boolean>
-  canUnpost: ComputedRef<boolean>
   onMarkForDeletion: ActionHandler
-  onUnpost: ActionHandler
 }
 
 function run(handler: ActionHandler): void {
@@ -21,7 +19,6 @@ export function useEntityEditorLifecycleConfirmations(
   args: UseEntityEditorLifecycleConfirmationsArgs,
 ) {
   const markConfirmOpen = ref(false)
-  const unpostConfirmOpen = ref(false)
 
   const markConfirmMessage = computed(() => {
     const entity = args.kind.value === 'catalog' ? 'record' : 'document'
@@ -42,28 +39,11 @@ export function useEntityEditorLifecycleConfirmations(
     run(args.onMarkForDeletion)
   }
 
-  function requestUnpost() {
-    if (args.canUnpost.value) unpostConfirmOpen.value = true
-  }
-
-  function cancelUnpost() {
-    unpostConfirmOpen.value = false
-  }
-
-  function confirmUnpost() {
-    unpostConfirmOpen.value = false
-    run(args.onUnpost)
-  }
-
   return {
     markConfirmOpen,
     markConfirmMessage,
     requestMarkForDeletion,
     cancelMarkForDeletion,
     confirmMarkForDeletion,
-    unpostConfirmOpen,
-    requestUnpost,
-    cancelUnpost,
-    confirmUnpost,
   }
 }

@@ -33,13 +33,14 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { getNotificationPreferences, updateNotificationPreferences } from './api'
 import type { NotificationPreference } from './types'
+import { useWorkCenterPreferences } from './useWorkCenter'
 
 const preferences = ref<NotificationPreference[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const error = ref<string | null>(null)
+const gateway = useWorkCenterPreferences()
 const grouped = computed(() => {
   const groups = new Map<string, NotificationPreference[]>()
   const ordered = [...preferences.value].sort((left, right) => {
@@ -62,7 +63,7 @@ async function load() {
   loading.value = true
   error.value = null
   try {
-    preferences.value = await getNotificationPreferences()
+    preferences.value = await gateway.load()
   } catch (cause) {
     error.value = message(cause)
   } finally {
@@ -74,7 +75,7 @@ async function save() {
   saving.value = true
   error.value = null
   try {
-    await updateNotificationPreferences(preferences.value.map(({ code, channel, isEnabled }) => ({
+    await gateway.save(preferences.value.map(({ code, channel, isEnabled }) => ({
       code,
       channel,
       isEnabled,

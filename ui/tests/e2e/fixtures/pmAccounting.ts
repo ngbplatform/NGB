@@ -3,18 +3,18 @@ import type {
   PeriodClosingCalendarDto,
   PeriodCloseStatusDto,
   RetainedEarningsAccountOptionDto,
-} from '../../../ngb-ui-framework/src/ngb/accounting/periodClosingTypes'
+} from '@ngbplatform/ui/contracts'
 import type {
   GeneralJournalEntryDetailsDto,
   GeneralJournalEntryDocumentDto,
   GeneralJournalEntryHeaderDto,
   GeneralJournalEntryPageDto,
-} from '../../../ngb-ui-framework/src/ngb/accounting/generalJournalEntryTypes'
+} from '@ngbplatform/ui/contracts'
 import type {
   ChartOfAccountsAccountDto,
   ChartOfAccountsMetadataDto,
   ChartOfAccountsPageDto,
-} from '../../../ngb-ui-framework/src/ngb/accounting/types'
+} from '@ngbplatform/ui/contracts'
 
 export const retainedEarningsAccountFixture: RetainedEarningsAccountOptionDto = {
   accountId: '11111111-aaaa-4aaa-8aaa-111111111111',

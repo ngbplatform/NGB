@@ -8,11 +8,9 @@ const mocks = vi.hoisted(() => ({
   headerArgs: null as Record<string, unknown> | null,
   paletteArgs: null as Record<string, unknown> | null,
   handleConfiguredAction: vi.fn(),
+  requestDocumentAction: vi.fn(),
+  isDocumentActionAllowed: vi.fn(),
   refreshDocumentActions: vi.fn(),
-  post: vi.fn(),
-  requestUnpost: vi.fn(),
-  canPost: null as { value: boolean } | null,
-  canUnpost: null as { value: boolean } | null,
   routerReplace: vi.fn(),
   navigateBack: vi.fn(),
   runEntityEditorAction: vi.fn(),
@@ -26,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   canMarkForDeletion: null as { value: boolean } | null,
   canUnmarkForDeletion: null as { value: boolean } | null,
   loadDocumentEffectsSnapshot: vi.fn(),
+  save: vi.fn(),
   unmarkForDeletion: vi.fn(),
   requestMarkForDeletion: vi.fn(),
   focusField: vi.fn(),
@@ -208,14 +207,10 @@ vi.mock('@ngbplatform/ui', async () => {
   const { computed, defineComponent, h, ref } = await import('vue')
   const yes = ref(true)
   const no = ref(false)
-  const canPost = ref(true)
-  const canUnpost = ref(true)
   const canMarkForDeletion = ref(true)
   const canUnmarkForDeletion = ref(false)
   const empty = ref('')
   const noop = vi.fn()
-  mocks.canPost = canPost
-  mocks.canUnpost = canUnpost
   mocks.canMarkForDeletion = canMarkForDeletion
   mocks.canUnmarkForDeletion = canUnmarkForDeletion
 
@@ -274,8 +269,6 @@ vi.mock('@ngbplatform/ui', async () => {
       canMarkForDeletion,
       canUnmarkForDeletion,
       canDelete: yes,
-      canPost,
-      canUnpost,
       canSave: yes,
       documentStatusLabel: empty,
       documentStatusTone: empty,
@@ -300,12 +293,10 @@ vi.mock('@ngbplatform/ui', async () => {
       mocks.persistenceArgs = args
       return {
       load: vi.fn().mockResolvedValue(undefined),
-      save: vi.fn().mockResolvedValue(undefined),
+      save: mocks.save,
       markForDeletion: vi.fn().mockResolvedValue(undefined),
       unmarkForDeletion: mocks.unmarkForDeletion,
       deleteEntity: vi.fn().mockResolvedValue(undefined),
-      post: mocks.post,
-      unpost: vi.fn().mockResolvedValue(undefined),
       loadDocumentEffectsSnapshot: mocks.loadDocumentEffectsSnapshot,
       }
     },
@@ -341,9 +332,15 @@ vi.mock('@ngbplatform/ui', async () => {
         isMarkedForDeletion: false,
       })
       return {
+        documentLifecycleActions: ref({ deletion: null, posting: null }),
         extraPrimaryActions: ref([]),
         extraMoreActionGroups: ref([]),
         handleConfiguredAction: mocks.handleConfiguredAction,
+        requestDocumentAction: mocks.requestDocumentAction,
+        isDocumentActionAllowed: mocks.isDocumentActionAllowed,
+        confirmation: ref(null),
+        cancelDocumentActionConfirmation: noop,
+        confirmDocumentAction: noop,
         hasUnifiedActionState: yes,
         executingDocumentAction: yes,
         refreshDocumentActions: mocks.refreshDocumentActions,
@@ -367,16 +364,11 @@ vi.mock('@ngbplatform/ui', async () => {
       requestMarkForDeletion: mocks.requestMarkForDeletion,
       cancelMarkForDeletion: noop,
       confirmMarkForDeletion: noop,
-      unpostConfirmOpen: no,
-      requestUnpost: mocks.requestUnpost,
-      cancelUnpost: noop,
-      confirmUnpost: noop,
       }
     },
     useEntityEditorCommandPalette: (args: Record<string, unknown>) => {
       mocks.paletteArgs = args
-      void (args.canPost as { value: boolean }).value
-      void (args.canUnpost as { value: boolean }).value
+      ;(args.isDocumentActionAllowed as (actionCode: string) => boolean)('post')
     },
     useEntityEditorPageActions: (args: Record<string, unknown>) => {
       mocks.pageArgs = args
@@ -401,10 +393,8 @@ test.each([
 ])('connects unified document actions to the %s editor shell', async (_, component, typeCode) => {
   mocks.handleConfiguredAction.mockClear()
   mocks.refreshDocumentActions.mockReset().mockResolvedValue(undefined)
-  mocks.post.mockReset().mockResolvedValue(undefined)
-  mocks.requestUnpost.mockReset()
-  mocks.canPost!.value = true
-  mocks.canUnpost!.value = true
+  mocks.requestDocumentAction.mockReset().mockReturnValue(true)
+  mocks.isDocumentActionAllowed.mockReset().mockReturnValue(true)
   const view = await render(component, {
     props: {
       kind: 'document',
@@ -418,23 +408,16 @@ test.each([
     applyActionDocument: expect.any(Function),
   })
   expect(mocks.headerArgs).toMatchObject({
-    onTogglePost: expect.any(Function),
-    onToggleMarkForDeletion: expect.any(Function),
+    documentLifecycleActions: expect.objectContaining({ value: { deletion: null, posting: null } }),
+    onUnhandledAction: expect.any(Function),
   })
   expect(mocks.headerArgs).not.toHaveProperty('suppressBuiltInDocumentLifecycleActions')
   expect(mocks.handleConfiguredAction).toHaveBeenCalledWith('document-action:post')
-  expect((mocks.paletteArgs?.canPost as { value: boolean }).value).toBe(true)
-  expect((mocks.paletteArgs?.canUnpost as { value: boolean }).value).toBe(true)
-
-  const onTogglePost = mocks.headerArgs?.onTogglePost as () => void
-  onTogglePost()
-  expect(mocks.requestUnpost).toHaveBeenCalledOnce()
-  mocks.canUnpost!.value = false
-  onTogglePost()
-  expect(mocks.post).toHaveBeenCalledOnce()
-  mocks.canPost!.value = false
-  onTogglePost()
-  expect(mocks.post).toHaveBeenCalledOnce()
+  expect(mocks.paletteArgs).toMatchObject({
+    isDocumentActionAllowed: mocks.isDocumentActionAllowed,
+    requestDocumentAction: mocks.requestDocumentAction,
+  })
+  expect(mocks.isDocumentActionAllowed).toHaveBeenCalledWith('post')
 
   const applyDocument = mocks.configuredArgs?.applyActionDocument as (document: unknown) => void
   applyDocument({ id: 'doc-1', status: 3, payload: { fields: {} } })
@@ -474,13 +457,19 @@ test.each([
   ['trade', TradeEntityEditor, 'trd.sales_invoice'],
   ['CRM', CRMEntityEditor, 'crm.quote'],
 ])('covers the complete %s entity-editor shell orchestration', async (_, component, typeCode) => {
-  mocks.canPost!.value = true
-  mocks.canUnpost!.value = true
+  let allowedDocumentActions = new Set(['post', 'unpost', 'mark_for_deletion', 'unmark_for_deletion'])
+  mocks.isDocumentActionAllowed.mockReset().mockImplementation(
+    (actionCode: string) => allowedDocumentActions.has(actionCode),
+  )
+  mocks.requestDocumentAction.mockReset().mockImplementation(
+    (actionCode: string) => allowedDocumentActions.has(actionCode),
+  )
   mocks.canMarkForDeletion!.value = true
   mocks.canUnmarkForDeletion!.value = false
   mocks.unmarkForDeletion.mockReset().mockResolvedValue(undefined)
   mocks.requestMarkForDeletion.mockReset()
   mocks.loadDocumentEffectsSnapshot.mockReset().mockResolvedValue(undefined)
+  mocks.save.mockReset().mockResolvedValue(undefined)
   mocks.navigateBack.mockClear()
   mocks.runEntityEditorAction.mockClear()
   mocks.handleDocumentHeaderAction.mockClear()
@@ -588,26 +577,55 @@ test.each([
   await nextTick()
   expect(state.isDirty).toBe(true)
 
-  mocks.canUnmarkForDeletion!.value = true
-  state.toggleMarkForDeletion()
-  expect(mocks.unmarkForDeletion).toHaveBeenCalledOnce()
-  mocks.canUnmarkForDeletion!.value = false
-  mocks.canMarkForDeletion!.value = true
-  state.toggleMarkForDeletion()
-  expect(mocks.requestMarkForDeletion).toHaveBeenCalledOnce()
-  mocks.canMarkForDeletion!.value = false
-  state.toggleMarkForDeletion()
-  expect(mocks.requestMarkForDeletion).toHaveBeenCalledOnce()
+  const beforeExecute = mocks.configuredArgs?.beforeExecute as (actionCode: string) => Promise<unknown>
+  expect(await beforeExecute('view_flow')).toBe(true)
+  state.error = null
+  mocks.save.mockImplementationOnce(async () => { state.resetInitialSnapshot() })
+  expect(await beforeExecute('post')).toEqual({ proceed: true, refreshState: true })
+  state.model = { known: 'dirty-with-error' }
+  await nextTick()
+  mocks.save.mockImplementationOnce(async () => {
+    state.error = { summary: 'Save failed', issues: [] }
+    state.resetInitialSnapshot()
+  })
+  expect(await beforeExecute('post')).toEqual({ proceed: false, refreshState: true })
+  state.error = null
+  state.model = { known: 'still-dirty' }
+  await nextTick()
+  mocks.save.mockResolvedValueOnce(undefined)
+  expect(await beforeExecute('post')).toEqual({ proceed: false, refreshState: true })
 
-  mocks.canUnpost!.value = true
+  allowedDocumentActions = new Set(['post', 'unpost', 'mark_for_deletion', 'unmark_for_deletion'])
+  expect(state.canPost).toBe(true)
+  expect(state.canUnpost).toBe(true)
+  await (wrapper.vm as any).markForDeletion()
+  await (wrapper.vm as any).unmarkForDeletion()
+  await (wrapper.vm as any).post()
+  await (wrapper.vm as any).unpost()
+  expect(mocks.requestDocumentAction).toHaveBeenCalledWith('mark_for_deletion')
+  expect(mocks.requestDocumentAction).toHaveBeenCalledWith('unmark_for_deletion')
+  expect(mocks.requestDocumentAction).toHaveBeenCalledWith('post')
+  expect(mocks.requestDocumentAction).toHaveBeenCalledWith('unpost')
+
+  allowedDocumentActions = new Set(['unmark_for_deletion'])
+  state.toggleMarkForDeletion()
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('unmark_for_deletion')
+  allowedDocumentActions = new Set(['mark_for_deletion'])
+  state.toggleMarkForDeletion()
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('mark_for_deletion')
+  allowedDocumentActions.clear()
+  state.toggleMarkForDeletion()
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('mark_for_deletion')
+
+  allowedDocumentActions = new Set(['unpost'])
   state.togglePost()
-  expect(mocks.requestUnpost).toHaveBeenCalled()
-  mocks.canUnpost!.value = false
-  mocks.canPost!.value = true
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('unpost')
+  allowedDocumentActions = new Set(['post'])
   state.togglePost()
-  expect(mocks.post).toHaveBeenCalled()
-  mocks.canPost!.value = false
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('post')
+  allowedDocumentActions.clear()
   state.togglePost()
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('post')
 
   mocks.refreshDocumentActions.mockRejectedValueOnce(new Error('refresh failed'))
   ;(mocks.configuredArgs?.applyActionDocument as (document: unknown) => void)({ status: 4, payload: { fields: {} } })
@@ -685,6 +703,18 @@ test.each([
   expect(catalogState.isMarkedForDeletion).toBe(true)
   catalogState.catalogItem = null
   expect(catalogState.isMarkedForDeletion).toBe(false)
+  await (catalog.vm as any).markForDeletion()
+  await (catalog.vm as any).unmarkForDeletion()
+  mocks.canUnmarkForDeletion!.value = true
+  catalogState.toggleMarkForDeletion()
+  expect(mocks.unmarkForDeletion).toHaveBeenCalledTimes(2)
+  mocks.canUnmarkForDeletion!.value = false
+  mocks.canMarkForDeletion!.value = true
+  catalogState.toggleMarkForDeletion()
+  expect(mocks.requestMarkForDeletion).toHaveBeenCalledOnce()
+  mocks.canMarkForDeletion!.value = false
+  catalogState.toggleMarkForDeletion()
+  expect(mocks.requestMarkForDeletion).toHaveBeenCalledOnce()
   catalogState.handleHeaderAction('save')
   expect(mocks.runEntityEditorAction).toHaveBeenCalledWith('save', expect.any(Object))
   expect(catalogState.afterFormExtensions).toEqual([])
@@ -699,13 +729,19 @@ test.each([
 
 test('covers the complete property-management editor orchestration and PM extensions', async () => {
   mocks.hasTag.mockReset().mockImplementation((tag: string) => tag === 'lease')
-  mocks.canPost!.value = true
-  mocks.canUnpost!.value = true
+  let allowedDocumentActions = new Set(['post', 'unpost', 'mark_for_deletion', 'unmark_for_deletion'])
+  mocks.isDocumentActionAllowed.mockReset().mockImplementation(
+    (actionCode: string) => allowedDocumentActions.has(actionCode),
+  )
+  mocks.requestDocumentAction.mockReset().mockImplementation(
+    (actionCode: string) => allowedDocumentActions.has(actionCode),
+  )
   mocks.canMarkForDeletion!.value = true
   mocks.canUnmarkForDeletion!.value = false
   mocks.unmarkForDeletion.mockReset().mockResolvedValue(undefined)
   mocks.requestMarkForDeletion.mockReset()
   mocks.loadDocumentEffectsSnapshot.mockReset().mockResolvedValue(undefined)
+  mocks.save.mockReset().mockResolvedValue(undefined)
   mocks.refreshDocumentActions.mockReset().mockResolvedValue(undefined)
 
   const wrapper = mount(PmEntityEditor, {
@@ -797,26 +833,52 @@ test('covers the complete property-management editor orchestration and PM extens
   await nextTick()
   expect(state.isDirty).toBe(true)
 
+  const beforeExecute = mocks.configuredArgs?.beforeExecute as (actionCode: string) => Promise<unknown>
+  expect(await beforeExecute('view_flow')).toBe(true)
+  state.error = null
+  mocks.save.mockImplementationOnce(async () => { state.resetInitialSnapshot() })
+  expect(await beforeExecute('post')).toEqual({ proceed: true, refreshState: true })
+  state.model = { display: 'Save error' }
+  await nextTick()
+  mocks.save.mockImplementationOnce(async () => {
+    state.error = { summary: 'Save failed', issues: [] }
+    state.resetInitialSnapshot()
+  })
+  expect(await beforeExecute('post')).toEqual({ proceed: false, refreshState: true })
+  state.error = null
+  state.model = { display: 'Still dirty' }
+  await nextTick()
+  mocks.save.mockResolvedValueOnce(undefined)
+  expect(await beforeExecute('post')).toEqual({ proceed: false, refreshState: true })
+
+  allowedDocumentActions = new Set(['post', 'unpost', 'mark_for_deletion', 'unmark_for_deletion'])
+  expect(state.canPost).toBe(true)
+  expect(state.canUnpost).toBe(true)
+  await (wrapper.vm as any).markForDeletion()
+  await (wrapper.vm as any).unmarkForDeletion()
+  await (wrapper.vm as any).post()
+  await (wrapper.vm as any).unpost()
+
   expect(state.bulkUnitsOpen).toBe(false)
   state.openBulkCreateUnitsWizard()
   expect(state.bulkUnitsOpen).toBe(false)
 
-  mocks.canUnmarkForDeletion!.value = true
+  allowedDocumentActions = new Set(['unmark_for_deletion'])
   state.toggleMarkForDeletion()
-  expect(mocks.unmarkForDeletion).toHaveBeenCalled()
-  mocks.canUnmarkForDeletion!.value = false
-  mocks.canMarkForDeletion!.value = true
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('unmark_for_deletion')
+  allowedDocumentActions = new Set(['mark_for_deletion'])
   state.toggleMarkForDeletion()
-  expect(mocks.requestMarkForDeletion).toHaveBeenCalled()
-  mocks.canMarkForDeletion!.value = false
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('mark_for_deletion')
+  allowedDocumentActions.clear()
   state.toggleMarkForDeletion()
 
-  mocks.canUnpost!.value = true
+  allowedDocumentActions = new Set(['unpost'])
   state.togglePost()
-  mocks.canUnpost!.value = false
-  mocks.canPost!.value = true
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('unpost')
+  allowedDocumentActions = new Set(['post'])
   state.togglePost()
-  mocks.canPost!.value = false
+  expect(mocks.requestDocumentAction).toHaveBeenLastCalledWith('post')
+  allowedDocumentActions.clear()
   state.togglePost()
 
   expect(state.extraPageActions).toEqual([])
@@ -887,6 +949,15 @@ test('covers the complete property-management editor orchestration and PM extens
   await nextTick()
   expect(propertyState.isPmPropertyCatalog).toBe(true)
   expect(propertyState.isLeaseDocument).toBe(false)
+  await (property.vm as any).markForDeletion()
+  await (property.vm as any).unmarkForDeletion()
+  mocks.canUnmarkForDeletion!.value = true
+  propertyState.toggleMarkForDeletion()
+  mocks.canUnmarkForDeletion!.value = false
+  mocks.canMarkForDeletion!.value = true
+  propertyState.toggleMarkForDeletion()
+  mocks.canMarkForDeletion!.value = false
+  propertyState.toggleMarkForDeletion()
   expect(propertyState.extraPageActions).toHaveLength(1)
   expect(propertyState.extraPageActions[0].disabled).toBe(false)
   propertyState.loading = true

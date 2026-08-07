@@ -2,17 +2,17 @@ import type { Page, Route } from '@playwright/test'
 import type {
   ReportExecutionRequestDto,
   ReportVariantDto,
-} from '../../../ngb-ui-framework/src/ngb/reporting/types'
+} from '@ngbplatform/ui/contracts'
 import type {
   NotificationPreference,
   WorkCenterItem,
-} from '../../../ngb-ui-framework/src/ngb/work-center/types'
-import type { ChartOfAccountsUpsertRequestDto } from '../../../ngb-ui-framework/src/ngb/accounting/types'
+} from '@ngbplatform/ui/contracts'
+import type { ChartOfAccountsUpsertRequestDto } from '@ngbplatform/ui/contracts'
 import type {
   CatalogItemDto,
   DocumentActionDto,
   DocumentDto,
-} from '../../../ngb-ui-framework/src/ngb/api/contracts'
+} from '@ngbplatform/ui/contracts'
 import type {
   PayablesApplyBatchRequestDto,
   PayablesApplyBatchResponseDto,

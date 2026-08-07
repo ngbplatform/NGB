@@ -1,6 +1,7 @@
 import { buildAccountingPeriodClosingPath, buildChartOfAccountsPath, buildGeneralJournalEntriesPath } from '../accounting/navigation'
 import { buildCatalogFullPageUrl } from '../editor/catalogNavigation'
 import { buildDocumentEffectsPageUrl, buildDocumentFlowPageUrl, buildDocumentFullPageUrl } from '../editor/documentNavigation'
+import { resolveNgbNavigationRoutes } from '../navigation/config'
 import { buildReportPageUrl } from '../reporting/navigation'
 import type {
   CommandPaletteGroupCode,
@@ -236,8 +237,8 @@ export const NGB_ACCOUNTING_CREATE_ITEMS: CommandPaletteItemSeed[] = [
 ]
 
 export const NGB_ACCOUNTING_SPECIAL_PAGE_ITEMS: CommandPaletteItemSeed[] = [
-  createStaticPageItem('page:work-center', 'Work Center', '/work-center', 'bell', ['work center', 'tasks', 'notifications', 'inbox'], 'Personal workspace'),
-  createStaticPageItem('page:notification-settings', 'Work Center Preferences', '/settings/notifications', 'settings', ['work center preferences', 'task preferences', 'notification preferences'], 'Personal workspace'),
+  createStaticPageItem('page:work-center', 'Work Center', resolveNgbNavigationRoutes().workCenter, 'bell', ['work center', 'tasks', 'notifications', 'inbox'], 'Personal workspace'),
+  createStaticPageItem('page:notification-settings', 'Work Center Preferences', resolveNgbNavigationRoutes().workCenterPreferences, 'settings', ['work center preferences', 'task preferences', 'notification preferences'], 'Personal workspace'),
   createStaticPageItem('page:chart-of-accounts', 'Chart of Accounts', buildChartOfAccountsPath(), 'book-open', ['chart of accounts', 'accounts', 'coa'], 'Setup & Controls'),
   createStaticPageItem('page:period-closing', 'Period Close', buildAccountingPeriodClosingPath(), 'calendar-check', ['period close', 'period closing', 'close month'], 'Setup & Controls'),
   createStaticPageItem('page:posting-log', 'Posting Log', buildReportPageUrl('accounting.posting_log'), 'history', ['posting log'], 'Setup & Controls'),

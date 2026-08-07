@@ -5,9 +5,12 @@ import {
   configureNgbEditor,
   configureNgbLookup,
   configureNgbMetadata,
+  configureNgbNavigation,
   configureNgbReporting,
+  configureNgbWorkCenter,
   createDefaultNgbLookupConfig,
   createDefaultNgbReportingConfig,
+  createDefaultNgbWorkCenterConfig,
   useAuthStore,
 } from '@ngbplatform/ui'
 
@@ -44,6 +47,8 @@ async function bootstrap(): Promise<void> {
     import('./editor/framework'),
   ])
 
+  configureNgbNavigation()
+  configureNgbWorkCenter(createDefaultNgbWorkCenterConfig())
   configureNgbLookup(createDefaultNgbLookupConfig())
   configureNgbEditor(createCRMEditorConfig())
   configureNgbMetadata(createCRMMetadataConfig())

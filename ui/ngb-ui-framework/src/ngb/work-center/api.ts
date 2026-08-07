@@ -6,6 +6,7 @@ import type {
   WorkCenterQuery,
   WorkCenterSummary,
 } from './types'
+import type { WorkCenterGateway } from './gateway'
 
 export function getWorkCenterSummary(vertical?: string | null): Promise<WorkCenterSummary> {
   return httpGet<WorkCenterSummary>('/api/work-center/summary', { vertical })
@@ -52,4 +53,16 @@ export function updateNotificationPreferences(
   preferences: Array<{ code: string; channel: NotificationChannel; isEnabled: boolean }>,
 ): Promise<void> {
   return httpPut<void>('/api/me/notification-preferences', { preferences })
+}
+
+export const workCenterHttpGateway: WorkCenterGateway = {
+  getSummary: getWorkCenterSummary,
+  getItems: getWorkCenterItems,
+  markNotificationRead: markWorkCenterNotificationRead,
+  dismissNotification: dismissWorkCenterNotification,
+  markTaskRead: markWorkCenterTaskRead,
+  claimTask: claimWorkCenterTask,
+  snoozeTask: snoozeWorkCenterTask,
+  getPreferences: getNotificationPreferences,
+  updatePreferences: updateNotificationPreferences,
 }

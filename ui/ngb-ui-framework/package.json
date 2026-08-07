@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./contracts": "./src/contracts.ts",
     "./styles": "./src/styles/tailwind.css",
     "./vite-public-assets": "./vite-public-assets.js"
   },

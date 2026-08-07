@@ -125,6 +125,13 @@ describe('NgbTopBar complete responsive behavior', () => {
     expect(wrapper.findAll('button[title="Settings"]')).toHaveLength(0)
     expect(wrapper.findAll('[data-testid="site-topbar-main-menu"]')).toHaveLength(0)
 
+    await wrapper.setProps({ hasSettings: true, showMainMenu: true, themeResolved: 'dark' })
+    expect(wrapper.findAll('button[title="Settings"]')).not.toHaveLength(0)
+    expect(wrapper.findAll('[data-testid="site-topbar-main-menu"]')).toHaveLength(1)
+    expect(wrapper.findAll('button[title="Switch to light mode"]')).not.toHaveLength(0)
+    await wrapper.setProps({ hasSettings: false, showMainMenu: false, themeResolved: 'light' })
+    expect(wrapper.findAll('button[title="Switch to dark mode"]')).not.toHaveLength(0)
+
     await wrapper.setProps({ userMetaIcon: 'user' })
     expect(wrapper.text()).toContain('Operator')
     await wrapper.setProps({

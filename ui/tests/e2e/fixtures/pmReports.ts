@@ -6,7 +6,7 @@ import {
   type ReportDefinitionDto,
   type ReportExecutionResponseDto,
   type ReportVariantDto,
-} from '../../../ngb-ui-framework/src/ngb/reporting/types'
+} from '@ngbplatform/ui/contracts'
 
 export const occupancySummaryReportDefinitionFixture: ReportDefinitionDto = {
   reportCode: 'pm.occupancy.summary',

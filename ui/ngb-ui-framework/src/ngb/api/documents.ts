@@ -1,4 +1,4 @@
-import { normalizeDocumentStatusValue } from '../editor/documentStatus'
+import { normalizeDocumentStatusValue } from '../documents/documentStatus'
 import { httpDelete, httpGet, httpPost, httpPut } from './http'
 import type {
   DocumentEditorStateDto,
@@ -143,34 +143,6 @@ export async function updateDraft(documentType: string, id: string, payload: Rec
 
 export async function deleteDraft(documentType: string, id: string): Promise<void> {
   await httpDelete<void>(`/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}`)
-}
-
-export async function postDocument(documentType: string, id: string): Promise<DocumentDto> {
-  const document = await httpPost<DocumentDto>(
-    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/post`,
-  )
-  return normalizeDocumentDto(document)
-}
-
-export async function unpostDocument(documentType: string, id: string): Promise<DocumentDto> {
-  const document = await httpPost<DocumentDto>(
-    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/unpost`,
-  )
-  return normalizeDocumentDto(document)
-}
-
-export async function markDocumentForDeletion(documentType: string, id: string): Promise<DocumentDto> {
-  const document = await httpPost<DocumentDto>(
-    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/mark-for-deletion`,
-  )
-  return normalizeDocumentDto(document)
-}
-
-export async function unmarkDocumentForDeletion(documentType: string, id: string): Promise<DocumentDto> {
-  const document = await httpPost<DocumentDto>(
-    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/unmark-for-deletion`,
-  )
-  return normalizeDocumentDto(document)
 }
 
 export async function getDocumentEffects(documentType: string, id: string, limit = 500): Promise<DocumentEffectsDto> {

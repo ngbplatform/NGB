@@ -72,13 +72,12 @@ vi.mock('vue-router', () => ({
   }),
 }))
 
-vi.mock('../../../../src/ngb/editor/config', () => ({
-  resolveNgbDocumentActionTarget: target.resolve,
-}))
-
-vi.mock('../../../../src/ngb/work-center/api', () => ({
-  getNotificationPreferences: preferencesApi.get,
-  updateNotificationPreferences: preferencesApi.update,
+vi.mock('../../../../src/ngb/navigation/config', () => ({
+  resolveNgbNavigationTarget: target.resolve,
+  resolveNgbNavigationRoutes: () => ({
+    workCenter: '/work-center',
+    workCenterPreferences: '/settings/notifications',
+  }),
 }))
 
 vi.mock('../../../../src/ngb/work-center/useWorkCenter', async () => {
@@ -104,6 +103,10 @@ vi.mock('../../../../src/ngb/work-center/useWorkCenter', async () => {
   }
   return {
     useWorkCenter: () => workCenter.current,
+    useWorkCenterPreferences: () => ({
+      load: preferencesApi.get,
+      save: preferencesApi.update,
+    }),
   }
 })
 
@@ -244,7 +247,14 @@ beforeEach(() => {
   auth.snapshot.initialized = true
   auth.snapshot.authenticated = true
   router.route.query = {}
-  target.resolve.mockReturnValue('/resolved-target')
+  target.resolve.mockImplementation((navigationTarget: { code?: string; parameters?: Record<string, unknown> }) => {
+    if (navigationTarget.code === 'document.editor') {
+      const documentType = encodeURIComponent(String(navigationTarget.parameters?.documentType ?? ''))
+      const documentId = encodeURIComponent(String(navigationTarget.parameters?.documentId ?? ''))
+      return `/documents/${documentType}/${documentId}`
+    }
+    return '/resolved-target'
+  })
   state.summary.value = null
   state.items.value = []
   state.nextCursor.value = null
@@ -652,13 +662,15 @@ test('full Work Center applies filters, mutates items, routes targets, and pagin
   expect(router.back).toHaveBeenCalled()
 })
 
-test('full Work Center covers fallback routing, auth guard, and loading/error/empty views', async () => {
+test('full Work Center covers fallback routing and loading/error/empty views', async () => {
   auth.snapshot.initialized = false
   auth.snapshot.authenticated = true
   state.loading.value = true
   const view = await render(NgbWorkCenterPage)
-  expect(state.load).not.toHaveBeenCalled()
-  expect(state.connectRealtime).not.toHaveBeenCalled()
+  await vi.waitFor(() => {
+    expect(state.load).toHaveBeenCalled()
+    expect(state.connectRealtime).toHaveBeenCalled()
+  })
   await expect.element(view.getByRole('status')).toHaveTextContent('Loading…')
 
   state.loading.value = false

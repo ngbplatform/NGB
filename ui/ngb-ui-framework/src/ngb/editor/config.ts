@@ -10,7 +10,22 @@ import type {
   EditorPrintBehavior,
   RelationshipGraph,
 } from './types';
-import type { DocumentActionTargetDto } from '../api/contracts';
+import type {
+  DocumentEditorStateDto,
+  ExecuteDocumentActionRequestDto,
+  ExecuteDocumentActionResultDto,
+} from '../api/contracts';
+
+export type DocumentActionsGateway = {
+  loadEditorState: (documentType: string, id: string) => Promise<DocumentEditorStateDto>;
+  execute: (
+    documentType: string,
+    id: string,
+    actionCode: string,
+    request: ExecuteDocumentActionRequestDto,
+    idempotencyKey?: string,
+  ) => Promise<ExecuteDocumentActionResultDto>;
+};
 
 export type EditorRoutingConfig = {
   buildCatalogListUrl?: (catalogType: string) => string;
@@ -54,10 +69,7 @@ export type EditorFrameworkConfig = {
   effects?: EditorDocumentEffectsBehavior;
   print?: EditorPrintBehavior;
   resolveEntityProfile?: (context: EntityEditorContext) => EditorEntityProfile | null;
-  resolveDocumentActionTarget?: (
-    target: DocumentActionTargetDto,
-    context: { documentType: string; documentId: string },
-  ) => string | null;
+  documentActions: DocumentActionsGateway;
 };
 
 let editorFrameworkConfig: EditorFrameworkConfig | null = null;
@@ -160,33 +172,6 @@ export function resolveNgbEditorRouting(): Required<EditorRoutingConfig> {
 
 export function resolveNgbEditorEntityProfile(context: EntityEditorContext): EditorEntityProfile {
   return editorFrameworkConfig?.resolveEntityProfile?.(context) ?? {};
-}
-
-export function resolveNgbDocumentActionTarget(
-  target: DocumentActionTargetDto,
-  context: { documentType: string; documentId: string },
-): string | null {
-  const configured = editorFrameworkConfig?.resolveDocumentActionTarget?.(target, context);
-  if (configured) return configured;
-
-  const parameters = target.parameters ?? {};
-  const path = String(parameters.path ?? '').trim();
-  if (path.startsWith('/')) return path;
-
-  const documentType = String(parameters.documentType ?? '').trim() || context.documentType;
-  const documentId = String(parameters.documentId ?? '').trim() || context.documentId;
-  switch (target.code) {
-    case 'document.editor':
-      return resolveNgbEditorRouting().buildDocumentFullPageUrl(documentType, documentId);
-    case 'document.effects':
-      return resolveNgbEditorRouting().buildDocumentEffectsPageUrl(context.documentType, documentId);
-    case 'document.flow':
-      return resolveNgbEditorRouting().buildDocumentFlowPageUrl(context.documentType, documentId);
-    case 'document.print':
-      return resolveNgbEditorRouting().buildDocumentPrintPageUrl(context.documentType, documentId);
-    default:
-      return null;
-  }
 }
 
 export function sanitizeNgbEditorModelForEditing(

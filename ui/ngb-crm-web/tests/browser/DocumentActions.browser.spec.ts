@@ -7,12 +7,10 @@ const mocks = vi.hoisted(() => ({
   headerArgs: null as Record<string, unknown> | null,
   paletteArgs: null as Record<string, unknown> | null,
   handleConfiguredAction: vi.fn(),
+  requestDocumentAction: vi.fn(),
+  isDocumentActionAllowed: vi.fn(),
   refreshDocumentActions: vi.fn(),
-  post: vi.fn(),
-  requestUnpost: vi.fn(),
   requestMarkForDeletion: vi.fn(),
-  canPost: null as { value: boolean } | null,
-  canUnpost: null as { value: boolean } | null,
 }))
 
 vi.mock('vue-router', async (importOriginal) => ({
@@ -45,12 +43,8 @@ vi.mock('@ngbplatform/ui', async () => {
   const { computed, defineComponent, h, ref } = await import('vue')
   const yes = ref(true)
   const no = ref(false)
-  const canPost = ref(true)
-  const canUnpost = ref(true)
   const empty = ref('')
   const noop = vi.fn()
-  mocks.canPost = canPost
-  mocks.canUnpost = canUnpost
 
   return {
     NgbConfirmDialog: defineComponent(() => () => h('div')),
@@ -88,8 +82,6 @@ vi.mock('@ngbplatform/ui', async () => {
       canMarkForDeletion: yes,
       canUnmarkForDeletion: no,
       canDelete: yes,
-      canPost,
-      canUnpost,
       canSave: yes,
       documentStatusLabel: empty,
       documentStatusTone: empty,
@@ -113,8 +105,6 @@ vi.mock('@ngbplatform/ui', async () => {
       markForDeletion: vi.fn().mockResolvedValue(undefined),
       unmarkForDeletion: vi.fn().mockResolvedValue(undefined),
       deleteEntity: vi.fn().mockResolvedValue(undefined),
-      post: mocks.post,
-      unpost: vi.fn().mockResolvedValue(undefined),
       loadDocumentEffectsSnapshot: vi.fn().mockResolvedValue(undefined),
     }),
     useEntityEditorNavigationActions: () => ({
@@ -145,9 +135,15 @@ vi.mock('@ngbplatform/ui', async () => {
         isMarkedForDeletion: false,
       })
       return {
+        documentLifecycleActions: ref({ deletion: null, posting: null }),
         extraPrimaryActions: ref([]),
         extraMoreActionGroups: ref([]),
         handleConfiguredAction: mocks.handleConfiguredAction,
+        requestDocumentAction: mocks.requestDocumentAction,
+        isDocumentActionAllowed: mocks.isDocumentActionAllowed,
+        confirmation: ref(null),
+        cancelDocumentActionConfirmation: noop,
+        confirmDocumentAction: noop,
         hasUnifiedActionState: yes,
         executingDocumentAction: yes,
         refreshDocumentActions: mocks.refreshDocumentActions,
@@ -169,15 +165,10 @@ vi.mock('@ngbplatform/ui', async () => {
       requestMarkForDeletion: mocks.requestMarkForDeletion,
       cancelMarkForDeletion: noop,
       confirmMarkForDeletion: noop,
-      unpostConfirmOpen: no,
-      requestUnpost: mocks.requestUnpost,
-      cancelUnpost: noop,
-      confirmUnpost: noop,
     }),
     useEntityEditorCommandPalette: (args: Record<string, unknown>) => {
       mocks.paletteArgs = args
-      void (args.canPost as { value: boolean }).value
-      void (args.canUnpost as { value: boolean }).value
+      ;(args.isDocumentActionAllowed as (actionCode: string) => boolean)('post')
     },
     useEntityEditorPageActions: () => ref([]),
     useEntityEditorOutputs: () => ({ flags: computed(() => ({})) }),
@@ -188,11 +179,9 @@ import CRMEntityEditor from '../../src/editor/CRMEntityEditor.vue'
 
 test('connects unified document actions to the CRM editor shell', async () => {
   mocks.refreshDocumentActions.mockReset().mockResolvedValue(undefined)
-  mocks.post.mockReset().mockResolvedValue(undefined)
-  mocks.requestUnpost.mockReset()
   mocks.requestMarkForDeletion.mockReset()
-  mocks.canPost!.value = true
-  mocks.canUnpost!.value = true
+  mocks.requestDocumentAction.mockReset().mockReturnValue(true)
+  mocks.isDocumentActionAllowed.mockReset().mockReturnValue(true)
   const view = await render(CRMEntityEditor, {
     props: {
       kind: 'document',
@@ -206,26 +195,16 @@ test('connects unified document actions to the CRM editor shell', async () => {
     applyActionDocument: expect.any(Function),
   })
   expect(mocks.headerArgs).toMatchObject({
-    onTogglePost: expect.any(Function),
-    onToggleMarkForDeletion: expect.any(Function),
+    documentLifecycleActions: expect.objectContaining({ value: { deletion: null, posting: null } }),
+    onUnhandledAction: expect.any(Function),
   })
   expect(mocks.headerArgs).not.toHaveProperty('suppressBuiltInDocumentLifecycleActions')
   expect(mocks.handleConfiguredAction).toHaveBeenCalledWith('document-action:post')
-  expect((mocks.paletteArgs?.canPost as { value: boolean }).value).toBe(true)
-  expect((mocks.paletteArgs?.canUnpost as { value: boolean }).value).toBe(true)
-
-  const onTogglePost = mocks.headerArgs?.onTogglePost as () => void
-  onTogglePost()
-  expect(mocks.requestUnpost).toHaveBeenCalledOnce()
-  mocks.canUnpost!.value = false
-  onTogglePost()
-  expect(mocks.post).toHaveBeenCalledOnce()
-  mocks.canPost!.value = false
-  onTogglePost()
-  expect(mocks.post).toHaveBeenCalledOnce()
-
-  ;(mocks.headerArgs?.onToggleMarkForDeletion as () => void)()
-  expect(mocks.requestMarkForDeletion).toHaveBeenCalledOnce()
+  expect(mocks.paletteArgs).toMatchObject({
+    isDocumentActionAllowed: mocks.isDocumentActionAllowed,
+    requestDocumentAction: mocks.requestDocumentAction,
+  })
+  expect(mocks.isDocumentActionAllowed).toHaveBeenCalledWith('post')
 
   const applyDocument = mocks.configuredArgs?.applyActionDocument as (document: unknown) => void
   applyDocument({ id: 'doc-1', status: 3, payload: { fields: {} } })

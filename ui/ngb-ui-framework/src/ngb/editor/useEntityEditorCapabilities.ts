@@ -13,8 +13,6 @@ type EntityEditorCapabilitiesMetadata = {
     canEditDraft?: boolean;
     canDelete?: boolean;
     canDeleteDraft?: boolean;
-    canPost?: boolean;
-    canUnpost?: boolean;
     canMarkForDeletion?: boolean;
     canViewEffects?: boolean;
     canViewFlow?: boolean;
@@ -66,15 +64,16 @@ export function useEntityEditorCapabilities<
   );
 
   const canMarkForDeletion = computed(() => {
+    if (args.kind.value !== 'catalog') return false;
     if (args.isNew.value) return false;
     if (args.loading.value || args.saving.value) return false;
     if (args.isMarkedForDeletion.value) return false;
     if (capabilities.value?.canMarkForDeletion === false) return false;
-    if (args.kind.value === 'document' && !args.isDraft.value) return false;
     return true;
   });
 
   const canUnmarkForDeletion = computed(() => {
+    if (args.kind.value !== 'catalog') return false;
     if (args.isNew.value) return false;
     if (args.loading.value || args.saving.value) return false;
     if (!args.isMarkedForDeletion.value) return false;
@@ -90,22 +89,6 @@ export function useEntityEditorCapabilities<
     && !args.saving.value
     && !args.isMarkedForDeletion.value,
   );
-
-  const canPost = computed(() => {
-    if (args.kind.value !== 'document') return false;
-    if (capabilities.value?.canPost === false) return false;
-    if (args.isNew.value) return false;
-    if (args.loading.value || args.saving.value) return false;
-    return args.isDraft.value && !args.isMarkedForDeletion.value;
-  });
-
-  const canUnpost = computed(() => {
-    if (args.kind.value !== 'document') return false;
-    if (capabilities.value?.canUnpost === false) return false;
-    if (args.isNew.value) return false;
-    if (args.loading.value || args.saving.value) return false;
-    return args.status.value === 2;
-  });
 
   const canSave = computed(() => {
     if (!args.metadata.value?.form) return false;
@@ -175,8 +158,6 @@ export function useEntityEditorCapabilities<
     canMarkForDeletion,
     canUnmarkForDeletion,
     canDelete,
-    canPost,
-    canUnpost,
     canSave,
     documentStatusLabel: resolvedDocumentStatusLabel,
     documentStatusTone: resolvedDocumentStatusTone,

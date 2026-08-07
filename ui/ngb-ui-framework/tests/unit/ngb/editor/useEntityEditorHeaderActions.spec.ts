@@ -26,6 +26,24 @@ function createArgs() {
   const extraPrimaryActions = ref([{ key: 'customPrimary', title: 'Custom primary', icon: 'sparkles' as const }])
   const extraMoreActionGroups = ref([
     {
+      key: 'related-views',
+      label: 'Related views',
+      items: [
+        { key: 'document-action:view_effects', title: 'Accounting entries / effects', icon: 'effects-flow' as const, disabled: false },
+        { key: 'document-action:view_flow', title: 'Document flow', icon: 'document-flow' as const, disabled: false },
+      ],
+    },
+    {
+      key: 'output',
+      label: 'Output',
+      items: [{ key: 'document-action:print', title: 'Print', icon: 'printer' as const, disabled: false }],
+    },
+    {
+      key: 'history-and-share',
+      label: 'History & share',
+      items: [{ key: 'document-action:view_audit', title: 'Audit log', icon: 'history' as const, disabled: false }],
+    },
+    {
       key: 'custom',
       label: 'Custom',
       items: [{ key: 'customMore', title: 'Custom more', icon: 'sparkles' as const }],
@@ -48,6 +66,10 @@ function createArgs() {
   }
   const extraActionHandlers = {
     customMore: vi.fn(),
+    'document-action:view_effects': handlers.onOpenEffectsPage,
+    'document-action:view_flow': handlers.onOpenDocumentFlowPage,
+    'document-action:print': handlers.onPrintDocument,
+    'document-action:view_audit': handlers.onOpenAuditLog,
   }
 
   return {
@@ -87,18 +109,22 @@ function createArgs() {
       isNew: computed(() => isNew.value),
       isMarkedForDeletion: computed(() => isMarkedForDeletion.value),
       canSave: computed(() => canSave.value),
-      canPost: computed(() => canPost.value),
-      canUnpost: computed(() => canUnpost.value),
-      canMarkForDeletion: computed(() => canMarkForDeletion.value),
-      canUnmarkForDeletion: computed(() => canUnmarkForDeletion.value),
-      canOpenEffectsPage: computed(() => canOpenEffectsPage.value),
-      canOpenDocumentFlowPage: computed(() => canOpenDocumentFlowPage.value),
-      canPrintDocument: computed(() => canPrintDocument.value),
-      canOpenAudit: computed(() => canOpenAudit.value),
       canShareLink: computed(() => canShareLink.value),
       ...handlers,
       extraPrimaryActions: computed(() => extraPrimaryActions.value),
       extraMoreActionGroups: computed(() => extraMoreActionGroups.value),
+      documentLifecycleActions: computed(() => ({
+        deletion: canUnmarkForDeletion.value
+          ? { key: 'document-action:unmark_for_deletion', title: 'Unmark for deletion', icon: 'trash-restore' as const, disabled: false }
+          : canMarkForDeletion.value
+            ? { key: 'document-action:mark_for_deletion', title: 'Mark for deletion', icon: 'trash' as const, disabled: false }
+            : null,
+        posting: canUnpost.value
+          ? { key: 'document-action:unpost', title: 'Unpost', icon: 'undo' as const, disabled: false }
+          : canPost.value
+            ? { key: 'document-action:post', title: 'Post', icon: 'check' as const, disabled: false }
+            : null,
+      })),
       extraActionHandlers,
       onUnhandledAction: handlers.onUnhandledAction,
     },
@@ -119,7 +145,7 @@ describe('entity editor header actions', () => {
         disabled: false,
       },
       {
-        key: 'toggleMarkForDeletion',
+        key: 'document-action:mark_for_deletion',
         title: 'Mark for deletion',
         icon: 'trash',
         disabled: false,
@@ -131,7 +157,7 @@ describe('entity editor header actions', () => {
         disabled: false,
       },
       {
-        key: 'togglePost',
+        key: 'document-action:post',
         title: 'Post',
         icon: 'check',
         disabled: false,
@@ -153,20 +179,20 @@ describe('entity editor header actions', () => {
         key: 'related-views',
         label: 'Related views',
         items: [
-          { key: 'openEffectsPage', title: 'Accounting entries / effects', icon: 'effects-flow', disabled: false },
-          { key: 'openDocumentFlowPage', title: 'Document flow', icon: 'document-flow', disabled: false },
+          { key: 'document-action:view_effects', title: 'Accounting entries / effects', icon: 'effects-flow', disabled: false },
+          { key: 'document-action:view_flow', title: 'Document flow', icon: 'document-flow', disabled: false },
         ],
       },
       {
         key: 'output',
         label: 'Output',
-        items: [{ key: 'printDocument', title: 'Print', icon: 'printer', disabled: false }],
+        items: [{ key: 'document-action:print', title: 'Print', icon: 'printer', disabled: false }],
       },
       {
         key: 'history-and-share',
         label: 'History & share',
         items: [
-          { key: 'openAuditLog', title: 'Audit log', icon: 'history', disabled: false },
+          { key: 'document-action:view_audit', title: 'Audit log', icon: 'history', disabled: false },
           { key: 'copyShareLink', title: 'Share link', icon: 'share', disabled: false },
         ],
       },
@@ -207,23 +233,9 @@ describe('entity editor header actions', () => {
         ],
       },
       {
-        key: 'related-views',
-        label: 'Related views',
-        items: [
-          { key: 'openEffectsPage', title: 'Accounting entries / effects', icon: 'effects-flow', disabled: false },
-          { key: 'openDocumentFlowPage', title: 'Document flow', icon: 'document-flow', disabled: false },
-        ],
-      },
-      {
-        key: 'output',
-        label: 'Output',
-        items: [{ key: 'printDocument', title: 'Print', icon: 'printer', disabled: false }],
-      },
-      {
         key: 'history-and-share',
         label: 'History & share',
         items: [
-          { key: 'openAuditLog', title: 'Audit log', icon: 'history', disabled: false },
           { key: 'copyShareLink', title: 'Share link', icon: 'share', disabled: false },
         ],
       },
@@ -254,7 +266,7 @@ describe('entity editor header actions', () => {
         disabled: false,
       },
       {
-        key: 'toggleMarkForDeletion',
+        key: 'document-action:unmark_for_deletion',
         title: 'Unmark for deletion',
         icon: 'trash-restore',
         disabled: false,
@@ -266,7 +278,7 @@ describe('entity editor header actions', () => {
         disabled: false,
       },
       {
-        key: 'togglePost',
+        key: 'document-action:unpost',
         title: 'Unpost',
         icon: 'undo',
         disabled: false,
@@ -284,7 +296,7 @@ describe('entity editor header actions', () => {
     const actions = useEntityEditorHeaderActions(args)
 
     actions.handleDocumentHeaderAction('save')
-    actions.handleDocumentHeaderAction('openEffectsPage')
+    actions.handleDocumentHeaderAction('document-action:view_effects')
     actions.handleDocumentHeaderAction('customMore')
     actions.handleDocumentHeaderAction('unknownAction')
 

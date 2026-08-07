@@ -37,8 +37,6 @@ export type CRMEntityEditorPersistenceContext = {
   canMarkForDeletion: ComputedRef<boolean>
   canUnmarkForDeletion: ComputedRef<boolean>
   canDelete: ComputedRef<boolean>
-  canPost: ComputedRef<boolean>
-  canUnpost: ComputedRef<boolean>
   isDirty: ComputedRef<boolean>
   error: Ref<EditorErrorState | null>
   metaStore: ReturnType<typeof useMetadataStore>

@@ -21,8 +21,6 @@ const mocks = vi.hoisted(() => ({
   hydrateTradeDocumentPartLookupRows: vi.fn(),
   hydrateEntityReferenceFieldsForEditing: vi.fn(),
   markCatalogForDeletion: vi.fn(),
-  markDocumentForDeletion: vi.fn(),
-  postDocument: vi.fn(),
   resolveNavigateOnCreate: vi.fn(() => false),
   sanitizeNgbEditorModelForEditing: vi.fn(),
   syncCRMDocumentAmountField: vi.fn(),
@@ -30,8 +28,6 @@ const mocks = vi.hoisted(() => ({
   syncTradeDocumentAmountField: vi.fn(),
   syncNgbEditorComputedDisplay: vi.fn(),
   unmarkCatalogForDeletion: vi.fn(),
-  unmarkDocumentForDeletion: vi.fn(),
-  unpostDocument: vi.fn(),
   updateCatalog: vi.fn(),
   updateDraft: vi.fn(),
 }))
@@ -219,29 +215,6 @@ describe('crm document editor persistence', () => {
     expect(args.emitSaved).toHaveBeenCalledOnce()
   })
 
-  it('executes every document lifecycle mutation', async () => {
-    const marked = { id: 'doc-1', state: 'marked' }
-    const restored = { id: 'doc-1', state: 'restored' }
-    const posted = { id: 'doc-1', state: 'posted' }
-    const draft = { id: 'doc-1', state: 'draft' }
-    mocks.markDocumentForDeletion.mockResolvedValueOnce(marked)
-    mocks.unmarkDocumentForDeletion.mockResolvedValueOnce(restored)
-    mocks.postDocument.mockResolvedValueOnce(posted)
-    mocks.unpostDocument.mockResolvedValueOnce(draft)
-    const args = context()
-    const adapter = useDocumentEntityEditorPersistence(args as never)
-
-    await adapter.markForDeletion()
-    await adapter.unmarkForDeletion()
-    await adapter.post()
-    await adapter.unpost()
-
-    expect(args.doc.value).toEqual(draft)
-    expect(args.toasts).toEqual([
-      { title: 'Deleted', message: 'Document marked for deletion.', tone: 'warn' },
-      { title: 'Restored', message: 'Document restored.', tone: 'success' },
-    ])
-  })
 })
 
 describe('crm catalog editor persistence', () => {
@@ -333,7 +306,7 @@ describe.each([
     mocks.resolveNavigateOnCreate.mockReturnValue(false)
   })
 
-  it('covers new, existing, create, update, effects, and lifecycle document paths', async () => {
+  it('covers new, existing, create, update, and effects document paths', async () => {
     const effectsArgs = context({ typeCode: ref(typeCode) })
     const effectsAdapter = documentAdapter(effectsArgs as never)
     mocks.getDocumentEffects.mockResolvedValueOnce({ entries: [1] })
@@ -383,18 +356,6 @@ describe.each([
     expect(updateArgs.model.value).toEqual({ memo: 'updated' })
     expect(updateArgs.partsModel.value).toEqual({ lines: ['payload'] })
 
-    mocks.markDocumentForDeletion.mockResolvedValueOnce({ state: 'marked' })
-    mocks.unmarkDocumentForDeletion.mockResolvedValueOnce({ state: 'restored' })
-    mocks.postDocument.mockResolvedValueOnce({ state: 'posted' })
-    mocks.unpostDocument.mockResolvedValueOnce({ state: 'draft' })
-    const lifecycleArgs = context({ typeCode: ref(typeCode) })
-    const lifecycle = documentAdapter(lifecycleArgs as never)
-    await lifecycle.markForDeletion()
-    await lifecycle.unmarkForDeletion()
-    await lifecycle.post()
-    await lifecycle.unpost()
-    expect(lifecycleArgs.toasts).toHaveLength(2)
-    expect(lifecycleArgs.doc.value).toEqual({ state: 'draft' })
   })
 
   it('covers new, existing, create, update, and lifecycle catalog paths', async () => {

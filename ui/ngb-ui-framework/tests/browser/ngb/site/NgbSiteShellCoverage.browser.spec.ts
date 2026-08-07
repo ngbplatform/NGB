@@ -24,7 +24,8 @@ vi.mock('../../../../src/ngb/site/useTheme', async () => {
 })
 
 vi.mock('../../../../src/ngb/primitives/toast', () => ({ provideToasts: vi.fn() }))
-vi.mock('../../../../src/ngb/work-center/useWorkCenter', () => ({
+vi.mock('../../../../src/ngb/work-center/useWorkCenter', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../src/ngb/work-center/useWorkCenter')>(),
   useWorkCenter: () => ({
     summary: mocks.summary,
     refreshSummary: mocks.refreshSummary,
@@ -190,23 +191,28 @@ describe('NgbSiteShell complete orchestration', () => {
     expect(wrapper.get('[data-testid="topbar-stub"]').text()).toContain('|shield|')
   })
 
-  it('starts realtime only for an initialized authenticated session and covers both vertical arguments', async () => {
+  it('delegates session-aware refresh and realtime ownership to the Work Center runtime', async () => {
     mocks.auth.initialized = false
     mocks.auth.authenticated = true
     shell()
-    expect(mocks.refreshSummary).not.toHaveBeenCalled()
+    await vi.waitFor(() => {
+      expect(mocks.refreshSummary).toHaveBeenCalledWith()
+      expect(mocks.connectRealtime).toHaveBeenCalledOnce()
+    })
 
     mocks.auth.initialized = true
     mocks.auth.authenticated = true
+    mocks.refreshSummary.mockClear()
+    mocks.connectRealtime.mockClear()
     mocks.refreshSummary.mockRejectedValueOnce(new Error('temporary'))
     shell()
     await vi.waitFor(() => {
-      expect(mocks.refreshSummary).toHaveBeenCalledWith('crm')
+      expect(mocks.refreshSummary).toHaveBeenCalledWith()
       expect(mocks.connectRealtime).toHaveBeenCalledOnce()
     })
 
     mocks.refreshSummary.mockClear()
     shell({ workCenterVertical: '' })
-    await vi.waitFor(() => expect(mocks.refreshSummary).toHaveBeenCalledWith(null))
+    await vi.waitFor(() => expect(mocks.refreshSummary).toHaveBeenCalledWith())
   })
 })

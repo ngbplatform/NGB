@@ -22,7 +22,12 @@
 
       <div class="mt-5 flex items-center justify-end gap-2">
         <NgbButton variant="secondary" @click="cancel">{{ cancelTextComputed }}</NgbButton>
-        <NgbButton :variant="danger ? 'danger' : 'primary'" :loading="confirmLoading" @click="confirm">{{ confirmTextComputed }}</NgbButton>
+        <NgbButton
+          :variant="danger ? 'danger' : 'primary'"
+          :loading="confirmLoading"
+          :disabled="confirmDisabled"
+          @click="confirm"
+        >{{ confirmTextComputed }}</NgbButton>
       </div>
     </div>
   </NgbModalShell>
@@ -44,6 +49,7 @@ const props = defineProps<{
   cancelText?: string
   danger?: boolean
   confirmLoading?: boolean
+  confirmDisabled?: boolean
   icon?: NgbIconName
 }>()
 
@@ -60,6 +66,7 @@ function cancel() {
 }
 
 function confirm() {
+  if (props.confirmDisabled || props.confirmLoading) return
   emit('confirm')
 }
 </script>

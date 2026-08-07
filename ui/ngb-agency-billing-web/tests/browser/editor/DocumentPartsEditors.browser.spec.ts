@@ -16,15 +16,8 @@ vi.mock('vue-router', async (importOriginal) => ({
   useRouter: () => ({ push: mocks.push }),
 }))
 
-vi.mock('@ngbplatform/ui', async () => {
-  const [clone, dataTypes, entityForm, entityModel, guid, lookupHelpers] = await Promise.all([
-    import('../../../../ngb-ui-framework/src/ngb/utils/clone'),
-    import('../../../../ngb-ui-framework/src/ngb/metadata/dataTypes'),
-    import('../../../../ngb-ui-framework/src/ngb/metadata/entityForm'),
-    import('../../../../ngb-ui-framework/src/ngb/metadata/entityModel'),
-    import('../../../../ngb-ui-framework/src/ngb/utils/guid'),
-    import('../../../../ngb-ui-framework/src/ngb/metadata/lookup'),
-  ])
+vi.mock('@ngbplatform/ui', async (importOriginal) => {
+  const platform = await importOriginal<typeof import('@ngbplatform/ui')>()
   const stub = (name: string) => defineComponent({
     name,
     inheritAttrs: false,
@@ -67,13 +60,7 @@ vi.mock('@ngbplatform/ui', async () => {
     },
   })
   return {
-    clonePlainData: clone.clonePlainData,
-    buildFieldsPayload: entityForm.buildFieldsPayload,
-    dataTypeKind: dataTypes.dataTypeKind,
-    isNonEmptyGuid: guid.isNonEmptyGuid,
-    isReferenceValue: entityModel.isReferenceValue,
-    resolveLookupHint: lookupHelpers.resolveLookupHint,
-    tryExtractReferenceId: entityModel.tryExtractReferenceId,
+    ...platform,
     NgbDatePicker: datePicker,
     NgbIcon: stub('NgbIcon'),
     NgbInput: input,

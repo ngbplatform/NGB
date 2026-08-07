@@ -15,14 +15,10 @@ const mocks = vi.hoisted(() => ({
   getDocumentEffects: vi.fn(),
   hydrateEntityReferenceFieldsForEditing: vi.fn(),
   markCatalogForDeletion: vi.fn(),
-  markDocumentForDeletion: vi.fn(),
-  postDocument: vi.fn(),
   resolveNavigateOnCreate: vi.fn(() => false),
   sanitizeNgbEditorModelForEditing: vi.fn(),
   syncNgbEditorComputedDisplay: vi.fn(),
   unmarkCatalogForDeletion: vi.fn(),
-  unmarkDocumentForDeletion: vi.fn(),
-  unpostDocument: vi.fn(),
   updateCatalog: vi.fn(),
   updateDraft: vi.fn(),
 }))
@@ -183,20 +179,6 @@ describe('property-management document editor persistence', () => {
     expect(args.emitSaved).toHaveBeenCalledOnce()
   })
 
-  it('executes every document lifecycle mutation', async () => {
-    mocks.markDocumentForDeletion.mockResolvedValueOnce({ state: 'marked' })
-    mocks.unmarkDocumentForDeletion.mockResolvedValueOnce({ state: 'restored' })
-    mocks.postDocument.mockResolvedValueOnce({ state: 'posted' })
-    mocks.unpostDocument.mockResolvedValueOnce({ state: 'draft' })
-    const args = context()
-    const adapter = useDocumentEntityEditorPersistence(args as never)
-    await adapter.markForDeletion()
-    await adapter.unmarkForDeletion()
-    await adapter.post()
-    await adapter.unpost()
-    expect(args.doc.value).toEqual({ state: 'draft' })
-    expect(args.toasts).toHaveLength(2)
-  })
 })
 
 describe('property-management catalog editor persistence', () => {

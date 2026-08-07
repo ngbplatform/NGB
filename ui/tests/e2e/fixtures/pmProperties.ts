@@ -1,5 +1,5 @@
-import type { CatalogItemDto, PageResponseDto } from '../../../ngb-ui-framework/src/ngb/api/contracts'
-import { ReportRowKind, type ReportExecutionResponseDto } from '../../../ngb-ui-framework/src/ngb/reporting/types'
+import type { CatalogItemDto, PageResponseDto } from '@ngbplatform/ui/contracts'
+import { ReportRowKind, type ReportExecutionResponseDto } from '@ngbplatform/ui/contracts'
 import { PM_TEST_IDS } from '../support/routes'
 
 export const propertyBuildingsFixture: PageResponseDto<CatalogItemDto> = {

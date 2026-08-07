@@ -1,4 +1,5 @@
 import type { ReferenceValue } from '../metadata/entityModel'
+import type { NgbNavigationTarget } from '../navigation/types'
 import type {
   ActionKind,
   CatalogTypeMetadata,
@@ -93,10 +94,7 @@ export type DocumentActionConfirmationDto = {
   confirmLabel: string
 }
 
-export type DocumentActionTargetDto = {
-  code: string
-  parameters: Record<string, string | null>
-}
+export type DocumentActionTargetDto = NgbNavigationTarget
 
 export type DocumentActionDto = {
   code: string

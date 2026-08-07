@@ -17,19 +17,8 @@ function createHarness() {
   const typeCode = ref('pm.invoice')
   const currentId = ref<string | null>('doc-1')
   const title = ref('Invoice INV-001')
-  const canOpenDocumentFlowPage = ref(true)
-  const canOpenEffectsPage = ref(true)
-  const canPrintDocument = ref(true)
-  const canPost = ref(true)
-  const canUnpost = ref(false)
-
-  const handlers = {
-    openDocumentFlowPage: vi.fn(),
-    openDocumentEffectsPage: vi.fn(),
-    openDocumentPrintPage: vi.fn(),
-    post: vi.fn().mockResolvedValue(undefined),
-    unpost: vi.fn().mockResolvedValue(undefined),
-  }
+  const allowedActionCodes = ref(['view_flow', 'view_effects', 'print', 'post'])
+  const requestDocumentAction = vi.fn(() => true)
 
   useEntityEditorCommandPalette({
     mode: computed(() => mode.value),
@@ -37,12 +26,8 @@ function createHarness() {
     typeCode: computed(() => typeCode.value),
     currentId: computed(() => currentId.value),
     title: computed(() => title.value),
-    canOpenDocumentFlowPage: computed(() => canOpenDocumentFlowPage.value),
-    canOpenEffectsPage: computed(() => canOpenEffectsPage.value),
-    canPrintDocument: computed(() => canPrintDocument.value),
-    canPost: computed(() => canPost.value),
-    canUnpost: computed(() => canUnpost.value),
-    ...handlers,
+    isDocumentActionAllowed: (actionCode) => allowedActionCodes.value.includes(actionCode),
+    requestDocumentAction,
   })
 
   const resolver = useCommandPalettePageContextMock.mock.calls.at(-1)?.[0] as Resolver
@@ -54,13 +39,9 @@ function createHarness() {
       typeCode,
       currentId,
       title,
-      canOpenDocumentFlowPage,
-      canOpenEffectsPage,
-      canPrintDocument,
-      canPost,
-      canUnpost,
+      allowedActionCodes,
     },
-    handlers,
+    requestDocumentAction,
     resolver,
   }
 }
@@ -71,101 +52,35 @@ describe('entity editor command palette integration', () => {
   })
 
   it('registers current document page context with flow/effects/print/post actions', async () => {
-    const { handlers, resolver } = createHarness()
+    const { requestDocumentAction, resolver } = createHarness()
     const context = resolver()
 
-    expect(context).toEqual({
+    expect(context).toMatchObject({
       entityType: 'document',
       documentType: 'pm.invoice',
       catalogType: null,
       entityId: 'doc-1',
       title: 'Invoice INV-001',
-      actions: [
-        {
-          key: 'current:flow:pm.invoice:doc-1',
-          group: 'actions',
-          kind: 'command',
-          scope: 'commands',
-          title: 'Open document flow',
-          subtitle: 'Open workflow for this document',
-          icon: 'document-flow',
-          badge: 'Flow',
-          hint: null,
-          route: null,
-          commandCode: 'document-flow',
-          status: null,
-          openInNewTabSupported: false,
-          keywords: ['flow', 'document flow'],
-          defaultRank: 988,
-          isCurrentContext: true,
-          perform: handlers.openDocumentFlowPage,
-        },
-        {
-          key: 'current:effects:pm.invoice:doc-1',
-          group: 'actions',
-          kind: 'command',
-          scope: 'commands',
-          title: 'Open accounting effects',
-          subtitle: 'Review ledger impact for this document',
-          icon: 'effects-flow',
-          badge: 'Effects',
-          hint: null,
-          route: null,
-          commandCode: 'accounting-effects',
-          status: null,
-          openInNewTabSupported: false,
-          keywords: ['effects', 'accounting effects', 'posting'],
-          defaultRank: 986,
-          isCurrentContext: true,
-          perform: handlers.openDocumentEffectsPage,
-        },
-        {
-          key: 'current:print:pm.invoice:doc-1',
-          group: 'actions',
-          kind: 'command',
-          scope: 'commands',
-          title: 'Print document',
-          subtitle: 'Open a print-friendly version of this document',
-          icon: 'printer',
-          badge: 'Print',
-          hint: null,
-          route: null,
-          commandCode: 'print-document',
-          status: null,
-          openInNewTabSupported: false,
-          keywords: ['print', 'print document', 'paper'],
-          defaultRank: 985,
-          isCurrentContext: true,
-          perform: handlers.openDocumentPrintPage,
-        },
-        {
-          key: 'current:post:pm.invoice:doc-1',
-          group: 'actions',
-          kind: 'command',
-          scope: 'commands',
-          title: 'Post document',
-          subtitle: 'Post this document to the ledger',
-          icon: 'check',
-          badge: 'Post',
-          hint: null,
-          route: null,
-          commandCode: 'post-document',
-          status: null,
-          openInNewTabSupported: false,
-          keywords: ['post', 'post document'],
-          defaultRank: 984,
-          isCurrentContext: true,
-          perform: handlers.post,
-        },
-      ],
     })
+    expect(context?.actions.map((action) => action.key)).toEqual([
+      'current:view_flow:pm.invoice:doc-1',
+      'current:view_effects:pm.invoice:doc-1',
+      'current:print:pm.invoice:doc-1',
+      'current:post:pm.invoice:doc-1',
+    ])
+    expect(context?.actions[0]).toMatchObject({
+      title: 'Open document flow',
+      commandCode: 'document-view_flow',
+      isCurrentContext: true,
+    })
+    context?.actions[0]?.perform?.()
+    expect(requestDocumentAction).toHaveBeenCalledWith('view_flow')
   })
 
   it('switches to unpost action when the document is posted and suppresses page context in drawer mode', () => {
-    const { state, handlers, resolver } = createHarness()
+    const { state, requestDocumentAction, resolver } = createHarness()
 
-    state.canPost.value = false
-    state.canUnpost.value = true
+    state.allowedActionCodes.value = ['view_flow', 'view_effects', 'print', 'unpost']
 
     expect(resolver()).toEqual({
       entityType: 'document',
@@ -177,11 +92,12 @@ describe('entity editor command palette integration', () => {
         expect.objectContaining({
           key: 'current:unpost:pm.invoice:doc-1',
           title: 'Unpost document',
-          perform: handlers.unpost,
         }),
       ]),
     })
     expect((resolver()?.actions ?? []).some((item) => item.key.includes(':post:'))).toBe(false)
+    resolver()?.actions.find((item) => item.key.includes(':unpost:'))?.perform?.()
+    expect(requestDocumentAction).toHaveBeenCalledWith('unpost')
 
     state.mode.value = 'drawer'
     expect(resolver()).toBeNull()

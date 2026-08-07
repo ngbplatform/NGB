@@ -176,8 +176,11 @@ import type { SiteNavNode, SiteQuickLink, SiteSettingsSection } from './types';
 import { useTheme } from './useTheme';
 import { provideToasts } from '../primitives/toast';
 import NgbWorkCenterDrawer from '../work-center/NgbWorkCenterDrawer.vue';
-import { useWorkCenter } from '../work-center/useWorkCenter';
-import { getAuthSnapshot } from '../auth/keycloak';
+import {
+  provideNgbWorkCenterRuntime,
+  useWorkCenter,
+} from '../work-center/useWorkCenter';
+import { resolveNgbNavigationRoutes } from '../navigation/config';
 
 const props = defineProps<{
   moduleTitle: string;
@@ -228,7 +231,7 @@ const settingsSections = computed<SiteSettingsSection[]>(() => [
     label: 'Personal',
     items: [{
       label: 'Work Center preferences',
-      route: '/settings/notifications',
+      route: resolveNgbNavigationRoutes().workCenterPreferences,
       icon: 'bell',
       description: 'Choose the in-app notifications shown in Work Center.',
     }],
@@ -250,14 +253,13 @@ function handleMobileSelect(id: string, route: string) {
   emit('select', id, route);
 }
 
-const workCenter = useWorkCenter();
+const workCenterRuntime = provideNgbWorkCenterRuntime({ vertical: props.workCenterVertical });
+const workCenter = useWorkCenter({ runtime: workCenterRuntime });
 const attentionCount = computed(() => workCenter.summary.value?.attentionCount ?? props.unreadNotifications ?? 0);
 const canBack = computed(() => Boolean(props.canBack));
 
 onMounted(() => {
-  const auth = getAuthSnapshot();
-  if (!auth.initialized || !auth.authenticated) return;
-  void workCenter.refreshSummary(props.workCenterVertical || null).catch(() => undefined);
+  void workCenter.refreshSummary().catch(() => undefined);
   void workCenter.connectRealtime();
 });
 

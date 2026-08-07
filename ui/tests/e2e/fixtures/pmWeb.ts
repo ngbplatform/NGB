@@ -2,7 +2,7 @@ import type {
   PayablesOpenItemsDetailsResponseDto,
   ReceivablesOpenItemsDetailsResponseDto,
 } from '../../../ngb-property-management-web/src/api/types/pmContracts'
-import type { CatalogItemDto, DocumentDto } from '../../../ngb-ui-framework/src/ngb/api/contracts'
+import type { CatalogItemDto, DocumentDto } from '@ngbplatform/ui/contracts'
 import { PM_TEST_IDS } from '../support/routes'
 
 export const mainMenuFixture = {

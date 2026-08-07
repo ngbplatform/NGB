@@ -28,10 +28,6 @@ export type CatalogEntityPersistenceAdapter = {
 export type DocumentEntityPersistenceAdapter = {
   load: () => Promise<void>;
   save: () => Promise<void>;
-  markForDeletion: () => Promise<void>;
-  unmarkForDeletion: () => Promise<void>;
-  post: () => Promise<void>;
-  unpost: () => Promise<void>;
   loadEffectsSnapshot?: (documentType: string, id: string) => Promise<void>;
 };
 
@@ -47,11 +43,7 @@ export type UseEntityEditorPersistenceArgs<
   canMarkForDeletion: ComputedRef<boolean>;
   canUnmarkForDeletion: ComputedRef<boolean>;
   canDelete: ComputedRef<boolean>;
-  canPost: ComputedRef<boolean>;
-  canUnpost: ComputedRef<boolean>;
   isNew: ComputedRef<boolean>;
-  isDirty: ComputedRef<boolean>;
-  error: Ref<EditorErrorState | null>;
   setEditorError: (value: EditorErrorState | null) => void;
   normalizeEditorError: (cause: unknown) => EditorErrorState;
   emitChanged: (reason?: EditorChangeReason) => void;
@@ -129,11 +121,8 @@ export function useEntityEditorPersistence<
     args.setEditorError(null);
 
     try {
-      if (args.kind.value === 'catalog') {
-        await args.adapters.catalog.markForDeletion();
-      } else {
-        await args.adapters.document.markForDeletion();
-      }
+      if (args.kind.value !== 'catalog') return;
+      await args.adapters.catalog.markForDeletion();
 
       await load();
       args.emitChanged('markForDeletion');
@@ -151,11 +140,8 @@ export function useEntityEditorPersistence<
     args.setEditorError(null);
 
     try {
-      if (args.kind.value === 'catalog') {
-        await args.adapters.catalog.unmarkForDeletion();
-      } else {
-        await args.adapters.document.unmarkForDeletion();
-      }
+      if (args.kind.value !== 'catalog') return;
+      await args.adapters.catalog.unmarkForDeletion();
 
       await load();
       args.emitChanged('unmarkForDeletion');
@@ -183,47 +169,6 @@ export function useEntityEditorPersistence<
     }
   }
 
-  async function post() {
-    if (!args.canPost.value) return;
-
-    args.setEditorError(null);
-
-    if (args.isDirty.value) {
-      await save();
-      if (args.error.value) return;
-      if (!args.canPost.value) return;
-    }
-
-    args.saving.value = true;
-
-    try {
-      await args.adapters.document.post();
-      await load();
-      args.emitChanged('post');
-    } catch (cause) {
-      args.setEditorError(args.normalizeEditorError(cause));
-    } finally {
-      args.saving.value = false;
-    }
-  }
-
-  async function unpost() {
-    if (!args.canUnpost.value) return;
-
-    args.saving.value = true;
-    args.setEditorError(null);
-
-    try {
-      await args.adapters.document.unpost();
-      await load();
-      args.emitChanged('unpost');
-    } catch (cause) {
-      args.setEditorError(args.normalizeEditorError(cause));
-    } finally {
-      args.saving.value = false;
-    }
-  }
-
   async function loadDocumentEffectsSnapshot(documentType: string, id: string) {
     await args.adapters.document.loadEffectsSnapshot?.(documentType, id);
   }
@@ -234,8 +179,6 @@ export function useEntityEditorPersistence<
     markForDeletion,
     unmarkForDeletion,
     deleteEntity,
-    post,
-    unpost,
     loadDocumentEffectsSnapshot,
   };
 }
