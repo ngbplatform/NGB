@@ -34,4 +34,9 @@ public interface IDocumentRelationshipService
     Task<IReadOnlyList<DocumentRelationshipRecord>> ListIncomingAsync(
         Guid toDocumentId,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Performs a cardinality/existence check without materializing all incoming relationships.
+    /// </summary>
+    Task<bool> ExistsIncomingAsync(Guid toDocumentId, string relationshipCode, CancellationToken ct = default);
 }

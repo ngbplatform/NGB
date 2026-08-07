@@ -3,6 +3,7 @@ using System.Diagnostics;
 using FluentAssertions;
 using Moq;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Documents;
 using NGB.Contracts.WorkCenter;
 using NGB.Core.AuditLog;
 using NGB.Core.Security;
@@ -15,6 +16,12 @@ using NGB.Runtime.Security;
 using NGB.Runtime.WorkCenter;
 using NGB.Tools.Exceptions;
 using Xunit;
+using NotificationChannel = NGB.Core.WorkCenter.NotificationChannel;
+using NotificationSeverity = NGB.Core.WorkCenter.NotificationSeverity;
+using WorkCenterItemKind = NGB.Core.WorkCenter.WorkCenterItemKind;
+using WorkCenterPreferenceKind = NGB.Core.WorkCenter.WorkCenterPreferenceKind;
+using WorkCenterPriority = NGB.Core.WorkCenter.WorkCenterPriority;
+using WorkCenterTaskStatus = NGB.Core.WorkCenter.WorkCenterTaskStatus;
 
 namespace NGB.Runtime.Tests.WorkCenter;
 
@@ -41,10 +48,13 @@ public sealed class WorkCenterServicesTests
         WorkCenterTask? captured = null;
         tasks.Setup(repository => repository.CreateAsync(
                 It.IsAny<WorkCenterTask>(),
+                It.IsAny<string?>(),
+                It.IsAny<WorkCenterNavigationTargetRecord?>(),
                 It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<WorkCenterTask, IReadOnlyList<Guid>, CancellationToken>((task, _, _) => captured = task)
-            .ReturnsAsync((WorkCenterTask task, IReadOnlyList<Guid> _, CancellationToken _) =>
+            .Callback<WorkCenterTask, string?, WorkCenterNavigationTargetRecord?, IReadOnlyList<Guid>, CancellationToken>(
+                (task, _, _, _, _) => captured = task)
+            .ReturnsAsync((WorkCenterTask task, string? _, WorkCenterNavigationTargetRecord? _, IReadOnlyList<Guid> _, CancellationToken _) =>
                 new WorkCenterTaskCreateResult(task.Id, BecameActive: true, Version: 1));
         roles.Setup(repository => repository.GetByCodeAsync("sales", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Role("sales", active: true));
@@ -55,9 +65,8 @@ public sealed class WorkCenterServicesTests
         var service = new WorkCenterTaskService(
             uow,
             tasks.Object,
-            roles.Object,
-            userRoles.Object,
-            RecipientResolver(preferences, users, userRoles),
+            RecipientResolver(preferences, users, roles, userRoles),
+            Changes(),
             new FixedTimeProvider(Now));
         var userId = Guid.NewGuid();
 
@@ -66,7 +75,6 @@ public sealed class WorkCenterServicesTests
         directId.Should().Be(captured!.Id);
         captured.AssignedUserId.Should().Be(userId);
         captured.AssignedRoleId.Should().BeNull();
-        captured.PrimaryActionCode?.Value.Should().Be("open");
         captured.CreatedAtUtc.Should().Be(Now);
         uow.BeginCount.Should().Be(1);
         uow.CommitCount.Should().Be(1);
@@ -76,7 +84,6 @@ public sealed class WorkCenterServicesTests
 
         captured!.AssignedUserId.Should().BeNull();
         captured.AssignedRoleId.Should().NotBeNull();
-        captured.PrimaryActionCode.Should().BeNull();
         uow.BeginCount.Should().Be(2, "the service must reuse the active outer transaction");
         uow.CommitCount.Should().Be(1);
         uow.EnsureActiveCount.Should().Be(1);
@@ -99,9 +106,8 @@ public sealed class WorkCenterServicesTests
         var service = new WorkCenterTaskService(
             uow,
             tasks.Object,
-            roles.Object,
-            userRoles.Object,
-            RecipientResolver(),
+            RecipientResolver(roles: roles, userRoles: userRoles),
+            Changes(),
             new FixedTimeProvider(Now));
 
         await FluentActions.Awaiting(() => service.CreateAsync(null!, CancellationToken.None))
@@ -143,6 +149,8 @@ public sealed class WorkCenterServicesTests
         SetupActiveUsers(users);
         tasks.SetupSequence(repository => repository.CreateAsync(
                 It.IsAny<WorkCenterTask>(),
+                It.IsAny<string?>(),
+                It.IsAny<WorkCenterNavigationTargetRecord?>(),
                 It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WorkCenterTaskCreateResult(Guid.NewGuid(), BecameActive: true, Version: 3))
@@ -170,12 +178,12 @@ public sealed class WorkCenterServicesTests
             defaultEnabled: true,
             kind: WorkCenterPreferenceKind.Task,
             applicableRoleCodes: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "sales" }));
+        var resolver = RecipientResolver(preferences, users, roles, userRoles, definitions);
         var service = new WorkCenterTaskService(
             uow,
             tasks.Object,
-            roles.Object,
-            userRoles.Object,
-            RecipientResolver(preferences, users, userRoles, definitions),
+            resolver,
+            Changes(),
             new FixedTimeProvider(Now));
         var request = TaskRequest(
             userId: null,
@@ -254,22 +262,24 @@ public sealed class WorkCenterServicesTests
             ]);
         tasks.Setup(repository => repository.CreateAsync(
                 It.IsAny<WorkCenterTask>(),
+                It.IsAny<string?>(),
+                It.IsAny<WorkCenterNavigationTargetRecord?>(),
                 It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<WorkCenterTask, IReadOnlyList<Guid>, CancellationToken>(
-                (_, recipients, _) => capturedRecipients = recipients)
+            .Callback<WorkCenterTask, string?, WorkCenterNavigationTargetRecord?, IReadOnlyList<Guid>, CancellationToken>(
+                (_, _, _, recipients, _) => capturedRecipients = recipients)
             .ReturnsAsync(new WorkCenterTaskCreateResult(createdTaskId, BecameActive: true, Version: 1));
         var definitions = Registry(Definition(
             "test.task",
             defaultEnabled: true,
             kind: WorkCenterPreferenceKind.Task,
             applicableRoleCodes: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "sales" }));
+        var resolver = RecipientResolver(preferences, users, roles, userRoles, definitions);
         var service = new WorkCenterTaskService(
             uow,
             tasks.Object,
-            roles.Object,
-            userRoles.Object,
-            RecipientResolver(preferences, users, userRoles, definitions),
+            resolver,
+            Changes(),
             new FixedTimeProvider(Now));
         var request = TaskRequest(
             userId: null,
@@ -280,6 +290,7 @@ public sealed class WorkCenterServicesTests
         (await service.CreateAsync(request, CancellationToken.None)).Should().Be(createdTaskId);
         capturedRecipients.Should().Equal(enabledRecipient);
 
+        resolver.Reset();
         (await service.CreateAsync(
             request with { DeduplicationKey = "dedupe:all-disabled" },
             CancellationToken.None)).Should().BeNull();
@@ -287,6 +298,8 @@ public sealed class WorkCenterServicesTests
         tasks.Verify(
             repository => repository.CreateAsync(
                 It.IsAny<WorkCenterTask>(),
+                It.IsAny<string?>(),
+                It.IsAny<WorkCenterNavigationTargetRecord?>(),
                 It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()),
             Times.Once);
@@ -300,21 +313,20 @@ public sealed class WorkCenterServicesTests
         var roles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         tasks.Setup(repository => repository.CompleteByDeduplicationKeyAsync(
-                "task:1", Now, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+                "task.code", "task:1", Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkCenterTaskMutationResult(true, []));
         tasks.Setup(repository => repository.CancelByDeduplicationKeyAsync(
-                "task:2", Now, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+                "task.code", "task:2", Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkCenterTaskMutationResult(true, []));
         var service = new WorkCenterTaskService(
             uow,
             tasks.Object,
-            roles.Object,
-            userRoles.Object,
-            RecipientResolver(),
+            RecipientResolver(roles: roles, userRoles: userRoles),
+            Changes(),
             new FixedTimeProvider(Now));
 
-        await service.CompleteByDeduplicationKeyAsync("task:1", CancellationToken.None);
-        await service.CancelByDeduplicationKeyAsync("task:2", CancellationToken.None);
+        await service.CompleteByDeduplicationKeyAsync("task.code", "task:1", CancellationToken.None);
+        await service.CancelByDeduplicationKeyAsync("task.code", "task:2", CancellationToken.None);
 
         uow.CommitCount.Should().Be(2);
         tasks.VerifyAll();
@@ -362,15 +374,16 @@ public sealed class WorkCenterServicesTests
                     capturedRecipients = recipients;
                 })
             .ReturnsAsync((WorkCenterNotification notification, IReadOnlyList<Guid> _, CancellationToken _) =>
-                notification.Id);
+                new WorkCenterNotificationCreateResult(notification.Id, [userEnabled]));
         var definitions = Registry(
             Definition("test.ready", defaultEnabled: false, retention: TimeSpan.FromDays(7)),
             Definition("test.required", defaultEnabled: false, mandatory: true, canDisable: false));
         var service = new NotificationService(
             uow,
             notifications.Object,
-            RecipientResolver(preferences, users, userRoles, definitions),
+            RecipientResolver(preferences, users, userRoles: userRoles, definitions: definitions),
             definitions,
+            Changes(),
             new FixedTimeProvider(Now));
 
         var result = await service.CreateAsync(
@@ -396,7 +409,7 @@ public sealed class WorkCenterServicesTests
                 It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((WorkCenterNotification notification, IReadOnlyList<Guid> _, CancellationToken _) =>
-                notification.Id);
+                new WorkCenterNotificationCreateResult(notification.Id, [userDisabled]));
 
         (await service.CreateAsync(
             NotificationRequest("test.required", [userDisabled], severity: null, expiresAtUtc: Now.AddDays(1)),
@@ -447,8 +460,9 @@ public sealed class WorkCenterServicesTests
         var service = new NotificationService(
             uow,
             notifications.Object,
-            RecipientResolver(preferences, users, userRoles, definitions),
+            RecipientResolver(preferences, users, userRoles: userRoles, definitions: definitions),
             definitions,
+            Changes(),
             new FixedTimeProvider(Now));
 
         (await service.CreateAsync(NotificationRequest("test.ready", []), CancellationToken.None))
@@ -501,7 +515,7 @@ public sealed class WorkCenterServicesTests
                 It.IsAny<WorkCenterNotification>(),
                 It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { salesUser })),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(new WorkCenterNotificationCreateResult(Guid.NewGuid(), [salesUser]));
         var definitions = Registry(Definition(
             "test.sales",
             defaultEnabled: true,
@@ -509,8 +523,9 @@ public sealed class WorkCenterServicesTests
         var service = new NotificationService(
             uow,
             notifications.Object,
-            RecipientResolver(preferences, users, userRoles, definitions),
+            RecipientResolver(preferences, users, userRoles: userRoles, definitions: definitions),
             definitions,
+            Changes(),
             new FixedTimeProvider(Now));
 
         var result = await service.CreateAsync(
@@ -549,21 +564,21 @@ public sealed class WorkCenterServicesTests
             "allowed",
             sortAt: Now,
             dueAt: Now.AddMinutes(-1),
-            navigationJson: """{"path":"/payments/1"}""",
+            navigationPath: "/payments/1",
             navigationCode: "document.editor");
         var second = Item(
             WorkCenterItemKind.Notification,
             "allowed",
             sortAt: Now.AddSeconds(-1),
             dueAt: null,
-            navigationJson: null,
+            navigationPath: null,
             navigationCode: null);
         var denied = Item(
             WorkCenterItemKind.Task,
             "denied",
             sortAt: Now.AddSeconds(-2),
             dueAt: null,
-            navigationJson: "null",
+            navigationPath: null,
             navigationCode: "document.editor");
         WorkCenterQuery? capturedQuery = null;
         harness.Reads.Setup(repository => repository.GetItemsAsync(
@@ -572,7 +587,7 @@ public sealed class WorkCenterServicesTests
             .ReturnsAsync([first, second, denied]);
 
         var page = await harness.Service.GetItemsAsync(
-            new WorkCenterQueryDto(Limit: 1, Tab: "attention"),
+            new WorkCenterQueryDto(Limit: 1, Tab: WorkCenterTab.Attention),
             CancellationToken.None);
 
         capturedQuery!.Limit.Should().Be(2);
@@ -615,7 +630,7 @@ public sealed class WorkCenterServicesTests
             "anything",
             sortAt: Now,
             dueAt: null,
-            navigationJson: null,
+            navigationPath: null,
             navigationCode: null);
         harness.Reads.Setup(repository => repository.GetItemsAsync(
                 It.IsAny<WorkCenterQuery>(), It.IsAny<CancellationToken>()))
@@ -662,7 +677,7 @@ public sealed class WorkCenterServicesTests
             "anything",
             Now.AddSeconds(-3),
             null,
-            "null",
+            null,
             "document.editor");
         harness.Reads.Setup(repository => repository.GetItemsAsync(
                 It.IsAny<WorkCenterQuery>(), It.IsAny<CancellationToken>()))
@@ -785,8 +800,10 @@ public sealed class WorkCenterServicesTests
                 It.IsAny<IReadOnlyList<string>>(), It.IsAny<IReadOnlyList<string>>(),
                 3, Now, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        harness.Realtime.Setup(notifier => notifier.NotifyChangedAsync(
-                Now.Ticks, It.IsAny<CancellationToken>()))
+        harness.Realtime.Setup(notifier => notifier.NotifyUsersChangedAsync(
+                Now.Ticks,
+                It.Is<IReadOnlyCollection<Guid>>(users => users.SequenceEqual(new[] { harness.UserId })),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var id = Guid.NewGuid();
 
@@ -798,7 +815,10 @@ public sealed class WorkCenterServicesTests
 
         harness.Uow.CommitCount.Should().Be(5);
         harness.Realtime.Verify(
-            notifier => notifier.NotifyChangedAsync(Now.Ticks, It.IsAny<CancellationToken>()),
+            notifier => notifier.NotifyUsersChangedAsync(
+                Now.Ticks,
+                It.Is<IReadOnlyCollection<Guid>>(users => users.SequenceEqual(new[] { harness.UserId })),
+                It.IsAny<CancellationToken>()),
             Times.Exactly(5));
 
         harness.Tasks.Setup(repository => repository.ClaimAsync(
@@ -842,11 +862,13 @@ public sealed class WorkCenterServicesTests
                     Now,
                     1)
             ]);
-        harness.Preferences.Setup(repository => repository.UpsertAsync(
-                It.IsAny<NotificationPreferenceRecord>(), It.IsAny<CancellationToken>()))
+        harness.Preferences.Setup(repository => repository.UpsertManyAsync(
+                It.IsAny<IReadOnlyList<NotificationPreferenceRecord>>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        harness.Realtime.Setup(notifier => notifier.NotifyChangedAsync(
-                Now.Ticks, It.IsAny<CancellationToken>()))
+        harness.Realtime.Setup(notifier => notifier.NotifyUsersChangedAsync(
+                Now.Ticks,
+                It.Is<IReadOnlyCollection<Guid>>(users => users.SequenceEqual(new[] { harness.UserId })),
+                It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var result = await harness.Service.GetNotificationPreferencesAsync(CancellationToken.None);
@@ -859,38 +881,49 @@ public sealed class WorkCenterServicesTests
 
         await FluentActions.Awaiting(() => harness.Service.UpdateNotificationPreferencesAsync(
                 new UpdateNotificationPreferencesRequestDto([
-                    new UpdateNotificationPreferenceDto("test.sales", NotificationChannel.InApp, true)
+                    new UpdateNotificationPreferenceDto(
+                        "test.sales",
+                        NGB.Contracts.WorkCenter.NotificationChannel.InApp,
+                        true)
                 ]),
                 CancellationToken.None))
             .Should().ThrowAsync<NgbPermissionDeniedException>();
 
         await harness.Service.UpdateNotificationPreferencesAsync(
             new UpdateNotificationPreferencesRequestDto([
-                new UpdateNotificationPreferenceDto("test.optional", NotificationChannel.InApp, true),
-                new UpdateNotificationPreferenceDto("test.required", NotificationChannel.InApp, true),
-                new UpdateNotificationPreferenceDto("test.optional", NotificationChannel.InApp, false)
+                new UpdateNotificationPreferenceDto("test.optional", NGB.Contracts.WorkCenter.NotificationChannel.InApp, true),
+                new UpdateNotificationPreferenceDto("test.required", NGB.Contracts.WorkCenter.NotificationChannel.InApp, true),
+                new UpdateNotificationPreferenceDto("test.optional", NGB.Contracts.WorkCenter.NotificationChannel.InApp, false)
             ]),
             CancellationToken.None);
+        harness.Preferences.Verify(repository => repository.UpsertManyAsync(
+            It.Is<IReadOnlyList<NotificationPreferenceRecord>>(items =>
+                items.Count == 2
+                && items.Single(preference => preference.NotificationCode == "test.optional").IsEnabled == false
+                && items.Single(preference => preference.NotificationCode == "test.required").IsEnabled),
+            It.IsAny<CancellationToken>()),
+            Times.Once);
         harness.Preferences.Verify(repository => repository.UpsertAsync(
-            It.Is<NotificationPreferenceRecord>(preference =>
-                preference.NotificationCode == "test.required" && preference.IsEnabled),
-            It.IsAny<CancellationToken>()));
+            It.IsAny<NotificationPreferenceRecord>(), It.IsAny<CancellationToken>()), Times.Never);
 
         await FluentActions.Awaiting(() => harness.Service.UpdateNotificationPreferencesAsync(
             new UpdateNotificationPreferencesRequestDto([
-                new UpdateNotificationPreferenceDto("test.required", NotificationChannel.InApp, false)
+                new UpdateNotificationPreferenceDto("test.required", NGB.Contracts.WorkCenter.NotificationChannel.InApp, false)
                 ]),
                 CancellationToken.None))
             .Should().ThrowAsync<NgbArgumentInvalidException>();
         await FluentActions.Awaiting(() => harness.Service.UpdateNotificationPreferencesAsync(
                 new UpdateNotificationPreferencesRequestDto([
-                    new UpdateNotificationPreferenceDto("test.locked", NotificationChannel.InApp, false)
+                    new UpdateNotificationPreferenceDto("test.locked", NGB.Contracts.WorkCenter.NotificationChannel.InApp, false)
                 ]),
                 CancellationToken.None))
             .Should().ThrowAsync<NgbArgumentInvalidException>();
         await FluentActions.Awaiting(() => harness.Service.UpdateNotificationPreferencesAsync(
                 new UpdateNotificationPreferencesRequestDto([
-                    new UpdateNotificationPreferenceDto("test.optional", (NotificationChannel)999, true)
+                    new UpdateNotificationPreferenceDto(
+                        "test.optional",
+                        (NGB.Contracts.WorkCenter.NotificationChannel)999,
+                        true)
                 ]),
                 CancellationToken.None))
             .Should().ThrowAsync<NgbArgumentInvalidException>();
@@ -972,7 +1005,7 @@ public sealed class WorkCenterServicesTests
         string resourceCode,
         DateTime sortAt,
         DateTime? dueAt,
-        string? navigationJson,
+        string? navigationPath,
         string? navigationCode,
         WorkCenterTaskStatus? taskStatus = null)
         => new(
@@ -997,8 +1030,13 @@ public sealed class WorkCenterServicesTests
             AssignedRoleId: kind == WorkCenterItemKind.Task ? Guid.NewGuid() : null,
             ClaimedByUserId: null,
             PrimaryActionCode: kind == WorkCenterItemKind.Task ? "open" : null,
-            NavigationTargetCode: navigationCode,
-            NavigationParametersJson: navigationJson,
+            Target: navigationCode is null
+                ? null
+                : new WorkCenterNavigationTargetRecord(
+                    navigationCode,
+                    navigationPath is null
+                        ? new Dictionary<string, string?>()
+                        : new Dictionary<string, string?> { ["path"] = navigationPath }),
             Version: 2);
 
     private static CreateWorkCenterTaskRequest TaskRequest(
@@ -1015,13 +1053,15 @@ public sealed class WorkCenterServicesTests
             userId,
             roleCode,
             Now.AddDays(1),
-            actionCode,
-            "document.editor",
-            new Dictionary<string, string?>(),
+            actionCode is null ? null : new NGB.Core.Documents.Actions.DocumentActionCode(actionCode),
+            actionCode is null
+                ? null
+                : new DocumentActionTargetDto(
+                    StandardDocumentTargets.Editor,
+                    new Dictionary<string, string?>()),
             "dedupe",
             Guid.NewGuid(),
-            Guid.NewGuid(),
-            null);
+            Guid.NewGuid());
 
     private static CreateNotificationRequest NotificationRequest(
         string code,
@@ -1038,7 +1078,6 @@ public sealed class WorkCenterServicesTests
             expiresAtUtc,
             "dedupe",
             null,
-            null,
             null);
 
     private static WorkCenterPreferenceDefinitionRegistry Registry(
@@ -1048,16 +1087,20 @@ public sealed class WorkCenterServicesTests
     private static WorkCenterPreferenceRecipientResolver RecipientResolver(
         Mock<INotificationPreferenceRepository>? preferences = null,
         Mock<IPlatformUserRepository>? users = null,
+        Mock<IPlatformRoleRepository>? roles = null,
         Mock<IPlatformUserRoleRepository>? userRoles = null,
         WorkCenterPreferenceDefinitionRegistry? definitions = null)
         => new(
             (preferences ?? new Mock<INotificationPreferenceRepository>()).Object,
             (users ?? new Mock<IPlatformUserRepository>()).Object,
+            (roles ?? new Mock<IPlatformRoleRepository>()).Object,
             (userRoles ?? new Mock<IPlatformUserRoleRepository>()).Object,
             definitions ?? Registry(Definition(
                 "task.code",
                 defaultEnabled: true,
                 kind: WorkCenterPreferenceKind.Task)));
+
+    private static IWorkCenterChangeTracker Changes() => new WorkCenterChangeTracker();
 
     private static WorkCenterPreferenceDefinition Definition(
         string code,

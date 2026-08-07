@@ -203,6 +203,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<INotificationRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
         services.TryAddScoped<INotificationPreferenceRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
         services.TryAddScoped<IWorkCenterReadRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
+        services.TryAddScoped<IWorkCenterMaintenanceRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
         
         // Locks
         services.TryAddScoped<IAdvisoryLockManager, PostgresAdvisoryLockManager>();

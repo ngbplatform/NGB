@@ -50,9 +50,7 @@ public sealed class CrmLeadQualificationDerivationHandler(
     public async Task ApplyAsync(DocumentDerivationContext ctx, CancellationToken ct = default)
     {
         EnsureSource(ctx, CrmCodes.LeadIntake, CrmCodes.LeadQualification, "CRM.CreateQualification");
-        var existing = await relationships.ListIncomingAsync(ctx.SourceDocument.Id, ct);
-
-        if (existing.Any(static x => string.Equals(x.RelationshipCodeNorm, "qualifies", StringComparison.OrdinalIgnoreCase)))
+        if (await relationships.ExistsIncomingAsync(ctx.SourceDocument.Id, "qualifies", ct))
         {
             throw new CrmDerivationConflictException(
                 "A qualification already exists for this lead.",
@@ -141,8 +139,7 @@ public sealed class CrmLeadConversionDerivationHandler(
                 "crm.lead_conversion.qualification_not_qualified");
         }
 
-        var existing = await relationships.ListIncomingAsync(qualification.LeadIntakeId, ct);
-        if (existing.Any(static x => string.Equals(x.RelationshipCodeNorm, "converts", StringComparison.OrdinalIgnoreCase)))
+        if (await relationships.ExistsIncomingAsync(qualification.LeadIntakeId, "converts", ct))
         {
             throw new CrmDerivationConflictException(
                 "This lead was already converted.",

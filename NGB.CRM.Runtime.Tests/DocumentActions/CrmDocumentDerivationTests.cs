@@ -78,11 +78,11 @@ public sealed class CrmDocumentDerivationTests
         var sut = CreateQualification();
         var context = Context(CrmCodes.LeadIntake, CrmCodes.LeadQualification);
         sut.Relationships
-            .Setup(service => service.ListIncomingAsync(context.SourceDocument.Id, CancellationToken.None))
-            .ReturnsAsync([
-                Relationship("other"),
-                Relationship("QUALIFIES")
-            ]);
+            .Setup(service => service.ExistsIncomingAsync(
+                context.SourceDocument.Id,
+                "qualifies",
+                CancellationToken.None))
+            .ReturnsAsync(true);
 
         var error = await FluentActions.Awaiting(() => sut.Handler.ApplyAsync(context))
             .Should().ThrowAsync<NgbException>();
@@ -97,8 +97,11 @@ public sealed class CrmDocumentDerivationTests
         var sut = CreateQualification();
         var context = Context(CrmCodes.LeadIntake, CrmCodes.LeadQualification);
         sut.Relationships
-            .Setup(service => service.ListIncomingAsync(context.SourceDocument.Id, CancellationToken.None))
-            .ReturnsAsync([Relationship("other")]);
+            .Setup(service => service.ExistsIncomingAsync(
+                context.SourceDocument.Id,
+                "qualifies",
+                CancellationToken.None))
+            .ReturnsAsync(false);
         sut.Readers
             .Setup(readers => readers.ReadLeadIntakeHeadAsync(context.SourceDocument.Id, CancellationToken.None))
             .ReturnsAsync(Lead(context.SourceDocument.Id));
@@ -119,8 +122,11 @@ public sealed class CrmDocumentDerivationTests
         var lead = Lead(context.SourceDocument.Id);
         IReadOnlyList<DocumentHeadValue>? captured = null;
         sut.Relationships
-            .Setup(service => service.ListIncomingAsync(context.SourceDocument.Id, CancellationToken.None))
-            .ReturnsAsync([]);
+            .Setup(service => service.ExistsIncomingAsync(
+                context.SourceDocument.Id,
+                "qualifies",
+                CancellationToken.None))
+            .ReturnsAsync(false);
         sut.Readers
             .Setup(readers => readers.ReadLeadIntakeHeadAsync(context.SourceDocument.Id, CancellationToken.None))
             .ReturnsAsync(lead);
@@ -215,11 +221,11 @@ public sealed class CrmDocumentDerivationTests
                 CancellationToken.None))
             .ReturnsAsync(Qualification(context.SourceDocument.Id, leadId, "QUALIFIED"));
         sut.Relationships
-            .Setup(service => service.ListIncomingAsync(leadId, CancellationToken.None))
-            .ReturnsAsync([
-                Relationship("other"),
-                Relationship("Converts")
-            ]);
+            .Setup(service => service.ExistsIncomingAsync(
+                leadId,
+                "converts",
+                CancellationToken.None))
+            .ReturnsAsync(true);
 
         var error = await FluentActions.Awaiting(() => sut.Handler.ApplyAsync(context))
             .Should().ThrowAsync<NgbException>();
@@ -239,8 +245,11 @@ public sealed class CrmDocumentDerivationTests
                 CancellationToken.None))
             .ReturnsAsync(Qualification(context.SourceDocument.Id, leadId, "Qualified"));
         sut.Relationships
-            .Setup(service => service.ListIncomingAsync(leadId, CancellationToken.None))
-            .ReturnsAsync([]);
+            .Setup(service => service.ExistsIncomingAsync(
+                leadId,
+                "converts",
+                CancellationToken.None))
+            .ReturnsAsync(false);
         sut.Readers
             .Setup(readers => readers.ReadLeadIntakeHeadAsync(leadId, CancellationToken.None))
             .ReturnsAsync(Lead(leadId));
@@ -272,8 +281,11 @@ public sealed class CrmDocumentDerivationTests
                 CancellationToken.None))
             .ReturnsAsync(qualification);
         sut.Relationships
-            .Setup(service => service.ListIncomingAsync(leadId, CancellationToken.None))
-            .ReturnsAsync([Relationship("other")]);
+            .Setup(service => service.ExistsIncomingAsync(
+                leadId,
+                "converts",
+                CancellationToken.None))
+            .ReturnsAsync(false);
         sut.Readers
             .Setup(readers => readers.ReadLeadIntakeHeadAsync(leadId, CancellationToken.None))
             .ReturnsAsync(lead);
@@ -421,17 +433,6 @@ public sealed class CrmDocumentDerivationTests
 
     private static CrmLeadQualificationHead Qualification(Guid id, Guid leadId, string state)
         => new(id, new DateOnly(2026, 7, 21), leadId, state, 90, null, null);
-
-    private static DocumentRelationshipRecord Relationship(string code)
-        => new()
-        {
-            Id = Guid.NewGuid(),
-            FromDocumentId = Guid.NewGuid(),
-            ToDocumentId = Guid.NewGuid(),
-            RelationshipCode = code,
-            RelationshipCodeNorm = code.ToLowerInvariant(),
-            CreatedAtUtc = Now.UtcDateTime
-        };
 
     private static DocumentTypeMetadata Metadata(string type)
         => new(

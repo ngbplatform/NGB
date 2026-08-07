@@ -24,6 +24,15 @@ public sealed class PlatformDocumentActionsWorkCenterMigrationTests
         sql.Should().Contain("ix_platform_task_recipients_user");
         sql.Should().Contain("CREATE TABLE IF NOT EXISTS platform_notification_deliveries");
         sql.Should().Contain("CREATE TABLE IF NOT EXISTS platform_user_notification_preferences");
+        sql.Should().Contain("octet_length(result_json::text) <= 4194304");
+        sql.Should().Contain("ix_platform_document_action_executions_completed");
+        sql.Should().Contain("ix_platform_outbox_consumer_processing");
+        sql.Should().Contain("ix_platform_outbox_consumer_health");
+        sql.Should().Contain("ix_platform_outbox_events_created");
+        sql.Should().Contain("ix_platform_tasks_open_health");
+        sql.Should().Contain("ix_platform_tasks_terminal_retention");
+        sql.Should().Contain("ix_platform_notification_deliveries_active");
+        sql.Should().Contain("ix_platform_notifications_expiry");
         sql.Should().NotContain("pm.task.apply_receivable_payment.assigned");
         sql.Should().NotContain("DELETE FROM platform_notifications");
         sql.Should().NotContain("UPDATE platform_tasks");
@@ -53,6 +62,12 @@ public sealed class PlatformDocumentActionsWorkCenterMigrationTests
         sql.Should().Contain("preference_code varchar(128) NULL");
         sql.Should().Contain("CREATE TABLE IF NOT EXISTS platform_task_recipients");
         sql.Should().Contain("ix_platform_task_recipients_user");
+        sql.Should().Contain("octet_length(result_json::text) <= 4194304");
+        sql.Should().Contain("ix_platform_document_action_executions_completed");
+        sql.Should().Contain("ix_platform_outbox_consumer_processing");
+        sql.Should().Contain("ix_platform_outbox_consumer_health");
+        sql.Should().Contain("ix_platform_tasks_open_health");
+        sql.Should().Contain("ix_platform_tasks_terminal_retention");
         sql.Should().NotContain("pm.task.apply_receivable_payment.assigned");
         sql.Should().NotContain("UPDATE platform_tasks");
         sql.Should().NotContain("DELETE FROM platform_notifications");

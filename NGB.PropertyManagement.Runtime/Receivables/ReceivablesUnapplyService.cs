@@ -35,8 +35,8 @@ public sealed class ReceivablesUnapplyService(
             throw ReceivablesRequestValidationException.ApplyRequired();
 
         // Safety first: ensure the id belongs to pm.receivable_apply before touching workflow state.
-        // IDocumentService.UnpostAsync(documentType, id) validates the type only AFTER unposting,
-        // which is too late for a business-oriented endpoint.
+        // The low-level posting port does not validate a caller-supplied type code,
+        // so this business workflow validates its target before changing posting state.
         var doc = await documentService.GetByIdAsync(PropertyManagementCodes.ReceivableApply, applyId, ct);
         if (doc.Status != DocumentStatus.Posted)
         {

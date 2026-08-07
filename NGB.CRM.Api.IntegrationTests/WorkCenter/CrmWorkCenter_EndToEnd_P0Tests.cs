@@ -1,8 +1,11 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.Application.Abstractions.Services;
-using NGB.Core.Events;
+using NGB.Contracts.Documents;
+using NGB.Contracts.Services;
+using NGB.Core.Documents.Actions;
+using NGB.Core.Security;
 using NGB.Core.WorkCenter;
 using NGB.CRM.Api.IntegrationTests.Infrastructure;
 using NGB.CRM.Api.IntegrationTests.Support;
@@ -12,6 +15,7 @@ using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.WorkCenter;
+using NGB.Runtime.Security;
 using NGB.Runtime.UnitOfWork;
 using Xunit;
 
@@ -26,20 +30,24 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
     [Fact]
     public async Task CRM_flows_keep_task_preferences_separate_from_informational_notifications()
     {
-        using var host = CrmHostFactory.Create(fixture.ConnectionString);
+        using var host = CrmHostFactory.Create(fixture.ConnectionString, services =>
+        {
+            services.RemoveAll<IPermissionSnapshotProvider>();
+            services.AddScoped<IPermissionSnapshotProvider, BootstrapAdminPermissionSnapshotProvider>();
+        });
         await using var scope = host.Services.CreateAsyncScope();
 
         var setup = scope.ServiceProvider.GetRequiredService<ICrmSetupService>();
         var catalogs = scope.ServiceProvider.GetRequiredService<ICatalogService>();
         var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
+        var actionQueries = scope.ServiceProvider.GetRequiredService<IDocumentActionQueryService>();
+        var actions = scope.ServiceProvider.GetRequiredService<IDocumentActionDispatcher>();
+        var outbox = scope.ServiceProvider.GetRequiredService<IOutboxProcessor>();
         var users = scope.ServiceProvider.GetRequiredService<IPlatformUserRepository>();
         var roles = scope.ServiceProvider.GetRequiredService<IPlatformRoleRepository>();
         var userRoles = scope.ServiceProvider.GetRequiredService<IPlatformUserRoleRepository>();
         var preferences = scope.ServiceProvider.GetRequiredService<INotificationPreferenceRepository>();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var policy = scope.ServiceProvider.GetServices<IWorkCenterEventPolicy>()
-            .Single(static candidate => candidate is CrmWorkCenterPolicy);
-
         await setup.EnsureDefaultsAsync(CancellationToken.None);
 
         var salesRole = await roles.GetByCodeAsync(
@@ -103,8 +111,8 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
             estimated_value = 12500m,
             currency = CrmCodes.DefaultCurrency
         }), CancellationToken.None);
-        lead = await documents.PostAsync(CrmCodes.LeadIntake, lead.Id, CancellationToken.None);
-        await HandleAsync(policy, uow, lead.Id, CrmCodes.LeadIntake, "post");
+        lead = await PostAsync(actionQueries, actions, CrmCodes.LeadIntake, lead.Id);
+        await DrainAsync(outbox);
 
         await uow.ExecuteInUowTransactionAsync(
             ct => preferences.UpsertAsync(
@@ -129,12 +137,7 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
                 notes = "Ready for conversion"
             }),
             CancellationToken.None);
-        qualification = await documents.PostAsync(
-            CrmCodes.LeadQualification,
-            qualification.Id,
-            CancellationToken.None);
-        await HandleAsync(policy, uow, qualification.Id, CrmCodes.LeadQualification, "post");
-        await HandleAsync(policy, uow, qualification.Id, CrmCodes.LeadQualification, "post");
+        qualification = await PostAsync(actionQueries, actions, CrmCodes.LeadQualification, qualification.Id);
 
         var conversion = await documents.CreateDraftAsync(
             CrmCodes.LeadConversion,
@@ -153,11 +156,7 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
                 currency = CrmCodes.DefaultCurrency
             }),
             CancellationToken.None);
-        conversion = await documents.PostAsync(
-            CrmCodes.LeadConversion,
-            conversion.Id,
-            CancellationToken.None);
-        await HandleAsync(policy, uow, conversion.Id, CrmCodes.LeadConversion, "post");
+        conversion = await PostAsync(actionQueries, actions, CrmCodes.LeadConversion, conversion.Id);
 
         var activity = await documents.CreateDraftAsync(
             CrmCodes.ActivityLog,
@@ -174,11 +173,7 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
                 outcome = (string?)null
             }),
             CancellationToken.None);
-        activity = await documents.PostAsync(
-            CrmCodes.ActivityLog,
-            activity.Id,
-            CancellationToken.None);
-        await HandleAsync(policy, uow, activity.Id, CrmCodes.ActivityLog, "post");
+        activity = await PostAsync(actionQueries, actions, CrmCodes.ActivityLog, activity.Id);
 
         var wonUpdate = await documents.CreateDraftAsync(
             CrmCodes.OpportunityUpdate,
@@ -193,12 +188,8 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
                 status = "Won"
             }),
             CancellationToken.None);
-        wonUpdate = await documents.PostAsync(
-            CrmCodes.OpportunityUpdate,
-            wonUpdate.Id,
-            CancellationToken.None);
-        await HandleAsync(policy, uow, wonUpdate.Id, CrmCodes.OpportunityUpdate, "post");
-        await HandleAsync(policy, uow, wonUpdate.Id, CrmCodes.OpportunityUpdate, "post");
+        wonUpdate = await PostAsync(actionQueries, actions, CrmCodes.OpportunityUpdate, wonUpdate.Id);
+        await DrainAsync(outbox);
 
         (await CrmIntegrationTestHelpers.CountRowsAsync(
             fixture.ConnectionString,
@@ -234,41 +225,29 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
              """)).Should().Be(0, "CRM Work Center notifications are visible only to CRM Sales Representatives");
     }
 
-    private static Task HandleAsync(
-        IWorkCenterEventPolicy policy,
-        IUnitOfWork uow,
-        Guid documentId,
+    private static async Task<DocumentDto> PostAsync(
+        IDocumentActionQueryService queries,
+        IDocumentActionDispatcher actions,
         string documentType,
-        string actionCode)
-        => uow.ExecuteInUowTransactionAsync(
-            ct => policy.HandleAsync(Context(documentId, documentType, actionCode), ct),
-            CancellationToken.None);
-
-    private static WorkCenterEventContext Context(Guid documentId, string documentType, string actionCode)
+        Guid documentId)
     {
-        var eventId = Guid.CreateVersion7();
-        var now = DateTime.UtcNow;
-        return new WorkCenterEventContext(
-            new PlatformOutboxEvent(
-                eventId,
-                "ngb.document.action.completed",
-                SchemaVersion: 1,
-                now,
-                "ngb",
-                $"document/{documentType}/{documentId:D}",
-                ActorUserId: null,
-                CorrelationId: eventId,
-                CausationId: null,
-                JsonSerializer.Serialize(new
-                {
-                    data = new
-                    {
-                        documentId,
-                        documentType,
-                        actionCode
-                    }
-                }),
-                now));
+        var state = await queries.GetEditorStateAsync(documentType, documentId, CancellationToken.None);
+        var result = await actions.ExecuteAsync(
+            documentType,
+            documentId,
+            StandardDocumentActionCodes.Post,
+            $"crm-work-center-e2e:{documentType}:{documentId:D}:post",
+            new ExecuteDocumentActionRequestDto(state.DocumentVersion),
+            CancellationToken.None);
+        return result.Document;
+    }
+
+    private static async Task DrainAsync(IOutboxProcessor processor)
+    {
+        while (await processor.ProcessBatchAsync(100, CancellationToken.None) > 0)
+        {
+            // Drain every ready projection batch before asserting durable state.
+        }
     }
 
     private async Task AssertDeliveryCountAsync(string definitionCode, Guid userId, int expected)
@@ -283,5 +262,23 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
                AND notification.definition_code = '{definitionCode}';
              """);
         count.Should().Be(expected);
+    }
+
+    private sealed class BootstrapAdminPermissionSnapshotProvider : IPermissionSnapshotProvider
+    {
+        private static readonly PermissionSnapshot Snapshot = new(
+            userId: null,
+            authSubject: "crm-work-center-bootstrap-admin",
+            isAuthenticated: true,
+            isActive: true,
+            isBootstrapAdmin: true,
+            accessVersion: 1,
+            permissions: []);
+
+        public Task<PermissionSnapshot> GetCurrentAsync(CancellationToken ct)
+            => Task.FromResult(Snapshot);
+
+        public Task<PermissionSnapshot> RefreshCurrentAsync(CancellationToken ct)
+            => Task.FromResult(Snapshot);
     }
 }

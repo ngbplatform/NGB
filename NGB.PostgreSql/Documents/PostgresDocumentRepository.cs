@@ -164,7 +164,7 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
                 context: new Dictionary<string, object?> { ["documentId"] = documentId, ["rows"] = rows });
     }
 
-    public async Task<long> IncrementVersionAsync(
+    public async Task<DocumentRecord> IncrementVersionAsync(
         Guid documentId,
         DateTime updatedAtUtc,
         CancellationToken ct = default)
@@ -177,7 +177,17 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
                            SET version = version + 1,
                                updated_at_utc = GREATEST(updated_at_utc, @UpdatedAtUtc)
                            WHERE id = @Id
-                           RETURNING version;
+                           RETURNING
+                               id                  AS Id,
+                               type_code           AS TypeCode,
+                               number              AS Number,
+                               date_utc            AS DateUtc,
+                               status              AS Status,
+                               version             AS Version,
+                               created_at_utc      AS CreatedAtUtc,
+                               updated_at_utc      AS UpdatedAtUtc,
+                               posted_at_utc       AS PostedAtUtc,
+                               marked_for_deletion_at_utc AS MarkedForDeletionAtUtc;
                            """;
 
         var cmd = new CommandDefinition(
@@ -186,11 +196,11 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
             transaction: uow.Transaction,
             cancellationToken: ct);
 
-        var version = await uow.Connection.QuerySingleOrDefaultAsync<long?>(cmd);
-        if (version is null)
+        var row = await uow.Connection.QuerySingleOrDefaultAsync<DocumentRow>(cmd);
+        if (row is null)
             throw new DocumentNotFoundException(documentId);
 
-        return version.Value;
+        return row.ToRecord();
     }
 
     public async Task<bool> TrySetNumberAsync(

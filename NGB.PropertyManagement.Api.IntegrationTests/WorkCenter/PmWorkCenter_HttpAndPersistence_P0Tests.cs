@@ -7,8 +7,8 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Documents;
 using NGB.Contracts.WorkCenter;
-using NGB.Core.Events;
 using NGB.Core.Security;
 using NGB.Core.WorkCenter;
 using NGB.Persistence.AuditLog;
@@ -76,12 +76,12 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
             (await tasks.CreateAsync(taskRequest, CancellationToken.None)).Should().Be(directTaskId);
 
             var notification = Notification(sourceId, notificationKey);
-            notificationId = await uow.ExecuteInUowTransactionAsync(
+            notificationId = (await uow.ExecuteInUowTransactionAsync(
                 ct => notifications.CreateAsync(notification, [adminUserId], ct),
-                CancellationToken.None);
+                CancellationToken.None)).NotificationId;
             (await uow.ExecuteInUowTransactionAsync(
                 ct => notifications.CreateAsync(notification, [adminUserId], ct),
-                CancellationToken.None)).Should().Be(notificationId);
+                CancellationToken.None)).NotificationId.Should().Be(notificationId);
         }
 
         var summary = await GetAsync<WorkCenterSummaryDto>(adminClient, "/api/work-center/summary");
@@ -116,7 +116,7 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
                     AllowedResourceCodes: [],
                     Cursor: null,
                     Limit: 2,
-                    Tab: "attention",
+                    View: WorkCenterQueryView.Attention,
                     Vertical: null,
                     Priority: null,
                     Severity: null,
@@ -153,8 +153,8 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
             "/api/me/notification-preferences");
         var taskPreference = preferences.Single(
             x => x.Code == PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask
-                 && x.Channel == NotificationChannel.InApp);
-        taskPreference.Kind.Should().Be(WorkCenterPreferenceKind.Task);
+                 && x.Channel == NGB.Contracts.WorkCenter.NotificationChannel.InApp);
+        taskPreference.Kind.Should().Be(NGB.Contracts.WorkCenter.WorkCenterPreferenceKind.Task);
         taskPreference.IsEnabled.Should().BeTrue();
 
         var preferenceResponse = await adminClient.PutAsJsonAsync(
@@ -163,7 +163,7 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
             [
                 new UpdateNotificationPreferenceDto(
                     taskPreference.Code,
-                    NotificationChannel.InApp,
+                    NGB.Contracts.WorkCenter.NotificationChannel.InApp,
                     IsEnabled: false)
             ]),
             JsonOptions);
@@ -221,7 +221,7 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
             adminClient,
             "/api/work-center/items?tab=tasks&limit=20");
         var snoozedTask = tasksAfterSnooze.Items.Single(x => x.Id == directTaskId);
-        snoozedTask.TaskStatus.Should().Be(WorkCenterTaskStatus.Open);
+        snoozedTask.TaskStatus.Should().Be(NGB.Contracts.WorkCenter.WorkCenterTaskStatus.Open);
         snoozedTask.SnoozedUntilUtc.Should().BeAfter(DateTime.UtcNow);
 
         preferenceResponse = await adminClient.PutAsJsonAsync(
@@ -230,7 +230,7 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
             [
                 new UpdateNotificationPreferenceDto(
                     taskPreference.Code,
-                    NotificationChannel.InApp,
+                    NGB.Contracts.WorkCenter.NotificationChannel.InApp,
                     IsEnabled: true)
             ]),
             JsonOptions);
@@ -265,12 +265,16 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var tasks = scope.ServiceProvider.GetRequiredService<IWorkCenterTaskService>();
-            await tasks.CompleteByDeduplicationKeyAsync(roleTaskKey, CancellationToken.None);
+            await tasks.CompleteByDeduplicationKeyAsync(
+                PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
+                roleTaskKey,
+                CancellationToken.None);
         }
         var completed = await GetAsync<WorkCenterPageDto>(
             adminClient,
             "/api/work-center/items?tab=completed&limit=20");
-        completed.Items.Single(x => x.Id == roleTaskId).TaskStatus.Should().Be(WorkCenterTaskStatus.Completed);
+        completed.Items.Single(x => x.Id == roleTaskId).TaskStatus.Should()
+            .Be(NGB.Contracts.WorkCenter.WorkCenterTaskStatus.Completed);
 
         var inaccessibleSourceId = Guid.CreateVersion7();
         Guid inaccessibleTaskId;
@@ -288,30 +292,33 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
                 Source(inaccessibleSourceId),
                 "Review receivable payment",
                 "Review the payment in receivables reconciliation.",
-                WorkCenterPriority.High,
-                WorkCenterTaskStatus.Open,
+                Core.WorkCenter.WorkCenterPriority.High,
+                Core.WorkCenter.WorkCenterTaskStatus.Open,
                 AssignedUserId: viewerUserId,
                 AssignedRoleId: null,
                 ClaimedByUserId: null,
                 DueAtUtc: null,
-                PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation,
-                "pm.receivables.reconciliation",
-                new Dictionary<string, string?>
-                {
-                    ["paymentId"] = inaccessibleSourceId.ToString("D")
-                },
                 now,
                 CompletedAtUtc: null,
                 CancelledAtUtc: null,
                 $"test:work-center:inaccessible-task:{inaccessibleSourceId:D}",
                 Version: 1,
                 CorrelationId: null,
-                CausationId: null,
-                MetadataJson: null);
+                CausationId: null);
             inaccessibleTaskId = (await uow.ExecuteInUowTransactionAsync(
-                ct => tasks.CreateAsync(inaccessibleTask, [viewerUserId], ct),
+                ct => tasks.CreateAsync(
+                    inaccessibleTask,
+                    PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value,
+                    new WorkCenterNavigationTargetRecord(
+                        "pm.receivables.reconciliation",
+                        new Dictionary<string, string?>
+                        {
+                            ["paymentId"] = inaccessibleSourceId.ToString("D")
+                        }),
+                    [viewerUserId],
+                    ct),
                 CancellationToken.None)).TaskId;
-            inaccessibleNotificationId = await uow.ExecuteInUowTransactionAsync(
+            inaccessibleNotificationId = (await uow.ExecuteInUowTransactionAsync(
                 ct => notifications.CreateAsync(
                     new WorkCenterNotification(
                         Guid.CreateVersion7(),
@@ -319,16 +326,15 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
                         Source(inaccessibleSourceId),
                         "Apply receivable payment",
                         "A receivable payment task was assigned.",
-                        NotificationSeverity.Information,
+                        NGB.Core.WorkCenter.NotificationSeverity.Information,
                         DateTime.UtcNow,
                         ExpiresAtUtc: null,
                         $"test:work-center:inaccessible-notification:{inaccessibleSourceId:D}",
                         CorrelationId: null,
-                        CausationId: null,
-                        MetadataJson: null),
+                        CausationId: null),
                     [viewerUserId],
                     ct),
-                CancellationToken.None);
+                CancellationToken.None)).NotificationId;
         }
 
         using var viewerClient = factory.CreateAuthenticatedClient(
@@ -543,17 +549,17 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
             Source(sourceId),
             "Review receivable payment",
             "Review the payment in receivables reconciliation.",
-            WorkCenterPriority.High,
+            NGB.Core.WorkCenter.WorkCenterPriority.High,
             assignedUserId,
             assignedRoleCode,
             dueAtUtc,
-            PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value,
-            "pm.receivables.reconciliation",
-            new Dictionary<string, string?> { ["paymentId"] = sourceId.ToString("D") },
+            PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation,
+            new DocumentActionTargetDto(
+                "pm.receivables.reconciliation",
+                new Dictionary<string, string?> { ["paymentId"] = sourceId.ToString("D") }),
             deduplicationKey,
             CorrelationId: null,
-            CausationId: null,
-            MetadataJson: null);
+            CausationId: null);
 
     private static WorkCenterNotification Notification(
         Guid sourceId,
@@ -564,13 +570,12 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
             Source(sourceId),
             "Payment imported",
             "A payment was imported for review.",
-            NotificationSeverity.Information,
+            NGB.Core.WorkCenter.NotificationSeverity.Information,
             DateTime.UtcNow,
             ExpiresAtUtc: null,
             deduplicationKey,
             CorrelationId: null,
-            CausationId: null,
-            MetadataJson: null);
+            CausationId: null);
 
     private static WorkCenterSourceReference Source(Guid sourceId)
         => new(
@@ -580,10 +585,10 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
             $"Payment {sourceId:N}",
             SubtitleSnapshot: null);
 
-    private static PlatformOutboxEvent OutboxEvent(string eventType, DateTime nowUtc)
+    private static OutboxEventEnvelope OutboxEvent(string eventType, DateTime nowUtc)
     {
         var eventId = Guid.CreateVersion7();
-        return new PlatformOutboxEvent(
+        return new OutboxEventEnvelope(
             eventId,
             eventType,
             SchemaVersion: 1,

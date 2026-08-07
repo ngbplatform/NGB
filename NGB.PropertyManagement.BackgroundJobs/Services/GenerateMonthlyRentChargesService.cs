@@ -15,6 +15,7 @@ internal sealed class GenerateMonthlyRentChargesService(
     IUnitOfWork uow,
     IPropertyManagementRentChargeGenerationReader reader,
     IDocumentService documents,
+    IDocumentSystemLifecycleService lifecycle,
     IDocumentDraftService drafts,
     ILogger<GenerateMonthlyRentChargesService> logger)
 {
@@ -73,7 +74,7 @@ internal sealed class GenerateMonthlyRentChargesService(
                     manageTransaction: true,
                     ct: ct);
 
-                await documents.PostAsync(PropertyManagementCodes.RentCharge, draft.Id, ct);
+                await lifecycle.PostAsync(PropertyManagementCodes.RentCharge, draft.Id, ct);
 
                 existingKeys.Add(key);
                 created++;

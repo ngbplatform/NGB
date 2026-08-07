@@ -1,6 +1,12 @@
 using NGB.Contracts.WorkCenter;
-using NGB.Core.Events;
+using NGB.Contracts.Documents;
+using NGB.Application.Abstractions.IntegrationEvents;
+using NGB.Core.Documents.Actions;
 using NGB.Core.WorkCenter;
+using NotificationChannel = NGB.Core.WorkCenter.NotificationChannel;
+using NotificationSeverity = NGB.Core.WorkCenter.NotificationSeverity;
+using WorkCenterPreferenceKind = NGB.Core.WorkCenter.WorkCenterPreferenceKind;
+using WorkCenterPriority = NGB.Core.WorkCenter.WorkCenterPriority;
 
 namespace NGB.Application.Abstractions.Services;
 
@@ -35,13 +41,11 @@ public sealed record CreateWorkCenterTaskRequest(
     Guid? AssignedUserId,
     string? AssignedRoleCode,
     DateTime? DueAtUtc,
-    string? PrimaryActionCode,
-    string? NavigationTargetCode,
-    IReadOnlyDictionary<string, string?> NavigationParameters,
+    DocumentActionCode? PrimaryActionCode,
+    DocumentActionTargetDto? Target,
     string DeduplicationKey,
     Guid? CorrelationId,
-    Guid? CausationId,
-    string? MetadataJson);
+    Guid? CausationId);
 
 public sealed record CreateNotificationRequest(
     string DefinitionCode,
@@ -53,14 +57,19 @@ public sealed record CreateNotificationRequest(
     DateTime? ExpiresAtUtc,
     string DeduplicationKey,
     Guid? CorrelationId,
-    Guid? CausationId,
-    string? MetadataJson);
+    Guid? CausationId)
+{
+    /// <summary>
+    /// Optional role-based recipient source. Exactly one recipient source is allowed.
+    /// </summary>
+    public string? RecipientRoleCode { get; init; }
+}
 
 public interface IWorkCenterTaskService
 {
     Task<Guid?> CreateAsync(CreateWorkCenterTaskRequest request, CancellationToken ct);
-    Task CompleteByDeduplicationKeyAsync(string deduplicationKey, CancellationToken ct);
-    Task CancelByDeduplicationKeyAsync(string deduplicationKey, CancellationToken ct);
+    Task CompleteByDeduplicationKeyAsync(string taskCode, string deduplicationKey, CancellationToken ct);
+    Task CancelByDeduplicationKeyAsync(string taskCode, string deduplicationKey, CancellationToken ct);
 }
 
 public interface INotificationService
@@ -81,13 +90,9 @@ public interface IWorkCenterQueryService
     Task UpdateNotificationPreferencesAsync(UpdateNotificationPreferencesRequestDto request, CancellationToken ct);
 }
 
-public sealed record WorkCenterEventContext(PlatformOutboxEvent Event);
-
-public interface IWorkCenterEventPolicy
+public interface IDocumentActionCompletedWorkCenterPolicy
 {
-    string EventType { get; }
-
-    Task HandleAsync(WorkCenterEventContext context, CancellationToken ct);
+    Task HandleAsync(DocumentActionCompletedV1 @event, CancellationToken ct);
 }
 
 public interface IOutboxProcessor
@@ -95,7 +100,36 @@ public interface IOutboxProcessor
     Task<int> ProcessBatchAsync(int batchSize, CancellationToken ct);
 }
 
+public sealed record WorkCenterOperationalHealthSnapshot(
+    long PendingDeliveryCount,
+    long FailedDeliveryCount,
+    double OldestPendingAgeSeconds,
+    long OpenTaskCount,
+    long OverdueTaskCount);
+
+public interface IWorkCenterOperationalHealthReader
+{
+    Task<WorkCenterOperationalHealthSnapshot> ReadAsync(CancellationToken ct);
+}
+
+public interface IWorkCenterMaintenanceService
+{
+    Task<int> PruneAsync(CancellationToken ct);
+}
+
 public interface IWorkCenterRealtimeNotifier
 {
-    Task NotifyChangedAsync(long version, CancellationToken ct);
+    Task NotifyUsersChangedAsync(long version, IReadOnlyCollection<Guid> userIds, CancellationToken ct);
+}
+
+/// <summary>
+/// Tracks recipients changed by the current scoped Work Center projection. The processor
+/// drains the tracker only after the enclosing transaction commits and sends one coalesced
+/// realtime invalidation per user instead of broadcasting every outbox event globally.
+/// </summary>
+public interface IWorkCenterChangeTracker
+{
+    void Track(IEnumerable<Guid> userIds);
+    IReadOnlyList<Guid> Drain();
+    void Reset();
 }

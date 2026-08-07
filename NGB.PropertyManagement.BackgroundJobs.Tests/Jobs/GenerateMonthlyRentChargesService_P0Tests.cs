@@ -45,6 +45,7 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
             ]);
 
         var documents = new Mock<IDocumentService>();
+        var lifecycle = new Mock<IDocumentSystemLifecycleService>();
         var drafts = new Mock<IDocumentDraftService>();
 
         var createdIds = new Queue<Guid>(
@@ -64,7 +65,7 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
         drafts.Setup(x => x.UpdateDraftAsync(It.IsAny<Guid>(), null, It.IsAny<DateTime?>(), true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
 
-        documents.Setup(x => x.PostAsync(PropertyManagementCodes.RentCharge, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        lifecycle.Setup(x => x.PostAsync(PropertyManagementCodes.RentCharge, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, Guid id, CancellationToken _) => new DocumentDto(
                 id,
                 Display: null,
@@ -76,6 +77,7 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
             uow.Object,
             reader.Object,
             documents.Object,
+            lifecycle.Object,
             drafts.Object,
             NullLogger<GenerateMonthlyRentChargesService>.Instance);
 
@@ -86,7 +88,7 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
         result.FailedCount.Should().Be(0);
 
         documents.Verify(x => x.CreateDraftAsync(PropertyManagementCodes.RentCharge, It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
-        documents.Verify(x => x.PostAsync(PropertyManagementCodes.RentCharge, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        lifecycle.Verify(x => x.PostAsync(PropertyManagementCodes.RentCharge, It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
         drafts.Verify(x => x.DeleteDraftAsync(It.IsAny<Guid>(), true, It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -118,6 +120,7 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
             .ReturnsAsync(Array.Empty<PmRentChargePeriodKey>());
 
         var documents = new Mock<IDocumentService>();
+        var lifecycle = new Mock<IDocumentSystemLifecycleService>();
         documents.Setup(x => x.CreateDraftAsync(PropertyManagementCodes.RentCharge, It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentDto(
                 draftId,
@@ -125,7 +128,7 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
                 Payload: new RecordPayload(),
                 Status: DocumentStatus.Draft,
                 IsMarkedForDeletion: false));
-        documents.Setup(x => x.PostAsync(PropertyManagementCodes.RentCharge, draftId, It.IsAny<CancellationToken>()))
+        lifecycle.Setup(x => x.PostAsync(PropertyManagementCodes.RentCharge, draftId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("boom"));
 
         var drafts = new Mock<IDocumentDraftService>();
@@ -138,6 +141,7 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
             uow.Object,
             reader.Object,
             documents.Object,
+            lifecycle.Object,
             drafts.Object,
             NullLogger<GenerateMonthlyRentChargesService>.Instance);
 

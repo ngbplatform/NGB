@@ -1,9 +1,13 @@
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Documents;
 using NGB.Core.Documents.Actions;
 using NGB.Definitions;
 using NGB.Definitions.Documents.Actions;
 using NGB.Metadata.Documents.Actions;
 using NGB.Tools.Exceptions;
+using DocumentActionKind = NGB.Core.Documents.Actions.DocumentActionKind;
+using DocumentActionExecutionKind = NGB.Core.Documents.Actions.DocumentActionExecutionKind;
+using DocumentActionConfirmationMode = NGB.Core.Documents.Actions.DocumentActionConfirmationMode;
 
 namespace NGB.Runtime.Documents.Actions;
 
@@ -43,11 +47,11 @@ public sealed class DocumentActionRegistry
                     DocumentActionExecutionKind.Derivation,
                     Order: 500,
                     Target: new DocumentActionTargetMetadata(
-                        StandardDocumentActionCodes.DocumentEditorCode,
+                        StandardDocumentTargets.Editor,
                         new Dictionary<string, string?>
                         {
-                            [StandardDocumentActionCodes.DocumentType] = derivation.ToTypeCode,
-                            [StandardDocumentActionCodes.DocumentIdKey] = "{createdDocumentId}"
+                            [StandardDocumentTargetParameters.DocumentType] = derivation.ToTypeCode,
+                            [StandardDocumentTargetParameters.DocumentId] = "{createdDocumentId}"
                         })),
                 derivationCode: derivation.Code);
         }
@@ -169,7 +173,7 @@ public sealed class DocumentActionRegistry
             order,
             Target: new DocumentActionTargetMetadata(
                 targetCode,
-                new Dictionary<string, string?> { [StandardDocumentActionCodes.DocumentIdKey] = "{documentId}" }));
+                new Dictionary<string, string?> { [StandardDocumentTargetParameters.DocumentId] = "{documentId}" }));
 
     private static DocumentActionConfirmationMetadata Confirm(string title, string message, string confirmLabel)
         => new(DocumentActionConfirmationMode.Confirm, title, message, confirmLabel);
@@ -197,12 +201,20 @@ public sealed class DocumentActionRegistry
             throw new NgbConfigurationViolationException(
                 $"Availability evaluator for '{action.Metadata.Code}' has an incompatible type.");
         }
+        else if (action.AvailabilityEvaluatorType is not null)
+        {
+            DocumentActionComponentResolver.EnsurePureEvaluator(action.AvailabilityEvaluatorType);
+        }
 
         if (action.AuthorizationEvaluatorType is not null
             && !typeof(IDocumentActionAuthorizationEvaluator).IsAssignableFrom(action.AuthorizationEvaluatorType))
         {
             throw new NgbConfigurationViolationException(
                 $"Authorization evaluator for '{action.Metadata.Code}' has an incompatible type.");
+        }
+        else if (action.AuthorizationEvaluatorType is not null)
+        {
+            DocumentActionComponentResolver.EnsurePureEvaluator(action.AuthorizationEvaluatorType);
         }
     }
 

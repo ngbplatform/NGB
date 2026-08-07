@@ -1,7 +1,8 @@
 using System.Diagnostics;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
+using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.UnitOfWork;
@@ -14,28 +15,40 @@ namespace NGB.Runtime.WorkCenter;
 internal sealed class OutboxProcessor(
     IUnitOfWork uow,
     IOutboxEventRepository outbox,
-    IEnumerable<IWorkCenterEventPolicy> policies,
+    IEnumerable<IDocumentActionCompletedWorkCenterPolicy> policies,
     IWorkCenterRealtimeNotifier realtime,
+    IWorkCenterChangeTracker changes,
+    WorkCenterPreferenceRecipientResolver recipientResolver,
     TimeProvider timeProvider,
     ILogger<OutboxProcessor> logger)
     : IOutboxProcessor
 {
     private const string ConsumerCode = "work-center";
     private const int MaximumAttempts = 8;
-    private readonly IReadOnlyList<IWorkCenterEventPolicy> _policies = policies.ToArray();
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
+    private readonly IReadOnlyList<IDocumentActionCompletedWorkCenterPolicy> _policies = policies.ToArray();
 
     public async Task<int> ProcessBatchAsync(int batchSize, CancellationToken ct)
     {
+        changes.Reset();
         var items = await uow.ExecuteInUowTransactionAsync(
             innerCt => outbox.ClaimBatchAsync(
                 ConsumerCode,
-                Math.Clamp(batchSize, 1, 500),
+                // Keep leases bounded: policies run sequentially to preserve event ordering,
+                // so a very large claimed tail would otherwise age while waiting in memory.
+                Math.Clamp(batchSize, 1, 25),
                 timeProvider.GetUtcNowDateTime(),
                 innerCt),
             ct);
 
+        var changedUsers = new HashSet<Guid>();
         foreach (var item in items)
         {
+            changes.Reset();
+            recipientResolver.Reset();
             using var activity = NgbFeatureTelemetry.Activities.StartActivity("work_center.outbox.project", ActivityKind.Consumer);
             activity?.SetTag("messaging.system", "postgresql");
             activity?.SetTag("messaging.destination.name", ConsumerCode);
@@ -45,16 +58,21 @@ internal sealed class OutboxProcessor(
             {
                 await uow.ExecuteInUowTransactionAsync(async innerCt =>
                 {
-                    foreach (var policy in _policies.Where(
-                         x => string.Equals(
-                             x.EventType, item.Event.EventType, StringComparison.OrdinalIgnoreCase)))
+                    if (string.Equals(
+                            item.Event.EventType,
+                            DocumentActionCompletedV1.EventType,
+                            StringComparison.OrdinalIgnoreCase))
                     {
-                        var policyStarted = Stopwatch.GetTimestamp();
-                        await policy.HandleAsync(new WorkCenterEventContext(item.Event), innerCt);
-                        NgbFeatureTelemetry.WorkCenterPolicyDuration.Record(
-                            Stopwatch.GetElapsedTime(policyStarted).TotalMilliseconds,
-                            new KeyValuePair<string, object?>("event.type", item.Event.EventType),
-                            new KeyValuePair<string, object?>("policy.type", policy.GetType().Name));
+                        var completed = DeserializeDocumentActionCompleted(item.Event);
+                        foreach (var policy in _policies)
+                        {
+                            var policyStarted = Stopwatch.GetTimestamp();
+                            await policy.HandleAsync(completed, innerCt);
+                            NgbFeatureTelemetry.WorkCenterPolicyDuration.Record(
+                                Stopwatch.GetElapsedTime(policyStarted).TotalMilliseconds,
+                                new KeyValuePair<string, object?>("event.type", item.Event.EventType),
+                                new KeyValuePair<string, object?>("policy.type", policy.GetType().Name));
+                        }
                     }
 
                     await outbox.MarkCompletedAsync(
@@ -70,18 +88,7 @@ internal sealed class OutboxProcessor(
                     new KeyValuePair<string, object?>("consumer", ConsumerCode),
                     new KeyValuePair<string, object?>("event.type", item.Event.EventType));
                 activity?.SetStatus(ActivityStatusCode.Ok);
-
-                try
-                {
-                    await realtime.NotifyChangedAsync(timeProvider.GetUtcNowDateTime().Ticks, ct);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(
-                        ex,
-                        "Work Center realtime invalidation failed after event {EventId} was projected.",
-                        item.Event.EventId);
-                }
+                changedUsers.UnionWith(changes.Drain());
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -89,6 +96,7 @@ internal sealed class OutboxProcessor(
             }
             catch (Exception ex)
             {
+                changes.Reset();
                 NgbFeatureTelemetry.OutboxFailures.Add(
                     1,
                     new KeyValuePair<string, object?>("consumer", ConsumerCode),
@@ -121,6 +129,24 @@ internal sealed class OutboxProcessor(
             }
         }
 
+        if (changedUsers.Count > 0)
+        {
+            try
+            {
+                await realtime.NotifyUsersChangedAsync(
+                    timeProvider.GetUtcNowDateTime().Ticks,
+                    changedUsers,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Work Center realtime invalidation failed after projecting {EventCount} outbox events.",
+                    items.Count);
+            }
+        }
+
         return items.Count;
     }
 
@@ -131,52 +157,29 @@ internal sealed class OutboxProcessor(
         var jitter = BitConverter.ToUInt16(bytes, 0) / (double)ushort.MaxValue;
         return TimeSpan.FromSeconds(seconds * (0.8 + jitter * 0.4));
     }
+
+    private static DocumentActionCompletedV1 DeserializeDocumentActionCompleted(OutboxEventEnvelope envelope)
+    {
+        if (envelope.SchemaVersion != DocumentActionCompletedV1.SchemaVersion)
+            throw new JsonException($"Unsupported '{DocumentActionCompletedV1.EventType}' schema version '{envelope.SchemaVersion}'.");
+
+        var completed = JsonSerializer.Deserialize<DocumentActionCompletedV1>(envelope.PayloadJson, Json)
+            ?? throw new JsonException("Document action completed payload is empty.");
+
+        if (completed.EventId != envelope.EventId
+            || completed.CorrelationId != envelope.CorrelationId
+            || !string.Equals(completed.Type, envelope.EventType, StringComparison.Ordinal)
+            || completed.PayloadSchemaVersion != envelope.SchemaVersion)
+        {
+            throw new JsonException("Document action completed payload does not match its outbox envelope.");
+        }
+
+        return completed;
+    }
 }
 
 internal sealed class NullWorkCenterRealtimeNotifier : IWorkCenterRealtimeNotifier
 {
-    public Task NotifyChangedAsync(long version, CancellationToken ct) => Task.CompletedTask;
-}
-
-internal sealed class WorkCenterOutboxHostedService(
-    IServiceScopeFactory scopes,
-    ILogger<WorkCenterOutboxHostedService> logger)
-    : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
-
-        try
-        {
-            while (true)
-            {
-                await timer.WaitForNextTickAsync(stoppingToken);
-                await using var scope = scopes.CreateAsyncScope();
-
-                if (scope.ServiceProvider.GetService<IOutboxEventRepository>() is null)
-                {
-                    logger.LogDebug("Work Center outbox processor is disabled because no outbox repository is registered.");
-                    return;
-                }
-
-                var processor = scope.ServiceProvider.GetRequiredService<IOutboxProcessor>();
-                try
-                {
-                    while (await processor.ProcessBatchAsync(100, stoppingToken) > 0)
-                    {
-                        // Drain ready work in bounded batches before yielding to the timer.
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Work Center outbox polling failed; processing will retry on the next interval.");
-                }
-            }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Graceful host shutdown.
-        }
-    }
+    public Task NotifyUsersChangedAsync(long version, IReadOnlyCollection<Guid> userIds, CancellationToken ct)
+        => Task.CompletedTask;
 }

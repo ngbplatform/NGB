@@ -28,13 +28,6 @@ public interface IDocumentService
     Task<DocumentDto> UpdateDraftAsync(string documentType, Guid id, RecordPayload payload, CancellationToken ct);
     Task DeleteDraftAsync(string documentType, Guid id, CancellationToken ct);
 
-    Task<DocumentDto> PostAsync(string documentType, Guid id, CancellationToken ct);
-    Task<DocumentDto> UnpostAsync(string documentType, Guid id, CancellationToken ct);
-    Task<DocumentDto> RepostAsync(string documentType, Guid id, CancellationToken ct);
-
-    Task<DocumentDto> MarkForDeletionAsync(string documentType, Guid id, CancellationToken ct);
-    Task<DocumentDto> UnmarkForDeletionAsync(string documentType, Guid id, CancellationToken ct);
-
     Task<DocumentDto> ExecuteActionAsync(string documentType, Guid id, string actionCode, CancellationToken ct);
 
     Task<RelationshipGraphDto> GetRelationshipGraphAsync(
@@ -52,4 +45,18 @@ public interface IDocumentService
         string relationshipType,
         RecordPayload? initialPayload,
         CancellationToken ct);
+}
+
+/// <summary>
+/// Trusted lifecycle port for seeders, migrators, and background workflows.
+/// Interactive/API callers must use <see cref="IDocumentActionDispatcher"/> so authorization,
+/// idempotency, audit, concurrency, and integration-event behavior cannot be bypassed.
+/// </summary>
+public interface IDocumentSystemLifecycleService
+{
+    Task<DocumentDto> PostAsync(string documentType, Guid id, CancellationToken ct);
+    Task<DocumentDto> UnpostAsync(string documentType, Guid id, CancellationToken ct);
+    Task<DocumentDto> RepostAsync(string documentType, Guid id, CancellationToken ct);
+    Task<DocumentDto> MarkForDeletionAsync(string documentType, Guid id, CancellationToken ct);
+    Task<DocumentDto> UnmarkForDeletionAsync(string documentType, Guid id, CancellationToken ct);
 }

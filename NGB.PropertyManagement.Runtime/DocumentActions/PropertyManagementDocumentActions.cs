@@ -4,6 +4,8 @@ using NGB.Contracts.Metadata;
 using NGB.Core.Documents.Actions;
 using NGB.Definitions.Documents.Actions;
 using NGB.Metadata.Documents.Actions;
+using DocumentActionExecutionKind = NGB.Core.Documents.Actions.DocumentActionExecutionKind;
+using DocumentActionKind = NGB.Core.Documents.Actions.DocumentActionKind;
 
 namespace NGB.PropertyManagement.Runtime.DocumentActions;
 

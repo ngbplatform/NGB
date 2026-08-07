@@ -7,7 +7,6 @@ using NGB.Persistence.OperationalRegisters;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.Runtime.Policy;
-using NGB.Runtime.OperationalRegisters;
 using NGB.Tools.Extensions;
 
 namespace NGB.PropertyManagement.Runtime.Receivables;
@@ -22,20 +21,16 @@ public interface IReceivablesApplyAvailabilitySource : IPropertyManagementApplyA
 ///   (charges and credit sources) based on current outstanding / available credit.
 ///
 /// Implementation notes:
-/// - Uses Operational Register (pm.receivables_open_items) movements filtered by dimensions
-///   (party, property, lease, receivable_item) to compute net balance for a single item.
-/// - Scan bounds are derived from lease start month and extended to the max posted month
-///   for the specific item.
+/// - Computes the net balance in PostgreSQL for the exact dimension filter. This keeps
+///   availability checks O(1) in application memory and avoids loading/enriching movement pages.
 /// </summary>
 public sealed class ReceivablesApplyAvailabilitySource(
     IPropertyManagementDocumentReaders readers,
     IDocumentRepository documents,
     IPropertyManagementAccountingPolicyReader policyReader,
-    IOperationalRegisterMovementsQueryReader movements)
+    IOperationalRegisterResourceNetReader resourceNetReader)
     : IReceivablesApplyAvailabilitySource
 {
-    private const int PageSize = 5000;
-
     public async Task<DocumentActionAvailabilityResult> EvaluateAsync(
         string documentType,
         Guid documentId,
@@ -109,12 +104,6 @@ public sealed class ReceivablesApplyAvailabilitySource(
         CancellationToken ct)
     {
         var policy = await policyReader.GetRequiredAsync(ct);
-        var lease = await readers.ReadLeaseHeadAsync(leaseId, ct);
-
-        var leaseStartMonth = new DateOnly(lease.StartOnUtc.Year, lease.StartOnUtc.Month, 1);
-        var nowMonth = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-        var fromMonth = leaseStartMonth <= nowMonth ? leaseStartMonth : nowMonth;
-
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
         var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
         var leaseDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Lease}");
@@ -128,60 +117,10 @@ public sealed class ReceivablesApplyAvailabilitySource(
             new(itemDimId, itemId)
         };
 
-        // Future-start leases can still have movements dated in the current month.
-        // Use the current month as a safe baseline and extend upward when future-dated rows exist.
-        var toMonth = await OperationalRegisterScanBoundaries.ResolveToMonthInclusiveAsync(
-            movements,
+        return await resourceNetReader.GetNetByDimensionsAsync(
             policy.ReceivablesOpenItemsOperationalRegisterId,
-            fromMonth,
-            nowMonth,
-            dimensions: dims,
-            ct: ct);
-
-        var net = 0m;
-        long? after = null;
-
-        while (true)
-        {
-            var page = await movements.GetByMonthsAsync(
-                policy.ReceivablesOpenItemsOperationalRegisterId,
-                fromMonth,
-                toMonth,
-                dimensions: dims,
-                afterMovementId: after,
-                limit: PageSize,
-                ct: ct);
-
-            if (page.Count == 0)
-                break;
-
-            foreach (var row in page)
-            {
-                var amount = ReadSingleAmount(row.Values);
-                if (amount == 0m)
-                    continue;
-
-                net += row.IsStorno ? -amount : amount;
-            }
-
-            after = page[^1].MovementId;
-            if (page.Count < PageSize)
-                break;
-        }
-
-        return net;
-    }
-
-    private static decimal ReadSingleAmount(IReadOnlyDictionary<string, decimal> values)
-    {
-        if (values.Count == 0)
-            return 0m;
-
-        // Open-items register is expected to have a single resource: "amount".
-        if (values.TryGetValue("amount", out var v))
-            return v;
-
-        // Be tolerant in case resource column_code changes.
-        return values.Values.FirstOrDefault();
+            dims,
+            resourceColumnCode: "amount",
+            ct);
     }
 }

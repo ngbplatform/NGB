@@ -36,11 +36,17 @@ public sealed class PlatformDocumentActionsWorkCenterMigration : IDdlObject
                 (completed_at_utc IS NULL AND result_json IS NULL)
                 OR
                 (completed_at_utc IS NOT NULL AND result_json IS NOT NULL AND completed_at_utc >= started_at_utc)
+            ),
+            CONSTRAINT ck_platform_document_action_execution_result_size CHECK (
+                result_json IS NULL OR octet_length(result_json::text) <= 4194304
             )
         );
 
         CREATE INDEX IF NOT EXISTS ix_platform_document_action_executions_document
             ON platform_document_action_executions(document_id, started_at_utc DESC);
+        CREATE INDEX IF NOT EXISTS ix_platform_document_action_executions_completed
+            ON platform_document_action_executions(completed_at_utc, execution_id)
+            WHERE completed_at_utc IS NOT NULL;
 
         CREATE TABLE IF NOT EXISTS platform_outbox_events (
             event_id uuid PRIMARY KEY,
@@ -82,6 +88,12 @@ public sealed class PlatformDocumentActionsWorkCenterMigration : IDdlObject
         CREATE INDEX IF NOT EXISTS ix_platform_outbox_consumer_pending
             ON platform_outbox_consumer_state(consumer_code, next_attempt_at_utc, event_id)
             WHERE status IN (1, 4);
+        CREATE INDEX IF NOT EXISTS ix_platform_outbox_consumer_processing
+            ON platform_outbox_consumer_state(consumer_code, locked_at_utc, event_id)
+            WHERE status = 2;
+        CREATE INDEX IF NOT EXISTS ix_platform_outbox_consumer_health
+            ON platform_outbox_consumer_state(consumer_code, status, event_id)
+            WHERE status IN (1, 4, 5);
 
         CREATE TABLE IF NOT EXISTS platform_outbox_consumer_history (
             history_id uuid PRIMARY KEY,
@@ -97,6 +109,9 @@ public sealed class PlatformDocumentActionsWorkCenterMigration : IDdlObject
             CONSTRAINT ck_platform_outbox_history_outcome CHECK (outcome IN (1, 2, 3)),
             CONSTRAINT ck_platform_outbox_history_time CHECK (completed_at_utc >= started_at_utc)
         );
+
+        CREATE INDEX IF NOT EXISTS ix_platform_outbox_events_created
+            ON platform_outbox_events(created_at_utc, event_id);
 
         CREATE TABLE IF NOT EXISTS platform_notifications (
             id uuid PRIMARY KEY,
@@ -114,7 +129,6 @@ public sealed class PlatformDocumentActionsWorkCenterMigration : IDdlObject
             deduplication_key varchar(300) NOT NULL,
             correlation_id uuid NULL,
             causation_id uuid NULL,
-            metadata_json jsonb NULL,
             CONSTRAINT ux_platform_notifications_dedup UNIQUE (definition_code, deduplication_key),
             CONSTRAINT ck_platform_notifications_definition CHECK (
                 definition_code = lower(trim(definition_code))
@@ -142,6 +156,12 @@ public sealed class PlatformDocumentActionsWorkCenterMigration : IDdlObject
         CREATE INDEX IF NOT EXISTS ix_platform_notification_deliveries_active
             ON platform_notification_deliveries(user_id, created_at_utc DESC, notification_id DESC)
             WHERE dismissed_at_utc IS NULL;
+        CREATE INDEX IF NOT EXISTS ix_platform_notification_deliveries_dismissed
+            ON platform_notification_deliveries(dismissed_at_utc, notification_id, user_id)
+            WHERE dismissed_at_utc IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS ix_platform_notifications_expiry
+            ON platform_notifications(expires_at_utc, id)
+            WHERE expires_at_utc IS NOT NULL;
 
         CREATE TABLE IF NOT EXISTS platform_tasks (
             id uuid PRIMARY KEY,
@@ -171,7 +191,6 @@ public sealed class PlatformDocumentActionsWorkCenterMigration : IDdlObject
             version bigint NOT NULL DEFAULT 1,
             correlation_id uuid NULL,
             causation_id uuid NULL,
-            metadata_json jsonb NULL,
             CONSTRAINT ux_platform_tasks_dedup UNIQUE (task_code, deduplication_key),
             CONSTRAINT ck_platform_tasks_code CHECK (
                 task_code = lower(trim(task_code))
@@ -214,6 +233,12 @@ public sealed class PlatformDocumentActionsWorkCenterMigration : IDdlObject
         CREATE INDEX IF NOT EXISTS ix_platform_tasks_claimed_open
             ON platform_tasks(claimed_by_user_id, created_at_utc DESC, id DESC)
             WHERE status IN (1, 2) AND claimed_by_user_id IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS ix_platform_tasks_open_health
+            ON platform_tasks(due_at_utc, id)
+            WHERE status IN (1, 2);
+        CREATE INDEX IF NOT EXISTS ix_platform_tasks_terminal_retention
+            ON platform_tasks(updated_at_utc, id)
+            WHERE status IN (3, 4);
 
         CREATE TABLE IF NOT EXISTS platform_task_recipients (
             task_id uuid NOT NULL REFERENCES platform_tasks(id) ON DELETE CASCADE,

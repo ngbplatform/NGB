@@ -11,7 +11,6 @@ using NGB.Contracts.Services;
 using NGB.Core.Documents;
 using NGB.Core.Documents.Actions;
 using NGB.Core.Documents.Exceptions;
-using NGB.Core.Events;
 using NGB.Core.Security;
 using NGB.Definitions;
 using NGB.Definitions.Documents.Actions;
@@ -37,6 +36,9 @@ using NGB.Tools.Exceptions;
 using Xunit;
 using ContractStatus = NGB.Contracts.Metadata.DocumentStatus;
 using CoreStatus = NGB.Core.Documents.DocumentStatus;
+using DocumentActionConfirmationMode = NGB.Core.Documents.Actions.DocumentActionConfirmationMode;
+using DocumentActionExecutionKind = NGB.Core.Documents.Actions.DocumentActionExecutionKind;
+using DocumentActionKind = NGB.Core.Documents.Actions.DocumentActionKind;
 
 namespace NGB.Runtime.Tests.Documents.Actions;
 
@@ -98,11 +100,11 @@ public sealed class DocumentActionDispatcherCoverageTests
     }
 
     [Fact]
-    public async Task Execute_rejects_missing_and_mismatched_documents_before_begin()
+    public async Task Execute_rejects_missing_and_mismatched_documents_under_lock()
     {
         var missing = new Harness();
         missing.Documents
-            .Setup(repository => repository.GetAsync(missing.Source.Id, It.IsAny<CancellationToken>()))
+            .Setup(repository => repository.GetForUpdateAsync(missing.Source.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync((DocumentRecord?)null);
         var missingAction = () => missing.ExecuteAsync();
         await missingAction.Should().ThrowAsync<DocumentNotFoundException>();
@@ -184,6 +186,18 @@ public sealed class DocumentActionDispatcherCoverageTests
                 It.IsAny<string>(),
                 It.IsAny<DateTime>(),
                 It.IsAny<CancellationToken>()),
+            Times.Never);
+        harness.Documents.Verify(
+            repository => repository.GetForUpdateAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        harness.Documents.Verify(
+            repository => repository.GetAsync(
+                It.IsAny<Guid>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        harness.Reader.VerifyNoOtherCalls();
+        harness.Permissions.Verify(
+            provider => provider.RefreshCurrentAsync(It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -287,9 +301,10 @@ public sealed class DocumentActionDispatcherCoverageTests
             Times.Once);
         harness.Outbox.Verify(
             repository => repository.AppendAsync(
-                It.Is<PlatformOutboxEvent>(
+                It.Is<OutboxEventEnvelope>(
                     item => item.EventType == "ngb.document.action.completed"
-                            && item.CorrelationId == harness.ExecutionId),
+                            && item.CorrelationId == harness.ExecutionId
+                            && item.PayloadJson.Contains(actionCode, StringComparison.Ordinal)),
                 It.Is<IReadOnlyList<string>>(consumers => consumers.SequenceEqual(new[] { "work-center" })),
                 It.IsAny<CancellationToken>()),
             Times.Once);
@@ -337,7 +352,7 @@ public sealed class DocumentActionDispatcherCoverageTests
     }
 
     [Fact]
-    public async Task Execute_rejects_missing_created_or_refreshed_documents_as_invariants()
+    public async Task Execute_rejects_missing_created_or_refreshed_typed_documents_as_invariants()
     {
         var missingCreated = new Harness();
         missingCreated.Documents
@@ -347,13 +362,12 @@ public sealed class DocumentActionDispatcherCoverageTests
         await createdAction.Should().ThrowAsync<DocumentNotFoundException>();
 
         var missingRefreshed = new Harness();
-        missingRefreshed.Documents
-            .SetupSequence(
-                repository => repository.GetForUpdateAsync(
-                    missingRefreshed.Source.Id,
-                    It.IsAny<CancellationToken>()))
-            .ReturnsAsync(missingRefreshed.Source)
-            .ReturnsAsync((DocumentRecord?)null);
+        missingRefreshed.Reader
+            .Setup(repository => repository.GetByIdAsync(
+                It.IsAny<DocumentHeadDescriptor>(),
+                missingRefreshed.Source.Id,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DocumentHeadRow?)null);
         var refreshedAction = () => missingRefreshed.ExecuteAsync();
         await refreshedAction.Should().ThrowAsync<DocumentNotFoundException>();
     }
@@ -397,7 +411,7 @@ public sealed class DocumentActionDispatcherCoverageTests
                     () =>
                     {
                         Source = Clone(Source, version: Source.Version + 1);
-                        return Source.Version;
+                        return Source;
                     });
 
             Executions = new Mock<IDocumentActionExecutionRepository>(MockBehavior.Loose);
@@ -463,7 +477,8 @@ public sealed class DocumentActionDispatcherCoverageTests
             var services = new ServiceCollection()
                 .AddSingleton(Handler)
                 .BuildServiceProvider();
-            var evaluator = new DocumentActionEvaluator(registry, definitions, services, []);
+            var components = new DocumentActionComponentResolver(services);
+            var evaluator = new DocumentActionEvaluator(registry, definitions, components, []);
             Evaluator = evaluator;
 
             var documentTypes = new Mock<IDocumentTypeRegistry>(MockBehavior.Loose);
@@ -474,8 +489,8 @@ public sealed class DocumentActionDispatcherCoverageTests
                         item => string.Equals(item.TypeCode, type, StringComparison.OrdinalIgnoreCase)));
             documentTypes.Setup(registry => registry.GetAll()).Returns(metadata);
 
-            var reader = new Mock<IDocumentReader>(MockBehavior.Loose);
-            reader
+            Reader = new Mock<IDocumentReader>(MockBehavior.Loose);
+            Reader
                 .Setup(repository => repository.GetByIdAsync(
                     It.IsAny<DocumentHeadDescriptor>(),
                     It.IsAny<Guid>(),
@@ -492,7 +507,7 @@ public sealed class DocumentActionDispatcherCoverageTests
                 Documents.Object,
                 new Mock<IDocumentDraftService>(MockBehavior.Loose).Object,
                 documentTypes.Object,
-                reader.Object,
+                Reader.Object,
                 new Mock<IDocumentPartsReader>(MockBehavior.Loose).Object,
                 new Mock<IDocumentPartsWriter>(MockBehavior.Loose).Object,
                 new Mock<IDocumentWriter>(MockBehavior.Loose).Object,
@@ -517,7 +532,7 @@ public sealed class DocumentActionDispatcherCoverageTests
                 Derivations.Object,
                 Permissions.Object,
                 audit.Object,
-                services,
+                components,
                 TimeProvider.System);
         }
 
@@ -528,6 +543,7 @@ public sealed class DocumentActionDispatcherCoverageTests
         public string? StoredResultJson { get; set; }
         public Mock<IUnitOfWork> Uow { get; }
         public Mock<IDocumentRepository> Documents { get; }
+        public Mock<IDocumentReader> Reader { get; }
         public Mock<IDocumentActionExecutionRepository> Executions { get; }
         public Mock<IOutboxEventRepository> Outbox { get; }
         public Mock<IDocumentPostingService> Posting { get; }

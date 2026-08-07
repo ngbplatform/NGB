@@ -85,6 +85,13 @@ public sealed class PostgresDocumentActionExecutionRepositoryTests(PmIntegration
                 DateTime.SpecifyKind(now, DateTimeKind.Unspecified),
                 CancellationToken.None))
             .Should().ThrowAsync<NgbArgumentInvalidException>();
+        await FluentActions.Awaiting(() => repository.MarkCompletedAsync(
+                Guid.NewGuid(),
+                JsonSerializer.Serialize(new { payload = new string('x', 4 * 1024 * 1024) }),
+                now,
+                CancellationToken.None))
+            .Should().ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*cannot exceed 4194304 UTF-8 bytes*");
     }
 
     [Fact]

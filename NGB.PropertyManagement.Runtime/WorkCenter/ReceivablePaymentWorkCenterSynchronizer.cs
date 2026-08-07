@@ -1,6 +1,10 @@
 using Microsoft.Extensions.Logging;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Documents;
+using NGB.Contracts.Metadata;
+using NGB.Core.Documents.Exceptions;
 using NGB.Core.WorkCenter;
+using NGB.Persistence.Documents;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.Runtime.Receivables;
 
@@ -23,10 +27,11 @@ public interface IReceivablePaymentWorkCenterSynchronizer
 /// use this service, so no UI/API path can leave a stale task behind.
 /// </summary>
 public sealed class ReceivablePaymentWorkCenterSynchronizer(
-    IDocumentService documents,
+    IDocumentRepository documents,
     IReceivablesApplyAvailabilitySource availability,
     IWorkCenterTaskService tasks,
     IWorkCenterRealtimeNotifier realtime,
+    IWorkCenterChangeTracker changes,
     TimeProvider timeProvider,
     ILogger<ReceivablePaymentWorkCenterSynchronizer> logger)
     : IReceivablePaymentWorkCenterSynchronizer
@@ -37,22 +42,22 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
         Guid? causationId,
         CancellationToken ct)
     {
-        var payment = await documents.GetByIdAsync(
-            PropertyManagementCodes.ReceivablePayment,
-            paymentId,
-            ct);
+        var payment = await GetPaymentAsync(paymentId, ct);
 
         var availabilityResult = await availability.EvaluateAsync(
             PropertyManagementCodes.ReceivablePayment,
             paymentId,
-            payment.Status,
+            (DocumentStatus)payment.Status,
             ct);
 
         var deduplicationKey = DeduplicationKey(paymentId);
 
         if (!availabilityResult.IsAllowed)
         {
-            await tasks.CompleteByDeduplicationKeyAsync(deduplicationKey, ct);
+            await tasks.CompleteByDeduplicationKeyAsync(
+                PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
+                deduplicationKey,
+                ct);
             return;
         }
 
@@ -65,7 +70,7 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
                     "document",
                     PropertyManagementCodes.ReceivablePayment,
                     paymentId,
-                    payment.Display ?? payment.Number ?? "Receivable payment",
+                    payment.Number ?? "Receivable payment",
                     payment.Number),
                 "Apply receivable payment",
                 "Open receivables reconciliation and apply the remaining payment amount.",
@@ -73,16 +78,16 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
                 AssignedUserId: null,
                 AssignedRoleCode: PropertyManagementWorkCenterCodes.AccountsReceivableClerkRole,
                 DueAtUtc: now.AddDays(3).UtcDateTime,
-                PrimaryActionCode: PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value,
-                NavigationTargetCode: "pm.receivables.reconciliation",
-                NavigationParameters: new Dictionary<string, string?>
-                {
-                    ["paymentId"] = paymentId.ToString()
-                },
+                PrimaryActionCode: PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation,
+                Target: new DocumentActionTargetDto(
+                    "pm.receivables.reconciliation",
+                    new Dictionary<string, string?>
+                    {
+                        ["paymentId"] = paymentId.ToString()
+                    }),
                 deduplicationKey,
                 correlationId,
-                causationId,
-                MetadataJson: null),
+                causationId),
             ct);
     }
 
@@ -94,35 +99,59 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
     /// </summary>
     public async Task CompleteIfExhaustedAsync(Guid paymentId, CancellationToken ct)
     {
-        var payment = await documents.GetByIdAsync(
-            PropertyManagementCodes.ReceivablePayment,
-            paymentId,
-            ct);
+        var payment = await GetPaymentAsync(paymentId, ct);
 
         var availabilityResult = await availability.EvaluateAsync(
             PropertyManagementCodes.ReceivablePayment,
             paymentId,
-            payment.Status,
+            (DocumentStatus)payment.Status,
             ct);
 
         if (!availabilityResult.IsAllowed)
-            await tasks.CompleteByDeduplicationKeyAsync(DeduplicationKey(paymentId), ct);
+            await tasks.CompleteByDeduplicationKeyAsync(
+                PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
+                DeduplicationKey(paymentId),
+                ct);
     }
 
     public Task CancelAsync(Guid paymentId, CancellationToken ct)
-        => tasks.CancelByDeduplicationKeyAsync(DeduplicationKey(paymentId), ct);
+        => tasks.CancelByDeduplicationKeyAsync(
+            PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
+            DeduplicationKey(paymentId),
+            ct);
 
     public async Task NotifyChangedAsync(CancellationToken ct)
     {
         try
         {
-            await realtime.NotifyChangedAsync(timeProvider.GetUtcNow().UtcTicks, ct);
+            var affectedUsers = changes.Drain();
+            if (affectedUsers.Count > 0)
+                await realtime.NotifyUsersChangedAsync(timeProvider.GetUtcNow().UtcTicks, affectedUsers, ct);
         }
         catch (Exception ex)
         {
             // HTTP is authoritative; realtime is an invalidation optimization.
             logger.LogWarning(ex, "Work Center realtime invalidation failed after receivables task synchronization.");
         }
+    }
+
+    private async Task<NGB.Core.Documents.DocumentRecord> GetPaymentAsync(Guid paymentId, CancellationToken ct)
+    {
+        var payment = await documents.GetAsync(paymentId, ct)
+            ?? throw new DocumentNotFoundException(paymentId);
+
+        if (!string.Equals(
+                payment.TypeCode,
+                PropertyManagementCodes.ReceivablePayment,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new DocumentTypeMismatchException(
+                paymentId,
+                PropertyManagementCodes.ReceivablePayment,
+                payment.TypeCode);
+        }
+
+        return payment;
     }
 
     private static string DeduplicationKey(Guid paymentId) => $"pm:receivable-payment:{paymentId:D}:apply";

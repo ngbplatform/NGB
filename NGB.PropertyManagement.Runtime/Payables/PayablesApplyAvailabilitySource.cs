@@ -13,11 +13,9 @@ namespace NGB.PropertyManagement.Runtime.Payables;
 public sealed class PayablesApplyAvailabilitySource(
     IPropertyManagementDocumentReaders readers,
     IPropertyManagementAccountingPolicyReader policyReader,
-    IOperationalRegisterMovementsQueryReader movements)
+    IOperationalRegisterResourceNetReader resourceNetReader)
     : IPropertyManagementApplyAvailabilitySource
 {
-    private const int PageSize = 5000;
-
     public async Task<DocumentActionAvailabilityResult> EvaluateAsync(
         string documentType,
         Guid documentId,
@@ -70,13 +68,6 @@ public sealed class PayablesApplyAvailabilitySource(
     private async Task<decimal> GetNetForItemAsync(Guid partyId, Guid propertyId, Guid itemId, CancellationToken ct)
     {
         var policy = await policyReader.GetRequiredAsync(ct);
-        var fromMonth = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-        var activityStart = await readers.ReadFirstPayablesActivityMonthAsync(partyId, propertyId, ct);
-        
-        if (activityStart is not null && activityStart.Value < fromMonth)
-            fromMonth = activityStart.Value;
-
-        var toMonth = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
         var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
         var itemDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.PayableItem}");
@@ -88,48 +79,10 @@ public sealed class PayablesApplyAvailabilitySource(
             new(itemDimId, itemId)
         };
 
-        var maxMonth = await movements.GetMaxPeriodMonthAsync(policy.PayablesOpenItemsOperationalRegisterId, dimensions: dims, ct: ct);
-        if (maxMonth is not null)
-        {
-            var m = new DateOnly(maxMonth.Value.Year, maxMonth.Value.Month, 1);
-            if (m > toMonth)
-                toMonth = m;
-        }
-
-        var net = 0m;
-        long? after = null;
-        
-        while (true)
-        {
-            var page = await movements.GetByMonthsAsync(
-                policy.PayablesOpenItemsOperationalRegisterId,
-                fromMonth,
-                toMonth,
-                dimensions: dims,
-                afterMovementId: after,
-                limit: PageSize,
-                ct: ct);
-
-            if (page.Count == 0)
-                break;
-
-            foreach (var row in page)
-            {
-                var amount = ReadSingleAmount(row.Values);
-                if (amount == 0m)
-                    continue;
-                
-                net += row.IsStorno ? -amount : amount;
-            }
-
-            after = page[^1].MovementId;
-            if (page.Count < PageSize)
-                break;
-        }
-
-        return net;
+        return await resourceNetReader.GetNetByDimensionsAsync(
+            policy.PayablesOpenItemsOperationalRegisterId,
+            dims,
+            resourceColumnCode: "amount",
+            ct);
     }
-
-    private static decimal ReadSingleAmount(IReadOnlyDictionary<string, decimal> values)
-        => values.TryGetValue("amount", out var v) ? v : values.Values.FirstOrDefault();
 }

@@ -1,8 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
+using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
-using NGB.Persistence.Outbox;
 using NGB.Runtime.WorkCenter;
 using Xunit;
 
@@ -11,11 +12,11 @@ namespace NGB.Runtime.Tests.WorkCenter;
 public sealed class WorkCenterOutboxHostedServiceTests
 {
     [Fact]
-    public async Task Hosted_service_stops_when_outbox_storage_is_not_registered()
+    public async Task Hosted_service_contains_missing_processor_registration_until_the_next_tick()
     {
         var tick = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var provider = new Mock<IServiceProvider>(MockBehavior.Strict);
-        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxEventRepository)))
+        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxProcessor)))
             .Returns((object)null!);
         var scope = Scope(provider.Object);
         var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
@@ -24,6 +25,8 @@ public sealed class WorkCenterOutboxHostedServiceTests
             .Returns(scope.Object);
         var service = new WorkCenterOutboxHostedService(
             scopes.Object,
+            TimeProvider.System,
+            Options(),
             NullLogger<WorkCenterOutboxHostedService>.Instance);
 
         await service.StartAsync(CancellationToken.None);
@@ -38,7 +41,6 @@ public sealed class WorkCenterOutboxHostedServiceTests
     public async Task Hosted_service_drains_ready_work_in_bounded_batches()
     {
         var drained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
         var processor = new Mock<IOutboxProcessor>(MockBehavior.Strict);
         var calls = 0;
         processor.Setup(candidate => candidate.ProcessBatchAsync(100, It.IsAny<CancellationToken>()))
@@ -53,14 +55,16 @@ public sealed class WorkCenterOutboxHostedServiceTests
                 return 1;
             });
         var provider = new Mock<IServiceProvider>(MockBehavior.Strict);
-        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxEventRepository)))
-            .Returns(outbox.Object);
         provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxProcessor)))
             .Returns(processor.Object);
+        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IWorkCenterMaintenanceService)))
+            .Returns(Maintenance().Object);
         var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
         scopes.Setup(factory => factory.CreateScope()).Returns(Scope(provider.Object).Object);
         var service = new WorkCenterOutboxHostedService(
             scopes.Object,
+            TimeProvider.System,
+            Options(),
             NullLogger<WorkCenterOutboxHostedService>.Instance);
 
         await service.StartAsync(CancellationToken.None);
@@ -76,20 +80,19 @@ public sealed class WorkCenterOutboxHostedServiceTests
     public async Task Hosted_service_contains_transient_processor_failures_until_the_next_tick()
     {
         var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
         var processor = new Mock<IOutboxProcessor>(MockBehavior.Strict);
         processor.Setup(candidate => candidate.ProcessBatchAsync(100, It.IsAny<CancellationToken>()))
             .Callback(() => failed.TrySetResult())
             .ThrowsAsync(new InvalidOperationException("temporary database failure"));
         var provider = new Mock<IServiceProvider>(MockBehavior.Strict);
-        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxEventRepository)))
-            .Returns(outbox.Object);
         provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxProcessor)))
             .Returns(processor.Object);
         var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
         scopes.Setup(factory => factory.CreateScope()).Returns(Scope(provider.Object).Object);
         var service = new WorkCenterOutboxHostedService(
             scopes.Object,
+            TimeProvider.System,
+            Options(),
             NullLogger<WorkCenterOutboxHostedService>.Instance);
 
         await service.StartAsync(CancellationToken.None);
@@ -107,6 +110,8 @@ public sealed class WorkCenterOutboxHostedServiceTests
         var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
         var service = new WorkCenterOutboxHostedService(
             scopes.Object,
+            TimeProvider.System,
+            Options(),
             NullLogger<WorkCenterOutboxHostedService>.Instance);
 
         await service.StartAsync(CancellationToken.None);
@@ -120,16 +125,17 @@ public sealed class WorkCenterOutboxHostedServiceTests
     {
         var processed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
         var services = new ServiceCollection();
-        services.AddSingleton(outbox.Object);
         services.AddScoped(_ => new AsyncOnlyDependency(disposed));
         services.AddScoped<IOutboxProcessor>(provider => new AsyncOnlyOutboxProcessor(
             provider.GetRequiredService<AsyncOnlyDependency>(),
             processed));
+        services.AddScoped(_ => Maintenance().Object);
         await using var provider = services.BuildServiceProvider();
         var service = new WorkCenterOutboxHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
+            TimeProvider.System,
+            Options(),
             NullLogger<WorkCenterOutboxHostedService>.Instance);
 
         await service.StartAsync(CancellationToken.None);
@@ -149,6 +155,22 @@ public sealed class WorkCenterOutboxHostedServiceTests
         var scope = new Mock<IServiceScope>(MockBehavior.Loose);
         scope.SetupGet(candidate => candidate.ServiceProvider).Returns(provider);
         return scope;
+    }
+
+    private static IOptions<NgbWorkCenterOptions> Options()
+        => Microsoft.Extensions.Options.Options.Create(new NgbWorkCenterOptions
+        {
+            PollInterval = TimeSpan.FromMilliseconds(10),
+            MaintenanceInterval = TimeSpan.FromHours(6),
+            ProjectionBatchSize = 100
+        });
+
+    private static Mock<IWorkCenterMaintenanceService> Maintenance()
+    {
+        var maintenance = new Mock<IWorkCenterMaintenanceService>(MockBehavior.Strict);
+        maintenance.Setup(service => service.PruneAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(0);
+        return maintenance;
     }
 
     private sealed class AsyncOnlyDependency(TaskCompletionSource disposed) : IAsyncDisposable

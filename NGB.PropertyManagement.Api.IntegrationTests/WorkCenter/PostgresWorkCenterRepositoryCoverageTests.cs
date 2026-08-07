@@ -1,8 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using NGB.Core.Events;
+using NGB.Core.Documents;
 using NGB.Core.WorkCenter;
 using NGB.Persistence.AuditLog;
+using NGB.Persistence.Documents;
+using NGB.Persistence.Documents.Actions;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
@@ -20,6 +22,149 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
 {
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task Retention_prunes_each_terminal_resource_in_one_bounded_database_batch()
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var uow = services.GetRequiredService<IUnitOfWork>();
+        var documents = services.GetRequiredService<IDocumentRepository>();
+        var executions = services.GetRequiredService<IDocumentActionExecutionRepository>();
+        var tasks = services.GetRequiredService<IWorkCenterTaskRepository>();
+        var notifications = services.GetRequiredService<INotificationRepository>();
+        var outbox = services.GetRequiredService<IOutboxEventRepository>();
+        var maintenance = services.GetRequiredService<IWorkCenterMaintenanceRepository>();
+        var users = services.GetRequiredService<IPlatformUserRepository>();
+        var old = DateTime.UtcNow.AddDays(-100);
+        var cutoff = DateTime.UtcNow.AddDays(-30);
+        var documentId = Guid.CreateVersion7();
+        var outboxEventId = Guid.CreateVersion7();
+        const string consumerCode = "retention-integration-test";
+        var recipientId = await uow.ExecuteInUowTransactionAsync(
+            ct => users.UpsertAsync(
+                $"work-center-retention-{Guid.NewGuid():N}",
+                email: null,
+                displayName: "Work Center Retention",
+                isActive: true,
+                ct),
+            CancellationToken.None);
+
+        await uow.ExecuteInUowTransactionAsync(async ct =>
+        {
+            await documents.CreateAsync(
+                new DocumentRecord
+                {
+                    Id = documentId,
+                    TypeCode = "it.retention",
+                    Number = "RET-1",
+                    DateUtc = old,
+                    Status = DocumentStatus.Draft,
+                    Version = 1,
+                    CreatedAtUtc = old,
+                    UpdatedAtUtc = old,
+                    PostedAtUtc = null,
+                    MarkedForDeletionAtUtc = null
+                },
+                ct);
+
+            var execution = await executions.TryBeginAsync(
+                $"retention-{Guid.NewGuid():N}",
+                new string('a', 64),
+                documentId,
+                "it.retention",
+                "post",
+                old,
+                ct);
+            execution.Status.Should().Be(DocumentActionExecutionBeginStatus.Begun);
+            await executions.MarkCompletedAsync(execution.ExecutionId, "{}", old.AddMinutes(1), ct);
+
+            var taskId = Guid.CreateVersion7();
+            await tasks.CreateAsync(
+                new WorkCenterTask(
+                    taskId,
+                    "test.retention",
+                    PreferenceCode: null,
+                    Source(documentId),
+                    "Expired task",
+                    Description: null,
+                    WorkCenterPriority.Normal,
+                    WorkCenterTaskStatus.Completed,
+                    AssignedUserId: recipientId,
+                    AssignedRoleId: null,
+                    ClaimedByUserId: null,
+                    DueAtUtc: null,
+                    CreatedAtUtc: old,
+                    CompletedAtUtc: old.AddMinutes(1),
+                    CancelledAtUtc: null,
+                    DeduplicationKey: $"retention:{taskId:D}",
+                    Version: 1,
+                    CorrelationId: null,
+                    CausationId: null),
+                primaryActionCode: null,
+                target: null,
+                [recipientId],
+                ct);
+
+            var notificationId = Guid.CreateVersion7();
+            await notifications.CreateAsync(
+                new WorkCenterNotification(
+                    notificationId,
+                    "test.retention",
+                    Source(documentId),
+                    "Expired notification",
+                    Body: null,
+                    NotificationSeverity.Information,
+                    CreatedAtUtc: old,
+                    ExpiresAtUtc: old.AddDays(1),
+                    DeduplicationKey: $"retention:{notificationId:D}",
+                    CorrelationId: null,
+                    CausationId: null),
+                [recipientId],
+                ct);
+
+            await outbox.AppendAsync(
+                new OutboxEventEnvelope(
+                    outboxEventId,
+                    "test.retention",
+                    SchemaVersion: 1,
+                    OccurredAtUtc: old,
+                    Source: "tests",
+                    Subject: $"retention:{outboxEventId:D}",
+                    ActorUserId: null,
+                    CorrelationId: Guid.CreateVersion7(),
+                    CausationId: null,
+                    PayloadJson: "{}",
+                    CreatedAtUtc: old),
+                [consumerCode],
+                ct);
+        }, CancellationToken.None);
+
+        await uow.ExecuteInUowTransactionAsync(async ct =>
+        {
+            var claimed = await outbox.ClaimBatchAsync(consumerCode, 1, cutoff, ct);
+            claimed.Should().ContainSingle(x => x.Event.EventId == outboxEventId);
+            await outbox.MarkCompletedAsync(outboxEventId, consumerCode, 1, cutoff, ct);
+        }, CancellationToken.None);
+
+        var cutoffs = new WorkCenterRetentionCutoffs(cutoff, cutoff, cutoff, cutoff);
+        var pruned = await uow.ExecuteInUowTransactionAsync(
+            ct => maintenance.PruneAsync(cutoffs, batchSize: 100, ct),
+            CancellationToken.None);
+
+        pruned.Should().Be(new WorkCenterPruneResult(
+            DocumentActionExecutions: 1,
+            Tasks: 1,
+            NotificationDeliveries: 1,
+            Notifications: 1,
+            OutboxEvents: 1));
+
+        var secondPass = await uow.ExecuteInUowTransactionAsync(
+            ct => maintenance.PruneAsync(cutoffs, batchSize: 100, ct),
+            CancellationToken.None);
+        secondPass.Total.Should().Be(0);
+    }
 
     [Fact]
     public async Task Covers_empty_preferences_tab_normalization_cancel_and_assignment_validation()
@@ -44,6 +189,8 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
 
         await FluentActions.Awaiting(() => tasks.CreateAsync(
                 InvalidTask(now),
+                null,
+                null,
                 [recipientId],
                 CancellationToken.None))
             .Should().ThrowAsync<NgbArgumentInvalidException>();
@@ -57,19 +204,21 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
         role.Should().NotBeNull();
         var task = ValidTask(now, role!.RoleId);
         var created = await uow.ExecuteInUowTransactionAsync(
-            ct => tasks.CreateAsync(task, [recipientId], ct),
+            ct => tasks.CreateAsync(task, null, null, [recipientId], ct),
             CancellationToken.None);
         created.Should().Be(new WorkCenterTaskCreateResult(task.Id, BecameActive: true, Version: 1));
         var duplicate = await uow.ExecuteInUowTransactionAsync(
-            ct => tasks.CreateAsync(task, [recipientId], ct),
+            ct => tasks.CreateAsync(task, null, null, [recipientId], ct),
             CancellationToken.None);
         duplicate.Should().Be(new WorkCenterTaskCreateResult(task.Id, BecameActive: false, Version: 1));
         await uow.ExecuteInUowTransactionAsync(
-            ct => tasks.CompleteByDeduplicationKeyAsync(task.DeduplicationKey, now.AddSeconds(1), ct),
+            ct => tasks.CompleteByDeduplicationKeyAsync(task.TaskCode, task.DeduplicationKey, now.AddSeconds(1), ct),
             CancellationToken.None);
         var reopened = await uow.ExecuteInUowTransactionAsync(
             ct => tasks.CreateAsync(
                 task with { CreatedAtUtc = now.AddSeconds(2) },
+                null,
+                null,
                 [recipientId],
                 ct),
             CancellationToken.None);
@@ -79,12 +228,12 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
 
         foreach (var query in new[]
                  {
-                     Query(now, tab: " TASKS "),
-                     Query(now, tab: "notifications"),
-                     Query(now, tab: null),
+                     Query(now, WorkCenterQueryView.Tasks),
+                     Query(now, WorkCenterQueryView.Notifications),
+                     Query(now, WorkCenterQueryView.Attention),
                      Query(
                          now,
-                         tab: "completed",
+                         WorkCenterQueryView.Completed,
                          cursor: new WorkCenterCursor(now.AddMinutes(1), Guid.NewGuid()),
                          priority: WorkCenterPriority.High,
                          severity: NotificationSeverity.Warning)
@@ -95,10 +244,10 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
         }
 
         await uow.ExecuteInUowTransactionAsync(
-            ct => tasks.CancelByDeduplicationKeyAsync("missing-task", now, ct),
+            ct => tasks.CancelByDeduplicationKeyAsync(task.TaskCode, "missing-task", now, ct),
             CancellationToken.None);
 
-        var outboxEvent = new PlatformOutboxEvent(
+        var outboxEvent = new OutboxEventEnvelope(
             Guid.NewGuid(),
             "test.event",
             1,
@@ -164,7 +313,7 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
 
     private static WorkCenterQuery Query(
         DateTime now,
-        string? tab,
+        WorkCenterQueryView view,
         WorkCenterCursor? cursor = null,
         WorkCenterPriority? priority = null,
         NotificationSeverity? severity = null)
@@ -176,13 +325,21 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
             AllowedResourceCodes: [],
             Cursor: cursor,
             Limit: 10,
-            Tab: tab,
+            View: view,
             Vertical: null,
             Priority: priority,
             Severity: severity,
             Overdue: null,
             Unread: null,
             NowUtc: now);
+
+    private static WorkCenterSourceReference Source(Guid entityId)
+        => new(
+            "document",
+            "it.retention",
+            entityId,
+            "Retention source",
+            SubtitleSnapshot: null);
 
     private static WorkCenterTask ValidTask(DateTime now, Guid roleId)
         => new(
@@ -203,17 +360,13 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
             AssignedRoleId: roleId,
             ClaimedByUserId: null,
             DueAtUtc: null,
-            PrimaryActionCode: null,
-            NavigationTargetCode: null,
-            NavigationParameters: new Dictionary<string, string?>(),
             CreatedAtUtc: now,
             CompletedAtUtc: null,
             CancelledAtUtc: null,
             DeduplicationKey: $"valid:{Guid.NewGuid():D}",
             Version: 1,
             CorrelationId: null,
-            CausationId: null,
-            MetadataJson: null);
+            CausationId: null);
 
     private static WorkCenterTask InvalidTask(DateTime now)
         => new(
@@ -234,15 +387,11 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
             AssignedRoleId: null,
             ClaimedByUserId: null,
             DueAtUtc: null,
-            PrimaryActionCode: null,
-            NavigationTargetCode: null,
-            NavigationParameters: new Dictionary<string, string?>(),
             CreatedAtUtc: now,
             CompletedAtUtc: null,
             CancelledAtUtc: null,
             DeduplicationKey: "invalid",
             Version: 1,
             CorrelationId: null,
-            CausationId: null,
-            MetadataJson: null);
+            CausationId: null);
 }

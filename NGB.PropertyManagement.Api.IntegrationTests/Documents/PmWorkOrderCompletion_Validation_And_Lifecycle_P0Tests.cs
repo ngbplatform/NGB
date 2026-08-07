@@ -10,6 +10,7 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using Npgsql;
 using Xunit;
 

@@ -15,8 +15,10 @@
     <ItemGroup>
         <PackageReference Include="NGB.Platform.Application.Abstractions" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Contracts" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Core" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Definitions" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Metadata" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Persistence" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.ReferenceRegisters" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Runtime" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Tools" Version="$(NgbPlatformPackageVersion)" />

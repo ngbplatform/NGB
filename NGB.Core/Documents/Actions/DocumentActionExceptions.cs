@@ -8,8 +8,8 @@ public sealed class DocumentActionNotFoundException(string documentType, string 
         "document_action.not_found",
         new Dictionary<string, object?>
         {
-            [StandardDocumentActionCodes.DocumentType] = documentType,
-            [StandardDocumentActionCodes.DocumentActionCode] = actionCode
+            [DocumentActionContextKeys.DocumentType] = documentType,
+            [DocumentActionContextKeys.ActionCode] = actionCode
         });
 
 public sealed class DocumentActionForbiddenException(string documentType, string actionCode)
@@ -18,8 +18,8 @@ public sealed class DocumentActionForbiddenException(string documentType, string
         "document_action.forbidden",
         new Dictionary<string, object?>
         {
-            [StandardDocumentActionCodes.DocumentType] = documentType,
-            [StandardDocumentActionCodes.DocumentActionCode] = actionCode
+            [DocumentActionContextKeys.DocumentType] = documentType,
+            [DocumentActionContextKeys.ActionCode] = actionCode
         });
 
 public sealed class DocumentActionUnavailableException(
@@ -31,8 +31,8 @@ public sealed class DocumentActionUnavailableException(
         "document_action.unavailable",
         new Dictionary<string, object?>
         {
-            [StandardDocumentActionCodes.DocumentType] = documentType,
-            [StandardDocumentActionCodes.DocumentActionCode] = actionCode,
+            [DocumentActionContextKeys.DocumentType] = documentType,
+            [DocumentActionContextKeys.ActionCode] = actionCode,
             ["reasonCodes"] = reasonCodes
         });
 
@@ -42,7 +42,7 @@ public sealed class DocumentVersionConflictException(Guid documentId, long expec
         "document.version_conflict",
         new Dictionary<string, object?>
         {
-            [StandardDocumentActionCodes.DocumentIdKey] = documentId,
+            [DocumentActionContextKeys.DocumentId] = documentId,
             ["expectedVersion"] = expectedVersion,
             ["actualVersion"] = actualVersion
         });

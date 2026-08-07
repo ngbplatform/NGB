@@ -10,7 +10,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj" />
         <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
     </ItemGroup>
 

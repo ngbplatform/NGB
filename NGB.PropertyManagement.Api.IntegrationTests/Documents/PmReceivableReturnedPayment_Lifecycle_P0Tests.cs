@@ -10,6 +10,7 @@ using NGB.Contracts.Services;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Runtime;
 using NGB.Runtime.OperationalRegisters;
 using Xunit;

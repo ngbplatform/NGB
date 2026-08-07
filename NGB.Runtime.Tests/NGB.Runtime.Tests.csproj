@@ -8,6 +8,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj"/>
+        <ProjectReference Include="..\NGB.Api\NGB.Api.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

@@ -47,6 +47,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddExternalLinks(builder.Configuration);
 builder.Services.AddGlobalErrorHandling();
 builder.Services.AddNgbWorkCenterRealtime();
+builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
 
 builder.Services.AddScoped<IMainMenuContributor, PropertyManagementMainMenuContributor>();
 builder.Services.AddScoped<ICommandPaletteSearchService, CommandPaletteSearchService>();

@@ -1,16 +1,12 @@
-using System.Text.Json;
 using FluentAssertions;
 using Moq;
+using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
-using NGB.Contracts.Common;
-using NGB.Contracts.Metadata;
-using NGB.Contracts.Services;
-using NGB.Core.Events;
-using NGB.Core.Security;
+using NGB.Core.Documents;
 using NGB.Core.WorkCenter;
 using NGB.CRM.Documents;
 using NGB.CRM.Runtime.WorkCenter;
-using NGB.Persistence.Security;
+using NGB.Persistence.Documents;
 
 namespace NGB.CRM.Runtime.Tests.WorkCenter;
 
@@ -20,9 +16,9 @@ public sealed class CrmWorkCenterPolicyTests
         new(2026, 7, 26, 18, 30, 0, TimeSpan.Zero);
 
     [Fact]
-    public void Exposes_document_action_completed_event_type()
+    public void Implements_the_typed_document_action_projection_contract()
     {
-        CreatePolicy().Policy.EventType.Should().Be("ngb.document.action.completed");
+        CreatePolicy().Policy.Should().BeAssignableTo<IDocumentActionCompletedWorkCenterPolicy>();
     }
 
     [Theory]
@@ -40,26 +36,24 @@ public sealed class CrmWorkCenterPolicyTests
         sut.TypedDocuments.VerifyNoOtherCalls();
         sut.Tasks.VerifyNoOtherCalls();
         sut.Notifications.VerifyNoOtherCalls();
-        sut.Roles.VerifyNoOtherCalls();
-        sut.UserRoles.VerifyNoOtherCalls();
     }
 
     [Theory]
-    [InlineData("post", "Lead intake", "L-100", "Lead intake")]
-    [InlineData("repost", null, "L-101", "L-101")]
-    [InlineData("post", null, null, "Lead intake")]
+    [InlineData("post", "Lead intake", "Acme", "Lead intake", "Acme")]
+    [InlineData("repost", "Lead without company", null, "Lead without company", null)]
     public async Task Posting_lead_intake_creates_qualification_task(
         string actionCode,
-        string? display,
-        string? number,
-        string expectedSourceTitle)
+        string leadName,
+        string? companyName,
+        string expectedSourceTitle,
+        string? expectedSubtitle)
     {
         var leadId = Guid.NewGuid();
         var sut = CreatePolicy();
         CreateWorkCenterTaskRequest? captured = null;
-        sut.Documents
-            .Setup(service => service.GetByIdAsync(CrmCodes.LeadIntake, leadId, CancellationToken.None))
-            .ReturnsAsync(Document(leadId, display, number));
+        sut.TypedDocuments
+            .Setup(readers => readers.ReadLeadIntakeHeadAsync(leadId, CancellationToken.None))
+            .ReturnsAsync(Lead(leadId, leadName, companyName));
         sut.Tasks
             .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
             .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
@@ -71,13 +65,13 @@ public sealed class CrmWorkCenterPolicyTests
         captured.Source.ResourceCode.Should().Be(CrmCodes.LeadIntake);
         captured.Source.EntityId.Should().Be(leadId);
         captured.Source.TitleSnapshot.Should().Be(expectedSourceTitle);
-        captured.Source.SubtitleSnapshot.Should().Be(number);
+        captured.Source.SubtitleSnapshot.Should().Be(expectedSubtitle);
         captured.AssignedRoleCode.Should().Be("crm.sales_rep");
         captured.DueAtUtc.Should().Be(Now.AddDays(2).UtcDateTime);
-        captured.PrimaryActionCode.Should().Be("crm.create_qualification");
-        captured.NavigationTargetCode.Should().Be("document.editor");
-        captured.NavigationParameters.Should().Contain(new KeyValuePair<string, string?>("documentType", CrmCodes.LeadIntake));
-        captured.NavigationParameters.Should().Contain(new KeyValuePair<string, string?>("documentId", leadId.ToString()));
+        captured.PrimaryActionCode!.Value.Value.Should().Be("crm.create_qualification");
+        captured.Target!.Code.Should().Be("document.editor");
+        captured.Target.Parameters.Should().Contain(new KeyValuePair<string, string?>("documentType", CrmCodes.LeadIntake));
+        captured.Target.Parameters.Should().Contain(new KeyValuePair<string, string?>("documentId", leadId.ToString()));
         captured.DeduplicationKey.Should().Be($"crm:lead:{leadId:D}:qualify");
         captured.CorrelationId.Should().NotBeNull();
         captured.CausationId.Should().NotBeNull();
@@ -90,6 +84,7 @@ public sealed class CrmWorkCenterPolicyTests
         var sut = CreatePolicy();
         sut.Tasks
             .Setup(service => service.CancelByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.QualifyLeadTask,
                 $"crm:lead:{leadId:D}:qualify",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -102,12 +97,11 @@ public sealed class CrmWorkCenterPolicyTests
     }
 
     [Theory]
-    [InlineData("post", "Qualification", "Q-100", "Qualification")]
-    [InlineData("repost", null, "Q-101", "Q-101")]
-    [InlineData("post", null, null, "Lead qualification")]
+    [InlineData("post", "Q-100", "Q-100")]
+    [InlineData("repost", "Q-101", "Q-101")]
+    [InlineData("post", null, "Lead qualification")]
     public async Task Qualified_lead_completes_qualification_and_creates_conversion_task(
         string actionCode,
-        string? display,
         string? number,
         string expectedSourceTitle)
     {
@@ -115,8 +109,6 @@ public sealed class CrmWorkCenterPolicyTests
         var leadId = Guid.NewGuid();
         var sut = CreatePolicy();
         var head = Qualification(qualificationId, leadId, "Qualified");
-        var salesRole = Role(CrmWorkCenterCodes.SalesRepresentativeRole);
-        var recipient = Guid.NewGuid();
         CreateWorkCenterTaskRequest? captured = null;
         CreateNotificationRequest? capturedNotification = null;
         sut.TypedDocuments
@@ -124,26 +116,17 @@ public sealed class CrmWorkCenterPolicyTests
             .ReturnsAsync(head);
         sut.Tasks
             .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.QualifyLeadTask,
                 $"crm:lead:{leadId:D}:qualify",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
         sut.Documents
-            .Setup(service => service.GetByIdAsync(CrmCodes.LeadQualification, qualificationId, CancellationToken.None))
-            .ReturnsAsync(Document(qualificationId, display, number));
+            .Setup(repository => repository.GetAsync(qualificationId, CancellationToken.None))
+            .ReturnsAsync(Document(qualificationId, CrmCodes.LeadQualification, number));
         sut.Tasks
             .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
             .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
             .ReturnsAsync(Guid.NewGuid());
-        sut.Roles
-            .Setup(repository => repository.GetByCodeAsync(
-                CrmWorkCenterCodes.SalesRepresentativeRole,
-                CancellationToken.None))
-            .ReturnsAsync(salesRole);
-        sut.UserRoles
-            .Setup(repository => repository.GetUserIdsForRoleAsync(
-                salesRole.RoleId,
-                CancellationToken.None))
-            .ReturnsAsync([recipient]);
         sut.Notifications
             .Setup(service => service.CreateAsync(
                 It.IsAny<CreateNotificationRequest>(),
@@ -161,13 +144,14 @@ public sealed class CrmWorkCenterPolicyTests
         captured.Source.TitleSnapshot.Should().Be(expectedSourceTitle);
         captured.Source.SubtitleSnapshot.Should().Be(number);
         captured.DueAtUtc.Should().Be(Now.AddDays(3).UtcDateTime);
-        captured.PrimaryActionCode.Should().Be("crm.create_conversion");
-        captured.NavigationParameters["documentType"].Should().Be(CrmCodes.LeadQualification);
-        captured.NavigationParameters["documentId"].Should().Be(qualificationId.ToString());
+        captured.PrimaryActionCode!.Value.Value.Should().Be("crm.create_conversion");
+        captured.Target!.Parameters["documentType"].Should().Be(CrmCodes.LeadQualification);
+        captured.Target.Parameters["documentId"].Should().Be(qualificationId.ToString());
         captured.DeduplicationKey.Should().Be($"crm:lead:{leadId:D}:convert");
         capturedNotification.Should().NotBeNull();
         capturedNotification!.DefinitionCode.Should().Be(CrmWorkCenterCodes.LeadQualified);
-        capturedNotification.RecipientUserIds.Should().Equal(recipient);
+        capturedNotification.RecipientUserIds.Should().BeEmpty();
+        capturedNotification.RecipientRoleCode.Should().Be(CrmWorkCenterCodes.SalesRepresentativeRole);
         capturedNotification.DeduplicationKey.Should()
             .Be($"crm:lead:{leadId:D}:qualified:{qualificationId:D}");
     }
@@ -183,11 +167,13 @@ public sealed class CrmWorkCenterPolicyTests
             .ReturnsAsync(Qualification(qualificationId, leadId, "Disqualified"));
         sut.Tasks
             .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.QualifyLeadTask,
                 $"crm:lead:{leadId:D}:qualify",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
         sut.Tasks
             .Setup(service => service.CancelByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.ConvertQualifiedLeadTask,
                 $"crm:lead:{leadId:D}:convert",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -226,6 +212,7 @@ public sealed class CrmWorkCenterPolicyTests
                 null));
         sut.Tasks
             .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.ConvertQualifiedLeadTask,
                 $"crm:lead:{leadId:D}:convert",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -246,9 +233,6 @@ public sealed class CrmWorkCenterPolicyTests
         sut.TypedDocuments
             .Setup(readers => readers.ReadActivityLogHeadAsync(activityId, CancellationToken.None))
             .ReturnsAsync(Activity(activityId, dueAt, completedAtUtc: null));
-        sut.Documents
-            .Setup(service => service.GetByIdAsync(CrmCodes.ActivityLog, activityId, CancellationToken.None))
-            .ReturnsAsync(Document(activityId, "Call customer", "A-100"));
         sut.Tasks
             .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
             .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
@@ -265,7 +249,7 @@ public sealed class CrmWorkCenterPolicyTests
         captured.Priority.Should().Be(WorkCenterPriority.Normal);
         captured.DueAtUtc.Should().Be(dueAt);
         captured.AssignedRoleCode.Should().Be(CrmWorkCenterCodes.SalesRepresentativeRole);
-        captured.NavigationParameters["documentType"].Should().Be(CrmCodes.ActivityLog);
+        captured.Target!.Parameters["documentType"].Should().Be(CrmCodes.ActivityLog);
         captured.DeduplicationKey.Should().Be($"crm:activity:{activityId:D}:complete");
     }
 
@@ -279,6 +263,7 @@ public sealed class CrmWorkCenterPolicyTests
             .ReturnsAsync(Activity(activityId, Now.AddHours(-1).UtcDateTime, Now.UtcDateTime));
         sut.Tasks
             .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.CompleteActivityTask,
                 $"crm:activity:{activityId:D}:complete",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -298,6 +283,7 @@ public sealed class CrmWorkCenterPolicyTests
         var sut = CreatePolicy();
         sut.Tasks
             .Setup(service => service.CancelByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.CompleteActivityTask,
                 $"crm:activity:{activityId:D}:complete",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -316,24 +302,14 @@ public sealed class CrmWorkCenterPolicyTests
     {
         var updateId = Guid.NewGuid();
         var opportunityId = Guid.NewGuid();
-        var role = Role(CrmWorkCenterCodes.SalesRepresentativeRole);
-        var recipient = Guid.NewGuid();
         var sut = CreatePolicy();
         CreateNotificationRequest? captured = null;
         sut.TypedDocuments
             .Setup(readers => readers.ReadOpportunityUpdateHeadAsync(updateId, CancellationToken.None))
             .ReturnsAsync(OpportunityUpdate(updateId, opportunityId, "Won"));
         sut.Documents
-            .Setup(service => service.GetByIdAsync(CrmCodes.OpportunityUpdate, updateId, CancellationToken.None))
-            .ReturnsAsync(Document(updateId, "Opportunity won", "OU-100"));
-        sut.Roles
-            .Setup(repository => repository.GetByCodeAsync(
-                CrmWorkCenterCodes.SalesRepresentativeRole,
-                CancellationToken.None))
-            .ReturnsAsync(role);
-        sut.UserRoles
-            .Setup(repository => repository.GetUserIdsForRoleAsync(role.RoleId, CancellationToken.None))
-            .ReturnsAsync([recipient]);
+            .Setup(repository => repository.GetAsync(updateId, CancellationToken.None))
+            .ReturnsAsync(Document(updateId, CrmCodes.OpportunityUpdate, "OU-100"));
         sut.Notifications
             .Setup(service => service.CreateAsync(It.IsAny<CreateNotificationRequest>(), CancellationToken.None))
             .Callback<CreateNotificationRequest, CancellationToken>((request, _) => captured = request)
@@ -345,7 +321,8 @@ public sealed class CrmWorkCenterPolicyTests
 
         captured.Should().NotBeNull();
         captured!.DefinitionCode.Should().Be(CrmWorkCenterCodes.OpportunityWon);
-        captured.RecipientUserIds.Should().Equal(recipient);
+        captured.RecipientUserIds.Should().BeEmpty();
+        captured.RecipientRoleCode.Should().Be(CrmWorkCenterCodes.SalesRepresentativeRole);
         captured.Source.ResourceCode.Should().Be(CrmCodes.OpportunityUpdate);
         captured.DeduplicationKey.Should()
             .Be($"crm:opportunity:{opportunityId:D}:won:{updateId:D}");
@@ -365,69 +342,79 @@ public sealed class CrmWorkCenterPolicyTests
             CancellationToken.None);
 
         sut.Notifications.VerifyNoOtherCalls();
-        sut.Roles.VerifyNoOtherCalls();
-        sut.UserRoles.VerifyNoOtherCalls();
     }
 
     private static (
         CrmWorkCenterPolicy Policy,
-        Mock<IDocumentService> Documents,
+        Mock<IDocumentRepository> Documents,
         Mock<ICrmDocumentReaders> TypedDocuments,
         Mock<IWorkCenterTaskService> Tasks,
-        Mock<INotificationService> Notifications,
-        Mock<IPlatformRoleRepository> Roles,
-        Mock<IPlatformUserRoleRepository> UserRoles) CreatePolicy()
+        Mock<INotificationService> Notifications) CreatePolicy()
     {
-        var documents = new Mock<IDocumentService>(MockBehavior.Strict);
+        var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
         var typedDocuments = new Mock<ICrmDocumentReaders>(MockBehavior.Strict);
         var tasks = new Mock<IWorkCenterTaskService>(MockBehavior.Strict);
         var notifications = new Mock<INotificationService>(MockBehavior.Strict);
-        var roles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
-        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         return (
             new CrmWorkCenterPolicy(
                 documents.Object,
                 typedDocuments.Object,
                 tasks.Object,
                 notifications.Object,
-                roles.Object,
-                userRoles.Object,
                 new FixedTimeProvider(Now)),
             documents,
             typedDocuments,
             tasks,
-            notifications,
-            roles,
-            userRoles);
+            notifications);
     }
 
-    private static WorkCenterEventContext Context(Guid documentId, string documentType, string actionCode)
+    private static DocumentActionCompletedV1 Context(Guid documentId, string documentType, string actionCode)
     {
         var eventId = Guid.NewGuid();
-        return new WorkCenterEventContext(new PlatformOutboxEvent(
+        return new DocumentActionCompletedV1(
             eventId,
-            "ngb.document.action.completed",
-            1,
             Now.UtcDateTime,
             "tests",
             $"document:{documentId:D}",
             Guid.NewGuid(),
             Guid.NewGuid(),
             eventId,
-            JsonSerializer.Serialize(new
-            {
-                data = new
-                {
-                    documentId,
-                    documentType,
-                    actionCode
-                }
-            }),
-            Now.UtcDateTime));
+            new DocumentActionCompletedDataV1(
+                documentId,
+                documentType,
+                actionCode,
+                NGB.Core.Documents.DocumentStatus.Draft,
+                NGB.Core.Documents.DocumentStatus.Posted,
+                2));
     }
 
-    private static DocumentDto Document(Guid id, string? display, string? number)
-        => new(id, display, new RecordPayload(), DocumentStatus.Posted, false, number);
+    private static DocumentRecord Document(Guid id, string typeCode, string? number)
+        => new()
+        {
+            Id = id,
+            TypeCode = typeCode,
+            Number = number,
+            DateUtc = Now.UtcDateTime,
+            Status = DocumentStatus.Posted,
+            Version = 2,
+            CreatedAtUtc = Now.UtcDateTime,
+            UpdatedAtUtc = Now.UtcDateTime
+        };
+
+    private static CrmLeadIntakeHead Lead(Guid id, string leadName, string? companyName)
+        => new(
+            id,
+            new DateOnly(2026, 7, 26),
+            leadName,
+            companyName,
+            "Test contact",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null);
 
     private static CrmLeadQualificationHead Qualification(Guid id, Guid leadId, string state)
         => new(id, new DateOnly(2026, 7, 26), leadId, state, 90, null, null);
@@ -465,17 +452,6 @@ public sealed class CrmWorkCenterPolicyTests
             status,
             null,
             null);
-
-    private static PlatformRole Role(string code)
-        => new(
-            Guid.NewGuid(),
-            code,
-            code,
-            null,
-            IsSystem: true,
-            IsActive: true,
-            Now.UtcDateTime,
-            Now.UtcDateTime);
 
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {

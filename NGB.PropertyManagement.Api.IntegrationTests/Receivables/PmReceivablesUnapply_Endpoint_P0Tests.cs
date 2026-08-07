@@ -9,6 +9,7 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.Runtime;

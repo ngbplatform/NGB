@@ -1,5 +1,4 @@
 using Dapper;
-using NGB.Core.Events;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.UnitOfWork;
@@ -11,7 +10,7 @@ namespace NGB.PostgreSql.Outbox;
 public sealed class PostgresOutboxEventRepository(IUnitOfWork uow) : IOutboxEventRepository
 {
     public async Task AppendAsync(
-        PlatformOutboxEvent outboxEvent,
+        OutboxEventEnvelope outboxEvent,
         IReadOnlyList<string> consumerCodes,
         CancellationToken ct)
     {
@@ -44,28 +43,32 @@ public sealed class PostgresOutboxEventRepository(IUnitOfWork uow) : IOutboxEven
             INSERT INTO platform_outbox_consumer_state (
                 event_id, consumer_code, status, attempt_count, next_attempt_at_utc
             )
-            VALUES (@EventId, @ConsumerCode, @PendingStatus, 0, @NextAttemptAtUtc)
+            SELECT @EventId, consumer.consumer_code, @PendingStatus, 0, @NextAttemptAtUtc
+            FROM UNNEST(@ConsumerCodes::text[]) AS consumer(consumer_code)
             ON CONFLICT (event_id, consumer_code) DO NOTHING;
             """;
 
-        foreach (var consumerCode in consumerCodes
-             .Where(static x => !string.IsNullOrWhiteSpace(x))
-             .Select(static x => x.Trim())
-             .Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            await uow.Connection.ExecuteAsync(
-                new CommandDefinition(
-                    stateSql,
-                    new
-                    {
-                        outboxEvent.EventId,
-                        ConsumerCode = consumerCode,
-                        PendingStatus = (short)OutboxConsumerStatus.Pending,
-                        NextAttemptAtUtc = outboxEvent.CreatedAtUtc
-                    },
-                    uow.Transaction,
-                    cancellationToken: ct));
-        }
+        var normalizedConsumers = consumerCodes
+            .Where(static x => !string.IsNullOrWhiteSpace(x))
+            .Select(static x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (normalizedConsumers.Length == 0)
+            throw new NgbArgumentInvalidException(nameof(consumerCodes), "At least one non-empty consumer code is required.");
+
+        await uow.Connection.ExecuteAsync(
+            new CommandDefinition(
+                stateSql,
+                new
+                {
+                    outboxEvent.EventId,
+                    ConsumerCodes = normalizedConsumers,
+                    PendingStatus = (short)OutboxConsumerStatus.Pending,
+                    NextAttemptAtUtc = outboxEvent.CreatedAtUtc
+                },
+                uow.Transaction,
+                cancellationToken: ct));
     }
 
     public async Task<IReadOnlyList<OutboxConsumerWorkItem>> ClaimBatchAsync(
@@ -136,14 +139,16 @@ public sealed class PostgresOutboxEventRepository(IUnitOfWork uow) : IOutboxEven
                     ProcessingStatus = (short)OutboxConsumerStatus.Processing,
                     FailedStatus = (short)OutboxConsumerStatus.Failed,
                     NowUtc = nowUtc,
-                    StaleBeforeUtc = nowUtc - TimeSpan.FromMinutes(10),
+                    // Projection policies are short-lived, but a 30-minute lease prevents a
+                    // slow first item from making the unprocessed tail eligible elsewhere.
+                    StaleBeforeUtc = nowUtc - TimeSpan.FromMinutes(30),
                     BatchSize = batchSize
                 },
                 uow.Transaction,
                 cancellationToken: ct));
 
         return rows.Select(static row => new OutboxConsumerWorkItem(
-                new PlatformOutboxEvent(
+                new OutboxEventEnvelope(
                     row.EventId,
                     row.EventType,
                     row.SchemaVersion,
@@ -209,7 +214,8 @@ public sealed class PostgresOutboxEventRepository(IUnitOfWork uow) : IOutboxEven
                    count(*) FILTER (WHERE s.status IN (@FailedStatus, @DeadLetterStatus)) AS "FailedCount"
             FROM platform_outbox_consumer_state s
             JOIN platform_outbox_events e ON e.event_id = s.event_id
-            WHERE s.consumer_code = @ConsumerCode;
+            WHERE s.consumer_code = @ConsumerCode
+              AND s.status IN (@PendingStatus, @FailedStatus, @DeadLetterStatus);
             """;
 
         var row = await uow.Connection.QuerySingleAsync<HealthRow>(

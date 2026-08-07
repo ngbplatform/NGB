@@ -13,10 +13,155 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
     : IWorkCenterTaskRepository,
       INotificationRepository,
       INotificationPreferenceRepository,
-      IWorkCenterReadRepository
+      IWorkCenterReadRepository,
+      IWorkCenterMaintenanceRepository
 {
+    public async Task<WorkCenterPruneResult> PruneAsync(
+        WorkCenterRetentionCutoffs cutoffs,
+        int batchSize,
+        CancellationToken ct)
+    {
+        if (batchSize is < 1 or > 10_000)
+            throw new NgbArgumentInvalidException(nameof(batchSize), "Batch size must be between 1 and 10000.");
+
+        cutoffs.DocumentActionExecutionsBeforeUtc.EnsureUtc(nameof(cutoffs.DocumentActionExecutionsBeforeUtc));
+        cutoffs.TerminalTasksBeforeUtc.EnsureUtc(nameof(cutoffs.TerminalTasksBeforeUtc));
+        cutoffs.NotificationDeliveriesBeforeUtc.EnsureUtc(nameof(cutoffs.NotificationDeliveriesBeforeUtc));
+        cutoffs.OutboxBeforeUtc.EnsureUtc(nameof(cutoffs.OutboxBeforeUtc));
+        await uow.EnsureOpenForTransactionAsync(ct);
+
+        const string sql = """
+            WITH action_candidates AS MATERIALIZED (
+                SELECT execution_id
+                FROM platform_document_action_executions
+                WHERE completed_at_utc < @DocumentActionExecutionsBeforeUtc
+                ORDER BY completed_at_utc, execution_id
+                LIMIT @BatchSize
+            ),
+            deleted_actions AS (
+                DELETE FROM platform_document_action_executions execution
+                USING action_candidates candidate
+                WHERE execution.execution_id = candidate.execution_id
+                RETURNING execution.execution_id
+            ),
+            task_candidates AS MATERIALIZED (
+                SELECT id
+                FROM platform_tasks
+                WHERE status IN (@CompletedStatus, @CancelledStatus)
+                  AND updated_at_utc < @TerminalTasksBeforeUtc
+                ORDER BY updated_at_utc, id
+                LIMIT @BatchSize
+            ),
+            deleted_tasks AS (
+                DELETE FROM platform_tasks task
+                USING task_candidates candidate
+                WHERE task.id = candidate.id
+                RETURNING task.id
+            ),
+            delivery_candidates AS MATERIALIZED (
+                SELECT delivery.notification_id, delivery.user_id
+                FROM platform_notification_deliveries delivery
+                JOIN platform_notifications notification ON notification.id = delivery.notification_id
+                WHERE COALESCE(delivery.dismissed_at_utc, notification.expires_at_utc) < @NotificationDeliveriesBeforeUtc
+                ORDER BY COALESCE(delivery.dismissed_at_utc, notification.expires_at_utc), delivery.notification_id, delivery.user_id
+                LIMIT @BatchSize
+            ),
+            deleted_deliveries AS (
+                DELETE FROM platform_notification_deliveries delivery
+                USING delivery_candidates candidate
+                WHERE delivery.notification_id = candidate.notification_id
+                  AND delivery.user_id = candidate.user_id
+                RETURNING delivery.notification_id
+            ),
+            notification_candidates AS MATERIALIZED (
+                SELECT notification.id
+                FROM platform_notifications notification
+                WHERE notification.created_at_utc < @NotificationDeliveriesBeforeUtc
+                  AND NOT EXISTS (
+                    SELECT 1 FROM platform_notification_deliveries delivery
+                    WHERE delivery.notification_id = notification.id
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM delivery_candidates candidate
+                        WHERE candidate.notification_id = delivery.notification_id
+                          AND candidate.user_id = delivery.user_id
+                      )
+                  )
+                ORDER BY notification.created_at_utc, notification.id
+                LIMIT @BatchSize
+            ),
+            deleted_notifications AS (
+                DELETE FROM platform_notifications notification
+                USING notification_candidates candidate
+                WHERE notification.id = candidate.id
+                  AND (SELECT count(*) FROM deleted_deliveries) >= 0
+                RETURNING notification.id
+            ),
+            outbox_candidates AS MATERIALIZED (
+                SELECT event.event_id
+                FROM platform_outbox_events event
+                WHERE event.created_at_utc < @OutboxBeforeUtc
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM platform_outbox_consumer_state state
+                    WHERE state.event_id = event.event_id
+                      AND state.status IN (@PendingStatus, @ProcessingStatus, @FailedStatus)
+                  )
+                ORDER BY event.created_at_utc, event.event_id
+                LIMIT @BatchSize
+            ),
+            deleted_outbox_history AS (
+                DELETE FROM platform_outbox_consumer_history history
+                USING outbox_candidates candidate
+                WHERE history.event_id = candidate.event_id
+                RETURNING history.event_id
+            ),
+            deleted_outbox_state AS (
+                DELETE FROM platform_outbox_consumer_state state
+                USING outbox_candidates candidate
+                WHERE state.event_id = candidate.event_id
+                RETURNING state.event_id
+            ),
+            deleted_outbox AS (
+                DELETE FROM platform_outbox_events event
+                USING outbox_candidates candidate
+                WHERE event.event_id = candidate.event_id
+                  AND (SELECT count(*) FROM deleted_outbox_history) >= 0
+                  AND (SELECT count(*) FROM deleted_outbox_state) >= 0
+                RETURNING event.event_id
+            )
+            SELECT
+                (SELECT count(*) FROM deleted_actions)::int AS "DocumentActionExecutions",
+                (SELECT count(*) FROM deleted_tasks)::int AS "Tasks",
+                (SELECT count(*) FROM deleted_deliveries)::int AS "NotificationDeliveries",
+                (SELECT count(*) FROM deleted_notifications)::int AS "Notifications",
+                (SELECT count(*) FROM deleted_outbox)::int AS "OutboxEvents";
+            """;
+
+        return await uow.Connection.QuerySingleAsync<WorkCenterPruneResult>(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                    cutoffs.DocumentActionExecutionsBeforeUtc,
+                    cutoffs.TerminalTasksBeforeUtc,
+                    cutoffs.NotificationDeliveriesBeforeUtc,
+                    cutoffs.OutboxBeforeUtc,
+                    BatchSize = batchSize,
+                    CompletedStatus = (short)WorkCenterTaskStatus.Completed,
+                    CancelledStatus = (short)WorkCenterTaskStatus.Cancelled,
+                    PendingStatus = (short)NGB.Persistence.Outbox.OutboxConsumerStatus.Pending,
+                    ProcessingStatus = (short)NGB.Persistence.Outbox.OutboxConsumerStatus.Processing,
+                    FailedStatus = (short)NGB.Persistence.Outbox.OutboxConsumerStatus.Failed
+                },
+                uow.Transaction,
+                cancellationToken: ct));
+    }
+
     public async Task<WorkCenterTaskCreateResult> CreateAsync(
         WorkCenterTask task,
+        string? primaryActionCode,
+        WorkCenterNavigationTargetRecord? target,
         IReadOnlyList<Guid> recipientUserIds,
         CancellationToken ct)
     {
@@ -46,7 +191,7 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                 due_at_utc, primary_action_code,
                 navigation_target_code, navigation_parameters_json,
                 created_at_utc, updated_at_utc, completed_at_utc, cancelled_at_utc,
-                deduplication_key, version, correlation_id, causation_id, metadata_json
+                deduplication_key, version, correlation_id, causation_id
             )
             VALUES (
                 @Id, @TaskCode, @PreferenceCode,
@@ -57,7 +202,7 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                 @DueAtUtc, @PrimaryActionCode,
                 @NavigationTargetCode, CAST(@NavigationParametersJson AS jsonb),
                 @CreatedAtUtc, @CreatedAtUtc, @CompletedAtUtc, @CancelledAtUtc,
-                @DeduplicationKey, @Version, @CorrelationId, @CausationId, CAST(@MetadataJson AS jsonb)
+                @DeduplicationKey, @Version, @CorrelationId, @CausationId
             )
             ON CONFLICT (task_code, deduplication_key)
             DO NOTHING
@@ -82,9 +227,9 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
             task.AssignedRoleId,
             task.ClaimedByUserId,
             task.DueAtUtc,
-            PrimaryActionCode = task.PrimaryActionCode?.Value,
-            task.NavigationTargetCode,
-            NavigationParametersJson = JsonSerializer.Serialize(task.NavigationParameters),
+            PrimaryActionCode = primaryActionCode,
+            NavigationTargetCode = target?.Code,
+            NavigationParametersJson = JsonSerializer.Serialize(target?.Parameters ?? new Dictionary<string, string?>()),
             task.CreatedAtUtc,
             task.CompletedAtUtc,
             task.CancelledAtUtc,
@@ -92,7 +237,6 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
             task.Version,
             task.CorrelationId,
             task.CausationId,
-            task.MetadataJson,
             CompletedStatus = (short)WorkCenterTaskStatus.Completed,
             CancelledStatus = (short)WorkCenterTaskStatus.Cancelled,
             InProgressStatus = (short)WorkCenterTaskStatus.InProgress
@@ -173,7 +317,8 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
         return reopened;
     }
 
-    public async Task CompleteByDeduplicationKeyAsync(
+    public async Task<WorkCenterTaskMutationResult> CompleteByDeduplicationKeyAsync(
+        string taskCode,
         string deduplicationKey,
         DateTime completedAtUtc,
         CancellationToken ct)
@@ -182,21 +327,29 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
         await uow.EnsureOpenForTransactionAsync(ct);
 
         const string sql = """
+            WITH updated AS (
             UPDATE platform_tasks
             SET status = @Status,
                 completed_at_utc = @CompletedAtUtc,
                 cancelled_at_utc = NULL,
                 updated_at_utc = @CompletedAtUtc,
                 version = version + 1
-            WHERE deduplication_key = @DeduplicationKey
-              AND status IN (@OpenStatus, @InProgressStatus);
+            WHERE task_code = @TaskCode
+              AND deduplication_key = @DeduplicationKey
+              AND status IN (@OpenStatus, @InProgressStatus)
+            RETURNING id
+            )
+            SELECT DISTINCT recipient.user_id
+            FROM updated
+            JOIN platform_task_recipients recipient ON recipient.task_id = updated.id;
             """;
 
-        await uow.Connection.ExecuteAsync(
+        var recipients = (await uow.Connection.QueryAsync<Guid>(
             new CommandDefinition(
                 sql,
                 new
                 {
+                    TaskCode = taskCode,
                     DeduplicationKey = deduplicationKey,
                     Status = (short)WorkCenterTaskStatus.Completed,
                     OpenStatus = (short)WorkCenterTaskStatus.Open,
@@ -204,10 +357,13 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                     CompletedAtUtc = completedAtUtc
                 },
                 uow.Transaction,
-                cancellationToken: ct));
+                cancellationToken: ct))).ToArray();
+
+        return new WorkCenterTaskMutationResult(recipients.Length > 0, recipients);
     }
 
-    public async Task CancelByDeduplicationKeyAsync(
+    public async Task<WorkCenterTaskMutationResult> CancelByDeduplicationKeyAsync(
+        string taskCode,
         string deduplicationKey,
         DateTime cancelledAtUtc,
         CancellationToken ct)
@@ -216,21 +372,29 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
         await uow.EnsureOpenForTransactionAsync(ct);
 
         const string sql = """
+            WITH updated AS (
             UPDATE platform_tasks
             SET status = @Status,
                 cancelled_at_utc = @CancelledAtUtc,
                 completed_at_utc = NULL,
                 updated_at_utc = @CancelledAtUtc,
                 version = version + 1
-            WHERE deduplication_key = @DeduplicationKey
-              AND status IN (@OpenStatus, @InProgressStatus);
+            WHERE task_code = @TaskCode
+              AND deduplication_key = @DeduplicationKey
+              AND status IN (@OpenStatus, @InProgressStatus)
+            RETURNING id
+            )
+            SELECT DISTINCT recipient.user_id
+            FROM updated
+            JOIN platform_task_recipients recipient ON recipient.task_id = updated.id;
             """;
 
-        await uow.Connection.ExecuteAsync(
+        var recipients = (await uow.Connection.QueryAsync<Guid>(
             new CommandDefinition(
                 sql,
                 new
                 {
+                    TaskCode = taskCode,
                     DeduplicationKey = deduplicationKey,
                     Status = (short)WorkCenterTaskStatus.Cancelled,
                     OpenStatus = (short)WorkCenterTaskStatus.Open,
@@ -238,7 +402,9 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                     CancelledAtUtc = cancelledAtUtc
                 },
                 uow.Transaction,
-                cancellationToken: ct));
+                cancellationToken: ct))).ToArray();
+
+        return new WorkCenterTaskMutationResult(recipients.Length > 0, recipients);
     }
 
     public Task MarkReadAsync(
@@ -348,7 +514,7 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
         return rows == 1;
     }
 
-    public async Task<Guid> CreateAsync(
+    public async Task<WorkCenterNotificationCreateResult> CreateAsync(
         WorkCenterNotification notification,
         IReadOnlyList<Guid> recipientUserIds,
         CancellationToken ct)
@@ -363,14 +529,14 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                 source_resource_kind, source_resource_code, source_entity_id,
                 source_title_snapshot, source_subtitle_snapshot,
                 title, body, severity, created_at_utc, expires_at_utc,
-                deduplication_key, correlation_id, causation_id, metadata_json
+                deduplication_key, correlation_id, causation_id
             )
             VALUES (
                 @Id, @DefinitionCode,
                 @SourceResourceKind, @SourceResourceCode, @SourceEntityId,
                 @SourceTitleSnapshot, @SourceSubtitleSnapshot,
                 @Title, @Body, @Severity, @CreatedAtUtc, @ExpiresAtUtc,
-                @DeduplicationKey, @CorrelationId, @CausationId, CAST(@MetadataJson AS jsonb)
+                @DeduplicationKey, @CorrelationId, @CausationId
             )
             ON CONFLICT (definition_code, deduplication_key)
             DO UPDATE SET definition_code = platform_notifications.definition_code
@@ -396,8 +562,7 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                     notification.ExpiresAtUtc,
                     notification.DeduplicationKey,
                     notification.CorrelationId,
-                    notification.CausationId,
-                    notification.MetadataJson
+                    notification.CausationId
                 },
                 uow.Transaction,
                 cancellationToken: ct));
@@ -408,10 +573,11 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
             )
             SELECT @NotificationId, recipients.user_id, @CreatedAtUtc
             FROM unnest(@RecipientUserIds::uuid[]) AS recipients(user_id)
-            ON CONFLICT (notification_id, user_id) DO NOTHING;
+            ON CONFLICT (notification_id, user_id) DO NOTHING
+            RETURNING user_id;
             """;
 
-        await uow.Connection.ExecuteAsync(
+        var createdRecipients = (await uow.Connection.QueryAsync<Guid>(
             new CommandDefinition(
                 deliverySql,
                 new
@@ -421,9 +587,10 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                     notification.CreatedAtUtc
                 },
                 uow.Transaction,
-                cancellationToken: ct));
+                cancellationToken: ct)))
+            .ToArray();
 
-        return notificationId;
+        return new WorkCenterNotificationCreateResult(notificationId, createdRecipients);
     }
 
     public Task MarkReadAsync(
@@ -504,15 +671,39 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
     }
 
     public async Task UpsertAsync(NotificationPreferenceRecord preference, CancellationToken ct)
+        => await UpsertManyAsync([preference], ct);
+
+    public async Task UpsertManyAsync(IReadOnlyList<NotificationPreferenceRecord> preferences, CancellationToken ct)
     {
-        preference.UpdatedAtUtc.EnsureUtc(nameof(preference.UpdatedAtUtc));
+        ArgumentNullException.ThrowIfNull(preferences);
+
+        if (preferences.Count == 0)
+            return;
+
+        foreach (var preference in preferences)
+        {
+            preference.UpdatedAtUtc.EnsureUtc(nameof(preference.UpdatedAtUtc));
+        }
+
         await uow.EnsureOpenForTransactionAsync(ct);
 
         const string sql = """
             INSERT INTO platform_user_notification_preferences (
                 user_id, notification_code, channel, is_enabled, updated_at_utc, version
             )
-            VALUES (@UserId, @NotificationCode, @Channel, @IsEnabled, @UpdatedAtUtc, 1)
+            SELECT input.user_id,
+                   input.notification_code,
+                   input.channel,
+                   input.is_enabled,
+                   input.updated_at_utc,
+                   1
+            FROM UNNEST(
+                @UserIds::uuid[],
+                @NotificationCodes::text[],
+                @Channels::smallint[],
+                @Enabled::boolean[],
+                @UpdatedAtUtc::timestamptz[]
+            ) AS input(user_id, notification_code, channel, is_enabled, updated_at_utc)
             ON CONFLICT (user_id, notification_code, channel)
             DO UPDATE SET is_enabled = EXCLUDED.is_enabled,
                           updated_at_utc = EXCLUDED.updated_at_utc,
@@ -524,11 +715,11 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                 sql,
                 new
                 {
-                    preference.UserId,
-                    preference.NotificationCode,
-                    Channel = (short)preference.Channel,
-                    preference.IsEnabled,
-                    preference.UpdatedAtUtc
+                    UserIds = preferences.Select(static x => x.UserId).ToArray(),
+                    NotificationCodes = preferences.Select(static x => x.NotificationCode).ToArray(),
+                    Channels = preferences.Select(static x => (short)x.Channel).ToArray(),
+                    Enabled = preferences.Select(static x => x.IsEnabled).ToArray(),
+                    UpdatedAtUtc = preferences.Select(static x => x.UpdatedAtUtc).ToArray()
                 },
                 uow.Transaction,
                 cancellationToken: ct));
@@ -643,24 +834,15 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
         await uow.EnsureConnectionOpenAsync(ct);
 
         const string sql = """
-            SELECT count(*) FILTER (
-                       WHERE status IN (@OpenStatus, @InProgressStatus)
-                         AND EXISTS (
-                           SELECT 1
-                           FROM platform_task_recipients recipient
-                           WHERE recipient.task_id = platform_tasks.id
-                         )
-                   ) AS "OpenTaskCount",
-                   count(*) FILTER (
-                       WHERE status IN (@OpenStatus, @InProgressStatus)
-                         AND EXISTS (
-                           SELECT 1
-                           FROM platform_task_recipients recipient
-                           WHERE recipient.task_id = platform_tasks.id
-                         )
-                         AND due_at_utc < @NowUtc
-                   ) AS "OverdueTaskCount"
-            FROM platform_tasks;
+            SELECT count(*) AS "OpenTaskCount",
+                   count(*) FILTER (WHERE due_at_utc < @NowUtc) AS "OverdueTaskCount"
+            FROM platform_tasks task
+            WHERE task.status IN (@OpenStatus, @InProgressStatus)
+              AND EXISTS (
+                SELECT 1
+                FROM platform_task_recipients recipient
+                WHERE recipient.task_id = task.id
+              );
             """;
 
         return await uow.Connection.QuerySingleAsync<WorkCenterTaskHealthRecord>(
@@ -683,8 +865,7 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
         ArgumentNullException.ThrowIfNull(query);
         await uow.EnsureConnectionOpenAsync(ct);
 
-        const string sql = """
-            WITH feed AS (
+        const string taskSelect = """
                 SELECT
                     t.id,
                     @TaskKind::smallint AS kind,
@@ -734,18 +915,17 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                     )
                   )
                   AND (
-                    (@Tab = 'completed' AND t.status IN (@CompletedStatus, @CancelledStatus))
-                    OR
-                    (@Tab <> 'completed' AND t.status IN (@OpenStatus, @InProgressStatus))
+                    (@IncludeTerminalTasks AND t.status IN (@CompletedStatus, @CancelledStatus))
+                    OR (NOT @IncludeTerminalTasks AND t.status IN (@OpenStatus, @InProgressStatus))
                   )
-                  AND (@Tab <> 'attention' OR s.snoozed_until_utc IS NULL OR s.snoozed_until_utc <= @NowUtc)
+                  AND (NOT @AttentionOnly OR s.snoozed_until_utc IS NULL OR s.snoozed_until_utc <= @NowUtc)
                   AND (@Priority::smallint IS NULL OR t.priority = @Priority::smallint)
                   AND (@Overdue::boolean IS NULL OR (t.due_at_utc < @NowUtc) = @Overdue::boolean)
                   AND (@Unread::boolean IS NULL OR (s.read_at_utc IS NULL) = @Unread::boolean)
                   AND (@Vertical::text IS NULL OR t.source_resource_code LIKE @Vertical::text || '.%')
+            """;
 
-                UNION ALL
-
+        const string notificationSelect = """
                 SELECT
                     n.id,
                     @NotificationKind::smallint AS kind,
@@ -786,12 +966,13 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                     )
                   )
                   AND (n.expires_at_utc IS NULL OR n.expires_at_utc > @NowUtc)
-                  AND @Tab <> 'tasks'
-                  AND @Tab <> 'completed'
-                  AND (@Tab <> 'attention' OR d.read_at_utc IS NULL)
+                  AND (NOT @AttentionOnly OR d.read_at_utc IS NULL)
                   AND (@Severity::smallint IS NULL OR n.severity = @Severity::smallint)
                   AND (@Unread::boolean IS NULL OR (d.read_at_utc IS NULL) = @Unread::boolean)
                   AND (@Vertical::text IS NULL OR n.source_resource_code LIKE @Vertical::text || '.%')
+            """;
+
+        const string pageSelect = """
             )
             SELECT
                 id AS "Id",
@@ -823,13 +1004,17 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                 @CursorSortAtUtc::timestamptz IS NULL
                 OR (sort_at_utc, id) < (@CursorSortAtUtc::timestamptz, @CursorId::uuid)
               )
-              AND (
-                @Tab <> 'notifications'
-                OR kind = @NotificationKind
-              )
             ORDER BY sort_at_utc DESC, id DESC
             LIMIT @Limit;
             """;
+
+        var feedSelect = query.View switch
+        {
+            WorkCenterQueryView.Tasks or WorkCenterQueryView.Completed => taskSelect,
+            WorkCenterQueryView.Notifications => notificationSelect,
+            _ => $"{taskSelect}\nUNION ALL\n{notificationSelect}"
+        };
+        var sql = $"WITH feed AS (\n{feedSelect}\n{pageSelect}";
 
         var rows = await uow.Connection.QueryAsync<FeedRow>(
             new CommandDefinition(
@@ -841,7 +1026,6 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                     query.AllowAllSources,
                     AllowedResourceKinds = query.AllowedResourceKinds.ToArray(),
                     AllowedResourceCodes = query.AllowedResourceCodes.ToArray(),
-                    Tab = NormalizeTab(query.Tab),
                     query.Vertical,
                     Priority = query.Priority is { } priority ? (short)priority : (short?)null,
                     Severity = query.Severity is { } severity ? (short)severity : (short?)null,
@@ -853,6 +1037,8 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                     query.Limit,
                     TaskKind = (short)WorkCenterItemKind.Task,
                     NotificationKind = (short)WorkCenterItemKind.Notification,
+                    IncludeTerminalTasks = query.View == WorkCenterQueryView.Completed,
+                    AttentionOnly = query.View == WorkCenterQueryView.Attention,
                     OpenStatus = (short)WorkCenterTaskStatus.Open,
                     InProgressStatus = (short)WorkCenterTaskStatus.InProgress,
                     CompletedStatus = (short)WorkCenterTaskStatus.Completed,
@@ -1054,15 +1240,6 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
             throw new NgbArgumentInvalidException("assignment", "Exactly one task assignment target is required.");
     }
 
-    private static string NormalizeTab(string? tab)
-        => tab?.Trim().ToLowerInvariant() switch
-        {
-            "tasks" => "tasks",
-            "notifications" => "notifications",
-            "completed" => "completed",
-            _ => "attention"
-        };
-
     private sealed class ExistingTaskState
     {
         public Guid TaskId { get; init; }
@@ -1130,8 +1307,14 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
             AssignedRoleId,
             ClaimedByUserId,
             PrimaryActionCode,
-            NavigationTargetCode,
-            NavigationParametersJson,
+            NavigationTargetCode is null
+                ? null
+                : new WorkCenterNavigationTargetRecord(
+                    NavigationTargetCode,
+                    string.IsNullOrWhiteSpace(NavigationParametersJson)
+                        ? new Dictionary<string, string?>()
+                        : JsonSerializer.Deserialize<Dictionary<string, string?>>(NavigationParametersJson)
+                          ?? new Dictionary<string, string?>()),
             Version);
     }
 }

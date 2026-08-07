@@ -71,7 +71,7 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
         }
         services.TryAddScoped<IReceivablePaymentWorkCenterSynchronizer, ReceivablePaymentWorkCenterSynchronizer>();
         services.TryAddScoped<PropertyManagementWorkCenterPolicy>();
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IWorkCenterEventPolicy, PropertyManagementWorkCenterPolicy>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentActionCompletedWorkCenterPolicy, PropertyManagementWorkCenterPolicy>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkCenterPreferenceDefinitionSource, PropertyManagementWorkCenterPreferenceDefinitionSource>());
 
         // Catalog validators

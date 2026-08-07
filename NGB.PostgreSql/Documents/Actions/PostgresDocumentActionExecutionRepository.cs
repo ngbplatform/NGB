@@ -11,6 +11,7 @@ namespace NGB.PostgreSql.Documents.Actions;
 public sealed class PostgresDocumentActionExecutionRepository(IUnitOfWork uow)
     : IDocumentActionExecutionRepository
 {
+    internal const int MaximumResultJsonBytes = 4 * 1024 * 1024;
     public async Task<DocumentActionExecutionBeginResult> TryBeginAsync(
         string idempotencyKey,
         string requestFingerprint,
@@ -116,6 +117,13 @@ public sealed class PostgresDocumentActionExecutionRepository(IUnitOfWork uow)
     {
         if (string.IsNullOrWhiteSpace(resultJson))
             throw new NgbArgumentRequiredException(nameof(resultJson));
+
+        if (System.Text.Encoding.UTF8.GetByteCount(resultJson) > MaximumResultJsonBytes)
+        {
+            throw new NgbArgumentInvalidException(
+                nameof(resultJson),
+                $"Document action idempotency result cannot exceed {MaximumResultJsonBytes} UTF-8 bytes.");
+        }
 
         completedAtUtc.EnsureUtc(nameof(completedAtUtc));
         await uow.EnsureOpenForTransactionAsync(ct);

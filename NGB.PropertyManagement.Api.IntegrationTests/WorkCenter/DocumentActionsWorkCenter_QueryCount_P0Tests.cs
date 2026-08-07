@@ -26,6 +26,9 @@ using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.Runtime.UnitOfWork;
 using Npgsql;
 using Xunit;
+using CoreDocumentActionExecutionKind = NGB.Core.Documents.Actions.DocumentActionExecutionKind;
+using CoreDocumentActionKind = NGB.Core.Documents.Actions.DocumentActionKind;
+using CoreWorkCenterPriority = NGB.Core.WorkCenter.WorkCenterPriority;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.WorkCenter;
 
@@ -186,21 +189,20 @@ public sealed class DocumentActionsWorkCenter_QueryCount_P0Tests : IAsyncLifetim
                         $"Seeded source {index + 1}"),
                     $"Query count task {index + 1}",
                     "Verifies set-based Work Center reads.",
-                    WorkCenterPriority.Normal,
+                    CoreWorkCenterPriority.Normal,
                     index % 2 == 0 ? adminUserId : null,
                     index % 2 == 0 ? null : "pm-ar-clerk",
                     DueAtUtc: DateTime.UtcNow.AddDays(1),
-                    PrimaryActionCode: PropertyManagementDocumentActionCodes
-                        .OpenReceivablesReconciliation.Value,
-                    NavigationTargetCode: "pm.receivables.apply",
-                    NavigationParameters: new Dictionary<string, string?>
-                    {
-                        ["paymentId"] = sourceId.ToString("D")
-                    },
+                    PrimaryActionCode: PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation,
+                    Target: new DocumentActionTargetDto(
+                        "pm.receivables.apply",
+                        new Dictionary<string, string?>
+                        {
+                            ["paymentId"] = sourceId.ToString("D")
+                        }),
                     DeduplicationKey: $"test:query-count:{index:D2}:{sourceId:D}",
                     CorrelationId: null,
-                    CausationId: null,
-                    MetadataJson: null),
+                    CausationId: null),
                 CancellationToken.None);
         }
     }
@@ -318,8 +320,8 @@ public sealed class DocumentActionsWorkCenter_QueryCount_P0Tests : IAsyncLifetim
                     new DocumentActionMetadata(
                         new DocumentActionCode($"test.query_count_{index:D2}"),
                         new DocumentActionPresentation($"Query action {index + 1}"),
-                        DocumentActionKind.Secondary,
-                        DocumentActionExecutionKind.View,
+                        CoreDocumentActionKind.Secondary,
+                        CoreDocumentActionExecutionKind.View,
                         2_000 + index,
                         Target: new DocumentActionTargetMetadata(
                             "document.editor",

@@ -17,6 +17,9 @@ using NGB.Runtime.Documents.Actions;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 using Xunit;
+using DocumentActionConfirmationMode = NGB.Core.Documents.Actions.DocumentActionConfirmationMode;
+using DocumentActionExecutionKind = NGB.Core.Documents.Actions.DocumentActionExecutionKind;
+using DocumentActionKind = NGB.Core.Documents.Actions.DocumentActionKind;
 
 namespace NGB.Runtime.Tests.Documents.Actions;
 
@@ -188,6 +191,16 @@ public sealed class DocumentActionEvaluatorCoverageTests
     }
 
     [Fact]
+    public void Evaluators_with_constructor_dependencies_are_rejected_at_configuration_time()
+    {
+        var action = () => DocumentActionComponentResolver.EnsurePureEvaluator(
+            typeof(IoBoundAvailabilityEvaluator));
+
+        action.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*must be pure*IDocumentActionContextEnricher*");
+    }
+
+    [Fact]
     public void Target_tokens_support_fields_documents_created_documents_and_null_values()
     {
         var document = Document();
@@ -281,7 +294,11 @@ public sealed class DocumentActionEvaluatorCoverageTests
         definitions ??= BaseDefinitions();
         registry ??= new DocumentActionRegistry(definitions, []);
         services ??= new ServiceCollection().BuildServiceProvider();
-        return new DocumentActionEvaluator(registry, definitions, services, enrichers ?? []);
+        return new DocumentActionEvaluator(
+            registry,
+            definitions,
+            new DocumentActionComponentResolver(services),
+            enrichers ?? []);
     }
 
     private static DefinitionsRegistry BaseDefinitions()
@@ -403,6 +420,18 @@ public sealed class DocumentActionEvaluatorCoverageTests
                     new DocumentActionDisabledReasonDto("z.reason", "Second"),
                     new DocumentActionDisabledReasonDto("a.reason", "First")
                 ]));
+    }
+
+    private sealed class IoBoundAvailabilityEvaluator(IDocumentService documents)
+        : IDocumentActionAvailabilityEvaluator
+    {
+        public ValueTask<DocumentActionAvailabilityResult> EvaluateAsync(
+            DocumentActionEvaluationContext context,
+            CancellationToken ct)
+        {
+            _ = documents;
+            return ValueTask.FromResult(DocumentActionAvailabilityResult.Allowed);
+        }
     }
 
     private sealed class NoOpHandler : IDocumentActionHandler

@@ -61,7 +61,7 @@ public sealed class DocumentService(
     TimeProvider? timeProvider = null,
     IAuditLogService? audit = null,
     IDocumentEffectsQueryService? effectsQuery = null)
-    : IDocumentService
+    : IDocumentService, IDocumentSystemLifecycleService
 {
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     public Task<IReadOnlyList<DocumentTypeMetadataDto>> GetAllMetadataAsync(CancellationToken ct)
@@ -363,12 +363,14 @@ public sealed class DocumentService(
 
     public async Task<DocumentDto> PostAsync(string documentType, Guid id, CancellationToken ct)
     {
+        await EnsureLifecycleTargetAsync(documentType, id, ct);
         await posting.PostAsync(id, ct);
         return await GetByIdAsync(documentType, id, ct);
     }
 
     public async Task<DocumentDto> UnpostAsync(string documentType, Guid id, CancellationToken ct)
     {
+        await EnsureLifecycleTargetAsync(documentType, id, ct);
         await posting.UnpostAsync(id, ct);
         return await GetByIdAsync(documentType, id, ct);
     }
@@ -378,6 +380,7 @@ public sealed class DocumentService(
         // Repost is a workflow operation (requires Posted state). For register-only documents
         // the accounting posting handler may be absent, and must NOT be resolved eagerly.
         var doc = await documents.GetAsync(id, ct) ?? throw new DocumentNotFoundException(id);
+        EnsureDocumentType(documentType, doc);
         var action = postingActionResolver.TryResolve(doc);
         await posting.RepostAsync(
             id,
@@ -394,18 +397,32 @@ public sealed class DocumentService(
 
     public async Task<DocumentDto> MarkForDeletionAsync(string documentType, Guid id, CancellationToken ct)
     {
+        await EnsureLifecycleTargetAsync(documentType, id, ct);
         await posting.MarkForDeletionAsync(id, ct);
         return await GetByIdAsync(documentType, id, ct);
     }
 
     public async Task<DocumentDto> UnmarkForDeletionAsync(string documentType, Guid id, CancellationToken ct)
     {
+        await EnsureLifecycleTargetAsync(documentType, id, ct);
         await posting.UnmarkForDeletionAsync(id, ct);
         return await GetByIdAsync(documentType, id, ct);
     }
 
     public Task<DocumentDto> ExecuteActionAsync(string documentType, Guid id, string actionCode, CancellationToken ct)
         => throw new DocumentActionsNotSupportedException(documentType, actionCode);
+
+    private async Task EnsureLifecycleTargetAsync(string documentType, Guid id, CancellationToken ct)
+    {
+        var document = await documents.GetAsync(id, ct) ?? throw new DocumentNotFoundException(id);
+        EnsureDocumentType(documentType, document);
+    }
+
+    private static void EnsureDocumentType(string expectedType, DocumentRecord document)
+    {
+        if (!string.Equals(expectedType?.Trim(), document.TypeCode, StringComparison.OrdinalIgnoreCase))
+            throw new DocumentTypeMismatchException(document.Id, expectedType ?? string.Empty, document.TypeCode);
+    }
 
     public async Task<RelationshipGraphDto> GetRelationshipGraphAsync(
         string documentType,
@@ -844,7 +861,7 @@ public sealed class DocumentService(
         {
             throw new NgbConfigurationViolationException(
                 $"Document '{model.Meta.TypeCode}' does not define a date column for period filtering.",
-                context: new Dictionary<string, object?> { [StandardDocumentActionCodes.DocumentType] = model.Meta.TypeCode });
+                context: new Dictionary<string, object?> { [DocumentActionContextKeys.DocumentType] = model.Meta.TypeCode });
         }
 
         return new DocumentPeriodFilter(columnName, from, to);

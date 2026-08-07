@@ -34,8 +34,8 @@ public sealed class DocumentActionDefinitionsBuilder
                 new Dictionary<string, object?>
                 {
                     ["definitionKind"] = "document_action",
-                    [StandardDocumentActionCodes.DocumentTypeCode] = documentType,
-                    [StandardDocumentActionCodes.DocumentActionCode] = metadata.Code.Value
+                    [DocumentActionContextKeys.DocumentTypeCode] = documentType,
+                    [DocumentActionContextKeys.ActionCode] = metadata.Code.Value
                 });
         }
 

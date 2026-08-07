@@ -42,7 +42,7 @@ public static class CrmRuntimeModuleServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentDerivationHandler, CrmLeadConversionDerivationHandler>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDefinitionsContributor, CrmDocumentDerivationDefinitionsContributor>());
         services.TryAddScoped<CrmWorkCenterPolicy>();
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IWorkCenterEventPolicy, CrmWorkCenterPolicy>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentActionCompletedWorkCenterPolicy, CrmWorkCenterPolicy>());
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
                 IWorkCenterPreferenceDefinitionSource,

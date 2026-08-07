@@ -7,6 +7,7 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Core.Dimensions;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Runtime;
 using NGB.PropertyManagement.Runtime.Exceptions;
 using NGB.PropertyManagement.Runtime.Policy;

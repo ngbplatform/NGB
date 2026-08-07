@@ -1,12 +1,10 @@
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
-using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
-using NGB.Contracts.Services;
-using NGB.Core.Events;
+using NGB.Persistence.Documents;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.Runtime.Receivables;
@@ -21,9 +19,9 @@ public sealed class PropertyManagementWorkCenterPolicyTests
         new(2026, 7, 26, 19, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void Exposes_document_action_completed_event_type()
+    public void Implements_the_typed_document_action_projection_contract()
     {
-        CreatePolicy().Policy.EventType.Should().Be("ngb.document.action.completed");
+        CreatePolicy().Policy.Should().BeAssignableTo<IDocumentActionCompletedWorkCenterPolicy>();
     }
 
     [Theory]
@@ -49,6 +47,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
         var sut = CreatePolicy();
         sut.Tasks
             .Setup(service => service.CancelByDeduplicationKeyAsync(
+                PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 $"pm:receivable-payment:{paymentId:D}:apply",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -63,24 +62,20 @@ public sealed class PropertyManagementWorkCenterPolicyTests
     }
 
     [Theory]
-    [InlineData("post", "Payment RP-100", "RP-100", "Payment RP-100")]
-    [InlineData("repost", null, "RP-101", "RP-101")]
-    [InlineData("post", null, null, "Receivable payment")]
+    [InlineData("post", "RP-100", "RP-100")]
+    [InlineData("repost", "RP-101", "RP-101")]
+    [InlineData("post", null, "Receivable payment")]
     public async Task Posting_payment_with_remaining_credit_creates_apply_task(
         string actionCode,
-        string? display,
         string? number,
         string expectedSourceTitle)
     {
         var paymentId = Guid.NewGuid();
         var sut = CreatePolicy();
-        var document = Document(paymentId, display, number);
+        var document = Document(paymentId, number);
         CreateWorkCenterTaskRequest? captured = null;
         sut.Documents
-            .Setup(service => service.GetByIdAsync(
-                PropertyManagementCodes.ReceivablePayment,
-                paymentId,
-                CancellationToken.None))
+            .Setup(repository => repository.GetAsync(paymentId, CancellationToken.None))
             .ReturnsAsync(document);
         sut.Availability
             .Setup(source => source.EvaluateAsync(
@@ -106,10 +101,10 @@ public sealed class PropertyManagementWorkCenterPolicyTests
         captured.Source.SubtitleSnapshot.Should().Be(number);
         captured.AssignedRoleCode.Should().Be("pm-ar-clerk");
         captured.DueAtUtc.Should().Be(Now.AddDays(3).UtcDateTime);
-        captured.PrimaryActionCode.Should().Be(
+        captured.PrimaryActionCode!.Value.Value.Should().Be(
             PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value);
-        captured.NavigationTargetCode.Should().Be("pm.receivables.reconciliation");
-        captured.NavigationParameters["paymentId"].Should().Be(paymentId.ToString());
+        captured.Target!.Code.Should().Be("pm.receivables.reconciliation");
+        captured.Target.Parameters["paymentId"].Should().Be(paymentId.ToString());
         captured.DeduplicationKey.Should().Be($"pm:receivable-payment:{paymentId:D}:apply");
         captured.CorrelationId.Should().NotBeNull();
         captured.CausationId.Should().NotBeNull();
@@ -121,11 +116,8 @@ public sealed class PropertyManagementWorkCenterPolicyTests
         var paymentId = Guid.NewGuid();
         var sut = CreatePolicy();
         sut.Documents
-            .Setup(service => service.GetByIdAsync(
-                PropertyManagementCodes.ReceivablePayment,
-                paymentId,
-                CancellationToken.None))
-            .ReturnsAsync(Document(paymentId, "Payment", "RP-200"));
+            .Setup(repository => repository.GetAsync(paymentId, CancellationToken.None))
+            .ReturnsAsync(Document(paymentId, "RP-200"));
         sut.Availability
             .Setup(source => source.EvaluateAsync(
                 PropertyManagementCodes.ReceivablePayment,
@@ -135,6 +127,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
             .ReturnsAsync(Disabled());
         sut.Tasks
             .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 $"pm:receivable-payment:{paymentId:D}:apply",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -159,11 +152,8 @@ public sealed class PropertyManagementWorkCenterPolicyTests
             .Setup(readers => readers.ReadReceivableApplyHeadAsync(applyId, CancellationToken.None))
             .ReturnsAsync(Apply(applyId, paymentId));
         sut.Documents
-            .Setup(service => service.GetByIdAsync(
-                PropertyManagementCodes.ReceivablePayment,
-                paymentId,
-                CancellationToken.None))
-            .ReturnsAsync(Document(paymentId, "Payment", "RP-300"));
+            .Setup(repository => repository.GetAsync(paymentId, CancellationToken.None))
+            .ReturnsAsync(Document(paymentId, "RP-300"));
         sut.Availability
             .Setup(source => source.EvaluateAsync(
                 PropertyManagementCodes.ReceivablePayment,
@@ -195,11 +185,8 @@ public sealed class PropertyManagementWorkCenterPolicyTests
             .Setup(readers => readers.ReadReceivableApplyHeadAsync(applyId, CancellationToken.None))
             .ReturnsAsync(Apply(applyId, paymentId));
         sut.Documents
-            .Setup(service => service.GetByIdAsync(
-                PropertyManagementCodes.ReceivablePayment,
-                paymentId,
-                CancellationToken.None))
-            .ReturnsAsync(Document(paymentId, "Payment", "RP-400"));
+            .Setup(repository => repository.GetAsync(paymentId, CancellationToken.None))
+            .ReturnsAsync(Document(paymentId, "RP-400"));
         sut.Availability
             .Setup(source => source.EvaluateAsync(
                 PropertyManagementCodes.ReceivablePayment,
@@ -209,6 +196,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
             .ReturnsAsync(Disabled());
         sut.Tasks
             .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 $"pm:receivable-payment:{paymentId:D}:apply",
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -222,12 +210,12 @@ public sealed class PropertyManagementWorkCenterPolicyTests
 
     private static (
         PropertyManagementWorkCenterPolicy Policy,
-        Mock<IDocumentService> Documents,
+        Mock<IDocumentRepository> Documents,
         Mock<IPropertyManagementDocumentReaders> TypedDocuments,
         Mock<IReceivablesApplyAvailabilitySource> Availability,
         Mock<IWorkCenterTaskService> Tasks) CreatePolicy()
     {
-        var documents = new Mock<IDocumentService>(MockBehavior.Strict);
+        var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
         var typedDocuments = new Mock<IPropertyManagementDocumentReaders>(MockBehavior.Strict);
         var availability = new Mock<IReceivablesApplyAvailabilitySource>(MockBehavior.Strict);
         var tasks = new Mock<IWorkCenterTaskService>(MockBehavior.Strict);
@@ -237,6 +225,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
             availability.Object,
             tasks.Object,
             realtime.Object,
+            new Mock<IWorkCenterChangeTracker>().Object,
             new FixedTimeProvider(Now),
             NullLogger<ReceivablePaymentWorkCenterSynchronizer>.Instance);
         return (
@@ -249,33 +238,39 @@ public sealed class PropertyManagementWorkCenterPolicyTests
             tasks);
     }
 
-    private static WorkCenterEventContext Context(Guid documentId, string documentType, string actionCode)
+    private static DocumentActionCompletedV1 Context(Guid documentId, string documentType, string actionCode)
     {
         var eventId = Guid.NewGuid();
-        return new WorkCenterEventContext(new PlatformOutboxEvent(
+        return new DocumentActionCompletedV1(
             eventId,
-            "ngb.document.action.completed",
-            1,
             Now.UtcDateTime,
             "tests",
             $"document:{documentId:D}",
             Guid.NewGuid(),
             Guid.NewGuid(),
             eventId,
-            JsonSerializer.Serialize(new
-            {
-                data = new
-                {
-                    documentId,
-                    documentType,
-                    actionCode
-                }
-            }),
-            Now.UtcDateTime));
+            new DocumentActionCompletedDataV1(
+                documentId,
+                documentType,
+                actionCode,
+                NGB.Core.Documents.DocumentStatus.Draft,
+                NGB.Core.Documents.DocumentStatus.Posted,
+                2));
     }
 
-    private static DocumentDto Document(Guid id, string? display, string? number)
-        => new(id, display, new RecordPayload(), DocumentStatus.Posted, false, number);
+    private static NGB.Core.Documents.DocumentRecord Document(Guid id, string? number)
+        => new()
+        {
+            Id = id,
+            TypeCode = PropertyManagementCodes.ReceivablePayment,
+            Number = number,
+            DateUtc = Now.UtcDateTime,
+            Status = NGB.Core.Documents.DocumentStatus.Posted,
+            Version = 1,
+            CreatedAtUtc = Now.UtcDateTime,
+            UpdatedAtUtc = Now.UtcDateTime,
+            PostedAtUtc = Now.UtcDateTime
+        };
 
     private static PmReceivableApplyHead Apply(Guid applyId, Guid paymentId)
         => new(

@@ -11,6 +11,7 @@ using NGB.Contracts.Graph;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Documents;

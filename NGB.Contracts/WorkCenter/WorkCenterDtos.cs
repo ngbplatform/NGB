@@ -1,4 +1,3 @@
-using NGB.Core.WorkCenter;
 using NGB.Contracts.Documents;
 
 namespace NGB.Contracts.WorkCenter;
@@ -52,7 +51,7 @@ public sealed record WorkCenterPageDto(
 public sealed record WorkCenterQueryDto(
     string? Cursor = null,
     int Limit = 30,
-    string? Tab = null,
+    WorkCenterTab Tab = WorkCenterTab.Attention,
     string? Vertical = null,
     WorkCenterPriority? Priority = null,
     NotificationSeverity? Severity = null,

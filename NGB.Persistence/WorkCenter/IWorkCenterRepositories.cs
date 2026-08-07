@@ -4,6 +4,14 @@ namespace NGB.Persistence.WorkCenter;
 
 public sealed record WorkCenterCursor(DateTime SortAtUtc, Guid Id);
 
+public enum WorkCenterQueryView
+{
+    Attention = 1,
+    Tasks = 2,
+    Notifications = 3,
+    Completed = 4
+}
+
 public sealed record WorkCenterQuery(
     Guid UserId,
     IReadOnlyList<Guid> RoleIds,
@@ -12,13 +20,15 @@ public sealed record WorkCenterQuery(
     IReadOnlyList<string> AllowedResourceCodes,
     WorkCenterCursor? Cursor,
     int Limit,
-    string? Tab,
+    WorkCenterQueryView View,
     string? Vertical,
     WorkCenterPriority? Priority,
     NotificationSeverity? Severity,
     bool? Overdue,
     bool? Unread,
     DateTime NowUtc);
+
+public sealed record WorkCenterNavigationTargetRecord(string Code, IReadOnlyDictionary<string, string?> Parameters);
 
 public sealed record WorkCenterItemRecord(
     Guid Id,
@@ -42,8 +52,7 @@ public sealed record WorkCenterItemRecord(
     Guid? AssignedRoleId,
     Guid? ClaimedByUserId,
     string? PrimaryActionCode,
-    string? NavigationTargetCode,
-    string? NavigationParametersJson,
+    WorkCenterNavigationTargetRecord? Target,
     long Version);
 
 public sealed record WorkCenterSummaryRecord(
@@ -57,16 +66,29 @@ public sealed record WorkCenterSummaryRecord(
 public sealed record WorkCenterTaskHealthRecord(long OpenTaskCount, long OverdueTaskCount);
 
 public sealed record WorkCenterTaskCreateResult(Guid TaskId, bool BecameActive, long Version);
+public sealed record WorkCenterTaskMutationResult(bool Changed, IReadOnlyList<Guid> RecipientUserIds);
+public sealed record WorkCenterNotificationCreateResult(Guid NotificationId, IReadOnlyList<Guid> CreatedRecipientUserIds);
 
 public interface IWorkCenterTaskRepository
 {
     Task<WorkCenterTaskCreateResult> CreateAsync(
         WorkCenterTask task,
+        string? primaryActionCode,
+        WorkCenterNavigationTargetRecord? target,
         IReadOnlyList<Guid> recipientUserIds,
         CancellationToken ct);
 
-    Task CompleteByDeduplicationKeyAsync(string deduplicationKey, DateTime completedAtUtc, CancellationToken ct);
-    Task CancelByDeduplicationKeyAsync(string deduplicationKey, DateTime cancelledAtUtc, CancellationToken ct);
+    Task<WorkCenterTaskMutationResult> CompleteByDeduplicationKeyAsync(
+        string taskCode,
+        string deduplicationKey,
+        DateTime completedAtUtc,
+        CancellationToken ct);
+
+    Task<WorkCenterTaskMutationResult> CancelByDeduplicationKeyAsync(
+        string taskCode,
+        string deduplicationKey,
+        DateTime cancelledAtUtc,
+        CancellationToken ct);
 
     Task MarkReadAsync(
         Guid taskId,
@@ -102,7 +124,7 @@ public interface IWorkCenterTaskRepository
 
 public interface INotificationRepository
 {
-    Task<Guid> CreateAsync(
+    Task<WorkCenterNotificationCreateResult> CreateAsync(
         WorkCenterNotification notification,
         IReadOnlyList<Guid> recipientUserIds,
         CancellationToken ct);
@@ -143,6 +165,8 @@ public interface INotificationPreferenceRepository
         CancellationToken ct);
 
     Task UpsertAsync(NotificationPreferenceRecord preference, CancellationToken ct);
+
+    Task UpsertManyAsync(IReadOnlyList<NotificationPreferenceRecord> preferences, CancellationToken ct);
 }
 
 public interface IWorkCenterReadRepository
@@ -160,4 +184,28 @@ public interface IWorkCenterReadRepository
         CancellationToken ct);
 
     Task<IReadOnlyList<WorkCenterItemRecord>> GetItemsAsync(WorkCenterQuery query, CancellationToken ct);
+}
+
+public sealed record WorkCenterRetentionCutoffs(
+    DateTime DocumentActionExecutionsBeforeUtc,
+    DateTime TerminalTasksBeforeUtc,
+    DateTime NotificationDeliveriesBeforeUtc,
+    DateTime OutboxBeforeUtc);
+
+public sealed record WorkCenterPruneResult(
+    int DocumentActionExecutions,
+    int Tasks,
+    int NotificationDeliveries,
+    int Notifications,
+    int OutboxEvents)
+{
+    public int Total => DocumentActionExecutions + Tasks + NotificationDeliveries + Notifications + OutboxEvents;
+}
+
+public interface IWorkCenterMaintenanceRepository
+{
+    Task<WorkCenterPruneResult> PruneAsync(
+        WorkCenterRetentionCutoffs cutoffs,
+        int batchSize,
+        CancellationToken ct);
 }

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Documents;
 using NGB.Contracts.WorkCenter;
@@ -16,15 +15,93 @@ using NGB.Runtime.Observability;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
+using NotificationChannel = NGB.Core.WorkCenter.NotificationChannel;
+using NotificationSeverity = NGB.Core.WorkCenter.NotificationSeverity;
+using WorkCenterItemKind = NGB.Core.WorkCenter.WorkCenterItemKind;
+using WorkCenterPreferenceKind = NGB.Core.WorkCenter.WorkCenterPreferenceKind;
+using WorkCenterPriority = NGB.Core.WorkCenter.WorkCenterPriority;
+using WorkCenterTaskStatus = NGB.Core.WorkCenter.WorkCenterTaskStatus;
 
 namespace NGB.Runtime.WorkCenter;
+
+internal sealed class WorkCenterChangeTracker : IWorkCenterChangeTracker
+{
+    private readonly HashSet<Guid> _userIds = [];
+
+    public void Track(IEnumerable<Guid> userIds)
+    {
+        ArgumentNullException.ThrowIfNull(userIds);
+
+        foreach (var userId in userIds)
+        {
+            if (userId != Guid.Empty)
+                _userIds.Add(userId);
+        }
+    }
+
+    public IReadOnlyList<Guid> Drain()
+    {
+        var result = _userIds.Order().ToArray();
+        _userIds.Clear();
+        return result;
+    }
+
+    public void Reset() => _userIds.Clear();
+}
 
 internal sealed class WorkCenterPreferenceRecipientResolver(
     INotificationPreferenceRepository preferences,
     IPlatformUserRepository users,
+    IPlatformRoleRepository roles,
     IPlatformUserRoleRepository userRoles,
     WorkCenterPreferenceDefinitionRegistry definitions)
 {
+    private readonly Dictionary<Guid, NGB.Core.AuditLog.PlatformUser?> _users = [];
+    private readonly HashSet<Guid> _loadedUsers = [];
+    private readonly Dictionary<Guid, IReadOnlyList<PlatformRole>> _rolesByUser = [];
+    private readonly HashSet<Guid> _loadedRoleUsers = [];
+    private readonly Dictionary<(Guid UserId, string Code, NotificationChannel Channel), NotificationPreferenceRecord> _preferences = [];
+    private readonly HashSet<Guid> _loadedPreferenceUsers = [];
+    private readonly Dictionary<string, PlatformRole?> _rolesByCode = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<Guid, IReadOnlyList<Guid>> _membersByRole = [];
+
+    public void Reset()
+    {
+        _users.Clear();
+        _loadedUsers.Clear();
+        _rolesByUser.Clear();
+        _loadedRoleUsers.Clear();
+        _preferences.Clear();
+        _loadedPreferenceUsers.Clear();
+        _rolesByCode.Clear();
+        _membersByRole.Clear();
+    }
+
+    public async Task<(Guid RoleId, IReadOnlyList<Guid> Recipients)> ResolveRoleAssignmentAsync(
+        string preferenceCode,
+        WorkCenterPreferenceKind expectedKind,
+        string roleCode,
+        CancellationToken ct)
+    {
+        if (!_rolesByCode.TryGetValue(roleCode, out var role))
+        {
+            role = await roles.GetByCodeAsync(roleCode, ct);
+            _rolesByCode[roleCode] = role;
+        }
+
+        if (role is null || !role.IsActive)
+            throw new NgbConfigurationViolationException($"Work Center assignment role '{roleCode}' is not registered or active.");
+
+        if (!_membersByRole.TryGetValue(role.RoleId, out var candidates))
+        {
+            candidates = await userRoles.GetUserIdsForRoleAsync(role.RoleId, ct);
+            _membersByRole[role.RoleId] = candidates;
+        }
+
+        var recipients = await ResolveAsync(preferenceCode, expectedKind, candidates, ct);
+        return (role.RoleId, recipients);
+    }
+
     public async Task<IReadOnlyList<Guid>> ResolveAsync(
         string preferenceCode,
         WorkCenterPreferenceKind expectedKind,
@@ -39,9 +116,20 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
         if (recipients.Length == 0)
             return [];
 
-        var recipientUsers = await users.GetByIdsAsync(recipients, ct);
+        var missingUsers = recipients.Where(x => !_loadedUsers.Contains(x)).ToArray();
+        if (missingUsers.Length > 0)
+        {
+            var loaded = await users.GetByIdsAsync(missingUsers, ct);
+
+            foreach (var userId in missingUsers)
+            {
+                _loadedUsers.Add(userId);
+                _users[userId] = loaded.GetValueOrDefault(userId);
+            }
+        }
+
         recipients = recipients
-            .Where(userId => recipientUsers.TryGetValue(userId, out var user) && user.IsActive)
+            .Where(userId => _users.TryGetValue(userId, out var user) && user is { IsActive: true })
             .ToArray();
 
         if (recipients.Length == 0)
@@ -57,9 +145,19 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
 
         if (definition.ApplicableRoleCodes is { Count: > 0 })
         {
-            var rolesByUser = await userRoles.GetRolesForUsersAsync(recipients, ct);
+            var missingRoleUsers = recipients.Where(x => !_loadedRoleUsers.Contains(x)).ToArray();
+            if (missingRoleUsers.Length > 0)
+            {
+                var loadedRoles = await userRoles.GetRolesForUsersAsync(missingRoleUsers, ct);
+                foreach (var userId in missingRoleUsers)
+                {
+                    _loadedRoleUsers.Add(userId);
+                    _rolesByUser[userId] = loadedRoles.GetValueOrDefault(userId) ?? [];
+                }
+            }
+
             recipients = recipients
-                .Where(userId => rolesByUser.TryGetValue(userId, out var assignedRoles)
+                .Where(userId => _rolesByUser.TryGetValue(userId, out var assignedRoles)
                                  && assignedRoles.Any(role =>
                                      role.IsActive
                                      && definition.ApplicableRoleCodes.Contains(role.Code)))
@@ -69,15 +167,28 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
                 return [];
         }
 
-        var configuredPreferences = await preferences.GetForUsersAsync(recipients, ct);
+        var missingPreferenceUsers = recipients.Where(x => !_loadedPreferenceUsers.Contains(x)).ToArray();
+        if (missingPreferenceUsers.Length > 0)
+        {
+            var configured = await preferences.GetForUsersAsync(missingPreferenceUsers, ct);
+            foreach (var userId in missingPreferenceUsers)
+            {
+                _loadedPreferenceUsers.Add(userId);
+            }
+
+            foreach (var item in configured)
+            {
+                _preferences[(item.UserId, item.NotificationCode.ToUpperInvariant(), item.Channel)] = item;
+            }
+        }
 
         return recipients
             .Where(userId =>
             {
-                var configured = configuredPreferences.FirstOrDefault(
-                    x => x.UserId == userId
-                         && string.Equals(x.NotificationCode, definition.Code, StringComparison.OrdinalIgnoreCase)
-                         && x.Channel == NotificationChannel.InApp);
+                _preferences.TryGetValue(
+                    (userId, definition.Code.ToUpperInvariant(), NotificationChannel.InApp),
+                    out var configured);
+
                 return definition.IsMandatory
                        || configured?.IsEnabled == true
                        || (configured is null && definition.DefaultEnabled);
@@ -89,9 +200,8 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
 internal sealed class WorkCenterTaskService(
     IUnitOfWork uow,
     IWorkCenterTaskRepository tasks,
-    IPlatformRoleRepository roles,
-    IPlatformUserRoleRepository userRoles,
     WorkCenterPreferenceRecipientResolver recipientResolver,
+    IWorkCenterChangeTracker changes,
     TimeProvider timeProvider)
     : IWorkCenterTaskService
 {
@@ -99,44 +209,48 @@ internal sealed class WorkCenterTaskService(
         => InTransactionAsync(async innerCt =>
         {
             ArgumentNullException.ThrowIfNull(request);
+            var hasUserAssignment = request.AssignedUserId.HasValue;
+            var hasRoleAssignment = !string.IsNullOrWhiteSpace(request.AssignedRoleCode);
+            if (hasUserAssignment == hasRoleAssignment)
+                throw new NgbArgumentInvalidException("assignment", "Exactly one assigned user or role code is required.");
+
             Guid? roleId = null;
 
-            if (request.AssignedRoleCode is not null)
+            if (hasRoleAssignment)
             {
-                var role = await roles.GetByCodeAsync(request.AssignedRoleCode, innerCt);
-                if (role is null || !role.IsActive)
-                {
-                    throw new NgbConfigurationViolationException(
-                        $"Work Center assignment role '{request.AssignedRoleCode}' is not registered or active.");
-                }
+                var roleResolution = await recipientResolver.ResolveRoleAssignmentAsync(
+                    request.TaskCode,
+                    WorkCenterPreferenceKind.Task,
+                    request.AssignedRoleCode!,
+                    innerCt);
+                roleId = roleResolution.RoleId;
 
-                roleId = role.RoleId;
+                if (roleResolution.Recipients.Count == 0)
+                    return null;
+
+                return await CreateTaskAsync(request, roleId, roleResolution.Recipients, innerCt);
             }
-
-            if (request.AssignedUserId.HasValue == roleId.HasValue)
-                throw new NgbArgumentInvalidException(
-                    "assignment",
-                    "Exactly one assigned user or role code is required.");
-
-            var candidateRecipients = request.AssignedUserId is { } assignedUserId
-                ? [assignedUserId]
-                : await userRoles.GetUserIdsForRoleAsync(roleId!.Value, innerCt);
 
             var recipients = await recipientResolver.ResolveAsync(
                 request.TaskCode,
                 WorkCenterPreferenceKind.Task,
-                candidateRecipients,
+                [request.AssignedUserId!.Value],
                 innerCt);
 
             if (recipients.Count == 0)
                 return null;
 
-            var now = timeProvider.GetUtcNowDateTime();
-            var actionCode = request.PrimaryActionCode is null
-                ? (DocumentActionCode?)null
-                : new DocumentActionCode(request.PrimaryActionCode);
+            return await CreateTaskAsync(request, roleId, recipients, innerCt);
+        }, ct);
 
-            var result = await tasks.CreateAsync(
+    private async Task<Guid?> CreateTaskAsync(
+        CreateWorkCenterTaskRequest request,
+        Guid? roleId,
+        IReadOnlyList<Guid> recipients,
+        CancellationToken ct)
+    {
+        var now = timeProvider.GetUtcNowDateTime();
+        var result = await tasks.CreateAsync(
                 new WorkCenterTask(
                     Guid.CreateVersion7(),
                     request.TaskCode,
@@ -150,38 +264,47 @@ internal sealed class WorkCenterTaskService(
                     roleId,
                     ClaimedByUserId: null,
                     request.DueAtUtc,
-                    actionCode,
-                    request.NavigationTargetCode,
-                    request.NavigationParameters,
                     now,
                     CompletedAtUtc: null,
                     CancelledAtUtc: null,
                     request.DeduplicationKey,
                     Version: 1,
                     request.CorrelationId,
-                    request.CausationId,
-                    request.MetadataJson),
+                    request.CausationId),
+                request.PrimaryActionCode?.Value,
+                request.Target is null
+                    ? null
+                    : new WorkCenterNavigationTargetRecord(request.Target.Code, request.Target.Parameters),
                 recipients,
-                innerCt);
+                ct);
 
-            return (Guid?)result.TaskId;
+        if (result.BecameActive)
+            changes.Track(recipients);
+
+        return result.TaskId;
+    }
+
+    public Task CompleteByDeduplicationKeyAsync(string taskCode, string deduplicationKey, CancellationToken ct)
+        => InTransactionAsync(async innerCt =>
+        {
+            var result = await tasks.CompleteByDeduplicationKeyAsync(
+                taskCode,
+                deduplicationKey,
+                timeProvider.GetUtcNowDateTime(),
+                innerCt);
+            changes.Track(result.RecipientUserIds);
         }, ct);
 
-    public Task CompleteByDeduplicationKeyAsync(string deduplicationKey, CancellationToken ct)
-        => InTransactionAsync(
-            innerCt => tasks.CompleteByDeduplicationKeyAsync(
+    public Task CancelByDeduplicationKeyAsync(string taskCode, string deduplicationKey, CancellationToken ct)
+        => InTransactionAsync(async innerCt =>
+        {
+            var result = await tasks.CancelByDeduplicationKeyAsync(
+                taskCode,
                 deduplicationKey,
                 timeProvider.GetUtcNowDateTime(),
-                innerCt),
-            ct);
-
-    public Task CancelByDeduplicationKeyAsync(string deduplicationKey, CancellationToken ct)
-        => InTransactionAsync(
-            innerCt => tasks.CancelByDeduplicationKeyAsync(
-                deduplicationKey,
-                timeProvider.GetUtcNowDateTime(),
-                innerCt),
-            ct);
+                innerCt);
+            changes.Track(result.RecipientUserIds);
+        }, ct);
 
     private Task InTransactionAsync(Func<CancellationToken, Task> action, CancellationToken ct)
         => uow.ExecuteInUowTransactionAsync(!uow.HasActiveTransaction, action, ct);
@@ -195,6 +318,7 @@ internal sealed class NotificationService(
     INotificationRepository notifications,
     WorkCenterPreferenceRecipientResolver recipientResolver,
     WorkCenterPreferenceDefinitionRegistry definitions,
+    IWorkCenterChangeTracker changes,
     TimeProvider timeProvider)
     : INotificationService
 {
@@ -211,11 +335,27 @@ internal sealed class NotificationService(
                     $"'{definition.Kind}' and cannot create a notification.");
             }
 
-            var enabledRecipients = await recipientResolver.ResolveAsync(
-                request.DefinitionCode,
-                WorkCenterPreferenceKind.Notification,
-                request.RecipientUserIds,
-                innerCt);
+            IReadOnlyList<Guid> enabledRecipients;
+            if (!string.IsNullOrWhiteSpace(request.RecipientRoleCode))
+            {
+                if (request.RecipientUserIds.Count > 0)
+                    throw new NgbArgumentInvalidException("recipients", "Specify either recipient users or a recipient role, not both.");
+
+                var resolution = await recipientResolver.ResolveRoleAssignmentAsync(
+                    request.DefinitionCode,
+                    WorkCenterPreferenceKind.Notification,
+                    request.RecipientRoleCode,
+                    innerCt);
+                enabledRecipients = resolution.Recipients;
+            }
+            else
+            {
+                enabledRecipients = await recipientResolver.ResolveAsync(
+                    request.DefinitionCode,
+                    WorkCenterPreferenceKind.Notification,
+                    request.RecipientUserIds,
+                    innerCt);
+            }
 
             if (enabledRecipients.Count == 0)
                 return null;
@@ -224,7 +364,7 @@ internal sealed class NotificationService(
             var expires = request.ExpiresAtUtc
                 ?? (definition.Retention is { } retention ? now.Add(retention) : null);
 
-            var notificationId = await notifications.CreateAsync(
+            var createResult = await notifications.CreateAsync(
                 new WorkCenterNotification(
                     Guid.CreateVersion7(),
                     definition.Code,
@@ -236,17 +376,18 @@ internal sealed class NotificationService(
                     expires,
                     request.DeduplicationKey,
                     request.CorrelationId,
-                    request.CausationId,
-                    request.MetadataJson),
+                    request.CausationId),
                 enabledRecipients,
                 innerCt);
+
+            changes.Track(createResult.CreatedRecipientUserIds);
 
             NgbFeatureTelemetry.WorkCenterNotificationsCreated.Add(
                 1,
                 new KeyValuePair<string, object?>("notification.code", definition.Code),
                 new KeyValuePair<string, object?>("notification.severity", request.Severity ?? definition.DefaultSeverity));
 
-            return notificationId;
+            return createResult.NotificationId;
         }, ct);
 }
 
@@ -329,10 +470,16 @@ internal sealed class WorkCenterQueryService(
                     visibility.ResourceCodes,
                     cursor,
                     limit + 1,
-                    query.Tab,
+                    query.Tab switch
+                    {
+                        WorkCenterTab.Tasks => WorkCenterQueryView.Tasks,
+                        WorkCenterTab.Notifications => WorkCenterQueryView.Notifications,
+                        WorkCenterTab.Completed => WorkCenterQueryView.Completed,
+                        _ => WorkCenterQueryView.Attention
+                    },
                     query.Vertical,
-                    query.Priority,
-                    query.Severity,
+                    query.Priority is { } priority ? (WorkCenterPriority)priority : null,
+                    query.Severity is { } severity ? (NotificationSeverity)severity : null,
                     query.Overdue,
                     query.Unread,
                     now),
@@ -469,23 +616,25 @@ internal sealed class WorkCenterQueryService(
     {
         var access = await GetAccessAsync(ct);
         var configured = await preferences.GetForUserAsync(access.UserId, ct);
+        var configuredByCodeAndChannel = configured.ToDictionary(
+            static x => (x.NotificationCode.ToUpperInvariant(), x.Channel));
 
         return definitions.All
             .Where(definition => IsApplicableToRoles(definition, access.Roles))
             .SelectMany(definition => definition.SupportedChannels.Select(channel =>
             {
-                var current = configured.FirstOrDefault(
-                    x => string.Equals(x.NotificationCode, definition.Code, StringComparison.OrdinalIgnoreCase)
-                         && x.Channel == channel);
+                configuredByCodeAndChannel.TryGetValue(
+                    (definition.Code.ToUpperInvariant(), channel),
+                    out var current);
 
                 var isEnabled = definition.IsMandatory || (current?.IsEnabled ?? definition.DefaultEnabled);
 
                 return new NotificationPreferenceDto(
                     definition.Code,
-                    definition.Kind,
+                    (NGB.Contracts.WorkCenter.WorkCenterPreferenceKind)definition.Kind,
                     definition.DisplayName,
                     definition.Category,
-                    channel,
+                    (NGB.Contracts.WorkCenter.NotificationChannel)channel,
                     isEnabled,
                     definition.DefaultEnabled,
                     definition.UserCanDisable,
@@ -501,10 +650,12 @@ internal sealed class WorkCenterQueryService(
         UpdateNotificationPreferencesRequestDto request,
         CancellationToken ct)
     {
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var userId = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             ArgumentNullException.ThrowIfNull(request);
             var access = await GetAccessAsync(innerCt);
+            var now = timeProvider.GetUtcNowDateTime();
+            var updates = new Dictionary<(string Code, NotificationChannel Channel), NotificationPreferenceRecord>();
 
             foreach (var item in request.Preferences)
             {
@@ -513,7 +664,8 @@ internal sealed class WorkCenterQueryService(
                     throw new NgbPermissionDeniedException(
                         new NgbPermissionKey(NgbResourceKinds.System, "notification_preferences", NgbPermissionActions.Manage));
 
-                if (!definition.SupportedChannels.Contains(item.Channel))
+                var channel = (NotificationChannel)item.Channel;
+                if (!definition.SupportedChannels.Contains(channel))
                     throw new NgbArgumentInvalidException(nameof(item.Channel), "Unsupported notification channel.");
 
                 if (!item.IsEnabled)
@@ -525,36 +677,38 @@ internal sealed class WorkCenterQueryService(
                         throw new NgbArgumentInvalidException(nameof(item.IsEnabled), "This notification cannot be disabled.");
                 }
 
-                await preferences.UpsertAsync(
-                    new NotificationPreferenceRecord(
+                updates[(definition.Code.ToUpperInvariant(), channel)] = new NotificationPreferenceRecord(
                         access.UserId,
                         definition.Code,
-                        item.Channel,
+                        channel,
                         definition.IsMandatory || item.IsEnabled,
-                        timeProvider.GetUtcNowDateTime(),
-                        Version: 1),
-                    innerCt);
+                        now,
+                        Version: 1);
             }
+
+            await preferences.UpsertManyAsync(updates.Values.ToArray(), innerCt);
+            return access.UserId;
         }, ct);
 
-        await NotifyChangedAsync(ct);
+        await NotifyChangedAsync([userId], ct);
     }
 
     private async Task MutateAsync(
         Func<WorkCenterAccess, DateTime, CancellationToken, Task> mutation,
         CancellationToken ct)
     {
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var userId = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             var access = await GetAccessAsync(innerCt);
             await mutation(access, timeProvider.GetUtcNowDateTime(), innerCt);
+            return access.UserId;
         }, ct);
 
-        await NotifyChangedAsync(ct);
+        await NotifyChangedAsync([userId], ct);
     }
 
-    private Task NotifyChangedAsync(CancellationToken ct)
-        => realtime.NotifyChangedAsync(timeProvider.GetUtcNow().UtcTicks, ct);
+    private Task NotifyChangedAsync(IReadOnlyCollection<Guid> userIds, CancellationToken ct)
+        => realtime.NotifyUsersChangedAsync(timeProvider.GetUtcNow().UtcTicks, userIds, ct);
 
     private static bool IsApplicableToRoles(
         WorkCenterPreferenceDefinition definition,
@@ -581,16 +735,9 @@ internal sealed class WorkCenterQueryService(
 
     private static WorkCenterItemDto ToDto(WorkCenterItemRecord row, DateTime now)
     {
-        IReadOnlyDictionary<string, string?> parameters = new Dictionary<string, string?>();
-        if (!string.IsNullOrWhiteSpace(row.NavigationParametersJson))
-        {
-            parameters = JsonSerializer.Deserialize<Dictionary<string, string?>>(row.NavigationParametersJson)
-                ?? new Dictionary<string, string?>();
-        }
-
         return new WorkCenterItemDto(
             row.Id,
-            row.Kind,
+            (NGB.Contracts.WorkCenter.WorkCenterItemKind)row.Kind,
             row.Code,
             row.Title,
             row.Description,
@@ -600,9 +747,9 @@ internal sealed class WorkCenterQueryService(
                 row.SourceEntityId,
                 row.SourceTitleSnapshot,
                 row.SourceSubtitleSnapshot),
-            row.Priority,
-            row.Severity,
-            row.TaskStatus,
+            row.Priority is { } priority ? (NGB.Contracts.WorkCenter.WorkCenterPriority)priority : null,
+            row.Severity is { } severity ? (NGB.Contracts.WorkCenter.NotificationSeverity)severity : null,
+            row.TaskStatus is { } status ? (NGB.Contracts.WorkCenter.WorkCenterTaskStatus)status : null,
             row.SortAtUtc,
             row.DueAtUtc,
             row.DueAtUtc < now && row.TaskStatus is WorkCenterTaskStatus.Open or WorkCenterTaskStatus.InProgress,
@@ -616,9 +763,9 @@ internal sealed class WorkCenterQueryService(
                     row.AssignedRoleId is not null)
                 : null,
             row.PrimaryActionCode,
-            row.NavigationTargetCode is null
+            row.Target is null
                 ? null
-                : new DocumentActionTargetDto(row.NavigationTargetCode, parameters),
+                : new DocumentActionTargetDto(row.Target.Code, row.Target.Parameters),
             row.Version);
     }
 

@@ -6,6 +6,7 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.Runtime.Documents.Workflow;
 using NGB.Tools.Exceptions;
 using Xunit;

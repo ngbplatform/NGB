@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
+using NGB.Trade.Api.IntegrationTests.Support;
 using NGB.Trade.Contracts;
 using NGB.Trade.Runtime;
 using NGB.Trade.Runtime.Pricing;

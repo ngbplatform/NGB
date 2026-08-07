@@ -2,9 +2,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Moq;
+using NGB.Application.Abstractions.Services;
 using NGB.Api.WorkCenter;
-using NGB.Persistence.Outbox;
-using NGB.Persistence.WorkCenter;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.WorkCenter;
@@ -15,17 +14,17 @@ public sealed class WorkCenterOutboxHealthCheckTests
         new(2026, 7, 26, 20, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task Returns_healthy_when_outbox_is_not_configured()
+    public async Task Returns_healthy_for_an_empty_operational_snapshot()
     {
-        using var provider = new ServiceCollection().BuildServiceProvider();
-        var health = new WorkCenterOutboxHealthCheck(
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new FixedTimeProvider(Now));
-
-        var result = await health.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
+        var result = await CheckAsync(
+            pending: 0,
+            oldest: null,
+            failed: 0,
+            openTasks: 0,
+            overdueTasks: 0);
 
         result.Status.Should().Be(HealthStatus.Healthy);
-        result.Description.Should().Contain("not configured");
+        result.Description.Should().Contain("current");
     }
 
     [Fact]
@@ -98,31 +97,26 @@ public sealed class WorkCenterOutboxHealthCheckTests
         long openTasks,
         long overdueTasks)
     {
-        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
-        outbox
-            .Setup(repository => repository.GetHealthAsync("work-center", CancellationToken.None))
-            .ReturnsAsync((pending, oldest, failed));
-        var reads = new Mock<IWorkCenterReadRepository>(MockBehavior.Strict);
-        reads
-            .Setup(repository => repository.GetTaskHealthAsync(Now.UtcDateTime, CancellationToken.None))
-            .ReturnsAsync(new WorkCenterTaskHealthRecord(openTasks, overdueTasks));
+        var oldestAgeSeconds = oldest is null
+            ? 0d
+            : Math.Max(0d, (Now.UtcDateTime - oldest.Value).TotalSeconds);
+        var reader = new Mock<IWorkCenterOperationalHealthReader>(MockBehavior.Strict);
+        reader
+            .Setup(x => x.ReadAsync(CancellationToken.None))
+            .ReturnsAsync(new WorkCenterOperationalHealthSnapshot(
+                pending,
+                failed,
+                oldestAgeSeconds,
+                openTasks,
+                overdueTasks));
         using var provider = new ServiceCollection()
-            .AddSingleton(outbox.Object)
-            .AddSingleton(reads.Object)
+            .AddSingleton(reader.Object)
             .BuildServiceProvider();
-        var health = new WorkCenterOutboxHealthCheck(
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new FixedTimeProvider(Now));
+        var health = new WorkCenterOutboxHealthCheck(provider.GetRequiredService<IServiceScopeFactory>());
 
         var result = await health.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
 
-        outbox.VerifyAll();
-        reads.VerifyAll();
+        reader.VerifyAll();
         return result;
-    }
-
-    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => now;
     }
 }

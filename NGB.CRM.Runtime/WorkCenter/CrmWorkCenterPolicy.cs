@@ -1,39 +1,42 @@
-using System.Text.Json;
+using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Documents;
 using NGB.Core.Documents.Actions;
+using NGB.Core.Documents.Exceptions;
+using NGB.Core.WorkCenter;
 using NGB.CRM.Documents;
 using NGB.CRM.Runtime.DocumentActions;
-using NGB.Persistence.Security;
-using NGB.Core.WorkCenter;
+using NGB.Persistence.Documents;
 
 namespace NGB.CRM.Runtime.WorkCenter;
 
 public sealed class CrmWorkCenterPolicy(
-    IDocumentService documents,
+    IDocumentRepository documents,
     ICrmDocumentReaders typedDocuments,
     IWorkCenterTaskService tasks,
     INotificationService notifications,
-    IPlatformRoleRepository roles,
-    IPlatformUserRoleRepository userRoles,
     TimeProvider timeProvider)
-    : IWorkCenterEventPolicy
+    : IDocumentActionCompletedWorkCenterPolicy
 {
-    public string EventType => StandardDocumentActionCodes.DocumentActionCompletedType;
-
-    public async Task HandleAsync(WorkCenterEventContext context, CancellationToken ct)
+    public async Task HandleAsync(DocumentActionCompletedV1 @event, CancellationToken ct)
     {
-        using var json = JsonDocument.Parse(context.Event.PayloadJson);
-        var data = json.RootElement.GetProperty("data");
-        var documentId = data.GetProperty(StandardDocumentActionCodes.DocumentIdKey).GetGuid();
-        var documentType = data.GetProperty(StandardDocumentActionCodes.DocumentType).GetString();
-        var actionCode = data.GetProperty(StandardDocumentActionCodes.DocumentActionCode).GetString()?.Trim().ToLowerInvariant();
+        var documentId = @event.Data.DocumentId;
+        var documentType = @event.Data.DocumentType;
+        var actionCode = @event.Data.ActionCode.Trim().ToLowerInvariant();
 
         if (string.Equals(documentType, CrmCodes.LeadIntake, StringComparison.OrdinalIgnoreCase))
         {
             if (actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
-                await CreateQualificationTaskAsync(documentId, context, ct);
+            {
+                await CreateQualificationTaskAsync(documentId, @event, ct);
+            }
             else if (string.Equals(actionCode, StandardDocumentActionCodes.UnpostValue, StringComparison.OrdinalIgnoreCase))
-                await tasks.CancelByDeduplicationKeyAsync(QualificationKey(documentId), ct);
+            {
+                await tasks.CancelByDeduplicationKeyAsync(
+                    CrmWorkCenterCodes.QualifyLeadTask,
+                    QualificationKey(documentId),
+                    ct);
+            }
 
             return;
         }
@@ -42,7 +45,10 @@ public sealed class CrmWorkCenterPolicy(
             && actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
         {
             var qualification = await typedDocuments.ReadLeadQualificationHeadAsync(documentId, ct);
-            await tasks.CompleteByDeduplicationKeyAsync(QualificationKey(qualification.LeadIntakeId), ct);
+            await tasks.CompleteByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.QualifyLeadTask,
+                QualificationKey(qualification.LeadIntakeId),
+                ct);
 
             if (string.Equals(qualification.QualificationState, "Qualified", StringComparison.OrdinalIgnoreCase))
             {
@@ -52,7 +58,7 @@ public sealed class CrmWorkCenterPolicy(
                     "Lead qualification",
                     ct);
 
-                await CreateConversionTaskAsync(qualification, source, context, ct);
+                await CreateConversionTaskAsync(qualification, source, @event, ct);
 
                 await CreateNotificationAsync(
                     CrmWorkCenterCodes.LeadQualified,
@@ -61,12 +67,15 @@ public sealed class CrmWorkCenterPolicy(
                     "The qualified lead is ready for conversion.",
                     NotificationSeverity.Success,
                     $"crm:lead:{qualification.LeadIntakeId:D}:qualified:{qualification.DocumentId:D}",
-                    context,
+                    @event,
                     ct);
             }
             else
             {
-                await tasks.CancelByDeduplicationKeyAsync(ConversionKey(qualification.LeadIntakeId), ct);
+                await tasks.CancelByDeduplicationKeyAsync(
+                    CrmWorkCenterCodes.ConvertQualifiedLeadTask,
+                    ConversionKey(qualification.LeadIntakeId),
+                    ct);
             }
 
             return;
@@ -76,7 +85,11 @@ public sealed class CrmWorkCenterPolicy(
             && actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
         {
             var conversion = await typedDocuments.ReadLeadConversionHeadAsync(documentId, ct);
-            await tasks.CompleteByDeduplicationKeyAsync(ConversionKey(conversion.LeadIntakeId), ct);
+            await tasks.CompleteByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.ConvertQualifiedLeadTask,
+                ConversionKey(conversion.LeadIntakeId),
+                ct);
+
             return;
         }
 
@@ -84,12 +97,16 @@ public sealed class CrmWorkCenterPolicy(
         {
             if (actionCode == StandardDocumentActionCodes.UnpostValue)
             {
-                await tasks.CancelByDeduplicationKeyAsync(ActivityKey(documentId), ct);
+                await tasks.CancelByDeduplicationKeyAsync(
+                    CrmWorkCenterCodes.CompleteActivityTask,
+                    ActivityKey(documentId),
+                    ct);
+
                 return;
             }
 
             if (actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
-                await SynchronizeActivityTaskAsync(documentId, context, ct);
+                await SynchronizeActivityTaskAsync(documentId, @event, ct);
 
             return;
         }
@@ -113,7 +130,7 @@ public sealed class CrmWorkCenterPolicy(
                     "An opportunity was moved to Won.",
                     NotificationSeverity.Success,
                     $"crm:opportunity:{update.OpportunityId:D}:won:{documentId:D}",
-                    context,
+                    @event,
                     ct);
             }
         }
@@ -121,38 +138,38 @@ public sealed class CrmWorkCenterPolicy(
 
     private async Task CreateQualificationTaskAsync(
         Guid leadId,
-        WorkCenterEventContext context,
+        DocumentActionCompletedV1 @event,
         CancellationToken ct)
     {
-        var lead = await documents.GetByIdAsync(CrmCodes.LeadIntake, leadId, ct);
+        var lead = await typedDocuments.ReadLeadIntakeHeadAsync(leadId, ct);
         await tasks.CreateAsync(
             new CreateWorkCenterTaskRequest(
                 CrmWorkCenterCodes.QualifyLeadTask,
-                Source(CrmCodes.LeadIntake, leadId, lead.Display ?? lead.Number ?? "Lead intake", lead.Number),
+                Source(CrmCodes.LeadIntake, leadId, lead.LeadName, lead.CompanyName),
                 "Qualify lead",
                 "Review the lead and create a qualification document.",
                 WorkCenterPriority.High,
                 AssignedUserId: null,
                 AssignedRoleCode: CrmWorkCenterCodes.SalesRepresentativeRole,
                 DueAtUtc: timeProvider.GetUtcNow().AddDays(2).UtcDateTime,
-                PrimaryActionCode: CrmDocumentActionCodes.CreateQualification,
-                NavigationTargetCode: StandardDocumentActionCodes.DocumentEditorCode,
-                NavigationParameters: new Dictionary<string, string?>
-                {
-                    [StandardDocumentActionCodes.DocumentType] = CrmCodes.LeadIntake,
-                    [StandardDocumentActionCodes.DocumentIdKey] = leadId.ToString()
-                },
+                PrimaryActionCode: new DocumentActionCode(CrmDocumentActionCodes.CreateQualification),
+                Target: new DocumentActionTargetDto(
+                    StandardDocumentTargets.Editor,
+                    new Dictionary<string, string?>
+                    {
+                        [StandardDocumentTargetParameters.DocumentType] = CrmCodes.LeadIntake,
+                        [StandardDocumentTargetParameters.DocumentId] = leadId.ToString()
+                    }),
                 QualificationKey(leadId),
-                context.Event.CorrelationId,
-                context.Event.EventId,
-                MetadataJson: null),
+                @event.CorrelationId,
+                @event.EventId),
             ct);
     }
 
     private async Task CreateConversionTaskAsync(
         CrmLeadQualificationHead qualification,
         WorkCenterSourceReference source,
-        WorkCenterEventContext context,
+        DocumentActionCompletedV1 @event,
         CancellationToken ct)
     {
         await tasks.CreateAsync(
@@ -165,33 +182,37 @@ public sealed class CrmWorkCenterPolicy(
                 AssignedUserId: null,
                 AssignedRoleCode: CrmWorkCenterCodes.SalesRepresentativeRole,
                 DueAtUtc: timeProvider.GetUtcNow().AddDays(3).UtcDateTime,
-                PrimaryActionCode: CrmDocumentActionCodes.CreateConversion,
-                NavigationTargetCode: StandardDocumentActionCodes.DocumentEditorCode,
-                NavigationParameters: new Dictionary<string, string?>
-                {
-                    [StandardDocumentActionCodes.DocumentType] = CrmCodes.LeadQualification,
-                    [StandardDocumentActionCodes.DocumentIdKey] = qualification.DocumentId.ToString()
-                },
+                PrimaryActionCode: new DocumentActionCode(CrmDocumentActionCodes.CreateConversion),
+                Target: new DocumentActionTargetDto(
+                    StandardDocumentTargets.Editor,
+                    new Dictionary<string, string?>
+                    {
+                        [StandardDocumentTargetParameters.DocumentType] = CrmCodes.LeadQualification,
+                        [StandardDocumentTargetParameters.DocumentId] = qualification.DocumentId.ToString()
+                    }),
                 ConversionKey(qualification.LeadIntakeId),
-                context.Event.CorrelationId,
-                context.Event.EventId,
-                MetadataJson: null),
+                @event.CorrelationId,
+                @event.EventId),
             ct);
     }
 
     private async Task SynchronizeActivityTaskAsync(
         Guid activityId,
-        WorkCenterEventContext context,
+        DocumentActionCompletedV1 @event,
         CancellationToken ct)
     {
         var activity = await typedDocuments.ReadActivityLogHeadAsync(activityId, ct);
         if (activity.DueAtUtc is null || activity.CompletedAtUtc is not null)
         {
-            await tasks.CompleteByDeduplicationKeyAsync(ActivityKey(activityId), ct);
+            await tasks.CompleteByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.CompleteActivityTask,
+                ActivityKey(activityId),
+                ct);
+
             return;
         }
 
-        var source = await SourceAsync(CrmCodes.ActivityLog, activityId, "CRM activity", ct);
+        var source = Source(CrmCodes.ActivityLog, activityId, activity.Subject, activity.ActivityType);
         var priority = activity.DueAtUtc <= timeProvider.GetUtcNow().UtcDateTime
             ? WorkCenterPriority.High
             : WorkCenterPriority.Normal;
@@ -207,16 +228,16 @@ public sealed class CrmWorkCenterPolicy(
                 AssignedRoleCode: CrmWorkCenterCodes.SalesRepresentativeRole,
                 DueAtUtc: activity.DueAtUtc,
                 PrimaryActionCode: null,
-                NavigationTargetCode: StandardDocumentActionCodes.DocumentEditorCode,
-                NavigationParameters: new Dictionary<string, string?>
-                {
-                    [StandardDocumentActionCodes.DocumentType] = CrmCodes.ActivityLog,
-                    [StandardDocumentActionCodes.DocumentIdKey] = activityId.ToString()
-                },
+                Target: new DocumentActionTargetDto(
+                    StandardDocumentTargets.Editor,
+                    new Dictionary<string, string?>
+                    {
+                        [StandardDocumentTargetParameters.DocumentType] = CrmCodes.ActivityLog,
+                        [StandardDocumentTargetParameters.DocumentId] = activityId.ToString()
+                    }),
                 ActivityKey(activityId),
-                context.Event.CorrelationId,
-                context.Event.EventId,
-                MetadataJson: null),
+                @event.CorrelationId,
+                @event.EventId),
             ct);
     }
 
@@ -226,13 +247,17 @@ public sealed class CrmWorkCenterPolicy(
         string fallbackTitle,
         CancellationToken ct)
     {
-        var dto = await documents.GetByIdAsync(documentType, documentId, ct);
+        var document = await documents.GetAsync(documentId, ct)
+            ?? throw new DocumentNotFoundException(documentId);
+
+        if (!string.Equals(document.TypeCode, documentType, StringComparison.OrdinalIgnoreCase))
+            throw new DocumentTypeMismatchException(documentId, documentType, document.TypeCode);
 
         return Source(
             documentType,
             documentId,
-            dto.Display ?? dto.Number ?? fallbackTitle,
-            dto.Number);
+            document.Number ?? fallbackTitle,
+            document.Number);
     }
 
     private async Task CreateNotificationAsync(
@@ -242,14 +267,9 @@ public sealed class CrmWorkCenterPolicy(
         string body,
         NotificationSeverity severity,
         string deduplicationKey,
-        WorkCenterEventContext context,
+        DocumentActionCompletedV1 @event,
         CancellationToken ct)
     {
-        var role = await roles.GetByCodeAsync(CrmWorkCenterCodes.SalesRepresentativeRole, ct);
-        if (role is null || !role.IsActive)
-            return;
-
-        var recipients = await userRoles.GetUserIdsForRoleAsync(role.RoleId, ct);
         await notifications.CreateAsync(
             new CreateNotificationRequest(
                 definitionCode,
@@ -257,12 +277,14 @@ public sealed class CrmWorkCenterPolicy(
                 title,
                 body,
                 severity,
-                recipients,
+                RecipientUserIds: [],
                 ExpiresAtUtc: null,
                 deduplicationKey,
-                context.Event.CorrelationId,
-                context.Event.EventId,
-                MetadataJson: null),
+                @event.CorrelationId,
+                @event.EventId)
+            {
+                RecipientRoleCode = CrmWorkCenterCodes.SalesRepresentativeRole
+            },
             ct);
     }
 

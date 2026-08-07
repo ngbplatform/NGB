@@ -1,3 +1,5 @@
+using NGB.Core.Dimensions;
+
 namespace NGB.Persistence.OperationalRegisters;
 
 /// <summary>
@@ -21,6 +23,17 @@ public interface IOperationalRegisterResourceNetReader
     Task<decimal> GetNetByDimensionSetAsync(
         Guid registerId,
         Guid dimensionSetId,
+        string resourceColumnCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Computes the current net amount for movements whose dimension set contains every
+    /// requested dimension/value pair. The aggregation must execute completely in the database;
+    /// implementations must not materialize movement rows or dimension display metadata.
+    /// </summary>
+    Task<decimal> GetNetByDimensionsAsync(
+        Guid registerId,
+        IReadOnlyList<DimensionValue> dimensions,
         string resourceColumnCode,
         CancellationToken ct = default);
 }

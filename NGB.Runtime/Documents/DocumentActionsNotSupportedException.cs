@@ -13,8 +13,8 @@ public sealed class DocumentActionsNotSupportedException(string documentTypeCode
         errorCode: ErrorCodeConst,
         context: new Dictionary<string, object?>(StringComparer.Ordinal)
         {
-            [StandardDocumentActionCodes.DocumentTypeCode] = documentTypeCode,
-            [StandardDocumentActionCodes.DocumentActionCode] = actionCode,
+            [DocumentActionContextKeys.DocumentTypeCode] = documentTypeCode,
+            [DocumentActionContextKeys.ActionCode] = actionCode,
         })
 {
     public const string ErrorCodeConst = "documents.actions.not_supported";

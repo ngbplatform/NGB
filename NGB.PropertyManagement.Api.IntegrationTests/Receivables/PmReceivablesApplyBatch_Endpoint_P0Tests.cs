@@ -13,6 +13,7 @@ using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.Runtime;

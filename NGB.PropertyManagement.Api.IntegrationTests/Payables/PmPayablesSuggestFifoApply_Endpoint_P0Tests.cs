@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Contracts.Payables;
 using NGB.PropertyManagement.Runtime;
 using Npgsql;

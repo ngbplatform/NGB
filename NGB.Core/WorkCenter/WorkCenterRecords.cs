@@ -1,5 +1,3 @@
-using NGB.Core.Documents.Actions;
-
 namespace NGB.Core.WorkCenter;
 
 public sealed record WorkCenterSourceReference(
@@ -22,17 +20,13 @@ public sealed record WorkCenterTask(
     Guid? AssignedRoleId,
     Guid? ClaimedByUserId,
     DateTime? DueAtUtc,
-    DocumentActionCode? PrimaryActionCode,
-    string? NavigationTargetCode,
-    IReadOnlyDictionary<string, string?> NavigationParameters,
     DateTime CreatedAtUtc,
     DateTime? CompletedAtUtc,
     DateTime? CancelledAtUtc,
     string DeduplicationKey,
     long Version,
     Guid? CorrelationId,
-    Guid? CausationId,
-    string? MetadataJson);
+    Guid? CausationId);
 
 public sealed record WorkCenterNotification(
     Guid Id,
@@ -45,5 +39,4 @@ public sealed record WorkCenterNotification(
     DateTime? ExpiresAtUtc,
     string DeduplicationKey,
     Guid? CorrelationId,
-    Guid? CausationId,
-    string? MetadataJson);
+    Guid? CausationId);

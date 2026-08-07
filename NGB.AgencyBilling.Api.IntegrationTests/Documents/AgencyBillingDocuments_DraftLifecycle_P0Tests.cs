@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.AgencyBilling.Api.IntegrationTests.Infrastructure;
+using NGB.AgencyBilling.Api.IntegrationTests.Support;
 using NGB.AgencyBilling.Enums;
 using NGB.AgencyBilling.Runtime;
 using NGB.Application.Abstractions.Services;

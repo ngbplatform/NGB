@@ -58,6 +58,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddExternalLinks(builder.Configuration);
 builder.Services.AddGlobalErrorHandling();
 builder.Services.AddNgbWorkCenterRealtime();
+builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
 builder.Services.Configure<MvcOptions>(options => options.Conventions.Add(new CrmApplicationSurfaceConvention()));
 
 builder.Services.AddScoped<IMainMenuContributor, CrmMainMenuContributor>();

@@ -4,7 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Extensions.DependencyInjection;
+using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Documents;
 using NGB.Contracts.Services;
@@ -12,7 +12,6 @@ using NGB.Core.AuditLog;
 using NGB.Core.Documents;
 using NGB.Core.Documents.Actions;
 using NGB.Core.Documents.Exceptions;
-using NGB.Core.Events;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Documents.Actions;
 using NGB.Persistence.Outbox;
@@ -24,6 +23,8 @@ using NGB.Runtime.Security;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
+using DocumentActionExecutionKind = NGB.Core.Documents.Actions.DocumentActionExecutionKind;
+using DocumentActionConfirmationMode = NGB.Core.Documents.Actions.DocumentActionConfirmationMode;
 
 namespace NGB.Runtime.Documents.Actions;
 
@@ -39,7 +40,7 @@ internal sealed class DocumentActionDispatcher(
     IDocumentDerivationService derivations,
     IPermissionSnapshotProvider permissions,
     IAuditLogService audit,
-    IServiceProvider services,
+    IDocumentActionComponentResolver components,
     TimeProvider timeProvider)
     : IDocumentActionDispatcher
 {
@@ -150,32 +151,12 @@ internal sealed class DocumentActionDispatcher(
                 ["document_action.client_side_target"]);
         }
 
-        // Cheap initial authorization/availability pass. Everything is repeated under the row lock.
-        var initialSnapshot = await permissions.GetCurrentAsync(ct);
-        var initialDocument = await documentRepository.GetAsync(documentId, ct)
-            ?? throw new DocumentNotFoundException(documentId);
-
-        EnsureType(documentId, normalizedType, initialDocument.TypeCode);
-
-        var initialDto = await documentService.GetByIdAsync(normalizedType, documentId, ct);
-
-        _ = await evaluator.EvaluateOneAsync(
-            definition,
-            initialDocument,
-            initialDto,
-            initialSnapshot,
-            new Dictionary<string, object?>(),
-            ct);
-
         var fingerprint = ComputeFingerprint(normalizedType, documentId, actionCode, request);
 
         return await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            var locked = await documentRepository.GetForUpdateAsync(documentId, innerCt)
-                ?? throw new DocumentNotFoundException(documentId);
-
-            EnsureType(documentId, normalizedType, locked.TypeCode);
-
+            // Resolve idempotency before locking/materializing the document. Exact replays are
+            // served from the durable result without contending on the source document row.
             var begin = await executions.TryBeginAsync(
                 normalizedKey,
                 fingerprint,
@@ -197,15 +178,32 @@ internal sealed class DocumentActionDispatcher(
             if (begin.Status == DocumentActionExecutionBeginStatus.InProgress)
                 throw new DocumentActionInProgressException(normalizedKey);
 
+            var locked = await documentRepository.GetForUpdateAsync(documentId, innerCt)
+                ?? throw new DocumentNotFoundException(documentId);
+
+            EnsureType(documentId, normalizedType, locked.TypeCode);
+
             if (locked.Version != request.ExpectedVersion)
                 throw new DocumentVersionConflictException(documentId, request.ExpectedVersion, locked.Version);
 
             // A fresh snapshot closes the authorization TOCTOU window between the
             // initial fast check and the transaction protected by the document row lock.
             var snapshot = await permissions.RefreshCurrentAsync(innerCt);
-            var beforeDto = await documentService.GetByIdAsync(normalizedType, documentId, innerCt);
-            var facts = await evaluator.LoadFactsAsync(locked, beforeDto, snapshot, innerCt);
-            var evaluated = await evaluator.EvaluateOneAsync(
+            DocumentDto? beforeDto = null;
+            if (DocumentActionEvaluator.RequiresEnrichedContextForExecution(definition))
+                beforeDto = await documentService.GetByIdAsync(normalizedType, documentId, innerCt);
+
+            IReadOnlyDictionary<string, object?> facts = new Dictionary<string, object?>();
+            if (DocumentActionEvaluator.RequiresFactsForExecution(definition))
+            {
+                facts = await evaluator.LoadFactsAsync(
+                    locked,
+                    beforeDto ?? throw new NgbInvariantViolationException("Enriched action context is required."),
+                    snapshot,
+                    innerCt);
+            }
+
+            var availability = await evaluator.EvaluateForExecutionAsync(
                 definition,
                 locked,
                 beforeDto,
@@ -213,12 +211,12 @@ internal sealed class DocumentActionDispatcher(
                 facts,
                 innerCt);
 
-            if (!evaluated.Dto.IsAllowed)
+            if (!availability.IsAllowed)
             {
                 throw new DocumentActionUnavailableException(
                     normalizedType,
                     actionCode.Value,
-                    evaluated.Dto.DisabledReasons.Select(static x => x.Code).ToArray());
+                    availability.DisabledReasons.Select(static x => x.Code).ToArray());
             }
 
             if (definition.Metadata.Confirmation?.Mode == DocumentActionConfirmationMode.RequireReason
@@ -237,9 +235,8 @@ internal sealed class DocumentActionDispatcher(
                 innerCt);
 
             var now = timeProvider.GetUtcNowDateTime();
-            var documentVersion = await documentRepository.IncrementVersionAsync(documentId, now, innerCt);
-            var refreshedDocument = await documentRepository.GetForUpdateAsync(documentId, innerCt)
-                ?? throw new DocumentNotFoundException(documentId);
+            var refreshedDocument = await documentRepository.IncrementVersionAsync(documentId, now, innerCt);
+            var documentVersion = refreshedDocument.Version;
 
             var refreshedDto = await documentService.GetByIdAsync(normalizedType, documentId, innerCt);
 
@@ -313,7 +310,7 @@ internal sealed class DocumentActionDispatcher(
         NGB.Definitions.Documents.Actions.DocumentActionDefinition definition,
         Guid executionId,
         DocumentRecord document,
-        DocumentDto documentDto,
+        DocumentDto? documentDto,
         ExecuteDocumentActionRequestDto request,
         Guid? actorUserId,
         CancellationToken ct)
@@ -352,14 +349,14 @@ internal sealed class DocumentActionDispatcher(
         else
         {
             var handlerType = RequireHandlerType(definition);
-            var handler = (IDocumentActionHandler)services.GetRequiredService(handlerType);
+            var handler = components.ResolveHandler(handlerType);
 
             return await handler.ExecuteAsync(
                 new DocumentActionHandlerContext(
                     executionId,
                     code,
                     document,
-                    documentDto,
+                    documentDto ?? throw new NgbInvariantViolationException($"Document action '{code}' requires an enriched document context."),
                     request.Payload,
                     request.Reason,
                     actorUserId),
@@ -386,38 +383,32 @@ internal sealed class DocumentActionDispatcher(
         CancellationToken ct)
     {
         var eventId = Guid.CreateVersion7();
-        var payload = JsonSerializer.Serialize(
-            new
-            {
-                eventId,
-                type = StandardDocumentActionCodes.DocumentActionCompletedType,
-                schemaVersion = 1,
-                occurredAtUtc,
-                source = NgbSource,
-                subject = $"document/{after.TypeCode}/{after.Id}",
-                actorUserId,
-                correlationId = executionId,
-                causationId = (Guid?)null,
-                data = new
-                {
-                    documentId = after.Id,
-                    documentType = after.TypeCode,
-                    actionCode = actionCode.Value,
-                    previousStatus = before.Status,
-                    currentStatus = after.Status,
-                    documentVersion
-                }
-            },
-            Json);
+        var subject = $"document/{after.TypeCode}/{after.Id}";
+        var completed = new DocumentActionCompletedV1(
+            eventId,
+            occurredAtUtc,
+            NgbSource,
+            subject,
+            actorUserId,
+            executionId,
+            CausationId: null,
+            new DocumentActionCompletedDataV1(
+                after.Id,
+                after.TypeCode,
+                actionCode.Value,
+                before.Status,
+                after.Status,
+                documentVersion));
+        var payload = JsonSerializer.Serialize(completed, Json);
 
         await outbox.AppendAsync(
-            new PlatformOutboxEvent(
+            new OutboxEventEnvelope(
                 eventId,
-                StandardDocumentActionCodes.DocumentActionCompletedType,
-                1,
+                DocumentActionCompletedV1.EventType,
+                DocumentActionCompletedV1.SchemaVersion,
                 occurredAtUtc,
                 NgbSource,
-                $"document/{after.TypeCode}/{after.Id}",
+                subject,
                 actorUserId,
                 executionId,
                 CausationId: null,

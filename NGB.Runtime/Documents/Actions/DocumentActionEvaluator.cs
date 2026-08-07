@@ -1,4 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Documents;
 using NGB.Contracts.Services;
@@ -21,10 +20,71 @@ internal sealed class EvaluatedDocumentAction(DocumentActionDefinition definitio
 internal sealed class DocumentActionEvaluator(
     DocumentActionRegistry registry,
     DefinitionsRegistry definitions,
-    IServiceProvider services,
+    IDocumentActionComponentResolver components,
     IEnumerable<IDocumentActionContextEnricher> enrichers)
 {
     private readonly IReadOnlyList<IDocumentActionContextEnricher> _enrichers = enrichers.ToArray();
+
+    public static bool RequiresEnrichedContextForExecution(DocumentActionDefinition definition)
+        => definition.HandlerType is not null
+           || definition.AuthorizationEvaluatorType is not null
+           || definition.AvailabilityEvaluatorType is not null;
+
+    public static bool RequiresFactsForExecution(DocumentActionDefinition definition)
+        => definition.AuthorizationEvaluatorType is not null
+           || definition.AvailabilityEvaluatorType is not null;
+
+    /// <summary>
+    /// Evaluates the executable action without materializing a DTO for standard lifecycle actions.
+    /// Extension evaluators still receive the same rich context and preloaded facts.
+    /// </summary>
+    public async Task<DocumentActionAvailabilityResult> EvaluateForExecutionAsync(
+        DocumentActionDefinition definition,
+        DocumentRecord document,
+        DocumentDto? documentDto,
+        PermissionSnapshot snapshot,
+        IReadOnlyDictionary<string, object?> facts,
+        CancellationToken ct)
+    {
+        DocumentActionEvaluationContext? context = null;
+        if (definition.AuthorizationEvaluatorType is not null
+            || definition.AvailabilityEvaluatorType is not null)
+        {
+            if (documentDto is null)
+                throw new NgbInvariantViolationException(
+                    $"Document action '{definition.Metadata.Code}' requires an enriched document context.");
+
+            context = new DocumentActionEvaluationContext(
+                document,
+                documentDto,
+                ToSecurityContext(snapshot),
+                facts);
+        }
+
+        var authorized = definition.AuthorizationEvaluatorType is null
+            ? IsAuthorizedByMetadata(definition, snapshot)
+            : await IsAuthorizedAsync(definition, context!, snapshot, ct);
+
+        if (!authorized)
+            throw new DocumentActionForbiddenException(document.TypeCode, definition.Metadata.Code.Value);
+
+        var reasons = GetStandardDisabledReasons(definition.Metadata.Code, document);
+        if (definition.AvailabilityEvaluatorType is not null)
+        {
+            var custom = await components
+                .ResolveAvailabilityEvaluator(definition.AvailabilityEvaluatorType)
+                .EvaluateAsync(context!, ct);
+            reasons.AddRange(custom.DisabledReasons);
+        }
+
+        return reasons.Count == 0
+            ? DocumentActionAvailabilityResult.Allowed
+            : new DocumentActionAvailabilityResult(
+                reasons
+                    .OrderBy(static x => x.Code, StringComparer.Ordinal)
+                    .ThenBy(static x => x.Message, StringComparer.Ordinal)
+                    .ToArray());
+    }
 
     public async Task<IReadOnlyDictionary<string, object?>> LoadFactsAsync(
         DocumentRecord document,
@@ -124,15 +184,15 @@ internal sealed class DocumentActionEvaluator(
             metadata.Presentation.LabelKey,
             metadata.Presentation.Description,
             metadata.Presentation.Icon,
-            metadata.Kind,
-            metadata.ExecutionKind,
+            (NGB.Contracts.Documents.DocumentActionKind)metadata.Kind,
+            (NGB.Contracts.Documents.DocumentActionExecutionKind)metadata.ExecutionKind,
             metadata.Order,
             availability.IsAllowed,
             availability.DisabledReasons,
             metadata.Confirmation is null
                 ? null
                 : new DocumentActionConfirmationDto(
-                    metadata.Confirmation.Mode,
+                    (NGB.Contracts.Documents.DocumentActionConfirmationMode)metadata.Confirmation.Mode,
                     metadata.Confirmation.Title,
                     metadata.Confirmation.Message,
                     metadata.Confirmation.ConfirmLabel),
@@ -147,12 +207,16 @@ internal sealed class DocumentActionEvaluator(
     {
         if (definition.AuthorizationEvaluatorType is not null)
         {
-            var evaluator = (IDocumentActionAuthorizationEvaluator)services.GetRequiredService(
-                definition.AuthorizationEvaluatorType);
+            var evaluator = components.ResolveAuthorizationEvaluator(definition.AuthorizationEvaluatorType);
 
             return (await evaluator.EvaluateAsync(context, ct)).IsAuthorized;
         }
 
+        return IsAuthorizedByMetadata(definition, snapshot);
+    }
+
+    private bool IsAuthorizedByMetadata(DocumentActionDefinition definition, PermissionSnapshot snapshot)
+    {
         var action = definition.Metadata.Code;
         var permissionAction = GetStandardPermission(action);
 
@@ -180,8 +244,7 @@ internal sealed class DocumentActionEvaluator(
 
         if (definition.AvailabilityEvaluatorType is not null)
         {
-            var evaluator = (IDocumentActionAvailabilityEvaluator)services.GetRequiredService(
-                definition.AvailabilityEvaluatorType);
+            var evaluator = components.ResolveAvailabilityEvaluator(definition.AvailabilityEvaluatorType);
             var custom = await evaluator.EvaluateAsync(context, ct);
             reasons.AddRange(custom.DisabledReasons);
         }

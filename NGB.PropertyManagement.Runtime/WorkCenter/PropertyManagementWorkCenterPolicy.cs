@@ -1,4 +1,4 @@
-using System.Text.Json;
+using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
 using NGB.Core.Documents.Actions;
 using NGB.PropertyManagement.Documents;
@@ -8,17 +8,13 @@ namespace NGB.PropertyManagement.Runtime.WorkCenter;
 public sealed class PropertyManagementWorkCenterPolicy(
     IPropertyManagementDocumentReaders typedDocuments,
     IReceivablePaymentWorkCenterSynchronizer synchronizer)
-    : IWorkCenterEventPolicy
+    : IDocumentActionCompletedWorkCenterPolicy
 {
-    public string EventType => StandardDocumentActionCodes.DocumentActionCompletedType;
-
-    public async Task HandleAsync(WorkCenterEventContext context, CancellationToken ct)
+    public async Task HandleAsync(DocumentActionCompletedV1 @event, CancellationToken ct)
     {
-        using var json = JsonDocument.Parse(context.Event.PayloadJson);
-        var data = json.RootElement.GetProperty("data");
-        var documentId = data.GetProperty(StandardDocumentActionCodes.DocumentIdKey).GetGuid();
-        var documentType = data.GetProperty(StandardDocumentActionCodes.DocumentType).GetString();
-        var actionCode = data.GetProperty(StandardDocumentActionCodes.DocumentActionCode).GetString()?.Trim().ToLowerInvariant();
+        var documentId = @event.Data.DocumentId;
+        var documentType = @event.Data.DocumentType;
+        var actionCode = @event.Data.ActionCode.Trim().ToLowerInvariant();
 
         if (string.Equals(documentType, PropertyManagementCodes.ReceivablePayment, StringComparison.OrdinalIgnoreCase))
         {
@@ -32,8 +28,8 @@ public sealed class PropertyManagementWorkCenterPolicy(
             {
                 await synchronizer.SynchronizeAsync(
                     documentId,
-                    context.Event.CorrelationId,
-                    context.Event.EventId,
+                    @event.CorrelationId,
+                    @event.EventId,
                     ct);
             }
 
@@ -46,8 +42,8 @@ public sealed class PropertyManagementWorkCenterPolicy(
             var apply = await typedDocuments.ReadReceivableApplyHeadAsync(documentId, ct);
             await synchronizer.SynchronizeAsync(
                 apply.CreditDocumentId,
-                context.Event.CorrelationId,
-                context.Event.EventId,
+                @event.CorrelationId,
+                @event.EventId,
                 ct);
         }
     }

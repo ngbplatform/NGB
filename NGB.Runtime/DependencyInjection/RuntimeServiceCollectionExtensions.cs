@@ -188,11 +188,13 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IDocumentDraftService, DocumentDraftService>();
         services.TryAddScoped<DocumentService>();
         services.TryAddScoped<IDocumentService, DocumentService>();
+        services.TryAddScoped<IDocumentSystemLifecycleService>(sp => sp.GetRequiredService<DocumentService>());
         services.TryAddScoped<IDocumentEffectsQueryService, DocumentEffectsQueryService>();
         services.TryAddScoped<IDocumentRelationshipService, DocumentRelationshipService>();
         services.TryAddScoped<IDocumentRelationshipGraphReadService, DocumentRelationshipGraphReadService>();
         services.TryAddScoped<IDocumentDerivationService, DocumentDerivationService>();
         services.TryAddSingleton<DocumentActionRegistry>();
+        services.TryAddScoped<IDocumentActionComponentResolver, DocumentActionComponentResolver>();
         services.TryAddScoped<DocumentActionEvaluator>();
         services.TryAddScoped<IDocumentActionQueryService, DocumentActionQueryService>();
         services.TryAddScoped<IDocumentActionDispatcher, DocumentActionDispatcher>();
@@ -220,13 +222,17 @@ public static class RuntimeServiceCollectionExtensions
 
         // Work Center and transactional outbox projection.
         services.TryAddSingleton<WorkCenterPreferenceDefinitionRegistry>();
+        services.AddOptions<NgbWorkCenterOptions>().ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NgbWorkCenterOptions>, NgbWorkCenterOptionsValidator>());
         services.TryAddScoped<WorkCenterPreferenceRecipientResolver>();
+        services.TryAddScoped<IWorkCenterChangeTracker, WorkCenterChangeTracker>();
         services.TryAddScoped<IWorkCenterTaskService, WorkCenterTaskService>();
         services.TryAddScoped<INotificationService, NotificationService>();
         services.TryAddScoped<IWorkCenterQueryService, WorkCenterQueryService>();
         services.TryAddScoped<IOutboxProcessor, OutboxProcessor>();
+        services.TryAddScoped<IWorkCenterOperationalHealthReader, WorkCenterOperationalHealthReader>();
+        services.TryAddScoped<IWorkCenterMaintenanceService, WorkCenterMaintenanceService>();
         services.TryAddSingleton<IWorkCenterRealtimeNotifier, NullWorkCenterRealtimeNotifier>();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, WorkCenterOutboxHostedService>());
 
         // Document numbering (platform-wide)
         services.TryAddSingleton<IDocumentNumberFormatter, DefaultDocumentNumberFormatter>();

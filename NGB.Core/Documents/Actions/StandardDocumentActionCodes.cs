@@ -12,13 +12,6 @@ public static class StandardDocumentActionCodes
     public const string ViewAuditValue = "view_audit";
     public const string PrintValue = "print";
     
-    public const string DocumentActionCompletedType = "ngb.document.action.completed";
-    public const string DocumentType = "documentType";
-    public const string DocumentTypeCode = "documentTypeCode";
-    public const string DocumentEditorCode = "document.editor";
-    public const string DocumentIdKey = "documentId";
-    public const string DocumentActionCode = "actionCode";
-    
     public static readonly DocumentActionCode Post = new(PostValue);
     public static readonly DocumentActionCode Unpost = new(UnpostValue);
     public static readonly DocumentActionCode Repost = new(RepostValue);

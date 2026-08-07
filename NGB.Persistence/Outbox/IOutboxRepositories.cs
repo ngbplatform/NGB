@@ -1,5 +1,3 @@
-using NGB.Core.Events;
-
 namespace NGB.Persistence.Outbox;
 
 public enum OutboxConsumerStatus
@@ -12,11 +10,11 @@ public enum OutboxConsumerStatus
 }
 
 public sealed class OutboxConsumerWorkItem(
-    PlatformOutboxEvent @event,
+    OutboxEventEnvelope @event,
     string consumerCode,
     int attemptCount)
 {
-    public PlatformOutboxEvent Event { get; } = @event;
+    public OutboxEventEnvelope Event { get; } = @event;
     public string ConsumerCode { get; } = consumerCode;
     public int AttemptCount { get; } = attemptCount;
 }
@@ -24,7 +22,7 @@ public sealed class OutboxConsumerWorkItem(
 public interface IOutboxEventRepository
 {
     Task AppendAsync(
-        PlatformOutboxEvent outboxEvent,
+        OutboxEventEnvelope outboxEvent,
         IReadOnlyList<string> consumerCodes,
         CancellationToken ct);
 
