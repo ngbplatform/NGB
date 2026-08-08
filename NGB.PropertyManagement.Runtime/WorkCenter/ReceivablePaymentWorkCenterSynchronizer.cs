@@ -7,18 +7,23 @@ using NGB.Core.WorkCenter;
 using NGB.Persistence.Documents;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.Runtime.Receivables;
+using NGB.PropertyManagement.WorkCenter;
 
 namespace NGB.PropertyManagement.Runtime.WorkCenter;
 
 public interface IReceivablePaymentWorkCenterSynchronizer
 {
-    Task SynchronizeAsync(Guid paymentId, Guid? correlationId, Guid? causationId, CancellationToken ct);
+    Task<IReadOnlyList<Guid>> SynchronizeAsync(
+        Guid paymentId,
+        Guid? correlationId,
+        Guid? causationId,
+        CancellationToken ct);
 
-    Task CompleteIfExhaustedAsync(Guid paymentId, CancellationToken ct);
+    Task<IReadOnlyList<Guid>> CompleteIfExhaustedAsync(Guid paymentId, CancellationToken ct);
 
-    Task CancelAsync(Guid paymentId, CancellationToken ct);
+    Task<IReadOnlyList<Guid>> CancelAsync(Guid paymentId, CancellationToken ct);
 
-    Task NotifyChangedAsync(CancellationToken ct);
+    Task NotifyChangedAsync(IReadOnlyCollection<Guid> userIds, CancellationToken ct);
 }
 
 /// <summary>
@@ -31,12 +36,11 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
     IReceivablesApplyAvailabilitySource availability,
     IWorkCenterTaskService tasks,
     IWorkCenterRealtimeNotifier realtime,
-    IWorkCenterChangeTracker changes,
     TimeProvider timeProvider,
     ILogger<ReceivablePaymentWorkCenterSynchronizer> logger)
     : IReceivablePaymentWorkCenterSynchronizer
 {
-    public async Task SynchronizeAsync(
+    public async Task<IReadOnlyList<Guid>> SynchronizeAsync(
         Guid paymentId,
         Guid? correlationId,
         Guid? causationId,
@@ -54,16 +58,15 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
 
         if (!availabilityResult.IsAllowed)
         {
-            await tasks.CompleteByDeduplicationKeyAsync(
+            return await tasks.CompleteByDeduplicationKeyAsync(
                 PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 deduplicationKey,
                 ct);
-            return;
         }
 
         var now = timeProvider.GetUtcNow();
 
-        await tasks.CreateAsync(
+        var result = await tasks.CreateAsync(
             new CreateWorkCenterTaskRequest(
                 PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 new WorkCenterSourceReference(
@@ -89,6 +92,8 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
                 correlationId,
                 causationId),
             ct);
+
+        return result.ChangedUserIds;
     }
 
     /// <summary>
@@ -97,7 +102,7 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
     /// making financial posting depend on role resolution when there is no task
     /// state transition to persist.
     /// </summary>
-    public async Task CompleteIfExhaustedAsync(Guid paymentId, CancellationToken ct)
+    public async Task<IReadOnlyList<Guid>> CompleteIfExhaustedAsync(Guid paymentId, CancellationToken ct)
     {
         var payment = await GetPaymentAsync(paymentId, ct);
 
@@ -108,24 +113,32 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
             ct);
 
         if (!availabilityResult.IsAllowed)
-            await tasks.CompleteByDeduplicationKeyAsync(
+            return await tasks.CompleteByDeduplicationKeyAsync(
                 PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 DeduplicationKey(paymentId),
                 ct);
+
+        return [];
     }
 
-    public Task CancelAsync(Guid paymentId, CancellationToken ct)
+    public Task<IReadOnlyList<Guid>> CancelAsync(Guid paymentId, CancellationToken ct)
         => tasks.CancelByDeduplicationKeyAsync(
             PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
             DeduplicationKey(paymentId),
             ct);
 
-    public async Task NotifyChangedAsync(CancellationToken ct)
+    public async Task NotifyChangedAsync(IReadOnlyCollection<Guid> userIds, CancellationToken ct)
     {
         try
         {
-            var affectedUsers = changes.Drain();
-            if (affectedUsers.Count > 0)
+            ArgumentNullException.ThrowIfNull(userIds);
+
+            var affectedUsers = userIds
+                .Where(static userId => userId != Guid.Empty)
+                .Distinct()
+                .ToArray();
+
+            if (affectedUsers.Length > 0)
                 await realtime.NotifyUsersChangedAsync(timeProvider.GetUtcNow().UtcTicks, affectedUsers, ct);
         }
         catch (Exception ex)

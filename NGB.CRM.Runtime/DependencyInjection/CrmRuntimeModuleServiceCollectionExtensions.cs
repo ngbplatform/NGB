@@ -8,6 +8,8 @@ using NGB.CRM.Runtime.Posting;
 using NGB.CRM.Runtime.Reporting;
 using NGB.CRM.Runtime.Reporting.Datasets;
 using NGB.CRM.Runtime.WorkCenter;
+using NGB.CRM.WorkCenter;
+using NGB.Definitions.WorkCenter;
 using NGB.Definitions;
 using NGB.Definitions.Documents.Posting;
 using NGB.Definitions.Documents.Validation;

@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using NGB.Application.Abstractions.Services;
 using NGB.Runtime.Security;
 using NGB.Runtime.WorkCenter;
@@ -74,7 +75,13 @@ public static class WorkCenterRealtimeExtensions
         IConfiguration? configuration = null)
     {
         if (configuration is not null)
+        {
             services.Configure<NgbWorkCenterOptions>(configuration.GetSection(NgbWorkCenterOptions.ConfigurationSection));
+            services.Configure<NgbWorkCenterHostingOptions>(configuration.GetSection(NgbWorkCenterOptions.ConfigurationSection));
+        }
+
+        services.AddOptions<NgbWorkCenterHostingOptions>().ValidateOnStart();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NgbWorkCenterHostingOptions>, NgbWorkCenterHostingOptionsValidator>());
 
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, WorkCenterOutboxHostedService>());
         return services;

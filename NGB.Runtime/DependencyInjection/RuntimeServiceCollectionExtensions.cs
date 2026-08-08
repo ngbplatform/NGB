@@ -225,7 +225,6 @@ public static class RuntimeServiceCollectionExtensions
         services.AddOptions<NgbWorkCenterOptions>().ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NgbWorkCenterOptions>, NgbWorkCenterOptionsValidator>());
         services.TryAddScoped<WorkCenterPreferenceRecipientResolver>();
-        services.TryAddScoped<IWorkCenterChangeTracker, WorkCenterChangeTracker>();
         services.TryAddScoped<IWorkCenterTaskService, WorkCenterTaskService>();
         services.TryAddScoped<INotificationService, NotificationService>();
         services.TryAddScoped<IWorkCenterQueryService, WorkCenterQueryService>();

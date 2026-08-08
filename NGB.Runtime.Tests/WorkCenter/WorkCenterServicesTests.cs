@@ -8,6 +8,7 @@ using NGB.Contracts.WorkCenter;
 using NGB.Core.AuditLog;
 using NGB.Core.Security;
 using NGB.Core.WorkCenter;
+using NGB.Definitions.WorkCenter;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
@@ -66,13 +67,13 @@ public sealed class WorkCenterServicesTests
             uow,
             tasks.Object,
             RecipientResolver(preferences, users, roles, userRoles),
-            Changes(),
             new FixedTimeProvider(Now));
         var userId = Guid.NewGuid();
 
         var directId = await service.CreateAsync(TaskRequest(userId, null, "open"), CancellationToken.None);
 
-        directId.Should().Be(captured!.Id);
+        directId.ItemId.Should().Be(captured!.Id);
+        directId.ChangedUserIds.Should().Equal(userId);
         captured.AssignedUserId.Should().Be(userId);
         captured.AssignedRoleId.Should().BeNull();
         captured.CreatedAtUtc.Should().Be(Now);
@@ -107,7 +108,6 @@ public sealed class WorkCenterServicesTests
             uow,
             tasks.Object,
             RecipientResolver(roles: roles, userRoles: userRoles),
-            Changes(),
             new FixedTimeProvider(Now));
 
         await FluentActions.Awaiting(() => service.CreateAsync(null!, CancellationToken.None))
@@ -183,7 +183,6 @@ public sealed class WorkCenterServicesTests
             uow,
             tasks.Object,
             resolver,
-            Changes(),
             new FixedTimeProvider(Now));
         var request = TaskRequest(
             userId: null,
@@ -279,7 +278,6 @@ public sealed class WorkCenterServicesTests
             uow,
             tasks.Object,
             resolver,
-            Changes(),
             new FixedTimeProvider(Now));
         var request = TaskRequest(
             userId: null,
@@ -287,13 +285,15 @@ public sealed class WorkCenterServicesTests
             actionCode: null,
             taskCode: "test.task");
 
-        (await service.CreateAsync(request, CancellationToken.None)).Should().Be(createdTaskId);
+        var created = await service.CreateAsync(request, CancellationToken.None);
+        created.ItemId.Should().Be(createdTaskId);
+        created.ChangedUserIds.Should().Equal(enabledRecipient);
         capturedRecipients.Should().Equal(enabledRecipient);
 
         resolver.Reset();
         (await service.CreateAsync(
             request with { DeduplicationKey = "dedupe:all-disabled" },
-            CancellationToken.None)).Should().BeNull();
+            CancellationToken.None)).Should().Be(WorkCenterMutationResult.Empty);
 
         tasks.Verify(
             repository => repository.CreateAsync(
@@ -312,22 +312,31 @@ public sealed class WorkCenterServicesTests
         var tasks = new Mock<IWorkCenterTaskRepository>(MockBehavior.Strict);
         var roles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        var completedRecipient = Guid.NewGuid();
+        var cancelledRecipient = Guid.NewGuid();
         tasks.Setup(repository => repository.CompleteByDeduplicationKeyAsync(
                 "task.code", "task:1", Now, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new WorkCenterTaskMutationResult(true, []));
+            .ReturnsAsync(new WorkCenterTaskMutationResult(true, [completedRecipient]));
         tasks.Setup(repository => repository.CancelByDeduplicationKeyAsync(
                 "task.code", "task:2", Now, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new WorkCenterTaskMutationResult(true, []));
+            .ReturnsAsync(new WorkCenterTaskMutationResult(true, [cancelledRecipient]));
         var service = new WorkCenterTaskService(
             uow,
             tasks.Object,
             RecipientResolver(roles: roles, userRoles: userRoles),
-            Changes(),
             new FixedTimeProvider(Now));
 
-        await service.CompleteByDeduplicationKeyAsync("task.code", "task:1", CancellationToken.None);
-        await service.CancelByDeduplicationKeyAsync("task.code", "task:2", CancellationToken.None);
+        var completedUsers = await service.CompleteByDeduplicationKeyAsync(
+            "task.code",
+            "task:1",
+            CancellationToken.None);
+        var cancelledUsers = await service.CancelByDeduplicationKeyAsync(
+            "task.code",
+            "task:2",
+            CancellationToken.None);
 
+        completedUsers.Should().Equal(completedRecipient);
+        cancelledUsers.Should().Equal(cancelledRecipient);
         uow.CommitCount.Should().Be(2);
         tasks.VerifyAll();
     }
@@ -383,7 +392,6 @@ public sealed class WorkCenterServicesTests
             notifications.Object,
             RecipientResolver(preferences, users, userRoles: userRoles, definitions: definitions),
             definitions,
-            Changes(),
             new FixedTimeProvider(Now));
 
         var result = await service.CreateAsync(
@@ -393,7 +401,8 @@ public sealed class WorkCenterServicesTests
                 severity: NotificationSeverity.Warning),
             CancellationToken.None);
 
-        result.Should().Be(captured!.Id);
+        result.ItemId.Should().Be(captured!.Id);
+        result.ChangedUserIds.Should().Equal(userEnabled);
         capturedRecipients.Should().Equal(userEnabled);
         captured.Severity.Should().Be(NotificationSeverity.Warning);
         captured.CreatedAtUtc.Should().Be(Now);
@@ -413,11 +422,11 @@ public sealed class WorkCenterServicesTests
 
         (await service.CreateAsync(
             NotificationRequest("test.required", [userDisabled], severity: null, expiresAtUtc: Now.AddDays(1)),
-            CancellationToken.None)).Should().NotBeNull();
+            CancellationToken.None)).ItemId.Should().NotBeNull();
     }
 
     [Fact]
-    public async Task Notification_service_returns_null_for_empty_or_fully_disabled_recipient_sets()
+    public async Task Notification_service_returns_empty_result_for_empty_or_fully_disabled_recipient_sets()
     {
         var uow = new RecordingUnitOfWork();
         var notifications = new Mock<INotificationRepository>(MockBehavior.Strict);
@@ -462,17 +471,16 @@ public sealed class WorkCenterServicesTests
             notifications.Object,
             RecipientResolver(preferences, users, userRoles: userRoles, definitions: definitions),
             definitions,
-            Changes(),
             new FixedTimeProvider(Now));
 
         (await service.CreateAsync(NotificationRequest("test.ready", []), CancellationToken.None))
-            .Should().BeNull();
+            .Should().Be(WorkCenterMutationResult.Empty);
         (await service.CreateAsync(NotificationRequest("test.ready", [Guid.Empty]), CancellationToken.None))
-            .Should().BeNull();
+            .Should().Be(WorkCenterMutationResult.Empty);
         (await service.CreateAsync(NotificationRequest("test.ready", [user]), CancellationToken.None))
-            .Should().BeNull();
+            .Should().Be(WorkCenterMutationResult.Empty);
         (await service.CreateAsync(NotificationRequest("test.active", [inactiveUser]), CancellationToken.None))
-            .Should().BeNull();
+            .Should().Be(WorkCenterMutationResult.Empty);
         await FluentActions.Awaiting(() => service.CreateAsync(null!, CancellationToken.None))
             .Should().ThrowAsync<ArgumentNullException>();
         await FluentActions.Awaiting(() => service.CreateAsync(
@@ -525,14 +533,14 @@ public sealed class WorkCenterServicesTests
             notifications.Object,
             RecipientResolver(preferences, users, userRoles: userRoles, definitions: definitions),
             definitions,
-            Changes(),
             new FixedTimeProvider(Now));
 
         var result = await service.CreateAsync(
             NotificationRequest("test.sales", [salesUser, managerUser, inactiveSalesUser]),
             CancellationToken.None);
 
-        result.Should().NotBeNull();
+        result.ItemId.Should().NotBeNull();
+        result.ChangedUserIds.Should().Equal(salesUser);
         notifications.VerifyAll();
     }
 
@@ -1099,8 +1107,6 @@ public sealed class WorkCenterServicesTests
                 "task.code",
                 defaultEnabled: true,
                 kind: WorkCenterPreferenceKind.Task)));
-
-    private static IWorkCenterChangeTracker Changes() => new WorkCenterChangeTracker();
 
     private static WorkCenterPreferenceDefinition Definition(
         string code,

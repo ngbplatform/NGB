@@ -9,6 +9,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj" />
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj" />
         <ProjectReference Include="..\NGB.Definitions\NGB.Definitions.csproj"/>
         <ProjectReference Include="..\NGB.Metadata\NGB.Metadata.csproj"/>
     </ItemGroup>

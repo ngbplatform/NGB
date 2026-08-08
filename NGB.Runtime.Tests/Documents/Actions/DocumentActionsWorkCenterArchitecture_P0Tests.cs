@@ -219,11 +219,105 @@ public sealed class DocumentActionsWorkCenterArchitecture_P0Tests
     }
 
     [Fact]
+    public void Work_center_definitions_belong_to_definitions_and_vertical_domain_packages()
+    {
+        var root = FindRepositoryRoot();
+        var applicationContract = File.ReadAllText(Path.Combine(
+            root,
+            "NGB.Application.Abstractions/Services/WorkCenter.cs"));
+        applicationContract.Should().NotContain("record WorkCenterPreferenceDefinition");
+        applicationContract.Should().NotContain("interface IWorkCenterPreferenceDefinitionSource");
+
+        var platformDefinitions = File.ReadAllText(Path.Combine(
+            root,
+            "NGB.Definitions/WorkCenter/WorkCenterPreferenceDefinition.cs"));
+        platformDefinitions.Should().Contain("record WorkCenterPreferenceDefinition");
+        platformDefinitions.Should().Contain("interface IWorkCenterPreferenceDefinitionSource");
+
+        foreach (var vertical in new[]
+                 {
+                     (Domain: "NGB.PropertyManagement/WorkCenter/PropertyManagementWorkCenterDefinitions.cs",
+                         LegacyRuntime: "NGB.PropertyManagement.Runtime/WorkCenter/PropertyManagementWorkCenterDefinitions.cs"),
+                     (Domain: "NGB.CRM/WorkCenter/CrmWorkCenterDefinitions.cs",
+                         LegacyRuntime: "NGB.CRM.Runtime/WorkCenter/CrmWorkCenterDefinitions.cs")
+                 })
+        {
+            File.Exists(Path.Combine(root, vertical.Domain)).Should().BeTrue();
+            File.Exists(Path.Combine(root, vertical.LegacyRuntime)).Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public void Document_action_completed_event_is_a_transport_contract_without_core_coupling()
+    {
+        var root = FindRepositoryRoot();
+        var contractPath = Path.Combine(
+            root,
+            "NGB.Contracts/IntegrationEvents/DocumentActionCompletedV1.cs");
+
+        File.Exists(contractPath).Should().BeTrue();
+        File.Exists(Path.Combine(
+                root,
+                "NGB.Application.Abstractions/IntegrationEvents/DocumentActionCompletedV1.cs"))
+            .Should().BeFalse();
+
+        var contract = File.ReadAllText(contractPath);
+        contract.Should().Contain("using NGB.Contracts.Metadata;");
+        contract.Should().NotContain("using NGB.Core");
+        contract.Should().Contain("const int SchemaVersion = 1");
+
+        var dispatcher = File.ReadAllText(Path.Combine(
+            root,
+            "NGB.Runtime/Documents/Actions/DocumentActionDispatcher.cs"));
+        dispatcher.Should().Contain("ToContractStatus(");
+    }
+
+    [Fact]
+    public void Work_center_mutation_boundaries_return_changed_users_explicitly()
+    {
+        var root = FindRepositoryRoot();
+        var applicationContract = File.ReadAllText(Path.Combine(
+            root,
+            "NGB.Application.Abstractions/Services/WorkCenter.cs"));
+        applicationContract.Should().Contain("record WorkCenterMutationResult");
+        applicationContract.Should().Contain("Task<IReadOnlyList<Guid>> HandleAsync");
+        applicationContract.Should().NotContain("IWorkCenterChangeTracker");
+        applicationContract.Should().NotContain("Drain(");
+
+        foreach (var relativeDirectory in new[]
+                 {
+                     "NGB.Runtime/WorkCenter",
+                     "NGB.PropertyManagement.Runtime/WorkCenter",
+                     "NGB.CRM.Runtime/WorkCenter"
+                 })
+        {
+            var sources = ReadSources(root, relativeDirectory);
+            sources.Should().NotContain(source => source.Contains("WorkCenterChangeTracker", StringComparison.Ordinal));
+            sources.Should().NotContain(source => source.Contains(".Drain(", StringComparison.Ordinal));
+        }
+
+        var outboxProcessor = File.ReadAllText(Path.Combine(root, "NGB.Runtime/WorkCenter/OutboxProcessor.cs"));
+        outboxProcessor.Should().Contain("eventChangedUsers");
+        outboxProcessor.Should().Contain("NotifyUsersChangedAsync");
+    }
+
+    [Fact]
     public void Work_center_hosting_policy_belongs_to_api_and_is_registered_explicitly_by_every_host()
     {
         var root = FindRepositoryRoot();
-        ReadSources(root, "NGB.Runtime/WorkCenter").Should().NotContain(
-            source => source.Contains("BackgroundService", StringComparison.Ordinal));
+        var runtimeSources = ReadSources(root, "NGB.Runtime/WorkCenter");
+        runtimeSources.Should().NotContain(source => source.Contains("BackgroundService", StringComparison.Ordinal));
+        runtimeSources.Should().NotContain(source => source.Contains("IHostedService", StringComparison.Ordinal));
+
+        var runtimeOptions = File.ReadAllText(Path.Combine(root, "NGB.Runtime/WorkCenter/NgbWorkCenterOptions.cs"));
+        runtimeOptions.Should().NotContain("PollInterval");
+        runtimeOptions.Should().NotContain("MaintenanceInterval");
+        runtimeOptions.Should().NotContain("ProjectionBatchSize");
+
+        var hostingOptions = File.ReadAllText(Path.Combine(root, "NGB.Api/WorkCenter/NgbWorkCenterHostingOptions.cs"));
+        hostingOptions.Should().Contain("PollInterval");
+        hostingOptions.Should().Contain("MaintenanceInterval");
+        hostingOptions.Should().Contain("ProjectionBatchSize");
 
         File.Exists(Path.Combine(root, "NGB.Api/WorkCenter/WorkCenterOutboxHostedService.cs"))
             .Should().BeTrue();

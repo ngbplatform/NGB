@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
-using NGB.Core.Documents;
+using NGB.Contracts.Metadata;
 
-namespace NGB.Application.Abstractions.IntegrationEvents;
+namespace NGB.Contracts.IntegrationEvents;
 
 /// <summary>
 /// Versioned integration contract emitted after a document action commits in the document transaction.

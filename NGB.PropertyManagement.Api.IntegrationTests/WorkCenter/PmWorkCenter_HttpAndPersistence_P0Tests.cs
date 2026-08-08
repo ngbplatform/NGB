@@ -19,7 +19,7 @@ using NGB.Persistence.WorkCenter;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.Runtime.DocumentActions;
-using NGB.PropertyManagement.Runtime.WorkCenter;
+using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.UnitOfWork;
 using Xunit;
 
@@ -72,8 +72,8 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
                 assignedUserId: adminUserId,
                 assignedRoleCode: null,
                 dueAtUtc: DateTime.UtcNow.AddHours(-1));
-            directTaskId = (await tasks.CreateAsync(taskRequest, CancellationToken.None))!.Value;
-            (await tasks.CreateAsync(taskRequest, CancellationToken.None)).Should().Be(directTaskId);
+            directTaskId = (await tasks.CreateAsync(taskRequest, CancellationToken.None)).ItemId!.Value;
+            (await tasks.CreateAsync(taskRequest, CancellationToken.None)).ItemId.Should().Be(directTaskId);
 
             var notification = Notification(sourceId, notificationKey);
             notificationId = (await uow.ExecuteInUowTransactionAsync(
@@ -180,7 +180,8 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
                     assignedRoleCode: PropertyManagementWorkCenterCodes.AccountsReceivableClerkRole,
                     dueAtUtc: DateTime.UtcNow.AddDays(1)),
                 CancellationToken.None);
-            suppressedTask.Should().BeNull();
+            suppressedTask.ItemId.Should().BeNull();
+            suppressedTask.ChangedUserIds.Should().BeEmpty();
         }
 
         (await adminClient.PostAsync(
@@ -248,7 +249,7 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
                     assignedUserId: null,
                     assignedRoleCode: "pm-ar-clerk",
                     dueAtUtc: DateTime.UtcNow.AddDays(1)),
-                CancellationToken.None))!.Value;
+                CancellationToken.None)).ItemId!.Value;
         }
 
         var claimResponse = await adminClient.PostAsJsonAsync(

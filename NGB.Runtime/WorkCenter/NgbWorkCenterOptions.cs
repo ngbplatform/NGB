@@ -3,16 +3,12 @@ using Microsoft.Extensions.Options;
 namespace NGB.Runtime.WorkCenter;
 
 /// <summary>
-/// Operational limits and retention policy for the Work Center projection.
-/// Bind from the <c>Ngb:WorkCenter</c> configuration section in API hosts.
+/// Runtime retention and maintenance policy for the Work Center projection.
+/// Host lifecycle and polling settings intentionally live in the API adapter.
 /// </summary>
 public sealed class NgbWorkCenterOptions
 {
     public const string ConfigurationSection = "Ngb:WorkCenter";
-
-    public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(2);
-
-    public TimeSpan MaintenanceInterval { get; init; } = TimeSpan.FromHours(6);
 
     public TimeSpan DocumentActionExecutionRetention { get; init; } = TimeSpan.FromDays(90);
 
@@ -21,8 +17,6 @@ public sealed class NgbWorkCenterOptions
     public TimeSpan NotificationDeliveryRetention { get; init; } = TimeSpan.FromDays(30);
 
     public TimeSpan OutboxRetention { get; init; } = TimeSpan.FromDays(30);
-
-    public int ProjectionBatchSize { get; init; } = 25;
 
     public int MaintenanceBatchSize { get; init; } = 1_000;
 
@@ -36,13 +30,10 @@ internal sealed class NgbWorkCenterOptionsValidator : IValidateOptions<NgbWorkCe
         ArgumentNullException.ThrowIfNull(options);
         var failures = new List<string>();
 
-        ValidateDuration(options.PollInterval, TimeSpan.FromMilliseconds(250), TimeSpan.FromMinutes(1), nameof(options.PollInterval), failures);
-        ValidateDuration(options.MaintenanceInterval, TimeSpan.FromMinutes(1), TimeSpan.FromDays(7), nameof(options.MaintenanceInterval), failures);
         ValidateDuration(options.DocumentActionExecutionRetention, TimeSpan.FromDays(1), TimeSpan.FromDays(3650), nameof(options.DocumentActionExecutionRetention), failures);
         ValidateDuration(options.TerminalTaskRetention, TimeSpan.FromDays(1), TimeSpan.FromDays(3650), nameof(options.TerminalTaskRetention), failures);
         ValidateDuration(options.NotificationDeliveryRetention, TimeSpan.FromDays(1), TimeSpan.FromDays(3650), nameof(options.NotificationDeliveryRetention), failures);
         ValidateDuration(options.OutboxRetention, TimeSpan.FromDays(1), TimeSpan.FromDays(3650), nameof(options.OutboxRetention), failures);
-        ValidateRange(options.ProjectionBatchSize, 1, 100, nameof(options.ProjectionBatchSize), failures);
         ValidateRange(options.MaintenanceBatchSize, 1, 10_000, nameof(options.MaintenanceBatchSize), failures);
         ValidateRange(options.MaximumMaintenanceBatchesPerRun, 1, 1_000, nameof(options.MaximumMaintenanceBatchesPerRun), failures);
 

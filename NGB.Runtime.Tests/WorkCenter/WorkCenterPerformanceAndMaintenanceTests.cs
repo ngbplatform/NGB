@@ -1,10 +1,10 @@
 using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
-using NGB.Application.Abstractions.Services;
 using NGB.Core.AuditLog;
 using NGB.Core.Security;
 using NGB.Core.WorkCenter;
+using NGB.Definitions.WorkCenter;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
@@ -177,15 +177,15 @@ public sealed class WorkCenterPerformanceAndMaintenanceTests
         validator.Validate(null, new NgbWorkCenterOptions()).Succeeded.Should().BeTrue();
         var invalid = validator.Validate(null, new NgbWorkCenterOptions
         {
-            PollInterval = TimeSpan.Zero,
-            ProjectionBatchSize = 101,
+            DocumentActionExecutionRetention = TimeSpan.Zero,
+            TerminalTaskRetention = TimeSpan.FromDays(3651),
             MaintenanceBatchSize = 0,
             MaximumMaintenanceBatchesPerRun = 0
         });
 
         invalid.Failed.Should().BeTrue();
-        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.PollInterval)));
-        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.ProjectionBatchSize)));
+        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.DocumentActionExecutionRetention)));
+        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.TerminalTaskRetention)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.MaintenanceBatchSize)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.MaximumMaintenanceBatchesPerRun)));
     }

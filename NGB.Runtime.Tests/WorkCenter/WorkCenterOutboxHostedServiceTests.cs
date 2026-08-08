@@ -1,10 +1,10 @@
+using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
-using NGB.Runtime.WorkCenter;
 using Xunit;
 
 namespace NGB.Runtime.Tests.WorkCenter;
@@ -157,8 +157,27 @@ public sealed class WorkCenterOutboxHostedServiceTests
         return scope;
     }
 
-    private static IOptions<NgbWorkCenterOptions> Options()
-        => Microsoft.Extensions.Options.Options.Create(new NgbWorkCenterOptions
+    [Fact]
+    public void Hosting_options_validation_accepts_defaults_and_rejects_unsafe_polling_values()
+    {
+        var validator = new NgbWorkCenterHostingOptionsValidator();
+
+        validator.Validate(null, new NgbWorkCenterHostingOptions()).Succeeded.Should().BeTrue();
+        var invalid = validator.Validate(null, new NgbWorkCenterHostingOptions
+        {
+            PollInterval = TimeSpan.Zero,
+            MaintenanceInterval = TimeSpan.FromDays(8),
+            ProjectionBatchSize = 101
+        });
+
+        invalid.Failed.Should().BeTrue();
+        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.PollInterval)));
+        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.MaintenanceInterval)));
+        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.ProjectionBatchSize)));
+    }
+
+    private static IOptions<NgbWorkCenterHostingOptions> Options()
+        => Microsoft.Extensions.Options.Options.Create(new NgbWorkCenterHostingOptions
         {
             PollInterval = TimeSpan.FromMilliseconds(10),
             MaintenanceInterval = TimeSpan.FromHours(6),
@@ -182,16 +201,12 @@ public sealed class WorkCenterOutboxHostedServiceTests
         }
     }
 
-    private sealed class AsyncOnlyOutboxProcessor(
-        AsyncOnlyDependency dependency,
-        TaskCompletionSource processed)
+    private sealed class AsyncOnlyOutboxProcessor(AsyncOnlyDependency dependency, TaskCompletionSource processed)
         : IOutboxProcessor
     {
-        private readonly AsyncOnlyDependency _dependency = dependency;
-
         public Task<int> ProcessBatchAsync(int batchSize, CancellationToken ct)
         {
-            _ = _dependency;
+            _ = dependency;
             processed.TrySetResult();
             return Task.FromResult(0);
         }

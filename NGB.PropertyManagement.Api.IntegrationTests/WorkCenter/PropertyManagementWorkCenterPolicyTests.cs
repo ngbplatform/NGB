@@ -1,14 +1,15 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.IntegrationEvents;
 using NGB.Contracts.Metadata;
 using NGB.Persistence.Documents;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.Runtime.Receivables;
 using NGB.PropertyManagement.Runtime.WorkCenter;
+using NGB.PropertyManagement.WorkCenter;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.WorkCenter;
@@ -50,7 +51,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
                 PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 $"pm:receivable-payment:{paymentId:D}:apply",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
 
         await sut.Policy.HandleAsync(
             Context(paymentId, PropertyManagementCodes.ReceivablePayment.ToUpperInvariant(), "UNPOST"),
@@ -71,6 +72,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
         string expectedSourceTitle)
     {
         var paymentId = Guid.NewGuid();
+        var changedUserId = Guid.NewGuid();
         var sut = CreatePolicy();
         var document = Document(paymentId, number);
         CreateWorkCenterTaskRequest? captured = null;
@@ -87,9 +89,9 @@ public sealed class PropertyManagementWorkCenterPolicyTests
         sut.Tasks
             .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
             .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), [changedUserId]));
 
-        await sut.Policy.HandleAsync(
+        var changedUsers = await sut.Policy.HandleAsync(
             Context(paymentId, PropertyManagementCodes.ReceivablePayment, actionCode),
             CancellationToken.None);
 
@@ -108,6 +110,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
         captured.DeduplicationKey.Should().Be($"pm:receivable-payment:{paymentId:D}:apply");
         captured.CorrelationId.Should().NotBeNull();
         captured.CausationId.Should().NotBeNull();
+        changedUsers.Should().Equal(changedUserId);
     }
 
     [Fact]
@@ -130,7 +133,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
                 PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 $"pm:receivable-payment:{paymentId:D}:apply",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
 
         await sut.Policy.HandleAsync(
             Context(paymentId, PropertyManagementCodes.ReceivablePayment, "post"),
@@ -166,7 +169,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
                 It.Is<CreateWorkCenterTaskRequest>(request =>
                     request.DeduplicationKey == $"pm:receivable-payment:{paymentId:D}:apply"),
                 CancellationToken.None))
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), []));
 
         await sut.Policy.HandleAsync(
             Context(applyId, PropertyManagementCodes.ReceivableApply, actionCode),
@@ -199,7 +202,7 @@ public sealed class PropertyManagementWorkCenterPolicyTests
                 PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
                 $"pm:receivable-payment:{paymentId:D}:apply",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
 
         await sut.Policy.HandleAsync(
             Context(applyId, PropertyManagementCodes.ReceivableApply, "post"),
@@ -225,7 +228,6 @@ public sealed class PropertyManagementWorkCenterPolicyTests
             availability.Object,
             tasks.Object,
             realtime.Object,
-            new Mock<IWorkCenterChangeTracker>().Object,
             new FixedTimeProvider(Now),
             NullLogger<ReceivablePaymentWorkCenterSynchronizer>.Instance);
         return (
@@ -253,8 +255,8 @@ public sealed class PropertyManagementWorkCenterPolicyTests
                 documentId,
                 documentType,
                 actionCode,
-                NGB.Core.Documents.DocumentStatus.Draft,
-                NGB.Core.Documents.DocumentStatus.Posted,
+                DocumentStatus.Draft,
+                DocumentStatus.Posted,
                 2));
     }
 

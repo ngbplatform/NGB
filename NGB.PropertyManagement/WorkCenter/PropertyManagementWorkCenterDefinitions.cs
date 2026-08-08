@@ -1,7 +1,7 @@
-using NGB.Application.Abstractions.Services;
 using NGB.Core.WorkCenter;
+using NGB.Definitions.WorkCenter;
 
-namespace NGB.PropertyManagement.Runtime.WorkCenter;
+namespace NGB.PropertyManagement.WorkCenter;
 
 public static class PropertyManagementWorkCenterCodes
 {

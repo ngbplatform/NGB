@@ -9,6 +9,7 @@ using NGB.Core.Documents.Actions;
 using NGB.Core.WorkCenter;
 using NGB.Definitions;
 using NGB.Definitions.Documents.Actions;
+using NGB.Definitions.WorkCenter;
 using NGB.Metadata.Documents.Actions;
 using NGB.Runtime.DependencyInjection;
 using NGB.Runtime.Documents.Actions;

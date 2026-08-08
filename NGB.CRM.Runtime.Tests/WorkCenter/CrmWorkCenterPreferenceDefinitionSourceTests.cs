@@ -1,6 +1,6 @@
 using FluentAssertions;
 using NGB.Core.WorkCenter;
-using NGB.CRM.Runtime.WorkCenter;
+using NGB.CRM.WorkCenter;
 
 namespace NGB.CRM.Runtime.Tests.WorkCenter;
 

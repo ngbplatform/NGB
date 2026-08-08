@@ -1,5 +1,5 @@
-using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.IntegrationEvents;
 using NGB.Core.Documents.Actions;
 using NGB.PropertyManagement.Documents;
 
@@ -10,7 +10,7 @@ public sealed class PropertyManagementWorkCenterPolicy(
     IReceivablePaymentWorkCenterSynchronizer synchronizer)
     : IDocumentActionCompletedWorkCenterPolicy
 {
-    public async Task HandleAsync(DocumentActionCompletedV1 @event, CancellationToken ct)
+    public async Task<IReadOnlyList<Guid>> HandleAsync(DocumentActionCompletedV1 @event, CancellationToken ct)
     {
         var documentId = @event.Data.DocumentId;
         var documentType = @event.Data.DocumentType;
@@ -20,31 +20,32 @@ public sealed class PropertyManagementWorkCenterPolicy(
         {
             if (actionCode == StandardDocumentActionCodes.UnpostValue)
             {
-                await synchronizer.CancelAsync(documentId, ct);
-                return;
+                return await synchronizer.CancelAsync(documentId, ct);
             }
 
             if (actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
             {
-                await synchronizer.SynchronizeAsync(
+                return await synchronizer.SynchronizeAsync(
                     documentId,
                     @event.CorrelationId,
                     @event.EventId,
                     ct);
             }
 
-            return;
+            return [];
         }
 
         if (string.Equals(documentType, PropertyManagementCodes.ReceivableApply, StringComparison.OrdinalIgnoreCase)
             && actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue or StandardDocumentActionCodes.UnpostValue)
         {
             var apply = await typedDocuments.ReadReceivableApplyHeadAsync(documentId, ct);
-            await synchronizer.SynchronizeAsync(
+            return await synchronizer.SynchronizeAsync(
                 apply.CreditDocumentId,
                 @event.CorrelationId,
                 @event.EventId,
                 ct);
         }
+
+        return [];
     }
 }

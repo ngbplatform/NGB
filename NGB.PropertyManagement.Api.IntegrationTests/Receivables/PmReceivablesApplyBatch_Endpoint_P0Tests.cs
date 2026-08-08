@@ -18,6 +18,7 @@ using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.Runtime;
 using NGB.PropertyManagement.Runtime.WorkCenter;
+using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.UnitOfWork;
 using Npgsql;
 using Xunit;

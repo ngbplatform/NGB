@@ -4,9 +4,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Documents;
+using NGB.Contracts.IntegrationEvents;
 using NGB.Contracts.Services;
 using NGB.Core.AuditLog;
 using NGB.Core.Documents;
@@ -25,6 +25,7 @@ using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 using DocumentActionExecutionKind = NGB.Core.Documents.Actions.DocumentActionExecutionKind;
 using DocumentActionConfirmationMode = NGB.Core.Documents.Actions.DocumentActionConfirmationMode;
+using ContractDocumentStatus = NGB.Contracts.Metadata.DocumentStatus;
 
 namespace NGB.Runtime.Documents.Actions;
 
@@ -396,8 +397,8 @@ internal sealed class DocumentActionDispatcher(
                 after.Id,
                 after.TypeCode,
                 actionCode.Value,
-                before.Status,
-                after.Status,
+                ToContractStatus(before.Status),
+                ToContractStatus(after.Status),
                 documentVersion));
         var payload = JsonSerializer.Serialize(completed, Json);
 
@@ -417,6 +418,15 @@ internal sealed class DocumentActionDispatcher(
             [WorkCenterConsumer],
             ct);
     }
+
+    private static ContractDocumentStatus ToContractStatus(DocumentStatus status)
+        => status switch
+        {
+            DocumentStatus.Draft => ContractDocumentStatus.Draft,
+            DocumentStatus.Posted => ContractDocumentStatus.Posted,
+            DocumentStatus.MarkedForDeletion => ContractDocumentStatus.MarkedForDeletion,
+            _ => throw new NgbInvariantViolationException($"Document status '{status}' cannot be serialized into the action-completed contract.")
+        };
 
     private static void EnsureType(Guid documentId, string expected, string actual)
     {

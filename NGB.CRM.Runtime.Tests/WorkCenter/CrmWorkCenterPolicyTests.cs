@@ -1,12 +1,14 @@
 using FluentAssertions;
 using Moq;
-using NGB.Application.Abstractions.IntegrationEvents;
+using NGB.Contracts.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
 using NGB.Core.Documents;
 using NGB.Core.WorkCenter;
 using NGB.CRM.Documents;
 using NGB.CRM.Runtime.WorkCenter;
+using NGB.CRM.WorkCenter;
 using NGB.Persistence.Documents;
+using ContractDocumentStatus = NGB.Contracts.Metadata.DocumentStatus;
 
 namespace NGB.CRM.Runtime.Tests.WorkCenter;
 
@@ -57,7 +59,7 @@ public sealed class CrmWorkCenterPolicyTests
         sut.Tasks
             .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
             .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), []));
         await sut.Policy.HandleAsync(Context(leadId, CrmCodes.LeadIntake.ToUpperInvariant(), actionCode), CancellationToken.None);
 
         captured.Should().NotBeNull();
@@ -87,7 +89,7 @@ public sealed class CrmWorkCenterPolicyTests
                 CrmWorkCenterCodes.QualifyLeadTask,
                 $"crm:lead:{leadId:D}:qualify",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
 
         await sut.Policy.HandleAsync(Context(leadId, CrmCodes.LeadIntake, "UNPOST"), CancellationToken.None);
 
@@ -109,6 +111,10 @@ public sealed class CrmWorkCenterPolicyTests
         var leadId = Guid.NewGuid();
         var sut = CreatePolicy();
         var head = Qualification(qualificationId, leadId, "Qualified");
+        var qualificationTaskUserId = Guid.NewGuid();
+        var conversionTaskUserId = Guid.NewGuid();
+        var notificationUserId = Guid.NewGuid();
+        var sharedUserId = Guid.NewGuid();
         CreateWorkCenterTaskRequest? captured = null;
         CreateNotificationRequest? capturedNotification = null;
         sut.TypedDocuments
@@ -119,23 +125,25 @@ public sealed class CrmWorkCenterPolicyTests
                 CrmWorkCenterCodes.QualifyLeadTask,
                 $"crm:lead:{leadId:D}:qualify",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([qualificationTaskUserId, sharedUserId]);
         sut.Documents
             .Setup(repository => repository.GetAsync(qualificationId, CancellationToken.None))
             .ReturnsAsync(Document(qualificationId, CrmCodes.LeadQualification, number));
         sut.Tasks
             .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
             .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), [conversionTaskUserId, sharedUserId]));
         sut.Notifications
             .Setup(service => service.CreateAsync(
                 It.IsAny<CreateNotificationRequest>(),
                 CancellationToken.None))
             .Callback<CreateNotificationRequest, CancellationToken>(
                 (request, _) => capturedNotification = request)
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), [notificationUserId, sharedUserId]));
 
-        await sut.Policy.HandleAsync(Context(qualificationId, CrmCodes.LeadQualification, actionCode), CancellationToken.None);
+        var changedUsers = await sut.Policy.HandleAsync(
+            Context(qualificationId, CrmCodes.LeadQualification, actionCode),
+            CancellationToken.None);
 
         captured.Should().NotBeNull();
         captured!.TaskCode.Should().Be("crm.convert_qualified_lead");
@@ -154,6 +162,8 @@ public sealed class CrmWorkCenterPolicyTests
         capturedNotification.RecipientRoleCode.Should().Be(CrmWorkCenterCodes.SalesRepresentativeRole);
         capturedNotification.DeduplicationKey.Should()
             .Be($"crm:lead:{leadId:D}:qualified:{qualificationId:D}");
+        changedUsers.Should().BeEquivalentTo(
+            [qualificationTaskUserId, conversionTaskUserId, notificationUserId, sharedUserId]);
     }
 
     [Fact]
@@ -170,13 +180,13 @@ public sealed class CrmWorkCenterPolicyTests
                 CrmWorkCenterCodes.QualifyLeadTask,
                 $"crm:lead:{leadId:D}:qualify",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
         sut.Tasks
             .Setup(service => service.CancelByDeduplicationKeyAsync(
                 CrmWorkCenterCodes.ConvertQualifiedLeadTask,
                 $"crm:lead:{leadId:D}:convert",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
 
         await sut.Policy.HandleAsync(
             Context(qualificationId, CrmCodes.LeadQualification, "post"),
@@ -215,7 +225,7 @@ public sealed class CrmWorkCenterPolicyTests
                 CrmWorkCenterCodes.ConvertQualifiedLeadTask,
                 $"crm:lead:{leadId:D}:convert",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
 
         await sut.Policy.HandleAsync(Context(conversionId, CrmCodes.LeadConversion, actionCode), CancellationToken.None);
 
@@ -236,7 +246,7 @@ public sealed class CrmWorkCenterPolicyTests
         sut.Tasks
             .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
             .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), []));
 
         await sut.Policy.HandleAsync(
             Context(activityId, CrmCodes.ActivityLog, "post"),
@@ -266,7 +276,7 @@ public sealed class CrmWorkCenterPolicyTests
                 CrmWorkCenterCodes.CompleteActivityTask,
                 $"crm:activity:{activityId:D}:complete",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
 
         await sut.Policy.HandleAsync(
             Context(activityId, CrmCodes.ActivityLog, "repost"),
@@ -286,7 +296,7 @@ public sealed class CrmWorkCenterPolicyTests
                 CrmWorkCenterCodes.CompleteActivityTask,
                 $"crm:activity:{activityId:D}:complete",
                 CancellationToken.None))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
 
         await sut.Policy.HandleAsync(
             Context(activityId, CrmCodes.ActivityLog, "unpost"),
@@ -313,7 +323,7 @@ public sealed class CrmWorkCenterPolicyTests
         sut.Notifications
             .Setup(service => service.CreateAsync(It.IsAny<CreateNotificationRequest>(), CancellationToken.None))
             .Callback<CreateNotificationRequest, CancellationToken>((request, _) => captured = request)
-            .ReturnsAsync(Guid.NewGuid());
+            .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), []));
 
         await sut.Policy.HandleAsync(
             Context(updateId, CrmCodes.OpportunityUpdate, "post"),
@@ -383,8 +393,8 @@ public sealed class CrmWorkCenterPolicyTests
                 documentId,
                 documentType,
                 actionCode,
-                NGB.Core.Documents.DocumentStatus.Draft,
-                NGB.Core.Documents.DocumentStatus.Posted,
+                ContractDocumentStatus.Draft,
+                ContractDocumentStatus.Posted,
                 2));
     }
 

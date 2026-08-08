@@ -3,9 +3,9 @@ using System.Text;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Documents;
 using NGB.Contracts.WorkCenter;
-using NGB.Core.Documents.Actions;
 using NGB.Core.Security;
 using NGB.Core.WorkCenter;
+using NGB.Definitions.WorkCenter;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
@@ -23,31 +23,6 @@ using WorkCenterPriority = NGB.Core.WorkCenter.WorkCenterPriority;
 using WorkCenterTaskStatus = NGB.Core.WorkCenter.WorkCenterTaskStatus;
 
 namespace NGB.Runtime.WorkCenter;
-
-internal sealed class WorkCenterChangeTracker : IWorkCenterChangeTracker
-{
-    private readonly HashSet<Guid> _userIds = [];
-
-    public void Track(IEnumerable<Guid> userIds)
-    {
-        ArgumentNullException.ThrowIfNull(userIds);
-
-        foreach (var userId in userIds)
-        {
-            if (userId != Guid.Empty)
-                _userIds.Add(userId);
-        }
-    }
-
-    public IReadOnlyList<Guid> Drain()
-    {
-        var result = _userIds.Order().ToArray();
-        _userIds.Clear();
-        return result;
-    }
-
-    public void Reset() => _userIds.Clear();
-}
 
 internal sealed class WorkCenterPreferenceRecipientResolver(
     INotificationPreferenceRepository preferences,
@@ -201,11 +176,10 @@ internal sealed class WorkCenterTaskService(
     IUnitOfWork uow,
     IWorkCenterTaskRepository tasks,
     WorkCenterPreferenceRecipientResolver recipientResolver,
-    IWorkCenterChangeTracker changes,
     TimeProvider timeProvider)
     : IWorkCenterTaskService
 {
-    public Task<Guid?> CreateAsync(CreateWorkCenterTaskRequest request, CancellationToken ct)
+    public Task<WorkCenterMutationResult> CreateAsync(CreateWorkCenterTaskRequest request, CancellationToken ct)
         => InTransactionAsync(async innerCt =>
         {
             ArgumentNullException.ThrowIfNull(request);
@@ -226,7 +200,7 @@ internal sealed class WorkCenterTaskService(
                 roleId = roleResolution.RoleId;
 
                 if (roleResolution.Recipients.Count == 0)
-                    return null;
+                    return WorkCenterMutationResult.Empty;
 
                 return await CreateTaskAsync(request, roleId, roleResolution.Recipients, innerCt);
             }
@@ -238,12 +212,12 @@ internal sealed class WorkCenterTaskService(
                 innerCt);
 
             if (recipients.Count == 0)
-                return null;
+                return WorkCenterMutationResult.Empty;
 
             return await CreateTaskAsync(request, roleId, recipients, innerCt);
         }, ct);
 
-    private async Task<Guid?> CreateTaskAsync(
+    private async Task<WorkCenterMutationResult> CreateTaskAsync(
         CreateWorkCenterTaskRequest request,
         Guid? roleId,
         IReadOnlyList<Guid> recipients,
@@ -278,13 +252,13 @@ internal sealed class WorkCenterTaskService(
                 recipients,
                 ct);
 
-        if (result.BecameActive)
-            changes.Track(recipients);
-
-        return result.TaskId;
+        return new WorkCenterMutationResult(result.TaskId, result.BecameActive ? recipients : []);
     }
 
-    public Task CompleteByDeduplicationKeyAsync(string taskCode, string deduplicationKey, CancellationToken ct)
+    public Task<IReadOnlyList<Guid>> CompleteByDeduplicationKeyAsync(
+        string taskCode,
+        string deduplicationKey,
+        CancellationToken ct)
         => InTransactionAsync(async innerCt =>
         {
             var result = await tasks.CompleteByDeduplicationKeyAsync(
@@ -292,10 +266,14 @@ internal sealed class WorkCenterTaskService(
                 deduplicationKey,
                 timeProvider.GetUtcNowDateTime(),
                 innerCt);
-            changes.Track(result.RecipientUserIds);
+
+            return result.RecipientUserIds;
         }, ct);
 
-    public Task CancelByDeduplicationKeyAsync(string taskCode, string deduplicationKey, CancellationToken ct)
+    public Task<IReadOnlyList<Guid>> CancelByDeduplicationKeyAsync(
+        string taskCode,
+        string deduplicationKey,
+        CancellationToken ct)
         => InTransactionAsync(async innerCt =>
         {
             var result = await tasks.CancelByDeduplicationKeyAsync(
@@ -303,7 +281,8 @@ internal sealed class WorkCenterTaskService(
                 deduplicationKey,
                 timeProvider.GetUtcNowDateTime(),
                 innerCt);
-            changes.Track(result.RecipientUserIds);
+
+            return result.RecipientUserIds;
         }, ct);
 
     private Task InTransactionAsync(Func<CancellationToken, Task> action, CancellationToken ct)
@@ -318,14 +297,14 @@ internal sealed class NotificationService(
     INotificationRepository notifications,
     WorkCenterPreferenceRecipientResolver recipientResolver,
     WorkCenterPreferenceDefinitionRegistry definitions,
-    IWorkCenterChangeTracker changes,
     TimeProvider timeProvider)
     : INotificationService
 {
-    public Task<Guid?> CreateAsync(CreateNotificationRequest request, CancellationToken ct)
-        => uow.ExecuteInUowTransactionAsync<Guid?>(!uow.HasActiveTransaction, async innerCt =>
+    public Task<WorkCenterMutationResult> CreateAsync(CreateNotificationRequest request, CancellationToken ct)
+        => uow.ExecuteInUowTransactionAsync(!uow.HasActiveTransaction, async innerCt =>
         {
             ArgumentNullException.ThrowIfNull(request);
+
             var definition = definitions.Get(request.DefinitionCode);
 
             if (definition.Kind != WorkCenterPreferenceKind.Notification)
@@ -346,6 +325,7 @@ internal sealed class NotificationService(
                     WorkCenterPreferenceKind.Notification,
                     request.RecipientRoleCode,
                     innerCt);
+
                 enabledRecipients = resolution.Recipients;
             }
             else
@@ -358,7 +338,7 @@ internal sealed class NotificationService(
             }
 
             if (enabledRecipients.Count == 0)
-                return null;
+                return WorkCenterMutationResult.Empty;
 
             var now = timeProvider.GetUtcNowDateTime();
             var expires = request.ExpiresAtUtc
@@ -380,14 +360,12 @@ internal sealed class NotificationService(
                 enabledRecipients,
                 innerCt);
 
-            changes.Track(createResult.CreatedRecipientUserIds);
-
             NgbFeatureTelemetry.WorkCenterNotificationsCreated.Add(
                 1,
                 new KeyValuePair<string, object?>("notification.code", definition.Code),
                 new KeyValuePair<string, object?>("notification.severity", request.Severity ?? definition.DefaultSeverity));
 
-            return createResult.NotificationId;
+            return new WorkCenterMutationResult(createResult.NotificationId, createResult.CreatedRecipientUserIds);
         }, ct);
 }
 
@@ -653,6 +631,7 @@ internal sealed class WorkCenterQueryService(
         var userId = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             ArgumentNullException.ThrowIfNull(request);
+
             var access = await GetAccessAsync(innerCt);
             var now = timeProvider.GetUtcNowDateTime();
             var updates = new Dictionary<(string Code, NotificationChannel Channel), NotificationPreferenceRecord>();
@@ -661,8 +640,7 @@ internal sealed class WorkCenterQueryService(
             {
                 var definition = definitions.Get(item.Code);
                 if (!IsApplicableToRoles(definition, access.Roles))
-                    throw new NgbPermissionDeniedException(
-                        new NgbPermissionKey(NgbResourceKinds.System, "notification_preferences", NgbPermissionActions.Manage));
+                    throw new NgbPermissionDeniedException(new NgbPermissionKey(NgbResourceKinds.System, "notification_preferences", NgbPermissionActions.Manage));
 
                 var channel = (NotificationChannel)item.Channel;
                 if (!definition.SupportedChannels.Contains(channel))
@@ -687,6 +665,7 @@ internal sealed class WorkCenterQueryService(
             }
 
             await preferences.UpsertManyAsync(updates.Values.ToArray(), innerCt);
+
             return access.UserId;
         }, ct);
 
@@ -701,6 +680,7 @@ internal sealed class WorkCenterQueryService(
         {
             var access = await GetAccessAsync(innerCt);
             await mutation(access, timeProvider.GetUtcNowDateTime(), innerCt);
+
             return access.UserId;
         }, ct);
 
@@ -710,9 +690,7 @@ internal sealed class WorkCenterQueryService(
     private Task NotifyChangedAsync(IReadOnlyCollection<Guid> userIds, CancellationToken ct)
         => realtime.NotifyUsersChangedAsync(timeProvider.GetUtcNow().UtcTicks, userIds, ct);
 
-    private static bool IsApplicableToRoles(
-        WorkCenterPreferenceDefinition definition,
-        IReadOnlyList<PlatformRole> roles)
+    private static bool IsApplicableToRoles(WorkCenterPreferenceDefinition definition, IReadOnlyList<PlatformRole> roles)
         => definition.ApplicableRoleCodes is not { Count: > 0 }
            || roles.Any(role => definition.ApplicableRoleCodes.Contains(role.Code));
 
@@ -720,8 +698,7 @@ internal sealed class WorkCenterQueryService(
     {
         var snapshot = await snapshots.GetCurrentAsync(ct);
         if (snapshot is not { UserId: { } userId, IsAuthenticated: true, IsActive: true })
-            throw new NgbPermissionDeniedException(
-                new NgbPermissionKey(NgbResourceKinds.System, "work_center", NgbPermissionActions.View));
+            throw new NgbPermissionDeniedException(new NgbPermissionKey(NgbResourceKinds.System, "work_center", NgbPermissionActions.View));
 
         var roles = await userRoles.GetRolesForUserAsync(userId, ct);
         var activeRoles = roles.Where(static x => x.IsActive).ToArray();
@@ -791,12 +768,8 @@ internal sealed class WorkCenterQueryService(
             var raw = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
             var parts = raw.Split(':', 2);
 
-            if (parts.Length != 2
-                || !long.TryParse(parts[0], out var ticks)
-                || !Guid.TryParse(parts[1], out var id))
-            {
+            if (parts.Length != 2 || !long.TryParse(parts[0], out var ticks) || !Guid.TryParse(parts[1], out var id))
                 throw new FormatException();
-            }
 
             return new WorkCenterCursor(new DateTime(ticks, DateTimeKind.Utc), id);
         }

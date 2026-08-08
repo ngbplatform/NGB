@@ -22,7 +22,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.Runtime.DocumentActions;
-using NGB.PropertyManagement.Runtime.WorkCenter;
+using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.UnitOfWork;
 using Npgsql;
 using Xunit;

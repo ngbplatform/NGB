@@ -1,11 +1,12 @@
-using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.IntegrationEvents;
 using NGB.Contracts.Documents;
 using NGB.Core.Documents.Actions;
 using NGB.Core.Documents.Exceptions;
 using NGB.Core.WorkCenter;
 using NGB.CRM.Documents;
 using NGB.CRM.Runtime.DocumentActions;
+using NGB.CRM.WorkCenter;
 using NGB.Persistence.Documents;
 
 namespace NGB.CRM.Runtime.WorkCenter;
@@ -18,7 +19,7 @@ public sealed class CrmWorkCenterPolicy(
     TimeProvider timeProvider)
     : IDocumentActionCompletedWorkCenterPolicy
 {
-    public async Task HandleAsync(DocumentActionCompletedV1 @event, CancellationToken ct)
+    public async Task<IReadOnlyList<Guid>> HandleAsync(DocumentActionCompletedV1 @event, CancellationToken ct)
     {
         var documentId = @event.Data.DocumentId;
         var documentType = @event.Data.DocumentType;
@@ -28,27 +29,29 @@ public sealed class CrmWorkCenterPolicy(
         {
             if (actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
             {
-                await CreateQualificationTaskAsync(documentId, @event, ct);
+                return await CreateQualificationTaskAsync(documentId, @event, ct);
             }
-            else if (string.Equals(actionCode, StandardDocumentActionCodes.UnpostValue, StringComparison.OrdinalIgnoreCase))
+
+            if (string.Equals(actionCode, StandardDocumentActionCodes.UnpostValue, StringComparison.OrdinalIgnoreCase))
             {
-                await tasks.CancelByDeduplicationKeyAsync(
+                return await tasks.CancelByDeduplicationKeyAsync(
                     CrmWorkCenterCodes.QualifyLeadTask,
                     QualificationKey(documentId),
                     ct);
             }
 
-            return;
+            return [];
         }
 
         if (string.Equals(documentType, CrmCodes.LeadQualification, StringComparison.OrdinalIgnoreCase)
             && actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
         {
+            var changedUsers = new HashSet<Guid>();
             var qualification = await typedDocuments.ReadLeadQualificationHeadAsync(documentId, ct);
-            await tasks.CompleteByDeduplicationKeyAsync(
+            AddChanged(changedUsers, await tasks.CompleteByDeduplicationKeyAsync(
                 CrmWorkCenterCodes.QualifyLeadTask,
                 QualificationKey(qualification.LeadIntakeId),
-                ct);
+                ct));
 
             if (string.Equals(qualification.QualificationState, "Qualified", StringComparison.OrdinalIgnoreCase))
             {
@@ -58,9 +61,9 @@ public sealed class CrmWorkCenterPolicy(
                     "Lead qualification",
                     ct);
 
-                await CreateConversionTaskAsync(qualification, source, @event, ct);
+                AddChanged(changedUsers, await CreateConversionTaskAsync(qualification, source, @event, ct));
 
-                await CreateNotificationAsync(
+                AddChanged(changedUsers, await CreateNotificationAsync(
                     CrmWorkCenterCodes.LeadQualified,
                     source,
                     "Lead qualified",
@@ -68,47 +71,43 @@ public sealed class CrmWorkCenterPolicy(
                     NotificationSeverity.Success,
                     $"crm:lead:{qualification.LeadIntakeId:D}:qualified:{qualification.DocumentId:D}",
                     @event,
-                    ct);
+                    ct));
             }
             else
             {
-                await tasks.CancelByDeduplicationKeyAsync(
+                AddChanged(changedUsers, await tasks.CancelByDeduplicationKeyAsync(
                     CrmWorkCenterCodes.ConvertQualifiedLeadTask,
                     ConversionKey(qualification.LeadIntakeId),
-                    ct);
+                    ct));
             }
 
-            return;
+            return changedUsers.Order().ToArray();
         }
 
         if (string.Equals(documentType, CrmCodes.LeadConversion, StringComparison.OrdinalIgnoreCase)
             && actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
         {
             var conversion = await typedDocuments.ReadLeadConversionHeadAsync(documentId, ct);
-            await tasks.CompleteByDeduplicationKeyAsync(
+            return await tasks.CompleteByDeduplicationKeyAsync(
                 CrmWorkCenterCodes.ConvertQualifiedLeadTask,
                 ConversionKey(conversion.LeadIntakeId),
                 ct);
-
-            return;
         }
 
         if (string.Equals(documentType, CrmCodes.ActivityLog, StringComparison.OrdinalIgnoreCase))
         {
             if (actionCode == StandardDocumentActionCodes.UnpostValue)
             {
-                await tasks.CancelByDeduplicationKeyAsync(
+                return await tasks.CancelByDeduplicationKeyAsync(
                     CrmWorkCenterCodes.CompleteActivityTask,
                     ActivityKey(documentId),
                     ct);
-
-                return;
             }
 
             if (actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
-                await SynchronizeActivityTaskAsync(documentId, @event, ct);
+                return await SynchronizeActivityTaskAsync(documentId, @event, ct);
 
-            return;
+            return [];
         }
 
         if (string.Equals(documentType, CrmCodes.OpportunityUpdate, StringComparison.OrdinalIgnoreCase)
@@ -123,7 +122,7 @@ public sealed class CrmWorkCenterPolicy(
                     "Opportunity update",
                     ct);
 
-                await CreateNotificationAsync(
+                return await CreateNotificationAsync(
                     CrmWorkCenterCodes.OpportunityWon,
                     source,
                     "Opportunity won",
@@ -134,15 +133,17 @@ public sealed class CrmWorkCenterPolicy(
                     ct);
             }
         }
+
+        return [];
     }
 
-    private async Task CreateQualificationTaskAsync(
+    private async Task<IReadOnlyList<Guid>> CreateQualificationTaskAsync(
         Guid leadId,
         DocumentActionCompletedV1 @event,
         CancellationToken ct)
     {
         var lead = await typedDocuments.ReadLeadIntakeHeadAsync(leadId, ct);
-        await tasks.CreateAsync(
+        var result = await tasks.CreateAsync(
             new CreateWorkCenterTaskRequest(
                 CrmWorkCenterCodes.QualifyLeadTask,
                 Source(CrmCodes.LeadIntake, leadId, lead.LeadName, lead.CompanyName),
@@ -164,15 +165,17 @@ public sealed class CrmWorkCenterPolicy(
                 @event.CorrelationId,
                 @event.EventId),
             ct);
+
+        return result.ChangedUserIds;
     }
 
-    private async Task CreateConversionTaskAsync(
+    private async Task<IReadOnlyList<Guid>> CreateConversionTaskAsync(
         CrmLeadQualificationHead qualification,
         WorkCenterSourceReference source,
         DocumentActionCompletedV1 @event,
         CancellationToken ct)
     {
-        await tasks.CreateAsync(
+        var result = await tasks.CreateAsync(
             new CreateWorkCenterTaskRequest(
                 CrmWorkCenterCodes.ConvertQualifiedLeadTask,
                 source,
@@ -194,9 +197,11 @@ public sealed class CrmWorkCenterPolicy(
                 @event.CorrelationId,
                 @event.EventId),
             ct);
+
+        return result.ChangedUserIds;
     }
 
-    private async Task SynchronizeActivityTaskAsync(
+    private async Task<IReadOnlyList<Guid>> SynchronizeActivityTaskAsync(
         Guid activityId,
         DocumentActionCompletedV1 @event,
         CancellationToken ct)
@@ -204,12 +209,10 @@ public sealed class CrmWorkCenterPolicy(
         var activity = await typedDocuments.ReadActivityLogHeadAsync(activityId, ct);
         if (activity.DueAtUtc is null || activity.CompletedAtUtc is not null)
         {
-            await tasks.CompleteByDeduplicationKeyAsync(
+            return await tasks.CompleteByDeduplicationKeyAsync(
                 CrmWorkCenterCodes.CompleteActivityTask,
                 ActivityKey(activityId),
                 ct);
-
-            return;
         }
 
         var source = Source(CrmCodes.ActivityLog, activityId, activity.Subject, activity.ActivityType);
@@ -217,7 +220,7 @@ public sealed class CrmWorkCenterPolicy(
             ? WorkCenterPriority.High
             : WorkCenterPriority.Normal;
 
-        await tasks.CreateAsync(
+        var result = await tasks.CreateAsync(
             new CreateWorkCenterTaskRequest(
                 CrmWorkCenterCodes.CompleteActivityTask,
                 source,
@@ -239,6 +242,8 @@ public sealed class CrmWorkCenterPolicy(
                 @event.CorrelationId,
                 @event.EventId),
             ct);
+
+        return result.ChangedUserIds;
     }
 
     private async Task<WorkCenterSourceReference> SourceAsync(
@@ -260,7 +265,7 @@ public sealed class CrmWorkCenterPolicy(
             document.Number);
     }
 
-    private async Task CreateNotificationAsync(
+    private async Task<IReadOnlyList<Guid>> CreateNotificationAsync(
         string definitionCode,
         WorkCenterSourceReference source,
         string title,
@@ -270,7 +275,7 @@ public sealed class CrmWorkCenterPolicy(
         DocumentActionCompletedV1 @event,
         CancellationToken ct)
     {
-        await notifications.CreateAsync(
+        var result = await notifications.CreateAsync(
             new CreateNotificationRequest(
                 definitionCode,
                 source,
@@ -286,6 +291,17 @@ public sealed class CrmWorkCenterPolicy(
                 RecipientRoleCode = CrmWorkCenterCodes.SalesRepresentativeRole
             },
             ct);
+
+        return result.ChangedUserIds;
+    }
+
+    private static void AddChanged(ISet<Guid> target, IEnumerable<Guid> userIds)
+    {
+        foreach (var userId in userIds)
+        {
+            if (userId != Guid.Empty)
+                target.Add(userId);
+        }
     }
 
     private static WorkCenterSourceReference Source(string code, Guid id, string title, string? subtitle)

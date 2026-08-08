@@ -1,4 +1,4 @@
-using NGB.Application.Abstractions.Services;
+using NGB.Definitions.WorkCenter;
 using NGB.Tools.Exceptions;
 
 namespace NGB.Runtime.WorkCenter;

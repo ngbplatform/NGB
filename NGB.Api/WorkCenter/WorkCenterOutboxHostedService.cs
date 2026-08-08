@@ -3,7 +3,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NGB.Application.Abstractions.Services;
-using NGB.Runtime.WorkCenter;
 
 namespace NGB.Api.WorkCenter;
 
@@ -14,7 +13,7 @@ namespace NGB.Api.WorkCenter;
 internal sealed class WorkCenterOutboxHostedService(
     IServiceScopeFactory scopes,
     TimeProvider timeProvider,
-    IOptions<NgbWorkCenterOptions> options,
+    IOptions<NgbWorkCenterHostingOptions> options,
     ILogger<WorkCenterOutboxHostedService> logger)
     : BackgroundService
 {

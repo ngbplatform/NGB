@@ -1,7 +1,7 @@
-using NGB.Application.Abstractions.Services;
 using NGB.Core.WorkCenter;
+using NGB.Definitions.WorkCenter;
 
-namespace NGB.CRM.Runtime.WorkCenter;
+namespace NGB.CRM.WorkCenter;
 
 public static class CrmWorkCenterCodes
 {
@@ -53,10 +53,7 @@ public sealed class CrmWorkCenterPreferenceDefinitionSource : IWorkCenterPrefere
                 NotificationSeverity.Success)
         ];
 
-    private static WorkCenterPreferenceDefinition TaskDefinition(
-        string code,
-        string displayName,
-        string description)
+    private static WorkCenterPreferenceDefinition TaskDefinition(string code, string displayName, string description)
         => new(
             code,
             WorkCenterPreferenceKind.Task,

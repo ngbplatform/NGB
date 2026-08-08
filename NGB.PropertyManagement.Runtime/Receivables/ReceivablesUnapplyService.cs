@@ -53,17 +53,17 @@ public sealed class ReceivablesUnapplyService(
             head = await readers.ReadReceivableApplyHeadAsync(applyId, innerCt);
         }, ct);
 
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var changedUsers = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             await posting.UnpostAsync(applyId, manageTransaction: false, innerCt);
-            await workCenter.SynchronizeAsync(
+            return (IReadOnlyCollection<Guid>)(await workCenter.SynchronizeAsync(
                 head.CreditDocumentId,
                 correlationId: Guid.CreateVersion7(),
                 causationId: applyId,
-                innerCt);
+                innerCt));
         }, ct);
 
-        await workCenter.NotifyChangedAsync(ct);
+        await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         return new ReceivablesUnapplyResponse(
             ApplyId: applyId,

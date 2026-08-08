@@ -77,7 +77,7 @@ public sealed class ReceivablesCustomApplyExecuteService(
         var executed = new List<ReceivablesExecutedApplyDto>(allocations.Length);
         var registerId = Guid.Empty;
         var availableCredit = 0m;
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var changedUsers = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             // Lock all involved documents in a deterministic order to avoid deadlocks.
             var docIds = new List<Guid>(1 + allocations.Length) { request.CreditDocumentId };
@@ -142,10 +142,10 @@ public sealed class ReceivablesCustomApplyExecuteService(
                 executed.Add(new ReceivablesExecutedApplyDto(applyId, a.ChargeDocumentId, a.Amount));
             }
 
-            await workCenter.CompleteIfExhaustedAsync(request.CreditDocumentId, innerCt);
+            return (IReadOnlyCollection<Guid>)(await workCenter.CompleteIfExhaustedAsync(request.CreditDocumentId, innerCt));
         }, ct);
 
-        await workCenter.NotifyChangedAsync(ct);
+        await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         var totalApplied = executed.Sum(x => x.Amount);
         var remaining = Math.Max(0m, availableCredit - totalApplied);

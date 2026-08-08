@@ -2,8 +2,8 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
-using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.IntegrationEvents;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.UnitOfWork;
@@ -17,7 +17,6 @@ internal sealed class OutboxProcessor(
     IOutboxEventRepository outbox,
     IEnumerable<IDocumentActionCompletedWorkCenterPolicy> policies,
     IWorkCenterRealtimeNotifier realtime,
-    IWorkCenterChangeTracker changes,
     WorkCenterPreferenceRecipientResolver recipientResolver,
     TimeProvider timeProvider,
     ILogger<OutboxProcessor> logger)
@@ -33,7 +32,6 @@ internal sealed class OutboxProcessor(
 
     public async Task<int> ProcessBatchAsync(int batchSize, CancellationToken ct)
     {
-        changes.Reset();
         var items = await uow.ExecuteInUowTransactionAsync(
             innerCt => outbox.ClaimBatchAsync(
                 ConsumerCode,
@@ -47,8 +45,8 @@ internal sealed class OutboxProcessor(
         var changedUsers = new HashSet<Guid>();
         foreach (var item in items)
         {
-            changes.Reset();
             recipientResolver.Reset();
+            var eventChangedUsers = new HashSet<Guid>();
             using var activity = NgbFeatureTelemetry.Activities.StartActivity("work_center.outbox.project", ActivityKind.Consumer);
             activity?.SetTag("messaging.system", "postgresql");
             activity?.SetTag("messaging.destination.name", ConsumerCode);
@@ -67,7 +65,8 @@ internal sealed class OutboxProcessor(
                         foreach (var policy in _policies)
                         {
                             var policyStarted = Stopwatch.GetTimestamp();
-                            await policy.HandleAsync(completed, innerCt);
+                            var policyChangedUsers = await policy.HandleAsync(completed, innerCt);
+                            eventChangedUsers.UnionWith(policyChangedUsers);
                             NgbFeatureTelemetry.WorkCenterPolicyDuration.Record(
                                 Stopwatch.GetElapsedTime(policyStarted).TotalMilliseconds,
                                 new KeyValuePair<string, object?>("event.type", item.Event.EventType),
@@ -88,7 +87,7 @@ internal sealed class OutboxProcessor(
                     new KeyValuePair<string, object?>("consumer", ConsumerCode),
                     new KeyValuePair<string, object?>("event.type", item.Event.EventType));
                 activity?.SetStatus(ActivityStatusCode.Ok);
-                changedUsers.UnionWith(changes.Drain());
+                changedUsers.UnionWith(eventChangedUsers);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -96,7 +95,6 @@ internal sealed class OutboxProcessor(
             }
             catch (Exception ex)
             {
-                changes.Reset();
                 NgbFeatureTelemetry.OutboxFailures.Add(
                     1,
                     new KeyValuePair<string, object?>("consumer", ConsumerCode),

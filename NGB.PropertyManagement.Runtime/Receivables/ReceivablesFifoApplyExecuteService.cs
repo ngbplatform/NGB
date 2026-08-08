@@ -59,7 +59,7 @@ public sealed class ReceivablesFifoApplyExecuteService(
 
         // 2) Execute atomically.
         var executed = new List<ReceivablesExecutedApplyDto>(plan.SuggestedApplies.Count);
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var changedUsers = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             // Lock all involved documents deterministically to avoid deadlocks with other apply flows.
             var ids = new List<Guid>(1 + plan.SuggestedApplies.Count) { request.CreditDocumentId };
@@ -94,11 +94,13 @@ public sealed class ReceivablesFifoApplyExecuteService(
             }
 
             if (executed.Count > 0)
-                await workCenter.CompleteIfExhaustedAsync(request.CreditDocumentId, innerCt);
+                return (IReadOnlyCollection<Guid>)(await workCenter.CompleteIfExhaustedAsync(request.CreditDocumentId, innerCt));
+
+            return Array.Empty<Guid>();
         }, ct);
 
         if (executed.Count > 0)
-            await workCenter.NotifyChangedAsync(ct);
+            await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         var totalApplied = executed.Sum(x => x.Amount);
         var remaining = Math.Max(0m, plan.AvailableCredit - totalApplied);
@@ -110,5 +112,4 @@ public sealed class ReceivablesFifoApplyExecuteService(
             RemainingCredit: remaining,
             ExecutedApplies: executed);
     }
-
 }

@@ -5,9 +5,8 @@ using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NGB.Application.Abstractions.IntegrationEvents;
 using NGB.Application.Abstractions.Services;
-using NGB.Core.Documents;
+using NGB.Contracts.IntegrationEvents;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.Security;
@@ -15,6 +14,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.WorkCenter;
 using NGB.Runtime.WorkCenter;
 using Xunit;
+using ContractDocumentStatus = NGB.Contracts.Metadata.DocumentStatus;
 
 namespace NGB.Runtime.Tests.WorkCenter;
 
@@ -49,7 +49,6 @@ public sealed class OutboxProcessorTests
         var first = new Mock<IDocumentActionCompletedWorkCenterPolicy>(MockBehavior.Strict);
         var second = new Mock<IDocumentActionCompletedWorkCenterPolicy>(MockBehavior.Strict);
         var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
-        var changes = new WorkCenterChangeTracker();
         var recipientUserId = Guid.NewGuid();
         var item = WorkItem(DocumentActionCompletedV1.EventType, attempt: 2);
         outbox.Setup(repository => repository.ClaimBatchAsync(
@@ -58,12 +57,11 @@ public sealed class OutboxProcessorTests
         first.Setup(policy => policy.HandleAsync(
                 It.Is<DocumentActionCompletedV1>(@event => @event.EventId == item.Event.EventId),
                 It.IsAny<CancellationToken>()))
-            .Callback(() => changes.Track([recipientUserId]))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([recipientUserId]);
         second.Setup(policy => policy.HandleAsync(
                 It.Is<DocumentActionCompletedV1>(@event => @event.EventId == item.Event.EventId),
                 It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync([]);
         outbox.Setup(repository => repository.MarkCompletedAsync(
                 item.Event.EventId,
                 "work-center",
@@ -76,7 +74,7 @@ public sealed class OutboxProcessorTests
                 It.Is<IReadOnlyCollection<Guid>>(users => users.SequenceEqual(new[] { recipientUserId })),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("socket unavailable"));
-        var processor = Processor(uow, outbox, [first.Object, second.Object], realtime.Object, changes);
+        var processor = Processor(uow, outbox, [first.Object, second.Object], realtime.Object);
 
         (await processor.ProcessBatchAsync(25, CancellationToken.None)).Should().Be(1);
 
@@ -96,7 +94,6 @@ public sealed class OutboxProcessorTests
         var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
         var policy = new Mock<IDocumentActionCompletedWorkCenterPolicy>(MockBehavior.Strict);
         var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
-        var changes = new WorkCenterChangeTracker();
         var firstUser = Guid.NewGuid();
         var secondUser = Guid.NewGuid();
         var first = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid());
@@ -107,11 +104,10 @@ public sealed class OutboxProcessorTests
             .ReturnsAsync([first, second]);
         policy.Setup(candidate => candidate.HandleAsync(
                 It.IsAny<DocumentActionCompletedV1>(), It.IsAny<CancellationToken>()))
-            .Callback<DocumentActionCompletedV1, CancellationToken>((completed, _) =>
-                changes.Track(completed.EventId == first.Event.EventId
+            .ReturnsAsync((DocumentActionCompletedV1 completed, CancellationToken _) =>
+                (IReadOnlyList<Guid>)(completed.EventId == first.Event.EventId
                     ? [firstUser]
-                    : [firstUser, secondUser]))
-            .Returns(Task.CompletedTask);
+                    : [firstUser, secondUser]));
         foreach (var item in new[] { first, second })
         {
             outbox.Setup(repository => repository.MarkCompletedAsync(
@@ -124,7 +120,7 @@ public sealed class OutboxProcessorTests
                     ids.Count == 2 && ids.Contains(firstUser) && ids.Contains(secondUser)),
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
-        var processor = Processor(uow, outbox, [policy.Object], realtime.Object, changes);
+        var processor = Processor(uow, outbox, [policy.Object], realtime.Object);
 
         (await processor.ProcessBatchAsync(2, CancellationToken.None)).Should().Be(2);
 
@@ -134,6 +130,54 @@ public sealed class OutboxProcessorTests
             It.IsAny<long>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
         outbox.VerifyAll();
         uow.CommitCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Projection_changes_are_not_published_when_the_projection_transaction_rolls_back()
+    {
+        var uow = new RecordingUnitOfWork();
+        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
+        var policy = new Mock<IDocumentActionCompletedWorkCenterPolicy>(MockBehavior.Strict);
+        var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
+        var recipientUserId = Guid.NewGuid();
+        var item = WorkItem(DocumentActionCompletedV1.EventType, attempt: 1);
+
+        outbox.Setup(repository => repository.ClaimBatchAsync(
+                "work-center", 1, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([item]);
+        policy.Setup(candidate => candidate.HandleAsync(
+                It.IsAny<DocumentActionCompletedV1>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([recipientUserId]);
+        outbox.Setup(repository => repository.MarkCompletedAsync(
+                item.Event.EventId,
+                "work-center",
+                1,
+                Now,
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("commit marker failed"));
+        outbox.Setup(repository => repository.MarkFailedAsync(
+                item.Event.EventId,
+                "work-center",
+                1,
+                Now,
+                It.IsAny<DateTime?>(),
+                "InvalidOperationException: commit marker failed",
+                false,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var processor = Processor(uow, outbox, [policy.Object], realtime.Object);
+
+        (await processor.ProcessBatchAsync(1, CancellationToken.None)).Should().Be(1);
+
+        realtime.Verify(
+            notifier => notifier.NotifyUsersChangedAsync(
+                It.IsAny<long>(),
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+        policy.VerifyAll();
+        outbox.VerifyAll();
+        uow.CommitCount.Should().Be(2, "only the claim and failure-record transactions committed");
     }
 
     [Fact]
@@ -303,14 +347,12 @@ public sealed class OutboxProcessorTests
         RecordingUnitOfWork uow,
         Mock<IOutboxEventRepository> outbox,
         IEnumerable<IDocumentActionCompletedWorkCenterPolicy> policies,
-        IWorkCenterRealtimeNotifier realtime,
-        IWorkCenterChangeTracker? changes = null)
+        IWorkCenterRealtimeNotifier realtime)
         => new(
             uow,
             outbox.Object,
             policies,
             realtime,
-            changes ?? new WorkCenterChangeTracker(),
             RecipientResolver(),
             new FixedTimeProvider(Now),
             NullLogger<OutboxProcessor>.Instance);
@@ -376,8 +418,8 @@ public sealed class OutboxProcessorTests
                         Guid.Parse("01980000-7000-8000-8000-000000000003"),
                         "test.document",
                         "post",
-                        DocumentStatus.Draft,
-                        DocumentStatus.Posted,
+                        ContractDocumentStatus.Draft,
+                        ContractDocumentStatus.Posted,
                         2)),
                 new JsonSerializerOptions(JsonSerializerDefaults.Web)
                 {

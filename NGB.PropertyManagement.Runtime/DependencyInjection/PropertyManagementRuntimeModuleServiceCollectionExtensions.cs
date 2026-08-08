@@ -6,6 +6,7 @@ using NGB.Definitions.Catalogs.Validation;
 using NGB.Definitions.Documents.Posting;
 using NGB.Definitions.Documents.Actions;
 using NGB.Definitions.Documents.Validation;
+using NGB.Definitions.WorkCenter;
 using NGB.PropertyManagement.DependencyInjection;
 using NGB.PropertyManagement.Runtime.Catalogs;
 using NGB.PropertyManagement.Runtime.Catalogs.Validation;
@@ -18,6 +19,7 @@ using NGB.PropertyManagement.Runtime.Receivables;
 using NGB.PropertyManagement.Runtime.Reporting;
 using NGB.PropertyManagement.Runtime.Security;
 using NGB.PropertyManagement.Runtime.WorkCenter;
+using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.Documents.Validation;
 using NGB.Runtime.Security;
 
