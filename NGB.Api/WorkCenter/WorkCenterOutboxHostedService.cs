@@ -22,6 +22,7 @@ internal sealed class WorkCenterOutboxHostedService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(options.Value.PollInterval);
+        using var cancellationRegistration = stoppingToken.Register(timer.Dispose);
 
         try
         {
@@ -29,7 +30,7 @@ internal sealed class WorkCenterOutboxHostedService(
             {
                 await DrainAsync(stoppingToken);
             }
-            while (await timer.WaitForNextTickAsync(stoppingToken));
+            while (await timer.WaitForNextTickAsync());
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

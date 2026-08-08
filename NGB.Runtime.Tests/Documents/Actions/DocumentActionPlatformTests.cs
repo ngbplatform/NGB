@@ -351,6 +351,24 @@ public sealed class DocumentActionPlatformTests
             Notification("test.mandatory", "Name", "Category", mandatory: true, canDisable: true),
             "*cannot be user-disableable*"
         ];
+        yield return
+        [
+            Notification(
+                "test.blank_role",
+                "Name",
+                "Category",
+                applicableRoleCodes: new HashSet<string> { " " }),
+            "*non-canonical role code*"
+        ];
+        yield return
+        [
+            Notification(
+                "test.noncanonical_role",
+                "Name",
+                "Category",
+                applicableRoleCodes: new HashSet<string> { "Sales" }),
+            "*non-canonical role code*"
+        ];
     }
 
     private static WorkCenterPreferenceDefinition Notification(
@@ -359,7 +377,8 @@ public sealed class DocumentActionPlatformTests
         string category,
         IReadOnlySet<NotificationChannel>? channels = null,
         bool mandatory = false,
-        bool canDisable = true)
+        bool canDisable = true,
+        IReadOnlySet<string>? applicableRoleCodes = null)
         => new(
             code,
             WorkCenterPreferenceKind.Notification,
@@ -370,7 +389,8 @@ public sealed class DocumentActionPlatformTests
             DefaultSeverity: NotificationSeverity.Information,
             SupportedChannels: channels ?? new HashSet<NotificationChannel> { NotificationChannel.InApp },
             Retention: null,
-            IsMandatory: mandatory);
+            IsMandatory: mandatory,
+            ApplicableRoleCodes: applicableRoleCodes);
 
     private sealed class TestNotificationSource(params WorkCenterPreferenceDefinition[] definitions)
         : IWorkCenterPreferenceDefinitionSource

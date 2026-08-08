@@ -103,6 +103,79 @@ public sealed class DocumentActionEvaluatorCoverageTests
     }
 
     [Fact]
+    public async Task Execution_evaluation_uses_metadata_without_custom_facts_and_custom_evaluators_with_facts()
+    {
+        var services = new ServiceCollection()
+            .AddSingleton<AllowAuthorizationEvaluator>()
+            .AddSingleton<SortedAvailabilityEvaluator>()
+            .BuildServiceProvider();
+        var evaluator = CreateEvaluator(services: services);
+        var document = Document();
+        var dto = Dto(document.Id);
+        var plain = Definition("test.plain");
+        var custom = Definition(
+            "test.custom-execution",
+            authorizationEvaluatorType: typeof(AllowAuthorizationEvaluator),
+            availabilityEvaluatorType: typeof(SortedAvailabilityEvaluator));
+
+        DocumentActionEvaluator.RequiresFactsForExecution(plain).Should().BeFalse();
+        DocumentActionEvaluator.RequiresFactsForExecution(custom).Should().BeTrue();
+
+        var plainResult = await evaluator.EvaluateForExecutionAsync(
+            plain,
+            document,
+            documentDto: null,
+            Snapshot(permissions: [Permission(SourceType, NgbPermissionActions.View)]),
+            new Dictionary<string, object?>(),
+            CancellationToken.None);
+        var customResult = await evaluator.EvaluateForExecutionAsync(
+            custom,
+            document,
+            dto,
+            Snapshot(),
+            new Dictionary<string, object?> { ["loaded"] = true },
+            CancellationToken.None);
+
+        plainResult.IsAllowed.Should().BeTrue();
+        customResult.IsAllowed.Should().BeFalse();
+        customResult.DisabledReasons.Select(static reason => reason.Code)
+            .Should().Equal("a.reason", "z.reason");
+    }
+
+    [Fact]
+    public async Task Execution_evaluation_rejects_missing_enriched_dto_and_denied_custom_authorization()
+    {
+        var services = new ServiceCollection()
+            .AddSingleton<AllowAuthorizationEvaluator>()
+            .AddSingleton<DenyAuthorizationEvaluator>()
+            .BuildServiceProvider();
+        var evaluator = CreateEvaluator(services: services);
+        var document = Document();
+        var requiresContext = Definition(
+            "test.requires-context",
+            authorizationEvaluatorType: typeof(AllowAuthorizationEvaluator));
+
+        var missingContext = () => evaluator.EvaluateForExecutionAsync(
+            requiresContext,
+            document,
+            documentDto: null,
+            Snapshot(),
+            new Dictionary<string, object?>(),
+            CancellationToken.None);
+        await missingContext.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("*requires an enriched document context*");
+
+        var denied = () => evaluator.EvaluateForExecutionAsync(
+            Definition("test.denied-execution", authorizationEvaluatorType: typeof(DenyAuthorizationEvaluator)),
+            document,
+            Dto(document.Id),
+            Snapshot(),
+            new Dictionary<string, object?>(),
+            CancellationToken.None);
+        await denied.Should().ThrowAsync<DocumentActionForbiddenException>();
+    }
+
+    [Fact]
     public async Task Derivation_authorization_requires_source_view_target_create_and_target_view()
     {
         var (definitions, registry) = DerivationDefinitions();
@@ -198,6 +271,32 @@ public sealed class DocumentActionEvaluatorCoverageTests
 
         action.Should().Throw<NgbConfigurationViolationException>()
             .WithMessage("*must be pure*IDocumentActionContextEnricher*");
+    }
+
+    [Fact]
+    public void Component_resolver_rejects_a_registered_component_with_the_wrong_contract()
+    {
+        using var services = new ServiceCollection()
+            .AddSingleton<NoOpHandler>()
+            .BuildServiceProvider();
+        var resolver = new DocumentActionComponentResolver(services);
+
+        var action = () => resolver.ResolveAuthorizationEvaluator(typeof(NoOpHandler));
+
+        action.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*does not implement*IDocumentActionAuthorizationEvaluator*");
+    }
+
+    [Fact]
+    public void Registry_accepts_a_pure_custom_authorization_evaluator()
+    {
+        var definitions = BaseDefinitions();
+
+        var action = () => new DocumentActionRegistry(
+            definitions,
+            [new PureAuthorizationContributor()]);
+
+        action.Should().NotThrow();
     }
 
     [Fact]
@@ -440,5 +539,20 @@ public sealed class DocumentActionEvaluatorCoverageTests
             DocumentActionHandlerContext context,
             CancellationToken ct)
             => Task.FromResult(new DocumentActionHandlerResult());
+    }
+
+    private sealed class PureAuthorizationContributor : IDocumentActionDefinitionsContributor
+    {
+        public void Contribute(DocumentActionDefinitionsBuilder builder)
+            => builder.Add(
+                SourceType,
+                new DocumentActionMetadata(
+                    new DocumentActionCode("test.pure-authorization"),
+                    new DocumentActionPresentation("Pure authorization"),
+                    DocumentActionKind.Secondary,
+                    DocumentActionExecutionKind.Command,
+                    1),
+                handlerType: typeof(NoOpHandler),
+                authorizationEvaluatorType: typeof(AllowAuthorizationEvaluator));
     }
 }

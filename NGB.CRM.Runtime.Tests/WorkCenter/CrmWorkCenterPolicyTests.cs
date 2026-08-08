@@ -28,6 +28,8 @@ public sealed class CrmWorkCenterPolicyTests
     [InlineData(CrmCodes.LeadIntake, "approve")]
     [InlineData(CrmCodes.LeadQualification, "unpost")]
     [InlineData(CrmCodes.LeadConversion, "unpost")]
+    [InlineData(CrmCodes.ActivityLog, "mark_for_deletion")]
+    [InlineData(CrmCodes.OpportunityUpdate, "approve")]
     public async Task Ignores_unrelated_document_action_events(string documentType, string actionCode)
     {
         var sut = CreatePolicy();
@@ -287,6 +289,50 @@ public sealed class CrmWorkCenterPolicyTests
     }
 
     [Fact]
+    public async Task Posting_activity_without_a_due_date_completes_any_existing_activity_task()
+    {
+        var activityId = Guid.NewGuid();
+        var sut = CreatePolicy();
+        sut.TypedDocuments
+            .Setup(readers => readers.ReadActivityLogHeadAsync(activityId, CancellationToken.None))
+            .ReturnsAsync(Activity(activityId, dueAtUtc: null, completedAtUtc: null));
+        sut.Tasks
+            .Setup(service => service.CompleteByDeduplicationKeyAsync(
+                CrmWorkCenterCodes.CompleteActivityTask,
+                $"crm:activity:{activityId:D}:complete",
+                CancellationToken.None))
+            .ReturnsAsync([]);
+
+        await sut.Policy.HandleAsync(
+            Context(activityId, CrmCodes.ActivityLog, "post"),
+            CancellationToken.None);
+
+        sut.Tasks.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Posting_overdue_activity_creates_a_high_priority_completion_task()
+    {
+        var activityId = Guid.NewGuid();
+        var sut = CreatePolicy();
+        CreateWorkCenterTaskRequest? captured = null;
+        sut.TypedDocuments
+            .Setup(readers => readers.ReadActivityLogHeadAsync(activityId, CancellationToken.None))
+            .ReturnsAsync(Activity(activityId, Now.AddMinutes(-1).UtcDateTime, completedAtUtc: null));
+        sut.Tasks
+            .Setup(service => service.CreateAsync(It.IsAny<CreateWorkCenterTaskRequest>(), CancellationToken.None))
+            .Callback<CreateWorkCenterTaskRequest, CancellationToken>((request, _) => captured = request)
+            .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), []));
+
+        await sut.Policy.HandleAsync(
+            Context(activityId, CrmCodes.ActivityLog, "post"),
+            CancellationToken.None);
+
+        captured.Should().NotBeNull();
+        captured!.Priority.Should().Be(WorkCenterPriority.High);
+    }
+
+    [Fact]
     public async Task Unposting_activity_cancels_activity_task_without_loading_document()
     {
         var activityId = Guid.NewGuid();
@@ -307,8 +353,10 @@ public sealed class CrmWorkCenterPolicyTests
         sut.TypedDocuments.VerifyNoOtherCalls();
     }
 
-    [Fact]
-    public async Task Posting_won_opportunity_notifies_sales_representatives()
+    [Theory]
+    [InlineData("post")]
+    [InlineData("repost")]
+    public async Task Posting_won_opportunity_notifies_sales_representatives(string actionCode)
     {
         var updateId = Guid.NewGuid();
         var opportunityId = Guid.NewGuid();
@@ -326,7 +374,7 @@ public sealed class CrmWorkCenterPolicyTests
             .ReturnsAsync(new WorkCenterMutationResult(Guid.NewGuid(), []));
 
         await sut.Policy.HandleAsync(
-            Context(updateId, CrmCodes.OpportunityUpdate, "post"),
+            Context(updateId, CrmCodes.OpportunityUpdate, actionCode),
             CancellationToken.None);
 
         captured.Should().NotBeNull();
@@ -336,6 +384,33 @@ public sealed class CrmWorkCenterPolicyTests
         captured.Source.ResourceCode.Should().Be(CrmCodes.OpportunityUpdate);
         captured.DeduplicationKey.Should()
             .Be($"crm:opportunity:{opportunityId:D}:won:{updateId:D}");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Won_opportunity_requires_an_existing_document_of_the_expected_type(bool missing)
+    {
+        var updateId = Guid.NewGuid();
+        var sut = CreatePolicy();
+        sut.TypedDocuments
+            .Setup(readers => readers.ReadOpportunityUpdateHeadAsync(updateId, CancellationToken.None))
+            .ReturnsAsync(OpportunityUpdate(updateId, Guid.NewGuid(), "Won"));
+        sut.Documents
+            .Setup(repository => repository.GetAsync(updateId, CancellationToken.None))
+            .ReturnsAsync(missing
+                ? null
+                : Document(updateId, CrmCodes.LeadIntake, "wrong-type"));
+
+        var action = () => sut.Policy.HandleAsync(
+            Context(updateId, CrmCodes.OpportunityUpdate, "post"),
+            CancellationToken.None);
+
+        if (missing)
+            await action.Should().ThrowAsync<NGB.Core.Documents.Exceptions.DocumentNotFoundException>();
+        else
+            await action.Should().ThrowAsync<NGB.Core.Documents.Exceptions.DocumentTypeMismatchException>();
+        sut.Notifications.VerifyNoOtherCalls();
     }
 
     [Fact]

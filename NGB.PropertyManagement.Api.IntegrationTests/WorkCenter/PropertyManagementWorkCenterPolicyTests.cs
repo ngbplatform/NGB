@@ -211,6 +211,70 @@ public sealed class PropertyManagementWorkCenterPolicyTests
         sut.Tasks.VerifyAll();
     }
 
+    [Fact]
+    public async Task Synchronizer_treats_realtime_delivery_as_best_effort_and_deduplicates_users()
+    {
+        var userId = Guid.NewGuid();
+        var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
+        realtime.Setup(notifier => notifier.NotifyUsersChangedAsync(
+                Now.UtcTicks,
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { userId })),
+                CancellationToken.None))
+            .ThrowsAsync(new InvalidOperationException("signalr unavailable"));
+        var synchronizer = new ReceivablePaymentWorkCenterSynchronizer(
+            new Mock<IDocumentRepository>(MockBehavior.Strict).Object,
+            new Mock<IReceivablesApplyAvailabilitySource>(MockBehavior.Strict).Object,
+            new Mock<IWorkCenterTaskService>(MockBehavior.Strict).Object,
+            realtime.Object,
+            new FixedTimeProvider(Now),
+            NullLogger<ReceivablePaymentWorkCenterSynchronizer>.Instance);
+
+        await synchronizer.NotifyChangedAsync(
+            [Guid.Empty, userId, userId],
+            CancellationToken.None);
+        await synchronizer.NotifyChangedAsync([], CancellationToken.None);
+
+        realtime.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Synchronizer_requires_an_existing_receivable_payment_document(bool missing)
+    {
+        var paymentId = Guid.NewGuid();
+        var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
+        documents.Setup(repository => repository.GetAsync(paymentId, CancellationToken.None))
+            .ReturnsAsync(missing
+                ? null
+                : new NGB.Core.Documents.DocumentRecord
+                {
+                    Id = paymentId,
+                    TypeCode = PropertyManagementCodes.RentCharge,
+                    DateUtc = Now.UtcDateTime,
+                    Status = NGB.Core.Documents.DocumentStatus.Posted,
+                    Version = 1
+                });
+        var synchronizer = new ReceivablePaymentWorkCenterSynchronizer(
+            documents.Object,
+            new Mock<IReceivablesApplyAvailabilitySource>(MockBehavior.Strict).Object,
+            new Mock<IWorkCenterTaskService>(MockBehavior.Strict).Object,
+            new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict).Object,
+            new FixedTimeProvider(Now),
+            NullLogger<ReceivablePaymentWorkCenterSynchronizer>.Instance);
+
+        var action = () => synchronizer.SynchronizeAsync(
+            paymentId,
+            correlationId: null,
+            causationId: null,
+            CancellationToken.None);
+
+        if (missing)
+            await action.Should().ThrowAsync<NGB.Core.Documents.Exceptions.DocumentNotFoundException>();
+        else
+            await action.Should().ThrowAsync<NGB.Core.Documents.Exceptions.DocumentTypeMismatchException>();
+    }
+
     private static (
         PropertyManagementWorkCenterPolicy Policy,
         Mock<IDocumentRepository> Documents,

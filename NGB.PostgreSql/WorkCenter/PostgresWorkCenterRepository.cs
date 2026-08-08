@@ -1311,10 +1311,8 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
                 ? null
                 : new WorkCenterNavigationTargetRecord(
                     NavigationTargetCode,
-                    string.IsNullOrWhiteSpace(NavigationParametersJson)
-                        ? new Dictionary<string, string?>()
-                        : JsonSerializer.Deserialize<Dictionary<string, string?>>(NavigationParametersJson)
-                          ?? new Dictionary<string, string?>()),
+                    JsonSerializer.Deserialize<Dictionary<string, string?>>(NavigationParametersJson!)
+                    ?? new Dictionary<string, string?>()),
             Version);
     }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -331,6 +332,65 @@ public sealed class DocumentActionDispatcherCoverageTests
     }
 
     [Fact]
+    public async Task Execute_loads_facts_once_for_custom_execution_evaluators()
+    {
+        var harness = new Harness();
+
+        var result = await harness.ExecuteAsync(new DocumentActionCode("test.evaluated-command"));
+
+        result.ActionCode.Should().Be("test.evaluated-command");
+        harness.Enricher.CallCount.Should().Be(2, "facts are loaded before execution and for the refreshed action list");
+        harness.Enricher.LastRequest.Should().NotBeNull();
+        harness.Handler.CallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Execute_rejects_missing_enriched_context_for_fact_loading_and_custom_handlers()
+    {
+        var factsHarness = new Harness(returnNullDocumentDto: true);
+        var factsAction = () => factsHarness.ExecuteAsync(new DocumentActionCode("test.evaluated-command"));
+
+        await factsAction.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("Enriched action context is required.");
+
+        var handlerHarness = new Harness(returnNullDocumentDto: true);
+        var handlerAction = () => handlerHarness.ExecuteAsync(new DocumentActionCode("test.command"));
+
+        await handlerAction.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("*requires an enriched document context*");
+        handlerHarness.Handler.CallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Execute_rolls_back_when_a_custom_handler_fails()
+    {
+        var harness = new Harness();
+
+        var action = () => harness.ExecuteAsync(new DocumentActionCode("test.failing-command"));
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("custom handler failed");
+        harness.Uow.Verify(unit => unit.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public void Action_completed_status_mapper_rejects_non_contract_document_statuses()
+    {
+        var mapper = typeof(DocumentActionDispatcher).GetMethod(
+            "ToContractStatus",
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        mapper.Invoke(null, [CoreStatus.Draft]).Should().Be(ContractStatus.Draft);
+        mapper.Invoke(null, [CoreStatus.Posted]).Should().Be(ContractStatus.Posted);
+        mapper.Invoke(null, [CoreStatus.MarkedForDeletion]).Should().Be(ContractStatus.MarkedForDeletion);
+        var action = () => mapper.Invoke(null, [(CoreStatus)999]);
+
+        action.Should().Throw<TargetInvocationException>()
+            .WithInnerException<NgbInvariantViolationException>()
+            .WithMessage("*cannot be serialized*");
+    }
+
+    [Fact]
     public async Task Execute_derivation_returns_created_document()
     {
         var harness = new Harness();
@@ -376,7 +436,8 @@ public sealed class DocumentActionDispatcherCoverageTests
     {
         public Harness(
             DocumentActionExecutionBeginStatus beginStatus = DocumentActionExecutionBeginStatus.Begun,
-            CoreStatus initialStatus = CoreStatus.Draft)
+            CoreStatus initialStatus = CoreStatus.Draft,
+            bool returnNullDocumentDto = false)
         {
             Source = Record(SourceType, initialStatus);
             Created = Record(TargetType, CoreStatus.Draft);
@@ -474,11 +535,14 @@ public sealed class DocumentActionDispatcherCoverageTests
             var registry = new DocumentActionRegistry(definitions, [new TestActionContributor()]);
 
             Handler = new RecordingHandler();
+            Enricher = new RecordingEnricher();
             var services = new ServiceCollection()
                 .AddSingleton(Handler)
+                .AddSingleton<PureAuthorizationEvaluator>()
+                .AddSingleton<FailingHandler>()
                 .BuildServiceProvider();
             var components = new DocumentActionComponentResolver(services);
-            var evaluator = new DocumentActionEvaluator(registry, definitions, components, []);
+            var evaluator = new DocumentActionEvaluator(registry, definitions, components, [Enricher]);
             Evaluator = evaluator;
 
             var documentTypes = new Mock<IDocumentTypeRegistry>(MockBehavior.Loose);
@@ -518,6 +582,18 @@ public sealed class DocumentActionDispatcherCoverageTests
                 NoOpReferencePayloadEnricher.Instance,
                 []);
             DocumentService = documentService;
+            IDocumentService dispatcherDocumentService = documentService;
+            if (returnNullDocumentDto)
+            {
+                var nullDocumentService = new Mock<IDocumentService>(MockBehavior.Strict);
+                nullDocumentService
+                    .Setup(service => service.GetByIdAsync(
+                        It.IsAny<string>(),
+                        It.IsAny<Guid>(),
+                        It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((DocumentDto)null!);
+                dispatcherDocumentService = nullDocumentService.Object;
+            }
 
             var audit = new Mock<IAuditLogService>(MockBehavior.Loose);
             Dispatcher = new DocumentActionDispatcher(
@@ -527,7 +603,7 @@ public sealed class DocumentActionDispatcherCoverageTests
                 Outbox.Object,
                 registry,
                 evaluator,
-                documentService,
+                dispatcherDocumentService,
                 Posting.Object,
                 Derivations.Object,
                 Permissions.Object,
@@ -550,6 +626,7 @@ public sealed class DocumentActionDispatcherCoverageTests
         public Mock<IDocumentDerivationService> Derivations { get; }
         public Mock<IPermissionSnapshotProvider> Permissions { get; }
         public RecordingHandler Handler { get; }
+        public RecordingEnricher Enricher { get; }
         public DocumentActionEvaluator Evaluator { get; }
         public DocumentService DocumentService { get; }
         public DocumentActionDispatcher Dispatcher { get; }
@@ -612,6 +689,15 @@ public sealed class DocumentActionDispatcherCoverageTests
                 handlerType: typeof(RecordingHandler));
             builder.Add(
                 SourceType,
+                Command("test.evaluated-command"),
+                handlerType: typeof(RecordingHandler),
+                authorizationEvaluatorType: typeof(PureAuthorizationEvaluator));
+            builder.Add(
+                SourceType,
+                Command("test.failing-command"),
+                handlerType: typeof(FailingHandler));
+            builder.Add(
+                SourceType,
                 Command(
                     "test.require-reason",
                     new DocumentActionConfirmationMetadata(
@@ -646,6 +732,43 @@ public sealed class DocumentActionDispatcherCoverageTests
             CallCount++;
             LastContext = context;
             return Task.FromResult(new DocumentActionHandlerResult());
+        }
+    }
+
+    private sealed class FailingHandler : IDocumentActionHandler
+    {
+        public Task<DocumentActionHandlerResult> ExecuteAsync(
+            DocumentActionHandlerContext context,
+            CancellationToken ct)
+            => Task.FromException<DocumentActionHandlerResult>(
+                new InvalidOperationException("custom handler failed"));
+    }
+
+    private sealed class PureAuthorizationEvaluator : IDocumentActionAuthorizationEvaluator
+    {
+        public ValueTask<DocumentActionAuthorizationResult> EvaluateAsync(
+            DocumentActionEvaluationContext context,
+            CancellationToken ct)
+            => ValueTask.FromResult(
+                context.Facts.TryGetValue("ready", out var ready) && Equals(ready, true)
+                    ? DocumentActionAuthorizationResult.Authorized
+                    : DocumentActionAuthorizationResult.Denied);
+    }
+
+    internal sealed class RecordingEnricher : IDocumentActionContextEnricher
+    {
+        public string DocumentTypeCode => SourceType;
+        public int CallCount { get; private set; }
+        public DocumentActionContextRequest? LastRequest { get; private set; }
+
+        public Task<IReadOnlyDictionary<string, object?>> LoadFactsAsync(
+            DocumentActionContextRequest request,
+            CancellationToken ct)
+        {
+            CallCount++;
+            LastRequest = request;
+            return Task.FromResult<IReadOnlyDictionary<string, object?>>(
+                new Dictionary<string, object?> { ["ready"] = true });
         }
     }
 

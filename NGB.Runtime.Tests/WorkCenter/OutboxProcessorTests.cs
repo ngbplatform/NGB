@@ -336,6 +336,41 @@ public sealed class OutboxProcessorTests
     }
 
     [Fact]
+    public async Task Empty_document_action_payload_is_dead_lettered_without_invoking_policies()
+    {
+        var valid = WorkItem(DocumentActionCompletedV1.EventType, attempt: 8);
+        var empty = WithEnvelope(valid, payloadJson: "null");
+
+        await AssertPoisonEventIsDeadLetteredAsync(
+            empty,
+            "Document action completed payload is empty");
+    }
+
+    [Fact]
+    public async Task Payload_with_a_different_correlation_is_dead_lettered_without_invoking_policies()
+    {
+        var valid = WorkItem(DocumentActionCompletedV1.EventType, attempt: 8);
+        var mismatched = WithEnvelope(
+            valid,
+            correlationId: Guid.Parse("01980000-7000-8000-8000-000000000098"));
+
+        await AssertPoisonEventIsDeadLetteredAsync(
+            mismatched,
+            "Document action completed payload does not match its outbox envelope");
+    }
+
+    [Fact]
+    public async Task Payload_with_a_differently_cased_envelope_type_is_dead_lettered_without_invoking_policies()
+    {
+        var valid = WorkItem(DocumentActionCompletedV1.EventType, attempt: 8);
+        var mismatched = WithEnvelope(valid, eventType: DocumentActionCompletedV1.EventType.ToUpperInvariant());
+
+        await AssertPoisonEventIsDeadLetteredAsync(
+            mismatched,
+            "Document action completed payload does not match its outbox envelope");
+    }
+
+    [Fact]
     public async Task Null_realtime_notifier_is_a_safe_noop()
     {
         var notifier = new NullWorkCenterRealtimeNotifier();
@@ -442,6 +477,27 @@ public sealed class OutboxProcessorTests
             "work-center",
             attempt);
     }
+
+    private static OutboxConsumerWorkItem WithEnvelope(
+        OutboxConsumerWorkItem item,
+        Guid? correlationId = null,
+        string? eventType = null,
+        string? payloadJson = null)
+        => new(
+            new OutboxEventEnvelope(
+                item.Event.EventId,
+                eventType ?? item.Event.EventType,
+                item.Event.SchemaVersion,
+                item.Event.OccurredAtUtc,
+                item.Event.Source,
+                item.Event.Subject,
+                item.Event.ActorUserId,
+                correlationId ?? item.Event.CorrelationId,
+                item.Event.CausationId,
+                payloadJson ?? item.Event.PayloadJson,
+                item.Event.CreatedAtUtc),
+            item.ConsumerCode,
+            item.AttemptCount);
 
     private static WorkCenterPreferenceRecipientResolver RecipientResolver()
         => new(

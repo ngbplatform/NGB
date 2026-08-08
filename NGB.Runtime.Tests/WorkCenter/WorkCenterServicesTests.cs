@@ -306,6 +306,63 @@ public sealed class WorkCenterServicesTests
     }
 
     [Fact]
+    public async Task Task_service_skips_a_direct_task_when_the_recipient_disabled_its_definition()
+    {
+        var userId = Guid.NewGuid();
+        var uow = new RecordingUnitOfWork();
+        var tasks = new Mock<IWorkCenterTaskRepository>(MockBehavior.Strict);
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        SetupActiveUsers(users);
+        var preferences = new Mock<INotificationPreferenceRepository>(MockBehavior.Strict);
+        preferences.Setup(repository => repository.GetForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { userId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new NotificationPreferenceRecord(
+                    userId,
+                    "task.code",
+                    NotificationChannel.InApp,
+                    IsEnabled: false,
+                    Now,
+                    Version: 1)
+            ]);
+        var service = new WorkCenterTaskService(
+            uow,
+            tasks.Object,
+            RecipientResolver(preferences, users),
+            new FixedTimeProvider(Now));
+
+        var result = await service.CreateAsync(
+            TaskRequest(userId, roleCode: null, actionCode: null),
+            CancellationToken.None);
+
+        result.Should().Be(WorkCenterMutationResult.Empty);
+        tasks.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Task_service_rejects_a_notification_definition_used_as_a_task()
+    {
+        var userId = Guid.NewGuid();
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        SetupActiveUsers(users);
+        var service = new WorkCenterTaskService(
+            new RecordingUnitOfWork(),
+            new Mock<IWorkCenterTaskRepository>(MockBehavior.Strict).Object,
+            RecipientResolver(
+                users: users,
+                definitions: Registry(Definition("notification.code", defaultEnabled: true))),
+            new FixedTimeProvider(Now));
+
+        var action = () => service.CreateAsync(
+            TaskRequest(userId, roleCode: null, actionCode: null, taskCode: "notification.code"),
+            CancellationToken.None);
+
+        await action.Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*registered as 'Notification'*'Task' is required*");
+    }
+
+    [Fact]
     public async Task Task_service_completes_and_cancels_by_deduplication_key()
     {
         var uow = new RecordingUnitOfWork();
@@ -435,11 +492,13 @@ public sealed class WorkCenterServicesTests
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         var user = Guid.NewGuid();
         var inactiveUser = Guid.NewGuid();
+        var missingUser = Guid.NewGuid();
         users.Setup(repository => repository.GetByIdsAsync(
                 It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyList<Guid> ids, CancellationToken _) =>
                 ids
+                    .Where(id => id != missingUser)
                     .Distinct()
                     .ToDictionary(
                         static id => id,
@@ -480,6 +539,8 @@ public sealed class WorkCenterServicesTests
         (await service.CreateAsync(NotificationRequest("test.ready", [user]), CancellationToken.None))
             .Should().Be(WorkCenterMutationResult.Empty);
         (await service.CreateAsync(NotificationRequest("test.active", [inactiveUser]), CancellationToken.None))
+            .Should().Be(WorkCenterMutationResult.Empty);
+        (await service.CreateAsync(NotificationRequest("test.active", [missingUser]), CancellationToken.None))
             .Should().Be(WorkCenterMutationResult.Empty);
         await FluentActions.Awaiting(() => service.CreateAsync(null!, CancellationToken.None))
             .Should().ThrowAsync<ArgumentNullException>();
@@ -542,6 +603,86 @@ public sealed class WorkCenterServicesTests
         result.ItemId.Should().NotBeNull();
         result.ChangedUserIds.Should().Equal(salesUser);
         notifications.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Notification_service_supports_role_recipients_and_rejects_ambiguous_recipient_sources()
+    {
+        var recipient = Guid.NewGuid();
+        var role = Role("sales", active: true);
+        var roles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
+        roles.Setup(repository => repository.GetByCodeAsync("sales", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(role);
+        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
+                role.RoleId,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([recipient]);
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        SetupActiveUsers(users);
+        var preferences = new Mock<INotificationPreferenceRepository>(MockBehavior.Strict);
+        preferences.Setup(repository => repository.GetForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { recipient })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var notifications = new Mock<INotificationRepository>(MockBehavior.Strict);
+        notifications.Setup(repository => repository.CreateAsync(
+                It.IsAny<WorkCenterNotification>(),
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { recipient })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkCenterNotificationCreateResult(Guid.NewGuid(), [recipient]));
+        var definitions = Registry(Definition("test.role-notification", defaultEnabled: true));
+        var service = new NotificationService(
+            new RecordingUnitOfWork(),
+            notifications.Object,
+            RecipientResolver(preferences, users, roles, userRoles, definitions),
+            definitions,
+            new FixedTimeProvider(Now));
+
+        var roleRequest = NotificationRequest("test.role-notification", []) with
+        {
+            RecipientRoleCode = "sales"
+        };
+        var result = await service.CreateAsync(roleRequest, CancellationToken.None);
+        var ambiguous = () => service.CreateAsync(
+            roleRequest with { RecipientUserIds = [recipient] },
+            CancellationToken.None);
+
+        result.ChangedUserIds.Should().Equal(recipient);
+        await ambiguous.Should().ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*either recipient users or a recipient role*");
+        notifications.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Notification_service_skips_all_users_outside_the_definition_roles()
+    {
+        var userId = Guid.NewGuid();
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        SetupActiveUsers(users);
+        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        userRoles.Setup(repository => repository.GetRolesForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { userId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+        var definitions = Registry(Definition(
+            "test.sales-only",
+            defaultEnabled: true,
+            applicableRoleCodes: new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "sales" }));
+        var notifications = new Mock<INotificationRepository>(MockBehavior.Strict);
+        var service = new NotificationService(
+            new RecordingUnitOfWork(),
+            notifications.Object,
+            RecipientResolver(users: users, userRoles: userRoles, definitions: definitions),
+            definitions,
+            new FixedTimeProvider(Now));
+
+        var result = await service.CreateAsync(
+            NotificationRequest("test.sales-only", [userId]),
+            CancellationToken.None);
+
+        result.Should().Be(WorkCenterMutationResult.Empty);
+        notifications.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -650,6 +791,36 @@ public sealed class WorkCenterServicesTests
         page.Items[0].Assignment.Should().BeNull();
         page.Items[0].Target.Should().BeNull();
         page.Items[0].IsOverdue.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(WorkCenterTab.Attention, WorkCenterQueryView.Attention)]
+    [InlineData(WorkCenterTab.Tasks, WorkCenterQueryView.Tasks)]
+    [InlineData(WorkCenterTab.Notifications, WorkCenterQueryView.Notifications)]
+    [InlineData(WorkCenterTab.Completed, WorkCenterQueryView.Completed)]
+    [InlineData((WorkCenterTab)999, WorkCenterQueryView.Attention)]
+    public async Task Query_service_maps_each_public_tab_to_the_repository_view(
+        WorkCenterTab tab,
+        WorkCenterQueryView expectedView)
+    {
+        var harness = QueryHarness(bootstrapAdmin: true);
+        harness.Reads.Setup(repository => repository.GetItemsAsync(
+                It.Is<WorkCenterQuery>(query =>
+                    query.View == expectedView
+                    && query.Priority == WorkCenterPriority.High
+                    && query.Severity == NotificationSeverity.Warning),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var result = await harness.Service.GetItemsAsync(
+            new WorkCenterQueryDto(
+                Tab: tab,
+                Priority: NGB.Contracts.WorkCenter.WorkCenterPriority.High,
+                Severity: NGB.Contracts.WorkCenter.NotificationSeverity.Warning),
+            CancellationToken.None);
+
+        result.Items.Should().BeEmpty();
+        harness.Reads.VerifyAll();
     }
 
     [Fact]

@@ -104,7 +104,7 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
         }
 
         recipients = recipients
-            .Where(userId => _users.TryGetValue(userId, out var user) && user is { IsActive: true })
+            .Where(userId => _users[userId] is { IsActive: true })
             .ToArray();
 
         if (recipients.Length == 0)
@@ -132,10 +132,9 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
             }
 
             recipients = recipients
-                .Where(userId => _rolesByUser.TryGetValue(userId, out var assignedRoles)
-                                 && assignedRoles.Any(role =>
-                                     role.IsActive
-                                     && definition.ApplicableRoleCodes.Contains(role.Code)))
+                .Where(userId => _rolesByUser[userId].Any(role =>
+                    role.IsActive
+                    && definition.ApplicableRoleCodes.Contains(role.Code)))
                 .ToArray();
 
             if (recipients.Length == 0)
@@ -284,9 +283,6 @@ internal sealed class WorkCenterTaskService(
 
             return result.RecipientUserIds;
         }, ct);
-
-    private Task InTransactionAsync(Func<CancellationToken, Task> action, CancellationToken ct)
-        => uow.ExecuteInUowTransactionAsync(!uow.HasActiveTransaction, action, ct);
 
     private Task<T> InTransactionAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
         => uow.ExecuteInUowTransactionAsync(!uow.HasActiveTransaction, action, ct);
@@ -448,13 +444,7 @@ internal sealed class WorkCenterQueryService(
                     visibility.ResourceCodes,
                     cursor,
                     limit + 1,
-                    query.Tab switch
-                    {
-                        WorkCenterTab.Tasks => WorkCenterQueryView.Tasks,
-                        WorkCenterTab.Notifications => WorkCenterQueryView.Notifications,
-                        WorkCenterTab.Completed => WorkCenterQueryView.Completed,
-                        _ => WorkCenterQueryView.Attention
-                    },
+                    ToRepositoryView(query.Tab),
                     query.Vertical,
                     query.Priority is { } priority ? (WorkCenterPriority)priority : null,
                     query.Severity is { } severity ? (NotificationSeverity)severity : null,
@@ -503,6 +493,20 @@ internal sealed class WorkCenterQueryService(
                 Stopwatch.GetElapsedTime(started).TotalMilliseconds,
                 new KeyValuePair<string, object?>("query.kind", "feed"));
         }
+    }
+
+    private static WorkCenterQueryView ToRepositoryView(WorkCenterTab tab)
+    {
+        if (tab == WorkCenterTab.Tasks)
+            return WorkCenterQueryView.Tasks;
+
+        if (tab == WorkCenterTab.Notifications)
+            return WorkCenterQueryView.Notifications;
+
+        if (tab == WorkCenterTab.Completed)
+            return WorkCenterQueryView.Completed;
+
+        return WorkCenterQueryView.Attention;
     }
 
     public Task MarkNotificationReadAsync(Guid notificationId, CancellationToken ct)

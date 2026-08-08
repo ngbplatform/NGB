@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Core.Documents;
 using NGB.Core.WorkCenter;
@@ -173,6 +174,8 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
         await using var scope = factory.Services.CreateAsyncScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var tasks = scope.ServiceProvider.GetRequiredService<IWorkCenterTaskRepository>();
+        var notifications = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+        var maintenance = scope.ServiceProvider.GetRequiredService<IWorkCenterMaintenanceRepository>();
         var outbox = scope.ServiceProvider.GetRequiredService<IOutboxEventRepository>();
         var preferences = scope.ServiceProvider.GetRequiredService<INotificationPreferenceRepository>();
         var reads = scope.ServiceProvider.GetRequiredService<IWorkCenterReadRepository>();
@@ -203,8 +206,47 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
             .GetByCodeAsync("pm-ar-clerk", CancellationToken.None);
         role.Should().NotBeNull();
         var task = ValidTask(now, role!.RoleId);
+        var taskTarget = new WorkCenterNavigationTargetRecord(
+            "document.editor",
+            new Dictionary<string, string?> { ["documentId"] = task.Source.EntityId.ToString("D") });
+
+        foreach (var invalidBatchSize in new[] { 0, 10_001 })
+        {
+            await FluentActions.Awaiting(() => maintenance.PruneAsync(
+                    new WorkCenterRetentionCutoffs(now, now, now, now),
+                    invalidBatchSize,
+                    CancellationToken.None))
+                .Should().ThrowAsync<NgbArgumentInvalidException>();
+        }
+
+        foreach (var recipients in new IReadOnlyList<Guid>[] { [], [Guid.Empty] })
+        {
+            await FluentActions.Awaiting(() => tasks.CreateAsync(
+                    task,
+                    null,
+                    null,
+                    recipients,
+                    CancellationToken.None))
+                .Should().ThrowAsync<NgbArgumentInvalidException>();
+        }
+
+        await preferences.UpsertManyAsync([], CancellationToken.None);
+        var preference = new NotificationPreferenceRecord(
+            recipientId,
+            "test.valid",
+            NotificationChannel.InApp,
+            IsEnabled: false,
+            UpdatedAtUtc: now,
+            Version: 1);
+        await uow.ExecuteInUowTransactionAsync(
+            ct => preferences.UpsertAsync(preference, ct),
+            CancellationToken.None);
+        (await preferences.GetForUserAsync(recipientId, CancellationToken.None))
+            .Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(preference, options => options.Excluding(x => x.Version));
+
         var created = await uow.ExecuteInUowTransactionAsync(
-            ct => tasks.CreateAsync(task, null, null, [recipientId], ct),
+            ct => tasks.CreateAsync(task, "open", taskTarget, [recipientId], ct),
             CancellationToken.None);
         created.Should().Be(new WorkCenterTaskCreateResult(task.Id, BecameActive: true, Version: 1));
         var duplicate = await uow.ExecuteInUowTransactionAsync(
@@ -223,6 +265,83 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
                 ct),
             CancellationToken.None);
         reopened.Should().Be(new WorkCenterTaskCreateResult(task.Id, BecameActive: true, Version: 3));
+
+        var claimed = await uow.ExecuteInUowTransactionAsync(
+            ct => tasks.ClaimAsync(
+                task.Id,
+                recipientId,
+                [role.RoleId],
+                allowAllSources: true,
+                allowedResourceKinds: [],
+                allowedResourceCodes: [],
+                expectedVersion: reopened.Version,
+                claimedAtUtc: now.AddSeconds(3),
+                ct),
+            CancellationToken.None);
+        claimed.Should().BeTrue();
+
+        var duplicateAfterClaim = await uow.ExecuteInUowTransactionAsync(
+            ct => tasks.CreateAsync(
+                task with { CreatedAtUtc = now.AddSeconds(4) },
+                primaryActionCode: "open",
+                target: taskTarget,
+                [recipientId],
+                ct),
+            CancellationToken.None);
+        duplicateAfterClaim.Should().Be(new WorkCenterTaskCreateResult(task.Id, BecameActive: false, Version: 4));
+
+        var notification = new WorkCenterNotification(
+            Guid.NewGuid(),
+            "test.valid.notification",
+            task.Source,
+            "Valid notification",
+            Body: null,
+            NotificationSeverity.Warning,
+            CreatedAtUtc: now.AddSeconds(5),
+            ExpiresAtUtc: null,
+            DeduplicationKey: $"notification:{Guid.NewGuid():D}",
+            CorrelationId: null,
+            CausationId: null);
+        await uow.ExecuteInUowTransactionAsync(
+            ct => notifications.CreateAsync(notification, [recipientId], ct),
+            CancellationToken.None);
+
+        var taskItems = await reads.GetItemsAsync(
+            Query(now.AddMinutes(1), WorkCenterQueryView.Tasks, recipientId, [role.RoleId]),
+            CancellationToken.None);
+        taskItems.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            Kind = WorkCenterItemKind.Task,
+            Priority = (WorkCenterPriority?)WorkCenterPriority.Normal,
+            Severity = (NotificationSeverity?)null,
+            TaskStatus = (WorkCenterTaskStatus?)WorkCenterTaskStatus.InProgress,
+            ClaimedByUserId = (Guid?)recipientId,
+            PrimaryActionCode = "open",
+            Target = taskTarget
+        });
+
+        await uow.ExecuteInUowTransactionAsync(
+            ct => uow.Connection.ExecuteAsync(new CommandDefinition(
+                "UPDATE platform_tasks SET navigation_parameters_json = 'null'::jsonb WHERE id = @TaskId;",
+                new { TaskId = task.Id },
+                uow.Transaction,
+                cancellationToken: ct)),
+            CancellationToken.None);
+        var nullTargetParameters = await reads.GetItemsAsync(
+            Query(now.AddMinutes(1), WorkCenterQueryView.Tasks, recipientId, [role.RoleId]),
+            CancellationToken.None);
+        nullTargetParameters.Should().ContainSingle().Which.Target!.Parameters.Should().BeEmpty();
+
+        var notificationItems = await reads.GetItemsAsync(
+            Query(now.AddMinutes(1), WorkCenterQueryView.Notifications, recipientId, [role.RoleId]),
+            CancellationToken.None);
+        notificationItems.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            Kind = WorkCenterItemKind.Notification,
+            Priority = (WorkCenterPriority?)null,
+            Severity = (NotificationSeverity?)NotificationSeverity.Warning,
+            TaskStatus = (WorkCenterTaskStatus?)null
+        });
 
         (await preferences.GetForUsersAsync([], CancellationToken.None)).Should().BeEmpty();
 
@@ -274,6 +393,10 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
                 [],
                 CancellationToken.None))
             .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await FluentActions.Awaiting(() => uow.ExecuteInUowTransactionAsync(
+                ct => outbox.AppendAsync(outboxEvent, [" ", "\t"], ct),
+                CancellationToken.None))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
         await FluentActions.Awaiting(() => outbox.ClaimBatchAsync(
                 " ",
                 1,
@@ -314,12 +437,14 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
     private static WorkCenterQuery Query(
         DateTime now,
         WorkCenterQueryView view,
+        Guid? userId = null,
+        IReadOnlyList<Guid>? roleIds = null,
         WorkCenterCursor? cursor = null,
         WorkCenterPriority? priority = null,
         NotificationSeverity? severity = null)
         => new(
-            Guid.NewGuid(),
-            [],
+            userId ?? Guid.NewGuid(),
+            roleIds ?? [],
             AllowAllSources: true,
             AllowedResourceKinds: [],
             AllowedResourceCodes: [],

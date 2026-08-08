@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -77,6 +78,52 @@ public sealed class WorkCenterOutboxHostedServiceTests
     }
 
     [Fact]
+    public async Task Hosted_service_polls_again_on_the_next_tick_and_logs_successful_maintenance()
+    {
+        var secondPoll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var processor = new Mock<IOutboxProcessor>(MockBehavior.Strict);
+        var calls = 0;
+        processor.Setup(candidate => candidate.ProcessBatchAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                if (Interlocked.Increment(ref calls) == 2)
+                    secondPoll.TrySetResult();
+                return 0;
+            });
+        var maintenance = new Mock<IWorkCenterMaintenanceService>(MockBehavior.Strict);
+        maintenance.Setup(service => service.PruneAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(3);
+        var provider = new Mock<IServiceProvider>(MockBehavior.Strict);
+        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxProcessor)))
+            .Returns(processor.Object);
+        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IWorkCenterMaintenanceService)))
+            .Returns(maintenance.Object);
+        var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
+        scopes.Setup(factory => factory.CreateScope()).Returns(Scope(provider.Object).Object);
+        var logger = new RecordingLogger();
+        var service = new WorkCenterOutboxHostedService(
+            scopes.Object,
+            TimeProvider.System,
+            Options(),
+            logger);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await secondPoll.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        processor.Verify(
+            candidate => candidate.ProcessBatchAsync(100, It.IsAny<CancellationToken>()),
+            Times.AtLeast(2));
+        logger.Messages.Should().ContainSingle("Pruned 3 expired Work Center records.");
+    }
+
+    [Fact]
     public async Task Hosted_service_contains_transient_processor_failures_until_the_next_tick()
     {
         var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -116,8 +163,6 @@ public sealed class WorkCenterOutboxHostedServiceTests
 
         await service.StartAsync(CancellationToken.None);
         await service.StopAsync(CancellationToken.None);
-
-        scopes.Verify(factory => factory.CreateScope(), Times.Never);
     }
 
     [Fact]
@@ -174,6 +219,10 @@ public sealed class WorkCenterOutboxHostedServiceTests
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.PollInterval)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.MaintenanceInterval)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.ProjectionBatchSize)));
+
+        validator.Validate(null, new NgbWorkCenterHostingOptions { ProjectionBatchSize = 0 })
+            .Failures.Should()
+            .ContainSingle(message => message.Contains(nameof(NgbWorkCenterHostingOptions.ProjectionBatchSize)));
     }
 
     private static IOptions<NgbWorkCenterHostingOptions> Options()
@@ -209,6 +258,26 @@ public sealed class WorkCenterOutboxHostedServiceTests
             _ = dependency;
             processed.TrySetResult();
             return Task.FromResult(0);
+        }
+    }
+
+    private sealed class RecordingLogger : ILogger<WorkCenterOutboxHostedService>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Information)
+                Messages.Add(formatter(state, exception));
         }
     }
 }

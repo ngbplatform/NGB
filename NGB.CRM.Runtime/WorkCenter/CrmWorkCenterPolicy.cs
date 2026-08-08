@@ -216,7 +216,8 @@ public sealed class CrmWorkCenterPolicy(
         }
 
         var source = Source(CrmCodes.ActivityLog, activityId, activity.Subject, activity.ActivityType);
-        var priority = activity.DueAtUtc <= timeProvider.GetUtcNow().UtcDateTime
+        var dueAtUtc = activity.DueAtUtc.Value;
+        var priority = dueAtUtc <= timeProvider.GetUtcNow().UtcDateTime
             ? WorkCenterPriority.High
             : WorkCenterPriority.Normal;
 
@@ -229,7 +230,7 @@ public sealed class CrmWorkCenterPolicy(
                 priority,
                 AssignedUserId: null,
                 AssignedRoleCode: CrmWorkCenterCodes.SalesRepresentativeRole,
-                DueAtUtc: activity.DueAtUtc,
+                DueAtUtc: dueAtUtc,
                 PrimaryActionCode: null,
                 Target: new DocumentActionTargetDto(
                     StandardDocumentTargets.Editor,

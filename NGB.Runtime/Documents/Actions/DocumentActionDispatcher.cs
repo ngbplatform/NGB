@@ -36,7 +36,7 @@ internal sealed class DocumentActionDispatcher(
     IOutboxEventRepository outbox,
     DocumentActionRegistry registry,
     DocumentActionEvaluator evaluator,
-    DocumentService documentService,
+    IDocumentService documentService,
     IDocumentPostingService posting,
     IDocumentDerivationService derivations,
     IPermissionSnapshotProvider permissions,
