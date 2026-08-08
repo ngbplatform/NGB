@@ -11,7 +11,8 @@
     "dev:crm-web": "npm --workspace ngb-crm-web run dev",
     "dev:pm-web": "npm --workspace ngb-property-management-web run dev",
     "dev:trade-web": "npm --workspace ngb-trade-web run dev",
-    "test:all": "npm run test:api-compat && npm run test:unit && npm run test:browser && npm run test:e2e",
+    "test:all": "npm run typecheck && npm run test:api-compat && npm run test:unit && npm run test:browser && npm run test:e2e",
+    "typecheck": "npm --workspace @ngbplatform/ui run typecheck && npm --workspace ngb-agency-billing-web run typecheck && npm --workspace ngb-crm-web run typecheck && npm --workspace ngb-property-management-web run typecheck && npm --workspace ngb-trade-web run typecheck",
     "test:api-compat": "node scripts/verify-platform-ui-exports.mjs",
     "update:api-compat": "node scripts/verify-platform-ui-exports.mjs --update",
     "test:browser": "npm run test:browser:framework && npm run test:browser:ab-web && npm run test:browser:crm-web && npm run test:browser:pm-web && npm run test:browser:trade-web",
@@ -39,17 +40,19 @@
     "test:coverage:diff:framework": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-framework-coverage.config.ts --coverage"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^6.0.3",
     "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "^4.1.10",
     "@vitest/coverage-v8": "4.1.10",
-    "@playwright/test": "^1.56.1",
     "istanbul-lib-coverage": "3.2.2",
     "istanbul-lib-report": "3.0.1",
     "istanbul-reports": "3.2.0",
     "typescript": "^5.7.3",
     "vitest": "^4.1.10",
-    "vitest-browser-vue": "^2.1.0"
+    "vitest-browser-vue": "^2.1.0",
+    "vue-tsc": "^3.3.9"
   },
   "workspaces": [
     "ngb-agency-billing-web",

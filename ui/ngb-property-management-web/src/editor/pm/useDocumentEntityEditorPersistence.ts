@@ -1,13 +1,11 @@
 import {
   applyInitialFieldValues,
-  buildDocumentFullPageUrl,
   buildFieldsPayload,
   createDraft,
   ensureModelKeys,
   getDocumentEditorState,
   getDocumentEffects,
   hydrateEntityReferenceFieldsForEditing,
-  resolveNavigateOnCreate,
   setModelFromFields,
   syncNgbEditorComputedDisplay,
   updateDraft,
@@ -27,7 +25,7 @@ export function useDocumentEntityEditorPersistence(args: PmEntityEditorPersisten
   async function load() {
     args.catalogMeta.value = null
     args.catalogItem.value = null
-    args.docMeta.value = await args.metaStore.ensureDocumentType(args.typeCode.value)
+    args.docMeta.value = await args.ensureDocumentMetadata(args.typeCode.value)
 
     if (args.isNew.value) {
       args.doc.value = null
@@ -71,7 +69,6 @@ export function useDocumentEntityEditorPersistence(args: PmEntityEditorPersisten
       const validationError = args.leaseEditor.validateLeasePartiesBeforeSave()
 
       if (validationError) {
-        args.toasts.push({ title: 'Invalid tenants', message: validationError, tone: 'danger' })
         args.setEditorError({
           summary: 'Tenant list is invalid.',
           issues: [{ path: 'parties', label: 'Tenants', scope: 'collection', messages: [validationError], code: null }],
@@ -85,19 +82,14 @@ export function useDocumentEntityEditorPersistence(args: PmEntityEditorPersisten
       parts = args.leaseEditor.buildSaveParts()
     }
 
-    const shouldNavigateOnCreate = resolveNavigateOnCreate(args.navigateOnCreate.value, args.mode.value)
-
     if (args.isNew.value) {
       const created = await createDraft(args.typeCode.value, { fields, parts })
       args.currentId.value = created.id
       args.doc.value = created
-      args.emitCreated(created.id)
+      await args.onCreated(created.id)
       args.leaseEditor.applyPersistedParts(created.payload?.parts)
       args.resetInitialSnapshot()
 
-      if (shouldNavigateOnCreate) {
-        await args.router.replace(buildDocumentFullPageUrl(args.typeCode.value, created.id))
-      }
       return
     }
 
@@ -114,7 +106,7 @@ export function useDocumentEntityEditorPersistence(args: PmEntityEditorPersisten
     syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value)
     args.leaseEditor.applyPersistedParts(updated.payload?.parts)
     args.resetInitialSnapshot()
-    args.emitSaved()
+    await args.onSaved()
   }
 
   return {

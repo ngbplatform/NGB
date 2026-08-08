@@ -1,75 +1,63 @@
-import { ref } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  getDocumentEditorState: vi.fn(),
-  getDocumentEffects: vi.fn(),
+  createCatalogPersistence: vi.fn(() => ({ load: vi.fn() })),
+  createDocumentPersistence: vi.fn(() => ({ load: vi.fn() })),
+  buildPayload: vi.fn(() => ({ lines: [] })),
+  hydrate: vi.fn(),
+  synchronize: vi.fn(),
 }))
 
 vi.mock('@ngbplatform/ui', () => ({
-  applyInitialFieldValues: vi.fn(),
-  buildDocumentFullPageUrl: vi.fn(),
-  buildFieldsPayload: vi.fn(),
-  clonePlainData: (value: unknown) => structuredClone(value),
-  createDraft: vi.fn(),
-  ensureModelKeys: vi.fn(),
-  getDocumentEditorState: mocks.getDocumentEditorState,
-  getDocumentEffects: mocks.getDocumentEffects,
-  hydrateEntityReferenceFieldsForEditing: vi.fn(),
-  resolveNavigateOnCreate: vi.fn(),
-  setModelFromFields: (model: { value: unknown }, fields: unknown) => { model.value = fields },
-  syncNgbEditorComputedDisplay: vi.fn(),
-  updateDraft: vi.fn(),
+  createConfiguredCatalogEntityEditorPersistence: mocks.createCatalogPersistence,
+  createConfiguredDocumentEntityEditorPersistence: mocks.createDocumentPersistence,
 }))
 
 vi.mock('../../../src/editor/documentParts', () => ({
-  buildTradeDocumentPartsPayload: vi.fn(),
-  hydrateTradeDocumentPartLookupRows: vi.fn(),
-  syncTradeDocumentAmountField: vi.fn(),
+  buildTradeDocumentPartsPayload: mocks.buildPayload,
+  hydrateTradeDocumentPartLookupRows: mocks.hydrate,
+  syncTradeDocumentAmountField: mocks.synchronize,
 }))
 
+import { useCatalogEntityEditorPersistence } from '../../../src/editor/useCatalogEntityEditorPersistence'
 import { useDocumentEntityEditorPersistence } from '../../../src/editor/useDocumentEntityEditorPersistence'
 
-describe('trade document editor persistence', () => {
-  it('hydrates an existing editor from the unified editor-state endpoint', async () => {
-    const document = {
-      id: 'doc-1',
-      status: 2,
-      isMarkedForDeletion: false,
-      payload: { fields: { memo: 'loaded' }, parts: { lines: [] } },
+describe('Trade persistence composition', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('delegates catalog persistence to the platform adapter', () => {
+    const context = { vertical: 'trade' }
+    const result = useCatalogEntityEditorPersistence(context as never)
+    expect(mocks.createCatalogPersistence).toHaveBeenCalledWith(context)
+    expect(result).toBe(mocks.createCatalogPersistence.mock.results[0]?.value)
+  })
+
+  it('binds Trade document-part policies to the platform adapter', async () => {
+    const context = { vertical: 'trade' }
+    const result = useDocumentEntityEditorPersistence(context as never)
+    const policy = mocks.createDocumentPersistence.mock.calls[0]?.[1]
+    const args = {
+      documentType: 'trade.order',
+      entityTypeCode: 'trade.order',
+      partsMeta: [{ key: 'lines' }],
+      partsModel: { lines: [] },
+      lookupStore: { id: 'lookups' },
+      model: { amount: 10 },
     }
-    mocks.getDocumentEditorState.mockResolvedValueOnce({
-      document,
-      documentVersion: 2,
-      actions: [],
+
+    expect(result).toBe(mocks.createDocumentPersistence.mock.results[0]?.value)
+    expect(policy.buildPayload(args)).toEqual({ lines: [] })
+    await policy.hydrate(args)
+    policy.synchronize(args)
+    expect(mocks.buildPayload).toHaveBeenCalledWith(args.partsMeta, args.partsModel)
+    expect(mocks.hydrate).toHaveBeenCalledWith(expect.objectContaining({
+      entityTypeCode: 'trade.order',
+      lookupStore: args.lookupStore,
+    }))
+    expect(mocks.synchronize).toHaveBeenCalledWith({
+      partsMeta: args.partsMeta,
+      partsModel: args.partsModel,
+      model: args.model,
     })
-    const resetInitialSnapshot = vi.fn()
-    const context = {
-      typeCode: ref('trd.sales_invoice'),
-      currentId: ref('doc-1'),
-      isNew: ref(false),
-      catalogMeta: ref(null),
-      catalogItem: ref(null),
-      docMeta: ref(null),
-      metadata: ref({ form: {} }),
-      doc: ref(null),
-      docEffects: ref(null),
-      model: ref({}),
-      partsModel: ref(null),
-      initialParts: ref(null),
-      initialFields: ref(null),
-      metaStore: { ensureDocumentType: vi.fn().mockResolvedValue({ form: {}, parts: [] }) },
-      lookupStore: {},
-      currentEditorContext: vi.fn(() => ({})),
-      resetInitialSnapshot,
-    }
-
-    await useDocumentEntityEditorPersistence(context as never).load()
-
-    expect(mocks.getDocumentEditorState).toHaveBeenCalledWith('trd.sales_invoice', 'doc-1')
-    expect(context.doc.value).toEqual(document)
-    expect(context.model.value).toEqual({ memo: 'loaded' })
-    expect(mocks.getDocumentEffects).not.toHaveBeenCalled()
-    expect(resetInitialSnapshot).toHaveBeenCalledOnce()
   })
 })

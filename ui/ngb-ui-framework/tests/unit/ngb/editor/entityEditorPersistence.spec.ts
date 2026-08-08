@@ -1,6 +1,22 @@
 import { computed, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../../../src/ngb/api/catalogs', () => ({
+  createCatalog: vi.fn(),
+  deleteCatalog: vi.fn(),
+  getCatalogById: vi.fn(),
+  markCatalogForDeletion: vi.fn(),
+  unmarkCatalogForDeletion: vi.fn(),
+  updateCatalog: vi.fn(),
+}))
+
+vi.mock('../../../../src/ngb/api/documents', () => ({
+  createDraft: vi.fn(),
+  getDocumentEditorState: vi.fn(),
+  getDocumentEffects: vi.fn(),
+  updateDraft: vi.fn(),
+}))
+
 import {
   applyInitialFieldValues,
   setModelFromFields,
@@ -21,6 +37,8 @@ function createPersistenceHarness() {
   const error = ref<{ summary: string } | null>(null)
   const emitChanged = vi.fn()
   const emitDeleted = vi.fn()
+  const onMarkedForDeletion = vi.fn()
+  const onUnmarkedForDeletion = vi.fn()
 
   const catalog = {
     load: vi.fn().mockResolvedValue(undefined),
@@ -59,6 +77,8 @@ function createPersistenceHarness() {
     normalizeEditorError,
     emitChanged,
     emitDeleted,
+    onMarkedForDeletion,
+    onUnmarkedForDeletion,
     adapters: {
       catalog,
       document,
@@ -68,6 +88,7 @@ function createPersistenceHarness() {
   return {
     state: {
       kind,
+      typeCode,
       metadata,
       loading,
       saving,
@@ -86,6 +107,8 @@ function createPersistenceHarness() {
       emitChanged,
       emitDeleted,
       normalizeEditorError,
+      onMarkedForDeletion,
+      onUnmarkedForDeletion,
     },
     persistence,
   }
@@ -160,6 +183,57 @@ describe('entity editor persistence', () => {
     expect(state.error.value).toEqual({
       summary: 'load failed',
     })
+
+    adapters.document.save.mockRejectedValueOnce(new Error('save failed'))
+    await persistence.save()
+    expect(state.error.value).toEqual({ summary: 'save failed' })
+    expect(state.saving.value).toBe(false)
+  })
+
+  it('honors empty-type, missing-form, and capability guards', async () => {
+    const { state, adapters, persistence } = createPersistenceHarness()
+
+    state.typeCode.value = ''
+    await persistence.load()
+    expect(adapters.document.load).not.toHaveBeenCalled()
+
+    state.metadata.value = null
+    await persistence.save()
+    state.metadata.value = { form: { sections: [] } }
+    state.canSave.value = false
+    await persistence.save()
+    expect(adapters.document.save).not.toHaveBeenCalled()
+
+    state.kind.value = 'catalog'
+    state.isNew.value = true
+    await persistence.markForDeletion()
+    await persistence.unmarkForDeletion()
+    await persistence.deleteEntity()
+    state.isNew.value = false
+    state.canMarkForDeletion.value = false
+    state.canUnmarkForDeletion.value = false
+    state.canDelete.value = false
+    await persistence.markForDeletion()
+    await persistence.unmarkForDeletion()
+    await persistence.deleteEntity()
+    expect(adapters.catalog.markForDeletion).not.toHaveBeenCalled()
+    expect(adapters.catalog.unmarkForDeletion).not.toHaveBeenCalled()
+    expect(adapters.catalog.deleteEntity).not.toHaveBeenCalled()
+  })
+
+  it('saves documents and ignores catalog-only mutations for document editors', async () => {
+    const { state, adapters, persistence } = createPersistenceHarness()
+    state.kind.value = 'document'
+
+    await persistence.save()
+    await persistence.markForDeletion()
+    await persistence.unmarkForDeletion()
+    await persistence.deleteEntity()
+
+    expect(adapters.document.save).toHaveBeenCalledOnce()
+    expect(adapters.catalog.markForDeletion).not.toHaveBeenCalled()
+    expect(adapters.catalog.unmarkForDeletion).not.toHaveBeenCalled()
+    expect(adapters.catalog.deleteEntity).not.toHaveBeenCalled()
   })
 
   it('marks, unmarks, and deletes catalog entities while reloading and emitting changes', async () => {
@@ -178,6 +252,28 @@ describe('entity editor persistence', () => {
     expect(spies.emitChanged).toHaveBeenNthCalledWith(1, 'markForDeletion')
     expect(spies.emitChanged).toHaveBeenNthCalledWith(2, 'unmarkForDeletion')
     expect(spies.emitDeleted).toHaveBeenCalledTimes(1)
+    expect(spies.onMarkedForDeletion).toHaveBeenCalledOnce()
+    expect(spies.onUnmarkedForDeletion).toHaveBeenCalledOnce()
+  })
+
+  it('normalizes catalog lifecycle failures and always releases saving state', async () => {
+    const { state, adapters, persistence } = createPersistenceHarness()
+    state.kind.value = 'catalog'
+
+    adapters.catalog.markForDeletion.mockRejectedValueOnce(new Error('mark failed'))
+    await persistence.markForDeletion()
+    expect(state.error.value).toEqual({ summary: 'mark failed' })
+    expect(state.saving.value).toBe(false)
+
+    adapters.catalog.unmarkForDeletion.mockRejectedValueOnce(new Error('unmark failed'))
+    await persistence.unmarkForDeletion()
+    expect(state.error.value).toEqual({ summary: 'unmark failed' })
+    expect(state.saving.value).toBe(false)
+
+    adapters.catalog.deleteEntity.mockRejectedValueOnce(new Error('delete failed'))
+    await persistence.deleteEntity()
+    expect(state.error.value).toEqual({ summary: 'delete failed' })
+    expect(state.saving.value).toBe(false)
   })
 
   it('exposes document effects loading without owning server lifecycle mutations', async () => {
@@ -187,5 +283,8 @@ describe('entity editor persistence', () => {
     expect(adapters.document).not.toHaveProperty('post')
     expect(adapters.document).not.toHaveProperty('unpost')
     expect(adapters.document).not.toHaveProperty('markForDeletion')
+
+    adapters.document.loadEffectsSnapshot = undefined as never
+    await persistence.loadDocumentEffectsSnapshot('pm.invoice', 'doc-2')
   })
 })

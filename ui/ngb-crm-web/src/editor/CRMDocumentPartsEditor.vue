@@ -5,6 +5,7 @@ import {
   clonePlainData,
   dataTypeKind,
   isReferenceValue,
+  normalizeJsonValue,
   type EntityFormModel,
   NgbDatePicker,
   NgbIcon,
@@ -174,7 +175,7 @@ function updateCell(partCode: string, rowIndex: number, fieldKey: string, value:
 
   rows[rowIndex] = recomputeDerivedFields(props.entityTypeCode, {
     ...row,
-    [fieldKey]: value,
+    [fieldKey]: normalizeJsonValue(value),
   })
 
   emitRows(partCode, rows)

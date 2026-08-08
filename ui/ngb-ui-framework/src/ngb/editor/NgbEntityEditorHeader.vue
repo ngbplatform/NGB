@@ -2,7 +2,7 @@
 import NgbHeaderActionCluster from '../components/NgbHeaderActionCluster.vue';
 import NgbBadge from '../primitives/NgbBadge.vue';
 import NgbIcon from '../primitives/NgbIcon.vue';
-import NgbPageHeader from '../site/NgbPageHeader.vue';
+import NgbPageHeader from '../layout/NgbPageHeader.vue';
 
 import type {
   DocumentHeaderActionGroup,

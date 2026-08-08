@@ -173,7 +173,7 @@ import NgbCommandPaletteFooterHints from './NgbCommandPaletteFooterHints.vue'
 const store = useCommandPaletteStore()
 const inputRef = ref<HTMLInputElement | null>(null)
 const lastFocusedElement = ref<HTMLElement | null>(null)
-let restoreFocusTimer: ReturnType<typeof window.setTimeout> | null = null
+let restoreFocusTimer: number | null = null
 
 const listboxId = 'ngb-command-palette-listbox'
 const placeholder = 'Search pages, records, reports, or run a command…'

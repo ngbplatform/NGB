@@ -1,4 +1,4 @@
-import { buildReportPageUrl, getReportDefinitions, searchCommandPalette, type CommandPaletteItemSeed, type CommandPaletteStoreConfig } from '@ngbplatform/ui'
+import { buildReportPageUrl, getReportDefinitions, searchCommandPalette, useMainMenuStore, type CommandPaletteItemSeed, type CommandPaletteStoreConfig } from '@ngbplatform/ui'
 import type { Router } from 'vue-router'
 import {
   buildPmHeuristicCurrentActions,
@@ -11,6 +11,7 @@ import {
 export function createPmCommandPaletteConfig(router: Router): CommandPaletteStoreConfig {
   return {
     router,
+    getMenuGroups: () => useMainMenuStore().groups,
     recentStorageKey: 'ngb:pm:command-palette:recent',
     buildHeuristicCurrentActions: buildPmHeuristicCurrentActions,
     favoriteItems: PM_FAVORITE_ITEMS,

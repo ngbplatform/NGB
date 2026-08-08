@@ -100,7 +100,7 @@ vi.mock('../../../../src/ngb/primitives/NgbMonthPicker.vue', () => ({
   default: StubMonthPicker,
 }))
 
-vi.mock('../../../../src/ngb/site/NgbPageHeader.vue', () => ({
+vi.mock('../../../../src/ngb/layout/NgbPageHeader.vue', () => ({
   default: StubPageHeader,
 }))
 

@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   type CatalogItemDto,
   type CatalogTypeMetadataDto,
+  buildCatalogFullPageUrl,
+  buildDocumentFullPageUrl,
   type DocumentDto,
   type DocumentEffectsDto,
   type DocumentStatus,
@@ -13,6 +15,7 @@ import {
   normalizeDocumentStatusValue,
   type RecordPayload,
   runEntityEditorAction,
+  resolveNavigateOnCreate,
   stableStringify,
   useEntityEditorBusinessContext,
   useEntityEditorCapabilities,
@@ -296,8 +299,6 @@ function openBulkCreateUnitsWizard() {
 const persistenceContext: PmEntityEditorPersistenceContext = {
   kind: editorKind,
   typeCode: editorTypeCode,
-  mode: editorMode,
-  navigateOnCreate: editorNavigateOnCreate,
   currentId,
   isNew,
   metadata,
@@ -307,29 +308,24 @@ const persistenceContext: PmEntityEditorPersistenceContext = {
   doc,
   docEffects,
   model,
-  loading,
-  saving,
-  canSave,
-  canMarkForDeletion,
-  canUnmarkForDeletion,
-  canDelete,
-  isDirty,
-  error,
-  metaStore,
   lookupStore,
   initialFields: editorInitialFields,
   initialParts: editorInitialParts,
   leaseEditor,
   currentEditorContext,
+  ensureCatalogMetadata: (typeCode) => metaStore.ensureCatalogType(typeCode),
+  ensureDocumentMetadata: (typeCode) => metaStore.ensureDocumentType(typeCode),
   resetInitialSnapshot,
   setEditorError,
-  normalizeEditorError,
-  emitCreated: (id) => emit('created', id),
-  emitSaved: () => emit('saved'),
-  emitChanged: (reason) => emit('changed', reason),
-  emitDeleted: () => emit('deleted'),
-  router,
-  toasts,
+  onCreated: async (id) => {
+    emit('created', id)
+    if (!resolveNavigateOnCreate(editorNavigateOnCreate.value, editorMode.value)) return
+    const url = editorKind.value === 'catalog'
+      ? buildCatalogFullPageUrl(editorTypeCode.value, id)
+      : buildDocumentFullPageUrl(editorTypeCode.value, id)
+    await router.replace(url)
+  },
+  onSaved: () => emit('saved'),
 }
 
 const {
@@ -354,6 +350,8 @@ const {
   normalizeEditorError,
   emitChanged: (reason) => emit('changed', reason),
   emitDeleted: () => emit('deleted'),
+  onMarkedForDeletion: () => toasts.push({ title: 'Deleted', message: 'Record marked for deletion.', tone: 'warn' }),
+  onUnmarkedForDeletion: () => toasts.push({ title: 'Restored', message: 'Record restored.', tone: 'success' }),
   adapters: {
     catalog: useCatalogEntityEditorPersistence(persistenceContext),
     document: useDocumentEntityEditorPersistence(persistenceContext),

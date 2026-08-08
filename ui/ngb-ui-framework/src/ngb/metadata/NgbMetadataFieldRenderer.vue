@@ -40,10 +40,18 @@ function update(value: unknown) {
 const hasRef = computed(() => isReferenceValue(props.modelValue))
 const refDisplay = computed(() => (isReferenceValue(props.modelValue) ? props.modelValue.display : null))
 
-function normalizeSelectValue(value: unknown): unknown {
-  if (dataTypeKind(props.field.dataType) !== 'Int32') return value
+type ControlValue = string | number | boolean | object | null | undefined
+
+function normalizeControlValue(value: unknown): ControlValue {
+  if (value == null || typeof value === 'string' || typeof value === 'number'
+    || typeof value === 'boolean' || typeof value === 'object') return value
+  return String(value)
+}
+
+function normalizeSelectValue(value: unknown): ControlValue {
+  if (dataTypeKind(props.field.dataType) !== 'Int32') return normalizeControlValue(value)
   if (typeof value === 'number') return Math.trunc(value)
-  if (typeof value !== 'string') return value
+  if (typeof value !== 'string') return normalizeControlValue(value)
 
   const parsed = Number.parseInt(value, 10)
   return Number.isFinite(parsed) ? parsed : value
@@ -57,9 +65,12 @@ const selectOptions = computed(() =>
 )
 
 const selectValue = computed(() => normalizeSelectValue(props.modelValue))
-const inputValue = computed(() => rendererState.value.inputType === 'datetime-local'
-  ? toDateTimeLocalInputValue(props.modelValue)
-  : (props.modelValue ?? ''))
+const inputValue = computed<string | number>(() => {
+  if (rendererState.value.inputType === 'datetime-local') return toDateTimeLocalInputValue(props.modelValue)
+  if (typeof props.modelValue === 'string' || typeof props.modelValue === 'number') return props.modelValue
+  return props.modelValue == null ? '' : String(props.modelValue)
+})
+const textareaValue = computed(() => props.modelValue == null ? '' : String(props.modelValue))
 </script>
 
 <template>
@@ -92,7 +103,7 @@ const inputValue = computed(() => rendererState.value.inputType === 'datetime-lo
     <textarea
       v-else-if="rendererState.mode === 'textarea'"
       class="min-h-[96px] w-full rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card px-3 py-2 text-sm text-ngb-text placeholder:text-ngb-muted/70 ngb-focus"
-      :value="modelValue ?? ''"
+      :value="textareaValue"
       :readonly="readonly"
       :disabled="disabled"
       @input="update(($event.target as HTMLTextAreaElement).value)"

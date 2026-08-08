@@ -191,7 +191,7 @@ const authStateDetail = computed(() => {
     work-center-vertical="trade"
     product-title="NGB"
     :user-name="auth.userName"
-    :user-email="auth.email"
+    :user-email="auth.email ?? undefined"
     :user-meta="auth.primaryRoleLabel"
     :user-meta-icon="auth.primaryRoleIcon"
     :pinned="pinned"

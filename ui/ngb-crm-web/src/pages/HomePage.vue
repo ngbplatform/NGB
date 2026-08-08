@@ -10,6 +10,7 @@ import {
   NgbDashboardStatusBanner,
   NgbIcon,
   NgbPageHeader,
+  type NgbIconName,
   useDashboardPageState,
 } from '@ngbplatform/ui'
 
@@ -53,7 +54,13 @@ const headerSummary = computed(() => {
   return `${formatDashboardCount(data.leadCount)} leads · ${formatDashboardCount(data.quoteCount)} quotes · ${formatDashboardCount(data.activityCount)} activities`
 })
 
-const quickActions = computed(() => [
+const quickActions = computed<Array<{
+  title: string
+  subtitle: string
+  route: string
+  icon: NgbIconName
+  tone: Tone
+}>>(() => [
   {
     title: 'New Lead',
     subtitle: 'Capture a qualified prospect before the first follow-up.',

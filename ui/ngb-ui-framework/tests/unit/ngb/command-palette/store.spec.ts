@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     searchRemote: undefined as undefined | ((request: unknown, signal?: AbortSignal) => Promise<unknown>),
     loadReportItems: vi.fn(),
     buildHeuristicCurrentActions: vi.fn(),
+    getMenuGroups: () => mocks.menuStore.groups,
     favoriteItems: [] as unknown[],
     createItems: [] as unknown[],
     specialPageItems: [] as unknown[],
@@ -29,10 +30,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../../src/ngb/command-palette/config', () => ({
   getConfiguredNgbCommandPalette: () => mocks.config,
-}))
-
-vi.mock('../../../../src/ngb/site/mainMenuStore', () => ({
-  useMainMenuStore: () => mocks.menuStore,
 }))
 
 vi.mock('../../../../src/ngb/command-palette/storage', () => ({

@@ -5,6 +5,8 @@ import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import NgbReportSheet from '../../../../src/ngb/reporting/NgbReportSheet.vue'
+import { configureNgbReporting } from '../../../../src/ngb/reporting/config'
+import { createDefaultNgbReportingConfig } from '../../../../src/ngb/reporting/defaultConfig'
 import NgbSiteShell from '../../../../src/ngb/site/NgbSiteShell.vue'
 import { ReportRowKind, type ReportSheetDto } from '../../../../src/ngb/reporting/types'
 
@@ -19,6 +21,8 @@ const shellNodes = [
     ],
   },
 ]
+
+configureNgbReporting(createDefaultNgbReportingConfig())
 
 const shellSettings = [
   {

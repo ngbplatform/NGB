@@ -135,7 +135,7 @@ const printableParts = computed<PrintablePartSection[]>(() => {
   return partsMeta
     .map((part) => {
       const rows = Array.isArray(partsPayload?.[part.partCode]?.rows) ? partsPayload[part.partCode]!.rows : [];
-      const columns = (part.list?.columns ?? []).map((column) => ({
+      const columns: PrintablePartSection['columns'] = (part.list?.columns ?? []).map((column) => ({
         key: column.key,
         label: column.label,
         align:

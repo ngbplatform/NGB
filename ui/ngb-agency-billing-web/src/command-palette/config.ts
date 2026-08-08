@@ -4,6 +4,7 @@ import {
   type CommandPaletteItemSeed,
   type CommandPaletteStoreConfig,
   buildReportPageUrl,
+  useMainMenuStore,
 } from '@ngbplatform/ui'
 import type { Router } from 'vue-router'
 
@@ -18,6 +19,7 @@ import {
 export function createAgencyBillingCommandPaletteConfig(router: Router): CommandPaletteStoreConfig {
   return {
     router,
+    getMenuGroups: () => useMainMenuStore().groups,
     recentStorageKey: 'ngb:agency-billing:command-palette:recent',
     buildHeuristicCurrentActions: buildAgencyBillingHeuristicCurrentActions,
     favoriteItems: AGENCY_BILLING_FAVORITE_ITEMS,

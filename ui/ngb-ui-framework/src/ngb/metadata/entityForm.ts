@@ -9,8 +9,8 @@ function padDateTimePart(value: number): string {
   return String(value).padStart(2, '0')
 }
 
-export function toDateTimeLocalInputValue(value: unknown): unknown {
-  if (typeof value !== 'string') return value
+export function toDateTimeLocalInputValue(value: unknown): string {
+  if (typeof value !== 'string') return value == null ? '' : String(value)
 
   const normalized = value.trim()
   if (!ISO_DATE_TIME_RE.test(normalized)) return value

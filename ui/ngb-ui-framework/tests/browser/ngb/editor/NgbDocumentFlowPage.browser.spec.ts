@@ -54,7 +54,7 @@ vi.mock('../../../../src/ngb/router/shareLink', () => ({
   copyAppLink: mocks.copyAppLink,
 }))
 
-vi.mock('../../../../src/ngb/site/NgbPageHeader.vue', () => ({
+vi.mock('../../../../src/ngb/layout/NgbPageHeader.vue', () => ({
   default: StubPageHeader,
 }))
 

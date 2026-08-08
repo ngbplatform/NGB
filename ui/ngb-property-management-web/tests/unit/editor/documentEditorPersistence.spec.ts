@@ -36,8 +36,6 @@ function context(overrides: Record<string, unknown> = {}) {
     typeCode: ref('pm.receivable_payment'),
     currentId: ref('doc-1'),
     isNew: ref(false),
-    mode: ref('drawer'),
-    navigateOnCreate: ref<boolean | null>(null),
     catalogMeta: ref<unknown>(null),
     catalogItem: ref<unknown>(null),
     docMeta: ref<unknown>(null),
@@ -47,17 +45,13 @@ function context(overrides: Record<string, unknown> = {}) {
     model: ref<Record<string, unknown>>({}),
     initialFields: ref<unknown>(null),
     initialParts: ref<unknown>(null),
-    metaStore: {
-      ensureDocumentType: vi.fn().mockResolvedValue({ form: {} }),
-      ensureCatalogType: vi.fn().mockResolvedValue({ form: {} }),
-    },
+    ensureDocumentMetadata: vi.fn().mockResolvedValue({ form: {} }),
+    ensureCatalogMetadata: vi.fn().mockResolvedValue({ form: {} }),
     lookupStore: {},
     currentEditorContext: vi.fn(() => ({ context: true })),
     resetInitialSnapshot: vi.fn(),
-    emitCreated: vi.fn(),
-    emitSaved: vi.fn(),
-    router: { replace: vi.fn() },
-    toasts: [] as unknown[],
+    onCreated: vi.fn(),
+    onSaved: vi.fn(),
     setEditorError: vi.fn(),
     leaseEditor: {
       isLeaseDocument: ref(false),
@@ -152,14 +146,12 @@ describe('property-management document editor persistence', () => {
     })
   })
 
-  it('creates a new draft and navigates when requested', async () => {
-    mocks.resolveNavigateOnCreate.mockReturnValueOnce(true)
+  it('creates a new draft and reports creation to the orchestration port', async () => {
     mocks.createDraft.mockResolvedValueOnce({ id: 'created-1', payload: { parts: { parties: ['server'] } } })
     const args = context({ isNew: ref(true) })
     await useDocumentEntityEditorPersistence(args as never).save()
     expect(args.currentId.value).toBe('created-1')
-    expect(args.emitCreated).toHaveBeenCalledWith('created-1')
-    expect(args.router.replace).toHaveBeenCalledWith('/document/full-page')
+    expect(args.onCreated).toHaveBeenCalledWith('created-1')
   })
 
   it('creates a draft without navigation and accepts missing response parts', async () => {
@@ -167,7 +159,6 @@ describe('property-management document editor persistence', () => {
     const args = context({ isNew: ref(true) })
     await useDocumentEntityEditorPersistence(args as never).save()
     expect(args.leaseEditor.applyPersistedParts).toHaveBeenCalledWith(undefined)
-    expect(args.router.replace).not.toHaveBeenCalled()
   })
 
   it('updates and fully rehydrates an existing draft', async () => {
@@ -176,7 +167,7 @@ describe('property-management document editor persistence', () => {
     await useDocumentEntityEditorPersistence(args as never).save()
     expect(args.model.value).toEqual({ memo: 'updated' })
     expect(args.leaseEditor.applyPersistedParts).toHaveBeenCalledWith({ parties: ['updated'] })
-    expect(args.emitSaved).toHaveBeenCalledOnce()
+    expect(args.onSaved).toHaveBeenCalledOnce()
   })
 
 })
@@ -200,20 +191,11 @@ describe('property-management catalog editor persistence', () => {
     expect(args.leaseEditor.applyPersistedParts).toHaveBeenCalledWith(null)
   })
 
-  it.each([
-    { navigateOnCreate: true, mode: 'drawer', shouldNavigate: true },
-    { navigateOnCreate: false, mode: 'page', shouldNavigate: false },
-    { navigateOnCreate: null, mode: 'page', shouldNavigate: true },
-    { navigateOnCreate: null, mode: 'drawer', shouldNavigate: false },
-  ])('creates a catalog and resolves navigation %#', async ({ navigateOnCreate, mode, shouldNavigate }) => {
+  it('creates a catalog and reports creation to the orchestration port', async () => {
     mocks.createCatalog.mockResolvedValueOnce({ id: 'catalog-1', payload: { fields: {} } })
-    const args = context({
-      isNew: ref(true),
-      navigateOnCreate: ref(navigateOnCreate),
-      mode: ref(mode),
-    })
+    const args = context({ isNew: ref(true) })
     await useCatalogEntityEditorPersistence(args as never).save()
-    expect(args.router.replace).toHaveBeenCalledTimes(shouldNavigate ? 1 : 0)
+    expect(args.onCreated).toHaveBeenCalledWith('catalog-1')
   })
 
   it('updates and fully rehydrates an existing catalog', async () => {
@@ -221,7 +203,7 @@ describe('property-management catalog editor persistence', () => {
     const args = context()
     await useCatalogEntityEditorPersistence(args as never).save()
     expect(args.model.value).toEqual({ name: 'Updated' })
-    expect(args.emitSaved).toHaveBeenCalledOnce()
+    expect(args.onSaved).toHaveBeenCalledOnce()
   })
 
   it('executes every catalog lifecycle mutation', async () => {
@@ -233,6 +215,5 @@ describe('property-management catalog editor persistence', () => {
     expect(mocks.markCatalogForDeletion).toHaveBeenCalledWith('pm.receivable_payment', 'doc-1')
     expect(mocks.unmarkCatalogForDeletion).toHaveBeenCalledWith('pm.receivable_payment', 'doc-1')
     expect(mocks.deleteCatalog).toHaveBeenCalledWith('pm.receivable_payment', 'doc-1')
-    expect(args.toasts).toHaveLength(2)
   })
 })

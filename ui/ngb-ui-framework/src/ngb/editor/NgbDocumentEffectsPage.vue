@@ -9,7 +9,8 @@ import { useMetadataStore } from '../metadata/store';
 import type { DocumentTypeMetadata } from '../metadata/types';
 import { useToasts } from '../primitives/toast';
 import NgbRegisterGrid from '../components/register/NgbRegisterGrid.vue';
-import NgbPageHeader from '../site/NgbPageHeader.vue';
+import type { RegisterDataRow } from '../components/register/registerTypes';
+import NgbPageHeader from '../layout/NgbPageHeader.vue';
 import { copyAppLink } from '../router/shareLink';
 import { currentRouteBackTarget, navigateBack, resolveBackTarget, withBackTarget } from '../router/backNavigation';
 import { toErrorMessage } from '../utils/errorMessage';
@@ -102,7 +103,7 @@ const referenceColumns = computed(() => [
   { key: 'fields', title: 'Fields' },
 ]);
 
-const accountingRows = computed(() => {
+const accountingRows = computed<RegisterDataRow[]>(() => {
   const items = effects.value?.accountingEntries ?? [];
   return items.flatMap((item) => {
     const occurred = formatUtc(item.occurredAtUtc);
@@ -113,7 +114,7 @@ const accountingRows = computed(() => {
       debit: formatMoney(item.amount),
       credit: '—',
       dimensionSet: formatDimensionSummary(item.debitDimensions, item.debitDimensionSetId),
-      __status: 'posted',
+      __status: 'posted' as const,
     };
 
     const creditRow = {
@@ -123,14 +124,14 @@ const accountingRows = computed(() => {
       debit: '—',
       credit: formatMoney(item.amount),
       dimensionSet: formatDimensionSummary(item.creditDimensions, item.creditDimensionSetId),
-      __status: 'posted',
+      __status: 'posted' as const,
     };
 
     return [debitRow, creditRow];
   });
 });
 
-const operationalRows = computed(() => {
+const operationalRows = computed<RegisterDataRow[]>(() => {
   const items = effects.value?.operationalRegisterMovements ?? [];
   return items.map((item) => ({
     key: effectKey(item.movementId),
@@ -138,11 +139,11 @@ const operationalRows = computed(() => {
     register: formatRegisterName(item.registerName, item.registerCode),
     dimensionSet: formatDimensionSummary(item.dimensions, item.dimensionSetId),
     resources: formatResourceSummary(item.resources),
-    __status: 'posted',
+    __status: 'posted' as const,
   }));
 });
 
-const referenceRows = computed(() => {
+const referenceRows = computed<RegisterDataRow[]>(() => {
   const items = effects.value?.referenceRegisterWrites ?? [];
   return items.map((item) => ({
     key: effectKey(item.recordId),
@@ -151,7 +152,7 @@ const referenceRows = computed(() => {
     status: item.isTombstone ? 'Tombstone' : 'Write',
     dimensionSet: formatDimensionSummary(item.dimensions, item.dimensionSetId),
     fields: formatFieldSummary(item.fields),
-    __status: item.isTombstone ? 'marked' : 'posted',
+    __status: item.isTombstone ? 'marked' as const : 'posted' as const,
   }));
 });
 

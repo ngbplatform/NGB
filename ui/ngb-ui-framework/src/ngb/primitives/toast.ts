@@ -1,4 +1,4 @@
-import { inject, provide, reactive } from 'vue';
+import { inject, provide, reactive, type InjectionKey } from 'vue';
 
 export type ToastTone = 'neutral' | 'success' | 'warn' | 'danger';
 
@@ -16,7 +16,7 @@ export type ToastApi = {
   remove: (id: string) => void;
 };
 
-const KEY = Symbol('ngb-toasts');
+const KEY: InjectionKey<ToastApi> = Symbol('ngb-toasts');
 
 export function provideToasts(): ToastApi {
   const state = reactive({
@@ -62,5 +62,5 @@ export function useToasts(): ToastApi {
 }
 
 export function useOptionalToasts(): ToastApi | null {
-  return inject<ToastApi>(KEY, null);
+  return inject(KEY) ?? null;
 }

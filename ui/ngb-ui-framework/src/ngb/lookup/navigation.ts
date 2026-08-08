@@ -12,6 +12,15 @@ export type LookupValueLike =
 
 export type LookupNavigationSource = LookupHint | LookupSource
 
+export function normalizeLookupValue(value: unknown): LookupValueLike {
+  if (typeof value === 'string' || value == null) return value
+  if (typeof value === 'object' && 'id' in value) {
+    const id = (value as { id?: unknown }).id
+    return { id: typeof id === 'string' ? id : null }
+  }
+  return null
+}
+
 export function lookupValueId(value: LookupValueLike): string | null {
   if (!value) return null
 

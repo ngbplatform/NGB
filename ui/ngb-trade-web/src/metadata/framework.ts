@@ -4,6 +4,7 @@ import {
   type ColumnMetadata,
   getCatalogTypeMetadata,
   getDocumentTypeMetadata,
+  normalizeLookupValue,
   searchResolvedLookupItems,
   useLookupStore,
   type MetadataFrameworkConfig,
@@ -112,7 +113,7 @@ export const tradeMetadataFormBehavior: MetadataFormBehavior = {
   buildLookupTargetUrl: async ({ hint, value, routeFullPath }) =>
     await buildLookupFieldTargetUrl({
       hint,
-      value,
+      value: normalizeLookupValue(value),
       route: { fullPath: routeFullPath },
     }),
 }

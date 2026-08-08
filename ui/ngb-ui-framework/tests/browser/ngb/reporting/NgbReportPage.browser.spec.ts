@@ -99,7 +99,7 @@ vi.mock('../../../../src/ngb/primitives/NgbSwitch.vue', () => ({
   default: StubSwitch,
 }))
 
-vi.mock('../../../../src/ngb/site/NgbPageHeader.vue', () => ({
+vi.mock('../../../../src/ngb/layout/NgbPageHeader.vue', () => ({
   default: StubPageHeader,
 }))
 

@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { createPlatformUiPackageManifest } from './platform-ui-package-manifest.mjs'
+
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = join(uiRoot, 'ngb-ui-framework')
 const crmRoot = join(uiRoot, 'ngb-crm-web')
@@ -20,54 +22,7 @@ if (requestedVersion !== sourceManifest.version) {
   )
 }
 
-const packageManifest = {
-  name: '@ngbplatform/ui',
-  version: requestedVersion,
-  description: 'Reusable Vue UI building blocks for NGB Platform vertical applications.',
-  keywords: ['ngb', 'ngb-platform', 'vue', 'ui-framework'],
-  license: 'Apache-2.0',
-  author: 'NGB Platform',
-  homepage: 'https://ngbplatform.com',
-  repository: {
-    type: 'git',
-    url: 'https://github.com/ngbplatform/NGB.git',
-    directory: 'ui/ngb-ui-framework',
-  },
-  bugs: {
-    url: 'https://github.com/ngbplatform/NGB/issues',
-  },
-  type: 'module',
-  engines: {
-    node: '>=22.14.0',
-  },
-  sideEffects: ['./src/styles/tailwind.css', './src/**/*.vue'],
-  exports: {
-    '.': {
-      types: './src/index.ts',
-      import: './src/index.ts',
-      default: './src/index.ts',
-    },
-    './styles': './src/styles/tailwind.css',
-    './vite-public-assets': './vite-public-assets.js',
-  },
-  files: ['LICENSE', 'README.md', 'public', 'src', 'vite-public-assets.js'],
-  publishConfig: {
-    access: 'public',
-    registry: 'https://registry.npmjs.org/',
-  },
-  dependencies: {
-    '@headlessui/vue': sourceManifest.dependencies['@headlessui/vue'],
-    '@microsoft/signalr': sourceManifest.dependencies['@microsoft/signalr'],
-    echarts: sourceManifest.dependencies.echarts,
-    'vue-echarts': sourceManifest.dependencies['vue-echarts'],
-  },
-  peerDependencies: {
-    'keycloak-js': sourceManifest.dependencies['keycloak-js'],
-    pinia: sourceManifest.dependencies.pinia,
-    vue: sourceManifest.dependencies.vue,
-    'vue-router': sourceManifest.dependencies['vue-router'],
-  },
-}
+const packageManifest = createPlatformUiPackageManifest(sourceManifest, requestedVersion)
 
 const stagingRoot = await mkdtemp(join(tmpdir(), 'ngb-platform-ui-'))
 const packageRoot = join(stagingRoot, 'package')

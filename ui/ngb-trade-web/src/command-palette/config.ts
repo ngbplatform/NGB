@@ -1,4 +1,4 @@
-import { buildReportPageUrl, getReportDefinitions, searchCommandPalette, type CommandPaletteItemSeed, type CommandPaletteStoreConfig } from '@ngbplatform/ui'
+import { buildReportPageUrl, getReportDefinitions, searchCommandPalette, useMainMenuStore, type CommandPaletteItemSeed, type CommandPaletteStoreConfig } from '@ngbplatform/ui'
 import type { Router } from 'vue-router'
 
 import {
@@ -12,6 +12,7 @@ import {
 export function createTradeCommandPaletteConfig(router: Router): CommandPaletteStoreConfig {
   return {
     router,
+    getMenuGroups: () => useMainMenuStore().groups,
     recentStorageKey: 'ngb:trade:command-palette:recent',
     buildHeuristicCurrentActions: buildTradeHeuristicCurrentActions,
     favoriteItems: TRADE_FAVORITE_ITEMS,

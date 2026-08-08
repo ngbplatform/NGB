@@ -13,6 +13,7 @@ vi.mock('@ngbplatform/ui', () => ({
   getCatalogTypeMetadata: mocks.getCatalogTypeMetadata,
   getDocumentTypeMetadata: mocks.getDocumentTypeMetadata,
   lookupHintFromSource: (lookup?: { kind?: string; catalogType?: string; documentTypes?: string[] } | null) => lookup ?? null,
+  normalizeLookupValue: (value: unknown) => value,
   searchResolvedLookupItems: mocks.searchResolvedLookupItems,
   useLookupStore: () => mocks.lookupStore,
 }))

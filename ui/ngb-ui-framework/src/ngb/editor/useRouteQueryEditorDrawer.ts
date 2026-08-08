@@ -157,7 +157,11 @@ export function useRouteQueryEditorDrawer(args: UseRouteQueryEditorDrawerArgs) {
         return await args.onBeforeClose?.(current, next) !== false;
       }
 
-      return await args.onBeforeOpen?.(next, current) !== false;
+      const openState: RouteQueryEditorDrawerOpenState = {
+        mode: next.mode,
+        id: next.id,
+      };
+      return await args.onBeforeOpen?.(openState, current) !== false;
     });
   }
 

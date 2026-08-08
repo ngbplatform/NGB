@@ -220,7 +220,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import NgbIcon from '../primitives/NgbIcon.vue'
 import NgbSelect from '../primitives/NgbSelect.vue'
-import NgbPageHeader from '../site/NgbPageHeader.vue'
+import NgbPageHeader from '../layout/NgbPageHeader.vue'
 import {
   canClaimWorkCenterItem,
   canSnoozeWorkCenterItem,

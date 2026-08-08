@@ -70,9 +70,6 @@ vi.mock('@ngbplatform/ui', async (importOriginal) => {
 })
 
 import AgencyBillingDocumentPartsEditor from '../../../src/editor/AgencyBillingDocumentPartsEditor.vue'
-import CRMDocumentPartsEditor from '../../../../ngb-crm-web/src/editor/CRMDocumentPartsEditor.vue'
-
-type HarnessKind = 'ab' | 'crm'
 
 function makePart(partCode = 'lines', allowAddRemoveRows = true): PartMetadata {
   return {
@@ -177,9 +174,9 @@ function field(key: string, dataType: string, extra: Record<string, unknown> = {
   } as FieldMetadata
 }
 
-async function exerciseEditor(kind: HarnessKind): Promise<void> {
-  const component = kind === 'ab' ? AgencyBillingDocumentPartsEditor : CRMDocumentPartsEditor
-  const entityTypeCode = kind === 'ab' ? 'ab.sales_invoice' : 'crm.quote'
+async function exerciseEditor(): Promise<void> {
+  const component = AgencyBillingDocumentPartsEditor
+  const entityTypeCode = 'ab.sales_invoice'
   const parts = [
     makePart(),
     makePartWithoutAmount('empty', false),
@@ -264,17 +261,6 @@ async function exerciseEditor(kind: HarnessKind): Promise<void> {
   expect(state.resolveFieldState(field('quantity', 'Decimal'), row).inputType).toBe('number')
   expect(state.resolveFieldState(field('price', 'Money'), row).inputType).toBe('number')
   expect(state.resolveFieldState(field('memo', 'String'), row).inputType).toBe('text')
-
-  if (kind === 'crm') {
-    expect(state.parseDecimal(Number.NaN)).toBeNull()
-    expect(state.parseDecimal(' ')).toBeNull()
-    expect(state.parseDecimal('bad')).toBeNull()
-    expect(state.resolveLineAmountField('crm.quote')).toEqual({ quantityField: 'quantity', amountField: 'unit_price' })
-    expect(state.resolveLineAmountField('crm.activity')).toBeNull()
-    const unchanged = { quantity: 1, unit_price: 2 }
-    expect(state.recomputeDerivedFields('crm.activity', unchanged)).toBe(unchanged)
-    expect(state.recomputeDerivedFields('crm.quote', { quantity: Number.NaN, unit_price: 2 }).line_amount).toBeNull()
-  }
 
   expect(state.lookupValue({ product_id: null }, 'product_id')).toBeNull()
   expect(state.lookupValue({ product_id: { id: GUID, display: 'One' } }, 'product_id')).toEqual({ id: GUID, label: 'One' })
@@ -364,42 +350,6 @@ describe('document parts editors', () => {
   })
 
   test('covers the Agency Billing grid contract', async () => {
-    await exerciseEditor('ab')
-  })
-
-  test('covers the CRM grid contract and amount synchronization guards', async () => {
-    await exerciseEditor('crm')
-
-    const part = makePart()
-    const model = makeModel()
-    const noDocumentModel = mount(CRMDocumentPartsEditor, {
-      props: { entityTypeCode: 'crm.quote', parts: [part], modelValue: model },
-    })
-    await nextTick()
-    noDocumentModel.unmount()
-
-    const noAmountField = { memo: 'x' }
-    const withoutAmount = mount(CRMDocumentPartsEditor, {
-      props: { entityTypeCode: 'crm.quote', parts: [part], modelValue: model, documentModel: noAmountField },
-    })
-    await nextTick()
-    expect(noAmountField).toEqual({ memo: 'x' })
-    withoutAmount.unmount()
-
-    const sameAmount = { amount: 20 }
-    const unchanged = mount(CRMDocumentPartsEditor, {
-      props: { entityTypeCode: 'crm.quote', parts: [part], modelValue: model, documentModel: sameAmount },
-    })
-    await nextTick()
-    expect(sameAmount.amount).toBe(20)
-    unchanged.unmount()
-
-    const missingAmount = { amount: 9 }
-    const withoutAmountParts = mount(CRMDocumentPartsEditor, {
-      props: { entityTypeCode: 'crm.quote', parts: [{ ...part, list: { columns: [] } }], modelValue: model, documentModel: missingAmount },
-    })
-    await nextTick()
-    expect(missingAmount.amount).toBe(9)
-    withoutAmountParts.unmount()
+    await exerciseEditor()
   })
 })

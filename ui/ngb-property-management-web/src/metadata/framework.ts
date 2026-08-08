@@ -3,6 +3,7 @@ import {
   getCatalogTypeMetadata,
   getDocumentTypeMetadata,
   searchResolvedLookupItems,
+  normalizeLookupValue,
   useLookupStore,
   type MetadataFrameworkConfig,
   type MetadataFormBehavior,
@@ -24,7 +25,7 @@ export const pmMetadataFormBehavior: MetadataFormBehavior = {
   buildLookupTargetUrl: async ({ hint, value, routeFullPath }) =>
     await buildLookupFieldTargetUrl({
       hint,
-      value,
+      value: normalizeLookupValue(value),
       route: { fullPath: routeFullPath },
     }),
 }

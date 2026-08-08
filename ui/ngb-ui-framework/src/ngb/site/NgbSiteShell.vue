@@ -148,7 +148,7 @@
             >
               <div class="flex items-start gap-3">
                 <span class="mt-0.5 text-ngb-muted" v-if="it.icon">
-                  <NgbIcon :name="it.icon" :size="18" />
+                  <NgbIcon :name="coerceNgbIconName(it.icon, 'settings')" :size="18" />
                 </span>
                 <span class="mt-1 text-ngb-muted text-[10px]" v-else>•</span>
                 <div class="min-w-0">
@@ -171,6 +171,7 @@ import NgbTopBar from './NgbTopBar.vue';
 import NgbSiteSidebar from './NgbSiteSidebar.vue';
 import NgbDrawer from '../components/NgbDrawer.vue';
 import NgbIcon from '../primitives/NgbIcon.vue';
+import { coerceNgbIconName } from '../primitives/iconNames';
 import NgbToastHost from '../primitives/NgbToastHost.vue';
 import type { SiteNavNode, SiteQuickLink, SiteSettingsSection } from './types';
 import { useTheme } from './useTheme';

@@ -224,8 +224,12 @@ const filteredItems = computed(() => {
     .slice(0, 50)
 })
 
-function displayValue(item: LookupItem | null) {
-  return item?.label ?? ''
+function displayValue(item: unknown) {
+  return isLookupItem(item) ? item.label : ''
+}
+
+function isLookupItem(value: unknown): value is LookupItem {
+  return typeof value === 'object' && value !== null && 'id' in value && 'label' in value
 }
 
 function optionTooltip(item: LookupItem): string {

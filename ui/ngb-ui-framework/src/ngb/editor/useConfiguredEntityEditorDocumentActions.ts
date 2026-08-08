@@ -236,9 +236,9 @@ export function useConfiguredEntityEditorDocumentActions(
       if (result.createdDocument) {
         const target = refreshedAction.target
           ? {
-              ...action.target,
+              ...refreshedAction.target,
               parameters: {
-                ...action.target.parameters,
+                ...refreshedAction.target.parameters,
                 documentId: result.createdDocument.id,
               },
             }

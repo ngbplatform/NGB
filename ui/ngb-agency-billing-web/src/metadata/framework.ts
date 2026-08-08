@@ -1,5 +1,6 @@
 import {
   buildLookupFieldTargetUrl,
+  normalizeLookupValue,
   getCatalogTypeMetadata,
   getDocumentTypeMetadata,
   searchResolvedLookupItems,
@@ -61,7 +62,7 @@ export const agencyBillingMetadataFormBehavior: MetadataFormBehavior = {
   buildLookupTargetUrl: async ({ hint, value, routeFullPath }) =>
     await buildLookupFieldTargetUrl({
       hint,
-      value,
+      value: normalizeLookupValue(value),
       route: { fullPath: routeFullPath },
     }),
 }

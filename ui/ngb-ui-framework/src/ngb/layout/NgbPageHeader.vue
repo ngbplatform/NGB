@@ -8,17 +8,18 @@
         <button
           v-if="canBack"
           class="ngb-iconbtn"
-          @click="$emit('back')"
+          type="button"
           title="Back"
           aria-label="Back"
+          @click="emit('back')"
         >
           <NgbIcon name="arrow-left" />
         </button>
 
         <div class="min-w-0 flex-1 self-center">
           <div v-if="variant !== 'compact' && breadcrumbs?.length" class="mb-1 truncate text-xs text-ngb-muted">
-            <span v-for="(b, i) in breadcrumbs" :key="i">
-              <span>{{ b }}</span><span v-if="i < breadcrumbs.length - 1"> / </span>
+            <span v-for="(breadcrumb, index) in breadcrumbs" :key="index">
+              <span>{{ breadcrumb }}</span><span v-if="index < breadcrumbs.length - 1"> / </span>
             </span>
           </div>
           <h1 class="truncate font-semibold" :class="variant === 'compact' ? 'text-base' : 'text-lg'">{{ title }}</h1>
@@ -36,14 +37,16 @@
 </template>
 
 <script setup lang="ts">
-import NgbIcon from '../primitives/NgbIcon.vue';
+import NgbIcon from '../primitives/NgbIcon.vue'
 
 defineProps<{
-  title: string;
-  breadcrumbs?: string[];
-  canBack?: boolean;
-  variant?: 'default' | 'compact';
-}>();
+  title: string
+  breadcrumbs?: string[]
+  canBack?: boolean
+  variant?: 'default' | 'compact'
+}>()
 
-defineEmits<{ (e: 'back'): void }>();
+const emit = defineEmits<{
+  (event: 'back'): void
+}>()
 </script>

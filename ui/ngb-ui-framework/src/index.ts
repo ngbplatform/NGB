@@ -4,7 +4,7 @@
 export { default as NgbSiteShell } from './ngb/site/NgbSiteShell.vue';
 export { default as NgbSiteSidebar } from './ngb/site/NgbSiteSidebar.vue';
 export { default as NgbTopBar } from './ngb/site/NgbTopBar.vue';
-export { default as NgbPageHeader } from './ngb/site/NgbPageHeader.vue';
+export { default as NgbPageHeader } from './ngb/layout/NgbPageHeader.vue';
 export { default as NgbDashboardAsOfToolbar } from './ngb/site/NgbDashboardAsOfToolbar.vue';
 export { default as NgbDashboardStatusBanner } from './ngb/site/NgbDashboardStatusBanner.vue';
 export { default as NgbTrendChart } from './ngb/site/NgbTrendChart.vue';
@@ -159,6 +159,7 @@ export type {
 } from './ngb/metadata/routePages';
 export { default as NgbEntityEditorHeader } from './ngb/editor/NgbEntityEditorHeader.vue';
 export { default as NgbEntityEditor } from './ngb/editor/NgbEntityEditor.vue';
+export { default as NgbConfiguredEntityEditor } from './ngb/editor/NgbConfiguredEntityEditor.vue';
 export { default as NgbEntityEditorDrawerActions } from './ngb/editor/NgbEntityEditorDrawerActions.vue';
 export { default as NgbEditorDiscardDialog } from './ngb/editor/NgbEditorDiscardDialog.vue';
 export { default as NgbEntityAuditSidebar } from './ngb/editor/NgbEntityAuditSidebar.vue';
@@ -368,6 +369,7 @@ export {
 export {
   asTrimmedString,
   isReferenceValue,
+  normalizeJsonValue,
   tryExtractReferenceDisplay,
   tryExtractReferenceId,
 } from './ngb/metadata/entityModel';
@@ -514,6 +516,8 @@ export {
 } from './ngb/editor/useEntityEditorOutputs';
 export {
   applyInitialFieldValues,
+  createConfiguredCatalogEntityEditorPersistence,
+  createConfiguredDocumentEntityEditorPersistence,
   setModelFromFields,
   useEntityEditorPersistence,
 } from './ngb/editor/entityEditorPersistence';
@@ -727,11 +731,17 @@ export type {
 } from './ngb/metadata/useMetadataRegisterPageData';
 export type {
   CatalogEntityPersistenceAdapter,
+  ConfiguredDocumentPartsPersistenceStrategy,
+  ConfiguredEntityEditorPersistenceContext,
   DocumentEntityPersistenceAdapter,
   EntityEditorMetadataStoreLike,
-  EntityEditorToastApi,
   UseEntityEditorPersistenceArgs,
 } from './ngb/editor/entityEditorPersistence';
+export type {
+  ConfiguredEntityEditorConfiguration,
+  ConfiguredEntityEditorDocumentPartErrors,
+  ConfiguredEntityEditorProps,
+} from './ngb/editor/configuredEntityEditor';
 export type {
   EntityEditorActionHandler,
   EntityEditorActionHandlerMap,
@@ -1048,6 +1058,7 @@ export {
 export {
   buildLookupFieldTargetUrl,
   lookupValueId,
+  normalizeLookupValue,
 } from './ngb/lookup/navigation';
 export type {
   LookupNavigationSource,

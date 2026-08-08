@@ -1,5 +1,3 @@
-import type { RouteLocationRaw } from 'vue-router'
-
 export type Awaitable<T> = T | Promise<T>
 
 export type DataType = string
@@ -206,7 +204,7 @@ export type FilterFieldState<TItem extends FilterLookupItem = FilterLookupItem> 
 }
 
 export type FilterFieldOption = {
-  value: unknown
+  value: string | number | boolean | null
   label: string
 }
 
@@ -272,5 +270,5 @@ export type MetadataFormBehavior = {
   isFieldHidden?: (args: FieldHiddenArgs) => boolean
   findDisplayField?: (form: FormMetadata) => FieldMetadata | null
   searchLookup?: (args: LookupSearchArgs) => Awaitable<LookupItem[]>
-  buildLookupTargetUrl?: (args: LookupTargetArgs) => Awaitable<RouteLocationRaw | null>
+  buildLookupTargetUrl?: (args: LookupTargetArgs) => Awaitable<string | null>
 }

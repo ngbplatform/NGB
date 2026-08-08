@@ -56,6 +56,12 @@ function isHighlightedApplyId(applyId: string): boolean {
   return props.highlightedApplyIds.includes(applyId)
 }
 
+function updateActiveTab(value: string): void {
+  if (value === 'charges' || value === 'credits' || value === 'applied') {
+    emit('update:activeTab', value)
+  }
+}
+
 function allocationTone(allocation: OpenItemsAppliedAllocationView): string {
   if (isHighlightedApplyId(allocation.applyId)) return 'bg-blue-50/70 dark:bg-blue-950/20'
   if (props.isContextAllocation?.(allocation)) return 'bg-amber-50/60 dark:bg-amber-950/15'
@@ -211,7 +217,7 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
           :tabs="tabs"
           fill
           class="flex-1 min-h-0"
-          @update:model-value="emit('update:activeTab', $event)"
+          @update:model-value="updateActiveTab"
         >
           <template #default="{ active }">
             <div class="flex h-full min-h-0 min-w-0 flex-col">

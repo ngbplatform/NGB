@@ -17,6 +17,7 @@ export default defineConfig({
         'ngb-ui-framework/src/ngb/api/contracts.ts',
         'ngb-ui-framework/src/ngb/api/documents.ts',
         'ngb-ui-framework/src/ngb/editor/config.ts',
+        'ngb-ui-framework/src/ngb/editor/entityEditorPersistence.ts',
         'ngb-ui-framework/src/ngb/editor/useConfiguredEntityEditorDocumentActions.ts',
         'ngb-ui-framework/src/ngb/site/NgbSiteShell.vue',
         'ngb-ui-framework/src/ngb/site/NgbTopBar.vue',

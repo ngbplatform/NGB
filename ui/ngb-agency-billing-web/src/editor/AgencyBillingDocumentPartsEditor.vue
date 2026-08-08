@@ -5,6 +5,7 @@ import {
   clonePlainData,
   dataTypeKind,
   isReferenceValue,
+  normalizeJsonValue,
   NgbDatePicker,
   NgbIcon,
   NgbInput,
@@ -173,7 +174,7 @@ function updateCell(partCode: string, rowIndex: number, fieldKey: string, value:
 
   rows[rowIndex] = recomputeAgencyBillingDocumentPartRow(props.entityTypeCode, {
     ...row,
-    [fieldKey]: value,
+    [fieldKey]: normalizeJsonValue(value),
   })
 
   emitRows(partCode, rows)

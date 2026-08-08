@@ -68,9 +68,11 @@ export function useRegisterColumnResize(args: UseRegisterColumnResizeArgs) {
     activeSession = session;
     setPointerCaptureSafely(handle, event.pointerId);
 
-    const onMove = (nextEvent: PointerEvent) => {
-      if (!activeSession || nextEvent.pointerId !== session.pointerId) return;
-      const delta = nextEvent.clientX - session.startX;
+    const onMove = (nextEvent: Event) => {
+      const pointer = nextEvent as Partial<PointerEvent>;
+      if (typeof pointer.pointerId !== 'number' || typeof pointer.clientX !== 'number') return;
+      if (!activeSession || pointer.pointerId !== session.pointerId) return;
+      const delta = pointer.clientX - session.startX;
       const nextWidth = Math.max(session.minWidth, session.startWidth + delta);
       args.localWidths.value = {
         ...args.localWidths.value,

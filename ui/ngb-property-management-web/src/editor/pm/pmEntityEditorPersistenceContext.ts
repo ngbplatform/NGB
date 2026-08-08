@@ -1,19 +1,14 @@
 import type { ComputedRef, Ref } from 'vue'
-import type { Router } from 'vue-router'
 import type {
   CatalogItemDto,
   CatalogTypeMetadataDto,
   DocumentDto,
   DocumentEffectsDto,
   DocumentTypeMetadataDto,
-  EditorChangeReason,
   EditorErrorState,
   EntityEditorContext,
-  EntityEditorMetadataStoreLike,
-  EntityEditorToastApi,
   EntityFormModel,
   EditorKind,
-  EditorMode,
   LookupStoreApi,
   RecordPayload,
 } from '@ngbplatform/ui'
@@ -32,8 +27,6 @@ export type PmEntityEditorLeaseAdapter = {
 export type PmEntityEditorPersistenceContext = {
   kind: ComputedRef<EditorKind>
   typeCode: ComputedRef<string>
-  mode: ComputedRef<EditorMode>
-  navigateOnCreate: ComputedRef<boolean | undefined>
   currentId: Ref<string | null>
   isNew: ComputedRef<boolean>
   metadata: ComputedRef<CatalogTypeMetadataDto | DocumentTypeMetadataDto | null>
@@ -43,27 +36,15 @@ export type PmEntityEditorPersistenceContext = {
   doc: Ref<DocumentDto | null>
   docEffects: Ref<DocumentEffectsDto | null>
   model: Ref<EntityFormModel>
-  loading: Ref<boolean>
-  saving: Ref<boolean>
-  canSave: ComputedRef<boolean>
-  canMarkForDeletion: ComputedRef<boolean>
-  canUnmarkForDeletion: ComputedRef<boolean>
-  canDelete: ComputedRef<boolean>
-  isDirty: ComputedRef<boolean>
-  error: Ref<EditorErrorState | null>
-  metaStore: EntityEditorMetadataStoreLike<CatalogTypeMetadataDto, DocumentTypeMetadataDto>
   lookupStore: LookupStoreApi
   initialFields: ComputedRef<EntityFormModel | null>
   initialParts: ComputedRef<RecordPayload['parts'] | null>
   leaseEditor: PmEntityEditorLeaseAdapter
   currentEditorContext: () => EntityEditorContext
+  ensureCatalogMetadata: (typeCode: string) => Promise<CatalogTypeMetadataDto>
+  ensureDocumentMetadata: (typeCode: string) => Promise<DocumentTypeMetadataDto>
   resetInitialSnapshot: () => void
   setEditorError: (value: EditorErrorState | null) => void
-  normalizeEditorError: (cause: unknown) => EditorErrorState
-  emitCreated: (id: string) => void
-  emitSaved: () => void
-  emitChanged: (reason?: EditorChangeReason) => void
-  emitDeleted: () => void
-  router: Router
-  toasts: EntityEditorToastApi
+  onCreated: (id: string) => void | Promise<void>
+  onSaved: () => void | Promise<void>
 }

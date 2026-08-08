@@ -5,7 +5,7 @@ import { defineComponent, h, ref } from 'vue'
 
 import { StubIcon, StubPageHeader } from './stubs'
 
-vi.mock('../../../../src/ngb/site/NgbPageHeader.vue', () => ({
+vi.mock('../../../../src/ngb/layout/NgbPageHeader.vue', () => ({
   default: StubPageHeader,
 }))
 

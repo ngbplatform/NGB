@@ -13,8 +13,8 @@ export type RegisterColumn = {
 
 export type RegisterDataRow = Record<string, unknown> & {
   key: string;
-  debit?: number;
-  credit?: number;
+  debit?: unknown;
+  credit?: unknown;
   __status?: 'active' | 'saved' | 'posted' | 'marked';
   __statusTitle?: string;
   isMarkedForDeletion?: boolean;

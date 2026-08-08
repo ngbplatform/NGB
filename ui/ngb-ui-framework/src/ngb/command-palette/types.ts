@@ -104,9 +104,22 @@ export type CommandPaletteSearchResponseDto = {
   groups: CommandPaletteGroupDto[]
 }
 
+export type CommandPaletteMenuItem = {
+  code: string
+  label: string
+  route: string
+  icon?: string | null
+}
+
+export type CommandPaletteMenuGroup = {
+  label: string
+  items: CommandPaletteMenuItem[]
+}
+
 export type CommandPaletteStoreConfig = {
   router: Router
   recentStorageKey: string
+  getMenuGroups?: () => readonly CommandPaletteMenuGroup[]
   searchRemote?: (
     request: CommandPaletteSearchRequestDto,
     signal?: AbortSignal,
@@ -117,4 +130,3 @@ export type CommandPaletteStoreConfig = {
   createItems?: CommandPaletteItemSeed[]
   specialPageItems?: CommandPaletteItemSeed[]
 }
-

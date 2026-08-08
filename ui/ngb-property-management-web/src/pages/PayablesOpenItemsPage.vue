@@ -216,7 +216,7 @@ const chargeRows = computed(() => {
   const items = data.value?.charges ?? []
   return items.map((item) => ({
     key: item.chargeDocumentId,
-    __status: 'posted',
+    __status: 'posted' as const,
     doc: docLabel(item.number, item.chargeDisplay, item.chargeDocumentId),
     dueOnUtc: item.dueOnUtc,
     chargeType: item.chargeTypeDisplay ?? '—',
@@ -238,7 +238,7 @@ const creditRows = computed(() => {
   const items = data.value?.credits ?? []
   return items.map((item) => ({
     key: item.creditDocumentId,
-    __status: 'posted',
+    __status: 'posted' as const,
     doc: docLabel(item.number, item.creditDocumentDisplay, item.creditDocumentId),
     creditType: creditDocumentTypeLabel(item.documentType),
     creditDocumentDateUtc: item.creditDocumentDateUtc,
@@ -263,9 +263,9 @@ const { markNeedsRefresh } = useOpenItemsNavigationRefresh({
   sessionStorageKey: 'ngb:pm:payables-open-items:refresh',
 })
 
-function openDocument(documentType: string, id: string): Promise<void> {
+async function openDocument(documentType: string, id: string): Promise<void> {
   markNeedsRefresh()
-  return router.push(`/documents/${documentType}/${id}`)
+  await router.push(`/documents/${documentType}/${id}`)
 }
 
 function resolveChargeDocumentType(chargeDocumentId: string): string {
@@ -457,7 +457,7 @@ const applyWizardColumns = computed(() => [
 const applyWizardRows = computed(() => {
   return suggestedApplyItems.value.map((item) => ({
     key: item.__key,
-    __status: 'posted',
+    __status: 'posted' as const,
     credit: docLabel(null, item.creditDocumentDisplay, item.creditDocumentId),
     creditType: creditDocumentTypeLabel(item.creditDocumentType),
     creditDocumentDateUtc: item.creditDocumentDateUtc,

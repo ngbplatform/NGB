@@ -11,6 +11,7 @@ import {
   NgbInput,
   NgbLookup,
   NgbSelect,
+  normalizeJsonValue,
   resolveLookupHint,
   tryExtractReferenceId,
   type FieldMetadata,
@@ -197,7 +198,7 @@ function updateCell(partCode: string, rowIndex: number, fieldKey: string, value:
 
   rows[rowIndex] = recomputeDerivedFields(props.entityTypeCode, {
     ...row,
-    [fieldKey]: value,
+    [fieldKey]: normalizeJsonValue(value),
   })
 
   emitRows(partCode, rows)
@@ -457,7 +458,7 @@ function applyResolvedDefaults(results: readonly TradeDocumentLineDefaultsRowRes
 
       const nextRow = recomputeDerivedFields(props.entityTypeCode, {
         ...row,
-        ...patch,
+        ...Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, normalizeJsonValue(value)])),
       })
 
       rows[rowIndex] = nextRow

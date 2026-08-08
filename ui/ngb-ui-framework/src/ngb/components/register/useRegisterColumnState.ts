@@ -112,7 +112,7 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
       const storageKey = args.storageKey.value;
       if (!storageKey || !persistEnabled.value) return;
 
-      saveJson<PersistedColumns>(storageKey, {
+      saveJson(storageKey, {
         order: localOrder.value,
         widths: localWidths.value,
         visible: localVisible.value ?? undefined,

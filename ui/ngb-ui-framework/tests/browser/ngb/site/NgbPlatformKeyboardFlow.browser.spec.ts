@@ -12,9 +12,18 @@ import { useCommandPaletteHotkeys } from '../../../../src/ngb/command-palette/us
 import NgbRegisterPageLayout from '../../../../src/ngb/metadata/NgbRegisterPageLayout.vue'
 import NgbEntityEditor from '../../../../src/ngb/editor/NgbEntityEditor.vue'
 import NgbSiteShell from '../../../../src/ngb/site/NgbSiteShell.vue'
-import { useMainMenuStore } from '../../../../src/ngb/site/mainMenuStore'
+import type { CommandPaletteMenuGroup } from '../../../../src/ngb/command-palette/types'
 
 const keyboardPaletteStorageKey = 'ngb:test:platform-keyboard-palette'
+const keyboardMenuGroups: CommandPaletteMenuGroup[] = [
+  {
+    label: 'Workspace',
+    items: [
+      { code: 'documents', label: 'Documents', route: '/workspace/documents', icon: 'file-text' },
+      { code: 'reports', label: 'Reports', route: '/workspace/reports', icon: 'bar-chart' },
+    ],
+  },
+]
 
 function dispatchKey(target: EventTarget, key: string, code = key) {
   target.dispatchEvent(new KeyboardEvent('keydown', {
@@ -154,22 +163,8 @@ const WorkspaceShell = defineComponent({
     const route = useRoute()
     const router = useRouter()
     const palette = useCommandPaletteStore()
-    const menuStore = useMainMenuStore()
 
     useCommandPaletteHotkeys()
-    menuStore.$patch({
-      groups: [
-        {
-          label: 'Workspace',
-          ordinal: 0,
-          icon: 'home',
-          items: [
-            { kind: 'page', code: 'documents', label: 'Documents', route: '/workspace/documents', icon: 'file-text', ordinal: 0 },
-            { kind: 'page', code: 'reports', label: 'Reports', route: '/workspace/reports', icon: 'bar-chart', ordinal: 1 },
-          ],
-        },
-      ],
-    })
 
     watch(
       () => route.fullPath,
@@ -246,6 +241,7 @@ async function renderKeyboardFlow(initialRoute = '/workspace/documents') {
   configureNgbCommandPalette({
     router,
     recentStorageKey: keyboardPaletteStorageKey,
+    getMenuGroups: () => keyboardMenuGroups,
     loadReportItems: async () => [],
   })
 

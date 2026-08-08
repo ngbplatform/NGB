@@ -30,8 +30,8 @@
             class="fixed z-[1000] max-h-64 overflow-auto rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card shadow-card p-1 focus:outline-none"
           >
             <ListboxOption
-              v-for="o in options"
-              :key="o.value"
+              v-for="(o, optionIndex) in options"
+              :key="`${optionIndex}:${String(o.value)}`"
               :value="o.value"
               v-slot="{ active, selected }"
             >
@@ -58,16 +58,18 @@ import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from '@headless
 import { useFloatingDropdownPosition } from './useFloatingDropdownPosition'
 
 export type SelectOption = {
-  value: unknown
+  value: SelectValue
   label: string
   selectedLabel?: string
 }
+
+export type SelectValue = string | number | boolean | object | null | undefined
 
 type SelectVariant = 'default' | 'grid' | 'compact'
 type FloatingTarget = HTMLElement | ComponentPublicInstance | null
 
 const props = withDefaults(defineProps<{
-  modelValue: unknown
+  modelValue: SelectValue
   options: SelectOption[]
   label?: string
   hint?: string
@@ -89,7 +91,7 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: unknown): void
+  (e: 'update:modelValue', value: SelectValue): void
 }>()
 
 const displayValue = computed(() => {
