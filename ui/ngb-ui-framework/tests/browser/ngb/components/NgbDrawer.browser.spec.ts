@@ -205,6 +205,22 @@ test('renders a right-aligned drawer panel with header, body, and footer', async
   expect((body.element() as HTMLElement).scrollHeight).toBeGreaterThan((body.element() as HTMLElement).clientHeight)
 })
 
+test('uses the full viewport width without horizontal body scrolling on narrow screens', async () => {
+  await page.viewport(375, 667)
+
+  const view = await render(DrawerLayoutHarness)
+  const panel = view.getByTestId('drawer-panel').element() as HTMLElement
+  const body = view.getByTestId('drawer-body').element() as HTMLElement
+  await vi.waitFor(() => {
+    const panelRect = panel.getBoundingClientRect()
+    expect(Math.round(panelRect.left)).toBe(0)
+    expect(Math.round(panelRect.right)).toBe(375)
+    expect(Math.round(panelRect.width)).toBe(375)
+  })
+  expect(body.scrollWidth).toBe(body.clientWidth)
+  await expect.element(view.getByRole('button', { name: 'Close' })).toBeVisible()
+})
+
 test('retains an accessible dialog title when the visual header is hidden', async () => {
   await page.viewport(1280, 900)
 

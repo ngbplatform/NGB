@@ -110,6 +110,7 @@ vi.mock('../../../../src/ngb/work-center/useWorkCenter', async () => {
   }
 })
 
+import NgbDrawer from '../../../../src/ngb/components/NgbDrawer.vue'
 import NgbNotificationPreferencesPage from '../../../../src/ngb/work-center/NgbNotificationPreferencesPage.vue'
 import NgbWorkCenterDrawer from '../../../../src/ngb/work-center/NgbWorkCenterDrawer.vue'
 import NgbWorkCenterPage from '../../../../src/ngb/work-center/NgbWorkCenterPage.vue'
@@ -425,6 +426,57 @@ test('drawer keeps count-free tabs, includes Completed, and loads the next page 
   state.loadMore.mockRejectedValueOnce(new Error('cursor expired'))
   intersectionObserver.intersectLastObserved()
   await vi.waitFor(() => expect(state.loadMore).toHaveBeenCalledTimes(1))
+})
+
+test('keeps the Work Center drawer and full-page tabs contained at iPhone SE width', async () => {
+  await page.viewport(375, 667)
+  state.summary.value = baseSummary
+  state.items.value = [task()]
+
+  const DrawerHarness = defineComponent({
+    setup() {
+      return () => h(
+        NgbDrawer,
+        {
+          open: true,
+          title: 'Work Center',
+          subtitle: 'Tasks and notifications',
+        },
+        {
+          default: () => h(NgbWorkCenterDrawer),
+        },
+      )
+    },
+  })
+
+  const drawerView = await render(DrawerHarness)
+  const drawerPanel = drawerView.getByTestId('drawer-panel').element() as HTMLElement
+  const drawerBody = drawerView.getByTestId('drawer-body').element() as HTMLElement
+  const drawerTabList = drawerView.getByRole('tablist', { name: 'Work Center views' }).element() as HTMLElement
+  await vi.waitFor(() => {
+    const drawerRect = drawerPanel.getBoundingClientRect()
+    expect(Math.round(drawerRect.left)).toBe(0)
+    expect(Math.round(drawerRect.right)).toBe(375)
+  })
+  expect(drawerBody.scrollWidth).toBe(drawerBody.clientWidth)
+  expect(drawerTabList.scrollWidth).toBeGreaterThanOrEqual(drawerTabList.clientWidth)
+  for (const tabElement of drawerTabList.querySelectorAll<HTMLElement>('[role="tab"]')) {
+    expect(tabElement.scrollHeight).toBeLessThanOrEqual(tabElement.clientHeight)
+    expect(getComputedStyle(tabElement).whiteSpace).toBe('nowrap')
+  }
+  await expect.element(drawerView.getByRole('button', { name: 'View all' })).toBeVisible()
+  await expect.element(drawerView.getByRole('button', { name: 'Close' })).toBeVisible()
+
+  drawerView.unmount()
+  state.items.value = []
+  const pageView = await render(NgbWorkCenterPage)
+  const pageTabList = pageView.getByTestId('work-center-tabs').element() as HTMLElement
+
+  expect(pageTabList.scrollWidth).toBeGreaterThan(pageTabList.clientWidth)
+  for (const tabElement of pageTabList.querySelectorAll<HTMLElement>('[role="tab"]')) {
+    expect(tabElement.scrollHeight).toBeLessThanOrEqual(tabElement.clientHeight)
+    expect(getComputedStyle(tabElement).whiteSpace).toBe('nowrap')
+  }
 })
 
 test('infinite scroll handles unavailable observers and sentinel replacement safely', async () => {

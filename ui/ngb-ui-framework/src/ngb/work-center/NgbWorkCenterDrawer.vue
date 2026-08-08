@@ -1,6 +1,6 @@
 <template>
-  <div class="flex min-h-full flex-col">
-    <div class="flex items-center gap-2 border-b border-ngb-border pb-3">
+  <div class="flex min-h-full min-w-0 w-full max-w-full flex-col overflow-x-hidden">
+    <div class="flex min-w-0 items-center gap-2 border-b border-ngb-border pb-3">
       <div
         class="flex min-w-0 flex-1 overflow-x-auto rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"

@@ -58,7 +58,7 @@
     <div class="min-h-0 flex-1 overflow-auto p-4 md:p-6">
       <section aria-label="Work Center feed">
         <div
-          class="flex w-full rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-1"
+          class="flex min-w-0 w-full overflow-x-auto rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="tablist"
           aria-label="Work Center views"
           data-testid="work-center-tabs"
@@ -68,7 +68,7 @@
             :key="option.value"
             type="button"
             role="tab"
-            class="h-8 rounded-[var(--ngb-radius)] px-3 text-sm font-medium transition-colors ngb-focus"
+            class="h-8 shrink-0 whitespace-nowrap rounded-[var(--ngb-radius)] px-3 text-sm font-medium transition-colors ngb-focus"
             :class="tab === option.value
               ? 'bg-ngb-bg text-ngb-text shadow-sm'
               : 'bg-transparent text-ngb-muted hover:bg-ngb-bg hover:text-ngb-text'"
