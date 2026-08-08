@@ -224,11 +224,19 @@ describe('frontend architecture boundaries', () => {
 
   it('requires strict typecheck and published-package Tailwind scanning in every workspace', () => {
     const violations = verticalRoots.flatMap((root) => {
-      const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }
+      const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+        scripts?: Record<string, string>
+        devDependencies?: Record<string, string>
+      }
       const tailwind = readFileSync(resolve(root, 'tailwind.config.js'), 'utf8')
+      const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8')
+      const buildsOutsideRootWorkspace = /RUN\s+npm run build\s*(?:\r?\n|$)/.test(dockerfile)
       return [
         manifest.scripts?.typecheck?.includes('vue-tsc --noEmit') ? null : `${relative(root)}/package.json is missing strict typecheck`,
         manifest.scripts?.build?.includes('npm run typecheck') ? null : `${relative(root)}/package.json build bypasses typecheck`,
+        !buildsOutsideRootWorkspace || manifest.devDependencies?.['vue-tsc']
+          ? null
+          : `${relative(root)}/package.json must declare vue-tsc for its standalone Docker build`,
         tailwind.includes('@ngbplatform/ui/src') ? null : `${relative(root)}/tailwind.config.js does not scan the package source`,
       ].filter((value): value is string => value !== null)
     })
