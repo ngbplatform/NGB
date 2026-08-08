@@ -133,8 +133,60 @@ test.describe('pm-web metadata resilience flows', () => {
     await expect(page.getByTitle('Unmark for deletion')).toBeVisible()
 
     await page.getByTitle('Unmark for deletion').click()
-    await expect(page.getByTitle('Mark for deletion')).toBeVisible()
+    await expect(page.getByTitle('Mark for deletion', { exact: true })).toBeVisible()
     await expect(deletedBannerMessage).toHaveCount(0)
+  })
+
+  test('preserves the complete standard document lifecycle and never exposes legacy repost or restore actions', async ({ page }) => {
+    await mockGenericMetadataDocumentApis(page)
+    await rejectUnhandledApiRequests(page, [
+      '/api/main-menu',
+      '/api/documents/pm.receivable_payment',
+      '/api/audit/entities',
+    ])
+
+    await page.goto(existingPaymentPath)
+    await expect(page.getByText('Draft', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('Post', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('Mark for deletion')).toBeVisible()
+    await expect(page.getByTitle('Unpost', { exact: true })).toHaveCount(0)
+    await expect(page.getByTitle('Unmark for deletion')).toHaveCount(0)
+
+    await page.getByTitle('Post', { exact: true }).click()
+    await expect(page.getByText('Posted', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('Unpost', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('Post', { exact: true })).toHaveCount(0)
+    await expect(page.getByTitle('Mark for deletion', { exact: true })).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'More actions' }).click()
+    await expect(page.getByRole('menuitem', { name: 'Repost', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Restore', exact: true })).toHaveCount(0)
+    await page.keyboard.press('Escape')
+
+    await page.getByTitle('Unpost', { exact: true }).click()
+    await expect(page.getByText('Unpost document?', { exact: true })).toBeVisible()
+    await expect(page.getByText('Existing effects will be reversed.', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Unpost', exact: true }).click()
+    await expect(page.getByText('Draft', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('Post', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('Mark for deletion', { exact: true })).toBeVisible()
+
+    await page.getByTitle('Mark for deletion', { exact: true }).click()
+    await expect(page.getByText('Mark for deletion?', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Mark', exact: true }).click()
+    await expect(page.getByText(
+      'This document is marked for deletion. Restore it to edit or post.',
+      { exact: true },
+    )).toBeVisible()
+    await expect(page.getByTitle('Unmark for deletion')).toBeVisible()
+    await expect(page.getByTitle('Post', { exact: true })).toHaveCount(0)
+    await expect(page.getByTitle('Unpost', { exact: true })).toHaveCount(0)
+    await expect(page.getByTitle('Mark for deletion', { exact: true })).toHaveCount(0)
+
+    await page.getByTitle('Unmark for deletion').click()
+    await expect(page.getByText('Draft', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('Post', { exact: true })).toBeVisible()
+    await expect(page.getByTitle('Mark for deletion', { exact: true })).toBeVisible()
   })
 
   test('copies an existing receivable payment into a new draft with prefilled values', async ({ page }) => {

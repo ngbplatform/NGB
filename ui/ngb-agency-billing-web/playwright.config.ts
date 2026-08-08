@@ -10,6 +10,7 @@ const uiWorkspaceDir = fileURLToPath(new URL('..', import.meta.url))
 const e2eHost = process.env.AGENCY_BILLING_WEB_E2E_HOST?.trim() || AGENCY_BILLING_WEB_DEV_HOST
 const e2ePort = parsePort(process.env.AGENCY_BILLING_WEB_E2E_PORT, AGENCY_BILLING_WEB_DEV_PORT + 1)
 const e2eBaseUrl = `http://${e2eHost}:${e2ePort}`
+const workCenterSpecs = /agency-billing-web\/work-center\.spec\.ts/
 
 loadE2eEnv({
   rootDir: uiWorkspaceDir,
@@ -49,6 +50,16 @@ export default defineConfig({
       },
     },
     {
+      name: 'setup-firefox',
+      testMatch: /auth\.setup\.ts/,
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'setup-webkit',
+      testMatch: /auth\.setup\.ts/,
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
       name: 'desktop-standard',
       dependencies: ['setup-chromium'],
       testMatch: /agency-billing-web\/.*\.spec\.ts/,
@@ -56,6 +67,33 @@ export default defineConfig({
         storageState: resolvePlaywrightAuthFile(uiWorkspaceDir, 'chromium'),
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 900 },
+      },
+    },
+    {
+      name: 'mobile-work-center',
+      dependencies: ['setup-webkit'],
+      testMatch: workCenterSpecs,
+      use: {
+        storageState: resolvePlaywrightAuthFile(uiWorkspaceDir, 'webkit'),
+        ...devices['iPhone 13'],
+      },
+    },
+    {
+      name: 'firefox-work-center',
+      dependencies: ['setup-firefox'],
+      testMatch: workCenterSpecs,
+      use: {
+        storageState: resolvePlaywrightAuthFile(uiWorkspaceDir, 'firefox'),
+        ...devices['Desktop Firefox'],
+      },
+    },
+    {
+      name: 'webkit-work-center',
+      dependencies: ['setup-webkit'],
+      testMatch: workCenterSpecs,
+      use: {
+        storageState: resolvePlaywrightAuthFile(uiWorkspaceDir, 'webkit'),
+        ...devices['Desktop Safari'],
       },
     },
   ],

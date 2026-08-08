@@ -26,10 +26,13 @@ test.describe('pm-web Work Center', () => {
 
     await page.getByRole('button', { name: 'View all', exact: true }).click()
     await expect(page).toHaveURL(/\/work-center\?tab=attention$/)
-    await expect(page.getByRole('heading', { name: 'Work Center', exact: true })).toBeVisible()
-    await expect(page.getByText('Review unapplied payment', { exact: true })).toBeVisible()
-    await expect(page.getByText(/\d+ open tasks/, { exact: true })).toBeVisible()
-    await expect(page.getByText('Overdue', { exact: true }).first()).toBeVisible()
+    await expect(page.getByTestId('drawer-panel')).toHaveCount(0)
+
+    const workspace = page.getByTestId('site-main')
+    await expect(workspace.getByRole('heading', { name: 'Work Center', exact: true })).toBeVisible()
+    await expect(workspace.getByText('Review unapplied payment', { exact: true })).toBeVisible()
+    await expect(workspace.getByText(/\d+ open tasks/, { exact: true })).toBeVisible()
+    await expect(workspace.getByText('Overdue', { exact: true }).first()).toBeVisible()
   })
 
   test('keeps task and notification preferences separate while mandatory entries stay locked', async ({ page }) => {
@@ -60,5 +63,29 @@ test.describe('pm-web Work Center', () => {
       isEnabled: false,
     })
     await expect(paymentPreference).not.toBeChecked()
+  })
+
+  test('keeps drawer tab state isolated from an already-open full Work Center page', async ({ page }) => {
+    await mockWorkCenterApis(page)
+    await rejectUnhandledApiRequests(page, ['/api/main-menu'])
+
+    await page.goto('/work-center?tab=attention')
+    const workspace = page.getByTestId('site-main')
+    const attentionTab = workspace.getByRole('tab', {
+      name: /Needs Attention/,
+      includeHidden: true,
+    })
+    await expect(attentionTab).toHaveAttribute('aria-selected', 'true')
+
+    await page.getByRole('button', { name: 'Work Center' }).click()
+    const drawer = page.getByTestId('drawer-panel')
+    await drawer.getByRole('tab', { name: 'Tasks', exact: true }).click()
+
+    await expect(drawer.getByRole('tab', { name: 'Tasks', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    await expect(page).toHaveURL(/\/work-center\?tab=attention$/)
+    await expect(attentionTab).toHaveAttribute('aria-selected', 'true')
   })
 })

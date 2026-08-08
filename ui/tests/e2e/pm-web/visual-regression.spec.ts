@@ -6,6 +6,7 @@ import {
   mockGenericMetadataCatalogApis,
   mockGenericMetadataDocumentApis,
   mockHomeDashboardApis,
+  mockWorkCenterApis,
   rejectUnhandledApiRequests,
 } from '../support/mockApi'
 import { PM_TEST_IDS, PM_TEST_ROUTES } from '../support/routes'
@@ -96,6 +97,28 @@ test.describe('pm-web visual regression', () => {
     await page.goto(existingPaymentPath)
 
     await expect(page.getByTestId('site-main')).toHaveScreenshot('receivable-payment-posted-readonly-desktop.png', {
+      animations: 'disabled',
+      caret: 'hide',
+    })
+  })
+
+  test('captures the Work Center drawer and full workspace', async ({ page }) => {
+    await mockWorkCenterApis(page)
+    await rejectUnhandledApiRequests(page, ['/api/main-menu'])
+
+    await page.goto(PM_TEST_ROUTES.home)
+    await page.getByRole('button', { name: 'Work Center' }).click()
+
+    const drawer = page.getByTestId('drawer-panel')
+    await expect(drawer).toBeVisible()
+    await expect(drawer).toHaveScreenshot('work-center-drawer-desktop.png', {
+      animations: 'disabled',
+      caret: 'hide',
+    })
+
+    await drawer.getByRole('button', { name: 'View all', exact: true }).click()
+    await expect(page).toHaveURL(/\/work-center\?tab=attention$/)
+    await expect(page.getByTestId('site-main')).toHaveScreenshot('work-center-page-desktop.png', {
       animations: 'disabled',
       caret: 'hide',
     })

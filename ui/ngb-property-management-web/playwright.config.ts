@@ -19,12 +19,12 @@ loadE2eEnv({
 const chromiumAuthFile = resolvePlaywrightAuthFile(uiWorkspaceDir, 'chromium')
 const firefoxAuthFile = resolvePlaywrightAuthFile(uiWorkspaceDir, 'firefox')
 const webkitAuthFile = resolvePlaywrightAuthFile(uiWorkspaceDir, 'webkit')
-const mobileSpecs = /pm-web\/(mobile-layout|home|reconciliation|properties|accounting-policy|reports)\.spec\.ts/
+const mobileSpecs = /pm-web\/(mobile-layout|home|reconciliation|properties|accounting-policy|reports|work-center(?:-visual)?)\.spec\.ts/
 const tabletSpecs = /pm-web\/(tablet-topbar|command-palette)\.spec\.ts/
 const desktopChromiumSpecs =
-  /pm-web\/(desktop-shell|home|command-palette|period-closing|journal-entries|chart-of-accounts|report-composer|report-resilience|open-items-workflow|metadata-routes|metadata-resilience|metadata-states|metadata-access-errors|router-redirects|visual-regression|document-side-flows|security-access|work-center)\.spec\.ts/
+  /pm-web\/(desktop-shell|home|command-palette|period-closing|journal-entries|chart-of-accounts|report-composer|report-resilience|open-items-workflow|metadata-routes|metadata-resilience|metadata-states|metadata-access-errors|router-redirects|visual-regression|document-side-flows|security-access|work-center(?:-accessibility)?)\.spec\.ts/
 const desktopCrossBrowserSmokeSpecs =
-  /pm-web\/(desktop-shell|home|command-palette|open-items-workflow|metadata-routes|metadata-resilience|metadata-states|metadata-access-errors|router-redirects|document-side-flows)\.spec\.ts/
+  /pm-web\/(desktop-shell|home|command-palette|open-items-workflow|metadata-routes|metadata-resilience|metadata-states|metadata-access-errors|router-redirects|document-side-flows|work-center)\.spec\.ts/
 
 function parsePort(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(String(value ?? '').trim(), 10)

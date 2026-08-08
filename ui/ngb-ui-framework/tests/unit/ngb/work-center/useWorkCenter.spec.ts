@@ -342,6 +342,50 @@ describe('useWorkCenter', () => {
     expect(workCenter.loadMoreError.value).toBeNull()
   })
 
+  it('streams a large cursor feed without duplicates, skipped pages, or summary amplification', async () => {
+    installWindow()
+    const pageSize = 25
+    const pageCount = 40
+    const expectedIds = Array.from(
+      { length: pageSize * pageCount },
+      (_, index) => `task-${index + 1}`,
+    )
+    api.items.mockImplementation((query: { cursor?: string | null }) => {
+      const pageIndex = query.cursor
+        ? Number.parseInt(query.cursor.replace('cursor-', ''), 10)
+        : 0
+      const firstItem = pageIndex * pageSize
+      const pageItems = expectedIds
+        .slice(firstItem, firstItem + pageSize)
+        .map((id) => task({ id }))
+
+      // Cursor APIs may repeat the boundary row when data changes between requests.
+      // The client must keep the rendered feed stable and deduplicated.
+      if (pageIndex > 0) {
+        pageItems.unshift(task({ id: expectedIds[firstItem - 1] }))
+      }
+
+      return Promise.resolve(page(
+        pageItems,
+        pageIndex + 1 < pageCount ? `cursor-${pageIndex + 1}` : null,
+      ))
+    })
+    const { useWorkCenter } = await freshWorkCenter()
+    const workCenter = useWorkCenter()
+
+    await workCenter.load({ tab: 'tasks', limit: pageSize })
+    while (workCenter.nextCursor.value) await workCenter.loadMore()
+
+    expect(workCenter.items.value.map((item) => item.id)).toEqual(expectedIds)
+    expect(new Set(workCenter.items.value.map((item) => `${item.kind}:${item.id}`)).size).toBe(
+      expectedIds.length,
+    )
+    expect(api.items).toHaveBeenCalledTimes(pageCount)
+    expect(api.summary).toHaveBeenCalledTimes(1)
+    expect(workCenter.loadingMore.value).toBe(false)
+    expect(workCenter.loadMoreError.value).toBeNull()
+  })
+
   it('aborts superseded feeds and ignores their stale successful result', async () => {
     installWindow()
     const staleRequest = deferred<WorkCenterPage>()
