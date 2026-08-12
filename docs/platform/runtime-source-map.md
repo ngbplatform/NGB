@@ -52,13 +52,12 @@ It is not a thin CRUD file. It coordinates the actual runtime responsibilities b
 - metadata-driven document CRUD;
 - page reads and point reads;
 - draft create / update / delete;
-- post / unpost / repost;
-- mark / unmark for deletion;
-- derivation entry points;
+- trusted/system post / unpost / repost and mark / unmark lifecycle ports;
+- trusted/internal derivation entry point;
 - document relationship graph loading;
-- accounting / register / UI effects projection.
+- accounting / register effects projection.
 
-The constructor is especially important because it shows the real collaboration surface of Runtime. The service depends on repositories, readers, writers, posting services, derivation services, validators, UI contributors, relationship graph readers, enrichment, audit, and effects-query services. That makes the file a reliable map of what Runtime actually owns.
+The constructor is especially important because it shows the real collaboration surface of Runtime. The service depends on repositories, readers, writers, posting services, derivation services, validators, relationship graph readers, enrichment, audit, and effects-query services. Document Action query/evaluation/dispatch are separate runtime collaborators in 2.0. Together these files provide the reliable map of what Runtime owns.
 
 ## What DocumentService proves about Runtime design
 

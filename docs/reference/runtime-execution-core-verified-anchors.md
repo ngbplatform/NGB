@@ -24,7 +24,11 @@ Use it together with:
 ### Application and Runtime entry points
 
 - `NGB.Application.Abstractions/Services/IDocumentService.cs`
+- `NGB.Application.Abstractions/Services/DocumentActions.cs`
 - `NGB.Runtime/Documents/DocumentService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionQueryService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionDispatcher.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionEvaluator.cs`
 - `NGB.Runtime/Documents/Derivations/IDocumentDerivationService.cs`
 - `NGB.Runtime/Reporting/ReportEngine.cs`
 - `NGB.Runtime/Reporting/ReportExecutionPlanner.cs`
@@ -55,8 +59,8 @@ Use it together with:
 
 These files are sufficient to document, at a verified level:
 
-1. the public application surface for document operations;
-2. the orchestration role of `DocumentService` in draft CRUD, derivation, relationship graph loading, and effects retrieval;
+1. the focused application surfaces for generic documents and interactive Document Actions;
+2. the orchestration role of `DocumentService` in draft CRUD, trusted derivation, relationship graph loading, and effects retrieval;
 3. the boundary between runtime orchestration and persistence abstractions for documents;
 4. the boundary between runtime reporting orchestration and PostgreSQL reporting execution;
 5. the fact that a vertical API host composes Runtime and PostgreSQL together rather than embedding those responsibilities inside the host itself.

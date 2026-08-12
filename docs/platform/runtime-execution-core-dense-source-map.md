@@ -52,7 +52,7 @@ The verified `IDocumentService` contract already includes:
 - deletion-mark lifecycle operations;
 - relationship graph retrieval;
 - effects retrieval;
-- derivation discovery and execution.
+- trusted/internal derivation execution.
 
 ### Why this matters
 
@@ -74,11 +74,15 @@ The verified constructor and method set show that `DocumentService` is where mul
 - draft payload validation;
 - UoW transaction coordination;
 - posting lifecycle delegation;
-- derivation action discovery and execution;
+- trusted/internal derivation execution;
 - relationship graph assembly;
 - effects retrieval;
-- UI effects composition;
 - optional audit writing.
+
+Public action discovery and execution are separate 2.0 collaborators:
+`IDocumentActionQueryService` builds editor state and evaluated action metadata, and
+`IDocumentActionDispatcher` owns authorized/idempotent command execution. `DocumentService` does not
+compose UI capability flags into document effects.
 
 ### What this proves
 

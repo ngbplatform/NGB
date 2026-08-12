@@ -14,10 +14,15 @@ Use it when you need a short list of the exact files that were verified directly
 ### Application contract
 
 - `NGB.Application.Abstractions/Services/IDocumentService.cs`
+- `NGB.Application.Abstractions/Services/DocumentActions.cs`
 
 ### Runtime orchestration
 
 - `NGB.Runtime/Documents/DocumentService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionQueryService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionDispatcher.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionEvaluator.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionRegistry.cs`
 
 ### Persistence collaborators
 
@@ -37,6 +42,7 @@ From these files, the docs can already support the following statements with hig
 
 - documents are exposed through a universal application service rather than one service per document type
 - the runtime center for this subsystem is `DocumentService`
+- interactive document operations are queried and executed through focused Document Action contracts
 - the platform splits registry-state persistence from typed head/part persistence
 - common registry state lives in `documents`
 - typed head tables follow the `doc_{type}` pattern

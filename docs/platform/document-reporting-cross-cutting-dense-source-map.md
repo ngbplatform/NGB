@@ -30,7 +30,10 @@ For the full dense chapters, see:
 This chapter is based on these verified files:
 
 - `NGB.Application.Abstractions/Services/IDocumentService.cs`
+- `NGB.Application.Abstractions/Services/DocumentActions.cs`
 - `NGB.Runtime/Documents/DocumentService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionQueryService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionDispatcher.cs`
 - `NGB.Persistence/Documents/IDocumentRepository.cs`
 - `NGB.Persistence/Documents/Universal/IDocumentReader.cs`
 - `NGB.Persistence/Documents/Universal/IDocumentWriter.cs`
@@ -57,13 +60,13 @@ The verified code shows a clean separation.
 `IDocumentService` exposes the document-facing surface:
 
 - draft CRUD;
-- post / unpost / repost;
-- mark / unmark for deletion;
-- derivation actions and derivation execution;
+- trusted/internal derivation execution;
 - relationship graph;
 - effects surface.
 
-`DocumentService` is therefore the **document boundary service**, not just a CRUD helper.
+Interactive lifecycle, derivation, and vertical actions use the separate
+`IDocumentActionQueryService` and `IDocumentActionDispatcher` boundaries. `DocumentService` remains
+the generic CRUD/graph/effects and trusted-derivation boundary, not just a CRUD helper.
 
 ### Reporting owns analytical composition and rendered sheet output
 
@@ -153,8 +156,10 @@ In `DocumentService`, effects are treated as a document-centric surface that can
 
 - accounting entries;
 - operational register movements;
-- reference register writes;
-- UI effect flags such as can-edit / can-post / can-unpost / can-repost / can-apply.
+- reference register writes.
+
+Executable operations and disabled reasons are returned separately by editor state. They are not
+part of `DocumentEffectsDto` in platform 2.0.
 
 This is again not implemented as a report. It is a **document explanation / effects** surface.
 
@@ -171,12 +176,10 @@ That boundary prevents analytical pages from becoming overloaded with document e
 
 `IDocumentService` and `IDocumentDerivationService` show that derivation is a document-creation feature.
 
-`DocumentService` exposes:
-
-- `GetDerivationActionsAsync(...)`
-- `DeriveAsync(...)`
-
-and delegates actual draft creation to `IDocumentDerivationService`.
+`IDocumentActionQueryService.GetEditorStateAsync(...)` exposes the evaluated public action list.
+`IDocumentActionDispatcher` executes selected derivation actions, and the trusted/internal
+`DocumentService.DeriveAsync(...)` port delegates actual draft creation to
+`IDocumentDerivationService`. These are separate services with separate responsibilities.
 
 This is close to reporting from a user-experience perspective because reports often lead users to source documents or follow-up actions. But the verified code keeps derivation in the document subsystem:
 
@@ -315,8 +318,12 @@ That is a strong architecture for long-lived ERP-style systems because it keeps 
 
 Verified directly from the listed anchor files:
 
-- `IDocumentService` is the public document application boundary.
-- `DocumentService` implements CRUD, post/unpost/repost, mark/unmark, derivation actions, derive, relationship graph, and effects.
+- `IDocumentService` owns the generic metadata/CRUD/graph/effects and trusted-derivation application
+  surface; trusted lifecycle operations use `IDocumentSystemLifecycleService`.
+- `IDocumentActionQueryService` and `IDocumentActionDispatcher` own interactive action discovery and
+  execution in platform 2.0.
+- `DocumentService` implements generic CRUD, trusted lifecycle/derivation ports, relationship graph,
+  and accounting/register effects.
 - `DocumentService` uses `IDocumentRepository` plus universal head/part readers and writers.
 - `IDocumentRepository` represents the common document registry and explicitly distinguishes it from typed head/part tables.
 - `PostgresReportSqlBuilder` adds interactive support fields when document/account display fields are selected.

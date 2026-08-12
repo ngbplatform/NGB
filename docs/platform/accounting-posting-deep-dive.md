@@ -40,10 +40,14 @@ Confirmed in:
 
 Key observations from the verified source:
 
-- `PostAsync`, `UnpostAsync`, `RepostAsync`, `MarkForDeletionAsync`, and `UnmarkForDeletionAsync` are exposed through the universal document service.
+- `PostAsync`, `UnpostAsync`, `RepostAsync`, `MarkForDeletionAsync`, and
+  `UnmarkForDeletionAsync` are implemented by `DocumentService` through the trusted
+  `IDocumentSystemLifecycleService` port; interactive/API callers execute the corresponding
+  Document Actions through `IDocumentActionDispatcher`.
 - CRUD and posting are intentionally separated.
 - `RepostAsync` resolves posting actions explicitly and treats repost as a workflow operation, not as a naive overwrite.
-- `GetEffectsAsync` reads accounting entries, operational movements, reference writes, and UI capability state as one conceptual "effects" surface.
+- `GetEffectsAsync` reads accounting entries, operational movements, and reference writes.
+  Action availability and disabled reasons come from editor state, not from the effects DTO.
 
 This is important architecturally: a document is the user-facing unit, but posting is the effect-producing unit.
 

@@ -164,14 +164,19 @@ The exact interfaces may differ in your vertical, but the important rule stays t
 The verified `DocumentService` anchor shows that runtime exposes:
 
 - relationship graph access;
-- accounting entries and register effects queries;
-- UI effects such as whether the document can be edited, posted, unposted, or reapplied.
+- accounting entries and register effects queries.
+
+Document availability is deliberately not part of the effects DTO in platform 2.0. Register
+Document Actions and expose them through `IDocumentActionQueryService.GetEditorStateAsync(...)`;
+the shared editor renders the evaluated `actions` collection instead of reconstructing lifecycle or
+vertical capability flags.
 
 That means a production-ready document should not stop at persistence and posting. It should also support:
 
 - document flow relationships;
 - accounting effects visibility;
 - operational-register effect visibility;
+- metadata-driven editor actions with authorization and disabled reasons;
 - audit trail visibility.
 
 ## 8. Compose the vertical host

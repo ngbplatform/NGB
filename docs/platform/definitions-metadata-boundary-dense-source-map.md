@@ -144,7 +144,7 @@ Verified facts from that file:
 - it constructs an internal `DocumentModel`
 - that model uses head-table metadata and scalar columns from document metadata
 - it interprets list filters, amount field, form metadata, part metadata, and presentation metadata
-- it calls `IDocumentDerivationService` for derivation actions and draft creation
+- it calls `IDocumentDerivationService` for trusted/internal derivation matching and draft creation
 - it uses metadata to convert payloads into typed head values and typed part rows
 - it uses definitions-backed type metadata to build `DocumentTypeMetadataDto`
 
@@ -156,8 +156,12 @@ From verified code, Runtime is not merely persisting JSON-like payloads. It is t
 - deciding which columns are required
 - deciding which part tables exist
 - building DTO metadata returned to the client
-- resolving derivation actions available for a source document
+- matching registered derivations for trusted/internal draft creation
 - choosing amount field semantics for relationship graph presentation
+
+Public action discovery does not come from `DocumentService`. In platform 2.0,
+`IDocumentActionQueryService.GetEditorStateAsync(...)` evaluates the unified Document Action registry;
+derivation entries in that action list bind to the internal derivation service at execution time.
 
 ## 5. Verified derivation boundary into Runtime
 
@@ -231,7 +235,7 @@ You should expect work in at least three layers:
 3. **Runtime-facing integration**
    - ensure the type registry sees the new type
    - ensure payload validation and universal readers/writers can interpret its metadata
-   - optionally add derivation handlers or UI effect contributors
+   - optionally add derivation handlers or Document Action definitions/evaluators/handlers
 
 ### When adding a derivation
 

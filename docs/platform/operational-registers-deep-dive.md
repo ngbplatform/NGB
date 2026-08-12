@@ -53,8 +53,10 @@ Confirmed in:
 
 - accounting entries;
 - operational register movements;
-- reference register writes;
-- UI effect state.
+- reference register writes.
+
+Since platform 2.0, document action availability is returned by the separate editor-state endpoint,
+not by `DocumentEffectsDto`.
 
 That is a very important design signal: operational movements are treated as a first-class explainability surface, not as hidden implementation detail.
 

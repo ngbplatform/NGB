@@ -104,7 +104,7 @@ Recommended placement:
 
 - metadata/definition layer for head, parts, filters, and presentation;
 - PostgreSQL migration for head and part tables;
-- runtime validation, posting, derivation, and UI-effects contributors as needed;
+- runtime validation, posting, derivation, Document Action definitions/evaluators/handlers as needed;
 - provider-side readers/writers only if the generic path is insufficient.
 
 ### New canonical report

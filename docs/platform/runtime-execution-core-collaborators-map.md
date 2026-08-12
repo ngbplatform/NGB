@@ -35,7 +35,9 @@ See also:
 
 **Role**
 
-`IDocumentService` defines the document-facing application contract consumed above the runtime layer.
+`IDocumentService` defines the generic metadata/CRUD/graph/effects and trusted-derivation contract
+consumed above the runtime layer. Trusted lifecycle operations are separated into
+`IDocumentSystemLifecycleService`; interactive actions use the query/dispatcher contracts.
 
 **What the verified contract proves**
 
@@ -45,11 +47,12 @@ The interface includes methods for:
 - paged browsing and point lookup;
 - cross-type lookup helpers;
 - draft creation, update, and deletion;
-- post, unpost, repost;
-- mark/unmark for deletion;
-- derivation actions and `DeriveAsync`;
+- trusted/internal `DeriveAsync`;
 - relationship graph retrieval;
 - document effects retrieval.
+
+`IDocumentActionQueryService` supplies editor state and evaluated actions.
+`IDocumentActionDispatcher` supplies the interactive lifecycle/derivation/command execution path.
 
 **Why this matters**
 
@@ -78,11 +81,14 @@ This proves the document subsystem surface is broader than CRUD. The runtime-fac
 - `IDocumentPostingService`
 - `IDocumentDerivationService`
 - posting action resolvers
-- UI effects contributors
 - `IDocumentRelationshipGraphReadService`
 - `IReferencePayloadEnricher`
 - draft payload validators
 - optional audit/effects services
+
+Document Actions are coordinated by separate runtime collaborators—`IDocumentActionQueryService`,
+the registry/evaluator, and `IDocumentActionDispatcher`—rather than by UI-effects contributors in
+`DocumentService`.
 
 **What this proves**
 

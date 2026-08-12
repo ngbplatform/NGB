@@ -72,6 +72,7 @@ export default defineConfig({
           page('Catalogs', '/architecture/catalogs'),
           page('Documents', '/architecture/documents'),
           page('Document Flow', '/architecture/document-flow'),
+          page('Document Actions', '/architecture/document-actions'),
           page('Accounting Effects', '/architecture/accounting-effects'),
           page('Reporting: Canonical and Composable', '/architecture/reporting'),
           page('Accounting and Posting', '/architecture/accounting-posting'),
@@ -79,7 +80,10 @@ export default defineConfig({
           page('Operational Registers', '/architecture/operational-registers'),
           page('Reference Registers', '/architecture/reference-registers'),
           page('Derive', '/architecture/derive'),
-          page('Append-only and Storno', '/architecture/append-only-and-storno'),
+          page('Append-only and Storno', '/architecture/append-only-and-storno')
+        ], true),
+        section('Cross-Cutting Capabilities', [
+          page('Work Center', '/architecture/work-center'),
           page('Idempotency and Concurrency', '/architecture/idempotency-and-concurrency')
         ], true)
       ],
@@ -163,9 +167,13 @@ export default defineConfig({
         section('Core Workflows', [
           page('Developer Workflows', '/guides/developer-workflows'),
           page('Platform Extension Points', '/guides/platform-extension-points'),
+          page('Document Actions and Work Center', '/guides/document-actions-and-work-center'),
           page('Add a Document with Accounting and Registers', '/guides/add-document-with-accounting-and-registers'),
           page('Add a Canonical Report', '/guides/add-canonical-report-workflow'),
           page('Add a Composable Report', '/guides/add-composable-report-workflow')
+        ]),
+        section('Upgrade and Migration', [
+          page('Migrate 1.3.1 to 2.0.0', '/guides/migrating-to-2.0')
         ]),
         section('Scenario Guides', [
           page('Guide: Business Partners Catalog', '/guides/catalogs/business-partners'),
@@ -187,6 +195,7 @@ export default defineConfig({
           page('Background Job Catalog', '/reference/background-job-catalog'),
           page('Migrator CLI', '/reference/migrator-cli'),
           page('Platform API Surface', '/reference/platform-api-surface'),
+          page('Document Actions and Work Center API', '/reference/document-actions-work-center-api'),
           page('Layering Rules', '/reference/layering-rules'),
           page('Database Naming Quick Reference', '/reference/database-naming'),
           page('Database Naming and DDL Patterns', '/reference/database-naming-and-ddl-patterns')

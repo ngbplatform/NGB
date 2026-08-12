@@ -124,7 +124,11 @@ Why they matter:
 
 ## Integration narrative in one paragraph
 
-Definitions decide **what a document means in the graph**. Metadata decides **how a document is shaped in storage and UI**. Runtime, through `DocumentService`, decides **how those two models become operations** such as draft creation, derivation, relationship graph reads, and effects reads. Persistence supplies the generic execution primitives that make this universal model practical.
+Definitions decide **what a document means in the graph**. Metadata decides **how a document is
+shaped in storage and UI**. Runtime uses `DocumentService` for draft creation, trusted derivation,
+relationship graph reads, and effects reads; it uses the Document Action query/evaluator/dispatcher
+path for interactive operations. Persistence supplies the generic execution primitives that make
+this universal model practical.
 
 ## Verified anchor list
 

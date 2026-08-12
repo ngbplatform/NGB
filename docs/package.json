@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "docs:dev": "vitepress dev . --host",
-    "docs:build": "vitepress build .",
+    "docs:check-navigation": "node scripts/verify-navigation.mjs",
+    "docs:build": "npm run docs:check-navigation && vitepress build .",
     "docs:preview": "vitepress preview . --host"
   },
   "devDependencies": {
