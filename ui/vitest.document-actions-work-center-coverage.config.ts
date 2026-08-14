@@ -27,7 +27,7 @@ export default defineConfig({
       reporter: ['text', 'html', 'json-summary', 'lcov'],
       reportOnFailure: true,
       include: [
-        // Work Center is entirely new in this release and is subject to the
+        // Work Center is subject to the permanent module-level
         // strict per-file gate. Existing files changed by the release are
         // checked with the diff-coverage gate instead.
         'ngb-ui-framework/src/ngb/work-center/**/*.{ts,vue}',

@@ -3,43 +3,135 @@
 import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const options = parseArguments(process.argv.slice(2))
 const repositoryRoot = resolve(import.meta.dirname, '../..')
-const xml = await readFile(options.report, 'utf8')
-const coverageByFile = parseCoverage(xml)
-const changedLines = parseChangedLines(execFileSync(
-  'git',
-  ['diff', '--unified=0', '--no-color', options.baseRef, '--', ':(glob)**/*.cs'],
-  { cwd: repositoryRoot, encoding: 'utf8' },
-))
-const failures = []
+const declarationOnlyFeatureFiles = new Map([
+  ['NGB.Contracts/Documents/DocumentActionContractEnums.cs', 'enum'],
+  ['NGB.Contracts/Documents/StandardDocumentTargets.cs', 'constants'],
+  ['NGB.Contracts/WorkCenter/WorkCenterContractEnums.cs', 'enum'],
+  ['NGB.Core/Documents/Actions/DocumentActionContextKeys.cs', 'constants'],
+  ['NGB.Core/Documents/Actions/DocumentActionEnums.cs', 'enum'],
+  ['NGB.Core/WorkCenter/WorkCenterEnums.cs', 'enum'],
+  ['NGB.Definitions/Documents/Actions/IDocumentActionDefinitionsContributor.cs', 'interface'],
+])
 
-for (const [file, lines] of changedLines) {
-  if (!isProductionFeatureFile(file)) continue
-  const coverage = resolveFileCoverage(coverageByFile, file)
-  if (!coverage) {
-    failures.push(`${file}: changed production file is absent from the merged coverage report`)
-    continue
-  }
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  await main()
+}
 
-  for (const line of lines) {
-    const detail = coverage.get(line)
-    if (!detail) continue
-    if (detail.hits === 0) failures.push(`${file}:${line}: uncovered line`)
-    if (detail.branchRate !== null && detail.branchRate < 1) {
-      failures.push(`${file}:${line}: branch coverage ${(detail.branchRate * 100).toFixed(2)}%`)
+async function main() {
+  const options = parseArguments(process.argv.slice(2))
+  const xml = await readFile(options.report, 'utf8')
+  const coverageByFile = parseCoverage(xml)
+  const changedLines = parseChangedLines(execFileSync(
+    'git',
+    ['diff', '--unified=0', '--no-color', options.baseRef, '--', ':(glob)**/*.cs'],
+    { cwd: repositoryRoot, encoding: 'utf8' },
+  ))
+  const failures = []
+
+  for (const [file, lines] of changedLines) {
+    if (!isProductionFeatureFile(file)) continue
+    const coverage = resolveFileCoverage(coverageByFile, file)
+    if (!coverage) {
+      if (await isVerifiedDeclarationOnlyFeatureFile(file, repositoryRoot)) continue
+      failures.push(`${file}: changed production file is absent from the merged coverage report`)
+      continue
+    }
+
+    for (const line of lines) {
+      const detail = coverage.get(line)
+      if (!detail) continue
+      if (detail.hits === 0) failures.push(`${file}:${line}: uncovered line`)
+      if (detail.branchRate !== null && detail.branchRate < 1) {
+        failures.push(`${file}:${line}: branch coverage ${(detail.branchRate * 100).toFixed(2)}%`)
+      }
     }
   }
+
+  if (failures.length > 0) {
+    console.error('Backend diff coverage gate failed:')
+    for (const failure of failures) console.error(`- ${failure}`)
+    process.exitCode = 1
+    return
+  }
+
+  console.log(`Backend diff coverage gate passed against ${options.baseRef}.`)
 }
 
-if (failures.length > 0) {
-  console.error('Backend diff coverage gate failed:')
-  for (const failure of failures) console.error(`- ${failure}`)
-  process.exit(1)
+async function isVerifiedDeclarationOnlyFeatureFile(file, root) {
+  const kind = declarationOnlyFeatureFiles.get(normalizePath(file))
+  if (!kind) return false
+
+  const source = await readFile(resolve(root, file), 'utf8')
+  return isDeclarationOnlySource(source, kind)
 }
 
-console.log(`Backend diff coverage gate passed against ${options.baseRef}.`)
+function isDeclarationOnlySource(source, kind) {
+  let remaining = stripComments(source)
+    .replace(/^\s*using\s+[\w.]+\s*;\s*$/gm, '')
+    .replace(/^\s*namespace\s+[\w.]+\s*;\s*$/gm, '')
+
+  if (kind === 'enum') {
+    remaining = remaining.replace(
+      /\b(?:public|internal)\s+enum\s+\w+(?:\s*:\s*[\w.]+)?\s*\{([^{}]*)\}/g,
+      (declaration, body) => isEnumBody(body) ? '' : declaration,
+    )
+  } else if (kind === 'constants') {
+    remaining = remaining.replace(
+      /\b(?:public|internal)\s+static\s+class\s+\w+\s*\{([^{}]*)\}/g,
+      (declaration, body) => isConstantsOnlyBody(body) ? '' : declaration,
+    )
+  } else if (kind === 'interface') {
+    remaining = remaining.replace(
+      /\b(?:public|internal)\s+interface\s+\w+(?:\s*:\s*[^{}]+)?\s*\{([^{}]*)\}/g,
+      (declaration, body) => isInterfaceSignaturesOnlyBody(body) ? '' : declaration,
+    )
+  } else {
+    return false
+  }
+
+  return remaining.trim().length === 0
+}
+
+function stripComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/\/.*$/gm, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+}
+
+function isEnumBody(body) {
+  return body
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .every((entry) => /^\w+(?:\s*=\s*[-+]?\d+)?$/.test(entry))
+}
+
+function isConstantsOnlyBody(body) {
+  const members = body
+    .split(';')
+    .map((member) => member.trim())
+    .filter(Boolean)
+
+  return members.length > 0 && members.every((member) =>
+    /^(?:public|internal|private)\s+const\s+[\w.<>?]+\s+\w+\s*=\s*(?:"(?:[^"\\]|\\.)*"|[-+]?\d+(?:\.\d+)?|true|false|null)$/.test(member),
+  )
+}
+
+function isInterfaceSignaturesOnlyBody(body) {
+  if (body.includes('=>') || body.includes('=')) return false
+  const members = body
+    .split(';')
+    .map((member) => member.trim())
+    .filter(Boolean)
+
+  return members.length > 0 && members.every((member) =>
+    /^(?:[\w.<>?,\[\]\s]+)\s+\w+\s*\([^{};]*\)$/.test(member),
+  )
+}
 
 function parseArguments(args) {
   return {
@@ -161,4 +253,10 @@ function readOption(args, name) {
   const value = index >= 0 ? args[index + 1]?.trim() : ''
   if (!value) throw new Error(`Missing required option ${name}.`)
   return value
+}
+
+export {
+  isDeclarationOnlySource,
+  isProductionFeatureFile,
+  isVerifiedDeclarationOnlyFeatureFile,
 }

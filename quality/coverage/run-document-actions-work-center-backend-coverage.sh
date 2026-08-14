@@ -12,6 +12,8 @@ rm -rf "${coverage_root}"
 mkdir -p "${raw_root}" "${report_root}"
 
 dotnet tool restore
+node --test "${repository_root}/quality/coverage/verify-cobertura-diff.test.mjs"
+
 test_projects=(
   "NGB.Runtime.Tests/NGB.Runtime.Tests.csproj"
   "NGB.PostgreSql.Tests/NGB.PostgreSql.Tests.csproj"
@@ -29,8 +31,8 @@ for project in "${test_projects[@]}"; do
   )
   if [[ "${project_name}" == "NGB.PropertyManagement.Api.IntegrationTests" ]]; then
     # External Keycloak reachability is covered by the normal integration suite.
-    # It is intentionally excluded from the feature coverage run because it is
-    # unrelated to this release and can time out under the profiler.
+    # It is intentionally excluded from the Document Actions + Work Center
+    # coverage run because it is unrelated and can time out under the profiler.
     test_args+=(--filter "FullyQualifiedName!~PmApi_Health_HttpSurface_P0Tests")
   fi
   dotnet test "${test_args[@]}" \
@@ -62,4 +64,4 @@ else
   echo "Diff coverage skipped locally. Set NGB_COVERAGE_BASE_REF to enable it."
 fi
 
-echo "Backend feature coverage report: ${report_root}/index.html"
+echo "Document Actions + Work Center backend coverage report: ${report_root}/index.html"

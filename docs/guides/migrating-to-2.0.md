@@ -154,7 +154,8 @@ dotnet build NGB.sln -c Release --no-restore
 bash packaging/nuget/pack-platform.sh
 bash packaging/nuget/verify-platform-packages.sh
 npm --prefix ui run test:all
-NGB_COVERAGE_BASE_REF=HEAD ./quality/coverage/run-frontend-feature-coverage.sh
+NGB_COVERAGE_BASE_REF=HEAD ./quality/coverage/run-document-actions-work-center-backend-coverage.sh
+NGB_COVERAGE_BASE_REF=HEAD ./quality/coverage/run-document-actions-work-center-frontend-coverage.sh
 ```
 
 For a custom vertical, add compile-time package-consumer tests that reference the packed 2.0.0

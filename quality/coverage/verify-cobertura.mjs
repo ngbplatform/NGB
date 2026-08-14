@@ -15,12 +15,12 @@ if (coverage.branchRate * 100 + Number.EPSILON < options.branches) {
 }
 
 if (failures.length > 0) {
-  console.error(`Backend feature coverage gate failed: ${failures.join('; ')}.`)
+  console.error(`Document Actions + Work Center backend coverage gate failed: ${failures.join('; ')}.`)
   process.exit(1)
 }
 
 console.log(
-  `Backend feature coverage gate passed: lines ${formatRate(coverage.lineRate)}, branches ${formatRate(coverage.branchRate)}.`,
+  `Document Actions + Work Center backend coverage gate passed: lines ${formatRate(coverage.lineRate)}, branches ${formatRate(coverage.branchRate)}.`,
 )
 
 function parseArguments(args) {

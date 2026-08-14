@@ -110,15 +110,16 @@ Run:
 ```bash
 dotnet test NGB.sln
 npm --prefix ui run test:all
-NGB_COVERAGE_BASE_REF=HEAD ./quality/coverage/run-frontend-feature-coverage.sh
+NGB_COVERAGE_BASE_REF=HEAD ./quality/coverage/run-document-actions-work-center-backend-coverage.sh
+NGB_COVERAGE_BASE_REF=HEAD ./quality/coverage/run-document-actions-work-center-frontend-coverage.sh
 ```
 
 `dotnet test NGB.sln` includes the platform unit/architecture suites and the PM, CRM, Agency Billing,
 and Trade integration coverage. PostgreSQL and API integration suites require Docker because they
 use Testcontainers. `npm --prefix ui run test:all` includes type checking, the reviewed public-export
 compatibility gate, unit, browser, and E2E suites. Browser and E2E suites require the Playwright
-browser binaries and permission to bind local ports. The feature-coverage command also runs the
-frontend diff-coverage gate; CI must supply its merge-base ref, and local release validation should
+browser binaries and permission to bind local ports. The Document Actions + Work Center coverage
+commands also run their diff-coverage gates; CI must supply its merge-base ref, and local release validation should
 set `NGB_COVERAGE_BASE_REF` explicitly as shown.
 
 For performance coverage, use the k6 workspace under `performance-tests`. PM lifecycle flows call `editor-state`, not the removed derivation-action endpoint. Run the documented smoke profile before baseline/load profiles and retain the generated summary artifacts.

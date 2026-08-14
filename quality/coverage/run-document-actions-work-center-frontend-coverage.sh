@@ -6,8 +6,8 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 base_ref="${NGB_COVERAGE_BASE_REF:-}"
 
 cd "${repository_root}/ui"
-npm run test:coverage:feature
-npm run test:coverage:diff
+npm run test:coverage:document-actions-work-center
+npm run test:coverage:document-actions-work-center:diff
 
 if [[ -n "${base_ref}" ]]; then
   node "${repository_root}/quality/coverage/verify-lcov-diff.mjs" \

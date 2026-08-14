@@ -34,10 +34,10 @@
     "pack:platform-ui": "node scripts/pack-platform-ui.mjs",
     "test:unit": "vitest run --config vitest.config.ts && npm --workspace ngb-crm-web run test:unit",
     "test:unit:watch": "vitest --config vitest.config.ts",
-    "test:coverage:feature": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.feature-coverage.config.ts --coverage ngb-ui-framework/tests/unit/ngb/work-center ngb-ui-framework/tests/browser/ngb/work-center",
-    "test:coverage:diff": "npm run test:coverage:diff:framework && npm run test:coverage:diff:apps && node scripts/merge-frontend-diff-coverage.mjs",
-    "test:coverage:diff:apps": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-apps-coverage.config.ts --coverage",
-    "test:coverage:diff:framework": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-framework-coverage.config.ts --coverage"
+    "test:coverage:document-actions-work-center": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.document-actions-work-center-coverage.config.ts --coverage ngb-ui-framework/tests/unit/ngb/work-center ngb-ui-framework/tests/browser/ngb/work-center",
+    "test:coverage:document-actions-work-center:diff": "npm run test:coverage:document-actions-work-center:diff:framework && npm run test:coverage:document-actions-work-center:diff:apps && node scripts/merge-frontend-diff-coverage.mjs",
+    "test:coverage:document-actions-work-center:diff:apps": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-apps-coverage.config.ts --coverage",
+    "test:coverage:document-actions-work-center:diff:framework": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-framework-coverage.config.ts --coverage"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
