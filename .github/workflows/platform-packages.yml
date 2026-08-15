@@ -107,7 +107,7 @@ jobs:
         run: npm run pack:platform-ui
 
       - name: Upload npm package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ngbplatform-ui-${{ steps.npm-version.outputs.version }}
           path: artifacts/npm/ngbplatform-ui-${{ steps.npm-version.outputs.version }}.tgz
@@ -137,7 +137,7 @@ jobs:
         run: bash packaging/nuget/verify-platform-packages.sh
 
       - name: Upload NuGet packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ngb-platform-nuget-${{ steps.nuget-version.outputs.version }}
           path: |
