@@ -27,6 +27,8 @@ on:
       - 'packaging/**'
       - 'ui/package.json'
       - 'ui/package-lock.json'
+      - 'ui/ngb-crm-web/package.json'
+      - 'ui/ngb-crm-web/package-lock.json'
       - 'ui/ngb-ui-framework/**'
       - 'ui/scripts/**'
   push:
@@ -56,6 +58,8 @@ on:
       - 'packaging/**'
       - 'ui/package.json'
       - 'ui/package-lock.json'
+      - 'ui/ngb-crm-web/package.json'
+      - 'ui/ngb-crm-web/package-lock.json'
       - 'ui/ngb-ui-framework/**'
       - 'ui/scripts/**'
   workflow_dispatch:
@@ -78,7 +82,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22.14.0
+          node-version: 24.19.0
           package-manager-cache: false
 
       - name: Install UI workspace

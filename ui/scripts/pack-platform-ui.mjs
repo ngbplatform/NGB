@@ -7,6 +7,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { gzipSync, gunzipSync } from 'fflate'
+
 import { createPlatformUiPackageManifest } from './platform-ui-package-manifest.mjs'
 
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -63,16 +65,34 @@ try {
     },
   )
 
+  const tarballPath = join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`)
+  await normalizeTarballCompression(tarballPath)
+  console.log(`Deterministic package integrity: ${await calculateIntegrity(tarballPath)}`)
+
   await cp(
-    join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`),
+    tarballPath,
     join(outputRoot, 'ngbplatform-ui-local.tgz'),
   )
-  await verifyCrmConsumerLock(
-    join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`),
-    requestedVersion,
-  )
+  await verifyCrmConsumerLock(tarballPath, requestedVersion)
 } finally {
   await rm(stagingRoot, { recursive: true, force: true })
+}
+
+async function normalizeTarballCompression(tarballPath) {
+  const npmTarball = await readFile(tarballPath)
+  const tarArchive = gunzipSync(npmTarball)
+
+  // npm pack delegates gzip compression to the host runtime. The resulting
+  // gzip byte stream can differ across operating systems even when the TAR
+  // archive is identical. Recompress with a pinned pure-JavaScript codec so
+  // local validation and the Linux publication workflow produce the same
+  // registry integrity.
+  const deterministicTarball = gzipSync(tarArchive, {
+    level: 9,
+    mtime: 0,
+  })
+
+  await writeFile(tarballPath, deterministicTarball)
 }
 
 async function verifyCrmConsumerLock(tarballPath, version) {
@@ -80,9 +100,7 @@ async function verifyCrmConsumerLock(tarballPath, version) {
   const crmLock = JSON.parse(await readFile(join(crmRoot, 'package-lock.json'), 'utf8'))
   const locked = crmLock.packages?.['node_modules/@ngbplatform/ui']
   const expectedResolved = `https://registry.npmjs.org/@ngbplatform/ui/-/ui-${version}.tgz`
-  const expectedIntegrity = `sha512-${createHash('sha512')
-    .update(await readFile(tarballPath))
-    .digest('base64')}`
+  const expectedIntegrity = await calculateIntegrity(tarballPath)
 
   if (crmManifest.dependencies?.['@ngbplatform/ui'] !== version) {
     throw new Error(`CRM must reference @ngbplatform/ui ${version} exactly.`)
@@ -98,6 +116,12 @@ async function verifyCrmConsumerLock(tarballPath, version) {
         + 'including its registry URL and SHA-512 integrity.',
     )
   }
+}
+
+async function calculateIntegrity(tarballPath) {
+  return `sha512-${createHash('sha512')
+    .update(await readFile(tarballPath))
+    .digest('base64')}`
 }
 
 function readVersionArgument(args) {
