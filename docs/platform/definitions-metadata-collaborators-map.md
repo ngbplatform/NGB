@@ -57,12 +57,15 @@ Runtime orchestrator that:
 - resolves type metadata
 - builds effective document models
 - validates payloads against metadata
-- exposes derivation actions
-- delegates draft derivation to derivation service
+- delegates trusted/internal draft derivation to the derivation service
+
+### `IDocumentActionQueryService`
+Public editor-state boundary that evaluates the unified Document Action registry. Derivation actions
+are disclosed here alongside lifecycle, command, navigation, and view actions.
 
 ### `IDocumentDerivationService`
 Runtime boundary for:
-- listing derivation actions
+- matching registered derivation bindings inside Runtime
 - creating derived drafts from registered derivation definitions
 
 ## Execution-oriented reading

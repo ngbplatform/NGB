@@ -21,6 +21,7 @@ public sealed class CrmDemoSeedService(
     ICrmSetupService setup,
     ICatalogService catalogs,
     IDocumentService documents,
+    IDocumentSystemLifecycleService lifecycle,
     TimeProvider timeProvider,
     IDocumentReferenceRegisterPostingActionResolver refregPostingActionResolver,
     IReferenceRegisterRecordsApplier refregRecordsApplier,
@@ -923,7 +924,7 @@ public sealed class CrmDemoSeedService(
         if (!string.IsNullOrWhiteSpace(display))
             await documents.UpdateDraftAsync(documentType, draft.Id, WithDisplay(payload, display), ct);
 
-        return await documents.PostAsync(documentType, draft.Id, ct);
+        return await lifecycle.PostAsync(documentType, draft.Id, ct);
     }
 
     private static RecordPayload WithDisplay(RecordPayload payload, string display)

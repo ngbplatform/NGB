@@ -186,7 +186,7 @@ export function buildCRMDocumentPartsPayload(
     payload[part.partCode] = {
       rows: rows.map((row) => ({
         ...buildFieldsPayload(form, row),
-        ordinal: Number(row.ordinal ?? 0) || 0,
+        ordinal: Number(row.ordinal),
       })),
     }
   }

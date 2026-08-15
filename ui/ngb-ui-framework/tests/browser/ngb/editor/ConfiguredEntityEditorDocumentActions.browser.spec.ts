@@ -21,7 +21,7 @@ vi.mock('../../../../src/ngb/primitives/NgbIcon.vue', () => ({
   default: StubIcon,
 }))
 
-vi.mock('../../../../src/ngb/site/NgbPageHeader.vue', () => ({
+vi.mock('../../../../src/ngb/layout/NgbPageHeader.vue', () => ({
   default: StubPageHeader,
 }))
 
@@ -30,24 +30,8 @@ import NgbEntityEditorHeader from '../../../../src/ngb/editor/NgbEntityEditorHea
 import { useConfiguredEntityEditorDocumentActions } from '../../../../src/ngb/editor/useConfiguredEntityEditorDocumentActions'
 import { useEntityEditorHeaderActions } from '../../../../src/ngb/editor/useEntityEditorHeaderActions'
 
-const configuredActionMocks = vi.hoisted(() => ({
-  approve: vi.fn(),
-  emailPacket: vi.fn(),
-}))
-
-const metadataStore = {
-  ensureDocumentType: vi.fn(async (documentType: string) => ({
-    documentType,
-    displayName: 'Sales Invoice',
-    kind: 2,
-    list: null,
-    form: null,
-    parts: null,
-    actions: null,
-    presentation: null,
-    capabilities: null,
-  })),
-}
+const executeDocumentActionMock = vi.hoisted(() => vi.fn())
+const getDocumentEditorStateMock = vi.hoisted(() => vi.fn())
 
 const ConfiguredActionsHarness = defineComponent({
   setup() {
@@ -67,24 +51,15 @@ const ConfiguredActionsHarness = defineComponent({
       kind: computed(() => 'document'),
       typeCode: computed(() => 'pm.invoice'),
       currentId: computed(() => 'doc-1'),
-      model: ref({
-        customer_id: 'customer-1',
-      }),
-      uiEffects: computed(() => ({
-        isPosted: false,
-        canEdit: true,
-        canPost: false,
-        canUnpost: false,
-        canRepost: false,
-        canApply: false,
-      })),
       loading: computed(() => loading.value),
       saving: computed(() => saving.value),
       requestNavigate,
-      metadataStore,
       setEditorError: () => undefined,
       normalizeEditorError: () => ({ summary: 'normalized', issues: [] }),
-      loadDerivationActions: async () => [],
+      gateway: {
+        loadEditorState: getDocumentEditorStateMock,
+        execute: executeDocumentActionMock,
+      },
     })
 
     const {
@@ -162,6 +137,81 @@ const ConfiguredActionsHarness = defineComponent({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  getDocumentEditorStateMock.mockResolvedValue({
+    document: {
+      id: 'doc-1',
+      display: 'Invoice INV-001',
+      payload: { fields: {} },
+      status: 1,
+      isMarkedForDeletion: false,
+    },
+    documentVersion: 7,
+    actions: [
+      {
+        code: 'approve_document',
+        label: 'Approve document',
+        icon: 'check',
+        kind: 'Primary',
+        executionKind: 'Command',
+        order: 100,
+        isAllowed: true,
+        disabledReasons: [],
+      },
+      {
+        code: 'email_packet',
+        label: 'Email packet',
+        icon: 'mail',
+        kind: 'Secondary',
+        executionKind: 'Navigation',
+        order: 200,
+        isAllowed: true,
+        disabledReasons: [],
+        target: {
+          code: 'route',
+          parameters: { path: '/emails/doc-1' },
+        },
+      },
+    ],
+  })
+  executeDocumentActionMock.mockResolvedValue({
+    executionId: 'execution-1',
+    actionCode: 'approve_document',
+    document: {
+      id: 'doc-1',
+      display: 'Invoice INV-001',
+      payload: { fields: {} },
+      status: 1,
+      isMarkedForDeletion: false,
+    },
+    documentVersion: 8,
+    actions: [
+      {
+        code: 'approve_document',
+        label: 'Approve document',
+        icon: 'check',
+        kind: 'Primary',
+        executionKind: 'Command',
+        order: 100,
+        isAllowed: true,
+        disabledReasons: [],
+      },
+      {
+        code: 'email_packet',
+        label: 'Email packet',
+        icon: 'mail',
+        kind: 'Secondary',
+        executionKind: 'Navigation',
+        order: 200,
+        isAllowed: true,
+        disabledReasons: [],
+        target: {
+          code: 'route',
+          parameters: { path: '/emails/doc-1' },
+        },
+      },
+    ],
+    workCenterMayChange: true,
+  })
 
   configureNgbEditor({
     loadDocumentById: async () => ({
@@ -176,7 +226,6 @@ beforeEach(() => {
       accountingEntries: [],
       operationalRegisterMovements: [],
       referenceRegisterWrites: [],
-      ui: null,
     }),
     loadDocumentGraph: async () => ({
       nodes: [],
@@ -187,53 +236,32 @@ beforeEach(() => {
       limit: 50,
       nextCursor: null,
     }),
-    resolveDocumentActions: ({ documentId, loading, saving, navigate }) => [
-      {
-        item: {
-          key: 'approveDocument',
-          title: 'Approve document',
-          icon: 'check',
-          disabled: loading || saving,
-        },
-        run: () => {
-          configuredActionMocks.approve(documentId)
-        },
-      },
-      {
-        item: {
-          key: 'emailPacket',
-          title: 'Email packet',
-          icon: 'mail',
-          disabled: loading || saving,
-        },
-        group: {
-          key: 'output',
-          label: 'Output',
-        },
-        run: () => {
-          configuredActionMocks.emailPacket(documentId)
-          navigate(`/emails/${documentId}`)
-        },
-      },
-    ],
+    documentActions: {
+      loadEditorState: getDocumentEditorStateMock,
+      execute: executeDocumentActionMock,
+    },
   })
 })
 
-test('projects configured document actions into the real header flow and preserves busy-state disables', async () => {
+test('projects server-driven document actions into the real header flow and preserves busy-state disables', async () => {
   const view = await render(ConfiguredActionsHarness)
 
-  await expect.element(view.getByTestId('configured-primary-actions')).toHaveTextContent('approveDocument:false')
-  await expect.element(view.getByTestId('configured-more-actions')).toHaveTextContent('emailPacket:false')
+  await expect.element(view.getByTestId('configured-primary-actions')).toHaveTextContent('document-action:approve_document:false')
+  await expect.element(view.getByTestId('configured-more-actions')).toHaveTextContent('document-action:email_packet:false')
 
   await view.getByRole('button', { name: 'Primary: Approve document' }).click()
-  await view.getByRole('button', { name: 'More: Output / Email packet' }).click()
+  await view.getByRole('button', { name: 'More: Actions / Email packet' }).click()
 
-  expect(configuredActionMocks.approve).toHaveBeenCalledWith('doc-1')
-  expect(configuredActionMocks.emailPacket).toHaveBeenCalledWith('doc-1')
+  expect(executeDocumentActionMock).toHaveBeenCalledWith(
+    'pm.invoice',
+    'doc-1',
+    'approve_document',
+    { expectedVersion: 7, reason: null },
+  )
   await expect.element(view.getByTestId('configured-navigation-log')).toHaveTextContent('/emails/doc-1')
 
   await view.getByRole('button', { name: 'Set saving' }).click()
 
-  await expect.element(view.getByTestId('configured-primary-actions')).toHaveTextContent('approveDocument:true')
-  await expect.element(view.getByTestId('configured-more-actions')).toHaveTextContent('emailPacket:true')
+  await expect.element(view.getByTestId('configured-primary-actions')).toHaveTextContent('document-action:approve_document:true')
+  await expect.element(view.getByTestId('configured-more-actions')).toHaveTextContent('document-action:email_packet:true')
 })

@@ -19,7 +19,7 @@ import {
   replaceCleanRouteQuery,
 } from '../router/queryParams'
 import { copyAppLink } from '../router/shareLink'
-import NgbPageHeader from '../site/NgbPageHeader.vue'
+import NgbPageHeader from '../layout/NgbPageHeader.vue'
 import NgbValidationSummary from '../components/forms/NgbValidationSummary.vue'
 import {
   closeFiscalYear,

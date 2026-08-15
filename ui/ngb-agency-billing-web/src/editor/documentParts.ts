@@ -13,7 +13,7 @@ import {
   type PartMetadata,
   type RecordPartRow,
   type RecordParts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 type PendingPartLookupHydration = {
   row: RecordPartRow
@@ -292,7 +292,7 @@ export function buildAgencyBillingDocumentPartsPayload(
     payload[part.partCode] = {
       rows: rows.map((row) => ({
         ...buildFieldsPayload(form, recomputeAgencyBillingDocumentPartRow(documentType, row)),
-        ordinal: Number(row.ordinal ?? 0) || 0,
+        ordinal: Number(row.ordinal),
       })),
     }
   }

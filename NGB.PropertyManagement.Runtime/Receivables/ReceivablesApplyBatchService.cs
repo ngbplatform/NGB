@@ -9,6 +9,7 @@ using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Receivables;
 using NGB.PropertyManagement.Runtime.Exceptions;
 using NGB.PropertyManagement.Runtime.Policy;
+using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.Runtime.Documents;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
@@ -32,7 +33,8 @@ public sealed class ReceivablesApplyBatchService(
     IReceivableApplyHeadWriter applyHeadWriter,
     IDocumentRepository documents,
     IAdvisoryLockManager locks,
-    IUnitOfWork uow)
+    IUnitOfWork uow,
+    IReceivablePaymentWorkCenterSynchronizer workCenter)
     : IReceivablesApplyBatchService
 {
     private const int MaxLines = 500;
@@ -87,9 +89,9 @@ public sealed class ReceivablesApplyBatchService(
         var policy = await policyReader.GetRequiredAsync(ct);
 
         var executed = new List<ReceivablesApplyBatchExecutedItem>(parsed.Count);
-
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var changedUsers = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
+            var affectedUsers = new HashSet<Guid>();
             // Lock all referenced documents deterministically to avoid deadlocks with other apply flows.
             var docIds = new List<Guid>(parsed.Count * 3);
             docIds.AddRange(parsed.Select(x => x.CreditDocumentId));
@@ -136,7 +138,16 @@ public sealed class ReceivablesApplyBatchService(
                     Amount: a.Amount,
                     CreatedDraft: createdDraft));
             }
+
+            foreach (var paymentId in parsed.Select(static x => x.CreditDocumentId).Distinct())
+            {
+                affectedUsers.UnionWith(await workCenter.CompleteIfExhaustedAsync(paymentId, innerCt));
+            }
+
+            return (IReadOnlyCollection<Guid>)affectedUsers.ToArray();
         }, ct);
+
+        await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         var total = executed.Sum(x => x.Amount);
 

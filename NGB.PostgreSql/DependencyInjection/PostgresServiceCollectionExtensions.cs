@@ -10,6 +10,7 @@ using NGB.Persistence.Catalogs;
 using NGB.Persistence.Catalogs.Enrichment;
 using NGB.Persistence.Catalogs.Universal;
 using NGB.Persistence.Documents;
+using NGB.Persistence.Documents.Actions;
 using NGB.Persistence.Documents.Numbering;
 using NGB.Persistence.Documents.GeneralJournalEntry;
 using NGB.Persistence.Documents.Storage;
@@ -19,6 +20,7 @@ using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.Locks;
 using NGB.Persistence.Migrations;
 using NGB.Persistence.OperationalRegisters;
+using NGB.Persistence.Outbox;
 using NGB.Persistence.Periods;
 using NGB.Persistence.PostingState;
 using NGB.Persistence.ReferenceRegisters;
@@ -32,18 +34,21 @@ using NGB.Persistence.Readers.Periods;
 using NGB.Persistence.Schema;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
+using NGB.Persistence.WorkCenter;
 using NGB.Persistence.Writers;
 using NGB.PostgreSql.Catalogs;
 using NGB.PostgreSql.Accounts;
 using NGB.PostgreSql.Checkers;
 using NGB.PostgreSql.Dapper;
 using NGB.PostgreSql.Documents;
+using NGB.PostgreSql.Documents.Actions;
 using NGB.PostgreSql.Documents.Numbering;
 using NGB.PostgreSql.Documents.GeneralJournalEntry;
 using NGB.PostgreSql.AuditLog;
 using NGB.PostgreSql.Dimensions;
 using NGB.PostgreSql.Locks;
 using NGB.PostgreSql.OperationalRegisters;
+using NGB.PostgreSql.Outbox;
 using NGB.PostgreSql.ReferenceRegisters;
 using NGB.PostgreSql.Migrations;
 using NGB.PostgreSql.Periods;
@@ -54,6 +59,7 @@ using NGB.PostgreSql.Reporting.Accounting;
 using NGB.PostgreSql.Schema;
 using NGB.PostgreSql.Security;
 using NGB.PostgreSql.UnitOfWork;
+using NGB.PostgreSql.WorkCenter;
 using NGB.PostgreSql.Writers;
 using NGB.Tools.Exceptions;
 
@@ -176,6 +182,7 @@ public static class PostgresServiceCollectionExtensions
 
         // Documents
         services.TryAddScoped<IDocumentRepository, PostgresDocumentRepository>();
+        services.TryAddScoped<IDocumentActionExecutionRepository, PostgresDocumentActionExecutionRepository>();
         services.TryAddScoped<IDocumentReader, PostgresDocumentReader>();
         services.TryAddScoped<IDocumentDisplayReader, PostgresDocumentDisplayReader>();
         services.TryAddScoped<IDocumentPartsReader, PostgresDocumentPartsReader>();
@@ -188,6 +195,15 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IGeneralJournalEntryRepository, PostgresGeneralJournalEntryRepository>();
         services.TryAddScoped<IGeneralJournalEntryUiQueryRepository, PostgresGeneralJournalEntryUiQueryRepository>();
         services.TryAddScoped<IDocumentTypeStorage, PostgresGeneralJournalEntryTypeStorage>();
+
+        // Document actions, durable outbox, and Work Center.
+        services.TryAddScoped<IOutboxEventRepository, PostgresOutboxEventRepository>();
+        services.TryAddScoped<PostgresWorkCenterRepository>();
+        services.TryAddScoped<IWorkCenterTaskRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
+        services.TryAddScoped<INotificationRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
+        services.TryAddScoped<INotificationPreferenceRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
+        services.TryAddScoped<IWorkCenterReadRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
+        services.TryAddScoped<IWorkCenterMaintenanceRepository>(sp => sp.GetRequiredService<PostgresWorkCenterRepository>());
         
         // Locks
         services.TryAddScoped<IAdvisoryLockManager, PostgresAdvisoryLockManager>();

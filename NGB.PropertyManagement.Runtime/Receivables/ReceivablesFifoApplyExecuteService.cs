@@ -5,6 +5,7 @@ using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Receivables;
 using NGB.PropertyManagement.Runtime.Exceptions;
+using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.Runtime.Documents;
 using NGB.Runtime.UnitOfWork;
 
@@ -27,7 +28,8 @@ public sealed class ReceivablesFifoApplyExecuteService(
     IPropertyManagementDocumentReaders readers,
     IDocumentRepository documents,
     IAdvisoryLockManager advisoryLocks,
-    IUnitOfWork uow)
+    IUnitOfWork uow,
+    IReceivablePaymentWorkCenterSynchronizer workCenter)
     : IReceivablesFifoApplyExecuteService
 {
     public async Task<ReceivablesFifoApplyExecuteResponse> ExecuteAsync(
@@ -57,8 +59,7 @@ public sealed class ReceivablesFifoApplyExecuteService(
 
         // 2) Execute atomically.
         var executed = new List<ReceivablesExecutedApplyDto>(plan.SuggestedApplies.Count);
-
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var changedUsers = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             // Lock all involved documents deterministically to avoid deadlocks with other apply flows.
             var ids = new List<Guid>(1 + plan.SuggestedApplies.Count) { request.CreditDocumentId };
@@ -91,7 +92,15 @@ public sealed class ReceivablesFifoApplyExecuteService(
 
                 executed.Add(new ReceivablesExecutedApplyDto(applyId, s.ChargeDocumentId, s.Amount));
             }
+
+            if (executed.Count > 0)
+                return (IReadOnlyCollection<Guid>)(await workCenter.CompleteIfExhaustedAsync(request.CreditDocumentId, innerCt));
+
+            return Array.Empty<Guid>();
         }, ct);
+
+        if (executed.Count > 0)
+            await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         var totalApplied = executed.Sum(x => x.Amount);
         var remaining = Math.Max(0m, plan.AvailableCredit - totalApplied);
@@ -103,5 +112,4 @@ public sealed class ReceivablesFifoApplyExecuteService(
             RemainingCredit: remaining,
             ExecutedApplies: executed);
     }
-
 }

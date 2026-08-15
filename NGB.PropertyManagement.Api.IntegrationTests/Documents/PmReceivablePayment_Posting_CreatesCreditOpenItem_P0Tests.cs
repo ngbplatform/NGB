@@ -9,6 +9,7 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Runtime;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.OperationalRegisters;

@@ -5,6 +5,7 @@ using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Receivables;
 using NGB.PropertyManagement.Runtime.Exceptions;
+using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.Runtime.Documents;
 using NGB.Runtime.UnitOfWork;
 
@@ -24,7 +25,8 @@ public sealed class ReceivablesCustomApplyExecuteService(
     IPropertyManagementDocumentReaders readers,
     IDocumentRepository documents,
     IAdvisoryLockManager advisoryLocks,
-    IUnitOfWork uow)
+    IUnitOfWork uow,
+    IReceivablePaymentWorkCenterSynchronizer workCenter)
     : IReceivablesCustomApplyExecuteService
 {
     private const int MaxLines = 500;
@@ -75,8 +77,7 @@ public sealed class ReceivablesCustomApplyExecuteService(
         var executed = new List<ReceivablesExecutedApplyDto>(allocations.Length);
         var registerId = Guid.Empty;
         var availableCredit = 0m;
-
-        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var changedUsers = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             // Lock all involved documents in a deterministic order to avoid deadlocks.
             var docIds = new List<Guid>(1 + allocations.Length) { request.CreditDocumentId };
@@ -140,7 +141,11 @@ public sealed class ReceivablesCustomApplyExecuteService(
 
                 executed.Add(new ReceivablesExecutedApplyDto(applyId, a.ChargeDocumentId, a.Amount));
             }
+
+            return (IReadOnlyCollection<Guid>)(await workCenter.CompleteIfExhaustedAsync(request.CreditDocumentId, innerCt));
         }, ct);
+
+        await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         var totalApplied = executed.Sum(x => x.Amount);
         var remaining = Math.Max(0m, availableCredit - totalApplied);

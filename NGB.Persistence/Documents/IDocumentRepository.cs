@@ -31,6 +31,13 @@ public interface IDocumentRepository
         CancellationToken ct = default);
 
     /// <summary>
+    /// Increments the stable document concurrency version and returns the updated common header.
+    /// Returning the row avoids a second locked read after a successful state transition.
+    /// Requires an active transaction and a locked document row.
+    /// </summary>
+    Task<DocumentRecord> IncrementVersionAsync(Guid documentId, DateTime updatedAtUtc, CancellationToken ct = default);
+
+    /// <summary>
     /// Updates draft header fields stored in the common document registry (documents).
     /// Requires an active transaction.
     /// </summary>

@@ -1,5 +1,5 @@
-import type { EditorEntityProfile, EntityEditorContext, EntityFormModel } from 'ngb-ui-framework'
-import { asTrimmedString, tryExtractReferenceDisplay } from 'ngb-ui-framework'
+import type { EditorEntityProfile, EntityEditorContext, EntityFormModel } from '@ngbplatform/ui'
+import { asTrimmedString, tryExtractReferenceDisplay } from '@ngbplatform/ui'
 
 export const PM_EDITOR_TAGS = {
   PROPERTY_CATALOG: 'pm:property-catalog',
@@ -16,7 +16,6 @@ function formatDateOnlyMmDdYyyy(value: unknown): string | null {
   const yyyy = Number(yyyyRaw)
   const mm = Number(mmRaw)
   const dd = Number(ddRaw)
-  if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return null
   if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null
 
   return `${String(mm).padStart(2, '0')}/${String(dd).padStart(2, '0')}/${yyyy}`

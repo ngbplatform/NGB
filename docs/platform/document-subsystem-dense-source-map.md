@@ -52,9 +52,12 @@ Document registry + universal head/part persistence + posting/derivation/graph/e
 
 The important architectural point is that the document subsystem is not modeled as one class per document type. Instead, the platform exposes a universal service contract and resolves per-type behavior through metadata, registries, posting handlers, derivation definitions, and persistence descriptors.
 
-## 1. Public application boundary: `IDocumentService`
+## 1. Public application boundaries
 
-`IDocumentService` is the application-facing contract for the entire generic document surface.
+The 2.0 generic document surface is deliberately split across focused application contracts.
+`IDocumentService` owns metadata, CRUD, graph/effects reads, and a trusted/internal derivation port.
+Interactive action discovery belongs to `IDocumentActionQueryService`; authorized and idempotent
+execution belongs to `IDocumentActionDispatcher`.
 
 From the verified contract, the subsystem includes these capability groups:
 
@@ -73,19 +76,19 @@ From the verified contract, the subsystem includes these capability groups:
 - page documents of a type
 - get by id
 
-### Workflow and state transitions
+### Trusted workflow and state-transition ports
 
-- post
-- unpost
-- repost
-- mark for deletion
-- unmark for deletion
-- execute custom action
+- `IDocumentSystemLifecycleService` exposes post, unpost, repost, mark, and unmark operations for
+  seeders, migrators, and background workflows;
+- interactive/API callers use `IDocumentActionDispatcher` so authorization, availability,
+  concurrency, idempotency, audit, and outbox behavior cannot be bypassed.
 
-### Derived behaviors and explainability
+### Actions, derivation, and explainability
 
-- list derivation actions for a document
-- derive a new document from another document
+- get editor state and evaluated actions through `IDocumentActionQueryService`
+- execute a lifecycle, derivation, vertical command, navigation, or view action through the
+  Document Action boundary
+- derive a new document through the trusted/internal `IDocumentService.DeriveAsync(...)` port
 - get relationship graph
 - get accounting and register effects
 
@@ -105,7 +108,9 @@ It is where the platform brings together:
 - relationship graph reads
 - effects reads
 - audit write hooks
-- UI-oriented disabled-reason logic
+
+Document Action disabled-reason logic is owned by the separate registry/query/evaluator path, not by
+`DocumentService`.
 
 ### What `DocumentService` clearly owns
 
@@ -125,15 +130,22 @@ It creates drafts through the draft service, parses scalar fields and parts from
 
 #### Workflow transitions
 
-It delegates post, unpost, repost, mark-for-deletion, and unmark-for-deletion to the posting subsystem while preserving the generic document API surface.
+Through `IDocumentSystemLifecycleService`, it delegates post, unpost, repost, mark-for-deletion, and
+unmark-for-deletion to the posting subsystem for trusted system callers. Interactive callers use
+the dispatcher rather than this bypass-capable lifecycle port.
 
 #### Relationship graph and effects
 
-It resolves the document flow graph in one API call, bulk-loads typed head rows for graph nodes, computes graph DTOs, and builds the effects DTO by combining posting availability, UI contributor output, and effects query results.
+It resolves the document flow graph in one API call, bulk-loads typed head rows for graph nodes, and
+computes graph DTOs. The effects DTO contains accounting entries, operational register movements,
+and reference register writes only.
 
 #### Derive
 
-It resolves derivation actions, supports backward-compatible scaffold behavior when explicit derivation definitions are missing but initial payload is present, and delegates actual draft creation to the derivation service.
+For trusted/internal callers, it matches registered derivations, supports backward-compatible
+scaffold behavior when explicit derivation definitions are missing but an initial payload is
+present, and delegates actual draft creation to the derivation service. Public derivation discovery
+is part of the unified Document Action editor state.
 
 ## 3. Collaborator map from the verified constructor
 
@@ -163,7 +175,7 @@ The verified constructor of `DocumentService` is one of the most valuable source
 
 - `IReferencePayloadEnricher`
 - `IEnumerable<IDocumentDraftPayloadValidator>`
-- `IEnumerable<IDocumentUiEffectsContributor>`
+- document action availability is loaded through `IDocumentActionContextEnricher`
 
 ### Optional infrastructure collaborators
 
@@ -228,7 +240,7 @@ Important verified points:
 - those definitions are registered in `DefinitionsRegistry`
 - derivation creates a new draft only
 - derivation writes relationship links according to the requested relationship codes
-- the service exposes both discovery and execution APIs
+- the service exposes internal listing/matching plus draft-creation APIs used by Runtime
 
 This is the most concrete verified source anchor currently available for the derive subsystem.
 
@@ -241,7 +253,8 @@ The following collaborators are visible from `DocumentService`, but their implem
 - relationship graph read implementation
 - effects query implementation
 - audit log write implementation
-- UI effects contributor implementations
+- Document Action registry/query/evaluator/dispatcher implementations (separate from
+  `DocumentService`)
 
 Because of that, this page documents their role only at the orchestration boundary.
 
@@ -255,7 +268,9 @@ Because of that, this page documents their role only at the orchestration bounda
 
 ### Effects
 
-`DocumentService` assembles the response for accounting entries, operational register movements, reference register writes, and UI action availability, but it does not itself compute the underlying accounting/register state.
+`DocumentService` assembles the response for accounting entries, operational register movements,
+and reference register writes, but it does not itself compute the underlying accounting/register
+state. UI action availability is evaluated separately for editor state.
 
 ## 7. Architectural conclusions supported by the verified anchors
 

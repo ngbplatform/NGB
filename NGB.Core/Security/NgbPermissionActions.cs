@@ -1,3 +1,5 @@
+using NGB.Core.Documents.Actions;
+
 namespace NGB.Core.Security;
 
 public static class NgbPermissionActions
@@ -12,15 +14,15 @@ public static class NgbPermissionActions
     public const string Lookup = "lookup";
     public const string EditDraft = "edit_draft";
     public const string DeleteDraft = "delete_draft";
-    public const string MarkForDeletion = "mark_for_deletion";
-    public const string UnmarkForDeletion = "unmark_for_deletion";
-    public const string Post = "post";
-    public const string Unpost = "unpost";
-    public const string Repost = "repost";
-    public const string ViewEffects = "view_effects";
-    public const string ViewFlow = "view_flow";
-    public const string ViewAudit = "view_audit";
-    public const string Print = "print";
+    public const string MarkForDeletion = StandardDocumentActionCodes.MarkForDeletionValue;
+    public const string UnmarkForDeletion = StandardDocumentActionCodes.UnmarkForDeletionValue;
+    public const string Post = StandardDocumentActionCodes.PostValue;
+    public const string Unpost = StandardDocumentActionCodes.UnpostValue;
+    public const string Repost = StandardDocumentActionCodes.RepostValue;
+    public const string ViewEffects = StandardDocumentActionCodes.ViewEffectsValue;
+    public const string ViewFlow = StandardDocumentActionCodes.ViewFlowValue;
+    public const string ViewAudit = StandardDocumentActionCodes.ViewAuditValue;
+    public const string Print = StandardDocumentActionCodes.PrintValue;
 
     public const string Execute = "execute";
     public const string Export = "export";

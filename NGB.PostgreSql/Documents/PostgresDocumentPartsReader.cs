@@ -1,4 +1,5 @@
 using Dapper;
+using System.Text;
 using NGB.Metadata.Base;
 using NGB.Metadata.Documents.Hybrid;
 using NGB.Persistence.Documents.Universal;
@@ -26,6 +27,8 @@ internal sealed class PostgresDocumentPartsReader(IUnitOfWork uow) : IDocumentPa
         await uow.EnsureConnectionOpenAsync(ct);
 
         var result = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase);
+        var queries = new List<DocumentTableMetadata>();
+        var sql = new StringBuilder();
 
         foreach (var t in partTables)
         {
@@ -53,18 +56,31 @@ internal sealed class PostgresDocumentPartsReader(IUnitOfWork uow) : IDocumentPa
             var select = string.Join(",\n       ", cols.Select(c => $"p.{Qi(c)} AS \"{c}\""));
             var orderBy = BuildOrderBy(cols);
 
-            var sql = $"""
-                      SELECT {select}
-                        FROM {Qi(t.TableName)} p
-                       WHERE p.document_id = @documentId
-                       {orderBy};
-                      """;
+            sql.AppendLine($"""
+                SELECT {select}
+                  FROM {Qi(t.TableName)} p
+                 WHERE p.document_id = @documentId
+                 {orderBy};
+                """);
+            queries.Add(t);
+        }
 
-            var rows = await uow.Connection.QueryAsync(new CommandDefinition(
-                sql,
-                new { documentId },
-                transaction: uow.Transaction,
-                cancellationToken: ct));
+        if (queries.Count == 0)
+            return result;
+
+        // One command / one network roundtrip for every tabular part. PostgreSQL still executes
+        // one SELECT per physical table, but latency and command-count no longer grow with the
+        // number of parts. Table and column identifiers come exclusively from trusted metadata
+        // and are defensively quoted above.
+        using var grid = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+            sql.ToString(),
+            new { documentId },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        foreach (var table in queries)
+        {
+            var rows = await grid.ReadAsync();
 
             var list = new List<IReadOnlyDictionary<string, object?>>();
 
@@ -74,7 +90,7 @@ internal sealed class PostgresDocumentPartsReader(IUnitOfWork uow) : IDocumentPa
                 list.Add(new Dictionary<string, object?>(dict, StringComparer.OrdinalIgnoreCase));
             }
 
-            result[t.TableName] = list;
+            result[table.TableName] = list;
         }
 
         return result;

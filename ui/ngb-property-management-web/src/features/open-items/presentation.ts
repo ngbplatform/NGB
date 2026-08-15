@@ -1,4 +1,4 @@
-import type { RegisterColumn, RegisterDataRow } from 'ngb-ui-framework'
+import type { RegisterColumn, RegisterDataRow } from '@ngbplatform/ui'
 import type { OpenItemsApplyResultLine } from './shared'
 
 export type OpenItemsTabKey = 'charges' | 'credits' | 'applied'

@@ -25,7 +25,7 @@ import {
   useEditorDrawerState,
   useEntityEditorCommitHandlers,
   useRouteQueryEditorDrawer,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 import { getPmBuildingSummary, type PmBuildingSummaryDto } from '../reporting/queries'
 import type { PmEntityEditorHandle } from '../editor/types'
 import PmEntityEditor from '../editor/pm/PmEntityEditor.vue'

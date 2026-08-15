@@ -1,5 +1,5 @@
 import { ref, type ComputedRef } from 'vue'
-import { clonePlainData, type RecordPayload } from 'ngb-ui-framework'
+import { clonePlainData, type RecordPayload } from '@ngbplatform/ui'
 import type { LeasePartyRow } from './leasePartyTypes'
 
 type UseEntityEditorLeasePartArgs = {

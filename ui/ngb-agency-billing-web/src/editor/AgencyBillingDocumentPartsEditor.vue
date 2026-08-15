@@ -5,6 +5,7 @@ import {
   clonePlainData,
   dataTypeKind,
   isReferenceValue,
+  normalizeJsonValue,
   NgbDatePicker,
   NgbIcon,
   NgbInput,
@@ -21,7 +22,7 @@ import {
   type PartMetadata,
   type RecordPartRow,
   type RecordParts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import {
   calculateAgencyBillingDocumentPartAmount,
@@ -38,7 +39,6 @@ type GridFieldRenderMode =
   | 'select'
   | 'lookup'
   | 'checkbox'
-  | 'textarea'
   | 'date'
   | 'input'
 
@@ -174,7 +174,7 @@ function updateCell(partCode: string, rowIndex: number, fieldKey: string, value:
 
   rows[rowIndex] = recomputeAgencyBillingDocumentPartRow(props.entityTypeCode, {
     ...row,
-    [fieldKey]: value,
+    [fieldKey]: normalizeJsonValue(value),
   })
 
   emitRows(partCode, rows)
@@ -210,7 +210,6 @@ function resolveFieldState(field: FieldMetadata, row: RecordPartRow): GridFieldS
 
   const isLookup = !!hint || dataType === 'Lookup'
   const isCheckbox = field.uiControl === 5 || dataType === 'Boolean'
-  const isTextArea = field.uiControl === 2
   const isDate = field.uiControl === 6 || dataType === 'Date'
   const isDateTime = field.uiControl === 7 || dataType === 'DateTime'
   const isNumber = field.uiControl === 3 || dataType === 'Int32' || dataType === 'Decimal'
@@ -219,7 +218,6 @@ function resolveFieldState(field: FieldMetadata, row: RecordPartRow): GridFieldS
   if (fieldOptions) return { mode: 'select', inputType: 'text', fieldOptions, hint }
   if (isLookup && hint) return { mode: 'lookup', inputType: 'text', fieldOptions, hint }
   if (isCheckbox) return { mode: 'checkbox', inputType: 'text', fieldOptions, hint }
-  if (isTextArea) return { mode: 'textarea', inputType: 'text', fieldOptions, hint }
   if (isDate) return { mode: 'date', inputType: 'text', fieldOptions, hint }
 
   return {
@@ -363,7 +361,7 @@ function formatAmount(value: number | null): string {
         <col style="width:28px" />
         <col style="width:44px" />
         <col
-          v-for="field in partFields.get(part.partCode) ?? []"
+          v-for="field in partFields.get(part.partCode)!"
           :key="`${part.partCode}:col:${field.key}`"
           :style="fieldColStyle(part.partCode, field)"
         />
@@ -375,7 +373,7 @@ function formatAmount(value: number | null): string {
           <th class="px-2 py-2"></th>
           <th class="border-r border-dotted border-ngb-border px-2 py-2 text-right font-semibold">#</th>
           <th
-            v-for="field in partFields.get(part.partCode) ?? []"
+            v-for="field in partFields.get(part.partCode)!"
             :key="`${part.partCode}:head:${field.key}`"
             class="border-r border-dotted border-ngb-border px-3 py-2 font-semibold truncate"
           >
@@ -388,7 +386,7 @@ function formatAmount(value: number | null): string {
       <tbody>
         <tr
           v-for="(row, rowIndex) in partRows(part.partCode)"
-          :key="`${part.partCode}:${String(row.__row_key ?? rowIndex)}`"
+          :key="`${part.partCode}:${String(row.__row_key)}`"
           class="border-t border-ngb-border align-top transition-colors hover:bg-ngb-bg"
           :class="rowHasErrors(part.partCode, rowIndex) ? 'bg-red-50/40 dark:bg-red-950/10' : ''"
           :draggable="canReorder(part.partCode)"
@@ -411,7 +409,7 @@ function formatAmount(value: number | null): string {
           </td>
 
           <td
-            v-for="field in partFields.get(part.partCode) ?? []"
+            v-for="field in partFields.get(part.partCode)!"
             :key="`${part.partCode}:${rowIndex}:${field.key}`"
             class="border-r border-dotted border-ngb-border px-0 py-1 align-top"
           >
@@ -433,7 +431,7 @@ function formatAmount(value: number | null): string {
             <template v-else-if="resolveFieldState(field, row).mode === 'select'">
               <NgbSelect
                 :model-value="row[field.key] ?? null"
-                :options="resolveFieldState(field, row).fieldOptions ?? []"
+                :options="resolveFieldState(field, row).fieldOptions!"
                 :disabled="readonly"
                 variant="grid"
                 @update:model-value="updateCell(part.partCode, rowIndex, field.key, $event)"
@@ -462,15 +460,6 @@ function formatAmount(value: number | null): string {
                   @update:model-value="updateCell(part.partCode, rowIndex, field.key, $event)"
                 />
               </div>
-            </template>
-
-            <template v-else-if="resolveFieldState(field, row).mode === 'textarea'">
-              <textarea
-                class="min-h-[64px] w-full rounded-none border border-transparent bg-transparent px-2 py-2 text-sm text-ngb-text placeholder:text-ngb-muted/70 ngb-focus"
-                :value="String(row[field.key] ?? '')"
-                :readonly="readonly"
-                @input="updateCell(part.partCode, rowIndex, field.key, ($event.target as HTMLTextAreaElement).value)"
-              />
             </template>
 
             <template v-else>

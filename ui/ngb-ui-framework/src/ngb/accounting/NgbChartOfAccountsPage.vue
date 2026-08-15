@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NgbRegisterGrid from '../components/register/NgbRegisterGrid.vue'
+import type { RegisterDataRow } from '../components/register/registerTypes'
 import NgbEditorDiscardDialog from '../editor/NgbEditorDiscardDialog.vue'
 import { useEntityEditorCommitHandlers } from '../editor/useEntityEditorCommitHandlers'
 import NgbEntityEditorDrawerActions from '../editor/NgbEntityEditorDrawerActions.vue'
@@ -122,7 +123,7 @@ const cashFlowRoleLabelByValue = computed(() => {
   return new Map(entries)
 })
 
-const rows = computed(() => {
+const rows = computed<RegisterDataRow[]>(() => {
   const items = page.value?.items ?? []
   return items.map((account: ChartOfAccountsAccountDto) => ({
     key: account.accountId,

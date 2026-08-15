@@ -1,7 +1,9 @@
-import type { DocumentEffects, EditorFrameworkConfig } from 'ngb-ui-framework'
+import type { DocumentEffects, EditorFrameworkConfig } from '@ngbplatform/ui'
 import {
   buildGeneralJournalEntriesPath,
+  executeDocumentAction,
   getDocumentById,
+  getDocumentEditorState,
   getDocumentEffects,
   getDocumentGraph,
   getEntityAuditLog,
@@ -10,7 +12,7 @@ import {
   isNonEmptyGuid,
   shortGuid,
   useLookupStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getTradeLookupHint } from '../lookup/hints'
 import { resolveTradeEditorEntityProfile } from './entityProfile'
@@ -31,8 +33,8 @@ function normalizePathSegment(value: string | null | undefined): string {
   return String(value ?? '').trim()
 }
 
-function looksLikeGuidLabel(value: string | null | undefined): boolean {
-  const s = String(value ?? '').trim()
+function looksLikeGuidLabel(value: string): boolean {
+  const s = value.trim()
   return isNonEmptyGuid(s) && !isEmptyGuid(s)
 }
 
@@ -94,6 +96,10 @@ export function createTradeEditorConfig(): EditorFrameworkConfig {
   const lookupStore = useLookupStore()
 
   return {
+    documentActions: {
+      loadEditorState: getDocumentEditorState,
+      execute: executeDocumentAction,
+    },
     routing: {
       buildDocumentFullPageUrl(documentType, id) {
         if (isGeneralJournalEntryDocumentType(documentType)) {

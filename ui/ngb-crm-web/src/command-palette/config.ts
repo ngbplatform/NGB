@@ -1,4 +1,4 @@
-import { buildReportPageUrl, getReportDefinitions, searchCommandPalette, type CommandPaletteItemSeed, type CommandPaletteStoreConfig } from '@ngbplatform/ui'
+import { buildReportPageUrl, getReportDefinitions, searchCommandPalette, useMainMenuStore, type CommandPaletteItemSeed, type CommandPaletteStoreConfig } from '@ngbplatform/ui'
 import type { Router } from 'vue-router'
 
 import {
@@ -12,6 +12,7 @@ import {
 export function createCRMCommandPaletteConfig(router: Router): CommandPaletteStoreConfig {
   return {
     router,
+    getMenuGroups: () => useMainMenuStore().groups,
     recentStorageKey: 'ngb:crm:command-palette:recent',
     buildHeuristicCurrentActions: buildCRMHeuristicCurrentActions,
     favoriteItems: CRM_FAVORITE_ITEMS,
@@ -29,7 +30,7 @@ export function createCRMCommandPaletteConfig(router: Router): CommandPaletteSto
           scope: 'reports',
           title: definition.name,
           subtitle: [definition.group, definition.description].filter((part) => String(part ?? '').trim().length > 0).join(' · ') || 'Run this report',
-          icon: resolveCRMReportPaletteIcon({ reportCode: definition.reportCode, name: definition.name }),
+          icon: resolveCRMReportPaletteIcon({ reportCode: definition.reportCode }),
           badge: 'Report',
           hint: null,
           route: buildReportPageUrl(definition.reportCode),

@@ -66,6 +66,7 @@ internal static class AgencyBillingSeedDemoCli
                 seedScope.ServiceProvider.GetRequiredService<DefinitionsRegistry>(),
                 seedScope.ServiceProvider.GetRequiredService<ICatalogService>(),
                 seedScope.ServiceProvider.GetRequiredService<IDocumentService>(),
+                seedScope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>(),
                 seedScope.ServiceProvider.GetRequiredService<IDocumentDraftService>());
 
             var summary = await seeder.RunAsync();
@@ -194,6 +195,7 @@ internal sealed class AgencyBillingDemoSeeder(
     DefinitionsRegistry definitions,
     ICatalogService catalogs,
     IDocumentService documents,
+    IDocumentSystemLifecycleService lifecycle,
     IDocumentDraftService drafts)
 {
     private static readonly string[] AgencyDocumentTypes =
@@ -819,7 +821,7 @@ internal sealed class AgencyBillingDemoSeeder(
             ct: ct);
 
         if (postDocuments)
-            return await documents.PostAsync(typeCode, created.Id, ct);
+            return await lifecycle.PostAsync(typeCode, created.Id, ct);
 
         return await documents.GetByIdAsync(typeCode, created.Id, ct);
     }

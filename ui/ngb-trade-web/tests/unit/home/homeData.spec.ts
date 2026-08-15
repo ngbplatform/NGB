@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   executeReport: vi.fn(),
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   buildReportPageUrl: mocks.buildReportPageUrl,
   captureDashboardValue: async <T>(label: string, work: () => Promise<T>) => {
     try {

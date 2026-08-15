@@ -232,12 +232,18 @@ internal sealed class DocumentPostingService(
     /// Unposts a Posted document by generating storno entries from the document's existing entries.
     /// After successful unposting, document returns to Draft.
     /// </summary>
-    public async Task UnpostAsync(Guid documentId, CancellationToken ct = default)
+    public Task UnpostAsync(Guid documentId, CancellationToken ct = default)
+        => UnpostInternalAsync(documentId, manageTransaction: true, ct);
+
+    public Task UnpostAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default)
+        => UnpostInternalAsync(documentId, manageTransaction, ct);
+
+    private async Task UnpostInternalAsync(Guid documentId, bool manageTransaction, CancellationToken ct)
     {
         var didWork = false;
         try
         {
-            await uow.ExecuteInUowTransactionAsync(async innerCt =>
+            await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 
@@ -390,10 +396,36 @@ internal sealed class DocumentPostingService(
         if (postNew is null)
             throw new NgbArgumentRequiredException(nameof(postNew));
 
+        await RepostInternalAsync(documentId, postNew, manageTransaction: true, ct);
+    }
+
+    public async Task RepostAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default)
+    {
+        var doc = await documents.GetAsync(documentId, ct) ?? throw new DocumentNotFoundException(documentId);
+        var action = postingActionResolver.TryResolve(doc);
+        await RepostInternalAsync(
+            documentId,
+            async (context, innerCt) =>
+            {
+                if (action is null)
+                    throw new DocumentPostingHandlerNotConfiguredException(documentId, doc.TypeCode);
+
+                await action(context, innerCt);
+            },
+            manageTransaction,
+            ct);
+    }
+
+    private async Task RepostInternalAsync(
+        Guid documentId,
+        Func<IAccountingPostingContext, CancellationToken, Task> postNew,
+        bool manageTransaction,
+        CancellationToken ct)
+    {
         var didWork = false;
         try
         {
-            await uow.ExecuteInUowTransactionAsync(async innerCt =>
+            await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 
@@ -538,12 +570,18 @@ internal sealed class DocumentPostingService(
     /// Safe default: only Draft documents can be marked for deletion.
     /// (For Posted documents you typically need an explicit workflow: Unpost then mark.)
     /// </summary>
-    public async Task MarkForDeletionAsync(Guid documentId, CancellationToken ct = default)
+    public Task MarkForDeletionAsync(Guid documentId, CancellationToken ct = default)
+        => MarkForDeletionInternalAsync(documentId, manageTransaction: true, ct);
+
+    public Task MarkForDeletionAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default)
+        => MarkForDeletionInternalAsync(documentId, manageTransaction, ct);
+
+    private async Task MarkForDeletionInternalAsync(Guid documentId, bool manageTransaction, CancellationToken ct)
     {
         var didWork = false;
         try
         {
-            await uow.ExecuteInUowTransactionAsync(async innerCt =>
+            await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 
@@ -628,12 +666,18 @@ internal sealed class DocumentPostingService(
     /// Removes the deletion mark from a Draft document.
     /// Intended for the "oops" path when a user marked a draft for deletion by mistake.
     /// </summary>
-    public async Task UnmarkForDeletionAsync(Guid documentId, CancellationToken ct = default)
+    public Task UnmarkForDeletionAsync(Guid documentId, CancellationToken ct = default)
+        => UnmarkForDeletionInternalAsync(documentId, manageTransaction: true, ct);
+
+    public Task UnmarkForDeletionAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default)
+        => UnmarkForDeletionInternalAsync(documentId, manageTransaction, ct);
+
+    private async Task UnmarkForDeletionInternalAsync(Guid documentId, bool manageTransaction, CancellationToken ct)
     {
         var didWork = false;
         try
         {
-            await uow.ExecuteInUowTransactionAsync(async innerCt =>
+            await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 

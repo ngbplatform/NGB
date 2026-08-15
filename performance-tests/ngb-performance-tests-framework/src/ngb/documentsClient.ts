@@ -16,12 +16,6 @@ export interface DocumentLookupByIdsRequest {
   readonly ids: readonly string[];
 }
 
-export interface DocumentDeriveRequest {
-  readonly sourceDocumentId: string;
-  readonly relationshipType: string;
-  readonly initialPayload?: Record<string, unknown> | null;
-}
-
 export class DocumentsClient {
   constructor(
     private readonly http: NgbHttpClient,
@@ -176,12 +170,12 @@ export class DocumentsClient {
     );
   }
 
-  getDerivationActions(documentType: string, documentId: string): NgbHttpResponse {
-    return this.http.get(`/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(documentId)}/derive-actions`, {
+  getEditorState(documentType: string, documentId: string): NgbHttpResponse {
+    return this.http.get(`/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(documentId)}/editor-state`, {
       tags: {
         vertical: this.env.vertical,
         area: 'documents',
-        operation: 'platform.documents.derive_actions',
+        operation: 'platform.documents.editor_state',
         documentType,
       },
     });
@@ -241,18 +235,4 @@ export class DocumentsClient {
     });
   }
 
-  deriveDocument(targetDocumentType: string, request: DocumentDeriveRequest): NgbHttpResponse {
-    return this.http.post(`/api/documents/${encodeURIComponent(targetDocumentType)}/derive`, {
-      sourceDocumentId: request.sourceDocumentId,
-      relationshipType: request.relationshipType,
-      initialPayload: request.initialPayload ?? null,
-    }, {
-      tags: {
-        vertical: this.env.vertical,
-        area: 'documents',
-        operation: 'platform.documents.derive',
-        documentType: targetDocumentType,
-      },
-    });
-  }
 }

@@ -26,7 +26,9 @@ description: "NGB.Runtime as the orchestration center for documents, workflows, 
 ## Responsibilities visible from verified files
 
 ### 1. Metadata-driven document orchestration
-`DocumentService.cs` shows that runtime owns the universal document CRUD/lifecycle orchestration pattern.
+`DocumentService.cs` shows that runtime owns universal document CRUD plus trusted system lifecycle,
+derivation, graph, and effects orchestration. Interactive lifecycle/derivation/vertical operations
+use the separate Document Action query/evaluator/dispatcher path.
 
 Visible concerns include:
 
@@ -35,7 +37,8 @@ Visible concerns include:
 - posting/unposting/reposting/mark-for-deletion
 - derivation entry points
 - relationship graph loading
-- effective effects/UI-effects shaping
+- effective accounting/register effects shaping
+- separate Document Action editor-state evaluation and dispatch
 
 ### 2. Reporting orchestration
 `ReportEngine.cs` and `ReportExecutionPlanner.cs` show that runtime owns report request normalization, validation, planning, and response shaping.

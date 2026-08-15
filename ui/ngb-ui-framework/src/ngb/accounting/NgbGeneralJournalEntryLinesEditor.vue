@@ -9,6 +9,7 @@ import NgbLookup from '../primitives/NgbLookup.vue'
 import NgbSelect from '../primitives/NgbSelect.vue'
 import { useLookupStore } from '../lookup/store'
 import { buildLookupFieldTargetUrl } from '../lookup/navigation'
+import type { LookupItem } from '../metadata/types'
 import { getGeneralJournalEntryAccountContext } from './generalJournalEntryApi'
 import {
   createGeneralJournalEntryLine,
@@ -41,8 +42,8 @@ const lookupStore = useLookupStore()
 const router = useRouter()
 const route = useRoute()
 
-const accountItemsByRow = ref<Record<string, GeneralJournalEntryEditorLineModel['account'][]>>({})
-const dimensionItemsByCell = ref<Record<string, GeneralJournalEntryEditorLineModel['account'][]>>({})
+const accountItemsByRow = ref<Record<string, LookupItem[]>>({})
+const dimensionItemsByCell = ref<Record<string, LookupItem[]>>({})
 const accountContextsByRow = ref<Record<string, GeneralJournalEntryAccountContextDto | null>>({})
 const accountContextCache = ref<Record<string, GeneralJournalEntryAccountContextDto | null>>({})
 const loadingContexts = ref<Record<string, string>>({})
@@ -246,7 +247,7 @@ async function onDimensionQuery(
     return
   }
 
-  let items: GeneralJournalEntryEditorLineModel['account'][] = []
+  let items: LookupItem[] = []
   if (lookup.kind === 'catalog') items = await lookupStore.searchCatalog(lookup.catalogType, q)
   else if (lookup.kind === 'coa') items = await lookupStore.searchCoa(q)
   else if (lookup.kind === 'document') items = await lookupStore.searchDocuments(lookup.documentTypes, q)

@@ -360,9 +360,6 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);
@@ -436,9 +433,6 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);

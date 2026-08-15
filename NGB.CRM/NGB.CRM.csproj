@@ -10,9 +10,10 @@
 
     <ItemGroup>
         <PackageReference Include="NGB.Platform.Contracts" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Core" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Definitions" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Metadata" Version="$(NgbPlatformPackageVersion)" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
     </ItemGroup>
 
 </Project>

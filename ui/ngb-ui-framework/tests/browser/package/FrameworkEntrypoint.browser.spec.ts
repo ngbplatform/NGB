@@ -9,6 +9,7 @@ import {
   NgbButton,
   NgbCommandPaletteDialog,
   NgbSiteShell,
+  NgbTopBar,
   configureNgbCommandPalette,
   configureNgbEditor,
   configureNgbLookup,
@@ -22,7 +23,7 @@ import {
   getConfiguredNgbMetadata,
   getConfiguredNgbReporting,
   useCommandPaletteStore,
-} from 'ngb-ui-framework'
+} from '../../../src/index'
 
 function createEditorFrameworkConfig() {
   return {
@@ -30,6 +31,10 @@ function createEditorFrameworkConfig() {
     loadDocumentEffects: vi.fn(async () => ({} as never)),
     loadDocumentGraph: vi.fn(async () => ({} as never)),
     loadEntityAuditLog: vi.fn(async () => ({} as never)),
+    documentActions: {
+      loadEditorState: vi.fn(async () => ({} as never)),
+      execute: vi.fn(async () => ({} as never)),
+    },
   }
 }
 
@@ -134,6 +139,21 @@ test('mounts the public package entrypoint, configures framework singletons, and
             ]),
           },
         ),
+        h('div', { style: 'display: none' }, [
+          h(NgbTopBar, {
+            pageTitle: 'Coverage variant',
+            canBack: false,
+            unreadNotifications: 0,
+            themeResolved: 'dark',
+            userName: '',
+            userEmail: '',
+            userMeta: '',
+            userMetaIcon: 'user',
+            userRoles: [],
+            hasSettings: false,
+            showMainMenu: false,
+          }),
+        ]),
         h(NgbCommandPaletteDialog),
       ])
     },
@@ -156,4 +176,18 @@ test('mounts the public package entrypoint, configures framework singletons, and
   await view.getByRole('button', { name: /Search pages, records, reports, or run a command/i }).click()
   await expect.element(view.getByTestId('command-palette-dialog')).toBeVisible()
   await expect.element(view.getByRole('combobox')).toBeVisible()
+
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+  await view.getByRole('button', { name: 'Work Center' }).click()
+  await expect.element(view.getByText('You’re all caught up', { exact: true })).toBeVisible()
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+
+  await view.getByRole('button', { name: 'Help' }).click()
+  await expect.element(view.getByText('Help is coming soon', { exact: true })).toBeVisible()
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+
+  await view.getByRole('button', { name: 'Settings' }).click()
+  await expect.element(view.getByText('Work Center preferences', { exact: true })).toBeVisible()
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+
 })

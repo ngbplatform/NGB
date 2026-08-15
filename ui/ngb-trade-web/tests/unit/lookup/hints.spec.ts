@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   lookupHintFromSource: (lookup?: unknown | null) => lookup ?? null,
 }))
 

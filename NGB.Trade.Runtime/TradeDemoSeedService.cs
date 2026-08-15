@@ -11,6 +11,7 @@ public sealed class TradeDemoSeedService(
     ITradeSetupService setup,
     ICatalogService catalogs,
     IDocumentService documents,
+    IDocumentSystemLifecycleService lifecycle,
     TimeProvider timeProvider)
     : ITradeDemoSeedService
 {
@@ -482,7 +483,7 @@ public sealed class TradeDemoSeedService(
         CancellationToken ct)
     {
         var draft = await documents.CreateDraftAsync(documentType, payload, ct);
-        return await documents.PostAsync(documentType, draft.Id, ct);
+        return await lifecycle.PostAsync(documentType, draft.Id, ct);
     }
 
     private static DateOnly InCurrentMonth(DateOnly todayUtc, int preferredDay)

@@ -1,5 +1,5 @@
-import type { EditorEntityProfile, EntityEditorContext, EntityFormModel } from 'ngb-ui-framework'
-import { asTrimmedString } from 'ngb-ui-framework'
+import type { EditorEntityProfile, EntityEditorContext, EntityFormModel } from '@ngbplatform/ui'
+import { asTrimmedString } from '@ngbplatform/ui'
 
 const dateOnlyRe = /^\d{4}-\d{2}-\d{2}$/
 
@@ -22,7 +22,6 @@ function formatDateOnlyMdYyyy(value: unknown): string | null {
   const yyyy = Number(yyyyRaw)
   const mm = Number(mmRaw)
   const dd = Number(ddRaw)
-  if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return null
   if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null
 
   return `${mm}/${dd}/${yyyy}`
@@ -44,9 +43,8 @@ function computeWarehouseDisplay(model: EntityFormModel): string | null {
   return null
 }
 
-function computeTradeDocumentDisplay(typeCode: string, model: EntityFormModel): string | null {
+function computeTradeDocumentDisplay(typeCode: keyof typeof TRADE_DOCUMENT_DISPLAY_CONFIG, model: EntityFormModel): string | null {
   const config = TRADE_DOCUMENT_DISPLAY_CONFIG[typeCode]
-  if (!config) return null
 
   const number = asTrimmedString(model.number)
   const date = formatDateOnlyMdYyyy(model[config.dateField])
@@ -104,7 +102,10 @@ export function resolveTradeEditorEntityProfile(context: EntityEditorContext): E
       computedDisplayWatchFields: ['number', dateField],
       computedDisplayMode: 'new_or_draft',
       syncComputedDisplay: ({ model }) => {
-        model.display = computeTradeDocumentDisplay(context.typeCode, model)
+        model.display = computeTradeDocumentDisplay(
+          context.typeCode as keyof typeof TRADE_DOCUMENT_DISPLAY_CONFIG,
+          model,
+        )
       },
     }
   }

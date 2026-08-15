@@ -1,15 +1,24 @@
 {
-  "name": "ngb-ui-framework",
-  "version": "1.3.1",
+  "name": "@ngbplatform/ui",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
   "exports": {
     ".": "./src/index.ts",
+    "./contracts": "./src/contracts.ts",
+    "./editor": "./src/editor.ts",
+    "./layout": "./src/layout.ts",
+    "./navigation": "./src/navigation.ts",
+    "./work-center": "./src/work-center.ts",
     "./styles": "./src/styles/tailwind.css",
     "./vite-public-assets": "./vite-public-assets.js"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
+    "@microsoft/signalr": "^10.0.0",
     "echarts": "^6.0.0",
     "keycloak-js": "^26.2.3",
     "pinia": "^3.0.3",

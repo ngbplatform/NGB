@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NgbRegisterGrid from '../components/register/NgbRegisterGrid.vue'
+import type { RegisterDataRow } from '../components/register/registerTypes'
 import NgbEntityListPageHeader from '../metadata/NgbEntityListPageHeader.vue'
 import NgbDocumentPeriodFilter from '../metadata/NgbDocumentPeriodFilter.vue'
 import NgbRecycleBinFilter from '../metadata/NgbRecycleBinFilter.vue'
@@ -104,7 +105,7 @@ const columns = [
   { key: 'memo', title: 'Memo', width: 260 },
 ]
 
-const rows = computed(() => {
+const rows = computed<RegisterDataRow[]>(() => {
   return (page.value?.items ?? []).map((item) => {
     const status = normalizeDocumentStatusValue(item.documentStatus)
     const isMarkedForDeletion = item.isMarkedForDeletion || status === 3

@@ -22,14 +22,14 @@
       <NgbTopBar
         :pageTitle="resolvedPageTitle"
         :canBack="canBack"
-        :unreadNotifications="unreadNotifications"
+        :unreadNotifications="attentionCount"
         :userName="resolvedUserName"
         :userEmail="resolvedUserEmail"
         :userMeta="resolvedUserMeta"
         :userMetaIcon="resolvedUserMetaIcon"
         :userRoles="resolvedUserRoles"
         :themeResolved="themeResolved"
-        :hasSettings="settingsSections.length > 0"
+        :hasSettings="true"
         :showMainMenu="nodes.length > 0"
         @openMainMenu="mobileMainMenuOpen = true"
         @openPalette="$emit('openPalette')"
@@ -72,21 +72,14 @@
       </div>
     </NgbDrawer>
 
-    <!-- Notifications drawer (right sidebar) -->
+    <!-- Work Center drawer -->
     <NgbDrawer
       :open="notificationsOpen"
-      title="Notifications"
-      subtitle="Updates and alerts"
+      title="Work Center"
+      subtitle="Tasks and notifications"
       @update:open="notificationsOpen = $event"
     >
-      <div class="flex min-h-full items-center justify-center">
-        <div class="max-w-[350px] text-center">
-          <div class="text-base font-semibold text-ngb-text">No notifications</div>
-          <div class="mt-2 text-sm leading-6 text-ngb-muted">
-            When you receive a notification, it will appear here
-          </div>
-        </div>
-      </div>
+      <NgbWorkCenterDrawer :vertical="workCenterVertical" @close="notificationsOpen = false" />
     </NgbDrawer>
 
     <!-- Help drawer (right sidebar placeholder) -->
@@ -144,36 +137,28 @@
       @update:open="settingsOpen = $event"
     >
       <div class="space-y-6">
-        <template v-if="(settingsSections?.length ?? 0) === 0">
-          <div class="text-sm text-ngb-muted leading-6">
-            No settings shortcuts are configured for this app.
-          </div>
-        </template>
-
-        <template v-else>
-          <div v-for="s in settingsSections" :key="s.label">
-            <div class="text-xs font-semibold text-ngb-muted uppercase tracking-wide">{{ s.label }}</div>
-            <div class="mt-2 space-y-1">
-              <button
-                v-for="it in s.items"
-                :key="it.route"
-                class="w-full text-left rounded-[var(--ngb-radius)] border border-transparent hover:border-ngb-border hover:bg-ngb-bg px-3 py-2 ngb-focus"
-                @click="navigateToSettings(it.route)"
-              >
-                <div class="flex items-start gap-3">
-                  <span class="mt-0.5 text-ngb-muted" v-if="it.icon">
-                    <NgbIcon :name="it.icon" :size="18" />
-                  </span>
-                  <span class="mt-1 text-ngb-muted text-[10px]" v-else>•</span>
-                  <div class="min-w-0">
-                    <div class="text-sm font-semibold text-ngb-text truncate">{{ it.label }}</div>
-                    <div v-if="it.description" class="text-xs text-ngb-muted leading-5 mt-0.5">{{ it.description }}</div>
-                  </div>
+        <div v-for="s in settingsSections" :key="s.label">
+          <div class="text-xs font-semibold text-ngb-muted uppercase tracking-wide">{{ s.label }}</div>
+          <div class="mt-2 space-y-1">
+            <button
+              v-for="it in s.items"
+              :key="it.route"
+              class="w-full text-left rounded-[var(--ngb-radius)] border border-transparent hover:border-ngb-border hover:bg-ngb-bg px-3 py-2 ngb-focus"
+              @click="navigateToSettings(it.route)"
+            >
+              <div class="flex items-start gap-3">
+                <span class="mt-0.5 text-ngb-muted" v-if="it.icon">
+                  <NgbIcon :name="coerceNgbIconName(it.icon, 'settings')" :size="18" />
+                </span>
+                <span class="mt-1 text-ngb-muted text-[10px]" v-else>•</span>
+                <div class="min-w-0">
+                  <div class="text-sm font-semibold text-ngb-text truncate">{{ it.label }}</div>
+                  <div v-if="it.description" class="text-xs text-ngb-muted leading-5 mt-0.5">{{ it.description }}</div>
                 </div>
-              </button>
-            </div>
+              </div>
+            </button>
           </div>
-        </template>
+        </div>
       </div>
     </NgbDrawer>
     <NgbToastHost />
@@ -181,18 +166,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import NgbTopBar from './NgbTopBar.vue';
 import NgbSiteSidebar from './NgbSiteSidebar.vue';
 import NgbDrawer from '../components/NgbDrawer.vue';
 import NgbIcon from '../primitives/NgbIcon.vue';
+import { coerceNgbIconName } from '../primitives/iconNames';
 import NgbToastHost from '../primitives/NgbToastHost.vue';
 import type { SiteNavNode, SiteQuickLink, SiteSettingsSection } from './types';
 import { useTheme } from './useTheme';
 import { provideToasts } from '../primitives/toast';
+import NgbWorkCenterDrawer from '../work-center/NgbWorkCenterDrawer.vue';
+import {
+  provideNgbWorkCenterRuntime,
+  useWorkCenter,
+} from '../work-center/useWorkCenter';
+import { resolveNgbNavigationRoutes } from '../navigation/config';
 
 const props = defineProps<{
   moduleTitle: string;
+  workCenterVertical?: string;
   productTitle: string;
   envLabel?: string;
   userName?: string;
@@ -233,7 +226,18 @@ const notificationsOpen = ref(false);
 const helpOpen = ref(false);
 const settingsOpen = ref(false);
 const mobileMainMenuOpen = ref(false);
-const settingsSections = computed(() => props.settings ?? []);
+const settingsSections = computed<SiteSettingsSection[]>(() => [
+  ...(props.settings ?? []),
+  {
+    label: 'Personal',
+    items: [{
+      label: 'Work Center preferences',
+      route: resolveNgbNavigationRoutes().workCenterPreferences,
+      icon: 'bell',
+      description: 'Choose the in-app notifications shown in Work Center.',
+    }],
+  },
+]);
 
 function navigateToSettings(route: string) {
   settingsOpen.value = false;
@@ -250,8 +254,15 @@ function handleMobileSelect(id: string, route: string) {
   emit('select', id, route);
 }
 
-const unreadNotifications = computed(() => props.unreadNotifications ?? 0);
-const canBack = computed(() => props.canBack ?? false);
+const workCenterRuntime = provideNgbWorkCenterRuntime({ vertical: props.workCenterVertical });
+const workCenter = useWorkCenter({ runtime: workCenterRuntime });
+const attentionCount = computed(() => workCenter.summary.value?.attentionCount ?? props.unreadNotifications ?? 0);
+const canBack = computed(() => Boolean(props.canBack));
+
+onMounted(() => {
+  void workCenter.refreshSummary().catch(() => undefined);
+  void workCenter.connectRealtime();
+});
 
 function findNodeLabel(nodes: SiteNavNode[], id: string): string | null {
   for (const n of nodes) {
@@ -272,7 +283,7 @@ const resolvedUserMetaIcon = computed<'shield-check' | 'shield' | 'user'>(() => 
   return 'user';
 });
 const resolvedUserRoles = computed(() => (props.userRoles ?? [])
-  .map((role) => String(role ?? '').trim())
+  .map((role) => role.trim())
   .filter((role) => role.length > 0));
 
 const resolvedPageTitle = computed(() => {

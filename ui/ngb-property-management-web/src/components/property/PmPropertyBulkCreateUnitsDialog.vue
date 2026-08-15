@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { NgbButton, NgbDialog, NgbIcon, NgbInput, useToasts } from 'ngb-ui-framework'
+import { NgbButton, NgbDialog, NgbIcon, NgbInput, useToasts } from '@ngbplatform/ui'
 
 import {
   bulkCreatePmPropertyUnits,
@@ -8,7 +8,7 @@ import {
   type PmPropertyBulkCreateUnitsRequest,
   type PmPropertyBulkCreateUnitsResponse,
 } from '../../api/clients/pmCatalogs'
-import { toErrorMessage } from 'ngb-ui-framework'
+import { toErrorMessage } from '@ngbplatform/ui'
 
 const props = withDefaults(
   defineProps<{

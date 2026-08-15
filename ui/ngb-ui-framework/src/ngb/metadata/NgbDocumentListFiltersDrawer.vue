@@ -8,7 +8,7 @@ import NgbFilterFieldControl from './NgbFilterFieldControl.vue'
 
 const props = defineProps<{
   open: boolean
-  filters: ListFilterField[]
+  filters: readonly ListFilterField[]
   values: Record<string, FilterFieldState>
   lookupItemsByKey: Record<string, FilterLookupItem[]>
   canUndo: boolean

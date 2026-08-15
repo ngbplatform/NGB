@@ -60,7 +60,10 @@ The verified `DocumentService` constructor shows the actual collaboration model:
 - registry repository for common state;
 - universal readers/writers for typed head data;
 - universal parts readers/writers for typed part data;
-- posting, derivation, graph, effects, audit, and UI collaborators on top.
+- posting, derivation, graph, effects, and audit collaborators on top.
+
+Document Action query/evaluation/dispatch form a separate runtime layer over this persistence model;
+they do not add UI capability fields to stored documents or `DocumentEffectsDto`.
 
 That is the practical proof that document persistence is not a side concern. It is the base of the whole execution core.
 

@@ -23,7 +23,7 @@ import {
   updateCatalog,
   useMetadataStore,
   useToasts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 const router = useRouter()
 const toasts = useToasts()

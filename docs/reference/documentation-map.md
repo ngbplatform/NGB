@@ -9,6 +9,7 @@ const readingChart = String.raw`flowchart TB
     Home --> Architecture["Architecture"]
     Home --> Ecosystem["Ecosystem"]
     Home --> Platform["Platform"]
+    Home --> DocumentWorkflows["Document Workflows 2.0"]
     Home --> Guides["Guides"]
     Home --> Reference["Reference"]
 
@@ -16,6 +17,7 @@ const readingChart = String.raw`flowchart TB
     Architecture --> ArchitectureDetail["Layering, execution, business concepts"]
     Ecosystem --> EcosystemDetail["External evaluation, integration, ecosystem fit"]
     Platform --> PlatformDetail["Modules, source maps, deep dives, collaborator maps"]
+    DocumentWorkflows --> DocumentWorkflowsDetail["Actions, Work Center, API, migration"]
     Guides --> GuidesDetail["Extension workflows and scenario guides"]
     Reference --> ReferenceDetail["Site guide, operational lookup, source indexes"]`
 </script>
@@ -46,6 +48,9 @@ This page is the complete navigation hub for the NGB Platform documentation site
 | I need to trace runtime orchestration | [Runtime Source Map](/platform/runtime-source-map) |
 | I need to trace reporting execution | [Reporting Execution Map](/platform/reporting-execution-map) |
 | I need the curated deep-dive set | [Topic Chapters Index](/platform/topic-chapters-index) |
+| I need to implement Document Actions or Work Center | [Document Actions and Work Center](/guides/document-actions-and-work-center) |
+| I am upgrading an existing solution to 2.0.0 | [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0) |
+| I need the Document Actions or Work Center HTTP contract | [Document Actions and Work Center API](/reference/document-actions-work-center-api) |
 | I need implementation guidance | [Developer Workflows](/guides/developer-workflows) |
 | I need configuration keys and environment variables | [Configuration Reference](/reference/configuration-reference) |
 | I need source-tracing pages and class-level maps | [Source-Anchored Class Maps](/platform/source-anchored-class-maps) |
@@ -88,6 +93,8 @@ Use Start Here before deep-diving into individual modules.
 - [Catalogs](/architecture/catalogs)
 - [Documents](/architecture/documents)
 - [Document Flow](/architecture/document-flow)
+- [Document Actions](/architecture/document-actions)
+- [Work Center](/architecture/work-center)
 - [Accounting Effects](/architecture/accounting-effects)
 - [Reporting: Canonical and Composable](/architecture/reporting)
 - [Accounting and Posting](/architecture/accounting-posting)
@@ -121,9 +128,11 @@ Use Ecosystem when the question is how NGB should be evaluated by architects, ER
 - [PostgreSQL](/platform/postgresql)
 - [Accounting and Registers](/platform/accounting-and-registers)
 - [Background Jobs](/platform/background-jobs)
+- [Performance Testing](/platform/performance-testing)
 - [Migrator](/platform/migrator)
 - [Watchdog](/platform/watchdog)
 - [Security and SSO](/platform/security-and-sso)
+- [Security and Permissions](/platform/security-and-permissions)
 - [Audit Log](/platform/audit-log)
 
 ### Source maps
@@ -192,6 +201,8 @@ Use Platform when you need responsibility boundaries, verified anchors, executio
 - [Add a Document with Accounting and Registers](/guides/add-document-with-accounting-and-registers)
 - [Add a Canonical Report](/guides/add-canonical-report-workflow)
 - [Add a Composable Report](/guides/add-composable-report-workflow)
+- [Document Actions and Work Center](/guides/document-actions-and-work-center)
+- [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0)
 
 ### Scenario guides
 
@@ -218,6 +229,7 @@ Use Guides when you are changing code, extending a vertical, or using the docs a
 - [Background Job Catalog](/reference/background-job-catalog)
 - [Migrator CLI](/reference/migrator-cli)
 - [Platform API Surface](/reference/platform-api-surface)
+- [Document Actions and Work Center API](/reference/document-actions-work-center-api)
 - [Layering Rules](/reference/layering-rules)
 - [Database Naming Quick Reference](/reference/database-naming)
 - [Database Naming and DDL Patterns](/reference/database-naming-and-ddl-patterns)

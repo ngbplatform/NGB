@@ -37,6 +37,7 @@ public sealed class PmApi_Health_HttpSurface_P0Tests : IAsyncLifetime
         entries.GetProperty("Web Application").GetProperty("status").GetString().Should().Be("Healthy");
         entries.GetProperty("PostgreSQL Server").GetProperty("status").GetString().Should().Be("Healthy");
         entries.GetProperty("Keycloak").GetProperty("status").GetString().Should().Be("Healthy");
+        entries.GetProperty("Work Center outbox").GetProperty("status").GetString().Should().Be("Healthy");
     }
 
     [Fact]

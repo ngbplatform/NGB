@@ -48,37 +48,7 @@ public sealed record ReferenceRegisterWriteEffectDto(
     IReadOnlyDictionary<string, JsonElement> Fields,
     bool IsTombstone);
 
-/// <summary>
-/// UI-oriented action availability snapshot for a document.
-///
-/// Rationale:
-/// - Frontend should not guess what actions are allowed based on status and domain rules.
-/// - Backend returns explicit flags + optional reasons that can be shown to the user.
-///
-/// NOTE:
-/// This is intentionally minimal and grows over time.
-/// </summary>
-public sealed record DocumentUiEffectsDto(
-    bool IsPosted,
-    bool CanEdit,
-    bool CanPost,
-    bool CanUnpost,
-    bool CanRepost,
-    bool CanApply,
-    IReadOnlyDictionary<string, IReadOnlyList<DocumentUiActionReasonDto>> DisabledReasons);
-
-public sealed record DocumentUiActionReasonDto(string ErrorCode, string Message);
-
-/// <summary>
-/// Optional per-module contribution that can override a single UI action state (e.g., "apply" for receivables).
-/// </summary>
-public sealed record DocumentUiActionContributionDto(
-    string Action,
-    bool IsAllowed,
-    IReadOnlyList<DocumentUiActionReasonDto> DisabledReasons);
-
 public sealed record DocumentEffectsDto(
     IReadOnlyList<AccountingEntryEffectDto> AccountingEntries,
     IReadOnlyList<OperationalRegisterMovementEffectDto> OperationalRegisterMovements,
-    IReadOnlyList<ReferenceRegisterWriteEffectDto> ReferenceRegisterWrites,
-    DocumentUiEffectsDto? Ui = null);
+    IReadOnlyList<ReferenceRegisterWriteEffectDto> ReferenceRegisterWrites);

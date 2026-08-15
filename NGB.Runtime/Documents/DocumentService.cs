@@ -8,6 +8,7 @@ using NGB.Contracts.Graph;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
 using NGB.Core.Documents;
+using NGB.Core.Documents.Actions;
 using NGB.Core.Documents.Exceptions;
 using NGB.Core.Documents.Relationships.Graph;
 using NGB.Metadata.Base;
@@ -54,16 +55,13 @@ public sealed class DocumentService(
     IDocumentPostingService posting,
     IDocumentDerivationService derivations,
     IDocumentPostingActionResolver postingActionResolver,
-    IDocumentOperationalRegisterPostingActionResolver opregPostingActionResolver,
-    IDocumentReferenceRegisterPostingActionResolver refregPostingActionResolver,
-    IEnumerable<IDocumentUiEffectsContributor> uiEffectsContributors,
     IDocumentRelationshipGraphReadService relationshipGraph,
     IReferencePayloadEnricher refEnricher,
     IEnumerable<IDocumentDraftPayloadValidator> draftPayloadValidators,
     TimeProvider? timeProvider = null,
     IAuditLogService? audit = null,
     IDocumentEffectsQueryService? effectsQuery = null)
-    : IDocumentService
+    : IDocumentService, IDocumentSystemLifecycleService
 {
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     public Task<IReadOnlyList<DocumentTypeMetadataDto>> GetAllMetadataAsync(CancellationToken ct)
@@ -111,22 +109,6 @@ public sealed class DocumentService(
         var item = ToDto(model, row, parts);
         var enriched = await refEnricher.EnrichDocumentItemsAsync(model.Head, model.Meta.TypeCode, [item], ct);
         return enriched[0];
-    }
-
-    public async Task<IReadOnlyList<DocumentDerivationActionDto>> GetDerivationActionsAsync(
-        string documentType,
-        Guid id,
-        CancellationToken ct)
-    {
-        var model = GetModel(documentType);
-        id.EnsureRequired(nameof(id));
-
-        var row = await reader.GetByIdAsync(model.Head, id, ct);
-        if (row is null)
-            throw new DocumentNotFoundException(id);
-
-        var actions = await derivations.ListActionsForDocumentAsync(id, ct);
-        return actions.Select(ToDto).ToArray();
     }
 
     public async Task<IReadOnlyList<DocumentLookupDto>> LookupAcrossTypesAsync(
@@ -381,12 +363,14 @@ public sealed class DocumentService(
 
     public async Task<DocumentDto> PostAsync(string documentType, Guid id, CancellationToken ct)
     {
+        await EnsureLifecycleTargetAsync(documentType, id, ct);
         await posting.PostAsync(id, ct);
         return await GetByIdAsync(documentType, id, ct);
     }
 
     public async Task<DocumentDto> UnpostAsync(string documentType, Guid id, CancellationToken ct)
     {
+        await EnsureLifecycleTargetAsync(documentType, id, ct);
         await posting.UnpostAsync(id, ct);
         return await GetByIdAsync(documentType, id, ct);
     }
@@ -396,6 +380,7 @@ public sealed class DocumentService(
         // Repost is a workflow operation (requires Posted state). For register-only documents
         // the accounting posting handler may be absent, and must NOT be resolved eagerly.
         var doc = await documents.GetAsync(id, ct) ?? throw new DocumentNotFoundException(id);
+        EnsureDocumentType(documentType, doc);
         var action = postingActionResolver.TryResolve(doc);
         await posting.RepostAsync(
             id,
@@ -412,18 +397,32 @@ public sealed class DocumentService(
 
     public async Task<DocumentDto> MarkForDeletionAsync(string documentType, Guid id, CancellationToken ct)
     {
+        await EnsureLifecycleTargetAsync(documentType, id, ct);
         await posting.MarkForDeletionAsync(id, ct);
         return await GetByIdAsync(documentType, id, ct);
     }
 
     public async Task<DocumentDto> UnmarkForDeletionAsync(string documentType, Guid id, CancellationToken ct)
     {
+        await EnsureLifecycleTargetAsync(documentType, id, ct);
         await posting.UnmarkForDeletionAsync(id, ct);
         return await GetByIdAsync(documentType, id, ct);
     }
 
     public Task<DocumentDto> ExecuteActionAsync(string documentType, Guid id, string actionCode, CancellationToken ct)
         => throw new DocumentActionsNotSupportedException(documentType, actionCode);
+
+    private async Task EnsureLifecycleTargetAsync(string documentType, Guid id, CancellationToken ct)
+    {
+        var document = await documents.GetAsync(id, ct) ?? throw new DocumentNotFoundException(id);
+        EnsureDocumentType(documentType, document);
+    }
+
+    private static void EnsureDocumentType(string expectedType, DocumentRecord document)
+    {
+        if (!string.Equals(expectedType?.Trim(), document.TypeCode, StringComparison.OrdinalIgnoreCase))
+            throw new DocumentTypeMismatchException(document.Id, expectedType ?? string.Empty, document.TypeCode);
+    }
 
     public async Task<RelationshipGraphDto> GetRelationshipGraphAsync(
         string documentType,
@@ -685,7 +684,6 @@ public sealed class DocumentService(
                 if (record is null)
                     throw new DocumentNotFoundException(id);
 
-                var ui = await BuildUiEffectsAsync(documentType, dto, record, innerCt);
                 var sections = effectsQuery is null
                     ? new DocumentEffectsQueryResult([], [], [])
                     : await effectsQuery.GetAsync(record, limit, innerCt);
@@ -693,120 +691,9 @@ public sealed class DocumentService(
                 return new DocumentEffectsDto(
                     sections.AccountingEntries,
                     sections.OperationalRegisterMovements,
-                    sections.ReferenceRegisterWrites,
-                    ui);
+                    sections.ReferenceRegisterWrites);
             },
             ct);
-    }
-
-    private async Task<DocumentUiEffectsDto> BuildUiEffectsAsync(
-        string documentType,
-        DocumentDto doc,
-        DocumentRecord record,
-        CancellationToken ct)
-    {
-        // Determine whether posting is supported by any handler.
-        var hasAccounting = postingActionResolver.TryResolve(record) is not null;
-        var hasOpreg = opregPostingActionResolver.TryResolve(record) is not null;
-        var hasRefreg = refregPostingActionResolver.TryResolve(record) is not null;
-        var hasPosting = hasAccounting || hasOpreg || hasRefreg;
-
-        var disabled = new Dictionary<string, IReadOnlyList<DocumentUiActionReasonDto>>(StringComparer.OrdinalIgnoreCase);
-
-        static DocumentUiActionReasonDto R(string code, string msg) => new(code, msg);
-
-        var isPosted = doc.Status == DocumentStatus.Posted;
-        var isDraft = doc.Status == DocumentStatus.Draft;
-
-        var canEdit = isDraft && !doc.IsMarkedForDeletion;
-        if (!canEdit)
-        {
-            if (doc.IsMarkedForDeletion)
-                disabled["edit"] = [R("document.deleted", "Document is deleted.")];
-            else
-                disabled["edit"] = [R("document.not_draft", "Document can be edited only in Draft status.")];
-        }
-
-        var canPost = isDraft && !doc.IsMarkedForDeletion && hasPosting;
-        if (!canPost)
-        {
-            var reasons = new List<DocumentUiActionReasonDto>();
-            
-            if (doc.IsMarkedForDeletion)
-                reasons.Add(R("document.deleted", "Document is deleted."));
-            
-            if (!isDraft)
-                reasons.Add(R("document.not_draft", "Only Draft documents can be posted."));
-            
-            if (isDraft && !hasPosting)
-                reasons.Add(R("document.posting_not_configured", "Posting is not configured for this document type."));
-            
-            if (reasons.Count > 0)
-                disabled["post"] = reasons;
-        }
-
-        var canUnpost = isPosted && hasPosting;
-        if (!canUnpost)
-        {
-            var reasons = new List<DocumentUiActionReasonDto>();
-            
-            if (doc.IsMarkedForDeletion)
-                reasons.Add(R("document.deleted", "Document is deleted."));
-            
-            if (!isPosted)
-                reasons.Add(R("document.not_posted", "Only Posted documents can be unposted."));
-            
-            if (isPosted && !hasPosting)
-                reasons.Add(R("document.posting_not_configured", "Posting is not configured for this document type."));
-            
-            if (reasons.Count > 0)
-                disabled["unpost"] = reasons;
-        }
-
-        var canRepost = isPosted && hasPosting;
-        if (!canRepost)
-        {
-            var reasons = new List<DocumentUiActionReasonDto>();
-            if (doc.IsMarkedForDeletion)
-                reasons.Add(R("document.deleted", "Document is deleted."));
-            
-            if (!isPosted)
-                reasons.Add(R("document.not_posted", "Only Posted documents can be reposted."));
-            
-            if (isPosted && !hasPosting)
-                reasons.Add(R("document.posting_not_configured", "Posting is not configured for this document type."));
-            
-            if (reasons.Count > 0)
-                disabled["repost"] = reasons;
-        }
-
-        // Domain-specific, module-contributed action. Base is disabled (no reasons).
-        var canApply = false;
-
-        foreach (var c in uiEffectsContributors)
-        {
-            var list = await c.ContributeAsync(documentType, doc.Id, doc.Payload, doc.Status, ct);
-            foreach (var x in list)
-            {
-                if (!string.Equals(x.Action, "apply", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                canApply = x.IsAllowed;
-                if (x is { IsAllowed: false, DisabledReasons.Count: > 0 })
-                    disabled["apply"] = x.DisabledReasons;
-                else
-                    disabled.Remove("apply");
-            }
-        }
-
-        return new DocumentUiEffectsDto(
-            IsPosted: isPosted,
-            CanEdit: canEdit,
-            CanPost: canPost,
-            CanUnpost: canUnpost,
-            CanRepost: canRepost,
-            CanApply: canApply,
-            DisabledReasons: disabled);
     }
 
     public Task<DocumentDto> DeriveAsync(
@@ -890,14 +777,6 @@ public sealed class DocumentService(
         return await GetByIdAsync(targetDocumentType, derivedId, ct);
     }
 
-    private static DocumentDerivationActionDto ToDto(DocumentDerivationAction action)
-        => new(
-            Code: action.Code,
-            Name: action.Name,
-            FromTypeCode: action.FromTypeCode,
-            ToTypeCode: action.ToTypeCode,
-            RelationshipCodes: action.RelationshipCodes);
-
     private static DocumentQuery BuildQuery(
         DocumentModel model,
         string? search,
@@ -979,9 +858,11 @@ public sealed class DocumentService(
 
         var columnName = ResolvePeriodColumnName(model);
         if (columnName is null)
+        {
             throw new NgbConfigurationViolationException(
                 $"Document '{model.Meta.TypeCode}' does not define a date column for period filtering.",
-                context: new Dictionary<string, object?> { ["documentType"] = model.Meta.TypeCode });
+                context: new Dictionary<string, object?> { [DocumentActionContextKeys.DocumentType] = model.Meta.TypeCode });
+        }
 
         return new DocumentPeriodFilter(columnName, from, to);
     }

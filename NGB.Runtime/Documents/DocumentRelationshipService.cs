@@ -153,6 +153,16 @@ public sealed class DocumentRelationshipService(
         return relationships.ListIncomingAsync(toDocumentId, ct);
     }
 
+    public async Task<bool> ExistsIncomingAsync(
+        Guid toDocumentId,
+        string relationshipCode,
+        CancellationToken ct = default)
+    {
+        toDocumentId.EnsureRequired(nameof(toDocumentId));
+        var codeNorm = NormalizeCodeNorm(NormalizeCode(relationshipCode));
+        return await relationships.GetSingleIncomingByCodeNormAsync(toDocumentId, codeNorm, ct) is not null;
+    }
+
     private static async Task<bool> TryCreateOneAsync(
         IDocumentRelationshipRepository relationships,
         IAuditLogService audit,

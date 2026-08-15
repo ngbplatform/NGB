@@ -1,4 +1,4 @@
-import type { RecordPayload } from 'ngb-ui-framework'
+import type { RecordPayload } from '@ngbplatform/ui'
 
 export type ReceivablesOpenChargeItemDetailsDto = {
   chargeDocumentId: string

@@ -36,7 +36,11 @@ The verified source shows that `DocumentService` is much more than a CRUD handle
 - post/unpost/repost/mark-for-deletion/unmark-for-deletion;
 - document relationship graph loading;
 - document effects loading;
-- derivation actions and draft derivation creation.
+- trusted/internal draft derivation creation.
+
+The public 2.0 action surface is intentionally separate: `IDocumentActionQueryService` returns
+editor state and evaluated action metadata, and `IDocumentActionDispatcher` executes lifecycle,
+derivation, and vertical commands.
 
 ## What this tells us architecturally
 
@@ -88,18 +92,18 @@ Effects surface includes:
 
 - accounting entries;
 - operational register movements;
-- reference register writes;
-- UI capability/effect state.
+- reference register writes.
 
-This is one of the most important platform UX contracts in NGB.
+Action capability and disabled reasons are not effects. They are returned by the editor-state action
+query, which keeps explainable business effects separate from executable UI operations.
 
 ## Derive
 
-The verified source confirms that derivation is a first-class runtime concept:
-
-- list derivation actions for a source document;
-- derive a new draft from a source document;
-- optionally fall back to scaffold-like draft creation only when payload is supplied and explicit derivation config is absent.
+The verified source confirms that derivation is a first-class runtime concept. Registered
+derivations create new drafts and preserve relationship lineage. Public discovery is unified with
+all other operations in `editor-state.actions`; the dispatcher binds a disclosed derivation action
+to `IDocumentDerivationService`. The trusted/internal `DocumentService.DeriveAsync(...)` port retains
+the explicit payload-based compatibility fallback for non-interactive callers.
 
 Architecturally, derive is the right place for:
 
@@ -115,8 +119,8 @@ When adding a new document type, review all of these, not only CRUD:
 - draft validation;
 - posting/effects;
 - relationship graph behavior;
-- derivation actions;
-- UI effects availability;
+- Document Action definitions, authorization, availability, and handlers;
+- derivation bindings and relationship lineage;
 - audit visibility.
 
 ## Related pages

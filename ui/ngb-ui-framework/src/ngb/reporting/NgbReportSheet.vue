@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { useRouter } from 'vue-router'
 import NgbBadge from '../primitives/NgbBadge.vue'
 
@@ -120,10 +120,6 @@ function rowClass(row: ReportSheetRowDto): string {
 function isSubtotalOrTotal(row: ReportSheetRowDto): boolean {
   return row.rowKind === ReportRowKind.Subtotal
     || row.rowKind === ReportRowKind.Total
-    || row.rowKind === 'Subtotal'
-    || row.rowKind === 'Total'
-    || row.rowKind === 'subtotal'
-    || row.rowKind === 'total'
 }
 
 function normalizeValueType(valueType?: string | null): string {
@@ -203,7 +199,7 @@ function cellText(cell: ReportCellDto): string {
   return JSON.stringify(cell.value)
 }
 
-function headerCellStyle(rowIndex: number) {
+function headerCellStyle(rowIndex: number): CSSProperties {
   return {
     position: 'sticky',
     top: `${rowIndex * 49}px`,

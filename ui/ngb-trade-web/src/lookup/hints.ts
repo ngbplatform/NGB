@@ -1,5 +1,5 @@
-import { lookupHintFromSource } from 'ngb-ui-framework'
-import type { LookupHint, LookupSource } from 'ngb-ui-framework'
+import { lookupHintFromSource } from '@ngbplatform/ui'
+import type { LookupHint, LookupSource } from '@ngbplatform/ui'
 
 export function getTradeLookupHint(
   _entityTypeCode: string,

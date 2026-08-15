@@ -1,7 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { isNgbIconName, type NgbIconName } from '../primitives/iconNames'
-import { useMainMenuStore, type MainMenuGroup } from '../site/mainMenuStore'
 import { getConfiguredNgbCommandPalette } from './config'
 import { loadCommandPaletteRecent, saveCommandPaletteRecent } from './storage'
 import { defaultSearchFields, groupOrder, parseCommandPaletteQuery, scoreSearchText } from './search'
@@ -13,6 +12,7 @@ import type {
   CommandPaletteGroupCode,
   CommandPaletteItem,
   CommandPaletteItemSeed,
+  CommandPaletteMenuGroup,
   CommandPaletteRecentEntry,
   CommandPaletteScope,
   CommandPaletteSearchContextDto,
@@ -22,9 +22,12 @@ const REMOTE_DEBOUNCE_MS = 150
 const REMOTE_LIMIT = 20
 const MAX_RECENT = 8
 
+function configuredMenuGroups(config: ReturnType<typeof getConfiguredNgbCommandPalette>): readonly CommandPaletteMenuGroup[] {
+  return config.getMenuGroups?.() ?? []
+}
+
 export const useCommandPaletteStore = defineStore('commandPalette', () => {
   const config = getConfiguredNgbCommandPalette()
-  const menuStore = useMainMenuStore()
 
   const isOpen = ref(false)
   const query = ref('')
@@ -64,7 +67,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
 
     const goTo = limitGroupItems(
       'go-to',
-      scoreItems(buildGoToItems(menuStore.groups), cleanQuery.value, activeScope.value),
+      scoreItems(buildGoToItems(configuredMenuGroups(config)), cleanQuery.value, activeScope.value),
       cleanQuery.value,
     )
 
@@ -384,7 +387,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
     })
   }
 
-  function buildGoToItems(groups: MainMenuGroup[]): CommandPaletteItem[] {
+  function buildGoToItems(groups: readonly CommandPaletteMenuGroup[]): CommandPaletteItem[] {
     const allowedNormalizedRoutes = new Set(
       groups.flatMap((group) => group.items.map((item) => normalizeRouteForPermissionFiltering(item.route))),
     )
@@ -464,7 +467,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
     if (!candidate) return false
 
     const allowedRoutes = [
-      ...menuStore.groups.flatMap((group) => group.items.map((item) => item.route)),
+      ...configuredMenuGroups(config).flatMap((group) => group.items.map((item) => item.route)),
       ...reportItems.value.map((item) => item.route),
     ]
 

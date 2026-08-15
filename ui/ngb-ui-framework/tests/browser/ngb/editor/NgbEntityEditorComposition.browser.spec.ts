@@ -51,7 +51,6 @@ function createDocumentEffects(): DocumentEffects {
     accountingEntries: [],
     operationalRegisterMovements: [],
     referenceRegisterWrites: [],
-    ui: null,
   }
 }
 

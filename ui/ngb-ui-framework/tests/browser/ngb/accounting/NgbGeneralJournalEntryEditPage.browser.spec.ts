@@ -156,7 +156,7 @@ vi.mock('../../../../src/ngb/primitives/NgbSelect.vue', () => ({
   default: StubSelect,
 }))
 
-vi.mock('../../../../src/ngb/site/NgbPageHeader.vue', () => ({
+vi.mock('../../../../src/ngb/layout/NgbPageHeader.vue', () => ({
   default: StubPageHeader,
 }))
 

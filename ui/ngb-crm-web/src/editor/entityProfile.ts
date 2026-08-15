@@ -18,7 +18,6 @@ function formatDateOnlyMdYyyy(value: unknown): string | null {
   const yyyy = Number(yyyyRaw)
   const mm = Number(mmRaw)
   const dd = Number(ddRaw)
-  if (!Number.isFinite(yyyy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return null
   return `${mm}/${dd}/${yyyy}`
 }
 
@@ -40,15 +39,13 @@ function computeStageDisplay(model: EntityFormModel): string | null {
   return name || ordinal || null
 }
 
-function computeCRMDocumentDisplay(typeCode: string, model: EntityFormModel): string | null {
+function computeCRMDocumentDisplay(typeCode: keyof typeof CRM_DOCUMENT_DISPLAY_CONFIG, model: EntityFormModel): string {
   const config = CRM_DOCUMENT_DISPLAY_CONFIG[typeCode]
-  if (!config) return null
-
   const number = asTrimmedString(model.number)
   const date = formatDateOnlyMdYyyy(model[config.dateField])
   return [config.title, number, date]
-    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
-    .join(' ') || null
+    .filter((part): part is string => part !== null)
+    .join(' ')
 }
 
 export function resolveCRMEditorEntityProfile(context: EntityEditorContext): EditorEntityProfile | null {
@@ -98,7 +95,10 @@ export function resolveCRMEditorEntityProfile(context: EntityEditorContext): Edi
       computedDisplayWatchFields: ['number', dateField],
       computedDisplayMode: 'new_or_draft',
       syncComputedDisplay: ({ model }) => {
-        model.display = computeCRMDocumentDisplay(context.typeCode, model)
+        model.display = computeCRMDocumentDisplay(
+          context.typeCode as keyof typeof CRM_DOCUMENT_DISPLAY_CONFIG,
+          model,
+        )
       },
     }
   }

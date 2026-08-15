@@ -4,6 +4,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Runtime.Exceptions;
+using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Documents.Workflow;
 using NGB.Runtime.UnitOfWork;
@@ -24,7 +25,8 @@ public sealed class ReceivablesUnapplyService(
     IDocumentService documentService,
     IDocumentPostingService posting,
     IPropertyManagementDocumentReaders readers,
-    IUnitOfWork uow)
+    IUnitOfWork uow,
+    IReceivablePaymentWorkCenterSynchronizer workCenter)
     : IReceivablesUnapplyService
 {
     public async Task<ReceivablesUnapplyResponse> ExecuteAsync(Guid applyId, CancellationToken ct = default)
@@ -33,8 +35,8 @@ public sealed class ReceivablesUnapplyService(
             throw ReceivablesRequestValidationException.ApplyRequired();
 
         // Safety first: ensure the id belongs to pm.receivable_apply before touching workflow state.
-        // IDocumentService.UnpostAsync(documentType, id) validates the type only AFTER unposting,
-        // which is too late for a business-oriented endpoint.
+        // The low-level posting port does not validate a caller-supplied type code,
+        // so this business workflow validates its target before changing posting state.
         var doc = await documentService.GetByIdAsync(PropertyManagementCodes.ReceivableApply, applyId, ct);
         if (doc.Status != DocumentStatus.Posted)
         {
@@ -51,7 +53,17 @@ public sealed class ReceivablesUnapplyService(
             head = await readers.ReadReceivableApplyHeadAsync(applyId, innerCt);
         }, ct);
 
-        await posting.UnpostAsync(applyId, ct);
+        var changedUsers = await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        {
+            await posting.UnpostAsync(applyId, manageTransaction: false, innerCt);
+            return (IReadOnlyCollection<Guid>)(await workCenter.SynchronizeAsync(
+                head.CreditDocumentId,
+                correlationId: Guid.CreateVersion7(),
+                causationId: applyId,
+                innerCt));
+        }, ct);
+
+        await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         return new ReceivablesUnapplyResponse(
             ApplyId: applyId,

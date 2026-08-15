@@ -18,7 +18,10 @@ It shows the main collaborator clusters instead of narrating the full boundary.
 **Anchor files**
 
 - `NGB.Application.Abstractions/Services/IDocumentService.cs`
+- `NGB.Application.Abstractions/Services/DocumentActions.cs`
 - `NGB.Runtime/Documents/DocumentService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionQueryService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionDispatcher.cs`
 
 **Role**
 
@@ -26,11 +29,13 @@ The document boundary exposes:
 
 - draft CRUD;
 - posting transitions;
-- derivation actions and derivation execution;
+- trusted/internal derivation execution;
 - relationship graph;
 - effects surface.
 
-This is the primary transactional/document-facing runtime service.
+Interactive action discovery and execution sit beside this service: `IDocumentActionQueryService`
+returns editor state and evaluated action metadata, while `IDocumentActionDispatcher` owns the
+authorized, idempotent command path.
 
 ## Collaborator cluster B: document persistence shape
 

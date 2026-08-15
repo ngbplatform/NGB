@@ -1,6 +1,6 @@
 import { computed, type ComputedRef, type Ref } from 'vue'
 
-import type { EntityFormModel } from 'ngb-ui-framework'
+import type { EntityFormModel } from '@ngbplatform/ui'
 
 type UsePmCatalogEntityEditorCapabilitiesArgs = {
   model: Ref<EntityFormModel>

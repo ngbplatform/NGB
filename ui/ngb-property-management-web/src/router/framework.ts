@@ -12,7 +12,8 @@ import {
   type MetadataCatalogListPageProps,
   type MetadataDocumentEditPageProps,
   type MetadataDocumentListPageProps,
-} from 'ngb-ui-framework'
+  type EntityHeaderIconAction,
+} from '@ngbplatform/ui'
 
 import PmEntityEditor from '../editor/pm/PmEntityEditor.vue'
 import { getLookupHint } from '../lookup/hints'
@@ -44,7 +45,7 @@ function resolvePmCatalogStorageKey(catalogType: string): string {
   return `pm:catalog:${catalogType}`
 }
 
-function resolvePmCatalogDrawerExtraActions(args: Parameters<NonNullable<MetadataCatalogListPageProps['resolveDrawerExtraActions']>>[0]) {
+function resolvePmCatalogDrawerExtraActions(args: Parameters<NonNullable<MetadataCatalogListPageProps['resolveDrawerExtraActions']>>[0]): EntityHeaderIconAction[] {
   return args.editorFlags.extras?.bulkCreateUnits
     ? [{ key: 'bulkCreateUnits', title: 'Bulk create units', icon: 'grid', disabled: args.editorFlags.loading || args.editorFlags.saving }]
     : []
@@ -52,7 +53,10 @@ function resolvePmCatalogDrawerExtraActions(args: Parameters<NonNullable<Metadat
 
 function handlePmCatalogDrawerExtraAction(args: Parameters<NonNullable<MetadataCatalogListPageProps['handleDrawerExtraAction']>>[0]) {
   if (args.action !== 'bulkCreateUnits') return false
-  (args.editor as PmEntityEditorHandle | null)?.openBulkCreateUnitsWizard()
+  const editor = args.editor as { openBulkCreateUnitsWizard?: unknown } | null
+  if (typeof editor?.openBulkCreateUnitsWizard === 'function') {
+    editor.openBulkCreateUnitsWizard()
+  }
   return true
 }
 

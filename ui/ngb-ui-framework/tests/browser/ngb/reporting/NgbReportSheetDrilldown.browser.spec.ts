@@ -5,6 +5,7 @@ import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 
 import { configureNgbReporting } from '../../../../src/ngb/reporting/config'
+import { resolveDefaultReportCellActionUrl } from '../../../../src/ngb/reporting/defaultConfig'
 import { decodeReportRouteContextParam, decodeReportSourceTrailParam, type ReportRouteContext } from '../../../../src/ngb/reporting/navigation'
 import NgbReportSheet from '../../../../src/ngb/reporting/NgbReportSheet.vue'
 import { ReportRowKind, type ReportSheetDto } from '../../../../src/ngb/reporting/types'
@@ -190,6 +191,7 @@ async function renderSheet(
 }
 
 configureNgbReporting({
+  resolveCellActionUrl: resolveDefaultReportCellActionUrl,
   useLookupStore: () => ({
     searchCatalog: async () => [],
     searchCoa: async () => [],

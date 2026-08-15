@@ -5,13 +5,16 @@ import {
   configureNgbEditor,
   configureNgbLookup,
   configureNgbMetadata,
+  configureNgbNavigation,
   configureNgbReporting,
+  configureNgbWorkCenter,
   createDefaultNgbLookupConfig,
   createDefaultNgbReportingConfig,
+  createDefaultNgbWorkCenterConfig,
   useAuthStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
-import 'ngb-ui-framework/styles'
+import '@ngbplatform/ui/styles'
 
 async function bootstrap(): Promise<void> {
   const pinia = createPinia()
@@ -44,6 +47,8 @@ async function bootstrap(): Promise<void> {
     import('./editor/framework'),
   ])
 
+  configureNgbNavigation()
+  configureNgbWorkCenter(createDefaultNgbWorkCenterConfig())
   configureNgbLookup(createDefaultNgbLookupConfig())
   configureNgbEditor(createAgencyBillingEditorConfig())
   configureNgbMetadata(createAgencyBillingMetadataConfig())

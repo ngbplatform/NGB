@@ -7,6 +7,7 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Core.Documents.Exceptions;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.Tools.Extensions;
 using Xunit;
 

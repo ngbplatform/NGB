@@ -72,8 +72,9 @@ const architectureFlow = String.raw`sequenceDiagram
 1. A host composes the platform with `AddNgbRuntime()`, PostgreSQL provider registration, and vertical module registration.
 2. HTTP enters through the host’s ASP.NET Core pipeline.
 3. Request handling resolves platform services.
-4. `DocumentService` performs metadata-driven CRUD/lifecycle orchestration.
-5. Runtime delegates to posting/derivation/relationship/effects services where needed.
+4. `DocumentService` performs metadata-driven CRUD, graph/effects, and trusted system orchestration;
+   interactive document operations use the Document Action query/dispatcher path.
+5. Runtime delegates to posting/derivation/relationship/effects/action services where needed.
 6. Persistence abstractions and PostgreSQL implementations perform durable reads/writes.
 7. The host returns DTOs/UI-ready payloads.
 

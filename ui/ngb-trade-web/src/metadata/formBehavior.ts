@@ -1,4 +1,4 @@
-import type { FieldMetadata, FormMetadata } from 'ngb-ui-framework'
+import type { FieldMetadata, FormMetadata } from '@ngbplatform/ui'
 
 const TRADE_DOCUMENT_TYPES_WITH_COMPUTED_AMOUNT = new Set<string>([
   'trd.purchase_receipt',

@@ -63,6 +63,7 @@ internal static class TradeSeedDemoCli
                 options,
                 seedScope.ServiceProvider.GetRequiredService<ICatalogService>(),
                 seedScope.ServiceProvider.GetRequiredService<IDocumentService>(),
+                seedScope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>(),
                 seedScope.ServiceProvider.GetRequiredService<IDocumentDraftService>(),
                 seedScope.ServiceProvider.GetRequiredService<IChartOfAccountsAdminService>(),
                 seedScope.ServiceProvider.GetRequiredService<IChartOfAccountsManagementService>(),
@@ -242,6 +243,7 @@ internal sealed class TradeDemoSeeder(
     TradeDemoSeedOptions options,
     ICatalogService catalogs,
     IDocumentService documents,
+    IDocumentSystemLifecycleService lifecycle,
     IDocumentDraftService drafts,
     IChartOfAccountsAdminService chartOfAccountsAdmin,
     IChartOfAccountsManagementService chartOfAccountsManagement,
@@ -1362,7 +1364,7 @@ internal sealed class TradeDemoSeeder(
             manageTransaction: true,
             ct: ct);
 
-        return await documents.PostAsync(typeCode, created.Id, ct);
+        return await lifecycle.PostAsync(typeCode, created.Id, ct);
     }
 
     private static RecordPayload Payload(object fields, IReadOnlyDictionary<string, RecordPartPayload>? parts = null)

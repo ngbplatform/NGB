@@ -5,11 +5,13 @@ import {
   NgbDocumentEffectsPage,
   NgbDocumentFlowPage,
   NgbDocumentPrintPage,
+  NgbNotificationPreferencesPage,
   NgbReportPage,
   NgbRoleEditorPage,
   NgbRolesPage,
   NgbUserEditorPage,
   NgbUsersPage,
+  NgbWorkCenterPage,
   useAuthStore,
   useMainMenuStore,
 } from '@ngbplatform/ui'
@@ -26,6 +28,8 @@ export const router = createRouter({
   routes: [
     { path: '/', redirect: '/home' },
     { path: '/home', component: HomePage },
+    { path: '/work-center', component: NgbWorkCenterPage, props: { vertical: 'crm' } },
+    { path: '/settings/notifications', component: NgbNotificationPreferencesPage },
 
     ...catalogRoutes,
     ...ngbRouteAliasRedirectRoutes,

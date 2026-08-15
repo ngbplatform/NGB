@@ -17,7 +17,7 @@
         <div class="absolute inset-0 overflow-hidden">
           <div
             class="pointer-events-none fixed inset-y-0 flex max-w-full"
-            :class="side === 'left' ? 'left-0 pr-10' : 'right-0 pl-10'"
+            :class="side === 'left' ? 'left-0 sm:pr-10' : 'right-0 sm:pl-10'"
           >
             <TransitionChild
               as="template"
@@ -30,12 +30,12 @@
             >
               <DialogPanel
                 data-testid="drawer-panel"
-                class="pointer-events-auto w-screen bg-ngb-card shadow-card"
+                class="pointer-events-auto min-w-0 w-screen bg-ngb-card shadow-card"
                 :class="[side === 'left' ? 'border-r border-ngb-border' : 'border-l border-ngb-border', panelClass || 'max-w-[520px]']"
               >
                 <DialogTitle v-if="hideHeader" class="sr-only">{{ title }}</DialogTitle>
 
-                <div class="h-full flex flex-col">
+                <div class="flex h-full min-w-0 flex-col">
                   <div v-if="!hideHeader" data-testid="drawer-header" class="px-5 py-4 border-b border-ngb-border flex items-center gap-3">
                     <div class="min-w-0 flex-1">
                       <DialogTitle class="text-base font-semibold text-ngb-text truncate">{{ title }}</DialogTitle>
@@ -51,7 +51,7 @@
                     </div>
                   </div>
 
-                  <div data-testid="drawer-body" :class="['flex-1 overflow-auto', flushBody ? 'p-0' : 'px-5 py-4']">
+                  <div data-testid="drawer-body" :class="['min-w-0 flex-1 overflow-y-auto overflow-x-hidden', flushBody ? 'p-0' : 'px-5 py-4']">
                     <slot />
                   </div>
 

@@ -188,11 +188,12 @@ const authStateDetail = computed(() => {
   <NgbSiteShell
     v-else
     module-title="CRM"
+    work-center-vertical="crm"
     product-title="NGB"
     :user-name="auth.userName"
-    :user-email="auth.email"
+    :user-email="auth.email ?? undefined"
     :user-meta="auth.primaryRoleLabel"
-    :user-meta-icon="auth.primaryRoleIcon"
+    :user-meta-icon="auth.primaryRoleIcon ?? undefined"
     :pinned="pinned"
     :recent="recent"
     :nodes="nodes"

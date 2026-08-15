@@ -4,7 +4,7 @@ import type {
   ReconciliationReport,
   ReconciliationRow,
 } from './types'
-import { isEmptyGuid, shortGuid } from 'ngb-ui-framework'
+import { isEmptyGuid, shortGuid } from '@ngbplatform/ui'
 
 export function displayOrGuid(display: string | null | undefined, id: string | null | undefined): string {
   const normalized = String(display ?? '').trim()

@@ -10,7 +10,7 @@
       :disabled="disabled"
       :readonly="readonly"
       :title="title || undefined"
-      @input="$emit('update:modelValue', $event.target.value)"
+      @input="onInput"
       :class="[inputClass, disabled ? 'opacity-60 cursor-not-allowed' : '']"
     />
     <div v-if="hint" class="mt-1 text-xs text-ngb-muted">{{ hint }}</div>
@@ -44,7 +44,7 @@ const props = withDefaults(defineProps<{
   variant: 'default',
 })
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
 }>()
 
@@ -54,4 +54,9 @@ const inputClass = computed(() => {
   }
   return 'h-9 w-full rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card px-3 text-sm text-ngb-text placeholder:text-ngb-muted/70 ngb-focus'
 })
+
+function onInput(event: Event): void {
+  const target = event.target
+  if (target instanceof HTMLInputElement) emit('update:modelValue', target.value)
+}
 </script>

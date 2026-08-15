@@ -4,6 +4,7 @@ using NGB.Api;
 using NGB.Api.GlobalErrorHandling;
 using NGB.Api.Reporting;
 using NGB.Api.Sso;
+using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
@@ -22,7 +23,8 @@ builder.Host.AddSerilog();
 builder.Services.AddHealthChecks()
     .AddWebApplication()
     .AddPostgres(builder.Configuration)
-    .AddKeycloak();
+    .AddKeycloak()
+    .AddNgbWorkCenterHealth();
 
 builder.Services.AddInfrastructure(builder.Configuration, projectName);
 
@@ -44,6 +46,8 @@ builder.Services.AddControllersApi();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddExternalLinks(builder.Configuration);
 builder.Services.AddGlobalErrorHandling();
+builder.Services.AddNgbWorkCenterRealtime();
+builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
 
 builder.Services.AddScoped<IMainMenuContributor, TradeMainMenuContributor>();
 builder.Services.AddScoped<TradeCommandPaletteSearchService>();
@@ -70,6 +74,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapNgbWorkCenterHub();
 
 app.Run();
 

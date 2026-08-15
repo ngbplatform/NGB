@@ -1,0 +1,51 @@
+using NGB.Application.Abstractions.Services;
+using NGB.Contracts.IntegrationEvents;
+using NGB.Core.Documents.Actions;
+using NGB.PropertyManagement.Documents;
+
+namespace NGB.PropertyManagement.Runtime.WorkCenter;
+
+public sealed class PropertyManagementWorkCenterPolicy(
+    IPropertyManagementDocumentReaders typedDocuments,
+    IReceivablePaymentWorkCenterSynchronizer synchronizer)
+    : IDocumentActionCompletedWorkCenterPolicy
+{
+    public async Task<IReadOnlyList<Guid>> HandleAsync(DocumentActionCompletedV1 @event, CancellationToken ct)
+    {
+        var documentId = @event.Data.DocumentId;
+        var documentType = @event.Data.DocumentType;
+        var actionCode = @event.Data.ActionCode.Trim().ToLowerInvariant();
+
+        if (string.Equals(documentType, PropertyManagementCodes.ReceivablePayment, StringComparison.OrdinalIgnoreCase))
+        {
+            if (actionCode == StandardDocumentActionCodes.UnpostValue)
+            {
+                return await synchronizer.CancelAsync(documentId, ct);
+            }
+
+            if (actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue)
+            {
+                return await synchronizer.SynchronizeAsync(
+                    documentId,
+                    @event.CorrelationId,
+                    @event.EventId,
+                    ct);
+            }
+
+            return [];
+        }
+
+        if (string.Equals(documentType, PropertyManagementCodes.ReceivableApply, StringComparison.OrdinalIgnoreCase)
+            && actionCode is StandardDocumentActionCodes.PostValue or StandardDocumentActionCodes.RepostValue or StandardDocumentActionCodes.UnpostValue)
+        {
+            var apply = await typedDocuments.ReadReceivableApplyHeadAsync(documentId, ct);
+            return await synchronizer.SynchronizeAsync(
+                apply.CreditDocumentId,
+                @event.CorrelationId,
+                @event.EventId,
+                ct);
+        }
+
+        return [];
+    }
+}

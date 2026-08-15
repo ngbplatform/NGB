@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   type CatalogItemDto,
   type CatalogTypeMetadataDto,
+  buildCatalogFullPageUrl,
+  buildDocumentFullPageUrl,
   type DocumentDto,
   type DocumentEffectsDto,
   type DocumentStatus,
@@ -13,12 +15,14 @@ import {
   normalizeDocumentStatusValue,
   type RecordPayload,
   runEntityEditorAction,
+  resolveNavigateOnCreate,
   stableStringify,
   useEntityEditorBusinessContext,
   useEntityEditorCapabilities,
   useEntityEditorCommandPalette,
   useConfiguredEntityEditorDocumentActions,
   useEntityEditorHeaderActions,
+  useEntityEditorLifecycleConfirmations,
   useEntityEditorLeaveGuard,
   useEntityEditorNavigationActions,
   useEntityEditorOutputs,
@@ -35,7 +39,7 @@ import {
   type EntityHeaderIconAction,
   useMetadataStore,
   useToasts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 import LeaseTenantsGrid from '../../components/lease/LeaseTenantsGrid.vue'
 import PmPropertyBulkCreateUnitsDialog from '../../components/property/PmPropertyBulkCreateUnitsDialog.vue'
 import { PM_EDITOR_TAGS } from '../entityProfile'
@@ -157,7 +161,6 @@ const isLeaseDocument = computed(() => hasTag(PM_EDITOR_TAGS.LEASE_DOCUMENT))
 const leaseEditor = useEntityEditorLeasePart({ isLeaseDocument })
 const { leasePartiesRows, buildCopyParts } = leaseEditor
 
-const docEffectsUi = computed(() => docEffects.value?.ui ?? null)
 const {
   canOpenAudit,
   canShareLink,
@@ -167,8 +170,6 @@ const {
   canMarkForDeletion,
   canUnmarkForDeletion,
   canDelete,
-  canPost,
-  canUnpost,
   canSave,
   documentStatusLabel,
   documentStatusTone,
@@ -295,27 +296,9 @@ function openBulkCreateUnitsWizard() {
   bulkUnitsOpen.value = true
 }
 
-const markConfirmOpen = ref(false)
-const markConfirmMessage = computed(() => {
-  const base = editorKind.value === 'catalog' ? 'record' : 'document'
-  const extra = isDirty.value ? ' Unsaved changes will be lost.' : ''
-  return `This will mark the ${base} for deletion.${extra}`
-})
-
-function requestMarkForDeletion() {
-  if (!canMarkForDeletion.value) return
-  markConfirmOpen.value = true
-}
-
-function cancelMarkForDeletion() {
-  markConfirmOpen.value = false
-}
-
 const persistenceContext: PmEntityEditorPersistenceContext = {
   kind: editorKind,
   typeCode: editorTypeCode,
-  mode: editorMode,
-  navigateOnCreate: editorNavigateOnCreate,
   currentId,
   isNew,
   metadata,
@@ -325,41 +308,32 @@ const persistenceContext: PmEntityEditorPersistenceContext = {
   doc,
   docEffects,
   model,
-  loading,
-  saving,
-  canSave,
-  canMarkForDeletion,
-  canUnmarkForDeletion,
-  canDelete,
-  canPost,
-  canUnpost,
-  isDirty,
-  error,
-  metaStore,
   lookupStore,
   initialFields: editorInitialFields,
   initialParts: editorInitialParts,
   leaseEditor,
   currentEditorContext,
+  ensureCatalogMetadata: (typeCode) => metaStore.ensureCatalogType(typeCode),
+  ensureDocumentMetadata: (typeCode) => metaStore.ensureDocumentType(typeCode),
   resetInitialSnapshot,
   setEditorError,
-  normalizeEditorError,
-  emitCreated: (id) => emit('created', id),
-  emitSaved: () => emit('saved'),
-  emitChanged: (reason) => emit('changed', reason),
-  emitDeleted: () => emit('deleted'),
-  router,
-  toasts,
+  onCreated: async (id) => {
+    emit('created', id)
+    if (!resolveNavigateOnCreate(editorNavigateOnCreate.value, editorMode.value)) return
+    const url = editorKind.value === 'catalog'
+      ? buildCatalogFullPageUrl(editorTypeCode.value, id)
+      : buildDocumentFullPageUrl(editorTypeCode.value, id)
+    await router.replace(url)
+  },
+  onSaved: () => emit('saved'),
 }
 
 const {
   load,
   save,
-  markForDeletion,
-  unmarkForDeletion,
+  markForDeletion: persistMarkForDeletion,
+  unmarkForDeletion: persistUnmarkForDeletion,
   deleteEntity,
-  post,
-  unpost,
   loadDocumentEffectsSnapshot,
 } = useEntityEditorPersistence({
   kind: editorKind,
@@ -371,25 +345,31 @@ const {
   canMarkForDeletion,
   canUnmarkForDeletion,
   canDelete,
-  canPost,
-  canUnpost,
   isNew,
-  isDirty,
-  error,
   setEditorError,
   normalizeEditorError,
   emitChanged: (reason) => emit('changed', reason),
   emitDeleted: () => emit('deleted'),
+  onMarkedForDeletion: () => toasts.push({ title: 'Deleted', message: 'Record marked for deletion.', tone: 'warn' }),
+  onUnmarkedForDeletion: () => toasts.push({ title: 'Restored', message: 'Record restored.', tone: 'success' }),
   adapters: {
     catalog: useCatalogEntityEditorPersistence(persistenceContext),
     document: useDocumentEntityEditorPersistence(persistenceContext),
   },
 })
 
-function confirmMarkForDeletion() {
-  markConfirmOpen.value = false
-  void markForDeletion()
-}
+const {
+  markConfirmOpen,
+  markConfirmMessage,
+  requestMarkForDeletion,
+  cancelMarkForDeletion,
+  confirmMarkForDeletion,
+} = useEntityEditorLifecycleConfirmations({
+  kind: editorKind,
+  isDirty,
+  canMarkForDeletion,
+  onMarkForDeletion: persistMarkForDeletion,
+})
 
 const {
   auditOpen,
@@ -430,31 +410,92 @@ const {
 })
 
 function toggleMarkForDeletion() {
-  if (canUnmarkForDeletion.value) void unmarkForDeletion()
+  if (editorKind.value === 'document') {
+    if (isDocumentActionAllowed('unmark_for_deletion')) requestDocumentAction('unmark_for_deletion')
+    else requestDocumentAction('mark_for_deletion')
+    return
+  }
+  if (canUnmarkForDeletion.value) void persistUnmarkForDeletion()
   else if (canMarkForDeletion.value) requestMarkForDeletion()
 }
 
 function togglePost() {
-  if (canUnpost.value) void unpost()
-  else if (canPost.value) void post()
+  if (isDocumentActionAllowed('unpost')) requestDocumentAction('unpost')
+  else requestDocumentAction('post')
 }
 
 const {
+  documentLifecycleActions,
   extraPrimaryActions: configuredDocumentPrimaryActions,
   extraMoreActionGroups: configuredDocumentMoreActionGroups,
   handleConfiguredAction,
+  requestDocumentAction,
+  isDocumentActionAllowed,
+  confirmation: documentActionConfirmation,
+  cancelDocumentActionConfirmation,
+  confirmDocumentAction,
+  executingDocumentAction,
+  refreshDocumentActions,
 } = useConfiguredEntityEditorDocumentActions({
   kind: editorKind,
   typeCode: editorTypeCode,
   currentId: currentIdValue,
-  model,
-  uiEffects: docEffectsUi,
   loading: computed(() => loading.value),
   saving: computed(() => saving.value),
   requestNavigate,
-  metadataStore: metaStore,
   setEditorError,
   normalizeEditorError,
+  localActionHandlers: {
+    view_effects: openDocumentEffectsPage,
+    view_flow: openDocumentFlowPage,
+    view_audit: openAuditLog,
+    print: openDocumentPrintPage,
+  },
+  beforeExecute: async (actionCode) => {
+    if (actionCode !== 'post' || !isDirty.value) return true
+    await save()
+    return { proceed: !error.value && !isDirty.value, refreshState: true }
+  },
+  applyActionDocument: (document) => {
+    doc.value = document
+    model.value = { ...(document.payload?.fields ?? {}) }
+    resetInitialSnapshot()
+    emit('changed')
+  },
+})
+
+const canPost = computed(() => isDocumentActionAllowed('post'))
+const canUnpost = computed(() => isDocumentActionAllowed('unpost'))
+
+async function markForDeletion() {
+  if (editorKind.value === 'document') {
+    requestDocumentAction('mark_for_deletion')
+    return
+  }
+  await persistMarkForDeletion()
+}
+
+async function unmarkForDeletion() {
+  if (editorKind.value === 'document') {
+    requestDocumentAction('unmark_for_deletion')
+    return
+  }
+  await persistUnmarkForDeletion()
+}
+
+async function post() {
+  requestDocumentAction('post')
+}
+
+async function unpost() {
+  requestDocumentAction('unpost')
+}
+
+watch(status, () => {
+  if (editorKind.value !== 'document' || !currentId.value) return
+  void refreshDocumentActions().catch((cause) => {
+    setEditorError(normalizeEditorError(cause))
+  })
 })
 
 const extraPageActions = computed<EntityHeaderIconAction[]>(() =>
@@ -479,30 +520,17 @@ const {
   expandTo: editorExpandTo,
   currentId: currentIdValue,
   loading: computed(() => loading.value),
-  saving: computed(() => saving.value),
+  saving: computed(() => saving.value || executingDocumentAction.value),
   isNew,
   isMarkedForDeletion,
   canSave,
-  canPost,
-  canUnpost,
-  canMarkForDeletion,
-  canUnmarkForDeletion,
-  canOpenEffectsPage,
-  canOpenDocumentFlowPage,
-  canPrintDocument,
-  canOpenAudit,
   canShareLink,
   onOpenCompactPage: openCompactPage,
   onOpenFullPage: openFullPage,
   onCopyDocument: copyDocument,
-  onPrintDocument: openDocumentPrintPage,
-  onToggleMarkForDeletion: toggleMarkForDeletion,
   onSave: save,
-  onTogglePost: togglePost,
-  onOpenEffectsPage: openDocumentEffectsPage,
-  onOpenDocumentFlowPage: openDocumentFlowPage,
-  onOpenAuditLog: openAuditLog,
   onCopyShareLink: copyShareLink,
+  documentLifecycleActions,
   extraPrimaryActions: configuredDocumentPrimaryActions,
   extraMoreActionGroups: configuredDocumentMoreActionGroups,
   onUnhandledAction: (action) => {
@@ -516,16 +544,8 @@ useEntityEditorCommandPalette({
   typeCode: editorTypeCode,
   currentId: currentIdValue,
   title,
-  canOpenDocumentFlowPage,
-  canOpenEffectsPage,
-  canPrintDocument,
-  canPost,
-  canUnpost,
-  openDocumentFlowPage,
-  openDocumentEffectsPage,
-  openDocumentPrintPage,
-  post,
-  unpost,
+  isDocumentActionAllowed,
+  requestDocumentAction,
 })
 
 const pageActions = useEntityEditorPageActions({
@@ -681,7 +701,7 @@ defineExpose({
     :document-status-label="documentStatusLabel"
     :document-status-tone="documentStatusTone"
     :loading="loading"
-    :saving="saving"
+    :saving="saving || executingDocumentAction"
     :page-actions="pageActions"
     :document-primary-actions="documentPrimaryActions"
     :document-more-action-groups="documentMoreActionGroups"
@@ -704,6 +724,7 @@ defineExpose({
     :leave-open="leaveOpen"
     :mark-confirm-open="markConfirmOpen"
     :mark-confirm-message="markConfirmMessage"
+    :document-action-confirmation="documentActionConfirmation"
     @back="navigateBack(router, route, props.closeTo ?? fallbackCloseTarget)"
     @close="closePage"
     @action="handleHeaderAction"
@@ -712,5 +733,7 @@ defineExpose({
     @confirmLeave="confirmLeave"
     @cancelMarkForDeletion="cancelMarkForDeletion"
     @confirmMarkForDeletion="confirmMarkForDeletion"
+    @cancelDocumentAction="cancelDocumentActionConfirmation"
+    @confirmDocumentAction="confirmDocumentAction"
   />
 </template>

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { configureNgbReporting, resolveReportCellActionUrl, resolveReportLookupTarget } from '../../../../src/ngb/reporting/config'
+import { resolveDefaultReportCellActionUrl } from '../../../../src/ngb/reporting/defaultConfig'
 import { decodeReportRouteContextParam, decodeReportSourceTrailParam, type ReportRouteContext } from '../../../../src/ngb/reporting/navigation'
 import { decodeBackTarget } from '../../../../src/ngb/router/backNavigation'
 
@@ -42,6 +43,7 @@ describe('reporting config helpers', () => {
         labelForCoa: (id) => String(id),
         labelForAnyDocument: (_documentTypes, id) => String(id),
       }),
+      resolveCellActionUrl: resolveDefaultReportCellActionUrl,
     })
   })
 

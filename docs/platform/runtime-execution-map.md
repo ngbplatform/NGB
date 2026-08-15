@@ -47,21 +47,25 @@ NGB.Runtime/Documents/DocumentService.cs
 
 ## What the file explicitly centralizes
 
-From constructor dependencies and public methods, `DocumentService` is the universal runtime façade for:
+From constructor dependencies and its application ports, `DocumentService` is the universal runtime
+orchestrator for:
 
 - document metadata lookup;
 - list/page queries;
 - single-document reads;
 - cross-type lookups by id/query;
 - draft create/update/delete;
-- post / unpost / repost;
-- mark / unmark for deletion;
-- derivation actions and draft derivation;
+- trusted/system post / unpost / repost and mark / unmark lifecycle operations;
+- trusted/internal draft derivation;
 - relationship graph building;
 - effects loading;
 - payload validation and part validation;
 - reference payload enrichment;
 - audit write coordination.
+
+The interactive 2.0 action façade is split out: `IDocumentActionQueryService` returns editor state,
+and `IDocumentActionDispatcher` executes lifecycle, derivation, and vertical commands with
+authorization, availability, optimistic concurrency, idempotency, audit, and outbox guarantees.
 
 ## Document execution map
 

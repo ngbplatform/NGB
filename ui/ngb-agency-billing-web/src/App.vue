@@ -9,8 +9,8 @@ import {
   useCommandPaletteHotkeys,
   useCommandPaletteStore,
   useMainMenuStore,
-} from 'ngb-ui-framework'
-import type { SiteNavNode, SiteQuickLink } from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
+import type { SiteNavNode, SiteQuickLink } from '@ngbplatform/ui'
 
 const router = useRouter()
 const route = useRoute()
@@ -188,11 +188,12 @@ const authStateDetail = computed(() => {
   <NgbSiteShell
     v-else
     module-title="Agency Billing"
+    work-center-vertical="ab"
     product-title="NGB"
     :user-name="auth.userName"
-    :user-email="auth.email"
+    :user-email="auth.email ?? undefined"
     :user-meta="auth.primaryRoleLabel"
-    :user-meta-icon="auth.primaryRoleIcon"
+    :user-meta-icon="auth.primaryRoleIcon ?? undefined"
     :pinned="pinned"
     :recent="recent"
     :nodes="nodes"

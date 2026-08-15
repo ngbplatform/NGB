@@ -1,14 +1,22 @@
 <Project>
   <PropertyGroup>
     <!-- Product / release version -->
-    <Version>1.3.1</Version>
-    <AssemblyVersion>$(Version).0</AssemblyVersion>
+    <Version>2.0.0</Version>
+    <NgbPlatformAssemblyVersion>2.0.0.0</NgbPlatformAssemblyVersion>
+    <AssemblyVersion>$(NgbPlatformAssemblyVersion)</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
 
     <!-- NuGet packages -->
     <NgbPlatformPackageVersion>$(Version)</NgbPlatformPackageVersion>
     <PackageVersion>$(NgbPlatformPackageVersion)</PackageVersion>
+    <NgbPlatformApiCompatibilityBaselineVersion>2.0.0</NgbPlatformApiCompatibilityBaselineVersion>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion
+      Condition="'$(Version)' != '$(NgbPlatformApiCompatibilityBaselineVersion)'">$(NgbPlatformApiCompatibilityBaselineVersion)</PackageValidationBaselineVersion>
+    <ApiCompatEnableRuleAttributesMustMatch>true</ApiCompatEnableRuleAttributesMustMatch>
+    <ApiCompatEnableRuleCannotChangeParameterName>true</ApiCompatEnableRuleCannotChangeParameterName>
+    <EnableStrictModeForBaselineValidation>true</EnableStrictModeForBaselineValidation>
     <Authors>NGB Platform</Authors>
     <Company>NGB Platform</Company>
     <Product>NGB Platform</Product>
@@ -19,7 +27,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>NGB;NGB Platform;.NET;PostgreSQL;business applications</PackageTags>
-    <PackageReleaseNotes>Ensure packaged dashboard stylesheets are included in consuming application publish output.</PackageReleaseNotes>
+    <PackageReleaseNotes>Major release: replace legacy document UI effects and derivation APIs with metadata-driven Document Actions, and add the NGB Work Center.</PackageReleaseNotes>
     <Copyright>Copyright (c) NGB Platform 2026</Copyright>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
@@ -28,4 +36,11 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
+
+  <ItemGroup Condition="$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('Tests'))">
+    <PackageReference Include="coverlet.collector" Version="10.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 </Project>

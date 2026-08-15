@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   getDocumentById: vi.fn(),
   getDocumentEffects: vi.fn(),
   getDocumentGraph: vi.fn(),
+  getDocumentEditorState: vi.fn(),
+  executeDocumentAction: vi.fn(),
   getEntityAuditLog: vi.fn(),
   isEmptyGuid: vi.fn((value: string) => value === '00000000-0000-0000-0000-000000000000'),
   isGeneralJournalEntryDocumentType: vi.fn((documentType: string) => documentType === 'accounting.general_journal_entry'),
@@ -21,11 +23,13 @@ const mocks = vi.hoisted(() => ({
   resolveTradeEditorEntityProfile: vi.fn(() => ({ title: 'Resolved Profile' })),
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   buildGeneralJournalEntriesPath: mocks.buildGeneralJournalEntriesPath,
   getDocumentById: mocks.getDocumentById,
   getDocumentEffects: mocks.getDocumentEffects,
   getDocumentGraph: mocks.getDocumentGraph,
+  getDocumentEditorState: mocks.getDocumentEditorState,
+  executeDocumentAction: mocks.executeDocumentAction,
   getEntityAuditLog: mocks.getEntityAuditLog,
   isEmptyGuid: mocks.isEmptyGuid,
   isGeneralJournalEntryDocumentType: mocks.isGeneralJournalEntryDocumentType,
@@ -105,6 +109,12 @@ describe('trade editor framework', () => {
       },
     } as never)
 
+    await config.effects.prefetchRelatedLabels?.({ effects: {} } as never)
+    await config.effects.prefetchRelatedLabels?.({ effects: { referenceRegisterWrites: [{ fields: null }] } } as never)
+    await config.effects.prefetchRelatedLabels?.({
+      effects: { referenceRegisterWrites: [{ fields: { sales_invoice_document_id: 'not-a-guid' } }] },
+    } as never)
+
     expect(mocks.lookupStore.ensureAnyDocumentLabels).not.toHaveBeenCalled()
   })
 
@@ -114,6 +124,12 @@ describe('trade editor framework', () => {
     expect(config.effects.resolveFieldValue?.({
       documentId: '11111111-1111-4111-8111-111111111111',
       document: { display: 'Sales Invoice SI-100' },
+      fieldKey: 'sales_invoice_document_id',
+      value: '11111111-1111-4111-8111-111111111111',
+    } as never)).toBe('Sales Invoice SI-100')
+
+    expect(config.effects.resolveFieldValue?.({
+      documentId: '11111111-1111-4111-8111-111111111111',
       fieldKey: 'sales_invoice_document_id',
       value: '11111111-1111-4111-8111-111111111111',
     } as never)).toBe('Sales Invoice SI-100')
@@ -164,6 +180,19 @@ describe('trade editor framework', () => {
       fieldKey: 'sales_invoice_document_id',
       value: 'not-a-guid',
     } as never)).toBeNull()
+
+    expect(config.effects.resolveFieldValue?.({
+      documentId: '99999999-9999-4999-8999-999999999999',
+      fieldKey: 'sales_invoice_document_id',
+      value: null,
+    } as never)).toBeNull()
+
+    expect(config.effects.resolveFieldValue?.({
+      documentId: '11111111-1111-4111-8111-111111111111',
+      document: { display: ' ' },
+      fieldKey: 'sales_invoice_document_id',
+      value: '11111111-1111-4111-8111-111111111111',
+    } as never)).toBe('Sales Invoice SI-100')
   })
 
   it('exposes audit labels and hidden infrastructure fields', () => {
@@ -185,6 +214,18 @@ describe('trade editor framework', () => {
       fieldKey: 'cash_account_id',
       lookup: null,
     } as never)).toEqual({ kind: 'coa' })
+
+    expect(config.print.resolveLookupHint?.({
+      documentType: 'trd.customer_payment',
+      fieldKey: 'unknown',
+      lookup: { kind: 'catalog', catalogType: 'trd.party' },
+    } as never)).toEqual({ kind: 'catalog', catalogType: 'trd.party' })
+
+    expect(config.print.resolveLookupHint?.({
+      documentType: 'trd.customer_payment',
+      fieldKey: 'unknown',
+      lookup: null,
+    } as never)).toBeNull()
 
     expect(config.resolveEntityProfile({ entityTypeCode: 'trd.sales_invoice' } as never)).toEqual({ title: 'Resolved Profile' })
     expect(mocks.resolveTradeEditorEntityProfile).toHaveBeenCalled()

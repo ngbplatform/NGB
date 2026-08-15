@@ -24,7 +24,7 @@ vi.mock('../../../src/home/homeData', () => ({
   loadHomeDashboard: vi.fn(),
 }))
 
-vi.mock('ngb-ui-framework', async () => {
+vi.mock('@ngbplatform/ui', async () => {
   const { defineComponent, h } = await import('vue')
 
   const StubBadge = defineComponent({

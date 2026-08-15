@@ -142,8 +142,8 @@ export function useMetadataRegisterPageData<
   );
 
   const rows = computed(() =>
-    buildMetadataRegisterRows({
-      items: page.value?.items ?? [],
+    buildMetadataRegisterRows<TItem>({
+      items: (page.value?.items ?? []) as readonly TItem[],
       columns: metadata.value?.list?.columns ?? [],
       mapFieldValue: (column, rawValue, item) => {
         const defaultValue = resolveDefaultFieldValue(column, rawValue);

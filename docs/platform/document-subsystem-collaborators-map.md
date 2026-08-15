@@ -21,8 +21,11 @@ Use it when you want to answer questions like:
 
 | Collaborator | Verified source anchor | Role visible from anchor |
 |---|---|---|
-| `IDocumentService` | `NGB.Application.Abstractions/Services/IDocumentService.cs` | Public application contract for generic documents |
+| `IDocumentService` | `NGB.Application.Abstractions/Services/IDocumentService.cs` | Generic metadata/CRUD/graph/effects and trusted-derivation contract |
+| `IDocumentActionQueryService` / `IDocumentActionDispatcher` | `NGB.Application.Abstractions/Services/DocumentActions.cs` | Interactive editor-state query and authorized/idempotent execution contracts |
 | `DocumentService` | `NGB.Runtime/Documents/DocumentService.cs` | Runtime orchestration center |
+| `DocumentActionQueryService` | `NGB.Runtime/Documents/Actions/DocumentActionQueryService.cs` | Permission-filtered editor state and evaluated action metadata |
+| `DocumentActionDispatcher` | `NGB.Runtime/Documents/Actions/DocumentActionDispatcher.cs` | Locked, authorized, idempotent action execution |
 | `IDocumentRepository` | `NGB.Persistence/Documents/IDocumentRepository.cs` | Registry row access and serialized workflow state changes |
 | `IDocumentReader` | `NGB.Persistence/Documents/Universal/IDocumentReader.cs` | Universal typed head-table reads |
 | `IDocumentWriter` | `NGB.Persistence/Documents/Universal/IDocumentWriter.cs` | Universal typed head-table upserts |
@@ -34,7 +37,9 @@ Use it when you want to answer questions like:
 
 ### 1. Application surface
 
-`IDocumentService` is the contract that the rest of the platform and vertical hosts can depend on.
+`IDocumentService` is the generic document contract that the rest of the platform and vertical hosts
+can depend on. Interactive clients use `IDocumentActionQueryService` and
+`IDocumentActionDispatcher` for operations.
 
 It deliberately hides the split between:
 
@@ -108,7 +113,7 @@ The following collaborators are visible in the verified `DocumentService` constr
 - audit log service
 - reference payload enricher
 - draft payload validators
-- UI effects contributors
+- Document Action query/evaluator/dispatcher services (separate from `DocumentService`)
 
 For these collaborators, the docs should currently describe role and boundary only, not full implementation details.
 

@@ -5,6 +5,8 @@ import { defineComponent, h } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import NgbReportSheet from '../../../../src/ngb/reporting/NgbReportSheet.vue'
+import { configureNgbReporting } from '../../../../src/ngb/reporting/config'
+import { createDefaultNgbReportingConfig } from '../../../../src/ngb/reporting/defaultConfig'
 import NgbSiteShell from '../../../../src/ngb/site/NgbSiteShell.vue'
 import { ReportRowKind, type ReportSheetDto } from '../../../../src/ngb/reporting/types'
 
@@ -19,6 +21,8 @@ const shellNodes = [
     ],
   },
 ]
+
+configureNgbReporting(createDefaultNgbReportingConfig())
 
 const shellSettings = [
   {
@@ -149,7 +153,7 @@ test('exposes named shell controls and labeled drawer dialogs for platform chrom
   const view = await render(SiteShellAccessibilityHarness)
 
   await expect.element(view.getByRole('button', { name: 'Main menu' })).toBeVisible()
-  await expect.element(view.getByRole('button', { name: 'Notifications' })).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'Work Center' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Help' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Settings' })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Switch to dark mode' })).toBeVisible()

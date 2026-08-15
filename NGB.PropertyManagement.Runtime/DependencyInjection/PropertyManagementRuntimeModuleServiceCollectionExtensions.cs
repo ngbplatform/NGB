@@ -4,17 +4,22 @@ using NGB.Application.Abstractions.Services;
 using NGB.Definitions;
 using NGB.Definitions.Catalogs.Validation;
 using NGB.Definitions.Documents.Posting;
+using NGB.Definitions.Documents.Actions;
 using NGB.Definitions.Documents.Validation;
+using NGB.Definitions.WorkCenter;
 using NGB.PropertyManagement.DependencyInjection;
 using NGB.PropertyManagement.Runtime.Catalogs;
 using NGB.PropertyManagement.Runtime.Catalogs.Validation;
 using NGB.PropertyManagement.Runtime.Documents.Validation;
+using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.Runtime.Policy;
 using NGB.PropertyManagement.Runtime.Posting;
 using NGB.PropertyManagement.Runtime.Payables;
 using NGB.PropertyManagement.Runtime.Receivables;
 using NGB.PropertyManagement.Runtime.Reporting;
 using NGB.PropertyManagement.Runtime.Security;
+using NGB.PropertyManagement.Runtime.WorkCenter;
+using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.Documents.Validation;
 using NGB.Runtime.Security;
 
@@ -44,9 +49,32 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
         services.TryAddScoped<IPayablesApplyBatchService, PayablesApplyBatchService>();
         services.TryAddScoped<IPayablesUnapplyService, PayablesUnapplyService>();
 
-        // UI-oriented document effects (action availability)
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentUiEffectsContributor, ReceivablesDocumentUiEffectsContributor>());
-        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentUiEffectsContributor, PayablesDocumentUiEffectsContributor>());
+        services.TryAddScoped<ReceivablesApplyAvailabilitySource>();
+        services.TryAddScoped<IReceivablesApplyAvailabilitySource>(sp =>
+            sp.GetRequiredService<ReceivablesApplyAvailabilitySource>());
+        services.TryAddScoped<PayablesApplyAvailabilitySource>();
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentActionDefinitionsContributor, PropertyManagementDocumentActionDefinitionsContributor>());
+        services.TryAddScoped<PropertyManagementApplyAvailabilityEvaluator>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentActionAvailabilityEvaluator, PropertyManagementApplyAvailabilityEvaluator>());
+        foreach (var documentType in PropertyManagementDocumentActionDefinitionsContributor.ReceivableApplyDocumentTypes)
+        {
+            services.AddScoped<IDocumentActionContextEnricher>(sp =>
+                new PropertyManagementApplyActionContextEnricher(
+                    documentType,
+                    sp.GetRequiredService<ReceivablesApplyAvailabilitySource>()));
+        }
+        foreach (var documentType in PropertyManagementDocumentActionDefinitionsContributor.PayableApplyDocumentTypes)
+        {
+            services.AddScoped<IDocumentActionContextEnricher>(sp =>
+                new PropertyManagementApplyActionContextEnricher(
+                    documentType,
+                    sp.GetRequiredService<PayablesApplyAvailabilitySource>()));
+        }
+        services.TryAddScoped<IReceivablePaymentWorkCenterSynchronizer, ReceivablePaymentWorkCenterSynchronizer>();
+        services.TryAddScoped<PropertyManagementWorkCenterPolicy>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentActionCompletedWorkCenterPolicy, PropertyManagementWorkCenterPolicy>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkCenterPreferenceDefinitionSource, PropertyManagementWorkCenterPreferenceDefinitionSource>());
 
         // Catalog validators
         services.AddDefinitionBoundScoped<ICatalogUpsertValidator, PartyCatalogUpsertValidator>();

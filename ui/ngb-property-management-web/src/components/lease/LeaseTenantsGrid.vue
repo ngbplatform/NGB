@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { NgbIcon, NgbLookup, NgbSelect, buildLookupFieldTargetUrl, isReferenceValue, type ReferenceValue, useLookupStore, useValidationFocus } from 'ngb-ui-framework'
+import { NgbIcon, NgbLookup, NgbSelect, buildLookupFieldTargetUrl, isReferenceValue, type ReferenceValue, useLookupStore, useValidationFocus } from '@ngbplatform/ui'
 import { useRoute, useRouter } from 'vue-router'
 
 type LookupItem = { id: string; label: string; meta?: string }

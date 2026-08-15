@@ -32,6 +32,7 @@ export type ApiErrorEnvelope = {
 export type HttpRequestOptions = {
   signal?: AbortSignal
   retryOnUnauthorized?: boolean
+  headers?: Record<string, string>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -308,8 +309,12 @@ function appendQuery(url: string, query: QueryParams | null | undefined): string
   return url.includes('?') ? `${url}&${serialized}` : `${url}?${serialized}`
 }
 
-async function buildJsonHeaders(body: unknown, accept: string): Promise<Record<string, string>> {
-  const headers: Record<string, string> = { Accept: accept }
+async function buildJsonHeaders(
+  body: unknown,
+  accept: string,
+  additionalHeaders?: Record<string, string>,
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { Accept: accept, ...(additionalHeaders ?? {}) }
   if (body != null) headers['Content-Type'] = 'application/json'
 
   const token = await getAccessToken()
@@ -334,7 +339,7 @@ export async function httpRequest<T>(
   const response = await fetch(resolvedUrl, {
     method,
     credentials: 'omit',
-    headers: await buildJsonHeaders(body, 'application/json'),
+    headers: await buildJsonHeaders(body, 'application/json', options?.headers),
     body: body != null ? JSON.stringify(body) : undefined,
     signal: options?.signal,
   })

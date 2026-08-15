@@ -76,7 +76,7 @@ function firstFieldError(key: string): string | undefined {
           :entity-type-code="entityTypeCode"
           :model-value="model[displayField.key]"
           :readonly="isReadonlyField(displayField)"
-          :behavior="behavior.value"
+          :behavior="behavior"
           @update:modelValue="model[displayField.key] = $event"
         />
       </NgbFormRow>
@@ -99,7 +99,7 @@ function firstFieldError(key: string): string | undefined {
               :entity-type-code="entityTypeCode"
               :model-value="model[field.key]"
               :readonly="isReadonlyField(field)"
-              :behavior="behavior.value"
+              :behavior="behavior"
               @update:modelValue="model[field.key] = $event"
             />
           </NgbFormRow>

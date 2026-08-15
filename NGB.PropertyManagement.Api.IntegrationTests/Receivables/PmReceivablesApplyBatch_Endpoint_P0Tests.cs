@@ -8,9 +8,18 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
+using NGB.Core.WorkCenter;
+using NGB.Persistence.AuditLog;
+using NGB.Persistence.Security;
+using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Contracts.Receivables;
+using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.Runtime;
+using NGB.PropertyManagement.Runtime.WorkCenter;
+using NGB.PropertyManagement.WorkCenter;
+using NGB.Runtime.UnitOfWork;
 using Npgsql;
 using Xunit;
 
@@ -40,6 +49,36 @@ public sealed class PmReceivablesApplyBatch_Endpoint_P0Tests : IAsyncLifetime
             var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
 
             await setup.EnsureDefaultsAsync(CancellationToken.None);
+            await scope.ServiceProvider
+                .GetRequiredService<PropertyManagementSecuritySeeder>()
+                .EnsureSeededAsync(CancellationToken.None);
+
+            // Work Center tasks are created only when the assigned role has at least one
+            // active, opted-in recipient. Model that production invariant explicitly;
+            // seeding roles alone intentionally does not manufacture recipient-less tasks.
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var users = scope.ServiceProvider.GetRequiredService<IPlatformUserRepository>();
+            var roles = scope.ServiceProvider.GetRequiredService<IPlatformRoleRepository>();
+            var userRoles = scope.ServiceProvider.GetRequiredService<IPlatformUserRoleRepository>();
+            var arRole = await roles.GetByCodeAsync(
+                PropertyManagementWorkCenterCodes.AccountsReceivableClerkRole,
+                CancellationToken.None);
+            arRole.Should().NotBeNull();
+
+            await uow.ExecuteInUowTransactionAsync(async innerCt =>
+            {
+                var recipientId = await users.UpsertAsync(
+                    "pm-apply-batch-ar-clerk",
+                    "pm-apply-batch-ar-clerk@example.test",
+                    "PM Apply Batch AR Clerk",
+                    isActive: true,
+                    innerCt);
+                await userRoles.ReplaceUserRolesAsync(
+                    recipientId,
+                    [arRole!.RoleId],
+                    assignedByUserId: null,
+                    innerCt);
+            }, CancellationToken.None);
 
             var party = await catalogs.CreateAsync(PropertyManagementCodes.Party, Payload(new { display = "P" }), CancellationToken.None);
             var building = await catalogs.CreateAsync(PropertyManagementCodes.Property, Payload(new
@@ -109,6 +148,16 @@ public sealed class PmReceivablesApplyBatch_Endpoint_P0Tests : IAsyncLifetime
             }), CancellationToken.None);
             (await documents.PostAsync(PropertyManagementCodes.ReceivablePayment, p2.Id, CancellationToken.None)).Status.Should().Be(DocumentStatus.Posted);
 
+            // Seed the same open tasks produced by the document-action outbox in production.
+            // The batch endpoint must complete them even though it posts apply documents
+            // directly inside its own atomic workflow.
+            var workCenter = scope.ServiceProvider.GetRequiredService<IReceivablePaymentWorkCenterSynchronizer>();
+            await uow.ExecuteInUowTransactionAsync(async innerCt =>
+            {
+                await workCenter.SynchronizeAsync(p1.Id, Guid.CreateVersion7(), p1.Id, innerCt);
+                await workCenter.SynchronizeAsync(p2.Id, Guid.CreateVersion7(), p2.Id, innerCt);
+            }, CancellationToken.None);
+
             // 1) Create draft applies using suggest endpoint (wizard flow).
             var suggestReq = new ReceivablesSuggestFifoApplyRequest(LeaseId: lease.Id, CreateDrafts: true);
             var suggestHttp = await client.PostAsJsonAsync("/api/receivables/apply/fifo/suggest/lease", suggestReq);
@@ -152,6 +201,14 @@ public sealed class PmReceivablesApplyBatch_Endpoint_P0Tests : IAsyncLifetime
             await using var conn = new NpgsqlConnection(_fixture.ConnectionString);
             await conn.OpenAsync();
             (await conn.ExecuteScalarAsync<int>("select count(*) from doc_pm_receivable_apply;")).Should().Be(3);
+            (await conn.ExecuteScalarAsync<short>(
+                "select status from platform_tasks where deduplication_key = @Key;",
+                new { Key = $"pm:receivable-payment:{p1.Id:D}:apply" }))
+                .Should().Be((short)WorkCenterTaskStatus.Completed);
+            (await conn.ExecuteScalarAsync<short>(
+                "select status from platform_tasks where deduplication_key = @Key;",
+                new { Key = $"pm:receivable-payment:{p2.Id:D}:apply" }))
+                .Should().Be((short)WorkCenterTaskStatus.Completed);
         }
         finally
         {

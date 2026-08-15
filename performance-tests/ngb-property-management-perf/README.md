@@ -6,7 +6,7 @@ The intent is to test NGB Platform capabilities through realistic PM data, not t
 
 - auth and health
 - metadata, menu, catalogs, chart of accounts
-- document list/open/lookup/derive-actions
+- document list/open/lookup/editor-state actions
 - opt-in document create/update/post lifecycle
 - audit log reads
 - accounting effects and document relationship graph
@@ -148,6 +148,11 @@ The test aborts unless `NGB_PERF_ENABLE_WRITES=true`. Set `NGB_PERF_ENABLE_POSTI
 goal is to include the platform posting/idempotency/accounting-effects path. A passing write-heavy
 run should have zero business failures, zero dropped iterations, no duplicate/invalid posting side
 effects, and document post/accounting/audit p95 inside the shared platform thresholds.
+
+The standard `pm:smoke` profile also exercises the Work Center summary, notification preferences,
+and feed at limits `1` and `50`. Compare the tagged
+`platform.work_center.items` timings to detect page-size-dependent regressions; the backend
+integration query-count gate remains responsible for proving that SQL command count is constant.
 
 `pm:business-day` is a multi-scenario arrival-rate workload. Defaults intentionally reserve extra
 VUs so a healthy backend is measured without synthetic k6 scheduler drops:

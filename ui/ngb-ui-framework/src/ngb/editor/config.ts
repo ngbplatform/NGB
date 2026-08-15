@@ -1,7 +1,6 @@
-import type { Awaitable, EntityFormModel, LookupStoreApi } from '../metadata/types';
+import type { EntityFormModel, LookupStoreApi } from '../metadata/types';
 import type {
   AuditLogPage,
-  DocumentHeaderActionItem,
   DocumentEffects,
   DocumentRecord,
   EntityEditorContext,
@@ -9,9 +8,24 @@ import type {
   EditorAuditLoadOptions,
   EditorDocumentEffectsBehavior,
   EditorPrintBehavior,
-  DocumentUiEffects,
   RelationshipGraph,
 } from './types';
+import type {
+  DocumentEditorStateDto,
+  ExecuteDocumentActionRequestDto,
+  ExecuteDocumentActionResultDto,
+} from '../api/contracts';
+
+export type DocumentActionsGateway = {
+  loadEditorState: (documentType: string, id: string) => Promise<DocumentEditorStateDto>;
+  execute: (
+    documentType: string,
+    id: string,
+    actionCode: string,
+    request: ExecuteDocumentActionRequestDto,
+    idempotencyKey?: string,
+  ) => Promise<ExecuteDocumentActionResultDto>;
+};
 
 export type EditorRoutingConfig = {
   buildCatalogListUrl?: (catalogType: string) => string;
@@ -40,27 +54,6 @@ export type EditorEntityProfile = {
   syncComputedDisplay?: (args: EditorEntityBehaviorArgs) => void;
 };
 
-export type EditorDocumentActionGroup = {
-  key: string;
-  label: string;
-};
-
-export type EditorConfiguredDocumentAction = {
-  item: DocumentHeaderActionItem;
-  group?: EditorDocumentActionGroup | null;
-  run: () => Awaitable<void>;
-};
-
-export type ResolveEditorDocumentActionsArgs = {
-  context: EntityEditorContext;
-  documentId: string;
-  model: EntityFormModel;
-  uiEffects: DocumentUiEffects | null;
-  loading: boolean;
-  saving: boolean;
-  navigate: (to: string | null | undefined) => void;
-};
-
 export type EditorFrameworkConfig = {
   routing?: EditorRoutingConfig;
   loadDocumentById: (documentType: string, id: string) => Promise<DocumentRecord>;
@@ -76,7 +69,7 @@ export type EditorFrameworkConfig = {
   effects?: EditorDocumentEffectsBehavior;
   print?: EditorPrintBehavior;
   resolveEntityProfile?: (context: EntityEditorContext) => EditorEntityProfile | null;
-  resolveDocumentActions?: (args: ResolveEditorDocumentActionsArgs) => EditorConfiguredDocumentAction[] | null;
+  documentActions: DocumentActionsGateway;
 };
 
 let editorFrameworkConfig: EditorFrameworkConfig | null = null;
@@ -85,17 +78,8 @@ function normalizePathSegment(value: string | null | undefined): string {
   return String(value ?? '').trim();
 }
 
-function appendQuery(path: string, query: Record<string, string | null | undefined>): string {
-  const params = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(query)) {
-    const normalized = normalizePathSegment(value);
-    if (!normalized) continue;
-    params.set(key, normalized);
-  }
-
-  const serialized = params.toString();
-  return serialized ? `${path}?${serialized}` : path;
+function appendQuery(path: string, query: Record<string, string>): string {
+  return `${path}?${new URLSearchParams(query).toString()}`;
 }
 
 function defaultBuildCatalogListUrl(catalogType: string): string {
@@ -188,12 +172,6 @@ export function resolveNgbEditorRouting(): Required<EditorRoutingConfig> {
 
 export function resolveNgbEditorEntityProfile(context: EntityEditorContext): EditorEntityProfile {
   return editorFrameworkConfig?.resolveEntityProfile?.(context) ?? {};
-}
-
-export function resolveNgbEditorDocumentActions(
-  args: ResolveEditorDocumentActionsArgs,
-): EditorConfiguredDocumentAction[] {
-  return editorFrameworkConfig?.resolveDocumentActions?.(args) ?? [];
 }
 
 export function sanitizeNgbEditorModelForEditing(

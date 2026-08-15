@@ -18,7 +18,9 @@ namespace NGB.CRM.Api.IntegrationTests.Infrastructure;
 
 internal static class CrmHostFactory
 {
-    public static IHost Create(string connectionString)
+    public static IHost Create(
+        string connectionString,
+        Action<IServiceCollection>? configureServices = null)
     {
         return Host.CreateDefaultBuilder()
             .ConfigureLogging(logging =>
@@ -47,6 +49,7 @@ internal static class CrmHostFactory
                     HealthUiUrl: "https://localhost:7082/health-ui",
                     BackgroundJobsUiUrl: "https://localhost:7081/hangfire"));
                 services.AddScoped<IMainMenuContributor, CrmMainMenuContributor>();
+                configureServices?.Invoke(services);
             })
             .UseDefaultServiceProvider(options =>
             {

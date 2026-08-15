@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   buildNgbHeuristicCurrentActions: vi.fn((fullRoute: string) => [{ key: `heuristic:${fullRoute}` }]),
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   buildDocumentFullPageUrl: mocks.buildDocumentFullPageUrl,
   buildNgbHeuristicCurrentActions: mocks.buildNgbHeuristicCurrentActions,
   NGB_ACCOUNTING_CREATE_ITEMS: [{ key: 'accounting:create', route: '/accounting/create' }],

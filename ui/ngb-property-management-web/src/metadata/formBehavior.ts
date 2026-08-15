@@ -1,5 +1,5 @@
-import { asTrimmedString } from 'ngb-ui-framework'
-import type { DocumentStatus, EntityFormModel, FieldMetadata, FormMetadata } from 'ngb-ui-framework'
+import { asTrimmedString } from '@ngbplatform/ui'
+import type { DocumentStatus, EntityFormModel, FieldMetadata, FormMetadata } from '@ngbplatform/ui'
 
 export type EntityFieldOption = {
   value: string

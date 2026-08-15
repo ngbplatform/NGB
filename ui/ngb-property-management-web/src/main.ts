@@ -1,8 +1,8 @@
 import { createApp } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
-import { configureNgbCommandPalette, configureNgbEditor, configureNgbLookup, configureNgbMetadata, configureNgbReporting, createDefaultNgbLookupConfig, createDefaultNgbReportingConfig, useAuthStore } from 'ngb-ui-framework'
+import { configureNgbCommandPalette, configureNgbEditor, configureNgbLookup, configureNgbMetadata, configureNgbNavigation, configureNgbReporting, configureNgbWorkCenter, createDefaultNgbLookupConfig, createDefaultNgbReportingConfig, createDefaultNgbWorkCenterConfig, useAuthStore } from '@ngbplatform/ui'
 
-import 'ngb-ui-framework/styles'
+import '@ngbplatform/ui/styles'
 
 async function bootstrap(): Promise<void> {
   const pinia = createPinia()
@@ -27,14 +27,18 @@ async function bootstrap(): Promise<void> {
     { createPmCommandPaletteConfig },
     { createPmMetadataConfig },
     { createPmEditorConfig },
+    { createPmNavigationConfig },
   ] = await Promise.all([
     import('./App.vue'),
     import('./router/router'),
     import('./command-palette/config'),
     import('./metadata/framework'),
     import('./editor/framework'),
+    import('./navigation/framework'),
   ])
 
+  configureNgbNavigation(createPmNavigationConfig())
+  configureNgbWorkCenter(createDefaultNgbWorkCenterConfig())
   configureNgbLookup(createDefaultNgbLookupConfig())
   configureNgbEditor(createPmEditorConfig())
   configureNgbMetadata(createPmMetadataConfig())

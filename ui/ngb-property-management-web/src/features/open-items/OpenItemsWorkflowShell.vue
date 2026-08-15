@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NgbConfirmDialog, NgbDrawer, NgbIcon } from 'ngb-ui-framework'
+import { NgbConfirmDialog, NgbDrawer, NgbIcon } from '@ngbplatform/ui'
 
 import OpenItemsPageLayout from './OpenItemsPageLayout.vue'
 import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsTabKey } from './presentation'

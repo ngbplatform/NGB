@@ -1,6 +1,5 @@
 import {
   applyInitialFieldValues,
-  buildCatalogFullPageUrl,
   buildFieldsPayload,
   createCatalog,
   deleteCatalog,
@@ -14,7 +13,7 @@ import {
   unmarkCatalogForDeletion,
   updateCatalog,
   type CatalogEntityPersistenceAdapter,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 import type { PmEntityEditorPersistenceContext } from './pmEntityEditorPersistenceContext'
 
 export function useCatalogEntityEditorPersistence(args: PmEntityEditorPersistenceContext): CatalogEntityPersistenceAdapter {
@@ -22,7 +21,7 @@ export function useCatalogEntityEditorPersistence(args: PmEntityEditorPersistenc
     args.docMeta.value = null
     args.doc.value = null
     args.docEffects.value = null
-    args.catalogMeta.value = await args.metaStore.ensureCatalogType(args.typeCode.value)
+    args.catalogMeta.value = await args.ensureCatalogMetadata(args.typeCode.value)
 
     if (args.isNew.value) {
       args.catalogItem.value = null
@@ -64,11 +63,8 @@ export function useCatalogEntityEditorPersistence(args: PmEntityEditorPersistenc
       const created = await createCatalog(args.typeCode.value, { fields })
       args.currentId.value = created.id
       args.catalogItem.value = created
-      args.emitCreated(created.id)
+      await args.onCreated(created.id)
       args.resetInitialSnapshot()
-      if ((args.navigateOnCreate.value ?? args.mode.value === 'page')) {
-        await args.router.replace(buildCatalogFullPageUrl(args.typeCode.value, created.id))
-      }
       return
     }
 
@@ -84,17 +80,15 @@ export function useCatalogEntityEditorPersistence(args: PmEntityEditorPersistenc
     })
     syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value)
     args.resetInitialSnapshot()
-    args.emitSaved()
+    await args.onSaved()
   }
 
   async function markForDeletion() {
     await markCatalogForDeletion(args.typeCode.value, args.currentId.value!)
-    args.toasts.push({ title: 'Deleted', message: 'Record marked for deletion.', tone: 'warn' })
   }
 
   async function unmarkForDeletion() {
     await unmarkCatalogForDeletion(args.typeCode.value, args.currentId.value!)
-    args.toasts.push({ title: 'Restored', message: 'Record restored.', tone: 'success' })
   }
 
   async function deleteEntity() {

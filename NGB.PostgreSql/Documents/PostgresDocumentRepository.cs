@@ -34,12 +34,12 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
                            INSERT INTO documents(
                                id, type_code, number, date_utc,
                                status, posted_at_utc, marked_for_deletion_at_utc,
-                               created_at_utc, updated_at_utc
+                               version, created_at_utc, updated_at_utc
                            )
                            VALUES (
                                @Id, @TypeCode, @Number, @DateUtc,
                                @Status, @PostedAtUtc, @MarkedForDeletionAtUtc,
-                               @CreatedAtUtc, @UpdatedAtUtc
+                               @Version, @CreatedAtUtc, @UpdatedAtUtc
                            );
                            """;
 
@@ -54,6 +54,7 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
                 Status = (short)doc.Status,
                 doc.PostedAtUtc,
                 doc.MarkedForDeletionAtUtc,
+                doc.Version,
                 doc.CreatedAtUtc,
                 doc.UpdatedAtUtc
             },
@@ -74,6 +75,7 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
                                number              AS Number,
                                date_utc            AS DateUtc,
                                status              AS Status,
+                               version             AS Version,
                                created_at_utc      AS CreatedAtUtc,
                                updated_at_utc      AS UpdatedAtUtc,
                                posted_at_utc       AS PostedAtUtc,
@@ -98,6 +100,7 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
                                number              AS Number,
                                date_utc            AS DateUtc,
                                status              AS Status,
+                               version             AS Version,
                                created_at_utc      AS CreatedAtUtc,
                                updated_at_utc      AS UpdatedAtUtc,
                                posted_at_utc       AS PostedAtUtc,
@@ -159,6 +162,45 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
         if (rows != 1)
             throw new NgbInvariantViolationException("Unexpected row count while updating document status.",
                 context: new Dictionary<string, object?> { ["documentId"] = documentId, ["rows"] = rows });
+    }
+
+    public async Task<DocumentRecord> IncrementVersionAsync(
+        Guid documentId,
+        DateTime updatedAtUtc,
+        CancellationToken ct = default)
+    {
+        await uow.EnsureOpenForTransactionAsync(ct);
+        updatedAtUtc.EnsureUtc(nameof(updatedAtUtc));
+
+        const string sql = """
+                           UPDATE documents
+                           SET version = version + 1,
+                               updated_at_utc = GREATEST(updated_at_utc, @UpdatedAtUtc)
+                           WHERE id = @Id
+                           RETURNING
+                               id                  AS Id,
+                               type_code           AS TypeCode,
+                               number              AS Number,
+                               date_utc            AS DateUtc,
+                               status              AS Status,
+                               version             AS Version,
+                               created_at_utc      AS CreatedAtUtc,
+                               updated_at_utc      AS UpdatedAtUtc,
+                               posted_at_utc       AS PostedAtUtc,
+                               marked_for_deletion_at_utc AS MarkedForDeletionAtUtc;
+                           """;
+
+        var cmd = new CommandDefinition(
+            sql,
+            new { Id = documentId, UpdatedAtUtc = updatedAtUtc },
+            transaction: uow.Transaction,
+            cancellationToken: ct);
+
+        var row = await uow.Connection.QuerySingleOrDefaultAsync<DocumentRow>(cmd);
+        if (row is null)
+            throw new DocumentNotFoundException(documentId);
+
+        return row.ToRecord();
     }
 
     public async Task<bool> TrySetNumberAsync(
@@ -274,6 +316,7 @@ private sealed class DocumentRow
         public string? Number { get; init; }
         public DateTime DateUtc { get; init; }
         public short Status { get; init; }
+        public long Version { get; init; }
         public DateTime CreatedAtUtc { get; init; }
         public DateTime UpdatedAtUtc { get; init; }
         public DateTime? PostedAtUtc { get; init; }
@@ -286,6 +329,7 @@ private sealed class DocumentRow
             Number = Number,
             DateUtc = DateUtc,
             Status = (DocumentStatus)Status,
+            Version = Version,
             CreatedAtUtc = CreatedAtUtc,
             UpdatedAtUtc = UpdatedAtUtc,
             PostedAtUtc = PostedAtUtc,

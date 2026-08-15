@@ -61,11 +61,9 @@ describe('entity editor capabilities', () => {
     expect(capabilities.canOpenEffectsPage.value).toBe(true)
     expect(capabilities.canOpenDocumentFlowPage.value).toBe(true)
     expect(capabilities.canPrintDocument.value).toBe(true)
-    expect(capabilities.canMarkForDeletion.value).toBe(true)
+    expect(capabilities.canMarkForDeletion.value).toBe(false)
     expect(capabilities.canUnmarkForDeletion.value).toBe(false)
     expect(capabilities.canDelete.value).toBe(false)
-    expect(capabilities.canPost.value).toBe(true)
-    expect(capabilities.canUnpost.value).toBe(false)
     expect(capabilities.canSave.value).toBe(true)
     expect(capabilities.documentStatusLabel.value).toBe('Draft')
     expect(capabilities.documentStatusTone.value).toBe('neutral')
@@ -85,9 +83,7 @@ describe('entity editor capabilities', () => {
     state.isMarkedForDeletion.value = true
 
     expect(capabilities.canMarkForDeletion.value).toBe(false)
-    expect(capabilities.canUnmarkForDeletion.value).toBe(true)
-    expect(capabilities.canPost.value).toBe(false)
-    expect(capabilities.canUnpost.value).toBe(true)
+    expect(capabilities.canUnmarkForDeletion.value).toBe(false)
     expect(capabilities.canSave.value).toBe(false)
     expect(capabilities.documentStatusLabel.value).toBe('Posted')
     expect(capabilities.documentStatusTone.value).toBe('success')
@@ -116,10 +112,17 @@ describe('entity editor capabilities', () => {
     expect(capabilities.canOpenDocumentFlowPage.value).toBe(false)
     expect(capabilities.canPrintDocument.value).toBe(false)
     expect(capabilities.canDelete.value).toBe(false)
+    expect(capabilities.canMarkForDeletion.value).toBe(false)
     expect(capabilities.canSave.value).toBe(true)
     expect(capabilities.title.value).toBe('New Property')
     expect(capabilities.subtitle.value).toBe('New record')
     expect(capabilities.auditEntityKind.value).toBe(2)
     expect(capabilities.isReadOnly.value).toBe(false)
+
+    state.isNew.value = false
+    expect(capabilities.canMarkForDeletion.value).toBe(true)
+    state.isMarkedForDeletion.value = true
+    expect(capabilities.canMarkForDeletion.value).toBe(false)
+    expect(capabilities.canUnmarkForDeletion.value).toBe(true)
   })
 })

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { ngbUiFrameworkPublicAssetsPlugin } from 'ngb-ui-framework/vite-public-assets'
+import { ngbUiFrameworkPublicAssetsPlugin } from '@ngbplatform/ui/vite-public-assets'
 
 type DevHandler = (req: { url?: string }, res: {
   statusCode: number

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NgbBadge, NgbDocumentPeriodFilter as DocumentPeriodFilter, NgbIcon, NgbPageHeader, monthValueToDateOnly, relativeMonthValue } from 'ngb-ui-framework'
+import { NgbBadge, NgbDocumentPeriodFilter as DocumentPeriodFilter, NgbIcon, NgbPageHeader, monthValueToDateOnly, relativeMonthValue } from '@ngbplatform/ui'
 
 import {
   normalizeMonthQueryValue,
   replaceCleanRouteQuery,
   type QueryPatch,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 import {
   encodeReconciliationStatusFilter,
   normalizeReconciliationMode,

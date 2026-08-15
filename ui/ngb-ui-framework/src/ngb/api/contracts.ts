@@ -1,32 +1,139 @@
-import type { ReferenceValue } from '../metadata/entityModel'
-import type {
-  ActionKind,
-  CatalogTypeMetadata,
-  ColumnAlign,
-  ColumnMetadata,
-  DataType,
-  DocumentCapabilities,
-  DocumentPresentation,
-  DocumentStatusValue,
-  DocumentTypeMetadata,
-  EntityKind,
-  FieldMetadata,
-  FieldValidation,
-  FormMetadata,
-  FormRow,
-  FormSection,
-  FieldOption,
-  ListFilterField,
-  ListFilterOption,
-  ListMetadata,
-  LookupSource,
-  PartMetadata,
-  RecordFields,
-  RecordPart,
-  RecordPartRow,
-  RecordParts,
-  RecordPayload,
-} from '../metadata/types'
+export type DataType = string
+export type ColumnAlign = number
+export type EntityKind = number
+export type DocumentStatusValue = number
+export type ActionKind = number
+
+export type JsonPrimitive = string | number | boolean | null
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[]
+export type JsonObject = { [key: string]: JsonValue }
+export type RecordFields = Record<string, JsonValue>
+export type RecordPartRow = RecordFields
+export type RecordPart = { rows: RecordPartRow[] }
+export type RecordParts = Record<string, RecordPart>
+export type RecordPayload = {
+  fields?: RecordFields | null
+  parts?: RecordParts | null
+}
+
+export type LookupSource =
+  | { kind: 'catalog'; catalogType: string; displayTemplate?: string | null }
+  | { kind: 'document'; documentTypes: string[] }
+  | { kind: 'coa' }
+
+export type FieldOption = { value: string; label: string }
+export type ListFilterOption = FieldOption
+export type ListFilterField = {
+  key: string
+  label: string
+  dataType: DataType
+  isMulti?: boolean
+  lookup?: LookupSource | null
+  options?: ListFilterOption[] | null
+  description?: string | null
+  supportsIncludeDescendants?: boolean
+}
+export type ColumnMetadata = {
+  key: string
+  label: string
+  dataType: DataType
+  isSortable: boolean
+  widthPx?: number | null
+  align: ColumnAlign
+  lookup?: LookupSource | null
+  options?: FieldOption[] | null
+}
+export type ListMetadata = {
+  columns: ColumnMetadata[]
+  filters?: ListFilterField[] | null
+}
+export type FieldValidation = {
+  maxLength?: number | null
+  min?: number | null
+  max?: number | null
+  regex?: string | null
+}
+export type FieldMetadata = {
+  key: string
+  label: string
+  dataType: DataType
+  uiControl: number
+  isRequired: boolean
+  isReadOnly: boolean
+  readOnlyWhenStatusIn?: DocumentStatusValue[] | null
+  lookup?: LookupSource | null
+  validation?: FieldValidation | null
+  options?: FieldOption[] | null
+  helpText?: string | null
+}
+export type FormRow = { fields: FieldMetadata[] }
+export type FormSection = { title: string; rows: FormRow[] }
+export type FormMetadata = { sections: FormSection[] }
+export type PartMetadata = {
+  partCode: string
+  title: string
+  list: ListMetadata
+  allowAddRemoveRows?: boolean
+  readOnlyWhenPosted?: boolean
+}
+export type CatalogCapabilities = {
+  canCreate?: boolean
+  canEdit?: boolean
+  canDelete?: boolean
+  canMarkForDeletion?: boolean
+}
+export type DocumentCapabilities = {
+  canCreate?: boolean
+  canEditDraft?: boolean
+  canDeleteDraft?: boolean
+  canPost?: boolean
+  canUnpost?: boolean
+  canRepost?: boolean
+  canMarkForDeletion?: boolean
+  supportsActions?: boolean
+  canViewEffects?: boolean
+  canViewFlow?: boolean
+}
+export type DocumentPresentation = {
+  displayName?: string | null
+  hasNumber?: boolean
+  computedDisplay?: boolean
+  hideSystemFieldsInEditor?: boolean
+}
+export type ActionMetadata = {
+  code: string
+  label: string
+  kind?: ActionKind
+  requiresConfirm?: boolean
+  visibleWhenStatusIn?: DocumentStatusValue[] | null
+}
+export type CatalogTypeMetadata = {
+  catalogType: string
+  displayName: string
+  kind: EntityKind
+  icon?: string | null
+  list?: ListMetadata | null
+  form?: FormMetadata | null
+  parts?: PartMetadata[] | null
+  capabilities?: CatalogCapabilities | null
+}
+export type DocumentTypeMetadata = {
+  documentType: string
+  displayName: string
+  kind: EntityKind
+  icon?: string | null
+  list?: ListMetadata | null
+  form?: FormMetadata | null
+  parts?: PartMetadata[] | null
+  actions?: ActionMetadata[] | null
+  presentation?: DocumentPresentation | null
+  capabilities?: DocumentCapabilities | null
+}
+
+export type NavigationTargetDto = {
+  code: string
+  parameters: Record<string, string | null>
+}
 
 export type DocumentStatus = DocumentStatusValue
 export type NgbActionKind = ActionKind
@@ -58,7 +165,7 @@ export type PartMetadataDto = PartMetadata
 export type DocumentCapabilitiesDto = DocumentCapabilities
 export type DocumentPresentationDto = DocumentPresentation
 export type DocumentTypeMetadataDto = DocumentTypeMetadata
-export type RefValueDto = ReferenceValue
+export type RefValueDto = { id: string; display: string }
 
 export type CatalogItemDto = {
   id: string
@@ -75,6 +182,61 @@ export type DocumentDto = {
   payload: RecordPayload
   status: DocumentStatus
   isMarkedForDeletion: boolean
+}
+
+export type DocumentActionKindDto = 'Primary' | 'Secondary' | 'Dangerous'
+export type DocumentActionExecutionKindDto = 'Command' | 'Derivation' | 'Navigation' | 'View'
+export type DocumentActionConfirmationModeDto = 'None' | 'Confirm' | 'RequireReason'
+
+export type DocumentActionDisabledReasonDto = {
+  code: string
+  message: string
+}
+
+export type DocumentActionConfirmationDto = {
+  mode: DocumentActionConfirmationModeDto
+  title: string
+  message: string
+  confirmLabel: string
+}
+
+export type DocumentActionTargetDto = NavigationTargetDto
+
+export type DocumentActionDto = {
+  code: string
+  label: string
+  labelKey?: string | null
+  description?: string | null
+  icon?: string | null
+  kind: DocumentActionKindDto
+  executionKind: DocumentActionExecutionKindDto
+  order: number
+  isAllowed: boolean
+  disabledReasons: DocumentActionDisabledReasonDto[]
+  confirmation?: DocumentActionConfirmationDto | null
+  target?: DocumentActionTargetDto | null
+}
+
+export type DocumentEditorStateDto = {
+  document: DocumentDto
+  documentVersion: number
+  actions: DocumentActionDto[]
+}
+
+export type ExecuteDocumentActionRequestDto = {
+  expectedVersion: number
+  payload?: unknown
+  reason?: string | null
+}
+
+export type ExecuteDocumentActionResultDto = {
+  executionId: string
+  actionCode: string
+  document: DocumentDto
+  documentVersion: number
+  actions: DocumentActionDto[]
+  workCenterMayChange: boolean
+  createdDocument?: DocumentDto | null
 }
 
 export type GraphNodeDto = {
@@ -99,21 +261,6 @@ export type GraphEdgeDto = {
 export type RelationshipGraphDto = {
   nodes: GraphNodeDto[]
   edges: GraphEdgeDto[]
-}
-
-export type DocumentUiActionReasonDto = {
-  errorCode: string
-  message: string
-}
-
-export type DocumentUiEffectsDto = {
-  isPosted: boolean
-  canEdit: boolean
-  canPost: boolean
-  canUnpost: boolean
-  canRepost: boolean
-  canApply: boolean
-  disabledReasons?: Record<string, DocumentUiActionReasonDto[]> | null
 }
 
 export type EffectAccountDto = {
@@ -182,7 +329,6 @@ export type DocumentEffectsDto = {
   accountingEntries: AccountingEntryEffectDto[]
   operationalRegisterMovements: OperationalRegisterMovementEffectDto[]
   referenceRegisterWrites: ReferenceRegisterWriteEffectDto[]
-  ui?: DocumentUiEffectsDto | null
 }
 
 export type PageResponseDto<T> = {
@@ -212,14 +358,6 @@ export type DocumentLookupDto = {
   status: DocumentStatus
   isMarkedForDeletion: boolean
   number?: string | null
-}
-
-export type DocumentDerivationActionDto = {
-  code: string
-  name: string
-  fromTypeCode: string
-  toTypeCode: string
-  relationshipCodes: string[]
 }
 
 export type DocumentLookupAcrossTypesRequestDto = {
@@ -271,15 +409,4 @@ export type AuditLogPageDto = {
   items: AuditEventDto[]
   nextCursor?: AuditCursorDto | null
   limit: number
-}
-
-export type {
-  ColumnAlign,
-  DataType,
-  EntityKind,
-  RecordFields,
-  RecordPart,
-  RecordPartRow,
-  RecordParts,
-  RecordPayload,
 }

@@ -1,5 +1,6 @@
 import {
   buildLookupFieldTargetUrl,
+  normalizeLookupValue,
   type CatalogTypeMetadata,
   type ColumnMetadata,
   getCatalogTypeMetadata,
@@ -52,7 +53,7 @@ export const crmMetadataFormBehavior: MetadataFormBehavior = {
   buildLookupTargetUrl: async ({ hint, value, routeFullPath }) =>
     await buildLookupFieldTargetUrl({
       hint,
-      value,
+      value: normalizeLookupValue(value),
       route: { fullPath: routeFullPath },
     }),
 }

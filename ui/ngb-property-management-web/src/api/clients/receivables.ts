@@ -1,4 +1,4 @@
-import { httpGet, httpPost } from 'ngb-ui-framework'
+import { httpGet, httpPost } from '@ngbplatform/ui'
 import type {
   ReceivablesApplyBatchRequestDto,
   ReceivablesApplyBatchResponseDto,

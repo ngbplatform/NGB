@@ -37,9 +37,13 @@ export default defineConfig({
     include: ['@headlessui/vue', 'vue-router', 'pinia', 'keycloak-js'],
   },
   test: {
-    name: 'ngb-ui-framework-browser',
+    name: '@ngbplatform/ui-browser',
     include: ['tests/browser/**/*.browser.spec.ts'],
     setupFiles: ['vitest-browser-vue', './tests/browser/setup.ts'],
+    // Vitest browser files share an orchestrator page and execute in isolated iframes.
+    // Serializing files avoids intermittent cross-iframe navigation/CORS teardown failures
+    // while preserving parallelism inside the non-browser unit projects.
+    fileParallelism: false,
     browser: {
       enabled: true,
       headless: true,

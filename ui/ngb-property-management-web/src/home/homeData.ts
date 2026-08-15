@@ -32,7 +32,7 @@ import {
   toDashboardUtcDateOnly,
   toDashboardUtcMonthKey,
   isGuidString,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 export type HomeTrendSeries = {
   label: string

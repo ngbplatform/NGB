@@ -53,6 +53,12 @@ public sealed class LeadConversionPostValidator(ICrmDocumentReaders readers) : I
     {
         var head = await readers.ReadLeadConversionHeadAsync(documentForUpdate.Id, ct);
 
+        if (head.AccountId is null)
+            throw new NgbArgumentInvalidException("account_id", "Account is required.");
+
+        if (head.ContactId is null)
+            throw new NgbArgumentInvalidException("contact_id", "Contact is required.");
+
         if (!head.CreateOpportunity)
             return;
 

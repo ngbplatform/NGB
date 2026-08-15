@@ -1,4 +1,4 @@
-import type { ReferenceValue } from './types'
+import type { JsonValue, ReferenceValue } from './types'
 
 export type { EntityFormModel, ReferenceValue } from './types'
 
@@ -31,4 +31,17 @@ export function tryExtractReferenceDisplay(value: unknown): string | null {
 
 export function asTrimmedString(value: unknown): string {
   return value == null ? '' : String(value).trim()
+}
+
+export function normalizeJsonValue(value: unknown): JsonValue {
+  if (value === undefined) return null
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (Array.isArray(value)) return value.map(normalizeJsonValue)
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, normalizeJsonValue(entry)]),
+    )
+  }
+  return String(value)
 }

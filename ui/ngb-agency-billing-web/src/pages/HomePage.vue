@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { NgbBadge, NgbIcon, NgbPageHeader } from 'ngb-ui-framework'
+import { NgbBadge, NgbIcon, NgbPageHeader } from '@ngbplatform/ui'
 
 import { createAgencyBillingHomeData } from '../home/homeData'
 
@@ -70,7 +70,7 @@ function cardToneClass(tone: Tone): string {
                 <div class="home-section-label">Launchpad</div>
                 <h2 class="home-section-title text-xl">Start with the next operational move</h2>
               </div>
-              <NgbIcon name="sparkles" :size="18" class="text-ngb-muted" />
+              <NgbIcon name="composer" :size="18" class="text-ngb-muted" />
             </div>
 
             <div class="mt-5 space-y-3">

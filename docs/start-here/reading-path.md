@@ -18,6 +18,14 @@ For architects, ERP/accounting software teams, ISV teams, consultants, and exter
 5. [Evaluation Guide](/ecosystem/evaluation-guide)
 6. Deep technical chapters as needed
 
+## If you are adopting Document Actions and Work Center
+
+1. [Document Actions and Work Center implementation guide](/guides/document-actions-and-work-center)
+2. [Document Actions architecture](/architecture/document-actions)
+3. [Work Center architecture](/architecture/work-center)
+4. [Document Actions and Work Center API reference](/reference/document-actions-work-center-api)
+5. For an existing solution, follow [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0)
+
 ## Core onboarding path
 
 1. [Platform Overview](/start-here/overview)

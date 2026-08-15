@@ -115,6 +115,24 @@
       ]
     },
     {
+      "username": "pm-viewer",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "PM",
+      "lastName": "Viewer",
+      "email": "pm-viewer@integration.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "PmViewer!2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ngb-user"
+      ]
+    },
+    {
       "username": "service-account-ngb-tester",
       "enabled": true,
       "serviceAccountClientId": "ngb-tester",

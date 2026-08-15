@@ -13,6 +13,7 @@ import { HealthClient } from '../ngb/healthClient.ts';
 import { MetadataClient } from '../ngb/metadataClient.ts';
 import { PeriodClosingClient } from '../ngb/periodClosingClient.ts';
 import { ReportsClient } from '../ngb/reportsClient.ts';
+import { WorkCenterClient } from '../ngb/workCenterClient.ts';
 import type { NgbAuthSetupData, NgbScenarioContext, ScenarioDescriptor } from './scenarioTypes.ts';
 
 let cachedScenarioContext: NgbScenarioContext | undefined;
@@ -51,6 +52,7 @@ export function createNgbScenarioContext(setupData?: NgbAuthSetupData): NgbScena
     admin: new AdminClient(client, env),
     audit: new AuditClient(client, env),
     periodClosing: new PeriodClosingClient(client, env),
+    workCenter: new WorkCenterClient(client, env),
   };
 }
 

@@ -34,6 +34,7 @@ export * from './ngb/healthClient.ts';
 export * from './ngb/metadataClient.ts';
 export * from './ngb/periodClosingClient.ts';
 export * from './ngb/reportsClient.ts';
+export * from './ngb/workCenterClient.ts';
 
 export * from './profiles/baseline.ts';
 export * from './profiles/breakpoint.ts';

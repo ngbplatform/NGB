@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h } from 'vue'
 
-import NgbPageHeader from '../../../../src/ngb/site/NgbPageHeader.vue'
+import NgbPageHeader from '../../../../src/ngb/layout/NgbPageHeader.vue'
 
 function top(locator: { element(): Element }): number {
   return locator.element().getBoundingClientRect().top

@@ -1,5 +1,5 @@
-import type { EditorEntityProfile, EntityEditorContext } from 'ngb-ui-framework'
-import { asTrimmedString } from 'ngb-ui-framework'
+import type { EditorEntityProfile, EntityEditorContext } from '@ngbplatform/ui'
+import { asTrimmedString } from '@ngbplatform/ui'
 
 function computeDisplayFrom(...values: unknown[]): string | null {
   const parts = values

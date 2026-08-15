@@ -8,7 +8,9 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Effects;
 using NGB.Contracts.Metadata;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Runtime;
+using NGB.PropertyManagement.Runtime.DocumentActions;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Receivables;
@@ -47,10 +49,9 @@ public sealed class PmReceivablePayment_Effects_Endpoint_P0Tests : IAsyncLifetim
             effects.AccountingEntries.Should().BeEmpty();
             effects.OperationalRegisterMovements.Should().BeEmpty();
             effects.ReferenceRegisterWrites.Should().BeEmpty();
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeFalse();
-            effects.Ui.DisabledReasons.Should().ContainKey("apply");
-            effects.Ui.DisabledReasons["apply"].Single().ErrorCode.Should().Be("pm.ui.apply.requires_posted");
+            var action = await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivablePayment, payment.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value);
+            action.IsAllowed.Should().BeFalse();
+            action.DisabledReasons.Single().Code.Should().Be("pm.receivables.apply.requires_posted");
         }
         finally
         {
@@ -80,9 +81,7 @@ public sealed class PmReceivablePayment_Effects_Endpoint_P0Tests : IAsyncLifetim
 
             var effects = await GetEffectsAsync(client, PropertyManagementCodes.ReceivablePayment, payment.Id);
 
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeTrue();
-            effects.Ui.DisabledReasons.Should().NotContainKey("apply");
+            (await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivablePayment, payment.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value)).IsAllowed.Should().BeTrue();
         }
         finally
         {

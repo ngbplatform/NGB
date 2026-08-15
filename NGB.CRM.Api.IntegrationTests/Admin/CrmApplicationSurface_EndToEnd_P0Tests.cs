@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.CRM.Runtime;
+using NGB.Contracts.Security;
 using NGB.Core.Security;
 using NGB.CRM.Api.IntegrationTests.Infrastructure;
 using NGB.Runtime.Admin;
@@ -91,10 +92,25 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
         var sales = await roles.GetRoleAsync(
             roleList.Single(static role => role.Code == "crm.sales_rep").RoleId,
             CancellationToken.None);
-        sales.Permissions.Should().Contain(static permission =>
-            permission.ResourceKind == NgbResourceKinds.Document
-            && permission.ResourceCode == CrmCodes.LeadIntake
-            && permission.ActionCode == NgbPermissionActions.Post);
+        var manager = await roles.GetRoleAsync(
+            roleList.Single(static role => role.Code == "crm.manager").RoleId,
+            CancellationToken.None);
+
+        foreach (var role in new[] { admin, manager, sales })
+        {
+            foreach (var documentType in CrmDocumentTypes)
+            {
+                role.Permissions.Should().Contain(permission =>
+                    permission.ResourceKind == NgbResourceKinds.Document
+                    && permission.ResourceCode == documentType
+                    && permission.ActionCode == NgbPermissionActions.Post);
+                role.Permissions.Should().Contain(permission =>
+                    permission.ResourceKind == NgbResourceKinds.Document
+                    && permission.ResourceCode == documentType
+                    && permission.ActionCode == NgbPermissionActions.Unpost);
+            }
+        }
+
         sales.Permissions.Should().Contain(static permission =>
             permission.ResourceKind == NgbResourceKinds.Report
             && permission.ResourceCode == CrmCodes.SalesPipelineReport
@@ -107,6 +123,47 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
             permission.ResourceKind == NgbResourceKinds.System
             && permission.ResourceCode == NgbPermissionResources.Roles
             && permission.ActionCode == NgbPermissionActions.Manage);
+    }
+
+    [Fact]
+    public async Task Setup_Repairs_Missing_Default_Role_Permissions_Without_Removing_Custom_Permissions()
+    {
+        using var host = CrmHostFactory.Create(fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+
+        var setup = scope.ServiceProvider.GetRequiredService<ICrmSetupService>();
+        var roles = scope.ServiceProvider.GetRequiredService<IRoleManagementService>();
+        await setup.EnsureDefaultsAsync(CancellationToken.None);
+
+        var roleList = await roles.GetRolesAsync(CancellationToken.None);
+        var salesRoleId = roleList.Single(static role => role.Code == "crm.sales_rep").RoleId;
+        var sales = await roles.GetRoleAsync(salesRoleId, CancellationToken.None);
+        var customPermission = new PermissionAssignmentDto(
+            NgbResourceKinds.System,
+            NgbPermissionResources.Roles,
+            NgbPermissionActions.Manage);
+        var permissionsWithoutUnpost = sales.Permissions
+            .Where(static permission => permission.ActionCode != NgbPermissionActions.Unpost)
+            .Append(customPermission)
+            .ToArray();
+
+        await roles.ReplaceRolePermissionsAsync(
+            salesRoleId,
+            new ReplaceRolePermissionsRequestDto(permissionsWithoutUnpost),
+            CancellationToken.None);
+
+        await setup.EnsureDefaultsAsync(CancellationToken.None);
+
+        var repairedSales = await roles.GetRoleAsync(salesRoleId, CancellationToken.None);
+        foreach (var documentType in CrmDocumentTypes)
+        {
+            repairedSales.Permissions.Should().Contain(permission =>
+                permission.ResourceKind == NgbResourceKinds.Document
+                && permission.ResourceCode == documentType
+                && permission.ActionCode == NgbPermissionActions.Unpost);
+        }
+
+        repairedSales.Permissions.Should().Contain(customPermission);
     }
 
     [Fact]
@@ -133,4 +190,14 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
         var assignedRoles = await userRoles.GetRolesForUserAsync(user.UserId, CancellationToken.None);
         assignedRoles.Should().ContainSingle(x => x.Code == "crm.administrator");
     }
+
+    private static readonly string[] CrmDocumentTypes =
+    [
+        CrmCodes.LeadIntake,
+        CrmCodes.LeadQualification,
+        CrmCodes.LeadConversion,
+        CrmCodes.OpportunityUpdate,
+        CrmCodes.Quote,
+        CrmCodes.ActivityLog
+    ];
 }

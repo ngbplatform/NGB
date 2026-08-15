@@ -223,44 +223,6 @@ public sealed class DocumentService_DeriveAsync_P0Tests
     }
 
     [Fact]
-    public async Task GetDerivationActionsAsync_WhenDocumentExists_MapsServiceActionsToContracts()
-    {
-        var sourceId = Guid.NewGuid();
-        var harness = CreateHarness();
-
-        harness.Reader
-            .Setup(x => x.GetByIdAsync(It.IsAny<DocumentHeadDescriptor>(), sourceId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DocumentHeadRow(
-                sourceId,
-                DocumentStatus.Draft,
-                false,
-                "Source draft",
-                new Dictionary<string, object?> { ["display"] = "Source draft" }));
-
-        harness.Derivations
-            .Setup(x => x.ListActionsForDocumentAsync(sourceId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([
-                new DocumentDerivationAction(
-                    Code: "ab.generate_invoice_draft",
-                    Name: "Generate Invoice Draft",
-                    FromTypeCode: TargetTypeCode,
-                    ToTypeCode: "ab.sales_invoice",
-                    RelationshipCodes: ["created_from"])
-            ]);
-
-        var actions = await harness.Service.GetDerivationActionsAsync(TargetTypeCode, sourceId, CancellationToken.None);
-
-        actions.Should().BeEquivalentTo([
-            new DocumentDerivationActionDto(
-                Code: "ab.generate_invoice_draft",
-                Name: "Generate Invoice Draft",
-                FromTypeCode: TargetTypeCode,
-                ToTypeCode: "ab.sales_invoice",
-                RelationshipCodes: ["created_from"])
-        ]);
-    }
-
-    [Fact]
     public async Task DeriveAsync_WhenSourceDocumentMissing_ThrowsDocumentNotFound()
     {
         var sourceId = Guid.NewGuid();
@@ -490,9 +452,6 @@ public sealed class DocumentService_DeriveAsync_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);

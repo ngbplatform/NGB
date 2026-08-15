@@ -12,16 +12,16 @@
 
     <ItemGroup>
         <PackageReference Include="AspNetCore.HealthChecks.Hangfire" Version="9.0.0" />
-        <PackageReference Include="Hangfire.AspNetCore" Version="1.8.23" />
+        <PackageReference Include="Hangfire.AspNetCore" Version="1.8.24" />
         <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
         <PackageReference Include="Dapper" Version="2.1.79" />
         <PackageReference Include="Dapper.AOT" Version="1.0.52" />
-        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.9" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9" />
-        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
-        <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.9" />
-        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+        <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     </ItemGroup>
 

@@ -60,8 +60,10 @@ The service is not just CRUD. It is the runtime-level orchestrator for:
 - posting and unposting entry points;
 - derivation entry points;
 - document flow graph loading;
-- effective document effects loading;
-- UI-effect capability shaping.
+- effective accounting/register effects loading.
+
+Document Action capability shaping moved to `DocumentActionQueryService` and its evaluator in 2.0;
+it is not a responsibility of `DocumentService` or the effects DTO.
 
 That makes it one of the best files to read if you want to understand the practical meaning of “metadata-driven documents” in NGB.
 
@@ -72,7 +74,7 @@ From this file alone, several platform traits are confirmed:
 - the platform uses a **generic document service**, not one hand-written CRUD controller per document type;
 - document persistence is split between a **common registry** and **typed head/part storage**;
 - posting, derivation, relationship graph, and effects are **runtime collaborators**, not hardcoded inside a single persistence class;
-- list filtering, payload validation, enrichment, and UI capability shaping happen in runtime, not in the web client.
+- list filtering, payload validation, enrichment, and evaluated Document Action shaping happen in runtime, not in the web client.
 
 ### Recommended reading order inside the file
 

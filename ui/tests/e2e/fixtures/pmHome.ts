@@ -1,8 +1,6 @@
 import type { ReceivablesReconciliationReportDto } from '../../../ngb-property-management-web/src/api/types/pmContracts'
-import type { DocumentDto, PageResponseDto } from '../../../ngb-ui-framework/src/ngb/api/contracts'
-import type { PeriodClosingCalendarDto } from '../../../ngb-ui-framework/src/ngb/accounting/periodClosingTypes'
-import { ReportRowKind, type ReportCellDto, type ReportExecutionResponseDto, type ReportSheetRowDto } from '../../../ngb-ui-framework/src/ngb/reporting/types'
-import type { ReferenceValue } from '../../../ngb-ui-framework/src/ngb/metadata/types'
+import type { DocumentDto, PageResponseDto, PeriodClosingCalendarDto, ReferenceValue } from '@ngbplatform/ui/contracts'
+import { ReportRowKind, type ReportCellDto, type ReportExecutionResponseDto, type ReportSheetRowDto } from '@ngbplatform/ui/contracts'
 import { PM_TEST_IDS } from '../support/routes'
 
 function reference(id: string, display: string): ReferenceValue {

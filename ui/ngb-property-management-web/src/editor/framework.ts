@@ -1,7 +1,9 @@
-import type { EditorFrameworkConfig, DocumentEffects, EffectDimensionValue } from 'ngb-ui-framework'
+import type { EditorFrameworkConfig, DocumentEffects, EffectDimensionValue } from '@ngbplatform/ui'
 import {
   buildGeneralJournalEntriesPath,
+  executeDocumentAction,
   getDocumentById,
+  getDocumentEditorState,
   getDocumentEffects,
   getDocumentGraph,
   getEntityAuditLog,
@@ -10,10 +12,9 @@ import {
   isNonEmptyGuid,
   shortGuid,
   useLookupStore,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getLookupHint } from '../lookup/hints'
-import { resolvePmEditorDocumentActions } from './documentActions'
 import { resolvePmEditorEntityProfile } from './entityProfile'
 
 const PM_EFFECT_DIMENSION_DOCUMENT_TYPES = [
@@ -45,19 +46,15 @@ function defaultBuildDocumentFullPageUrl(documentType: string, id?: string | nul
   return `/documents/${type}/${encodeURIComponent(normalizedId)}`
 }
 
-function looksLikeGuidLabel(value: string | null | undefined): boolean {
-  const s = String(value ?? '').trim()
+function looksLikeGuidLabel(value: string): boolean {
+  const s = value.trim()
   return isNonEmptyGuid(s) && !isEmptyGuid(s)
 }
 
-function looksLikeSyntheticDocumentLabel(display: string | null | undefined, valueId: string | null | undefined): boolean {
-  const label = String(display ?? '').trim()
-  const id = String(valueId ?? '').trim()
-  if (!label || !isNonEmptyGuid(id) || isEmptyGuid(id)) return false
-
-  const short = id.slice(0, 8).toLowerCase()
-  const normalized = label.toLowerCase()
-  return normalized.endsWith(short) || normalized.endsWith(`…${id.slice(-4).toLowerCase()}`)
+function looksLikeSyntheticDocumentLabel(display: string, valueId: string): boolean {
+  const short = valueId.slice(0, 8).toLowerCase()
+  const normalized = display.toLowerCase()
+  return normalized.endsWith(short) || normalized.endsWith(`…${valueId.slice(-4).toLowerCase()}`)
 }
 
 async function prefetchDimensionDocumentLabels(snapshot: DocumentEffects, lookupStore: ReturnType<typeof useLookupStore>): Promise<void> {
@@ -111,6 +108,10 @@ export function createPmEditorConfig(): EditorFrameworkConfig {
   const lookupStore = useLookupStore()
 
   return {
+    documentActions: {
+      loadEditorState: getDocumentEditorState,
+      execute: executeDocumentAction,
+    },
     routing: {
       buildDocumentFullPageUrl(documentType, id) {
         if (isGeneralJournalEntryDocumentType(documentType)) {
@@ -147,7 +148,6 @@ export function createPmEditorConfig(): EditorFrameworkConfig {
     print: {
       resolveLookupHint: ({ documentType, fieldKey, lookup }) => getLookupHint(documentType, fieldKey, lookup),
     },
-    resolveDocumentActions: resolvePmEditorDocumentActions,
     resolveEntityProfile: resolvePmEditorEntityProfile,
   }
 }

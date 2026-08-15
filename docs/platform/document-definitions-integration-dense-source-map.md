@@ -144,22 +144,22 @@ The verified summary comment on this type is especially revealing:
 
 That gives a direct bridge from declarative definition to runtime behavior.
 
-### 3. Runtime layer: universal document API
+### 3. Runtime layer: focused document application APIs
 
-`IDocumentService` is the public application-facing contract. The verified method list shows that runtime exposes one unified surface for:
+`IDocumentService` exposes the generic document surface for:
 
 - metadata discovery;
 - list/detail reads;
 - cross-type lookup;
 - draft create/update/delete;
-- post/unpost/repost;
-- mark/unmark for deletion;
-- derivation actions;
 - relationship graph;
 - effects;
-- actual derivation.
+- trusted/internal derivation.
 
-This is the cleanest proof that document metadata, document lifecycle, document graph, and document effects are intentionally presented as one coherent runtime API.
+Interactive action discovery and execution are deliberately separate in 2.0:
+`IDocumentActionQueryService` returns editor state and the unified action list, while
+`IDocumentActionDispatcher` executes lifecycle, derivation, and vertical commands. Trusted system
+lifecycle operations use `IDocumentSystemLifecycleService`.
 
 ## How DocumentService consumes metadata and definitions
 
@@ -189,12 +189,15 @@ This is the universal metadata-driven path.
 The verified `DeriveInternalAsync` path shows that runtime does not hardcode derivation rules. Instead it:
 
 1. loads the source document record;
-2. asks derivation infrastructure for actions available for the source type;
+2. asks derivation infrastructure for registered bindings for the source type;
 3. filters them by target type and relationship code;
-4. resolves the selected derivation action;
+4. resolves the matching derivation binding;
 5. delegates actual draft creation to `IDocumentDerivationService`.
 
-This is where the definition boundary is the most concrete. `DocumentService` is not the owner of derivation rules. It is the orchestrator that finds the matching declarative rule and then invokes derivation infrastructure.
+This is the trusted/internal compatibility path. `DocumentService` is not the owner of derivation
+rules. It finds the matching declarative rule and invokes derivation infrastructure. Interactive
+clients discover the corresponding derivation through the unified Document Action editor state and
+execute it through the dispatcher.
 
 ### Definition consumption for relationship graph
 

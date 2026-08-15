@@ -92,9 +92,6 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);
@@ -192,7 +189,6 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
         effects.AccountingEntries.Should().BeEmpty();
         effects.OperationalRegisterMovements.Should().BeEmpty();
         effects.ReferenceRegisterWrites.Should().BeEmpty();
-        effects.Ui.Should().NotBeNull();
     }
 
     [Fact]
@@ -372,6 +368,15 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
         posting.Setup(x => x.UnpostAsync(id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         posting.Setup(x => x.MarkForDeletionAsync(id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         posting.Setup(x => x.UnmarkForDeletionAsync(id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        docs.Setup(x => x.GetAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(new DocumentRecord
+        {
+            Id = id,
+            TypeCode = TypeCode,
+            DateUtc = new DateTime(2026, 7, 26, 0, 0, 0, DateTimeKind.Utc),
+            Status = DocumentStatus.Draft,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        });
 
         reader.Setup(x => x.GetByIdAsync(It.IsAny<DocumentHeadDescriptor>(), id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentHeadRow(
@@ -395,9 +400,6 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);
@@ -418,6 +420,48 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
         posting.Verify(x => x.UnpostAsync(id, It.IsAny<CancellationToken>()), Times.Once);
         posting.Verify(x => x.MarkForDeletionAsync(id, It.IsAny<CancellationToken>()), Times.Once);
         posting.Verify(x => x.UnmarkForDeletionAsync(id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("post")]
+    [InlineData("unpost")]
+    [InlineData("repost")]
+    [InlineData("mark_for_deletion")]
+    [InlineData("unmark_for_deletion")]
+    public async Task System_lifecycle_rejects_an_id_owned_by_another_document_type_before_posting(
+        string action)
+    {
+        var id = Guid.NewGuid();
+        const string actualType = "another_document_type";
+        var service = CreateSut(BuildMeta(TypeCode), docsSetup: documents =>
+        {
+            documents
+                .Setup(repository => repository.GetAsync(id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new DocumentRecord
+                {
+                    Id = id,
+                    TypeCode = actualType,
+                    DateUtc = new DateTime(2026, 7, 26, 0, 0, 0, DateTimeKind.Utc),
+                    Status = DocumentStatus.Draft,
+                    CreatedAtUtc = DateTime.UtcNow,
+                    UpdatedAtUtc = DateTime.UtcNow
+                });
+        });
+
+        Func<Task> act = action switch
+        {
+            "post" => () => service.PostAsync(TypeCode, id, CancellationToken.None),
+            "unpost" => () => service.UnpostAsync(TypeCode, id, CancellationToken.None),
+            "repost" => () => service.RepostAsync(TypeCode, id, CancellationToken.None),
+            "mark_for_deletion" => () => service.MarkForDeletionAsync(TypeCode, id, CancellationToken.None),
+            "unmark_for_deletion" => () => service.UnmarkForDeletionAsync(TypeCode, id, CancellationToken.None),
+            _ => throw new InvalidOperationException($"Unsupported lifecycle action '{action}'.")
+        };
+
+        var exception = await act.Should().ThrowAsync<DocumentTypeMismatchException>();
+        exception.Which.DocumentId.Should().Be(id);
+        exception.Which.ExpectedTypeCode.Should().Be(TypeCode);
+        exception.Which.ActualTypeCode.Should().Be(actualType);
     }
 
     private static DocumentService CreateSut(
@@ -472,9 +516,6 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);

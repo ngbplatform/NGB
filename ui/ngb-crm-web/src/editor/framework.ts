@@ -1,6 +1,8 @@
 import type { DocumentEffects, EditorFrameworkConfig, LookupHint, LookupStoreApi } from '@ngbplatform/ui'
 import {
+  executeDocumentAction,
   getDocumentById,
+  getDocumentEditorState,
   getDocumentEffects,
   getDocumentGraph,
   getEntityAuditLog,
@@ -12,6 +14,10 @@ import {
 
 import { getCRMLookupHint } from '../lookup/hints'
 import { resolveCRMEditorEntityProfile } from './entityProfile'
+
+type CRMEffectLookupHint =
+  | Extract<LookupHint, { kind: 'catalog' }>
+  | Extract<LookupHint, { kind: 'document' }>
 
 function normalizePathSegment(value: string | null | undefined): string {
   return String(value ?? '').trim()
@@ -39,7 +45,7 @@ function extractGuidValue(value: unknown): string | null {
   return null
 }
 
-function resolveCRMEffectLookupHint(fieldKey: string): LookupHint | null {
+function resolveCRMEffectLookupHint(fieldKey: string): CRMEffectLookupHint | null {
   switch (fieldKey.toLowerCase()) {
     case 'source_document_id':
       return { kind: 'document', documentTypes: CRM_EFFECT_DOCUMENT_TYPES }
@@ -66,12 +72,10 @@ function resolveCRMEffectLookupHint(fieldKey: string): LookupHint | null {
   }
 }
 
-function resolveCRMEffectLookupLabel(lookupStore: LookupStoreApi, hint: LookupHint, id: string): string {
+function resolveCRMEffectLookupLabel(lookupStore: LookupStoreApi, hint: CRMEffectLookupHint, id: string): string {
   const label = hint.kind === 'catalog'
     ? lookupStore.labelForCatalog(hint.catalogType, id)
-    : hint.kind === 'coa'
-      ? lookupStore.labelForCoa(id)
-      : lookupStore.labelForAnyDocument(hint.documentTypes, id)
+    : lookupStore.labelForAnyDocument(hint.documentTypes, id)
 
   const normalized = label.trim()
   return normalized && normalized !== id ? normalized : shortGuid(id)
@@ -85,7 +89,6 @@ async function prefetchCRMEffectLabels(args: {
 
   const catalogIdsByType = new Map<string, Set<string>>()
   const documentIdsByTypesKey = new Map<string, { documentTypes: string[]; ids: Set<string> }>()
-  const coaIds = new Set<string>()
 
   for (const write of args.effects.referenceRegisterWrites ?? []) {
     for (const [fieldKey, value] of Object.entries(write.fields ?? {})) {
@@ -102,11 +105,6 @@ async function prefetchCRMEffectLabels(args: {
         continue
       }
 
-      if (hint.kind === 'coa') {
-        coaIds.add(id)
-        continue
-      }
-
       const key = hint.documentTypes.join('|')
       const group = documentIdsByTypesKey.get(key) ?? { documentTypes: hint.documentTypes, ids: new Set<string>() }
       group.ids.add(id)
@@ -118,7 +116,6 @@ async function prefetchCRMEffectLabels(args: {
   for (const [catalogType, ids] of catalogIdsByType) {
     tasks.push(args.lookupStore.ensureCatalogLabels(catalogType, [...ids]))
   }
-  if (coaIds.size > 0) tasks.push(args.lookupStore.ensureCoaLabels([...coaIds]))
   for (const group of documentIdsByTypesKey.values()) {
     tasks.push(args.lookupStore.ensureAnyDocumentLabels(group.documentTypes, [...group.ids]))
   }
@@ -130,6 +127,10 @@ export function createCRMEditorConfig(): EditorFrameworkConfig {
   const lookupStore = useLookupStore()
 
   return {
+    documentActions: {
+      loadEditorState: getDocumentEditorState,
+      execute: executeDocumentAction,
+    },
     routing: {
       buildDocumentFullPageUrl,
     },

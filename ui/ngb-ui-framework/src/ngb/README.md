@@ -18,10 +18,10 @@ Structure:
 
 Principle: NGB is a platform. Prefer structure + clarity over decoration.
 
-Vite-hosted apps should add `ngbUiFrameworkPublicAssetsPlugin()` from `ngb-ui-framework/vite-public-assets` so framework-owned `/favicon.svg` and `/silent-check-sso.html` are published without app-local copies.
+Vite-hosted apps should add `ngbUiFrameworkPublicAssetsPlugin()` from `@ngbplatform/ui/vite-public-assets` so framework-owned `/favicon.svg` and `/silent-check-sso.html` are published without app-local copies.
 
 Boundary:
 
-- `ngb-ui-framework` owns generic framework capabilities.
+- `@ngbplatform/ui` owns generic framework capabilities.
 - industry apps should keep only domain pages, domain API clients, and industry workflows.
 - if a module can be reused by another NGB app without knowing app-specific concepts, it belongs here.

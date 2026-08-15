@@ -6,7 +6,7 @@ import NgbBadge from '../primitives/NgbBadge.vue';
 import NgbIcon from '../primitives/NgbIcon.vue';
 import NgbStatusIcon from '../primitives/NgbStatusIcon.vue';
 import { useToasts } from '../primitives/toast';
-import NgbPageHeader from '../site/NgbPageHeader.vue';
+import NgbPageHeader from '../layout/NgbPageHeader.vue';
 import { copyAppLink } from '../router/shareLink';
 import { currentRouteBackTarget, navigateBack, resolveBackTarget, withBackTarget } from '../router/backNavigation';
 import { toErrorMessage } from '../utils/errorMessage';

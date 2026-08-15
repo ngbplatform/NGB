@@ -17,7 +17,10 @@ This index lists the verified files used by the cross-cutting chapter:
 ### Document-facing boundary
 
 - `NGB.Application.Abstractions/Services/IDocumentService.cs`
+- `NGB.Application.Abstractions/Services/DocumentActions.cs`
 - `NGB.Runtime/Documents/DocumentService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionQueryService.cs`
+- `NGB.Runtime/Documents/Actions/DocumentActionDispatcher.cs`
 - `NGB.Runtime/Documents/Derivations/IDocumentDerivationService.cs`
 
 ### Document persistence boundary
@@ -48,8 +51,8 @@ This index lists the verified files used by the cross-cutting chapter:
 
 This set is enough to verify the following claims without introducing speculative file paths:
 
-- the document application boundary is centered around `IDocumentService` and `DocumentService`;
-- document lifecycle / graph / effects / derivation are document-facing surfaces;
+- generic document CRUD/graph/effects and interactive Document Actions are separate application boundaries;
+- document lifecycle / graph / effects / derivation remain document-facing surfaces without putting action flags into the effects DTO;
 - the reporting runtime explicitly enriches document-facing fields when reports include interactive document display columns;
 - PostgreSQL reporting execution injects support ids that make that enrichment possible;
 - final report rendering happens after planning and enrichment, not inside raw SQL execution.

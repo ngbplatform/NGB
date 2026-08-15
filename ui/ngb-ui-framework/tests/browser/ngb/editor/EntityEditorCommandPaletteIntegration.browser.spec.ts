@@ -86,16 +86,25 @@ test('publishes real entity-editor command palette actions and swaps post/unpost
               typeCode: computed(() => 'pm.invoice'),
               currentId,
               title: computed(() => isPosted.value ? 'Invoice INV-001 (posted)' : 'Invoice INV-001'),
-              canOpenDocumentFlowPage: computed(() => true),
-              canOpenEffectsPage: computed(() => true),
-              canPrintDocument: computed(() => true),
-              canPost: computed(() => !isPosted.value),
-              canUnpost: computed(() => isPosted.value),
-              openDocumentFlowPage: editorPaletteMocks.openDocumentFlowPage,
-              openDocumentEffectsPage: editorPaletteMocks.openDocumentEffectsPage,
-              openDocumentPrintPage: editorPaletteMocks.openDocumentPrintPage,
-              post: editorPaletteMocks.post,
-              unpost: editorPaletteMocks.unpost,
+              isDocumentActionAllowed: (actionCode) => {
+                if (['view_flow', 'view_effects', 'print'].includes(actionCode)) return true
+                if (actionCode === 'post') return !isPosted.value
+                if (actionCode === 'unpost') return isPosted.value
+                return false
+              },
+              requestDocumentAction: (actionCode) => {
+                const handlers: Record<string, (() => void | Promise<void>) | undefined> = {
+                  view_flow: editorPaletteMocks.openDocumentFlowPage,
+                  view_effects: editorPaletteMocks.openDocumentEffectsPage,
+                  print: editorPaletteMocks.openDocumentPrintPage,
+                  post: editorPaletteMocks.post,
+                  unpost: editorPaletteMocks.unpost,
+                }
+                const handler = handlers[actionCode]
+                if (!handler) return false
+                void handler()
+                return true
+              },
             })
 
             return () => h('div', { class: 'p-6' }, [

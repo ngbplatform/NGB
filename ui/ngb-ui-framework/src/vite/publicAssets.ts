@@ -75,7 +75,7 @@ export function ngbUiFrameworkPublicAssetsPlugin(options: NgbUiFrameworkPublicAs
   const assets = buildPublicAssets(options)
 
   return {
-    name: 'ngb-ui-framework-public-assets',
+    name: '@ngbplatform/ui-public-assets',
     configureServer(server: DevServerLike) {
       server.middlewares.use((req, res, next) => {
         const pathname = requestPathname(req.url)

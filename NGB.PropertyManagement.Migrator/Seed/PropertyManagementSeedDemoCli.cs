@@ -77,6 +77,7 @@ internal static class PropertyManagementSeedDemoCli
                 options,
                 seedScope.ServiceProvider.GetRequiredService<ICatalogService>(),
                 seedScope.ServiceProvider.GetRequiredService<IDocumentService>(),
+                seedScope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>(),
                 seedScope.ServiceProvider.GetRequiredService<IDocumentDraftService>(),
                 seedScope.ServiceProvider.GetRequiredService<IPropertyBulkCreateUnitsService>(),
                 seedScope.ServiceProvider.GetRequiredService<IChartOfAccountsAdminService>(),
@@ -267,6 +268,7 @@ internal sealed class PropertyManagementDemoSeeder(
     PropertyManagementDemoSeedOptions options,
     ICatalogService catalogs,
     IDocumentService documents,
+    IDocumentSystemLifecycleService lifecycle,
     IDocumentDraftService drafts,
     IPropertyBulkCreateUnitsService bulkUnits,
     IChartOfAccountsAdminService chartOfAccountsAdmin,
@@ -1323,7 +1325,7 @@ internal sealed class PropertyManagementDemoSeeder(
     {
         var created = await documents.CreateDraftAsync(typeCode, payload, ct);
         await drafts.UpdateDraftAsync(created.Id, number: null, dateUtc: dateUtc, manageTransaction: true, ct: ct);
-        var posted = await documents.PostAsync(typeCode, created.Id, ct);
+        var posted = await lifecycle.PostAsync(typeCode, created.Id, ct);
         TrackDocumentProgress(typeCode);
         return posted;
     }

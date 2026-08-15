@@ -28,6 +28,12 @@ public sealed class PermissionSnapshotProvider(
         }
     }
 
+    public Task<PermissionSnapshot> RefreshCurrentAsync(CancellationToken ct)
+    {
+        _currentSnapshotTask = null;
+        return GetCurrentAsync(ct);
+    }
+
     private async Task<PermissionSnapshot> LoadCurrentAsync(CancellationToken ct)
     {
         var actor = currentActor.Current;

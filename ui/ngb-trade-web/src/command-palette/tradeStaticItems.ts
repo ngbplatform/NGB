@@ -10,7 +10,7 @@ import {
   type CommandPaletteItemSeed,
   type CommandPaletteScope,
   type NgbIconName,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 export type TradeStaticActionSeed = CommandPaletteItemSeed
 

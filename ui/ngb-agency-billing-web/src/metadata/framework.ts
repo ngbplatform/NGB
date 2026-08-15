@@ -1,5 +1,6 @@
 import {
   buildLookupFieldTargetUrl,
+  normalizeLookupValue,
   getCatalogTypeMetadata,
   getDocumentTypeMetadata,
   searchResolvedLookupItems,
@@ -8,7 +9,7 @@ import {
   type ColumnMetadata,
   type MetadataFormBehavior,
   type MetadataFrameworkConfig,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getAgencyBillingLookupHint } from '../lookup/hints'
 import { findDisplayField, isFieldHidden, isFieldReadonly } from './formBehavior'
@@ -61,7 +62,7 @@ export const agencyBillingMetadataFormBehavior: MetadataFormBehavior = {
   buildLookupTargetUrl: async ({ hint, value, routeFullPath }) =>
     await buildLookupFieldTargetUrl({
       hint,
-      value,
+      value: normalizeLookupValue(value),
       route: { fullPath: routeFullPath },
     }),
 }

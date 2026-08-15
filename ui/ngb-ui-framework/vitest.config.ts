@@ -8,7 +8,7 @@ const packageRoot = dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   root: packageRoot,
   test: {
-    name: 'ngb-ui-framework',
+    name: '@ngbplatform/ui',
     environment: 'node',
     include: ['tests/unit/**/*.spec.ts'],
     exclude: ['tests/browser/**/*.browser.spec.ts'],

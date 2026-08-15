@@ -1,1 +1,1 @@
-import 'ngb-ui-framework/styles'
+import '@ngbplatform/ui/styles'

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   httpPost: vi.fn(),
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   httpPost: mocks.httpPost,
 }))
 

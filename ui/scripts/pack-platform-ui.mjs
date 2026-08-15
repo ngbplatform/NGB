@@ -1,70 +1,30 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { gzipSync, gunzipSync } from 'fflate'
+
+import { createPlatformUiPackageManifest } from './platform-ui-package-manifest.mjs'
+
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = join(uiRoot, 'ngb-ui-framework')
+const crmRoot = join(uiRoot, 'ngb-crm-web')
 const outputRoot = resolve(uiRoot, '..', 'artifacts', 'npm')
 const sourceManifest = JSON.parse(await readFile(join(sourceRoot, 'package.json'), 'utf8'))
 const requestedVersion = readVersionArgument(process.argv.slice(2)) ?? sourceManifest.version
 
 if (requestedVersion !== sourceManifest.version) {
   throw new Error(
-    `Requested version ${requestedVersion} does not match ngb-ui-framework version ${sourceManifest.version}.`,
+    `Requested version ${requestedVersion} does not match @ngbplatform/ui source version ${sourceManifest.version}.`,
   )
 }
 
-const packageManifest = {
-  name: '@ngbplatform/ui',
-  version: requestedVersion,
-  description: 'Reusable Vue UI building blocks for NGB Platform vertical applications.',
-  keywords: ['ngb', 'ngb-platform', 'vue', 'ui-framework'],
-  license: 'Apache-2.0',
-  author: 'NGB Platform',
-  homepage: 'https://ngbplatform.com',
-  repository: {
-    type: 'git',
-    url: 'https://github.com/ngbplatform/NGB.git',
-    directory: 'ui/ngb-ui-framework',
-  },
-  bugs: {
-    url: 'https://github.com/ngbplatform/NGB/issues',
-  },
-  type: 'module',
-  engines: {
-    node: '>=22.14.0',
-  },
-  sideEffects: ['./src/styles/tailwind.css', './src/**/*.vue'],
-  exports: {
-    '.': {
-      types: './src/index.ts',
-      import: './src/index.ts',
-      default: './src/index.ts',
-    },
-    './styles': './src/styles/tailwind.css',
-    './vite-public-assets': './vite-public-assets.js',
-  },
-  files: ['LICENSE', 'README.md', 'public', 'src', 'vite-public-assets.js'],
-  publishConfig: {
-    access: 'public',
-    registry: 'https://registry.npmjs.org/',
-  },
-  dependencies: {
-    '@headlessui/vue': sourceManifest.dependencies['@headlessui/vue'],
-    echarts: sourceManifest.dependencies.echarts,
-    'vue-echarts': sourceManifest.dependencies['vue-echarts'],
-  },
-  peerDependencies: {
-    'keycloak-js': sourceManifest.dependencies['keycloak-js'],
-    pinia: sourceManifest.dependencies.pinia,
-    vue: sourceManifest.dependencies.vue,
-    'vue-router': sourceManifest.dependencies['vue-router'],
-  },
-}
+const packageManifest = createPlatformUiPackageManifest(sourceManifest, requestedVersion)
 
 const stagingRoot = await mkdtemp(join(tmpdir(), 'ngb-platform-ui-'))
 const packageRoot = join(stagingRoot, 'package')
@@ -105,12 +65,63 @@ try {
     },
   )
 
+  const tarballPath = join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`)
+  await normalizeTarballCompression(tarballPath)
+  console.log(`Deterministic package integrity: ${await calculateIntegrity(tarballPath)}`)
+
   await cp(
-    join(outputRoot, `ngbplatform-ui-${requestedVersion}.tgz`),
+    tarballPath,
     join(outputRoot, 'ngbplatform-ui-local.tgz'),
   )
+  await verifyCrmConsumerLock(tarballPath, requestedVersion)
 } finally {
   await rm(stagingRoot, { recursive: true, force: true })
+}
+
+async function normalizeTarballCompression(tarballPath) {
+  const npmTarball = await readFile(tarballPath)
+  const tarArchive = gunzipSync(npmTarball)
+
+  // npm pack delegates gzip compression to the host runtime. The resulting
+  // gzip byte stream can differ across operating systems even when the TAR
+  // archive is identical. Recompress with a pinned pure-JavaScript codec so
+  // local validation and the Linux publication workflow produce the same
+  // registry integrity.
+  const deterministicTarball = gzipSync(tarArchive, {
+    level: 9,
+    mtime: 0,
+  })
+
+  await writeFile(tarballPath, deterministicTarball)
+}
+
+async function verifyCrmConsumerLock(tarballPath, version) {
+  const crmManifest = JSON.parse(await readFile(join(crmRoot, 'package.json'), 'utf8'))
+  const crmLock = JSON.parse(await readFile(join(crmRoot, 'package-lock.json'), 'utf8'))
+  const locked = crmLock.packages?.['node_modules/@ngbplatform/ui']
+  const expectedResolved = `https://registry.npmjs.org/@ngbplatform/ui/-/ui-${version}.tgz`
+  const expectedIntegrity = await calculateIntegrity(tarballPath)
+
+  if (crmManifest.dependencies?.['@ngbplatform/ui'] !== version) {
+    throw new Error(`CRM must reference @ngbplatform/ui ${version} exactly.`)
+  }
+  if (
+    crmLock.packages?.['']?.dependencies?.['@ngbplatform/ui'] !== version
+    || locked?.version !== version
+    || locked?.resolved !== expectedResolved
+    || locked?.integrity !== expectedIntegrity
+  ) {
+    throw new Error(
+      `CRM package-lock must reference the exact @ngbplatform/ui ${version} release candidate `
+        + 'including its registry URL and SHA-512 integrity.',
+    )
+  }
+}
+
+async function calculateIntegrity(tarballPath) {
+  return `sha512-${createHash('sha512')
+    .update(await readFile(tarballPath))
+    .digest('base64')}`
 }
 
 function readVersionArgument(args) {

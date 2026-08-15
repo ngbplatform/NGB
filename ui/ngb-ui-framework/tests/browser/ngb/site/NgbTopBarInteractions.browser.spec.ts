@@ -89,6 +89,7 @@ const TopBarEventHarness = defineComponent({
 const MobileTopBarHarness = defineComponent({
   setup() {
     const mainMenu = ref(0)
+    const notifications = ref(0)
 
     return () => h('div', [
       h(NgbTopBar, {
@@ -100,8 +101,10 @@ const MobileTopBarHarness = defineComponent({
         hasSettings: false,
         showMainMenu: true,
         onOpenMainMenu: () => { mainMenu.value += 1 },
+        onOpenNotifications: () => { notifications.value += 1 },
       }),
       h('div', { 'data-testid': 'mobile-main-menu-count' }, String(mainMenu.value)),
+      h('div', { 'data-testid': 'mobile-notifications-count' }, String(notifications.value)),
     ])
   },
 })
@@ -117,7 +120,7 @@ test('emits desktop actions and exposes the full user menu state', async () => {
   expect(hasVisibleText('⌘')).toBe(true)
 
   await view.getByRole('button', { name: /Search pages, records, reports, or run a command/i }).click()
-  await visibleButtonByTitle('Notifications').click()
+  await visibleButtonByTitle('Work Center').click()
   await visibleButtonByTitle('Help').click()
   await visibleButtonByTitle('Settings').click()
   await visibleButtonByTitle('Switch to light mode').click()
@@ -155,6 +158,17 @@ test('emits mobile main-menu actions and hides the settings shortcut when none e
   expect(Array.from(document.querySelectorAll('button[title="Settings"]')).some(isVisible)).toBe(false)
 
   await view.getByTestId('site-topbar-main-menu').click()
+  await visibleButtonByTitle('Work Center').click()
 
   await expect.element(view.getByTestId('mobile-main-menu-count')).toHaveTextContent('1')
+  await expect.element(view.getByTestId('mobile-notifications-count')).toHaveTextContent('1')
+})
+
+test('emits the tablet Work Center action', async () => {
+  await page.viewport(800, 900)
+
+  const view = await render(TopBarEventHarness)
+  await visibleButtonByTitle('Work Center').click()
+
+  await expect.element(view.getByTestId('topbar-notifications-count')).toHaveTextContent('1')
 })

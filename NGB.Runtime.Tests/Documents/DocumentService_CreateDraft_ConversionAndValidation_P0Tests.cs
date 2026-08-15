@@ -120,9 +120,6 @@ public sealed class DocumentService_CreateDraft_ConversionAndValidation_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);
@@ -377,9 +374,6 @@ public sealed class DocumentService_CreateDraft_ConversionAndValidation_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);
@@ -515,9 +509,6 @@ public sealed class DocumentService_CreateDraft_ConversionAndValidation_P0Tests
             posting.Object,
             derivations.Object,
             postingActionResolver.Object,
-            opregPostingActionResolver.Object,
-            refregPostingActionResolver.Object,
-            [],
             relationshipGraph.Object,
             NoOpReferencePayloadEnricher.Instance,
             []);

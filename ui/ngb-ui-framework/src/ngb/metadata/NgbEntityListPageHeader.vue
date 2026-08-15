@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, useSlots } from 'vue'
 import NgbIcon from '../primitives/NgbIcon.vue'
-import NgbPageHeader from '../site/NgbPageHeader.vue'
+import NgbPageHeader from '../layout/NgbPageHeader.vue'
 
 const props = withDefaults(defineProps<{
   title: string

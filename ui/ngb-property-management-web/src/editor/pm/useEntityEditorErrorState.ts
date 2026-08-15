@@ -7,7 +7,7 @@ import {
   normalizeEntityEditorError,
   type EditorErrorIssue,
   type EditorErrorState,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 export type LeaseTenantFieldKey = 'party_id' | 'role' | 'is_primary' | 'ordinal'
 type LeaseTenantRowErrors = Partial<Record<LeaseTenantFieldKey, string[]>>
@@ -76,7 +76,6 @@ function isLeasePartIssuePath(path: string): boolean {
 }
 
 function pushTenantRowMessages(target: Record<number, LeaseTenantRowErrors>, rowIndex: number, field: LeaseTenantFieldKey, messages: string[]) {
-  if (!Number.isFinite(rowIndex) || rowIndex < 0) return
   const entry = (target[rowIndex] ??= {})
   const current = entry[field] ?? []
   entry[field] = dedupeMessages([...current, ...messages])
@@ -124,7 +123,7 @@ export function useEntityEditorErrorState(args: UseEntityEditorErrorStateArgs) {
     const leaseRowMatch = raw.match(/^parties(?:\[(\d+)\]|\.(\d+))\.(.+)$/)
     if (leaseRowMatch) {
       const indexRaw = leaseRowMatch[1] ?? leaseRowMatch[2]
-      const subKey = leaseRowMatch[3] ?? ''
+      const subKey = leaseRowMatch[3]
       const index = Number(indexRaw)
       const ordinal = Number.isFinite(index) ? index + 1 : null
       const rowLabel = ordinal ? `Tenant #${ordinal}` : 'Tenant'
@@ -181,11 +180,12 @@ export function useEntityEditorErrorState(args: UseEntityEditorErrorStateArgs) {
 
   const displayedError = computed<EditorErrorState | null>(() => {
     const current = error.value
+    const issues = visibleIssues.value
     if (!current) return null
-    if (current.issues.length > 0 && visibleIssues.value.length === 0) return null
+    if (current.issues.length > 0 && issues.length === 0) return null
     return {
       ...current,
-      issues: visibleIssues.value,
+      issues,
     }
   })
 

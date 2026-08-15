@@ -8,7 +8,9 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Effects;
 using NGB.Contracts.Metadata;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
+using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Runtime;
+using NGB.PropertyManagement.Runtime.DocumentActions;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Receivables;
@@ -48,10 +50,9 @@ public sealed class PmReceivables_Effects_Endpoint_P0Tests : IAsyncLifetime
             effects.AccountingEntries.Should().BeEmpty();
             effects.OperationalRegisterMovements.Should().BeEmpty();
             effects.ReferenceRegisterWrites.Should().BeEmpty();
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeFalse();
-            effects.Ui.DisabledReasons.Should().ContainKey("apply");
-            effects.Ui.DisabledReasons["apply"].Single().ErrorCode.Should().Be("pm.ui.apply.requires_posted");
+            var action = await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivableCharge, charge.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value);
+            action.IsAllowed.Should().BeFalse();
+            action.DisabledReasons.Single().Code.Should().Be("pm.receivables.apply.requires_posted");
         }
         finally
         {
@@ -82,9 +83,7 @@ public sealed class PmReceivables_Effects_Endpoint_P0Tests : IAsyncLifetime
 
             var effects = await GetEffectsAsync(client, PropertyManagementCodes.ReceivableCharge, charge.Id);
 
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeTrue();
-            effects.Ui.DisabledReasons.Should().NotContainKey("apply");
+            (await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivableCharge, charge.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value)).IsAllowed.Should().BeTrue();
         }
         finally
         {
@@ -165,9 +164,7 @@ public sealed class PmReceivables_Effects_Endpoint_P0Tests : IAsyncLifetime
 
             effects.AccountingEntries.Should().ContainSingle();
             effects.OperationalRegisterMovements.Should().ContainSingle();
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeTrue();
-            effects.Ui.DisabledReasons.Should().NotContainKey("apply");
+            (await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivableCharge, charge.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value)).IsAllowed.Should().BeTrue();
         }
         finally
         {
@@ -217,10 +214,9 @@ public sealed class PmReceivables_Effects_Endpoint_P0Tests : IAsyncLifetime
 
             var effects = await GetEffectsAsync(client, PropertyManagementCodes.ReceivableCharge, charge.Id);
 
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeFalse();
-            effects.Ui.DisabledReasons.Should().ContainKey("apply");
-            effects.Ui.DisabledReasons["apply"].Single().ErrorCode.Should().Be("pm.ui.apply.no_outstanding");
+            var action = await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivableCharge, charge.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value);
+            action.IsAllowed.Should().BeFalse();
+            action.DisabledReasons.Single().Code.Should().Be("pm.receivables.apply.no_outstanding");
         }
         finally
         {
@@ -270,10 +266,9 @@ public sealed class PmReceivables_Effects_Endpoint_P0Tests : IAsyncLifetime
 
             var effects = await GetEffectsAsync(client, PropertyManagementCodes.ReceivablePayment, payment.Id);
 
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeFalse();
-            effects.Ui.DisabledReasons.Should().ContainKey("apply");
-            effects.Ui.DisabledReasons["apply"].Single().ErrorCode.Should().Be("pm.ui.apply.no_credit");
+            var action = await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivablePayment, payment.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value);
+            action.IsAllowed.Should().BeFalse();
+            action.DisabledReasons.Single().Code.Should().Be("pm.receivables.apply.no_credit");
         }
         finally
         {
@@ -303,9 +298,7 @@ public sealed class PmReceivables_Effects_Endpoint_P0Tests : IAsyncLifetime
 
             var effects = await GetEffectsAsync(client, PropertyManagementCodes.ReceivableCreditMemo, creditMemo.Id);
 
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeTrue();
-            effects.Ui.DisabledReasons.Should().NotContainKey("apply");
+            (await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivableCreditMemo, creditMemo.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value)).IsAllowed.Should().BeTrue();
         }
         finally
         {
@@ -355,10 +348,9 @@ public sealed class PmReceivables_Effects_Endpoint_P0Tests : IAsyncLifetime
 
             var effects = await GetEffectsAsync(client, PropertyManagementCodes.ReceivableCreditMemo, creditMemo.Id);
 
-            effects.Ui.Should().NotBeNull();
-            effects.Ui!.CanApply.Should().BeFalse();
-            effects.Ui.DisabledReasons.Should().ContainKey("apply");
-            effects.Ui.DisabledReasons["apply"].Single().ErrorCode.Should().Be("pm.ui.apply.no_credit");
+            var action = await client.GetDocumentActionAsync(PropertyManagementCodes.ReceivableCreditMemo, creditMemo.Id, PropertyManagementDocumentActionCodes.OpenReceivablesReconciliation.Value);
+            action.IsAllowed.Should().BeFalse();
+            action.DisabledReasons.Single().Code.Should().Be("pm.receivables.apply.no_credit");
         }
         finally
         {

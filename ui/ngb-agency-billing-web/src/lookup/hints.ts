@@ -1,5 +1,5 @@
-import { lookupHintFromSource } from 'ngb-ui-framework'
-import type { LookupHint, LookupSource } from 'ngb-ui-framework'
+import { lookupHintFromSource } from '@ngbplatform/ui'
+import type { LookupHint, LookupSource } from '@ngbplatform/ui'
 
 const DIRECT_HINTS: Record<string, LookupHint> = {
   client_id: { kind: 'catalog', catalogType: 'ab.client' },

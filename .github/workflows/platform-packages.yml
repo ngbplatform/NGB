@@ -27,6 +27,8 @@ on:
       - 'packaging/**'
       - 'ui/package.json'
       - 'ui/package-lock.json'
+      - 'ui/ngb-crm-web/package.json'
+      - 'ui/ngb-crm-web/package-lock.json'
       - 'ui/ngb-ui-framework/**'
       - 'ui/scripts/**'
   push:
@@ -56,6 +58,8 @@ on:
       - 'packaging/**'
       - 'ui/package.json'
       - 'ui/package-lock.json'
+      - 'ui/ngb-crm-web/package.json'
+      - 'ui/ngb-crm-web/package-lock.json'
       - 'ui/ngb-ui-framework/**'
       - 'ui/scripts/**'
   workflow_dispatch:
@@ -78,7 +82,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22.14.0
+          node-version: 24.19.0
           package-manager-cache: false
 
       - name: Install UI workspace
@@ -87,7 +91,9 @@ jobs:
 
       - name: Test UI framework
         working-directory: ui
-        run: npm exec -- vitest run --config ngb-ui-framework/vitest.config.ts
+        run: |
+          npm run test:api-compat
+          npm exec -- vitest run --config ngb-ui-framework/vitest.config.ts
 
       - name: Resolve package version
         id: npm-version
@@ -101,7 +107,7 @@ jobs:
         run: npm run pack:platform-ui
 
       - name: Upload npm package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ngbplatform-ui-${{ steps.npm-version.outputs.version }}
           path: artifacts/npm/ngbplatform-ui-${{ steps.npm-version.outputs.version }}.tgz
@@ -131,7 +137,7 @@ jobs:
         run: bash packaging/nuget/verify-platform-packages.sh
 
       - name: Upload NuGet packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ngb-platform-nuget-${{ steps.nuget-version.outputs.version }}
           path: |

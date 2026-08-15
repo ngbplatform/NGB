@@ -10,8 +10,11 @@ import { configureNgbCommandPalette } from '../../../../src/ngb/command-palette/
 import { useCommandPaletteStore } from '../../../../src/ngb/command-palette/store'
 import { useCommandPalettePageContext } from '../../../../src/ngb/command-palette/useCommandPalettePageContext'
 import { useCommandPaletteHotkeys } from '../../../../src/ngb/command-palette/useCommandPaletteHotkeys'
-import { useMainMenuStore, type MainMenuGroup } from '../../../../src/ngb/site/mainMenuStore'
-import type { CommandPaletteSearchResponseDto, CommandPaletteStoreConfig } from '../../../../src/ngb/command-palette/types'
+import type {
+  CommandPaletteMenuGroup,
+  CommandPaletteSearchResponseDto,
+  CommandPaletteStoreConfig,
+} from '../../../../src/ngb/command-palette/types'
 
 const recentStorageKey = 'ngb:test:command-palette:browser'
 const invoiceId = '123e4567-e89b-12d3-a456-426614174000'
@@ -20,29 +23,23 @@ const paletteBrowserMocks = vi.hoisted(() => ({
   approveInvoice: vi.fn(),
 }))
 
-const menuGroups: MainMenuGroup[] = [
+const menuGroups: CommandPaletteMenuGroup[] = [
   {
     label: 'Home',
-    ordinal: 0,
-    icon: 'home',
     items: [
-      { kind: 'page', code: 'home', label: 'Home', route: '/home', icon: 'home', ordinal: 0 },
+      { code: 'home', label: 'Home', route: '/home', icon: 'home' },
     ],
   },
   {
     label: 'Payables',
-    ordinal: 10,
-    icon: 'wallet',
     items: [
-      { kind: 'page', code: 'payables-open-items', label: 'Payables', route: '/payables/open-items', icon: 'wallet', ordinal: 0 },
+      { code: 'payables-open-items', label: 'Payables', route: '/payables/open-items', icon: 'wallet' },
     ],
   },
   {
     label: 'Administration',
-    ordinal: 20,
-    icon: 'settings',
     items: [
-      { kind: 'page', code: 'settings', label: 'Settings', route: '/settings', icon: 'settings', ordinal: 0 },
+      { code: 'settings', label: 'Settings', route: '/settings', icon: 'settings' },
     ],
   },
 ]
@@ -106,10 +103,8 @@ const PaletteHarness = defineComponent({
   setup() {
     const route = useRoute()
     const palette = useCommandPaletteStore()
-    const menuStore = useMainMenuStore()
 
     useCommandPaletteHotkeys()
-    menuStore.$patch({ groups: menuGroups })
 
     watch(
       () => route.fullPath,
@@ -242,6 +237,7 @@ async function renderPaletteHarness(
   configureNgbCommandPalette({
     router,
     recentStorageKey,
+    getMenuGroups: () => menuGroups,
     loadReportItems: async () => [],
     specialPageItems,
     searchRemote: options.searchRemote,
@@ -273,6 +269,7 @@ async function renderHotkeyRemountHarness() {
   configureNgbCommandPalette({
     router,
     recentStorageKey,
+    getMenuGroups: () => menuGroups,
     loadReportItems: async () => [],
     specialPageItems,
   })

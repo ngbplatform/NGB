@@ -63,7 +63,7 @@ defineExpose({
           :status="status"
           :force-readonly="forceReadonly"
           :errors="errors"
-          :behavior="behavior.value"
+          :behavior="behavior"
         />
       </NgbFormSection>
     </NgbFormLayout>
@@ -77,7 +77,7 @@ defineExpose({
         :status="status"
         :force-readonly="forceReadonly"
         :errors="errors"
-        :behavior="behavior.value"
+        :behavior="behavior"
       />
     </div>
   </div>

@@ -19,7 +19,7 @@ import NgbInput from '../primitives/NgbInput.vue'
 import NgbTabs from '../primitives/NgbTabs.vue'
 import NgbSelect from '../primitives/NgbSelect.vue'
 import { useToasts } from '../primitives/toast'
-import NgbPageHeader from '../site/NgbPageHeader.vue'
+import NgbPageHeader from '../layout/NgbPageHeader.vue'
 import { navigateBack } from '../router/backNavigation'
 import { copyAppLink } from '../router/shareLink'
 import {

@@ -1,12 +1,16 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Documents;
 using NGB.CRM.Api.IntegrationTests.Infrastructure;
 using NGB.CRM.Api.IntegrationTests.Support;
 using NGB.CRM.Runtime;
+using NGB.CRM.Runtime.DocumentActions;
 using NGB.Contracts.Metadata;
+using NGB.Core.Documents.Actions;
+using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
-using Npgsql;
 using Xunit;
 
 namespace NGB.CRM.Api.IntegrationTests.Documents;
@@ -195,7 +199,107 @@ public sealed class CrmDocuments_Lifecycle_And_Validation_P0Tests(CrmPostgresFix
     }
 
     [Fact]
-    public async Task Validators_Block_Invalid_Qualification_And_Quote()
+    public async Task Create_Conversion_Action_Creates_An_Incomplete_Draft_That_Can_Be_Completed_And_Posted()
+    {
+        using var host = CrmHostFactory.Create(fixture.ConnectionString, services =>
+        {
+            services.RemoveAll<IPermissionSnapshotProvider>();
+            services.AddScoped<IPermissionSnapshotProvider, BootstrapAdminPermissionSnapshotProvider>();
+        });
+        await using var scope = host.Services.CreateAsyncScope();
+
+        var setup = scope.ServiceProvider.GetRequiredService<ICrmSetupService>();
+        var catalogs = scope.ServiceProvider.GetRequiredService<ICatalogService>();
+        var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
+        var actionQueries = scope.ServiceProvider.GetRequiredService<IDocumentActionQueryService>();
+        var actions = scope.ServiceProvider.GetRequiredService<IDocumentActionDispatcher>();
+        await setup.EnsureDefaultsAsync(CancellationToken.None);
+
+        var account = await CrmIntegrationTestHelpers.CreateCatalogAsync(catalogs, CrmCodes.Account, new
+        {
+            display = "Derived Conversion Account",
+            account_number = "CRM-DERIVED-100",
+            name = "Derived Conversion Account",
+            account_type = "Prospect",
+            is_active = true
+        });
+        var contact = await CrmIntegrationTestHelpers.CreateCatalogAsync(catalogs, CrmCodes.Contact, new
+        {
+            display = "Derived Conversion Contact",
+            account_id = account.Id,
+            first_name = "Dana",
+            last_name = "Reed",
+            email = "dana.reed@derived.example",
+            is_primary = true,
+            is_active = true
+        });
+
+        var lead = await documents.CreateDraftAsync(CrmCodes.LeadIntake, CrmIntegrationTestHelpers.Payload(new
+        {
+            document_date_utc = "2026-07-31",
+            lead_name = "Derived conversion lead",
+            company_name = "Derived Conversion Account",
+            contact_name = "Dana Reed",
+            email = "dana.reed@derived.example",
+            estimated_value = 42000m,
+            currency = CrmCodes.DefaultCurrency
+        }), CancellationToken.None);
+        lead = await documents.PostAsync(CrmCodes.LeadIntake, lead.Id, CancellationToken.None);
+
+        var qualification = await documents.CreateDraftAsync(CrmCodes.LeadQualification, CrmIntegrationTestHelpers.Payload(new
+        {
+            document_date_utc = "2026-07-31",
+            lead_intake_id = lead.Id,
+            qualification_state = "Qualified",
+            score = 95
+        }), CancellationToken.None);
+        qualification = await documents.PostAsync(CrmCodes.LeadQualification, qualification.Id, CancellationToken.None);
+
+        var editorState = await actionQueries.GetEditorStateAsync(
+            CrmCodes.LeadQualification,
+            qualification.Id,
+            CancellationToken.None);
+        editorState.Actions.Should().ContainSingle(action =>
+            action.Code == CrmDocumentActionCodes.CreateConversion && action.IsAllowed);
+
+        var result = await actions.ExecuteAsync(
+            CrmCodes.LeadQualification,
+            qualification.Id,
+            new DocumentActionCode(CrmDocumentActionCodes.CreateConversion),
+            $"crm-create-conversion:{qualification.Id:D}",
+            new ExecuteDocumentActionRequestDto(editorState.DocumentVersion),
+            CancellationToken.None);
+
+        result.CreatedDocument.Should().NotBeNull();
+        var conversion = result.CreatedDocument!;
+        conversion.Status.Should().Be(DocumentStatus.Draft);
+        conversion.Payload.Fields.Should().NotBeNull();
+        conversion.Payload.Fields!["lead_intake_id"].ToString().Should().Contain(lead.Id.ToString("D"));
+        conversion.Payload.Fields["account_id"].ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        conversion.Payload.Fields["contact_id"].ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        conversion.Payload.Fields["opportunity_name"].GetString().Should().Be("Derived conversion lead");
+        conversion.Payload.Fields["amount"].GetDecimal().Should().Be(42000m);
+
+        await FluentActions.Awaiting(() => documents.PostAsync(
+                CrmCodes.LeadConversion,
+                conversion.Id,
+                CancellationToken.None))
+            .Should()
+            .ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*Account is required*");
+
+        conversion = await documents.UpdateDraftAsync(CrmCodes.LeadConversion, conversion.Id, CrmIntegrationTestHelpers.Payload(new
+        {
+            account_id = account.Id,
+            contact_id = contact.Id
+        }), CancellationToken.None);
+        conversion = await documents.PostAsync(CrmCodes.LeadConversion, conversion.Id, CancellationToken.None);
+
+        conversion.Status.Should().Be(DocumentStatus.Posted);
+    }
+
+    [Fact]
+    public async Task Conditional_Post_Requirements_Do_Not_Block_Draft_Persistence_And_Return_Domain_Validation()
     {
         using var host = CrmHostFactory.Create(fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
@@ -233,16 +337,44 @@ public sealed class CrmDocuments_Lifecycle_And_Validation_P0Tests(CrmPostgresFix
         }), CancellationToken.None);
         lead = await documents.PostAsync(CrmCodes.LeadIntake, lead.Id, CancellationToken.None);
 
-        await FluentActions.Awaiting(() => documents.CreateDraftAsync(CrmCodes.LeadQualification, CrmIntegrationTestHelpers.Payload(new
+        var incompleteQualification = await documents.CreateDraftAsync(
+            CrmCodes.LeadQualification,
+            CrmIntegrationTestHelpers.Payload(new
             {
                 document_date_utc = "2026-07-02",
                 lead_intake_id = lead.Id,
                 qualification_state = "Disqualified",
                 score = 20
-            }), CancellationToken.None))
+            }),
+            CancellationToken.None);
+
+        await FluentActions.Awaiting(() => documents.PostAsync(
+                CrmCodes.LeadQualification,
+                incompleteQualification.Id,
+                CancellationToken.None))
             .Should()
-            .ThrowAsync<PostgresException>()
-            .WithMessage("*ck_doc_crm_lead_qualification__disqualification_reason*");
+            .ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*Disqualification Reason is required*");
+
+        var incompleteConversion = await documents.CreateDraftAsync(CrmCodes.LeadConversion, CrmIntegrationTestHelpers.Payload(new
+        {
+            document_date_utc = "2026-07-03",
+            lead_intake_id = lead.Id,
+            account_id = account.Id,
+            contact_id = contact.Id,
+            create_opportunity = true,
+            amount = 10000m,
+            probability = 25m,
+            currency = CrmCodes.DefaultCurrency
+        }), CancellationToken.None);
+
+        await FluentActions.Awaiting(() => documents.PostAsync(
+                CrmCodes.LeadConversion,
+                incompleteConversion.Id,
+                CancellationToken.None))
+            .Should()
+            .ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*Opportunity Name is required*");
 
         var conversion = await documents.CreateDraftAsync(CrmCodes.LeadConversion, CrmIntegrationTestHelpers.Payload(new
         {
@@ -259,9 +391,44 @@ public sealed class CrmDocuments_Lifecycle_And_Validation_P0Tests(CrmPostgresFix
         }), CancellationToken.None);
         conversion = await documents.PostAsync(CrmCodes.LeadConversion, conversion.Id, CancellationToken.None);
 
-        var invalidQuote = await documents.CreateDraftAsync(CrmCodes.Quote, CrmIntegrationTestHelpers.Payload(new
+        var incompleteUpdate = await documents.CreateDraftAsync(CrmCodes.OpportunityUpdate, CrmIntegrationTestHelpers.Payload(new
         {
             document_date_utc = "2026-07-04",
+            opportunity_id = conversion.Id,
+            stage_id = stageId,
+            amount = 10000m,
+            probability = 0m,
+            status = "Lost"
+        }), CancellationToken.None);
+
+        await FluentActions.Awaiting(() => documents.PostAsync(
+                CrmCodes.OpportunityUpdate,
+                incompleteUpdate.Id,
+                CancellationToken.None))
+            .Should()
+            .ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*Loss Reason is required*");
+
+        var invalidQuote = await documents.CreateDraftAsync(CrmCodes.Quote, CrmIntegrationTestHelpers.Payload(new
+        {
+            document_date_utc = "2026-07-05",
+            opportunity_id = conversion.Id,
+            account_id = account.Id,
+            contact_id = contact.Id,
+            valid_until = "2026-07-04",
+            currency = CrmCodes.DefaultCurrency,
+            quote_status = "Draft",
+            amount = 0m
+        }), CancellationToken.None);
+
+        await FluentActions.Awaiting(() => documents.PostAsync(CrmCodes.Quote, invalidQuote.Id, CancellationToken.None))
+            .Should()
+            .ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*Valid Until must be on or after Document Date*");
+
+        var emptyQuote = await documents.CreateDraftAsync(CrmCodes.Quote, CrmIntegrationTestHelpers.Payload(new
+        {
+            document_date_utc = "2026-07-05",
             opportunity_id = conversion.Id,
             account_id = account.Id,
             contact_id = contact.Id,
@@ -271,9 +438,48 @@ public sealed class CrmDocuments_Lifecycle_And_Validation_P0Tests(CrmPostgresFix
             amount = 0m
         }), CancellationToken.None);
 
-        await FluentActions.Awaiting(() => documents.PostAsync(CrmCodes.Quote, invalidQuote.Id, CancellationToken.None))
+        await FluentActions.Awaiting(() => documents.PostAsync(CrmCodes.Quote, emptyQuote.Id, CancellationToken.None))
             .Should()
             .ThrowAsync<NgbArgumentInvalidException>()
             .WithMessage("*Quote must contain at least one line*");
+
+        var incompleteActivity = await documents.CreateDraftAsync(CrmCodes.ActivityLog, CrmIntegrationTestHelpers.Payload(new
+        {
+            document_date_utc = "2026-07-06",
+            activity_type = "Email",
+            subject = "Follow up with validation lead",
+            due_at_utc = "2026-08-01T15:58:00Z"
+        }), CancellationToken.None);
+
+        await FluentActions.Awaiting(() => documents.PostAsync(
+                CrmCodes.ActivityLog,
+                incompleteActivity.Id,
+                CancellationToken.None))
+            .Should()
+            .ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*Activity must reference at least one lead, account, contact, or opportunity*");
+
+        var completedActivity = await documents.UpdateDraftAsync(
+            CrmCodes.ActivityLog,
+            incompleteActivity.Id,
+            CrmIntegrationTestHelpers.Payload(new { lead_intake_id = lead.Id }),
+            CancellationToken.None);
+        completedActivity = await documents.PostAsync(CrmCodes.ActivityLog, completedActivity.Id, CancellationToken.None);
+        completedActivity.Status.Should().Be(DocumentStatus.Posted);
+    }
+
+    private sealed class BootstrapAdminPermissionSnapshotProvider : IPermissionSnapshotProvider
+    {
+        private static readonly PermissionSnapshot Snapshot = new(
+            userId: null,
+            authSubject: "crm-integration-bootstrap-admin",
+            isAuthenticated: true,
+            isActive: true,
+            isBootstrapAdmin: true,
+            accessVersion: 1,
+            permissions: []);
+
+        public Task<PermissionSnapshot> GetCurrentAsync(CancellationToken ct)
+            => Task.FromResult(Snapshot);
     }
 }

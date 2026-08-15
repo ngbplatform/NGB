@@ -168,6 +168,24 @@ const TextareaAndReferenceHarness = defineComponent({
   },
 })
 
+const DateTimeHarness = defineComponent({
+  setup() {
+    return () => h(NgbMetadataFieldRenderer, {
+      field: {
+        key: 'due_at_utc',
+        label: 'Due At',
+        dataType: 'DateTime',
+        uiControl: 7,
+        isRequired: false,
+        isReadOnly: false,
+      },
+      model: {},
+      modelValue: '2026-08-01T15:58:00.000Z',
+      entityTypeCode: 'crm.activity_log',
+    })
+  },
+})
+
 test('renders the select branch and propagates updates through the renderer', async () => {
   const view = await render(SelectHarness)
 
@@ -200,4 +218,15 @@ test('renders textarea and reference-display branches', async () => {
   await expect.element(view.getByRole('textbox')).toBeVisible()
   await expect.element(view.getByText('Internal note')).toBeVisible()
   await expect.element(view.getByText('input:text:Riverfront Tower')).toBeVisible()
+})
+
+test('renders UTC instants as datetime-local values', async () => {
+  const view = await render(DateTimeHarness)
+  const expectedLocalValue = (() => {
+    const date = new Date('2026-08-01T15:58:00.000Z')
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  })()
+
+  await expect.element(view.getByText(`input:datetime-local:${expectedLocalValue}`)).toBeVisible()
 })

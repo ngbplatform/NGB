@@ -5,6 +5,7 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
+using NGB.Trade.Api.IntegrationTests.Support;
 using NGB.Trade.Runtime;
 using Xunit;
 

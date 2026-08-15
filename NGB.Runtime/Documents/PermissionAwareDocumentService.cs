@@ -108,49 +108,10 @@ public sealed class PermissionAwareDocumentService(
         await inner.DeleteDraftAsync(documentType, id, ct);
     }
 
-    public async Task<DocumentDto> PostAsync(string documentType, Guid id, CancellationToken ct)
-    {
-        await RequireAsync(documentType, NgbPermissionActions.Post, ct);
-        return await inner.PostAsync(documentType, id, ct);
-    }
-
-    public async Task<DocumentDto> UnpostAsync(string documentType, Guid id, CancellationToken ct)
-    {
-        await RequireAsync(documentType, NgbPermissionActions.Unpost, ct);
-        return await inner.UnpostAsync(documentType, id, ct);
-    }
-
-    public async Task<DocumentDto> RepostAsync(string documentType, Guid id, CancellationToken ct)
-    {
-        await RequireAsync(documentType, NgbPermissionActions.Repost, ct);
-        return await inner.RepostAsync(documentType, id, ct);
-    }
-
-    public async Task<DocumentDto> MarkForDeletionAsync(string documentType, Guid id, CancellationToken ct)
-    {
-        await RequireAsync(documentType, NgbPermissionActions.MarkForDeletion, ct);
-        return await inner.MarkForDeletionAsync(documentType, id, ct);
-    }
-
-    public async Task<DocumentDto> UnmarkForDeletionAsync(string documentType, Guid id, CancellationToken ct)
-    {
-        await RequireAsync(documentType, NgbPermissionActions.UnmarkForDeletion, ct);
-        return await inner.UnmarkForDeletionAsync(documentType, id, ct);
-    }
-
     public async Task<DocumentDto> ExecuteActionAsync(string documentType, Guid id, string actionCode, CancellationToken ct)
     {
         await RequireAsync(documentType, actionCode, ct);
         return await inner.ExecuteActionAsync(documentType, id, actionCode, ct);
-    }
-
-    public async Task<IReadOnlyList<DocumentDerivationActionDto>> GetDerivationActionsAsync(
-        string documentType,
-        Guid id,
-        CancellationToken ct)
-    {
-        await RequireAsync(documentType, NgbPermissionActions.View, ct);
-        return await inner.GetDerivationActionsAsync(documentType, id, ct);
     }
 
     public async Task<RelationshipGraphDto> GetRelationshipGraphAsync(

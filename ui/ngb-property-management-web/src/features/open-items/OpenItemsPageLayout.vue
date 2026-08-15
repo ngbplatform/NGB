@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NgbBadge, NgbButton, NgbIcon, NgbLookup, NgbPageHeader, NgbRegisterGrid, NgbTabs } from 'ngb-ui-framework'
+import { NgbBadge, NgbButton, NgbIcon, NgbLookup, NgbPageHeader, NgbRegisterGrid, NgbTabs } from '@ngbplatform/ui'
 
 import { applyDocumentLabel, docLabel, fmtDateOnly, fmtMoney, type OpenItemsApplyResultLine, type OpenItemsLookupItem } from './shared'
 import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsTabKey } from './presentation'
@@ -54,6 +54,12 @@ const emit = defineEmits<{
 
 function isHighlightedApplyId(applyId: string): boolean {
   return props.highlightedApplyIds.includes(applyId)
+}
+
+function updateActiveTab(value: string): void {
+  if (value === 'charges' || value === 'credits' || value === 'applied') {
+    emit('update:activeTab', value)
+  }
 }
 
 function allocationTone(allocation: OpenItemsAppliedAllocationView): string {
@@ -211,7 +217,7 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
           :tabs="tabs"
           fill
           class="flex-1 min-h-0"
-          @update:model-value="emit('update:activeTab', $event)"
+          @update:model-value="updateActiveTab"
         >
           <template #default="{ active }">
             <div class="flex h-full min-h-0 min-w-0 flex-col">

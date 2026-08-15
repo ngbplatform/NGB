@@ -79,27 +79,12 @@ import { computed } from 'vue'
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
 
 import NgbIcon from '../primitives/NgbIcon.vue'
-
-type HeaderActionIconName =
-  | 'panel-right'
-  | 'open-in-new'
-  | 'copy'
-  | 'printer'
-  | 'trash'
-  | 'trash-restore'
-  | 'save'
-  | 'check'
-  | 'undo'
-  | 'file-apply'
-  | 'share'
-  | 'history'
-  | 'effects-flow'
-  | 'document-flow'
+import type { NgbIconName } from '../primitives/iconNames'
 
 type HeaderActionItem = {
   key: string
   title: string
-  icon: HeaderActionIconName
+  icon: NgbIconName
   disabled?: boolean
 }
 

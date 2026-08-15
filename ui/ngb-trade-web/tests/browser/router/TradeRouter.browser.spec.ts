@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   buildChartOfAccountsPath: vi.fn(() => '/admin/chart-of-accounts'),
 }))
 
-vi.mock('ngb-ui-framework', async () => {
+vi.mock('@ngbplatform/ui', async () => {
   const { defineComponent } = await import('vue')
 
   const stub = (name: string) =>
@@ -23,7 +23,10 @@ vi.mock('ngb-ui-framework', async () => {
 
   return {
     buildChartOfAccountsPath: mocks.buildChartOfAccountsPath,
-    createAuthGuard: () => (_to: unknown, _from: unknown, next: (value?: unknown) => void) => next(),
+    createAuthGuard: (getAuth: () => unknown) => {
+      getAuth()
+      return (_to: unknown, _from: unknown, next: (value?: unknown) => void) => next()
+    },
     getCatalogPage: vi.fn(async () => ({ items: [], total: 0 })),
     getDocumentPage: vi.fn(async () => ({ items: [], total: 0 })),
     lookupHintFromSource: (lookup?: unknown | null) => lookup ?? null,
@@ -39,7 +42,9 @@ vi.mock('ngb-ui-framework', async () => {
     NgbMetadataCatalogListPage: stub('catalog-list-page'),
     NgbMetadataDocumentEditPage: stub('document-edit-page'),
     NgbMetadataDocumentListPage: stub('document-list-page'),
+    NgbNotificationPreferencesPage: stub('notification-preferences-page'),
     NgbReportPage: stub('report-page'),
+    NgbWorkCenterPage: stub('work-center-page'),
     useAuthStore: () => ({}),
   }
 })

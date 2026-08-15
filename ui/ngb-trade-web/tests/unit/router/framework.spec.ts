@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   getDocumentPage: vi.fn(async () => ({ items: [], total: 0 })),
 }))
 
-vi.mock('ngb-ui-framework', () => ({
+vi.mock('@ngbplatform/ui', () => ({
   NgbMetadataCatalogEditPage: { name: 'NgbMetadataCatalogEditPage' },
   NgbMetadataCatalogListPage: { name: 'NgbMetadataCatalogListPage' },
   NgbMetadataDocumentEditPage: { name: 'NgbMetadataDocumentEditPage' },
@@ -14,6 +14,16 @@ vi.mock('ngb-ui-framework', () => ({
   getDocumentPage: mocks.getDocumentPage,
   lookupHintFromSource: (lookup?: { kind?: string; catalogType?: string; documentTypes?: string[] } | null) => lookup ?? null,
 }))
+
+vi.mock('../../../src/editor/TradeEntityEditor.vue', async () => {
+  const { defineComponent } = await import('vue')
+  return {
+    default: defineComponent({
+      name: 'TradeEntityEditorStub',
+      template: '<div />',
+    }),
+  }
+})
 
 import { createTradeRouteFrameworkConfig } from '../../../src/router/framework'
 

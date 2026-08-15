@@ -6,10 +6,33 @@ repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 output_directory="${repository_root}/artifacts/nuget-release"
 project_list="${repository_root}/packaging/nuget/projects.txt"
 project_version="$(dotnet msbuild "${repository_root}/NGB.Tools/NGB.Tools.csproj" -nologo -getProperty:PackageVersion)"
+package_validation="$(dotnet msbuild "${repository_root}/NGB.Tools/NGB.Tools.csproj" -nologo -getProperty:EnablePackageValidation)"
+api_baseline="$(dotnet msbuild "${repository_root}/NGB.Tools/NGB.Tools.csproj" -nologo -getProperty:NgbPlatformApiCompatibilityBaselineVersion)"
+assembly_version="$(dotnet msbuild "${repository_root}/NGB.Tools/NGB.Tools.csproj" -nologo -getProperty:AssemblyVersion)"
 version="${1:-${project_version}}"
 
 if [[ "${version}" != "${project_version}" ]]; then
   echo "Requested package version ${version} does not match Directory.Build.props version ${project_version}." >&2
+  exit 1
+fi
+
+if [[ "${package_validation}" != "true" ]]; then
+  echo "NuGet PackageValidation/ApiCompat must remain enabled for platform packages." >&2
+  exit 1
+fi
+
+if [[ ! "${api_baseline}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Invalid NGB.Platform API compatibility baseline: ${api_baseline}." >&2
+  exit 1
+fi
+
+if [[ "${version%%.*}" != "${api_baseline%%.*}" ]]; then
+  echo "Release ${version} and API compatibility baseline ${api_baseline} must use the same major version." >&2
+  exit 1
+fi
+
+if [[ "${assembly_version%%.*}" != "${version%%.*}" ]]; then
+  echo "Assembly version ${assembly_version} and release ${version} must use the same major version." >&2
   exit 1
 fi
 
@@ -39,4 +62,4 @@ unzip -Z1 "${output_directory}/NGB.Platform.BackgroundJobs.${version}.nupkg" \
 unzip -Z1 "${output_directory}/NGB.Platform.Watchdog.${version}.nupkg" \
   | grep -Fxq contentFiles/any/any/dashboard.css
 
-echo "Verified ${package_count} NGB.Platform ${version} packages and required content assets."
+echo "Verified ${package_count} NGB.Platform ${version} packages, API compatibility configuration, and required content assets."

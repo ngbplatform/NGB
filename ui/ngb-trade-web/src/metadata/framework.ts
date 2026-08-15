@@ -4,11 +4,12 @@ import {
   type ColumnMetadata,
   getCatalogTypeMetadata,
   getDocumentTypeMetadata,
+  normalizeLookupValue,
   searchResolvedLookupItems,
   useLookupStore,
   type MetadataFrameworkConfig,
   type MetadataFormBehavior,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { getTradeLookupHint } from '../lookup/hints'
 import { findDisplayField, isFieldHidden, isFieldReadonly } from './formBehavior'
@@ -112,7 +113,7 @@ export const tradeMetadataFormBehavior: MetadataFormBehavior = {
   buildLookupTargetUrl: async ({ hint, value, routeFullPath }) =>
     await buildLookupFieldTargetUrl({
       hint,
-      value,
+      value: normalizeLookupValue(value),
       route: { fullPath: routeFullPath },
     }),
 }

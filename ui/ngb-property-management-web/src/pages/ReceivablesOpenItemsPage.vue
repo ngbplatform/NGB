@@ -16,7 +16,7 @@ import {
   useGuidQueryParam,
   useRouteLookupSelection,
   useToasts,
-} from 'ngb-ui-framework'
+} from '@ngbplatform/ui'
 
 import { applyReceivablesBatch, getReceivablesOpenItemsDetails, suggestLeaseFifoApply, unapplyReceivablesApply } from '../api/clients/receivables'
 import type {
@@ -165,7 +165,7 @@ const chargeRows = computed(() => {
   const items = data.value?.charges ?? []
   return items.map((item) => ({
     key: item.chargeDocumentId,
-    __status: 'posted',
+    __status: 'posted' as const,
     doc: docLabel(item.number, item.chargeDisplay, item.chargeDocumentId),
     dueOnUtc: item.dueOnUtc,
     chargeType: item.chargeTypeDisplay ?? '—',
@@ -205,7 +205,7 @@ const creditRows = computed(() => {
   const items = data.value?.credits ?? []
   return items.map((item) => ({
     key: item.creditDocumentId,
-    __status: 'posted',
+    __status: 'posted' as const,
     doc: docLabel(item.number, item.creditDocumentDisplay, item.creditDocumentId),
     creditType: creditDocumentTypeLabel(item.documentType),
     receivedOnUtc: item.receivedOnUtc,
@@ -234,8 +234,8 @@ const creditGrid = computed(() => ({
   onActivate: (id: string) => openDocument(resolveCreditDocumentType(id), id),
 }))
 
-function openDocument(documentType: string, id: string): Promise<void> {
-  return router.push(`/documents/${documentType}/${id}`)
+async function openDocument(documentType: string, id: string): Promise<void> {
+  await router.push(`/documents/${documentType}/${id}`)
 }
 
 async function load(): Promise<void> {
@@ -432,7 +432,7 @@ const applyWizardColumns = computed(() => [
 const applyWizardRows = computed(() => {
   return suggestedApplyItems.value.map((item) => ({
     key: item.__key,
-    __status: 'posted',
+    __status: 'posted' as const,
     creditSource: docLabel(null, item.creditDocumentDisplay, item.creditDocumentId),
     creditType: creditDocumentTypeLabel(item.creditDocumentType),
     creditDocumentDateUtc: item.creditDocumentDateUtc,

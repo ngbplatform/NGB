@@ -50,7 +50,7 @@ export function pmDocumentLifecycleFlow(context: NgbScenarioContext): boolean {
   operationSucceeded(updateResponse, [200]);
 
   operationSucceeded(context.documents.openDocument(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]);
-  operationSucceeded(context.documents.getDerivationActions(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]);
+  operationSucceeded(context.documents.getEditorState(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]);
   pmPlatformAuditFlow(context, documentId);
 
   if (postingEnabled(context)) {
@@ -80,7 +80,7 @@ function readLifecycleSurfaces(context: NgbScenarioContext): void {
   const firstId = firstItemId(page);
   if (firstId) {
     operationSucceeded(context.documents.openDocument(PM_DOCUMENT_TYPES.maintenanceRequest, firstId), [200]);
-    operationSucceeded(context.documents.getDerivationActions(PM_DOCUMENT_TYPES.maintenanceRequest, firstId), [200]);
+    operationSucceeded(context.documents.getEditorState(PM_DOCUMENT_TYPES.maintenanceRequest, firstId), [200]);
     pmPlatformAuditFlow(context, firstId);
   }
 }

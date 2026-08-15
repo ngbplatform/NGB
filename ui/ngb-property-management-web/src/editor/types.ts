@@ -1,4 +1,4 @@
-import type { EntityEditorHandle } from 'ngb-ui-framework'
+import type { EntityEditorHandle } from '@ngbplatform/ui'
 
 export type PmEntityEditorHandle = EntityEditorHandle & {
   openBulkCreateUnitsWizard: () => void
