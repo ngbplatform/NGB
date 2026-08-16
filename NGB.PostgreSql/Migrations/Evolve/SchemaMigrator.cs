@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -35,14 +36,17 @@ public static class SchemaMigrator
                 if (!typeof(IMigrationPackContributor).IsAssignableFrom(t))
                     continue;
 
-                if (Activator.CreateInstance(t) is not IMigrationPackContributor contributor)
-                    continue;
-
+                var contributor = (IMigrationPackContributor)Activator.CreateInstance(t)!;
                 packs.AddRange(contributor.GetPacks());
             }
         }
 
-        // Validate uniqueness.
+        ValidateUniquePacks(packs);
+        return packs;
+    }
+
+    internal static void ValidateUniquePacks(IReadOnlyList<MigrationPack> packs)
+    {
         var duplicates = packs
             .GroupBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
             .Where(g => g.Count() > 1)
@@ -56,8 +60,6 @@ public static class SchemaMigrator
                 $"Duplicate migration pack ids: {string.Join(", ", duplicates)}",
                 new Dictionary<string, object?> { ["duplicatePackIds"] = duplicates });
         }
-
-        return packs;
     }
 
     /// <summary>
@@ -108,11 +110,7 @@ public static class SchemaMigrator
         }
 
         // Apply application_name (K8s-friendly observability), if requested.
-        var csb = new NpgsqlConnectionStringBuilder(connectionString!);
-        if (execOptions?.ApplicationName is { Length: > 0 } appName)
-            csb.ApplicationName = appName;
-
-        var effectiveCs = csb.ConnectionString;
+        var effectiveCs = BuildConnectionString(connectionString!, execOptions);
 
         // Hold one global schema lock for the entire run (Evolve + optional repair).
         await using var guard = new NpgsqlConnection(effectiveCs);
@@ -153,47 +151,67 @@ public static class SchemaMigrator
             }
 
             if (repair)
-            {
-                // IMPORTANT: repair connections must NOT try to acquire the same advisory lock,
-                // because we hold it in this session for the full duration.
-                var repairOptions = options is null
-                    ? new MigrationExecutionOptions(SkipAdvisoryLock: true)
-                    : options with { SkipAdvisoryLock = true };
-
-                foreach (var pack in ordered)
-                {
-                    var repairWithOptions = pack.RepairWithOptionsAsync;
-                    var repairLegacy = pack.RepairAsync;
-
-                    if (repairWithOptions is null && repairLegacy is null)
-                        continue;
-
-                    log?.Invoke($"Repair: {pack.Id}");
-
-                    if (repairWithOptions is not null)
-                        await repairWithOptions(effectiveCs, repairOptions, ct);
-                    else if (repairLegacy is not null)
-                        await repairLegacy(effectiveCs, ct);
-                }
-            }
+                await RunRepairsAsync(ordered, effectiveCs, options, log, ct);
         }
         finally
         {
-            // Best-effort unlock.
-            try
-            {
-                await SchemaMigrationAdvisoryLock.ReleaseAsync(guard, ct);
-            }
-            catch
-            {
-                // ignore
-            }
+            await ReleaseLockBestEffortAsync(() => SchemaMigrationAdvisoryLock.ReleaseAsync(guard, ct));
         }
 
         return ordered;
     }
 
-    private static string GetPackChangelogTableName(string packId)
+    internal static string BuildConnectionString(string connectionString, SchemaMigrationExecutionOptions? execOptions)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        if (execOptions?.ApplicationName is { Length: > 0 } applicationName)
+            builder.ApplicationName = applicationName;
+
+        return builder.ConnectionString;
+    }
+
+    internal static async Task RunRepairsAsync(
+        IReadOnlyList<MigrationPack> ordered,
+        string connectionString,
+        MigrationExecutionOptions? options,
+        Action<string>? log,
+        CancellationToken ct)
+    {
+        // Repair connections must not acquire the lock held by the migration session.
+        var repairOptions = options is null
+            ? new MigrationExecutionOptions(SkipAdvisoryLock: true)
+            : options with { SkipAdvisoryLock = true };
+
+        foreach (var pack in ordered)
+        {
+            var repairWithOptions = pack.RepairWithOptionsAsync;
+            var repairLegacy = pack.RepairAsync;
+
+            if (repairWithOptions is null && repairLegacy is null)
+                continue;
+
+            log?.Invoke($"Repair: {pack.Id}");
+
+            if (repairWithOptions is not null)
+                await repairWithOptions(connectionString, repairOptions, ct);
+            else
+                await repairLegacy!(connectionString, ct);
+        }
+    }
+
+    internal static async Task ReleaseLockBestEffortAsync(Func<Task> release)
+    {
+        try
+        {
+            await release();
+        }
+        catch
+        {
+            // Unlock is best-effort; the PostgreSQL session also releases the lock on close.
+        }
+    }
+
+    internal static string GetPackChangelogTableName(string packId)
     {
         // Keep pack changelogs isolated so packs can be installed later without forcing
         // a globally-monotonic version stream across all packs.
@@ -201,7 +219,7 @@ public static class SchemaMigrator
         return $"migration_changelog__{suffix}";
     }
 
-    private static string NormalizePackIdToIdentifier(string packId)
+    internal static string NormalizePackIdToIdentifier(string packId)
     {
         if (string.IsNullOrWhiteSpace(packId))
             return "pack";
@@ -237,8 +255,6 @@ public static class SchemaMigrator
         const int maxIdentifierLen = 63;
         const string prefix = "migration_changelog__";
         var maxSuffixLen = maxIdentifierLen - prefix.Length;
-        if (maxSuffixLen < 8)
-            return s;
 
         if (s.Length <= maxSuffixLen)
             return s;
@@ -249,14 +265,12 @@ public static class SchemaMigrator
         var hashSuffix = hex[..12];
 
         var keep = maxSuffixLen - 1 - hashSuffix.Length;
-        if (keep < 1)
-            keep = 1;
 
         return s[..keep] + "_" + hashSuffix;
     }
 
-    private static async Task ApplySessionOptionsAsync(
-        NpgsqlConnection connection,
+    internal static async Task ApplySessionOptionsAsync(
+        DbConnection connection,
         MigrationExecutionOptions? options,
         CancellationToken ct)
     {
@@ -340,14 +354,6 @@ public static class SchemaMigrator
                 if (string.IsNullOrWhiteSpace(dep))
                     continue;
 
-                if (!byId.ContainsKey(dep))
-                {
-                    // Should not happen after SelectWithDependencies.
-                    throw new NgbInvariantViolationException(
-                        $"Missing dependency pack '{dep}' for '{p.Id}'.",
-                        new Dictionary<string, object?> { ["packId"] = p.Id, ["missingDependency"] = dep });
-                }
-
                 outgoing[dep].Add(p.Id);
                 inDegree[p.Id]++;
             }
@@ -380,7 +386,7 @@ public static class SchemaMigrator
         return orderedIds.Select(id => byId[id]).ToArray();
     }
 
-    private static IEnumerable<Type?> SafeGetTypes(Assembly asm)
+    internal static IEnumerable<Type?> SafeGetTypes(Assembly asm)
     {
         try
         {

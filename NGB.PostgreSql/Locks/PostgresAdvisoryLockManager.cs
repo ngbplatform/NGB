@@ -35,12 +35,7 @@ public sealed class PostgresAdvisoryLockManager(
     {
         // We intentionally mix all 16 bytes; this is fast, stable, and allocation-free.
         Span<byte> bytes = stackalloc byte[16];
-        if (!id.TryWriteBytes(bytes))
-        {
-            throw new NgbInvariantViolationException(
-                "Failed to write Guid bytes.",
-                new Dictionary<string, object?> { ["id"] = id });
-        }
+        _ = id.TryWriteBytes(bytes);
 
         uint h1 = FnvOffset;
         uint h2 = FnvOffset ^ 0x9E3779B9u; // different seed
@@ -57,27 +52,26 @@ public sealed class PostgresAdvisoryLockManager(
         h1 = Avalanche(h1);
         h2 = Avalanche(h2 ^ 0x85EBCA6Bu); // small post-mix tweak
 
-        var k1 = unchecked((int)h1);
-        var k2 = unchecked((int)h2);
+        return NormalizeGuidLockKeys(unchecked((int)h1), unchecked((int)h2));
+    }
 
-        // Avoid obvious hotspot keys.
-        if (k1 == 0) k1 = 1;
-        if (k2 == 0) k2 = 2;
+    internal static (int Key2A, int Key2B) NormalizeGuidLockKeys(int key2A, int key2B)
+    {
+        key2A = key2A == 0 ? 1 : key2A;
+        key2B = key2B == 0 ? 2 : key2B;
 
-        // Guarantee distinct payload keys so callers can always take two locks per Guid.
-        // (This makes tests deterministic and removes reliance on astronomically rare hash collisions.)
-        if (k2 == k1)
+        if (key2B == key2A)
         {
-            // Make a deterministic, stable alternate key.
-            k2 = unchecked((int)Avalanche(unchecked((uint)k2) ^ 0x9E3779B9u));
-            if (k2 == 0) k2 = 2;
-            if (k2 == k1) k2 ^= unchecked((int)0xA5A5A5A5);
-            if (k2 == 0) k2 = 2;
-            if (k2 == k1) k2 = unchecked(k1 + 1);
+            key2B = unchecked(key2A + 1);
+            if (key2B == 0)
+                key2B = 1;
         }
 
-        return (k1, k2);
+        return (key2A, key2B);
     }
+
+    internal static (int First, int Second) OrderGuidLockKeys(int key2A, int key2B)
+        => key2A <= key2B ? (key2A, key2B) : (key2B, key2A);
 
     private async Task LockTwoIntAsync(int key1, int key2, CancellationToken ct)
     {
@@ -133,7 +127,7 @@ public sealed class PostgresAdvisoryLockManager(
             }
 
             attempt++;
-            if (attempt == 1 || attempt % 50 == 0)
+            if (ShouldLogWaitAttempt(attempt))
             {
                 logger.LogDebug(
                     "Waiting for advisory lock ({Key1},{Key2}); attempt={Attempt}, remaining={RemainingMs}ms.",
@@ -145,10 +139,16 @@ public sealed class PostgresAdvisoryLockManager(
 
             // Small bounded backoff to reduce hot spinning while still being responsive.
             await Task.Delay(backoff, ct);
-            if (backoff < backoffMax)
-                backoff = TimeSpan.FromMilliseconds(Math.Min(backoffMax.TotalMilliseconds, backoff.TotalMilliseconds * 2));
+            backoff = NextBackoff(backoff, backoffMax);
         }
     }
+
+    internal static bool ShouldLogWaitAttempt(int attempt) => attempt == 1 || attempt % 50 == 0;
+
+    internal static TimeSpan NextBackoff(TimeSpan current, TimeSpan maximum)
+        => current < maximum
+            ? TimeSpan.FromMilliseconds(Math.Min(maximum.TotalMilliseconds, current.TotalMilliseconds * 2))
+            : current;
 
     public Task LockPeriodAsync(DateOnly period, CancellationToken ct = default)
         => LockPeriodAsync(period, AdvisoryLockPeriodScope.Accounting, ct);
@@ -197,8 +197,7 @@ public sealed class PostgresAdvisoryLockManager(
 
         var key1 = AdvisoryLockNamespaces.Document;
         var (a, b) = GetGuidLockKeys(documentId);
-        var first = a <= b ? a : b;
-        var second = a <= b ? b : a;
+        var (first, second) = OrderGuidLockKeys(a, b);
 
         var ns = AdvisoryLockNamespaces.Format(key1);
         logger.LogDebug("Acquiring document advisory locks {Namespace}: {Key2A} and {Key2B}.", ns, first,  second);
@@ -215,8 +214,7 @@ public sealed class PostgresAdvisoryLockManager(
 
         var key1 = AdvisoryLockNamespaces.Catalog;
         var (a, b) = GetGuidLockKeys(catalogId);
-        var first = a <= b ? a : b;
-        var second = a <= b ? b : a;
+        var (first, second) = OrderGuidLockKeys(a, b);
 
         var ns = AdvisoryLockNamespaces.Format(key1);
         logger.LogDebug("Acquiring catalog advisory locks {Namespace}: {Key2A} and {Key2B}.", ns, first, second);
@@ -233,8 +231,7 @@ public sealed class PostgresAdvisoryLockManager(
 
         var key1 = AdvisoryLockNamespaces.OperationalRegister;
         var (a, b) = GetGuidLockKeys(registerId);
-        var first = a <= b ? a : b;
-        var second = a <= b ? b : a;
+        var (first, second) = OrderGuidLockKeys(a, b);
 
         var ns = AdvisoryLockNamespaces.Format(key1);
         logger.LogDebug("Acquiring operational register advisory locks {Namespace}: {Key2A} and {Key2B}.", ns, first, second);

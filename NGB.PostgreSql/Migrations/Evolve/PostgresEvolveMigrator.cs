@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Reflection;
 using Npgsql;
 using NGB.Persistence.Migrations;
@@ -91,7 +92,7 @@ public static class PostgresEvolveMigrator
         return Task.CompletedTask;
     }
 
-    private static string[] BuildEmbeddedResourceFilters(IReadOnlyCollection<Assembly> migrationAssemblies)
+    internal static string[] BuildEmbeddedResourceFilters(IReadOnlyCollection<Assembly> migrationAssemblies)
     {
         // Evolve embedded resource loader uses StartsWith(filter, OrdinalIgnoreCase).
         // Embedded resource names use the default namespace prefix, which typically matches assembly name.
@@ -110,7 +111,7 @@ public static class PostgresEvolveMigrator
             .ToArray();
     }
 
-    private static void EnsureEmbeddedMigrationsDiscovered(
+    internal static void EnsureEmbeddedMigrationsDiscovered(
         IReadOnlyCollection<Assembly> migrationAssemblies,
         IReadOnlyList<string> embeddedFilters)
     {
@@ -154,7 +155,7 @@ public static class PostgresEvolveMigrator
         }
     }
 
-    private static IReadOnlyList<string> SafeGetManifestResourceNames(Assembly asm)
+    internal static IReadOnlyList<string> SafeGetManifestResourceNames(Assembly asm)
     {
         try
         {
@@ -166,7 +167,7 @@ public static class PostgresEvolveMigrator
         }
     }
 
-    private static void ApplySessionDefaults(NpgsqlConnection connection, MigrationExecutionOptions? options)
+    internal static void ApplySessionDefaults(DbConnection connection, MigrationExecutionOptions? options)
     {
         // Deterministic UTC semantics.
         using (var cmd = connection.CreateCommand())

@@ -120,14 +120,6 @@ public sealed class PostgresOperationalRegisterDimensionRuleRepository(IUnitOfWo
             // Normalize the stored code to satisfy DB trimming constraints and keep deterministic IDs meaningful.
             r = r with { DimensionCode = r.DimensionCode.Trim() };
 
-            if (r.DimensionCode.Length == 0)
-            {
-                throw new OperationalRegisterDimensionRulesValidationException(
-                    registerId,
-                    reason: "empty_dimension_code",
-                    details: new Dictionary<string, object?> { ["index"] = i });
-            }
-
             if (r.DimensionId == Guid.Empty)
             {
                 throw new OperationalRegisterDimensionRulesValidationException(

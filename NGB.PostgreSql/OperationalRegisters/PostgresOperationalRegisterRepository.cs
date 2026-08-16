@@ -245,7 +245,7 @@ SELECT
     code        AS "Code",
     code_norm   AS "CodeNorm"
 FROM operational_registers
-WHERE table_code = 
+WHERE table_code = @TableCode
 LIMIT 1;
 """;
 

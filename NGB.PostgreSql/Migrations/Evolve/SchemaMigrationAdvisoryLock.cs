@@ -1,5 +1,5 @@
+using System.Data.Common;
 using Dapper;
-using Npgsql;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -10,7 +10,7 @@ internal static class SchemaMigrationAdvisoryLock
     // "NGBSCHEM" (8 bytes) => one global schema lock per database.
     public const long Key = 0x4E4742534348454DL;
 
-    public static async Task<bool> TryAcquireAsync(NpgsqlConnection connection, CancellationToken ct)
+    public static async Task<bool> TryAcquireAsync(DbConnection connection, CancellationToken ct)
     {
         var cmd = new CommandDefinition(
             "SELECT pg_try_advisory_lock(@key);",
@@ -21,7 +21,7 @@ internal static class SchemaMigrationAdvisoryLock
     }
 
     public static async Task AcquireOrThrowAsync(
-        NpgsqlConnection connection,
+        DbConnection connection,
         SchemaMigrationLockMode mode,
         TimeSpan? waitTimeout,
         Action<string>? log,
@@ -33,9 +33,7 @@ internal static class SchemaMigrationAdvisoryLock
             throw new NgbArgumentInvalidException(nameof(mode), "Use AcquireOrSkipAsync for Skip mode.");
         }
 
-        var acquired = await AcquireOrSkipAsync(connection, mode, waitTimeout, log, ct);
-        if (!acquired)
-            throw new SchemaMigrationLockNotAcquiredException(mode, waitTimeout);
+        await AcquireOrSkipAsync(connection, mode, waitTimeout, log, ct);
     }
 
     /// <summary>
@@ -43,13 +41,33 @@ internal static class SchemaMigrationAdvisoryLock
     /// Returns false only when <paramref name="mode"/> is <see cref="SchemaMigrationLockMode.Skip"/>.
     /// </summary>
     public static async Task<bool> AcquireOrSkipAsync(
-        NpgsqlConnection connection,
+        DbConnection connection,
         SchemaMigrationLockMode mode,
         TimeSpan? waitTimeout,
         Action<string>? log,
         CancellationToken ct)
+        => await AcquireOrSkipCoreAsync(
+            connection,
+            mode,
+            waitTimeout,
+            log,
+            TimeProvider.System,
+            Task.Delay,
+            ct);
+
+    internal static async Task<bool> AcquireOrSkipCoreAsync(
+        DbConnection connection,
+        SchemaMigrationLockMode mode,
+        TimeSpan? waitTimeout,
+        Action<string>? log,
+        TimeProvider timeProvider,
+        Func<TimeSpan, CancellationToken, Task> delay,
+        CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+
+        if (!Enum.IsDefined(mode))
+            throw new NgbArgumentOutOfRangeException(nameof(mode), mode, "Unknown schema migration lock mode.");
 
         if (mode == SchemaMigrationLockMode.Try || mode == SchemaMigrationLockMode.Skip)
         {
@@ -70,7 +88,7 @@ internal static class SchemaMigrationAdvisoryLock
         }
 
         // Wait mode: retry loop with optional timeout.
-        var start = TimeProvider.System.GetUtcNowDateTime();
+        var start = timeProvider.GetUtcNowDateTime();
 
         while (true)
         {
@@ -83,16 +101,16 @@ internal static class SchemaMigrationAdvisoryLock
 
             if (waitTimeout is not null)
             {
-                var elapsed = TimeProvider.System.GetUtcNowDateTime() - start;
+                var elapsed = timeProvider.GetUtcNowDateTime() - start;
                 if (elapsed >= waitTimeout.Value)
                     throw new SchemaMigrationLockNotAcquiredException(mode, waitTimeout);
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(500), ct);
+            await delay(TimeSpan.FromMilliseconds(500), ct);
         }
     }
 
-    public static async Task ReleaseAsync(NpgsqlConnection connection, CancellationToken ct)
+    public static async Task ReleaseAsync(DbConnection connection, CancellationToken ct)
     {
         var cmd = new CommandDefinition(
             "SELECT pg_advisory_unlock(@key);",

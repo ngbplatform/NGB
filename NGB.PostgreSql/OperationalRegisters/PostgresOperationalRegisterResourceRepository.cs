@@ -259,7 +259,7 @@ public sealed class PostgresOperationalRegisterResourceRepository(IUnitOfWork uo
         }
     }
 
-    private static void EnforceResourceImmutabilityWhenHasMovements(
+    internal static void EnforceResourceImmutabilityWhenHasMovements(
         Guid registerId,
         IReadOnlyList<OperationalRegisterResource> existing,
         bool hasMovements,
@@ -332,7 +332,7 @@ public sealed class PostgresOperationalRegisterResourceRepository(IUnitOfWork uo
         return flag.Value;
     }
 
-    private static void ValidateNoDuplicates(
+    internal static void ValidateNoDuplicates(
         Guid registerId,
         IReadOnlyList<OperationalRegisterResourceDefinition> resources,
         IReadOnlyList<string> tableCodes,
@@ -410,7 +410,7 @@ public sealed class PostgresOperationalRegisterResourceRepository(IUnitOfWork uo
         }
     }
 
-    private static void ValidateNoReservedColumnConflicts(Guid registerId, IReadOnlyList<string> columnCodes)
+    internal static void ValidateNoReservedColumnConflicts(Guid registerId, IReadOnlyList<string> columnCodes)
     {
         // These columns exist in per-register fact tables and cannot be used by resources.
         // (Otherwise INSERT column lists would become ambiguous or invalid.)

@@ -6,10 +6,14 @@ using NGB.Persistence.UnitOfWork;
 
 namespace NGB.PostgreSql.Tests.TestDoubles;
 
-internal sealed class RecordingUnitOfWork(RecordingDbConnection connection, bool hasActiveTransaction = false) : IUnitOfWork
+internal sealed class RecordingUnitOfWork(
+    RecordingDbConnection connection,
+    bool hasActiveTransaction = false,
+    DbTransaction? transaction = null)
+    : IUnitOfWork
 {
     public DbConnection Connection => connection;
-    public DbTransaction? Transaction => null;
+    public DbTransaction? Transaction => transaction;
     public bool HasActiveTransaction { get; set; } = hasActiveTransaction;
 
     public Task EnsureConnectionOpenAsync(CancellationToken ct = default)
@@ -107,9 +111,7 @@ internal sealed class RecordingDbCommand(
     private static DbDataReader EmptyReader() => new DataTable().CreateDataReader();
 }
 
-internal sealed class RecordingDbTransaction(
-    DbConnection connection,
-    bool throwOnRollback = false) : DbTransaction
+internal sealed class RecordingDbTransaction(DbConnection connection, bool throwOnRollback = false) : DbTransaction
 {
     public bool Committed { get; private set; }
     public bool RolledBack { get; private set; }
