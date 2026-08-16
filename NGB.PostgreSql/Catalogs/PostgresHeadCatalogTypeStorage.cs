@@ -13,48 +13,65 @@ namespace NGB.PostgreSql.Catalogs;
 ///
 /// If a catalog has parts tables or custom semantics, implement <see cref="ICatalogTypeStorage"/> manually.
 /// </summary>
-public sealed class PostgresHeadCatalogTypeStorage(
-    IUnitOfWork uow,
-    string catalogCode,
-    string headTable,
-    IReadOnlyList<PostgresHeadCatalogTypeStorage.Column> columns)
-    : ICatalogTypeStorage
+public sealed class PostgresHeadCatalogTypeStorage : ICatalogTypeStorage
 {
     private static readonly Regex SafeParameter = new(
         "^[a-z_][a-z0-9_]*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public string CatalogCode { get; } = catalogCode;
+    private readonly IUnitOfWork _uow;
+    private readonly IReadOnlyList<Column> _columns;
 
-    private readonly string _insertSql = BuildInsertSql(headTable, columns);
-    private readonly string _deleteSql = BuildDeleteSql(headTable);
+    public PostgresHeadCatalogTypeStorage(
+        IUnitOfWork uow,
+        string catalogCode,
+        string headTable,
+        IReadOnlyList<Column> columns)
+    {
+        _uow = uow ?? throw new NgbArgumentRequiredException(nameof(uow));
+        if (string.IsNullOrWhiteSpace(catalogCode))
+            throw new NgbArgumentRequiredException(nameof(catalogCode));
+
+        _columns = columns ?? throw new NgbArgumentRequiredException(nameof(columns));
+        if (_columns.Any(static x => x is null || x.ValueFactory is null))
+            throw new NgbArgumentRequiredException(nameof(columns));
+
+        CatalogCode = catalogCode;
+        _insertSql = BuildInsertSql(headTable, columns);
+        _deleteSql = BuildDeleteSql(headTable);
+    }
+
+    public string CatalogCode { get; }
+
+    private readonly string _insertSql;
+    private readonly string _deleteSql;
 
     public async Task EnsureCreatedAsync(Guid catalogId, CancellationToken ct = default)
     {
-        uow.EnsureActiveTransaction();
+        _uow.EnsureActiveTransaction();
 
         var p = new DynamicParameters();
         p.Add("catalogId", catalogId);
 
-        foreach (var c in columns)
+        foreach (var c in _columns)
         {
             p.Add(c.ParameterName, c.ValueFactory(catalogId));
         }
 
-        await uow.Connection.ExecuteAsync(new CommandDefinition(
+        await _uow.Connection.ExecuteAsync(new CommandDefinition(
             _insertSql,
             p,
-            uow.Transaction,
+            _uow.Transaction,
             cancellationToken: ct));
     }
 
     public async Task DeleteAsync(Guid catalogId, CancellationToken ct = default)
     {
-        uow.EnsureActiveTransaction();
-        await uow.Connection.ExecuteAsync(new CommandDefinition(
+        _uow.EnsureActiveTransaction();
+        await _uow.Connection.ExecuteAsync(new CommandDefinition(
             _deleteSql,
             new { catalogId },
-            uow.Transaction,
+            _uow.Transaction,
             cancellationToken: ct));
     }
 

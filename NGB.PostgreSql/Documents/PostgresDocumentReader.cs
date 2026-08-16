@@ -94,9 +94,13 @@ internal sealed class PostgresDocumentReader(
             transaction: uow.Transaction,
             cancellationToken: ct));
 
-        return rows
-            .Select(r => ToRow(head, (IDictionary<string, object?>)r))
-            .ToList();
+        var result = new List<DocumentHeadRow>();
+        foreach (var row in rows)
+        {
+            result.Add(ToRow(head, (IDictionary<string, object?>)row));
+        }
+
+        return result;
     }
 
     private async Task<IReadOnlyList<DocumentHeadRow>> GetPageWithoutHeadCriteriaAsync(
@@ -134,9 +138,12 @@ internal sealed class PostgresDocumentReader(
             transaction: uow.Transaction,
             cancellationToken: ct));
 
-        rows.AddRange(nonNullRows.Select(r => ToRow(head, (IDictionary<string, object?>)r)));
+        foreach (var row in nonNullRows)
+        {
+            rows.Add(ToRow(head, (IDictionary<string, object?>)row));
+        }
 
-        if (rows.Count == limit)
+        if (rows.Count >= limit)
             return rows;
 
         var nonNullCountSql = $"""
@@ -156,8 +163,6 @@ internal sealed class PostgresDocumentReader(
 
         var nullOffset = Math.Max(0L, offset - nonNullCount);
         var remaining = limit - rows.Count;
-        if (remaining <= 0)
-            return rows;
 
         p.Add("nullOffset", nullOffset);
         p.Add("remaining", remaining);
@@ -268,9 +273,13 @@ internal sealed class PostgresDocumentReader(
             transaction: uow.Transaction,
             cancellationToken: ct));
 
-        return rows
-            .Select(r => ToRow(head, (IDictionary<string, object?>)r))
-            .ToList();
+        var result = new List<DocumentHeadRow>();
+        foreach (var row in rows)
+        {
+            result.Add(ToRow(head, (IDictionary<string, object?>)row));
+        }
+
+        return result;
     }
 
     public async Task<IReadOnlyList<DocumentHeadRow>> GetHeadRowsByIdsAcrossTypesAsync(
@@ -601,15 +610,16 @@ internal sealed class PostgresDocumentReader(
 
         if (query.PeriodFilter is not null)
         {
-            hasHeadCriteria = true;
             if (query.PeriodFilter.FromInclusive is not null)
             {
+                hasHeadCriteria = true;
                 p.Add("periodFrom", query.PeriodFilter.FromInclusive.Value.ToDateTime(TimeOnly.MinValue), dbType: DbType.Date);
                 clauses.Add($"{PostgresDocumentFilterSql.Qualify("h", query.PeriodFilter.ColumnName)} IS NOT NULL AND {PostgresDocumentFilterSql.Qualify("h", query.PeriodFilter.ColumnName)}::date >= @periodFrom");
             }
 
             if (query.PeriodFilter.ToInclusive is not null)
             {
+                hasHeadCriteria = true;
                 p.Add("periodTo", query.PeriodFilter.ToInclusive.Value.ToDateTime(TimeOnly.MinValue), dbType: DbType.Date);
                 clauses.Add($"{PostgresDocumentFilterSql.Qualify("h", query.PeriodFilter.ColumnName)} IS NOT NULL AND {PostgresDocumentFilterSql.Qualify("h", query.PeriodFilter.ColumnName)}::date <= @periodTo");
             }
@@ -772,22 +782,18 @@ internal sealed class PostgresDocumentReader(
             ColumnType.Int64 => value.GetInt64(),
             ColumnType.Decimal => value.GetDecimal(),
             ColumnType.Boolean => value.GetBoolean(),
-            ColumnType.Guid => Guid.Parse(value.GetString() ?? value.ToString()),
-            ColumnType.Date => DateOnly.Parse(value.GetString() ?? value.ToString(), CultureInfo.InvariantCulture),
+            ColumnType.Guid => Guid.Parse(value.GetString()!),
+            ColumnType.Date => DateOnly.Parse(value.GetString()!, CultureInfo.InvariantCulture),
             ColumnType.DateTimeUtc => ParseUtc(value),
             _ => value.GetRawText()
         };
 
     private static DateTime ParseUtc(JsonElement value)
     {
-        var parsed = DateTime.Parse(
-            value.GetString() ?? value.ToString(),
+        return DateTime.Parse(
+            value.GetString()!,
             CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-
-        return parsed.Kind == DateTimeKind.Utc
-            ? parsed
-            : DateTime.SpecifyKind(parsed.ToUniversalTime(), DateTimeKind.Utc);
     }
 
     private static string Qi(string ident) => PostgresDocumentFilterSql.QuoteIdentifier(ident);

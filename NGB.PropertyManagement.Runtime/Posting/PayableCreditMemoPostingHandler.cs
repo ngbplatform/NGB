@@ -30,7 +30,8 @@ public sealed class PayableCreditMemoPostingHandler(
         var chargeType = await readers.ReadPayableChargeTypeHeadAsync(memo.ChargeTypeId, ct);
         var policy = await policyReader.GetRequiredAsync(ct);
 
-        if (chargeType.DebitAccountId is null || chargeType.DebitAccountId == Guid.Empty)
+        var creditAccountId = chargeType.DebitAccountId.GetValueOrDefault();
+        if (creditAccountId == Guid.Empty)
         {
             throw new NgbConfigurationViolationException(
                 $"Payable charge type '{memo.ChargeTypeId}' is missing debit_account_id.",
@@ -47,7 +48,7 @@ public sealed class PayableCreditMemoPostingHandler(
 
         var coa = await ctx.GetChartOfAccountsAsync(ct);
         var debit = coa.Get(policy.AccountsPayableVendorsAccountId);
-        var credit = coa.Get(chargeType.DebitAccountId.Value);
+        var credit = coa.Get(creditAccountId);
         var period = new DateTime(memo.CreditedOnUtc.Year, memo.CreditedOnUtc.Month, memo.CreditedOnUtc.Day, 0, 0, 0, DateTimeKind.Utc);
 
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");

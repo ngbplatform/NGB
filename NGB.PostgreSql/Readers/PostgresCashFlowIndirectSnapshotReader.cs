@@ -58,7 +58,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         {
             if (!combined.TryGetValue(row.AccountId, out var current))
             {
-                current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.AccountName, row.StatementSection, row.CashFlowRole, row.CashFlowLineCode);
+                current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.CashFlowRole, row.CashFlowLineCode);
                 combined[row.AccountId] = current;
             }
 
@@ -69,7 +69,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         {
             if (!combined.TryGetValue(row.AccountId, out var current))
             {
-                current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.AccountName, row.StatementSection, row.CashFlowRole, row.CashFlowLineCode);
+                current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.CashFlowRole, row.CashFlowLineCode);
                 combined[row.AccountId] = current;
             }
 
@@ -226,8 +226,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                   SELECT
                       fr.AccountId,
                       a.code AS AccountCode,
-                      a.name AS AccountName,
-                      a.statement_section AS StatementSection,
                       a.cash_flow_role AS CashFlowRole,
                       a.cash_flow_line_code AS CashFlowLineCode,
                       fr.ClosingBalance AS ClosingBalance
@@ -257,8 +255,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                   SELECT
                       b.account_id AS AccountId,
                       a.code AS AccountCode,
-                      a.name AS AccountName,
-                      a.statement_section AS StatementSection,
                       a.cash_flow_role AS CashFlowRole,
                       a.cash_flow_line_code AS CashFlowLineCode,
                       SUM(b.closing_balance) AS ClosingBalance
@@ -339,8 +335,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                   SELECT
                       fr.AccountId,
                       a.code AS AccountCode,
-                      a.name AS AccountName,
-                      a.statement_section AS StatementSection,
                       a.cash_flow_role AS CashFlowRole,
                       a.cash_flow_line_code AS CashFlowLineCode,
                       fr.ClosingBalance AS ClosingBalance
@@ -400,8 +394,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                   )
                   SELECT
                       a.code AS AccountCode,
-                      a.name AS AccountName,
-                      a.statement_section AS StatementSection,
                       a.cash_flow_role AS CashFlowRole,
                       a.cash_flow_line_code AS CashFlowLineCode,
                       (fr.CreditAmount - fr.DebitAmount) AS NetMovement
@@ -648,9 +640,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
 
     private static void AddAmount(IDictionary<string, MutableLine> target, MutableLine source, decimal amount)
     {
-        if (amount == 0m)
-            return;
-
         if (!target.TryGetValue(source.LineCode, out var current))
         {
             current = new MutableLine(source.LineCode, source.Label, source.SortOrder);
@@ -703,8 +692,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
     {
         public Guid AccountId { get; init; }
         public string AccountCode { get; init; } = string.Empty;
-        public string AccountName { get; init; } = string.Empty;
-        public StatementSection StatementSection { get; init; }
         public CashFlowRole CashFlowRole { get; init; }
         public string? CashFlowLineCode { get; init; }
         public decimal ClosingBalance { get; init; }
@@ -713,8 +700,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
     private sealed class ProfitAndLossRangeRow
     {
         public string AccountCode { get; init; } = string.Empty;
-        public string AccountName { get; init; } = string.Empty;
-        public StatementSection StatementSection { get; init; }
         public CashFlowRole CashFlowRole { get; init; }
         public string? CashFlowLineCode { get; init; }
         public decimal NetMovement { get; init; }
@@ -742,15 +727,11 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
     private sealed class MutableBalanceRow(
         Guid accountId,
         string accountCode,
-        string accountName,
-        StatementSection statementSection,
         CashFlowRole cashFlowRole,
         string? cashFlowLineCode)
     {
         public Guid AccountId { get; } = accountId;
         public string AccountCode { get; } = accountCode;
-        public string AccountName { get; } = accountName;
-        public StatementSection StatementSection { get; } = statementSection;
         public CashFlowRole CashFlowRole { get; } = cashFlowRole;
         public string? CashFlowLineCode { get; } = cashFlowLineCode;
         public decimal OpeningBalance { get; set; }

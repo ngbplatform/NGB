@@ -17,8 +17,10 @@ public class TokenCacheService(HttpClient httpClient, KeycloakApiClientSettings 
     {
         var handler = new JwtSecurityTokenHandler();
 
-        if (handler.ReadToken(token) is not JwtSecurityToken jwtToken)
+        if (!handler.CanReadToken(token))
             throw new NgbConfigurationViolationException("Keycloak access token must be a valid JWT.");
+
+        var jwtToken = handler.ReadJwtToken(token);
 
         var expiryUnix = jwtToken.Payload.Expiration;
         if (expiryUnix == null)

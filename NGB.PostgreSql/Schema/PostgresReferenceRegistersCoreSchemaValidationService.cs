@@ -510,19 +510,7 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
 
     private static bool ColumnTypeMatches(ColumnMeta meta, ColumnType t)
     {
-        var expectedUdt = t switch
-        {
-            ColumnType.String => "text",
-            ColumnType.Int32 => "int4",
-            ColumnType.Int64 => "int8",
-            ColumnType.Decimal => "numeric",
-            ColumnType.Boolean => "bool",
-            ColumnType.Guid => "uuid",
-            ColumnType.Date => "date",
-            ColumnType.DateTimeUtc => "timestamptz",
-            ColumnType.Json => "jsonb",
-            _ => throw new NgbInvariantViolationException($"Unsupported ColumnType '{t}'.", new Dictionary<string, object?> { ["columnType"] = t.ToString() })
-        };
+        var expectedUdt = GetSqlType(t).UdtName;
 
         if (!string.Equals(meta.UdtName, expectedUdt, StringComparison.OrdinalIgnoreCase))
             return false;
@@ -539,17 +527,19 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
         return true;
     }
 
-    private static string ToSqlType(ColumnType t) => t switch
+    private static string ToSqlType(ColumnType t) => GetSqlType(t).SqlType;
+
+    private static (string UdtName, string SqlType) GetSqlType(ColumnType t) => t switch
     {
-        ColumnType.String => "TEXT",
-        ColumnType.Int32 => "INTEGER",
-        ColumnType.Int64 => "BIGINT",
-        ColumnType.Decimal => "NUMERIC(28,8)",
-        ColumnType.Boolean => "BOOLEAN",
-        ColumnType.Guid => "UUID",
-        ColumnType.Date => "DATE",
-        ColumnType.DateTimeUtc => "TIMESTAMPTZ",
-        ColumnType.Json => "JSONB",
+        ColumnType.String => ("text", "TEXT"),
+        ColumnType.Int32 => ("int4", "INTEGER"),
+        ColumnType.Int64 => ("int8", "BIGINT"),
+        ColumnType.Decimal => ("numeric", "NUMERIC(28,8)"),
+        ColumnType.Boolean => ("bool", "BOOLEAN"),
+        ColumnType.Guid => ("uuid", "UUID"),
+        ColumnType.Date => ("date", "DATE"),
+        ColumnType.DateTimeUtc => ("timestamptz", "TIMESTAMPTZ"),
+        ColumnType.Json => ("jsonb", "JSONB"),
         _ => throw new NgbInvariantViolationException($"Unsupported ColumnType '{t}'.", new Dictionary<string, object?> { ["columnType"] = t.ToString() })
     };
 }

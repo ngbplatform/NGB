@@ -67,12 +67,19 @@ public sealed class PropertyManagementBankAccountReader(ICatalogService catalogs
     }
 
     private static PropertyManagementBankAccount ToModel(CatalogItemDto item)
-        => new(
+    {
+        var glAccountId = GetGuid(item, "gl_account_id");
+
+        // GetGuid has already enforced the non-null payload invariant.
+        var fields = item.Payload.Fields!;
+
+        return new(
             BankAccountId: item.Id,
             Display: item.Display,
-            GlAccountId: GetGuid(item, "gl_account_id"),
-            IsDefault: GetBool(item, "is_default"),
+            GlAccountId: glAccountId,
+            IsDefault: GetBool(item, fields, "is_default"),
             IsDeleted: item.IsDeleted);
+    }
 
     private static Guid GetGuid(CatalogItemDto item, string field)
     {
@@ -99,10 +106,9 @@ public sealed class PropertyManagementBankAccountReader(ICatalogService catalogs
         }
     }
 
-    private static bool GetBool(CatalogItemDto item, string field)
+    private static bool GetBool(CatalogItemDto item, IReadOnlyDictionary<string, JsonElement> fields, string field)
     {
-        var fields = item.Payload.Fields;
-        if (fields is null || !fields.TryGetValue(field, out var el))
+        if (!fields.TryGetValue(field, out var el))
             throw new NgbConfigurationViolationException($"Bank account field '{field}' is missing.");
 
         try
@@ -111,7 +117,7 @@ public sealed class PropertyManagementBankAccountReader(ICatalogService catalogs
             {
                 JsonValueKind.True => true,
                 JsonValueKind.False => false,
-                JsonValueKind.String => bool.Parse(el.GetString() ?? string.Empty),
+                JsonValueKind.String => bool.Parse(el.GetString()!),
                 _ => throw new NgbConfigurationViolationException($"Unexpected JSON value kind '{el.ValueKind}' for '{field}'.")
             };
         }

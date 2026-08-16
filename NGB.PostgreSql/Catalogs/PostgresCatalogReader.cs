@@ -126,9 +126,12 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
             transaction: uow.Transaction,
             cancellationToken: ct));
 
-        rows.AddRange(nonNullRows.Select(r => ToRow(head, (IDictionary<string, object?>)r)));
+        foreach (var row in nonNullRows)
+        {
+            rows.Add(ToRow(head, (IDictionary<string, object?>)row));
+        }
 
-        if (rows.Count == limit)
+        if (rows.Count >= limit)
             return rows;
 
         var nonNullCountSql = $"""
@@ -148,8 +151,6 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
 
         var nullOffset = Math.Max(0L, offset - nonNullCount);
         var remaining = limit - rows.Count;
-        if (remaining <= 0)
-            return rows;
 
         p.Add("nullOffset", nullOffset);
         p.Add("remaining", remaining);

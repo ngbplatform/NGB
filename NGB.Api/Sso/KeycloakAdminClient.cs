@@ -311,18 +311,11 @@ public sealed class KeycloakAdminClient(
         string? errorCode = null;
         string? errorBody = null;
 
-        try
+        var text = await response.Content.ReadAsStringAsync(ct);
+        if (!string.IsNullOrWhiteSpace(text))
         {
-            var text = await response.Content.ReadAsStringAsync(ct);
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                errorCode = "keycloak_error_body_present";
-                errorBody = text.Length > 512 ? text[..512] : text;
-            }
-        }
-        catch
-        {
-            errorCode = "keycloak_error_body_unreadable";
+            errorCode = "keycloak_error_body_present";
+            errorBody = text.Length > 512 ? text[..512] : text;
         }
 
         var context = new Dictionary<string, object?>();
@@ -339,8 +332,14 @@ public sealed class KeycloakAdminClient(
 
     private string BuildUri(string pathOrUri)
     {
-        if (Uri.TryCreate(pathOrUri, UriKind.Absolute, out var absolute))
+        if (Uri.TryCreate(pathOrUri, UriKind.Absolute, out var absolute)
+            && (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
+        {
             return absolute.ToString();
+        }
+
+        if (pathOrUri.Contains("://", StringComparison.Ordinal))
+            throw new NgbConfigurationViolationException("Keycloak Admin URI must use the http or https scheme.");
 
         return $"{settings.BaseUrl.TrimEnd('/')}/{pathOrUri.TrimStart('/')}";
     }
@@ -385,7 +384,11 @@ public sealed class KeycloakAdminClient(
             return displayName.Trim();
         }
 
-        var fullName = string.Join(" ", new[] { dto.FirstName, dto.LastName }.Where(static x => !string.IsNullOrWhiteSpace(x)));
+        var fullName = string.Join(
+            " ",
+            new[] { dto.FirstName, dto.LastName }
+                .Where(static x => !string.IsNullOrWhiteSpace(x))
+                .Select(static x => x!.Trim()));
         return string.IsNullOrWhiteSpace(fullName) ? dto.Email ?? dto.Username : fullName.Trim();
     }
 

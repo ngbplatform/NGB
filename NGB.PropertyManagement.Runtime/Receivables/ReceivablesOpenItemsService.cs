@@ -123,7 +123,7 @@ public sealed class ReceivablesOpenItemsService(
 
             foreach (var row in page)
             {
-                if (!TryGetValueId(row.Dimensions, itemDimId, out var itemId) || itemId == Guid.Empty)
+                if (!TryGetValueId(row.Dimensions, itemDimId, out var itemId))
                     continue; // malformed row; ignore
 
                 var amount = ReadSingleAmount(row.Values);
@@ -221,7 +221,8 @@ public sealed class ReceivablesOpenItemsService(
 
     private static Guid ReadGuid(RecordPayload payload, string field)
     {
-        if (payload.Fields is null || !payload.Fields.TryGetValue(field, out var el))
+        // ReadDateOnly has already established that lease scalar fields are present.
+        if (!payload.Fields!.TryGetValue(field, out var el))
             throw new NgbConfigurationViolationException($"Required field '{field}' is missing on '{PropertyManagementCodes.Lease}'.");
 
         try
@@ -280,8 +281,7 @@ public sealed class ReceivablesOpenItemsService(
 
         if (el.ValueKind == JsonValueKind.String)
         {
-            var s = el.GetString();
-            if (!string.IsNullOrWhiteSpace(s) && DateOnly.TryParse(s, out var d))
+            if (DateOnly.TryParse(el.GetString()!, out var d))
                 return d;
         }
 

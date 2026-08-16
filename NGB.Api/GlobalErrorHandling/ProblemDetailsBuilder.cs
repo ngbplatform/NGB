@@ -57,6 +57,14 @@ internal sealed class ProblemDetailsBuilder(int statusCode)
             Detail = "Something went wrong.",
         },
 
+        [StatusCodes.Status503ServiceUnavailable] = () => new ProblemDetails
+        {
+            Status = StatusCodes.Status503ServiceUnavailable,
+            Type = nameof(StatusCodes.Status503ServiceUnavailable),
+            Title = "Service Unavailable",
+            Detail = "The service is temporarily unavailable.",
+        },
+
         [StatusCodes.Status504GatewayTimeout] = () => new ProblemDetails
         {
             Status = StatusCodes.Status504GatewayTimeout,

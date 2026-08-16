@@ -80,7 +80,7 @@ public static class DependencyInjection
                     AudienceValidator = BuildKeycloakAudienceValidator(validClientIds),
                     // IssuerSigningKey = GetSigningKey(keycloakSettings.SecurityKeyParameters)
                 };
-                options.Events = new JwtBearerEvents
+                var events = new JwtBearerEvents
                 {
                     OnMessageReceived = context =>
                     {
@@ -113,6 +113,7 @@ public static class DependencyInjection
                         return Task.CompletedTask;
                     }
                 };
+                options.Events = events;
             });
 
         AddAuthorizationAuthAdminPolicy(services);
@@ -209,7 +210,7 @@ public static class DependencyInjection
                     RoleClaimType = ClaimTypes.Role
                 };
 
-                options.Events = new OpenIdConnectEvents
+                var events = new OpenIdConnectEvents
                 {
                     OnTokenValidated = context =>
                     {
@@ -218,7 +219,6 @@ public static class DependencyInjection
 
                         return Task.CompletedTask;
                     },
-
                     OnRedirectToIdentityProvider = context =>
                     {
                         if (!string.IsNullOrWhiteSpace(adminConsoleAuthOptions.PublicOrigin))
@@ -233,28 +233,29 @@ public static class DependencyInjection
 
                         return Task.CompletedTask;
                     },
-
                     OnRedirectToIdentityProviderForSignOut = async context =>
                     {
                         var logoutUri = keycloakSettings.Issuer + "/protocol/openid-connect/logout";
                         context.ProtocolMessage.IssuerAddress = logoutUri;
 
-                        var idToken = context.Properties?.GetTokenValue("id_token")
+                        var idToken = context.Properties.GetTokenValue("id_token")
                                       ?? await context.HttpContext.GetTokenAsync("id_token");
 
                         if (!string.IsNullOrWhiteSpace(idToken))
                             context.ProtocolMessage.IdTokenHint = idToken;
 
                         var postLogoutRedirectUri = ResolveAbsoluteRedirectUri(
-                            context.Properties?.RedirectUri,
+                            context.Properties.RedirectUri,
                             context.Request.Scheme,
                             context.Request.Host,
                             adminConsoleAuthOptions.PublicOrigin);
 
                         if (!string.IsNullOrWhiteSpace(postLogoutRedirectUri))
                             context.ProtocolMessage.PostLogoutRedirectUri = postLogoutRedirectUri;
-                    },
+                    }
                 };
+
+                options.Events = events;
             });
 
         AddAuthorizationAuthAdminPolicy(services);
@@ -320,22 +321,9 @@ public static class DependencyInjection
 
             if (jsonWebToken.TryGetPayloadValue<object>(claimType, out var payloadValue))
                 return TryReadRawTokenValue(payloadValue, out value);
-
-            return false;
         }
 
-        var fallbackClaim = securityToken switch
-        {
-            JsonWebToken jwtToken => jwtToken.Claims.FirstOrDefault(x => x.Type == claimType),
-            JwtSecurityToken jwtToken => jwtToken.Claims.FirstOrDefault(x => x.Type == claimType),
-            _ => null
-        };
-
-        if (fallbackClaim is null || string.IsNullOrWhiteSpace(fallbackClaim.Value))
-            return false;
-
-        value = fallbackClaim.Value;
-        return true;
+        return false;
     }
 
     private static bool TryReadRawTokenValue(object? rawValue, out string value)
@@ -343,7 +331,7 @@ public static class DependencyInjection
         value = rawValue switch
         {
             string text => text,
-            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString() ?? string.Empty,
+            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString()!,
             _ => rawValue?.ToString() ?? string.Empty
         };
 
@@ -576,8 +564,15 @@ public static class DependencyInjection
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
-        if (Uri.TryCreate(value, UriKind.Absolute, out var absoluteUri))
-            return absoluteUri.ToString();
+        if (!value.StartsWith('/') && Uri.TryCreate(value, UriKind.Absolute, out var absoluteUri))
+        {
+            if (absoluteUri.Scheme == Uri.UriSchemeHttp || absoluteUri.Scheme == Uri.UriSchemeHttps)
+                return absoluteUri.ToString();
+
+            throw new NgbConfigurationViolationException(
+                "Redirect URI must use HTTP or HTTPS.",
+                context: new Dictionary<string, object?> { ["redirectUri"] = value });
+        }
 
         var normalizedPath = value.StartsWith('/') ? value : $"/{value}";
         var origin = !string.IsNullOrWhiteSpace(publicOrigin)

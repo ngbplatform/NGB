@@ -13,48 +13,65 @@ namespace NGB.PostgreSql.Documents;
 ///
 /// If a document has parts tables or custom semantics, implement <see cref="IDocumentTypeStorage"/> manually.
 /// </summary>
-public sealed class PostgresHeadDocumentTypeStorage(
-    IUnitOfWork uow,
-    string typeCode,
-    string headTable,
-    IReadOnlyList<PostgresHeadDocumentTypeStorage.Column> columns)
-    : IDocumentTypeStorage
+public sealed class PostgresHeadDocumentTypeStorage : IDocumentTypeStorage
 {
     private static readonly Regex SafeParameter = new(
         "^[a-z_][a-z0-9_]*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    public string TypeCode { get; } = typeCode;
+    private readonly IUnitOfWork _uow;
+    private readonly IReadOnlyList<Column> _columns;
 
-    private readonly string _insertSql = BuildInsertSql(headTable, columns);
-    private readonly string _deleteSql = BuildDeleteSql(headTable);
+    public PostgresHeadDocumentTypeStorage(
+        IUnitOfWork uow,
+        string typeCode,
+        string headTable,
+        IReadOnlyList<Column> columns)
+    {
+        _uow = uow ?? throw new NgbArgumentRequiredException(nameof(uow));
+        if (string.IsNullOrWhiteSpace(typeCode))
+            throw new NgbArgumentRequiredException(nameof(typeCode));
+
+        _columns = columns ?? throw new NgbArgumentRequiredException(nameof(columns));
+        if (_columns.Any(static x => x is null || x.ValueFactory is null))
+            throw new NgbArgumentRequiredException(nameof(columns));
+
+        TypeCode = typeCode;
+        _insertSql = BuildInsertSql(headTable, columns);
+        _deleteSql = BuildDeleteSql(headTable);
+    }
+
+    public string TypeCode { get; }
+
+    private readonly string _insertSql;
+    private readonly string _deleteSql;
 
     public async Task CreateDraftAsync(Guid documentId, CancellationToken ct = default)
     {
-        uow.EnsureActiveTransaction();
+        _uow.EnsureActiveTransaction();
 
         var p = new DynamicParameters();
         p.Add("documentId", documentId);
 
-        foreach (var c in columns)
+        foreach (var c in _columns)
         {
             p.Add(c.ParameterName, c.ValueFactory(documentId));
         }
 
-        await uow.Connection.ExecuteAsync(new CommandDefinition(
+        await _uow.Connection.ExecuteAsync(new CommandDefinition(
             _insertSql,
             p,
-            uow.Transaction,
+            _uow.Transaction,
             cancellationToken: ct));
     }
 
     public async Task DeleteDraftAsync(Guid documentId, CancellationToken ct = default)
     {
-        uow.EnsureActiveTransaction();
-        await uow.Connection.ExecuteAsync(new CommandDefinition(
+        _uow.EnsureActiveTransaction();
+        await _uow.Connection.ExecuteAsync(new CommandDefinition(
             _deleteSql,
             new { documentId },
-            uow.Transaction,
+            _uow.Transaction,
             cancellationToken: ct));
     }
 

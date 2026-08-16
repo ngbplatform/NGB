@@ -93,7 +93,7 @@ public sealed class PayablesOpenItemsService(
 
                 foreach (var row in page)
                 {
-                    if (!TryGetValueId(row.Dimensions, itemDimId, out var itemId) || itemId == Guid.Empty)
+                    if (!TryGetValueId(row.Dimensions, itemDimId, out var itemId))
                         continue;
 
                     var amount = ReadSingleAmount(row.Values);

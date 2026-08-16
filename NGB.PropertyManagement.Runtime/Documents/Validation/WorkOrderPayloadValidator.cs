@@ -38,10 +38,7 @@ internal sealed class WorkOrderPayloadValidator(
             return;
 
         var snapshot = await ResolveSnapshotAsync(documentId, payload, ct);
-        if (snapshot is null)
-            return;
-
-        await ValidateBusinessRulesAsync(snapshot.Value, ct);
+        await ValidateBusinessRulesAsync(snapshot!.Value, ct);
     }
 
     private async Task<Snapshot?> ResolveSnapshotAsync(Guid? documentId, RecordPayload payload, CancellationToken ct)
@@ -106,15 +103,8 @@ internal sealed class WorkOrderPayloadValidator(
         if (el.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return true;
 
-        try
-        {
-            value = el.ValueKind == JsonValueKind.String ? el.GetString() : el.ToString();
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        value = el.ValueKind == JsonValueKind.String ? el.GetString() : el.ToString();
+        return true;
     }
 
     private readonly record struct Snapshot(

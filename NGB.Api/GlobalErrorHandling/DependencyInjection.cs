@@ -31,7 +31,7 @@ public static class DependencyInjection
                 }
 
                 var rawErrors = context.ModelState
-                    .Where(kvp => kvp.Value?.Errors.Count > 0)
+                    .Where(kvp => kvp.Value!.Errors.Count > 0)
                     .ToDictionary(
                         kvp => kvp.Key,
                         kvp => kvp.Value!.Errors
@@ -69,7 +69,7 @@ public static class DependencyInjection
     private static bool IsMalformedJsonRequest(ActionContext context)
     {
         var entries = context.ModelState
-            .Where(kvp => kvp.Value?.Errors.Count > 0)
+            .Where(kvp => kvp.Value!.Errors.Count > 0)
             .ToArray();
 
         if (entries.Length == 0)

@@ -148,7 +148,7 @@ public sealed class ReceivablesCustomApplyExecuteService(
         await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         var totalApplied = executed.Sum(x => x.Amount);
-        var remaining = Math.Max(0m, availableCredit - totalApplied);
+        var remaining = availableCredit - totalApplied;
 
         return new ReceivablesCustomApplyExecuteResponse(
             CreditDocumentId: request.CreditDocumentId,

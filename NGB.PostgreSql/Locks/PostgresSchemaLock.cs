@@ -115,12 +115,7 @@ internal static class PostgresSchemaLock
         const uint fnvPrime = 16777619u;
 
         Span<byte> bytes = stackalloc byte[16];
-        if (!id.TryWriteBytes(bytes))
-        {
-            throw new NgbInvariantViolationException(
-                "Failed to write Guid bytes.",
-                new Dictionary<string, object?> { ["id"] = id });
-        }
+        _ = id.TryWriteBytes(bytes);
 
         var h = fnvOffset;
 
@@ -133,8 +128,13 @@ internal static class PostgresSchemaLock
         h ^= unchecked((uint)salt);
         h = Avalanche(h);
 
-        var k = unchecked((int)h);
-        return k == 0 ? 1 : k;
+        return NormalizeKey2(h);
+    }
+
+    internal static int NormalizeKey2(uint hash)
+    {
+        var key = unchecked((int)hash);
+        return key == 0 ? 1 : key;
     }
 
     private static uint Avalanche(uint h)

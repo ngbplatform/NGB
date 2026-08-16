@@ -51,7 +51,7 @@ public sealed class PropertyManagementPartyReader(ICatalogService catalogs) : IP
             {
                 JsonValueKind.True => true,
                 JsonValueKind.False => false,
-                JsonValueKind.String => bool.Parse(el.GetString() ?? string.Empty),
+                JsonValueKind.String => bool.Parse(el.GetString()!),
                 _ => throw new NgbConfigurationViolationException($"Unexpected JSON value kind '{el.ValueKind}' for '{field}'.")
             };
         }

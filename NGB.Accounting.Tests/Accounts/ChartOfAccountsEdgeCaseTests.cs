@@ -30,6 +30,17 @@ public sealed class ChartOfAccountsEdgeCaseTests
     }
 
     [Fact]
+    public void Account_not_found_by_code_preserves_code_and_structured_context()
+    {
+        var exception = new AccountNotFoundException(" 1000 ");
+
+        exception.AccountId.Should().BeNull();
+        exception.Code.Should().Be(" 1000 ");
+        exception.ErrorCode.Should().Be(AccountNotFoundException.ErrorCodeConst);
+        exception.Context.Should().ContainKey("code").WhoseValue.Should().Be(" 1000 ");
+    }
+
+    [Fact]
     public void TryGet_WhitespaceCode_ReturnsFalseAndNull()
     {
         var chart = new ChartOfAccounts();

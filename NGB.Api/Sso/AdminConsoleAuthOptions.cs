@@ -14,18 +14,15 @@ public sealed class AdminConsoleAuthOptions
     {
         CallbackPath = string.IsNullOrWhiteSpace(CallbackPath)
             ? null
-            : NormalizePath(CallbackPath, nameof(CallbackPath));
+            : NormalizePath(CallbackPath);
 
         PublicOrigin = string.IsNullOrWhiteSpace(PublicOrigin)
             ? null
             : NormalizePublicOrigin(PublicOrigin);
     }
 
-    private static string NormalizePath(string path, string propertyName)
+    private static string NormalizePath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path))
-            throw new NgbArgumentRequiredException(propertyName);
-
         var normalized = path.Trim();
         if (!normalized.StartsWith('/'))
             normalized = $"/{normalized}";

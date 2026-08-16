@@ -124,7 +124,7 @@ internal static partial class ValidationIssueBuilder
     [GeneratedRegex(@"\.rows\[\]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex WildcardRowsRegex();
 
-    [GeneratedRegex(@"\[(?:\d+)?\]$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\[\d+\]$", RegexOptions.CultureInvariant)]
     private static partial Regex RowRegex();
 
     [GeneratedRegex(@"^[^.]+\[\]$", RegexOptions.CultureInvariant)]

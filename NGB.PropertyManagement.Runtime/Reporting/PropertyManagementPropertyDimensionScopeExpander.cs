@@ -147,9 +147,6 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
         PropertyHierarchySnapshot hierarchy,
         CancellationToken ct)
     {
-        if (propertyId == Guid.Empty)
-            throw new NgbArgumentInvalidException(FilterParameterName, "Select a valid Property.");
-
         if (hierarchy.RowsById.TryGetValue(propertyId, out var activeRow))
             return activeRow;
 

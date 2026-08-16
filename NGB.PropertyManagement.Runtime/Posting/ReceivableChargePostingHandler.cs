@@ -32,7 +32,8 @@ public sealed class ReceivableChargePostingHandler(
         var chargeType = await readers.ReadChargeTypeHeadAsync(charge.ChargeTypeId, ct);
         var policy = await policyReader.GetRequiredAsync(ct);
 
-        if (chargeType.CreditAccountId is null || chargeType.CreditAccountId == Guid.Empty)
+        var creditAccountId = chargeType.CreditAccountId.GetValueOrDefault();
+        if (creditAccountId == Guid.Empty)
         {
             throw new NgbConfigurationViolationException(
                 $"Charge type '{charge.ChargeTypeId}' is missing credit_account_id.",
@@ -46,7 +47,7 @@ public sealed class ReceivableChargePostingHandler(
 
         var coa = await ctx.GetChartOfAccountsAsync(ct);
         var debit = coa.Get(policy.AccountsReceivableTenantsAccountId);
-        var credit = coa.Get(chargeType.CreditAccountId.Value);
+        var credit = coa.Get(creditAccountId);
 
         var period = new DateTime(charge.DueOnUtc.Year, charge.DueOnUtc.Month, charge.DueOnUtc.Day, 0, 0, 0, DateTimeKind.Utc);
 

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Data.Common;
 using Dapper;
 using Npgsql;
 using NGB.Persistence.Migrations;
@@ -6,8 +7,20 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Migrations;
 
-public sealed class PostgresMigrationRunner(string connectionString) : IMigrationRunner
+public sealed class PostgresMigrationRunner : IMigrationRunner
 {
+    private readonly Func<DbConnection> _connectionFactory;
+
+    public PostgresMigrationRunner(string connectionString)
+        : this(() => new NpgsqlConnection(connectionString))
+    {
+    }
+
+    internal PostgresMigrationRunner(Func<DbConnection> connectionFactory)
+    {
+        _connectionFactory = connectionFactory;
+    }
+
     // NOTE:
     // PostgreSQL DDL like "CREATE TABLE IF NOT EXISTS" is not fully concurrency-safe.
     // Two concurrent sessions can still race while creating underlying catalog objects
@@ -23,7 +36,7 @@ public sealed class PostgresMigrationRunner(string connectionString) : IMigratio
         MigrationExecutionOptions? options = null,
         CancellationToken ct = default)
     {
-        await using var connection = new NpgsqlConnection(connectionString);
+        await using var connection = _connectionFactory();
         await connection.OpenAsync(ct);
 
         // Defense-in-depth: ensure predictable UTC semantics for all timestamp operations.
@@ -117,7 +130,7 @@ public sealed class PostgresMigrationRunner(string connectionString) : IMigratio
     }
 
     private static async Task ApplySessionOptionsAsync(
-        NpgsqlConnection connection,
+        DbConnection connection,
         MigrationExecutionOptions? options,
         CancellationToken ct)
     {

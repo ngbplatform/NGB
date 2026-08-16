@@ -1,3 +1,4 @@
+using System.Globalization;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.Tools.Exceptions;
@@ -25,6 +26,9 @@ public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor exe
     {
         if (definition is null)
             throw new NgbArgumentRequiredException(nameof(definition));
+
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
 
         var result = await _executor.ExecuteAsync(Map(
                 reportCode,
@@ -94,18 +98,18 @@ public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor exe
             };
         }
 
-        if (dict.TryGetValue("to_utc", out var toValue) && toValue is DateTime toDate)
-            dict["to_utc_exclusive"] = toDate.AddDays(1);
+        if (dict.TryGetValue("to_utc", out var toValue))
+            dict["to_utc_exclusive"] = ((DateTime)toValue!).AddDays(1);
 
-        if (dict.TryGetValue("as_of_utc", out var asOfValue) && asOfValue is DateTime asOfDate)
-            dict["as_of_utc_exclusive"] = asOfDate.AddDays(1);
+        if (dict.TryGetValue("as_of_utc", out var asOfValue))
+            dict["as_of_utc_exclusive"] = ((DateTime)asOfValue!).AddDays(1);
 
         return dict;
     }
 
     private static DateTime ParseUtcDate(string code, string value)
     {
-        if (!DateOnly.TryParse(value, out var date))
+        if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
             throw new NgbConfigurationViolationException($"Reporting parameter '{code}' must be a valid date in yyyy-MM-dd format.");
 
         return DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);

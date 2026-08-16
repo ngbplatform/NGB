@@ -33,7 +33,6 @@ internal static class PayablesFifoAllocator
         foreach (var cr in orderedCredits)
         {
             var creditLeft = remainingCredit[cr.CreditDocumentId];
-            if (creditLeft <= 0m) continue;
 
             foreach (var ch in orderedCharges)
             {
@@ -51,9 +50,6 @@ internal static class PayablesFifoAllocator
                     continue;
 
                 var amount = Math.Min(chLeft, creditLeft);
-                if (amount <= 0m)
-                    continue;
-
                 var creditBefore = creditLeft;
                 var chargeBefore = chLeft;
                 creditLeft -= amount;

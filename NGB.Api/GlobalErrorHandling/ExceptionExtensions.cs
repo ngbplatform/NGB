@@ -189,8 +189,8 @@ internal static class ExceptionExtensions
                 Code: errorCode,
                 Kind: kind.ToString(),
                 Context: context is { Count: > 0 } ? context : null,
-                Errors: errors is { Count: > 0 } ? errors : null,
-                Issues: issues is { Count: > 0 } ? issues : null)
+                Errors: errors,
+                Issues: issues)
         };
     }
 

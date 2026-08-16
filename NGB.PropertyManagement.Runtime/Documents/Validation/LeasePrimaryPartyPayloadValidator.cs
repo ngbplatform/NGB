@@ -21,7 +21,7 @@ internal sealed class LeasePrimaryPartyPayloadValidator(IPropertyManagementParty
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> typedPartRowsByPartCode,
         CancellationToken ct)
     {
-        await ValidateAsync(payload, typedPartRowsByPartCode, requirePart: true, ct);
+        await ValidateAsync(typedPartRowsByPartCode, ct);
     }
 
     public async Task ValidateUpdateDraftPayloadAsync(
@@ -33,25 +33,15 @@ internal sealed class LeasePrimaryPartyPayloadValidator(IPropertyManagementParty
         if (payload.Parts is null || payload.Parts.Count == 0)
             return;
 
-        await ValidateAsync(payload, typedPartRowsByPartCode, requirePart: false, ct);
+        await ValidateAsync(typedPartRowsByPartCode, ct);
     }
 
     private async Task ValidateAsync(
-        RecordPayload payload,
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> typedPartRowsByPartCode,
-        bool requirePart,
         CancellationToken ct)
     {
         if (!typedPartRowsByPartCode.TryGetValue("parties", out var rows))
-        {
-            if (requirePart)
-                throw LeasePrimaryPartyPayloadValidationException.PartMissing();
-
-            if (payload.Parts is not null && payload.Parts.Count > 0)
-                throw LeasePrimaryPartyPayloadValidationException.PartMissing();
-
-            return;
-        }
+            throw LeasePrimaryPartyPayloadValidationException.PartMissing();
 
         var rowCount = rows.Count;
         if (rowCount == 0)
@@ -99,7 +89,7 @@ internal sealed class LeasePrimaryPartyPayloadValidator(IPropertyManagementParty
                 && ro is string rr
                 && string.Equals(rr, "PrimaryTenant", StringComparison.OrdinalIgnoreCase))
             {
-                if (!(r.TryGetValue("is_primary", out var pv) && pv is true))
+                if (!Equals(r.GetValueOrDefault("is_primary"), true))
                     throw LeasePrimaryPartyPayloadValidationException.PrimaryRoleMustBePrimary(rowCount);
             }
         }

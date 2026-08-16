@@ -51,13 +51,10 @@ public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresRepor
             });
     }
 
-    private static IReadOnlyDictionary<string, object?> MaterializeRow(dynamic row)
+    internal static IReadOnlyDictionary<string, object?> MaterializeRow(object row)
     {
         if (row is IDictionary<string, object?> typed)
             return new Dictionary<string, object?>(typed, StringComparer.OrdinalIgnoreCase);
-
-        if (row is IDictionary<string, object> boxed)
-            return boxed.ToDictionary(x => x.Key, object? (x) => x.Value, StringComparer.OrdinalIgnoreCase);
 
         throw new NgbInvariantViolationException("PostgreSQL reporting executor expected Dapper row materialization to provide a dictionary payload.");
     }

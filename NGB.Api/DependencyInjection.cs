@@ -3,6 +3,7 @@ using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -61,9 +62,7 @@ public static class DependencyInjection
     public static IServiceCollection AddKeycloakAdminClient(this IServiceCollection services, IConfiguration configuration)
     {
         var section = configuration.GetSection(nameof(KeycloakAdminClientSettings));
-        var settings = section.Exists()
-            ? section.Get<KeycloakAdminClientSettings>() ?? new KeycloakAdminClientSettings()
-            : new KeycloakAdminClientSettings();
+        var settings = section.Get<KeycloakAdminClientSettings>() ?? new KeycloakAdminClientSettings();
 
         services.TryAddSingleton(settings);
         services.TryAddSingleton(new KeycloakApiClientSettings(
@@ -137,16 +136,7 @@ public static class DependencyInjection
                 Type = SecuritySchemeType.ApiKey,
                 Scheme = JwtBearerDefaults.AuthenticationScheme
             });
-            c.TagActionsBy(api =>
-            {
-                if (api.GroupName != null)
-                    return [api.GroupName];
-
-                if (api.ActionDescriptor is ControllerActionDescriptor controllerActionDescriptor)
-                    return [controllerActionDescriptor.ControllerName];
-
-                throw new NgbInvariantViolationException("Unable to determine tag for endpoint.");
-            });
+            c.TagActionsBy(ResolveSwaggerTags);
             c.DocInclusionPredicate((name, api) => true);
 
             c.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
@@ -167,10 +157,9 @@ public static class DependencyInjection
             return SanitizeSwaggerSchemaId(type.FullName ?? type.Name);
 
         var genericRoot = type.GetGenericTypeDefinition();
-        var genericName = genericRoot.FullName ?? genericRoot.Name;
+        var genericName = genericRoot.FullName!;
         var tickIndex = genericName.IndexOf('`');
-        if (tickIndex >= 0)
-            genericName = genericName[..tickIndex];
+        genericName = genericName[..tickIndex];
 
         var args = string.Join("_", type.GetGenericArguments().Select(BuildSwaggerSchemaId));
         return SanitizeSwaggerSchemaId($"{genericName}_{args}");
@@ -183,6 +172,17 @@ public static class DependencyInjection
             .Replace('[', '_')
             .Replace(']', '_')
             .Replace(',', '_');
+
+    private static IList<string> ResolveSwaggerTags(ApiDescription api)
+    {
+        if (api.GroupName is not null)
+            return [api.GroupName];
+
+        if (api.ActionDescriptor is ControllerActionDescriptor controllerActionDescriptor)
+            return [controllerActionDescriptor.ControllerName];
+
+        throw new NgbInvariantViolationException("Unable to determine tag for endpoint.");
+    }
 
     #endregion
 
@@ -235,10 +235,12 @@ public static class DependencyInjection
     {
         return app.UseHealthChecks(path, new HealthCheckOptions
         {
-            Predicate = _ => true,
+            Predicate = IncludeEveryHealthCheck,
             ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
         });
     }
+
+    private static bool IncludeEveryHealthCheck(HealthCheckRegistration _) => true;
 
     public static IHealthChecksBuilder AddWebApplication(this IHealthChecksBuilder builder,
         string name = "Web Application")

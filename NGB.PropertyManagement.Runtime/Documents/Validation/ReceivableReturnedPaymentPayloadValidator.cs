@@ -39,10 +39,7 @@ internal sealed class ReceivableReturnedPaymentPayloadValidator(
             return;
 
         var snapshot = await ResolveSnapshotAsync(documentId, payload, ct);
-        if (snapshot is null)
-            return;
-
-        await ValidateBusinessRulesAsync(snapshot.Value, ct);
+        await ValidateBusinessRulesAsync(snapshot!.Value, ct);
     }
 
     private async Task<Snapshot?> ResolveSnapshotAsync(Guid? documentId, RecordPayload payload, CancellationToken ct)
@@ -134,7 +131,7 @@ internal sealed class ReceivableReturnedPaymentPayloadValidator(
         {
             value = el.ValueKind == JsonValueKind.Number
                 ? el.GetDecimal()
-                : decimal.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture);
+                : decimal.Parse(el.GetString()!, CultureInfo.InvariantCulture);
 
             return true;
         }
@@ -156,7 +153,7 @@ internal sealed class ReceivableReturnedPaymentPayloadValidator(
         try
         {
             value = el.ValueKind == JsonValueKind.String
-                ? DateOnly.Parse(el.GetString() ?? string.Empty, CultureInfo.InvariantCulture)
+                ? DateOnly.Parse(el.GetString()!, CultureInfo.InvariantCulture)
                 : DateOnly.Parse(el.ToString(), CultureInfo.InvariantCulture);
 
             return true;

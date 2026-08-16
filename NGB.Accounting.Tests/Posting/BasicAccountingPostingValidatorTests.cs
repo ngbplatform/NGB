@@ -141,6 +141,29 @@ public sealed class BasicAccountingPostingValidatorTests
     }
 
     [Fact]
+    public void Validate_Required_dimension_after_an_optional_dimension_is_accepted()
+    {
+        var optionalRule = Rule("Department", required: false, ordinal: 10);
+        var requiredRule = Rule("Warehouse", required: true, ordinal: 20);
+        var dimensions = new DimensionBag(
+        [
+            new DimensionValue(optionalRule.DimensionId, Guid.CreateVersion7()),
+            new DimensionValue(requiredRule.DimensionId, Guid.CreateVersion7())
+        ]);
+        var entry = CreateEntry(
+            Guid.CreateVersion7(),
+            new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc),
+            CreateAccount("41", [optionalRule, requiredRule]),
+            CreateAccount("60"),
+            10m,
+            debitDimensions: dimensions);
+
+        var act = () => new BasicAccountingPostingValidator().Validate([entry]);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
     public void Validate_NullEntries_Throws()
     {
         var act = () => new BasicAccountingPostingValidator().Validate(null!);

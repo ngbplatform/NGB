@@ -166,6 +166,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{E01F8695
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NGB.CRM.Api.IntegrationTests", "NGB.CRM.Api.IntegrationTests\NGB.CRM.Api.IntegrationTests.csproj", "{3E1D0C98-D737-4243-8882-7E95E518F237}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NGB.PropertyManagement.Runtime.Tests", "NGB.PropertyManagement.Runtime.Tests\NGB.PropertyManagement.Runtime.Tests.csproj", "{3BBD0622-E037-445F-B355-448BC1FE653A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -920,6 +922,18 @@ Global
 		{3E1D0C98-D737-4243-8882-7E95E518F237}.Release|x64.Build.0 = Release|Any CPU
 		{3E1D0C98-D737-4243-8882-7E95E518F237}.Release|x86.ActiveCfg = Release|Any CPU
 		{3E1D0C98-D737-4243-8882-7E95E518F237}.Release|x86.Build.0 = Release|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Debug|x64.Build.0 = Debug|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Debug|x86.Build.0 = Debug|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Release|x64.ActiveCfg = Release|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Release|x64.Build.0 = Release|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Release|x86.ActiveCfg = Release|Any CPU
+		{3BBD0622-E037-445F-B355-448BC1FE653A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -995,5 +1009,6 @@ Global
 		{55E83E26-8543-47BA-85E5-0E385785E53A} = {F99B454A-7C4C-45B9-9F28-1CD3310DE119}
 		{E01F8695-CFCE-4521-B11F-CDB14D03E259} = {55E83E26-8543-47BA-85E5-0E385785E53A}
 		{3E1D0C98-D737-4243-8882-7E95E518F237} = {E01F8695-CFCE-4521-B11F-CDB14D03E259}
+		{3BBD0622-E037-445F-B355-448BC1FE653A} = {98974996-000A-4C01-90F7-FF370AE7F2BB}
 	EndGlobalSection
 EndGlobal

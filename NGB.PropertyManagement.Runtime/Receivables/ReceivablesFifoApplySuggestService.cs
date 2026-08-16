@@ -142,9 +142,7 @@ public sealed class ReceivablesFifoApplySuggestService(
             .Select(x => new ReceivablesSuggestedLeaseApplyDto(
                 ApplyId: null,
                 CreditDocumentId: x.CreditDocumentId,
-                CreditDocumentType: creditTypesById.TryGetValue(x.CreditDocumentId, out var creditDocumentType)
-                    ? creditDocumentType
-                    : PropertyManagementCodes.ReceivablePayment,
+                CreditDocumentType: creditTypesById[x.CreditDocumentId],
                 CreditDocumentDisplay: x.CreditDocumentDisplay,
                 CreditDocumentDateUtc: x.CreditDocumentDateUtc,
                 CreditAmountBefore: x.CreditAmountBefore,

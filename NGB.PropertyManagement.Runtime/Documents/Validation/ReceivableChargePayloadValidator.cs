@@ -40,10 +40,7 @@ internal sealed class ReceivableChargePayloadValidator(
             return;
 
         var snapshot = await ResolveSnapshotAsync(documentId, payload, ct);
-        if (snapshot is null)
-            return;
-
-        if (snapshot.Value.Amount <= 0m)
+        if (snapshot!.Value.Amount <= 0m)
             throw ReceivableChargeValidationException.AmountMustBePositive(snapshot.Value.Amount, snapshot.Value.DocumentId);
     }
 
@@ -110,7 +107,7 @@ internal sealed class ReceivableChargePayloadValidator(
         {
             value = el.ValueKind == JsonValueKind.Number
                 ? el.GetDecimal()
-                : decimal.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture);
+                : decimal.Parse(el.GetString()!, CultureInfo.InvariantCulture);
             return true;
         }
         catch

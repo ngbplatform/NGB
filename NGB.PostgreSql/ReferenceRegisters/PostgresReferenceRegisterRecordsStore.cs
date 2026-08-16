@@ -123,7 +123,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                 var r = records[offset + i];
                 var bucketUtc = ReferenceRegisterPeriodBucket.ComputeUtc(r.PeriodUtc, reg.Periodicity);
 
-                p.Add(P("DimensionSetId", i), r.DimensionSetId == Guid.Empty ? Guid.Empty : r.DimensionSetId);
+                p.Add(P("DimensionSetId", i), r.DimensionSetId);
                 p.Add(P("PeriodUtc", i), r.PeriodUtc);
                 p.Add(P("PeriodBucketUtc", i), bucketUtc);
                 p.Add(P("RecorderDocumentId", i), r.RecorderDocumentId);
@@ -401,11 +401,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         else
             sb.AppendLine($"ALTER TABLE {table} ALTER COLUMN recorder_document_id DROP NOT NULL;");
 
-        if (sb.Length > 0)
-        {
-            var cmd = new CommandDefinition(sb.ToString(), transaction: uow.Transaction, cancellationToken: ct);
-            await uow.Connection.ExecuteAsync(cmd);
-        }
+        var cmd = new CommandDefinition(sb.ToString(), transaction: uow.Transaction, cancellationToken: ct);
+        await uow.Connection.ExecuteAsync(cmd);
 
         // Semantic drift repair (enforce NULL where NULL is required).
         await EnsureSemanticCheckConstraintsAsync(table, reg, ct);
@@ -621,20 +618,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
     private static bool ColumnTypeMatches(ColumnMeta meta, ColumnType t)
     {
-        var expectedUdt = t switch
-        {
-            ColumnType.String => "text",
-            ColumnType.Int32 => "int4",
-            ColumnType.Int64 => "int8",
-            ColumnType.Decimal => "numeric",
-            ColumnType.Boolean => "bool",
-            ColumnType.Guid => "uuid",
-            ColumnType.Date => "date",
-            ColumnType.DateTimeUtc => "timestamptz",
-            ColumnType.Json => "jsonb",
-            _ => throw new NgbInvariantViolationException($"Unsupported ColumnType '{t}'.",
-                new Dictionary<string, object?> { ["columnType"] = t.ToString() })
-        };
+        var expectedUdt = GetSqlType(t).UdtName;
 
         if (!string.Equals(meta.UdtName, expectedUdt, StringComparison.OrdinalIgnoreCase))
             return false;
@@ -655,17 +639,19 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         return true;
     }
 
-    private static string ToSqlType(ColumnType t) => t switch
+    private static string ToSqlType(ColumnType t) => GetSqlType(t).SqlType;
+
+    private static (string UdtName, string SqlType) GetSqlType(ColumnType t) => t switch
     {
-        ColumnType.String => "TEXT",
-        ColumnType.Int32 => "INTEGER",
-        ColumnType.Int64 => "BIGINT",
-        ColumnType.Decimal => "NUMERIC(28,8)",
-        ColumnType.Boolean => "BOOLEAN",
-        ColumnType.Guid => "UUID",
-        ColumnType.Date => "DATE",
-        ColumnType.DateTimeUtc => "TIMESTAMPTZ",
-        ColumnType.Json => "JSONB",
+        ColumnType.String => ("text", "TEXT"),
+        ColumnType.Int32 => ("int4", "INTEGER"),
+        ColumnType.Int64 => ("int8", "BIGINT"),
+        ColumnType.Decimal => ("numeric", "NUMERIC(28,8)"),
+        ColumnType.Boolean => ("bool", "BOOLEAN"),
+        ColumnType.Guid => ("uuid", "UUID"),
+        ColumnType.Date => ("date", "DATE"),
+        ColumnType.DateTimeUtc => ("timestamptz", "TIMESTAMPTZ"),
+        ColumnType.Json => ("jsonb", "JSONB"),
         _ => throw new NgbInvariantViolationException($"Unsupported ColumnType '{t}'.",
             new Dictionary<string, object?> { ["columnType"] = t.ToString() })
     };
@@ -719,8 +705,6 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         // We hash the table name to avoid collisions across different registers.
         var token = DeterministicGuid.Create($"Ix|{prefix}|{table}").ToString("N")[..12];
         var name = prefix + token;
-        if (name.Length > ReferenceRegisterSqlIdentifiers.MaxIdentifierLength)
-            name = name[..ReferenceRegisterSqlIdentifiers.MaxIdentifierLength];
 
         ReferenceRegisterSqlIdentifiers.EnsureOrThrow(name, "index name");
         return name;
@@ -730,8 +714,6 @@ public sealed class PostgresReferenceRegisterRecordsStore(
     {
         var token = DeterministicGuid.Create($"Trg|{prefix}|{table}").ToString("N")[..12];
         var name = prefix + token;
-        if (name.Length > ReferenceRegisterSqlIdentifiers.MaxIdentifierLength)
-            name = name[..ReferenceRegisterSqlIdentifiers.MaxIdentifierLength];
 
         ReferenceRegisterSqlIdentifiers.EnsureOrThrow(name, "trigger name");
         return name;
@@ -741,8 +723,6 @@ public sealed class PostgresReferenceRegisterRecordsStore(
     {
         var token = DeterministicGuid.Create($"Ck|{prefix}|{table}").ToString("N")[..12];
         var name = prefix + token;
-        if (name.Length > ReferenceRegisterSqlIdentifiers.MaxIdentifierLength)
-            name = name[..ReferenceRegisterSqlIdentifiers.MaxIdentifierLength];
 
         ReferenceRegisterSqlIdentifiers.EnsureOrThrow(name, "constraint name");
         return name;

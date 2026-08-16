@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
+using System.Reflection;
 using Xunit;
 
 namespace NGB.Runtime.Tests.WorkCenter;
@@ -163,6 +164,28 @@ public sealed class WorkCenterOutboxHostedServiceTests
 
         await service.StartAsync(CancellationToken.None);
         await service.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_propagates_drain_cancellation_to_its_graceful_shutdown_boundary()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
+        scopes.Setup(factory => factory.CreateScope())
+            .Throws(new OperationCanceledException(cancellation.Token));
+        var service = new WorkCenterOutboxHostedService(
+            scopes.Object,
+            TimeProvider.System,
+            Options(),
+            NullLogger<WorkCenterOutboxHostedService>.Instance);
+
+        var execution = (Task)typeof(WorkCenterOutboxHostedService)
+            .GetMethod("ExecuteAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(service, [cancellation.Token])!;
+
+        await execution;
+        scopes.VerifyAll();
     }
 
     [Fact]

@@ -95,9 +95,6 @@ public sealed class PropertyCatalogUpsertValidator(
             throw PropertyValidationException.UnitNoRequired();
 
         var unitNo = unitNoRaw.Trim();
-        if (unitNo.Length == 0)
-            throw PropertyValidationException.UnitNoRequired();
-
         if (!string.Equals(unitNoRaw, unitNo, StringComparison.Ordinal))
             throw PropertyValidationException.UnitNoInvalid(unitNoRaw);
 

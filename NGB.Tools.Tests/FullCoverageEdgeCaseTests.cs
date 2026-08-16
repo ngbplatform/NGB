@@ -42,6 +42,16 @@ public sealed class FullCoverageEdgeCaseTests
     }
 
     [Fact]
+    public void OutOfRange_NullReason_UsesEmpty_context_value_and_default_message()
+    {
+        var exception = new NgbArgumentOutOfRangeException("itemCount", 0, null!);
+
+        exception.Message.Should().Be("Item Count is out of range.");
+        exception.Context["reason"].Should().Be(string.Empty);
+        exception.Reason.Should().BeNull();
+    }
+
+    [Fact]
     public void NgbException_ContextEnumerationFailure_IsSwallowedByConstructor()
     {
         var context = new ThrowingReadOnlyDictionary();
@@ -127,6 +137,7 @@ public sealed class FullCoverageEdgeCaseTests
     public void NormalizeStrictToken_DigitAndLetterBranches_AreBothSupported()
     {
         IdentifierNormalization.NormalizeStrictToken("A1-Z", "code", "empty").Should().Be("a1_z");
+        IdentifierNormalization.NormalizeStrictToken("AéZ", "code", "empty").Should().Be("a_z");
     }
 
     private static JsonElement ParseJson(string json)

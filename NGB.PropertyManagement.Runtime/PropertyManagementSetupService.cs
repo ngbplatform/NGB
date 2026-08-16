@@ -448,7 +448,7 @@ public sealed class PropertyManagementSetupService(
         string dimensionCode,
         IReadOnlyList<string> requiredDimensions)
     {
-        if (account.DimensionRules is null || account.DimensionRules.Count == 0)
+        if (account.DimensionRules.Count == 0)
             throw new NgbConfigurationViolationException($"Chart of Accounts account '{account.Code}' is missing dimension rules. Required: {string.Join(", ", requiredDimensions)}.");
 
         var rule = account.DimensionRules.FirstOrDefault(x => string.Equals(x.DimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase));
@@ -547,7 +547,7 @@ public sealed class PropertyManagementSetupService(
 
     private static bool HasRequiredDimension(Account account, string dimensionCode)
     {
-        if (account.DimensionRules is null || account.DimensionRules.Count == 0)
+        if (account.DimensionRules.Count == 0)
             return false;
 
         var rule = account.DimensionRules.FirstOrDefault(x => string.Equals(x.DimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase));

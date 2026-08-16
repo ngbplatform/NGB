@@ -114,32 +114,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         if (row is null)
             return null;
 
-        var d = (IDictionary<string, object?>)row;
-
-        var recordId = Convert.ToInt64(d["RecordId"]!);
-        var dimSetId = (Guid)d["DimensionSetId"]!;
-        var periodUtc = d["PeriodUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodUtc"]!;
-        var periodBucketUtc = d["PeriodBucketUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodBucketUtc"]!;
-        var recorderId = d["RecorderDocumentId"] is null or DBNull ? (Guid?)null : (Guid)d["RecorderDocumentId"]!;
-        var recordedAtUtc = (DateTime)d["RecordedAtUtc"]!;
-        var isDeleted = (bool)d["IsDeleted"]!;
-
-        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var f in fields)
-        {
-            var v = d.TryGetValue(f.ColumnCode, out var obj) ? obj : null;
-            values[f.CodeNorm] = v is DBNull ? null : v;
-        }
-
-        return new ReferenceRegisterRecordRead(
-            recordId,
-            dimSetId,
-            periodUtc,
-            periodBucketUtc,
-            recorderId,
-            recordedAtUtc,
-            isDeleted,
-            values);
+        return MapRow((IDictionary<string, object?>)row, fields);
     }
 
     public async Task<ReferenceRegisterRecordRead?> SliceLastForEffectiveMomentAsync(
@@ -243,32 +218,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         if (row is null)
             return null;
 
-        var d = (IDictionary<string, object?>)row;
-
-        var recordId = Convert.ToInt64(d["RecordId"]!);
-        var dimSetId = (Guid)d["DimensionSetId"]!;
-        var periodUtc = d["PeriodUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodUtc"]!;
-        var periodBucketUtc = d["PeriodBucketUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodBucketUtc"]!;
-        var recorderId = d["RecorderDocumentId"] is null or DBNull ? (Guid?)null : (Guid)d["RecorderDocumentId"]!;
-        var recordedAtUtc = (DateTime)d["RecordedAtUtc"]!;
-        var isDeleted = (bool)d["IsDeleted"]!;
-
-        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-        foreach (var f in fields)
-        {
-            var v = d.TryGetValue(f.ColumnCode, out var obj) ? obj : null;
-            values[f.CodeNorm] = v is DBNull ? null : v;
-        }
-
-        return new ReferenceRegisterRecordRead(
-            recordId,
-            dimSetId,
-            periodUtc,
-            periodBucketUtc,
-            recorderId,
-            recordedAtUtc,
-            isDeleted,
-            values);
+        return MapRow((IDictionary<string, object?>)row, fields);
     }
 
     public async Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllAsync(
@@ -365,39 +315,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
             cancellationToken: ct);
 
         var rows = await uow.Connection.QueryAsync(cmd);
-        var list = new List<ReferenceRegisterRecordRead>();
-
-        foreach (var row in rows)
-        {
-            var d = (IDictionary<string, object?>)row;
-
-            var recordId = Convert.ToInt64(d["RecordId"]!);
-            var dimSetId = (Guid)d["DimensionSetId"]!;
-            var periodUtc = d["PeriodUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodUtc"]!;
-            var periodBucketUtc = d["PeriodBucketUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodBucketUtc"]!;
-            var recorderId = d["RecorderDocumentId"] is null or DBNull ? (Guid?)null : (Guid)d["RecorderDocumentId"]!;
-            var recordedAtUtc = (DateTime)d["RecordedAtUtc"]!;
-            var isDeleted = (bool)d["IsDeleted"]!;
-
-            var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var f in fields)
-            {
-                var v = d.TryGetValue(f.ColumnCode, out var obj) ? obj : null;
-                values[f.CodeNorm] = v is DBNull ? null : v;
-            }
-
-            list.Add(new ReferenceRegisterRecordRead(
-                recordId,
-                dimSetId,
-                periodUtc,
-                periodBucketUtc,
-                recorderId,
-                recordedAtUtc,
-                isDeleted,
-                values));
-        }
-
-        return list;
+        return MapRows(rows, fields);
     }
 
     public async Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllFilteredByDimensionsAsync(
@@ -530,39 +448,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
             cancellationToken: ct);
 
         var rows = await uow.Connection.QueryAsync(cmd);
-        var list = new List<ReferenceRegisterRecordRead>();
-
-        foreach (var row in rows)
-        {
-            var d = (IDictionary<string, object?>)row;
-
-            var recordId = Convert.ToInt64(d["RecordId"]!);
-            var dimSetId = (Guid)d["DimensionSetId"]!;
-            var periodUtc = d["PeriodUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodUtc"]!;
-            var periodBucketUtc = d["PeriodBucketUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodBucketUtc"]!;
-            var recorderId = d["RecorderDocumentId"] is null or DBNull ? (Guid?)null : (Guid)d["RecorderDocumentId"]!;
-            var recordedAtUtc = (DateTime)d["RecordedAtUtc"]!;
-            var isDeleted = (bool)d["IsDeleted"]!;
-
-            var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var f in fields)
-            {
-                var v = d.TryGetValue(f.ColumnCode, out var obj) ? obj : null;
-                values[f.CodeNorm] = v is DBNull ? null : v;
-            }
-
-            list.Add(new ReferenceRegisterRecordRead(
-                recordId,
-                dimSetId,
-                periodUtc,
-                periodBucketUtc,
-                recorderId,
-                recordedAtUtc,
-                isDeleted,
-                values));
-        }
-
-        return list;
+        return MapRows(rows, fields);
     }
 
     public async Task<IReadOnlyList<ReferenceRegisterRecordRead>> ListByRecorderDocumentAsync(
@@ -769,40 +655,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
             cancellationToken: ct);
 
         var rows = await uow.Connection.QueryAsync(cmd);
-
-        var result = new List<ReferenceRegisterRecordRead>();
-
-        foreach (var row in rows)
-        {
-            var d = (IDictionary<string, object?>)row;
-
-            var recordId = Convert.ToInt64(d["RecordId"]!);
-            var dimSetId = (Guid)d["DimensionSetId"]!;
-            var pUtc = d["PeriodUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodUtc"]!;
-            var pBucketUtc = d["PeriodBucketUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodBucketUtc"]!;
-            var recorderId = d["RecorderDocumentId"] is null or DBNull ? (Guid?)null : (Guid)d["RecorderDocumentId"]!;
-            var recordedAtUtc = (DateTime)d["RecordedAtUtc"]!;
-            var isDeleted = (bool)d["IsDeleted"]!;
-
-            var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var f in fields)
-            {
-                var v = d.TryGetValue(f.ColumnCode, out var obj) ? obj : null;
-                values[f.CodeNorm] = v is DBNull ? null : v;
-            }
-
-            result.Add(new ReferenceRegisterRecordRead(
-                recordId,
-                dimSetId,
-                pUtc,
-                pBucketUtc,
-                recorderId,
-                recordedAtUtc,
-                isDeleted,
-                values));
-        }
-
-        return result;
+        return MapRows(rows, fields);
     }
 
     private static IReadOnlyList<ReferenceRegisterRecordRead> MapRows(
@@ -813,35 +666,36 @@ public sealed class PostgresReferenceRegisterRecordsReader(
 
         foreach (var row in rows)
         {
-            var d = (IDictionary<string, object?>)row;
-
-            var recordId = Convert.ToInt64(d["RecordId"]!);
-            var dimSetId = (Guid)d["DimensionSetId"]!;
-            var periodUtc = d["PeriodUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodUtc"]!;
-            var periodBucketUtc = d["PeriodBucketUtc"] is null or DBNull ? (DateTime?)null : (DateTime)d["PeriodBucketUtc"]!;
-            var recorderId = d["RecorderDocumentId"] is null or DBNull ? (Guid?)null : (Guid)d["RecorderDocumentId"]!;
-            var recordedAtUtc = (DateTime)d["RecordedAtUtc"]!;
-            var isDeleted = (bool)d["IsDeleted"]!;
-
-            var values = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var f in fields)
-            {
-                var v = d.TryGetValue(f.ColumnCode, out var obj) ? obj : null;
-                values[f.CodeNorm] = v is DBNull ? null : v;
-            }
-
-            result.Add(new ReferenceRegisterRecordRead(
-                recordId,
-                dimSetId,
-                periodUtc,
-                periodBucketUtc,
-                recorderId,
-                recordedAtUtc,
-                isDeleted,
-                values));
+            result.Add(MapRow((IDictionary<string, object?>)row, fields));
         }
 
         return result;
+    }
+
+    internal static ReferenceRegisterRecordRead MapRow(
+        IDictionary<string, object?> data,
+        IReadOnlyList<ReferenceRegisterField> fields)
+    {
+        static DateTime? OptionalDateTime(object? value) => value is null or DBNull ? null : (DateTime)value;
+
+        static Guid? OptionalGuid(object? value) => value is null or DBNull ? null : (Guid)value;
+
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var field in fields)
+        {
+            var value = data.TryGetValue(field.ColumnCode, out var raw) ? raw : null;
+            values[field.CodeNorm] = value is DBNull ? null : value;
+        }
+
+        return new ReferenceRegisterRecordRead(
+            Convert.ToInt64(data["RecordId"]!),
+            (Guid)data["DimensionSetId"]!,
+            OptionalDateTime(data["PeriodUtc"]),
+            OptionalDateTime(data["PeriodBucketUtc"]),
+            OptionalGuid(data["RecorderDocumentId"]),
+            (DateTime)data["RecordedAtUtc"]!,
+            (bool)data["IsDeleted"]!,
+            values);
     }
 
     private static (string WherePeriod, string OrderByPeriod, DateTime? BucketAsOfUtc) BuildPeriodClause(
