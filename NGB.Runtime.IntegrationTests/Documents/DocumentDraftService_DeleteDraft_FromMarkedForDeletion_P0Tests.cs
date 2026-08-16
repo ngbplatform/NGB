@@ -11,14 +11,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentDraftService_DeleteDraft_FromMarkedForDeletion_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task DeleteDraftAsync_WhenMarkedForDeletion_DeletesDraftAndWritesAudit()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var dateUtc = new DateTime(2026, 01, 15, 12, 00, 00, DateTimeKind.Utc);

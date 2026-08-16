@@ -10,7 +10,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -21,7 +21,6 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
     [Fact]
     public async Task TryBeginAndMarkCompleted_WritesStartedAndCompletedHistory()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var documentId = Guid.CreateVersion7();
@@ -56,7 +55,6 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
     [Fact]
     public async Task TryBegin_WhenStateIsStale_AppendsSupersededAndNewStartedHistory()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var documentId = Guid.CreateVersion7();
@@ -98,7 +96,6 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
     [Fact]
     public async Task MarkCompleted_WhenCompletedTimePrecedesStarted_ClampsStateAndCompletedHistoryToStartedAt()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var documentId = Guid.CreateVersion7();
@@ -123,7 +120,6 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
     [Fact]
     public async Task MarkCompleted_WhenCompletedTimeIsAfterStarted_UsesProvidedCompletedTimeForStateAndHistory()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var documentId = Guid.CreateVersion7();
@@ -147,7 +143,6 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
     [Fact]
     public async Task MarkCompleted_WhenAlreadyCompleted_DoesNotAppendDuplicateCompletedHistory()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var documentId = Guid.CreateVersion7();

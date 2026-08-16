@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.Numbering;
 /// P2: Low-level uniqueness/atomicity contract for documents.number.
 /// We intentionally test the repository directly to cover cases where higher-level services are bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRepository_TrySetNumber_ConcurrencyAndUniqueness_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

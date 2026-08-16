@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Dimensions;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DimensionSetService_Canonicalization_EdgeCases_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -23,8 +23,8 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - finalization runner (month lock + projector writes projections),
 /// must not deadlock and must leave a consistent state.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegister_EnsureSchema_Write_Finalize_TripleRace_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegister_EnsureSchema_Write_Finalize_TripleRace_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

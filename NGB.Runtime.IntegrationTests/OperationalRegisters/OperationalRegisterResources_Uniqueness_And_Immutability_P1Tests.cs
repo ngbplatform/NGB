@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_Uniqueness_And_Immutability_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

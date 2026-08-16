@@ -15,14 +15,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_PeriodClosing_Metadata_And_ClosingEntries_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CloseMonth_WritesDeterministicEntityId_AndMetadataPeriod()
     {
-        await Fixture.ResetDatabaseAsync();
 
         var period = new DateOnly(2026, 3, 1);
 
@@ -73,8 +72,6 @@ public sealed class AuditLog_PeriodClosing_Metadata_And_ClosingEntries_P2Tests(P
     [Fact]
     public async Task CloseFiscalYear_WithClosingEntriesRequired_WritesAuditEvent_WithClosingEntriesPostedTrue_AndMetadataClosingDayUtc()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var fiscalYearEndPeriod = new DateOnly(2026, 1, 1);
         var revenueDayUtc = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);
         var expectedClosingDayUtc = new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc);
@@ -213,8 +210,6 @@ public sealed class AuditLog_PeriodClosing_Metadata_And_ClosingEntries_P2Tests(P
     [Fact]
     public async Task CloseFiscalYear_NoClosingEntriesRequired_WritesAuditEvent_WithClosingEntriesPostedFalse_AndNoEntries()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var fiscalYearEndPeriod = new DateOnly(2026, 1, 1);
         var expectedClosingDayUtc = new DateTime(2026, 1, 31, 0, 0, 0, DateTimeKind.Utc);
 

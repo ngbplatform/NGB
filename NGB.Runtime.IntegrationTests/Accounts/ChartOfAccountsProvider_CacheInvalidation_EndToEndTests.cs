@@ -8,7 +8,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Accounts;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsProvider_CacheInvalidation_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

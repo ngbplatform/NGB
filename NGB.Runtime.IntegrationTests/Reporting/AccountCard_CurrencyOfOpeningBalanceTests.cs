@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AccountCard_CurrencyOfOpeningBalanceTests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly Dec = new(2025, 12, 1);

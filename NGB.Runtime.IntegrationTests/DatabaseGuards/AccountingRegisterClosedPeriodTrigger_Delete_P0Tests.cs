@@ -9,8 +9,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// <summary>
 /// P0 defense-in-depth: closed-period guard must also protect against DELETE from register.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingRegisterClosedPeriodTrigger_Delete_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingRegisterClosedPeriodTrigger_Delete_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly Period = ReportingTestHelpers.Period; // 2026-01-01

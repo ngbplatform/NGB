@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.Documents;
 /// - manageTransaction=false without an ambient transaction => fail fast with canonical message,
 /// - manageTransaction=false with an ambient transaction => use it and must not commit/rollback implicitly.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationshipService_ExternalTransactionMode_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

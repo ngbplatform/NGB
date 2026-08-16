@@ -9,7 +9,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_Reader_CombinedFilters_WithCursor_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

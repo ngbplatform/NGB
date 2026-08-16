@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// the consumer already obtained a cursor, the next page MUST return a monotonic continuation:
 /// it must not skip older rows and it must include newly inserted rows (since their MovementId is higher).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterReadService_MovementsPaging_ConcurrentInserts_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

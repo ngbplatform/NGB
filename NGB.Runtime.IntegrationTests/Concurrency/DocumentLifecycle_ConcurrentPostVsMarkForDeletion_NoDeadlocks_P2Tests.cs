@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Concurrency;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class DocumentLifecycle_ConcurrentPostVsMarkForDeletion_NoDeadlocks_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

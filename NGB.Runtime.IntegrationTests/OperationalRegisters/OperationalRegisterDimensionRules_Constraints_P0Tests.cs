@@ -13,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: Dimension rules define the physical analytics schema... etc.
 /// We validate inputs and throw custom validation exceptions with stable reason codes.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterDimensionRulesConstraintsP0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Repositories_RequireActiveTransaction_Contract_ReferenceRegisters_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

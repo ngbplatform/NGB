@@ -23,7 +23,7 @@ namespace NGB.Runtime.IntegrationTests.Concurrency;
 /// P2 coverage: Rebuild operations must not deadlock with Posting or Period Closing for the same period.
 /// Both Rebuild and other operations acquire the same period-level advisory lock.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class RebuildConcurrency_NoDeadlocks_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -31,8 +31,6 @@ public sealed class RebuildConcurrency_NoDeadlocks_EndToEndTests(PostgresTestFix
     [Fact(Timeout = 30_000)]
     public async Task RebuildMonth_And_Post_SamePeriod_AreSerialized_NoDeadlock()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var probe = new SleepProbe();
 
         using var host = IntegrationHostFactory.Create(
@@ -74,8 +72,6 @@ public sealed class RebuildConcurrency_NoDeadlocks_EndToEndTests(PostgresTestFix
     [Fact(Timeout = 30_000)]
     public async Task RebuildMonth_And_CloseMonth_SamePeriod_AreSerialized_NoDeadlock()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var probe = new SleepProbe();
 
         using var host = IntegrationHostFactory.Create(

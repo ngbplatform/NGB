@@ -8,15 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_TypedAndDefenseInDepthTriggers_P5_4_Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_TypedAndDefenseInDepthTriggers_P5_4_Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenTypedDocumentImmutabilityTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Remove one of the required typed-document immutability triggers.
         await DropTriggerAsync(Fixture.ConnectionString, "doc_general_journal_entry", "trg_posted_immutable");
 
@@ -35,8 +33,6 @@ public sealed class AccountingCoreSchemaValidation_TypedAndDefenseInDepthTrigger
     [Fact]
     public async Task ValidateAsync_WhenDefenseInDepthTurnoversTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropTriggerAsync(Fixture.ConnectionString, "accounting_turnovers", "trg_acc_turnovers_no_closed_period");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -53,8 +49,6 @@ public sealed class AccountingCoreSchemaValidation_TypedAndDefenseInDepthTrigger
     [Fact]
     public async Task ValidateAsync_WhenDefenseInDepthBalancesTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropTriggerAsync(Fixture.ConnectionString, "accounting_balances", "trg_acc_balances_no_closed_period");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);

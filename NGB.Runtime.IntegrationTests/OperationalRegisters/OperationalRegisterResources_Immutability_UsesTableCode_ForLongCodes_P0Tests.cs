@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// not via code_norm. This matters because code_norm can exceed PostgreSQL identifier limit (63),
 /// while table_code is truncated+hashed to guarantee safe physical table names.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_Immutability_UsesTableCode_ForLongCodes_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

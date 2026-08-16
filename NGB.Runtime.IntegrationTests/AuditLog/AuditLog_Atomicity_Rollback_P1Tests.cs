@@ -3,7 +3,6 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Core.AuditLog;
 using NGB.Persistence.AuditLog;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.PostgreSql.AuditLog;
@@ -13,7 +12,7 @@ using NGB.Definitions;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_Atomicity_Rollback_P1Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private const string TypeCode = "it_doc_audit_rollback";

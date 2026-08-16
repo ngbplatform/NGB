@@ -12,7 +12,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// Earlier versions derived keys only from Guid bytes, so the same Guid could block across
 /// aggregates. The lock manager now namespaces keys by aggregate type.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_KeyspaceIsolation_P3Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

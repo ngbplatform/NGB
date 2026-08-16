@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.Accounts;
 ///
 /// NOTE: CoA requests use explicit dimension rules (accounting_account_dimension_rules).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccounts_DimensionRules_Persistence_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

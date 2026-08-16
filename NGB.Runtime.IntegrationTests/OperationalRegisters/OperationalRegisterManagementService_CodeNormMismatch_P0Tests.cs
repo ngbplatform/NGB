@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// If an existing register row has a register_id that does not match the stored code/code_norm,
 /// we should fail fast with a custom conflict exception.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterManagementService_CodeNormMismatch_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

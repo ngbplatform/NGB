@@ -6,7 +6,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Admin;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class MainMenuService_PlatformContributors_MergeAndOrder_EndToEnd_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

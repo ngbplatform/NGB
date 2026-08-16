@@ -21,15 +21,13 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - has_movements cannot flip back
 /// ...while still allowing benign updates like name edits.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMetadata_DbGuards_AfterMovements_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task AfterMovementsExist_DeleteAndIdentityUpdatesAreForbidden_NameUpdateIsAllowed()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var registerCode = "rr_" + Guid.CreateVersion7().ToString("N")[..8];

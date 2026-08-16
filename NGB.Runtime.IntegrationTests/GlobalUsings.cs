@@ -4,8 +4,8 @@
 global using NGB.Runtime.UnitOfWork;
 global using NGB.Persistence.Readers.Documents;
 
-// Some integration tests prefer a simple CreateScope() helper.
-// It creates an owned Host+Scope pair bound to the current PostgresTestFixture connection string.
+// Some integration tests prefer a simple CreateScope(fixture) helper.
+// The explicit fixture keeps parallel PostgreSQL collections isolated.
 global using static NGB.Runtime.IntegrationTests.Infrastructure.TestScopeFactory;
 
 // Test helpers: allow throwing XunitException for invariant test-state failures.

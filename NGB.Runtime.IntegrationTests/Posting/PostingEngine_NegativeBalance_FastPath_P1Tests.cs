@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// PostingEngine must skip operational balance DB reads entirely.
 /// This test replaces IAccountingOperationalBalanceReader with a fail-fast implementation.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_NegativeBalance_FastPath_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

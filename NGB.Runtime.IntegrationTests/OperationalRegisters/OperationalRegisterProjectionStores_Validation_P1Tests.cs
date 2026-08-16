@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P1: Stores that write derived projections (turnovers/balances) must enforce transactional usage
 /// and fail fast on invalid arguments / missing metadata.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterProjectionStores_Validation_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - use the default projector for registers without a custom projector,
 /// - respect maxItems.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterFinalizationRunner_FinalizeDirty_MixedProjectors_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

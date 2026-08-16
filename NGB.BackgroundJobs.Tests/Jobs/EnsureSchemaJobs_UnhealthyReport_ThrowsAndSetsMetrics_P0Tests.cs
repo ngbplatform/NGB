@@ -71,6 +71,14 @@ public sealed class EnsureSchemaJobs_UnhealthyReport_ThrowsAndSetsMetrics_P0Test
         await act.Should().ThrowAsync<NgbInvariantViolationException>()
             .WithMessage("*Reference registers schema is unhealthy after ensure*");
 
+        var explicitClockJob = new ReferenceRegistersEnsureSchemaJob(
+            maintenance,
+            NullLogger<ReferenceRegistersEnsureSchemaJob>.Instance,
+            new JobRunMetrics(),
+            TimeProvider.System);
+        await ((Func<Task>)(() => explicitClockJob.RunAsync(CancellationToken.None)))
+            .Should().ThrowAsync<NgbInvariantViolationException>();
+
         var snapshot = metrics.Snapshot();
         snapshot["registers_total"].Should().Be(2);
         snapshot["registers_ok"].Should().Be(1);
@@ -141,6 +149,14 @@ public sealed class EnsureSchemaJobs_UnhealthyReport_ThrowsAndSetsMetrics_P0Test
 
         await act.Should().ThrowAsync<NgbInvariantViolationException>()
             .WithMessage("*Operational registers schema is unhealthy after ensure*");
+
+        var explicitClockJob = new OperationalRegistersEnsureSchemaJob(
+            maintenance,
+            NullLogger<OperationalRegistersEnsureSchemaJob>.Instance,
+            new JobRunMetrics(),
+            TimeProvider.System);
+        await ((Func<Task>)(() => explicitClockJob.RunAsync(CancellationToken.None)))
+            .Should().ThrowAsync<NgbInvariantViolationException>();
 
         var snapshot = metrics.Snapshot();
         snapshot["registers_total"].Should().Be(2);

@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterManagementService_IdentifierCollisions_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

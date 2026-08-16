@@ -22,14 +22,13 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 ///
 /// We intentionally focus on drift patterns that EnsureSchema is expected to fix.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegisterPhysicalSchema_EnsureSchema_DriftRepair_RuleByRule_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegisterPhysicalSchema_EnsureSchema_DriftRepair_RuleByRule_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Movements_AppendOnlyGuardDropped_EnsureSchema_RecreatesTrigger_AndBlocksMutation()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (registerId, tableCode) = await CreateRegisterAndEnsureSchemaAsync(host, CancellationToken.None);
@@ -66,7 +65,6 @@ public sealed class OperationalRegisterPhysicalSchema_EnsureSchema_DriftRepair_R
     [Fact]
     public async Task Movements_DocIndexDropped_EnsureSchema_RecreatesIndex()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (registerId, tableCode) = await CreateRegisterAndEnsureSchemaAsync(host, CancellationToken.None);
@@ -93,7 +91,6 @@ public sealed class OperationalRegisterPhysicalSchema_EnsureSchema_DriftRepair_R
     [Fact]
     public async Task DerivedTables_Dropped_EnsureSchema_RecreatesTables_AndUniqueConstraints()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (registerId, tableCode) = await CreateRegisterAndEnsureSchemaAsync(host, CancellationToken.None);
@@ -139,7 +136,6 @@ public sealed class OperationalRegisterPhysicalSchema_EnsureSchema_DriftRepair_R
     [Fact]
     public async Task DerivedTables_ResourceColumnDropped_EnsureSchema_RecreatesColumns()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (registerId, tableCode) = await CreateRegisterAndEnsureSchemaAsync(host, CancellationToken.None);

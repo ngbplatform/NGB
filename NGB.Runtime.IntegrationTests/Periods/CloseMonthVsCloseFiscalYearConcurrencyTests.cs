@@ -12,13 +12,12 @@ using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.Runtime.Periods;
-using NGB.Runtime.Posting;
 using NGB.Tools.Extensions;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseMonthVsCloseFiscalYearConcurrencyTests(PostgresTestFixture fixture)
 {
     [Fact]

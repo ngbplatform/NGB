@@ -131,9 +131,6 @@ public sealed class DocumentEffectsQueryService(
             .Take(limit)
             .ToArray();
 
-        if (orderedRows.Length == 0)
-            return [];
-
         var bagsById = await ResolveBagsByIdsAsync(orderedRows.Select(x => x.Movement.DimensionSetId), ct);
         var resolved = await ResolveDisplaysAsync(bagsById.Values, ct);
 
@@ -194,9 +191,6 @@ public sealed class DocumentEffectsQueryService(
             .Take(limit)
             .ToArray();
 
-        if (orderedRows.Length == 0)
-            return [];
-
         var bagsById = await ResolveBagsByIdsAsync(orderedRows.Select(x => x.Record.DimensionSetId), ct);
         var resolved = await ResolveDisplaysAsync(bagsById.Values, ct);
 
@@ -237,9 +231,6 @@ public sealed class DocumentEffectsQueryService(
         CancellationToken ct)
     {
         var ids = dimensionSetIds.Distinct().ToArray();
-        if (ids.Length == 0)
-            return new Dictionary<Guid, DimensionBag>();
-
         return await dimensionSetReader.GetBagsByIdsAsync(ids, ct);
     }
 
@@ -296,8 +287,5 @@ public sealed class DocumentEffectsQueryService(
     }
 
     private static string ShortGuid(Guid valueId)
-    {
-        var s = valueId.ToString("N");
-        return s.Length > 8 ? s[..8] : s;
-    }
+        => valueId.ToString("N")[..8];
 }

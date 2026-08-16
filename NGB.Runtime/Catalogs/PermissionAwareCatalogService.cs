@@ -137,7 +137,7 @@ public sealed class PermissionAwareCatalogService(
         return result;
     }
 
-    private static CatalogTypeMetadataDto ApplyCapabilities(
+    internal static CatalogTypeMetadataDto ApplyCapabilities(
         CatalogTypeMetadataDto metadata,
         PermissionSnapshot snapshot)
     {

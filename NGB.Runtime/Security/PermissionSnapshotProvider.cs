@@ -81,7 +81,7 @@ public sealed class PermissionSnapshotProvider(
 
         var accessVersion = platformUser.AccessVersion <= 0 ? 1 : platformUser.AccessVersion;
 
-        return await cache.GetOrCreatePermissionSnapshotAsync(
+        var snapshot = await cache.GetOrCreatePermissionSnapshotAsync(
             platformUser.UserId,
             accessVersion,
             async token =>
@@ -99,6 +99,8 @@ public sealed class PermissionSnapshotProvider(
                     accessVersion: accessVersion,
                     permissions: effectivePermissions);
             },
-            ct) ?? PermissionSnapshot.Anonymous;
+            ct);
+
+        return snapshot!;
     }
 }

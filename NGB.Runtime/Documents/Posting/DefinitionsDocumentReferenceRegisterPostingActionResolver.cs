@@ -56,8 +56,7 @@ public sealed class DefinitionsDocumentReferenceRegisterPostingActionResolver(
 
     private IDocumentReferenceRegisterPostingHandler BuildHandler(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        var postingHandlerType = def.ReferenceRegisterPostingHandlerType
-            ?? throw new NgbInvariantViolationException($"Document type '{def.TypeCode}' has no reference register posting handler binding.");
+        var postingHandlerType = def.ReferenceRegisterPostingHandlerType!;
         var postingHandlerTypeName = postingHandlerType.FullName ?? postingHandlerType.Name;
 
         if (!typeof(IDocumentReferenceRegisterPostingHandler).IsAssignableFrom(postingHandlerType))
@@ -93,7 +92,7 @@ public sealed class DefinitionsDocumentReferenceRegisterPostingActionResolver(
                 {
                     documentTypeCode = def.TypeCode,
                     postingHandlerType = postingHandlerTypeName,
-                    matches = matches.Select(handler => handler.GetType().FullName ?? handler.GetType().Name).ToArray()
+                    matches = matches.Select(handler => handler.GetType().Name).ToArray()
                 });
         }
 

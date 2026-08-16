@@ -26,7 +26,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 /// - this is the backbone for UI caches, optimistic refresh, and auditability.
 /// - prevents silent "touch" on failed validation paths.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_AuditTimestamps_Semantics_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

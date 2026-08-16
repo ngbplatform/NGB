@@ -32,7 +32,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - Operational Registers: exactly one storno movement (no duplicates) + one write_log row for Unpost + dirty month not duplicated
 /// - AuditLog: exactly one document.unpost event (no duplicates), actor upsert is not duplicated
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DocumentPostingService_Unpost_Concurrency_WithOpRegs_AndAudit_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

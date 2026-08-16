@@ -7,8 +7,8 @@ using Xunit;
 
 namespace NGB.AgencyBilling.Api.IntegrationTests.Infrastructure;
 
-[Collection(AgencyBillingPostgresCollection.Name)]
-public sealed class AgencyBillingSchemaMigrator_NoRepair_P0Tests(AgencyBillingPostgresFixture fixture)
+[Collection(AgencyBillingSchemaPostgresCollection.Name)]
+public sealed class AgencyBillingSchemaMigrator_NoRepair_P0Tests(AgencyBillingSchemaPostgresFixture fixture)
 {
     [Fact]
     public async Task Migrate_WithoutRepair_Installs_Critical_AgencyBilling_Tables()

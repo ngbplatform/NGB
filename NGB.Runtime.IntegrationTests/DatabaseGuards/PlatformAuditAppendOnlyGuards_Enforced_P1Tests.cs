@@ -12,8 +12,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// Defense in depth: regardless of application logic, the DB must block UPDATE/DELETE
 /// on platform_audit_events and platform_audit_event_changes.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class PlatformAuditAppendOnlyGuards_Enforced_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PlatformAuditAppendOnlyGuards_Enforced_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string InsertEventSql = @"

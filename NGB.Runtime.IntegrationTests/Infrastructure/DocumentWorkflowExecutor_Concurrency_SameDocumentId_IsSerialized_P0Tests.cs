@@ -9,7 +9,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P0: workflow executor must serialize concurrent operations for the same documentId
 /// by acquiring the document advisory lock before executing the action.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class DocumentWorkflowExecutor_Concurrency_SameDocumentId_IsSerialized_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

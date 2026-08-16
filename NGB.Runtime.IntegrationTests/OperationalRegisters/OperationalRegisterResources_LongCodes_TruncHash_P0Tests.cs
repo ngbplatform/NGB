@@ -22,7 +22,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - two long codes with same prefix produce different column_code values
 /// - EnsureSchema + append writes create physical columns and persist values
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_LongCodes_TruncHash_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

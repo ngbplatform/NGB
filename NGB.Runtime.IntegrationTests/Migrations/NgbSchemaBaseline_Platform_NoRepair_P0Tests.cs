@@ -13,8 +13,8 @@ namespace NGB.Runtime.IntegrationTests.Migrations;
 /// <summary>
 /// P0: The Evolve baseline must be sufficient to build a clean database from scratch.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class NgbSchemaBaseline_Platform_NoRepair_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class NgbSchemaBaseline_Platform_NoRepair_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

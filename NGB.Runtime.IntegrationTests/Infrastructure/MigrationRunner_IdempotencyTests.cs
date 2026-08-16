@@ -6,7 +6,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class MigrationRunner_IdempotencyTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

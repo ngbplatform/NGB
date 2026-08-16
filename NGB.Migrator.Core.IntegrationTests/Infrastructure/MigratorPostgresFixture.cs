@@ -23,7 +23,9 @@ public sealed class MigratorPostgresFixture : IAsyncLifetime
         var csb = new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {
             Options = "-c TimeZone=UTC",
-            Pooling = false
+            Pooling = true,
+            MaxPoolSize = 16,
+            NoResetOnClose = false
         };
 
         ConnectionString = csb.ConnectionString;
@@ -31,6 +33,12 @@ public sealed class MigratorPostgresFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        if (!string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            await using var connection = new NpgsqlConnection(ConnectionString);
+            NpgsqlConnection.ClearPool(connection);
+        }
+
         if (_container is not null)
             await _container.DisposeAsync();
     }

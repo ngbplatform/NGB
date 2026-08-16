@@ -6,7 +6,6 @@ using NGB.Persistence.AuditLog;
 using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.AuditLog;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Catalogs;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using Npgsql;
@@ -15,8 +14,8 @@ using NGB.Definitions;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
-public sealed class AuditLog_Atomicity_Rollback_Catalog_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AuditLog_Atomicity_Rollback_Catalog_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     // Use unique catalogCode/table names to avoid colliding with real module typed tables.

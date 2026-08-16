@@ -28,7 +28,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// Note: projections use replace-per-month semantics (derived tables), so the new row is materialized
 /// after another finalize() run.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterReadService_ProjectionsPaging_ConcurrentInserts_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -27,8 +27,8 @@ namespace NGB.Runtime.IntegrationTests.Concurrency;
 /// - refreg.ensure_schema => <see cref="IReferenceRegisterAdminMaintenanceService"/>.EnsurePhysicalSchemaForAllAsync
 /// - opreg.ensure_schema  => <see cref="IOperationalRegisterAdminMaintenanceService"/>.EnsurePhysicalSchemaForAllAsync
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class EnsureSchemaVsWrites_Concurrency_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class EnsureSchemaVsWrites_Concurrency_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

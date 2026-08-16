@@ -7,3 +7,9 @@ public sealed class TradePostgresCollection : ICollectionFixture<TradePostgresFi
 {
     public const string Name = "TradePostgreSql";
 }
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class TradeSchemaPostgresCollection : ICollectionFixture<TradeSchemaPostgresFixture>
+{
+    public const string Name = "TradePostgreSql schema changes";
+}

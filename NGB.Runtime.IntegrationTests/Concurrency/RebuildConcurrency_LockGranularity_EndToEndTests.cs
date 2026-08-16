@@ -23,15 +23,13 @@ namespace NGB.Runtime.IntegrationTests.Concurrency;
 /// P2 coverage: period advisory locks must be granular by month.
 /// Rebuild (period A) must not block posting/closing of another period (period B).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class RebuildConcurrency_LockGranularity_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact(Timeout = 30_000)]
     public async Task RebuildMonth_PeriodA_DoesNotBlock_Post_PeriodB()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var probe = new SleepProbe();
 
         using var host = IntegrationHostFactory.Create(
@@ -84,8 +82,6 @@ public sealed class RebuildConcurrency_LockGranularity_EndToEndTests(PostgresTes
     [Fact(Timeout = 30_000)]
     public async Task RebuildMonth_PeriodA_DoesNotBlock_CloseMonth_PeriodB()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var probe = new SleepProbe();
 
         using var host = IntegrationHostFactory.Create(

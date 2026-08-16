@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// P1: Runtime-level wrapper must enforce UTC kinds and provide safe defaults.
 /// These are contracts that UI/API layers rely on.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class PostingLogReportService_Contracts_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

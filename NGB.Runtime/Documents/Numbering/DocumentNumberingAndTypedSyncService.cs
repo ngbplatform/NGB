@@ -27,20 +27,18 @@ public sealed class DocumentNumberingAndTypedSyncService(
             // DocumentRecord is immutable (init-only). Numbering updates the DB and returns the assigned number,
             // but the caller may still hold a pre-number snapshot.
             // Synchronize typed storage with a record that definitely includes the assigned number.
-            var forTypedSync = string.IsNullOrWhiteSpace(documentForUpdate.Number)
-                ? new DocumentRecord
-                {
-                    Id = documentForUpdate.Id,
-                    TypeCode = documentForUpdate.TypeCode,
-                    Number = assigned,
-                    DateUtc = documentForUpdate.DateUtc,
-                    Status = documentForUpdate.Status,
-                    CreatedAtUtc = documentForUpdate.CreatedAtUtc,
-                    UpdatedAtUtc = documentForUpdate.UpdatedAtUtc,
-                    PostedAtUtc = documentForUpdate.PostedAtUtc,
-                    MarkedForDeletionAtUtc = documentForUpdate.MarkedForDeletionAtUtc,
-                }
-                : documentForUpdate;
+            var forTypedSync = new DocumentRecord
+            {
+                Id = documentForUpdate.Id,
+                TypeCode = documentForUpdate.TypeCode,
+                Number = assigned,
+                DateUtc = documentForUpdate.DateUtc,
+                Status = documentForUpdate.Status,
+                CreatedAtUtc = documentForUpdate.CreatedAtUtc,
+                UpdatedAtUtc = documentForUpdate.UpdatedAtUtc,
+                PostedAtUtc = documentForUpdate.PostedAtUtc,
+                MarkedForDeletionAtUtc = documentForUpdate.MarkedForDeletionAtUtc,
+            };
 
             await writeEngine.UpdateDraftStorageAsync(forTypedSync, acquireLock: false, ct);
         }

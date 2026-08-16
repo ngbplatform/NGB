@@ -110,9 +110,6 @@ public sealed class TradeInventoryAvailabilityService(
         IReadOnlyList<Guid> ids,
         CancellationToken ct)
     {
-        if (ids.Count == 0)
-            return new Dictionary<Guid, string>();
-
         var items = await catalogs.GetByIdsAsync(catalogType, ids, ct);
         return items.ToDictionary(static x => x.Id, static x => x.Label);
     }
@@ -121,7 +118,7 @@ public sealed class TradeInventoryAvailabilityService(
         TradeInventoryBalanceKey key,
         IReadOnlyDictionary<TradeInventoryBalanceKey, (string Warehouse, string Item)> displayByKey,
         IReadOnlyDictionary<Guid, string> warehouseDisplayById)
-        => displayByKey.TryGetValue(key, out var display) && !string.IsNullOrWhiteSpace(display.Warehouse)
+        => displayByKey.TryGetValue(key, out var display)
             ? display.Warehouse
             : warehouseDisplayById.TryGetValue(key.WarehouseId, out var fallback)
                 ? fallback
@@ -131,7 +128,7 @@ public sealed class TradeInventoryAvailabilityService(
         TradeInventoryBalanceKey key,
         IReadOnlyDictionary<TradeInventoryBalanceKey, (string Warehouse, string Item)> displayByKey,
         IReadOnlyDictionary<Guid, string> itemDisplayById)
-        => displayByKey.TryGetValue(key, out var display) && !string.IsNullOrWhiteSpace(display.Item)
+        => displayByKey.TryGetValue(key, out var display)
             ? display.Item
             : itemDisplayById.TryGetValue(key.ItemId, out var fallback)
                 ? fallback

@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_ChartOfAccounts_DimensionRules_Auditing_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLog_Takeover_InProgressTimeout_EndToEndTests(PostgresTestFixture fixture)
 {
     private const string Cash = "50";

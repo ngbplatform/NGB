@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P2: Row-level locking for documents is a platform invariant. These tests ensure
 /// SELECT ... FOR UPDATE really serializes concurrent state transitions.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class DocumentRepository_RowLevelLocking_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

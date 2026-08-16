@@ -14,8 +14,8 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// - Dimension sets filtering and lookups
 /// - Users projection uniqueness
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class Migrations_UpgradeDrift_PlatformIndexes_Audit_Dimensions_Users_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Migrations_UpgradeDrift_PlatformIndexes_Audit_Dimensions_Users_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

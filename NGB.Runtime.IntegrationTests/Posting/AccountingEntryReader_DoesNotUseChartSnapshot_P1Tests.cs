@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// P1: AccountingEntryReader must NOT depend on ChartOfAccounts snapshots.
 /// It should hydrate Account metadata via a join to accounting_accounts.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AccountingEntryReader_DoesNotUseChartSnapshot_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

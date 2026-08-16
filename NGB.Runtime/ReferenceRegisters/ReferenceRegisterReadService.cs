@@ -402,9 +402,6 @@ public sealed class ReferenceRegisterReadService(
         IReadOnlyList<ReferenceRegisterRecordRead> records,
         CancellationToken ct)
     {
-        if (records.Count == 0)
-            return [];
-
         var setIds = records.Select(x => x.DimensionSetId).Distinct().ToArray();
         var bagsById = await dimensionSetReader.GetBagsByIdsAsync(setIds, ct);
 
@@ -439,7 +436,7 @@ public sealed class ReferenceRegisterReadService(
                 else
                 {
                     var s = dv.ValueId.ToString("N");
-                    byDim[dv.DimensionId] = s.Length > 8 ? s[..8] : s;
+                    byDim[dv.DimensionId] = s[..8];
                 }
             }
 

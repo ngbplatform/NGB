@@ -15,8 +15,8 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// This matters because EnsureSchemaAsync executes multiple DDL statements, and triggers do not support
 /// CREATE TRIGGER IF NOT EXISTS.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegisterSchemaEnsure_NoTransaction_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegisterSchemaEnsure_NoTransaction_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

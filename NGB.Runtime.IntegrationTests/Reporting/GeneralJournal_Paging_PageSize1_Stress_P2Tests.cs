@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class GeneralJournal_Paging_PageSize1_Stress_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

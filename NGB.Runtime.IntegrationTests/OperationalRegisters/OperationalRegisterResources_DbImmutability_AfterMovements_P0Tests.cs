@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: DB-level immutability guard must protect storno semantics even if callers bypass runtime services.
 /// Once a register has movements, resource identifiers (code/code_norm/column_code) must be immutable and DELETE must be forbidden.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_DbImmutability_AfterMovements_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

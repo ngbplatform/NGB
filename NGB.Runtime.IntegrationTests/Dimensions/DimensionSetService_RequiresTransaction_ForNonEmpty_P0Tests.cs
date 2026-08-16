@@ -11,14 +11,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Dimensions;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DimensionSetService_RequiresTransaction_ForNonEmpty_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task GetOrCreateIdAsync_WhenBagIsNotEmpty_RequiresActiveTransaction_AndDoesNotPersistAnything()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var dimId = Guid.CreateVersion7();

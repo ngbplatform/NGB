@@ -40,6 +40,24 @@ public sealed class NgbHangfireJobRunner_JobRunSummary_P0Tests
     }
 
     [Fact]
+    public async Task WhenConfiguredLockTimeoutIsNotPositive_UsesOneSecondBoundary()
+    {
+        var jobId = "platform.schema.validate";
+        var options = new PlatformHangfireOptions { DistributedLockTimeoutSeconds = 0 };
+        var (runner, _, _, connection) = CreateRunner(jobId, runnerOptions: options);
+        TimeSpan receivedTimeout = default;
+        connection
+            .Setup(x => x.AcquireDistributedLock(It.IsAny<string>(), It.IsAny<TimeSpan>()))
+            .Callback<string, TimeSpan>((_, timeout) => receivedTimeout = timeout)
+            .Throws(new DistributedLockTimeoutException("timeout"));
+        var token = Mock.Of<IJobCancellationToken>(x => x.ShutdownToken == CancellationToken.None);
+
+        await runner.RunAsync(jobId, token);
+
+        receivedTimeout.Should().Be(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
     public async Task WhenNoImplementation_SkipsWithSkippedNoImplementationOutcome()
     {
         var jobId = "platform.schema.validate";
@@ -89,6 +107,26 @@ public sealed class NgbHangfireJobRunner_JobRunSummary_P0Tests
         var counters = summary.State["Counters"].Should().BeAssignableTo<IReadOnlyDictionary<string, long>>().Subject;
         counters["items_total"].Should().Be(2);
         counters["items_processed"].Should().Be(2);
+    }
+
+    [Fact]
+    public async Task WhenClockMovesBackwards_ClampsSuccessfulDurationToZero()
+    {
+        var jobId = "platform.schema.validate";
+        var clock = new SequenceTimeProvider(
+            DateTimeOffset.UnixEpoch.AddSeconds(10),
+            DateTimeOffset.UnixEpoch);
+        var (runner, logger, _, connection) = CreateRunner(
+            jobId,
+            jobsFactory: metrics => [new SucceedingJob(jobId, metrics)],
+            timeProvider: clock);
+        connection
+            .Setup(x => x.AcquireDistributedLock(It.IsAny<string>(), It.IsAny<TimeSpan>()))
+            .Returns(new DummyDisposable());
+
+        await runner.RunAsync(jobId, Mock.Of<IJobCancellationToken>(x => x.ShutdownToken == CancellationToken.None));
+
+        SingleSummary(logger).State["DurationMs"].Should().Be(0d);
     }
 
     [Fact]
@@ -155,7 +193,11 @@ public sealed class NgbHangfireJobRunner_JobRunSummary_P0Tests
     }
 
     private static (PlatformHangfireJobRunner Runner, RecordingLogger<PlatformHangfireJobRunner> Logger, IJobRunMetrics Metrics, Mock<IStorageConnection> ConnectionMock)
-        CreateRunner(string jobId, Func<IJobRunMetrics, IEnumerable<IPlatformBackgroundJob>>? jobsFactory = null)
+        CreateRunner(
+            string jobId,
+            Func<IJobRunMetrics, IEnumerable<IPlatformBackgroundJob>>? jobsFactory = null,
+            PlatformHangfireOptions? runnerOptions = null,
+            TimeProvider? timeProvider = null)
     {
         var logger = new RecordingLogger<PlatformHangfireJobRunner>();
         IJobRunMetrics metrics = new TestJobRunMetrics();
@@ -182,10 +224,11 @@ public sealed class NgbHangfireJobRunner_JobRunSummary_P0Tests
             logger,
             new NullPlatformJobNotifier(),
             storage,
-            Options.Create(new PlatformHangfireOptions
+            Options.Create(runnerOptions ?? new PlatformHangfireOptions
             {
                 DistributedLockTimeoutSeconds = 1
-            }));
+            }),
+            timeProvider);
 
         return (runner, logger, metrics, connection);
     }
@@ -193,6 +236,12 @@ public sealed class NgbHangfireJobRunner_JobRunSummary_P0Tests
     private sealed class DummyDisposable : IDisposable
     {
         public void Dispose() { }
+    }
+
+    private sealed class SequenceTimeProvider(params DateTimeOffset[] values) : TimeProvider
+    {
+        private readonly Queue<DateTimeOffset> _values = new(values);
+        public override DateTimeOffset GetUtcNow() => _values.Dequeue();
     }
 
     private sealed class TestJobStorage(IStorageConnection connection) : JobStorage

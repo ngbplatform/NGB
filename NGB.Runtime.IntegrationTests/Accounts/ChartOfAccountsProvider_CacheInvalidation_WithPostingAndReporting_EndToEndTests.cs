@@ -12,15 +12,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Accounts;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsProvider_CacheInvalidation_WithPostingAndReporting_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task NewScope_SeesCoAUpdates_AndCanPostAndReportWithNewAccount()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = CreateHost();
 
         // Keep the original scope alive for the entire test.

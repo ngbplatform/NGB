@@ -5,8 +5,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
-public sealed class Migrations_UpgradeDrift_DocumentRelationshipsCardinalityIndexes_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Migrations_UpgradeDrift_DocumentRelationshipsCardinalityIndexes_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

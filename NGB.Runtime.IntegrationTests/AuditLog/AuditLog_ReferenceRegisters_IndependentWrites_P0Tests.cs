@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.AuditLog;
 /// P0: Independent-mode Reference Register writes emit high-level Business AuditLog events
 /// (same principle as Operational Registers: no per-row audit for recorder-mode writes; independent writes must be audited).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_ReferenceRegisters_IndependentWrites_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

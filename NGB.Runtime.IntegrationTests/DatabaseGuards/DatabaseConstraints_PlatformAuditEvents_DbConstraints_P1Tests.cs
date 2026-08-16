@@ -11,14 +11,13 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// These tests validate enforcement at the database level (CHECK + FK),
 /// independent of runtime validators.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_PlatformAuditEvents_DbConstraints_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_PlatformAuditEvents_DbConstraints_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CheckConstraints_Forbid_EmptyAndTooLongActionCode()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -53,7 +52,6 @@ public sealed class DatabaseConstraints_PlatformAuditEvents_DbConstraints_P1Test
     [Fact]
     public async Task ForeignKey_Forbids_UnknownActorUserId()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -75,7 +73,6 @@ public sealed class DatabaseConstraints_PlatformAuditEvents_DbConstraints_P1Test
     [Fact]
     public async Task ValidRow_IsAccepted_WithOrWithoutActor()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 

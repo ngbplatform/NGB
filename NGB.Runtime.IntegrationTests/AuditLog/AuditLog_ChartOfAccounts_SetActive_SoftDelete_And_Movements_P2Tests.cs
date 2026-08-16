@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_ChartOfAccounts_SetActive_SoftDelete_And_Movements_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

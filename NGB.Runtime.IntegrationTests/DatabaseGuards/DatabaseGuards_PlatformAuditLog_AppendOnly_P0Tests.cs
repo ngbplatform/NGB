@@ -10,8 +10,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P0: Business audit log tables must be append-only at the database level.
 /// This protects the audit trail even if a bug slips through the application layer.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseGuards_PlatformAuditLog_AppendOnly_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseGuards_PlatformAuditLog_AppendOnly_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateTime T0 = new(2026, 1, 19, 0, 0, 0, DateTimeKind.Utc);

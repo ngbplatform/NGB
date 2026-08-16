@@ -10,7 +10,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P0: UnitOfWork contract is a platform primitive. These tests pin down transaction semantics
 /// (idempotent Begin, fail-fast Commit, rollback safety, and cancellation independence).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class UnitOfWork_Contracts_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

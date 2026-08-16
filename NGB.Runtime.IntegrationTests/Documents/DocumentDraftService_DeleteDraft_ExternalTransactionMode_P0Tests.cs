@@ -15,8 +15,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentDraftService_DeleteDraft_ExternalTransactionMode_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentDraftService_DeleteDraft_ExternalTransactionMode_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     // Use a dedicated typed table to avoid schema coupling with other tests.

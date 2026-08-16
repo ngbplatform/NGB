@@ -17,12 +17,12 @@ using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Receivables;
 
-[Collection(PmIntegrationCollection.Name)]
+[Collection(PmSchemaIntegrationCollection.Name)]
 public sealed class PmReceivablesReconciliation_Endpoint_P0Tests : IAsyncLifetime
 {
-    private readonly PmIntegrationFixture _fixture;
+    private readonly PmSchemaIntegrationFixture _fixture;
 
-    public PmReceivablesReconciliation_Endpoint_P0Tests(PmIntegrationFixture fixture) => _fixture = fixture;
+    public PmReceivablesReconciliation_Endpoint_P0Tests(PmSchemaIntegrationFixture fixture) => _fixture = fixture;
 
     public async Task InitializeAsync() => await _fixture.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;

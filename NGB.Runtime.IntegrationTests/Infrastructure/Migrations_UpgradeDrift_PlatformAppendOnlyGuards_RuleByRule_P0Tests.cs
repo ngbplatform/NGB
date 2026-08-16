@@ -11,8 +11,8 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// If triggers (or the shared guard function) are dropped/drifted,
 /// re-applying platform migrations must restore them.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class Migrations_UpgradeDrift_PlatformAppendOnlyGuards_RuleByRule_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Migrations_UpgradeDrift_PlatformAppendOnlyGuards_RuleByRule_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

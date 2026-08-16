@@ -15,15 +15,19 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
         <PackageReference Include="xunit" Version="2.9.3" />
-        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+        <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="FluentAssertions" Version="8.10.0" />
-        <PackageReference Include="Testcontainers" Version="4.13.0" />
-        <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
+        <PackageReference Include="Testcontainers" Version="4.14.0" />
+        <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
         <PackageReference Include="Respawn" Version="7.0.0" />
+    </ItemGroup>
+    <ItemGroup>
+        <Compile Include="..\quality\integration\PostgreSqlIntegrationFixtureBase.cs" Link="Infrastructure\PostgreSqlIntegrationFixtureBase.cs" />
+        <None Include="..\quality\integration\xunit.integration.runner.json" Link="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 </Project>

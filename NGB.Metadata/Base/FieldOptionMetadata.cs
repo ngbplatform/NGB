@@ -10,10 +10,17 @@ public static class FieldOptionMetadataTools
     public static IReadOnlyList<FieldOptionMetadata> EnumOptions<TEnum>()
         where TEnum : struct, Enum
     {
-        return Enum.GetValues<TEnum>()
-            .Select(value => new FieldOptionMetadata(
+        var values = Enum.GetValues<TEnum>();
+        var options = new FieldOptionMetadata[values.Length];
+
+        for (var index = 0; index < values.Length; index++)
+        {
+            var value = values[index];
+            options[index] = new FieldOptionMetadata(
                 Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture),
-                value.ToDisplay()))
-            .ToArray();
+                value.ToDisplay());
+        }
+
+        return options;
     }
 }

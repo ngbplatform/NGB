@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterReadService_SliceLast_PeriodBuckets_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

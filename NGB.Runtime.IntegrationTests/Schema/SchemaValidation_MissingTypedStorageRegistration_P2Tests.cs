@@ -20,8 +20,8 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// P2-9: schema validation checks the physical schema only.
 /// Storage bindings are validated separately by startup Definitions validation.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class SchemaValidation_MissingTypedStorageRegistration_P2Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class SchemaValidation_MissingTypedStorageRegistration_P2Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string DocTypeCode = "it_doc";

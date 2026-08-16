@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_TurnoverWriter_BatchSplit_Over5kKeys_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

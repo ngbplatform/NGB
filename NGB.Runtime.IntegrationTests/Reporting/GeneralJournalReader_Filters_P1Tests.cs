@@ -10,7 +10,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// <summary>
 /// P1: filter contracts for UI-driven browsing of General Journal.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class GeneralJournalReader_Filters_P1Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     [Fact]

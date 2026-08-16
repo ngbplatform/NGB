@@ -10,7 +10,7 @@ using NGB.Definitions;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_CatalogLifecycle_P0Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     [Fact]

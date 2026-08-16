@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// P0: Semantics of IAccountingOperationalBalanceReader are critical for
 /// NegativeBalancePolicy enforcement under concurrency.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AccountingOperationalBalanceReader_Semantics_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

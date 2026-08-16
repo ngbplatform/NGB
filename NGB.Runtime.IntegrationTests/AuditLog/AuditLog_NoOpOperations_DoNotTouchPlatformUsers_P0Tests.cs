@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.AuditLog;
 /// Otherwise we get hidden side effects: platform_users.updated_at_utc changes (actor upsert)
 /// even though no audit event is written.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_NoOpOperations_DoNotTouchPlatformUsers_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

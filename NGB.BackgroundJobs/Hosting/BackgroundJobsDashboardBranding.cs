@@ -74,7 +74,7 @@ internal static class BackgroundJobsDashboardBranding
 
     public static async Task InterceptHtmlAsync(
         HttpContext context,
-        Func<Task> next,
+        RequestDelegate next,
         BackgroundJobsHostingOptions options,
         string inlineStyles,
         string faviconHref)
@@ -91,7 +91,7 @@ internal static class BackgroundJobsDashboardBranding
         if (!IsDashboardRequest(context.Request, options)
             || (string.IsNullOrWhiteSpace(inlineStyles) && string.IsNullOrWhiteSpace(faviconHref)))
         {
-            await next();
+            await next(context);
             return;
         }
 
@@ -101,7 +101,7 @@ internal static class BackgroundJobsDashboardBranding
 
         try
         {
-            await next();
+            await next(context);
 
             buffer.Position = 0;
 

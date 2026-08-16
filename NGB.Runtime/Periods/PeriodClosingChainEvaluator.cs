@@ -30,26 +30,28 @@ internal static class PeriodClosingChainEvaluator
                 FirstGapPeriod: null);
         }
 
-        var chainStartPeriod = earliestActivityPeriod ?? latestClosedPeriod;
-        if (chainStartPeriod is null)
+        if (latestClosedPeriod is null)
         {
+            var firstActivityPeriod = earliestActivityPeriod!.Value;
             return new PeriodClosingChainSnapshot(
                 EarliestActivityPeriod: earliestActivityPeriod,
-                ChainStartPeriod: null,
+                ChainStartPeriod: firstActivityPeriod,
                 LatestClosedPeriod: latestClosedPeriod,
-                LatestContiguousClosedPeriod: latestClosedPeriod,
-                NextClosablePeriod: latestClosedPeriod,
+                LatestContiguousClosedPeriod: null,
+                NextClosablePeriod: firstActivityPeriod,
                 CanCloseAnyMonth: false,
                 HasBrokenChain: false,
                 FirstGapPeriod: null);
         }
 
-        if (latestClosedPeriod is null || chainStartPeriod > latestClosedPeriod)
+        var latest = latestClosedPeriod.Value;
+        var chainStartPeriod = earliestActivityPeriod.GetValueOrDefault(latest);
+        if (chainStartPeriod > latest)
         {
             return new PeriodClosingChainSnapshot(
                 EarliestActivityPeriod: earliestActivityPeriod,
                 ChainStartPeriod: chainStartPeriod,
-                LatestClosedPeriod: latestClosedPeriod,
+                LatestClosedPeriod: latest,
                 LatestContiguousClosedPeriod: null,
                 NextClosablePeriod: chainStartPeriod,
                 CanCloseAnyMonth: false,
@@ -58,22 +60,22 @@ internal static class PeriodClosingChainEvaluator
         }
 
         var closedSet = closedPeriodsInChainRange.ToHashSet();
-        var cursor = chainStartPeriod.Value;
+        var cursor = chainStartPeriod;
 
-        while (cursor <= latestClosedPeriod && closedSet.Contains(cursor))
+        while (cursor <= latest && closedSet.Contains(cursor))
         {
             cursor = cursor.AddMonths(1);
         }
 
-        DateOnly? firstGapPeriod = cursor <= latestClosedPeriod ? cursor : null;
-        var latestContiguousClosedPeriod = firstGapPeriod?.AddMonths(-1) ?? latestClosedPeriod;
+        DateOnly? firstGapPeriod = cursor <= latest ? cursor : null;
+        var latestContiguousClosedPeriod = firstGapPeriod?.AddMonths(-1) ?? latest;
 
         return new PeriodClosingChainSnapshot(
             EarliestActivityPeriod: earliestActivityPeriod,
             ChainStartPeriod: chainStartPeriod,
-            LatestClosedPeriod: latestClosedPeriod,
+            LatestClosedPeriod: latest,
             LatestContiguousClosedPeriod: latestContiguousClosedPeriod,
-            NextClosablePeriod: firstGapPeriod ?? latestClosedPeriod.Value.AddMonths(1),
+            NextClosablePeriod: firstGapPeriod ?? latest.AddMonths(1),
             CanCloseAnyMonth: false,
             HasBrokenChain: firstGapPeriod is not null,
             FirstGapPeriod: firstGapPeriod);
@@ -84,7 +86,10 @@ internal static class PeriodClosingChainEvaluator
 
     public static bool HasLaterClosedPeriods(PeriodClosingChainSnapshot snapshot, DateOnly period)
     {
-        if (snapshot.LatestClosedPeriod is null || snapshot.LatestClosedPeriod <= period)
+        if (snapshot.LatestClosedPeriod is null)
+            return false;
+
+        if (snapshot.LatestClosedPeriod.Value <= period)
             return false;
 
         return snapshot.ChainStartPeriod is not null && period >= snapshot.ChainStartPeriod.Value;
@@ -101,7 +106,7 @@ internal static class PeriodClosingChainEvaluator
         if (snapshot.HasBrokenChain && HasLaterClosedPeriods(snapshot, period))
             return false;
 
-        return snapshot.NextClosablePeriod is not null && snapshot.NextClosablePeriod.Value == period;
+        return snapshot.NextClosablePeriod == period;
     }
 
     public static bool IsClosedOutOfSequence(PeriodClosingChainSnapshot snapshot, DateOnly period)

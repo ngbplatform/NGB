@@ -475,15 +475,15 @@ public sealed class CrmSetupService(
         string display,
         RecordPayload payload,
         CancellationToken ct,
-        string? matchField = null,
-        string? matchValue = null)
+        string matchField,
+        string matchValue)
     {
         var page = await catalogs.GetPageAsync(
             catalogType,
             new PageRequestDto(
                 Offset: 0,
                 Limit: 200,
-                Search: string.IsNullOrWhiteSpace(matchField) ? display : null),
+                Search: null),
             ct);
 
         var matches = page.Items
@@ -507,12 +507,9 @@ public sealed class CrmSetupService(
 
     private static bool CatalogPayloadFieldEquals(
         CatalogItemDto item,
-        string? field,
-        string? expected)
+        string field,
+        string expected)
     {
-        if (string.IsNullOrWhiteSpace(field) || string.IsNullOrWhiteSpace(expected))
-            return false;
-
         if (item.Payload.Fields is null || !item.Payload.Fields.TryGetValue(field, out var value))
             return false;
 

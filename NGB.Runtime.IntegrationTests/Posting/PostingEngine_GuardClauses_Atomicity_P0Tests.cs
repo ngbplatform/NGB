@@ -15,15 +15,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_GuardClauses_Atomicity_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PostAsync_WithNullPostingAction_Throws_AndWritesNothing()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 
@@ -49,8 +47,6 @@ public sealed class PostingEngine_GuardClauses_Atomicity_P0Tests(PostgresTestFix
     [Fact]
     public async Task PostAsync_WhenPostingActionThrows_AfterPostingEntries_DoesNotStartTransaction_AndWritesNothing()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 
@@ -82,8 +78,6 @@ public sealed class PostingEngine_GuardClauses_Atomicity_P0Tests(PostgresTestFix
     [Fact]
     public async Task PostAsync_WithEmptyDocumentId_ThrowsAfterLock_AndLeavesNoPartialWrites()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 
@@ -113,8 +107,6 @@ public sealed class PostingEngine_GuardClauses_Atomicity_P0Tests(PostgresTestFix
     [Fact]
     public async Task PostAsync_WhenValidatorThrowsAfterTryBegin_RollsBack_AndDoesNotPersistPostingLog()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 

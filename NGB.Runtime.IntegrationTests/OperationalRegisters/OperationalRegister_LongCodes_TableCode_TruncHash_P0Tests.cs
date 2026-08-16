@@ -26,7 +26,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - two long codes with the same prefix produce different table_code values
 /// - applying movements creates two distinct per-register movements tables and persists rows independently
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegister_LongCodes_TableCode_TruncHash_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

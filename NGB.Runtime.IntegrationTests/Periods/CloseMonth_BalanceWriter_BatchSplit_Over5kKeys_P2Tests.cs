@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseMonth_BalanceWriter_BatchSplit_Over5kKeys_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

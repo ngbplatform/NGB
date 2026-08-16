@@ -16,7 +16,7 @@ using NGB.Runtime.Posting;
 
 namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_ReversePosted_Concurrency_And_ClosedPeriod_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

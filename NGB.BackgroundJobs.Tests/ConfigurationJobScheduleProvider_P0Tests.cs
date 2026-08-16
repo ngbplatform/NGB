@@ -17,7 +17,7 @@ public sealed class ConfigurationJobScheduleProvider_P0Tests
             NightlyCron = "0 2 * * *"
         };
 
-        var provider = new ConfigurationJobScheduleProvider(Options.Create(options), NullLogger<ConfigurationJobScheduleProvider>.Instance);
+        var provider = new ConfigurationJobScheduleProvider(Options.Create(options));
 
         provider.GetSchedule(PlatformJobCatalog.PlatformSchemaValidate).Should().BeNull();
     }
@@ -32,7 +32,7 @@ public sealed class ConfigurationJobScheduleProvider_P0Tests
             NightlyCron = " 0 2 * * *  "
         };
 
-        var provider = new ConfigurationJobScheduleProvider(Options.Create(options), NullLogger<ConfigurationJobScheduleProvider>.Instance);
+        var provider = new ConfigurationJobScheduleProvider(Options.Create(options));
 
         var schedule = provider.GetSchedule(PlatformJobCatalog.PlatformSchemaValidate);
         schedule.Should().NotBeNull();
@@ -53,7 +53,7 @@ public sealed class ConfigurationJobScheduleProvider_P0Tests
             NightlyExcludedJobIds = [PlatformJobCatalog.PlatformSchemaValidate]
         };
 
-        var provider = new ConfigurationJobScheduleProvider(Options.Create(options), NullLogger<ConfigurationJobScheduleProvider>.Instance);
+        var provider = new ConfigurationJobScheduleProvider(Options.Create(options));
 
         provider.GetSchedule(PlatformJobCatalog.PlatformSchemaValidate).Should().BeNull();
     }
@@ -75,7 +75,7 @@ public sealed class ConfigurationJobScheduleProvider_P0Tests
             TimeZoneId = "UTC"
         };
 
-        var provider = new ConfigurationJobScheduleProvider(Options.Create(options), NullLogger<ConfigurationJobScheduleProvider>.Instance);
+        var provider = new ConfigurationJobScheduleProvider(Options.Create(options));
 
         var schedule = provider.GetSchedule(PlatformJobCatalog.PlatformSchemaValidate);
         schedule.Should().NotBeNull();
@@ -98,7 +98,7 @@ public sealed class ConfigurationJobScheduleProvider_P0Tests
             Enabled = false
         };
 
-        var provider = new ConfigurationJobScheduleProvider(Options.Create(options), NullLogger<ConfigurationJobScheduleProvider>.Instance);
+        var provider = new ConfigurationJobScheduleProvider(Options.Create(options));
 
         provider.GetSchedule(PlatformJobCatalog.PlatformSchemaValidate).Should().BeNull();
     }
@@ -113,7 +113,7 @@ public sealed class ConfigurationJobScheduleProvider_P0Tests
             NightlyCron = "0 2 * * *"
         };
 
-        var provider = new ConfigurationJobScheduleProvider(Options.Create(options), NullLogger<ConfigurationJobScheduleProvider>.Instance);
+        var provider = new ConfigurationJobScheduleProvider(Options.Create(options));
 
         provider.GetSchedule(PlatformJobCatalog.AccountingGeneralJournalEntryAutoReversePostDue).Should().BeNull();
     }

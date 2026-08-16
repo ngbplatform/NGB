@@ -8,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_DimensionSetFKAndIndexes_P5_6_Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_DimensionSetFKAndIndexes_P5_6_Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenRegisterDimensionSetFkMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropConstraintAsync(Fixture.ConnectionString, "accounting_register_main", "fk_acc_reg_debit_dimension_set");
@@ -31,7 +30,6 @@ public sealed class AccountingCoreSchemaValidation_DimensionSetFKAndIndexes_P5_6
     [Fact]
     public async Task ValidateAsync_WhenDimensionSetItemsIndexMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(Fixture.ConnectionString, "ix_platform_dimset_items_set");

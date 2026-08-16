@@ -84,8 +84,8 @@ internal sealed class AuditLogService(
 
     private async Task WriteBatchCoreAsync(IReadOnlyList<AuditLogWriteRequest> requests, CancellationToken ct)
     {
-        var auditWriter = writer
-            ?? throw new NgbInvariantViolationException("Audit writer must be available when audit batching is executed.");
+        // Public entry points return before this method when auditing is disabled.
+        var auditWriter = writer!;
 
         // Business audit must be atomic with the business change.
         // If caller forgot to start a transaction, we prefer fail-fast.

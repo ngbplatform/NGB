@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: strict DB constraints for operational_register_write_state.
 /// This log underpins idempotency and must reject invalid operation/timestamp combinations.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterWriteLog_Constraints_Enforced_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

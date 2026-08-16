@@ -12,7 +12,7 @@ namespace NGB.Runtime.IntegrationTests.Accounts;
 /// <summary>
 /// P0: UpdateAccountRequest must have patch semantics (null = do not change) to avoid dangerous implicit defaults.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsManagement_Update_PatchSemantics_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

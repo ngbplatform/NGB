@@ -5,7 +5,6 @@ using NGB.Accounting.Periods;
 using NGB.Accounting.Posting;
 using NGB.Core.AuditLog;
 using NGB.Persistence.AuditLog;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.Runtime.IntegrationTests.Reporting;
@@ -17,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.AuditLog;
 /// P0: No-op operations must not call AuditLogService, therefore must not touch platform_users.
 /// This guards against "actor drift" where repeated idempotent calls would bump updated_at_utc.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_NoOpOperations_DoesNotTouchPlatformUsers_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

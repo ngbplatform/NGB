@@ -12,7 +12,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// These tests pin down contract aspects (requires active transaction, re-entrancy,
 /// and blocking semantics across transactions).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_Contracts_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Concurrency;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class RepostConcurrencyTests(PostgresTestFixture fixture)
 {
     private const string Cash = "50";

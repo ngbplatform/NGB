@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// This makes cross-aggregate collisions impossible (Document vs Catalog), regardless of Guid values.
 /// Additionally, Document/Catalog locks take two distinct keys per Guid to make Guid->lock collisions extremely unlikely.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_DocumentAndCatalog_UseNamespaceKey1_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

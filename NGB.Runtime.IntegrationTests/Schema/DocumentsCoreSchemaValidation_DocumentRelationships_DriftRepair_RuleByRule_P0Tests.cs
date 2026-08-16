@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
-using NGB.Core.Documents;
 using NGB.Core.Documents.Exceptions;
 using NGB.Persistence.Schema;
 using NGB.Runtime.IntegrationTests.Infrastructure;
@@ -9,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRepair_RuleByRule_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRepair_RuleByRule_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenDraftGuardFunctionMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTriggerAsync(
@@ -51,7 +49,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRep
     [Fact]
     public async Task ValidateAsync_WhenForeignKeyConstraintMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropConstraintAsync(
@@ -82,7 +79,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRep
     [Fact]
     public async Task ValidateAsync_WhenCardinalityIndexMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(
@@ -112,7 +108,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRep
     [Fact]
     public async Task ValidateAsync_WhenDocumentRelationshipsTableMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTableAsync(

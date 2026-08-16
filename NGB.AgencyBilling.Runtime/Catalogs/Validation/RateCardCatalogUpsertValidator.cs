@@ -27,8 +27,11 @@ public sealed class RateCardCatalogUpsertValidator(IAgencyBillingReferenceReader
 
         var effectiveFrom = AgencyBillingValidationValueReaders.ReadDate(context.Fields, "effective_from");
         var effectiveTo = AgencyBillingValidationValueReaders.ReadDate(context.Fields, "effective_to");
-        if (effectiveFrom is not null && effectiveTo is not null && effectiveTo < effectiveFrom)
-            throw new NgbArgumentInvalidException("effective_to", "Effective To must be on or after Effective From.");
+        if (effectiveFrom.HasValue && effectiveTo.HasValue)
+        {
+            if (effectiveTo.Value < effectiveFrom.Value)
+                throw new NgbArgumentInvalidException("effective_to", "Effective To must be on or after Effective From.");
+        }
 
         var clientId = AgencyBillingValidationValueReaders.ReadGuid(context.Fields, "client_id");
         var projectId = AgencyBillingValidationValueReaders.ReadGuid(context.Fields, "project_id");

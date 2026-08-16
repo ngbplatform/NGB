@@ -19,15 +19,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_Prerequisites_AreReadInsideLockedWindow_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CloseFiscalYearAsync_DoesNotReadChainOrPriorMonthPrerequisites_WhilePriorMonthLockIsHeld()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var endPeriod = new DateOnly(2042, 12, 1);
         var priorMonth = endPeriod.AddMonths(-1);
         var dec15Utc = new DateTime(2042, 12, 15, 0, 0, 0, DateTimeKind.Utc);

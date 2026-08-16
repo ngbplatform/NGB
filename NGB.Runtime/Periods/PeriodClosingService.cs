@@ -737,7 +737,7 @@ public sealed class PeriodClosingService(
         if (latestClosedPeriod is null)
             return PeriodClosingChainEvaluator.Build(earliestActivityPeriod, latestClosedPeriod, []);
 
-        var chainStartPeriod = earliestActivityPeriod ?? latestClosedPeriod.Value;
+        var chainStartPeriod = earliestActivityPeriod.GetValueOrDefault(latestClosedPeriod.Value);
         if (chainStartPeriod > latestClosedPeriod.Value)
             return PeriodClosingChainEvaluator.Build(earliestActivityPeriod, latestClosedPeriod, []);
 

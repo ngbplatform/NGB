@@ -1,6 +1,9 @@
 using FluentAssertions;
+using Hangfire;
+using Hangfire.PostgreSql;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Moq;
 using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.Infrastructure;
@@ -11,6 +14,17 @@ namespace NGB.BackgroundJobs.Tests.DependencyInjection;
 
 public sealed class NgbBackgroundJobsServiceCollectionExtensions_P0Tests
 {
+    [Fact]
+    public void AddNgbBackgroundJobsHangfire_RejectsNullCollectionAndConfigureDelegate()
+    {
+        Action nullServices = () => PlatformBackgroundJobsServiceCollectionExtensions
+            .AddPlatformBackgroundJobsHangfire(null!, _ => { });
+        Action nullConfigure = () => new ServiceCollection().AddPlatformBackgroundJobsHangfire(null!);
+
+        nullServices.Should().Throw<NgbArgumentRequiredException>();
+        nullConfigure.Should().Throw<NgbArgumentRequiredException>();
+    }
+
     [Fact]
     public void AddNgbBackgroundJobsHangfire_WhenConnectionStringMissing_ThrowsConfigurationViolation()
     {
@@ -74,4 +88,58 @@ public sealed class NgbBackgroundJobsServiceCollectionExtensions_P0Tests
         jobImpls.Should().Contain(typeof(AccountingOperationsStuckMonitorJob));
         jobImpls.Should().Contain(typeof(GeneralJournalEntryAutoReversePostingJob));
     }
+
+    [Fact]
+    public void AddNgbBackgroundJobsHangfire_BuildsPostgresStorageWithoutOpeningConnection()
+    {
+        var services = new ServiceCollection();
+        services.AddPlatformBackgroundJobsHangfire(o =>
+        {
+            o.ConnectionString = "Host=localhost;Database=jobs;Username=ngb;Password=ngb";
+            o.PrepareSchemaIfNecessary = false;
+        });
+        using var provider = services.BuildServiceProvider();
+        var descriptor = services.Single(x => x.ServiceType == typeof(JobStorage));
+
+        var storage = descriptor.ImplementationFactory!(provider);
+
+        storage.Should().BeOfType<PostgreSqlStorage>();
+    }
+
+    [Fact]
+    public void AddNgbBackgroundJobsHangfire_AppliesGlobalAndServerOptionsForBothOptionalBranches()
+    {
+        var storage = Mock.Of<JobStorage>();
+        var services = new ServiceCollection();
+        services.AddSingleton(storage);
+        services.AddPlatformBackgroundJobsHangfire(o =>
+        {
+            o.ConnectionString = "Host=unused;Database=unused";
+            o.WorkerCount = 3;
+            o.Queues = [];
+            o.ServerName = " ";
+        });
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IGlobalConfiguration>().Should().NotBeNull();
+        CreateHangfireServerHostedService(services, provider).Should().NotBeNull();
+
+        var namedServices = new ServiceCollection();
+        namedServices.AddSingleton(storage);
+        namedServices.AddPlatformBackgroundJobsHangfire(o =>
+        {
+            o.ConnectionString = "Host=unused;Database=unused";
+            o.Queues = ["critical"];
+            o.ServerName = "named";
+        });
+        using var namedProvider = namedServices.BuildServiceProvider();
+        namedProvider.GetRequiredService<IGlobalConfiguration>().Should().NotBeNull();
+        CreateHangfireServerHostedService(namedServices, namedProvider).Should().NotBeNull();
+    }
+
+    private static object CreateHangfireServerHostedService(
+        IServiceCollection services,
+        IServiceProvider provider) => services
+        .Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationFactory is not null)
+        .ImplementationFactory!(provider);
 }

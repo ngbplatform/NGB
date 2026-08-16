@@ -490,7 +490,7 @@ public sealed class ChartOfAccountsManagementService(
                         "Working-capital accounts must belong to Assets or Liabilities.");
                 }
 
-                EnsureLineSection(line, CashFlowSection.Operating, account.CashFlowRole);
+                EnsureLineSection(line!, CashFlowSection.Operating, account.CashFlowRole);
                 return;
 
             case CashFlowRole.NonCashOperatingAdjustment:
@@ -501,7 +501,7 @@ public sealed class ChartOfAccountsManagementService(
                         "Non-cash operating adjustments must belong to profit-and-loss sections.");
                 }
 
-                EnsureLineSection(line, CashFlowSection.Operating, account.CashFlowRole);
+                EnsureLineSection(line!, CashFlowSection.Operating, account.CashFlowRole);
                 return;
 
             case CashFlowRole.InvestingCounterparty:
@@ -512,7 +512,7 @@ public sealed class ChartOfAccountsManagementService(
                         "Investing counterparty accounts must belong to Assets.");
                 }
 
-                EnsureLineSection(line, CashFlowSection.Investing, account.CashFlowRole);
+                EnsureLineSection(line!, CashFlowSection.Investing, account.CashFlowRole);
                 return;
 
             case CashFlowRole.FinancingCounterparty:
@@ -523,7 +523,7 @@ public sealed class ChartOfAccountsManagementService(
                         "Financing counterparty accounts must belong to Liabilities or Equity.");
                 }
 
-                EnsureLineSection(line, CashFlowSection.Financing, account.CashFlowRole);
+                EnsureLineSection(line!, CashFlowSection.Financing, account.CashFlowRole);
                 return;
 
             default:
@@ -531,11 +531,11 @@ public sealed class ChartOfAccountsManagementService(
         }
     }
 
-    private static void EnsureLineSection(CashFlowLineDefinition? line, CashFlowSection expectedSection, CashFlowRole role)
+    private static void EnsureLineSection(
+        CashFlowLineDefinition line,
+        CashFlowSection expectedSection,
+        CashFlowRole role)
     {
-        if (line is null)
-            throw new NgbInvariantViolationException($"Cash flow role '{role}' requires a cash flow line definition.");
-
         if (line.Section != expectedSection)
         {
             throw new NgbArgumentInvalidException(

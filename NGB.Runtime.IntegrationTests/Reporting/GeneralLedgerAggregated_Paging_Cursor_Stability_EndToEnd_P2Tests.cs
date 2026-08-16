@@ -7,15 +7,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class GeneralLedgerAggregated_Paging_Cursor_Stability_EndToEnd_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task GeneralLedgerAggregatedReportReader_Pages_Through_Large_Dataset_Without_Gaps_And_With_Running_Continuity()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         var (cashId, _, _) = await ReportingTestHelpers.SeedMinimalCoAAsync(host);
 
@@ -83,8 +81,6 @@ public sealed class GeneralLedgerAggregated_Paging_Cursor_Stability_EndToEnd_P2T
     [Fact]
     public async Task GeneralLedgerAggregatedReportReader_Paging_IsStable_When_New_Rows_Are_Inserted_Before_The_Cursor()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         var (cashId, _, _) = await ReportingTestHelpers.SeedMinimalCoAAsync(host);
 

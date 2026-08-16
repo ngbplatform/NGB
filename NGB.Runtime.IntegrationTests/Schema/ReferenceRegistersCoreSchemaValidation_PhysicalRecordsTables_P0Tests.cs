@@ -20,14 +20,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// P0: Core schema validator must validate per-register physical __records tables
 /// for reference registers that already have records (has_records=true).
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegistersCoreSchemaValidation_PhysicalRecordsTables_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegistersCoreSchemaValidation_PhysicalRecordsTables_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenPhysicalTableAppendOnlyTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (_, table) = await CreateRegisterAndAppendOneRecordAsync(
@@ -51,7 +50,6 @@ public sealed class ReferenceRegistersCoreSchemaValidation_PhysicalRecordsTables
     [Fact]
     public async Task ValidateAsync_WhenPhysicalTableKeyV2IndexMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (_, table) = await CreateRegisterAndAppendOneRecordAsync(

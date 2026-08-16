@@ -11,8 +11,8 @@ using NGB.Definitions;
 
 namespace NGB.Runtime.IntegrationTests.Catalogs;
 
-[Collection(PostgresCollection.Name)]
-public sealed class Catalogs_Concurrency_LockGranularity_P2Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Catalogs_Concurrency_LockGranularity_P2Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     // Unique catalogCode/table names to avoid colliding with real module typed tables.

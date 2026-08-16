@@ -11,7 +11,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// Contract: callers may pass any date within a month; the lock must normalize to month start (YYYY-MM-01),
 /// and it must block concurrent transactions targeting the same month.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_PeriodLock_NormalizesAndBlocks_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

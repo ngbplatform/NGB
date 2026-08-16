@@ -19,14 +19,13 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 ///
 /// This must be enforced in runtime services (fast feedback) and in PostgreSQL (defense-in-depth).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterManagementService_ImmutabilityAfterRecords_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task AfterFirstRecord_UpsertCannotChangePeriodicityOrRecordMode_AndFieldsBecomeImmutable()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         const string code = "RR_IMMUTABLE";
@@ -148,7 +147,6 @@ public sealed class ReferenceRegisterManagementService_ImmutabilityAfterRecords_
     [Fact]
     public async Task AfterFirstRecord_DimensionRulesAreAppendOnly_AndCannotAddRequiredDimensions()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         const string code = "RR_DIM_APPEND_ONLY";

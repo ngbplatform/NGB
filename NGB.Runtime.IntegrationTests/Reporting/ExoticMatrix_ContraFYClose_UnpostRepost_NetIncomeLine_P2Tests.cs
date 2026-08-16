@@ -27,7 +27,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 ///   even when IncludeNetIncomeInEquity=true.
 /// - Closed-period policy must keep Unpost/Repost forbidden and side-effect free.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ExoticMatrix_ContraFYClose_UnpostRepost_NetIncomeLine_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -17,8 +17,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P0: Defense-in-depth for the common document header (table: documents).
 /// A posted document must not be updated/deleted via direct SQL bypass.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class PostedDocumentHeaderImmutabilityGuard_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PostedDocumentHeaderImmutabilityGuard_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string Initiator = "tests";

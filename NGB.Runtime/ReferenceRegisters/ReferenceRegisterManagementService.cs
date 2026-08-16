@@ -509,9 +509,6 @@ public sealed class ReferenceRegisterManagementService(
                 throw new ReferenceRegisterFieldDefinitionsValidationException(registerId, reason: "empty_field_code");
 
             var code = f.Code.Trim();
-            if (code.Length == 0)
-                throw new ReferenceRegisterFieldDefinitionsValidationException(registerId, reason: "empty_field_code");
-
             if (string.IsNullOrWhiteSpace(f.Name))
                 throw new ReferenceRegisterFieldDefinitionsValidationException(registerId, reason: "empty_field_name");
 

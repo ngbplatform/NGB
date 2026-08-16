@@ -14,8 +14,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// - accounting_register_main.period_month generated column (UTC)
 /// - closed-period guard triggers for INSERT/UPDATE/DELETE (UTC)
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class TimeZoneMatrix_AllDatabaseGuards_P3Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class TimeZoneMatrix_AllDatabaseGuards_P3Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly Jan = ReportingTestHelpers.Period;      // 2026-01-01

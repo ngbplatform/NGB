@@ -12,14 +12,13 @@ using NGB.Runtime.Documents.Numbering;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.Runtime.IntegrationTests.Reporting;
-using NGB.Runtime.UnitOfWork;
 using Npgsql;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentNumberingAndTypedSyncService_SyncsTypedStorage_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentNumberingAndTypedSyncService_SyncsTypedStorage_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string TypeCode = "it_doc_num_sync";

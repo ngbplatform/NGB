@@ -13,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: strict DB constraints for operational_register_finalizations.
 /// The table is critical for Dirty/Finalized month lifecycle, so we enforce invariants at the DB level.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterFinalizations_Constraints_Enforced_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

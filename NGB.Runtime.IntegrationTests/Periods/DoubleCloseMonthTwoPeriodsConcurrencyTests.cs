@@ -17,7 +17,7 @@ using NGB.Runtime.Posting;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class DoubleCloseMonthTwoPeriodsConcurrencyTests(PostgresTestFixture fixture)
 {
     private const string TypeCode = "it_doc_tx";

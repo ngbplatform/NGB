@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - empty / invalid table_code (would break per-register table naming)
 /// - overlong table_code (would exceed PostgreSQL 63-char identifier limit when used in opreg_* tables)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegister_TableCode_DbGuards_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

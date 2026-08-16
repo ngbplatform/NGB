@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovements_AppendOnlyEnforcement_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

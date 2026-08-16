@@ -18,6 +18,7 @@ using NGB.Runtime.Documents.Derivations;
 using NGB.Runtime.Documents.Posting;
 using NGB.Runtime.Ui;
 using Xunit;
+using ContractDocumentStatus = NGB.Contracts.Metadata.DocumentStatus;
 using DocumentStatus = NGB.Core.Documents.DocumentStatus;
 
 namespace NGB.Runtime.Tests.Documents;
@@ -240,7 +241,7 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
         node.EntityId.Should().Be(id);
         node.NodeId.Should().Be($"doc:{TypeCode}:{id}");
         node.Title.Should().Be("My doc");
-        node.DocumentStatus.Should().Be(Contracts.Metadata.DocumentStatus.Draft);
+        node.DocumentStatus.Should().Be(ContractDocumentStatus.Draft);
     }
 
     [Fact]

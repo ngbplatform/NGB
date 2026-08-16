@@ -20,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: Requires append-only dimension rules after the first movement exists.
 /// Runtime service must forbid destructive/tightening changes but allow forward-only optional additions.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterDimensionRules_Immutability_AfterMovements_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

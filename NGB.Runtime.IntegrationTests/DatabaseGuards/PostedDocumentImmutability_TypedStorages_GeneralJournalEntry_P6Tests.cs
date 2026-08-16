@@ -16,8 +16,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// - prevents "silent" corruption via accidental direct SQL updates
 /// - enforces auditability: posted docs are immutable; change requires Unpost + edit + Repost
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class PostedDocumentImmutability_TypedStorages_GeneralJournalEntry_P6Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PostedDocumentImmutability_TypedStorages_GeneralJournalEntry_P6Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateTime T0 = new(2026, 1, 17, 0, 0, 0, DateTimeKind.Utc);

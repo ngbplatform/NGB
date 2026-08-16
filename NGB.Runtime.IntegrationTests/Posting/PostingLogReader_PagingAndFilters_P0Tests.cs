@@ -10,13 +10,12 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLogReader_PagingAndFilters_P0Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PostingLogReader_KeysetPaging_ReturnsAllRecords_NoDuplicates_StableOrder_AndCursorSemantics()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await ReportingTestHelpers.SeedMinimalCoAAsync(host);
@@ -128,7 +127,6 @@ public sealed class PostingLogReader_PagingAndFilters_P0Tests(PostgresTestFixtur
     [Fact]
     public async Task PostingLogReader_StatusFilters_Work_ForCompleted_InProgress_Stale()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Seed table directly: this test is for PostingLogReader classification/filtering.

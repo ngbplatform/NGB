@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.Accounts;
 /// - inactive (IsActive=false) accounts must be resolvable
 /// - soft-deleted accounts must NOT be resolvable
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AccountByIdResolver_Contracts_EndToEnd_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

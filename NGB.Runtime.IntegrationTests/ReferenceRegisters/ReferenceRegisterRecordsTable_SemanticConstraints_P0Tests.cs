@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// P0: per-register records tables must enforce semantic constraints at the DB level
 /// (defense-in-depth against accidental raw SQL inserts / buggy writers).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterRecordsTable_SemanticConstraints_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

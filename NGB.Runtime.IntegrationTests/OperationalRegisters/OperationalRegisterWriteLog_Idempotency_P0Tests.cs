@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: Idempotency semantics for operational_register_write_state.
 /// Mirrors accounting posting_log behaviors (Begun / InProgress / AlreadyCompleted + stale takeover).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterWriteLog_Idempotency_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -16,7 +16,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLog_TakeoverConcurrency_ExternalTransactionModeTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -26,7 +26,6 @@ public sealed class PostingLog_TakeoverConcurrency_ExternalTransactionModeTests(
     [Fact]
     public async Task PostAsync_StaleInProgress_ExternalTx_TwoConcurrentAttempts_OnlyOneTakesOver_AndWritesOnce()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await SeedMinimalCoaAsync(host);
@@ -95,7 +94,6 @@ public sealed class PostingLog_TakeoverConcurrency_ExternalTransactionModeTests(
     [Fact]
     public async Task PostAsync_StaleInProgress_ExternalTx_WinnerRollsBack_AllowsNextAttemptToExecute()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await SeedMinimalCoaAsync(host);

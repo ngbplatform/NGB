@@ -8,13 +8,12 @@ using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Documents.Derivations;
 using NGB.Runtime.IntegrationTests.Infrastructure;
-using NGB.Runtime.UnitOfWork;
 using Npgsql;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.Derivations;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentDerivationService_BasedOnNormalization_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

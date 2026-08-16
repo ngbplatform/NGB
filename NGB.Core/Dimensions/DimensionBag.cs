@@ -64,11 +64,8 @@ public sealed class DimensionBag : IReadOnlyList<DimensionValue>
 
         _items = map.Select(kvp => new DimensionValue(kvp.Key, kvp.Value)).ToArray();
 
-        Array.Sort(_items, static (a, b) =>
-        {
-            var c = a.DimensionId.CompareTo(b.DimensionId);
-            return c != 0 ? c : a.ValueId.CompareTo(b.ValueId);
-        });
+        // DimensionId is unique by construction, so it is the complete canonical sort key.
+        Array.Sort(_items, static (a, b) => a.DimensionId.CompareTo(b.DimensionId));
     }
 
     private DimensionBag(DimensionValue[] items, bool skipNormalize)

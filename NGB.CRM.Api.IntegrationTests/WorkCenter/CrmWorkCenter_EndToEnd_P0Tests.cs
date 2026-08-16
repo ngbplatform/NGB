@@ -20,7 +20,7 @@ using Xunit;
 
 namespace NGB.CRM.Api.IntegrationTests.WorkCenter;
 
-[Collection(CrmPostgresCollection.Name)]
+[Collection(CrmDocumentsPostgresCollection.Name)]
 public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();

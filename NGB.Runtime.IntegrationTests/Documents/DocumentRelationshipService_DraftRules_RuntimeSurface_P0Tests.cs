@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationshipService_DraftRules_RuntimeSurface_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -22,7 +22,6 @@ public sealed class DocumentRelationshipService_DraftRules_RuntimeSurface_P0Test
     [Fact]
     public async Task CreateAndDelete_BasedOn_FailFast_WhenFromDocumentIsNotDraft()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var fromId = Guid.CreateVersion7();
@@ -57,7 +56,6 @@ public sealed class DocumentRelationshipService_DraftRules_RuntimeSurface_P0Test
     [Fact]
     public async Task CreateAndDelete_RelatedTo_FailFast_WhenToDocumentIsNotDraft_BecauseBidirectionalRequiresBothDraft()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var a = Guid.CreateVersion7();
@@ -91,7 +89,6 @@ public sealed class DocumentRelationshipService_DraftRules_RuntimeSurface_P0Test
     [Fact]
     public async Task BasedOn_AllowsLinkToPosted_ToDocument_WhenFromIsDraft()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var fromId = Guid.CreateVersion7();

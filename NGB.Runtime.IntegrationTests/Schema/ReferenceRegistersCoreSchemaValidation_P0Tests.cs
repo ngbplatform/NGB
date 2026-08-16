@@ -8,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegistersCoreSchemaValidation_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegistersCoreSchemaValidation_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenSchemaIsIntact_Succeeds()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await using var scope = host.Services.CreateAsyncScope();
@@ -28,7 +27,6 @@ public sealed class ReferenceRegistersCoreSchemaValidation_P0Tests(PostgresTestF
     [Fact]
     public async Task ValidateAsync_WhenHasRecordsTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTriggerAsync(
@@ -47,7 +45,6 @@ public sealed class ReferenceRegistersCoreSchemaValidation_P0Tests(PostgresTestF
     [Fact]
     public async Task ValidateAsync_WhenCodeNormIndexMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(
@@ -65,7 +62,6 @@ public sealed class ReferenceRegistersCoreSchemaValidation_P0Tests(PostgresTestF
     [Fact]
     public async Task ValidateAsync_WhenImmutabilityGuardFunctionMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // The trigger depends on the function; CASCADE will drop the trigger as well.

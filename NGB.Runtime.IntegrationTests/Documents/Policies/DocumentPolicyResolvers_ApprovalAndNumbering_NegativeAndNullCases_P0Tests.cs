@@ -20,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.Policies;
 /// - We intentionally DO NOT start the host (StartAsync) because startup validation would fail-fast
 ///   for some invalid definitions, and here we want to verify the runtime guards in resolvers.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPolicyResolvers_ApprovalAndNumbering_NegativeAndNullCases_P0Tests(PostgresTestFixture fixture)
 {
     [Fact]

@@ -16,7 +16,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterIndependentWriteService_Atomicity_Rollback_WhenAppendThrows_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -23,7 +23,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// NOTE: Postgres orders UUIDs by their 16-byte value; the canonical UUID text
 /// representation preserves that order, so we compare GUIDs via ToString("N").
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ReportOrdering_Deterministic_TrialBalance_GeneralLedgerAggregated_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

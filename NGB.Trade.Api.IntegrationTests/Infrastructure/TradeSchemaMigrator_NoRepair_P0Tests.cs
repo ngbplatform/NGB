@@ -8,8 +8,8 @@ using Xunit;
 
 namespace NGB.Trade.Api.IntegrationTests.Infrastructure;
 
-[Collection(TradePostgresCollection.Name)]
-public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradePostgresFixture fixture)
+[Collection(TradeSchemaPostgresCollection.Name)]
+public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradeSchemaPostgresFixture fixture)
 {
     [Fact]
     public async Task Migrate_WithoutRepair_Installs_Critical_Trade_Document_Guards_And_Indexes()

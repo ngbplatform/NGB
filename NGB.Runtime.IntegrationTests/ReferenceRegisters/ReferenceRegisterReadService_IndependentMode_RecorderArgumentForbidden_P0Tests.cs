@@ -10,7 +10,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterReadService_IndependentMode_RecorderArgumentForbidden_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

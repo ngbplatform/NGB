@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_Atomicity_Rollback_PeriodCloseFiscalYear_P1Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private const string AuthSubject = "kc|fy-close-audit-rollback";

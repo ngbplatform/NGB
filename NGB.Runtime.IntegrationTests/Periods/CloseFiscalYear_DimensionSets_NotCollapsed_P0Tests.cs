@@ -22,7 +22,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// but differ in the 4th dimension. If FY close or Trial Balance aggregation uses only
 /// a truncated fixed-slot projection, those two sets would be collapsed into one row/one closing entry.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_DimensionSets_NotCollapsed_ByDimensionSetId_P0Tests(PostgresTestFixture fixture)
 {
     [Fact]

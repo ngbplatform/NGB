@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPostingService_PostValidators_Order_And_StopOnFirstFailure_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

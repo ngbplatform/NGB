@@ -13,15 +13,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class HappyPath_FullFlow_SmokeContract_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task FullUserFlow_Post_Unpost_Repost_CloseMonth_Reports_ShouldWork_EndToEnd()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var period = new DateOnly(2041, 5, 1);
         var dayUtc = new DateTime(2041, 5, 10, 0, 0, 0, DateTimeKind.Utc);
 

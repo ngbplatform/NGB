@@ -17,7 +17,7 @@ using NGB.Runtime.Posting;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseMonthVsUnpost_MultiEntry_Concurrency_P0Tests(PostgresTestFixture fixture)
 {
     [Fact]

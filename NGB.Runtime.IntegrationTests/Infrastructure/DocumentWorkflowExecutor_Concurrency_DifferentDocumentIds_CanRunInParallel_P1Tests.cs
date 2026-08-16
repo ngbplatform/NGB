@@ -10,7 +10,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// - Operations for DIFFERENT documentIds must not serialize via document locks.
 ///   (If this breaks, unrelated document workflows could accidentally become globally single-threaded.)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class DocumentWorkflowExecutor_Concurrency_DifferentDocumentIds_CanRunInParallel_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

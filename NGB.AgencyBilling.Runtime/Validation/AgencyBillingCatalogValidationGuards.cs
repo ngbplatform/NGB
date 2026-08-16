@@ -35,6 +35,8 @@ internal static class AgencyBillingCatalogValidationGuards
             fieldPath,
             "team member",
             references.ReadTeamMemberAsync,
+            static item => item.IsMarkedForDeletion,
+            static item => item.IsActive,
             ct);
 
     public static async Task<AgencyBillingProjectReference> EnsureProjectAsync(
@@ -63,6 +65,8 @@ internal static class AgencyBillingCatalogValidationGuards
             fieldPath,
             "service item",
             references.ReadServiceItemAsync,
+            static item => item.IsMarkedForDeletion,
+            static item => item.IsActive,
             ct);
 
     public static Task<AgencyBillingPaymentTermsReference> EnsurePaymentTermsAsync(
@@ -75,6 +79,8 @@ internal static class AgencyBillingCatalogValidationGuards
             fieldPath,
             "payment terms",
             references.ReadPaymentTermsAsync,
+            static item => item.IsMarkedForDeletion,
+            static item => item.IsActive,
             ct);
 
     public static void EnsureProjectBelongsToClient(
@@ -83,7 +89,13 @@ internal static class AgencyBillingCatalogValidationGuards
         string projectFieldPath,
         string clientFieldPath)
     {
-        if (project.ClientId is null || project.ClientId == Guid.Empty)
+        if (!project.ClientId.HasValue)
+        {
+            throw new NgbConfigurationViolationException(
+                $"Project '{project.Id}' does not have a valid client_id in reference data.");
+        }
+
+        if (project.ClientId.Value == Guid.Empty)
         {
             throw new NgbConfigurationViolationException(
                 $"Project '{project.Id}' does not have a valid client_id in reference data.");
@@ -146,6 +158,8 @@ internal static class AgencyBillingCatalogValidationGuards
         string fieldPath,
         string description,
         Func<Guid, CancellationToken, Task<TReference?>> readAsync,
+        Func<TReference, bool> isMarkedForDeletion,
+        Func<TReference, bool> isActive,
         CancellationToken ct)
         where TReference : class
     {
@@ -156,25 +170,10 @@ internal static class AgencyBillingCatalogValidationGuards
         if (item is null)
             throw new NgbArgumentInvalidException(fieldPath, $"Referenced {description} was not found.");
 
-        switch (item)
-        {
-            case AgencyBillingTeamMemberReference { IsMarkedForDeletion: true }:
-                throw new NgbArgumentInvalidException(fieldPath, $"Referenced {description} is not available.");
-            case AgencyBillingServiceItemReference { IsMarkedForDeletion: true }:
-                throw new NgbArgumentInvalidException(fieldPath, $"Referenced {description} is not available.");
-            case AgencyBillingPaymentTermsReference { IsMarkedForDeletion: true }:
-                throw new NgbArgumentInvalidException(fieldPath, $"Referenced {description} is not available.");
-        }
+        if (isMarkedForDeletion(item))
+            throw new NgbArgumentInvalidException(fieldPath, $"Referenced {description} is not available.");
 
-        var isActive = item switch
-        {
-            AgencyBillingTeamMemberReference teamMember => teamMember.IsActive,
-            AgencyBillingServiceItemReference serviceItem => serviceItem.IsActive,
-            AgencyBillingPaymentTermsReference paymentTerms => paymentTerms.IsActive,
-            _ => throw new NgbConfigurationViolationException($"Unsupported reference type '{typeof(TReference).Name}'.")
-        };
-
-        if (!isActive)
+        if (!isActive(item))
             throw new NgbArgumentInvalidException(fieldPath, $"Referenced {description} is inactive.");
 
         return item;

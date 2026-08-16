@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class IncomeStatement_ExtendedSections_Semantics_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

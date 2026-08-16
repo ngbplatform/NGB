@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationships_GraphReader_IncomingPaging_StableUnderConcurrentInserts_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

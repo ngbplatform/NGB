@@ -11,14 +11,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Concurrency;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_Idempotency_Torture96_P5_4_Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PostingEngine_Torture_96_Tasks_SameDocsAndOperations_IsIdempotent_AndLeavesConsistentDb()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await ReportingTestHelpers.SeedMinimalCoAAsync(host);

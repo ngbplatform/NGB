@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// It validates that the host can start and that the platform document (GJE) is discoverable
 /// and its configured strategies are resolvable.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Definitions_Smoke_Invariants_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

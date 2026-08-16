@@ -522,11 +522,6 @@ public sealed class CatalogService(
 
                     var fieldPath = $"{rowPath}.{name}";
                     var val = ConvertJsonValue(el, col.ColumnType, fieldPath, GetLabel(col));
-
-                    if (col.Required && val is null)
-                        throw new NgbArgumentInvalidException(fieldPath,
-                            $"{GetLabel(col)} is required in {partLabel} row {rowNumber}.");
-
                     typed[name] = val;
                 }
 
@@ -601,14 +596,7 @@ public sealed class CatalogService(
         => key.StartsWith("filters.", StringComparison.OrdinalIgnoreCase) ? key["filters.".Length..] : key;
 
     private static string ToUserFilterLabel(string key)
-    {
-        var normalized = NormalizeFilterKey(key);
-        return normalized switch
-        {
-            "deleted" or "trash" => "Deleted",
-            _ => ValidationMessageFormatter.ToLabel(normalized, ColumnType.String)
-        };
-    }
+        => ValidationMessageFormatter.ToLabel(NormalizeFilterKey(key), ColumnType.String);
 
     private static SoftDeleteFilterMode ParseSoftDeleteMode(string? value, string keyName)
     {
@@ -696,23 +684,23 @@ public sealed class CatalogService(
 
                 ColumnType.Int32 => el.ValueKind == JsonValueKind.Number
                     ? el.GetInt32()
-                    : int.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                    : int.Parse(el.GetString()!, CultureInfo.InvariantCulture),
 
                 ColumnType.Int64 => el.ValueKind == JsonValueKind.Number
                     ? el.GetInt64()
-                    : long.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                    : long.Parse(el.GetString()!, CultureInfo.InvariantCulture),
 
                 ColumnType.Decimal => el.ValueKind == JsonValueKind.Number
                     ? el.GetDecimal()
-                    : ParseDecimalInvariantStrict(el.GetString() ?? el.ToString()),
+                    : ParseDecimalInvariantStrict(el.GetString()!),
 
                 ColumnType.Boolean => el.ValueKind == JsonValueKind.True || el.ValueKind == JsonValueKind.False
                     ? el.GetBoolean()
-                    : bool.Parse(el.GetString() ?? el.ToString()),
+                    : bool.Parse(el.GetString()!),
 
                 ColumnType.Guid => el.ParseGuidOrRef(),
 
-                ColumnType.Date => DateOnly.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                ColumnType.Date => DateOnly.Parse(el.GetString()!, CultureInfo.InvariantCulture),
 
                 ColumnType.DateTimeUtc => ParseUtc(el, name),
 
@@ -729,7 +717,7 @@ public sealed class CatalogService(
 
     private static DateTime ParseUtc(JsonElement el, string name)
     {
-        var s = el.GetString() ?? el.ToString();
+        var s = el.GetString()!;
         var dt = DateTime.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
         dt.EnsureUtc(name);
         return dt;

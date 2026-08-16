@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Catalogs;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class CatalogDraftService_UnknownCatalogCode_FailFast_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

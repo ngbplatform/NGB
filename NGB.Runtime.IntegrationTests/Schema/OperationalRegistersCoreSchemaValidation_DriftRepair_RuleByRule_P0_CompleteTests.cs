@@ -8,8 +8,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByRule_P0_CompleteTests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByRule_P0_CompleteTests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Theory]

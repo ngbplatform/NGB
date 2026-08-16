@@ -11,8 +11,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class SchemaValidation_EmptyRegistry_NoErrors_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class SchemaValidation_EmptyRegistry_NoErrors_P1Tests(SchemaPostgresTestFixture fixture)
 {
     [Fact]
     public async Task DocumentSchemaValidation_WhenRegistryIsEmpty_Passes()

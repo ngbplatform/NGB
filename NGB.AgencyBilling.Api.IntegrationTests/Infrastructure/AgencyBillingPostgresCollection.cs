@@ -7,3 +7,9 @@ public sealed class AgencyBillingPostgresCollection : ICollectionFixture<AgencyB
 {
     public const string Name = "AgencyBillingPostgreSql";
 }
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class AgencyBillingSchemaPostgresCollection : ICollectionFixture<AgencyBillingSchemaPostgresFixture>
+{
+    public const string Name = "AgencyBillingPostgreSql schema changes";
+}

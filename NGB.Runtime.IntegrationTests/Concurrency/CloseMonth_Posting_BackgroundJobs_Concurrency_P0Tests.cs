@@ -23,7 +23,7 @@ using NGB.Runtime.Posting;
 
 namespace NGB.Runtime.IntegrationTests.Concurrency;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class CloseMonth_Posting_BackgroundJobs_Concurrency_P0Tests(PostgresTestFixture fixture)
 {
     [Fact]

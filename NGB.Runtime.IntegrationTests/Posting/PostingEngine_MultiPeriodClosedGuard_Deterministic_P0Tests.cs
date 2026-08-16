@@ -16,15 +16,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_MultiPeriodClosedGuard_Deterministic_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PostingAcrossTwoMonths_WhenSecondMonthClosed_ThrowsWithExactMonthStart_AndWritesNothing()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = CreateHostWithRelaxedPostingValidator();
         await SeedMinimalCoaAsync(host);
 
@@ -61,8 +59,6 @@ public sealed class PostingEngine_MultiPeriodClosedGuard_Deterministic_P0Tests(P
     [Fact]
     public async Task PostingAcrossTwoClosedMonths_ThrowsForEarliestClosedMonth_Deterministically_AndWritesNothing()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = CreateHostWithRelaxedPostingValidator();
         await SeedMinimalCoaAsync(host);
 

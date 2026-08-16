@@ -13,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// <summary>
 /// P1: PostingLog filters correctness (UI relies on this for drill-down).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class PostingLogReader_Filters_P1Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     [Fact]

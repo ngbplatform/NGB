@@ -12,14 +12,13 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// - code/name must be trimmed (no leading/trailing whitespace)
 /// - code uniqueness is enforced case-insensitively across ALL dimensions (including deleted)
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseGuards_PlatformDimensions_DbConstraints_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseGuards_PlatformDimensions_DbConstraints_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CheckConstraints_Forbid_EmptyAndUntrimmedCodeAndName()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -79,7 +78,6 @@ public sealed class DatabaseGuards_PlatformDimensions_DbConstraints_P0Tests(Post
     [Fact]
     public async Task UniqueIndex_Forbids_DuplicateCodeNorm_AmongNotDeleted()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -105,7 +103,6 @@ public sealed class DatabaseGuards_PlatformDimensions_DbConstraints_P0Tests(Post
     [Fact]
     public async Task SoftDelete_DoesNotRelease_CodeNorm_ForReuse()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -136,7 +133,6 @@ public sealed class DatabaseGuards_PlatformDimensions_DbConstraints_P0Tests(Post
     [Fact]
     public async Task HardDelete_IsRestricted_WhenDimensionIsReferencedByDimensionSetItems()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 

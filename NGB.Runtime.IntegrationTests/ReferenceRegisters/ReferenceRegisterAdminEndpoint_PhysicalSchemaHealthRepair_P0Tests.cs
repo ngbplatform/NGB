@@ -16,8 +16,8 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// P0: Admin endpoint must accurately report RR physical schema drift (missing table/guard/indexes)
 /// and repair it via EnsurePhysicalSchemaByIdAsync.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegisterAdminEndpoint_PhysicalSchemaHealthRepair_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegisterAdminEndpoint_PhysicalSchemaHealthRepair_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Maintenance;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AccountingRebuildTurnovers_DimensionSetProjection_P5_2_Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -25,7 +25,6 @@ public sealed class AccountingRebuildTurnovers_DimensionSetProjection_P5_2_Tests
     [Fact]
     public async Task RebuildTurnoversAsync_ReconstructsRows_PerAccountAndDimensionSet()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await SeedCoaWithDimensionRulesAsync(host);

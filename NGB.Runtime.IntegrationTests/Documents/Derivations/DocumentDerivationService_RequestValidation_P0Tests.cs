@@ -11,7 +11,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.Derivations;
 /// P0: Contract tests that lock in request/parameter validation.
 /// These should fail fast (before any DB work) with clear exception types.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentDerivationService_RequestValidation_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

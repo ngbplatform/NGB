@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.Documents;
 /// - Direct DELETE is forbidden unless the from-document is Draft.
 /// - FK cascades (document deletions) must be allowed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationships_DraftGuardTrigger_Semantics_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

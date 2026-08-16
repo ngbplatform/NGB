@@ -212,7 +212,7 @@ public sealed class CurrentItemPricesCanonicalReportExecutor(
     }
 
     private static string GetCurrency(ReferenceRegisterRecordSnapshot snapshot)
-        => Convert.ToString(snapshot.Record.Values.GetValueOrDefault("currency")) ?? string.Empty;
+        => Convert.ToString(snapshot.Record.Values.GetValueOrDefault("currency"))!;
 
     private static string? TryFormatDate(object? value)
     {

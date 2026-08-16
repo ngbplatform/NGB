@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_NoClosingEntriesRequiredTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

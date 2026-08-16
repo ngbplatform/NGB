@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using NGB.Accounting.Accounts;
@@ -13,6 +14,51 @@ namespace NGB.AgencyBilling.Runtime.Tests.Validation;
 
 public sealed class AgencyBillingValidationValueReaders_P0Tests
 {
+    [Fact]
+    public void Readers_ReturnNullForMissingObjectKeysAndNullOrMissingJsonDictionaries()
+    {
+        IReadOnlyDictionary<string, object?> objects = new Dictionary<string, object?>();
+        IReadOnlyDictionary<string, JsonElement> json = new Dictionary<string, JsonElement>();
+
+        AgencyBillingValidationValueReaders.ReadString(objects, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadString(json, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadString((IReadOnlyDictionary<string, JsonElement>?)null, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadGuid(json, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadGuid((IReadOnlyDictionary<string, JsonElement>?)null, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadDecimal(json, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadDecimal((IReadOnlyDictionary<string, JsonElement>?)null, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadDate(json, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadDate((IReadOnlyDictionary<string, JsonElement>?)null, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadInt32(objects, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadInt32(json, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadInt32((IReadOnlyDictionary<string, JsonElement>?)null, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadBoolean(objects, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadBoolean(json, "missing").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadBoolean((IReadOnlyDictionary<string, JsonElement>?)null, "missing").Should().BeNull();
+    }
+
+    [Fact]
+    public void Readers_CoverNumericDateAndJsonBoundaryRepresentations()
+    {
+        AgencyBillingValidationValueReaders.ReadDecimal(
+            AgencyBillingTestData.Fields(("field", 12L)), "field").Should().Be(12m);
+        AgencyBillingValidationValueReaders.ReadDecimal(
+            AgencyBillingTestData.Fields(("field", 1.25f)), "field").Should().Be(1.25m);
+        AgencyBillingValidationValueReaders.ReadDate(
+            AgencyBillingTestData.Fields(("field", new DateOnly(2026, 4, 18))), "field")
+            .Should().Be(new DateOnly(2026, 4, 18));
+        AgencyBillingValidationValueReaders.ReadDate(
+            AgencyBillingTestData.Fields(("field", new DateTime(2026, 4, 18))), "field")
+            .Should().Be(new DateOnly(2026, 4, 18));
+        AgencyBillingValidationValueReaders.ReadInt32(
+            AgencyBillingTestData.Fields(("field", 12m)), "field").Should().Be(12);
+        AgencyBillingValidationValueReaders.ReadInt32(
+            AgencyBillingTestData.Fields(("field", (long)int.MaxValue + 1)), "field").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadInt32(
+            AgencyBillingTestData.JsonFields(("field", 1.5m)), "field").Should().BeNull();
+        AgencyBillingValidationValueReaders.ReadBoolean(
+            AgencyBillingTestData.JsonFields(("field", 1.5m)), "field").Should().BeNull();
+    }
     [Theory]
     [InlineData(null, null)]
     [InlineData("hello", "hello")]
@@ -474,6 +520,19 @@ public sealed class AgencyBillingCatalogValidationGuards_P0Tests
     }
 
     [Fact]
+    public void EnsureProjectBelongsToClient_Rejects_Project_With_Null_Client()
+    {
+        var project = new AgencyBillingProjectReference(
+            Guid.NewGuid(), false, "Project", true, null, AgencyBillingProjectStatus.Active);
+
+        var ex = Assert.Throws<NgbConfigurationViolationException>(() =>
+            AgencyBillingCatalogValidationGuards.EnsureProjectBelongsToClient(
+                project, Guid.NewGuid(), "project_id", "client_id"));
+
+        ex.Message.Should().Contain("does not have a valid client_id");
+    }
+
+    [Fact]
     public void EnsureProjectBelongsToClient_Rejects_Mismatched_Client()
     {
         var project = AgencyBillingTestData.ProjectReference(clientId: Guid.NewGuid());
@@ -510,6 +569,18 @@ public sealed class AgencyBillingAccountingValidationGuards_P0Tests
                 AgencyBillingTestData.CreateAccount(Guid.NewGuid(), AccountType.Liability, StatementSection.Liabilities)),
             "Selected cash / bank account was not found."
         ];
+    }
+
+    [Fact]
+    public async Task EnsureCashAccountAsync_Rejects_Empty_Id_BeforeReadingChart()
+    {
+        var charts = new Mock<IChartOfAccountsProvider>(MockBehavior.Strict);
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            AgencyBillingAccountingValidationGuards.EnsureCashAccountAsync(
+                Guid.Empty, "cash_account_id", charts.Object, CancellationToken.None));
+
+        ex.ParamName.Should().Be("cash_account_id");
     }
 
     [Fact]
@@ -630,6 +701,13 @@ public sealed class AgencyBillingPostingCommon_P0Tests
         var bag = AgencyBillingPostingCommon.TimeLedgerBag(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.Empty);
 
         bag.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public void TimeLedgerBag_Skips_Null_Service_Item()
+    {
+        AgencyBillingPostingCommon.TimeLedgerBag(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null)
+            .Should().HaveCount(3);
     }
 
     [Fact]

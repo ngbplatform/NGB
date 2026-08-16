@@ -5,7 +5,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Migrations_UpgradeDrift_PlatformDimensionSets_ReservedEmptyRow_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

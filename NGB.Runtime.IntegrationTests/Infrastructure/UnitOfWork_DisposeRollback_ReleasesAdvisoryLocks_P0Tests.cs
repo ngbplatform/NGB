@@ -6,15 +6,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class UnitOfWork_DisposeRollback_ReleasesAdvisoryLocks_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task DisposeWithoutCommit_RollsBack_AndReleases_DocumentLock()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var docId = Guid.CreateVersion7();
@@ -48,8 +46,6 @@ public sealed class UnitOfWork_DisposeRollback_ReleasesAdvisoryLocks_P0Tests(Pos
     [Fact]
     public async Task DisposeWithoutCommit_RollsBack_AndReleases_PeriodLock()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var period = new DateOnly(2026, 1, 1);
@@ -81,8 +77,6 @@ public sealed class UnitOfWork_DisposeRollback_ReleasesAdvisoryLocks_P0Tests(Pos
     [Fact]
     public async Task DisposeWithoutCommit_RollsBack_AndReleases_CatalogLock()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var catalogId = Guid.CreateVersion7();

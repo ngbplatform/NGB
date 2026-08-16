@@ -6,8 +6,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 
-[Collection(PostgresCollection.Name)]
-public sealed class TypedDocumentImmutabilityGuard_AutoInstall_P6PlusTests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class TypedDocumentImmutabilityGuard_AutoInstall_P6PlusTests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

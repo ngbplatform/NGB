@@ -5,7 +5,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class DatabaseDefaults_Timestamptz_NoSessionTimeZoneDrift_P0Tests(PostgresTestFixture fixture)
 {
     [Fact]

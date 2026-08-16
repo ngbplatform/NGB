@@ -8,7 +8,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Performance;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class ExplainPlans_IndexUsage_P4_2_Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

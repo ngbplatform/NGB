@@ -8,7 +8,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class UnitOfWorkTransactionExtensions_Semantics_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -7,8 +7,8 @@ using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 
-[Collection(PmIntegrationCollection.Name)]
-public sealed class PmSchemaMigrator_NoRepair_P0Tests(PmIntegrationFixture fixture)
+[Collection(PmSchemaIntegrationCollection.Name)]
+public sealed class PmSchemaMigrator_NoRepair_P0Tests(PmSchemaIntegrationFixture fixture)
 {
     [Fact]
     public async Task Migrate_WithoutRepair_Installs_TrgPostedImmutable_ForPmTypedDocumentTables()

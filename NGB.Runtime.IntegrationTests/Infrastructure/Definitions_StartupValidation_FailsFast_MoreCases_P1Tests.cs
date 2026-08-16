@@ -24,7 +24,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// - open generic bindings
 /// - bindings not registered in DI
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Definitions_StartupValidation_FailsFast_MoreCases_P1Tests(PostgresTestFixture fixture)
 {
     [Fact]

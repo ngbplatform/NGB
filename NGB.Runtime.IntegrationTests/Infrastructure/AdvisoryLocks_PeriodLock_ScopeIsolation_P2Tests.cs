@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// This prevents unnecessary cross-subsystem serialization when both legitimately
 /// operate on the same calendar month.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_PeriodLock_ScopeIsolation_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

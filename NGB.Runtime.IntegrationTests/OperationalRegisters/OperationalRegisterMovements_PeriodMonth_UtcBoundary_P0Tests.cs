@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovements_PeriodMonth_UtcBoundary_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

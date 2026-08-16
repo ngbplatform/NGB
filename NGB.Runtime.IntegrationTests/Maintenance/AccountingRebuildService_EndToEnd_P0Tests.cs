@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Maintenance;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AccountingRebuildService_EndToEnd_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -11,15 +11,13 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// The base table is created once, and later migrations (PlatformDimensionsCodeNormMigration + Indexes)
 /// add important computed column / constraints / indexes. Those must be re-creatable if accidentally dropped.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class Migrations_UpgradeDrift_PlatformDimensions_CodeNormAndTrimConstraints_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Migrations_UpgradeDrift_PlatformDimensions_CodeNormAndTrimConstraints_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ApplyPlatformMigrations_Recreates_CodeNormColumn_TrimConstraints_AndIndexes_WhenDropped()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Arrange: simulate drift.
         await ExecuteAsync(
             Fixture.ConnectionString,

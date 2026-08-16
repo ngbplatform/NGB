@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseMonth_Atomicity_FaultInjection_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

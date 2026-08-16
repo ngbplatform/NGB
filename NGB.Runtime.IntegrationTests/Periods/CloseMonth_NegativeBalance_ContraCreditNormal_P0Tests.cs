@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// For credit-normal accounts (including contra assets), a normal balance is negative (debit-credit)
 /// and must NOT be treated as a forbidden negative balance.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseMonth_NegativeBalance_ContraCreditNormal_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

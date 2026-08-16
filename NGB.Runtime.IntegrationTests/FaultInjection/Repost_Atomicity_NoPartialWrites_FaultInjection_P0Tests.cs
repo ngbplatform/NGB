@@ -16,15 +16,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.FaultInjection;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Repost_Atomicity_NoPartialWrites_FaultInjection_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task RepostAsync_WhenTurnoverWriterFails_RollsBack_NoStorno_NoRepostPostingLog_AndRetrySucceeds()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var dayUtc = new DateTime(2038, 3, 10, 0, 0, 0, DateTimeKind.Utc);
 
         // First, create the baseline state using a "good" host.

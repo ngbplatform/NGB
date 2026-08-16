@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterWriteEngine_IdempotencyBranches_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

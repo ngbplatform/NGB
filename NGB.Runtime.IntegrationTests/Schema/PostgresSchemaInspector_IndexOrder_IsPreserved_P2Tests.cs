@@ -7,8 +7,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class PostgresSchemaInspector_IndexOrder_IsPreserved_P2Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PostgresSchemaInspector_IndexOrder_IsPreserved_P2Tests(SchemaPostgresTestFixture fixture)
 {
     [Fact]
     public async Task GetSnapshotAsync_ReturnsIndexColumnsInDefinedOrder()

@@ -10,15 +10,13 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// Our migration runner is CREATE/ALTER IF NOT EXISTS style, so dropping these objects must be recoverable
 /// by re-applying platform migrations.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class Migrations_UpgradeDrift_DocumentRelationshipsConstraintsAndDraftGuard_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Migrations_UpgradeDrift_DocumentRelationshipsConstraintsAndDraftGuard_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ApplyPlatformMigrations_RecreatesDroppedDocumentRelationshipsConstraints_AndDraftGuardTrigger()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Drop constraints. (They are re-added by DocumentRelationshipsMigration via conditional ALTER TABLE.)
         await ExecuteAsync(
             Fixture.ConnectionString,

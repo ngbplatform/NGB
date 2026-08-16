@@ -59,7 +59,10 @@ public sealed class AccountingPolicyCatalogUpsertValidator(
     private static Guid RequireGuid(IReadOnlyDictionary<string, object?> fields, string fieldPath, string message)
     {
         var value = AgencyBillingValidationValueReaders.ReadGuid(fields, fieldPath);
-        if (value is null || value == Guid.Empty)
+        if (!value.HasValue)
+            throw new NgbArgumentInvalidException(fieldPath, message);
+
+        if (value.Value == Guid.Empty)
             throw new NgbArgumentInvalidException(fieldPath, message);
 
         return value.Value;

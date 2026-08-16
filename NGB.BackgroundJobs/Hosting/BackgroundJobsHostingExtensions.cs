@@ -92,8 +92,8 @@ public static class BackgroundJobsHostingExtensions
             .UseCustomForwardedHeaders()
             .UseAuthentication()
             .UseAuthorization()
-            .Use(async (context, next) =>
-                await BackgroundJobsDashboardBranding.InterceptHtmlAsync(context, next, options, inlineDashboardStyles, NgbBrandingAssets.DefaultFaviconHref));
+            .UseMiddleware<BackgroundJobsDashboardBrandingMiddleware>(
+                options, inlineDashboardStyles, NgbBrandingAssets.DefaultFaviconHref);
     }
 
     public static WebApplication MapNgbBackgroundJobs(this WebApplication app)
@@ -105,7 +105,6 @@ public static class BackgroundJobsHostingExtensions
 
         app.MapHealthChecks(options.HealthPath, new HealthCheckOptions
         {
-            Predicate = _ => true,
             ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
         });
 
@@ -129,12 +128,6 @@ public static class BackgroundJobsHostingExtensions
 
     private static string GetRequiredConnectionString(IConfiguration configuration, string connectionStringName)
     {
-        if (configuration is null)
-            throw new NgbArgumentRequiredException(nameof(configuration));
-
-        if (string.IsNullOrWhiteSpace(connectionStringName))
-            throw new NgbArgumentRequiredException(nameof(connectionStringName));
-
         var value = configuration.GetConnectionString(connectionStringName);
         if (!string.IsNullOrWhiteSpace(value))
             return value.Trim();

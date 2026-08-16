@@ -12,15 +12,13 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// Fetching next page with the same cursor should return the same lines even if new
 /// entries are inserted *before* the cursor position (i.e. they sort earlier than the cursor key).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class GeneralJournal_Paging_Cursor_Stability_EndToEnd_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task GeneralJournalReader_Paging_IsStable_WhenNewEntriesInsertedBeforeCursor()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await ReportingTestHelpers.SeedMinimalCoAAsync(host);
 
@@ -92,8 +90,6 @@ public sealed class GeneralJournal_Paging_Cursor_Stability_EndToEnd_P2Tests(Post
     [Fact]
     public async Task GeneralJournalReportReader_Paging_IsStable_WhenNewEntriesInsertedBeforeCursor()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await ReportingTestHelpers.SeedMinimalCoAAsync(host);
 

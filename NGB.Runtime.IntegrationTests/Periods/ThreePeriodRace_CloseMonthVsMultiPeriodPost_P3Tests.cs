@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ThreePeriodRace_CloseMonthVsMultiPeriodPost_P3Tests(PostgresTestFixture fixture)
 {
     [Fact]

@@ -242,9 +242,6 @@ public sealed class RoleManagementService(
             .Replace('_', ' ')
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (words.Length == 0)
-            return value;
-
         return string.Join(' ', words.Select(static word => word.Length switch
         {
             1 => word.ToUpperInvariant(),

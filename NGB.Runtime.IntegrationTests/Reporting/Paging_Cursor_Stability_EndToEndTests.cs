@@ -17,15 +17,13 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// Fetching the next page with the same cursor should return the same lines even if new
 /// entries are inserted *before* the cursor position.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class Paging_Cursor_Stability_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task AccountCard_Paging_IsStable_WhenNewEntriesInsertedBeforeCursor()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 

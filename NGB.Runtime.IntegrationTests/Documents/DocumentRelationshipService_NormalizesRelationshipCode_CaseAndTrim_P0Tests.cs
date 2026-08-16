@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationshipService_NormalizesRelationshipCode_CaseAndTrim_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -22,7 +22,6 @@ public sealed class DocumentRelationshipService_NormalizesRelationshipCode_CaseA
     [Fact]
     public async Task CreateDelete_NormalizesRelationshipCode_ByTrimAndLowercase_AndIsIdempotentAcrossVariants()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var fromId = Guid.CreateVersion7();

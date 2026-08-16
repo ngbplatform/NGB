@@ -8,15 +8,13 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P5: Drift recovery for the reusable typed-document immutability guard.
 /// If triggers are dropped manually (or by a buggy migration), the idempotent bootstrap must restore them.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class Migrations_UpgradeDrift_TypedDocumentImmutabilityGuards_P5Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Migrations_UpgradeDrift_TypedDocumentImmutabilityGuards_P5Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ApplyPlatformMigrationsAsync_RecreatesTrgPostedImmutable_WhenDropped_FromTypedDocumentTables()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Baseline: triggers exist.
         (await TriggerExistsAsync(Fixture.ConnectionString, "doc_general_journal_entry", "trg_posted_immutable"))
             .Should().BeTrue();

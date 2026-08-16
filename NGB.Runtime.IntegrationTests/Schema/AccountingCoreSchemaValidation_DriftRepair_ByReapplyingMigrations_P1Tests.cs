@@ -12,15 +12,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// Verifies that idempotent platform migrations can repair common schema drift
 /// (indexes/functions/triggers) and that schema validation succeeds after repair.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_DriftRepair_ByReapplyingMigrations_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_DriftRepair_ByReapplyingMigrations_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenDimensionValueSetIndexDropped_ReapplyingMigrationsRepairs_ThenValidationPasses()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Arrange: drop a critical index used by dimension filters.
         await DropIndexAsync(Fixture.ConnectionString, "ix_platform_dimset_items_dimension_value_set");
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_dimset_items_dimension_value_set"))
@@ -48,8 +46,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_ByReapplyingMigra
     [Fact]
     public async Task ValidateAsync_WhenAppendOnlyGuardFunctionDroppedCascade_ReapplyingMigrationsRepairs_ThenValidationPasses()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Arrange: drop the shared append-only guard function.
         // CASCADE will remove dependent triggers (dimension sets/items + audit).
         await DropFunctionCascadeAsync(Fixture.ConnectionString, "ngb_forbid_mutation_of_append_only_table");

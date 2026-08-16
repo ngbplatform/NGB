@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class PagingTorture_PageSize1_ThreeReaders_P2Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private static readonly DateTime PeriodUtc = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -21,7 +21,6 @@ public sealed class PagingTorture_PageSize1_ThreeReaders_P2Tests(PostgresTestFix
     [Fact]
     public async Task PageSize1_GeneralJournalReader_GeneralJournalReportReader_AccountCardPagedReportReader_NoDuplicates_StableCursors()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var cashId = await SeedMinimalCoaAsync(host);

@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Documents;
 /// P0: MarkForDeletion must emit a Completed lifecycle log record (not a NoOp).
 /// Logging is used by ops / diagnostics and should remain consistent.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPostingService_MarkForDeletion_EmitsCompletedLog_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -7,6 +7,16 @@ namespace NGB.Trade.Runtime.Documents.Validation;
 
 internal static class TradeCatalogValidationGuards
 {
+    private static readonly IReadOnlyDictionary<string, string> CatalogDescriptions =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [TradeCodes.Party] = "business partner",
+            [TradeCodes.Item] = "item",
+            [TradeCodes.Warehouse] = "warehouse",
+            [TradeCodes.PriceType] = "price type",
+            [TradeCodes.InventoryAdjustmentReason] = "inventory adjustment reason"
+        };
+
     public static Task EnsureVendorAsync(
         Guid partyId,
         string fieldPath,
@@ -104,14 +114,5 @@ internal static class TradeCatalogValidationGuards
         };
     }
 
-    private static string DescribeCatalog(string catalogType)
-        => catalogType switch
-        {
-            TradeCodes.Party => "business partner",
-            TradeCodes.Item => "item",
-            TradeCodes.Warehouse => "warehouse",
-            TradeCodes.PriceType => "price type",
-            TradeCodes.InventoryAdjustmentReason => "inventory adjustment reason",
-            _ => "catalog item"
-        };
+    private static string DescribeCatalog(string catalogType) => CatalogDescriptions[catalogType];
 }

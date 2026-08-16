@@ -16,15 +16,13 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// P1 coverage: Unpost must revert balances (trial balance) to the pre-post state,
 /// while preserving the ledger history (original entry + storno entry).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Unpost_RevertsTrialBalance_ButKeepsHistory_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task UnpostAsync_RevertsTrialBalanceToBaseline_ButEntriesContainOriginalAndStorno()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 

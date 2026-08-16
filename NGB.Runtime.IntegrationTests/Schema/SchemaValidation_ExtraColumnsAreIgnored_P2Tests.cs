@@ -15,8 +15,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class SchemaValidation_ExtraColumnsAreIgnored_P2Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class SchemaValidation_ExtraColumnsAreIgnored_P2Tests(SchemaPostgresTestFixture fixture)
 {
     private const string DocTypeCode = "it_doc_extra";
     private const string CatalogCode = "it_cat_extra";

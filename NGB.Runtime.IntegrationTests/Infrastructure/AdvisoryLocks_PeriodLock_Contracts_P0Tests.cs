@@ -10,7 +10,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P0: Period advisory locks are a critical platform primitive.
 /// These tests pin down contract aspects (re-entrancy and blocking semantics across transactions).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_PeriodLock_Contracts_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

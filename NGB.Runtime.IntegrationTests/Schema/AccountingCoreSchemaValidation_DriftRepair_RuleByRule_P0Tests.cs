@@ -15,14 +15,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// 3) re-applies platform migrations (bootstrapper) to repair,
 /// 4) validates again (OK).
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenRegisterMonthIndexMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_acc_reg_period_month");
@@ -50,7 +49,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0Test
     [Fact]
     public async Task ValidateAsync_WhenRegisterDebitDimensionSetForeignKeyMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropConstraintIfExistsAsync(Fixture.ConnectionString, "accounting_register_main", "fk_acc_reg_debit_dimension_set");
@@ -78,7 +76,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0Test
     [Fact]
     public async Task ValidateAsync_WhenClosedPeriodGuardFunctionMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // NOTE: the validator checks triggers *and* the function. To isolate the "function missing" rule,
@@ -131,7 +128,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0Test
     [Fact]
     public async Task ValidateAsync_WhenReservedEmptyDimensionSetRowMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // platform_dimension_sets is append-only. Temporarily remove the guard trigger to delete Guid.Empty row.
@@ -171,7 +167,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0Test
     [Fact]
     public async Task ValidateAsync_WhenTypedDocumentTableMissingImmutabilityTrigger_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Create a new typed document table that matches the validator pattern (public doc_* with document_id).

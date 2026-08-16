@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_Document_Repost_DoesNotEmitPostOrUnpost_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

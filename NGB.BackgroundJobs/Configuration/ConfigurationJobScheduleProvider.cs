@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NGB.BackgroundJobs.Contracts;
 
@@ -8,9 +7,7 @@ namespace NGB.BackgroundJobs.Configuration;
 /// Default schedule provider that reads schedules from <see cref="BackgroundJobsSchedulesOptions"/>
 /// bound from configuration (appsettings.json) in the vertical application.
 /// </summary>
-public sealed class ConfigurationJobScheduleProvider(
-    IOptions<BackgroundJobsSchedulesOptions> options,
-    ILogger<ConfigurationJobScheduleProvider> logger)
+public sealed class ConfigurationJobScheduleProvider(IOptions<BackgroundJobsSchedulesOptions> options)
     : IJobScheduleProvider
 {
     public JobSchedule? GetSchedule(string jobId)
@@ -58,14 +55,8 @@ public sealed class ConfigurationJobScheduleProvider(
         if (o.NightlyExcludedJobIds.Any(x => string.Equals(x, jobId, StringComparison.OrdinalIgnoreCase)))
             return null;
 
-        var cron = NormalizeCron(o.NightlyCron);
-        if (string.IsNullOrWhiteSpace(cron))
-        {
-            logger.LogWarning("NGB.BackgroundJobs: NightlyCron is configured but empty after normalization.");
-            return null;
-        }
-
-        return cron;
+        // The whitespace guard above guarantees that Trim cannot produce an empty value.
+        return o.NightlyCron.Trim();
     }
 
     private static string? NormalizeCron(string? cron)

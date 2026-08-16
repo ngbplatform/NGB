@@ -15,8 +15,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DimensionValueEnrichment_CatalogRegistered_MissingValues_Fallbacks_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DimensionValueEnrichment_CatalogRegistered_MissingValues_Fallbacks_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string DimensionCode = "it_cat_enrich";

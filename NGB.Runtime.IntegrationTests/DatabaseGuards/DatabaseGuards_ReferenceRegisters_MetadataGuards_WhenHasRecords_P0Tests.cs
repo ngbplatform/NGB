@@ -20,8 +20,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// These tests deliberately bypass Runtime services and mutate metadata tables directly,
 /// asserting that PostgreSQL triggers enforce production invariants when has_records=true.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseGuards_ReferenceRegisters_MetadataGuards_WhenHasRecords_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseGuards_ReferenceRegisters_MetadataGuards_WhenHasRecords_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

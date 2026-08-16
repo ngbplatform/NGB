@@ -26,10 +26,7 @@ public sealed class PlatformHangfireJobRunner(
         return outcome switch
         {
             "Succeeded" => PlatformJobRunOutcome.Succeeded,
-            "Failed" => PlatformJobRunOutcome.Failed,
             "Cancelled" => PlatformJobRunOutcome.Cancelled,
-            "SkippedOverlap" => PlatformJobRunOutcome.SkippedOverlap,
-            "SkippedNoImplementation" => PlatformJobRunOutcome.SkippedNoImplementation,
             _ => PlatformJobRunOutcome.Failed
         };
     }

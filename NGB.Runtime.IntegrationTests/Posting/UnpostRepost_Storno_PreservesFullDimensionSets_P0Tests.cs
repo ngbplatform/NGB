@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// P0: Unpost/Repost storno must preserve full DimensionSet (including dimensions beyond the first three values).
 /// Otherwise, analytics by dimensions becomes inconsistent.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class UnpostRepost_Storno_PreservesFullDimensionSets_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

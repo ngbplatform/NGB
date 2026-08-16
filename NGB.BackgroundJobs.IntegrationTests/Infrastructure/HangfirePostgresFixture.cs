@@ -34,7 +34,9 @@ public sealed class HangfirePostgresFixture : IAsyncLifetime
         var csb = new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {
             Options = "-c TimeZone=UTC",
-            Pooling = false
+            Pooling = true,
+            MaxPoolSize = 32,
+            NoResetOnClose = false
         };
 
         ConnectionString = csb.ToString();
@@ -62,6 +64,15 @@ public sealed class HangfirePostgresFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        if (JobStorage is IDisposable disposableStorage)
+            disposableStorage.Dispose();
+
+        if (!string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            await using var connection = new NpgsqlConnection(ConnectionString);
+            NpgsqlConnection.ClearPool(connection);
+        }
+
         if (_container is not null)
             await _container.DisposeAsync();
     }

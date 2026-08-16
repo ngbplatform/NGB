@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.FaultInjection;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingRecoveryAfterCancellationTests(PostgresTestFixture fixture)
 {
     // Hard timeout to avoid poisoning the whole test run if cancellation plumbing regresses.

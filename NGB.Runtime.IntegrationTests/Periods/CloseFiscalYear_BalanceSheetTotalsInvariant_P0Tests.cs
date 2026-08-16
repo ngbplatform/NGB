@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// Before closing, Balance Sheet can be balanced by including synthetic "Net Income" in Equity.
 /// After closing, synthetic line should disappear and Retained Earnings should carry the same amount.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_BalanceSheetTotalsInvariant_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

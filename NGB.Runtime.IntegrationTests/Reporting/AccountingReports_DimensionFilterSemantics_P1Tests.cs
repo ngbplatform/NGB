@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// - AND across dimensions.
 /// - empty scope bag must not restrict results.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AccountingReports_DimensionFilterSemantics_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

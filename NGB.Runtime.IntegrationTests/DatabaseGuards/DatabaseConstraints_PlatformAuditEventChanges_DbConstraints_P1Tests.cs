@@ -10,14 +10,13 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P1: platform_audit_event_changes must be protected by hard DB constraints.
 /// These tests validate enforcement at the database level (CHECK + FK) using direct inserts.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_PlatformAuditEventChanges_DbConstraints_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_PlatformAuditEventChanges_DbConstraints_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CheckConstraints_Forbid_NonPositiveOrdinal_And_EmptyOrTooLongFieldPath()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -68,7 +67,6 @@ public sealed class DatabaseConstraints_PlatformAuditEventChanges_DbConstraints_
     [Fact]
     public async Task ForeignKey_Forbids_UnknownAuditEventId()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -89,7 +87,6 @@ public sealed class DatabaseConstraints_PlatformAuditEventChanges_DbConstraints_
     [Fact]
     public async Task ValidRow_IsAccepted()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 

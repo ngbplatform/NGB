@@ -11,7 +11,7 @@ namespace NGB.Runtime.IntegrationTests.Accounts;
 /// P1: Admin UI needs to browse inactive and (optionally) deleted accounts.
 /// These behaviors must remain stable.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsAdminService_EndToEnd_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

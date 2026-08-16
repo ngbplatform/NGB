@@ -13,7 +13,7 @@
         <PackageReference Include="NGB.Platform.Core" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Definitions" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Metadata" Version="$(NgbPlatformPackageVersion)" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
     </ItemGroup>
 
 </Project>

@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: Resource columns must use NUMERIC(28,8) consistently across opreg_*__movements/turnovers/balances.
 /// This prevents precision loss during month finalization (turnovers/balances are derived tables).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_PrecisionScale_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

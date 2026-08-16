@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Concurrency;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingHighContention_NoDeadlocks_P4_3_Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

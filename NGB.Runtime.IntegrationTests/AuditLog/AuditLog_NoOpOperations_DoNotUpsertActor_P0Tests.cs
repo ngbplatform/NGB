@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Accounting.Accounts;
 using NGB.Definitions;
 using NGB.Runtime.Accounts;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Catalogs;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using Npgsql;
@@ -16,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.AuditLog;
 /// Guardrail: strict no-op operations must not call AuditLogService at all.
 /// Otherwise, we silently upsert/touch platform_users (updated_at_utc changes) even when no audit event is written.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_NoOpOperations_DoNotUpsertActor_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -18,7 +18,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPostingService_Lifecycle_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -11,8 +11,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 ///
 /// Dimension sets are immutable snapshots: once materialized, their rows must never be UPDATED or DELETED.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class PlatformDimensionSetsAppendOnlyGuards_Enforced_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PlatformDimensionSetsAppendOnlyGuards_Enforced_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

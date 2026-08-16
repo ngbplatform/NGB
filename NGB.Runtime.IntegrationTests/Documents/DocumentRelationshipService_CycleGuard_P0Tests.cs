@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationshipService_CycleGuard_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -22,7 +22,6 @@ public sealed class DocumentRelationshipService_CycleGuard_P0Tests(PostgresTestF
     [Fact]
     public async Task CreateAsync_DirectedRelationship_WhenWouldCreateCycle_Throws()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var a = Guid.CreateVersion7();
@@ -56,7 +55,6 @@ public sealed class DocumentRelationshipService_CycleGuard_P0Tests(PostgresTestF
     [Fact]
     public async Task CreateAsync_BidirectionalRelationship_AllowsCycles()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var a = Guid.CreateVersion7();

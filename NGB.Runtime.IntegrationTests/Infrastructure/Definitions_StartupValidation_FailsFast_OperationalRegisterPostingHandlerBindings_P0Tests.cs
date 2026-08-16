@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Definitions_StartupValidation_FailsFast_OperationalRegisterPostingHandlerBindings_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

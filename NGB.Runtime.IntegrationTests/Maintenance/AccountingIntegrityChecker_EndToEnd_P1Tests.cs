@@ -9,7 +9,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Maintenance;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AccountingIntegrityChecker_EndToEnd_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

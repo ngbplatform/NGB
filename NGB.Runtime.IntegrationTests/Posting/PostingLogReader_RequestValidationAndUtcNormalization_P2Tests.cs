@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// P2: Contract tests for PostingLogReader request validation and time-bound normalization.
 /// These are pure reader tests and should stay stable, because Admin/UX relies on them.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLogReader_RequestValidationAndUtcNormalization_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

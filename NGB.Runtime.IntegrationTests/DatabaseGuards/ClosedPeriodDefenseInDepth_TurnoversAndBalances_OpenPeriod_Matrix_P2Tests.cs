@@ -11,8 +11,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// in OPEN periods. This complements P6 tests that assert INSERT/UPDATE/DELETE are forbidden
 /// for CLOSED periods.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ClosedPeriodDefenseInDepth_TurnoversAndBalances_OpenPeriod_Matrix_P2Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ClosedPeriodDefenseInDepth_TurnoversAndBalances_OpenPeriod_Matrix_P2Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly Period = ReportingTestHelpers.Period; // 2026-01-01

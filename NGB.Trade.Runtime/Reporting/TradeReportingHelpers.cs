@@ -20,14 +20,14 @@ internal static class TradeReportingHelpers
         var itemId = CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "item_id");
         var warehouseId = CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "warehouse_id");
 
-        if (itemId is { } actualItemId && actualItemId != Guid.Empty)
+        if (itemId is { } actualItemId)
         {
             filters.Add(new DimensionValue(
                 DeterministicGuid.Create($"Dimension|{TradeCodes.Item}"),
                 actualItemId));
         }
 
-        if (warehouseId is { } actualWarehouseId && actualWarehouseId != Guid.Empty)
+        if (warehouseId is { } actualWarehouseId)
         {
             filters.Add(new DimensionValue(
                 DeterministicGuid.Create($"Dimension|{TradeCodes.Warehouse}"),

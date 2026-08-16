@@ -20,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - marking affected months as Dirty in operational_register_finalizations
 /// - atomicity (rollback must undo log + dirty markers)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterWriteEngine_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

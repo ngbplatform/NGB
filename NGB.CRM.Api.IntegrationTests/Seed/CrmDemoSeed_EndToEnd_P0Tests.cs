@@ -10,13 +10,14 @@ using Xunit;
 
 namespace NGB.CRM.Api.IntegrationTests.Seed;
 
-[Collection(CrmPostgresCollection.Name)]
+[Collection(CrmSeedPostgresCollection.Name)]
 public sealed class CrmDemoSeed_EndToEnd_P0Tests(CrmPostgresFixture fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
 
-    [Fact]
+    [VolumeFact]
+    [Trait("Category", "Volume")]
     public async Task EnsureDemo_Is_Idempotent_And_Populates_Crm_Operational_Reports()
     {
         using var host = CrmHostFactory.Create(fixture.ConnectionString);

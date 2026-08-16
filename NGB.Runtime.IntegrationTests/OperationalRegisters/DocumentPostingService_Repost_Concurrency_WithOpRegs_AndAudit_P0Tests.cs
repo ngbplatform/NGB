@@ -37,7 +37,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - the old register must receive storno (to cancel previous state)
 /// - the new register must receive the new state
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DocumentPostingService_Repost_Concurrency_WithOpRegs_AndAudit_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

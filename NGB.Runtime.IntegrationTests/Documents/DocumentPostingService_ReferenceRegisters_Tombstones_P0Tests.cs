@@ -23,7 +23,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPostingService_ReferenceRegisters_Tombstones_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

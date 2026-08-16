@@ -19,7 +19,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPostingService_Post_Atomicity_NoPartialWrites_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

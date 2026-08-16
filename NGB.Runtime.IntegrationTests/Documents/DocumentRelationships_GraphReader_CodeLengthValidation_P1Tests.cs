@@ -8,7 +8,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationships_GraphReader_CodeLengthValidation_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

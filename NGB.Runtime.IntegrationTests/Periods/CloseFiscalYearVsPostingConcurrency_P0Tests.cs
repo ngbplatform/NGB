@@ -15,15 +15,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYearVsPostingConcurrency_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CloseFiscalYearAsync_And_PostAsync_Concurrent_EndMonth_January_NoDeadlock_BothComplete_StatementsAreConsistent()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var endPeriod = new DateOnly(2039, 1, 1);
         var dayUtc = new DateTime(2039, 1, 10, 0, 0, 0, DateTimeKind.Utc);
 

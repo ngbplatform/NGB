@@ -19,8 +19,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class SchemaValidation_TypeMismatchAndNullability_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class SchemaValidation_TypeMismatchAndNullability_P1Tests(SchemaPostgresTestFixture fixture)
 {
     private const string DocTypeCode = "it_doc_p1";
     private const string CatalogCode = "it_cat_p1";

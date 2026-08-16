@@ -21,6 +21,7 @@ public static class CrmRuntimeModuleServiceCollectionExtensions
 {
     public static IServiceCollection AddCrmRuntimeModule(this IServiceCollection services)
     {
+        services.TryAddSingleton(new CrmDemoSeedOptions());
         services.TryAddScoped<ICrmSetupService, CrmSetupService>();
         services.TryAddScoped<ICrmDemoSeedService, CrmDemoSeedService>();
 

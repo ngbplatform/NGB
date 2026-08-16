@@ -13,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.Accounts;
 /// with a unique index filtered by is_deleted = FALSE.
 /// These tests lock in case-insensitive uniqueness and "reuse after soft-delete" behavior.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccounts_CodeNormalization_AndReuseAfterSoftDelete_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

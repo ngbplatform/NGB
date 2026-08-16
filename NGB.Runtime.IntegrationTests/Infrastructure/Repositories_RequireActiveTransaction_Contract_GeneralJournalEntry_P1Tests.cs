@@ -11,7 +11,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P1: The platform enforces transaction boundaries for all write operations.
 /// This file extends the contract suite to General Journal Entry (GJE) typed storage repository.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Repositories_RequireActiveTransaction_Contract_GeneralJournalEntry_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

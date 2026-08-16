@@ -22,7 +22,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 ///   TimeSpan.FromMinutes(10)
 /// If you change it, update this test accordingly.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLog_InProgressTimeoutBoundaryTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -31,7 +31,6 @@ public sealed class PostingLog_InProgressTimeoutBoundaryTests(PostgresTestFixtur
     [Fact]
     public async Task PostAsync_InProgressStartedBeforeTimeout_AllowsTakeover_AndCompletes()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var period = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -81,7 +80,6 @@ public sealed class PostingLog_InProgressTimeoutBoundaryTests(PostgresTestFixtur
     [Fact]
     public async Task PostAsync_InProgressStartedWithinTimeout_ThrowsInProgress_AndDoesNotWriteEntries()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var period = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);

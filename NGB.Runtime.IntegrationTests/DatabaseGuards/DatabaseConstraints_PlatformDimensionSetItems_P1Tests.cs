@@ -10,8 +10,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P1: Database-level hard constraints for platform_dimension_set_items.
 /// Ensures PK/FK/check invariants are enforced even if higher-level services are bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_PlatformDimensionSetItems_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_PlatformDimensionSetItems_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static async Task<Guid> InsertDimensionAsync(NpgsqlConnection conn, Guid? explicitId = null)

@@ -17,15 +17,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.FaultInjection;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_PostApproved_Atomicity_NoPartialWrites_FaultInjection_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PostApprovedAsync_WhenAllocationsWriteFailsAfterAccountingMovements_RollsBackEverything_AndRetrySucceeds()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var docDateUtc = new DateTime(2026, 03, 10, 12, 0, 0, DateTimeKind.Utc);
 
         // Baseline state: Draft -> Submitted -> Approved (no posting yet)

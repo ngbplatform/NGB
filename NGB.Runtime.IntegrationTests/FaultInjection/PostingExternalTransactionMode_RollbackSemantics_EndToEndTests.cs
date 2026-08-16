@@ -20,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.FaultInjection;
 /// This test verifies that a caller rollback removes ALL side effects,
 /// even if PostingEngine returned Executed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingExternalTransactionMode_RollbackSemantics_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

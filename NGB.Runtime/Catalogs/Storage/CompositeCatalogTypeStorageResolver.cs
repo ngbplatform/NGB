@@ -54,8 +54,7 @@ public sealed class CompositeCatalogTypeStorageResolver(
 
     private ICatalogTypeStorage BuildBoundStorage(NGB.Definitions.Catalogs.CatalogTypeDefinition def)
     {
-        var storageType = def.TypedStorageType
-            ?? throw new NgbInvariantViolationException($"Catalog '{def.TypeCode}' has no typed storage binding.");
+        var storageType = def.TypedStorageType!;
 
         if (!typeof(ICatalogTypeStorage).IsAssignableFrom(storageType))
         {

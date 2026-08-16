@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// - Avoid paying dynamic DDL cost during the first document post.
 /// - Ensure the table exists early for diagnostics / ops.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterManagementService_AutoEnsureSchema_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

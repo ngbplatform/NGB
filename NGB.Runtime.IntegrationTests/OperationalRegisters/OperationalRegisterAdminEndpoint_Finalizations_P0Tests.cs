@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// <summary>
 /// P0: Admin endpoint exposes dirty/blocked finalizations and allows running the finalization runner.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterAdminEndpoint_Finalizations_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

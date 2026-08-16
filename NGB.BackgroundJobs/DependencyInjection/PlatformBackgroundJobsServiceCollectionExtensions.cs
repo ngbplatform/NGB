@@ -26,6 +26,11 @@ public static class PlatformBackgroundJobsServiceCollectionExtensions
         this IServiceCollection services,
         Action<PlatformHangfireOptions> configure)
     {
+        if (services is null)
+            throw new NgbArgumentRequiredException(nameof(services));
+        if (configure is null)
+            throw new NgbArgumentRequiredException(nameof(configure));
+
         var opts = new PlatformHangfireOptions();
         configure(opts);
 
@@ -63,7 +68,7 @@ public static class PlatformBackgroundJobsServiceCollectionExtensions
             };
 
             return new PostgreSqlStorage(
-                new NpgsqlConnectionFactory(opts.ConnectionString, storageOptions, _ => { }),
+                new NpgsqlConnectionFactory(opts.ConnectionString, storageOptions, connectionSetup: null!),
                 storageOptions);
         });
 

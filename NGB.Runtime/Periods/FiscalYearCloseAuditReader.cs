@@ -30,7 +30,10 @@ internal static class FiscalYearCloseAuditReader
             .FirstOrDefault(x => string.Equals(x.FieldPath, "retained_earnings_account_id", StringComparison.Ordinal))
             ?.NewValueJson;
 
-        if (string.IsNullOrWhiteSpace(raw))
+        if (raw is null)
+            return null;
+
+        if (raw.Trim().Length == 0)
             return null;
 
         try

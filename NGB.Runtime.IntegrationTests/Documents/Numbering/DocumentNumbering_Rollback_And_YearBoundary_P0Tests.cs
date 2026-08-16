@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.Numbering;
 /// <summary>
 /// P0: Numbering must be transactional (no gaps on rollback) and the fiscal year is derived from document DateUtc.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentNumbering_Rollback_And_YearBoundary_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

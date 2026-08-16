@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 ///   TimeSpan.FromMinutes(10)
 /// If you change it, update this test accordingly.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterWriteLog_InProgressTimeoutBoundary_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -28,7 +28,6 @@ public sealed class OperationalRegisterWriteLog_InProgressTimeoutBoundary_P0Test
     [Fact]
     public async Task TryBegin_WhenExistingInProgressStartedExactlyAtCutoff_ReturnsInProgress_AndDoesNotTakeOver()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
 
@@ -73,7 +72,6 @@ public sealed class OperationalRegisterWriteLog_InProgressTimeoutBoundary_P0Test
     [Fact]
     public async Task TryBegin_WhenExistingInProgressStartedBeforeCutoff_AllowsTakeover_AndUpdatesStartedAtUtc()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
 

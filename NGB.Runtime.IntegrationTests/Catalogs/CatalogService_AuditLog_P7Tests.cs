@@ -21,8 +21,8 @@ namespace NGB.Runtime.IntegrationTests.Catalogs;
 /// P7: CatalogService should preserve platform AuditLog semantics through CatalogDraftService.
 /// These are end-to-end tests through Runtime -> Persistence (reader/writer/repo) -> PostgreSQL.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class CatalogService_AuditLog_P7Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class CatalogService_AuditLog_P7Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string CatalogCode = "it_cat_audit";

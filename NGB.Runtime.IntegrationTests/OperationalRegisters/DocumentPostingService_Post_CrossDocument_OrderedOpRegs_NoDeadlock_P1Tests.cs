@@ -25,7 +25,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// DocumentPostingService must apply a deterministic register order to avoid cross-document deadlocks while
 /// both posts run inside their own ambient transactions and keep opreg locks until commit.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DocumentPostingService_Post_CrossDocument_OrderedOpRegs_NoDeadlock_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

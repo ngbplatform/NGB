@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLog_Takeover_RollbackOnValidationFailure_P5_1_Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -23,7 +23,6 @@ public sealed class PostingLog_Takeover_RollbackOnValidationFailure_P5_1_Tests(P
     [Fact]
     public async Task PostAsync_StaleInProgress_TakeoverUpdate_IsRolledBack_WhenValidatorThrows_ManagedTransaction()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await SeedMinimalCoaAsync(host);
@@ -75,7 +74,6 @@ public sealed class PostingLog_Takeover_RollbackOnValidationFailure_P5_1_Tests(P
     [Fact]
     public async Task PostAsync_StaleInProgress_TakeoverUpdate_IsRolledBack_WhenValidatorThrows_ExternalTransaction()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await SeedMinimalCoaAsync(host);

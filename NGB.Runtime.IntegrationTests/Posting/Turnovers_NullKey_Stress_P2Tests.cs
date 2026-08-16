@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Turnovers_EmptyAndNonEmptyDimensions_Stress_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

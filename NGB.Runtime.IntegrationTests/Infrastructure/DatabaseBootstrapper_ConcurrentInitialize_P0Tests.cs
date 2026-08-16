@@ -6,15 +6,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class DatabaseBootstrapper_ConcurrentInitialize_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task InitializeAsync_CalledConcurrently_OnFreshDatabase_DoesNotThrow_AndCreatesCoreObjects()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var dbName = $"ngb_it_bootstrap_{Guid.CreateVersion7():N}";
         await CreateDatabaseAsync(Fixture.ConnectionString, dbName);
         var cs = BuildDatabaseConnectionString(Fixture.ConnectionString, dbName);

@@ -10,14 +10,13 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P0: platform_dimension_set_items must be protected by hard DB constraints.
 /// This ensures integrity even if application-layer validation is bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_PlatformDimensionSetItems_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_PlatformDimensionSetItems_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CheckConstraints_Forbid_EmptyIds()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -73,7 +72,6 @@ public sealed class DatabaseConstraints_PlatformDimensionSetItems_P0Tests(Postgr
     [Fact]
     public async Task ForeignKeys_AreEnforced_ByDb()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 
@@ -116,7 +114,6 @@ public sealed class DatabaseConstraints_PlatformDimensionSetItems_P0Tests(Postgr
     [Fact]
     public async Task PrimaryKey_Forbids_DuplicateDimensionPerSet()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 

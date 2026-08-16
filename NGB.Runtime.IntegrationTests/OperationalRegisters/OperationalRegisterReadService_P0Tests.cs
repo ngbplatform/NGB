@@ -25,7 +25,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - Projections (turnovers/balances) paging envelope with cursor (PeriodMonth, DimensionSetId)
 ///   + filters (DimensionSetId, DimensionValue AND).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterReadService_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

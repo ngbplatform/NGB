@@ -16,7 +16,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class BulkPosting_LargeBatch_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

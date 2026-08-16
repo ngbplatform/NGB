@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// - Balance Sheet balancing behavior with/without synthetic Net Income line
 /// - General Journal page contract
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class BalanceSheetSemanticsGoldenTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

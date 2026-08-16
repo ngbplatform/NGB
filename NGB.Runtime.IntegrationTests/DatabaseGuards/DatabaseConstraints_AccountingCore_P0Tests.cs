@@ -11,8 +11,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P0: Database-level hard constraints must protect the platform even if a bug slips through
 /// application-layer validators.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_AccountingCore_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_AccountingCore_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateTime StartedAtUtc = new(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);

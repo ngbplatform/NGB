@@ -26,7 +26,7 @@ namespace NGB.Runtime.IntegrationTests.FaultInjection;
 /// the transaction must be rolled back and leave NO partial state behind.
 /// A subsequent retry must succeed (no "InProgress" poisoning).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLogMarkCompletedFailure_RollbackAndRetry_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

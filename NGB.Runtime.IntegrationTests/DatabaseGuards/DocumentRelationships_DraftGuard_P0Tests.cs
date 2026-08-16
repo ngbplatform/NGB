@@ -5,15 +5,14 @@ using NGB.Core.Documents;
 using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.IntegrationTests.Infrastructure;
-using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Extensions;
 using Npgsql;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentRelationships_DraftGuard_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentRelationships_DraftGuard_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

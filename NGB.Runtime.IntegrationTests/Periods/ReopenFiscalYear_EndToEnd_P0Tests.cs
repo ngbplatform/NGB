@@ -16,15 +16,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ReopenFiscalYear_EndToEnd_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ReopenFiscalYearAsync_RemovesCurrentCloseEffect_And_AllowsRedo_WithDifferentRetainedEarnings()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await ReportingTestHelpers.SeedMinimalCoAAsync(host);
 

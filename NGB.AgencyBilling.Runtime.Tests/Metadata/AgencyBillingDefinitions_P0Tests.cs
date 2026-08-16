@@ -50,11 +50,13 @@ public sealed class AgencyBillingDefinitionsContributor_P0Tests
 
         definition.TypeCode.Should().Be(typeCode);
         definition.NumberingPolicyType.Should().Be(numberingPolicyType);
-        metadata.Presentation.DisplayName.Should().Be(displayName);
-        metadata.Presentation.HasNumber.Should().BeTrue();
-        metadata.Presentation.ComputedDisplay.Should().BeTrue();
-        metadata.Presentation.HideSystemFieldsInEditor.Should().BeTrue();
-        metadata.Presentation.AmountField.Should().Be(amountField);
+        metadata.Presentation.Should().NotBeNull();
+        var presentation = metadata.Presentation!;
+        presentation.DisplayName.Should().Be(displayName);
+        presentation.HasNumber.Should().BeTrue();
+        presentation.ComputedDisplay.Should().BeTrue();
+        presentation.HideSystemFieldsInEditor.Should().BeTrue();
+        presentation.AmountField.Should().Be(amountField);
         metadata.Version.Should().Be(new DocumentMetadataVersion(1, "ab"));
         metadata.Tables.Should().Contain(x => x.Kind == TableKind.Head && x.TableName == headTable);
     }
@@ -312,7 +314,7 @@ public sealed class AgencyBillingDefinitionsContributor_P0Tests
 
     public static IEnumerable<object[]> DocumentDefinitionCases()
     {
-        yield return [AgencyBillingCodes.ClientContract, "Client Contract", "doc_ab_client_contract", null, typeof(AgencyBillingClientContractNumberingPolicy)];
+        yield return [AgencyBillingCodes.ClientContract, "Client Contract", "doc_ab_client_contract", null!, typeof(AgencyBillingClientContractNumberingPolicy)];
         yield return [AgencyBillingCodes.Timesheet, "Timesheet", "doc_ab_timesheet", "amount", typeof(AgencyBillingTimesheetNumberingPolicy)];
         yield return [AgencyBillingCodes.SalesInvoice, "Sales Invoice", "doc_ab_sales_invoice", "amount", typeof(AgencyBillingSalesInvoiceNumberingPolicy)];
         yield return [AgencyBillingCodes.CustomerPayment, "Customer Payment", "doc_ab_customer_payment", "amount", typeof(AgencyBillingCustomerPaymentNumberingPolicy)];
@@ -324,9 +326,9 @@ public sealed class AgencyBillingDefinitionsContributor_P0Tests
         yield return [AgencyBillingCodes.Project, "client_id", ColumnType.Guid, true, "catalog", AgencyBillingCodes.Client];
         yield return [AgencyBillingCodes.Project, "project_manager_id", ColumnType.Guid, false, "catalog", AgencyBillingCodes.TeamMember];
         yield return [AgencyBillingCodes.RateCard, "service_item_id", ColumnType.Guid, false, "catalog", AgencyBillingCodes.ServiceItem];
-        yield return [AgencyBillingCodes.ServiceItem, "default_revenue_account_id", ColumnType.Guid, false, "coa", null];
-        yield return [AgencyBillingCodes.PaymentTerms, "due_days", ColumnType.Int32, true, null, null];
-        yield return [AgencyBillingCodes.AccountingPolicy, "service_revenue_account_id", ColumnType.Guid, false, "coa", null];
+        yield return [AgencyBillingCodes.ServiceItem, "default_revenue_account_id", ColumnType.Guid, false, "coa", null!];
+        yield return [AgencyBillingCodes.PaymentTerms, "due_days", ColumnType.Int32, true, null!, null!];
+        yield return [AgencyBillingCodes.AccountingPolicy, "service_revenue_account_id", ColumnType.Guid, false, "coa", null!];
     }
 
     public static IEnumerable<object[]> DocumentHeadColumnCases()
@@ -341,23 +343,23 @@ public sealed class AgencyBillingDefinitionsContributor_P0Tests
         yield return [AgencyBillingCodes.SalesInvoice, "project_id", ColumnType.Guid, true, "catalog", AgencyBillingCodes.Project];
         yield return [AgencyBillingCodes.SalesInvoice, "contract_id", ColumnType.Guid, false, "document", AgencyBillingCodes.ClientContract];
         yield return [AgencyBillingCodes.CustomerPayment, "client_id", ColumnType.Guid, true, "catalog", AgencyBillingCodes.Client];
-        yield return [AgencyBillingCodes.CustomerPayment, "cash_account_id", ColumnType.Guid, false, "coa", null];
+        yield return [AgencyBillingCodes.CustomerPayment, "cash_account_id", ColumnType.Guid, false, "coa", null!];
     }
 
     public static IEnumerable<object[]> DocumentPartColumnCases()
     {
         yield return [AgencyBillingCodes.ClientContract, "lines", "service_item_id", ColumnType.Guid, false, "catalog", AgencyBillingCodes.ServiceItem];
         yield return [AgencyBillingCodes.ClientContract, "lines", "team_member_id", ColumnType.Guid, false, "catalog", AgencyBillingCodes.TeamMember];
-        yield return [AgencyBillingCodes.ClientContract, "lines", "billing_rate", ColumnType.Decimal, true, null, null];
+        yield return [AgencyBillingCodes.ClientContract, "lines", "billing_rate", ColumnType.Decimal, true, null!, null!];
         yield return [AgencyBillingCodes.Timesheet, "lines", "service_item_id", ColumnType.Guid, false, "catalog", AgencyBillingCodes.ServiceItem];
-        yield return [AgencyBillingCodes.Timesheet, "lines", "hours", ColumnType.Decimal, true, null, null];
-        yield return [AgencyBillingCodes.Timesheet, "lines", "billable", ColumnType.Boolean, true, null, null];
-        yield return [AgencyBillingCodes.Timesheet, "lines", "line_cost_amount", ColumnType.Decimal, false, null, null];
+        yield return [AgencyBillingCodes.Timesheet, "lines", "hours", ColumnType.Decimal, true, null!, null!];
+        yield return [AgencyBillingCodes.Timesheet, "lines", "billable", ColumnType.Boolean, true, null!, null!];
+        yield return [AgencyBillingCodes.Timesheet, "lines", "line_cost_amount", ColumnType.Decimal, false, null!, null!];
         yield return [AgencyBillingCodes.SalesInvoice, "lines", "service_item_id", ColumnType.Guid, false, "catalog", AgencyBillingCodes.ServiceItem];
         yield return [AgencyBillingCodes.SalesInvoice, "lines", "source_timesheet_id", ColumnType.Guid, false, "document", AgencyBillingCodes.Timesheet];
-        yield return [AgencyBillingCodes.SalesInvoice, "lines", "quantity_hours", ColumnType.Decimal, true, null, null];
+        yield return [AgencyBillingCodes.SalesInvoice, "lines", "quantity_hours", ColumnType.Decimal, true, null!, null!];
         yield return [AgencyBillingCodes.CustomerPayment, "applies", "sales_invoice_id", ColumnType.Guid, true, "document", AgencyBillingCodes.SalesInvoice];
-        yield return [AgencyBillingCodes.CustomerPayment, "applies", "applied_amount", ColumnType.Decimal, true, null, null];
+        yield return [AgencyBillingCodes.CustomerPayment, "applies", "applied_amount", ColumnType.Decimal, true, null!, null!];
     }
 
     public static IEnumerable<object[]> DocumentListFilterCases()

@@ -25,9 +25,12 @@ public sealed class CrmDemoSeedService(
     TimeProvider timeProvider,
     IDocumentReferenceRegisterPostingActionResolver refregPostingActionResolver,
     IReferenceRegisterRecordsApplier refregRecordsApplier,
-    IUnitOfWork uow)
+    IUnitOfWork uow,
+    CrmDemoSeedOptions options)
     : ICrmDemoSeedService
 {
+    private readonly CrmDemoSeedOptions _options = ValidateOptions(options);
+
     public async Task<CrmDemoSeedResult> EnsureDemoAsync(CancellationToken ct = default)
     {
         await setup.EnsureDefaultsAsync(ct);
@@ -186,8 +189,8 @@ public sealed class CrmDemoSeedService(
 
             return new CrmDemoSeedResult(
                 AsOfUtc: todayUtc,
-                AccountsEnsured: generatedDocuments > 0 ? 3 + GeneratedAccountCount : 3,
-                ContactsEnsured: generatedDocuments > 0 ? 3 + GeneratedAccountCount : 3,
+                AccountsEnsured: generatedDocuments > 0 ? 3 + _options.GeneratedAccountCount : 3,
+                ContactsEnsured: generatedDocuments > 0 ? 3 + _options.GeneratedAccountCount : 3,
                 ProductsEnsured: 2,
                 StagesEnsured: 6,
                 DocumentsCreated: generatedDocuments,
@@ -460,8 +463,8 @@ public sealed class CrmDemoSeedService(
 
         return new CrmDemoSeedResult(
             AsOfUtc: todayUtc,
-            AccountsEnsured: 3 + GeneratedAccountCount,
-            ContactsEnsured: 3 + GeneratedAccountCount,
+            AccountsEnsured: 3 + _options.GeneratedAccountCount,
+            ContactsEnsured: 3 + _options.GeneratedAccountCount,
             ProductsEnsured: 2,
             StagesEnsured: 6,
             DocumentsCreated: documentsCreated,
@@ -496,14 +499,16 @@ public sealed class CrmDemoSeedService(
         CancellationToken ct)
     {
         var existingGeneratedLeads = await CountGeneratedDemoLeadIntakesAsync(ct);
-        if (existingGeneratedLeads >= GeneratedOpportunityCycleCount)
+        if (existingGeneratedLeads >= _options.GeneratedOpportunityCycleCount)
             return 0;
 
         var generatedAccounts = await EnsureGeneratedAccountsAsync(ct);
         var generatedContacts = await EnsureGeneratedContactsAsync(generatedAccounts, ct);
         var documentsCreated = 0;
 
-        for (var sequence = existingGeneratedLeads + 1; sequence <= GeneratedOpportunityCycleCount; sequence++)
+        for (var sequence = existingGeneratedLeads + 1;
+             sequence <= _options.GeneratedOpportunityCycleCount;
+             sequence++)
         {
             var accountIndex = (sequence - 1) % generatedAccounts.Count;
             var account = generatedAccounts[accountIndex];
@@ -735,9 +740,6 @@ public sealed class CrmDemoSeedService(
             var appliedRecords = 0;
             foreach (var (registerCode, records) in builder.RecordsByRegisterCode)
             {
-                if (records.Count == 0)
-                    continue;
-
                 var result = await refregRecordsApplier.ApplyRecordsForDocumentAsync(
                     ReferenceRegisterId.FromCode(registerCode),
                     documentId,
@@ -756,8 +758,8 @@ public sealed class CrmDemoSeedService(
 
     private async Task<IReadOnlyList<CatalogItemDto>> EnsureGeneratedAccountsAsync(CancellationToken ct)
     {
-        var result = new List<CatalogItemDto>(GeneratedAccountCount);
-        for (var i = 1; i <= GeneratedAccountCount; i++)
+        var result = new List<CatalogItemDto>(_options.GeneratedAccountCount);
+        for (var i = 1; i <= _options.GeneratedAccountCount; i++)
         {
             var industry = DemoIndustries[i % DemoIndustries.Length];
             var region = DemoRegions[i % DemoRegions.Length];
@@ -854,15 +856,15 @@ public sealed class CrmDemoSeedService(
         string display,
         RecordPayload payload,
         CancellationToken ct,
-        string? matchField = null,
-        string? matchValue = null)
+        string matchField,
+        string matchValue)
     {
         var page = await catalogs.GetPageAsync(
             catalogType,
             new PageRequestDto(
                 Offset: 0,
                 Limit: 200,
-                Search: string.IsNullOrWhiteSpace(matchField) ? display : null),
+                Search: null),
             ct);
 
         var matches = page.Items
@@ -882,12 +884,9 @@ public sealed class CrmDemoSeedService(
 
     private static bool CatalogPayloadFieldEquals(
         CatalogItemDto item,
-        string? field,
-        string? expected)
+        string field,
+        string expected)
     {
-        if (string.IsNullOrWhiteSpace(field) || string.IsNullOrWhiteSpace(expected))
-            return false;
-
         if (item.Payload.Fields is null || !item.Payload.Fields.TryGetValue(field, out var value))
             return false;
 
@@ -921,8 +920,7 @@ public sealed class CrmDemoSeedService(
         var draft = await documents.CreateDraftAsync(documentType, payload, ct);
         var display = BuildDocumentDisplay(documentType, draft.Number, payload);
 
-        if (!string.IsNullOrWhiteSpace(display))
-            await documents.UpdateDraftAsync(documentType, draft.Id, WithDisplay(payload, display), ct);
+        await documents.UpdateDraftAsync(documentType, draft.Id, WithDisplay(payload, display), ct);
 
         return await lifecycle.PostAsync(documentType, draft.Id, ct);
     }
@@ -930,57 +928,54 @@ public sealed class CrmDemoSeedService(
     private static RecordPayload WithDisplay(RecordPayload payload, string display)
     {
         var fields = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-        if (payload.Fields is not null)
+        foreach (var (key, value) in payload.Fields!)
         {
-            foreach (var (key, value) in payload.Fields)
-            {
-                fields[key] = value.Clone();
-            }
+            fields[key] = value.Clone();
         }
 
         fields["display"] = JsonSerializer.SerializeToElement(display);
         return new RecordPayload(fields, payload.Parts);
     }
 
-    private static string? BuildDocumentDisplay(string documentType, string? number, RecordPayload payload)
+    private static string BuildDocumentDisplay(string documentType, string? number, RecordPayload payload)
     {
-        if (!DocumentDisplayNames.TryGetValue(documentType, out var documentDisplayName))
-            return null;
-
+        var documentDisplayName = DocumentDisplayNames[documentType];
         var parts = new List<string>(3) { documentDisplayName };
 
         if (!string.IsNullOrWhiteSpace(number))
             parts.Add(number.Trim());
 
-        if (payload.Fields is not null
-            && payload.Fields.TryGetValue("document_date_utc", out var rawDate)
-            && TryFormatDocumentDate(rawDate, out var formattedDate))
-        {
-            parts.Add(formattedDate);
-        }
+        var date = DateOnly.ParseExact(
+            payload.Fields!["document_date_utc"].GetString()!,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture);
+        parts.Add(date.ToString("M/d/yyyy", CultureInfo.InvariantCulture));
 
         return string.Join(' ', parts);
     }
 
-    private static bool TryFormatDocumentDate(JsonElement rawDate, out string formattedDate)
+    private static CrmDemoSeedOptions ValidateOptions(CrmDemoSeedOptions options)
     {
-        formattedDate = string.Empty;
+        if (options is null)
+            throw new NgbArgumentRequiredException(nameof(options));
 
-        if (rawDate.ValueKind != JsonValueKind.String)
-            return false;
-
-        var value = rawDate.GetString();
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-            && !DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+        if (options.GeneratedAccountCount <= 0)
         {
-            return false;
+            throw new NgbArgumentOutOfRangeException(
+                nameof(options.GeneratedAccountCount),
+                options.GeneratedAccountCount,
+                "GeneratedAccountCount must be positive.");
         }
 
-        formattedDate = date.ToString("M/d/yyyy", CultureInfo.InvariantCulture);
-        return true;
+        if (options.GeneratedOpportunityCycleCount <= 0)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(options.GeneratedOpportunityCycleCount),
+                options.GeneratedOpportunityCycleCount,
+                "GeneratedOpportunityCycleCount must be positive.");
+        }
+
+        return options;
     }
 
     private static DateOnly InCurrentMonth(DateOnly todayUtc, int preferredDay)
@@ -1057,8 +1052,6 @@ public sealed class CrmDemoSeedService(
         [CrmCodes.ActivityLog] = "Activity Log"
     };
 
-    private const int GeneratedAccountCount = 80;
-    private const int GeneratedOpportunityCycleCount = 520;
     private const string GeneratedLeadSearch = "NGB Demo Deal";
 
     private static readonly string[] DemoIndustries =

@@ -5,16 +5,14 @@ using Microsoft.Extensions.Hosting;
 using NGB.Core.Documents;
 using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
-using NGB.Runtime.UnitOfWork;
 using Npgsql;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationships_NoOp_WithActor_DoesNotTouchPlatformUsers_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

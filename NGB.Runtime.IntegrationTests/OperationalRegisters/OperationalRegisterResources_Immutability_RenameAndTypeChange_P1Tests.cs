@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_Immutability_RenameAndTypeChange_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

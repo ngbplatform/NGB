@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationshipService_Idempotency_NoOpAudit_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -22,7 +22,6 @@ public sealed class DocumentRelationshipService_Idempotency_NoOpAudit_P0Tests(Po
     [Fact]
     public async Task CreateAsync_WhenCalledTwice_IsIdempotent_NoSecondAudit_AndNoDuplicateRow()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var fromId = Guid.CreateVersion7();
@@ -59,7 +58,6 @@ public sealed class DocumentRelationshipService_Idempotency_NoOpAudit_P0Tests(Po
     [Fact]
     public async Task DeleteAsync_WhenCalledTwice_IsIdempotent_NoSecondAudit_AndStaysDeleted()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var fromId = Guid.CreateVersion7();

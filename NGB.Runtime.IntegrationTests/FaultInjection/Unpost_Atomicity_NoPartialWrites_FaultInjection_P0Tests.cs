@@ -17,15 +17,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.FaultInjection;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Unpost_Atomicity_NoPartialWrites_FaultInjection_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task UnpostAsync_WhenEntryWriterFails_RollsBack_NoStornoEntries_NoUnpostPostingLog()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var period = new DateOnly(2038, 1, 1);
         var dayUtc = new DateTime(2038, 1, 10, 0, 0, 0, DateTimeKind.Utc);
 
@@ -69,8 +67,6 @@ public sealed class Unpost_Atomicity_NoPartialWrites_FaultInjection_P0Tests(Post
     [Fact]
     public async Task UnpostAsync_WhenPostingLogTryBeginThrows_RollsBack_NoStornoEntries_NoPostingLogRow()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var period = new DateOnly(2038, 2, 1);
         var dayUtc = new DateTime(2038, 2, 5, 0, 0, 0, DateTimeKind.Utc);
 

@@ -13,17 +13,17 @@ public static class JsonElementExtensions
     public static Guid ParseGuidOrRef(this JsonElement el)
     {
         if (el.ValueKind == JsonValueKind.String)
-            return Guid.Parse(el.GetString() ?? el.ToString());
+            return Guid.Parse(el.GetString()!);
 
         if (el.ValueKind == JsonValueKind.Object)
         {
             if (el.TryGetProperty("id", out var idEl) || el.TryGetProperty("Id", out idEl))
             {
-                if (idEl.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+                if (idEl.ValueKind == JsonValueKind.Null)
                     throw new NgbArgumentInvalidException("id", "Reference id must not be null.");
 
                 if (idEl.ValueKind == JsonValueKind.String)
-                    return Guid.Parse(idEl.GetString() ?? idEl.ToString());
+                    return Guid.Parse(idEl.GetString()!);
 
                 // Fallback for non-string id shapes.
                 return Guid.Parse(idEl.ToString());

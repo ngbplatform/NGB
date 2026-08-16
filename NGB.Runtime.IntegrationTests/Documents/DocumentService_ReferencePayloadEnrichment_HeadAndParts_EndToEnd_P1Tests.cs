@@ -17,8 +17,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentService_ReferencePayloadEnrichment_HeadAndParts_EndToEnd_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentService_ReferencePayloadEnrichment_HeadAndParts_EndToEnd_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string PartyCatalogCode = "it_ref_party_doc";

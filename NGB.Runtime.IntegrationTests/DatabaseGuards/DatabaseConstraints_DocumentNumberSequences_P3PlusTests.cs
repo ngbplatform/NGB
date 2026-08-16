@@ -9,8 +9,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// <summary>
 /// P3+: Database-level constraints for document_number_sequences.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_DocumentNumberSequences_P3PlusTests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_DocumentNumberSequences_P3PlusTests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

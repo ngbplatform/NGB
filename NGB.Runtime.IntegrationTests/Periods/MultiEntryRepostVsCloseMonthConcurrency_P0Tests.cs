@@ -20,7 +20,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class MultiEntryRepostVsCloseMonthConcurrency_P0Tests(PostgresTestFixture fixture)
 {
     [Fact]

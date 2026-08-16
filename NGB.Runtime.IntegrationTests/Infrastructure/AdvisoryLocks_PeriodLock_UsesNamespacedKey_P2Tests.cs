@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 ///
 /// Additionally, LockPeriodAsync is monthly and must normalize any date to YYYY-MM-01.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_PeriodLock_UsesNamespacedKey_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

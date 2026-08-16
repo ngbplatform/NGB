@@ -16,15 +16,13 @@ namespace NGB.Runtime.IntegrationTests.Accounts;
 /// P1 coverage: NegativeBalancePolicy is an immutable account field once movements exist.
 /// (This is easy to accidentally allow during refactors because it "looks like a setting".)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsManagement_Immutability_NegativeBalancePolicy_WithMovements_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task UpdateAsync_WhenAccountHasMovements_ForbidsChangingNegativeBalancePolicy_AndDoesNotPersist()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var period = new DateTime(2026, 1, 6, 0, 0, 0, DateTimeKind.Utc);

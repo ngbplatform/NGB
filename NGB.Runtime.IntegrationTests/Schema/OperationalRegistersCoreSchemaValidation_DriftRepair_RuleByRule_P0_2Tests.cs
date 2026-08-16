@@ -12,14 +12,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// P0: rule-by-rule validator coverage for Operational Registers core schema.
 /// Covers extra invariants not yet covered by the first rule-by-rule pack.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByRule_P0_2Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByRule_P0_2Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenFinalizationsIndexMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(Fixture.ConnectionString, "ix_opreg_finalizations_register_period");
@@ -45,7 +44,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenCodeNormIndexMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(Fixture.ConnectionString, "ux_operational_registers_code_norm");
@@ -71,7 +69,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenDimRulesImmutabilityTriggerMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTriggerAsync(
@@ -100,7 +97,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenDimRulesImmutabilityFunctionMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // The trigger depends on the function, so drop the trigger first.
