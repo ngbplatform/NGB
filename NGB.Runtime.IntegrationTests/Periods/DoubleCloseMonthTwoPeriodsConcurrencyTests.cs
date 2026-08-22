@@ -73,7 +73,18 @@ public sealed class DoubleCloseMonthTwoPeriodsConcurrencyTests(PostgresTestFixtu
         var postFeb = outcomes[3];
 
         closeJan.Error.Should().BeNull();
-        closeFeb.Error.Should().BeNull();
+
+        // February may observe the chain before January commits. That is a valid
+        // prerequisite rejection, not a lock collision; retry after January completes.
+        if (closeFeb.Error is not null)
+        {
+            closeFeb.Error.Should().BeOfType<MonthClosingPrerequisiteNotMetException>()
+                .Which.NextClosablePeriod.Should().Be(jan);
+
+            await using var retryScope = host.Services.CreateAsyncScope();
+            await retryScope.ServiceProvider.GetRequiredService<IPeriodClosingService>()
+                .CloseMonthAsync(feb, closedBy: "test-retry", ct: CancellationToken.None);
+        }
 
         await using var verifyScope = host.Services.CreateAsyncScope();
         var sp = verifyScope.ServiceProvider;

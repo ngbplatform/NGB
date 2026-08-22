@@ -6,7 +6,7 @@ using NGB.Metadata.Documents.Storage;
 
 namespace NGB.Trade.Api.Services;
 
-internal sealed class TradeMainMenuContributor(
+public sealed class TradeMainMenuContributor(
     ICatalogTypeRegistry catalogs,
     IDocumentTypeRegistry documents,
     ExternalLinksSettings externalLinks)

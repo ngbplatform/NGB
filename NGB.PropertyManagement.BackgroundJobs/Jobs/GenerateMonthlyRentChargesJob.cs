@@ -4,11 +4,11 @@ using NGB.PropertyManagement.BackgroundJobs.Services;
 
 namespace NGB.PropertyManagement.BackgroundJobs.Jobs;
 
-internal sealed class GenerateMonthlyRentChargesJob(GenerateMonthlyRentChargesService service)
+internal sealed class GenerateMonthlyRentChargesJob(GenerateMonthlyRentChargesService service, TimeProvider timeProvider)
     : IPlatformBackgroundJob
 {
     public string JobId => PropertyManagementBackgroundJobCatalog.GenerateMonthlyRentCharges;
 
     public Task RunAsync(CancellationToken ct)
-        => service.ExecuteAsync(DateOnly.FromDateTime(DateTime.UtcNow), ct);
+        => service.ExecuteAsync(DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime), ct);
 }

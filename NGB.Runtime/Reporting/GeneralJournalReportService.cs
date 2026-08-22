@@ -28,8 +28,5 @@ public sealed class GeneralJournalReportService(IGeneralJournalReader reader) : 
 
         request.FromInclusive.EnsureMonthStart(nameof(request.FromInclusive));
         request.ToInclusive.EnsureMonthStart(nameof(request.ToInclusive));
-
-        if (request.PageSize <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(request.PageSize), request.PageSize, "Page size must be greater than 0.");
     }
 }

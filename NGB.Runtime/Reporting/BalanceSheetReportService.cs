@@ -117,8 +117,7 @@ public sealed class BalanceSheetReportService(
 
             foreach (var (accountId, amount) in byAccount)
             {
-                if (!resolvedAccounts.TryGetValue(accountId, out var acc))
-                    throw new AccountNotFoundException(accountId);
+                var acc = resolvedAccounts[accountId];
 
                 if (acc.StatementSection != section)
                     continue;
@@ -159,8 +158,7 @@ public sealed class BalanceSheetReportService(
 
             foreach (var (accountId, amount) in byAccount)
             {
-                if (!resolvedAccounts.TryGetValue(accountId, out var acc))
-                    throw new AccountNotFoundException(accountId);
+                var acc = resolvedAccounts[accountId];
 
                 switch (acc.StatementSection)
                 {

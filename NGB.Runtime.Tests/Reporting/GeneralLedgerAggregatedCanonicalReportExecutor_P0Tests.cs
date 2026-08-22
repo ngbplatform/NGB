@@ -2,6 +2,7 @@ using FluentAssertions;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.GeneralLedgerAggregated;
 using NGB.Contracts.Reporting;
+using NGB.Core.Dimensions;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Canonical;
@@ -158,6 +159,80 @@ public sealed class GeneralLedgerAggregatedCanonicalReportExecutor_P0Tests
         response.PrebuiltSheet.Should().NotBeNull();
         response.Limit.Should().Be(response.PrebuiltSheet!.Rows.Count);
         response.HasMore.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenLookupsMiss_UsesRawFallbacksAndCanHideGrandTotal()
+    {
+        var accountId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var counterId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var documentId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var dimensionId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var valueId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        var page = new GeneralLedgerAggregatedReportPage
+        {
+            AccountId = accountId,
+            AccountCode = "raw-account",
+            FromInclusive = new DateOnly(2026, 3, 1),
+            ToInclusive = new DateOnly(2026, 3, 1),
+            OpeningBalance = 0m,
+            TotalDebit = 5m,
+            TotalCredit = 0m,
+            ClosingBalance = 5m,
+            HasMore = false,
+            Lines =
+            [
+                new GeneralLedgerAggregatedReportLine
+                {
+                    PeriodUtc = new DateTime(2026, 3, 5, 0, 0, 0, DateTimeKind.Utc),
+                    DocumentId = documentId,
+                    AccountId = accountId,
+                    AccountCode = "raw-account",
+                    CounterAccountId = counterId,
+                    CounterAccountCode = "raw-counter",
+                    Dimensions = new DimensionBag([new DimensionValue(dimensionId, valueId)]),
+                    DimensionValueDisplays = new Dictionary<Guid, string> { [dimensionId] = "Property" },
+                    DebitAmount = 5m,
+                    RunningBalance = 5m
+                }
+            ]
+        };
+        var executor = new GeneralLedgerAggregatedCanonicalReportExecutor(
+            new StaticGeneralLedgerAggregatedReportReader(page),
+            new EmptyDocumentDisplayReader(),
+            new EmptyAccountByIdResolver());
+        var definition = new ReportDefinitionDto(
+            ReportCode: "accounting.general_ledger_aggregated",
+            Name: "General Ledger",
+            Parameters:
+            [
+                new ReportParameterMetadataDto("from_utc", "date", true),
+                new ReportParameterMetadataDto("to_utc", "date", true)
+            ],
+            Filters: [new ReportFilterFieldDto("account_id", "Account", "uuid", IsRequired: true)]);
+
+        var response = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(
+                Parameters: new Dictionary<string, string>
+                {
+                    ["from_utc"] = "2026-03-01",
+                    ["to_utc"] = "2026-03-31"
+                },
+                Filters: new Dictionary<string, ReportFilterValueDto>
+                {
+                    ["account_id"] = new(CanonicalReportExecutionHelper.JsonValue(accountId))
+                },
+                Layout: new ReportLayoutDto(ShowGrandTotals: false)),
+            CancellationToken.None);
+
+        response.PrebuiltSheet!.Rows.Should().ContainSingle();
+        var row = response.PrebuiltSheet.Rows[0];
+        row.Cells[1].Display.Should().Be("raw-counter");
+        row.Cells[2].Display.Should().Be("Property");
+        row.Cells[3].Display.Should().Be(documentId.ToString("N")[..8]);
+        row.Cells[3].Action.Should().BeNull();
+        response.PrebuiltSheet.Meta!.Subtitle.Should().StartWith("raw-account");
     }
 
     private sealed class StubGeneralLedgerAggregatedPagedReportReader(
@@ -319,5 +394,32 @@ public sealed class GeneralLedgerAggregatedCanonicalReportExecutor_P0Tests
                     ]
                 });
         }
+    }
+
+    private sealed class StaticGeneralLedgerAggregatedReportReader(GeneralLedgerAggregatedReportPage page)
+        : IGeneralLedgerAggregatedPagedReportReader
+    {
+        public Task<GeneralLedgerAggregatedReportPage> GetPageAsync(
+            GeneralLedgerAggregatedReportPageRequest request,
+            CancellationToken ct = default)
+            => Task.FromResult(page);
+    }
+
+    private sealed class EmptyDocumentDisplayReader : IDocumentDisplayReader
+    {
+        public Task<IReadOnlyDictionary<Guid, string>> ResolveAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, string>>(new Dictionary<Guid, string>());
+
+        public Task<IReadOnlyDictionary<Guid, DocumentDisplayRef>> ResolveRefsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, DocumentDisplayRef>>(new Dictionary<Guid, DocumentDisplayRef>());
+    }
+
+    private sealed class EmptyAccountByIdResolver : IAccountByIdResolver
+    {
+        public Task<Account?> GetByIdAsync(Guid accountId, CancellationToken ct = default)
+            => Task.FromResult<Account?>(null);
+
+        public Task<IReadOnlyDictionary<Guid, Account>> GetByIdsAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, Account>>(new Dictionary<Guid, Account>());
     }
 }

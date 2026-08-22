@@ -159,6 +159,71 @@ public sealed class IncomeStatementCanonicalReportExecutor_P0Tests
         response.PrebuiltSheet!.Rows[0].Cells[0].Display.Should().Be("Cost of Goods Sold");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_HumanizesAllRemainingSectionsAndCanHideSubtotalsAndGrandTotals()
+    {
+        var sections = new[]
+        {
+            (StatementSection.Expenses, "Expenses"),
+            (StatementSection.OtherIncome, "Other Income"),
+            (StatementSection.OtherExpense, "Other Expense"),
+            (StatementSection.Assets, "Assets")
+        };
+        var reportSections = sections.Select((item, index) => new IncomeStatementSection
+        {
+            Section = item.Item1,
+            Lines =
+            [
+                new IncomeStatementLine
+                {
+                    AccountId = Guid.NewGuid(),
+                    AccountCode = $"{index + 1}000",
+                    AccountName = item.Item2,
+                    Amount = index + 1
+                }
+            ],
+            Total = index + 1
+        }).ToArray();
+        var executor = new IncomeStatementCanonicalReportExecutor(
+            new StubIncomeStatementReportReader(
+                new IncomeStatementReport
+                {
+                    FromInclusive = new DateOnly(2026, 3, 1),
+                    ToInclusive = new DateOnly(2026, 3, 31),
+                    Sections = reportSections,
+                    TotalIncome = 0m,
+                    TotalExpenses = 0m,
+                    TotalOtherIncome = 0m,
+                    TotalOtherExpense = 0m,
+                    NetIncome = 0m
+                }));
+        var definition = new ReportDefinitionDto(
+            ReportCode: "accounting.income_statement",
+            Name: "Income Statement",
+            Parameters:
+            [
+                new ReportParameterMetadataDto("from_utc", "date", true),
+                new ReportParameterMetadataDto("to_utc", "date", true)
+            ]);
+
+        var response = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(
+                Parameters: new Dictionary<string, string>
+                {
+                    ["from_utc"] = "2026-03-01",
+                    ["to_utc"] = "2026-03-31"
+                },
+                Layout: new ReportLayoutDto(ShowSubtotals: false, ShowGrandTotals: false)),
+            CancellationToken.None);
+
+        response.PrebuiltSheet!.Rows.Where(row => row.RowKind == ReportRowKind.Group)
+            .Select(row => row.Cells[0].Display)
+            .Should().Equal(sections.Select(item => item.Item2));
+        response.PrebuiltSheet.Rows.Should().NotContain(row =>
+            row.RowKind == ReportRowKind.Subtotal || row.RowKind == ReportRowKind.Total);
+    }
+
     private sealed class StubIncomeStatementReportReader(IncomeStatementReport report) : IIncomeStatementReportReader
     {
         public Task<IncomeStatementReport> GetAsync(IncomeStatementReportRequest request, CancellationToken ct = default)

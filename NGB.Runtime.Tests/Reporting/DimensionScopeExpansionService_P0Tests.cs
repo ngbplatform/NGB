@@ -8,6 +8,19 @@ namespace NGB.Runtime.Tests.Reporting;
 
 public sealed class DimensionScopeExpansionService_P0Tests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task ExpandAsync_WhenReportCodeIsBlank_ThrowsArgumentRequired(string? reportCode)
+    {
+        var sut = new DimensionScopeExpansionService([]);
+
+        var action = () => sut.ExpandAsync(reportCode!, DimensionScopeBag.Empty);
+
+        await action.Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentRequiredException>();
+    }
+
     [Fact]
     public async Task ExpandAsync_WhenNoScopes_ReturnsNull()
     {
@@ -37,6 +50,7 @@ public sealed class DimensionScopeExpansionService_P0Tests
                 new DimensionScope(dim1, [v1, v3]),
                 scopes.Single(x => x.DimensionId == dim2)
             ]))),
+            null!,
             new DelegateExpander((_, scopes, _) => Task.FromResult(new DimensionScopeBag([
                 scopes.Single(x => x.DimensionId == dim1),
                 new DimensionScope(dim2, [v2], includeDescendants: false)

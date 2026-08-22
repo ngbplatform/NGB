@@ -5,6 +5,7 @@ using NGB.Contracts.Reporting;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Canonical;
+using NGB.Runtime.Reporting.Internal;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Reporting;
@@ -218,6 +219,72 @@ public sealed class AccountCardCanonicalReportExecutor_P0Tests
         response.HasMore.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenLookupsMiss_UsesRawFallbacksAndDecodesCursor()
+    {
+        var accountId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var counterId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var documentId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var reader = new StubEffectivePagedReportReader(
+            new AccountCardReportPage
+            {
+                AccountId = accountId,
+                AccountCode = "fallback-account",
+                FromInclusive = new DateOnly(2026, 3, 1),
+                ToInclusive = new DateOnly(2026, 3, 31),
+                Lines =
+                [
+                    new AccountCardReportLine
+                    {
+                        EntryId = 11,
+                        PeriodUtc = new DateTime(2026, 3, 11, 0, 0, 0, DateTimeKind.Utc),
+                        DocumentId = documentId,
+                        AccountId = accountId,
+                        AccountCode = "fallback-account",
+                        CounterAccountId = counterId,
+                        CounterAccountCode = "fallback-counter",
+                        DebitAmount = 1m,
+                        Delta = 1m,
+                        RunningBalance = 1m
+                    }
+                ],
+                HasMore = false
+            });
+        var executor = new AccountCardCanonicalReportExecutor(
+            reader,
+            new EmptyDocumentDisplayReader(),
+            new EmptyAccountResolver());
+        var cursor = new AccountCardReportCursor
+        {
+            AfterPeriodUtc = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc),
+            AfterEntryId = 10,
+            RunningBalance = 0m
+        };
+
+        var response = await executor.ExecuteAsync(
+            CreateDefinition(),
+            new ReportExecutionRequestDto(
+                Parameters: new Dictionary<string, string>
+                {
+                    ["from_utc"] = "2026-03-01",
+                    ["to_utc"] = "2026-03-31"
+                },
+                Filters: new Dictionary<string, ReportFilterValueDto>
+                {
+                    ["account_id"] = new(System.Text.Json.JsonSerializer.SerializeToElement(accountId))
+                },
+                Cursor: $"  {AccountCardCursorCodec.Encode(cursor)}  ",
+                Limit: 1),
+            CancellationToken.None);
+
+        reader.LastRequest!.Cursor.Should().BeEquivalentTo(cursor);
+        response.PrebuiltSheet!.Meta!.Subtitle.Should().StartWith("fallback-account");
+        var row = response.PrebuiltSheet.Rows.Single();
+        row.Cells[1].Display.Should().Be("fallback-counter");
+        row.Cells[2].Display.Should().Be(documentId.ToString("N")[..8]);
+        row.Cells[2].Action.Should().BeNull();
+    }
+
     private static ReportDefinitionDto CreateDefinition()
         => new(
             ReportCode: "accounting.account_card",
@@ -278,5 +345,23 @@ public sealed class AccountCardCanonicalReportExecutor_P0Tests
             {
                 [counterAccountId] = new(counterAccountId, "4900", "Reporting Revenue", AccountType.Income)
             });
+    }
+
+    private sealed class EmptyDocumentDisplayReader : IDocumentDisplayReader
+    {
+        public Task<IReadOnlyDictionary<Guid, string>> ResolveAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, string>>(new Dictionary<Guid, string>());
+
+        public Task<IReadOnlyDictionary<Guid, DocumentDisplayRef>> ResolveRefsAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, DocumentDisplayRef>>(new Dictionary<Guid, DocumentDisplayRef>());
+    }
+
+    private sealed class EmptyAccountResolver : IAccountByIdResolver
+    {
+        public Task<Account?> GetByIdAsync(Guid accountId, CancellationToken ct = default)
+            => Task.FromResult<Account?>(null);
+
+        public Task<IReadOnlyDictionary<Guid, Account>> GetByIdsAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, Account>>(new Dictionary<Guid, Account>());
     }
 }

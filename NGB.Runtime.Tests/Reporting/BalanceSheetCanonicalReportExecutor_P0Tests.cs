@@ -102,6 +102,67 @@ public sealed class BalanceSheetCanonicalReportExecutor_P0Tests
         action.Report.Filters["property_id"].IncludeDescendants.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task ExecuteAsync_CanHideAllTotals_AndRendersUnbalancedStateAsNo()
+    {
+        var accountId = Guid.NewGuid();
+        var executor = new BalanceSheetCanonicalReportExecutor(
+            new StubBalanceSheetReportReader(
+                new BalanceSheetReport
+                {
+                    AsOfPeriod = new DateOnly(2026, 3, 31),
+                    Sections =
+                    [
+                        new BalanceSheetSection
+                        {
+                            Section = StatementSection.Assets,
+                            Title = "Assets",
+                            Lines =
+                            [
+                                new BalanceSheetLine
+                                {
+                                    AccountId = accountId,
+                                    AccountCode = "1000",
+                                    AccountName = "Cash",
+                                    Amount = 1m
+                                }
+                            ],
+                            Total = 1m
+                        }
+                    ],
+                    TotalAssets = 1m,
+                    TotalLiabilities = 0m,
+                    TotalEquity = 0m,
+                    TotalLiabilitiesAndEquity = 0m,
+                    Difference = 1m,
+                    IsBalanced = false
+                }));
+        var definition = new ReportDefinitionDto(
+            ReportCode: "accounting.balance_sheet",
+            Name: "Balance Sheet",
+            Parameters: [new ReportParameterMetadataDto("as_of_utc", "date", true)]);
+
+        var withoutTotals = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(
+                Parameters: new Dictionary<string, string> { ["as_of_utc"] = "2026-03-31" },
+                Layout: new ReportLayoutDto(ShowSubtotals: false, ShowGrandTotals: false)),
+            CancellationToken.None);
+        withoutTotals.PrebuiltSheet!.Rows.Select(row => row.RowKind)
+            .Should().Equal(ReportRowKind.Group, ReportRowKind.Detail);
+
+        var withGrandTotals = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(
+                Parameters: new Dictionary<string, string> { ["as_of_utc"] = "2026-03-31" },
+                Layout: new ReportLayoutDto(ShowSubtotals: false, ShowGrandTotals: true)),
+            CancellationToken.None);
+        withGrandTotals.PrebuiltSheet!.Rows.Should().Contain(row =>
+            row.RowKind == ReportRowKind.Total
+            && row.Cells[0].Display == "Balanced"
+            && row.Cells[1].Display == "No");
+    }
+
     private sealed class StubBalanceSheetReportReader(BalanceSheetReport report) : IBalanceSheetReportReader
     {
         public Task<BalanceSheetReport> GetAsync(BalanceSheetReportRequest request, CancellationToken ct = default)

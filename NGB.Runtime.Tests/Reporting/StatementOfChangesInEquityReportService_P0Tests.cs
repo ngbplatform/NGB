@@ -13,6 +13,18 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class StatementOfChangesInEquityReportService_P0Tests
 {
     [Fact]
+    public async Task GetAsync_WhenRequestIsNull_ThrowsRequiredArgument()
+    {
+        var service = new StatementOfChangesInEquityReportService(
+            null!,
+            NullLogger<StatementOfChangesInEquityReportService>.Instance);
+
+        var act = () => service.GetAsync(null!, CancellationToken.None);
+
+        await act.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
     public async Task GetAsync_Builds_Equity_Rollforward_With_Synthetic_CurrentEarnings_Component()
     {
         var service = new StatementOfChangesInEquityReportService(
@@ -108,6 +120,66 @@ public sealed class StatementOfChangesInEquityReportService_P0Tests
 
         logger.Entries.Should().Contain(x => x.Level == LogLevel.Warning && x.Message.Contains("opening endpoint is using inception-to-date turnovers", StringComparison.Ordinal));
         logger.Entries.Should().Contain(x => x.Level == LogLevel.Warning && x.Message.Contains("closing endpoint is using inception-to-date turnovers", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenBothEndpointsHaveLongRollForward_LogsWarnings()
+    {
+        var logger = new SpyLogger<StatementOfChangesInEquityReportService>();
+        var service = new StatementOfChangesInEquityReportService(
+            new StubSnapshotReader(
+                new StatementOfChangesInEquitySnapshot(
+                    [],
+                    new DateOnly(2025, 1, 1),
+                    13,
+                    new DateOnly(2025, 2, 1),
+                    14)),
+            logger);
+
+        await service.GetAsync(
+            new StatementOfChangesInEquityReportRequest
+            {
+                FromInclusive = new DateOnly(2026, 3, 1),
+                ToInclusive = new DateOnly(2026, 3, 1)
+            },
+            CancellationToken.None);
+
+        logger.Entries.Should().Contain(x => x.Level == LogLevel.Warning && x.Message.Contains("opening endpoint spans many roll-forward periods", StringComparison.Ordinal));
+        logger.Entries.Should().Contain(x => x.Level == LogLevel.Warning && x.Message.Contains("closing endpoint spans many roll-forward periods", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetAsync_SkipsZeroEquityAndOrdersEqualCodesByName()
+    {
+        var firstId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var secondId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var service = new StatementOfChangesInEquityReportService(
+            new StubSnapshotReader(
+                new StatementOfChangesInEquitySnapshot(
+                    [
+                        new StatementOfChangesInEquitySnapshotRow(Guid.NewGuid(), "00", "Zero", StatementSection.Equity, 0m, 0m),
+                        new StatementOfChangesInEquitySnapshotRow(firstId, "80", "Zulu", StatementSection.Equity, 0m, -1m),
+                        new StatementOfChangesInEquitySnapshotRow(secondId, "80", "Alpha", StatementSection.Equity, -2m, -3m)
+                    ],
+                    new DateOnly(2026, 1, 1),
+                    12,
+                    new DateOnly(2026, 2, 1),
+                    12)),
+            NullLogger<StatementOfChangesInEquityReportService>.Instance);
+
+        var report = await service.GetAsync(
+            new StatementOfChangesInEquityReportRequest
+            {
+                FromInclusive = new DateOnly(2026, 3, 1),
+                ToInclusive = new DateOnly(2026, 3, 1)
+            },
+            CancellationToken.None);
+
+        report.Lines.Select(x => (x.ComponentCode, x.ComponentName)).Should().Equal(
+            ("80", "Alpha"),
+            ("80", "Zulu"));
+        report.Lines.Should().NotContain(x => x.ComponentCode == "00");
+        report.Lines.Should().NotContain(x => x.IsSynthetic);
     }
 
     private sealed class StubSnapshotReader(StatementOfChangesInEquitySnapshot snapshot) : IStatementOfChangesInEquitySnapshotReader

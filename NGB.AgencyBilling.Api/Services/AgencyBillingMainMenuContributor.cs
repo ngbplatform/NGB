@@ -6,7 +6,7 @@ using NGB.Metadata.Documents.Storage;
 
 namespace NGB.AgencyBilling.Api.Services;
 
-internal sealed class AgencyBillingMainMenuContributor(
+public sealed class AgencyBillingMainMenuContributor(
     ICatalogTypeRegistry catalogs,
     IDocumentTypeRegistry documents,
     IReportDefinitionProvider reports,

@@ -8,7 +8,7 @@ using NGB.Runtime.Security;
 namespace NGB.Runtime.Catalogs;
 
 public sealed class PermissionAwareCatalogService(
-    CatalogService inner,
+    ICatalogService inner,
     INgbAccessChecker access,
     NgbSecurityCache cache)
     : ICatalogService

@@ -184,6 +184,7 @@ public sealed class CatalogServiceWriteFullCoverageTests
         await RejectCreate(sut, new Dictionary<string, JsonElement> { ["unknown"] = J(1) });
         await RejectCreate(sut, new Dictionary<string, JsonElement>());
         await RejectCreate(sut, new Dictionary<string, JsonElement> { ["display"] = J<string?>(null) });
+        await RejectCreate(sut, new Dictionary<string, JsonElement> { ["display"] = default });
 
         var invalid = new Dictionary<string, JsonElement>
         {

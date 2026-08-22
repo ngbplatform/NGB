@@ -87,7 +87,7 @@ public static class CanonicalReportExecutionHelper
             JsonValueKind.Null or JsonValueKind.Undefined => null,
             JsonValueKind.String when value.TryGetGuid(out var guid) && guid != Guid.Empty => guid,
             JsonValueKind.String => throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}."),
-            JsonValueKind.Array => ReadGuidList(definition, filterCode, value, allowMultiple: false).SingleOrDefault(),
+            JsonValueKind.Array => ReadOptionalSingleGuid(definition, filterCode, value),
             _ => throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.")
         };
     }
@@ -114,7 +114,7 @@ public static class CanonicalReportExecutionHelper
         string filterCode)
     {
         var value = GetOptionalGuidFilter(definition, request, filterCode);
-        if (value is { } guid && guid != Guid.Empty)
+        if (value is { } guid)
             return guid;
 
         throw Invalid(definition, $"filters.{filterCode}", $"{GetFilterLabel(definition, filterCode)} is required.");
@@ -250,43 +250,45 @@ public static class CanonicalReportExecutionHelper
         JsonElement value,
         bool allowMultiple)
     {
-        try
+        if (value.ValueKind == JsonValueKind.String)
         {
-            if (value.ValueKind == JsonValueKind.String)
-            {
-                if (!value.TryGetGuid(out var guid) || guid == Guid.Empty)
-                    throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
-
-                return [guid];
-            }
-
-            if (value.ValueKind != JsonValueKind.Array)
+            if (!value.TryGetGuid(out var guid) || guid == Guid.Empty)
                 throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
 
-            var list = new List<Guid>();
-            foreach (var item in value.EnumerateArray())
-            {
-                if (!item.TryGetGuid(out var itemGuid) || itemGuid == Guid.Empty)
-                    throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
-
-                list.Add(itemGuid);
-            }
-
-            var distinct = list.Distinct().ToArray();
-            if (!allowMultiple && distinct.Length > 1)
-            {
-                throw Invalid(
-                    definition,
-                    $"filters.{filterCode}",
-                    $"Select a single {GetFilterLabel(definition, filterCode)}.");
-            }
-
-            return distinct;
+            return [guid];
         }
-        catch (InvalidOperationException)
-        {
+
+        if (value.ValueKind != JsonValueKind.Array)
             throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
+
+        var list = new List<Guid>();
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || !item.TryGetGuid(out var itemGuid) || itemGuid == Guid.Empty)
+                throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
+
+            list.Add(itemGuid);
         }
+
+        var distinct = list.Distinct().ToArray();
+        if (!allowMultiple && distinct.Length > 1)
+        {
+            throw Invalid(
+                definition,
+                $"filters.{filterCode}",
+                $"Select a single {GetFilterLabel(definition, filterCode)}.");
+        }
+
+        return distinct;
+    }
+
+    private static Guid? ReadOptionalSingleGuid(
+        ReportDefinitionDto definition,
+        string filterCode,
+        JsonElement value)
+    {
+        var values = ReadGuidList(definition, filterCode, value, allowMultiple: false);
+        return values.Count == 0 ? null : values[0];
     }
 
     private static bool TryGetFilterValue(ReportExecutionRequestDto request, string filterCode, out JsonElement value)

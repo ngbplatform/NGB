@@ -8,12 +8,130 @@ using NGB.Persistence.Accounts;
 using NGB.Persistence.Readers;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Reporting;
 
 public sealed class AccountCardEffectivePagedReportService_P0Tests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetPageAsync_WhenRequestedTotalsAreMissing_ThrowsInvariantViolation(bool missingDebit)
+    {
+        var accountId = Guid.CreateVersion7();
+        var service = new AccountCardEffectivePagedReportService(
+            new StubEffectivePageReader(new AccountCardLinePage
+            {
+                Lines = [],
+                TotalDebit = missingDebit ? null : 0m,
+                TotalCredit = missingDebit ? 0m : null
+            }),
+            new StubBalanceReader([]),
+            new StubTurnoverReader([]),
+            new StubChartOfAccountsRepository(accountId, null));
+
+        var action = () => service.GetPageAsync(new AccountCardReportPageRequest
+        {
+            AccountId = accountId,
+            FromInclusive = new DateOnly(2026, 1, 1),
+            ToInclusive = new DateOnly(2026, 1, 1)
+        });
+
+        await action.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage(missingDebit ? "*total debit*" : "*total credit*");
+    }
+
+    [Theory]
+    [InlineData("1000")]
+    [InlineData(null)]
+    public async Task GetPageAsync_WhenPageIsEmpty_UsesRepositoryCodeOrAccountIdFallback(string? repositoryCode)
+    {
+        var accountId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var service = new AccountCardEffectivePagedReportService(
+            new StubEffectivePageReader(new AccountCardLinePage
+            {
+                Lines = [],
+                HasMore = true,
+                TotalDebit = 0m,
+                TotalCredit = 0m
+            }),
+            new StubBalanceReader([]),
+            new StubTurnoverReader([]),
+            new StubChartOfAccountsRepository(accountId, repositoryCode));
+
+        var page = await service.GetPageAsync(new AccountCardReportPageRequest
+        {
+            AccountId = accountId,
+            FromInclusive = new DateOnly(2026, 1, 1),
+            ToInclusive = new DateOnly(2026, 1, 1)
+        });
+
+        page.AccountCode.Should().Be(repositoryCode ?? accountId.ToString());
+        page.Lines.Should().BeEmpty();
+        page.HasMore.Should().BeTrue();
+        page.NextCursor.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_WhenRequestIsNull_ThrowsArgumentRequired()
+    {
+        var service = new AccountCardEffectivePagedReportService(null!, null!, null!, null!);
+
+        var action = () => service.GetPageAsync(null!, default);
+
+        await action.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_WhenAccountIdIsEmpty_ThrowsArgumentRequired()
+    {
+        var service = new AccountCardEffectivePagedReportService(null!, null!, null!, null!);
+
+        var action = () => service.GetPageAsync(new AccountCardReportPageRequest
+        {
+            AccountId = Guid.Empty,
+            FromInclusive = new DateOnly(2026, 1, 1),
+            ToInclusive = new DateOnly(2026, 1, 1)
+        });
+
+        await action.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_WhenRangeIsReversed_ThrowsOutOfRange()
+    {
+        var service = new AccountCardEffectivePagedReportService(null!, null!, null!, null!);
+
+        var action = () => service.GetPageAsync(new AccountCardReportPageRequest
+        {
+            AccountId = Guid.CreateVersion7(),
+            FromInclusive = new DateOnly(2026, 2, 1),
+            ToInclusive = new DateOnly(2026, 1, 1)
+        });
+
+        await action.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetPageAsync_WhenRangeBoundaryIsNotMonthStart_ThrowsOutOfRange(bool invalidFrom)
+    {
+        var service = new AccountCardEffectivePagedReportService(null!, null!, null!, null!);
+        var request = new AccountCardReportPageRequest
+        {
+            AccountId = Guid.CreateVersion7(),
+            FromInclusive = new DateOnly(2026, 1, invalidFrom ? 2 : 1),
+            ToInclusive = new DateOnly(2026, 2, invalidFrom ? 1 : 2)
+        };
+
+        var action = () => service.GetPageAsync(request);
+
+        await action.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
     [Fact]
     public async Task GetPageAsync_WhenIntermediatePage_LoadsGrandTotalsOnce_AndCarriesThemInCursor()
     {
@@ -340,7 +458,7 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
         }
     }
 
-    private sealed class StubChartOfAccountsRepository(Guid stubAccountId, string stubCode) : IChartOfAccountsRepository
+    private sealed class StubChartOfAccountsRepository(Guid stubAccountId, string? stubCode) : IChartOfAccountsRepository
     {
         public Task<IReadOnlyList<Account>> GetAllAsync(CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<Account>>([]);

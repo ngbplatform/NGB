@@ -310,7 +310,7 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
                            FROM platform_document_operation_history
                            WHERE document_id = @document_id
                              AND operation = @operation
-                           ORDER BY occurred_at_utc, history_id;
+                           ORDER BY occurred_at_utc, event_kind, history_id;
                            """;
 
         await using var cmd = new NpgsqlCommand(sql, conn);
@@ -342,7 +342,7 @@ public sealed class DocumentOperationState_History_P0Tests(PostgresTestFixture f
                            FROM platform_document_operation_history
                            WHERE document_id = @document_id
                              AND operation = @operation
-                           ORDER BY occurred_at_utc, history_id;
+                           ORDER BY occurred_at_utc, event_kind, history_id;
                            """;
 
         await using var cmd = new NpgsqlCommand(sql, conn);

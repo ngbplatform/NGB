@@ -13,6 +13,45 @@ public sealed class AccountingConsistencyReportService_P0Tests
     private static readonly DateOnly PreviousPeriod = new(2026, 1, 1);
 
     [Fact]
+    public async Task RunForPeriodAsync_ReportsRegisterBalanceAndMissingKeyMismatchesTogether()
+    {
+        var mismatchedAccountId = Guid.CreateVersion7();
+        var missingAccountId = Guid.CreateVersion7();
+        var service = new AccountingConsistencyReportService(
+            new StubIntegrityDiagnostics(2),
+            new StubAccountingConsistencySnapshotReader(
+                new AccountingConsistencySnapshot(
+                [
+                    SnapshotRow(
+                        mismatchedAccountId,
+                        "1000",
+                        opening: 10m,
+                        closing: 99m,
+                        debit: 5m,
+                        credit: 2m,
+                        hasCurrentBalanceRow: true),
+                    SnapshotRow(
+                        missingAccountId,
+                        "1100",
+                        debit: 3m,
+                        hasTurnoverRow: true)
+                ])));
+
+        var report = await service.RunForPeriodAsync(Period, null, default);
+
+        report.TurnoversVsRegisterDiffCount.Should().Be(2);
+        report.BalanceVsTurnoverMismatchCount.Should().Be(1);
+        report.MissingKeyCount.Should().Be(1);
+        report.Issues.Select(issue => issue.Kind).Should().BeEquivalentTo(
+        [
+            AccountingConsistencyIssueKind.TurnoversVsRegisterMismatch,
+            AccountingConsistencyIssueKind.BalanceVsTurnoverMismatch,
+            AccountingConsistencyIssueKind.MissingKey
+        ]);
+    }
+
+
+    [Fact]
     public async Task RunForPeriodAsync_WhenCurrentSnapshotMissesPreviousKey_FlagsBalanceChainMismatch()
     {
         var accountA = Guid.Parse("11111111-1111-1111-1111-111111111111");

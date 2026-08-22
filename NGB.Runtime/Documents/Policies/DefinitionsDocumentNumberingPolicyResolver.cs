@@ -9,13 +9,15 @@ public sealed class DefinitionsDocumentNumberingPolicyResolver(
     DefinitionsRegistry definitions,
     IEnumerable<IDocumentNumberingPolicy> policies) : IDocumentNumberingPolicyResolver
 {
-    private readonly IReadOnlyList<IDocumentNumberingPolicy> _allPolicies = DefinitionRuntimeBindingHelpers.ToReadOnlyList(policies);
+    private readonly DefinitionsRegistry _definitions = definitions ?? throw new NgbArgumentRequiredException(nameof(definitions));
+    private readonly IReadOnlyList<IDocumentNumberingPolicy> _allPolicies = DefinitionRuntimeBindingHelpers.ToReadOnlyList(
+        policies ?? throw new NgbArgumentRequiredException(nameof(policies)));
     private readonly Dictionary<string, IDocumentNumberingPolicy> _policiesByTypeCode = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _policiesGate = new();
 
     public IDocumentNumberingPolicy? Resolve(string typeCode)
     {
-        if (!definitions.TryGetDocument(typeCode, out var def))
+        if (!_definitions.TryGetDocument(typeCode, out var def))
             return null;
 
         if (def.NumberingPolicyType is null)
@@ -26,12 +28,9 @@ public sealed class DefinitionsDocumentNumberingPolicyResolver(
 
     private IDocumentNumberingPolicy ResolvePolicy(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        if (_policiesByTypeCode.TryGetValue(def.TypeCode, out var cached))
-            return cached;
-
         lock (_policiesGate)
         {
-            if (_policiesByTypeCode.TryGetValue(def.TypeCode, out cached))
+            if (_policiesByTypeCode.TryGetValue(def.TypeCode, out var cached))
                 return cached;
 
             var resolved = BuildPolicy(def);
@@ -42,8 +41,7 @@ public sealed class DefinitionsDocumentNumberingPolicyResolver(
 
     private IDocumentNumberingPolicy BuildPolicy(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        var policyType = def.NumberingPolicyType
-            ?? throw new NgbConfigurationViolationException($"Document '{def.TypeCode}' has no numbering policy binding.");
+        var policyType = def.NumberingPolicyType!;
 
         if (!typeof(IDocumentNumberingPolicy).IsAssignableFrom(policyType))
         {

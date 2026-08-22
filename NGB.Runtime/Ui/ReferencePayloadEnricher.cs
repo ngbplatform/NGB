@@ -229,9 +229,6 @@ public sealed class ReferencePayloadEnricher(
         foreach (var t in meta.Tables.Where(x => x.Kind == TableKind.Part))
         {
             var code = t.GetRequiredPartCode(meta.CatalogCode);
-            if (string.IsNullOrWhiteSpace(code))
-                continue;
-
             dict[code] = t.Columns
                 .Where(c => !string.Equals(c.ColumnName, "catalog_id", StringComparison.OrdinalIgnoreCase) && c.ColumnType != ColumnType.Json)
                 .Select(c => new EnrichmentColumn(c.ColumnName, c.ColumnType, c.Lookup))
@@ -248,9 +245,6 @@ public sealed class ReferencePayloadEnricher(
         foreach (var t in meta.Tables.Where(x => x.Kind == TableKind.Part))
         {
             var code = t.GetRequiredPartCode(meta.TypeCode);
-            if (string.IsNullOrWhiteSpace(code))
-                continue;
-
             dict[code] = t.Columns
                 .Where(c => !string.Equals(c.ColumnName, "document_id", StringComparison.OrdinalIgnoreCase) && c.Type != ColumnType.Json)
                 .Select(c => new EnrichmentColumn(c.ColumnName, c.Type, c.Lookup))
@@ -265,9 +259,6 @@ public sealed class ReferencePayloadEnricher(
         IReadOnlyList<RecordPayload> payloads,
         CancellationToken ct)
     {
-        if (!plan.HasWork)
-            return payloads;
-
         var coaIds = new HashSet<Guid>();
         var opregIds = new HashSet<Guid>();
         var catalogTypeToIds = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
@@ -330,7 +321,7 @@ public sealed class ReferencePayloadEnricher(
             {
                 foreach (var (partCode, part) in payload.Parts)
                 {
-                    if (!plan.PartFields.TryGetValue(partCode, out var partFields) || partFields.Count == 0)
+                    if (!plan.PartFields.TryGetValue(partCode, out var partFields))
                         continue;
 
                     List<IReadOnlyDictionary<string, JsonElement>>? rows = null;
@@ -404,10 +395,7 @@ public sealed class ReferencePayloadEnricher(
                     opregIds.Add(id);
                     break;
                 case RefKind.Catalog:
-                    if (field.Source.TypeCodes is null)
-                        break;
-
-                    foreach (var typeCode in field.Source.TypeCodes)
+                    foreach (var typeCode in field.Source.TypeCodes!)
                     {
                         if (!catalogTypeToIds.TryGetValue(typeCode, out var set))
                             catalogTypeToIds[typeCode] = set = [];
@@ -465,9 +453,6 @@ public sealed class ReferencePayloadEnricher(
             source = new RefSource(RefKind.OperationalRegister, null);
             return true;
         }
-
-        if (!fieldKey.EndsWith("_id", StringComparison.OrdinalIgnoreCase))
-            return false;
 
         var tail = fieldKey[..^3]; // remove _id
         if (string.IsNullOrWhiteSpace(tail))
@@ -576,15 +561,16 @@ public sealed class ReferencePayloadEnricher(
         IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, string>> catalogLabelsByType,
         IReadOnlyDictionary<Guid, string> documentLabels)
     {
-        return source.Kind switch
-        {
-            RefKind.ChartOfAccounts => coaLabels.TryGetValue(id, out var c) ? c : id.ToString(),
-            RefKind.OperationalRegister => opregLabels.TryGetValue(id, out var r) ? r : id.ToString(),
-            RefKind.Catalog when source.TypeCodes is not null && source.TypeCodes.Count > 0
-                => ResolveFromAny(source.TypeCodes, id, catalogLabelsByType),
-            RefKind.Document => documentLabels.TryGetValue(id, out var display) ? display : id.ToString(),
-            _ => id.ToString()
-        };
+        if (source.Kind == RefKind.ChartOfAccounts)
+            return coaLabels[id];
+
+        if (source.Kind == RefKind.OperationalRegister)
+            return opregLabels[id];
+
+        if (source.Kind == RefKind.Catalog)
+            return ResolveFromAny(source.TypeCodes!, id, catalogLabelsByType);
+
+        return documentLabels.TryGetValue(id, out var display) ? display : id.ToString();
     }
 
     private static string ResolveFromAny(

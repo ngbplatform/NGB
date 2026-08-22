@@ -50,7 +50,18 @@ public sealed class ThreePeriodRace_CloseMonthVsMultiPeriodPost_P3Tests(Postgres
         var post = outcomes[2];
 
         closeJan.Error.Should().BeNull($"CloseMonth(Jan) must succeed. Error: {closeJan.Error}");
-        closeFeb.Error.Should().BeNull($"CloseMonth(Feb) must succeed. Error: {closeFeb.Error}");
+
+        // February may reach the chain prerequisite before the concurrent January
+        // transaction commits. Once January completes, a retry must close February.
+        if (closeFeb.Error is not null)
+        {
+            closeFeb.Error.Should().BeOfType<MonthClosingPrerequisiteNotMetException>()
+                .Which.NextClosablePeriod.Should().Be(jan);
+
+            await using var retryScope = host.Services.CreateAsyncScope();
+            await retryScope.ServiceProvider.GetRequiredService<IPeriodClosingService>()
+                .CloseMonthAsync(feb, closedBy: "test-retry", ct: CancellationToken.None);
+        }
 
         // Post can legitimately be rejected if Jan closes first.
         if (post.Error is not null)

@@ -173,7 +173,7 @@ public sealed class ReportXlsxExportService(TimeProvider? timeProvider = null) :
         if (TryConvertBoolean(cell, out var boolValue))
             return boolValue;
 
-        return CellExportValue.InlineString(cell.Display ?? ExtractString(cell.Value) ?? string.Empty);
+        return CellExportValue.InlineString(cell.Display ?? ExtractString(cell.Value)!);
     }
 
     private static bool TryConvertNumeric(ReportCellDto cell, string valueType, out CellExportValue value)
@@ -213,14 +213,16 @@ public sealed class ReportXlsxExportService(TimeProvider? timeProvider = null) :
             return true;
         }
 
-        if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dto))
+        if (valueType == "datetimeoffset"
+            && DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dto))
         {
             var serial = ToExcelSerial(dto.UtcDateTime).ToString(CultureInfo.InvariantCulture);
             value = CellExportValue.Number(serial);
             return true;
         }
 
-        if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dt))
+        if (valueType == "datetime"
+            && DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var dt))
         {
             var serial = ToExcelSerial(dt).ToString(CultureInfo.InvariantCulture);
             value = CellExportValue.Number(serial);
@@ -354,9 +356,6 @@ public sealed class ReportXlsxExportService(TimeProvider? timeProvider = null) :
 
     private static XElement BuildSheetViews(WorksheetExport export)
     {
-        if (export is { HeaderRowCount: <= 0, FrozenColumnCount: <= 0 })
-            return new XElement(NsSpreadsheet + "sheetViews", new XElement(NsSpreadsheet + "sheetView", new XAttribute("workbookViewId", "0")));
-
         var topLeftCell = GetCellReference(Math.Max(1, export.FrozenColumnCount + 1), Math.Max(1, export.HeaderRowCount + 1));
         var pane = new XElement(
             NsSpreadsheet + "pane",
@@ -366,14 +365,11 @@ public sealed class ReportXlsxExportService(TimeProvider? timeProvider = null) :
         if (export.FrozenColumnCount > 0)
             pane.Add(new XAttribute("xSplit", export.FrozenColumnCount));
 
-        if (export.HeaderRowCount > 0)
-            pane.Add(new XAttribute("ySplit", export.HeaderRowCount));
+        pane.Add(new XAttribute("ySplit", export.HeaderRowCount));
 
-        pane.Add(new XAttribute("activePane", export is { FrozenColumnCount: > 0, HeaderRowCount: > 0 }
+        pane.Add(new XAttribute("activePane", export.FrozenColumnCount > 0
             ? "bottomRight"
-            : export.HeaderRowCount > 0 
-                ? "bottomLeft"
-                : "topRight"));
+            : "bottomLeft"));
 
         return new XElement(
             NsSpreadsheet + "sheetViews",

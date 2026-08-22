@@ -8,6 +8,7 @@ using NGB.Definitions;
 using NGB.Definitions.Documents.Posting;
 using NGB.Metadata.Documents.Hybrid;
 using NGB.Runtime.Documents.Posting;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Documents.Posting;
@@ -49,13 +50,56 @@ public sealed class DefinitionsDocumentPostingActionResolverTests
         };
 
         var postingCtx = new Mock<IAccountingPostingContext>(MockBehavior.Strict);
+        using var cancellation = new CancellationTokenSource();
 
         // Act
         var action = resolver.Resolve(doc);
-        await action(postingCtx.Object, CancellationToken.None);
+        await action(postingCtx.Object, cancellation.Token);
+        var cachedAction = resolver.Resolve(new DocumentRecord
+        {
+            Id = Guid.CreateVersion7(),
+            TypeCode = "doc",
+            DateUtc = doc.DateUtc,
+            Status = DocumentStatus.Draft,
+            CreatedAtUtc = doc.CreatedAtUtc,
+            UpdatedAtUtc = doc.UpdatedAtUtc
+        });
+        await cachedAction(postingCtx.Object, cancellation.Token);
 
         // Assert
-        handler.CallCount.Should().Be(1);
+        handler.CallCount.Should().Be(2);
+        handler.LastDocument.Should().NotBeNull();
+        handler.LastContext.Should().BeSameAs(postingCtx.Object);
+        handler.LastToken.Should().Be(cancellation.Token);
+    }
+
+    [Fact]
+    public void Constructor_WhenRequiredDependencyIsNull_ThrowsArgumentRequired()
+    {
+        var definitions = new DefinitionsBuilder().Build();
+
+        Action nullDefinitions = () => new DefinitionsDocumentPostingActionResolver(
+            null!,
+            Array.Empty<IDocumentPostingHandler>());
+        Action nullHandlers = () => new DefinitionsDocumentPostingActionResolver(definitions, null!);
+
+        nullDefinitions.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("definitions");
+        nullHandlers.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("handlers");
+    }
+
+    [Fact]
+    public void TryResolve_WhenDocumentIsNull_ThrowsArgumentRequired()
+    {
+        var resolver = new DefinitionsDocumentPostingActionResolver(
+            new DefinitionsBuilder().Build(),
+            Array.Empty<IDocumentPostingHandler>());
+
+        Action action = () => resolver.TryResolve(null!);
+
+        action.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("document");
     }
 
     [Fact]
@@ -108,6 +152,35 @@ public sealed class DefinitionsDocumentPostingActionResolverTests
         Action act = () => resolver.Resolve(doc);
         act.Should().Throw<DocumentPostingHandlerNotConfiguredException>()
             .Which.ErrorCode.Should().Be("doc.posting.handler.not_configured");
+        resolver.TryResolve(doc).Should().BeNull();
+    }
+
+    [Fact]
+    public void Resolve_WhenConfiguredHandlerIsNotRegistered_Throws_Misconfigured()
+    {
+        var definitions = DefinitionsWithHandler<FakePostingHandler>();
+        var resolver = new DefinitionsDocumentPostingActionResolver(
+            definitions,
+            Array.Empty<IDocumentPostingHandler>());
+
+        Action action = () => resolver.Resolve(Document("DOC"));
+
+        action.Should().Throw<DocumentPostingHandlerMisconfiguredException>()
+            .WithMessage("*not registered in DI container*");
+    }
+
+    [Fact]
+    public void Resolve_WhenConfiguredHandlerHasDuplicateRegistrations_Throws_Misconfigured()
+    {
+        var definitions = DefinitionsWithHandler<FakePostingHandler>();
+        var resolver = new DefinitionsDocumentPostingActionResolver(
+            definitions,
+            new IDocumentPostingHandler[] { new FakePostingHandler(), new FakePostingHandler() });
+
+        Action action = () => resolver.Resolve(Document("DOC"));
+
+        action.Should().Throw<DocumentPostingHandlerMisconfiguredException>()
+            .WithMessage("*Multiple posting handler registrations*");
     }
 
     [Fact]
@@ -176,11 +249,17 @@ public sealed class DefinitionsDocumentPostingActionResolverTests
     private sealed class FakePostingHandler : IDocumentPostingHandler
     {
         public int CallCount { get; private set; }
+        public DocumentRecord? LastDocument { get; private set; }
+        public IAccountingPostingContext? LastContext { get; private set; }
+        public CancellationToken LastToken { get; private set; }
         public string TypeCode => "DOC";
 
         public Task BuildEntriesAsync(DocumentRecord document, IAccountingPostingContext ctx, CancellationToken ct)
         {
             CallCount++;
+            LastDocument = document;
+            LastContext = ctx;
+            LastToken = ct;
             return Task.CompletedTask;
         }
     }
@@ -193,4 +272,24 @@ public sealed class DefinitionsDocumentPostingActionResolverTests
     }
 
     private sealed class NotAHandler;
+
+    private static DefinitionsRegistry DefinitionsWithHandler<THandler>()
+        where THandler : class, IDocumentPostingHandler
+    {
+        var builder = new DefinitionsBuilder();
+        builder.AddDocument("DOC", definition => definition
+            .Metadata(MinimalMetadata("DOC"))
+            .PostingHandler<THandler>());
+        return builder.Build();
+    }
+
+    private static DocumentRecord Document(string typeCode) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TypeCode = typeCode,
+        DateUtc = DateTime.UtcNow,
+        Status = DocumentStatus.Draft,
+        CreatedAtUtc = DateTime.UtcNow,
+        UpdatedAtUtc = DateTime.UtcNow
+    };
 }

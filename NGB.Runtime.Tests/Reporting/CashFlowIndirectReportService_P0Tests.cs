@@ -5,12 +5,23 @@ using NGB.Accounting.Reports.CashFlowIndirect;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Exceptions;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Reporting;
 
 public sealed class CashFlowIndirectReportService_P0Tests
 {
+    [Fact]
+    public async Task GetAsync_WhenRequestIsNull_ThrowsRequiredArgument()
+    {
+        var service = new CashFlowIndirectReportService(null!, new SpyLogger<CashFlowIndirectReportService>());
+
+        var act = () => service.GetAsync(null!, CancellationToken.None);
+
+        await act.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
     [Fact]
     public async Task GetAsync_Builds_Operating_Investing_And_Financing_Sections_And_Reconciles()
     {
@@ -166,6 +177,38 @@ public sealed class CashFlowIndirectReportService_P0Tests
 
         logger.Entries.Should().Contain(x => x.Level == LogLevel.Warning && x.Message.Contains("beginning cash endpoint is using inception-to-date register activity", StringComparison.Ordinal));
         logger.Entries.Should().Contain(x => x.Level == LogLevel.Warning && x.Message.Contains("ending cash endpoint is using inception-to-date register activity", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenBeginningAndEndingHaveLongRollForward_LogsWarnings()
+    {
+        var logger = new SpyLogger<CashFlowIndirectReportService>();
+        var service = new CashFlowIndirectReportService(
+            new StubSnapshotReader(
+                new CashFlowIndirectSnapshot(
+                    NetIncome: 0m,
+                    OperatingLines: [],
+                    InvestingLines: [],
+                    FinancingLines: [],
+                    BeginningCash: 0m,
+                    EndingCash: 0m,
+                    BeginningLatestClosedPeriod: new DateOnly(2025, 1, 1),
+                    BeginningRollForwardPeriods: 13,
+                    EndingLatestClosedPeriod: new DateOnly(2025, 2, 1),
+                    EndingRollForwardPeriods: 14,
+                    UnclassifiedCashRows: [])),
+            logger);
+
+        await service.GetAsync(
+            new CashFlowIndirectReportRequest
+            {
+                FromInclusive = new DateOnly(2026, 3, 1),
+                ToInclusive = new DateOnly(2026, 3, 1)
+            },
+            CancellationToken.None);
+
+        logger.Entries.Should().Contain(x => x.Level == LogLevel.Warning && x.Message.Contains("beginning cash endpoint spans many roll-forward periods", StringComparison.Ordinal));
+        logger.Entries.Should().Contain(x => x.Level == LogLevel.Warning && x.Message.Contains("ending cash endpoint spans many roll-forward periods", StringComparison.Ordinal));
     }
 
     private sealed class StubSnapshotReader(CashFlowIndirectSnapshot snapshot) : ICashFlowIndirectSnapshotReader

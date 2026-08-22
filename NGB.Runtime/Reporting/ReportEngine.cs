@@ -155,7 +155,7 @@ public sealed class ReportEngine(
         return new ReportEngineExecutionEnvelope(runtime.ReportCodeNorm, "runtime", result);
     }
 
-    private static bool ShouldUseRenderedSheetPaging(
+    internal static bool ShouldUseRenderedSheetPaging(
         ReportDefinitionRuntimeModel runtime,
         ReportExecutionRequestDto request,
         ReportQueryPlan plan)
@@ -201,7 +201,7 @@ public sealed class ReportEngine(
                 return result with
                 {
                     NextCursor = RenderedSheetCursorCodec.EncodeOffsetOnly(offset + CountContentRows(result.Sheet.Rows)),
-                    Diagnostics = MergeDiagnostics(result.Diagnostics, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    Diagnostics = MergeDiagnostics(result.Diagnostics!, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                     {
                         ["snapshotCache"] = "unavailable"
                     })
@@ -211,7 +211,7 @@ public sealed class ReportEngine(
             return result with
             {
                 NextCursor = RenderedSheetCursorCodec.EncodeSnapshot(snapshot.SnapshotId, offset + CountContentRows(result.Sheet.Rows), snapshot.Fingerprint),
-                Diagnostics = MergeDiagnostics(result.Diagnostics, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                Diagnostics = MergeDiagnostics(result.Diagnostics!, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["snapshotCache"] = "created",
                     ["snapshotId"] = snapshot.SnapshotId.ToString("D")
@@ -246,7 +246,9 @@ public sealed class ReportEngine(
             Total: snapshot.TotalContentRows,
             HasMore: hasMore,
             NextCursor: null,
-            Diagnostics: MergeDiagnostics(snapshot.Diagnostics, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            Diagnostics: MergeDiagnostics(
+                snapshot.Diagnostics ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["paging"] = "rendered-sheet-v2",
                 ["cursorMode"] = cursorMode,
@@ -294,7 +296,9 @@ public sealed class ReportEngine(
             ContentRows: contentRows,
             GrandTotalRow: grandTotalRow,
             TotalContentRows: contentRows.Count,
-            Diagnostics: MergeDiagnostics(sheet.Meta?.Diagnostics, diagnostics));
+            Diagnostics: MergeDiagnostics(
+                sheet.Meta!.Diagnostics!,
+                diagnostics ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
     }
 
     private static Guid ComputeRenderedSnapshotFingerprint(ReportQueryPlan plan)
@@ -338,7 +342,7 @@ public sealed class ReportEngine(
                 .Append(group.IncludeDetails ? '1' : '0').Append(':')
                 .Append(group.IncludeEmpty ? '1' : '0').Append(':')
                 .Append(group.IncludeDescendants ? '1' : '0').Append(':')
-                .Append(group.GroupKey ?? string.Empty).Append(';');
+                .Append(group.GroupKey).Append(';');
         }
     }
 
@@ -412,7 +416,7 @@ public sealed class ReportEngine(
         bool hasMore,
         string cursorMode)
     {
-        var diagnostics = new Dictionary<string, string>(sheet.Meta?.Diagnostics ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase)
+        var diagnostics = new Dictionary<string, string>(sheet.Meta!.Diagnostics!, StringComparer.OrdinalIgnoreCase)
         {
             ["paging"] = "rendered-sheet-v2",
             ["cursorMode"] = cursorMode,
@@ -426,37 +430,26 @@ public sealed class ReportEngine(
         return sheet with
         {
             Rows = rows,
-            Meta = sheet.Meta is null
-                ? null
-                : sheet.Meta with
-                {
-                    Diagnostics = diagnostics
-                }
+            Meta = sheet.Meta with
+            {
+                Diagnostics = diagnostics
+            }
         };
     }
 
-    private static IReadOnlyDictionary<string, string>? MergeDiagnostics(
-        IReadOnlyDictionary<string, string>? left,
-        IReadOnlyDictionary<string, string>? right)
+    private static IReadOnlyDictionary<string, string> MergeDiagnostics(
+        IReadOnlyDictionary<string, string> left,
+        IReadOnlyDictionary<string, string> right)
     {
-        if (left is null && right is null)
-            return null;
-
         var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (left is not null)
+        foreach (var pair in left)
         {
-            foreach (var pair in left)
-            {
-                merged[pair.Key] = pair.Value;
-            }
+            merged[pair.Key] = pair.Value;
         }
 
-        if (right is not null)
+        foreach (var pair in right)
         {
-            foreach (var pair in right)
-            {
-                merged[pair.Key] = pair.Value;
-            }
+            merged[pair.Key] = pair.Value;
         }
 
         return merged;

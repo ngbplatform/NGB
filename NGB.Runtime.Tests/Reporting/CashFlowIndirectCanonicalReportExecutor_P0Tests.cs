@@ -2,6 +2,7 @@ using FluentAssertions;
 using NGB.Accounting.CashFlow;
 using NGB.Accounting.Reports.CashFlowIndirect;
 using NGB.Contracts.Reporting;
+using NGB.Core.Reporting;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Canonical;
 using Xunit;
@@ -10,6 +11,45 @@ namespace NGB.Runtime.Tests.Reporting;
 
 public sealed class CashFlowIndirectCanonicalReportExecutor_P0Tests
 {
+    [Fact]
+    public async Task ExecuteAsync_ReconciliationSection_UsesGenericTotalLabel()
+    {
+        var reader = new StubReportReader(
+            new CashFlowIndirectReport
+            {
+                FromInclusive = new DateOnly(2026, 1, 1),
+                ToInclusive = new DateOnly(2026, 1, 31),
+                Sections =
+                [
+                    new CashFlowIndirectSectionModel
+                    {
+                        Section = CashFlowSection.Reconciliation,
+                        Label = "Other",
+                        Lines = [],
+                        Total = 1m
+                    }
+                ]
+            });
+        var executor = new CashFlowIndirectCanonicalReportExecutor(reader);
+        var definition = new ReportDefinitionDto("cash", "Cash", Parameters:
+        [
+            new ReportParameterMetadataDto("from_utc", "date", true),
+            new ReportParameterMetadataDto("to_utc", "date", true)
+        ]);
+
+        var response = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(Parameters: new Dictionary<string, string>
+            {
+                ["from_utc"] = "2026-01-01",
+                ["to_utc"] = "2026-01-31"
+            }),
+            default);
+
+        response.PrebuiltSheet!.Rows.Select(row => row.Cells[0].Display)
+            .Should().ContainInOrder("Other", "Total", "Reconciliation");
+    }
+
     [Fact]
     public async Task ExecuteAsync_Renders_Bounded_Indirect_CashFlow_Sheet_With_Reconciliation()
     {
@@ -58,6 +98,7 @@ public sealed class CashFlowIndirectCanonicalReportExecutor_P0Tests
             });
 
         var executor = new CashFlowIndirectCanonicalReportExecutor(reader);
+        executor.ReportCode.Should().Be(AccountingReportCodes.CashFlowStatementIndirect);
         var definition = new ReportDefinitionDto(
             ReportCode: "accounting.cash_flow_statement_indirect",
             Name: "Cash Flow Statement (Indirect)",

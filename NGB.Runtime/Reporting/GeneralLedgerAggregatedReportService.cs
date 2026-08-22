@@ -143,8 +143,5 @@ public sealed class GeneralLedgerAggregatedReportService(
 
         request.FromInclusive.EnsureMonthStart(nameof(request.FromInclusive));
         request.ToInclusive.EnsureMonthStart(nameof(request.ToInclusive));
-
-        if (request is { DisablePaging: false, PageSize: <= 0 })
-            throw new NgbArgumentOutOfRangeException(nameof(request.PageSize), request.PageSize, "Page size must be greater than 0.");
     }
 }

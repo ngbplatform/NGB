@@ -104,17 +104,6 @@ public sealed class ReportVariantService(
                 requirePlatformProjection: hasCurrentActor,
                 innerCt);
 
-            if (!variant.IsShared && currentPlatformUserId is null)
-            {
-                throw new ReportVariantValidationException(
-                    message: "Private report variants require a platform user context.",
-                    reason: "private_requires_user",
-                    errors: new Dictionary<string, string[]>(StringComparer.Ordinal)
-                    {
-                        ["isShared"] = ["Private variants require a platform user context."]
-                    });
-            }
-
             var existingByCode = await _repository.ListByCodeAsync(reportCodeNorm, variantCodeNorm, innerCt);
             var existingShared = existingByCode.SingleOrDefault(x => x.IsShared);
             var existingOwnedPrivate = currentPlatformUserId is { } currentOwnerPlatformUserId
@@ -125,13 +114,13 @@ public sealed class ReportVariantService(
             if (variant.IsShared)
             {
                 targetRecord = existingShared;
-                if (existingByCode.Any(x => x.ReportVariantId != targetRecord?.ReportVariantId))
+                if (existingByCode.Any(x => !x.IsShared))
                     throw new ReportVariantCodeConflictException(definition.ReportCode, variant.VariantCode);
             }
             else
             {
                 targetRecord = existingOwnedPrivate;
-                if (existingShared is not null && existingShared.ReportVariantId != targetRecord?.ReportVariantId)
+                if (existingShared is not null)
                     throw new ReportVariantCodeConflictException(definition.ReportCode, variant.VariantCode);
             }
 

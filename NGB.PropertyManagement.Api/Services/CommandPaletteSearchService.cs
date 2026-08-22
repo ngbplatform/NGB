@@ -13,7 +13,7 @@ using NGB.Runtime.Security;
 
 namespace NGB.PropertyManagement.Api.Services;
 
-internal sealed class CommandPaletteSearchService(
+public sealed class CommandPaletteSearchService(
     PermissionAwareDocumentService documents,
     PermissionAwareCatalogService catalogs,
     IReportDefinitionProvider reports,
@@ -34,34 +34,32 @@ internal sealed class CommandPaletteSearchService(
             return new CommandPaletteSearchResponseDto([]);
 
         var scope = NormalizeScope(request.Scope);
-        var limit = Math.Clamp(request.Limit <= 0 ? 20 : request.Limit, 1, 30);
+        var limit = Math.Min(request.Limit <= 0 ? 20 : request.Limit, 30);
 
         var groups = new List<CommandPaletteGroupDto>(capacity: 3);
 
         if (scope is null or DocumentsCode)
         {
             var documentsGroup = await SafeGroupAsync(DocumentsCode, () => SearchDocumentsAsync(query, limit, request.Context, ct), ct);
-            if (documentsGroup is not null && documentsGroup.Items.Count > 0)
+            if (documentsGroup is not null)
                 groups.Add(documentsGroup);
         }
 
         if (scope is null or CatalogsCode)
         {
             var catalogsGroup = await SafeGroupAsync(CatalogsCode, () => SearchCatalogsAsync(query, limit, request.Context, ct), ct);
-            if (catalogsGroup is not null && catalogsGroup.Items.Count > 0)
+            if (catalogsGroup is not null)
                 groups.Add(catalogsGroup);
         }
 
         if (scope is null or ReportsCode)
         {
-            var reportsGroup = await SafeGroupAsync(ReportsCode, () => SearchReportsAsync(query, limit, request.Context, ct), ct);
-            if (reportsGroup is not null && reportsGroup.Items.Count > 0)
+            var reportsGroup = await SafeGroupAsync(ReportsCode, () => SearchReportsAsync(query, limit, ct), ct);
+            if (reportsGroup is not null)
                 groups.Add(reportsGroup);
         }
 
-        return new CommandPaletteSearchResponseDto(groups
-            .OrderBy(static group => GroupOrder(group.Code))
-            .ToArray());
+        return new CommandPaletteSearchResponseDto(groups);
     }
 
     private async Task<CommandPaletteGroupDto?> SafeGroupAsync(
@@ -154,15 +152,11 @@ internal sealed class CommandPaletteSearchService(
             : new CommandPaletteGroupDto(CatalogsCode, "Catalogs", items);
     }
 
-    private async Task<CommandPaletteGroupDto?> SearchReportsAsync(
-        string query,
-        int limit,
-        CommandPaletteSearchContextDto? context,
-        CancellationToken ct)
+    private async Task<CommandPaletteGroupDto?> SearchReportsAsync(string query, int limit, CancellationToken ct)
     {
         var definitions = await GetReportDefinitionsAsync(ct);
         var items = definitions
-            .Select(definition => CreateReportItem(query, definition, context))
+            .Select(definition => CreateReportItem(query, definition))
             .Where(static item => item is not null)
             .Select(static item => item!)
             .OrderByDescending(static item => item.Score)
@@ -183,9 +177,7 @@ internal sealed class CommandPaletteSearchService(
     {
         var number = document.Number?.Trim();
         var display = document.Display?.Trim();
-        var title = number?.Length > 0
-            ? $"{descriptor.Label} {number}"
-            : $"{descriptor.Label} {display ?? document.Id.ToString()}";
+        var title = $"{descriptor.Label} {ResolveDocumentTitleValue(number, display, document.Id)}";
 
         var subtitleParts = new List<string>(capacity: 3);
         if (display?.Length > 0 && !string.Equals(display, number, StringComparison.OrdinalIgnoreCase))
@@ -267,10 +259,7 @@ internal sealed class CommandPaletteSearchService(
             Score: decimal.Round(score, 4));
     }
 
-    private CommandPaletteResultItemDto? CreateReportItem(
-        string query,
-        ReportDefinitionDto definition,
-        CommandPaletteSearchContextDto? context)
+    private CommandPaletteResultItemDto? CreateReportItem(string query, ReportDefinitionDto definition)
     {
         var group = definition.Group?.Trim();
         var description = definition.Description?.Trim();
@@ -285,15 +274,11 @@ internal sealed class CommandPaletteSearchService(
         if (score <= 0m)
             return null;
 
-        if (string.Equals(context?.EntityType, "report", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(context?.EntityId?.ToString(), definition.ReportCode, StringComparison.OrdinalIgnoreCase))
-        {
-            score += 0.02m;
-        }
-
         var subtitleParts = new List<string>(capacity: 2);
+
         if (group?.Length > 0)
             subtitleParts.Add(group);
+
         if (description?.Length > 0)
             subtitleParts.Add(description);
 
@@ -461,17 +446,16 @@ internal sealed class CommandPaletteSearchService(
             _ => status.ToString(),
         };
 
-    private static int GroupOrder(string code)
-        => code switch
-        {
-            "actions" => 0,
-            "go-to" => 1,
-            DocumentsCode => 2,
-            CatalogsCode => 3,
-            ReportsCode => 4,
-            "recent" => 5,
-            _ => 99,
-        };
+    private static string ResolveDocumentTitleValue(string? number, string? display, Guid id)
+    {
+        if (!string.IsNullOrEmpty(number))
+            return number;
+
+        if (!string.IsNullOrEmpty(display))
+            return display;
+
+        return id.ToString();
+    }
 
     private static decimal MaxScore(string query, params WeightedField[] fields)
     {

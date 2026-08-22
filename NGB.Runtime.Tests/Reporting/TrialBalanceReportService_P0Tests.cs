@@ -3,12 +3,69 @@ using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.TrialBalance;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Reporting;
 
 public sealed class TrialBalanceReportService_P0Tests
 {
+    [Fact]
+    public async Task GetPageAsync_WhenRequestIsNull_ThrowsArgumentRequired()
+    {
+        var service = new TrialBalanceReportService(
+            new StubTrialBalanceSnapshotReader(new TrialBalanceSnapshot([])),
+            new StubAccountByIdResolver());
+
+        var action = () => service.GetPageAsync(null!, default);
+
+        await action.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_WhenSnapshotIsEmpty_ReturnsEmptyPageAndZeroTotals()
+    {
+        var service = new TrialBalanceReportService(
+            new StubTrialBalanceSnapshotReader(new TrialBalanceSnapshot([])),
+            new StubAccountByIdResolver());
+
+        var page = await service.GetPageAsync(new TrialBalanceReportPageRequest(), default);
+
+        page.Rows.Should().BeEmpty();
+        page.Total.Should().Be(0);
+        page.HasMore.Should().BeFalse();
+        page.Totals.Should().Be(new TrialBalanceReportTotals(0m, 0m, 0m, 0m));
+    }
+
+    [Fact]
+    public async Task GetPageAsync_WhenAccountCannotBeResolved_UsesSnapshotCodeAndUnknownGroup()
+    {
+        var accountId = Guid.CreateVersion7();
+        var service = new TrialBalanceReportService(
+            new StubTrialBalanceSnapshotReader(
+                new TrialBalanceSnapshot(
+                [
+                    new TrialBalanceSnapshotRow(
+                        accountId,
+                        "9999",
+                        Guid.CreateVersion7(),
+                        1m,
+                        2m,
+                        3m)
+                ])),
+            new StubAccountByIdResolver());
+
+        var page = await service.GetPageAsync(
+            new TrialBalanceReportPageRequest { ShowSubtotals = true },
+            default);
+
+        page.Rows.Select(row => (row.RowKind, row.AccountDisplay)).Should().Equal(
+            (TrialBalanceReportRowKind.Group, "Unknown"),
+            (TrialBalanceReportRowKind.Detail, "9999"),
+            (TrialBalanceReportRowKind.Subtotal, "Unknown subtotal"));
+    }
+
+
     [Fact]
     public async Task GetPageAsync_Shapes_Single_Account_Column_Grouping_And_Subtotals_Without_Dimension_Columns()
     {

@@ -107,6 +107,61 @@ public sealed class TrialBalanceCanonicalReportExecutor_P0Tests
         reader.LastRequest.Limit.Should().Be(1);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_DetailWithoutAccountHasNoAction_AndTotalVisibilityHonorsLayoutAndEmptyPage()
+    {
+        var reader = new StubTrialBalanceReportReader(
+            new TrialBalanceReportPage(
+                Rows:
+                [
+                    new TrialBalanceReportRow(
+                        TrialBalanceReportRowKind.Detail,
+                        "Historical account",
+                        0m,
+                        0m,
+                        0m,
+                        0m,
+                        0,
+                        "detail:historical",
+                        AccountId: null)
+                ],
+                Total: 0,
+                HasMore: false,
+                Totals: new TrialBalanceReportTotals(0m, 0m, 0m, 0m)));
+        var executor = new TrialBalanceCanonicalReportExecutor(reader);
+        var definition = new ReportDefinitionDto(
+            ReportCode: "accounting.trial_balance",
+            Name: "Trial Balance",
+            Parameters:
+            [
+                new ReportParameterMetadataDto("from_utc", "date", true),
+                new ReportParameterMetadataDto("to_utc", "date", true)
+            ]);
+        var parameters = new Dictionary<string, string>
+        {
+            ["from_utc"] = "2026-03-01",
+            ["to_utc"] = "2026-03-31"
+        };
+
+        var emptyPage = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(
+                Parameters: parameters,
+                Layout: new ReportLayoutDto(ShowSubtotals: false, ShowGrandTotals: true)),
+            CancellationToken.None);
+        emptyPage.PrebuiltSheet!.Rows.Should().ContainSingle();
+        emptyPage.PrebuiltSheet.Rows[0].Cells[0].Action.Should().BeNull();
+        reader.LastRequest!.ShowSubtotals.Should().BeFalse();
+
+        var hiddenGrandTotal = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(
+                Parameters: parameters,
+                Layout: new ReportLayoutDto(ShowGrandTotals: false)),
+            CancellationToken.None);
+        hiddenGrandTotal.PrebuiltSheet!.Rows.Should().ContainSingle();
+    }
+
     private sealed class StubTrialBalanceReportReader(TrialBalanceReportPage page) : ITrialBalanceReportReader
     {
         public TrialBalanceReportPageRequest? LastRequest { get; private set; }

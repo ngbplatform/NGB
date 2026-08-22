@@ -9,7 +9,7 @@ using NGB.Runtime.DependencyInjection;
 
 namespace NGB.CRM.Migrator.Seed;
 
-internal static class CrmSeedDefaultsCli
+public static class CrmSeedDefaultsCli
 {
     private const string CommandName = "seed-defaults";
 
@@ -37,7 +37,6 @@ internal static class CrmSeedDefaultsCli
             Console.WriteLine("OK: CRM defaults ensured.");
             Console.WriteLine($"- Opportunity stages ensured: {result.OpportunityStagesEnsured}");
             Console.WriteLine($"- Products ensured: {result.ProductsEnsured}");
-            return 0;
         }
         catch (Exception ex)
         {
@@ -45,6 +44,8 @@ internal static class CrmSeedDefaultsCli
             Console.Error.WriteLine(ex);
             return 1;
         }
+
+        return 0;
     }
 
     internal static ServiceCollection CreateServices(string connectionString)

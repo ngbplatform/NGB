@@ -103,14 +103,6 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                         $"filters.{codeNorm}",
                         $"'{ToFriendlyLabel(filter.Key)}' is not available as a filter in this report.");
                 }
-
-                if (filter.Value.IncludeDescendants && !filterDefinition.SupportsIncludeDescendants)
-                {
-                    throw Invalid(
-                        runtime,
-                        $"filters.{codeNorm}",
-                        $"'{ResolveFilterLabel(filterDefinition)}' does not support including child items.");
-                }
             }
 
             foreach (var filter in filterMetadata.Values.Where(x => x.IsRequired))
@@ -177,7 +169,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                     throw Invalid(runtime, $"layout.sorts[{i}].fieldCode", $"'{field.Field.Label}' cannot be used for sorting in this report.");
 
                 if (!dataset.SupportsTimeGrain(codeNorm, sort.TimeGrain))
-                    throw Invalid(runtime, $"layout.sorts[{i}].timeGrain", $"'{field.Field.Label}' cannot be sorted by {FormatTimeGrain(sort.TimeGrain)}.");
+                    throw Invalid(runtime, $"layout.sorts[{i}].timeGrain", $"'{field.Field.Label}' cannot be sorted by {FormatTimeGrain(sort.TimeGrain!.Value)}.");
 
                 ValidateFieldSortSelection(runtime, dataset, normalizedRowGroups, normalizedColumnGroups, detailFields, sort, codeNorm, i);
                 continue;
@@ -217,7 +209,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                 throw Invalid(runtime, $"{layoutPath}[{i}].fieldCode", $"'{field.Field.Label}' cannot be used as a {FormatAxisGroupingNoun(isColumnAxis)} in this report.");
 
             if (!dataset.SupportsTimeGrain(fieldCodeNorm, grouping.TimeGrain))
-                throw Invalid(runtime, $"{layoutPath}[{i}].timeGrain", $"'{field.Field.Label}' cannot be grouped by {FormatTimeGrain(grouping.TimeGrain)}.");
+                throw Invalid(runtime, $"{layoutPath}[{i}].timeGrain", $"'{field.Field.Label}' cannot be grouped by {FormatTimeGrain(grouping.TimeGrain!.Value)}.");
 
             normalized.Add(new NormalizedGrouping(
                 FieldCodeNorm: fieldCodeNorm,
@@ -250,7 +242,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                 used,
                 BuildOutputCode(group.FieldCodeNorm, group.TimeGrain),
                 $"layout.rowGroups[{i}].fieldCode",
-                SelectionKind.RowGrouping,
+                "row grouping",
                 FormatGroupedFieldLabel(group.Label, group.TimeGrain));
         }
 
@@ -262,7 +254,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                 used,
                 BuildOutputCode(group.FieldCodeNorm, group.TimeGrain),
                 $"layout.columnGroups[{i}].fieldCode",
-                SelectionKind.ColumnGrouping,
+                "column grouping",
                 FormatGroupedFieldLabel(group.Label, group.TimeGrain));
         }
 
@@ -270,31 +262,29 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         {
             var fieldCode = detailFields[i];
             var codeNorm = CodeNormalizer.NormalizeCodeNorm(fieldCode, nameof(fieldCode));
-            var label = dataset.TryGetField(codeNorm, out var field) ? field.Field.Label : ToFriendlyLabel(codeNorm);
+            var field = dataset.Fields[codeNorm];
             RegisterProjectedOutput(
                 runtime,
                 used,
                 codeNorm,
                 $"layout.detailFields[{i}]",
-                SelectionKind.DetailField,
-                label);
+                "detail field",
+                field.Field.Label);
         }
 
         for (var i = 0; i < measures.Count; i++)
         {
             var measure = measures[i];
             var codeNorm = CodeNormalizer.NormalizeCodeNorm(measure.MeasureCode, nameof(measure.MeasureCode));
-            var label = dataset.TryGetMeasure(codeNorm, out var datasetMeasure)
-                ? ResolveMeasureLabel(measure, datasetMeasure)
-                : ToFriendlyLabel(codeNorm);
+            var datasetMeasure = dataset.Measures[codeNorm];
 
             RegisterProjectedOutput(
                 runtime,
                 used,
                 BuildOutputCode(codeNorm, measure.Aggregation),
                 $"layout.measures[{i}].measureCode",
-                SelectionKind.Measure,
-                label);
+                "measure",
+                ResolveMeasureLabel(measure, datasetMeasure));
         }
     }
 
@@ -303,7 +293,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         IDictionary<string, ProjectedOutputSelection> used,
         string outputCode,
         string fieldPath,
-        SelectionKind selectionKind,
+        string selectionKind,
         string label)
     {
         if (used.TryGetValue(outputCode, out var existing))
@@ -311,10 +301,10 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
             throw Invalid(
                 runtime,
                 fieldPath,
-                $"'{label}' is already selected as a {FormatSelectionKind(existing.SelectionKind)} in the current layout. Choose it only once.");
+                $"'{label}' is already selected as a {existing.SelectionKind} in the current layout. Choose it only once.");
         }
 
-        used[outputCode] = new ProjectedOutputSelection(selectionKind, label);
+        used[outputCode] = new ProjectedOutputSelection(selectionKind);
     }
 
     private static string BuildOutputCode(string codeNorm, ReportTimeGrain? timeGrain)
@@ -386,7 +376,8 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
     {
         var groups = sort.AppliesToColumnAxis ? columnGroups : rowGroups;
         var axisLabel = sort.AppliesToColumnAxis ? "column" : "row";
-        var fieldLabel = dataset.TryGetField(fieldCodeNorm, out var field) ? field.Field.Label : ToFriendlyLabel(fieldCodeNorm);
+        var field = dataset.Fields[fieldCodeNorm];
+        var fieldLabel = field.Field.Label;
         var explicitGroupKey = NormalizeOptional(sort.GroupKey);
 
         if (explicitGroupKey is not null)
@@ -490,10 +481,10 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
     private static string ResolveFieldLabel(
         string fieldCode,
         ReportDatasetDefinition dataset,
-        IReadOnlyDictionary<string, ReportFilterFieldDto>? filterMetadata = null)
+        IReadOnlyDictionary<string, ReportFilterFieldDto> filterMetadata)
     {
         var codeNorm = CodeNormalizer.NormalizeCodeNorm(fieldCode, nameof(fieldCode));
-        if (filterMetadata is not null && filterMetadata.TryGetValue(codeNorm, out var filter))
+        if (filterMetadata.TryGetValue(codeNorm, out var filter))
             return ResolveFilterLabel(filter);
 
         if (dataset.TryGetField(codeNorm, out var field))
@@ -511,31 +502,15 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         => isColumnAxis ? "column grouping" : "row grouping";
 
     private static string FormatGroupedFieldLabel(string fieldLabel, ReportTimeGrain? timeGrain)
-        => timeGrain is null ? fieldLabel : $"{fieldLabel} ({FormatTimeGrain(timeGrain)})";
+        => timeGrain is null ? fieldLabel : $"{fieldLabel} ({FormatTimeGrain(timeGrain.Value)})";
 
-    private static string FormatTimeGrain(ReportTimeGrain? timeGrain)
-        => timeGrain?.ToString() ?? "this time bucket";
+    private static string FormatTimeGrain(ReportTimeGrain timeGrain) => timeGrain.ToString();
 
-    private static string FormatAggregation(ReportAggregationKind aggregation)
-        => aggregation.ToString();
-
-    private static string FormatSelectionKind(SelectionKind selectionKind)
-        => selectionKind switch
-        {
-            SelectionKind.RowGrouping => "row grouping",
-            SelectionKind.ColumnGrouping => "column grouping",
-            SelectionKind.DetailField => "detail field",
-            SelectionKind.Measure => "measure",
-            _ => "selection"
-        };
+    private static string FormatAggregation(ReportAggregationKind aggregation) => aggregation.ToString();
 
     private static string ToFriendlyLabel(string code)
     {
-        var trimmed = code?.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed))
-            return "Value";
-
-        var parts = trimmed
+        var parts = code.Trim()
             .Replace("__", "_", StringComparison.Ordinal)
             .Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
@@ -548,7 +523,6 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
         return string.Join(' ', parts.Select(part => part.Length switch
         {
-            0 => string.Empty,
             1 => char.ToUpperInvariant(part[0]).ToString(),
             _ => char.ToUpperInvariant(part[0]) + part[1..]
         }));
@@ -587,13 +561,5 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         int OriginalIndex,
         bool IsColumnAxis);
 
-    private sealed record ProjectedOutputSelection(SelectionKind SelectionKind, string Label);
-
-    private enum SelectionKind
-    {
-        RowGrouping = 1,
-        ColumnGrouping = 2,
-        DetailField = 3,
-        Measure = 4
-    }
+    private sealed record ProjectedOutputSelection(string SelectionKind);
 }

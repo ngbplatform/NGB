@@ -29,7 +29,7 @@ public sealed class CrmCommandPaletteSearchService(
             return new CommandPaletteSearchResponseDto([]);
 
         var scope = NormalizeScope(request.Scope);
-        var limit = Math.Clamp(request.Limit <= 0 ? 20 : request.Limit, 1, 30);
+        var limit = Math.Min(request.Limit <= 0 ? 20 : request.Limit, 30);
         var groups = new List<CommandPaletteGroupDto>(capacity: 3);
 
         if (scope is null or DocumentsCode)
@@ -39,11 +39,9 @@ public sealed class CrmCommandPaletteSearchService(
             await AddGroupAsync(groups, CatalogsCode, () => SearchCatalogsAsync(query, limit, request.Context, ct), ct);
 
         if (scope is null or ReportsCode)
-            await AddGroupAsync(groups, ReportsCode, () => SearchReportsAsync(query, limit, request.Context, ct), ct);
+            await AddGroupAsync(groups, ReportsCode, () => SearchReportsAsync(query, limit, ct), ct);
 
-        return new CommandPaletteSearchResponseDto(groups
-            .OrderBy(static group => GroupOrder(group.Code))
-            .ToArray());
+        return new CommandPaletteSearchResponseDto(groups);
     }
 
     private async Task AddGroupAsync(
@@ -55,7 +53,7 @@ public sealed class CrmCommandPaletteSearchService(
         try
         {
             var group = await action();
-            if (group is not null && group.Items.Count > 0)
+            if (group is not null)
                 groups.Add(group);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -136,15 +134,11 @@ public sealed class CrmCommandPaletteSearchService(
         return items.Length == 0 ? null : new CommandPaletteGroupDto(CatalogsCode, "Catalogs", items);
     }
 
-    private async Task<CommandPaletteGroupDto?> SearchReportsAsync(
-        string query,
-        int limit,
-        CommandPaletteSearchContextDto? context,
-        CancellationToken ct)
+    private async Task<CommandPaletteGroupDto?> SearchReportsAsync(string query, int limit, CancellationToken ct)
     {
         var definitions = await GetReportDefinitionsAsync(ct);
         var items = definitions
-            .Select(definition => CreateReportItem(query, definition, context))
+            .Select(definition => CreateReportItem(query, definition))
             .Where(static item => item is not null)
             .Select(static item => item!)
             .OrderByDescending(static item => item.Score)
@@ -163,9 +157,7 @@ public sealed class CrmCommandPaletteSearchService(
     {
         var number = document.Number?.Trim();
         var display = document.Display?.Trim();
-        var title = number?.Length > 0
-            ? $"{descriptor.Label} {number}"
-            : $"{descriptor.Label} {display ?? document.Id.ToString()}";
+        var title = $"{descriptor.Label} {ResolveDocumentTitleValue(number, display, document.Id)}";
 
         var score = Score(query, number, display, descriptor.Code, descriptor.Aliases);
         if (score <= 0m)
@@ -221,10 +213,7 @@ public sealed class CrmCommandPaletteSearchService(
             Score: decimal.Round(score, 4));
     }
 
-    private static CommandPaletteResultItemDto? CreateReportItem(
-        string query,
-        ReportDefinitionDto definition,
-        CommandPaletteSearchContextDto? context)
+    private static CommandPaletteResultItemDto? CreateReportItem(string query, ReportDefinitionDto definition)
     {
         var group = definition.Group?.Trim();
         var description = definition.Description?.Trim();
@@ -232,17 +221,13 @@ public sealed class CrmCommandPaletteSearchService(
         if (score <= 0m)
             return null;
 
-        if (string.Equals(context?.EntityType, "report", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(context?.EntityId?.ToString(), definition.ReportCode, StringComparison.OrdinalIgnoreCase))
-        {
-            score += 0.02m;
-        }
+        var subtitle = string.Join(" · ", new[] { group, description }.Where(static x => !string.IsNullOrWhiteSpace(x)));
 
         return new CommandPaletteResultItemDto(
             Key: $"report:{definition.ReportCode}",
             Kind: "report",
             Title: definition.Name,
-            Subtitle: string.Join(" · ", new[] { group, description }.Where(static x => !string.IsNullOrWhiteSpace(x))),
+            Subtitle: subtitle.Length > 0 ? subtitle : "Report",
             Icon: ResolveReportIcon(definition.ReportCode),
             Badge: "Report",
             Route: $"/reports/{definition.ReportCode}",
@@ -358,17 +343,16 @@ public sealed class CrmCommandPaletteSearchService(
             _ => status.ToString()
         };
 
-    private static int GroupOrder(string code)
-        => code switch
-        {
-            "actions" => 0,
-            "go-to" => 1,
-            DocumentsCode => 2,
-            CatalogsCode => 3,
-            ReportsCode => 4,
-            "recent" => 5,
-            _ => 99
-        };
+    private static string ResolveDocumentTitleValue(string? number, string? display, Guid id)
+    {
+        if (!string.IsNullOrEmpty(number))
+            return number;
+
+        if (!string.IsNullOrEmpty(display))
+            return display;
+
+        return id.ToString();
+    }
 
     private static decimal Score(string query, params string?[] candidates)
     {
@@ -413,16 +397,9 @@ public sealed class CrmCommandPaletteSearchService(
         if (normalizedCandidate.StartsWith(normalizedQuery, StringComparison.Ordinal))
             return 0.92m;
 
-        if (normalizedCandidate.Contains(normalizedQuery, StringComparison.Ordinal))
-            return 0.78m;
-
-        foreach (var token in normalizedCandidate.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (token.StartsWith(normalizedQuery, StringComparison.Ordinal))
-                return 0.72m;
-        }
-
-        return 0m;
+        return normalizedCandidate.Contains(normalizedQuery, StringComparison.Ordinal)
+            ? 0.78m
+            : 0m;
     }
 
     private static string Normalize(string? value)

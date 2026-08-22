@@ -61,6 +61,23 @@ public sealed class ReportDefinitionCatalog_And_LayoutValidator_P0Tests
     }
 
     [Fact]
+    public async Task DatasetCatalog_CoversNullSourcesNullSourceNullDatasetsAndGetAll()
+    {
+        Action missingSources = () => new ReportDatasetCatalog(null!);
+        missingSources.Should().Throw<NgbConfigurationViolationException>();
+
+        var sut = new ReportDatasetCatalog([
+            null!,
+            new NullDatasetSource(),
+            new StubDatasetSource(BuildLedgerDataset("z.dataset")),
+            new StubDatasetSource(BuildLedgerDataset("a.dataset"))
+        ]);
+
+        (await sut.GetAllDatasetsAsync(default)).Select(dataset => dataset.DatasetCode)
+            .Should().Equal("a.dataset", "z.dataset");
+    }
+
+    [Fact]
     public void DatasetDefinition_Rejects_Time_Grains_On_Non_Time_Field()
     {
         var dataset = new ReportDatasetDto(
@@ -646,6 +663,11 @@ public sealed class ReportDefinitionCatalog_And_LayoutValidator_P0Tests
     private sealed class StubDatasetSource(ReportDatasetDto dataset) : IReportDatasetSource
     {
         public IReadOnlyList<ReportDatasetDto> GetDatasets() => [dataset];
+    }
+
+    private sealed class NullDatasetSource : IReportDatasetSource
+    {
+        public IReadOnlyList<ReportDatasetDto> GetDatasets() => null!;
     }
 
     private sealed class StubPlanExecutor : IReportPlanExecutor

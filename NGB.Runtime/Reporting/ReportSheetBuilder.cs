@@ -101,7 +101,7 @@ public sealed class ReportSheetBuilder
         ReportQueryPlan plan,
         ReportDataPage page)
     {
-        var sheet = page.PrebuiltSheet ?? throw new NgbInvariantViolationException("Reporting sheet builder expected a prebuilt sheet instance.");
+        var sheet = page.PrebuiltSheet!;
         var meta = sheet.Meta;
         var diagnostics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (meta?.Diagnostics is not null)
@@ -161,12 +161,9 @@ public sealed class ReportSheetBuilder
             ["headerRows"] = pivot.HeaderRows.Count.ToString()
         };
 
-        if (pivot.Diagnostics is not null)
+        foreach (var pair in pivot.Diagnostics)
         {
-            foreach (var pair in pivot.Diagnostics)
-            {
-                diagnostics[pair.Key] = pair.Value;
-            }
+            diagnostics[pair.Key] = pair.Value;
         }
 
         if (page.Diagnostics is not null)

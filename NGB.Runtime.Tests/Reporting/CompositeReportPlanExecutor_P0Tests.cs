@@ -77,6 +77,56 @@ public sealed class CompositeReportPlanExecutor_P0Tests
             .WithMessage("*accounting.trial_balance*registered more than once*");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_NullDefinition_ThrowsArgumentRequired()
+    {
+        var sut = new CompositeReportPlanExecutor(new StubTabularExecutor(), []);
+
+        var action = () => Execute(sut, null!, new ReportExecutionRequestDto());
+
+        await action.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NullRequest_ThrowsArgumentRequired()
+    {
+        var sut = new CompositeReportPlanExecutor(new StubTabularExecutor(), []);
+
+        var action = () => Execute(sut, BuildDefinition("report"), null!);
+
+        await action.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WithoutMatchingSpecializedOrTabularExecutor_ThrowsConfigurationError()
+    {
+        var sut = new CompositeReportPlanExecutor(null, []);
+
+        var action = () => Execute(sut, BuildDefinition("report"), new ReportExecutionRequestDto());
+
+        await action.Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*requires a tabular plan executor*");
+    }
+
+    private static Task<ReportDataPage> Execute(
+        CompositeReportPlanExecutor sut,
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request)
+        => sut.ExecuteAsync(
+            definition,
+            request,
+            "report",
+            null,
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            new ReportPlanPaging(0, 10),
+            default);
+
     private static ReportDefinitionDto BuildDefinition(string reportCode, ReportExecutionMode mode = ReportExecutionMode.Canonical)
         => new(
             ReportCode: reportCode,

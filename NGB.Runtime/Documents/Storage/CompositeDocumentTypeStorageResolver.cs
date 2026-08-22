@@ -12,20 +12,23 @@ namespace NGB.Runtime.Documents.Storage;
 /// This keeps existing vertical modules working while enabling a module to bind typed storage
 /// in its definition (and, optionally, override the storage in provider modules via Extend*).
 /// </summary>
-public sealed class CompositeDocumentTypeStorageResolver(
-    DefinitionsRegistry definitions,
-    IEnumerable<IDocumentTypeStorage> storages)
-    : IDocumentTypeStorageResolver
+public sealed class CompositeDocumentTypeStorageResolver : IDocumentTypeStorageResolver
 {
-    private readonly DefinitionsRegistry _definitions = definitions ?? throw new NgbArgumentRequiredException(nameof(definitions));
-    private readonly IReadOnlyList<IDocumentTypeStorage> _allStorages = DefinitionRuntimeBindingHelpers.ToReadOnlyList(
-        storages ?? throw new NgbArgumentRequiredException(nameof(storages)));
+    private readonly DefinitionsRegistry _definitions;
+    private readonly IReadOnlyList<IDocumentTypeStorage> _allStorages;
     private readonly Dictionary<string, IDocumentTypeStorage> _boundStorages = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _boundStoragesGate = new();
-    private readonly InMemoryDocumentTypeStorageResolver _fallback = new(
-        BuildFallbackStorages(
-            definitions ?? throw new NgbArgumentRequiredException(nameof(definitions)),
-            DefinitionRuntimeBindingHelpers.ToReadOnlyList(storages ?? throw new NgbArgumentRequiredException(nameof(storages)))));
+    private readonly InMemoryDocumentTypeStorageResolver _fallback;
+
+    public CompositeDocumentTypeStorageResolver(
+        DefinitionsRegistry definitions,
+        IEnumerable<IDocumentTypeStorage> storages)
+    {
+        _definitions = definitions ?? throw new NgbArgumentRequiredException(nameof(definitions));
+        _allStorages = DefinitionRuntimeBindingHelpers.ToReadOnlyList(
+            storages ?? throw new NgbArgumentRequiredException(nameof(storages)));
+        _fallback = new InMemoryDocumentTypeStorageResolver(BuildFallbackStorages(_definitions, _allStorages));
+    }
 
     public IDocumentTypeStorage? TryResolve(string typeCode)
     {
@@ -40,12 +43,9 @@ public sealed class CompositeDocumentTypeStorageResolver(
 
     private IDocumentTypeStorage ResolveBoundStorage(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        if (_boundStorages.TryGetValue(def.TypeCode, out var cached))
-            return cached;
-
         lock (_boundStoragesGate)
         {
-            if (_boundStorages.TryGetValue(def.TypeCode, out cached))
+            if (_boundStorages.TryGetValue(def.TypeCode, out var cached))
                 return cached;
 
             var resolved = BuildBoundStorage(def);
@@ -56,8 +56,7 @@ public sealed class CompositeDocumentTypeStorageResolver(
 
     private IDocumentTypeStorage BuildBoundStorage(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        var storageType = def.TypedStorageType
-            ?? throw new NgbInvariantViolationException($"Document type '{def.TypeCode}' has no typed storage binding.");
+        var storageType = def.TypedStorageType!;
 
         if (!typeof(IDocumentTypeStorage).IsAssignableFrom(storageType))
         {
@@ -91,7 +90,7 @@ public sealed class CompositeDocumentTypeStorageResolver(
                 {
                     ["typeCode"] = def.TypeCode,
                     ["storageType"] = storageType.FullName,
-                    ["matches"] = matches.Select(storage => storage.GetType().FullName ?? storage.GetType().Name).ToArray()
+                    ["matches"] = matches.Select(storage => storage.GetType().ToString()).ToArray()
                 });
         }
 

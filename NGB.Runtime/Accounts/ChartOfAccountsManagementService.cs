@@ -27,7 +27,6 @@ public sealed class ChartOfAccountsManagementService(
             throw new NgbArgumentRequiredException(nameof(request));
         
         var acc = BuildAccount(
-            id: null,
             request.Code,
             request.Name,
             request.Type,
@@ -297,7 +296,6 @@ public sealed class ChartOfAccountsManagementService(
     }
 
     private static Account BuildAccount(
-        Guid? id,
         string code,
         string name,
         AccountType type,
@@ -308,7 +306,7 @@ public sealed class ChartOfAccountsManagementService(
         CashFlowRole? cashFlowRole,
         string? cashFlowLineCode)
     {
-        var resolvedId = id ?? Guid.CreateVersion7();
+        var resolvedId = Guid.CreateVersion7();
         var rules = BuildDimensionRulesFromRequest(resolvedId, dimensionRules);
 
         return new Account(

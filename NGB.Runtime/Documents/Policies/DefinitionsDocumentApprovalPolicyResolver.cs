@@ -10,13 +10,15 @@ public sealed class DefinitionsDocumentApprovalPolicyResolver(
     IEnumerable<IDocumentApprovalPolicy> policies)
     : IDocumentApprovalPolicyResolver
 {
-    private readonly IReadOnlyList<IDocumentApprovalPolicy> _allPolicies = DefinitionRuntimeBindingHelpers.ToReadOnlyList(policies);
+    private readonly DefinitionsRegistry _definitions = definitions ?? throw new NgbArgumentRequiredException(nameof(definitions));
+    private readonly IReadOnlyList<IDocumentApprovalPolicy> _allPolicies = DefinitionRuntimeBindingHelpers.ToReadOnlyList(
+        policies ?? throw new NgbArgumentRequiredException(nameof(policies)));
     private readonly Dictionary<string, IDocumentApprovalPolicy> _policiesByTypeCode = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _policiesGate = new();
 
     public IDocumentApprovalPolicy? Resolve(string typeCode)
     {
-        if (!definitions.TryGetDocument(typeCode, out var def))
+        if (!_definitions.TryGetDocument(typeCode, out var def))
             return null;
 
         if (def.ApprovalPolicyType is null)
@@ -27,12 +29,9 @@ public sealed class DefinitionsDocumentApprovalPolicyResolver(
 
     private IDocumentApprovalPolicy ResolvePolicy(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        if (_policiesByTypeCode.TryGetValue(def.TypeCode, out var cached))
-            return cached;
-
         lock (_policiesGate)
         {
-            if (_policiesByTypeCode.TryGetValue(def.TypeCode, out cached))
+            if (_policiesByTypeCode.TryGetValue(def.TypeCode, out var cached))
                 return cached;
 
             var resolved = BuildPolicy(def);
@@ -43,8 +42,7 @@ public sealed class DefinitionsDocumentApprovalPolicyResolver(
 
     private IDocumentApprovalPolicy BuildPolicy(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        var policyType = def.ApprovalPolicyType
-            ?? throw new NgbConfigurationViolationException($"Document '{def.TypeCode}' has no approval policy binding.");
+        var policyType = def.ApprovalPolicyType!;
 
         if (!typeof(IDocumentApprovalPolicy).IsAssignableFrom(policyType))
         {

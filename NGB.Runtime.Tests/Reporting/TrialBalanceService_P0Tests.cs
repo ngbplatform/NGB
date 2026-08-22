@@ -12,6 +12,21 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class TrialBalanceService_P0Tests
 {
     [Fact]
+    public async Task GetAsync_WhenSnapshotIsEmpty_ReturnsEmptyWithoutResolvingDimensions()
+    {
+        var dimensionReader = new CountingDimensionSetReader();
+        var service = new TrialBalanceService(
+            new StubTrialBalanceSnapshotReader(new TrialBalanceSnapshot([])),
+            dimensionReader,
+            new StubDimensionValueEnrichmentReader());
+
+        var rows = await service.GetAsync(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+
+        rows.Should().BeEmpty();
+        dimensionReader.CallCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task GetAsync_Materializes_AggregatedSnapshotRows()
     {
         var cashId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -102,6 +117,24 @@ public sealed class TrialBalanceService_P0Tests
         revenue.ClosingBalance.Should().Be(-150m);
     }
 
+    [Fact]
+    public async Task GetAsync_WhenDimensionSetReaderOmitsRequestedId_UsesEmptyBag()
+    {
+        var dimensionSetId = Guid.CreateVersion7();
+        var service = new TrialBalanceService(
+            new StubTrialBalanceSnapshotReader(new TrialBalanceSnapshot([
+                new TrialBalanceSnapshotRow(Guid.CreateVersion7(), "1000", dimensionSetId, 1m, 2m, 3m)
+            ])),
+            new EmptyDimensionSetReader(),
+            new StubDimensionValueEnrichmentReader());
+
+        var rows = await service.GetAsync(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
+
+        rows.Should().ContainSingle();
+        rows[0].Dimensions.Should().BeSameAs(DimensionBag.Empty);
+        rows[0].DimensionValueDisplays.Should().BeEmpty();
+    }
+
     private sealed class StubTrialBalanceSnapshotReader(TrialBalanceSnapshot snapshot) : ITrialBalanceSnapshotReader
     {
         public Task<TrialBalanceSnapshot> GetAsync(
@@ -131,5 +164,27 @@ public sealed class TrialBalanceService_P0Tests
             IReadOnlyCollection<DimensionValueKey> keys,
             CancellationToken ct = default)
             => Task.FromResult<IReadOnlyDictionary<DimensionValueKey, string>>(new Dictionary<DimensionValueKey, string>());
+    }
+
+    private sealed class EmptyDimensionSetReader : IDimensionSetReader
+    {
+        public Task<IReadOnlyDictionary<Guid, DimensionBag>> GetBagsByIdsAsync(
+            IReadOnlyCollection<Guid> dimensionSetIds,
+            CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, DimensionBag>>(
+                new Dictionary<Guid, DimensionBag>());
+    }
+
+    private sealed class CountingDimensionSetReader : IDimensionSetReader
+    {
+        public int CallCount { get; private set; }
+
+        public Task<IReadOnlyDictionary<Guid, DimensionBag>> GetBagsByIdsAsync(
+            IReadOnlyCollection<Guid> dimensionSetIds,
+            CancellationToken ct = default)
+        {
+            CallCount++;
+            return Task.FromResult<IReadOnlyDictionary<Guid, DimensionBag>>(new Dictionary<Guid, DimensionBag>());
+        }
     }
 }
