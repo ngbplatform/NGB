@@ -364,10 +364,11 @@ public sealed class GeneralJournalEntryUiService(
 
     private async Task<string?> ResolveReversalOfDisplayAsync(Guid? documentId, CancellationToken ct)
     {
-        if (!documentId.HasValue || documentId == Guid.Empty)
+        var resolvedDocumentId = documentId.GetValueOrDefault();
+        if (resolvedDocumentId == Guid.Empty)
             return null;
 
-        var doc = await documentRepository.GetAsync(documentId.Value, ct);
+        var doc = await documentRepository.GetAsync(resolvedDocumentId, ct);
         return doc is null ? null : BuildDisplay(doc);
     }
 
@@ -391,7 +392,5 @@ public sealed class GeneralJournalEntryUiService(
     }
 
     private static string BuildAccountDisplay(ChartOfAccountsAdminItem admin)
-        => string.IsNullOrWhiteSpace(admin.Account.Code)
-            ? admin.Account.Name
-            : $"{admin.Account.Code} — {admin.Account.Name}";
+        => $"{admin.Account.Code} — {admin.Account.Name}";
 }

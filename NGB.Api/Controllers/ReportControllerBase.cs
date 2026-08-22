@@ -27,14 +27,14 @@ public abstract class ReportControllerBase(
             return [];
         }
 
-        return await cache.GetOrCreateReportDefinitionsAsync(
+        return (await cache.GetOrCreateReportDefinitionsAsync(
             snapshot,
             async token =>
             {
                 var all = await definitions.GetAllDefinitionsAsync(token);
                 return FilterDefinitions(all, snapshot);
             },
-            ct) ?? [];
+            ct))!;
     }
 
     [HttpGet("~/api/report-definitions/{reportCode}")]

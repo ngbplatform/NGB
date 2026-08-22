@@ -227,6 +227,18 @@ public sealed class CommandPaletteSearchServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task SearchAsync_NonPositiveLimit_UsesDefaultBoundary()
+    {
+        using var fixture = new Fixture();
+
+        var result = await fixture.Sut.SearchAsync(
+            new CommandPaletteSearchRequestDto("x", "unknown", Limit: 0),
+            CancellationToken.None);
+
+        result.Groups.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task SearchAsync_SeparatorOnlyQuery_CoversEveryProviderBoundary()
     {
         using var fixture = new Fixture();

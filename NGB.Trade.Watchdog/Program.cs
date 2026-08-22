@@ -10,3 +10,5 @@ app.UseNgbWatchdog();
 app.MapNgbWatchdog();
 
 app.Run();
+
+public partial class Program;

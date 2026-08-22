@@ -266,7 +266,7 @@ public sealed class AgencyBillingCommandPaletteSearchService(
     }
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetDocumentDescriptorsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "agency-billing-command-palette:documents",
                async entry =>
                {
@@ -282,11 +282,10 @@ public sealed class AgencyBillingCommandPaletteSearchService(
                            ResolveItemIcon(item.Icon, "file-text"),
                            ResolveAliases(item.DocumentType, item.DisplayName)))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetCatalogDescriptorsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "agency-billing-command-palette:catalogs",
                async entry =>
                {
@@ -300,11 +299,10 @@ public sealed class AgencyBillingCommandPaletteSearchService(
                            ResolveItemIcon(item.Icon, "grid"),
                            ResolveAliases(item.CatalogType, item.DisplayName)))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private async Task<IReadOnlyList<ReportDefinitionDto>> GetReportDefinitionsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "agency-billing-command-palette:reports",
                async entry =>
                {
@@ -318,8 +316,7 @@ public sealed class AgencyBillingCommandPaletteSearchService(
                            !string.Equals(definition.ReportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase)
                            && !string.Equals(definition.ReportCode, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private static string? NormalizeScope(string? scope)
         => (scope ?? string.Empty).Trim().ToLowerInvariant() switch

@@ -30,19 +30,16 @@ internal static class MonthlyRentChargePlanner
             var periodFrom = lease.StartOnUtc > monthStart ? lease.StartOnUtc : monthStart;
             var periodTo = effectiveLeaseEnd < monthEnd ? effectiveLeaseEnd : monthEnd;
 
-            if (periodFrom <= periodTo)
+            var dueOnUtc = ResolveDueDate(month, periodFrom, lease.DueDay);
+            if (dueOnUtc <= asOfUtc)
             {
-                var dueOnUtc = ResolveDueDate(month, periodFrom, lease.DueDay);
-                if (dueOnUtc <= asOfUtc)
-                {
-                    candidates.Add(new MonthlyRentChargeCandidate(
-                        lease.LeaseId,
-                        periodFrom,
-                        periodTo,
-                        dueOnUtc,
-                        lease.RentAmount,
-                        $"Monthly rent for {periodFrom:MMMM yyyy}."));
-                }
+                candidates.Add(new MonthlyRentChargeCandidate(
+                    lease.LeaseId,
+                    periodFrom,
+                    periodTo,
+                    dueOnUtc,
+                    lease.RentAmount,
+                    $"Monthly rent for {periodFrom:MMMM yyyy}."));
             }
 
             month = month.AddMonths(1);

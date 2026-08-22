@@ -1,5 +1,8 @@
 using System.Reflection;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 using Moq;
 using NGB.Application.Abstractions.Services;
 using NGB.Api.Controllers;
@@ -67,6 +70,80 @@ public sealed class ReportControllerBaseEdgeCoverageTests
         (await sut.GetAllDefinitions(default)).Should().BeEmpty();
 
         access.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetAllDefinitions_AllAccessPaths_FilterAndReturnDefinitions()
+    {
+        var cases = new[]
+        {
+            (Snapshot(Permission(NgbResourceKinds.Report, "direct", NgbPermissionActions.View)), "direct"),
+            (Snapshot(Permission(NgbResourceKinds.Report, "direct", NgbPermissionActions.Execute)), "direct"),
+            (Snapshot(Permission(
+                NgbResourceKinds.Admin,
+                NgbPermissionResources.PostingLog,
+                NgbPermissionActions.View)), AccountingReportCodes.PostingLog)
+        };
+
+        foreach (var (snapshot, expectedCode) in cases)
+        {
+            using var memory = new MemoryCache(new MemoryCacheOptions());
+            var access = new Mock<INgbAccessChecker>();
+            access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(snapshot);
+            var definitions = new Mock<IReportDefinitionProvider>();
+            definitions.Setup(x => x.GetAllDefinitionsAsync(It.IsAny<CancellationToken>())).ReturnsAsync(
+            [
+                new ReportDefinitionDto("direct", "Direct"),
+                new ReportDefinitionDto(AccountingReportCodes.PostingLog, "Posting log"),
+                new ReportDefinitionDto("forbidden", "Forbidden")
+            ]);
+            var sut = new TestReportController(
+                access.Object,
+                definitions: definitions.Object,
+                cache: SecurityCache(memory));
+
+            var result = await sut.GetAllDefinitions(CancellationToken.None);
+
+            result.Select(x => x.ReportCode).Should().Equal(expectedCode);
+        }
+    }
+
+    [Fact]
+    public async Task ExportXlsx_WithAndWithoutMetadata_ForwardsTitleAndBuildsSafeFileName()
+    {
+        var snapshot = Snapshot(Permission(
+            NgbResourceKinds.Report,
+            "trial-balance",
+            NgbPermissionActions.Export));
+        var access = new Mock<INgbAccessChecker>();
+        access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(snapshot);
+        var engine = new Mock<IReportEngine>();
+        engine.SetupSequence(x => x.ExecuteExportSheetAsync(
+                "trial-balance",
+                It.IsAny<ReportExportRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReportSheetDto([], [], Meta: null))
+            .ReturnsAsync(new ReportSheetDto([], [], new ReportSheetMetaDto("Trial Balance")));
+        var exports = new Mock<IReportExportService>();
+        exports.Setup(x => x.ExportXlsxAsync(
+                It.IsAny<ReportSheetDto>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([1, 2, 3]);
+        var sut = new TestReportController(
+            access.Object,
+            engine: engine.Object,
+            exports: exports.Object);
+
+        var withoutMeta = await sut.ExportXlsx("trial-balance", new ReportExportRequestDto(), CancellationToken.None);
+        var withMeta = await sut.ExportXlsx("trial-balance", new ReportExportRequestDto(), CancellationToken.None);
+
+        withoutMeta.Should().BeOfType<FileContentResult>().Which.FileDownloadName.Should().Be("trial-balance.xlsx");
+        withMeta.Should().BeOfType<FileContentResult>().Which.FileDownloadName.Should().Be("Trial-Balance.xlsx");
+        exports.Verify(x => x.ExportXlsxAsync(
+            It.IsAny<ReportSheetDto>(), null, It.IsAny<CancellationToken>()), Times.Once);
+        exports.Verify(x => x.ExportXlsxAsync(
+            It.IsAny<ReportSheetDto>(), "Trial Balance", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -191,12 +268,24 @@ public sealed class ReportControllerBaseEdgeCoverageTests
         => typeof(ReportControllerBase).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
            ?? throw new MissingMethodException(typeof(ReportControllerBase).FullName, methodName);
 
-    private sealed class TestReportController(INgbAccessChecker access)
+    private static NgbSecurityCache SecurityCache(IMemoryCache memory)
+    {
+        var options = new Mock<IOptionsMonitor<NgbSecurityCacheOptions>>();
+        options.SetupGet(x => x.CurrentValue).Returns(new NgbSecurityCacheOptions());
+        return new NgbSecurityCache(memory, options.Object);
+    }
+
+    private sealed class TestReportController(
+        INgbAccessChecker access,
+        IReportDefinitionProvider? definitions = null,
+        IReportEngine? engine = null,
+        IReportExportService? exports = null,
+        NgbSecurityCache? cache = null)
         : ReportControllerBase(
-            Mock.Of<IReportDefinitionProvider>(),
-            Mock.Of<IReportEngine>(),
+            definitions ?? Mock.Of<IReportDefinitionProvider>(),
+            engine ?? Mock.Of<IReportEngine>(),
             Mock.Of<IReportVariantService>(),
-            Mock.Of<IReportExportService>(),
+            exports ?? Mock.Of<IReportExportService>(),
             access,
-            null!);
+            cache ?? null!);
 }

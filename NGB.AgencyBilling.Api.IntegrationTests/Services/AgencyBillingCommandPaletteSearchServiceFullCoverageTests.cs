@@ -213,6 +213,26 @@ public sealed class AgencyBillingCommandPaletteSearchServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task SearchAsync_NonPositiveLimit_UsesDefault_AndSkipsNonMatchingCatalogHits()
+    {
+        using var fixture = new Fixture();
+        fixture.SetCatalogMetadata(CatalogMetadata(AgencyBillingCodes.Client));
+        fixture.SetCatalogHits(new CatalogLookupDto(Guid.CreateVersion7(), AgencyBillingCodes.Client, "unrelated", false));
+
+        var result = await fixture.Sut.SearchAsync(
+            new CommandPaletteSearchRequestDto("definitely-missing", "catalogs", Limit: 0),
+            CancellationToken.None);
+
+        result.Groups.Should().BeEmpty();
+        fixture.Catalogs.Verify(x => x.LookupAcrossTypesAsync(
+            It.IsAny<IReadOnlyList<string>>(),
+            "definitely-missing",
+            6,
+            true,
+            CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
     public async Task SearchAsync_ProviderFailureIsIsolatedAndUncancelledCancellationIsLogged()
     {
         using var fixture = new Fixture();

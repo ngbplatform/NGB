@@ -811,6 +811,35 @@ public sealed class ReferencePayloadEnricherTests
             .WithMessage("*Unsupported lookup source metadata type*");
     }
 
+    [Fact]
+    public async Task EnrichCatalogItemsAsync_FieldWithTrailingSeparatorBeforeId_IsNotMisclassifiedAsDocument()
+    {
+        const string ownerCode = "cat.naming_boundary";
+        var documentTypes = new DocumentTypeRegistry([SimpleDocumentMetadata("doc.unrelated")]);
+        var sut = new ReferencePayloadEnricher(
+            new CatalogTypeRegistry(),
+            documentTypes,
+            Mock.Of<ICatalogEnrichmentReader>(),
+            Mock.Of<IDocumentDisplayReader>(),
+            Mock.Of<IAccountLookupReader>(),
+            Mock.Of<IOperationalRegisterRepository>());
+        IReadOnlyList<CatalogItemDto> items =
+        [
+            CatalogItem(new RecordPayload(new Dictionary<string, JsonElement>
+            {
+                ["source__id"] = JsonSerializer.SerializeToElement(Guid.NewGuid())
+            }))
+        ];
+
+        var result = await sut.EnrichCatalogItemsAsync(
+            new CatalogHeadDescriptor(ownerCode, "cat_naming_boundary", "name", [new("source__id", ColumnType.Guid)]),
+            ownerCode,
+            items,
+            CancellationToken.None);
+
+        result.Should().BeSameAs(items);
+    }
+
     private static CatalogTypeMetadata BuildOwnerCatalogMetadata()
         => new(
             CatalogCode: OwnerCatalogCode,

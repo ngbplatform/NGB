@@ -22,6 +22,14 @@ public sealed class CanonicalReportExecutionHelperFullCoverageTests
         CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(
             definition, Request(parameters: new Dictionary<string, string> { ["optional_date"] = "  " }), "optional_date").Should().BeNull();
 
+        var missingRequired = () => CanonicalReportExecutionHelper.GetRequiredDateOnlyParameter(
+            definition, Request(parameters: new Dictionary<string, string>()), "from_utc");
+        missingRequired.Should().Throw<ReportLayoutValidationException>().WithMessage("*From*required*");
+
+        var blankRequired = () => CanonicalReportExecutionHelper.GetRequiredDateOnlyParameter(
+            definition, Request(parameters: new Dictionary<string, string> { ["from_utc"] = " \t " }), "from_utc");
+        blankRequired.Should().Throw<ReportLayoutValidationException>().WithMessage("*From*required*");
+
         var invalidRequired = () => CanonicalReportExecutionHelper.GetRequiredDateOnlyParameter(
             definition, Request(parameters: new Dictionary<string, string> { ["from_utc"] = "2026-02-30" }), "from_utc");
         invalidRequired.Should().Throw<ReportLayoutValidationException>().WithMessage("*valid date*From*");

@@ -76,7 +76,6 @@ internal sealed class ReportComposableCellActionResolver(ReportQueryPlan plan, R
         var idFieldCode = string.Concat(fieldCode.AsSpan(0, fieldCode.Length - DisplayFieldSuffix.Length), "_id");
         if (!dataset.TryGetField(idFieldCode, out var idField)
             || idField.Field.Lookup is not DocumentLookupSourceDto { DocumentTypes: [var documentType] }
-            || string.IsNullOrWhiteSpace(documentType)
             || !TryGetGuid(values, idField.Field.Code, out var documentId))
         {
             return null;

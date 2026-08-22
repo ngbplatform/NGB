@@ -41,6 +41,21 @@ public sealed class PartyCatalogUpsertValidatorFullCoverageTests
         await ((Func<Task>)(() => validator.ValidateUpsertAsync(Context(PropertyManagementCodes.Party,
                 new Dictionary<string, object?> { ["is_tenant"] = false }), default)))
             .Should().ThrowAsync<PartyValidationException>();
+
+        await validator.ValidateUpsertAsync(Context(PropertyManagementCodes.Party,
+            new Dictionary<string, object?>
+            {
+                ["is_tenant"] = JsonSerializer.SerializeToElement<object?>(null),
+                ["is_vendor"] = false
+            }), default);
+
+        await ((Func<Task>)(() => validator.ValidateUpsertAsync(Context(PropertyManagementCodes.Party,
+                new Dictionary<string, object?>
+                {
+                    ["is_tenant"] = false,
+                    ["is_vendor"] = JsonSerializer.SerializeToElement<object?>(null)
+                }), default)))
+            .Should().ThrowAsync<PartyValidationException>();
     }
 
     [Fact]

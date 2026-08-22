@@ -152,4 +152,109 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
 
         drafts.Verify(x => x.DeleteDraftAsync(draftId, true, It.IsAny<CancellationToken>()), Times.Once);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenCancellationArrivesDuringDraftCreation_RethrowsCancellation()
+    {
+        var asOfUtc = new DateOnly(2026, 4, 10);
+        using var cancellation = new CancellationTokenSource();
+        var uow = TransactionalUnitOfWork();
+        var reader = RentChargeReader(asOfUtc, Guid.NewGuid());
+        var documents = new Mock<IDocumentService>();
+        documents.Setup(x => x.CreateDraftAsync(
+                PropertyManagementCodes.RentCharge,
+                It.IsAny<RecordPayload>(),
+                cancellation.Token))
+            .Returns(() =>
+            {
+                cancellation.Cancel();
+                return Task.FromException<DocumentDto>(new OperationCanceledException(cancellation.Token));
+            });
+        var drafts = new Mock<IDocumentDraftService>();
+        var service = new GenerateMonthlyRentChargesService(
+            uow.Object,
+            reader.Object,
+            documents.Object,
+            Mock.Of<IDocumentSystemLifecycleService>(),
+            drafts.Object,
+            NullLogger<GenerateMonthlyRentChargesService>.Instance);
+
+        var act = () => service.ExecuteAsync(asOfUtc, cancellation.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        drafts.Verify(x => x.DeleteDraftAsync(It.IsAny<Guid>(), true, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenPostingAndDraftCleanupFail_ReportsOriginalFailureWithoutMaskingIt()
+    {
+        var asOfUtc = new DateOnly(2026, 4, 10);
+        var draftId = Guid.NewGuid();
+        var uow = TransactionalUnitOfWork();
+        var reader = RentChargeReader(asOfUtc, Guid.NewGuid());
+        var documents = new Mock<IDocumentService>();
+        documents.Setup(x => x.CreateDraftAsync(
+                PropertyManagementCodes.RentCharge,
+                It.IsAny<RecordPayload>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentDto(
+                draftId,
+                Display: null,
+                Payload: new RecordPayload(),
+                Status: DocumentStatus.Draft,
+                IsMarkedForDeletion: false));
+        var drafts = new Mock<IDocumentDraftService>();
+        drafts.Setup(x => x.UpdateDraftAsync(draftId, null, It.IsAny<DateTime?>(), true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        drafts.Setup(x => x.DeleteDraftAsync(draftId, true, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("cleanup failed"));
+        var lifecycle = new Mock<IDocumentSystemLifecycleService>();
+        lifecycle.Setup(x => x.PostAsync(PropertyManagementCodes.RentCharge, draftId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("posting failed"));
+        var service = new GenerateMonthlyRentChargesService(
+            uow.Object,
+            reader.Object,
+            documents.Object,
+            lifecycle.Object,
+            drafts.Object,
+            NullLogger<GenerateMonthlyRentChargesService>.Instance);
+
+        var act = () => service.ExecuteAsync(asOfUtc, CancellationToken.None);
+
+        var exception = await act.Should().ThrowAsync<NgbUnexpectedException>();
+        exception.Which.InnerException.Should().BeOfType<AggregateException>()
+            .Which.InnerExceptions.Should().ContainSingle()
+            .Which.Message.Should().Be("posting failed");
+        drafts.Verify(x => x.DeleteDraftAsync(draftId, true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    private static Mock<IUnitOfWork> TransactionalUnitOfWork()
+    {
+        var uow = new Mock<IUnitOfWork>();
+        uow.SetupGet(x => x.HasActiveTransaction).Returns(false);
+        uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        return uow;
+    }
+
+    private static Mock<IPropertyManagementRentChargeGenerationReader> RentChargeReader(
+        DateOnly asOfUtc,
+        Guid leaseId)
+    {
+        var reader = new Mock<IPropertyManagementRentChargeGenerationReader>();
+        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(asOfUtc, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new PmRentChargeGenerationLease(
+                    leaseId,
+                    asOfUtc,
+                    EndOnUtc: null,
+                    RentAmount: 1000m,
+                    DueDay: asOfUtc.Day)
+            ]);
+        reader.Setup(x => x.ReadExistingRentChargePeriodsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<PmRentChargePeriodKey>());
+        return reader;
+    }
 }

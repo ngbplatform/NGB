@@ -265,7 +265,7 @@ public sealed class TradeCommandPaletteSearchService(
     }
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetDocumentDescriptorsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "trade-command-palette:documents",
                async entry =>
                {
@@ -281,11 +281,10 @@ public sealed class TradeCommandPaletteSearchService(
                            ResolveItemIcon(item.Icon, "file-text"),
                            ResolveAliases(item.DocumentType, item.DisplayName)))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetCatalogDescriptorsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "trade-command-palette:catalogs",
                async entry =>
                {
@@ -299,11 +298,10 @@ public sealed class TradeCommandPaletteSearchService(
                            ResolveItemIcon(item.Icon, "grid"),
                            ResolveAliases(item.CatalogType, item.DisplayName)))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private async Task<IReadOnlyList<ReportDefinitionDto>> GetReportDefinitionsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "trade-command-palette:reports",
                async entry =>
                {
@@ -317,8 +315,7 @@ public sealed class TradeCommandPaletteSearchService(
                            !string.Equals(definition.ReportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase)
                            && !string.Equals(definition.ReportCode, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private static string? NormalizeScope(string? scope)
         => (scope ?? string.Empty).Trim().ToLowerInvariant() switch

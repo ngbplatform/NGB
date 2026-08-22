@@ -205,9 +205,6 @@ public sealed class PostingEngine(
 
     private async Task ResolveDimensionSetIdsAsync(IReadOnlyList<AccountingEntry> entries, CancellationToken ct)
     {
-        if (entries.Count == 0)
-            return;
-
         // Multiple entries often share the same analytical dimension bag (e.g., symmetric postings).
         // Cache by canonical string to avoid duplicate GetOrCreateIdAsync calls and DB round-trips.
         var cache = new Dictionary<string, Guid>(StringComparer.Ordinal);
@@ -263,9 +260,6 @@ public sealed class PostingEngine(
         // base = latest closed balance (<= month) + current month turnovers (to-date).
         // Then we add current posting deltas and ensure projected balance does not go negative
         // for accounts with NegativeBalancePolicy Warn/Forbid.
-        if (entries.Count == 0)
-            return;
-
         // Posting validator currently enforces a single UTC day, but we keep this generic.
         var periods = entries
             .Select(e => AccountingPeriod.FromDateTime(e.Period))

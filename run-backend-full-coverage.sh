@@ -54,7 +54,10 @@ fi
 if [[ "${NGB_BACKEND_COVERAGE_NO_BUILD:-false}" == "true" ]]; then
   echo "Skipping solution build because NGB_BACKEND_COVERAGE_NO_BUILD=true."
 else
-  dotnet build "${solution}" --configuration Release --no-restore -m:1
+  # Every test output must receive the same production DLL/PDB generation before reports are merged.
+  # Incremental solution builds can leave stale CopyLocal dependencies in individual test bin folders,
+  # producing incompatible sequence points for the same source file and false coverage gaps.
+  dotnet build "${solution}" --configuration Release --no-restore --no-incremental "-m:${coverage_jobs}"
 fi
 
 run_test_project() {

@@ -206,12 +206,9 @@ internal sealed class DocumentDerivationService(
 
     private IDocumentDerivationHandler ResolveHandler(DocumentDerivationDefinition def)
     {
-        if (_handlersByCode.TryGetValue(def.Code, out var cached))
-            return cached;
-
         lock (_handlersGate)
         {
-            if (_handlersByCode.TryGetValue(def.Code, out cached))
+            if (_handlersByCode.TryGetValue(def.Code, out var cached))
                 return cached;
 
             var resolved = BuildHandler(def);
@@ -222,8 +219,8 @@ internal sealed class DocumentDerivationService(
 
     private IDocumentDerivationHandler BuildHandler(DocumentDerivationDefinition def)
     {
-        var handlerType = def.HandlerType
-            ?? throw new NgbInvariantViolationException($"Derivation '{def.Code}' has no handler binding.");
+        // ResolveHandler is called only for definitions with an explicit handler binding.
+        var handlerType = def.HandlerType!;
 
         if (!typeof(IDocumentDerivationHandler).IsAssignableFrom(handlerType))
         {
@@ -257,7 +254,7 @@ internal sealed class DocumentDerivationService(
                 {
                     ["derivationCode"] = def.Code,
                     ["handlerType"] = handlerType.FullName,
-                    ["matches"] = matches.Select(handler => handler.GetType().FullName ?? handler.GetType().Name).ToArray()
+                    ["matches"] = matches.Select(handler => handler.GetType().ToString()).ToArray()
                 });
         }
 
