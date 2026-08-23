@@ -1051,6 +1051,37 @@ public sealed class CustomerReturnPostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_WhenReferencedSalesInvoiceMatches_Passes()
+    {
+        var salesInvoiceId = Guid.NewGuid();
+        var head = ValidHead() with { SalesInvoiceId = salesInvoiceId };
+        var line = ValidLine();
+        var readers = CreateReaders(head, [line]);
+        readers.Setup(x => x.ReadSalesInvoiceHeadAsync(salesInvoiceId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TradeSalesInvoiceHead(
+                salesInvoiceId,
+                head.DocumentDateUtc,
+                head.CustomerId,
+                head.WarehouseId,
+                PriceTypeId: null,
+                Notes: null,
+                Amount: line.LineAmount));
+        var sut = CreateSut(
+            readers.Object,
+            CreateCatalogsFor(head, line).Object,
+            CreateDocuments(CreateDocumentRecord(
+                TradeCodes.SalesInvoice,
+                salesInvoiceId,
+                DocumentStatus.Posted)).Object);
+
+        var action = () => sut.ValidateBeforePostAsync(
+            CreateDocument(TradeCodes.CustomerReturn),
+            CancellationToken.None);
+
+        await action.Should().NotThrowAsync();
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_WhenDocumentIsConsistent_Passes()
     {
         var head = ValidHead() with { SalesInvoiceId = null };

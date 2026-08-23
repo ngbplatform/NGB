@@ -54,7 +54,7 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
         }
     }
 
-    private async Task InitializeSessionAsync(CancellationToken ct)
+    internal async Task InitializeSessionAsync(CancellationToken ct)
     {
         if (_sessionInitialized)
             return;
@@ -92,18 +92,19 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
         // with an open transaction and held advisory locks.
         _logger.LogDebug("DB transaction COMMIT.");
 
-        if (Transaction is null)
+        var transaction = Transaction;
+        if (transaction is null)
             throw new NgbInvariantViolationException($"No active transaction. Call {nameof(BeginTransactionAsync)}() first.");
 
         try
         {
-            await Transaction.CommitAsync(CancellationToken.None);
+            await transaction.CommitAsync(CancellationToken.None);
             _committedOrRolledBack = true;
         }
         finally
         {
-            await Transaction.DisposeAsync();
             Transaction = null;
+            await transaction.DisposeAsync();
         }
     }
 
@@ -112,18 +113,19 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
         // Transaction finalization MUST NOT depend on the caller's CancellationToken.
         _logger.LogWarning("DB transaction ROLLBACK.");
 
-        if (Transaction is null)
+        var transaction = Transaction;
+        if (transaction is null)
             return;
 
         try
         {
-            await Transaction.RollbackAsync(CancellationToken.None);
+            await transaction.RollbackAsync(CancellationToken.None);
             _committedOrRolledBack = true;
         }
         finally
         {
-            await Transaction.DisposeAsync();
             Transaction = null;
+            await transaction.DisposeAsync();
         }
     }
 
@@ -131,12 +133,13 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
     {
         // Fail-safe: if transaction is active and forgot Commit/Rollback — rollback.
         // Dispose MUST NOT depend on CancellationToken either.
-        if (Transaction is not null && !_committedOrRolledBack)
+        var transaction = Transaction;
+        if (transaction is not null && !_committedOrRolledBack)
         {
             _logger.LogWarning("UnitOfWork disposed with active transaction; rolling back.");
             try
             {
-                await Transaction.RollbackAsync(CancellationToken.None);
+                await transaction.RollbackAsync(CancellationToken.None);
             }
             catch
             {
@@ -144,8 +147,8 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
             }
             finally
             {
-                await Transaction.DisposeAsync();
                 Transaction = null;
+                await transaction.DisposeAsync();
             }
         }
 

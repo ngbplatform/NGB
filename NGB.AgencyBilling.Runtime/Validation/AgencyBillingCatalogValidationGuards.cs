@@ -16,10 +16,10 @@ internal static class AgencyBillingCatalogValidationGuards
         var client = await GetRequiredClientAsync(clientId, fieldPath, references, ct);
         var status = client.Status;
 
-        if (status is AgencyBillingClientStatus.Inactive)
+        if (status.GetValueOrDefault() == AgencyBillingClientStatus.Inactive)
             throw new NgbArgumentInvalidException(fieldPath, "Selected client is inactive.");
 
-        if (requireOperationallyActive && status is not AgencyBillingClientStatus.Active)
+        if (requireOperationallyActive && status.GetValueOrDefault() != AgencyBillingClientStatus.Active)
             throw new NgbArgumentInvalidException(fieldPath, "Selected client must be Active.");
 
         return client;
@@ -49,7 +49,7 @@ internal static class AgencyBillingCatalogValidationGuards
         var project = await GetRequiredProjectAsync(projectId, fieldPath, references, ct);
         var status = project.Status;
 
-        if (requireOperationallyActive && status is not AgencyBillingProjectStatus.Active)
+        if (requireOperationallyActive && status.GetValueOrDefault() != AgencyBillingProjectStatus.Active)
             throw new NgbArgumentInvalidException(fieldPath, "Selected project must be Active.");
 
         return project;

@@ -51,7 +51,7 @@ public sealed class ClientContractPostValidator(
             if (line.BillingRate <= 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.billing_rate", "Billing Rate must be greater than zero.");
 
-            if (line.CostRate is not null && line.CostRate < 0m)
+            if (line.CostRate.GetValueOrDefault() < 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.cost_rate", "Cost Rate must be zero or greater.");
 
             if (line.ActiveTo is { } activeTo && line.ActiveFrom is { } activeFrom && activeTo < activeFrom)

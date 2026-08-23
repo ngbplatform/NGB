@@ -57,7 +57,8 @@ public sealed class SalesInvoicePostValidator(
             var line = lines[i];
             var prefix = $"lines[{i}]";
 
-            if (line.ServiceItemId is { } serviceItemId && serviceItemId != Guid.Empty)
+            var serviceItemId = line.ServiceItemId.GetValueOrDefault();
+            if (serviceItemId != Guid.Empty)
                 await AgencyBillingCatalogValidationGuards.EnsureServiceItemAsync(serviceItemId, $"{prefix}.service_item_id", references, ct);
 
             if (line.QuantityHours <= 0m)
@@ -93,7 +94,14 @@ public sealed class SalesInvoicePostValidator(
                 throw new NgbArgumentInvalidException($"{prefix}.source_timesheet_id", "Referenced source timesheet must be posted.");
 
             var sourceTimesheet = await readers.ReadTimesheetHeadAsync(sourceTimesheetId, ct);
-            if (sourceTimesheet.ClientId != head.ClientId || sourceTimesheet.ProjectId != head.ProjectId)
+            if (sourceTimesheet.ClientId != head.ClientId)
+            {
+                throw new NgbArgumentInvalidException(
+                    $"{prefix}.source_timesheet_id",
+                    "Referenced source timesheet must belong to the same client and project as the invoice.");
+            }
+
+            if (sourceTimesheet.ProjectId != head.ProjectId)
             {
                 throw new NgbArgumentInvalidException(
                     $"{prefix}.source_timesheet_id",
@@ -154,7 +162,14 @@ public sealed class SalesInvoicePostValidator(
         if (!contract.IsActive)
             throw new NgbArgumentInvalidException("contract_id", "Referenced client contract must be active.");
 
-        if (contract.ClientId != invoice.ClientId || contract.ProjectId != invoice.ProjectId)
+        if (contract.ClientId != invoice.ClientId)
+        {
+            throw new NgbArgumentInvalidException(
+                "contract_id",
+                "Referenced client contract must belong to the same client and project as the invoice.");
+        }
+
+        if (contract.ProjectId != invoice.ProjectId)
         {
             throw new NgbArgumentInvalidException(
                 "contract_id",

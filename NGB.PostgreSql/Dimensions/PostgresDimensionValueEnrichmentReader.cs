@@ -125,8 +125,7 @@ public sealed class PostgresDimensionValueEnrichmentReader(
             if (result.ContainsKey(key))
                 continue;
 
-            var s = key.ValueId.ToString("N");
-            result[key] = s.Length > 8 ? s[..8] : s;
+            result[key] = key.ValueId.ToString("N")[..8];
         }
 
         return result;

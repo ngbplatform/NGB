@@ -434,6 +434,314 @@ public sealed class GeneralJournalEntryDocumentServiceFullCoverageTests
             .Should().ThrowAsync<GeneralJournalEntryUnbalancedLinesException>();
     }
 
+    [Fact]
+    public async Task Post_and_reverse_cover_wrong_type_unknown_state_and_existing_reversal_guards()
+    {
+        var f = new Fixture();
+        f.ResetDocument(typeCode: "other");
+        await ((Func<Task>)(() => f.Sut.PostApprovedAsync(f.DocumentId, "poster", Ct)))
+            .Should().ThrowAsync<DocumentTypeMismatchException>();
+
+        f.ResetDocument(status: (DocumentStatus)short.MaxValue);
+        await ((Func<Task>)(() => f.Sut.PostApprovedAsync(f.DocumentId, "poster", Ct)))
+            .Should().ThrowAsync<DocumentWorkflowStateMismatchException>();
+
+        f.ResetDocument(typeCode: "other", status: DocumentStatus.Posted);
+        await ((Func<Task>)(() => f.Sut.ReversePostedAsync(f.DocumentId, Fixture.Now, "actor", false, Ct)))
+            .Should().ThrowAsync<DocumentTypeMismatchException>();
+
+        f.ResetDocument(status: DocumentStatus.Draft);
+        await ((Func<Task>)(() => f.Sut.ReversePostedAsync(f.DocumentId, Fixture.Now, "actor", false, Ct)))
+            .Should().ThrowAsync<DocumentWorkflowStateMismatchException>();
+
+        var existingReversal = Guid.NewGuid();
+        f.ResetDocument(status: DocumentStatus.Posted);
+        f.ExistingReversal = existingReversal;
+        (await f.Sut.ReversePostedAsync(f.DocumentId, Fixture.Now, "actor", false, Ct))
+            .Should().Be(existingReversal);
+    }
+
+    [Fact]
+    public async Task Create_and_post_approved_covers_existing_lines_and_auto_reversal_date_boundaries()
+    {
+        var missingDate = new Fixture();
+        Func<Task> missingDateAction = () => missingDate.Sut.CreateAndPostApprovedAsync(
+            Fixture.Now,
+            new GeneralJournalEntryDraftHeaderUpdate(null, null, null, null, true, null),
+            lines: null,
+            initiatedBy: "initiator",
+            submittedBy: "submitter",
+            approvedBy: "approver",
+            postedBy: "poster",
+            ct: Ct);
+        await missingDateAction.Should().ThrowAsync<GeneralJournalEntryAutoReverseOnUtcRequiredException>();
+
+        var existingReversal = new Fixture { ExistingReversal = Guid.NewGuid() };
+        var reverseOn = DateOnly.FromDateTime(Fixture.Now).AddDays(1);
+        var created = await existingReversal.Sut.CreateAndPostApprovedAsync(
+            Fixture.Now,
+            new GeneralJournalEntryDraftHeaderUpdate(null, null, null, null, true, reverseOn),
+            lines: null,
+            initiatedBy: "initiator",
+            submittedBy: "submitter",
+            approvedBy: "approver",
+            postedBy: "poster",
+            ct: Ct);
+        created.Should().Be(existingReversal.DocumentId);
+        existingReversal.Doc.Status.Should().Be(DocumentStatus.Posted);
+
+        var replacement = new Fixture();
+        var replacementCreated = await replacement.Sut.CreateAndPostApprovedAsync(
+            Fixture.Now,
+            header: null,
+            lines:
+            [
+                new GeneralJournalEntryDraftLineInput(
+                    GeneralJournalEntryModels.LineSide.Debit,
+                    replacement.Debit.Id,
+                    10m,
+                    "debit"),
+                new GeneralJournalEntryDraftLineInput(
+                    GeneralJournalEntryModels.LineSide.Credit,
+                    replacement.Credit.Id,
+                    10m,
+                    "credit")
+            ],
+            initiatedBy: "initiator",
+            submittedBy: "submitter",
+            approvedBy: "approver",
+            postedBy: "poster",
+            ct: Ct);
+        replacementCreated.Should().Be(replacement.DocumentId);
+        replacement.Lines.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Post_approved_auto_reversal_rejects_missing_date_and_detects_changed_original_type()
+    {
+        var missingDate = new Fixture();
+        missingDate.Header = missingDate.Header with
+        {
+            ApprovalState = GeneralJournalEntryModels.ApprovalState.Approved,
+            AutoReverse = true,
+            AutoReverseOnUtc = null
+        };
+        await ((Func<Task>)(() => missingDate.Sut.PostApprovedAsync(missingDate.DocumentId, "poster", Ct)))
+            .Should().ThrowAsync<GeneralJournalEntryAutoReverseOnUtcRequiredException>();
+
+        var changedType = new Fixture();
+        changedType.Header = changedType.Header with
+        {
+            ApprovalState = GeneralJournalEntryModels.ApprovalState.Approved,
+            AutoReverse = true,
+            AutoReverseOnUtc = DateOnly.FromDateTime(changedType.Doc.DateUtc).AddDays(1)
+        };
+        changedType.Documents.Setup(x => x.GetAsync(changedType.DocumentId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DocumentRecord
+            {
+                Id = changedType.DocumentId,
+                TypeCode = "changed.after.lock",
+                DateUtc = changedType.Doc.DateUtc,
+                Status = DocumentStatus.Draft
+            });
+
+        await ((Func<Task>)(() => changedType.Sut.PostApprovedAsync(changedType.DocumentId, "poster", Ct)))
+            .Should().ThrowAsync<DocumentTypeMismatchException>();
+
+        var valid = new Fixture { Lines = BalancedLines() };
+        valid.Header = valid.Header with
+        {
+            ApprovalState = GeneralJournalEntryModels.ApprovalState.Approved,
+            AutoReverse = true,
+            AutoReverseOnUtc = DateOnly.FromDateTime(valid.Doc.DateUtc).AddDays(1)
+        };
+
+        await valid.Sut.PostApprovedAsync(valid.DocumentId, "poster", Ct);
+
+        valid.DocumentsById.Values.Should().ContainSingle(x =>
+            x.Id != valid.DocumentId &&
+            x.TypeCode == AccountingDocumentTypeCodes.GeneralJournalEntry);
+    }
+
+    [Fact]
+    public void Creation_audit_and_allocation_algorithm_cover_optional_and_invariant_boundaries()
+    {
+        var f = new Fixture();
+        var numbered = new DocumentRecord
+        {
+            Id = f.DocumentId,
+            TypeCode = AccountingDocumentTypeCodes.GeneralJournalEntry,
+            Number = "GJE-42",
+            DateUtc = Fixture.Now,
+            Status = DocumentStatus.Draft
+        };
+        GeneralJournalEntryDocumentService.BuildDocumentCreateAuditChanges(numbered)
+            .Should().Contain(x => x.FieldPath == "number");
+        GeneralJournalEntryDocumentService.BuildDocumentCreateAuditChanges(f.Doc, f.Header)
+            .Should().Contain(x => x.FieldPath == "journal_type");
+
+        Action onlyCredit = () => GeneralJournalEntryDocumentService.BuildAllocations(
+            "test", f.DocumentId,
+            [Line(f.DocumentId, 1, GeneralJournalEntryModels.LineSide.Credit, f.Credit.Id, 1m)]);
+        Action onlyDebit = () => GeneralJournalEntryDocumentService.BuildAllocations(
+            "test", f.DocumentId,
+            [Line(f.DocumentId, 1, GeneralJournalEntryModels.LineSide.Debit, f.Debit.Id, 1m)]);
+        Action creditsExhausted = () => GeneralJournalEntryDocumentService.BuildAllocations(
+            "test", f.DocumentId,
+            [
+                Line(f.DocumentId, 1, GeneralJournalEntryModels.LineSide.Debit, f.Debit.Id, 2m),
+                Line(f.DocumentId, 2, GeneralJournalEntryModels.LineSide.Credit, f.Credit.Id, 1m)
+            ]);
+        Action creditRemainder = () => GeneralJournalEntryDocumentService.BuildAllocations(
+            "test", f.DocumentId,
+            [
+                Line(f.DocumentId, 1, GeneralJournalEntryModels.LineSide.Debit, f.Debit.Id, 1m),
+                Line(f.DocumentId, 2, GeneralJournalEntryModels.LineSide.Credit, f.Credit.Id, 2m)
+            ]);
+
+        onlyCredit.Should().Throw<GeneralJournalEntryDebitAndCreditLinesRequiredException>();
+        onlyDebit.Should().Throw<GeneralJournalEntryDebitAndCreditLinesRequiredException>();
+        creditsExhausted.Should().Throw<GeneralJournalEntryAllocationInvariantViolationException>()
+            .Which.Reason.Should().Be("credits_exhausted");
+        creditRemainder.Should().Throw<GeneralJournalEntryAllocationInvariantViolationException>()
+            .Which.Reason.Should().Be("credit_remainder");
+
+        GeneralJournalEntryDocumentService.BuildAllocations("test", f.DocumentId, BalancedLines(f.DocumentId))
+            .Should().ContainSingle().Which.Amount.Should().Be(10m);
+    }
+
+    [Fact]
+    public async Task Create_and_projection_helpers_cover_null_empty_present_and_changed_boundaries()
+    {
+        var f = new Fixture();
+        var current = f.Header with
+        {
+            ReasonCode = "old reason",
+            Memo = "old memo",
+            ExternalReference = "old external",
+            AutoReverse = false,
+            AutoReverseOnUtc = DateOnly.FromDateTime(Fixture.Now).AddDays(1)
+        };
+        var unchanged = GeneralJournalEntryDocumentService.PatchHeaderForCreate(
+            current,
+            null,
+            "initiator",
+            Fixture.Now);
+        unchanged.JournalType.Should().Be(current.JournalType);
+        unchanged.ReasonCode.Should().Be(current.ReasonCode);
+
+        var nullPatch = GeneralJournalEntryDocumentService.PatchHeaderForCreate(
+            current,
+            new GeneralJournalEntryDraftHeaderUpdate(null, null, null, null, null, null),
+            "initiator",
+            Fixture.Now);
+        nullPatch.Should().BeEquivalentTo(unchanged);
+
+        var replacementDate = DateOnly.FromDateTime(Fixture.Now).AddDays(2);
+        var replaced = GeneralJournalEntryDocumentService.PatchHeaderForCreate(
+            current,
+            new GeneralJournalEntryDraftHeaderUpdate(
+                GeneralJournalEntryModels.JournalType.Adjusting,
+                "new reason",
+                "new memo",
+                "new external",
+                true,
+                replacementDate),
+            "initiator",
+            Fixture.Now);
+        replaced.JournalType.Should().Be(GeneralJournalEntryModels.JournalType.Adjusting);
+        replaced.ReasonCode.Should().Be("new reason");
+        replaced.AutoReverse.Should().BeTrue();
+        replaced.AutoReverseOnUtc.Should().Be(replacementDate);
+
+        GeneralJournalEntryDocumentService.HasReplacementLines(null).Should().BeFalse();
+        GeneralJournalEntryDocumentService.HasReplacementLines([]).Should().BeFalse();
+        GeneralJournalEntryDocumentService.HasReplacementLines(
+            [new GeneralJournalEntryDraftLineInput(GeneralJournalEntryModels.LineSide.Debit, f.Debit.Id, 1m, null)])
+            .Should().BeTrue();
+
+        var reader = new Mock<IDimensionSetReader>();
+        reader.Setup(x => x.GetBagsByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                Ct))
+            .ReturnsAsync(new Dictionary<Guid, DimensionBag> { [f.DimensionSetId] = DimensionBag.Empty });
+        (await GeneralJournalEntryDocumentService.LoadDimensionBagsAsync(reader.Object, [], Ct))
+            .Should().BeEmpty();
+        (await GeneralJournalEntryDocumentService.LoadDimensionBagsAsync(reader.Object, [f.DimensionSetId], Ct))
+            .Should().ContainKey(f.DimensionSetId);
+
+        GeneralJournalEntryDocumentService.ResolveEffectiveNumber(null, "assigned").Should().Be("assigned");
+        GeneralJournalEntryDocumentService.ResolveEffectiveNumber(" ", "assigned").Should().Be("assigned");
+        GeneralJournalEntryDocumentService.ResolveEffectiveNumber("existing", "assigned").Should().Be("existing");
+
+        var blank = new DocumentRecord
+        {
+            Id = f.DocumentId,
+            TypeCode = AccountingDocumentTypeCodes.GeneralJournalEntry,
+            DateUtc = Fixture.Now,
+            Number = " ",
+            Status = DocumentStatus.Draft
+        };
+        GeneralJournalEntryDocumentService.BuildDisplay(blank).Should().NotContain("  ");
+        GeneralJournalEntryDocumentService.BuildDisplay(new DocumentRecord
+        {
+            Id = f.DocumentId,
+            TypeCode = AccountingDocumentTypeCodes.GeneralJournalEntry,
+            DateUtc = Fixture.Now,
+            Number = null,
+            Status = DocumentStatus.Draft
+        }).Should().NotContain("  ");
+        var numbered = new DocumentRecord
+        {
+            Id = f.DocumentId,
+            TypeCode = AccountingDocumentTypeCodes.GeneralJournalEntry,
+            DateUtc = Fixture.Now,
+            Number = " GJE-7 ",
+            Status = DocumentStatus.Draft
+        };
+        GeneralJournalEntryDocumentService.BuildDisplay(numbered).Should().Contain("GJE-7");
+
+        var before = Line(f.DocumentId, 1, GeneralJournalEntryModels.LineSide.Debit, f.Debit.Id, 1m);
+        var after = before with { Amount = 2m };
+        GeneralJournalEntryDocumentService.BuildLineAuditChanges([before], [before]).Should().BeEmpty();
+        GeneralJournalEntryDocumentService.BuildLineAuditChanges([before], []).Should().NotBeEmpty();
+        GeneralJournalEntryDocumentService.BuildLineAuditChanges([], [before]).Should().NotBeEmpty();
+        GeneralJournalEntryDocumentService.BuildLineAuditChanges([before], [after])
+            .Should().ContainSingle(change => change.FieldPath == "line_1_amount");
+    }
+
+    [Fact]
+    public void Balanced_line_validation_covers_empty_zero_one_sided_balanced_and_unbalanced_totals()
+    {
+        var id = Guid.NewGuid();
+        Action empty = () => GeneralJournalEntryDocumentService.ValidateBalancedLines("test", id, []);
+        Action bothZero = () => GeneralJournalEntryDocumentService.ValidateBalancedLines(
+            "test",
+            id,
+            [
+                Line(id, 1, GeneralJournalEntryModels.LineSide.Debit, Guid.NewGuid(), 0m),
+                Line(id, 2, GeneralJournalEntryModels.LineSide.Credit, Guid.NewGuid(), 0m)
+            ]);
+        Action onlyDebit = () => GeneralJournalEntryDocumentService.ValidateBalancedLines(
+            "test", id, [Line(id, 1, GeneralJournalEntryModels.LineSide.Debit, Guid.NewGuid(), 1m)]);
+        Action onlyCredit = () => GeneralJournalEntryDocumentService.ValidateBalancedLines(
+            "test", id, [Line(id, 1, GeneralJournalEntryModels.LineSide.Credit, Guid.NewGuid(), 1m)]);
+        Action unbalanced = () => GeneralJournalEntryDocumentService.ValidateBalancedLines(
+            "test",
+            id,
+            [
+                Line(id, 1, GeneralJournalEntryModels.LineSide.Debit, Guid.NewGuid(), 2m),
+                Line(id, 2, GeneralJournalEntryModels.LineSide.Credit, Guid.NewGuid(), 1m)
+            ]);
+
+        empty.Should().Throw<GeneralJournalEntryLinesRequiredException>();
+        bothZero.Should().Throw<GeneralJournalEntryDebitAndCreditLinesRequiredException>();
+        onlyDebit.Should().Throw<GeneralJournalEntryDebitAndCreditLinesRequiredException>();
+        onlyCredit.Should().Throw<GeneralJournalEntryDebitAndCreditLinesRequiredException>();
+        unbalanced.Should().Throw<GeneralJournalEntryUnbalancedLinesException>();
+        GeneralJournalEntryDocumentService.ValidateBalancedLines("test", id, BalancedLines(id));
+    }
+
     private static GeneralJournalEntryDraftHeaderUpdate HeaderUpdate()
         => new(null, null, null, null, null, null);
 

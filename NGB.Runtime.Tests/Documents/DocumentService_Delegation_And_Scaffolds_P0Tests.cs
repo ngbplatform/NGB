@@ -127,6 +127,37 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
     }
 
     [Fact]
+    public async Task RepostAsync_WhenPostingHandlerIsNotConfigured_ThrowsWhenWorkflowInvokesAction()
+    {
+        var id = Guid.NewGuid();
+        var document = new DocumentRecord
+        {
+            Id = id,
+            TypeCode = TypeCode,
+            DateUtc = new DateTime(2026, 8, 22, 0, 0, 0, DateTimeKind.Utc),
+            Status = DocumentStatus.Posted,
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        };
+        var service = CreateSut(
+            BuildMeta(TypeCode),
+            docsSetup: documents => documents
+                .Setup(x => x.GetAsync(id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(document),
+            postingSetup: posting => posting
+                .Setup(x => x.RepostAsync(
+                    id,
+                    It.IsAny<Func<IAccountingPostingContext, CancellationToken, Task>>(),
+                    It.IsAny<CancellationToken>()))
+                .Returns<Guid, Func<IAccountingPostingContext, CancellationToken, Task>, CancellationToken>(
+                    async (_, action, ct) => await action(Mock.Of<IAccountingPostingContext>(), ct)));
+
+        Func<Task> act = async () => await service.RepostAsync(TypeCode, id, default);
+
+        await act.Should().ThrowAsync<DocumentPostingHandlerNotConfiguredException>();
+    }
+
+    [Fact]
     public async Task ExecuteActionAsync_WhenGenericActionsAreDisabled_ThrowsValidationError()
     {
         // Arrange
@@ -193,6 +224,46 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
     }
 
     [Fact]
+    public async Task GetEffectsAsync_WhenTypedHeadIsMissing_ThrowsDocumentNotFound()
+    {
+        var id = Guid.NewGuid();
+        var service = CreateSut(
+            BuildMeta(TypeCode),
+            readerSetup: reader => reader
+                .Setup(x => x.GetByIdAsync(
+                    It.IsAny<DocumentHeadDescriptor>(), id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((DocumentHeadRow?)null));
+
+        Func<Task> act = async () => await service.GetEffectsAsync(TypeCode, id, 10, default);
+
+        await act.Should().ThrowAsync<DocumentNotFoundException>();
+    }
+
+    [Fact]
+    public async Task GetEffectsAsync_WhenRegistryRecordIsMissing_ThrowsDocumentNotFound()
+    {
+        var id = Guid.NewGuid();
+        var service = CreateSut(
+            BuildMeta(TypeCode),
+            docsSetup: documents => documents
+                .Setup(x => x.GetAsync(id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync((DocumentRecord?)null),
+            readerSetup: reader => reader
+                .Setup(x => x.GetByIdAsync(
+                    It.IsAny<DocumentHeadDescriptor>(), id, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new DocumentHeadRow(
+                    id,
+                    DocumentStatus.Draft,
+                    false,
+                    "Orphan head",
+                    new Dictionary<string, object?> { ["display"] = "Orphan head" })));
+
+        Func<Task> act = async () => await service.GetEffectsAsync(TypeCode, id, 10, default);
+
+        await act.Should().ThrowAsync<DocumentNotFoundException>();
+    }
+
+    [Fact]
     public async Task GetRelationshipGraphAsync_IsScaffold_ReturnsSingleNodeGraph()
     {
         // Arrange
@@ -242,6 +313,55 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
         node.NodeId.Should().Be($"doc:{TypeCode}:{id}");
         node.Title.Should().Be("My doc");
         node.DocumentStatus.Should().Be(ContractDocumentStatus.Draft);
+    }
+
+    [Fact]
+    public async Task GetRelationshipGraphAsync_WhenPersistenceOmitsNodes_InsertsRootAndUsesSafeEdgeNodeFallbacks()
+    {
+        var rootId = Guid.NewGuid();
+        var unknownId = Guid.NewGuid();
+        var service = CreateSut(
+            BuildMeta(TypeCode),
+            readerSetup: reader => reader
+                .Setup(x => x.GetByIdAsync(
+                    It.IsAny<DocumentHeadDescriptor>(), rootId, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new DocumentHeadRow(
+                    rootId,
+                    DocumentStatus.Posted,
+                    false,
+                    null,
+                    new Dictionary<string, object?> { ["display"] = null })),
+            graphSetup: graph => graph
+                .Setup(x => x.GetGraphAsync(
+                    It.Is<DocumentRelationshipGraphRequest>(r => r.RootDocumentId == rootId),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new DocumentRelationshipGraph(
+                    rootId,
+                    [],
+                    [
+                        new DocumentRelationshipGraphEdge(
+                            Guid.NewGuid(),
+                            rootId,
+                            unknownId,
+                            "unknown_edge",
+                            "unknown_edge",
+                            new DateTime(2026, 8, 22, 0, 0, 0, DateTimeKind.Utc))
+                    ])));
+
+        var result = await service.GetRelationshipGraphAsync(TypeCode, rootId, 1, 10, default);
+
+        result.Nodes.Should().ContainSingle();
+        var root = result.Nodes[0];
+        root.EntityId.Should().Be(rootId);
+        root.TypeCode.Should().Be(TypeCode);
+        root.Title.Should().Be(rootId.ToString("N"));
+        root.DocumentStatus.Should().Be(ContractDocumentStatus.Posted);
+        result.Edges.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            FromNodeId = $"doc:document:{rootId}",
+            ToNodeId = $"doc:document:{unknownId}",
+            RelationshipType = "unknown_edge"
+        });
     }
 
     [Fact]
@@ -470,7 +590,8 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
         Action<Mock<IDocumentRepository>>? docsSetup = null,
         Action<Mock<IDocumentReader>>? readerSetup = null,
         Action<Mock<IDocumentRelationshipGraphReadService>>? graphSetup = null,
-        IReadOnlyList<DocumentTypeMetadata>? additionalMetas = null)
+        IReadOnlyList<DocumentTypeMetadata>? additionalMetas = null,
+        Action<Mock<IDocumentPostingService>>? postingSetup = null)
     {
         var uow = CreateUowMock();
         var docs = new Mock<IDocumentRepository>(MockBehavior.Strict);
@@ -504,6 +625,7 @@ public sealed class DocumentService_Delegation_And_Scaffolds_P0Tests
         docsSetup?.Invoke(docs);
         readerSetup?.Invoke(reader);
         graphSetup?.Invoke(relationshipGraph);
+        postingSetup?.Invoke(posting);
 
         return new DocumentService(
             uow.Object,

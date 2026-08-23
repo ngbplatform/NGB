@@ -578,7 +578,7 @@ WHERE document_id = @document_id;
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -618,7 +618,7 @@ WHERE rc.document_id = ANY(@ids);
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -659,7 +659,7 @@ WHERE rc.document_id = ANY(@ids);
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -698,7 +698,7 @@ WHERE lfc.document_id = ANY(@ids);
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -738,7 +738,7 @@ WHERE rp.document_id = ANY(@ids);
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -778,7 +778,7 @@ WHERE rcm.document_id = ANY(@ids);
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -813,7 +813,7 @@ WHERE document_id = ANY(@ids);
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -847,7 +847,7 @@ WHERE document_id = ANY(@ids);
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -1138,7 +1138,7 @@ FROM (
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (chargeTypeIds is null || chargeTypeIds.Count == 0)
+        if (!HasItems(chargeTypeIds))
             return [];
 
         const string sql = """
@@ -1203,7 +1203,7 @@ WHERE ct.catalog_id = @charge_type_id
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (chargeTypeIds is null || chargeTypeIds.Count == 0)
+        if (!HasItems(chargeTypeIds))
             return [];
 
         const string sql = """
@@ -1270,7 +1270,7 @@ WHERE ct.catalog_id = @charge_type_id
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        if (documentIds is null || documentIds.Count == 0)
+        if (!HasItems(documentIds))
             return [];
 
         const string sql = """
@@ -1291,5 +1291,13 @@ WHERE id = ANY(@ids);
                 cancellationToken: ct));
 
         return rows.AsList();
+    }
+
+    private static bool HasItems<T>(IReadOnlyCollection<T>? items)
+    {
+        if (items is null)
+            return false;
+
+        return items.Count > 0;
     }
 }

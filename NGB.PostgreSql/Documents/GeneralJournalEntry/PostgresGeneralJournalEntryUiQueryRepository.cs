@@ -119,13 +119,17 @@ LIMIT @Limit OFFSET @Offset;
     private static string NormalizeTrashMode(string? trash)
     {
         var value = (trash ?? string.Empty).Trim().ToLowerInvariant();
-        return value switch
-        {
-            "deleted" => "deleted",
-            "all" => "all",
-            "" or "active" => "active",
-            _ => throw new NgbArgumentInvalidException(nameof(trash), "Trash filter must be one of: active, deleted, all."),
-        };
+
+        if (value.Length == 0 || value == "active")
+            return "active";
+
+        if (value == "deleted")
+            return "deleted";
+
+        if (value == "all")
+            return "all";
+
+        throw new NgbArgumentInvalidException(nameof(trash), "Trash filter must be one of: active, deleted, all.");
     }
 
     private static GeneralJournalEntryListItemRecord Map(Row row)

@@ -99,6 +99,59 @@ public sealed class DocumentDerivationServiceFullCoverageTests
         fixture.Uow.Verify(x => x.CommitAsync(fixture.Token), Times.Exactly(2));
     }
 
+    [Fact]
+    public async Task CreateDraftAsync_UsesExplicitBoundaryDate_InsteadOfSourceDate()
+    {
+        var fixture = new Fixture(handlerType: null, handlers: []);
+        var explicitDate = DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc);
+        fixture.Drafts
+            .Setup(x => x.CreateDraftAsync("target", "EDGE", explicitDate, false, false, fixture.Token))
+            .ReturnsAsync(fixture.TargetId);
+
+        var result = await fixture.Sut.CreateDraftAsync(
+            "derive",
+            fixture.SourceId,
+            dateUtc: explicitDate,
+            number: "EDGE",
+            ct: fixture.Token);
+
+        result.Should().Be(fixture.TargetId);
+        fixture.Drafts.Verify(
+            x => x.CreateDraftAsync("target", "EDGE", explicitDate, false, false, fixture.Token),
+            Times.Once);
+        fixture.Uow.Verify(x => x.CommitAsync(fixture.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenCreatedDraftCannotBeReloaded_RollsBackWithInvariantDiagnostics()
+    {
+        var fixture = new Fixture(handlerType: null, handlers: []);
+        fixture.Documents.Setup(x => x.GetForUpdateAsync(fixture.TargetId, fixture.Token))
+            .ReturnsAsync((DocumentRecord?)null);
+
+        Func<Task> act = () => fixture.CreateDraftAsync();
+
+        var exception = await act.Should().ThrowAsync<DocumentDerivationInvariantViolationException>();
+        exception.Which.Context.Should().Contain("reason", "draft_missing_after_create")
+            .And.Contain("derivedDraftId", fixture.TargetId);
+        fixture.Uow.Verify(x => x.RollbackAsync(fixture.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenHandlerRemovesDraft_RollsBackWithInvariantDiagnostics()
+    {
+        var fixture = new Fixture(typeof(CountingHandler), [new CountingHandler()]);
+        fixture.Documents.Setup(x => x.GetAsync(fixture.TargetId, fixture.Token))
+            .ReturnsAsync((DocumentRecord?)null);
+
+        Func<Task> act = () => fixture.CreateDraftAsync();
+
+        var exception = await act.Should().ThrowAsync<DocumentDerivationInvariantViolationException>();
+        exception.Which.Context.Should().Contain("reason", "draft_missing_after_handler")
+            .And.Contain("derivedDraftId", fixture.TargetId);
+        fixture.Uow.Verify(x => x.RollbackAsync(fixture.Token), Times.Once);
+    }
+
     private sealed class Fixture
     {
         public Fixture(Type? handlerType, IReadOnlyList<IDocumentDerivationHandler> handlers)

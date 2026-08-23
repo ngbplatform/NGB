@@ -17,7 +17,7 @@ public sealed class AgencyBillingSeedDemo_Posting_P0Tests(AgencyBillingPostgresF
     [Fact]
     public async Task SeedDemo_Posts_Core_Documents_When_Posting_Is_Configured()
     {
-        var exitCode = await AgencyBillingSeedDemoCli.RunAsync(
+        string[] args =
         [
             "--connection", fixture.ConnectionString,
             "--seed", "20260417",
@@ -29,9 +29,16 @@ public sealed class AgencyBillingSeedDemo_Posting_P0Tests(AgencyBillingPostgresF
             "--timesheets", "5",
             "--sales-invoices", "2",
             "--customer-payments", "2"
-        ]);
+        ];
+
+        var exitCode = await AgencyBillingSeedDemoCli.RunAsync(args);
+        var duplicateExitCode = await AgencyBillingSeedDemoCli.RunAsync(args);
+        var skippedExitCode = await AgencyBillingSeedDemoCli.RunAsync(
+            [.. args, "--skip-if-activity-exists", "true"]);
 
         exitCode.Should().Be(0);
+        duplicateExitCode.Should().Be(1);
+        skippedExitCode.Should().Be(0);
 
         using var host = AgencyBillingHostFactory.Create(fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
@@ -51,6 +58,34 @@ public sealed class AgencyBillingSeedDemo_Posting_P0Tests(AgencyBillingPostgresF
         (await GetFirstDisplayAsync(documents, AgencyBillingCodes.Timesheet)).Should().StartWith("Timesheet ");
         (await GetFirstDisplayAsync(documents, AgencyBillingCodes.SalesInvoice)).Should().StartWith("Sales Invoice ");
         (await GetFirstDisplayAsync(documents, AgencyBillingCodes.CustomerPayment)).Should().StartWith("Customer Payment ");
+    }
+
+    [Fact]
+    public async Task SeedDemo_Allows_Zero_Invoices_And_Therefore_Zero_Payments()
+    {
+        string[] args =
+        [
+            "--connection", fixture.ConnectionString,
+            "--seed", "20260823",
+            "--from", "2026-08-01",
+            "--to", "2026-08-01",
+            "--clients", "1",
+            "--team-members", "2",
+            "--projects", "1",
+            "--timesheets", "1",
+            "--sales-invoices", "0",
+            "--customer-payments", "0"
+        ];
+
+        (await AgencyBillingSeedDemoCli.RunAsync(args)).Should().Be(0);
+
+        using var host = AgencyBillingHostFactory.Create(fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
+        (await GetDocumentCountAsync(documents, AgencyBillingCodes.ClientContract)).Should().Be(1);
+        (await GetDocumentCountAsync(documents, AgencyBillingCodes.Timesheet)).Should().Be(1);
+        (await GetDocumentCountAsync(documents, AgencyBillingCodes.SalesInvoice)).Should().Be(0);
+        (await GetDocumentCountAsync(documents, AgencyBillingCodes.CustomerPayment)).Should().Be(0);
     }
 
     private static async Task<int> GetDocumentCountAsync(IDocumentService documents, string documentType)

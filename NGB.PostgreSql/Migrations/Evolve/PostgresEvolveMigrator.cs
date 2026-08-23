@@ -61,7 +61,7 @@ public static class PostgresEvolveMigrator
         // Evolve is synchronous. Keep this wrapper deterministic and dependency-free.
         // NOTE: Evolve is in namespace EvolveDb, but this file lives under our own *.Migrations.Evolve namespace.
         // Use global:: to avoid ambiguous reference resolution.
-        var evolve = new global::EvolveDb.Evolve(connection, message => log?.Invoke(message))
+        var evolve = new global::EvolveDb.Evolve(connection, BuildLogForwarder(log))
         {
             // Never allow schema erase from application code.
             IsEraseDisabled = true,
@@ -70,8 +70,8 @@ public static class PostgresEvolveMigrator
             EnableClusterMode = false,
 
             // Changelog contract.
-            MetadataTableSchema = string.IsNullOrWhiteSpace(metadataTableSchema) ? "public" : metadataTableSchema,
-            MetadataTableName = string.IsNullOrWhiteSpace(metadataTableName) ? "migration_changelog" : metadataTableName,
+            MetadataTableSchema = ResolveMetadataIdentifier(metadataTableSchema, "public"),
+            MetadataTableName = ResolveMetadataIdentifier(metadataTableName, "migration_changelog"),
 
             Schemas = ["public"],
 
@@ -91,6 +91,11 @@ public static class PostgresEvolveMigrator
 
         return Task.CompletedTask;
     }
+
+    internal static string ResolveMetadataIdentifier(string? value, string fallback)
+        => string.IsNullOrWhiteSpace(value) ? fallback : value;
+
+    internal static Action<string> BuildLogForwarder(Action<string>? log) => message => log?.Invoke(message);
 
     internal static string[] BuildEmbeddedResourceFilters(IReadOnlyCollection<Assembly> migrationAssemblies)
     {

@@ -35,6 +35,11 @@ public sealed class PropertyManagementSetupServiceEdgeCoverageTests
         {
             await AssertThrows<NgbConfigurationViolationException>(() => InvokeAccount(service, [item], "1100"));
         }
+
+        await InvokeAccount(
+            service,
+            [Admin(Account("1100", AccountType.Asset, StatementSection.Assets))],
+            "1100");
     }
 
     [Fact]
@@ -223,6 +228,10 @@ public sealed class PropertyManagementSetupServiceEdgeCoverageTests
         var harness = new Harness { CatalogPages = _ => duplicates };
         await AssertThrows<NgbConfigurationViolationException>(() => InvokeDefaultBank(harness.Service));
         await AssertThrows<NgbConfigurationViolationException>(() => InvokeAccountingPolicy(harness.Service));
+
+        var empty = new Harness();
+        await InvokeDefaultBank(empty.Service);
+        await InvokeAccountingPolicy(empty.Service);
     }
 
     private static async Task AssertBankFailure(
@@ -269,6 +278,11 @@ public sealed class PropertyManagementSetupServiceEdgeCoverageTests
                         It.IsAny<PageRequestDto>(),
                         It.IsAny<CancellationToken>()))
                     .ReturnsAsync((string _, PageRequestDto request, CancellationToken _) => CatalogPages(request));
+                _catalogs.Setup(x => x.CreateAsync(
+                        It.IsAny<string>(),
+                        It.IsAny<RecordPayload>(),
+                        It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(Catalog(new RecordPayload()));
                 return new PropertyManagementSetupService(
                     _admin.Object,
                     _management.Object,

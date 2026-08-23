@@ -1,6 +1,8 @@
 using FluentAssertions;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Migrations.Evolve;
+using NGB.Persistence.Migrations;
+using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.PostgreSql.Migrations;
 using Npgsql;
 using Xunit;
@@ -36,6 +38,34 @@ public sealed class PmSchemaMigrator_NoRepair_P0Tests(PmSchemaIntegrationFixture
             .Should().BeTrue();
         (await TriggerExistsAsync(fixture.ConnectionString, "doc_pm_work_order_completion", "trg_posted_immutable"))
             .Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Repair_WithoutExplicitOptions_CompletesAgainstMigratedSchema()
+    {
+        await fixture.ResetDatabaseAsync();
+
+        var act = () => PropertyManagementDatabaseBootstrapper.RepairModuleAsync(fixture.ConnectionString);
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(60_000)]
+    public async Task Repair_WithExplicitTimeoutBoundaries_CompletesAgainstMigratedSchema(int milliseconds)
+    {
+        await fixture.ResetDatabaseAsync();
+        var options = new MigrationExecutionOptions(
+            LockTimeout: TimeSpan.FromMilliseconds(milliseconds),
+            StatementTimeout: TimeSpan.FromMilliseconds(milliseconds));
+
+        var act = () => PropertyManagementDatabaseBootstrapper.RepairModuleAsync(
+            fixture.ConnectionString,
+            options,
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     private static async Task RecreatePublicSchemaAsync(string cs)

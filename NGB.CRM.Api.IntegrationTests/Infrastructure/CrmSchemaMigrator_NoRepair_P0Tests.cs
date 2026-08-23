@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using NGB.Persistence.Migrations;
 using NGB.CRM.PostgreSql.Bootstrap;
 using NGB.CRM.PostgreSql.Migrations;
 using NGB.PostgreSql.Bootstrap;
@@ -60,6 +61,24 @@ public sealed class CrmSchemaMigrator_NoRepair_P0Tests(CrmSchemaPostgresFixture 
         await CrmDatabaseBootstrapper.RepairModuleAsync(fixture.ConnectionString);
 
         (await IndexExistsAsync(fixture.ConnectionString, "doc_crm_quote__lines", "ix_doc_crm_quote__lines__product_id")).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(60_000)]
+    public async Task Repair_WithExplicitTimeoutBoundaries_CompletesAgainstMigratedSchema(int milliseconds)
+    {
+        await fixture.ResetDatabaseAsync();
+        var options = new MigrationExecutionOptions(
+            LockTimeout: TimeSpan.FromMilliseconds(milliseconds),
+            StatementTimeout: TimeSpan.FromMilliseconds(milliseconds));
+
+        var act = () => CrmDatabaseBootstrapper.RepairModuleAsync(
+            fixture.ConnectionString,
+            options,
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     private static async Task RecreatePublicSchemaAsync(string cs)

@@ -113,6 +113,31 @@ public sealed class SchemaMigratorFullCoverageTests
     }
 
     [Fact]
+    public async Task Non_dry_run_reaches_connection_string_validation_without_opening_a_database_connection()
+    {
+        Func<Task> act = () => SchemaMigrator.MigrateAsync("invalid connection string", [Pack("platform")]);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public void Lock_configuration_and_migration_logging_support_default_and_explicit_values()
+    {
+        SchemaMigrator.ResolveLockConfiguration(null).Should().Be((SchemaMigrationLockMode.Wait, null));
+
+        var configured = new SchemaMigrationExecutionOptions(
+            LockMode: SchemaMigrationLockMode.Skip,
+            LockWaitTimeout: TimeSpan.FromSeconds(7));
+        SchemaMigrator.ResolveLockConfiguration(configured)
+            .Should().Be((SchemaMigrationLockMode.Skip, TimeSpan.FromSeconds(7)));
+
+        var messages = new List<string>();
+        SchemaMigrator.WriteMigrationLog(null, "ignored", "ignored");
+        SchemaMigrator.WriteMigrationLog(messages.Add, "platform", "migration_changelog__platform");
+        messages.Should().Equal("Migrate: platform (changelog=migration_changelog__platform)");
+    }
+
+    [Fact]
     public void Connection_string_builder_applies_only_non_empty_application_name()
     {
         const string connectionString = "Host=localhost;Database=ngb;Username=user;Password=secret";

@@ -99,6 +99,34 @@ public sealed class TradeDocumentLineDefaultsService_P0Tests
     }
 
     [Fact]
+    public async Task ResolveAsync_SalesInvoiceWithProfileWithoutDefaultPriceType_ReturnsEmptyDefaults()
+    {
+        var itemId = Guid.NewGuid();
+        var pricing = new Mock<ITradePricingLookupReader>(MockBehavior.Strict);
+        pricing.Setup(x => x.GetItemSalesProfilesAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, TradeItemSalesProfile>
+            {
+                [itemId] = new(itemId, null, null)
+            });
+        var sut = CreateSut(pricing.Object);
+
+        var response = await sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(
+                TradeCodes.SalesInvoice,
+                AsOfDate: null,
+                WarehouseId: null,
+                PriceTypeId: null,
+                SalesInvoiceId: null,
+                PurchaseReceiptId: null,
+                Rows: [new TradeDocumentLineDefaultsRowRequestDto("line-1", itemId, null)]),
+            CancellationToken.None);
+
+        response.Rows.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new TradeDocumentLineDefaultsRowResultDto("line-1", null, null, null, null));
+    }
+
+    [Fact]
     public async Task ResolveAsync_ItemPriceUpdate_CoversExplicitPriceTypeAndNullSnapshotCurrency()
     {
         var profileItemId = Guid.NewGuid();

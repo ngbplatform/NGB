@@ -313,6 +313,20 @@ public sealed class PostgresDocumentReaderFullCoverageTests
         connection.Commands[0].CommandText.Should().Contain("UNION ALL").And.Contain("ANY(");
     }
 
+    [Fact]
+    public async Task Count_accepts_null_filter_collection_as_no_filters()
+    {
+        var connection = Connection(scalar: _ => 1L);
+
+        var count = await Reader(connection).CountAsync(
+            Head(),
+            new DocumentQuery(null, null!) { SoftDeleteFilterMode = SoftDeleteFilterMode.All },
+            default);
+
+        count.Should().Be(1);
+        connection.Commands.Should().ContainSingle();
+    }
+
     [Theory]
     [InlineData("", "doc_invoice", "name", "TypeCode")]
     [InlineData("invoice", " ", "name", "HeadTableName")]

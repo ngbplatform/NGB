@@ -148,9 +148,6 @@ public sealed class PostgresAccountingEntryReader(IUnitOfWork uow, IDimensionSet
             .Distinct()
             .ToArray();
 
-        if (accountIds.Length == 0)
-            return new Dictionary<Guid, IReadOnlyList<AccountDimensionRule>>();
-
         const string sql = """
                            SELECT
                                r.account_id   AS AccountId,

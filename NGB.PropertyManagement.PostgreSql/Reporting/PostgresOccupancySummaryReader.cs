@@ -46,7 +46,7 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
         if (buildingId is null)
             return null;
 
-        if (buildingId == Guid.Empty)
+        if (buildingId.Value == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(buildingId), "Select a building.");
 
         const string sql = """

@@ -1,3 +1,4 @@
+using System.Data.Common;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NGB.PostgreSql.Locks;
@@ -185,5 +186,59 @@ public sealed class LocksAndUnitOfWorkFullCoverageTests
         await dispose.Should().NotThrowAsync();
         transaction!.Disposed.Should().BeTrue();
         sut.Transaction.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Postgres_unit_of_work_supports_asynchronous_transaction_disposal_and_npgsql_session_branch()
+    {
+        RecordingDbTransaction? transaction = null;
+        var connection = new RecordingDbConnection(
+            transactionFactory: c => transaction = new RecordingDbTransaction(c, asynchronouslyDispose: true));
+        var sut = new PostgresUnitOfWork(connection, NullLogger<PostgresUnitOfWork>.Instance);
+
+        await sut.BeginTransactionAsync();
+        await sut.CommitAsync();
+        transaction!.Disposed.Should().BeTrue();
+
+        await sut.BeginTransactionAsync();
+        await sut.RollbackAsync();
+        transaction!.Disposed.Should().BeTrue();
+
+        await sut.BeginTransactionAsync();
+        await sut.DisposeAsync();
+        transaction!.Disposed.Should().BeTrue();
+
+        await using var npgsql = new Npgsql.NpgsqlConnection();
+        var npgsqlUow = new PostgresUnitOfWork(npgsql, NullLogger<PostgresUnitOfWork>.Instance);
+        Func<Task> initializeClosedNpgsql = () => npgsqlUow.InitializeSessionAsync(CancellationToken.None);
+        await initializeClosedNpgsql.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task Postgres_unit_of_work_clears_transaction_when_finalization_or_disposal_fails()
+    {
+        async Task AssertFailureAsync(
+            Func<DbConnection, DbTransaction> transactionFactory,
+            Func<PostgresUnitOfWork, Task> operation)
+        {
+            var connection = new RecordingDbConnection(transactionFactory: transactionFactory);
+            var sut = new PostgresUnitOfWork(connection, NullLogger<PostgresUnitOfWork>.Instance);
+            await sut.BeginTransactionAsync();
+
+            Func<Task> act = () => operation(sut);
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            sut.Transaction.Should().BeNull();
+        }
+
+        await AssertFailureAsync(
+            connection => new RecordingDbTransaction(connection, throwOnCommit: true),
+            sut => sut.CommitAsync());
+        await AssertFailureAsync(
+            connection => new RecordingDbTransaction(connection, throwOnRollback: true),
+            sut => sut.RollbackAsync());
+        await AssertFailureAsync(
+            connection => new RecordingDbTransaction(connection, throwOnDispose: true),
+            async sut => await sut.DisposeAsync());
     }
 }

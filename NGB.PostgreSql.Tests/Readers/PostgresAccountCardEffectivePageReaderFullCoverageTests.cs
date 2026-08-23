@@ -108,6 +108,20 @@ public sealed class PostgresAccountCardEffectivePageReaderFullCoverageTests
     }
 
     [Fact]
+    public async Task Page_with_a_line_defaults_both_unresolved_dimension_sets()
+    {
+        var fixture = Fixture([LineRow(1, PrimarySetId, CounterSetId)]);
+
+        var page = await fixture.Reader.GetPageAsync(Request());
+
+        var line = page.Lines.Should().ContainSingle().Subject;
+        line.Dimensions.Should().BeSameAs(DimensionBag.Empty);
+        line.CounterAccountDimensions.Should().BeSameAs(DimensionBag.Empty);
+        line.DimensionValueDisplays.Should().BeEmpty();
+        line.CounterAccountDimensionValueDisplays.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Totals_without_paging_returns_zero_for_no_rows_and_materializes_unbounded_totals_sql()
     {
         var fixture = Fixture();

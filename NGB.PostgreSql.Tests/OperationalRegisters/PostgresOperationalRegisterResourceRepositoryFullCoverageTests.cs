@@ -14,6 +14,19 @@ public sealed class PostgresOperationalRegisterResourceRepositoryFullCoverageTes
     private static readonly DateTime NowUtc = new(2026, 8, 16, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
+    public async Task Replace_treats_null_resources_as_an_empty_mutable_definition()
+    {
+        var fixture = Fixture(hasMovements: false);
+
+        await fixture.Repository.ReplaceAsync(RegisterId, null, NowUtc);
+
+        fixture.Connection.Commands.Should().HaveCount(3);
+        fixture.Connection.Commands.Last().CommandText.Should()
+            .Contain("DELETE FROM operational_register_resources")
+            .And.Contain("INSERT INTO operational_register_resources");
+    }
+
+    [Fact]
     public async Task Replace_rejects_missing_register_and_temp_ordinal_overflow()
     {
         var missing = Fixture(hasMovements: null).Repository;
@@ -28,6 +41,21 @@ public sealed class PostgresOperationalRegisterResourceRepositoryFullCoverageTes
             NowUtc);
         var error = await ordinalOverflow.Should().ThrowAsync<OperationalRegisterResourcesAppendOnlyViolationException>();
         error.Which.Reason.Should().Be("ordinal_overflow");
+    }
+
+    [Fact]
+    public async Task Replace_with_existing_movements_accepts_an_append_without_temp_ordinal_overflow()
+    {
+        var fixture = Fixture(
+            hasMovements: true,
+            existing: [Resource("Amount", "amount", "amount", 1)]);
+
+        await fixture.Repository.ReplaceAsync(
+            RegisterId,
+            [Definition("Amount", 1), Definition("Quantity", 2)],
+            NowUtc);
+
+        fixture.Connection.Commands.Should().NotBeEmpty();
     }
 
     [Fact]

@@ -154,6 +154,40 @@ public sealed class ClientContractPostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_When_Either_Line_Active_Bound_Is_Missing_Passes()
+    {
+        var head = AgencyBillingTestData.ValidClientContractHead();
+        var firstLine = AgencyBillingTestData.ValidClientContractLine(
+            documentId: head.DocumentId,
+            ordinal: 1) with
+        {
+            ActiveFrom = null,
+            ActiveTo = new DateOnly(2026, 12, 31)
+        };
+        var secondLine = AgencyBillingTestData.ValidClientContractLine(
+            documentId: head.DocumentId,
+            ordinal: 2) with
+        {
+            ActiveFrom = new DateOnly(2026, 4, 1),
+            ActiveTo = null
+        };
+        var refs = ValidReferences(
+            head.ClientId,
+            head.ProjectId,
+            serviceItemId: firstLine.ServiceItemId!.Value,
+            teamMemberId: firstLine.TeamMemberId!.Value,
+            extraServiceItemId: secondLine.ServiceItemId!.Value,
+            extraTeamMemberId: secondLine.TeamMemberId!.Value);
+        var sut = CreateSut(head: head, lines: [firstLine, secondLine], refs: refs);
+
+        var action = () => sut.ValidateBeforePostAsync(
+            AgencyBillingTestData.CreateDocument(AgencyBillingCodes.ClientContract),
+            CancellationToken.None);
+
+        await action.Should().NotThrowAsync();
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_When_Line_Has_No_Service_Discriminator_Throws()
     {
         var head = AgencyBillingTestData.ValidClientContractHead();

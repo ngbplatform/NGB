@@ -7,6 +7,7 @@ using NGB.Core.Documents.Exceptions;
 using NGB.Metadata.Base;
 using NGB.Metadata.Documents.Hybrid;
 using NGB.Metadata.Documents.Storage;
+using NGB.Persistence.Common;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.UnitOfWork;
@@ -149,6 +150,202 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
         pageFilter.Values.Should().Equal(leaseId1.ToString(), leaseId2.ToString());
         pageFilter.ValueType.Should().Be(ColumnType.Guid);
         pageFilter.HeadColumnName.Should().Be("lease_id");
+    }
+
+    [Fact]
+    public async Task GetPageAsync_PeriodFilters_validate_required_format_order_and_date_metadata()
+    {
+        var withDate = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true),
+            Col("due_on_utc", ColumnType.Date),
+        ]);
+        var withoutDate = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true),
+        ]);
+
+        Func<Task> blank = async () => await CreateSut(withDate).GetPageAsync(
+            TypeCode,
+            new PageRequestDto(0, 10, null, new Dictionary<string, string> { ["periodFrom"] = " " }),
+            default);
+        Func<Task> malformed = async () => await CreateSut(withDate).GetPageAsync(
+            TypeCode,
+            new PageRequestDto(0, 10, null, new Dictionary<string, string> { ["periodTo"] = "not-a-date" }),
+            default);
+        Func<Task> reversed = async () => await CreateSut(withDate).GetPageAsync(
+            TypeCode,
+            new PageRequestDto(0, 10, null, new Dictionary<string, string>
+            {
+                ["period_from"] = "2026-03-01",
+                ["period_to"] = "2026-02-01"
+            }),
+            default);
+        Func<Task> noDateColumn = async () => await CreateSut(withoutDate).GetPageAsync(
+            TypeCode,
+            new PageRequestDto(0, 10, null, new Dictionary<string, string> { ["fromMonth"] = "2026-02-01" }),
+            default);
+
+        await blank.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await malformed.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await reversed.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await noDateColumn.Should().ThrowAsync<NgbConfigurationViolationException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_PeriodAliases_choose_preferred_custom_and_range_end_fallback_columns()
+    {
+        async Task<DocumentPeriodFilter?> CapturePeriodAsync(
+            string columnName,
+            IReadOnlyDictionary<string, string> filters)
+        {
+            DocumentQuery? captured = null;
+            var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+                Col("document_id", ColumnType.Guid, true),
+                Col("display", ColumnType.String, true),
+                Col(columnName, ColumnType.Date),
+            ]);
+            var service = CreateSut(meta, readerSetup: reader =>
+            {
+                reader.Setup(x => x.CountAsync(
+                        It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(), It.IsAny<CancellationToken>()))
+                    .Callback<DocumentHeadDescriptor, DocumentQuery, CancellationToken>((_, query, _) => captured = query)
+                    .ReturnsAsync(0);
+                reader.Setup(x => x.GetPageAsync(
+                        It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(), 0, 10, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync([]);
+            });
+
+            await service.GetPageAsync(TypeCode, new PageRequestDto(0, 10, null, filters), default);
+            return captured!.PeriodFilter;
+        }
+
+        var preferred = await CapturePeriodAsync("due_on_utc", new Dictionary<string, string>
+        {
+            ["from_month"] = "2026-02-01",
+            ["toMonth"] = "2026-03-01"
+        });
+        preferred.Should().BeEquivalentTo(new DocumentPeriodFilter(
+            "due_on_utc", new DateOnly(2026, 2, 1), new DateOnly(2026, 3, 1)));
+
+        var custom = await CapturePeriodAsync("custom_business_date", new Dictionary<string, string>
+        {
+            ["periodFrom"] = "2026-02-01"
+        });
+        custom!.ColumnName.Should().Be("custom_business_date");
+
+        var rangeEndFallback = await CapturePeriodAsync("period_end_utc", new Dictionary<string, string>
+        {
+            ["periodTo"] = "2026-03-01"
+        });
+        rangeEndFallback!.ColumnName.Should().Be("period_end_utc");
+    }
+
+    [Fact]
+    public async Task GetPageAsync_SoftDeleteAliases_cover_all_active_deleted_all_and_invalid_values()
+    {
+        var capturedModes = new List<SoftDeleteFilterMode>();
+        var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true),
+        ]);
+        var service = CreateSut(meta, readerSetup: reader =>
+        {
+            reader.Setup(x => x.CountAsync(
+                    It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(), It.IsAny<CancellationToken>()))
+                .Callback<DocumentHeadDescriptor, DocumentQuery, CancellationToken>(
+                    (_, query, _) => capturedModes.Add(query.SoftDeleteFilterMode))
+                .ReturnsAsync(0);
+            reader.Setup(x => x.GetPageAsync(
+                    It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(), 0, 10, It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+        });
+
+        foreach (var (key, value) in new[]
+                 {
+                     ("deleted", ""),
+                     ("deleted", "all"),
+                     ("trash", "active"),
+                     ("deleted", "false"),
+                     ("deleted", "0"),
+                     ("trash", "deleted"),
+                     ("deleted", "true"),
+                     ("deleted", "1")
+                 })
+        {
+            await service.GetPageAsync(
+                TypeCode,
+                new PageRequestDto(0, 10, null, new Dictionary<string, string> { [key] = value }),
+                default);
+        }
+
+        capturedModes.Should().Equal(
+            SoftDeleteFilterMode.All,
+            SoftDeleteFilterMode.All,
+            SoftDeleteFilterMode.Active,
+            SoftDeleteFilterMode.Active,
+            SoftDeleteFilterMode.Active,
+            SoftDeleteFilterMode.Deleted,
+            SoftDeleteFilterMode.Deleted,
+            SoftDeleteFilterMode.Deleted);
+
+        Func<Task> invalid = async () => await service.GetPageAsync(
+            TypeCode,
+            new PageRequestDto(0, 10, null, new Dictionary<string, string> { ["deleted"] = "maybe" }),
+            default);
+        await invalid.Should().ThrowAsync<NgbArgumentInvalidException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_FilterValues_reject_empty_input_and_honor_explicit_head_column_mapping()
+    {
+        var meta = BuildMetaWithHead(
+            TypeCode,
+            "doc_test",
+            [
+                Col("document_id", ColumnType.Guid, true),
+                Col("display", ColumnType.String, true),
+                Col("party_id", ColumnType.Guid)
+            ],
+            [
+                new DocumentListFilterMetadata(
+                    Key: "vendor",
+                    Label: "Vendor",
+                    Type: ColumnType.Guid,
+                    IsMulti: false,
+                    HeadColumnName: "party_id")
+            ]);
+
+        Func<Task> empty = async () => await CreateSut(meta).GetPageAsync(
+            TypeCode,
+            new PageRequestDto(0, 10, null, new Dictionary<string, string> { ["vendor"] = " " }),
+            default);
+        await empty.Should().ThrowAsync<NgbArgumentInvalidException>();
+
+        DocumentQuery? captured = null;
+        var service = CreateSut(meta, readerSetup: reader =>
+        {
+            reader.Setup(x => x.CountAsync(
+                    It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(), It.IsAny<CancellationToken>()))
+                .Callback<DocumentHeadDescriptor, DocumentQuery, CancellationToken>((_, query, _) => captured = query)
+                .ReturnsAsync(0);
+            reader.Setup(x => x.GetPageAsync(
+                    It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(), 0, 10, It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+        });
+        var vendorId = Guid.NewGuid();
+        await service.GetPageAsync(
+            TypeCode,
+            new PageRequestDto(0, 10, null, new Dictionary<string, string>
+            {
+                ["filters.vendor"] = vendorId.ToString()
+            }),
+            default);
+
+        var filter = captured!.Filters.Should().ContainSingle().Subject;
+        filter.Key.Should().Be("vendor");
+        filter.Values.Should().Equal(vendorId.ToString());
+        filter.HeadColumnName.Should().Be("party_id");
     }
 
     [Fact]
@@ -325,6 +522,78 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
     }
 
     [Fact]
+    public async Task UpdateDraftAsync_WhenRouteTypeDoesNotOwnDocument_ThrowsBeforeMutation()
+    {
+        var id = Guid.NewGuid();
+        var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true),
+        ]);
+        var svc = CreateSut(meta, lockedDoc: Draft(id, "another_type"));
+
+        Func<Task> act = async () => await svc.UpdateDraftAsync(
+            TypeCode, id, new RecordPayload(), default);
+
+        var exception = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
+        exception.Which.ParamName.Should().Be("documentType");
+    }
+
+    [Fact]
+    public async Task UpdateDraftAsync_WhenRequiredHeadDisappearsAfterLock_ThrowsNotFound()
+    {
+        var id = Guid.NewGuid();
+        var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true),
+        ]);
+        var svc = CreateSut(meta, lockedDoc: Draft(id, TypeCode));
+
+        Func<Task> act = async () => await svc.UpdateDraftAsync(
+            TypeCode, id, new RecordPayload(), default);
+
+        await act.Should().ThrowAsync<DocumentNotFoundException>();
+    }
+
+    [Fact]
+    public async Task UpdateDraftAsync_WhenPersistedRequiredValueIsNull_ReportsConfigurationDrift()
+    {
+        var id = Guid.NewGuid();
+        var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true),
+        ]);
+        var existing = new DocumentHeadRow(
+            id,
+            DocumentStatus.Draft,
+            false,
+            null,
+            new Dictionary<string, object?> { ["display"] = null });
+        var svc = CreateSut(meta, lockedDoc: Draft(id, TypeCode), existingRow: existing);
+
+        Func<Task> act = async () => await svc.UpdateDraftAsync(
+            TypeCode, id, new RecordPayload(), default);
+
+        await act.Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*missing required head value 'display'*");
+    }
+
+    [Fact]
+    public async Task DeleteDraftAsync_WhenRouteTypeDoesNotOwnDocument_ThrowsBeforeDeletion()
+    {
+        var id = Guid.NewGuid();
+        var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true),
+        ]);
+        var svc = CreateSut(meta, lockedDoc: Draft(id, "another_type"));
+
+        Func<Task> act = async () => await svc.DeleteDraftAsync(TypeCode, id, default);
+
+        var exception = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
+        exception.Which.ParamName.Should().Be("documentType");
+    }
+
+    [Fact]
     public async Task DeleteDraftAsync_WhenDocumentDoesNotExist_IsNoOp()
     {
         // Arrange
@@ -474,4 +743,14 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
 
     private static DocumentColumnMetadata Col(string name, ColumnType type, bool required = false)
         => new(name, type, Required: required);
+
+    private static DocumentRecord Draft(Guid id, string typeCode) => new()
+    {
+        Id = id,
+        TypeCode = typeCode,
+        DateUtc = new DateTime(2026, 8, 22, 0, 0, 0, DateTimeKind.Utc),
+        Status = DocumentStatus.Draft,
+        CreatedAtUtc = new DateTime(2026, 8, 22, 0, 0, 0, DateTimeKind.Utc),
+        UpdatedAtUtc = new DateTime(2026, 8, 22, 0, 0, 0, DateTimeKind.Utc)
+    };
 }

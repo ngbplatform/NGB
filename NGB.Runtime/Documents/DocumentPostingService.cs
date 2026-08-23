@@ -106,8 +106,7 @@ internal sealed class DocumentPostingService(
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 
-                var doc = await documents.GetForUpdateAsync(documentId, innerCt)
-                          ?? throw new DocumentNotFoundException(documentId);
+                var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
                 var oldStatus = doc.Status;
                 var oldPostedAt = doc.PostedAtUtc;
@@ -125,7 +124,7 @@ internal sealed class DocumentPostingService(
                 RuntimeLog.DocumentOperationStarted(logger, "Post");
 
                 if (doc.Status == DocumentStatus.MarkedForDeletion)
-                    throw new DocumentMarkedForDeletionException("Document.Post", documentId, doc.MarkedForDeletionAtUtc ?? doc.UpdatedAtUtc);
+                    throw new DocumentMarkedForDeletionException("Document.Post", documentId, ResolveDeletionMarkTimestamp(doc));
 
                 if (doc.Status == DocumentStatus.Posted)
                 {
@@ -140,8 +139,7 @@ internal sealed class DocumentPostingService(
                     await numberingSync.EnsureNumberAndSyncTypedAsync(doc, nowForNumber, innerCt);
 
                     // Re-read: numbering updates the DB, and validators / posting action may depend on the assigned number.
-                    doc = await documents.GetForUpdateAsync(documentId, innerCt)
-                          ?? throw new DocumentNotFoundException(documentId);
+                    doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
                 }
 
                 foreach (var v in validators.ResolvePostValidators(doc.TypeCode))
@@ -199,8 +197,7 @@ internal sealed class DocumentPostingService(
                 if (!string.Equals(oldNumber, doc.Number, StringComparison.Ordinal))
                     postChanges.Add(AuditLogService.Change("number", oldNumber, doc.Number));
 
-                if (oldMarkedForDeletionAt is not null)
-                    postChanges.Add(AuditLogService.Change("marked_for_deletion_at_utc", oldMarkedForDeletionAt, null));
+                AddClearedDeletionMarkChange(postChanges, oldMarkedForDeletionAt);
 
                 await audit.WriteAsync(
                     entityKind: AuditEntityKind.Document,
@@ -247,8 +244,7 @@ internal sealed class DocumentPostingService(
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 
-                var doc = await documents.GetForUpdateAsync(documentId, innerCt)
-                          ?? throw new DocumentNotFoundException(documentId);
+                var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
                 var oldStatus = doc.Status;
                 var oldPostedAt = doc.PostedAtUtc;
@@ -355,8 +351,7 @@ internal sealed class DocumentPostingService(
                     AuditLogService.Change("updated_at_utc", oldUpdatedAt, now)
                 };
                 
-                if (oldMarkedForDeletionAt is not null)
-                    unpostChanges.Add(AuditLogService.Change("marked_for_deletion_at_utc", oldMarkedForDeletionAt, null));
+                AddClearedDeletionMarkChange(unpostChanges, oldMarkedForDeletionAt);
 
                 await audit.WriteAsync(
                     entityKind: AuditEntityKind.Document,
@@ -401,24 +396,14 @@ internal sealed class DocumentPostingService(
 
     public async Task RepostAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default)
     {
-        var doc = await documents.GetAsync(documentId, ct) ?? throw new DocumentNotFoundException(documentId);
+        var doc = RequireDocument(await documents.GetAsync(documentId, ct), documentId);
         var action = postingActionResolver.TryResolve(doc);
-        await RepostInternalAsync(
-            documentId,
-            async (context, innerCt) =>
-            {
-                if (action is null)
-                    throw new DocumentPostingHandlerNotConfiguredException(documentId, doc.TypeCode);
-
-                await action(context, innerCt);
-            },
-            manageTransaction,
-            ct);
+        await RepostInternalAsync(documentId, action, manageTransaction, ct);
     }
 
     private async Task RepostInternalAsync(
         Guid documentId,
-        Func<IAccountingPostingContext, CancellationToken, Task> postNew,
+        Func<IAccountingPostingContext, CancellationToken, Task>? postNew,
         bool manageTransaction,
         CancellationToken ct)
     {
@@ -429,8 +414,7 @@ internal sealed class DocumentPostingService(
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 
-                var doc = await documents.GetForUpdateAsync(documentId, innerCt)
-                          ?? throw new DocumentNotFoundException(documentId);
+                var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
                 var oldPostedAt = doc.PostedAtUtc;
                 var oldUpdatedAt = doc.UpdatedAtUtc;
@@ -500,7 +484,12 @@ internal sealed class DocumentPostingService(
                                     created.CreditDimensionSetId = s.CreditDimensionSetId;
                                 }
 
-                                await postNew(ctx, actionCt);
+                                await InvokeResolvedPostingActionAsync(
+                                    postNew,
+                                    ctx,
+                                    actionCt,
+                                    documentId,
+                                    doc.TypeCode);
                             },
                             manageTransaction: false,
                             innerCt);
@@ -585,8 +574,7 @@ internal sealed class DocumentPostingService(
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 
-                var doc = await documents.GetForUpdateAsync(documentId, innerCt)
-                          ?? throw new DocumentNotFoundException(documentId);
+                var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
                 var oldStatus = doc.Status;
                 var oldMarkedForDeletionAt = doc.MarkedForDeletionAtUtc;
@@ -623,8 +611,7 @@ internal sealed class DocumentPostingService(
                     markedForDeletionAtUtc: now,
                     innerCt);
 
-                var updatedDraft = await documents.GetForUpdateAsync(documentId, innerCt)
-                                  ?? throw new DocumentNotFoundException(documentId);
+                var updatedDraft = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
                 await writeEngine.UpdateDraftStorageAsync(updatedDraft, acquireLock: false, innerCt);
 
@@ -681,8 +668,7 @@ internal sealed class DocumentPostingService(
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
 
-                var doc = await documents.GetForUpdateAsync(documentId, innerCt)
-                          ?? throw new DocumentNotFoundException(documentId);
+                var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
                 var oldStatus = doc.Status;
                 var oldMarkedForDeletionAt = doc.MarkedForDeletionAtUtc;
@@ -718,8 +704,7 @@ internal sealed class DocumentPostingService(
                     markedForDeletionAtUtc: null,
                     innerCt);
 
-                var updatedDraft = await documents.GetForUpdateAsync(documentId, innerCt)
-                                  ?? throw new DocumentNotFoundException(documentId);
+                var updatedDraft = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
                 await writeEngine.UpdateDraftStorageAsync(updatedDraft, acquireLock: false, innerCt);
 
@@ -854,8 +839,7 @@ internal sealed class DocumentPostingService(
                 manageTransaction: manageTransaction,
                 ct: ct);
 
-            if (result == OperationalRegisterWriteResult.AlreadyCompleted)
-                throw BuildSubsystemStateConflict(doc.Id, "operational-register", registerId, nameof(OperationalRegisterWriteOperation.Repost));
+            EnsureOperationalRegisterExecuted(result, registerId, doc.Id, OperationalRegisterWriteOperation.Repost);
 
             if (result == OperationalRegisterWriteResult.Executed)
                 didWork = true;
@@ -888,13 +872,7 @@ internal sealed class DocumentPostingService(
                     startedAtUtc,
                     innerCt);
 
-                if (begin == PostingStateBeginResult.AlreadyCompleted)
-                    throw BuildSubsystemStateConflict(doc.Id, "reference-register", registerId, nameof(ReferenceRegisterWriteOperation.Post));
-
-                if (begin == PostingStateBeginResult.InProgress)
-                {
-                    throw new ReferenceRegisterWriteAlreadyInProgressException(registerId, doc.Id, nameof(ReferenceRegisterWriteOperation.Post));
-                }
+                EnsureReferenceRegisterWriteBegun(begin, registerId, doc.Id, ReferenceRegisterWriteOperation.Post);
 
                 await refregRecordsStore.AppendAsync(registerId, records, innerCt);
                 await refregWriteStateRepository.MarkCompletedAsync(
@@ -944,16 +922,13 @@ internal sealed class DocumentPostingService(
                     startedAtUtc,
                     innerCt);
 
-                if (begin == PostingStateBeginResult.AlreadyCompleted)
-                    throw BuildSubsystemStateConflict(doc.Id, "reference-register", registerId, nameof(ReferenceRegisterWriteOperation.Unpost));
-
-                if (begin == PostingStateBeginResult.InProgress)
-                    throw new ReferenceRegisterWriteAlreadyInProgressException(registerId, doc.Id, nameof(ReferenceRegisterWriteOperation.Unpost));
+                EnsureReferenceRegisterWriteBegun(begin, registerId, doc.Id, ReferenceRegisterWriteOperation.Unpost);
 
                 if (!recordModeCache.TryGetValue(registerId, out var recordMode))
                 {
-                    var reg = await refregRepository.GetByIdAsync(registerId, innerCt)
-                              ?? throw new ReferenceRegisterNotFoundException(registerId);
+                    var reg = RequireReferenceRegister(
+                        await refregRepository.GetByIdAsync(registerId, innerCt),
+                        registerId);
                     recordMode = reg.RecordMode;
                     recordModeCache.Add(registerId, recordMode);
                 }
@@ -963,16 +938,12 @@ internal sealed class DocumentPostingService(
                     // SubordinateToRecorder semantics: Unpost writes tombstones for all currently active keys produced by the recorder.
                     // Prefer store-side tombstones for performance and correctness (covers future-period rows too).
                     // Fallback to paging reader if the current persistence implementation doesn't support it.
-                    if (refregRecordsStore is IReferenceRegisterRecorderTombstoneWriter tombstoneWriter)
-                    {
-                        await tombstoneWriter.AppendTombstonesForRecorderAsync(registerId, doc.Id, keepDimensionSetIds: null, innerCt);
-                    }
-                    else
-                    {
-                        var tombstones = await BuildReferenceRegisterRecorderTombstonesAsync(registerId, doc.Id, startedAtUtc, keepDimensionSetIds: null, innerCt);
-                        if (tombstones.Count > 0)
-                            await refregRecordsStore.AppendAsync(registerId, tombstones, innerCt);
-                    }
+                    await AppendReferenceRegisterRecorderTombstonesAsync(
+                        registerId,
+                        doc.Id,
+                        startedAtUtc,
+                        keepDimensionSetIds: null,
+                        innerCt);
                 }
                 else
                 {
@@ -1035,19 +1006,16 @@ internal sealed class DocumentPostingService(
                     startedAtUtc,
                     innerCt);
 
-                if (begin == PostingStateBeginResult.AlreadyCompleted)
-                    throw BuildSubsystemStateConflict(doc.Id, "reference-register", registerId, nameof(ReferenceRegisterWriteOperation.Repost));
-
-                if (begin == PostingStateBeginResult.InProgress)
-                    throw new ReferenceRegisterWriteAlreadyInProgressException(registerId, doc.Id, nameof(ReferenceRegisterWriteOperation.Repost));
+                EnsureReferenceRegisterWriteBegun(begin, registerId, doc.Id, ReferenceRegisterWriteOperation.Repost);
 
                 didWork = true;
                 // SubordinateToRecorder semantics: Repost = tombstone removed keys (storno) + append new.
                 // For Independent registers, tombstones (if needed) must be emitted by the handler itself.
                 if (oldRegisterIds.Contains(registerId))
                 {
-                    var reg = await refregRepository.GetByIdAsync(registerId, innerCt)
-                              ?? throw new ReferenceRegisterNotFoundException(registerId);
+                    var reg = RequireReferenceRegister(
+                        await refregRepository.GetByIdAsync(registerId, innerCt),
+                        registerId);
 
                     if (reg.RecordMode == ReferenceRegisterRecordMode.SubordinateToRecorder)
                     {
@@ -1068,22 +1036,12 @@ internal sealed class DocumentPostingService(
                                     .ToArray();
                         }
 
-                        if (refregRecordsStore is IReferenceRegisterRecorderTombstoneWriter tombstoneWriter)
-                        {
-                            await tombstoneWriter.AppendTombstonesForRecorderAsync(registerId, doc.Id, keepDimensionSetIds, innerCt);
-                        }
-                        else
-                        {
-                            var tombstones = await BuildReferenceRegisterRecorderTombstonesAsync(
-                                registerId,
-                                doc.Id,
-                                startedAtUtc,
-                                keepDimensionSetIds: keepDimensionSetIds,
-                                innerCt);
-
-                            if (tombstones.Count > 0)
-                                await refregRecordsStore.AppendAsync(registerId, tombstones, innerCt);
-                        }
+                        await AppendReferenceRegisterRecorderTombstonesAsync(
+                            registerId,
+                            doc.Id,
+                            startedAtUtc,
+                            keepDimensionSetIds,
+                            innerCt);
                     }
                 }
 
@@ -1101,7 +1059,35 @@ internal sealed class DocumentPostingService(
         return didWork;
     }
 
-    private async Task<IReadOnlyList<ReferenceRegisterRecordWrite>> BuildReferenceRegisterRecorderTombstonesAsync(
+    private async Task AppendReferenceRegisterRecorderTombstonesAsync(
+        Guid registerId,
+        Guid recorderDocumentId,
+        DateTime asOfUtc,
+        IReadOnlyCollection<Guid>? keepDimensionSetIds,
+        CancellationToken ct)
+    {
+        if (refregRecordsStore is IReferenceRegisterRecorderTombstoneWriter tombstoneWriter)
+        {
+            await tombstoneWriter.AppendTombstonesForRecorderAsync(
+                registerId,
+                recorderDocumentId,
+                keepDimensionSetIds,
+                ct);
+            return;
+        }
+
+        var tombstones = await BuildReferenceRegisterRecorderTombstonesAsync(
+            registerId,
+            recorderDocumentId,
+            asOfUtc,
+            keepDimensionSetIds,
+            ct);
+
+        if (tombstones.Count > 0)
+            await refregRecordsStore.AppendAsync(registerId, tombstones, ct);
+    }
+
+    internal async Task<IReadOnlyList<ReferenceRegisterRecordWrite>> BuildReferenceRegisterRecorderTombstonesAsync(
         Guid registerId,
         Guid recorderDocumentId,
         DateTime asOfUtc,
@@ -1153,7 +1139,7 @@ internal sealed class DocumentPostingService(
         return list;
     }
 
-    private async Task<IReadOnlyList<AccountingEntry>> GetAccountingEntriesToReverseAsync(
+    internal async Task<IReadOnlyList<AccountingEntry>> GetAccountingEntriesToReverseAsync(
         DocumentRecord doc,
         IReadOnlyList<AccountingEntry> historicalEntries,
         string operation,
@@ -1184,7 +1170,52 @@ internal sealed class DocumentPostingService(
         return context.Entries.ToList();
     }
     
-    private static void EnsureOperationalRegisterExecuted(
+    internal static DocumentRecord RequireDocument(DocumentRecord? document, Guid documentId)
+        => document ?? throw new DocumentNotFoundException(documentId);
+
+    internal static ReferenceRegisterAdminItem RequireReferenceRegister(
+        ReferenceRegisterAdminItem? register,
+        Guid registerId)
+        => register ?? throw new ReferenceRegisterNotFoundException(registerId);
+
+    internal static DateTime ResolveDeletionMarkTimestamp(DocumentRecord document)
+        => document.MarkedForDeletionAtUtc ?? document.UpdatedAtUtc;
+
+    internal static void AddClearedDeletionMarkChange(
+        ICollection<AuditFieldChange> changes,
+        DateTime? oldMarkedForDeletionAt)
+    {
+        if (oldMarkedForDeletionAt is not null)
+            changes.Add(AuditLogService.Change("marked_for_deletion_at_utc", oldMarkedForDeletionAt, null));
+    }
+
+    internal static async Task InvokeResolvedPostingActionAsync(
+        Func<IAccountingPostingContext, CancellationToken, Task>? action,
+        IAccountingPostingContext context,
+        CancellationToken ct,
+        Guid documentId,
+        string typeCode)
+    {
+        if (action is null)
+            throw new DocumentPostingHandlerNotConfiguredException(documentId, typeCode);
+
+        await action(context, ct);
+    }
+
+    internal static void EnsureReferenceRegisterWriteBegun(
+        PostingStateBeginResult result,
+        Guid registerId,
+        Guid documentId,
+        ReferenceRegisterWriteOperation operation)
+    {
+        if (result == PostingStateBeginResult.AlreadyCompleted)
+            throw BuildSubsystemStateConflict(documentId, "reference-register", registerId, operation.ToString());
+
+        if (result == PostingStateBeginResult.InProgress)
+            throw new ReferenceRegisterWriteAlreadyInProgressException(registerId, documentId, operation.ToString());
+    }
+
+    internal static void EnsureOperationalRegisterExecuted(
         OperationalRegisterWriteResult result,
         Guid registerId,
         Guid documentId,

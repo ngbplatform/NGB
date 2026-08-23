@@ -75,13 +75,14 @@ internal sealed class ReportComposableCellActionResolver(ReportQueryPlan plan, R
 
         var idFieldCode = string.Concat(fieldCode.AsSpan(0, fieldCode.Length - DisplayFieldSuffix.Length), "_id");
         if (!dataset.TryGetField(idFieldCode, out var idField)
-            || idField.Field.Lookup is not DocumentLookupSourceDto { DocumentTypes: [var documentType] }
+            || idField.Field.Lookup is not DocumentLookupSourceDto lookup
+            || lookup.DocumentTypes.Count != 1
             || !TryGetGuid(values, idField.Field.Code, out var documentId))
         {
             return null;
         }
 
-        return ReportCellActions.BuildDocumentAction(documentType, documentId);
+        return ReportCellActions.BuildDocumentAction(lookup.DocumentTypes[0], documentId);
     }
 
     private ReportCellActionDto? ResolveCatalogDisplayAction(

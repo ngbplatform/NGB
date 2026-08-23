@@ -179,6 +179,68 @@ public sealed class GeneralJournalEntryUiServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task UpdateHeaderAsync_Awaits_an_incomplete_facade_operation()
+    {
+        var fixture = new Fixture();
+        var id = Guid.CreateVersion7();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Facade
+            .Setup(x => x.UpdateDraftHeaderAsync(id, It.IsAny<GeneralJournalEntryDraftHeaderUpdate>(), "editor", fixture.Token))
+            .Returns(gate.Task);
+
+        var operation = fixture.Sut.UpdateHeaderAsync(
+            id,
+            new UpdateGeneralJournalEntryHeaderRequestDto(
+                "editor",
+                JournalType: (int)GeneralJournalEntryModels.JournalType.Standard),
+            fixture.Token);
+        operation.IsCompleted.Should().BeFalse();
+        gate.SetResult();
+
+        Func<Task> update = async () => await operation;
+        await update.Should().ThrowAsync<DocumentNotFoundException>();
+    }
+
+    [Fact]
+    public async Task Replace_reject_and_reverse_forward_non_null_requests()
+    {
+        var fixture = new Fixture(Actor());
+        var id = Guid.CreateVersion7();
+        fixture.Facade
+            .Setup(x => x.ReplaceDraftLinesAsync(id, It.IsAny<IReadOnlyList<GeneralJournalEntryDraftLineInput>>(), "editor", fixture.Token))
+            .Returns(Task.CompletedTask);
+        fixture.Facade
+            .Setup(x => x.RejectAsync(id, "Actor", "boundary", fixture.Token))
+            .Returns(Task.CompletedTask);
+        var reversalId = Guid.CreateVersion7();
+        fixture.Facade
+            .Setup(x => x.ReversePostedAsync(id, DateUtc, "Actor", false, fixture.Token))
+            .ReturnsAsync(reversalId);
+
+        Func<Task> replace = () => fixture.Sut.ReplaceLinesAsync(
+            id,
+            new ReplaceGeneralJournalEntryLinesRequestDto(
+                "editor",
+                [new GeneralJournalEntryLineInputDto(
+                    (int)GeneralJournalEntryModels.LineSide.Debit,
+                    Guid.CreateVersion7(),
+                    1m,
+                    "line",
+                    Dimensions: null)]),
+            fixture.Token);
+        await replace.Should().ThrowAsync<DocumentNotFoundException>();
+
+        Func<Task> reject = () => fixture.Sut.RejectAsync(id, new GeneralJournalEntryRejectRequestDto("boundary"), fixture.Token);
+        await reject.Should().ThrowAsync<DocumentNotFoundException>();
+
+        Func<Task> reverse = () => fixture.Sut.ReversePostedAsync(
+            id,
+            new GeneralJournalEntryReverseRequestDto(DateUtc, PostImmediately: false),
+            fixture.Token);
+        await reverse.Should().ThrowAsync<DocumentNotFoundException>();
+    }
+
+    [Fact]
     public async Task GetByIdAsync_CoversMissingDocument_MissingHeader_AndMinimalDetailsFallbacks()
     {
         var missingDocument = new Fixture();
@@ -293,6 +355,21 @@ public sealed class GeneralJournalEntryUiServiceFullCoverageTests
         details.Header.ReversalOfDocumentId.Should().Be(missingReversalId);
         details.Header.ReversalOfDocumentDisplay.Should().BeNull();
         fixture.Documents.Verify(x => x.GetAsync(missingReversalId, fixture.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_WhenReversalDocumentExists_ReturnsItsDisplay()
+    {
+        var fixture = new Fixture();
+        var id = Guid.CreateVersion7();
+        var reversalId = Guid.CreateVersion7();
+        fixture.ConfigureDetails(Document(id, "GJE-2"), Header(id, reversalId));
+        fixture.Documents.Setup(x => x.GetAsync(reversalId, fixture.Token))
+            .ReturnsAsync(Document(reversalId, "REV-1"));
+
+        var details = await fixture.Sut.GetByIdAsync(id, fixture.Token);
+
+        details.Header.ReversalOfDocumentDisplay.Should().Contain("REV-1");
     }
 
     private static ActorIdentity Actor() => new("subject", null, " Actor ");

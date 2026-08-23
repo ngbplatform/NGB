@@ -267,9 +267,7 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
 
         // Invariant: never return edges that reference nodes not present in the node set.
         // With MaxNodes limiting traversal, we may have collected edges to neighbors that were not admitted.
-        edges = edges
-            .Where(e => visited.Contains(e.FromDocumentId) && visited.Contains(e.ToDocumentId))
-            .ToList();
+        edges = FilterEdgesToVisited(edges, visited);
 
         var docs = await LoadDocumentHeadersAsync(visited, ct);
         if (!docs.ContainsKey(request.RootDocumentId))
@@ -294,6 +292,13 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
 
         return new DocumentRelationshipGraph(request.RootDocumentId, nodes, orderedEdges);
     }
+
+    internal static List<DocumentRelationshipGraphEdge> FilterEdgesToVisited(
+        IEnumerable<DocumentRelationshipGraphEdge> edges,
+        IReadOnlySet<Guid> visited)
+        => edges
+            .Where(e => visited.Contains(e.FromDocumentId) && visited.Contains(e.ToDocumentId))
+            .ToList();
 
     private static void ValidatePageRequest(DocumentRelationshipEdgePageRequest request)
     {
@@ -343,7 +348,7 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
         int limit,
         CancellationToken ct)
     {
-        if (fromIds.Count == 0 || limit <= 0)
+        if (limit <= 0)
             return [];
 
         const string sql = """
@@ -378,7 +383,7 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
         int limit,
         CancellationToken ct)
     {
-        if (toIds.Count == 0 || limit <= 0)
+        if (limit <= 0)
             return [];
 
         const string sql = """
@@ -411,9 +416,6 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
         IReadOnlyCollection<Guid> ids,
         CancellationToken ct)
     {
-        if (ids.Count == 0)
-            return new Dictionary<Guid, DocumentRelationshipDocumentHeader>();
-
         const string sql = """
                            SELECT
                                d.id        AS "DocumentId",

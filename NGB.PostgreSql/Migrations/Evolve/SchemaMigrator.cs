@@ -122,8 +122,7 @@ public static class SchemaMigrator
         // Apply timeouts early so lock waits and DDL are bounded.
         await ApplySessionOptionsAsync(guard, options, ct);
 
-        var lockMode = execOptions?.LockMode ?? SchemaMigrationLockMode.Wait;
-        var lockWait = execOptions?.LockWaitTimeout;
+        var (lockMode, lockWait) = ResolveLockConfiguration(execOptions);
 
         var lockAcquired = await SchemaMigrationAdvisoryLock.AcquireOrSkipAsync(guard, lockMode, lockWait, log, ct);
         if (!lockAcquired)
@@ -139,7 +138,7 @@ public static class SchemaMigrator
             foreach (var pack in ordered)
             {
                 var changelog = GetPackChangelogTableName(pack.Id);
-                log?.Invoke($"Migrate: {pack.Id} (changelog={changelog})");
+                WriteMigrationLog(log, pack.Id, changelog);
 
                 await PostgresEvolveMigrator.MigrateAsync(
                     guard,
@@ -160,6 +159,15 @@ public static class SchemaMigrator
 
         return ordered;
     }
+
+    internal static (SchemaMigrationLockMode Mode, TimeSpan? WaitTimeout) ResolveLockConfiguration(
+        SchemaMigrationExecutionOptions? execOptions)
+        => execOptions is null
+            ? (SchemaMigrationLockMode.Wait, null)
+            : (execOptions.LockMode, execOptions.LockWaitTimeout);
+
+    internal static void WriteMigrationLog(Action<string>? log, string packId, string changelog)
+        => log?.Invoke($"Migrate: {packId} (changelog={changelog})");
 
     internal static string BuildConnectionString(string connectionString, SchemaMigrationExecutionOptions? execOptions)
     {

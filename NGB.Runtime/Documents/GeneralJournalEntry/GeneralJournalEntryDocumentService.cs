@@ -181,18 +181,7 @@ public sealed class GeneralJournalEntryDocumentService(
                 var now = timeProvider.GetUtcNowDateTime();
 
                 // 1) Apply initiator + optional header patch.
-                var patchedHeader = currentHeader with
-                {
-                    InitiatedBy = initiatedBy,
-                    InitiatedAtUtc = now,
-                    JournalType = header?.JournalType ?? currentHeader.JournalType,
-                    ReasonCode = header?.ReasonCode ?? currentHeader.ReasonCode,
-                    Memo = header?.Memo ?? currentHeader.Memo,
-                    ExternalReference = header?.ExternalReference ?? currentHeader.ExternalReference,
-                    AutoReverse = header?.AutoReverse ?? currentHeader.AutoReverse,
-                    AutoReverseOnUtc = header?.AutoReverseOnUtc ?? currentHeader.AutoReverseOnUtc,
-                    UpdatedAtUtc = now,
-                };
+                var patchedHeader = PatchHeaderForCreate(currentHeader, header, initiatedBy, now);
 
                 ValidateDraftHeader(op, documentId, doc, patchedHeader);
                 await gje.UpsertHeaderAsync(patchedHeader, innerCt);
@@ -201,9 +190,9 @@ public sealed class GeneralJournalEntryDocumentService(
                 // 2) Optional lines replacement.
                 IReadOnlyList<GeneralJournalEntryLineRecord> effectiveLines;
 
-                if (lines is not null && lines.Count > 0)
+                if (HasReplacementLines(lines))
                 {
-                    var normalized = await NormalizeAndResolveLinesAsync(op, documentId, lines, innerCt);
+                    var normalized = await NormalizeAndResolveLinesAsync(op, documentId, lines!, innerCt);
                     await ValidateLinesAgainstChartOfAccountsAsync(op, documentId, normalized, innerCt);
 
                     await gje.ReplaceLinesAsync(documentId, normalized, innerCt);
@@ -264,9 +253,7 @@ public sealed class GeneralJournalEntryDocumentService(
                     .Distinct()
                     .ToArray();
 
-                var bagsById = lineDimensionSetIds.Length == 0
-                    ? new Dictionary<Guid, DimensionBag>()
-                    : await dimensionSetReader.GetBagsByIdsAsync(lineDimensionSetIds, innerCt);
+                var bagsById = await LoadDimensionBagsAsync(dimensionSetReader, lineDimensionSetIds, innerCt);
 
                 await postingEngine.PostAsync(
                     PostingOperation.Post,
@@ -322,10 +309,12 @@ public sealed class GeneralJournalEntryDocumentService(
                 // Auto reversal scheduling
                 if (approvedHeader is { Source: GeneralJournalEntryModels.Source.Manual, AutoReverse: true })
                 {
-                    if (approvedHeader.AutoReverseOnUtc is null)
-                        throw new GeneralJournalEntryAutoReverseOnUtcRequiredException(op, documentId);
-
-                    await EnsureSystemReversalCreatedAsync(op, documentId, approvedHeader.AutoReverseOnUtc.Value, initiatedBy: "SYSTEM", innerCt);
+                    await EnsureSystemReversalCreatedAsync(
+                        op,
+                        documentId,
+                        approvedHeader.AutoReverseOnUtc!.Value,
+                        initiatedBy: "SYSTEM",
+                        innerCt);
                 }
 
                 await documents.UpdateStatusAsync(documentId, DocumentStatus.Posted, now, now, doc.MarkedForDeletionAtUtc, innerCt);
@@ -499,7 +488,7 @@ public sealed class GeneralJournalEntryDocumentService(
 
                 // Assign document number on Submit (per type + fiscal year), inside the same transaction.
                 var assignedNumber = await numberingSync.EnsureNumberAndSyncTypedAsync(doc, now, innerCt);
-                var effectiveNumber = string.IsNullOrWhiteSpace(doc.Number) ? assignedNumber : doc.Number;
+                var effectiveNumber = ResolveEffectiveNumber(doc.Number, assignedNumber);
 
                 await gje.UpsertHeaderAsync(updated, innerCt);
                 await TouchDocumentUpdatedAtAsync(doc, now, innerCt);
@@ -648,8 +637,9 @@ public sealed class GeneralJournalEntryDocumentService(
             {
                 var op = GeneralJournalEntryWorkflowOperationNames.PostApproved;
 
-                var doc = await documents.GetForUpdateAsync(documentId, innerCt)
-                          ?? throw new DocumentNotFoundException(documentId);
+                var doc = DocumentPostingService.RequireDocument(
+                    await documents.GetForUpdateAsync(documentId, innerCt),
+                    documentId);
 
                 if (!string.Equals(doc.TypeCode, AccountingDocumentTypeCodes.GeneralJournalEntry, StringComparison.Ordinal))
                     throw new DocumentTypeMismatchException(documentId, expectedTypeCode: AccountingDocumentTypeCodes.GeneralJournalEntry, actualTypeCode: doc.TypeCode);
@@ -662,7 +652,7 @@ public sealed class GeneralJournalEntryDocumentService(
 
                 if (doc.MarkedForDeletionAtUtc is not null || doc.Status == DocumentStatus.MarkedForDeletion)
                 {
-                    var markedAt = doc.MarkedForDeletionAtUtc ?? doc.UpdatedAtUtc;
+                    var markedAt = DocumentPostingService.ResolveDeletionMarkTimestamp(doc);
                     throw new DocumentMarkedForDeletionException(op, documentId, markedAt);
                 }
 
@@ -776,8 +766,6 @@ public sealed class GeneralJournalEntryDocumentService(
                 AppendChangeIfDifferent(changes, "status", doc.Status, DocumentStatus.Posted);
                 AppendChangeIfDifferent(changes, "posted_at_utc", doc.PostedAtUtc, now);
                 AppendChangeIfDifferent(changes, "number", doc.Number, effectiveNumber);
-                if (doc.MarkedForDeletionAtUtc is not null)
-                    AppendChangeIfDifferent(changes, "marked_for_deletion_at_utc", doc.MarkedForDeletionAtUtc, null);
 
                 await WriteDocumentAuditAsync(
                     doc,
@@ -813,8 +801,9 @@ public sealed class GeneralJournalEntryDocumentService(
             {
                 var op = GeneralJournalEntryWorkflowOperationNames.ReversePosted;
 
-                var originalDoc = await documents.GetForUpdateAsync(originalDocumentId, innerCt)
-                                 ?? throw new DocumentNotFoundException(originalDocumentId);
+                var originalDoc = DocumentPostingService.RequireDocument(
+                    await documents.GetForUpdateAsync(originalDocumentId, innerCt),
+                    originalDocumentId);
 
                 if (!string.Equals(originalDoc.TypeCode, AccountingDocumentTypeCodes.GeneralJournalEntry, StringComparison.Ordinal))
                     throw new DocumentTypeMismatchException(originalDocumentId, expectedTypeCode: AccountingDocumentTypeCodes.GeneralJournalEntry, actualTypeCode: originalDoc.TypeCode);
@@ -963,8 +952,9 @@ public sealed class GeneralJournalEntryDocumentService(
 
         await documents.CreateAsync(reversalDoc, ct);
 
-        var originalDoc = await documents.GetAsync(originalDocumentId, ct)
-                         ?? throw new DocumentNotFoundException(originalDocumentId);
+        var originalDoc = DocumentPostingService.RequireDocument(
+            await documents.GetAsync(originalDocumentId, ct),
+            originalDocumentId);
 
         if (!string.Equals(originalDoc.TypeCode, AccountingDocumentTypeCodes.GeneralJournalEntry, StringComparison.Ordinal))
             throw new DocumentTypeMismatchException(originalDocumentId, expectedTypeCode: AccountingDocumentTypeCodes.GeneralJournalEntry, actualTypeCode: originalDoc.TypeCode);
@@ -1044,7 +1034,42 @@ public sealed class GeneralJournalEntryDocumentService(
             ct: ct);
     }
 
-    private static List<AuditFieldChange> BuildDocumentCreateAuditChanges(
+    internal static GeneralJournalEntryHeaderRecord PatchHeaderForCreate(
+        GeneralJournalEntryHeaderRecord current,
+        GeneralJournalEntryDraftHeaderUpdate? update,
+        string initiatedBy,
+        DateTime now)
+        => current with
+        {
+            InitiatedBy = initiatedBy,
+            InitiatedAtUtc = now,
+            JournalType = update?.JournalType ?? current.JournalType,
+            ReasonCode = update?.ReasonCode ?? current.ReasonCode,
+            Memo = update?.Memo ?? current.Memo,
+            ExternalReference = update?.ExternalReference ?? current.ExternalReference,
+            AutoReverse = update?.AutoReverse ?? current.AutoReverse,
+            AutoReverseOnUtc = update?.AutoReverseOnUtc ?? current.AutoReverseOnUtc,
+            UpdatedAtUtc = now,
+        };
+
+    internal static bool HasReplacementLines(IReadOnlyList<GeneralJournalEntryDraftLineInput>? lines)
+        => lines is { Count: > 0 };
+
+    internal static async Task<IReadOnlyDictionary<Guid, DimensionBag>> LoadDimensionBagsAsync(
+        IDimensionSetReader reader,
+        IReadOnlyCollection<Guid> dimensionSetIds,
+        CancellationToken ct)
+    {
+        if (dimensionSetIds.Count == 0)
+            return new Dictionary<Guid, DimensionBag>();
+
+        return await reader.GetBagsByIdsAsync(dimensionSetIds, ct);
+    }
+
+    internal static string ResolveEffectiveNumber(string? documentNumber, string assignedNumber)
+        => string.IsNullOrWhiteSpace(documentNumber) ? assignedNumber : documentNumber;
+
+    internal static List<AuditFieldChange> BuildDocumentCreateAuditChanges(
         DocumentRecord document,
         GeneralJournalEntryHeaderRecord? header = null)
     {
@@ -1117,7 +1142,7 @@ public sealed class GeneralJournalEntryDocumentService(
         return changes;
     }
 
-    private static List<AuditFieldChange> BuildLineAuditChanges(
+    internal static List<AuditFieldChange> BuildLineAuditChanges(
         IReadOnlyList<GeneralJournalEntryLineRecord> before,
         IReadOnlyList<GeneralJournalEntryLineRecord> after)
     {
@@ -1163,7 +1188,7 @@ public sealed class GeneralJournalEntryDocumentService(
         changes.Add(AuditLogService.Change(fieldPath, oldValue, newValue));
     }
     
-    private static string BuildDisplay(DocumentRecord documentRecord)
+    internal static string BuildDisplay(DocumentRecord documentRecord)
     {
         var dateText = documentRecord.DateUtc.ToString("M/d/yyyy", CultureInfo.InvariantCulture);
         var number = documentRecord.Number?.Trim();
@@ -1237,7 +1262,7 @@ public sealed class GeneralJournalEntryDocumentService(
             throw new GeneralJournalEntryBusinessFieldRequiredException(operation, documentId, "Memo");
     }
     
-    private static void ValidateBalancedLines(
+    internal static void ValidateBalancedLines(
         string operation,
         Guid documentId,
         IReadOnlyList<GeneralJournalEntryLineRecord> lines)
@@ -1520,7 +1545,7 @@ public sealed class GeneralJournalEntryDocumentService(
         }
     }
     
-    private static IReadOnlyList<GeneralJournalEntryAllocationRecord> BuildAllocations(
+    internal static IReadOnlyList<GeneralJournalEntryAllocationRecord> BuildAllocations(
         string operation,
         Guid documentId,
         IReadOnlyList<GeneralJournalEntryLineRecord> lines)

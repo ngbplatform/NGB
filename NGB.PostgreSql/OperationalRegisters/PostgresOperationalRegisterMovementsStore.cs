@@ -205,7 +205,7 @@ WHERE document_id = @DocumentId;
         await uow.Connection.ExecuteAsync(sql, new { DocumentId = documentId }, transaction: uow.Transaction);
     }
 
-    private static List<(string ParamName, decimal[] Values)> BuildResourceArrays(
+    internal static List<(string ParamName, decimal[] Values)> BuildResourceArrays(
         OperationalRegisterResource[] resources,
         IReadOnlyList<OperationalRegisterMovement> movements)
     {
@@ -229,7 +229,7 @@ WHERE document_id = @DocumentId;
         return result;
     }
 
-    private static void ValidateResourceKeys(
+    internal static void ValidateResourceKeys(
         Guid registerId,
         OperationalRegisterResource[] resources,
         IReadOnlyList<OperationalRegisterMovement> movements)

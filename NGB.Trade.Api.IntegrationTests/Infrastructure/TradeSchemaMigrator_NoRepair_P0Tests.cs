@@ -1,4 +1,5 @@
 using FluentAssertions;
+using NGB.Persistence.Migrations;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Migrations.Evolve;
 using NGB.Trade.PostgreSql.Bootstrap;
@@ -54,6 +55,24 @@ public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradeSchemaPostgresFixt
 
         (await IndexExistsAsync(fixture.ConnectionString, "doc_trd_item_price_update__lines", "ix_doc_trd_item_price_update__lines__currency"))
             .Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(60_000)]
+    public async Task Repair_WithExplicitTimeoutBoundaries_CompletesAgainstMigratedSchema(int milliseconds)
+    {
+        await fixture.ResetDatabaseAsync();
+        var options = new MigrationExecutionOptions(
+            LockTimeout: TimeSpan.FromMilliseconds(milliseconds),
+            StatementTimeout: TimeSpan.FromMilliseconds(milliseconds));
+
+        var act = () => TradeDatabaseBootstrapper.RepairModuleAsync(
+            fixture.ConnectionString,
+            options,
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     private static async Task RecreatePublicSchemaAsync(string cs)

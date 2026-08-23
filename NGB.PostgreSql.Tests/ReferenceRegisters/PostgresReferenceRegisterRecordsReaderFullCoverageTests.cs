@@ -195,6 +195,15 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         Func<Task> forbidden = async () => await independent.Reader.SliceLastAllAsync(
             RegisterId, AsOf, RecorderId, null, 10, default);
         await forbidden.Should().ThrowAsync<ReferenceRegisterRecordsValidationException>();
+
+        var missingRegister = Fixture(
+            ReferenceRegisterPeriodicity.NonPeriodic,
+            ReferenceRegisterRecordMode.Independent);
+        missingRegister.Registers.Setup(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ReferenceRegisterAdminItem?)null);
+        Func<Task> notFound = async () => await missingRegister.Reader.SliceLastAllAsync(
+            RegisterId, AsOf, null, null, 10, default);
+        await notFound.Should().ThrowAsync<ReferenceRegisterNotFoundException>();
     }
 
     [Fact]
@@ -203,6 +212,7 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         var sut = Fixture(
             ReferenceRegisterPeriodicity.NonPeriodic,
             ReferenceRegisterRecordMode.Independent,
+            fields: [Field("value_text", "value")],
             rows: RecordRows((1L, DimensionSetId, null, null, null, AsOf, false, null)));
         var d1 = new DimensionValue(Guid.NewGuid(), Guid.NewGuid());
         var d2 = new DimensionValue(Guid.NewGuid(), Guid.NewGuid());
@@ -245,6 +255,9 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         await nullRecorder.Should().ThrowAsync<ReferenceRegisterRecordsValidationException>();
         await emptyRecorder.Should().ThrowAsync<ReferenceRegisterRecordsValidationException>();
 
+        (await subordinate.Reader.SliceLastAllFilteredByDimensionsAsync(
+            RegisterId, AsOf, [d1], RecorderId, null, 10, default)).Should().BeEmpty();
+
         Func<Task> forbiddenRecorder = async () => await sut.Reader.SliceLastAllFilteredByDimensionsAsync(
             RegisterId, AsOf, [d1], RecorderId, null, 10, default);
         await forbiddenRecorder.Should().ThrowAsync<ReferenceRegisterRecordsValidationException>();
@@ -272,6 +285,7 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         var subordinate = Fixture(
             ReferenceRegisterPeriodicity.NonPeriodic,
             ReferenceRegisterRecordMode.SubordinateToRecorder,
+            fields: [Field("value_text", "value")],
             rows: RecordRows((1L, DimensionSetId, null, null, RecorderId, AsOf, false, null)));
         Func<Task> emptyRegister = async () => await subordinate.Reader.ListByRecorderDocumentAsync(
             Guid.Empty, RecorderId, null, null, 10, default);
@@ -298,6 +312,13 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
             .Should().ContainSingle();
         subordinate.Connection.Commands.Should().Contain(x =>
             x.CommandText.Contains("@BeforeRecordedAtUtc, @BeforeRecordId", StringComparison.Ordinal));
+
+        var emptyFields = Fixture(
+            ReferenceRegisterPeriodicity.NonPeriodic,
+            ReferenceRegisterRecordMode.SubordinateToRecorder,
+            rows: RecordRows());
+        (await emptyFields.Reader.ListByRecorderDocumentAsync(
+            RegisterId, RecorderId, null, null, 10, default)).Should().BeEmpty();
 
         var independent = Fixture(ReferenceRegisterPeriodicity.NonPeriodic, ReferenceRegisterRecordMode.Independent);
         (await independent.Reader.ListByRecorderDocumentAsync(RegisterId, RecorderId, null, null, 10, default))
@@ -354,6 +375,7 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         var subordinate = Fixture(
             ReferenceRegisterPeriodicity.Month,
             ReferenceRegisterRecordMode.SubordinateToRecorder,
+            fields: [Field("value_text", "value")],
             rows: RecordRows((2L, DimensionSetId, AsOf, AsOf.Date, RecorderId, AsOf, true, null)));
         Func<Task> requiredRecorder = async () => await subordinate.Reader.ListKeyHistoryAsync(
             RegisterId, DimensionSetId, AsOf, AsOf, null, null, null, 10, default);
@@ -419,6 +441,20 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         mappedNulls.PeriodBucketUtc.Should().BeNull();
         mappedNulls.RecorderDocumentId.Should().BeNull();
         mappedNulls.Values.Should().Contain("value", null).And.Contain("missing", null);
+
+        var mappedDbNullGuid = PostgresReferenceRegisterRecordsReader.MapRow(
+            new Dictionary<string, object?>
+            {
+                ["RecordId"] = 3L,
+                ["DimensionSetId"] = DimensionSetId,
+                ["PeriodUtc"] = null,
+                ["PeriodBucketUtc"] = null,
+                ["RecorderDocumentId"] = DBNull.Value,
+                ["RecordedAtUtc"] = AsOf,
+                ["IsDeleted"] = false
+            },
+            []);
+        mappedDbNullGuid.RecorderDocumentId.Should().BeNull();
 
         var mappedValues = PostgresReferenceRegisterRecordsReader.MapRow(
             new Dictionary<string, object?>

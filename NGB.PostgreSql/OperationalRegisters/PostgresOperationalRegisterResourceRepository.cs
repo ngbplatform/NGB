@@ -150,7 +150,9 @@ public sealed class PostgresOperationalRegisterResourceRepository(IUnitOfWork uo
         if (existing.Count > 0)
         {
             var maxExistingOrdinal = existing.Max(x => x.Ordinal);
-            var maxTargetOrdinal = ordinals.Length == 0 ? 0 : ordinals.Max();
+            // Once movements exist, removing every resource is rejected above. Therefore
+            // a non-empty existing set always has at least one target ordinal here.
+            var maxTargetOrdinal = ordinals.Max();
             var tempBase = (long)Math.Max(maxExistingOrdinal, maxTargetOrdinal) + 1000;
             var tempCount = existing.Count;
             

@@ -83,7 +83,7 @@ SELECT
 
         var result = new BuildingSummary(
             BuildingId: buildingId,
-            BuildingDisplay: b.Display ?? string.Empty,
+            BuildingDisplay: b.Display,
             AsOfUtc: asOfUtc,
             TotalUnits: counts.TotalUnits,
             OccupiedUnits: counts.OccupiedUnits);
@@ -92,7 +92,7 @@ SELECT
         return result;
     }
 
-    private sealed record BuildingRow(string Kind, string? Display, bool IsDeleted);
+    private sealed record BuildingRow(string Kind, string Display, bool IsDeleted);
     
     private sealed record CountsRow(int TotalUnits, int OccupiedUnits);
 }

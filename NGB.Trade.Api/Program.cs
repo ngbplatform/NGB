@@ -20,6 +20,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.AddSerilog();
 
+var cs = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(cs))
+    throw new NgbConfigurationViolationException("Please provide PostgreSQL connection string in 'ConnectionStrings:DefaultConnection'.");
+
 builder.Services.AddHealthChecks()
     .AddWebApplication()
     .AddPostgres(builder.Configuration)
@@ -27,10 +31,6 @@ builder.Services.AddHealthChecks()
     .AddNgbWorkCenterHealth();
 
 builder.Services.AddInfrastructure(builder.Configuration, projectName);
-
-var cs = builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrWhiteSpace(cs))
-    throw new NgbConfigurationViolationException("Please provide PostgreSQL connection string in 'ConnectionStrings:DefaultConnection'.");
 
 builder.Services
     .AddNgbRuntime()

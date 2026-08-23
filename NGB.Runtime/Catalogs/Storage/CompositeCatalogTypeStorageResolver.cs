@@ -41,12 +41,9 @@ public sealed class CompositeCatalogTypeStorageResolver : ICatalogTypeStorageRes
 
     private ICatalogTypeStorage ResolveBoundStorage(NGB.Definitions.Catalogs.CatalogTypeDefinition def)
     {
-        if (_boundStorages.TryGetValue(def.TypeCode, out var cached))
-            return cached;
-
         lock (_boundStoragesGate)
         {
-            if (_boundStorages.TryGetValue(def.TypeCode, out cached))
+            if (_boundStorages.TryGetValue(def.TypeCode, out var cached))
                 return cached;
 
             var resolved = BuildBoundStorage(def);

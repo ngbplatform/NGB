@@ -104,7 +104,9 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         var operatingLines = new Dictionary<string, MutableLine>();
         foreach (var wc in workingCapitalLines.Values)
         {
-            AddAmount(operatingLines, wc, wc.Amount);
+            // workingCapitalLines is already grouped by LineCode and operatingLines is
+            // still empty here, so every entry is unique by construction.
+            operatingLines.Add(wc.LineCode, wc);
         }
 
         foreach (var row in pnlRows)
@@ -633,17 +635,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         {
             current = new MutableLine(definition.LineCode, definition.Label, definition.SortOrder);
             target[definition.LineCode] = current;
-        }
-
-        current.Amount += amount;
-    }
-
-    private static void AddAmount(IDictionary<string, MutableLine> target, MutableLine source, decimal amount)
-    {
-        if (!target.TryGetValue(source.LineCode, out var current))
-        {
-            current = new MutableLine(source.LineCode, source.Label, source.SortOrder);
-            target[source.LineCode] = current;
         }
 
         current.Amount += amount;

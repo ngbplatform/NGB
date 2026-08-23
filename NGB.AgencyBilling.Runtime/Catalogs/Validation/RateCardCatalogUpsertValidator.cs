@@ -18,7 +18,7 @@ public sealed class RateCardCatalogUpsertValidator(IAgencyBillingReferenceReader
         }
 
         var billingRate = AgencyBillingValidationValueReaders.ReadDecimal(context.Fields, "billing_rate");
-        if (billingRate is null || billingRate <= 0m)
+        if (billingRate.GetValueOrDefault() <= 0m)
             throw new NgbArgumentInvalidException("billing_rate", "Billing Rate must be greater than zero.");
 
         var costRate = AgencyBillingValidationValueReaders.ReadDecimal(context.Fields, "cost_rate");
@@ -44,7 +44,8 @@ public sealed class RateCardCatalogUpsertValidator(IAgencyBillingReferenceReader
         if (projectId is { } resolvedProjectId && resolvedProjectId != Guid.Empty)
         {
             var project = await AgencyBillingCatalogValidationGuards.EnsureProjectAsync(resolvedProjectId, "project_id", references, ct);
-            if (clientId is { } resolvedScopedClientId && resolvedScopedClientId != Guid.Empty)
+            var resolvedScopedClientId = clientId.GetValueOrDefault();
+            if (resolvedScopedClientId != Guid.Empty)
                 AgencyBillingCatalogValidationGuards.EnsureProjectBelongsToClient(project, resolvedScopedClientId, "project_id", "client_id");
         }
 

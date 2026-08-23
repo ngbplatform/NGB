@@ -244,7 +244,7 @@ LIMIT @limit;
         return result;
     }
 
-    private static MaintenanceQueueRow MapRow(PageRow row)
+    internal static MaintenanceQueueRow MapRow(PageRow row)
     {
         if (!MaintenanceQueueStateExtensions.TryParse(row.QueueState, out var queueState))
             throw new NgbInvariantViolationException(
@@ -282,12 +282,12 @@ LIMIT @limit;
         return result;
     }
 
-    private async Task ValidateBuildingFilterAsync(Guid? buildingId, CancellationToken ct)
+    internal async Task ValidateBuildingFilterAsync(Guid? buildingId, CancellationToken ct)
     {
         if (buildingId is null)
             return;
 
-        if (buildingId == Guid.Empty)
+        if (buildingId.Value == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(buildingId), "Select a valid Building.");
 
         const string sql = """
@@ -310,12 +310,12 @@ WHERE c.catalog_code = @code
             throw new NgbArgumentInvalidException(nameof(buildingId), "Select a valid Building.");
     }
 
-    private async Task ValidatePropertyFilterAsync(Guid? propertyId, CancellationToken ct)
+    internal async Task ValidatePropertyFilterAsync(Guid? propertyId, CancellationToken ct)
     {
         if (propertyId is null)
             return;
 
-        if (propertyId == Guid.Empty)
+        if (propertyId.Value == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(propertyId), "Select a valid Property.");
 
         const string sql = """
@@ -336,12 +336,12 @@ WHERE c.catalog_code = @code
             throw new NgbArgumentInvalidException(nameof(propertyId), "Select a valid Property.");
     }
 
-    private async Task ValidateCategoryFilterAsync(Guid? categoryId, CancellationToken ct)
+    internal async Task ValidateCategoryFilterAsync(Guid? categoryId, CancellationToken ct)
     {
         if (categoryId is null)
             return;
 
-        if (categoryId == Guid.Empty)
+        if (categoryId.Value == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(categoryId), "Select a valid Category.");
 
         const string sql = """
@@ -361,12 +361,12 @@ WHERE c.catalog_code = @code
             throw new NgbArgumentInvalidException(nameof(categoryId), "Select a valid Category.");
     }
 
-    private async Task ValidateAssignedPartyFilterAsync(Guid? assignedPartyId, CancellationToken ct)
+    internal async Task ValidateAssignedPartyFilterAsync(Guid? assignedPartyId, CancellationToken ct)
     {
         if (assignedPartyId is null)
             return;
 
-        if (assignedPartyId == Guid.Empty)
+        if (assignedPartyId.Value == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(assignedPartyId), "Select a valid Assigned To.");
 
         const string sql = """
@@ -390,7 +390,7 @@ WHERE c.catalog_code = @code
 
     private sealed record DeletedFilterRow(bool IsDeleted);
 
-    private sealed record PageRow(
+    internal sealed record PageRow(
         Guid RequestId,
         string RequestDisplay,
         string Subject,

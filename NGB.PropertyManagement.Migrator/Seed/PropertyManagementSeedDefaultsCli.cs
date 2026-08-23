@@ -54,7 +54,6 @@ internal static class PropertyManagementSeedDefaultsCli
             var result = await setupService.EnsureDefaultsAsync();
             await scope.ServiceProvider.GetRequiredService<PropertyManagementSecuritySeeder>().EnsureSeededAsync();
             PrintSummary(result);
-            return 0;
         }
         catch (Exception ex)
         {
@@ -62,6 +61,8 @@ internal static class PropertyManagementSeedDefaultsCli
             Console.Error.WriteLine(ex);
             return 1;
         }
+
+        return 0;
     }
 
     private static string? GetArgValue(string[] args, string name)

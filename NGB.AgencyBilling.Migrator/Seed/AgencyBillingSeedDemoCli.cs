@@ -71,7 +71,6 @@ internal static class AgencyBillingSeedDemoCli
 
             var summary = await seeder.RunAsync();
             PrintSummary(summary);
-            return 0;
         }
         catch (AgencyBillingSeedActivityAlreadyExistsException) when (options?.SkipIfActivityExists == true)
         {
@@ -84,25 +83,44 @@ internal static class AgencyBillingSeedDemoCli
             Console.Error.WriteLine(ex);
             return 1;
         }
+
+        return 0;
     }
 
     private static void PrintSummary(AgencyBillingDemoSeedSummary summary)
     {
-        Console.WriteLine("OK: agency billing demo data seeded.");
-        Console.WriteLine($"- Period: {summary.FromDate:yyyy-MM-dd} .. {summary.ToDate:yyyy-MM-dd}");
-        Console.WriteLine($"- Clients seeded: {summary.ClientsSeeded}");
-        Console.WriteLine($"- Team Members seeded: {summary.TeamMembersSeeded}");
-        Console.WriteLine($"- Projects seeded: {summary.ProjectsSeeded}");
-        Console.WriteLine($"- Service Items seeded: {summary.ServiceItemsSeeded}");
-        Console.WriteLine($"- Rate Cards seeded: {summary.RateCardsSeeded}");
-        Console.WriteLine($"- Document seed mode: {(summary.DocumentsPosted ? "Posted" : "Draft")}");
+        foreach (var line in BuildSummaryLines(summary))
+        {
+            Console.WriteLine(line);
+        }
+    }
+
+    internal static IReadOnlyList<string> BuildSummaryLines(AgencyBillingDemoSeedSummary summary)
+    {
+        var lines = new List<string>
+        {
+            "OK: agency billing demo data seeded.",
+            $"- Period: {summary.FromDate:yyyy-MM-dd} .. {summary.ToDate:yyyy-MM-dd}",
+            $"- Clients seeded: {summary.ClientsSeeded}",
+            $"- Team Members seeded: {summary.TeamMembersSeeded}",
+            $"- Projects seeded: {summary.ProjectsSeeded}",
+            $"- Service Items seeded: {summary.ServiceItemsSeeded}",
+            $"- Rate Cards seeded: {summary.RateCardsSeeded}",
+            $"- Document seed mode: {(summary.DocumentsPosted ? "Posted" : "Draft")}",
+        };
+
         if (!summary.DocumentsPosted)
-            Console.WriteLine("- Note: Agency Billing posting handlers are not configured yet, so demo documents were seeded as drafts.");
-        Console.WriteLine($"- Client Contract documents seeded: {summary.ClientContractsSeeded}");
-        Console.WriteLine($"- Timesheet documents seeded: {summary.TimesheetsSeeded}");
-        Console.WriteLine($"- Sales Invoice documents seeded: {summary.SalesInvoicesSeeded}");
-        Console.WriteLine($"- Customer Payment documents seeded: {summary.CustomerPaymentsSeeded}");
-        Console.WriteLine($"- Total Agency Billing documents seeded: {summary.TotalDocumentsSeeded}");
+            lines.Add("- Note: Agency Billing posting handlers are not configured yet, so demo documents were seeded as drafts.");
+
+        lines.AddRange(
+        [
+            $"- Client Contract documents seeded: {summary.ClientContractsSeeded}",
+            $"- Timesheet documents seeded: {summary.TimesheetsSeeded}",
+            $"- Sales Invoice documents seeded: {summary.SalesInvoicesSeeded}",
+            $"- Customer Payment documents seeded: {summary.CustomerPaymentsSeeded}",
+            $"- Total Agency Billing documents seeded: {summary.TotalDocumentsSeeded}"
+        ]);
+        return lines;
     }
 }
 
@@ -334,7 +352,7 @@ internal sealed class AgencyBillingDemoSeeder(
                 }),
                 ct);
 
-            result.Add(new ServiceItemSeed(id, template.Code, template.Name, template.UnitOfMeasure));
+            result.Add(new ServiceItemSeed(id, template.Name, template.UnitOfMeasure));
         }
 
         return result;
@@ -412,7 +430,7 @@ internal sealed class AgencyBillingDemoSeeder(
                 }),
                 ct);
 
-            result.Add(new TeamMemberSeed(id, fullName, memberCode, title, defaultBillingRate, defaultCostRate));
+            result.Add(new TeamMemberSeed(id, fullName, defaultBillingRate, defaultCostRate));
         }
 
         return result;
@@ -430,7 +448,7 @@ internal sealed class AgencyBillingDemoSeeder(
         {
             var client = clients[i % clients.Count];
             var manager = teamMembers[i % teamMembers.Count];
-            var assignmentCount = Math.Min(serviceItems.Count >= 3 ? 3 : 2, Math.Min(teamMembers.Count, serviceItems.Count));
+            var assignmentCount = Math.Min(3, Math.Min(teamMembers.Count, serviceItems.Count));
             var assignments = new List<ProjectAssignmentSeed>(assignmentCount);
 
             for (var j = 0; j < assignmentCount; j++)
@@ -469,7 +487,7 @@ internal sealed class AgencyBillingDemoSeeder(
                 }),
                 ct);
 
-            result.Add(new ProjectSeed(id, projectName, projectCode, client, manager, assignments, startDate));
+            result.Add(new ProjectSeed(id, projectName, client, assignments, startDate));
         }
 
         return result;
@@ -520,7 +538,7 @@ internal sealed class AgencyBillingDemoSeeder(
 
         foreach (var project in projects.OrderBy(x => x.StartDate))
         {
-            var effectiveFrom = project.StartDate < options.FromDate ? options.FromDate : project.StartDate;
+            var effectiveFrom = project.StartDate;
             var contractId = (await CreateSeededDocumentAsync(
                 AgencyBillingCodes.ClientContract,
                 effectiveFrom,
@@ -719,9 +737,7 @@ internal sealed class AgencyBillingDemoSeeder(
                 2 => 0.75m,
                 _ => 0.60m
             };
-            var appliedAmount = RoundMoney(Math.Max(50m, invoice.Amount * factor));
-            if (appliedAmount > invoice.Amount)
-                appliedAmount = invoice.Amount;
+            var appliedAmount = CalculatePaymentAmount(invoice.Amount, factor);
 
             var seeded = await CreateSeededDocumentAsync(
                 AgencyBillingCodes.CustomerPayment,
@@ -754,7 +770,7 @@ internal sealed class AgencyBillingDemoSeeder(
         return result;
     }
 
-    private async Task<Guid> UpsertCatalogByDisplayAsync(
+    internal async Task<Guid> UpsertCatalogByDisplayAsync(
         string catalogType,
         string display,
         RecordPayload payload,
@@ -767,7 +783,7 @@ internal sealed class AgencyBillingDemoSeeder(
         return (await catalogs.UpdateAsync(catalogType, existing.Id, payload, ct)).Id;
     }
 
-    private async Task<CatalogItemDto?> FindCatalogByDisplayAsync(
+    internal async Task<CatalogItemDto?> FindCatalogByDisplayAsync(
         string catalogType,
         string display,
         CancellationToken ct)
@@ -785,17 +801,17 @@ internal sealed class AgencyBillingDemoSeeder(
         };
     }
 
-    private async Task<Guid> GetCatalogIdByDisplayAsync(string catalogType, string display, CancellationToken ct)
+    internal async Task<Guid> GetCatalogIdByDisplayAsync(string catalogType, string display, CancellationToken ct)
     {
         var existing = await FindCatalogByDisplayAsync(catalogType, display, ct);
         return existing?.Id
             ?? throw new NgbConfigurationViolationException($"Default '{catalogType}' record '{display}' was not found.");
     }
 
-    private bool CanPostAgencyDocuments()
+    internal bool CanPostAgencyDocuments()
         => AgencyDocumentTypes.All(IsDocumentPostable);
 
-    private bool IsDocumentPostable(string typeCode)
+    internal bool IsDocumentPostable(string typeCode)
     {
         if (!definitions.TryGetDocument(typeCode, out var definition))
             return false;
@@ -805,7 +821,7 @@ internal sealed class AgencyBillingDemoSeeder(
                || definition.ReferenceRegisterPostingHandlerType is not null;
     }
 
-    private async Task<DocumentDto> CreateSeededDocumentAsync(
+    internal async Task<DocumentDto> CreateSeededDocumentAsync(
         string typeCode,
         DateOnly businessDate,
         RecordPayload payload,
@@ -826,7 +842,7 @@ internal sealed class AgencyBillingDemoSeeder(
         return await documents.GetByIdAsync(typeCode, created.Id, ct);
     }
 
-    private static RecordPayload Payload(object head, string? partName = null, IEnumerable<object>? partRows = null)
+    internal static RecordPayload Payload(object head, string? partName = null, IEnumerable<object>? partRows = null)
     {
         var fields = JsonSerializer.SerializeToElement(head).EnumerateObject().ToDictionary(
             static x => x.Name,
@@ -853,15 +869,18 @@ internal sealed class AgencyBillingDemoSeeder(
         return new RecordPayload(fields, parts);
     }
 
-    private static DateTime ToDateTimeUtc(DateOnly date)
+    internal static DateTime ToDateTimeUtc(DateOnly date)
         => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-    private static decimal RoundMoney(decimal amount) => Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+    internal static decimal RoundMoney(decimal amount) => Math.Round(amount, 2, MidpointRounding.AwayFromZero);
+
+    internal static decimal CalculatePaymentAmount(decimal invoiceAmount, decimal factor)
+        => Math.Min(invoiceAmount, RoundMoney(Math.Max(50m, invoiceAmount * factor)));
 
     private decimal QuarterHours(int minQuartersInclusive, int maxQuartersInclusive)
         => _random.Next(minQuartersInclusive, maxQuartersInclusive + 1) / 4m;
 
-    private DateOnly RandomBusinessDate(DateOnly from, DateOnly to)
+    internal DateOnly RandomBusinessDate(DateOnly from, DateOnly to)
     {
         if (from > to)
             return from;
@@ -877,9 +896,9 @@ internal sealed class AgencyBillingDemoSeeder(
         return NextBusinessDate(from);
     }
 
-    private static bool IsWeekend(DateOnly date) => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+    internal static bool IsWeekend(DateOnly date) => date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
 
-    private static DateOnly NextBusinessDate(DateOnly date)
+    internal static DateOnly NextBusinessDate(DateOnly date)
     {
         var candidate = date;
         while (IsWeekend(candidate))
@@ -890,12 +909,12 @@ internal sealed class AgencyBillingDemoSeeder(
         return candidate;
     }
 
-    private static DateOnly MaxDate(DateOnly left, DateOnly right) => left >= right ? left : right;
-    private static DateOnly MinDate(DateOnly left, DateOnly right) => left <= right ? left : right;
+    internal static DateOnly MaxDate(DateOnly left, DateOnly right) => left >= right ? left : right;
+    internal static DateOnly MinDate(DateOnly left, DateOnly right) => left <= right ? left : right;
 
-    private static string DemoPhone(int index) => $"201-555-{(index % 10_000):0000}";
+    internal static string DemoPhone(int index) => $"201-555-{(index % 10_000):0000}";
 
-    private static string NormalizeEmailSlug(string value)
+    internal static string NormalizeEmailSlug(string value)
     {
         Span<char> buffer = stackalloc char[value.Length];
         var length = 0;
@@ -916,7 +935,7 @@ internal sealed class AgencyBillingDemoSeeder(
         return string.IsNullOrWhiteSpace(slug) ? "agency.demo" : slug;
     }
 
-    private static string BuildCompanyName(IReadOnlyList<string> prefixes, IReadOnlyList<string> suffixes, int index)
+    internal static string BuildCompanyName(IReadOnlyList<string> prefixes, IReadOnlyList<string> suffixes, int index)
     {
         var prefix = prefixes[index % prefixes.Count];
         var suffix = suffixes[(index * 7 + (index / Math.Max(1, prefixes.Count))) % suffixes.Count];
@@ -927,7 +946,7 @@ internal sealed class AgencyBillingDemoSeeder(
         return $"{prefix} {suffix} {index + 1}";
     }
 
-    private static string BuildPersonName(int index)
+    internal static string BuildPersonName(int index)
     {
         var first = FirstNames[index % FirstNames.Length];
         var last = LastNames[(index * 5 + (index / Math.Max(1, FirstNames.Length))) % LastNames.Length];
@@ -950,14 +969,11 @@ internal sealed class AgencyBillingDemoSeeder(
     private sealed record TeamMemberSeed(
         Guid Id,
         string Display,
-        string MemberCode,
-        string Title,
         decimal DefaultBillingRate,
         decimal DefaultCostRate);
 
     private sealed record ServiceItemSeed(
         Guid Id,
-        string Code,
         string Display,
         AgencyBillingServiceItemUnitOfMeasure UnitOfMeasure);
 
@@ -970,9 +986,7 @@ internal sealed class AgencyBillingDemoSeeder(
     private sealed record ProjectSeed(
         Guid Id,
         string Display,
-        string ProjectCode,
         ClientSeed Client,
-        TeamMemberSeed Manager,
         IReadOnlyList<ProjectAssignmentSeed> Assignments,
         DateOnly StartDate);
 

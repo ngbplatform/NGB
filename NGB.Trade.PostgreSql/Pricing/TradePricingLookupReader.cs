@@ -133,20 +133,18 @@ FROM latest;
         var result = new Dictionary<TradePriceLookupKey, TradeItemPriceSnapshot>();
         foreach (var row in rows)
         {
-            if (row.UnitPrice is not { } unitPrice || row.EffectiveDate is not { } effectiveDate || row.IsDeleted == true)
-                continue;
-
-            var currency = string.IsNullOrWhiteSpace(row.Currency)
-                ? TradeCodes.DefaultCurrency
-                : row.Currency.Trim().ToUpperInvariant();
-
-            result[new TradePriceLookupKey(row.ItemId, row.PriceTypeId)] = new TradeItemPriceSnapshot(
+            var snapshot = MapItemPriceRow(
                 row.ItemId,
                 row.PriceTypeId,
-                unitPrice,
-                currency,
-                effectiveDate,
-                row.SourceDocumentId);
+                row.UnitPrice,
+                row.Currency,
+                row.EffectiveDate,
+                row.SourceDocumentId,
+                row.IsDeleted);
+            if (snapshot is null)
+                continue;
+
+            result[new TradePriceLookupKey(row.ItemId, row.PriceTypeId)] = snapshot;
         }
 
         return result;
@@ -319,6 +317,35 @@ FROM latest;
         return rows.ToDictionary(
             static row => new TradeWarehouseItemKey(row.WarehouseId, row.ItemId),
             static row => row.UnitCost);
+    }
+
+    internal static TradeItemPriceSnapshot? MapItemPriceRow(
+        Guid itemId,
+        Guid priceTypeId,
+        decimal? unitPrice,
+        string? currency,
+        DateOnly? effectiveDate,
+        Guid? sourceDocumentId,
+        bool? isDeleted)
+    {
+        if (unitPrice is not { } requiredUnitPrice
+            || effectiveDate is not { } requiredEffectiveDate
+            || isDeleted == true)
+        {
+            return null;
+        }
+
+        var normalizedCurrency = string.IsNullOrWhiteSpace(currency)
+            ? TradeCodes.DefaultCurrency
+            : currency.Trim().ToUpperInvariant();
+
+        return new TradeItemPriceSnapshot(
+            itemId,
+            priceTypeId,
+            requiredUnitPrice,
+            normalizedCurrency,
+            requiredEffectiveDate,
+            sourceDocumentId);
     }
 
     private static Guid BuildPriceDimensionSetId(Guid itemId, Guid priceTypeId)

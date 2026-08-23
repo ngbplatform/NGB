@@ -142,7 +142,11 @@ public sealed class TradeInventoryAvailabilityService_P0Tests
                     request.RegisterId,
                     request.FromInclusive,
                     request.ToInclusive,
-                    [CreateBalanceRow(warehouseId, itemId, 2m, dimensionSetId, warehouseDisplay: "North Hub", itemDisplay: "Panel Kit")],
+                    [
+                        CreateBalanceRowWithoutItem(warehouseId),
+                        CreateBalanceRowWithoutWarehouse(itemId),
+                        CreateBalanceRow(warehouseId, itemId, 2m, dimensionSetId, warehouseDisplay: "North Hub", itemDisplay: "Panel Kit")
+                    ],
                     HasMore: false,
                     NextCursor: null));
 
@@ -295,6 +299,32 @@ public sealed class TradeInventoryAvailabilityService_P0Tests
             }
         };
     }
+
+    private static OperationalRegisterMonthlyProjectionReadRow CreateBalanceRowWithoutWarehouse(Guid itemId)
+        => new()
+        {
+            PeriodMonth = new DateOnly(2026, 3, 1),
+            DimensionSetId = Guid.NewGuid(),
+            Dimensions = new DimensionBag([new DimensionValue(ItemDimensionId, itemId)]),
+            DimensionValueDisplays = new Dictionary<Guid, string>(),
+            Values = new Dictionary<string, decimal>(StringComparer.Ordinal)
+            {
+                ["qty_delta"] = 999m
+            }
+        };
+
+    private static OperationalRegisterMonthlyProjectionReadRow CreateBalanceRowWithoutItem(Guid warehouseId)
+        => new()
+        {
+            PeriodMonth = new DateOnly(2026, 3, 1),
+            DimensionSetId = Guid.NewGuid(),
+            Dimensions = new DimensionBag([new DimensionValue(WarehouseDimensionId, warehouseId)]),
+            DimensionValueDisplays = new Dictionary<Guid, string>(),
+            Values = new Dictionary<string, decimal>(StringComparer.Ordinal)
+            {
+                ["qty_delta"] = 999m
+            }
+        };
 
     private static OperationalRegisterMovementQueryReadRow CreateMovementRow(
         long movementId,

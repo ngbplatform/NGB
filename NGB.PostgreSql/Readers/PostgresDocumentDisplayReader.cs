@@ -165,11 +165,7 @@ public sealed class PostgresDocumentDisplayReader(IUnitOfWork uow, IDocumentType
         return $"{name} {ShortGuid(row.Id)}";
     }
 
-    private static string ShortGuid(Guid id)
-    {
-        var s = id.ToString("N");
-        return s.Length > 8 ? s[..8] : s;
-    }
+    private static string ShortGuid(Guid id) => id.ToString("N")[..8];
 
     private sealed record TypedDisplayCandidate(string TableName, string DisplayColumn, Guid[] Ids);
 

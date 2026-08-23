@@ -113,6 +113,37 @@ public sealed class SalesInvoicePostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_When_Contract_Client_Does_Not_Match_Throws()
+    {
+        var contractId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: contractId);
+        var serviceItemId = Guid.NewGuid();
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(documentId: head.DocumentId, serviceItemId: serviceItemId);
+        var contract = AgencyBillingTestData.ValidClientContractHead(
+            documentId: contractId,
+            clientId: Guid.NewGuid(),
+            projectId: head.ProjectId);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (contractId, AgencyBillingTestData.CreateDocument(
+                    AgencyBillingCodes.ClientContract,
+                    DocumentStatus.Posted,
+                    id: contractId))),
+            contractsById: Map((contractId, contract)));
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice),
+                CancellationToken.None));
+
+        ex.ParamName.Should().Be("contract_id");
+        ex.Reason.Should().Be("Referenced client contract must belong to the same client and project as the invoice.");
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_When_Lines_Are_Missing_Throws()
     {
         var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null);
@@ -397,6 +428,40 @@ public sealed class SalesInvoicePostValidator_P0Tests
 
         var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
             harness.Sut.ValidateBeforePostAsync(AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice), CancellationToken.None));
+
+        ex.ParamName.Should().Be("lines[0].source_timesheet_id");
+        ex.Reason.Should().Be("Referenced source timesheet must belong to the same client and project as the invoice.");
+    }
+
+    [Fact]
+    public async Task ValidateBeforePostAsync_When_Source_Timesheet_Client_Does_Not_Match_Throws()
+    {
+        var timesheetId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null);
+        var serviceItemId = Guid.NewGuid();
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(
+            documentId: head.DocumentId,
+            serviceItemId: serviceItemId,
+            sourceTimesheetId: timesheetId);
+        var timesheetHead = AgencyBillingTestData.ValidTimesheetHead(
+            documentId: timesheetId,
+            clientId: Guid.NewGuid(),
+            projectId: head.ProjectId);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (timesheetId, AgencyBillingTestData.CreateDocument(
+                    AgencyBillingCodes.Timesheet,
+                    DocumentStatus.Posted,
+                    id: timesheetId))),
+            timesheetHeadsById: Map((timesheetId, timesheetHead)));
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice),
+                CancellationToken.None));
 
         ex.ParamName.Should().Be("lines[0].source_timesheet_id");
         ex.Reason.Should().Be("Referenced source timesheet must belong to the same client and project as the invoice.");

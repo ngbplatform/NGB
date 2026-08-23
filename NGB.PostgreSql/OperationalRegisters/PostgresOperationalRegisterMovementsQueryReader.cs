@@ -105,6 +105,11 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
 
         var scalar = await uow.Connection.ExecuteScalarAsync(cmd);
 
+        return ConvertMaxPeriodMonthScalar(scalar);
+    }
+
+    internal static DateOnly? ConvertMaxPeriodMonthScalar(object? scalar)
+    {
         if (scalar is null or DBNull)
             return null;
 
@@ -258,7 +263,7 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
         return context;
     }
 
-    private static string BuildDimensionFilterCte(int dimCount)
+    internal static string BuildDimensionFilterCte(int dimCount)
         => dimCount == 0
             ? string.Empty
             : """
@@ -274,7 +279,7 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
               )
               """;
 
-    private static string BuildDimensionFilterSql(string tableAlias, int dimCount)
+    internal static string BuildDimensionFilterSql(string tableAlias, int dimCount)
         => dimCount == 0
             ? string.Empty
             : $"AND {tableAlias}.dimension_set_id IN (SELECT dimension_set_id FROM matching_dimension_sets)";

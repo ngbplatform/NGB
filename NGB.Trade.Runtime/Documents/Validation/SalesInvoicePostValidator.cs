@@ -27,7 +27,8 @@ public sealed class SalesInvoicePostValidator(
         await TradeCatalogValidationGuards.EnsureCustomerAsync(head.CustomerId, "customer_id", catalogs, ct);
         await TradeCatalogValidationGuards.EnsureWarehouseAsync(head.WarehouseId, "warehouse_id", catalogs, ct);
 
-        if (head.PriceTypeId is { } priceTypeId && priceTypeId != Guid.Empty)
+        var priceTypeId = head.PriceTypeId.GetValueOrDefault();
+        if (priceTypeId != Guid.Empty)
             await TradeCatalogValidationGuards.EnsurePriceTypeAsync(priceTypeId, "price_type_id", catalogs, ct);
 
         for (var i = 0; i < lines.Count; i++)

@@ -111,14 +111,25 @@ internal sealed class RecordingDbCommand(
     private static DbDataReader EmptyReader() => new DataTable().CreateDataReader();
 }
 
-internal sealed class RecordingDbTransaction(DbConnection connection, bool throwOnRollback = false) : DbTransaction
+internal sealed class RecordingDbTransaction(
+    DbConnection connection,
+    bool throwOnRollback = false,
+    bool asynchronouslyDispose = false,
+    bool throwOnCommit = false,
+    bool throwOnDispose = false) : DbTransaction
 {
     public bool Committed { get; private set; }
     public bool RolledBack { get; private set; }
     public bool Disposed { get; private set; }
     public override IsolationLevel IsolationLevel => IsolationLevel.ReadCommitted;
     protected override DbConnection DbConnection => connection;
-    public override void Commit() => Committed = true;
+    public override void Commit()
+    {
+        if (throwOnCommit)
+            throw new InvalidOperationException("Simulated commit failure.");
+
+        Committed = true;
+    }
     public override void Rollback()
     {
         if (throwOnRollback)
@@ -145,10 +156,14 @@ internal sealed class RecordingDbTransaction(DbConnection connection, bool throw
         base.Dispose(disposing);
     }
 
-    public override ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
+        if (asynchronouslyDispose)
+            await Task.Yield();
+
         Disposed = true;
-        return ValueTask.CompletedTask;
+        if (throwOnDispose)
+            throw new InvalidOperationException("Simulated dispose failure.");
     }
 }
 

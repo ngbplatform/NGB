@@ -237,6 +237,12 @@ public sealed class PostgresCatalogReaderFullCoverageTests
 
         var result = await sut.CountAsync(Head(), Query(null, (SoftDeleteFilterMode)999), default);
         result.Should().Be(1);
+
+        var nullFilters = await sut.CountAsync(
+            Head(),
+            new CatalogQuery(null, null!) { SoftDeleteFilterMode = SoftDeleteFilterMode.All },
+            default);
+        nullFilters.Should().Be(1);
     }
 
     private static PostgresCatalogReader Reader(RecordingDbConnection connection)

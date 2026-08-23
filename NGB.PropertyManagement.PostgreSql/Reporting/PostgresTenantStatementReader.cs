@@ -257,9 +257,6 @@ LIMIT @limit;
 
     private async Task ValidateLeaseFilterAsync(Guid leaseId, CancellationToken ct)
     {
-        if (leaseId == Guid.Empty)
-            throw new NgbArgumentInvalidException(nameof(leaseId), "Select a valid Lease.");
-
         const string sql = """
 SELECT 1
 FROM documents

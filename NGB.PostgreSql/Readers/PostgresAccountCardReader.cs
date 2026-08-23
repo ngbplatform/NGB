@@ -120,7 +120,7 @@ public sealed class PostgresAccountCardReader(
         };
     }
 
-    private async Task ResolveDimensionsAsync(IReadOnlyList<AccountCardLine> lines, CancellationToken ct)
+    internal async Task ResolveDimensionsAsync(IReadOnlyList<AccountCardLine> lines, CancellationToken ct)
     {
         if (lines.Count == 0)
             return;
@@ -144,7 +144,7 @@ public sealed class PostgresAccountCardReader(
         }
     }
 
-    private async Task ResolveDimensionValueDisplaysAsync(IReadOnlyList<AccountCardLine> lines, CancellationToken ct)
+    internal async Task ResolveDimensionValueDisplaysAsync(IReadOnlyList<AccountCardLine> lines, CancellationToken ct)
     {
         if (lines.Count == 0)
             return;

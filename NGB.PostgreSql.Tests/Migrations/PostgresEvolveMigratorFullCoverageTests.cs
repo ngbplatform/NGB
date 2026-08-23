@@ -68,6 +68,25 @@ public sealed class PostgresEvolveMigratorFullCoverageTests
     }
 
     [Fact]
+    public void Log_forwarder_supports_absent_and_present_callbacks()
+    {
+        var messages = new List<string>();
+
+        PostgresEvolveMigrator.BuildLogForwarder(null)("ignored");
+        PostgresEvolveMigrator.BuildLogForwarder(messages.Add)("migration applied");
+
+        messages.Should().Equal("migration applied");
+    }
+
+    [Fact]
+    public void Metadata_identifiers_use_fallbacks_only_for_absent_values()
+    {
+        PostgresEvolveMigrator.ResolveMetadataIdentifier(null, "fallback").Should().Be("fallback");
+        PostgresEvolveMigrator.ResolveMetadataIdentifier(" ", "fallback").Should().Be("fallback");
+        PostgresEvolveMigrator.ResolveMetadataIdentifier("custom", "fallback").Should().Be("custom");
+    }
+
+    [Fact]
     public void Resource_discovery_accepts_matching_sql_and_ignores_other_resources()
     {
         var alpha = new ResourceAssembly(

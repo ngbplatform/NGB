@@ -35,30 +35,20 @@ public sealed class PostgresPayablesReconciliationService(IUnitOfWork uow) : IPa
         var policy = await ReadRequiredPolicyAsync(ct);
         var tableCode = await ReadOperationalRegisterTableCodeOrThrowAsync(policy.OpenItemsRegisterId, ct);
 
-        if (!SafeTableCode.IsMatch(tableCode))
-        {
-            throw new NgbConfigurationViolationException(
-                "Operational register table_code is not safe.",
-                new Dictionary<string, object?> { ["registerId"] = policy.OpenItemsRegisterId, ["tableCode"] = tableCode });
-        }
-
         var movementsTable = $"opreg_{tableCode}__movements";
         var movementsTableExists = await TableExistsAsync(movementsTable, ct);
 
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
         var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
 
-        var glSourceSql = request.Mode switch
+        var (glSourceSql, oiSourceSql) = request.Mode switch
         {
-            PayablesReconciliationMode.Movement => BuildMovementGlSourceSql(),
-            PayablesReconciliationMode.Balance => BuildBalanceGlSourceSql(),
-            _ => throw new NgbArgumentInvalidException(nameof(request.Mode), "Select a valid reconciliation mode.")
-        };
-
-        var oiSourceSql = request.Mode switch
-        {
-            PayablesReconciliationMode.Movement => BuildMovementOiSourceSql(movementsTable, movementsTableExists),
-            PayablesReconciliationMode.Balance => BuildBalanceOiSourceSql(movementsTable, movementsTableExists),
+            PayablesReconciliationMode.Movement => (
+                BuildMovementGlSourceSql(),
+                BuildMovementOiSourceSql(movementsTable, movementsTableExists)),
+            PayablesReconciliationMode.Balance => (
+                BuildBalanceGlSourceSql(),
+                BuildBalanceOiSourceSql(movementsTable, movementsTableExists)),
             _ => throw new NgbArgumentInvalidException(nameof(request.Mode), "Select a valid reconciliation mode.")
         };
 
@@ -175,7 +165,7 @@ ORDER BY 1,2;
             Rows: resultRows);
     }
 
-    private async Task<IReadOnlyDictionary<Guid, string?>> ReadCatalogDisplaysAsync(
+    internal async Task<IReadOnlyDictionary<Guid, string?>> ReadCatalogDisplaysAsync(
         string expectedCatalogCode,
         string typedHeadTable,
         IEnumerable<Guid> ids,
@@ -206,7 +196,7 @@ WHERE c.catalog_code = @CatalogCode
         return rows.ToDictionary(x => x.Id, x => x.Display);
     }
 
-    private static string? ResolveDisplay(IReadOnlyDictionary<Guid, string?> displays, Guid id)
+    internal static string? ResolveDisplay(IReadOnlyDictionary<Guid, string?> displays, Guid id)
     {
         if (id == Guid.Empty)
             return null;
@@ -228,7 +218,7 @@ gl_source AS (
 )
 """;
 
-    private static string BuildBalanceGlSourceSql() =>
+    internal static string BuildBalanceGlSourceSql() =>
         """
 latest_closed AS (
     SELECT MAX(b.period) AS period
@@ -270,7 +260,7 @@ gl_source AS (
 )
 """;
 
-    private static string BuildMovementOiSourceSql(string movementsTable, bool movementsTableExists)
+    internal static string BuildMovementOiSourceSql(string movementsTable, bool movementsTableExists)
         => movementsTableExists
             ? $"""
 oi_source AS (
@@ -285,7 +275,7 @@ oi_source AS (
 """
             : BuildEmptyOiSourceSql();
 
-    private static string BuildBalanceOiSourceSql(string movementsTable, bool movementsTableExists)
+    internal static string BuildBalanceOiSourceSql(string movementsTable, bool movementsTableExists)
         => movementsTableExists
             ? $"""
 oi_source AS (
@@ -299,7 +289,7 @@ oi_source AS (
 """
             : BuildEmptyOiSourceSql();
 
-    private static string BuildEmptyOiSourceSql() =>
+    internal static string BuildEmptyOiSourceSql() =>
         """
 oi_source AS (
     SELECT
@@ -313,7 +303,7 @@ oi_source AS (
 
     private sealed record RawRow(Guid VendorId, Guid PropertyId, decimal ApNet, decimal OpenItemsNet);
 
-    private static PayablesReconciliationRowKind ResolveRowKind(decimal apNet, decimal openItemsNet, bool hasDiff)
+    internal static PayablesReconciliationRowKind ResolveRowKind(decimal apNet, decimal openItemsNet, bool hasDiff)
     {
         if (apNet != 0m && openItemsNet == 0m)
             return PayablesReconciliationRowKind.GlOnly;
@@ -332,7 +322,7 @@ oi_source AS (
             throw new NgbArgumentOutOfRangeException(paramName, month, $"{label} must be the first day of a month.");
     }
 
-    private async Task<(Guid ApAccountId, Guid OpenItemsRegisterId)> ReadRequiredPolicyAsync(CancellationToken ct)
+    internal async Task<(Guid ApAccountId, Guid OpenItemsRegisterId)> ReadRequiredPolicyAsync(CancellationToken ct)
     {
         const string sql = """
 SELECT
@@ -368,9 +358,15 @@ LIMIT 2;
                 });
         }
 
-        var r = rows[0];
+        return EnsureRequiredPolicyValues(rows[0].ApAccountId, rows[0].OpenItemsRegisterId);
+    }
 
-        if (r.ApAccountId is null || r.ApAccountId == Guid.Empty)
+    internal static (Guid ApAccountId, Guid OpenItemsRegisterId) EnsureRequiredPolicyValues(
+        Guid? apAccountId,
+        Guid? openItemsRegisterId)
+    {
+        var requiredApAccountId = apAccountId.GetValueOrDefault();
+        if (requiredApAccountId == Guid.Empty)
         {
             throw new NgbConfigurationViolationException(
                 "PM accounting policy has no ap_vendors_account_id configured.",
@@ -382,7 +378,8 @@ LIMIT 2;
                 });
         }
 
-        if (r.OpenItemsRegisterId is null || r.OpenItemsRegisterId == Guid.Empty)
+        var requiredOpenItemsRegisterId = openItemsRegisterId.GetValueOrDefault();
+        if (requiredOpenItemsRegisterId == Guid.Empty)
         {
             throw new NgbConfigurationViolationException(
                 "PM accounting policy has no payables_open_items_register_id configured.",
@@ -394,12 +391,12 @@ LIMIT 2;
                 });
         }
 
-        return (r.ApAccountId.Value, r.OpenItemsRegisterId.Value);
+        return (requiredApAccountId, requiredOpenItemsRegisterId);
     }
 
     private sealed record PolicyRow(Guid? ApAccountId, Guid? OpenItemsRegisterId);
 
-    private async Task<string> ReadOperationalRegisterTableCodeOrThrowAsync(Guid registerId, CancellationToken ct)
+    internal async Task<string> ReadOperationalRegisterTableCodeOrThrowAsync(Guid registerId, CancellationToken ct)
     {
         const string sql = """
 SELECT table_code AS TableCode
@@ -408,25 +405,32 @@ WHERE register_id = @RegisterId::uuid
 LIMIT 2;
 """;
 
-        var rows = (await uow.Connection.QueryAsync<TableCodeRow>(
-            new CommandDefinition(sql, new { RegisterId = registerId }, transaction: uow.Transaction, cancellationToken: ct))).AsList();
+        var row = await uow.Connection.QuerySingleOrDefaultAsync<TableCodeRow>(
+            new CommandDefinition(sql, new { RegisterId = registerId }, transaction: uow.Transaction, cancellationToken: ct));
 
-        if (rows.Count == 0)
+        if (row is null)
             throw new NgbConfigurationViolationException(
                 "Payables open-items operational register does not exist.",
                 new Dictionary<string, object?> { ["registerId"] = registerId });
 
-        if (rows.Count > 1)
-            throw new NgbConfigurationViolationException(
-                "Multiple operational register rows found for a single register_id.",
-                new Dictionary<string, object?> { ["registerId"] = registerId });
+        return EnsureSafeTableCode(row.TableCode, registerId);
+    }
 
-        var tableCode = rows[0].TableCode?.Trim();
+    internal static string EnsureSafeTableCode(string? rawTableCode, Guid registerId)
+    {
+        var tableCode = rawTableCode?.Trim();
         if (string.IsNullOrWhiteSpace(tableCode))
         {
             throw new NgbConfigurationViolationException(
                 "Payables open-items operational register has empty table_code.",
                 new Dictionary<string, object?> { ["registerId"] = registerId });
+        }
+
+        if (!SafeTableCode.IsMatch(tableCode))
+        {
+            throw new NgbConfigurationViolationException(
+                "Operational register table_code is not safe.",
+                new Dictionary<string, object?> { ["registerId"] = registerId, ["tableCode"] = tableCode });
         }
 
         return tableCode;
