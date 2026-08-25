@@ -380,18 +380,18 @@ const selectedSuggestedApplies = computed(() => {
 
 const selectedSuggestedSummary = computed(() => {
   const items = selectedSuggestedApplies.value
-  const first = items[0]
+  const first = items[0]!
   return {
     count: items.length,
     paymentCount: new Set(items.map((item) => item.creditDocumentId)).size,
     chargeCount: new Set(items.map((item) => item.chargeDocumentId)).size,
-    creditLabel: first ? docLabel(null, first.creditDocumentDisplay, first.creditDocumentId) : '—',
-    chargeLabel: first ? docLabel(null, first.chargeDisplay, first.chargeDocumentId) : '—',
-    chargeOutstandingBefore: items.reduce((sum, item) => sum + Number(item.chargeOutstandingBefore ?? 0), 0),
-    chargeOutstandingAfter: items.reduce((sum, item) => sum + Number(item.chargeOutstandingAfter ?? 0), 0),
-    creditAmountBefore: items.reduce((sum, item) => sum + Number(item.creditAmountBefore ?? 0), 0),
-    creditAmountAfter: items.reduce((sum, item) => sum + Number(item.creditAmountAfter ?? 0), 0),
-    applyAmount: items.reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
+    creditLabel: docLabel(null, first.creditDocumentDisplay, first.creditDocumentId),
+    chargeLabel: docLabel(null, first.chargeDisplay, first.chargeDocumentId),
+    chargeOutstandingBefore: items.reduce((sum, item) => sum + Number(item.chargeOutstandingBefore), 0),
+    chargeOutstandingAfter: items.reduce((sum, item) => sum + Number(item.chargeOutstandingAfter), 0),
+    creditAmountBefore: items.reduce((sum, item) => sum + Number(item.creditAmountBefore), 0),
+    creditAmountAfter: items.reduce((sum, item) => sum + Number(item.creditAmountAfter), 0),
+    applyAmount: items.reduce((sum, item) => sum + Number(item.amount), 0),
   }
 })
 
@@ -403,7 +403,7 @@ const wizardSelectionTitle = computed(() => {
 
 const formattedSuggestWarnings = computed(() => {
   return (suggestData.value?.warnings ?? []).map((warning) => {
-    switch (String(warning.code ?? '').trim()) {
+    switch (warning.code.trim()) {
       case 'no_charges':
         return { title: 'No open charges', message: 'There are no outstanding charges to apply right now for this lease.' }
       case 'no_credits':
@@ -411,9 +411,9 @@ const formattedSuggestWarnings = computed(() => {
       case 'limit_reached':
         return { title: 'Suggestion limit reached', message: 'The wizard stopped early because the current suggestion limit was reached. Review the remaining items before continuing.' }
       case 'outstanding_remaining':
-        return { title: 'Some charges will remain open', message: String(warning.message ?? '').replace('Outstanding charges remain', 'Open charge balance will remain after this apply') }
+        return { title: 'Some charges will remain open', message: warning.message.replace('Outstanding charges remain', 'Open charge balance will remain after this apply') }
       case 'credit_remaining':
-        return { title: 'Some credit will remain', message: String(warning.message ?? '').replace('Unapplied credits remain', 'Available credit will remain after this apply') }
+        return { title: 'Some credit will remain', message: warning.message.replace('Unapplied credits remain', 'Available credit will remain after this apply') }
       default:
         return { title: 'Review before posting', message: warning.message }
     }

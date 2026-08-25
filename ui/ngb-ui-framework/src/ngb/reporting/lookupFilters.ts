@@ -38,6 +38,6 @@ export async function hydrateReportLookupItemsFromFilters(
     if (ids.length === 0) continue
 
     state.items = await hydrateResolvedLookupItems(lookupStore, field.lookup, ids)
-    if (state.items.length > 0) state.raw = ''
+    state.raw = ''
   }
 }

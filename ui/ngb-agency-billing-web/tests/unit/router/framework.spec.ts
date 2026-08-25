@@ -72,6 +72,16 @@ describe('agency billing route framework', () => {
         client_id: '11111111-1111-4111-8111-111111111111',
       },
     })
+    await props.loadPage({
+      documentType: 'ab.sales_invoice',
+      offset: 50,
+      limit: 50,
+      search: '',
+      trashMode: 'all',
+      periodFrom: null,
+      periodTo: null,
+      listFilters: {},
+    })
 
     expect(mocks.getDocumentPage).toHaveBeenCalledWith('ab.sales_invoice', {
       offset: 0,
@@ -83,6 +93,12 @@ describe('agency billing route framework', () => {
         periodTo: '2026-04-30',
         client_id: '11111111-1111-4111-8111-111111111111',
       },
+    })
+    expect(mocks.getDocumentPage).toHaveBeenLastCalledWith('ab.sales_invoice', {
+      offset: 50,
+      limit: 50,
+      search: '',
+      filters: { deleted: 'all' },
     })
     expect(props.resolveLookupHint({
       entityTypeCode: 'ab.sales_invoice',

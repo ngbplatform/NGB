@@ -17,6 +17,8 @@ describe('clonePlainData', () => {
 
     expect(clonePlainData({ value: 42 })).toEqual({ value: 42, cloned: true })
     expect(structuredCloneMock).toHaveBeenCalledWith({ value: 42 })
+    expect(clonePlainData(null)).toBeNull()
+    expect(clonePlainData('plain')).toBe('plain')
   })
 
   it('falls back to recursive cloning for dto-like data when structuredClone is missing or throws', () => {
@@ -40,5 +42,8 @@ describe('clonePlainData', () => {
     expect(cloned.nested).not.toBe(original.nested)
     expect(cloned.nested.tags).not.toBe(original.nested.tags)
     expect(cloned.custom).toBe(original.custom)
+
+    vi.stubGlobal('structuredClone', undefined)
+    expect(clonePlainData({ nested: { value: 1 } })).toEqual({ nested: { value: 1 } })
   })
 })

@@ -225,7 +225,7 @@ const heightPx = computed(() => props.heightPx);
 const fillHeight = computed(() => props.fillHeight);
 const showTotals = computed(() => props.showTotals);
 
-const statusColWidth = computed(() => props.showStatusColumn ? 40 : 0); // px (icon-only status column)
+const statusColWidth = computed(() => 40); // px (icon-only status column)
 const showStatusColumn = computed(() => props.showStatusColumn);
 const showGroupCounts = computed(() => props.showGroupCounts);
 const showGroupToggleIcons = computed(() => props.showGroupToggleIcons);
@@ -258,7 +258,6 @@ const {
   storageKey: computed(() => props.storageKey),
   showStatusColumn,
   statusColWidth,
-  emitVisibleColumnKeys: (value) => emit('update:visibleColumnKeys', value),
 });
 
 const { startResize } = useRegisterColumnResize({
@@ -296,8 +295,7 @@ function sortIndex(key: string) {
 }
 function sortBadge(key: string) {
   const i = sortIndex(key);
-  if (i < 0) return '';
-  const dir = sortBy.value[i].dir === 'asc' ? '↑' : '↓';
+  const dir = sortBy.value[i]!.dir === 'asc' ? '↑' : '↓';
   return `${i + 1}${dir}`;
 }
 function sortHint(key: string) {
@@ -379,13 +377,13 @@ function onKeyDown(ev: KeyboardEvent) {
   if (ev.key === 'ArrowDown') {
     ev.preventDefault();
     activeIndex.value = clamp(activeIndex.value + 1);
-    scrollToActive();
+    scrollToActive(ev.currentTarget as HTMLElement);
     return;
   }
   if (ev.key === 'ArrowUp') {
     ev.preventDefault();
     activeIndex.value = clamp(activeIndex.value - 1);
-    scrollToActive();
+    scrollToActive(ev.currentTarget as HTMLElement);
     return;
   }
   if (ev.key === 'Enter') {
@@ -405,9 +403,7 @@ function onKeyDown(ev: KeyboardEvent) {
   }
 }
 
-function scrollToActive() {
-  const vp = viewport.value;
-  if (!vp) return;
+function scrollToActive(vp: HTMLElement) {
   const top = activeIndex.value * rowHeight.value;
   const bottom = top + rowHeight.value;
   if (top < vp.scrollTop) vp.scrollTop = top;
@@ -426,14 +422,10 @@ function formatCell(col: RegisterColumn, v: unknown, row: RegisterDataRow) {
 }
 
 function formatCellLines(col: RegisterColumn, v: unknown, row: RegisterDataRow): string[] {
-  if (Array.isArray(v)) {
-    const lines = v
-      .map((item) => formatCell(col, item, row))
-      .filter((item) => item && item !== '—');
-    return lines.length > 0 ? lines : ['—'];
-  }
-
-  return [formatCell(col, v, row)];
+  const lines = (v as unknown[])
+    .map((item) => formatCell(col, item, row))
+    .filter((item) => item && item !== '—');
+  return lines.length > 0 ? lines : ['—'];
 }
 
 function asBool(v: unknown): boolean {

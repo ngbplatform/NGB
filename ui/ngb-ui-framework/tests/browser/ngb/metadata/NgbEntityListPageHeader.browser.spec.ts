@@ -31,6 +31,18 @@ const HeaderHarness = defineComponent({
       type: Boolean,
       default: true,
     },
+    total: {
+      type: Number,
+      default: 42,
+    },
+    filterActive: {
+      type: Boolean,
+      default: true,
+    },
+    disableNext: {
+      type: Boolean,
+      default: true,
+    },
   },
   setup(props) {
     const events = ref<string[]>([])
@@ -40,13 +52,13 @@ const HeaderHarness = defineComponent({
         title: 'Invoices',
         canBack: true,
         itemsCount: 12,
-        total: 42,
+        total: props.total,
         loading: false,
         disableCreate: props.disableCreate,
         showFilter: props.showFilter,
-        filterActive: true,
+        filterActive: props.filterActive,
         disablePrev: false,
-        disableNext: true,
+        disableNext: props.disableNext,
         onBack: () => events.value.push('back'),
         onRefresh: () => events.value.push('refresh'),
         onCreate: () => events.value.push('create'),
@@ -98,4 +110,35 @@ test('respects disabled create and hidden filter mode', async () => {
 
   expect(buttonByTitle('Create').disabled).toBe(true)
   expect(document.querySelector('button[title="Filter"]')).toBeNull()
+})
+
+test('renders an item-only count, inactive filter, and enabled next action', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(HeaderHarness, {
+    props: {
+      total: null as never,
+      filterActive: false,
+      disableNext: false,
+    },
+  })
+
+  await expect.element(view.getByText('12', { exact: true })).toBeVisible()
+  expect(buttonByTitle('Filter').getAttribute('aria-pressed')).toBe('false')
+  buttonByTitle('Next').click()
+  await expect.element(view.getByTestId('header-events')).toHaveTextContent('next')
+})
+
+test('renders without an optional filters slot or item count', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(NgbEntityListPageHeader, {
+    props: {
+      title: 'Empty invoices',
+      itemsCount: null,
+    },
+  })
+
+  await expect.element(view.getByText('header-title:Empty invoices')).toBeVisible()
+  expect(document.querySelector('.bg-ngb-border')).toBeNull()
 })

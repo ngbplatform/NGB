@@ -60,14 +60,13 @@ const documentRoute = computed(() => {
 });
 
 const shareRoute = computed(() => {
-  if (!documentType.value || !documentId.value) return '/';
   return buildDocumentEffectsPageUrl(documentType.value, documentId.value);
 });
 
 const tabs = computed(() => [
-  { key: 'accounting', label: `Accounting Entries (${effects.value?.accountingEntries?.length ?? 0})` },
-  { key: 'or', label: `Operational Registers (${effects.value?.operationalRegisterMovements?.length ?? 0})` },
-  { key: 'rr', label: `Reference Registers (${effects.value?.referenceRegisterWrites?.length ?? 0})` },
+  { key: 'accounting', label: `Accounting Entries (${effects.value!.accountingEntries.length})` },
+  { key: 'or', label: `Operational Registers (${effects.value!.operationalRegisterMovements.length})` },
+  { key: 'rr', label: `Reference Registers (${effects.value!.referenceRegisterWrites.length})` },
 ]);
 
 const title = computed(() => {
@@ -104,7 +103,7 @@ const referenceColumns = computed(() => [
 ]);
 
 const accountingRows = computed<RegisterDataRow[]>(() => {
-  const items = effects.value?.accountingEntries ?? [];
+  const items = effects.value!.accountingEntries;
   return items.flatMap((item) => {
     const occurred = formatUtc(item.occurredAtUtc);
     const debitRow = {
@@ -132,7 +131,7 @@ const accountingRows = computed<RegisterDataRow[]>(() => {
 });
 
 const operationalRows = computed<RegisterDataRow[]>(() => {
-  const items = effects.value?.operationalRegisterMovements ?? [];
+  const items = effects.value!.operationalRegisterMovements;
   return items.map((item) => ({
     key: effectKey(item.movementId),
     occurred: formatUtc(item.occurredAtUtc),
@@ -144,7 +143,7 @@ const operationalRows = computed<RegisterDataRow[]>(() => {
 });
 
 const referenceRows = computed<RegisterDataRow[]>(() => {
-  const items = effects.value?.referenceRegisterWrites ?? [];
+  const items = effects.value!.referenceRegisterWrites;
   return items.map((item) => ({
     key: effectKey(item.recordId),
     recorded: formatUtc(item.recordedAtUtc),
@@ -225,33 +224,25 @@ function formatDimensionSummary(
   );
 }
 
-function formatResourceSummary(value: EffectResourceValue[] | Record<string, unknown> | null | undefined): string | string[] {
+function formatResourceSummary(value: EffectResourceValue[] | Record<string, unknown>): string | string[] {
   if (Array.isArray(value)) {
     const parts = value
       .map((item) => {
         const code = humanizeCode(item?.code);
         const formatted = formatMoney(Number(item?.value ?? 0));
         return code ? `${code}: ${formatted}` : formatted;
-      })
-      .filter((item) => !!item);
+      });
 
     return parts.length > 0 ? parts : '—';
   }
 
-  if (value && typeof value === 'object') {
-    const parts = Object.entries(value)
-      .map(([key, item]) => `${humanizeCode(key)}: ${formatScalar(item)}`)
-      .filter((item) => !!item);
+  const parts = Object.entries(value)
+    .map(([key, item]) => `${humanizeCode(key)}: ${formatScalar(item)}`);
 
-    return parts.length > 0 ? parts : '—';
-  }
-
-  return '—';
+  return parts.length > 0 ? parts : '—';
 }
 
-function formatFieldSummary(fields: Record<string, unknown> | null | undefined): string | string[] {
-  if (!fields || typeof fields !== 'object') return '—';
-
+function formatFieldSummary(fields: Record<string, unknown>): string | string[] {
   const parts = Object.entries(fields)
     .map(([key, value]) => {
       const label = key.endsWith('_document_id')
@@ -268,8 +259,7 @@ function formatFieldSummary(fields: Record<string, unknown> | null | undefined):
       })
 
       return `${label}: ${resolved ?? formatScalar(value)}`
-    })
-    .filter((item) => !!item);
+    });
 
   return parts.length > 0 ? parts : '—';
 }
@@ -278,7 +268,7 @@ function humanizeCode(value: string | null | undefined): string {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
 
-  const last = raw.split('.').pop() ?? raw;
+  const last = raw.split('.').pop()!;
   return last
     .split(/[_\-\s]+/g)
     .filter((part) => !!part)
@@ -287,7 +277,6 @@ function humanizeCode(value: string | null | undefined): string {
 }
 
 function openSourceDocument(): void {
-  if (!documentType.value || !documentId.value) return;
   void router.push(documentRoute.value);
 }
 
@@ -302,7 +291,6 @@ async function goBack(): Promise<void> {
 }
 
 async function copyShare(): Promise<void> {
-  if (!canShareLink.value) return;
   await copyAppLink(router, toasts, shareRoute.value, {
     title: 'Effects link copied',
     message: 'Shareable effects page link copied to clipboard.',
@@ -313,7 +301,7 @@ async function refreshPage(): Promise<void> {
   await load();
 }
 
-async function prefetchDefaultAccountLabels(snapshot: DocumentEffects | null | undefined): Promise<void> {
+async function prefetchDefaultAccountLabels(snapshot: DocumentEffects): Promise<void> {
   if (!lookupStore) return;
   const ids = collectAccountingEntryAccountIds(snapshot);
   if (ids.length === 0) return;
@@ -348,7 +336,7 @@ async function load(): Promise<void> {
 
     if (behavior.prefetchRelatedLabels) {
       ancillaryTasks.push(
-        Promise.resolve().then(() => behavior.prefetchRelatedLabels?.({
+        Promise.resolve().then(() => behavior.prefetchRelatedLabels!({
           documentType: documentType.value,
           documentId: documentId.value,
           effects: effectsSnapshot,
@@ -396,7 +384,7 @@ watch(
       <template #actions>
         <button
           class="ngb-iconbtn"
-          :disabled="loading || !documentId"
+          :disabled="loading || !canShareLink"
           title="Open document"
           @click="openSourceDocument"
         >

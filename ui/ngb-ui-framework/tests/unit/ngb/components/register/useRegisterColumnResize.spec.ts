@@ -85,15 +85,18 @@ function createHarness(options?: {
 
 describe('register column resize', () => {
   let originalHTMLElement: typeof globalThis.HTMLElement | undefined
+  let originalWindow: typeof globalThis.window | undefined
 
   beforeEach(() => {
     beforeUnmountCallbacks.length = 0
     originalHTMLElement = globalThis.HTMLElement
+    originalWindow = globalThis.window
     globalThis.HTMLElement = FakeHTMLElement as unknown as typeof HTMLElement
   })
 
   afterEach(() => {
     globalThis.HTMLElement = originalHTMLElement
+    globalThis.window = originalWindow as typeof globalThis.window
   })
 
   it('tracks pointer movement, clamps widths to min width, and stops on pointerup', () => {
@@ -173,5 +176,86 @@ describe('register column resize', () => {
 
     runBeforeUnmountHooks()
     expect(secondHandle.releasePointerCapture).toHaveBeenCalledWith(2)
+  })
+
+  it('ignores missing columns, invalid movement, and unavailable pointer capture APIs', () => {
+    const handle = new FakeHTMLElement()
+    ;(handle as unknown as { setPointerCapture?: unknown }).setPointerCapture = undefined
+    ;(handle as unknown as { releasePointerCapture?: unknown }).releasePointerCapture = undefined
+    const { localWidths, resizeState } = createHarness()
+
+    resizeState.stopResize()
+    resizeState.startResize('missing', pointerEvent({
+      currentTarget: handle,
+      pointerId: 4,
+      clientX: 100,
+    }))
+    expect(localWidths.value).toEqual({})
+
+    resizeState.startResize('amount', pointerEvent({
+      currentTarget: handle,
+      pointerId: 4,
+      clientX: 100,
+    }))
+    handle.dispatch('pointermove', { pointerId: undefined, clientX: 120 } as never)
+    handle.dispatch('pointermove', { pointerId: 4, clientX: undefined } as never)
+    handle.dispatch('pointermove', { pointerId: 99, clientX: 120 } as never)
+    expect(localWidths.value).toEqual({})
+
+    resizeState.stopResize()
+  })
+
+  it('falls back to window listeners and tolerates pointer capture failures', () => {
+    const windowTarget = new FakeHTMLElement()
+    globalThis.window = windowTarget as unknown as typeof globalThis.window
+
+    const { localWidths, resizeState } = createHarness()
+    resizeState.startResize('amount', pointerEvent({
+      currentTarget: null,
+      pointerId: 8,
+      clientX: 100,
+    }))
+    windowTarget.dispatch('pointermove', pointerEvent({
+      currentTarget: null,
+      pointerId: 8,
+      clientX: 125,
+    }))
+    expect(localWidths.value.amount).toBe(165)
+    resizeState.stopResize()
+
+    const throwingHandle = new FakeHTMLElement()
+    throwingHandle.setPointerCapture.mockImplementationOnce(() => {
+      throw new Error('Synthetic pointer cannot be captured')
+    })
+    throwingHandle.releasePointerCapture.mockImplementationOnce(() => {
+      throw new Error('Synthetic pointer was already released')
+    })
+
+    expect(() => resizeState.startResize('amount', pointerEvent({
+      currentTarget: throwingHandle,
+      pointerId: 10,
+      clientX: 200,
+    }))).not.toThrow()
+    expect(() => resizeState.stopResize()).not.toThrow()
+  })
+
+  it('uses the default minimum width when the column does not define one', () => {
+    const handle = new FakeHTMLElement()
+    const { localWidths, resizeState } = createHarness({
+      columns: [{ key: 'amount', title: 'Amount', width: 140 }],
+    })
+
+    resizeState.startResize('amount', pointerEvent({
+      currentTarget: handle,
+      pointerId: 12,
+      clientX: 200,
+    }))
+    handle.dispatch('pointermove', pointerEvent({
+      currentTarget: handle,
+      pointerId: 12,
+      clientX: 0,
+    }))
+
+    expect(localWidths.value.amount).toBe(80)
   })
 })

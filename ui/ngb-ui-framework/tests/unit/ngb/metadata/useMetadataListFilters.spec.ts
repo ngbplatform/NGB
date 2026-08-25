@@ -47,7 +47,14 @@ function createLookupStore() {
   }
 }
 
-function createHarness(initialQuery: Record<string, unknown> = {}) {
+function createHarness(
+  initialQuery: Record<string, unknown> = {},
+  options: {
+    commitDelayMs?: number
+    resolveLookupHint?: (field: ReturnType<typeof defaultFilters>[number]) => ReturnType<typeof defaultResolveLookupHint>
+    filters?: ReturnType<typeof defaultFilters>
+  } = {},
+) {
   const route = reactive({
     path: '/documents/pm.invoice',
     query: { ...initialQuery } as Record<string, unknown>,
@@ -57,7 +64,32 @@ function createHarness(initialQuery: Record<string, unknown> = {}) {
     push: vi.fn(),
   } as unknown as Router
   const entityTypeCode = ref('pm.invoice')
-  const filters = ref([
+  const filters = ref(options.filters ?? defaultFilters())
+  const resolveLookupHint = options.resolveLookupHint ?? defaultResolveLookupHint
+  const lookupStore = createLookupStore()
+
+  const listFilters = useMetadataListFilters({
+    route: route as never,
+    router,
+    entityTypeCode: computed(() => entityTypeCode.value),
+    filters: computed(() => filters.value),
+    lookupStore,
+    resolveLookupHint: ({ field }) => resolveLookupHint(field),
+    commitDelayMs: options.commitDelayMs,
+  })
+
+  return {
+    route,
+    router,
+    entityTypeCode,
+    filters,
+    lookupStore,
+    listFilters,
+  }
+}
+
+function defaultFilters() {
+  return [
     {
       key: 'status',
       label: 'Status',
@@ -82,27 +114,11 @@ function createHarness(initialQuery: Record<string, unknown> = {}) {
       label: 'Memo',
       dataType: 'String',
     },
-  ])
-  const lookupStore = createLookupStore()
+  ]
+}
 
-  const listFilters = useMetadataListFilters({
-    route: route as never,
-    router,
-    entityTypeCode: computed(() => entityTypeCode.value),
-    filters: computed(() => filters.value),
-    lookupStore,
-    resolveLookupHint: ({ field }) => field.lookup ?? null,
-    commitDelayMs: 25,
-  })
-
-  return {
-    route,
-    router,
-    entityTypeCode,
-    filters,
-    lookupStore,
-    listFilters,
-  }
+function defaultResolveLookupHint(field: ReturnType<typeof defaultFilters>[number]) {
+  return field.lookup ?? null
 }
 
 describe('metadata list filters', () => {
@@ -177,7 +193,7 @@ describe('metadata list filters', () => {
     const { route, router, entityTypeCode, listFilters } = createHarness({
       status: 'posted',
       memo: 'recurring',
-    })
+    }, { commitDelayMs: 25 })
     await flushAsync()
 
     listFilters.handleValueUpdate({ key: 'status', value: 'open' })
@@ -208,5 +224,128 @@ describe('metadata list filters', () => {
     await flushAsync()
     expect(listFilters.filterDraft.value).toEqual({})
     expect(listFilters.lookupItemsByFilterKey.value).toEqual({})
+  })
+
+  it('covers missing fields, blank lookup queries, empty commits, and pending timer cleanup', async () => {
+    vi.useFakeTimers()
+    const { route, router, listFilters } = createHarness({}, { commitDelayMs: undefined })
+    await flushAsync()
+
+    await listFilters.handleLookupQuery({ key: 'missing', query: 'anything' })
+    await listFilters.handleLookupQuery({ key: 'property_id', query: '   ' })
+    expect(listFilters.lookupItemsByFilterKey.value.property_id).toEqual([])
+
+    listFilters.handleValueUpdate({ key: 'missing', value: 'ignored' })
+    listFilters.handleValueUpdate({ key: 'status', value: '   ' })
+    await flushAsync()
+    expect(setCleanRouteQueryMock).toHaveBeenCalledWith(route, router, { status: undefined, offset: 0 }, 'replace')
+
+    listFilters.handleValueUpdate({ key: 'memo', value: 'first' })
+    listFilters.handleValueUpdate({ key: 'memo', value: 'second' })
+    await listFilters.undo()
+    await vi.runAllTimersAsync()
+    expect(setCleanRouteQueryMock).toHaveBeenLastCalledWith(route, router, { offset: 0 }, 'replace')
+
+    const unmount = onBeforeUnmountMock.mock.calls.at(-1)?.[0] as (() => void) | undefined
+    expect(unmount).toBeTypeOf('function')
+    unmount?.()
+  })
+
+  it('handles unavailable lookup hints and ignores stale asynchronous searches', async () => {
+    const noHint = createHarness({
+      property_id: '11111111-1111-1111-1111-111111111111',
+    }, { resolveLookupHint: () => null })
+    await flushAsync()
+    expect(noHint.listFilters.filterDraft.value.property_id?.items).toEqual([])
+    await noHint.listFilters.handleLookupQuery({ key: 'property_id', query: 'river' })
+    expect(noHint.listFilters.lookupItemsByFilterKey.value.property_id).toEqual([])
+
+    const harness = createHarness()
+    let resolveFirst!: (items: Array<{ id: string; label: string }>) => void
+    harness.lookupStore.searchCatalog
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce([{ id: 'second', label: 'Second result' }])
+
+    const first = harness.listFilters.handleLookupQuery({ key: 'property_id', query: 'first' })
+    await Promise.resolve()
+    const second = harness.listFilters.handleLookupQuery({ key: 'property_id', query: 'second' })
+    await second
+    resolveFirst([{ id: 'first', label: 'First result' }])
+    await first
+
+    expect(harness.listFilters.lookupItemsByFilterKey.value.property_id).toEqual([
+      { id: 'second', label: 'Second result' },
+    ])
+
+    const singleLookupFilters = defaultFilters()
+    const propertyFilter = singleLookupFilters.find((field) => field.key === 'property_id')!
+    propertyFilter.isMulti = false
+    const singleLookup = createHarness({
+      property_id: '11111111-1111-1111-1111-111111111111',
+    }, { filters: singleLookupFilters })
+    await flushAsync()
+    expect(singleLookup.listFilters.filterDraft.value.property_id?.items).toHaveLength(1)
+  })
+
+  it('falls back from stale draft labels and suppresses badges with empty lookup labels', async () => {
+    const harness = createHarness({ status: 'open' })
+    await flushAsync()
+    harness.listFilters.filterDraft.value = {}
+    expect(harness.listFilters.activeFilterBadges.value).toEqual([{ key: 'status', text: 'Status: Open' }])
+
+    harness.route.query.property_id = '11111111-1111-1111-1111-111111111111'
+    await flushAsync()
+    harness.listFilters.filterDraft.value.property_id = {
+      raw: '11111111-1111-1111-1111-111111111111',
+      items: [
+        { id: '11111111-1111-1111-1111-111111111111', label: null } as never,
+        { id: null, label: null } as never,
+      ],
+    }
+    expect(harness.listFilters.activeFilterBadges.value).toContainEqual({
+      key: 'property_id',
+      text: 'Property: 11111111-1111-1111-1111-111111111111',
+    })
+
+    harness.listFilters.filterDraft.value.property_id = {
+      raw: 'different',
+      items: [{ id: null, label: null } as never],
+    }
+    expect(harness.listFilters.activeFilterBadges.value).toContainEqual({
+      key: 'property_id',
+      text: 'Property: Riverfront Tower',
+    })
+
+    harness.lookupStore.labelForCatalog.mockReturnValue('')
+    harness.listFilters.filterDraft.value = {}
+    expect(harness.listFilters.activeFilterBadges.value).not.toContainEqual(expect.objectContaining({ key: 'property_id' }))
+    expect(harness.listFilters.canUndoFilters.value).toBe(true)
+
+    harness.route.query = {}
+    await flushAsync()
+    harness.listFilters.filterDraft.value = {
+      memo: { raw: 'draft only', items: [] },
+    }
+    expect(harness.listFilters.hasActiveFilters.value).toBe(false)
+    expect(harness.listFilters.canUndoFilters.value).toBe(true)
+  })
+
+  it('abandons route hydration when a newer synchronization wins the race', async () => {
+    const harness = createHarness()
+    await flushAsync()
+
+    let releaseHydration!: () => void
+    harness.lookupStore.ensureCatalogLabels.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      releaseHydration = resolve
+    }))
+
+    harness.route.query.property_id = '11111111-1111-1111-1111-111111111111'
+    await nextTick()
+    harness.route.query.property_id = undefined
+    await flushAsync()
+    releaseHydration()
+    await flushAsync()
+
+    expect(harness.listFilters.filterDraft.value.property_id).toEqual({ raw: '', items: [] })
   })
 })

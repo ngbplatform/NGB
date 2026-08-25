@@ -20,10 +20,6 @@ const emit = defineEmits<{
 
 const isDisabled = computed(() => props.loading || props.disabled)
 
-function onRefresh(): void {
-  if (isDisabled.value) return
-  emit('refresh')
-}
 </script>
 
 <template>
@@ -45,7 +41,7 @@ function onRefresh(): void {
       :disabled="isDisabled"
       title="Refresh"
       aria-label="Refresh"
-      @click="onRefresh"
+      @click="emit('refresh')"
     >
       <NgbIcon name="refresh" :size="15" />
     </button>

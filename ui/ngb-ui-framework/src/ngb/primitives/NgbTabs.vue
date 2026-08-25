@@ -70,7 +70,7 @@ function keyOf(t: TabItem) {
 }
 
 function tabId(key: string) {
-  const normalized = String(key ?? '').trim().replace(/[^a-z0-9_-]+/gi, '-')
+  const normalized = key.trim().replace(/[^a-z0-9_-]+/gi, '-')
   return `ngb-tab-${normalized || 'item'}`
 }
 
@@ -81,15 +81,12 @@ function focusTab(index: number) {
 }
 
 function emitActiveIndex(index: number) {
-  const tab = props.tabs[index]
-  if (!tab) return
+  const tab = props.tabs[index]!
   emit('update:modelValue', keyOf(tab))
   void nextTick(() => focusTab(index))
 }
 
 function onTabKeyDown(index: number, event: KeyboardEvent) {
-  if (!props.tabs.length) return
-
   if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
     event.preventDefault()
     emitActiveIndex((index + 1) % props.tabs.length)

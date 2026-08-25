@@ -63,10 +63,31 @@ export const StubVChart = defineComponent({
       typeof entry === 'function' ? '[fn]' : entry
     ))
 
-    return () => h('div', { 'data-testid': 'stub-vchart' }, [
-      h('pre', { 'data-testid': 'stub-vchart-option' }, serialize(props.option ?? {})),
+    return () => {
+      const option = props.option as {
+        tooltip?: { formatter?: (params: Array<Record<string, unknown>>) => string }
+        yAxis?: { axisLabel?: { formatter?: (value: number) => string } }
+      }
+      const tooltipFormatter = option.tooltip?.formatter
+      const axisFormatter = option.yAxis?.axisLabel?.formatter
+      const tooltipSamples = typeof tooltipFormatter === 'function'
+        ? [
+            tooltipFormatter([{ axisValueLabel: 'Jan', seriesName: 'Revenue', value: 1250, color: '#2563eb' }]),
+            tooltipFormatter([{}]),
+            tooltipFormatter([]),
+          ]
+        : []
+      const axisSamples = typeof axisFormatter === 'function'
+        ? [Number.NaN, 1_500_000, -1_500_000, 1_500, -1_500, 100, 12.34, 12].map(axisFormatter)
+        : []
+
+      return h('div', { 'data-testid': 'stub-vchart' }, [
+      h('pre', { 'data-testid': 'stub-vchart-option' }, serialize(option)),
       h('pre', { 'data-testid': 'stub-vchart-init-options' }, serialize(props.initOptions ?? {})),
       h('span', { 'data-testid': 'stub-vchart-autoresize' }, String(props.autoresize)),
+      h('pre', { 'data-testid': 'stub-vchart-tooltip-samples' }, serialize(tooltipSamples)),
+      h('pre', { 'data-testid': 'stub-vchart-axis-samples' }, serialize(axisSamples)),
     ])
+    }
   },
 })

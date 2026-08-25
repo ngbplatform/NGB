@@ -30,13 +30,13 @@ let loadSequence = 0;
 const canLoad = computed(() => !!props.entityId);
 const title = computed(() => props.entityTitle?.trim() || 'Audit Log');
 const behavior = computed(() => resolveNgbEditorAuditBehavior(props.behavior));
-const hiddenFieldNames = computed(() => new Set((behavior.value.hiddenFieldNames ?? []).map((item) => item.toLowerCase())));
+const hiddenFieldNames = computed(() => new Set(behavior.value.hiddenFieldNames!.map((item) => item.toLowerCase())));
 const explicitFieldLabels = computed(() => {
-  const entries = Object.entries(behavior.value.explicitFieldLabels ?? {});
+  const entries = Object.entries(behavior.value.explicitFieldLabels!);
   return Object.fromEntries(entries.map(([key, value]) => [key.toLowerCase(), value]));
 });
 const explicitActionTitles = computed(() => {
-  const entries = Object.entries(behavior.value.actionTitles ?? {});
+  const entries = Object.entries(behavior.value.actionTitles!);
   return Object.fromEntries(entries.map(([key, value]) => [key.toLowerCase(), value]));
 });
 type AuditRow = { field: string; before: string; after: string };
@@ -60,8 +60,7 @@ function actorLabel(e: AuditEvent): string {
 }
 
 function humanizeField(fieldPath: string): string {
-  const raw = String(fieldPath ?? '');
-  const last = raw.split('.').pop() || raw;
+  const last = fieldPath.split('.').pop()!;
   const explicit = explicitFieldLabels.value[last.toLowerCase()];
   if (explicit) return explicit;
   return last
@@ -73,24 +72,22 @@ function humanizeField(fieldPath: string): string {
 }
 
 function humanizeLooseText(v: string): string {
-  return String(v ?? '')
+  return v
     .replace(/[._]/g, ' ')
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, (m) => m.toUpperCase())
     .trim();
 }
 
-function parseJsonLoose(v?: string | null): unknown {
+type AuditJsonValue = null | boolean | number | string | AuditJsonValue[] | { [key: string]: AuditJsonValue };
+
+function parseJsonLoose(v?: string | null): AuditJsonValue {
   if (v == null || v === '') return null;
   try {
     return JSON.parse(v);
   } catch {
     return v;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function looksLikeIsoDateTime(v: string): boolean {
@@ -123,7 +120,7 @@ function formatPrimitiveString(v: string): string {
   return trimmed;
 }
 
-function formatAuditValue(parsed: unknown): string {
+function formatAuditValue(parsed: AuditJsonValue): string {
   if (parsed == null || parsed === '') return '—';
   if (typeof parsed === 'boolean') return parsed ? 'Yes' : 'No';
   if (typeof parsed === 'number') return String(parsed);
@@ -132,16 +129,13 @@ function formatAuditValue(parsed: unknown): string {
     if (parsed.length === 0) return '—';
     return parsed.map((entry) => formatAuditValue(entry)).join(', ');
   }
-  if (isRecord(parsed)) {
-    for (const key of ['display', 'label', 'name', 'email', 'id']) {
-      const value = parsed[key];
-      if (typeof value === 'string' && value.trim()) return value;
-    }
-    const permissionDisplay = formatPermissionLikeRecord(parsed);
-    if (permissionDisplay) return permissionDisplay;
-    return stableStringify(parsed);
+  for (const key of ['display', 'label', 'name', 'email', 'id']) {
+    const value = parsed[key];
+    if (typeof value === 'string' && value.trim()) return value;
   }
-  return String(parsed);
+  const permissionDisplay = formatPermissionLikeRecord(parsed);
+  if (permissionDisplay) return permissionDisplay;
+  return stableStringify(parsed);
 }
 
 function valueText(v?: string | null): string {
@@ -149,7 +143,7 @@ function valueText(v?: string | null): string {
 }
 
 function actionTitle(actionCode: string): string {
-  const code = String(actionCode ?? '').toLowerCase();
+  const code = actionCode.toLowerCase();
   const explicitTitle = explicitActionTitles.value[code];
   if (explicitTitle) return explicitTitle;
   if (code.endsWith('.create') || code.includes('.create_')) return 'Created';
@@ -177,11 +171,9 @@ function sameText(a: string, b: string): boolean {
 }
 
 function eventRows(item: AuditEvent): AuditRow[] {
-  const changes = Array.isArray(item.changes) ? item.changes : [];
-
-  const rows = changes
+  const rows = item.changes
     .filter((change) => {
-      const key = String(change.fieldPath ?? '').split('.').pop()?.toLowerCase() ?? '';
+      const key = change.fieldPath.split('.').pop()!.toLowerCase();
       return !hiddenFieldNames.value.has(key);
     })
     .map((change) => ({
@@ -208,14 +200,13 @@ function getString(value: unknown): string | null {
 }
 
 async function load() {
-  if (!props.open || !props.entityId) return;
   const seq = ++loadSequence;
   loading.value = true;
   error.value = null;
   try {
-    const page = await getConfiguredNgbEditor().loadEntityAuditLog(props.entityKind, props.entityId, { limit: 100 });
+    const page = await getConfiguredNgbEditor().loadEntityAuditLog(props.entityKind, props.entityId!, { limit: 100 });
     if (seq !== loadSequence) return;
-    items.value = page.items ?? [];
+    items.value = page.items;
   } catch (cause) {
     if (seq !== loadSequence) return;
     error.value = toErrorMessage(cause, 'Failed to load the audit log.');

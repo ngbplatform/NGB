@@ -56,6 +56,10 @@ const DateRangeHarness = defineComponent({
       type: Boolean,
       default: false,
     },
+    customLabels: {
+      type: Boolean,
+      default: false,
+    },
   },
   setup(props) {
     const fromDate = ref('2026-04-08')
@@ -66,7 +70,9 @@ const DateRangeHarness = defineComponent({
         fromDate: fromDate.value,
         toDate: toDate.value,
         disabled: props.disabled,
-        title: 'Posting date range',
+        title: props.customLabels ? undefined : 'Posting date range',
+        fromPlaceholder: props.customLabels ? 'Opened after' : undefined,
+        toPlaceholder: props.customLabels ? 'Opened before' : undefined,
         'onUpdate:fromDate': (value: string) => {
           fromDate.value = value
         },
@@ -91,9 +97,11 @@ test('normalizes the input values and forwards date updates from both pickers', 
   await expect.element(view.getByTestId('stub-range-picker:End date')).toHaveTextContent('grouped:true')
 
   await view.getByRole('button', { name: 'set:Start date' }).click()
+  await view.getByRole('button', { name: 'clear:Start date' }).click()
+  await view.getByRole('button', { name: 'set:End date' }).click()
   await view.getByRole('button', { name: 'clear:End date' }).click()
 
-  await expect.element(view.getByTestId('from-state')).toHaveTextContent('2026-04-01')
+  await expect.element(view.getByTestId('from-state')).toHaveTextContent('')
   await expect.element(view.getByTestId('to-state')).toHaveTextContent('')
 })
 
@@ -108,4 +116,14 @@ test('passes the disabled state through to both date pickers', async () => {
 
   await expect.element(view.getByTestId('stub-range-picker:Start date')).toHaveTextContent('disabled:true')
   await expect.element(view.getByTestId('stub-range-picker:End date')).toHaveTextContent('disabled:true')
+})
+
+test('uses custom placeholders and permits an absent title', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(DateRangeHarness, { props: { customLabels: true } })
+
+  await expect.element(view.getByTestId('stub-range-picker:Opened after')).toBeVisible()
+  await expect.element(view.getByTestId('stub-range-picker:Opened before')).toBeVisible()
+  expect(document.querySelector('[title="Posting date range"]')).toBeNull()
 })

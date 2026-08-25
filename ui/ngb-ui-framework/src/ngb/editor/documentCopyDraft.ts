@@ -52,7 +52,7 @@ function getStores(): CopyDraftStore[] {
       kind: 'session',
       getItem: (key) => readStorageString('session', key),
       setItem: (key, value) => {
-        void writeStorageString('session', key, value);
+        if (!writeStorageString('session', key, value)) throw new Error('Session storage write failed.');
       },
       removeItem: (key) => removeStorageItem('session', key),
       keys: () => listStorageKeys('session'),
@@ -64,7 +64,7 @@ function getStores(): CopyDraftStore[] {
       kind: 'local',
       getItem: (key) => readStorageString('local', key),
       setItem: (key, value) => {
-        void writeStorageString('local', key, value);
+        if (!writeStorageString('local', key, value)) throw new Error('Local storage write failed.');
       },
       removeItem: (key) => removeStorageItem('local', key),
       keys: () => listStorageKeys('local'),
@@ -160,26 +160,22 @@ function sanitizeForStorage(value: unknown, seen: WeakSet<object> = new WeakSet(
     return value.map((item) => sanitizeForStorage(item, seen));
   }
 
-  if (typeof value === 'object') {
-    if (seen.has(value)) return null;
-    seen.add(value);
+  if (seen.has(value)) return null;
+  seen.add(value);
 
-    const out: JsonObject = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (item === undefined) continue;
-      out[key] = sanitizeForStorage(item, seen);
-    }
-    return out;
+  const out: JsonObject = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item === undefined) continue;
+    out[key] = sanitizeForStorage(item, seen);
   }
-
-  return null;
+  return out;
 }
 
 function buildPayload(snapshot: DocumentCopyDraftSnapshot): StoredDocumentCopyDraft {
   return {
     version: SNAPSHOT_VERSION,
     documentType: snapshot.documentType,
-    fields: (sanitizeForStorage(snapshot.fields ?? {}) ?? {}) as RecordFields,
+    fields: sanitizeForStorage(snapshot.fields ?? {}) as RecordFields,
     parts: sanitizeForStorage(snapshot.parts ?? null) as RecordParts | null,
     createdAtUtc: new Date().toISOString(),
   };

@@ -127,7 +127,7 @@ export function writeCookie(name: string, value: string, options: CookieOptions 
     `SameSite=${options.sameSite ?? 'Lax'}`,
   ]
 
-  if (Number.isFinite(options.maxAgeSeconds)) parts.push(`Max-Age=${Math.max(0, Math.floor(options.maxAgeSeconds ?? 0))}`)
+  if (Number.isFinite(options.maxAgeSeconds)) parts.push(`Max-Age=${Math.max(0, Math.floor(options.maxAgeSeconds!))}`)
   if (options.secure) parts.push('Secure')
   if (options.domain) parts.push(`Domain=${options.domain}`)
 

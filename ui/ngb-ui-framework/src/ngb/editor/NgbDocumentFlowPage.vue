@@ -48,7 +48,6 @@ const documentRoute = computed(() => {
 });
 
 const shareRoute = computed(() => {
-  if (!documentType.value || !documentId.value) return '/';
   return buildDocumentFlowPageUrl(documentType.value, documentId.value);
 });
 
@@ -63,16 +62,13 @@ const statusTone = computed<'neutral' | 'success' | 'warn'>(() => documentStatus
 const statusLabel = computed(() => documentStatusLabel(rootNode.value?.documentStatus));
 const canShareLink = computed(() => !!documentType.value && !!documentId.value);
 
-const rootNodeId = computed(() => rootNode.value?.nodeId ?? null);
-
 const flowRows = computed<FlowRow[]>(() => {
-  const nodes = graph.value?.nodes ?? [];
-  const edges = graph.value?.edges ?? [];
+  const { nodes, edges } = graph.value!;
   if (nodes.length === 0) return [];
 
   const nodeById = new Map(nodes.map((node) => [node.nodeId, node] as const));
-  const root = rootNodeId.value ?? nodes[0]?.nodeId ?? null;
-  if (!root || !nodeById.has(root)) return [];
+  const root = rootNode.value!.nodeId;
+  if (!root) return [];
 
   const adjacency = new Map<string, Set<string>>();
   for (const edge of edges) {
@@ -101,8 +97,6 @@ const flowRows = computed<FlowRow[]>(() => {
     }
   }
 
-  if (component.size === 0) component.add(root);
-
   const childrenByParent = new Map<string, string[]>();
   const parentByNode = new Map<string, string | null>([[root, null]]);
   const bfsQueue: string[] = [root];
@@ -111,7 +105,7 @@ const flowRows = computed<FlowRow[]>(() => {
     const current = bfsQueue.shift()!;
     const neighbors = Array.from(adjacency.get(current) ?? [])
       .filter((nodeId) => component.has(nodeId) && !parentByNode.has(nodeId))
-      .sort((a, b) => compareNodes(nodeById.get(a), nodeById.get(b)));
+      .sort((a, b) => compareNodes(nodeById.get(a)!, nodeById.get(b)!));
 
     if (neighbors.length > 0) {
       childrenByParent.set(current, neighbors);
@@ -125,8 +119,7 @@ const flowRows = computed<FlowRow[]>(() => {
 
   const rows: FlowRow[] = [];
   const walk = (nodeId: string, ancestorHasNext: boolean[]) => {
-    const node = nodeById.get(nodeId);
-    if (!node) return;
+    const node = nodeById.get(nodeId)!;
 
     rows.push({
       key: `${nodeId}:${rows.length}`,
@@ -146,13 +139,13 @@ const flowRows = computed<FlowRow[]>(() => {
   return rows;
 });
 
-function sameId(a: string | null | undefined, b: string | null | undefined): boolean {
-  return String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+function sameId(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-function compareNodes(a?: RelationshipGraphNode, b?: RelationshipGraphNode): number {
-  const aDate = sortableDate(a?.subtitle);
-  const bDate = sortableDate(b?.subtitle);
+function compareNodes(a: RelationshipGraphNode, b: RelationshipGraphNode): number {
+  const aDate = sortableDate(a.subtitle);
+  const bDate = sortableDate(b.subtitle);
   if (aDate !== bDate) return aDate.localeCompare(bDate);
 
   const aDisplay = displayForNode(a).toLowerCase();
@@ -172,10 +165,10 @@ function statusIconStatus(node: RelationshipGraphNode): 'saved' | 'posted' | 'ma
   return documentStatusVisual(node.documentStatus);
 }
 
-function displayForNode(node: RelationshipGraphNode | null | undefined): string {
-  const titleValue = String(node?.title ?? '').trim();
+function displayForNode(node: RelationshipGraphNode): string {
+  const titleValue = node.title.trim();
   if (titleValue) return titleValue;
-  return String(node?.entityId ?? '').trim();
+  return node.entityId.trim();
 }
 
 function formatMoney(value: number | null | undefined): string {
@@ -250,7 +243,6 @@ function openNode(node: RelationshipGraphNode): void {
 }
 
 async function copyShare(): Promise<void> {
-  if (!canShareLink.value) return;
   await copyAppLink(router, toasts, shareRoute.value, {
     title: 'Document flow link copied',
     message: 'Shareable document flow page link copied to clipboard.',

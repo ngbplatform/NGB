@@ -24,16 +24,17 @@
     "test:browser:pm-web": "vitest run --config ngb-property-management-web/vitest.browser.config.ts",
     "test:browser:trade-web": "vitest run --config ngb-trade-web/vitest.browser.config.ts",
     "test:e2e": "npm run test:e2e:pm-web && npm run test:e2e:trade-web && npm run test:e2e:ab-web && npm run test:e2e:crm-web",
-    "test:e2e:ab-web": "playwright test --config ngb-agency-billing-web/playwright.config.ts",
-    "test:e2e:crm-web": "playwright test --config ngb-crm-web/playwright.config.ts",
-    "test:e2e:cross-browser": "playwright test --config ngb-property-management-web/playwright.config.ts --project desktop-firefox --project desktop-webkit",
-    "test:e2e:headed": "playwright test --config ngb-property-management-web/playwright.config.ts --headed",
-    "test:e2e:pm-web": "playwright test --config ngb-property-management-web/playwright.config.ts",
-    "test:e2e:trade-web": "playwright test --config ngb-trade-web/playwright.config.ts",
-    "test:e2e:ui": "playwright test --config ngb-property-management-web/playwright.config.ts --ui",
+    "test:e2e:ab-web": "env -u NO_COLOR playwright test --config ngb-agency-billing-web/playwright.config.ts",
+    "test:e2e:crm-web": "env -u NO_COLOR playwright test --config ngb-crm-web/playwright.config.ts",
+    "test:e2e:cross-browser": "env -u NO_COLOR playwright test --config ngb-property-management-web/playwright.config.ts --project desktop-firefox --project desktop-webkit",
+    "test:e2e:headed": "env -u NO_COLOR playwright test --config ngb-property-management-web/playwright.config.ts --headed",
+    "test:e2e:pm-web": "env -u NO_COLOR playwright test --config ngb-property-management-web/playwright.config.ts",
+    "test:e2e:trade-web": "env -u NO_COLOR playwright test --config ngb-trade-web/playwright.config.ts",
+    "test:e2e:ui": "env -u NO_COLOR playwright test --config ngb-property-management-web/playwright.config.ts --ui",
     "pack:platform-ui": "node scripts/pack-platform-ui.mjs",
     "test:unit": "vitest run --config vitest.config.ts && npm --workspace ngb-crm-web run test:unit",
     "test:unit:watch": "vitest --config vitest.config.ts",
+    "test:coverage:full": "NGB_FRONTEND_COVERAGE_NO_INSTALL=true ../run-frontend-full-coverage.sh",
     "test:coverage:document-actions-work-center": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.document-actions-work-center-coverage.config.ts --coverage ngb-ui-framework/tests/unit/ngb/work-center ngb-ui-framework/tests/browser/ngb/work-center",
     "test:coverage:document-actions-work-center:diff": "npm run test:coverage:document-actions-work-center:diff:framework && npm run test:coverage:document-actions-work-center:diff:apps && node scripts/merge-frontend-diff-coverage.mjs",
     "test:coverage:document-actions-work-center:diff:apps": "NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium vitest run --config vitest.diff-apps-coverage.config.ts --coverage",
@@ -55,6 +56,13 @@
     "vitest": "^4.1.10",
     "vitest-browser-vue": "^2.1.0",
     "vue-tsc": "^3.3.9"
+  },
+  "overrides": {
+    "js-beautify": {
+      ".": "2.0.3",
+      "nopt": "9.0.0"
+    },
+    "nanoid": "3.3.18"
   },
   "workspaces": [
     "ngb-agency-billing-web",

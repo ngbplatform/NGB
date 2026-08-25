@@ -16,16 +16,28 @@ describe('metadata register', () => {
     expect(alignFromDto(3)).toBe('right')
     expect(prettifyRegisterTitle('Property Id', 'property_id')).toBe('Property')
     expect(prettifyRegisterTitle('Account Id', 'bank_account_id')).toBe('Account')
+    expect(prettifyRegisterTitle('Name', 'name')).toBe('Name')
     expect(tryFormatDateOnly('2026-04-08')).not.toBeNull()
     expect(tryFormatDateOnly('oops')).toBeNull()
+    expect(tryFormatDateOnly(20260408)).toBeNull()
+    expect(tryFormatDateOnly('2026-13-01')).toBeNull()
+    expect(tryFormatDateOnly('2026-02-30')).toBeNull()
   })
 
   it('formats register values for booleans, numerics, dates, datetimes, references, and objects', () => {
     expect(formatRegisterValue('Boolean', true)).toBe('Yes')
+    expect(formatRegisterValue('Boolean', false)).toBe('No')
     expect(formatRegisterValue('Int32', 1250.9)).toBe('1,251')
+    expect(formatRegisterValue('Int32', 'not-a-number')).toBe('not-a-number')
+    expect(formatRegisterValue('Decimal', 12.5)).toBe('12.50')
+    expect(formatRegisterValue('Money', 'not-a-number')).toBe('not-a-number')
     expect(formatRegisterValue('Money', 1250)).toBe('1,250.00')
     expect(formatRegisterValue('Date', '2026-04-08')).not.toBe('2026-04-08')
+    expect(formatRegisterValue('Date', '2026-04-08T13:45:00Z')).not.toBe('2026-04-08T13:45:00Z')
+    expect(formatRegisterValue('Date', 0)).not.toBe('0')
+    expect(formatRegisterValue('Date', 'not-a-date')).toBe('not-a-date')
     expect(formatRegisterValue('DateTime', '2026-04-08T13:45:00Z')).not.toBe('2026-04-08T13:45:00Z')
+    expect(formatRegisterValue('DateTime', 'not-a-date')).toBe('not-a-date')
     expect(formatRegisterValue('String', { id: 'property-1', display: 'Riverfront Tower' })).toBe('Riverfront Tower')
     expect(formatRegisterValue('Json', { posted: true })).toBe('{"posted":true}')
     expect(formatRegisterValue('String', null)).toBe('—')
@@ -79,6 +91,20 @@ describe('metadata register', () => {
     expect(columns[0]?.format?.('open')).toBe('Open')
     expect(columns[1]?.format?.(4)).toBe('Monthly')
     expect(columns[2]?.format?.(1250)).toBe('USD 1250')
+
+    const fallbackColumn = buildMetadataRegisterColumns({
+      columns: [{
+        key: 'plain',
+        label: 'Plain',
+        dataType: 'String',
+        isSortable: false,
+        align: 2,
+        options: [{ value: null, label: 'None' }],
+      }],
+    })[0]!
+    expect(fallbackColumn.width).toBeUndefined()
+    expect(fallbackColumn.format?.(' text ')).toBe(' text ')
+    expect(fallbackColumn.format?.(null)).toBe('None')
   })
 
   it('builds register rows from payload fields and allows row extension hooks', () => {
@@ -118,5 +144,16 @@ describe('metadata register', () => {
         summary: 'INV-001:2500',
       },
     ])
+
+    expect(buildMetadataRegisterRows({
+      items: [{ id: 'empty', payload: null }],
+      columns: [{ key: 'missing', label: 'Missing', dataType: 'String', isSortable: false, align: 1 }],
+    })).toEqual([{
+      key: 'empty',
+      isDeleted: undefined,
+      isMarkedForDeletion: undefined,
+      status: undefined,
+      missing: undefined,
+    }])
   })
 })

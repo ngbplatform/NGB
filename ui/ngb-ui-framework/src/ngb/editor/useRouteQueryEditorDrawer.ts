@@ -94,7 +94,7 @@ export function useRouteQueryEditorDrawer(args: UseRouteQueryEditorDrawerArgs) {
     const nextPatch: Record<string, unknown> = {};
     for (const key of clearKeys) nextPatch[key] = undefined;
     nextPatch[panelKey] = mode ?? undefined;
-    nextPatch[idKey] = mode === 'edit' ? id ?? undefined : undefined;
+    nextPatch[idKey] = mode === 'edit' ? id : undefined;
     return {
       ...nextPatch,
       ...(patch ?? {}),
@@ -153,7 +153,6 @@ export function useRouteQueryEditorDrawer(args: UseRouteQueryEditorDrawerArgs) {
       if (sameState(current, next)) return true;
 
       if (next.mode === null) {
-        if (current.mode === null) return true;
         return await args.onBeforeClose?.(current, next) !== false;
       }
 

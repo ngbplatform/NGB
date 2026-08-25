@@ -38,10 +38,44 @@ vi.mock('../../../../src/ngb/command-palette/storage', () => ({
 }))
 
 import { useCommandPaletteStore } from '../../../../src/ngb/command-palette/store'
+import type { CommandPaletteItem } from '../../../../src/ngb/command-palette/types'
 
 async function flushMicrotasks() {
   await Promise.resolve()
   await Promise.resolve()
+}
+
+function makeItem(overrides: Partial<CommandPaletteItem> = {}): CommandPaletteItem {
+  return {
+    key: 'command:test',
+    group: 'actions',
+    kind: 'command',
+    scope: 'commands',
+    title: 'Test command',
+    subtitle: 'Test subtitle',
+    icon: 'search',
+    badge: 'Test',
+    hint: null,
+    route: null,
+    commandCode: 'test',
+    status: 'Ready',
+    openInNewTabSupported: false,
+    keywords: ['test'],
+    defaultRank: 500,
+    score: 0,
+    source: 'local',
+    ...overrides,
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 describe('command palette store', () => {
@@ -51,6 +85,7 @@ describe('command palette store', () => {
     setActivePinia(createPinia())
 
     mocks.config.router.currentRoute.value.fullPath = '/home'
+    mocks.config.getMenuGroups = () => mocks.menuStore.groups
     mocks.config.searchRemote = undefined
     mocks.config.loadReportItems = vi.fn().mockResolvedValue([
       {
@@ -501,5 +536,352 @@ describe('command palette store', () => {
     expect(store.groups.some((group) => group.code === 'documents')).toBe(true)
     expect(store.flatItems.some((item) => item.key === 'remote:invoice:1')).toBe(true)
     expect(store.flatItems.some((item) => item.key === 'remote:report:1')).toBe(false)
+  })
+
+  it('handles empty configuration, hydration idempotency, context ownership, and empty selection movement', async () => {
+    mocks.config.router.currentRoute.value.fullPath = ''
+    Reflect.set(mocks.config, 'getMenuGroups', undefined)
+    Reflect.set(mocks.config, 'loadReportItems', undefined)
+    Reflect.set(mocks.config, 'buildHeuristicCurrentActions', undefined)
+    Reflect.set(mocks.config, 'favoriteItems', undefined)
+    Reflect.set(mocks.config, 'createItems', undefined)
+    Reflect.set(mocks.config, 'specialPageItems', undefined)
+    mocks.loadRecent.mockReturnValue([])
+
+    const store = useCommandPaletteStore()
+    await store.hydrate()
+    await store.hydrate()
+
+    store.setCurrentRoute('')
+    store.setQuery('retained query')
+    store.open()
+    await flushMicrotasks()
+    expect(store.query).toBe('retained query')
+
+    store.setQuery('')
+    store.setExplicitContext('owner', {
+      actions: [makeItem({ key: 'context:only', title: 'Context only' })],
+    })
+    store.clearExplicitContext('different-owner')
+    expect(store.flatItems.some((item) => item.key === 'context:only')).toBe(true)
+
+    store.clearExplicitContext('owner')
+    await flushMicrotasks()
+    expect(store.hasResults).toBe(false)
+    store.moveActive(1)
+    store.setActiveIndex(4)
+    await store.executeActive()
+    expect(store.activeIndex).toBe(0)
+  })
+
+  it('recovers report loading after a concurrent rejected load and then skips already loaded reports', async () => {
+    const reportLoad = deferred<unknown[]>()
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mocks.config.loadReportItems = vi.fn().mockReturnValueOnce(reportLoad.promise).mockResolvedValue([])
+
+    const store = useCommandPaletteStore()
+    store.open()
+    store.open()
+    expect(mocks.config.loadReportItems).toHaveBeenCalledTimes(1)
+
+    reportLoad.reject(new Error('Reports unavailable'))
+    await flushMicrotasks()
+    expect(consoleError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Reports unavailable' }))
+
+    store.open()
+    await flushMicrotasks()
+    expect(mocks.config.loadReportItems).toHaveBeenCalledTimes(2)
+    store.open()
+    expect(mocks.config.loadReportItems).toHaveBeenCalledTimes(2)
+  })
+
+  it('executes perform items, handles failures, tracks every recent kind, and supports a server environment', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const perform = vi.fn().mockResolvedValue(undefined)
+    const store = useCommandPaletteStore()
+
+    await store.executeItem(makeItem({ key: 'perform:success', perform }))
+    expect(perform).toHaveBeenCalledTimes(1)
+
+    await store.executeItem(makeItem({
+      key: 'perform:failure',
+      perform: vi.fn().mockRejectedValue(new Error('Action failed')),
+    }))
+    expect(consoleError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Action failed' }))
+
+    await store.executeItem(makeItem({ key: 'untracked:command' }))
+    for (const kind of ['page', 'document', 'catalog', 'report', 'recent'] as const) {
+      await store.executeItem(makeItem({
+        key: `recent:${kind}`,
+        kind,
+        scope: kind === 'document' ? 'documents' : kind === 'catalog' ? 'catalogs' : kind === 'report' ? 'reports' : 'pages',
+        route: `/allowed/${kind}`,
+        subtitle: undefined,
+        icon: undefined,
+        badge: undefined,
+        status: undefined,
+      }))
+    }
+    await store.executeItem(makeItem({
+      key: 'recent:page',
+      kind: 'page',
+      scope: 'pages',
+      route: '/allowed/page',
+    }))
+
+    const previousWindow = globalThis.window
+    Reflect.deleteProperty(globalThis, 'window')
+    try {
+      await store.executeItem(makeItem({
+        key: 'server:new-tab',
+        kind: 'page',
+        scope: 'pages',
+        route: '/server-route',
+        openInNewTabSupported: true,
+      }), 'new-tab')
+    } finally {
+      if (previousWindow !== undefined) Object.defineProperty(globalThis, 'window', {
+        configurable: true,
+        value: previousWindow,
+      })
+    }
+
+    expect(mocks.saveRecent).toHaveBeenCalled()
+    expect(mocks.saveRecent.mock.calls.at(-1)?.[1]).toHaveLength(6)
+  })
+
+  it('covers remote scopes, group kinds, optional fields, aborts, stale responses, and friendly errors', async () => {
+    vi.useFakeTimers()
+    const first = deferred<{ groups: unknown[] }>()
+    const second = deferred<{ groups: unknown[] }>()
+    const searchRemote = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockRejectedValueOnce(new Error('Remote exploded'))
+      .mockRejectedValueOnce(new Error('   '))
+    mocks.config.searchRemote = searchRemote
+
+    const store = useCommandPaletteStore()
+    store.open()
+    store.setQuery('a')
+    await flushMicrotasks()
+    expect(store.remoteLoading).toBe(false)
+
+    store.setQuery('> command')
+    store.setQuery('/ page')
+    store.setQuery('# report')
+    await flushMicrotasks()
+    expect(searchRemote).not.toHaveBeenCalled()
+
+    store.setQuery(': first')
+    await vi.advanceTimersByTimeAsync(160)
+    expect(searchRemote).toHaveBeenCalledTimes(1)
+
+    store.setQuery('@ second')
+    await vi.advanceTimersByTimeAsync(160)
+    expect(searchRemote).toHaveBeenCalledTimes(2)
+
+    first.resolve({ groups: [] })
+    await flushMicrotasks()
+    expect(store.remoteLoading).toBe(true)
+
+    second.resolve({
+      groups: [
+        {
+          code: 'catalogs',
+          label: 'Catalogs',
+          items: [
+            {
+              key: 'remote:catalog',
+              kind: 'catalog',
+              title: 'Catalog item',
+              openInNewTabSupported: true,
+            },
+            {
+              key: 'remote:report-kind',
+              kind: 'report',
+              title: 'Report-like item',
+              subtitle: 'Remote',
+              icon: 'book',
+              badge: 'Report',
+              route: '/remote/report',
+              commandCode: 'open-report',
+              status: 'Ready',
+              openInNewTabSupported: true,
+              score: 0.9,
+            },
+            {
+              key: 'remote:page-kind',
+              kind: 'page',
+              title: 'Page-like item',
+              icon: 'folder',
+              openInNewTabSupported: true,
+              score: 0.9,
+            },
+            {
+              key: 'remote:document-kind',
+              kind: 'document',
+              title: 'Document-like item',
+              icon: 'file',
+              openInNewTabSupported: true,
+              score: 0.9,
+            },
+          ],
+        },
+        {
+          code: 'reports',
+          label: 'Reports',
+          items: [{ key: 'filtered:report', kind: 'report', title: 'Filtered', openInNewTabSupported: true, score: 1 }],
+        },
+      ],
+    })
+    await flushMicrotasks()
+
+    expect(store.groups.some((group) => group.code === 'catalogs')).toBe(true)
+    expect(store.flatItems.map((item) => item.scope)).toEqual(expect.arrayContaining(['catalogs', 'reports', 'pages', 'documents']))
+
+    store.setQuery(': error')
+    await vi.advanceTimersByTimeAsync(160)
+    await flushMicrotasks()
+    expect(store.remoteError).toBe('Remote exploded')
+    expect(store.hasRemoteError).toBe(true)
+
+    store.setQuery(': fallback')
+    await vi.advanceTimersByTimeAsync(160)
+    await flushMicrotasks()
+    expect(store.remoteError).toBe('Could not update remote results.')
+    expect(store.remoteLoading).toBe(false)
+  })
+
+  it('ignores an aborted remote request and sends a complete GUID context', async () => {
+    vi.useFakeTimers()
+    const pending = deferred<{ groups: unknown[] }>()
+    const searchRemote = vi.fn()
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce({ groups: [] })
+    mocks.config.searchRemote = searchRemote
+
+    const store = useCommandPaletteStore()
+    store.setExplicitContext('guid-context', {
+      entityId: '12345678-1234-1234-1234-123456789abc',
+      actions: [],
+    })
+    store.open()
+    store.setQuery(': invoice')
+    await vi.advanceTimersByTimeAsync(160)
+
+    expect(searchRemote).toHaveBeenCalledWith(expect.objectContaining({
+      context: {
+        entityType: null,
+        documentType: null,
+        catalogType: null,
+        entityId: '12345678-1234-1234-1234-123456789abc',
+      },
+    }), expect.any(AbortSignal))
+
+    store.setQuery('a')
+    pending.reject(new Error('Canceled request must be ignored'))
+    await flushMicrotasks()
+    expect(store.remoteError).toBeNull()
+
+    store.setExplicitContext('guid-context', { actions: [] })
+    store.setQuery(': another')
+    await vi.advanceTimersByTimeAsync(160)
+    await flushMicrotasks()
+    expect(searchRemote.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      context: {
+        entityType: null,
+        documentType: null,
+        catalogType: null,
+        entityId: null,
+      },
+    }))
+  })
+
+  it('filters inaccessible recent entries and materializes optional fields for an allowed descendant route', async () => {
+    mocks.loadRecent.mockReturnValue([
+      {
+        key: 'recent:missing-route',
+        kind: 'recent',
+        scope: 'pages',
+        title: 'Missing route',
+        route: null,
+        timestamp: '2026-04-08T12:00:00.000Z',
+      },
+      {
+        key: 'recent:home-child',
+        kind: 'recent',
+        scope: 'reports',
+        title: 'Home child',
+        route: '/home/child?tab=one',
+        timestamp: '2026-04-08T12:00:00.000Z',
+      },
+    ])
+
+    const store = useCommandPaletteStore()
+    store.open()
+    await flushMicrotasks()
+
+    const recent = store.flatItems.find((item) => item.key === 'recent:recent:home-child')
+    expect(recent).toMatchObject({
+      subtitle: null,
+      icon: 'bar-chart',
+      badge: null,
+      route: '/home/child?tab=one',
+      status: null,
+    })
+    expect(store.flatItems.some((item) => item.title === 'Missing route')).toBe(false)
+  })
+
+  it('normalizes legacy, native, missing, and unknown icons while deduping seeds and sorting ties', async () => {
+    const legacyIcons = ['chart', 'file', 'book', 'folder', 'unknown-icon', null] as const
+    mocks.config.buildHeuristicCurrentActions = vi.fn().mockReturnValue([
+      makeItem({ key: 'duplicate-seed', title: 'Duplicate first', icon: 'search', defaultRank: 0 }),
+      makeItem({ key: 'duplicate-seed', title: 'Duplicate second', icon: 'search', defaultRank: 0 }),
+      makeItem({ key: 'cross-source-duplicate', title: 'Cross-source first', icon: 'search', defaultRank: 400 }),
+    ])
+    mocks.config.favoriteItems = [
+      makeItem({ key: 'cross-source-duplicate', title: 'Cross-source second', defaultRank: 400 }),
+      ...legacyIcons.map((icon, index) => makeItem({
+        key: `icon:${String(icon)}`,
+        title: `Same target ${index}`,
+        icon,
+        subtitle: undefined,
+        badge: undefined,
+        keywords: undefined,
+        defaultRank: 400,
+      })),
+    ]
+    mocks.config.createItems = [makeItem({
+      key: 'route-less-create',
+      title: 'Same target create',
+      route: null,
+      defaultRank: 400,
+    })]
+    mocks.menuStore.groups.push({
+      label: 'Catalogs',
+      ordinal: 20,
+      icon: 'grid',
+      items: [
+        { kind: 'page', code: 'catalog-page', label: 'Catalog page', route: '/catalogs/custom', icon: null, ordinal: 0 },
+      ],
+    })
+
+    const store = useCommandPaletteStore()
+    store.open()
+    await flushMicrotasks()
+    expect(store.flatItems.filter((item) => item.key === 'cross-source-duplicate')).toHaveLength(1)
+    store.setQuery('same target')
+
+    const items = store.flatItems.filter((item) => item.title.startsWith('Same target'))
+    expect(items.map((item) => item.icon)).toEqual(expect.arrayContaining([
+      'bar-chart',
+      'file-text',
+      'book-open',
+      'grid',
+      'file-text',
+    ]))
+    store.setActiveIndex(0)
+    await store.executeActive()
   })
 })

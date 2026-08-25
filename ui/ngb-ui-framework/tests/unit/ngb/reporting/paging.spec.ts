@@ -64,6 +64,8 @@ describe('report paging helpers', () => {
     ]))
 
     expect(count).toBe(2)
+    expect(countLoadedReportRows(undefined)).toBe(0)
+    expect(countLoadedReportRows(createSheet([null as never]))).toBe(1)
   })
 
   it('detects appendable responses and builds normalized append requests', () => {
@@ -84,6 +86,8 @@ describe('report paging helpers', () => {
       limit: 1,
       cursor: 'cursor:2',
     })
+    expect(buildAppendRequest({ parameters: {}, offset: 2 }, 'next').limit).toBe(500)
+    expect(canAppendReportResponse(null)).toBe(false)
   })
 
   it('merges compatible paged responses and carries forward the next page metadata', () => {
@@ -145,5 +149,44 @@ describe('report paging helpers', () => {
     expect(() => mergePagedReportResponses(current, next)).toThrow(
       'Paged report append returned an incompatible sheet shape.',
     )
+  })
+
+  it('merges sparse compatible sheets using safe row and response defaults', () => {
+    const headerRows = [{ rowKind: ReportRowKind.Header, cells: [] }]
+    const withHeaders = mergePagedReportResponses(
+      createResponse([], { sheet: createSheet([], { headerRows }) }),
+      createResponse([], { sheet: createSheet([], { headerRows }) }),
+    )
+    expect(withHeaders.sheet.headerRows).toEqual(headerRows)
+    expect(withHeaders.sheet.headerRows).not.toBe(headerRows)
+
+    const current = {
+      sheet: { columns: undefined, rows: undefined, meta: undefined, headerRows: undefined },
+      offset: 0,
+      limit: 50,
+      total: undefined,
+      hasMore: true,
+      nextCursor: 'old',
+      diagnostics: { source: 'current' },
+    } as never
+    const next = {
+      sheet: { columns: undefined, rows: undefined, meta: undefined, headerRows: undefined },
+      offset: 0,
+      limit: 50,
+      total: undefined,
+      hasMore: false,
+      nextCursor: ' ',
+      diagnostics: null,
+    } as never
+
+    expect(mergePagedReportResponses(current, next)).toEqual({
+      sheet: { columns: [], rows: [], meta: null, headerRows: null },
+      offset: 0,
+      limit: 50,
+      total: 0,
+      hasMore: false,
+      nextCursor: null,
+      diagnostics: { source: 'current' },
+    })
   })
 })

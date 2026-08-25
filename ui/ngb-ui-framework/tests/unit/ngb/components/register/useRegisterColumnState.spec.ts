@@ -238,4 +238,103 @@ describe('register column state', () => {
     expect(state.visibleColumns.value.map((column) => column.key)).toEqual(['amount'])
     expect(state.localOrder.value).toEqual(['name', 'amount'])
   })
+
+  it('recovers accidental display-only visibility after partial columns finish loading', async () => {
+    const { columns, state } = createHarness({
+      columns: [{ key: 'display', title: 'Display' }],
+      visibleColumnKeys: ['display'],
+      storageKey: 'register:deferred',
+    })
+
+    await flushAsync()
+    state.localOrder.value = ['display']
+
+    columns.value = [
+      { key: 'display', title: 'Display' },
+      { key: 'amount', title: 'Amount' },
+    ]
+    await flushAsync()
+
+    expect(state.localOrder.value).toEqual(['display', 'amount'])
+    expect(state.visibleColumns.value.map((column) => column.key)).toEqual(['display'])
+
+    const alreadyLoaded = createHarness({
+      columns: [
+        { key: 'display', title: 'Display' },
+        { key: 'amount', title: 'Amount' },
+      ],
+      visibleColumnKeys: ['display'],
+    })
+    await flushAsync()
+    expect(alreadyLoaded.state.visibleColumns.value.map((column) => column.key)).toEqual(['display'])
+  })
+
+  it('handles missing persistence, stale order keys, default widths, and non-sticky columns', async () => {
+    const columns: RegisterColumn[] = [
+      { key: 'plain', title: 'Plain' },
+      { key: 'narrow', title: 'Narrow', width: 50, minWidth: 80 },
+      { key: 'pinned', title: 'Pinned', pinned: 'left', width: 100 },
+    ]
+    const { state, visibleColumnKeys, showStatusColumn } = createHarness({
+      columns,
+      showStatusColumn: false,
+    })
+
+    await flushAsync()
+    expect(loadJsonMock).not.toHaveBeenCalled()
+    expect(state.colWidth(columns[0]!)).toBe(140)
+    expect(state.colWidth(columns[1]!)).toBe(80)
+    expect(state.gridTemplateColumns.value).toBe('140px 80px 100px')
+    expect(state.stickyStyle(columns[0]!)).toEqual({})
+    expect(state.cellStickyStyle(columns[0]!)).toEqual({})
+
+    state.localOrder.value = ['missing', 'narrow']
+    state.setVisible(['narrow'])
+    await flushAsync()
+    expect(state.visibleColumns.value.map((column) => column.key)).toEqual(['narrow'])
+    expect(state.stickyStyle(columns[2]!)).toMatchObject({ left: '0px' })
+    expect(state.cellStickyStyle(columns[2]!)).toMatchObject({ left: '0px' })
+
+    showStatusColumn.value = true
+    await flushAsync()
+    expect(state.gridTemplateColumns.value).toBe('40px 80px')
+    expect(state.stickyStyle(columns[2]!)).toMatchObject({ left: '40px' })
+    expect(state.cellStickyStyle(columns[2]!)).toMatchObject({ left: '40px' })
+
+    visibleColumnKeys.value = ['plain']
+    await flushAsync()
+    visibleColumnKeys.value = undefined
+    await flushAsync()
+    expect(state.visibleColumns.value.map((column) => column.key)).toEqual(['plain'])
+  })
+
+  it('ignores empty persisted payloads and appends columns missing from persisted order', async () => {
+    loadJsonMock.mockReturnValueOnce(null).mockReturnValueOnce({})
+
+    const partial = createHarness({
+      columns: [{ key: 'name', title: 'Name' }],
+      storageKey: 'register:empty',
+    })
+    await flushAsync()
+    partial.state.localWidths.value = { name: 120 }
+    await flushAsync()
+    expect(saveJsonMock).not.toHaveBeenCalled()
+
+    partial.columns.value = [
+      { key: 'name', title: 'Name' },
+      { key: 'amount', title: 'Amount' },
+    ]
+    await flushAsync()
+    expect(partial.state.localOrder.value).toEqual(['name'])
+    expect(partial.state.visibleColumns.value.map((column) => column.key)).toEqual(['name', 'amount'])
+
+    partial.storageKey.value = 'register:empty-object'
+    await flushAsync()
+    partial.columns.value = [
+      ...partial.columns.value,
+      { key: 'currency', title: 'Currency' },
+    ]
+    await flushAsync()
+    expect(partial.state.visibleColumns.value.map((column) => column.key)).toEqual(['name', 'amount', 'currency'])
+  })
 })

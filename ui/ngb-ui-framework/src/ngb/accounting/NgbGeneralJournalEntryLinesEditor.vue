@@ -48,7 +48,7 @@ const accountContextsByRow = ref<Record<string, GeneralJournalEntryAccountContex
 const accountContextCache = ref<Record<string, GeneralJournalEntryAccountContextDto | null>>({})
 const loadingContexts = ref<Record<string, string>>({})
 
-const rows = computed(() => props.modelValue ?? [])
+const rows = computed(() => props.modelValue)
 const canEdit = computed(() => !props.readonly)
 
 const sideOptions = [
@@ -78,11 +78,11 @@ function emitRows(next: GeneralJournalEntryEditorLineModel[]) {
 
 function updateRow(rowIndex: number, patch: Partial<GeneralJournalEntryEditorLineModel>) {
   const next = rows.value.map((row, index) => {
-    if (index !== rowIndex) return { ...row, dimensions: { ...(row.dimensions ?? {}) } }
+    if (index !== rowIndex) return { ...row, dimensions: { ...row.dimensions } }
     return {
       ...row,
       ...patch,
-      dimensions: { ...(patch.dimensions ?? row.dimensions ?? {}) },
+      dimensions: { ...(patch.dimensions ?? row.dimensions) },
     }
   })
   emitRows(next)
@@ -91,7 +91,7 @@ function updateRow(rowIndex: number, patch: Partial<GeneralJournalEntryEditorLin
 function addRow() {
   if (!canEdit.value) return
   emitRows([
-    ...rows.value.map((row) => ({ ...row, dimensions: { ...(row.dimensions ?? {}) } })),
+    ...rows.value.map((row) => ({ ...row, dimensions: { ...row.dimensions } })),
     createGeneralJournalEntryLine(),
   ])
 }
@@ -100,14 +100,14 @@ function removeRow(rowIndex: number) {
   if (!canEdit.value) return
   const next = rows.value
     .filter((_, index) => index !== rowIndex)
-    .map((row) => ({ ...row, dimensions: { ...(row.dimensions ?? {}) } }))
+    .map((row) => ({ ...row, dimensions: { ...row.dimensions } }))
   emitRows(next.length > 0 ? next : [createGeneralJournalEntryLine()])
 }
 
 function humanizeDimensionLabel(code: string): string {
-  const raw = String(code ?? '').trim()
+  const raw = code.trim()
   if (!raw) return 'Dimension'
-  const last = raw.includes('.') ? raw.split('.').pop() ?? raw : raw
+  const last = raw.includes('.') ? raw.split('.').pop()! : raw
   return last
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (m) => m.toUpperCase())
@@ -120,7 +120,7 @@ function cellKey(rowKey: string, dimensionId: string): string {
 watch(
   () => props.preloadedAccountContexts,
   (next) => {
-    accountContextCache.value = { ...(next ?? {}) }
+    accountContextCache.value = { ...next }
   },
   { immediate: true, deep: true },
 )
@@ -154,7 +154,7 @@ async function ensureAccountContext(row: GeneralJournalEntryEditorLineModel) {
   if (hasCachedAccountContext(accountId)) {
     accountContextsByRow.value = {
       ...accountContextsByRow.value,
-      [row.clientKey]: accountContextCache.value[accountId] ?? null,
+      [row.clientKey]: accountContextCache.value[accountId]!,
     }
     return
   }
@@ -199,7 +199,7 @@ function selectedDimensionItem(row: GeneralJournalEntryEditorLineModel, rule: Ge
 }
 
 async function onAccountQuery(row: GeneralJournalEntryEditorLineModel, query: string) {
-  const q = String(query ?? '').trim()
+  const q = query.trim()
   if (!q) {
     accountItemsByRow.value = { ...accountItemsByRow.value, [row.clientKey]: [] }
     return
@@ -210,12 +210,10 @@ async function onAccountQuery(row: GeneralJournalEntryEditorLineModel, query: st
 }
 
 function onAccountSelect(rowIndex: number, item: GeneralJournalEntryEditorLineModel['account']) {
-  const key = rows.value[rowIndex]?.clientKey
-  if (key) clearLoadingContext(key)
+  const key = rows.value[rowIndex]!.clientKey
+  clearLoadingContext(key)
 
   updateRow(rowIndex, { account: item, dimensions: {} })
-
-  if (!key) return
 
   if (!item) {
     accountContextsByRow.value = { ...accountContextsByRow.value, [key]: null }
@@ -225,7 +223,7 @@ function onAccountSelect(rowIndex: number, item: GeneralJournalEntryEditorLineMo
   if (hasCachedAccountContext(item.id)) {
     accountContextsByRow.value = {
       ...accountContextsByRow.value,
-      [key]: accountContextCache.value[item.id] ?? null,
+      [key]: accountContextCache.value[item.id]!,
     }
     return
   }
@@ -238,7 +236,7 @@ async function onDimensionQuery(
   rule: GeneralJournalEntryDimensionRuleDto,
   query: string,
 ) {
-  const q = String(query ?? '').trim()
+  const q = query.trim()
   const lookup = rule.lookup
   const key = cellKey(row.clientKey, rule.dimensionId)
 
@@ -250,7 +248,7 @@ async function onDimensionQuery(
   let items: LookupItem[] = []
   if (lookup.kind === 'catalog') items = await lookupStore.searchCatalog(lookup.catalogType, q)
   else if (lookup.kind === 'coa') items = await lookupStore.searchCoa(q)
-  else if (lookup.kind === 'document') items = await lookupStore.searchDocuments(lookup.documentTypes, q)
+  else items = await lookupStore.searchDocuments(lookup.documentTypes, q)
 
   dimensionItemsByCell.value = { ...dimensionItemsByCell.value, [key]: items }
 }
@@ -260,10 +258,8 @@ function onDimensionSelect(
   rule: GeneralJournalEntryDimensionRuleDto,
   item: GeneralJournalEntryEditorLineModel['account'],
 ) {
-  const current = rows.value[rowIndex]
-  if (!current) return
-
-  const nextDimensions = { ...(current.dimensions ?? {}) }
+  const current = rows.value[rowIndex]!
+  const nextDimensions = { ...current.dimensions }
   if (!item) delete nextDimensions[rule.dimensionId]
   else nextDimensions[rule.dimensionId] = item
 
@@ -272,6 +268,10 @@ function onDimensionSelect(
 
 function dimensionItems(row: GeneralJournalEntryEditorLineModel, rule: GeneralJournalEntryDimensionRuleDto) {
   return dimensionItemsByCell.value[cellKey(row.clientKey, rule.dimensionId)] ?? []
+}
+
+function dimensionRulesForRow(row: GeneralJournalEntryEditorLineModel): GeneralJournalEntryDimensionRuleDto[] {
+  return contextForRow(row)?.dimensionRules ?? []
 }
 
 async function openAccount(row: GeneralJournalEntryEditorLineModel) {
@@ -287,7 +287,7 @@ async function openAccount(row: GeneralJournalEntryEditorLineModel) {
 
 async function openDimension(row: GeneralJournalEntryEditorLineModel, rule: GeneralJournalEntryDimensionRuleDto) {
   const target = await buildLookupFieldTargetUrl({
-    hint: rule.lookup ?? null,
+    hint: rule.lookup!,
     value: selectedDimensionItem(row, rule),
     route,
   })
@@ -374,7 +374,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
                 :disabled="!canEdit"
                 variant="grid"
                 placeholder="0.00"
-                @update:model-value="updateRow(rowIndex, { amount: String($event ?? '') })"
+                @update:model-value="updateRow(rowIndex, { amount: $event })"
               />
             </td>
 
@@ -384,7 +384,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
                 :disabled="!canEdit"
                 variant="grid"
                 placeholder="Memo"
-                @update:model-value="updateRow(rowIndex, { memo: String($event ?? '') })"
+                @update:model-value="updateRow(rowIndex, { memo: $event })"
               />
             </td>
 
@@ -405,11 +405,11 @@ function badgeToneForDiff(): 'success' | 'warn' {
             <td colspan="6" class="px-4 py-3 text-sm text-ngb-muted">Loading dimension rules…</td>
           </tr>
 
-          <tr v-if="contextForRow(row)?.dimensionRules?.length" class="border-t border-ngb-border bg-ngb-bg/40">
+          <tr v-if="dimensionRulesForRow(row).length" class="border-t border-ngb-border bg-ngb-bg/40">
             <td colspan="6" class="px-4 py-3">
               <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <div
-                  v-for="rule in contextForRow(row)?.dimensionRules ?? []"
+                  v-for="rule in dimensionRulesForRow(row)"
                   :key="rule.dimensionId"
                   class="rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-3"
                 >

@@ -55,3 +55,10 @@ test('prevents toggling when the switch is disabled', async () => {
   expect(switchButton.disabled).toBe(true)
   await expect.element(view.getByTestId('switch-state')).toHaveTextContent('checked:false')
 })
+
+test('supports an unlabeled switch for externally labelled forms', async () => {
+  await render(NgbSwitch, { props: { modelValue: false } })
+
+  expect(document.querySelector('[role="switch"]')).not.toBeNull()
+  expect(document.querySelector('[role="switch"]')?.textContent?.trim()).toBe('')
+})

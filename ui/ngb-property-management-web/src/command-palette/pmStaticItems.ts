@@ -14,7 +14,7 @@ import {
 
 export type PmStaticActionSeed = CommandPaletteItemSeed
 
-type StaticActionOptions = Partial<PmStaticActionSeed>
+type CurrentRouteActionOptions = Pick<PmStaticActionSeed, 'badge' | 'icon' | 'keywords' | 'subtitle'>
 
 const PM_HEURISTIC_OPTIONS: BuildNgbHeuristicCurrentActionsOptions = {
   excludedCatalogTypes: ['pm.accounting_policy', 'pm.property'],
@@ -119,7 +119,7 @@ function createRouteAction(
   key: string,
   title: string,
   route: string,
-  options?: StaticActionOptions,
+  options: CurrentRouteActionOptions,
 ): CommandPaletteItemSeed {
   return {
     key,
@@ -127,16 +127,16 @@ function createRouteAction(
     kind: 'command',
     scope: 'commands',
     title,
-    subtitle: options?.subtitle ?? null,
-    icon: options?.icon ?? 'arrow-right',
-    badge: options?.badge ?? 'Action',
-    hint: options?.hint ?? null,
+    subtitle: options.subtitle,
+    icon: options.icon,
+    badge: options.badge,
+    hint: null,
     route,
-    commandCode: options?.commandCode ?? null,
-    status: options?.status ?? null,
-    openInNewTabSupported: options?.openInNewTabSupported ?? true,
-    keywords: options?.keywords ?? [],
-    defaultRank: options?.defaultRank ?? 980,
+    commandCode: null,
+    status: null,
+    openInNewTabSupported: true,
+    keywords: options.keywords,
+    defaultRank: 980,
     isCurrentContext: true,
   }
 }

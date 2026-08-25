@@ -37,6 +37,7 @@ describe('period closing helpers', () => {
     expect(selectMonthValue('invalid')).toBeNull()
 
     expect(toPeriodDateOnly('2026-04')).toBe('2026-04-01')
+    expect(toPeriodDateOnly('invalid')).toBe('invalid-01')
     expect(formatPeriodMonthValue('2026-04')).toContain('2026')
     expect(formatPeriodMonthValue('invalid')).toBe('—')
     expect(formatPeriodDateOnly('2026-04-01')).toContain('2026')

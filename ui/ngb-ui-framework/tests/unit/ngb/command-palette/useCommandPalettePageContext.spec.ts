@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const beforeUnmountCallbacks = vi.hoisted(() => [] as Array<() => void>)
 const watchEffectCallbacks = vi.hoisted(() => [] as Array<() => void>)
+const currentInstance = vi.hoisted(() => ({ value: { uid: 42 } as { uid: number } | null }))
 const store = vi.hoisted(() => ({
   setExplicitContext: vi.fn(),
   clearExplicitContext: vi.fn(),
@@ -11,7 +12,7 @@ vi.mock('vue', async () => {
   const actual = await vi.importActual<typeof import('vue')>('vue')
   return {
     ...actual,
-    getCurrentInstance: () => ({ uid: 42 }),
+    getCurrentInstance: () => currentInstance.value,
     onBeforeUnmount: (callback: () => void) => {
       beforeUnmountCallbacks.push(callback)
     },
@@ -35,6 +36,7 @@ describe('useCommandPalettePageContext', () => {
     watchEffectCallbacks.length = 0
     store.setExplicitContext.mockClear()
     store.clearExplicitContext.mockClear()
+    currentInstance.value = { uid: 42 }
   })
 
   it('publishes the explicit page context and clears it on unmount', () => {
@@ -66,5 +68,17 @@ describe('useCommandPalettePageContext', () => {
     useCommandPalettePageContext(() => null)
 
     expect(store.setExplicitContext).toHaveBeenCalledWith('command-palette:42', null)
+  })
+
+  it('uses a stable generated owner when called outside a component instance', () => {
+    currentInstance.value = null
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+
+    useCommandPalettePageContext(() => undefined)
+
+    expect(store.setExplicitContext).toHaveBeenCalledWith('command-palette:i', null)
+    beforeUnmountCallbacks[0]?.()
+    expect(store.clearExplicitContext).toHaveBeenCalledWith('command-palette:i')
+    random.mockRestore()
   })
 })

@@ -44,8 +44,8 @@ const model = ref<EntityFormModel>({})
 const auditOpen = ref(false)
 
 const auditEntityKind = 2
-const auditEntityId = computed(() => policy.value?.id ?? null)
-const auditEntityTitle = computed(() => String(model.value.display ?? policy.value?.display ?? 'Accounting Policy').trim() || 'Accounting Policy')
+const auditEntityId = computed(() => policy.value?.id)
+const auditEntityTitle = computed(() => String(model.value.display).trim())
 
 const initialSnapshot = ref('')
 const isDirty = computed(() => initialSnapshot.value !== '' && initialSnapshot.value !== stableStringify(model.value))
@@ -106,9 +106,9 @@ function buildUiFormFrom(full: FormMetadataDto): FormMetadataDto {
   out.sections = (out.sections ?? [])
     .map((s) => ({
       ...s,
-      rows: (s.rows ?? []).filter((r) => (r.fields ?? []).length > 0),
+      rows: (s.rows ?? []).filter((r) => r.fields!.length > 0),
     }))
-    .filter((s) => (s.rows ?? []).length > 0)
+    .filter((s) => s.rows!.length > 0)
 
   // Rename the default section title to feel like Settings, not a technical "Main".
   if (out.sections.length === 1 && (out.sections[0].title ?? '').toLowerCase() === 'main') {

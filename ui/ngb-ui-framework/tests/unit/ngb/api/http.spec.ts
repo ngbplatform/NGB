@@ -10,10 +10,35 @@ vi.mock('../../../../src/ngb/auth/keycloak', () => ({
   getAccessToken: authMocks.getAccessToken,
 }))
 
-import { ApiError, httpGet, httpPostFile, httpRequest } from '../../../../src/ngb/api/http'
+import {
+  ApiError,
+  httpDelete,
+  httpGet,
+  httpPost,
+  httpPostFile,
+  httpPut,
+  httpRequest,
+} from '../../../../src/ngb/api/http'
 
 describe('api http', () => {
   const fetchMock = vi.fn()
+
+  function jsonResponse(body: unknown, status = 400): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/problem+json' },
+    })
+  }
+
+  async function capturedApiError(request: Promise<unknown>): Promise<ApiError> {
+    try {
+      await request
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError)
+      return error as ApiError
+    }
+    throw new Error('Expected request to throw ApiError')
+  }
 
   beforeEach(() => {
     authMocks.getAccessToken.mockReset()
@@ -153,6 +178,180 @@ describe('api http', () => {
     ])
   })
 
+  it('normalizes PascalCase nested envelopes, explicit issues, paths, scopes, and mixed validation values', () => {
+    const error = new ApiError({
+      message: 'invalid',
+      status: 422,
+      url: 'https://api.example/test',
+      body: {
+        error: {
+          Code: 'VALIDATION_PASCAL',
+          Kind: 'Validation',
+          Context: { operation: 'save' },
+          Errors: {
+            scalar: ' Scalar message ',
+            array: [null, '', ' Array message '],
+            empty: null,
+            blank: ' ',
+          },
+          Issues: [
+            null,
+            { Message: ' ' },
+            { Message: 42 },
+            { Message: 'Amount required', Path: '$request.payload.fields.parts.lines.rows[2].amount', Scope: ' row ', Code: 'AMOUNT' },
+            { message: 'Collection invalid', path: 'items.rows[]' },
+            { message: 'Row invalid', path: 'items.rows[3]' },
+            { message: 'Form invalid', path: 'payload' },
+            { message: 'Explicit scope', path: '_form', scope: 'summary', code: 'FORM' },
+          ],
+        },
+      },
+    })
+
+    expect(error.errorCode).toBe('VALIDATION_PASCAL')
+    expect(error.kind).toBe('Validation')
+    expect(error.context).toEqual({ operation: 'save' })
+    expect(error.errors).toEqual({
+      scalar: ['Scalar message'],
+      array: ['Array message'],
+    })
+    expect(error.issues).toEqual(expect.arrayContaining([
+      { path: 'lines[2].amount', message: 'Amount required', scope: 'row', code: 'AMOUNT' },
+      { path: 'items[]', message: 'Collection invalid', scope: 'collection', code: null },
+      { path: 'items[3]', message: 'Row invalid', scope: 'row', code: null },
+      { path: '_form', message: 'Form invalid', scope: 'form', code: null },
+      { path: '_form', message: 'Explicit scope', scope: 'summary', code: 'FORM' },
+    ]))
+  })
+
+  it('normalizes lowercase nested and flat envelope fallbacks without inventing validation data', () => {
+    const nested = new ApiError({
+      message: 'nested',
+      status: 409,
+      url: '/nested',
+      body: {
+        error: {
+          code: 'nested.code',
+          kind: 'conflict',
+          context: { source: 'nested' },
+          errors: {},
+          issues: [],
+        },
+      },
+    })
+    const flat = new ApiError({
+      message: 'flat',
+      status: 400,
+      url: '/flat',
+      body: {
+        issues: [
+          { message: 'Leading dots', path: '...field...' },
+          { message: 'Missing path', path: 42 },
+        ],
+        context: { source: 'flat' },
+      },
+    })
+    const primitive = new ApiError({ message: 'primitive', status: 500, url: '/primitive', body: [] })
+
+    expect(nested).toMatchObject({
+      errorCode: 'nested.code',
+      kind: 'conflict',
+      context: { source: 'nested' },
+      errors: null,
+      issues: null,
+    })
+    expect(flat.issues).toEqual([
+      { path: 'field', message: 'Leading dots', scope: 'field', code: null },
+      { path: '_form', message: 'Missing path', scope: 'form', code: null },
+    ])
+    expect(primitive.problem).toBeNull()
+    expect(primitive.errorCode).toBeNull()
+  })
+
+  it('selects the most useful API error message across every supported response shape', async () => {
+    authMocks.getAccessToken.mockResolvedValue(null)
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Specific detail' }, 400))
+      .mockResolvedValueOnce(jsonResponse({ issues: [{ message: 'Issue message', path: 'field' }] }, 400))
+      .mockResolvedValueOnce(jsonResponse({ errors: { field: ['', 'Error message'] } }, 400))
+      .mockResolvedValueOnce(jsonResponse({ message: ' Envelope message ' }, 400))
+      .mockResolvedValueOnce(jsonResponse({ title: 'Problem title' }, 400))
+      .mockResolvedValueOnce(jsonResponse({ errorCode: 'problem.code' }, 400))
+      .mockResolvedValueOnce(jsonResponse({}, 418))
+      .mockResolvedValueOnce(new Response('', { status: 503, headers: { 'content-type': 'text/plain' } }))
+
+    const messages: string[] = []
+    for (let index = 0; index < 8; index += 1)
+      messages.push((await capturedApiError(httpRequest('GET', `absolute-${index}`))).message)
+
+    expect(messages).toEqual([
+      'Specific detail',
+      'Issue message',
+      'Error message',
+      'Envelope message',
+      'Problem title',
+      'problem.code (HTTP 400)',
+      'HTTP 418',
+      'HTTP 503',
+    ])
+  })
+
+  it('handles auth refresh failures, retry opt-out, empty responses, custom headers, absolute URLs, and all JSON wrappers', async () => {
+    const signal = new AbortController().signal
+    authMocks.getAccessToken.mockResolvedValue(null)
+    authMocks.forceRefreshAccessToken.mockRejectedValueOnce(new Error('session offline'))
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Unauthorized after refresh failure' }, 401))
+      .mockResolvedValueOnce(jsonResponse({ detail: 'Retry disabled' }, 401))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ method: 'post' }, 200))
+      .mockResolvedValueOnce(jsonResponse({ method: 'put' }, 200))
+      .mockResolvedValueOnce(jsonResponse({ method: 'delete' }, 200))
+      .mockResolvedValueOnce(jsonResponse({ absolute: true }, 200))
+      .mockResolvedValueOnce(jsonResponse({ query: true }, 200))
+      .mockResolvedValueOnce(jsonResponse({ emptyQuery: true }, 200))
+
+    await expect(httpRequest('GET', '/unauthorized')).rejects.toMatchObject({ message: 'Unauthorized after refresh failure' })
+    await expect(httpRequest('GET', '/no-retry', undefined, { retryOnUnauthorized: false })).rejects.toMatchObject({ message: 'Retry disabled' })
+    await expect(httpRequest('GET', '/empty', undefined, { headers: { 'X-Test': 'yes' }, signal })).resolves.toBeUndefined()
+    await expect(httpPost('/post', { value: 1 })).resolves.toEqual({ method: 'post' })
+    await expect(httpPut('/put', { value: 2 })).resolves.toEqual({ method: 'put' })
+    await expect(httpDelete('/delete', { value: 3 })).resolves.toEqual({ method: 'delete' })
+    await expect(httpGet('https://other.example/absolute', null)).resolves.toEqual({ absolute: true })
+    await expect(httpGet('/with-existing?first=1', { second: 2 })).resolves.toEqual({ query: true })
+    await expect(httpGet('/empty-query', { blank: '', skipped: null })).resolves.toEqual({ emptyQuery: true })
+
+    expect(authMocks.forceRefreshAccessToken).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[2]?.[1]).toEqual(expect.objectContaining({
+      headers: { Accept: 'application/json', 'X-Test': 'yes' },
+      signal,
+    }))
+    expect(fetchMock.mock.calls[6]?.[0]).toBe('https://other.example/absolute')
+    expect(fetchMock.mock.calls[7]?.[0]).toContain('?first=1&second=2')
+    expect(fetchMock.mock.calls[8]?.[0]).toBe('https://app.example/empty-query')
+  })
+
+  it('handles malformed JSON and unreadable text bodies without masking protocol diagnostics', async () => {
+    authMocks.getAccessToken.mockResolvedValue(null)
+    fetchMock
+      .mockResolvedValueOnce(new Response('{broken', {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: vi.fn().mockRejectedValue(new Error('stream failed')),
+      } as unknown as Response)
+
+    await expect(httpRequest('GET', '/broken-json')).rejects.toMatchObject({ message: 'HTTP 500', body: undefined })
+    await expect(httpRequest('GET', '/broken-text')).rejects.toMatchObject({
+      message: expect.stringContaining("Expected JSON but got 'unknown'"),
+      body: undefined,
+    })
+  })
+
   it('throws a descriptive ApiError when a successful response is not json', async () => {
     authMocks.getAccessToken.mockResolvedValueOnce(null)
     fetchMock.mockResolvedValueOnce(new Response('plain text body', {
@@ -203,5 +402,29 @@ describe('api http', () => {
     expect(response.fileName).toBe('report April.xlsx')
     expect(response.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     await expect(response.blob.text()).resolves.toBe('xlsx-bytes')
+  })
+
+  it('handles file auth failures and every supported content-disposition filename form', async () => {
+    authMocks.getAccessToken.mockResolvedValue(null)
+    authMocks.forceRefreshAccessToken.mockRejectedValueOnce(new Error('refresh failed'))
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ detail: 'File unauthorized' }, 401))
+      .mockResolvedValueOnce(new Response('a', { status: 200, headers: { 'content-disposition': 'attachment; filename="basic.csv"' } }))
+      .mockResolvedValueOnce(new Response('b', { status: 200, headers: { 'content-disposition': 'attachment; filename=plain.csv' } }))
+      .mockResolvedValueOnce(new Response('c', { status: 200, headers: { 'content-disposition': "attachment; filename*=UTF-8''bad%ZZ.csv" } }))
+      .mockResolvedValueOnce(new Response('no-name', { status: 200, headers: { 'content-disposition': 'attachment' } }))
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        blob: vi.fn().mockResolvedValue(new Blob(['d'])),
+      } as unknown as Response)
+
+    await expect(httpPostFile('/file-auth')).rejects.toMatchObject({ message: 'File unauthorized' })
+    await expect(httpPostFile('/basic', undefined)).resolves.toMatchObject({ fileName: 'basic.csv' })
+    await expect(httpPostFile('/plain', null)).resolves.toMatchObject({ fileName: 'plain.csv' })
+    await expect(httpPostFile('/invalid-utf8')).resolves.toMatchObject({ fileName: 'bad%ZZ.csv' })
+    await expect(httpPostFile('/missing-filename')).resolves.toMatchObject({ fileName: null })
+    await expect(httpPostFile('/unnamed')).resolves.toMatchObject({ fileName: null, contentType: null })
   })
 })

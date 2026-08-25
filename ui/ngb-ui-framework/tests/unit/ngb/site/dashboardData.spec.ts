@@ -38,6 +38,7 @@ import {
   toDashboardUtcMonthKey,
 } from '../../../../src/ngb/site/dashboardData'
 import { ReportRowKind, type ReportExecutionResponseDto, type ReportSheetRowDto } from '../../../../src/ngb/reporting/types'
+import { getPeriodClosingCalendar } from '../../../../src/ngb/accounting/periodClosingApi'
 
 describe('dashboardData', () => {
   it('captures successful results and turns failures into warnings', async () => {
@@ -230,5 +231,111 @@ describe('dashboardData', () => {
     expect(loadCalendar).toHaveBeenCalledWith(2026)
 
     await expect(loadDashboardPeriodClosingSummary('invalid-date', loadCalendar)).rejects.toThrow('Invalid as-of date.')
+  })
+
+  it('handles invalid dates, both comparison gaps, range boundaries, and non-finite formatting values', () => {
+    const april = new Date(Date.UTC(2026, 3, 15))
+    expect(parseDashboardUtcDateOnly(null)).toBeNull()
+    expect(parseDashboardUtcDateOnly('2026-02-30')).toBeNull()
+    expect(formatDashboardMonthLabel('not-a-month')).toBe('not-a-month')
+    expect(formatDashboardMonthChip(undefined)).toBeNull()
+    expect(compareDashboardUtcDateOnly(null, undefined)).toBe(0)
+    expect(compareDashboardUtcDateOnly('2026-04-15', null)).toBeLessThan(0)
+    expect(isDashboardUtcDateWithinRange(null, april, april)).toBe(false)
+    expect(isDashboardUtcDateWithinRange('2026-04-01', april, new Date(Date.UTC(2026, 3, 30)))).toBe(false)
+    expect(isDashboardUtcDateWithinRange('2026-05-01', new Date(Date.UTC(2026, 3, 1)), april)).toBe(false)
+
+    expect(formatDashboardMoney(Number.NaN)).toBe('$0')
+    expect(formatDashboardMoneyCompact(-1_250_000)).toBe('-$1.3M')
+    expect(formatDashboardMoneyCompact(1_250)).toBe('$1.3K')
+    expect(formatDashboardMoneyCompact(-1_250)).toBe('-$1.3K')
+    expect(formatDashboardMoneyCompact(12)).toBe('$12')
+    expect(formatDashboardMoneyCompact(Number.POSITIVE_INFINITY)).toBe('$0')
+    expect(formatDashboardPercent(Number.NaN)).toBe('0%')
+    expect(formatDashboardPercent(25)).toBe('25.0%')
+    expect(formatDashboardCount(Number.POSITIVE_INFINITY)).toBe('0')
+    expect(toDashboardMoney(null)).toBe(0)
+    expect(toDashboardMoney('12.5')).toBe(12.5)
+    expect(toDashboardInteger(null)).toBe(0)
+    expect(toDashboardInteger('invalid')).toBe(0)
+  })
+
+  it('handles absent document payloads, blank displays, custom posted statuses, and sparse report data', () => {
+    const emptyDocument = { id: 'empty', payload: null }
+    expect(dashboardFieldValue(emptyDocument, 'missing')).toBeUndefined()
+    expect(dashboardFieldDisplay(emptyDocument, 'missing')).toBeNull()
+    expect(dashboardFieldDisplay({ id: 'blank', payload: { fields: { label: '   ' } } }, 'label')).toBeNull()
+    expect(isPostedDashboardDocument({ id: 'custom', status: '7' }, 7)).toBe(true)
+
+    const numericMismatch = { rowKind: ReportRowKind.Detail, cells: [] } satisfies ReportSheetRowDto
+    expect(isDashboardReportRowKind(numericMismatch, ReportRowKind.Total)).toBe(false)
+
+    const sparseResponse = {
+      sheet: { columns: null, rows: [] },
+      offset: 0,
+      limit: 50,
+      hasMore: false,
+    } as unknown as ReportExecutionResponseDto
+    expect(dashboardReportColumnIndexMap(sparseResponse).size).toBe(0)
+
+    const unnamedResponse = {
+      sheet: { columns: [{ code: null }], rows: [] },
+      offset: 0,
+      limit: 50,
+      hasMore: false,
+    } as unknown as ReportExecutionResponseDto
+    expect(dashboardReportColumnIndexMap(unnamedResponse).get('')).toBe(0)
+
+    const columns = new Map([['missing-cell', 2], ['display-only', 0]])
+    const displayOnlyRow = { rowKind: ReportRowKind.Detail, cells: [{ display: '42.5' }] } satisfies ReportSheetRowDto
+    expect(dashboardReportCellByCode(displayOnlyRow, columns, 'missing-cell')).toBeNull()
+    expect(dashboardReportCellDisplay(displayOnlyRow, columns, 'missing-cell')).toBe('')
+    expect(dashboardReportCellNumber(displayOnlyRow, columns, 'display-only')).toBe(42.5)
+  })
+
+  it('uses paging defaults and stops on an empty page even when the reported total is larger', async () => {
+    const loadPage = vi.fn().mockResolvedValue({ items: null, total: 5 })
+
+    await expect(fetchAllPagedDashboardDocuments(loadPage, 'pm.invoice')).resolves.toEqual([])
+    expect(loadPage).toHaveBeenCalledWith('pm.invoice', {
+      offset: 0,
+      limit: 200,
+      filters: { deleted: 'active' },
+    })
+
+    const skippedLoader = vi.fn()
+    await expect(fetchAllPagedDashboardDocuments(skippedLoader, 'pm.invoice', { maxPages: 0 })).resolves.toEqual([])
+    expect(skippedLoader).not.toHaveBeenCalled()
+
+    const unknownTotalLoader = vi.fn().mockResolvedValue({ items: null })
+    await expect(fetchAllPagedDashboardDocuments(unknownTotalLoader, 'pm.invoice')).resolves.toEqual([])
+  })
+
+  it('uses the default calendar loader and all nullable period-summary fallbacks', async () => {
+    vi.mocked(getPeriodClosingCalendar)
+      .mockResolvedValueOnce({
+        months: null,
+        latestContiguousClosedPeriod: null,
+        latestClosedPeriod: '2025-12',
+        nextClosablePeriod: null,
+        firstGapPeriod: null,
+      } as never)
+      .mockResolvedValueOnce({
+        months: [],
+        latestContiguousClosedPeriod: null,
+        latestClosedPeriod: null,
+        nextClosablePeriod: null,
+        firstGapPeriod: null,
+      } as never)
+
+    await expect(loadDashboardPeriodClosingSummary('2026-01-15')).resolves.toEqual({
+      pendingCloseCount: 0,
+      lastClosedPeriod: '2025-12',
+      nextClosablePeriod: null,
+      firstGapPeriod: null,
+    })
+    await expect(loadDashboardPeriodClosingSummary('2026-02-15')).resolves.toMatchObject({
+      lastClosedPeriod: null,
+    })
   })
 })

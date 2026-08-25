@@ -16,7 +16,6 @@ function normalizeDocumentTypes(documentTypes: string[]): string[] {
 }
 
 async function loadCoaItems(config: LookupFrameworkConfig, ids: string[]): Promise<LookupItem[]> {
-  if (ids.length === 0) return []
   return await config.loadCoaItemsByIds(ids)
 }
 
@@ -25,7 +24,6 @@ async function loadResolvedDocumentItems(
   documentTypes: string[],
   ids: string[],
 ): Promise<ResolvedDocumentLookupItem[]> {
-  if (documentTypes.length === 0 || ids.length === 0) return []
   return await config.loadDocumentItemsByIds(documentTypes, ids)
 }
 
@@ -34,7 +32,6 @@ async function searchResolvedDocumentItems(
   documentTypes: string[],
   query: string,
 ): Promise<ResolvedDocumentLookupItem[]> {
-  if (documentTypes.length === 0) return []
   return await config.searchDocumentsAcrossTypes(documentTypes, query)
 }
 

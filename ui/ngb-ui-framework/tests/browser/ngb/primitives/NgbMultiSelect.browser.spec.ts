@@ -116,6 +116,34 @@ const MultiSelectRaceHarness = defineComponent({
   },
 })
 
+const MultiSelectBoundaryHarness = defineComponent({
+  setup() {
+    const selected = ref<Item[]>([
+      { id: 'empty', label: '' },
+      { id: 'meta-only', label: '', meta: 'Metadata only' },
+      { id: 'label-only', label: 'Label only' },
+    ])
+    const items = [
+      { id: 'available-empty', label: '' },
+      ...Array.from({ length: 52 }, (_, index) => ({
+        id: `item-${index}`,
+        label: `Item ${index}`,
+      })),
+    ]
+
+    return () => h(NgbMultiSelect, {
+      modelValue: selected.value,
+      items,
+      label: 'Accounts',
+      hint: 'Select up to three accounts',
+      placeholder: 'Find an account',
+      'onUpdate:modelValue': (next: Item[]) => {
+        selected.value = next
+      },
+    })
+  },
+})
+
 afterEach(() => {
   document.documentElement.classList.remove('dark')
 })
@@ -130,6 +158,10 @@ test('queries, selects, removes, and backspaces chips through the multiselect', 
   await input.fill('br')
   await expect.element(view.getByText('Searching…')).toBeVisible()
 
+  const inputElement = input.element() as HTMLInputElement
+  inputElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+  await expect.element(view.getByTestId('multi-state')).toHaveTextContent('state:Alpha')
+
   await waitForComboboxDebounce()
   await expect.element(view.getByText('Bravo', { exact: true })).toBeVisible()
 
@@ -142,9 +174,35 @@ test('queries, selects, removes, and backspaces chips through the multiselect', 
   ;(removeButtons[1] as HTMLButtonElement).click()
   await expect.element(view.getByTestId('multi-state')).toHaveTextContent('state:Alpha')
 
-  const inputElement = input.element() as HTMLInputElement
+  await input.fill('')
   inputElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
   await expect.element(view.getByTestId('multi-state')).toHaveTextContent('state:none')
+
+  inputElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }))
+  await expect.element(view.getByTestId('multi-state')).toHaveTextContent('state:none')
+})
+
+test('renders labels, hints, tooltip fallbacks, and caps unfiltered options', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(MultiSelectBoundaryHarness)
+  const input = view.getByRole('combobox')
+
+  await expect.element(view.getByText('Accounts', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('Select up to three accounts', { exact: true })).toBeVisible()
+  expect(document.querySelector('span[title="Metadata only"]')).not.toBeNull()
+  expect(document.querySelector('span[title="Label only"]')).not.toBeNull()
+  expect(document.querySelectorAll('span[title=""]').length).toBe(0)
+
+  await input.click()
+  await input.fill(' ')
+  await wait()
+  expect(document.querySelectorAll('[role="option"]').length).toBe(50)
+  expect(document.querySelector('[role="option"] > div:not([title])')).not.toBeNull()
+
+  await input.fill('Item')
+  await waitForComboboxDebounce()
+  await expect.element(view.getByText('Item 0', { exact: true })).toBeVisible()
 })
 
 test('repositions the teleported multiselect options on resize and keeps combobox semantics open', async () => {

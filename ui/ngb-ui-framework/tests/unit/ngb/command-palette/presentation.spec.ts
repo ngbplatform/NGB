@@ -48,7 +48,11 @@ describe('command-palette presentation', () => {
     expect(resolveCommandPaletteBadge(createItem({ kind: 'catalog', scope: 'catalogs' }))).toBe('Catalog')
     expect(resolveCommandPaletteBadge(createItem({ kind: 'report', scope: 'reports' }))).toBe('Report')
     expect(resolveCommandPaletteBadge(createItem({ kind: 'command', group: 'actions', scope: 'commands' }))).toBe('Action')
+    expect(resolveCommandPaletteBadge(createItem({ kind: 'recent', scope: 'reports', badge: 'Recent' }))).toBe('Report')
+    expect(resolveCommandPaletteBadge(createItem({ kind: 'recent', scope: 'documents' }))).toBe('Document')
     expect(resolveCommandPaletteBadge(createItem({ kind: 'recent', scope: 'catalogs' }))).toBe('Catalog')
+    expect(resolveCommandPaletteBadge(createItem({ kind: 'recent', scope: 'pages' }))).toBe('Page')
+    expect(resolveCommandPaletteBadge(createItem({ kind: 'unknown' as never }))).toBeNull()
   })
 
   it('prefers specific subtitles and normalizes generic ones into friendly actions', () => {
@@ -59,5 +63,9 @@ describe('command-palette presentation', () => {
     expect(resolveCommandPaletteSubtitle(createItem({ kind: 'report', scope: 'reports', subtitle: 'Report' }))).toBe('Run this report')
     expect(resolveCommandPaletteSubtitle(createItem({ kind: 'command', group: 'actions', scope: 'commands', subtitle: 'Favorite' }))).toBe('Run this command')
     expect(resolveCommandPaletteSubtitle(createItem({ kind: 'recent', scope: 'reports', subtitle: 'Recent' }))).toBe('Open this recent report')
+    expect(resolveCommandPaletteSubtitle(createItem({ kind: 'recent', scope: 'documents' }))).toBe('Open this recent document')
+    expect(resolveCommandPaletteSubtitle(createItem({ kind: 'recent', scope: 'catalogs' }))).toBe('Open this recent catalog record')
+    expect(resolveCommandPaletteSubtitle(createItem({ kind: 'recent', scope: 'pages' }))).toBe('Open this recent page')
+    expect(resolveCommandPaletteSubtitle(createItem({ kind: 'unknown' as never, subtitle: 'Page' }))).toBe('Open this item')
   })
 })

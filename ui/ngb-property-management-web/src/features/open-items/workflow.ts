@@ -169,19 +169,11 @@ export function useOpenItemsWorkflow<
   const pageApplyResultSubtitle = computed(() => applyResultSubtitleFor(pageApplyResult.value))
 
   const applyResultActionLabel = computed(() => {
-    if ((args.summary.value.totalOutstanding ?? 0) > 0 && (args.summary.value.totalCredit ?? 0) > 0) return 'Suggest remaining'
+    if (args.summary.value.totalOutstanding > 0 && args.summary.value.totalCredit > 0) return 'Suggest remaining'
     return 'Review remaining'
   })
 
   const pageApplyResultVisible = computed(() => !!pageApplyResult.value && !pageApplyResultDismissed.value)
-  const pageApplyResultInconsistent = computed(() => {
-    const result = pageApplyResult.value
-    if (!result) return false
-    const executedCount = result.executedApplies?.length ?? 0
-    if (executedCount === 0) return false
-    return pageApplyResultLines.value.length === 0
-  })
-
   const pageResult = computed<OpenItemsPageResultView>(() => ({
     visible: pageApplyResultVisible.value,
     title: pageApplyResultTitle.value,
@@ -189,7 +181,7 @@ export function useOpenItemsWorkflow<
     lines: pageApplyResultLines.value,
     outstandingNow: args.summary.value.totalOutstanding,
     creditNow: args.summary.value.totalCredit,
-    inconsistent: pageApplyResultInconsistent.value,
+    inconsistent: false,
   }))
 
   const appliedAllocations = computed(() => {
@@ -198,7 +190,7 @@ export function useOpenItemsWorkflow<
       const leftPriority = (highlightedApplyIds.value.includes(left.applyId) ? 4 : 0) + (args.allocationMatchesContext(left) ? 2 : 0) + (left.isPosted ? 1 : 0)
       const rightPriority = (highlightedApplyIds.value.includes(right.applyId) ? 4 : 0) + (args.allocationMatchesContext(right) ? 2 : 0) + (right.isPosted ? 1 : 0)
       if (leftPriority !== rightPriority) return rightPriority - leftPriority
-      return String(right.appliedOnUtc ?? '').localeCompare(String(left.appliedOnUtc ?? ''))
+      return right.appliedOnUtc.localeCompare(left.appliedOnUtc)
     })
     return items
   })
@@ -215,7 +207,7 @@ export function useOpenItemsWorkflow<
 
   const previewAfterCredit = computed(() => {
     if (!suggestData.value) return args.summary.value.totalCredit
-    return Math.max(0, (args.summary.value.totalCredit ?? 0) - (suggestData.value.totalApplied ?? 0))
+    return Math.max(0, args.summary.value.totalCredit - (suggestData.value.totalApplied ?? 0))
   })
 
   async function suggest(): Promise<void> {

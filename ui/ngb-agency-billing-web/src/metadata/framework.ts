@@ -21,8 +21,8 @@ const RATE_CARD_LIST_COLUMN_KEYS = ['display', 'client_id', 'project_id', 'team_
 const SERVICE_ITEM_LIST_COLUMN_KEYS = ['display', 'code', 'unit_of_measure', 'default_revenue_account_id', 'is_active']
 const PAYMENT_TERMS_LIST_COLUMN_KEYS = ['display', 'code', 'due_days', 'is_active']
 
-function pickColumns(columns: readonly ColumnMetadata[] | null | undefined, keys: readonly string[]): ColumnMetadata[] {
-  const available = new Map((columns ?? []).map((column) => [column.key, column] as const))
+function pickColumns(columns: readonly ColumnMetadata[], keys: readonly string[]): ColumnMetadata[] {
+  const available = new Map(columns.map((column) => [column.key, column] as const))
   return keys
     .map((key) => available.get(key) ?? null)
     .filter((column): column is ColumnMetadata => column !== null)

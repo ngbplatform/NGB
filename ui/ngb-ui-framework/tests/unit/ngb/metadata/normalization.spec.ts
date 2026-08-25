@@ -87,4 +87,62 @@ describe('metadata normalization', () => {
     expect(metadata.parts?.[0]?.list.columns[0]?.dataType).toBe('Decimal')
     expect(metadata.parts?.[0]?.list.filters?.[0]?.dataType).toBe('Guid')
   })
+
+  it('normalizes string, unknown, invalid numeric, and omitted nested values safely', () => {
+    const metadata = normalizeCatalogTypeMetadata({
+      catalogType: 'pm.sparse',
+      displayName: 'Sparse',
+      kind: 1,
+      list: {
+        columns: [
+          { key: 'trimmed', label: 'Trimmed', dataType: ' Date ', isSortable: true, align: 1 },
+          { key: 'blank', label: 'Blank', dataType: ' ', isSortable: true, align: 1 },
+          { key: 'unknown_number', label: 'Unknown number', dataType: 99, isSortable: true, align: 1 },
+          { key: 'invalid_number', label: 'Invalid number', dataType: Number.NaN, isSortable: true, align: 1 },
+          { key: 'invalid_object', label: 'Invalid object', dataType: {} as never, isSortable: true, align: 1 },
+        ],
+        filters: undefined,
+      },
+      form: {
+        sections: [
+          { rows: [{ fields: undefined }] },
+          { rows: undefined },
+        ],
+      },
+      parts: [
+        { partCode: 'empty', title: 'Empty', list: null as never },
+      ],
+    })
+
+    expect(metadata.list?.columns.map((column) => column.dataType)).toEqual([
+      'Date',
+      'Unknown',
+      'Unknown',
+      'Unknown',
+      'Unknown',
+    ])
+    expect(metadata.list?.filters).toEqual([])
+    expect(metadata.form?.sections[0]?.rows?.[0]?.fields).toEqual([])
+    expect(metadata.parts?.[0]?.list).toBeNull()
+
+    const omitted = normalizeDocumentTypeMetadata({
+      documentType: 'pm.empty',
+      displayName: 'Empty',
+      kind: 2,
+      list: { columns: undefined, filters: undefined },
+      form: { sections: undefined },
+      parts: undefined,
+    })
+    expect(omitted.list?.columns).toEqual([])
+    expect(omitted.list?.filters).toEqual([])
+    expect(omitted.form?.sections).toEqual([])
+    expect(omitted.parts).toEqual([])
+
+    expect(normalizeCatalogTypeMetadata({
+      catalogType: 'pm.empty-catalog',
+      displayName: 'Empty Catalog',
+      kind: 1,
+      parts: undefined,
+    }).parts).toEqual([])
+  })
 })

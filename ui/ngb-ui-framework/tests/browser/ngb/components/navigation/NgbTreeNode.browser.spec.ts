@@ -25,6 +25,12 @@ const rootNode = {
     {
       id: 'journals',
       label: 'Journals',
+      children: [
+        {
+          id: 'general-journal',
+          label: 'General journal',
+        },
+      ],
     },
   ],
 }
@@ -66,15 +72,20 @@ test('toggles nested rows without selecting them and emits selected nodes when t
   await expect.element(view.getByText('Journals', { exact: true })).toBeVisible()
   await expect.element(view.getByText('3', { exact: true })).toBeVisible()
 
-  const toggle = view.getByRole('button', { name: 'Toggle' }).element() as HTMLButtonElement
+  const nestedToggle = document.querySelectorAll<HTMLButtonElement>('button[aria-label="Toggle"]')[1]
+  nestedToggle.click()
+  await waitForDomUpdate()
+  await expect.element(view.getByTestId('tree-node-state')).toHaveTextContent('expanded:root,journals')
+
+  const toggle = document.querySelectorAll<HTMLButtonElement>('button[aria-label="Toggle"]')[0]
   toggle.click()
   await waitForDomUpdate()
 
   expect(document.body.textContent?.includes('Journals')).toBe(false)
-  await expect.element(view.getByTestId('tree-node-state')).toHaveTextContent('expanded:none;selected:none;label:none')
+  await expect.element(view.getByTestId('tree-node-state')).toHaveTextContent('expanded:journals;selected:none;label:none')
 
   await view.getByText('Accounting', { exact: true }).click()
-  await expect.element(view.getByTestId('tree-node-state')).toHaveTextContent('expanded:none;selected:root;label:Accounting')
+  await expect.element(view.getByTestId('tree-node-state')).toHaveTextContent('expanded:journals;selected:root;label:Accounting')
 
   const rootRow = document.querySelector('[data-testid="tree-node-wrap"] > div > div') as HTMLElement
   expect(rootRow.style.paddingLeft).toBe('8px')
@@ -95,7 +106,12 @@ test('supports keyboard selection and collapse through treeitem semantics', asyn
   expect(rootRow?.getAttribute('aria-expanded')).toBe('false')
   expect(document.body.textContent?.includes('Journals')).toBe(false)
 
+  dispatchKey(rootRow!, 'ArrowLeft')
+  dispatchKey(rootRow!, 'ArrowRight')
+  await waitForDomUpdate()
+  expect(rootRow?.getAttribute('aria-expanded')).toBe('true')
+
   dispatchKey(rootRow!, 'Enter')
-  await expect.element(view.getByTestId('tree-node-state')).toHaveTextContent('expanded:none;selected:root;label:Accounting')
+  await expect.element(view.getByTestId('tree-node-state')).toHaveTextContent('expanded:root;selected:root;label:Accounting')
   expect(rootRow?.getAttribute('aria-selected')).toBe('true')
 })

@@ -103,4 +103,19 @@ describe('useAsyncComboboxQuery', () => {
 
     expect(emitted).toEqual([])
   })
+
+  it('uses the production debounce when no override is provided', () => {
+    const emitted: string[] = []
+    const state = useAsyncComboboxQuery({
+      disabled: computed(() => false),
+      items: computed(() => []),
+      emitQuery: (query) => emitted.push(query),
+    })
+
+    state.onInput('default-delay')
+    vi.advanceTimersByTime(219)
+    expect(emitted).toEqual([])
+    vi.advanceTimersByTime(1)
+    expect(emitted).toEqual(['default-delay'])
+  })
 })

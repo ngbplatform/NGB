@@ -21,8 +21,8 @@ const CRM_CATALOG_LIST_COLUMNS: Record<string, string[]> = {
   'crm.opportunity_stage': ['display', 'stage_code', 'ordinal', 'default_probability', 'is_closed', 'is_won', 'is_active'],
 }
 
-function pickColumns(columns: readonly ColumnMetadata[] | null | undefined, keys: readonly string[]): ColumnMetadata[] {
-  const available = new Map((columns ?? []).map((column) => [column.key, column] as const))
+function pickColumns(columns: readonly ColumnMetadata[], keys: readonly string[]): ColumnMetadata[] {
+  const available = new Map(columns.map((column) => [column.key, column] as const))
   return keys
     .map((key) => available.get(key) ?? null)
     .filter((column): column is ColumnMetadata => column !== null)

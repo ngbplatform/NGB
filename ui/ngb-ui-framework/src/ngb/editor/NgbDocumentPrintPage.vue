@@ -104,18 +104,18 @@ const statusClass = computed(() => {
 });
 
 const printableSections = computed<PrintableSection[]>(() => {
-  const form = metadata.value?.form;
-  const fields = documentRecord.value?.payload?.fields ?? {};
-  if (!form?.sections) return [];
+  const form = metadata.value!.form;
+  const fields = documentRecord.value!.payload.fields ?? {};
+  if (!form) return [];
 
   return form.sections
     .map((section, sectionIndex) => ({
       key: `section:${section.title || sectionIndex}`,
-      title: String(section.title ?? '').trim() || 'Main',
-      rows: (section.rows ?? [])
+      title: section.title.trim() || 'Main',
+      rows: section.rows
         .map((row, rowIndex) => ({
           key: `row:${sectionIndex}:${rowIndex}`,
-          cells: (row.fields ?? [])
+          cells: row.fields
             .filter((field) => !isHiddenDocumentField(field))
             .map((field) => ({
               key: field.key,
@@ -129,13 +129,13 @@ const printableSections = computed<PrintableSection[]>(() => {
 });
 
 const printableParts = computed<PrintablePartSection[]>(() => {
-  const partsMeta = metadata.value?.parts ?? [];
-  const partsPayload = documentRecord.value?.payload?.parts ?? {};
+  const partsMeta = metadata.value!.parts ?? [];
+  const partsPayload = documentRecord.value!.payload.parts ?? {};
 
   return partsMeta
     .map((part) => {
-      const rows = Array.isArray(partsPayload?.[part.partCode]?.rows) ? partsPayload[part.partCode]!.rows : [];
-      const columns: PrintablePartSection['columns'] = (part.list?.columns ?? []).map((column) => ({
+      const rows = partsPayload[part.partCode]?.rows ?? [];
+      const columns: PrintablePartSection['columns'] = part.list.columns.map((column) => ({
         key: column.key,
         label: column.label,
         align:
@@ -148,15 +148,12 @@ const printableParts = computed<PrintablePartSection[]>(() => {
 
       return {
         key: part.partCode,
-        title: String(part.title ?? part.partCode).trim() || part.partCode,
+        title: part.title.trim() || part.partCode,
         columns,
         rows: rows.map((row, index) => ({
           key: `${part.partCode}:${index}`,
           cells: Object.fromEntries(
-            columns.map((column) => {
-              const metaColumn = (part.list?.columns ?? []).find((entry) => entry.key === column.key);
-              return [column.key, formatPartCell(metaColumn ?? null, row?.[column.key])];
-            }),
+            part.list.columns.map((column) => [column.key, formatPartCell(column, row[column.key])]),
           ),
         })),
       };
@@ -167,30 +164,25 @@ const printableParts = computed<PrintablePartSection[]>(() => {
 watch(
   () => sheetTitle.value,
   (next) => {
-    if (typeof document === 'undefined') return;
-    document.title = String(next ?? '').trim() || 'Document print';
+    document.title = next;
   },
   { immediate: true },
 );
 
 function handleBeforePrint() {
-  if (typeof document === 'undefined') return;
   document.title = ' ';
 }
 
 function handleAfterPrint() {
-  if (typeof document === 'undefined') return;
-  document.title = String(sheetTitle.value ?? '').trim() || 'Document print';
+  document.title = sheetTitle.value;
 }
 
 onMounted(() => {
-  if (typeof window === 'undefined') return;
   window.addEventListener('beforeprint', handleBeforePrint);
   window.addEventListener('afterprint', handleAfterPrint);
 });
 
 onBeforeUnmount(() => {
-  if (typeof window === 'undefined') return;
   window.removeEventListener('beforeprint', handleBeforePrint);
   window.removeEventListener('afterprint', handleAfterPrint);
   handleAfterPrint();
@@ -213,13 +205,16 @@ watch(
     autoPrintTriggered.value = true;
     await nextTick();
     window.setTimeout(() => {
-      if (typeof window !== 'undefined') window.print();
+      window.print();
     }, 120);
   },
 );
 
 async function load() {
-  if (!documentType.value || !documentId.value) return;
+  if (!documentType.value || !documentId.value) {
+    error.value = 'Document type or id is missing.';
+    return;
+  }
 
   loading.value = true;
   error.value = null;
@@ -241,7 +236,6 @@ async function load() {
 }
 
 function triggerPrint() {
-  if (typeof window === 'undefined') return;
   window.print();
 }
 
@@ -277,8 +271,7 @@ function formatFieldValue(field: FieldMetadata, value: unknown): string {
   return formatTypedEntityValue(field.dataType, value);
 }
 
-function formatPartCell(column: ColumnMetadata | null, value: unknown): string {
-  if (!column) return formatLooseEntityValue(value);
+function formatPartCell(column: ColumnMetadata, value: unknown): string {
   const hint = resolveLookupHint(column.key, column.lookup);
   const fromHint = formatValueWithHint(value, hint);
   if (fromHint) return fromHint;
@@ -325,21 +318,21 @@ async function prefetchLookupLabels(meta: DocumentTypeMetadata, doc: DocumentRec
     coaIds: new Set(),
   };
 
-  const fields = doc.payload?.fields ?? {};
+  const fields = doc.payload.fields ?? {};
   for (const section of meta.form?.sections ?? []) {
-    for (const row of section.rows ?? []) {
-      for (const field of row.fields ?? []) {
+    for (const row of section.rows) {
+      for (const field of row.fields) {
         collectLookupValue(resolveLookupHint(field.key, field.lookup), (fields as EntityFormModel)[field.key], buckets);
       }
     }
   }
 
-  const partsPayload = doc.payload?.parts ?? {};
+  const partsPayload = doc.payload.parts ?? {};
   for (const part of meta.parts ?? []) {
-    const rows = Array.isArray(partsPayload?.[part.partCode]?.rows) ? partsPayload[part.partCode]!.rows : [];
+    const rows = partsPayload[part.partCode]?.rows ?? [];
     for (const row of rows) {
-      for (const column of part.list?.columns ?? []) {
-        collectLookupValue(resolveLookupHint(column.key, column.lookup), row?.[column.key], buckets);
+      for (const column of part.list.columns) {
+        collectLookupValue(resolveLookupHint(column.key, column.lookup), row[column.key], buckets);
       }
     }
   }
@@ -358,9 +351,7 @@ async function prefetchLookupLabels(meta: DocumentTypeMetadata, doc: DocumentRec
     tasks.push(Promise.resolve().then(() => lookupStore.ensureAnyDocumentLabels(entry.types, Array.from(entry.ids))));
   }
 
-  if (tasks.length > 0) {
-    await Promise.allSettled(tasks);
-  }
+  await Promise.allSettled(tasks);
 }
 </script>
 

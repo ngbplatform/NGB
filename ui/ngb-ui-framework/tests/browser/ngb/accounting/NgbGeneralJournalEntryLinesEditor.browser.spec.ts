@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent, h, ref } from 'vue'
+import { defineComponent, h, ref, type Ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { withBackTarget } from '../../../../src/ngb/router/backNavigation'
@@ -177,15 +177,20 @@ async function renderHarness(args: {
   readonly?: boolean
   preloadedAccountContexts?: Record<string, AccountContext | null>
 }) {
+  let rowsState: Ref<EditorLine[]> | undefined
+
   const Harness = defineComponent({
     setup() {
       const rows = ref(clone(args.rows))
+      rowsState = rows
 
       return () => h('div', [
         h(NgbGeneralJournalEntryLinesEditor, {
           modelValue: rows.value,
-          readonly: args.readonly ?? false,
-          preloadedAccountContexts: args.preloadedAccountContexts ?? {},
+          ...(args.readonly === undefined ? {} : { readonly: args.readonly }),
+          ...(args.preloadedAccountContexts === undefined
+            ? {}
+            : { preloadedAccountContexts: args.preloadedAccountContexts }),
           'onUpdate:modelValue': (next: EditorLine[]) => {
             rows.value = next
           },
@@ -231,6 +236,7 @@ async function renderHarness(args: {
 
   return {
     router,
+    rows: rowsState!,
     view,
   }
 }
@@ -308,6 +314,52 @@ test('updates totals, supports add/remove flow, and keeps at least one blank lin
   expect(view.getByTestId('rows-state').element().textContent ?? '').toContain('none;;;')
 })
 
+test('handles invalid amounts, empty searches, side changes, and memo edits at input boundaries', async () => {
+  await page.viewport(1280, 900)
+
+  const { view } = await renderHarness({
+    rows: [
+      {
+        clientKey: 'row-invalid',
+        side: 1,
+        account: null,
+        amount: 'not-a-number',
+        memo: '',
+        dimensions: {},
+      },
+      {
+        clientKey: 'row-credit',
+        side: 2,
+        account: null,
+        amount: '20',
+        memo: '',
+        dimensions: {},
+      },
+    ],
+  })
+
+  await expect.element(view.getByText('Debit: 0.00')).toBeVisible()
+  await expect.element(view.getByText('Credit: 20.00')).toBeVisible()
+  await expect.element(view.getByText('Difference: -20.00')).toBeVisible()
+
+  await queryLookup(0, '   ')
+  expect(linesEditorMocks.lookupStore.searchCoa).not.toHaveBeenCalled()
+
+  const side = selectControl(0)
+  side.value = '2'
+  side.dispatchEvent(new Event('input', { bubbles: true }))
+  side.value = ''
+  side.dispatchEvent(new Event('input', { bubbles: true }))
+
+  const memo = document.querySelectorAll('input[placeholder="Memo"]')[0]
+  if (!(memo instanceof HTMLInputElement)) throw new Error('Memo input not found.')
+  memo.value = 'Boundary memo'
+  memo.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+
+  expect(view.getByTestId('rows-state').element().textContent ?? '').toContain('row-invalid;1;none;not-a-number;Boundary memo')
+})
+
 test('searches and selects accounts and dimensions, loads account context, and opens lookup routes', async () => {
   await page.viewport(1280, 900)
 
@@ -382,6 +434,88 @@ test('searches and selects accounts and dimensions, loads account context, and o
   expect(router.currentRoute.value.fullPath).toBe(
     withBackTarget('/lookups/coa/cash-id', '/accounting/general-journal-entries/new'),
   )
+
+  await router.push('/accounting/general-journal-entries/new')
+  linesEditorMocks.lookupConfig.buildCoaUrl.mockReturnValueOnce('')
+  clickLookupAction(0, 'open')
+  await flushUi()
+  expect(router.currentRoute.value.fullPath).toBe('/accounting/general-journal-entries/new')
+
+  linesEditorMocks.lookupConfig.buildCatalogUrl.mockReturnValueOnce('')
+  clickLookupAction(1, 'open')
+  await flushUi()
+  expect(router.currentRoute.value.fullPath).toBe('/accounting/general-journal-entries/new')
+})
+
+test('uses cached contexts, handles dimensions without lookups, queries CoA dimensions, and clears selections', async () => {
+  await page.viewport(1280, 900)
+
+  linesEditorMocks.lookupStore.searchCoa.mockImplementation(async (query: string) => {
+    if (query === 'cash') return [{ id: 'cash-id', label: '1100 Cash' }]
+    if (query === 'department') return [{ id: 'department-1', label: 'Operations' }]
+    return []
+  })
+
+  const { view } = await renderHarness({
+    rows: [
+      {
+        clientKey: 'row-1',
+        side: 1,
+        account: null,
+        amount: '',
+        memo: '',
+        dimensions: {},
+      },
+    ],
+    preloadedAccountContexts: {
+      'cash-id': {
+        accountId: 'cash-id',
+        code: '1100',
+        name: 'Cash',
+        dimensionRules: [
+          {
+            dimensionId: 'unconfigured',
+            dimensionCode: '',
+            ordinal: 1,
+            isRequired: false,
+            lookup: null,
+          },
+          {
+            dimensionId: 'department_id',
+            dimensionCode: 'org.department_id',
+            ordinal: 2,
+            isRequired: false,
+            lookup: { kind: 'coa' },
+          },
+        ],
+      },
+    },
+  })
+
+  await queryLookup(0, 'cash')
+  clickLookupAction(0, 'select-first')
+  await flushUi()
+
+  expect(linesEditorMocks.getAccountContext).not.toHaveBeenCalled()
+  await expect.element(view.getByText('Dimension', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('Department Id')).toBeVisible()
+
+  await queryLookup(1, 'ignored')
+  await queryLookup(2, 'department')
+  expect(linesEditorMocks.lookupStore.searchCoa).toHaveBeenCalledWith('department')
+
+  clickLookupAction(2, 'select-first')
+  await flushUi()
+  expect(view.getByTestId('rows-state').element().textContent ?? '').toContain('department_id:department-1')
+
+  clickLookupAction(2, 'clear')
+  await flushUi()
+  expect(view.getByTestId('rows-state').element().textContent ?? '').not.toContain('department_id:department-1')
+
+  clickLookupAction(0, 'clear')
+  await flushUi()
+  expect(view.getByTestId('rows-state').element().textContent ?? '').toContain('row-1;1;none')
+  expect(document.body.textContent).not.toContain('Department Id')
 })
 
 test('resolves multi-document dimension targets through the first matching document type before opening the lookup route', async () => {
@@ -597,6 +731,97 @@ test('ignores stale account contexts when the user switches accounts before the 
   expect(document.body.textContent).not.toContain('Property Id')
 })
 
+test('ignores a stale account-context failure after the row switches to another account', async () => {
+  await page.viewport(1280, 900)
+
+  const first = createDeferred<AccountContext>()
+  const second = createDeferred<AccountContext>()
+  linesEditorMocks.lookupStore.searchCoa.mockImplementation(async (query: string) => {
+    if (query === 'cash') return [{ id: 'cash-id', label: '1100 Cash' }]
+    if (query === 'rent') return [{ id: 'rent-id', label: '4100 Rent Revenue' }]
+    return []
+  })
+  linesEditorMocks.getAccountContext.mockImplementation(async (accountId: string) => (
+    accountId === 'cash-id' ? await first.promise : await second.promise
+  ))
+
+  const { view } = await renderHarness({
+    rows: [{
+      clientKey: 'row-1',
+      side: 1,
+      account: null,
+      amount: '',
+      memo: '',
+      dimensions: {},
+    }],
+  })
+
+  await queryLookup(0, 'cash')
+  clickLookupAction(0, 'select-first')
+  await flushUi()
+  await queryLookup(0, 'rent')
+  clickLookupAction(0, 'select-first')
+  await flushUi()
+
+  first.reject(new Error('stale request failed'))
+  second.resolve({
+    accountId: 'rent-id',
+    code: '4100',
+    name: 'Rent Revenue',
+    dimensionRules: [{
+      dimensionId: 'department_id',
+      dimensionCode: 'department_id',
+      ordinal: 1,
+      isRequired: false,
+      lookup: { kind: 'coa' },
+    }],
+  })
+  await flushUi()
+
+  await expect.element(view.getByText('Department Id')).toBeVisible()
+})
+
+test('deduplicates an in-flight context request and ignores its result after the source row is removed', async () => {
+  await page.viewport(1280, 900)
+
+  const pending = createDeferred<AccountContext>()
+  linesEditorMocks.getAccountContext.mockReturnValue(pending.promise)
+
+  const { view } = await renderHarness({
+    rows: [{
+      clientKey: 'row-pending',
+      side: 1,
+      account: { id: 'cash-id', label: '1100 Cash' },
+      amount: '',
+      memo: '',
+      dimensions: {},
+    }],
+  })
+
+  await expect.element(view.getByText('Loading dimension rules…')).toBeVisible()
+  await view.getByRole('button', { name: 'Add line' }).click()
+  await flushUi()
+  expect(linesEditorMocks.getAccountContext).toHaveBeenCalledTimes(1)
+
+  deleteButton(0).click()
+  pending.resolve({
+    accountId: 'cash-id',
+    code: '1100',
+    name: 'Cash',
+    dimensionRules: [{
+      dimensionId: 'stale_dimension',
+      dimensionCode: 'stale_dimension',
+      ordinal: 1,
+      isRequired: false,
+      lookup: { kind: 'coa' },
+    }],
+  })
+  await flushUi()
+
+  await expect.element(view.getByText('rows:1')).toBeVisible()
+  expect(document.body.textContent).not.toContain('Stale Dimension')
+})
+
 test('clears selected dimensions when the account changes and drops old dimension UI after deleting the row', async () => {
   await page.viewport(1280, 900)
 
@@ -731,4 +956,9 @@ test('uses preloaded account contexts and keeps controls disabled in readonly mo
   expect((view.getByRole('button', { name: /Add line/ }).element() as HTMLButtonElement).disabled).toBe(true)
   expect(queryLookupRoot(0).querySelector('input') instanceof HTMLInputElement).toBe(true)
   expect((queryLookupRoot(0).querySelector('input') as HTMLInputElement).disabled).toBe(true)
+
+  deleteButton(0).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  view.getByRole('button', { name: /Add line/ }).element().dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await flushUi()
+  await expect.element(view.getByText('rows:1')).toBeVisible()
 })

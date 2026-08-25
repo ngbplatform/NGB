@@ -95,6 +95,7 @@ describe('property-management editor framework', () => {
       parameters: { documentId: ' payment/1 ', empty: null, blank: ' ' },
     }, {} as never)).toBe('/receivables/open-items?documentId=payment%2F1')
     expect(resolve({ code: 'pm.payables.apply', parameters: {} }, {} as never)).toBe('/payables/open-items')
+    expect(resolve({ code: 'pm.payables.apply' }, {} as never)).toBe('/payables/open-items')
     expect(resolve({ code: 'document.editor', parameters: {} }, {} as never)).toBeNull()
   })
 

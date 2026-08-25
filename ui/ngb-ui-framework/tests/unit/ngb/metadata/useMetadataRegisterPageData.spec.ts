@@ -92,6 +92,17 @@ function createPage() {
   }
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (cause: unknown) => void
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve
+    reject = nextReject
+  })
+
+  return { promise, resolve, reject }
+}
+
 function createHarness(options?: {
   entityTypeCode?: string
   loadMetadata?: (entityTypeCode: string) => Promise<ReturnType<typeof createMetadata>>
@@ -202,5 +213,116 @@ describe('metadata register page data', () => {
     expect(register.error.value).toBe('Service unavailable')
     expect(register.page.value).toBeNull()
     expect(register.rows.value).toEqual([])
+  })
+
+  it('formats non-Error failures with the default formatter', async () => {
+    const { register } = createHarness({
+      loadMetadata: vi.fn().mockRejectedValue('metadata offline'),
+    })
+
+    await flushAsync()
+
+    expect(register.loading.value).toBe(false)
+    expect(register.error.value).toBe('metadata offline')
+  })
+
+  it('preserves reference values and unresolved GUID values while building rows', async () => {
+    const metadata = createMetadata()
+    metadata.list.columns.push({
+      key: 'owner_id',
+      label: 'Owner Id',
+      dataType: 'Guid',
+      align: 1,
+      isSortable: false,
+    })
+    const page = createPage()
+    const property = {
+      id: '11111111-1111-1111-1111-111111111111',
+      display: 'Stored property label',
+    }
+    const ownerId = '22222222-2222-2222-2222-222222222222'
+    page.items[0]!.payload!.fields!.property_id = property
+    page.items[0]!.payload!.fields!.owner_id = ownerId
+
+    const { register } = createHarness({
+      loadMetadata: vi.fn().mockResolvedValue(metadata),
+      loadPage: vi.fn().mockResolvedValue(page),
+    })
+
+    await flushAsync()
+
+    expect(register.rows.value[0]?.property_id).toEqual(property)
+    expect(register.rows.value[0]?.owner_id).toBe(ownerId)
+  })
+
+  it('ignores metadata returned by an older overlapping load', async () => {
+    const staleMetadata = createDeferred<ReturnType<typeof createMetadata>>()
+    const freshMetadata = {
+      ...createMetadata(),
+      displayName: 'Fresh invoices',
+    }
+    const loadMetadata = vi.fn()
+      .mockReturnValueOnce(staleMetadata.promise)
+      .mockResolvedValueOnce(freshMetadata)
+    const { entityTypeCode, register } = createHarness({
+      entityTypeCode: '',
+      loadMetadata,
+    })
+
+    await flushAsync()
+    entityTypeCode.value = 'pm.invoice'
+    const staleLoad = register.load()
+    const freshLoad = register.load()
+
+    await expect(freshLoad).resolves.toBe(true)
+    staleMetadata.resolve(createMetadata())
+    await expect(staleLoad).resolves.toBe(false)
+    expect(register.metadata.value?.displayName).toBe('Fresh invoices')
+  })
+
+  it('ignores page data returned by an older overlapping load', async () => {
+    const stalePage = createDeferred<ReturnType<typeof createPage>>()
+    const freshPage = createPage()
+    freshPage.items[0]!.id = 'fresh-doc'
+    const loadPage = vi.fn()
+      .mockReturnValueOnce(stalePage.promise)
+      .mockResolvedValueOnce(freshPage)
+    const { entityTypeCode, register } = createHarness({
+      entityTypeCode: '',
+      loadPage,
+    })
+
+    await flushAsync()
+    entityTypeCode.value = 'pm.invoice'
+    const staleLoad = register.load()
+    await flushAsync()
+    const freshLoad = register.load()
+
+    await expect(freshLoad).resolves.toBe(true)
+    stalePage.resolve(createPage())
+    await expect(staleLoad).resolves.toBe(false)
+    expect(register.page.value?.items[0]?.id).toBe('fresh-doc')
+  })
+
+  it('ignores failures from an older overlapping load', async () => {
+    const staleMetadata = createDeferred<ReturnType<typeof createMetadata>>()
+    const loadMetadata = vi.fn()
+      .mockReturnValueOnce(staleMetadata.promise)
+      .mockResolvedValueOnce(createMetadata())
+    const { entityTypeCode, register } = createHarness({
+      entityTypeCode: '',
+      loadMetadata,
+    })
+
+    await flushAsync()
+    entityTypeCode.value = 'pm.invoice'
+    const staleLoad = register.load()
+    const freshLoad = register.load()
+
+    await expect(freshLoad).resolves.toBe(true)
+    staleMetadata.reject(new Error('stale failure'))
+    await expect(staleLoad).resolves.toBe(false)
+    expect(register.error.value).toBeNull()
+    expect(register.loading.value).toBe(false)
   })
 })

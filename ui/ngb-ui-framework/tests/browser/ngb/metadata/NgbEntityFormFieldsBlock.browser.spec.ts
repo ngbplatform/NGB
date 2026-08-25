@@ -27,6 +27,7 @@ const baseDisplayField = {
 }
 
 const baseRows = [
+  { fields: null },
   {
     fields: [
       baseDisplayField,
@@ -145,7 +146,9 @@ test('applies readonly behavior and writes renderer updates back into the shared
 
   await view.getByRole('button', { name: 'Update field:customer_id' }).click()
   await view.getByRole('button', { name: 'Update field:internal_note' }).click()
+  await view.getByRole('button', { name: 'Update field:display' }).click()
 
   await expect.element(view.getByTestId('customer-model')).toHaveTextContent('updated:customer_id')
   await expect.element(view.getByTestId('note-model')).toHaveTextContent('updated:internal_note')
+  await expect.element(view.getByTestId('metadata-field-renderer:display')).toHaveTextContent('renderer-value:"updated:display"')
 })

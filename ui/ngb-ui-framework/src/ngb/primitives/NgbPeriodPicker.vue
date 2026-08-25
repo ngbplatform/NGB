@@ -11,7 +11,7 @@
           <NgbSelect
             :model-value="year"
             :options="yearOptions"
-            @update:model-value="onYear(String($event ?? ''))"
+            @update:model-value="onYear"
           />
         </div>
       </div>
@@ -22,7 +22,7 @@
           <NgbSelect
             :model-value="period"
             :options="periodOptions"
-            @update:model-value="onPeriod(String($event ?? ''))"
+            @update:model-value="onPeriod"
           />
         </div>
       </div>
@@ -111,13 +111,13 @@ const periodOptions = computed(() => {
   return [{ value: 1, label: 'FY' }]
 })
 
-function onYear(value: string) {
+function onYear(value: unknown) {
   const nextYear = Number(value)
   if (!Number.isFinite(nextYear)) return
   emit('update:modelValue', { ...props.modelValue, year: nextYear })
 }
 
-function onPeriod(value: string) {
+function onPeriod(value: unknown) {
   const nextPeriod = Number(value)
   if (!Number.isFinite(nextPeriod)) return
   emit('update:modelValue', { ...props.modelValue, period: nextPeriod })

@@ -226,7 +226,7 @@ function normalizeBannerText(value: string | null | undefined): string {
       title="Audit Log"
       hide-header
       flush-body
-      @update:open="(value) => (!value ? emit('closeAuditLog') : null)"
+      @update:open="emit('closeAuditLog')"
     >
       <NgbEntityAuditSidebar
         :open="auditOpen"
@@ -255,7 +255,7 @@ function normalizeBannerText(value: string | null | undefined): string {
       confirm-text="Mark"
       cancel-text="Cancel"
       danger
-      @update:open="(value) => (!value ? emit('cancelMarkForDeletion') : null)"
+      @update:open="emit('cancelMarkForDeletion')"
       @confirm="emit('confirmMarkForDeletion')"
     />
 
@@ -267,7 +267,7 @@ function normalizeBannerText(value: string | null | undefined): string {
       cancel-text="Cancel"
       icon="undo"
       danger
-      @update:open="(value) => (!value ? emit('cancelUnpost') : null)"
+      @update:open="emit('cancelUnpost')"
       @confirm="emit('confirmUnpost')"
     />
 

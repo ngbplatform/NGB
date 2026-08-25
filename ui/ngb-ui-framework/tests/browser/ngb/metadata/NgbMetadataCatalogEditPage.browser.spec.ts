@@ -148,3 +148,16 @@ test('treats the full-page /new catalog route as a create page with an undefined
   expect(catalogEditMocks.buildCompactPageUrl).toHaveBeenCalledWith('pm.property', undefined)
   expect(catalogEditMocks.buildListUrl).toHaveBeenCalledWith('pm.property')
 })
+
+test('uses safe null and root targets when the required catalog route parameter is blank', async () => {
+  await page.viewport(1280, 900)
+
+  const { view } = await renderCatalogEditPage('/catalogs/%20')
+
+  await expect.element(view.getByTestId('catalog-edit-editor')).toBeVisible()
+  await expect.element(view.getByText('type:', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('compact:none')).toBeVisible()
+  await expect.element(view.getByText('close:/')).toBeVisible()
+  expect(catalogEditMocks.buildCompactPageUrl).not.toHaveBeenCalled()
+  expect(catalogEditMocks.buildListUrl).not.toHaveBeenCalled()
+})

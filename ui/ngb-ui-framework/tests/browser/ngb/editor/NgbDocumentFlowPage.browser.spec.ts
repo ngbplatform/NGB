@@ -156,6 +156,70 @@ describe('NgbDocumentFlowPage', () => {
     await expect.element(view.getByText('This document has no related documents yet.')).toBeVisible()
   })
 
+  it('renders a valid isolated document without requiring relationship edges', async () => {
+    mocks.editorConfig.loadDocumentGraph.mockResolvedValueOnce({
+      nodes: [
+        {
+          nodeId: 'isolated',
+          kind: 2,
+          typeCode: 'pm.invoice',
+          entityId: 'doc-1',
+          title: 'Isolated invoice',
+          subtitle: null,
+          documentStatus: 1,
+          amount: 0,
+        },
+      ],
+      edges: [],
+    })
+
+    const view = await render(NgbDocumentFlowPage)
+
+    await expect.element(view.getByTitle('Isolated invoice')).toBeVisible()
+  })
+
+  it('rejects a malformed graph whose selected root has no node id', async () => {
+    mocks.editorConfig.loadDocumentGraph.mockResolvedValueOnce({
+      nodes: [
+        {
+          nodeId: '',
+          kind: 2,
+          typeCode: 'pm.invoice',
+          entityId: 'doc-1',
+          title: 'Invalid root',
+          subtitle: null,
+          documentStatus: 1,
+          amount: 0,
+        },
+      ],
+      edges: [],
+    })
+
+    const view = await render(NgbDocumentFlowPage)
+
+    await expect.element(view.getByText('This document has no related documents yet.')).toBeVisible()
+  })
+
+  it('reports missing route parameters and guards source, share, and refresh actions', async () => {
+    mocks.route.params.documentType = undefined as unknown as string
+    mocks.route.params.id = undefined as unknown as string
+    mocks.route.fullPath = '/documents//flow'
+
+    const view = await render(NgbDocumentFlowPage)
+
+    await expect.element(view.getByText('Document type or id is missing.')).toBeVisible()
+    expect(document.querySelector('button[title="Share link"]')).toBeNull()
+
+    const open = view.getByRole('button', { name: 'Open document' }).element()
+    open.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    const refresh = view.getByRole('button', { name: 'Refresh' }).element()
+    refresh.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await view.getByRole('button', { name: 'Back' }).click()
+
+    expect(mocks.editorConfig.loadDocumentGraph).not.toHaveBeenCalled()
+    expect(mocks.router.push).not.toHaveBeenCalled()
+  })
+
   it('prefers the explicit back target when reopening the source document from the flow page', async () => {
     const reportBackTarget = '/reports/pm.occupancy.summary?variant=review'
     const encodedBack = encodeBackTarget(reportBackTarget)
@@ -347,5 +411,76 @@ describe('NgbDocumentFlowPage', () => {
     expect(top(earlyNode)).toBeLessThan(top(lateNode))
     expect(document.querySelectorAll('button[title="Receipt RCPT-001"]').length).toBe(1)
     expect(document.querySelectorAll('button[title="Credit Note CN-001"]').length).toBe(1)
+  })
+
+  it('filters malformed edges and safely renders invalid dates, amounts, titles, and navigation targets', async () => {
+    await page.viewport(1280, 900)
+
+    mocks.editorConfig.loadDocumentGraph.mockResolvedValueOnce({
+      nodes: [
+        {
+          nodeId: 'root',
+          kind: 2,
+          typeCode: 'pm.invoice',
+          entityId: 'doc-1',
+          title: 'Boundary Root',
+          subtitle: 'not-a-date',
+          documentStatus: 1,
+          amount: Number.NaN,
+        },
+        {
+          nodeId: 'missing-type',
+          kind: 2,
+          typeCode: '',
+          entityId: 'doc-2',
+          title: '',
+          subtitle: 'not-a-date',
+          documentStatus: 1,
+          amount: null,
+        },
+        {
+          nodeId: 'missing-id',
+          kind: 2,
+          typeCode: 'pm.receipt',
+          entityId: '',
+          title: 'Missing id',
+          subtitle: 'not-a-date',
+          documentStatus: 1,
+          amount: undefined,
+        },
+        {
+          nodeId: 'empty-date',
+          kind: 2,
+          typeCode: '',
+          entityId: 'doc-4',
+          title: 'Empty date',
+          subtitle: null,
+          documentStatus: 1,
+          amount: Number.POSITIVE_INFINITY,
+        },
+      ],
+      edges: [
+        { fromNodeId: 'root', toNodeId: 'missing-type', relationshipType: 'related_to' },
+        { fromNodeId: 'root', toNodeId: 'missing-id', relationshipType: 'created_from' },
+        { fromNodeId: 'root', toNodeId: 'empty-date', relationshipType: 'based_on' },
+        { fromNodeId: 'root', toNodeId: 'root', relationshipType: 'created_from' },
+        { fromNodeId: 'root', toNodeId: 'ghost', relationshipType: 'created_from' },
+        { fromNodeId: 'ghost', toNodeId: 'missing-type', relationshipType: 'created_from' },
+        { fromNodeId: 'root', toNodeId: 'missing-type', relationshipType: 'unsupported' },
+        { fromNodeId: 'root', toNodeId: 'missing-type', relationshipType: null },
+      ],
+    })
+
+    const view = await render(NgbDocumentFlowPage)
+    await expect.element(view.getByRole('heading', { name: 'Boundary Root' })).toBeVisible()
+    await expect.element(view.getByTitle('doc-2')).toBeVisible()
+    await expect.element(view.getByTitle('Missing id')).toBeVisible()
+    await expect.element(view.getByTitle('Empty date')).toBeVisible()
+    expect(view.getByTitle('Boundary Root').element().textContent).not.toMatch(/NaN|Infinity/)
+
+    const callsBeforeInvalidTargets = mocks.router.push.mock.calls.length
+    await view.getByTitle('doc-2').click()
+    await view.getByTitle('Missing id').click()
+    expect(mocks.router.push).toHaveBeenCalledTimes(callsBeforeInvalidTargets)
   })
 })

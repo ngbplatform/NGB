@@ -56,3 +56,33 @@ test('keeps header actions aligned with the title on wide viewports', async () =
 
   expect(top(action)).toBeLessThan(bottom(title))
 })
+
+test('renders compact headers without back or secondary regions and default headers with breadcrumbs', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(NgbPageHeader, {
+    props: {
+      title: 'Invoice',
+      breadcrumbs: ['Sales', 'Invoices'],
+      variant: 'compact',
+    },
+    slots: {
+      secondary: () => h('span', 'Should stay hidden'),
+    },
+  })
+
+  expect(document.body.textContent?.includes('Sales')).toBe(false)
+  expect(document.body.textContent?.includes('Should stay hidden')).toBe(false)
+  expect(document.querySelector('button[aria-label="Back"]')).toBeNull()
+  expect(view.getByText('Invoice', { exact: true }).element().className).toContain('text-base')
+
+  const breadcrumbView = await render(NgbPageHeader, {
+    props: {
+      title: 'Invoice details',
+      breadcrumbs: ['Sales', 'Invoices'],
+      variant: 'default',
+    },
+  })
+  await expect.element(breadcrumbView.getByText('Sales', { exact: true })).toBeVisible()
+  await expect.element(breadcrumbView.getByText('Invoices', { exact: true })).toBeVisible()
+})

@@ -8,7 +8,7 @@ export function formatDateOnlyValue(value: string): string {
 
   const [year, month, day] = value.split('-').map((part) => Number(part))
   const date = new Date(year, month - 1, day, 12, 0, 0)
-  if (Number.isNaN(date.getTime())) return value
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return value
   return date.toLocaleDateString()
 }
 

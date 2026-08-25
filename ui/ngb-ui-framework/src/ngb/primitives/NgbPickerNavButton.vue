@@ -2,6 +2,7 @@
   <button
     type="button"
     class="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-ngb-muted/10"
+    :aria-label="direction === 'prev' ? 'Previous year' : 'Next year'"
     @click="emit('click')"
   >
     <svg

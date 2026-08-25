@@ -513,4 +513,189 @@ describe('NgbDocumentEffectsPage', () => {
     expect(document.body.textContent).not.toContain('1,250.00')
     expect(document.querySelector('[data-testid="register-row-entry-1:debit"]')).toBeNull()
   })
+
+  it('shows the missing-route error and keeps refresh and back actions safe without document identity', async () => {
+    Reflect.deleteProperty(mocks.route.params, 'documentType')
+    Reflect.deleteProperty(mocks.route.params, 'id')
+    mocks.route.fullPath = '/effects'
+
+    const view = await render(NgbDocumentEffectsPage)
+
+    await expect.element(view.getByText('Document type or id is missing.')).toBeVisible()
+    await expect.element(view.getByText('Document effects')).toBeVisible()
+    expect(mocks.editorConfig.loadDocumentEffects).not.toHaveBeenCalled()
+    expect((view.getByRole('button', { name: 'Open document' }).element() as HTMLButtonElement).disabled).toBe(true)
+    expect(document.querySelector('button[title="Share link"]')).toBeNull()
+
+    await view.getByRole('button', { name: 'Refresh' }).click()
+    await view.getByRole('button', { name: 'Back' }).click()
+    expect(mocks.router.back.mock.calls.length + mocks.router.replace.mock.calls.length).toBeGreaterThan(0)
+  })
+
+  it('formats boundary accounting, resource, dimension, field, and register values', async () => {
+    await page.viewport(1280, 1100)
+
+    const dimensionId = '11111111-1111-1111-1111-111111111111'
+    mocks.editorConfig.loadDocumentById.mockResolvedValueOnce({
+      id: 'doc-1',
+      display: '   ',
+      status: 1,
+      payload: { fields: {}, parts: null },
+    })
+    mocks.effectsBehavior = {
+      resolveAccountLabel: ({ accountId }: { accountId?: string | null }) => accountId === 'custom-account' ? 'Custom Account' : undefined,
+      resolveDimensionDisplay: ({ item }: { item?: { dimensionId?: string } | null }) => item?.dimensionId === 'custom' ? 'Custom Dimension' : undefined,
+      resolveFieldValue: ({ fieldKey }: { fieldKey: string }) => fieldKey === 'resolved_value' ? 'Resolved field' : null,
+    }
+    mocks.editorConfig.loadDocumentEffects.mockResolvedValueOnce({
+      accountingEntries: [{
+        entryId: null,
+        occurredAtUtc: null,
+        debitAccount: null,
+        debitAccountId: '',
+        creditAccount: null,
+        creditAccountId: 'custom-account',
+        amount: null,
+        debitDimensionSetId: '',
+        creditDimensionSetId: null,
+        debitDimensions: [
+          { dimensionId: 'fallback', valueId: dimensionId, display: '' },
+          null,
+        ],
+        creditDimensions: [{ dimensionId: 'custom', valueId: 'custom-value', display: '' }],
+      }],
+      operationalRegisterMovements: [
+        {
+          movementId: null,
+          occurredAtUtc: null,
+          registerName: ' ',
+          registerCode: 'pm.rent_roll',
+          dimensions: null,
+          resources: [],
+        },
+        {
+          movementId: 'move-record',
+          occurredAtUtc: '2026-04-09T08:00:00Z',
+          registerName: null,
+          registerCode: 'resource_values',
+          dimensions: [],
+          resources: {
+            blank: null,
+            whitespace: ' ',
+            finite: 12.5,
+            infinite: Number.POSITIVE_INFINITY,
+            active: true,
+            inactive: false,
+            list: [1, null, 'value'],
+            nested: { child_value: 2 },
+            emptyObject: {},
+            symbolValue: Symbol('resource'),
+          },
+        },
+        {
+          movementId: 'move-empty-record',
+          occurredAtUtc: '2026-04-09T08:00:00Z',
+          registerName: '',
+          registerCode: 'empty_resources',
+          dimensions: [],
+          resources: {},
+        },
+        {
+          movementId: 'move-malformed-array',
+          occurredAtUtc: '2026-04-09T08:00:00Z',
+          registerName: '',
+          registerCode: 'malformed_resources',
+          dimensions: [],
+          resources: [null, { code: '', value: null }],
+        },
+      ],
+      referenceRegisterWrites: [
+        {
+          recordId: 'ref-fields',
+          recordedAtUtc: '2026-04-09T09:00:00Z',
+          registerName: '',
+          registerCode: 'field_values',
+          isTombstone: false,
+          dimensions: [],
+          fields: {
+            source_document_id: null,
+            resolved_value: 42,
+            direct_key: undefined,
+          },
+        },
+        {
+          recordId: 'ref-empty-fields',
+          recordedAtUtc: '2026-04-09T09:00:00Z',
+          registerName: null,
+          registerCode: 'empty_fields',
+          isTombstone: true,
+          dimensions: [],
+          fields: {},
+        },
+      ],
+    })
+
+    const view = await render(NgbDocumentEffectsPage)
+
+    await expect.element(view.getByText('Customer Invoice')).toBeVisible()
+    expect(view.getByTestId('register-row-:credit').element().textContent ?? '').toContain('Custom Account')
+    expect(view.getByTestId('register-row-:debit').element().textContent ?? '').toContain(shortGuid(dimensionId))
+
+    await view.getByRole('button', { name: 'Operational Registers (4)' }).click()
+    await expect.element(view.getByTestId('register-row-move-record')).toBeVisible()
+    const resourceText = view.getByTestId('register-row-move-record').element().textContent ?? ''
+    expect(resourceText).toContain('Resource Values')
+    expect(resourceText).toContain('Yes')
+    expect(resourceText).toContain('No')
+    expect(resourceText).toContain('Symbol(resource)')
+
+    await view.getByRole('button', { name: 'Reference Registers (2)' }).click()
+    expect(view.getByTestId('register-row-ref-fields').element().textContent ?? '').toContain('Resolved Value: Resolved field')
+    expect(view.getByTestId('register-row-ref-empty-fields').element().textContent ?? '').toContain('—')
+  })
+
+  it('shows empty operational and reference states and skips COA prefetch when no account ids exist', async () => {
+    mocks.editorConfig.lookupStore = {
+      ensureCoaLabels: vi.fn(),
+      labelForCoa: vi.fn(),
+    }
+    mocks.editorConfig.loadDocumentEffects.mockResolvedValueOnce({
+      accountingEntries: [],
+      operationalRegisterMovements: [],
+      referenceRegisterWrites: [],
+    })
+
+    const view = await render(NgbDocumentEffectsPage)
+    await view.getByRole('button', { name: 'Operational Registers (0)' }).click()
+    await expect.element(view.getByText('No operational register movements were returned for this document.')).toBeVisible()
+    await view.getByRole('button', { name: 'Reference Registers (0)' }).click()
+    await expect.element(view.getByText('No reference register writes were returned for this document.')).toBeVisible()
+    expect(mocks.editorConfig.lookupStore.ensureCoaLabels).not.toHaveBeenCalled()
+  })
+
+  it('ignores a stale effects failure after the next document has loaded', async () => {
+    const first = createDeferred<{
+      accountingEntries: unknown[]
+      operationalRegisterMovements: unknown[]
+      referenceRegisterWrites: unknown[]
+    }>()
+    mocks.editorConfig.loadDocumentEffects
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce({
+        accountingEntries: [],
+        operationalRegisterMovements: [],
+        referenceRegisterWrites: [],
+      })
+
+    const view = await render(NgbDocumentEffectsPage)
+    mocks.route.params.id = 'doc-2'
+    mocks.route.fullPath = '/documents/pm.invoice/doc-2/effects'
+    await flushUi()
+    await expect.element(view.getByText('Invoice INV-002')).toBeVisible()
+
+    first.reject(new Error('stale effects failure'))
+    await flushUi()
+    expect(document.body.textContent).not.toContain('stale effects failure')
+    await expect.element(view.getByText('Invoice INV-002')).toBeVisible()
+  })
 })

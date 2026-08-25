@@ -44,6 +44,7 @@ describe('agency billing static command palette items', () => {
     ['ab.team_utilization', 'users'],
     ['ab.project_profitability', 'bar-chart'],
     ['unknown.report', 'bar-chart'],
+    [null, 'bar-chart'],
   ])('resolves report icon for %s', (reportCode, expectedIcon) => {
     expect(resolveAgencyBillingReportPaletteIcon({ reportCode })).toBe(expectedIcon)
   })

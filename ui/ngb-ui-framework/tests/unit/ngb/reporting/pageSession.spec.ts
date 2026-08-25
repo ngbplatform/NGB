@@ -88,11 +88,37 @@ describe('reporting page session helpers', () => {
     expect(storageState.session.size).toBe(1)
   })
 
+  it('normalizes nullish keys and malformed persisted cursor collections', () => {
+    storageState.session.set('ngb.report.page.execution:missing-cursors', JSON.stringify({
+      response: buildResponse(),
+    }))
+    storageState.session.set('ngb.report.page.execution:null-cursors', JSON.stringify({
+      response: buildResponse(),
+      consumedCursors: [null, ' cursor-1 ', ''],
+    }))
+
+    expect(loadReportPageExecutionSnapshot('missing-cursors')).toEqual({
+      response: buildResponse(),
+      consumedCursors: [],
+    })
+    expect(loadReportPageExecutionSnapshot('null-cursors')).toEqual({
+      response: buildResponse(),
+      consumedCursors: ['cursor-1'],
+    })
+    expect(loadReportPageExecutionSnapshot(null)).toBeNull()
+    saveReportPageExecutionSnapshot(undefined, buildResponse(), [])
+    clearReportPageExecutionSnapshot(null)
+    expect(storageState.session.size).toBe(2)
+  })
+
   it('stores, normalizes, and clears scroll position', () => {
     saveReportPageScrollTop('report:ctx', 128.8)
     expect(loadReportPageScrollTop('report:ctx')).toBe(128)
 
     saveReportPageScrollTop('report:ctx', 0)
+    expect(loadReportPageScrollTop('report:ctx')).toBe(0)
+
+    saveReportPageScrollTop('report:ctx', Number.POSITIVE_INFINITY)
     expect(loadReportPageScrollTop('report:ctx')).toBe(0)
 
     saveReportPageScrollTop('report:ctx', 75)
@@ -102,5 +128,16 @@ describe('reporting page session helpers', () => {
     saveReportPageExecutionSnapshot('report:ctx', buildResponse(), ['cursor-1'])
     clearReportPageExecutionSnapshot('report:ctx')
     expect(loadReportPageExecutionSnapshot('report:ctx')).toBeNull()
+  })
+
+  it('ignores blank scroll keys and invalid persisted positions', () => {
+    saveReportPageScrollTop(null, 42)
+    expect(loadReportPageScrollTop(undefined)).toBe(0)
+    clearReportPageScrollTop('  ')
+
+    storageState.session.set('ngb.report.page.scroll:invalid', 'not-a-number')
+    storageState.session.set('ngb.report.page.scroll:negative', '-12')
+    expect(loadReportPageScrollTop('invalid')).toBe(0)
+    expect(loadReportPageScrollTop('negative')).toBe(0)
   })
 })

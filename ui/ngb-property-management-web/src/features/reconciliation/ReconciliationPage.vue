@@ -68,12 +68,12 @@ const statusFilter = computed<ReconciliationStatusFilter>({
 const hasInvalidRange = computed(() => fromMonth.value > toMonth.value)
 
 function fmtMoney(v: number): string {
-  const n = Math.round((v ?? 0) * 100) / 100
+  const n = Math.round(v * 100) / 100
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function absMoney(v: number): number {
-  return Math.abs(Math.round((v ?? 0) * 100) / 100)
+  return Math.abs(Math.round(v * 100) / 100)
 }
 
 function rowKindTone(row: ReconciliationRow): 'success' | 'warn' | 'danger' | 'neutral' {
@@ -224,8 +224,7 @@ function canOpenRow(row: ReconciliationRow): boolean {
 }
 
 async function openRow(row: ReconciliationRow) {
-  if (!row.openTarget) return
-  await router.push(row.openTarget)
+  await router.push(row.openTarget!)
 }
 
 async function load() {

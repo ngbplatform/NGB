@@ -94,3 +94,13 @@ test('shows the loading spinner state when requested', async () => {
   expect(loadingButton.disabled).toBe(true)
   expect(loadingButton.querySelector('.ngb-spinner')).not.toBeNull()
 })
+
+test('falls back to safe styling for unsupported runtime variant and size values', async () => {
+  const view = await render(ButtonHarness, {
+    props: { variant: 'unsupported', size: 'unsupported' },
+  })
+  const button = view.getByRole('button', { name: 'Save changes' }).element() as HTMLButtonElement
+
+  expect(button.className).toContain('h-9')
+  expect(button.className).toContain('bg-ngb-card')
+})

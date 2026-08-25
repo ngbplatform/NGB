@@ -470,19 +470,19 @@ async function renderReportPage(initialUrl = '/reports/pm.occupancy.summary') {
       {
         path: '/catalogs/:catalogType/:id',
         component: {
-          template: '<div data-testid="catalog-target-page">Catalog target</div>',
+          render: () => h('div', { 'data-testid': 'catalog-target-page' }, 'Catalog target'),
         },
       },
       {
         path: '/admin/chart-of-accounts',
         component: {
-          template: '<div data-testid="coa-target-page">Chart of accounts target</div>',
+          render: () => h('div', { 'data-testid': 'coa-target-page' }, 'Chart of accounts target'),
         },
       },
       {
         path: '/documents/:documentType/:id',
         component: {
-          template: '<div data-testid="document-target-page">Document target</div>',
+          render: () => h('div', { 'data-testid': 'document-target-page' }, 'Document target'),
         },
       },
     ],
@@ -623,6 +623,10 @@ test('wires inline filters, runs the report, exports xlsx, and opens the selecte
   ])
 
   const lookupButtons = document.querySelectorAll('[data-testid="stub-lookup"] button')
+  ;(lookupButtons[0] as HTMLButtonElement).click()
+  await expect.element(view.getByText('lookup-value:Riverfront Tower')).toBeVisible()
+  lookupAction('clear').click()
+  await expect.element(view.getByText('lookup-value:none')).toBeVisible()
   ;(lookupButtons[0] as HTMLButtonElement).click()
   await expect.element(view.getByText('lookup-value:Riverfront Tower')).toBeVisible()
 
@@ -1075,13 +1079,13 @@ test('creates a downloadable blob url, clicks the transient anchor, and restores
 
     resolveExport({
       blob: new Blob(['xlsx-bytes']),
-      fileName: 'occupancy-summary.xlsx',
+      fileName: '',
     })
     await flushUi()
 
     expect(createObjectUrlSpy).toHaveBeenCalledTimes(1)
     expect(anchor.href).toBe('blob:occupancy-export')
-    expect(anchor.download).toBe('occupancy-summary.xlsx')
+    expect(anchor.download).toBe('pm-occupancy-summary.xlsx')
     expect(clickSpy).toHaveBeenCalledTimes(1)
     expect(removeSpy).toHaveBeenCalledTimes(1)
     expect(revokeObjectUrlSpy).toHaveBeenCalledWith('blob:occupancy-export')
@@ -1649,4 +1653,594 @@ test('publishes load-selected command palette action when selected variant diffe
   expect(router.currentRoute.value.query.variant).toBe('audit-view')
   await expect.element(view.getByText('lookup-value:North Square')).toBeVisible()
   await expect.element(view.getByText('variant:audit-view')).toBeVisible()
+})
+
+test.each([
+  ['from_utc', 'to_utc'],
+  ['frominclusive', 'toinclusive'],
+  ['invoice_from', 'invoice_to'],
+  ['from_date', 'to_date'],
+])('renders and updates the inline date range for %s and %s metadata', async (fromCode, toCode) => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = []
+  reportPageMocks.state.definition = clone({
+    ...baseDefinition,
+    parameters: [
+      {
+        code: fromCode,
+        label: 'Period from',
+        description: fromCode === 'from_utc' ? 'Inclusive start' : null,
+        dataType: 'Date Only',
+        isRequired: true,
+        defaultValue: '2026-01-01',
+      },
+      {
+        code: toCode,
+        label: 'Period to',
+        description: toCode === 'to_utc' ? 'Inclusive end' : ' ',
+        dataType: 'Date Only',
+        isRequired: true,
+        defaultValue: '2026-01-31',
+      },
+    ],
+  })
+
+  const { view } = await renderReportPage()
+  await expect.element(view.getByTestId('stub-date-range')).toBeVisible()
+
+  const inputs = document.querySelectorAll('[data-testid="stub-date-range"] input')
+  const fromInput = inputs[0] as HTMLInputElement
+  const toInput = inputs[1] as HTMLInputElement
+  fromInput.value = '2026-02-01'
+  fromInput.dispatchEvent(new Event('input', { bubbles: true }))
+  toInput.value = '2026-02-28'
+  toInput.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+
+  expect(fromInput.value).toBe('2026-02-01')
+  expect(toInput.value).toBe('2026-02-28')
+
+  await view.getByRole('button', { name: 'Clear range start' }).click()
+  await view.getByRole('button', { name: 'Clear range end' }).click()
+  await flushUi()
+  expect(fromInput.value).toBe('')
+  expect(toInput.value).toBe('')
+})
+
+test('supports scalar required filters, active badges, private variants, and presentation fallbacks', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.definition = clone({
+    ...baseDefinition,
+    description: null,
+    presentation: null,
+    parameters: [
+      {
+        code: 'from_date',
+        label: 'From',
+        dataType: 'Date Only',
+        isRequired: true,
+        defaultValue: '2026-03-01',
+      },
+      {
+        code: 'to_date',
+        label: 'To',
+        dataType: 'Date Only',
+        isRequired: true,
+        defaultValue: '2026-03-31',
+      },
+      {
+        code: 'note',
+        label: 'Review note',
+        dataType: 'String',
+        isRequired: false,
+        defaultValue: 'quarter close',
+      },
+      {
+        code: 'empty_note',
+        label: 'Empty note',
+        dataType: 'String',
+        isRequired: false,
+      },
+    ],
+    filters: [
+      {
+        fieldCode: 'tenant_code',
+        label: 'Tenant code',
+        dataType: 'String',
+        isRequired: true,
+      },
+      {
+        fieldCode: 'status',
+        label: 'Status',
+        dataType: 'String',
+        options: [
+          { value: 'open', label: 'Open' },
+        ],
+      },
+      {
+        fieldCode: 'property',
+        label: 'Property',
+        dataType: 'Guid',
+        lookup: {
+          kind: 'catalog',
+          catalogType: 'pm.property',
+        },
+      },
+    ],
+  })
+  reportPageMocks.state.variants = [{
+    variantCode: 'private-review',
+    reportCode: 'pm.occupancy.summary',
+    name: 'Private Review',
+    filters: {
+      tenant_code: { value: 'T-001' },
+      status: { value: 'open' },
+      property: { value: '11111111-1111-1111-1111-111111111111' },
+    },
+    parameters: {
+      from_date: '2026-03-01',
+      to_date: '2026-03-31',
+      note: 'quarter close',
+      empty_note: '',
+    },
+    layout: null,
+    isDefault: true,
+    isShared: false,
+  }]
+
+  const { view } = await renderReportPage()
+
+  await expect.element(view.getByText('Composable reporting shell')).toBeVisible()
+  await expect.element(view.getByText('Review note: quarter close')).toBeVisible()
+  await expect.element(view.getByText('Status: Open')).toBeVisible()
+  await expect.element(view.getByText('Property: Riverfront Tower')).toBeVisible()
+  await expect.element(view.getByText('row-noun:row')).toBeVisible()
+
+  const scalarInput = document.querySelector('input[placeholder="Tenant code"]')
+  if (!(scalarInput instanceof HTMLInputElement)) throw new Error('Scalar required filter input not found.')
+  scalarInput.value = 'T-002'
+  scalarInput.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+
+  clickHeaderButtonByTitle('Run')
+  await flushUi()
+  expect(reportPageMocks.state.executeRequests.at(-1)).toMatchObject({
+    filters: {
+      tenant_code: { value: 'T-002' },
+    },
+    limit: 500,
+  })
+
+  clickHeaderButtonByTitle('Composer')
+  await expect.element(view.getByText('Current draft uses "Private Review" (Private · Default).')).toBeVisible()
+  const variantSelect = view.getByTestId('composer-variant-select').element() as HTMLSelectElement
+  variantSelect.value = ''
+  variantSelect.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await expect.element(view.getByText('Current draft uses "Private Review" (Private · Default). Definition default is selected but not loaded.')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Composer close' }).click()
+  expect(document.querySelector('[data-testid="stub-drawer"]')).toBeNull()
+})
+
+test('does not invent a date control when several date parameters do not form a known range', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = []
+  reportPageMocks.state.definition = clone({
+    ...baseDefinition,
+    parameters: [
+      { code: 'start_date', label: 'Start', dataType: 'Date Only', isRequired: false },
+      { code: 'end_date', label: 'End', dataType: 'Date Only', isRequired: false },
+    ],
+  })
+
+  await renderReportPage()
+  expect(document.querySelector('[data-testid="stub-date-range"]')).toBeNull()
+  expect(document.querySelector('[data-testid^="stub-date-picker"]')).toBeNull()
+})
+
+test('wires sheet, drawer, composer, and dialog boundary events without bypassing the page UI', async () => {
+  await page.viewport(1280, 900)
+  const { view } = await renderReportPage()
+
+  await view.getByRole('button', { name: 'Report sheet scroll' }).click()
+  expect(Object.keys(sessionStorage).some((key) =>
+    key.startsWith('ngb.report.page.scroll:') && sessionStorage.getItem(key) === '120',
+  )).toBe(true)
+
+  clickHeaderButtonByTitle('Composer')
+  await expect.element(view.getByTestId('report-composer-panel')).toBeVisible()
+  await view.getByRole('button', { name: 'Composer keep draft' }).click()
+  await view.getByRole('button', { name: 'Composer query missing filter' }).click()
+  await view.getByRole('button', { name: 'Composer run' }).click()
+  await flushUi()
+  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(1)
+  expect(document.querySelector('[data-testid="stub-drawer"]')).toBeNull()
+
+  clickHeaderButtonByTitle('Composer')
+  await view.getByRole('button', { name: 'Drawer close' }).click()
+  await flushUi()
+  expect(document.querySelector('[data-testid="stub-drawer"]')).toBeNull()
+
+  clickHeaderButtonByTitle('Composer')
+  await flushUi()
+  const variantSelect = view.getByTestId('composer-variant-select').element() as HTMLSelectElement
+  variantSelect.value = ''
+  variantSelect.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Composer edit variant' }).click()
+  await view.getByRole('button', { name: 'Composer load variant' }).click()
+  await view.getByRole('button', { name: 'Composer delete variant' }).click()
+  expect(document.querySelector('[data-testid="stub-dialog"]')).toBeNull()
+
+  await view.getByRole('button', { name: 'Composer create variant' }).click()
+  await view.getByRole('button', { name: 'Cancel' }).click()
+  expect(document.querySelector('[data-testid="stub-dialog"]')).toBeNull()
+
+  variantSelect.value = 'audit-view'
+  variantSelect.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Composer delete variant' }).click()
+  await view.getByRole('button', { name: 'Cancel' }).click()
+  expect(document.querySelector('[data-testid="stub-dialog"]')).toBeNull()
+})
+
+test('reports append failures, blocks concurrent and duplicate cursors, and succeeds on retry', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = [{ ...clone(baseVariants[1]), isDefault: true }]
+  const pendingAppend = createDeferred<ReportExecutionResponseDto>()
+  let appendAttempt = 0
+  reportPageMocks.executeReport.mockImplementation(async (_reportCode: string, request: ReportExecutionRequestDto) => {
+    reportPageMocks.state.executeRequests.push(clone(request as Record<string, unknown>))
+    if (!request.cursor) return buildResponse({ rows: ['North Square'], total: 3, hasMore: true, nextCursor: 'cursor-2' })
+    appendAttempt += 1
+    if (appendAttempt === 1) return await pendingAppend.promise
+    return buildResponse({ rows: ['Harbor Point'], total: 3, hasMore: true, nextCursor: 'cursor-2' })
+  })
+
+  const { view } = await renderReportPage()
+  const loadMore = view.getByRole('button', { name: 'Load more' })
+  const loadMoreButton = loadMore.element() as HTMLButtonElement
+  loadMoreButton.click()
+  loadMoreButton.click()
+  await flushUi()
+  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(2)
+
+  pendingAppend.reject(new Error('Append failed hard'))
+  await flushUi()
+  await expect.element(view.getByText('Append failed hard')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Load more' }).click()
+  await flushUi()
+  await expect.element(view.getByText('rows:2')).toBeVisible()
+  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(3)
+
+  await view.getByRole('button', { name: 'Load more' }).click()
+  await flushUi()
+  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(3)
+})
+
+test('ignores a stale rejected run after navigation starts a new report lifecycle', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = []
+  const staleRun = createDeferred<ReportExecutionResponseDto>()
+  reportPageMocks.executeReport.mockImplementation(async () => await staleRun.promise)
+  reportPageMocks.getReportDefinition.mockImplementation(async (code: string) => ({
+    ...clone(baseDefinition),
+    reportCode: code,
+    name: code === 'pm.portfolio.home' ? 'Portfolio Home' : 'Occupancy Summary',
+  }))
+
+  const { router, view } = await renderReportPage()
+  lookupInput().value = 'north'
+  lookupInput().dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  lookupAction('select-first').click()
+  const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement
+  dateInput.value = '2026-06-30'
+  dateInput.dispatchEvent(new Event('input', { bubbles: true }))
+  clickHeaderButtonByTitle('Run')
+  await flushUi()
+
+  await router.push('/reports/pm.portfolio.home')
+  await flushUi()
+  staleRun.reject(new Error('Stale run rejection'))
+  await flushUi()
+
+  await expect.element(view.getByText('Portfolio Home')).toBeVisible()
+  expect(document.body.textContent ?? '').not.toContain('Stale run rejection')
+})
+
+test('ignores a stale rejected append after a fresh run supersedes it', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = [{ ...clone(baseVariants[1]), isDefault: true }]
+  const staleAppend = createDeferred<ReportExecutionResponseDto>()
+  reportPageMocks.executeReport.mockImplementation(async (_reportCode: string, request: ReportExecutionRequestDto) => {
+    if (request.cursor) return await staleAppend.promise
+    return buildResponse({ rows: ['North Square'], total: 2, hasMore: true, nextCursor: 'cursor-2' })
+  })
+
+  const { view } = await renderReportPage()
+  await view.getByRole('button', { name: 'Load more' }).click()
+  clickHeaderButtonByTitle('Run')
+  await flushUi()
+  staleAppend.reject(new Error('Stale append rejection'))
+  await flushUi()
+
+  expect(document.body.textContent ?? '').not.toContain('Stale append rejection')
+  await expect.element(view.getByText('rows:1')).toBeVisible()
+})
+
+test('loads an incomplete selected variant without auto-running and clears the previous execution snapshot', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = [
+    ...clone(baseVariants),
+    {
+      variantCode: 'incomplete-view',
+      reportCode: 'pm.occupancy.summary',
+      name: 'Incomplete View',
+      filters: {},
+      parameters: {},
+      layout: null,
+      isDefault: false,
+      isShared: true,
+    },
+  ]
+
+  const { router, view } = await renderReportPage()
+  clickHeaderButtonByTitle('Composer')
+  await flushUi()
+  const select = view.getByTestId('composer-variant-select').element() as HTMLSelectElement
+  select.value = 'incomplete-view'
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Composer load variant' }).click()
+  await flushUi()
+
+  expect(reportPageMocks.executeReport).not.toHaveBeenCalled()
+  expect(router.currentRoute.value.query.variant).toBe('incomplete-view')
+  await expect.element(view.getByText('rows:0')).toBeVisible()
+  await expect.element(view.getByText('variant:incomplete-view')).toBeVisible()
+})
+
+test('shows a load-variant hydration failure and allows retrying the same selection', async () => {
+  await page.viewport(1280, 900)
+  const lookupStore = createLookupStore()
+  lookupStore.ensureCatalogLabels.mockRejectedValueOnce(new Error('Variant lookup hydration failed'))
+  configureNgbReporting({
+    useLookupStore: () => lookupStore,
+    resolveLookupTarget: reportPageMocks.resolveLookupTarget,
+  })
+
+  const { view } = await renderReportPage()
+  clickHeaderButtonByTitle('Composer')
+  await flushUi()
+  const select = view.getByTestId('composer-variant-select').element() as HTMLSelectElement
+  select.value = 'audit-view'
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+
+  await view.getByRole('button', { name: 'Composer load variant' }).click()
+  await flushUi()
+  await expect.element(view.getByText('Variant lookup hydration failed')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Composer load variant' }).click()
+  await flushUi()
+  await expect.element(view.getByText('lookup-value:North Square')).toBeVisible()
+})
+
+test('surfaces reset hydration failures while preserving the current report', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = clone(baseVariants).map((variant) => ({
+    ...variant,
+    isDefault: variant.variantCode === 'audit-view',
+  }))
+  const lookupStore = createLookupStore()
+  lookupStore.ensureCatalogLabels.mockRejectedValueOnce(new Error('Default variant hydration failed'))
+  configureNgbReporting({
+    useLookupStore: () => lookupStore,
+    resolveLookupTarget: reportPageMocks.resolveLookupTarget,
+  })
+
+  const { view } = await renderReportPage('/reports/pm.occupancy.summary?variant=portfolio-view')
+  clickHeaderButtonByTitle('Composer')
+  await view.getByRole('button', { name: 'Composer reset variant' }).click()
+  await flushUi()
+
+  await expect.element(view.getByText('Default variant hydration failed')).toBeVisible()
+  expect(reportPageMocks.executeReport).not.toHaveBeenCalled()
+
+  await view.getByRole('button', { name: 'Composer reset variant' }).click()
+  await flushUi()
+  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(1)
+  await expect.element(view.getByText('variant:audit-view')).toBeVisible()
+})
+
+test('falls back to the still-active variant when a saved selection disappears during refresh', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.saveReportVariant.mockImplementationOnce(async (_reportCode: string, _variantCode: string, variant: ReportVariantDto) => ({
+    ...clone(variant),
+    variantCode: 'missing-after-save',
+  }))
+  reportPageMocks.getReportVariants
+    .mockImplementationOnce(async () => clone(baseVariants))
+    .mockImplementationOnce(async () => [clone(baseVariants[0])])
+
+  const { view } = await renderReportPage()
+  clickHeaderButtonByTitle('Composer')
+  await flushUi()
+  const select = view.getByTestId('composer-variant-select').element() as HTMLSelectElement
+  select.value = 'audit-view'
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Composer edit variant' }).click()
+  await view.getByRole('button', { name: 'Dialog confirm:Save' }).click()
+  await flushUi()
+
+  expect((view.getByTestId('composer-variant-select').element() as HTMLSelectElement).value).toBe('portfolio-view')
+})
+
+test('ignores a stale definition response after navigation loads the next report', async () => {
+  await page.viewport(1280, 900)
+  const staleDefinition = createDeferred<ReportDefinitionDto>()
+  reportPageMocks.getReportDefinition.mockImplementation(async (code: string) => {
+    if (code === 'pm.occupancy.summary') return await staleDefinition.promise
+    return { ...clone(baseDefinition), reportCode: code, name: 'Portfolio Home' }
+  })
+  reportPageMocks.getReportVariants.mockImplementation(async () => [])
+
+  const { router, view } = await renderReportPage()
+  await router.push('/reports/pm.portfolio.home')
+  await flushUi()
+  await expect.element(view.getByText('Portfolio Home')).toBeVisible()
+
+  staleDefinition.resolve(clone(baseDefinition))
+  await flushUi()
+  await expect.element(view.getByText('Portfolio Home')).toBeVisible()
+})
+
+test('ignores a stale definition rejection but reports a current definition failure', async () => {
+  await page.viewport(1280, 900)
+  const staleDefinition = createDeferred<ReportDefinitionDto>()
+  reportPageMocks.getReportDefinition.mockImplementation(async (code: string) => {
+    if (code === 'pm.occupancy.summary') return await staleDefinition.promise
+    throw new Error('Current definition failed')
+  })
+  reportPageMocks.getReportVariants.mockImplementation(async () => [])
+
+  const { router, view } = await renderReportPage()
+  await router.push('/reports/pm.portfolio.home')
+  await flushUi()
+  await expect.element(view.getByText('Current definition failed')).toBeVisible()
+
+  staleDefinition.reject(new Error('Stale definition failed'))
+  await flushUi()
+  await expect.element(view.getByText('Current definition failed')).toBeVisible()
+  expect(document.body.textContent ?? '').not.toContain('Stale definition failed')
+})
+
+test('handles definitions without parameters, filters, variants, or presentation overrides', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.definition = clone({
+    ...baseDefinition,
+    parameters: null,
+    filters: null,
+    presentation: {
+      initialPageSize: 0,
+      rowNoun: ' ',
+      emptyStateMessage: ' ',
+    },
+  })
+  reportPageMocks.state.variants = []
+
+  const { view } = await renderReportPage()
+  await expect.element(view.getByText('row-noun:row')).toBeVisible()
+  expect(document.querySelector('[data-testid="stub-date-range"]')).toBeNull()
+  expect(document.querySelector('[data-testid^="stub-date-picker"]')).toBeNull()
+  expect(reportPageMocks.state.executeRequests.at(-1)).toMatchObject({ limit: 500 })
+
+  const resolver = reportPageMocks.state.commandPaletteResolver
+  if (!resolver) throw new Error('Command palette resolver was not registered.')
+  expect(resolver()?.actions).toEqual([])
+
+  clickHeaderButtonByTitle('Composer')
+  await flushUi()
+  await view.getByRole('button', { name: 'Composer save variant' }).click()
+  expect(reportPageMocks.saveReportVariant).not.toHaveBeenCalled()
+})
+
+test('does not load an unknown requested variant and uses the available default', async () => {
+  await page.viewport(1280, 900)
+  const { view } = await renderReportPage('/reports/pm.occupancy.summary?variant=unknown-view')
+  await expect.element(view.getByText('variant:portfolio-view')).toBeVisible()
+  expect(document.body.textContent ?? '').not.toContain('unknown-view is selected')
+})
+
+test('does not call report APIs for an empty route report code', async () => {
+  await page.viewport(1280, 900)
+  const { view } = await renderReportPage('/reports/%20')
+  await expect.element(view.getByText('Report Composer')).toBeVisible()
+  expect(reportPageMocks.getReportDefinition).not.toHaveBeenCalled()
+  expect(reportPageMocks.getReportVariants).not.toHaveBeenCalled()
+})
+
+test('keeps the report open when lookup target resolution returns no navigation target', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.resolveLookupTarget.mockResolvedValueOnce(null)
+  const { router, view } = await renderReportPage()
+
+  lookupInput().value = 'tower'
+  lookupInput().dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  lookupAction('select-first').click()
+  await flushUi()
+  lookupAction('open').click()
+  await flushUi()
+
+  expect(router.currentRoute.value.params.reportCode).toBe('pm.occupancy.summary')
+  await expect.element(view.getByText('Occupancy Summary')).toBeVisible()
+})
+
+test('keeps edit and delete dialogs safe when their selected variant disappears before confirmation', async () => {
+  await page.viewport(1280, 900)
+  const { view } = await renderReportPage()
+  clickHeaderButtonByTitle('Composer')
+  await flushUi()
+  const select = view.getByTestId('composer-variant-select').element() as HTMLSelectElement
+
+  select.value = 'audit-view'
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Composer edit variant' }).click()
+  select.value = ''
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Dialog confirm:Save' }).click()
+  expect(reportPageMocks.saveReportVariant).not.toHaveBeenCalled()
+  await view.getByRole('button', { name: 'Cancel' }).click()
+
+  select.value = 'audit-view'
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Composer delete variant' }).click()
+  select.value = ''
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Dialog confirm:Delete' }).click()
+  expect(reportPageMocks.deleteReportVariant).not.toHaveBeenCalled()
+})
+
+test('preserves a newly selected variant when a different variant deletion completes', async () => {
+  await page.viewport(1280, 900)
+  const pendingDelete = createDeferred<void>()
+  reportPageMocks.deleteReportVariant.mockImplementationOnce(async (_reportCode: string, variantCode: string) => {
+    await pendingDelete.promise
+    reportPageMocks.state.variants = reportPageMocks.state.variants.filter((entry) => String(entry.variantCode) !== variantCode)
+  })
+
+  const { view } = await renderReportPage()
+  clickHeaderButtonByTitle('Composer')
+  await flushUi()
+  const select = view.getByTestId('composer-variant-select').element() as HTMLSelectElement
+  select.value = 'audit-view'
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Composer delete variant' }).click()
+  await view.getByRole('button', { name: 'Dialog confirm:Delete' }).click()
+
+  select.value = 'portfolio-view'
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  pendingDelete.resolve()
+  await flushUi()
+  expect((view.getByTestId('composer-variant-select').element() as HTMLSelectElement).value).toBe('portfolio-view')
+})
+
+test('does not show end-of-list for an empty restored page even when paging history exists', async () => {
+  await page.viewport(1280, 900)
+  reportPageMocks.state.variants = []
+  saveReportPageExecutionSnapshot(reportPageStateKey(), buildResponse({ rows: [], total: 0, hasMore: false }), ['cursor-used'])
+
+  const { view } = await renderReportPage()
+  await expect.element(view.getByText('rows:0')).toBeVisible()
+  await expect.element(view.getByText('show-end:false')).toBeVisible()
 })

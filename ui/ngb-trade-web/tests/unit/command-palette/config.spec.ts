@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   buildReportPageUrl: vi.fn((reportCode: string) => `/reports/${reportCode}`),
   getReportDefinitions: vi.fn(),
+  groups: [{ title: 'Main' }],
   searchCommandPalette: vi.fn(async () => [{ key: 'remote:1' }]),
 }))
 
@@ -10,6 +11,7 @@ vi.mock('@ngbplatform/ui', () => ({
   buildReportPageUrl: mocks.buildReportPageUrl,
   getReportDefinitions: mocks.getReportDefinitions,
   searchCommandPalette: mocks.searchCommandPalette,
+  useMainMenuStore: () => ({ groups: mocks.groups }),
 }))
 
 vi.mock('../../../src/command-palette/tradeStaticItems', () => ({
@@ -34,6 +36,8 @@ describe('trade command palette config', () => {
     const config = createTradeCommandPaletteConfig(router as never)
 
     expect(config.router).toBe(router)
+    expect(config.getMenuGroups?.()).toBe(mocks.groups)
+    expect(config.buildHeuristicCurrentActions?.('/home')).toEqual([{ key: 'heuristic:/home' }])
     expect(config.recentStorageKey).toBe('ngb:trade:command-palette:recent')
     expect(config.favoriteItems).toEqual([{ key: 'favorite:1' }])
     expect(config.createItems).toEqual([{ key: 'create:1' }])
@@ -54,6 +58,7 @@ describe('trade command palette config', () => {
       { reportCode: 'accounting.posting_log', name: 'Posting Log', group: 'Diagnostics', description: 'Hidden' },
       { reportCode: 'accounting.consistency', name: 'Consistency', group: 'Diagnostics', description: 'Hidden' },
       { reportCode: 'trd.current_item_prices', name: 'Current Item Prices', group: '', description: '' },
+      { reportCode: 'trd.unclassified', name: 'Unclassified', group: null, description: null },
     ])
 
     const config = createTradeCommandPaletteConfig({} as never)
@@ -75,6 +80,12 @@ describe('trade command palette config', () => {
         icon: 'icon:trd.current_item_prices',
         route: '/reports/trd.current_item_prices',
         defaultRank: 699,
+      }),
+      expect.objectContaining({
+        key: 'report:trd.unclassified',
+        subtitle: 'Run this report',
+        keywords: ['trd.unclassified', '', ''],
+        defaultRank: 698,
       }),
     ])
   })

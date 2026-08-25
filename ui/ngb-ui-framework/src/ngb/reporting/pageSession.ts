@@ -36,17 +36,17 @@ export function saveReportPageExecutionSnapshot(
   response: ReportExecutionResponseDto,
   consumedCursors: string[],
 ) {
-  const storageKey = executionStorageKey(routeStateKey ?? null)
+  const storageKey = executionStorageKey(routeStateKey)
   if (!storageKey) return
 
   void writeStorageJson('session', storageKey, {
     response,
-    consumedCursors: Array.from(new Set((consumedCursors ?? []).map((entry) => String(entry ?? '').trim()).filter((entry) => entry.length > 0))),
+    consumedCursors: Array.from(new Set(consumedCursors.map((entry) => entry.trim()).filter((entry) => entry.length > 0))),
   } satisfies ReportPageExecutionSnapshot)
 }
 
 export function loadReportPageExecutionSnapshot(routeStateKey: string | null | undefined): ReportPageExecutionSnapshot | null {
-  const storageKey = executionStorageKey(routeStateKey ?? null)
+  const storageKey = executionStorageKey(routeStateKey)
   if (!storageKey) return null
 
   const snapshot = readStorageJsonOrNull<ReportPageExecutionSnapshot>('session', storageKey)
@@ -59,13 +59,13 @@ export function loadReportPageExecutionSnapshot(routeStateKey: string | null | u
 }
 
 export function clearReportPageExecutionSnapshot(routeStateKey: string | null | undefined) {
-  const storageKey = executionStorageKey(routeStateKey ?? null)
+  const storageKey = executionStorageKey(routeStateKey)
   if (!storageKey) return
   removeStorageItem('session', storageKey)
 }
 
 export function saveReportPageScrollTop(routeStateKey: string | null | undefined, scrollTop: number) {
-  const storageKey = scrollStorageKey(routeStateKey ?? null)
+  const storageKey = scrollStorageKey(routeStateKey)
   if (!storageKey) return
 
   const normalized = Number.isFinite(scrollTop) && scrollTop > 0 ? Math.floor(scrollTop) : 0
@@ -78,7 +78,7 @@ export function saveReportPageScrollTop(routeStateKey: string | null | undefined
 }
 
 export function loadReportPageScrollTop(routeStateKey: string | null | undefined): number {
-  const storageKey = scrollStorageKey(routeStateKey ?? null)
+  const storageKey = scrollStorageKey(routeStateKey)
   if (!storageKey) return 0
 
   const parsed = Number(readStorageString('session', storageKey) ?? '')
@@ -86,7 +86,7 @@ export function loadReportPageScrollTop(routeStateKey: string | null | undefined
 }
 
 export function clearReportPageScrollTop(routeStateKey: string | null | undefined) {
-  const storageKey = scrollStorageKey(routeStateKey ?? null)
+  const storageKey = scrollStorageKey(routeStateKey)
   if (!storageKey) return
   removeStorageItem('session', storageKey)
 }

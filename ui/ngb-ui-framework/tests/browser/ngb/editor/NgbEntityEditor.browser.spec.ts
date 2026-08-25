@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter, RouterView, useRoute, useRouter } fr
 import {
   StubConfirmDialog,
   StubDiscardDialog,
+  StubDocumentActionConfirmationDialog,
   StubDrawer,
   StubEntityAuditSidebar,
   StubEntityEditorHeader,
@@ -30,6 +31,10 @@ vi.mock('../../../../src/ngb/editor/NgbEntityAuditSidebar.vue', () => ({
 
 vi.mock('../../../../src/ngb/editor/NgbEditorDiscardDialog.vue', () => ({
   default: StubDiscardDialog,
+}))
+
+vi.mock('../../../../src/ngb/editor/NgbDocumentActionConfirmationDialog.vue', () => ({
+  default: StubDocumentActionConfirmationDialog,
 }))
 
 vi.mock('../../../../src/ngb/editor/NgbEntityEditorHeader.vue', () => ({
@@ -213,6 +218,45 @@ const EditorDedupedValidationBannerHarness = defineComponent({
   },
 })
 
+const EditorBoundaryHarness = defineComponent({
+  setup() {
+    const loading = ref(true)
+
+    return () => h('div', [
+      h(NgbEntityEditor, {
+        kind: 'document',
+        mode: 'drawer',
+        title: 'Boundary editor',
+        loading: loading.value,
+        saving: false,
+        isNew: true,
+        isMarkedForDeletion: false,
+        displayedError: {
+          summary: null,
+          issues: [],
+        } as never,
+        bannerIssues: [
+          {
+            scope: 'form',
+            path: '_form',
+            label: 'Validation',
+            messages: ['Fallback validation'],
+          },
+        ],
+        form: null,
+        model: {},
+        entityTypeCode: 'pm.invoice',
+      }),
+      h('button', {
+        type: 'button',
+        onClick: () => {
+          loading.value = false
+        },
+      }, 'Finish boundary loading'),
+    ])
+  },
+})
+
 const EditorEventsHarness = defineComponent({
   setup() {
     const events = ref<string[]>([])
@@ -243,6 +287,17 @@ const EditorEventsHarness = defineComponent({
         leaveOpen: true,
         markConfirmOpen: true,
         markConfirmMessage: 'Remove invoice?',
+        unpostConfirmOpen: true,
+        unpostConfirmMessage: 'Reverse existing effects?',
+        documentActionConfirmation: {
+          actionCode: 'approve',
+          title: 'Approve document?',
+          message: 'Approval requires confirmation.',
+          confirmLabel: 'Approve',
+          requireReason: true,
+          danger: false,
+          loading: false,
+        },
         onBack: () => push('back'),
         onClose: () => push('close'),
         onAction: (action: string) => push(`action:${action}`),
@@ -251,6 +306,10 @@ const EditorEventsHarness = defineComponent({
         onConfirmLeave: () => push('confirmLeave'),
         onCancelMarkForDeletion: () => push('cancelMarkForDeletion'),
         onConfirmMarkForDeletion: () => push('confirmMarkForDeletion'),
+        onCancelUnpost: () => push('cancelUnpost'),
+        onConfirmUnpost: () => push('confirmUnpost'),
+        onCancelDocumentAction: () => push('cancelDocumentAction'),
+        onConfirmDocumentAction: (reason: string | null) => push(`confirmDocumentAction:${reason ?? 'none'}`),
       }),
       h('div', { 'data-testid': 'events-log' }, events.value.join('|')),
     ])
@@ -396,6 +455,17 @@ test('dedupes identical summary and form-level validation banner text', async ()
   expect(countOccurrences(pageText, message)).toBe(1)
 })
 
+test('renders loading and missing-form boundaries with null-safe banner normalization', async () => {
+  const view = await render(EditorBoundaryHarness)
+
+  await expect.element(view.getByText('Loading…')).toBeVisible()
+  await expect.element(view.getByText('Fallback validation')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Finish boundary loading' }).click()
+
+  await expect.element(view.getByText('No form metadata available.')).toBeVisible()
+})
+
 test('re-emits header, audit, discard, and mark-for-deletion dialog events', async () => {
   const view = await render(EditorEventsHarness)
   const eventsLog = view.getByTestId('events-log')
@@ -410,10 +480,14 @@ test('re-emits header, audit, discard, and mark-for-deletion dialog events', asy
   await view.getByRole('button', { name: 'Leave confirm' }).click()
   await view.getByRole('button', { name: 'Mark cancel' }).click()
   await view.getByRole('button', { name: 'Mark confirm' }).click()
+  await view.getByRole('button', { name: 'Unpost cancel' }).click()
+  await view.getByRole('button', { name: 'Unpost confirm' }).click()
+  await view.getByRole('button', { name: 'Document action cancel' }).click()
+  await view.getByRole('button', { name: 'Document action confirm' }).click()
 
   await expect.element(eventsLog).toBeVisible()
   expect(eventsLog.element().textContent ?? '').toBe(
-    'back|close|action:save|closeAuditLog|closeAuditLog|closeAuditLog|cancelLeave|confirmLeave|cancelMarkForDeletion|confirmMarkForDeletion',
+    'back|close|action:save|closeAuditLog|closeAuditLog|closeAuditLog|cancelLeave|confirmLeave|cancelMarkForDeletion|confirmMarkForDeletion|cancelUnpost|confirmUnpost|cancelDocumentAction|confirmDocumentAction:Approved reason',
   )
 })
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   NgbCommandPaletteDialog,
@@ -19,7 +19,6 @@ const auth = useAuthStore()
 const access = useAccessStore()
 const menu = useMainMenuStore()
 const palette = useCommandPaletteStore()
-const shellHydrated = ref(false)
 
 useCommandPaletteHotkeys()
 
@@ -28,13 +27,9 @@ watch(
   async (authenticated) => {
     if (!authenticated) {
       access.reset()
-      shellHydrated.value = false
       return
     }
 
-    if (shellHydrated.value) return
-
-    shellHydrated.value = true
     await Promise.all([
       access.load(true),
       menu.load(),
@@ -62,9 +57,8 @@ function groupId(label: string): string {
   return `group:${slug || 'menu'}`
 }
 
-function isExternalRoute(value: string | null | undefined): value is string {
-  const routeValue = String(value ?? '').trim()
-  return /^https?:\/\//i.test(routeValue)
+function isExternalRoute(value: string): boolean {
+  return /^https?:\/\//i.test(value)
 }
 
 function navigateTo(targetRoute: string | null | undefined): void {
@@ -72,7 +66,7 @@ function navigateTo(targetRoute: string | null | undefined): void {
   if (!value) return
 
   if (isExternalRoute(value)) {
-    if (typeof window !== 'undefined') window.location.assign(value)
+    window.open(value, '_self')
     return
   }
 
@@ -168,7 +162,7 @@ const authStateTitle = computed(() => {
 const authStateDetail = computed(() => {
   if (auth.redirecting) return 'You will be sent to the login page in a moment.'
   if (auth.initializing) return 'Checking whether an existing SSO session is already available.'
-  return auth.error ?? 'The UI could not initialize the Keycloak adapter.'
+  return auth.error!
 })
 </script>
 

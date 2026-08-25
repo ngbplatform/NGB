@@ -187,6 +187,143 @@ describe('keycloak auth adapter', () => {
     expect(module.getAuthSnapshot()).toEqual(snapshot)
   })
 
+  it.each([
+    ['off', false],
+    ['unexpected', false],
+    ['', false],
+  ])('treats silent check-sso value %j as %s', async (configuredValue, expected) => {
+    const instance = createMockKeycloakInstance()
+    const { module } = await importKeycloakModule({
+      env: {
+        VITE_KEYCLOAK_ON_LOAD: 'check-sso',
+        VITE_KEYCLOAK_SILENT_CHECK_SSO_ENABLED: configuredValue,
+      },
+      instance,
+    })
+
+    await module.initializeAuth()
+
+    expect(instance.init).toHaveBeenCalledWith(expect.objectContaining({ onLoad: 'check-sso' }))
+    expect(instance.init.mock.calls[0]?.[0]).not.toHaveProperty('silentCheckSsoRedirectUri')
+    expect(Boolean(instance.init.mock.calls[0]?.[0]?.silentCheckSsoRedirectUri)).toBe(expected)
+  })
+
+  it('uses login-required defaults, registers callbacks once, and supports unsubscription', async () => {
+    const instance = createMockKeycloakInstance()
+    instance.init.mockResolvedValue(true)
+    const { module } = await importKeycloakModule({
+      env: {
+        BASE_URL: '/portal',
+        VITE_KEYCLOAK_ON_LOAD: 'unsupported',
+      },
+      instance,
+    })
+    const listener = vi.fn()
+    const unsubscribe = module.subscribeAuth(listener)
+
+    await module.initializeAuth()
+    await module.initializeAuth()
+    instance.onReady?.()
+    instance.onAuthSuccess?.()
+    instance.onAuthLogout?.()
+    instance.onAuthRefreshSuccess?.()
+    instance.onAuthRefreshError?.()
+    instance.onAuthError?.()
+    unsubscribe()
+    instance.onAuthSuccess?.()
+
+    expect(instance.init).toHaveBeenCalledOnce()
+    expect(instance.init).toHaveBeenCalledWith({
+      onLoad: 'login-required',
+      pkceMethod: 'S256',
+      responseMode: 'fragment',
+      checkLoginIframe: false,
+    })
+    expect(listener).toHaveBeenCalledTimes(8)
+
+    await module.loginWithKeycloak()
+    expect(instance.login).toHaveBeenCalledWith({
+      redirectUri: 'https://app.example/app/home',
+    })
+  })
+
+  it('normalizes incomplete claims and all display-name fallbacks', async () => {
+    const instance = createMockKeycloakInstance({
+      authenticated: true,
+      token: 'access-token',
+      tokenParsed: {
+        sub: 'access-subject',
+        role: [null, 'operator', 'operator'],
+        roles: null,
+        realm_access: null,
+        resource_access: {
+          empty: {},
+          populated: { roles: [null, 'reader', 'reader'] },
+        },
+      },
+      idTokenParsed: {
+        name: 'Explicit Name',
+        groups: ['/', '/teams/other', '/teams/ngb-user'],
+      },
+    })
+    instance.init.mockResolvedValue(true)
+    const { module } = await importKeycloakModule({ instance })
+    await module.initializeAuth()
+
+    expect(module.getAuthSnapshot()).toMatchObject({
+      subject: 'access-subject',
+      displayName: 'Explicit Name',
+      realmRoles: [],
+      resourceRoles: { populated: ['reader'] },
+      roles: ['operator', 'reader', 'ngb-user'],
+    })
+
+    instance.tokenParsed = null
+    instance.idTokenParsed = { preferred_username: 'preferred-user' }
+    expect(module.getAuthSnapshot().displayName).toBe('preferred-user')
+
+    instance.idTokenParsed = { email: 'fallback@example.com' }
+    expect(module.getAuthSnapshot().displayName).toBe('fallback@example.com')
+
+    instance.idTokenParsed = {}
+    expect(module.getAuthSnapshot()).toMatchObject({
+      subject: null,
+      displayName: null,
+      preferredUsername: null,
+      email: null,
+      roles: [],
+    })
+  })
+
+  it('resets a failed initialization so the next request can retry', async () => {
+    const instance = createMockKeycloakInstance()
+    instance.init
+      .mockRejectedValueOnce(new Error('identity offline'))
+      .mockResolvedValueOnce(true)
+    const { module } = await importKeycloakModule({ instance })
+
+    await expect(module.initializeAuth()).rejects.toThrow('identity offline')
+    await expect(module.initializeAuth()).resolves.toMatchObject({ initialized: true })
+    expect(instance.init).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns null when authentication or a refreshed token is absent', async () => {
+    const instance = createMockKeycloakInstance()
+    instance.init.mockResolvedValue(true)
+    const { module } = await importKeycloakModule({ instance })
+
+    await expect(module.getAccessToken()).resolves.toBeNull()
+    expect(instance.updateToken).not.toHaveBeenCalled()
+
+    instance.authenticated = true
+    instance.token = 'temporary-token'
+    instance.updateToken.mockImplementationOnce(async () => {
+      instance.token = null
+      return true
+    })
+    await expect(module.getAccessToken()).resolves.toBeNull()
+  })
+
   it('deduplicates concurrent token refreshes and supports forced refresh requests', async () => {
     let resolveRefresh!: () => void
     const refreshPromise = new Promise<void>((resolve) => {
@@ -294,6 +431,7 @@ describe('keycloak auth adapter', () => {
       instance,
     })
 
+    await module.initializeAuth()
     await module.logoutFromKeycloak()
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -321,6 +459,41 @@ describe('keycloak auth adapter', () => {
     ]))
     expect(instance.logout).toHaveBeenCalledWith({
       redirectUri: 'https://app.example/post-logout',
+    })
+  })
+
+  it('logs out without admin consoles and falls back to the app base url', async () => {
+    const instance = createMockKeycloakInstance()
+    instance.init.mockResolvedValue(true)
+    const { module, fetchMock } = await importKeycloakModule({
+      env: {
+        BASE_URL: '',
+      },
+      instance,
+    })
+
+    await module.logoutFromKeycloak()
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(instance.logout).toHaveBeenCalledWith({
+      redirectUri: 'https://app.example/',
+    })
+  })
+
+  it('preserves an external configured redirect url during logout', async () => {
+    const instance = createMockKeycloakInstance()
+    instance.init.mockResolvedValue(true)
+    const { module } = await importKeycloakModule({
+      env: {
+        VITE_KEYCLOAK_REDIRECT_URL: 'https://public.example/signed-out',
+      },
+      instance,
+    })
+
+    await module.logoutFromKeycloak()
+
+    expect(instance.logout).toHaveBeenCalledWith({
+      redirectUri: 'https://public.example/signed-out',
     })
   })
 })

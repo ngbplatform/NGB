@@ -10,6 +10,8 @@ import {
 describe('document status helpers', () => {
   it('normalizes numeric values and deletion aliases into known framework statuses', () => {
     expect(normalizeDocumentStatusValue(1)).toBe(1)
+    expect(normalizeDocumentStatusValue(2)).toBe(2)
+    expect(normalizeDocumentStatusValue(3)).toBe(3)
     expect(normalizeDocumentStatusValue('2')).toBe(2)
     expect(normalizeDocumentStatusValue('posted')).toBe(2)
     expect(normalizeDocumentStatusValue('marked for deletion')).toBe(3)

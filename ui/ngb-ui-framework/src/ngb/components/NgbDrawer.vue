@@ -112,20 +112,16 @@ function onDocumentFocusIn(event: FocusEvent) {
 }
 
 onMounted(() => {
-  if (typeof document === 'undefined') return;
   document.addEventListener('focusin', onDocumentFocusIn, true);
 });
 
 onBeforeUnmount(() => {
-  if (typeof document === 'undefined') return;
   document.removeEventListener('focusin', onDocumentFocusIn, true);
 });
 
 watch(
   () => props.open,
   (open) => {
-    if (typeof window === 'undefined') return;
-
     if (open) {
       const activeElement = document.activeElement;
       if (activeElement instanceof HTMLElement && activeElement !== document.body) {

@@ -24,7 +24,7 @@ const documentMocks = vi.hoisted(() => ({
     page: {
       items: [{ id: 'doc-1' }],
       total: 1,
-    },
+    } as { items: Array<{ id: string }>; total: number } | null,
     listFilters: [
       {
         key: 'status',
@@ -54,6 +54,10 @@ const documentMocks = vi.hoisted(() => ({
     handleItemsUpdate: vi.fn(),
     handleValueUpdate: vi.fn(),
     undo: vi.fn().mockResolvedValue(undefined),
+    resolveLookupHint: null as null | ((args: {
+      entityTypeCode: string
+      field: { key: string; lookup?: unknown }
+    }) => unknown),
   },
   metadataStore: {
     ensureDocumentType: vi.fn(),
@@ -95,9 +99,11 @@ vi.mock('../../../../src/ngb/metadata/useMetadataRegisterPageData', async () => 
     useMetadataRegisterPageData: (args: {
       entityTypeCode: { value: string }
       reloadKey: { value: string }
+      loadMetadata: (entityTypeCode: string) => Promise<unknown>
       loadPage: (args: { entityTypeCode: string; metadata: unknown }) => Promise<unknown>
     }) => {
       async function runAutoLoad() {
+        await args.loadMetadata(args.entityTypeCode.value)
         await args.loadPage({
           entityTypeCode: args.entityTypeCode.value,
           metadata: documentMocks.registerData.metadata,
@@ -137,7 +143,14 @@ vi.mock('../../../../src/ngb/metadata/useMetadataListFilters', async () => {
   const { computed } = await vi.importActual<typeof import('vue')>('vue')
 
   return {
-    useMetadataListFilters: () => ({
+    useMetadataListFilters: (args: {
+      resolveLookupHint: (args: {
+        entityTypeCode: string
+        field: { key: string; lookup?: unknown }
+      }) => unknown
+    }) => {
+      documentMocks.filterState.resolveLookupHint = args.resolveLookupHint
+      return {
       filterDraft: computed(() => documentMocks.filterState.filterDraft),
       lookupItemsByFilterKey: computed(() => documentMocks.filterState.lookupItemsByFilterKey),
       activeFilterBadges: computed(() => documentMocks.filterState.activeFilterBadges),
@@ -147,7 +160,8 @@ vi.mock('../../../../src/ngb/metadata/useMetadataListFilters', async () => {
       handleItemsUpdate: documentMocks.filterState.handleItemsUpdate,
       handleValueUpdate: documentMocks.filterState.handleValueUpdate,
       undo: documentMocks.filterState.undo,
-    }),
+      }
+    },
   }
 })
 
@@ -328,6 +342,12 @@ async function renderDocumentPageWithProps(
     history: createMemoryHistory(),
     routes: [
       {
+        path: '/documents',
+        component: {
+          template: '<div />',
+        },
+      },
+      {
         path: '/documents/:documentType',
         component: {
           template: '<div />',
@@ -429,6 +449,7 @@ beforeEach(() => {
     displayName: 'Invoices',
     parts: [{ key: 'lines' }],
   }
+  documentMocks.filterState.resolveLookupHint = null
 })
 
 test('navigates to full-page creation when documents prefer full-page mode', async () => {
@@ -571,6 +592,88 @@ test('opens a local drawer, forwards filter events, and closes the filter drawer
 
   await router.push('/documents/pm.credit_note')
   await expect.element(view.getByText('filter-drawer-open:false')).toBeVisible()
+})
+
+test('ignores duplicate local drawer requests and confirms replacing a dirty edit with creation', async () => {
+  await page.viewport(1280, 900)
+  documentMocks.preferFullPage = false
+  documentMocks.registerData.metadata = {
+    displayName: 'Invoices',
+    parts: [],
+  }
+
+  const { view } = await renderDocumentPage()
+
+  await view.getByRole('button', { name: 'Layout create' }).click()
+  await expect.element(view.getByText('editor-id:new')).toBeVisible()
+  await view.getByRole('button', { name: 'Layout create' }).click()
+  await expect.element(view.getByText('editor-id:new')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Layout close drawer' }).click()
+  await view.getByRole('button', { name: 'Row:doc-1' }).click()
+  await expect.element(view.getByText('editor-id:doc-1')).toBeVisible()
+  await view.getByRole('button', { name: 'Row:doc-1' }).click()
+  await expect.element(view.getByText('editor-id:doc-1')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Editor dirty' }).click()
+  await view.getByRole('button', { name: 'Layout create' }).click()
+  await expect.element(view.getByTestId('stub-discard-dialog')).toBeVisible()
+  await view.getByRole('button', { name: 'Discard cancel' }).click()
+  await expect.element(view.getByText('editor-id:doc-1')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Layout create' }).click()
+  await view.getByRole('button', { name: 'Discard confirm' }).click()
+  await expect.element(view.getByText('editor-id:new')).toBeVisible()
+})
+
+test('uses null-safe route defaults, disables creation by policy, and forwards back navigation', async () => {
+  await page.viewport(1280, 900)
+  documentMocks.registerData.page = null
+  ;(documentMocks.registerData.metadata as Record<string, unknown>).capabilities = {
+    canCreate: true,
+  }
+  const resolveLookupHint = vi.fn().mockReturnValue({
+    kind: 'catalog',
+    catalogType: 'crm.counterparty',
+  })
+
+  const { view } = await renderDocumentPageWithProps({
+    backTarget: null,
+    isCreateDisabled: () => true,
+    resolveLookupHint,
+  }, '/documents')
+
+  await expect.element(view.getByText('create-disabled:true')).toBeVisible()
+  expect(documentMocks.filterState.resolveLookupHint?.({
+    entityTypeCode: '',
+    field: { key: 'counterparty_id' },
+  })).toEqual({
+    kind: 'catalog',
+    catalogType: 'crm.counterparty',
+  })
+  expect(resolveLookupHint).toHaveBeenCalledWith({
+    entityTypeCode: '',
+    fieldKey: 'counterparty_id',
+    lookup: undefined,
+  })
+
+  await view.getByRole('button', { name: 'Layout back' }).click()
+  expect(documentMocks.navigateBack).toHaveBeenCalledTimes(1)
+})
+
+test('disables creation when document metadata forbids it and resolves absent lookup hints to null', async () => {
+  await page.viewport(1280, 900)
+  ;(documentMocks.registerData.metadata as Record<string, unknown>).capabilities = {
+    canCreate: false,
+  }
+
+  const { view } = await renderDocumentPage()
+
+  await expect.element(view.getByText('create-disabled:true')).toBeVisible()
+  expect(documentMocks.filterState.resolveLookupHint?.({
+    entityTypeCode: 'pm.invoice',
+    field: { key: 'counterparty_id' },
+  })).toBeNull()
 })
 
 test('confirms discard before closing or switching dirty local document drawers', async () => {

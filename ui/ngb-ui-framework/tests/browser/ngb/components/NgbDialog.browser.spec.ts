@@ -11,6 +11,22 @@ const DialogHarness = defineComponent({
       type: Boolean,
       default: false,
     },
+    danger: {
+      type: Boolean,
+      default: false,
+    },
+    subtitle: {
+      type: String,
+      default: 'Update the saved report name.',
+    },
+    confirmText: {
+      type: String,
+      default: undefined,
+    },
+    cancelText: {
+      type: String,
+      default: undefined,
+    },
   },
   setup(props) {
     const open = ref(true)
@@ -21,7 +37,10 @@ const DialogHarness = defineComponent({
       h(NgbDialog, {
         open: open.value,
         title: 'Rename variant',
-        subtitle: 'Update the saved report name.',
+        subtitle: props.subtitle,
+        danger: props.danger,
+        confirmText: props.confirmText,
+        cancelText: props.cancelText,
         'onUpdate:open': (value: boolean) => {
           open.value = value
         },
@@ -74,4 +93,24 @@ test('allows the footer slot to replace the default actions', async () => {
 
   await view.getByRole('button', { name: 'Custom footer action' }).click()
   await expect.element(view.getByTestId('dialog-state')).toHaveTextContent('open:true;confirm:0;custom:1')
+})
+
+test('renders a danger action without a subtitle and propagates modal dismissal', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(DialogHarness, {
+    props: {
+      danger: true,
+      subtitle: '',
+      confirmText: 'Delete',
+      cancelText: 'Keep editing',
+    },
+  })
+
+  await expect.element(view.getByRole('button', { name: 'Delete' })).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'Keep editing' })).toBeVisible()
+  expect(document.body.textContent?.includes('Update the saved report name.')).toBe(false)
+
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await expect.element(view.getByTestId('dialog-state')).toHaveTextContent('open:false;confirm:0;custom:0')
 })

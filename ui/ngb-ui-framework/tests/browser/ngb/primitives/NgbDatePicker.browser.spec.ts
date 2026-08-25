@@ -41,6 +41,32 @@ const DatePickerHarness = defineComponent({
   },
 })
 
+const DatePickerBoundaryHarness = defineComponent({
+  setup() {
+    const value = ref<string | null>(null)
+
+    return () => h('div', [
+      h(NgbDatePicker, {
+        modelValue: value.value,
+        grouped: true,
+        'onUpdate:modelValue': (next: string | null) => {
+          value.value = next
+        },
+      }),
+      h('button', { type: 'button', onClick: () => { value.value = '2027-01-10' } }, 'Set January'),
+      h('button', { type: 'button', onClick: () => { value.value = 'not-a-date' } }, 'Set invalid'),
+    ])
+  },
+})
+
+function localizedMonth(year: number, month: number): string {
+  return new Date(year, month, 1).toLocaleString(undefined, { month: 'long', year: 'numeric' })
+}
+
+function displayDate(value: Date): string {
+  return `${String(value.getMonth() + 1).padStart(2, '0')}/${String(value.getDate()).padStart(2, '0')}/${value.getFullYear()}`
+}
+
 test('picks a day, clears the value, and restores today from the popover footer', async () => {
   await page.viewport(1280, 900)
 
@@ -57,6 +83,31 @@ test('picks a day, clears the value, and restores today from the popover footer'
   await view.getByRole('button', { name: /Select date/i }).click()
   await view.getByRole('button', { name: 'Today' }).click()
   await expect.element(view.getByTestId('date-state')).toHaveTextContent(`state:${toDateOnlyValue(new Date())}`)
+
+  await view.getByRole('button', { name: displayDate(new Date()) }).click()
+  expect(dayButton(String(new Date().getDate())).className).toContain('ring-1')
+})
+
+test('uses the default placeholder, follows external values, and navigates across a year boundary', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(DatePickerBoundaryHarness)
+  await view.getByRole('button', { name: 'mm/dd/yyyy' }).click()
+
+  await view.getByText('Set January').click()
+  await view.getByRole('button', { name: '01/10/2027' }).click()
+  await expect.element(view.getByText(localizedMonth(2027, 0))).toBeVisible()
+
+  await view.getByRole('button', { name: 'Previous year' }).click()
+  await expect.element(view.getByText(localizedMonth(2026, 11))).toBeVisible()
+
+  await view.getByRole('button', { name: 'Next year' }).click()
+  await expect.element(view.getByText(localizedMonth(2027, 0))).toBeVisible()
+
+  await view.getByText('Set invalid').click()
+  await expect.element(view.getByRole('button', { name: 'not-a-date' })).toBeVisible()
+  await view.getByRole('button', { name: 'not-a-date' }).click()
+  await expect.element(view.getByText(localizedMonth(2027, 0))).toBeVisible()
 })
 
 test('disables the trigger when disabled', async () => {

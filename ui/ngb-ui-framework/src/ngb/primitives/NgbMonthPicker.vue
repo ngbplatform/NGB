@@ -44,7 +44,7 @@ const months = [
 ] as const
 
 const selected = computed(() => parseMonthValue(props.modelValue ?? null))
-const viewYear = ref<number>(selected.value?.year ?? parseMonthValue(currentMonthValue())?.year ?? new Date().getFullYear())
+const viewYear = ref<number>(selected.value?.year ?? new Date().getFullYear())
 
 watch(
   () => props.modelValue,

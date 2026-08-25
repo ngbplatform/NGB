@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { configureNgbReporting, resolveReportCellActionUrl, resolveReportLookupTarget } from '../../../../src/ngb/reporting/config'
+import {
+  configureNgbReporting,
+  getConfiguredNgbReporting,
+  maybeGetConfiguredNgbReporting,
+  resolveReportCellActionUrl,
+  resolveReportLookupTarget,
+} from '../../../../src/ngb/reporting/config'
 import { resolveDefaultReportCellActionUrl } from '../../../../src/ngb/reporting/defaultConfig'
 import { decodeReportRouteContextParam, decodeReportSourceTrailParam, type ReportRouteContext } from '../../../../src/ngb/reporting/navigation'
 import { decodeBackTarget } from '../../../../src/ngb/router/backNavigation'
@@ -219,5 +225,27 @@ describe('reporting config helpers', () => {
       },
       routeFullPath: '/reports/pm.occupancy.summary',
     })).toBe('/catalogs/pm.property/custom')
+  })
+
+  it('exposes the configured instance and safely handles absent or failing optional resolvers', async () => {
+    const config = {
+      useLookupStore: () => ({}) as never,
+      resolveCellActionUrl: vi.fn(() => { throw new Error('invalid custom action') }),
+    }
+    configureNgbReporting(config)
+
+    expect(getConfiguredNgbReporting()).toBe(config)
+    expect(maybeGetConfiguredNgbReporting()).toBe(config)
+    await expect(resolveReportLookupTarget({ hint: null, value: null, routeFullPath: '/reports/test' })).resolves.toBeNull()
+    expect(resolveReportCellActionUrl(null)).toBeNull()
+  })
+
+  it('rejects access before reporting is configured', async () => {
+    vi.resetModules()
+    const fresh = await import('../../../../src/ngb/reporting/config')
+
+    expect(fresh.maybeGetConfiguredNgbReporting()).toBeNull()
+    expect(() => fresh.getConfiguredNgbReporting()).toThrow('NGB reporting framework is not configured')
+    expect(fresh.resolveReportCellActionUrl(null)).toBeNull()
   })
 })

@@ -20,6 +20,14 @@ vi.mock('@ngbplatform/ui', () => ({
 
 import { createAgencyBillingMetadataConfig, agencyBillingMetadataFormBehavior } from '../../../src/metadata/framework'
 
+const column = (key: string) => ({
+  key,
+  label: key,
+  dataType: 'String',
+  isSortable: true,
+  align: 1,
+})
+
 describe('agency billing metadata framework', () => {
   beforeEach(() => {
     mocks.buildLookupFieldTargetUrl.mockClear()
@@ -76,6 +84,47 @@ describe('agency billing metadata framework', () => {
     const metadata = await config.loadCatalogTypeMetadata('ab.accounting_policy')
 
     expect(metadata.list?.columns.map((column) => column.key)).toEqual(['display', 'default_currency'])
+  })
+
+  it.each([
+    ['ab.team_member', ['display', 'member_code', 'member_type', 'billable_by_default', 'default_billing_rate', 'is_active']],
+    ['ab.project', ['display', 'client_id', 'project_manager_id', 'status', 'billing_model', 'budget_amount']],
+    ['ab.rate_card', ['display', 'client_id', 'project_id', 'team_member_id', 'billing_rate', 'effective_from', 'is_active']],
+    ['ab.service_item', ['display', 'code', 'unit_of_measure', 'default_revenue_account_id', 'is_active']],
+    ['ab.payment_terms', ['display', 'code', 'due_days', 'is_active']],
+  ])('orders and filters %s list columns', async (catalogType, expectedKeys) => {
+    mocks.getCatalogTypeMetadata.mockResolvedValue({
+      catalogType,
+      displayName: catalogType,
+      kind: 1,
+      list: { columns: [...expectedKeys].reverse().map(column).concat(column('internal')) },
+    })
+
+    const metadata = await createAgencyBillingMetadataConfig().loadCatalogTypeMetadata(catalogType)
+
+    expect(metadata.list?.columns.map((item) => item.key)).toEqual(expectedKeys)
+  })
+
+  it('keeps missing or empty list metadata unchanged', async () => {
+    const withoutList = { catalogType: 'ab.client', displayName: 'Client', kind: 1 }
+    const emptyList = { catalogType: 'ab.client', displayName: 'Client', kind: 1, list: { columns: [] } }
+    mocks.getCatalogTypeMetadata.mockResolvedValueOnce(withoutList).mockResolvedValueOnce(emptyList)
+
+    await expect(createAgencyBillingMetadataConfig().loadCatalogTypeMetadata('ab.client')).resolves.toBe(withoutList)
+    await expect(createAgencyBillingMetadataConfig().loadCatalogTypeMetadata('ab.client')).resolves.toBe(emptyList)
+  })
+
+  it('omits opinionated columns unavailable in metadata', async () => {
+    mocks.getCatalogTypeMetadata.mockResolvedValue({
+      catalogType: 'ab.payment_terms',
+      displayName: 'Payment Terms',
+      kind: 1,
+      list: { columns: [column('display'), column('due_days')] },
+    })
+
+    const metadata = await createAgencyBillingMetadataConfig().loadCatalogTypeMetadata('ab.payment_terms')
+
+    expect(metadata.list?.columns.map((item) => item.key)).toEqual(['display', 'due_days'])
   })
 
   it('passes document metadata loading through to the framework registry', async () => {

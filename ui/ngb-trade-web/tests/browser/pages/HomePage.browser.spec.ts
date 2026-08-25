@@ -43,11 +43,12 @@ vi.mock('@ngbplatform/ui', async () => {
       modelValue: { type: String, required: true },
       loading: { type: Boolean, default: false },
     },
-    emits: ['refresh'],
+    emits: ['refresh', 'update:modelValue'],
     setup(props, { emit }) {
       return () => h('div', { 'data-testid': 'toolbar' }, [
         h('span', { 'data-testid': 'toolbar-as-of' }, props.modelValue),
         h('button', { type: 'button', onClick: () => emit('refresh') }, 'Refresh'),
+        h('button', { type: 'button', onClick: () => emit('update:modelValue', '2026-04-19') }, 'Advance as-of'),
       ])
     },
   })
@@ -117,14 +118,18 @@ vi.mock('@ngbplatform/ui', async () => {
     NgbIcon: StubIcon,
     NgbPageHeader: StubPageHeader,
     NgbTrendChart: StubTrendChart,
-    useDashboardPageState: () => ({
-      asOf: mocks.state.asOf,
-      dashboard: mocks.state.dashboard,
-      error: mocks.state.error,
-      loading: mocks.state.loading,
-      refresh: mocks.refresh,
-      warnings: mocks.state.warnings,
-    }),
+    useDashboardPageState: (options: { resolveWarnings: (value: { warnings?: string[] } | null) => string[] }) => {
+      options.resolveWarnings(null)
+      options.resolveWarnings({ warnings: ['resolved warning'] })
+      return {
+        asOf: mocks.state.asOf,
+        dashboard: mocks.state.dashboard,
+        error: mocks.state.error,
+        loading: mocks.state.loading,
+        refresh: mocks.refresh,
+        warnings: mocks.state.warnings,
+      }
+    },
   }
 })
 
@@ -216,6 +221,30 @@ test('renders dashboard content, warnings, and route-driven actions', async () =
 
   await view.getByText('Review Price Book').click()
   expect(mocks.routerPush).toHaveBeenCalledWith('/reports/trd.current_item_prices')
+
+  await view.getByText('Receive Stock').click()
+  await view.getByText('Sales This Month').click()
+  await view.getByText('Purchases This Month').click()
+  await view.getByText('Inventory On Hand').click()
+  await view.getByText('Gross Margin', { exact: true }).click()
+  await view.getByText('Sales mix by item', { exact: true }).click()
+  await view.getByText('Inventory footprint', { exact: true }).click()
+
+  for (const button of Array.from(document.querySelectorAll('button'))) {
+    if (button.textContent?.trim() === 'View all' || button.textContent?.trim() === 'View balances') button.click()
+  }
+
+  await view.getByText('Adapter Kit', { exact: true }).click()
+  await view.getByText('Bayview Stores').click()
+  await view.getByText('Northstar Distribution').click()
+  await view.getByRole('button', { name: /^Cable Ties Alpha DC/ }).click()
+  await view.getByText('Sales Invoice SI-2048').click()
+
+  expect(mocks.routerPush).toHaveBeenCalledWith('/reports/items/adapter-kit')
+  expect(mocks.routerPush).toHaveBeenCalledWith('/reports/customers/bayview')
+  expect(mocks.routerPush).toHaveBeenCalledWith('/reports/vendors/northstar')
+  expect(mocks.routerPush).toHaveBeenCalledWith('/reports/inventory?item=item-a')
+  expect(mocks.routerPush).toHaveBeenCalledWith('/documents/trd.sales_invoice/si-2048')
 })
 
 test('shows empty-state messaging and wires the refresh action', async () => {
@@ -241,4 +270,82 @@ test('shows empty-state messaging and wires the refresh action', async () => {
 
   await view.getByTestId('toolbar').getByRole('button', { name: 'Refresh' }).click()
   expect(mocks.refresh).toHaveBeenCalledTimes(1)
+  await view.getByTestId('toolbar').getByRole('button', { name: 'Advance as-of' }).click()
+  await expect.element(view.getByTestId('toolbar-as-of')).toHaveTextContent('2026-04-19')
+})
+
+test('uses page fallbacks while dashboard data is unavailable and shows the loading period state', async () => {
+  mocks.state.dashboard = ref(null)
+  mocks.state.loading = ref(true)
+  mocks.state.warnings = ref([])
+
+  const view = await render(HomePage)
+
+  await expect.element(view.getByText('Refreshing trade workspace…')).toBeVisible()
+  await expect.element(view.getByText('Sales mix by item', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('Inventory footprint', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('No recent trade documents exist yet.')).toBeVisible()
+  expect(view.getByTestId('trade-home-kpis').element().querySelectorAll('button')).toHaveLength(0)
+
+  await view.getByText('Review Price Book').click()
+  await view.getByText('Sales mix by item', { exact: true }).click()
+  await view.getByText('Inventory footprint', { exact: true }).click()
+
+  expect(mocks.routerPush).toHaveBeenCalledWith('/reports/trd.current_item_prices')
+  expect(mocks.routerPush).toHaveBeenCalledWith('/reports/trd.sales_by_item')
+  expect(mocks.routerPush).toHaveBeenCalledWith('/reports/trd.inventory_balances')
+
+  ;(mocks.state.loading as { value: boolean }).value = false
+  await expect.element(view.getByText('Operational focus for the selected period')).toBeVisible()
+})
+
+test('handles zero and negative KPIs, invalid quantities, incomplete documents, and blank routes', async () => {
+  mocks.state.dashboard = ref(createDashboard({
+    monthLabel: '',
+    salesThisMonth: 0,
+    purchasesThisMonth: 0,
+    inventoryOnHand: 0,
+    grossMargin: -5,
+    routes: undefined,
+    topItems: [
+      { item: 'Loss Leader', soldQuantity: Number.NaN, netSales: 0, grossMargin: -5, marginPercent: -1, route: '' },
+      { item: 'Neutral Item', soldQuantity: 0, netSales: 0, grossMargin: 0, marginPercent: 0, route: null },
+    ],
+    topCustomers: [
+      { customer: 'Neutral Customer', salesDocumentCount: 0, returnDocumentCount: 0, netSales: 0, grossMargin: 0, marginPercent: 0, route: '' },
+    ],
+    topVendors: [
+      { vendor: 'Route-less Vendor', purchaseDocumentCount: 0, returnDocumentCount: 0, netPurchases: 0, route: null },
+    ],
+    inventoryPositions: [
+      { item: 'Unknown Quantity', warehouse: 'Unassigned', quantity: null, route: undefined },
+    ],
+    recentDocuments: [
+      { title: 'Draft Transfer', amountDisplay: null, documentDate: null, notes: 'Draft document', route: '' },
+      { title: 'Imported Record', notes: 'Imported from legacy', route: null },
+    ],
+    charts: {
+      salesMix: null,
+      inventoryFootprint: null,
+    },
+  }))
+
+  const view = await render(HomePage)
+
+  await expect.element(view.getByText('Operational focus for the selected period')).toBeVisible()
+  expect(document.body.textContent).toContain('n/a')
+  expect(document.body.textContent).toContain('Date n/a')
+  await expect.element(view.getByText('Draft Transfer')).toBeVisible()
+  await expect.element(view.getByText('Imported Record')).toBeVisible()
+  expect(document.body.textContent).toContain('0.0% of net sales')
+
+  const callsBeforeBlankRoutes = mocks.routerPush.mock.calls.length
+  await view.getByText('Loss Leader').click()
+  await view.getByText('Neutral Item').click()
+  await view.getByText('Neutral Customer').click()
+  await view.getByText('Route-less Vendor').click()
+  await view.getByText('Unknown Quantity').click()
+  await view.getByText('Draft Transfer').click()
+  await view.getByText('Imported Record').click()
+  expect(mocks.routerPush).toHaveBeenCalledTimes(callsBeforeBlankRoutes)
 })

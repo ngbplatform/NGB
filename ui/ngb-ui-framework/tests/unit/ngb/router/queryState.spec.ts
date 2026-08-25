@@ -141,5 +141,44 @@ describe('query state helpers', () => {
 
     expect(search).not.toHaveBeenCalled()
     expect(selection.items.value).toEqual([])
+
+    await selection.openSelected()
+    expect(router.push).not.toHaveBeenCalled()
+
+    selection.onSelect(null)
+    expect(selection.selected.value).toBeNull()
+  })
+
+  it('clears selection without looking up when the route id is absent', async () => {
+    const route = createRoute({}, '/catalogs/pm.property')
+    const lookupById = vi.fn()
+    const selection = useRouteLookupSelection({
+      route,
+      router: createRouter(),
+      queryKey: 'propertyId',
+      lookupById,
+      search: vi.fn(),
+      openTarget: vi.fn(),
+    })
+    selection.selected.value = { id: SELECTED_ID, label: 'Stale' }
+
+    await selection.hydrateSelected()
+
+    expect(selection.selected.value).toBeNull()
+    expect(lookupById).not.toHaveBeenCalled()
+  })
+
+  it('uses the raw guid when lookup succeeds without a label', async () => {
+    const selection = useRouteLookupSelection({
+      route: createRoute({ propertyId: EXISTING_ID }),
+      router: createRouter(),
+      queryKey: 'propertyId',
+      lookupById: vi.fn().mockResolvedValue(null),
+      search: vi.fn(),
+      openTarget: vi.fn(),
+    })
+
+    await selection.hydrateSelected()
+    expect(selection.selected.value).toEqual({ id: EXISTING_ID, label: EXISTING_ID })
   })
 })

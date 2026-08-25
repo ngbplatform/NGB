@@ -45,7 +45,7 @@ const auditOpen = ref(false)
 
 const auditEntityKind = 2
 const auditEntityId = computed(() => policy.value?.id ?? null)
-const auditEntityTitle = computed(() => String(model.value.display ?? policy.value?.display ?? 'Accounting Policy').trim() || 'Accounting Policy')
+const auditEntityTitle = computed(() => String(model.value.display ?? policy.value?.display ?? 'Accounting Policy').trim())
 
 const initialSnapshot = ref('')
 const isDirty = computed(() => initialSnapshot.value !== '' && initialSnapshot.value !== stableStringify(model.value))
@@ -112,9 +112,9 @@ function buildUiFormFrom(full: FormMetadataDto): FormMetadataDto {
   out.sections = (out.sections ?? [])
     .map((section) => ({
       ...section,
-      rows: (section.rows ?? []).filter((row) => (row.fields ?? []).length > 0),
+      rows: (section.rows ?? []).filter((row) => row.fields!.length > 0),
     }))
-    .filter((section) => (section.rows ?? []).length > 0)
+    .filter((section) => section.rows!.length > 0)
 
   if (out.sections.length === 1 && (out.sections[0].title ?? '').toLowerCase() === 'main') {
     out.sections[0].title = 'Settings'

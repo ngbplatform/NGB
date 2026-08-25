@@ -112,7 +112,6 @@ function normalizeValue(field: FieldMetadata, value: unknown): JsonValue {
       }
       return normalized as JsonValue
     case 6:
-    case 7:
       return normalized as JsonValue
   }
 

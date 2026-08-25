@@ -55,3 +55,11 @@ test('keeps the checkbox disabled when requested', async () => {
   expect((document.querySelector('input[type="checkbox"]') as HTMLInputElement).disabled).toBe(true)
   await expect.element(view.getByTestId('checkbox-state')).toHaveTextContent('checked:false')
 })
+
+test('omits the optional label while retaining checkbox semantics', async () => {
+  await page.viewport(1280, 900)
+  await render(NgbCheckbox, { props: { modelValue: false } })
+
+  expect(document.querySelector('input[type="checkbox"]')).not.toBeNull()
+  expect(document.querySelector('label')?.textContent?.trim()).toBe('')
+})

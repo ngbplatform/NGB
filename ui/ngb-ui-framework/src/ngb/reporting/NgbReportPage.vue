@@ -118,7 +118,7 @@ const pendingScrollRestore = ref(0)
 let loadSeq = 0
 let runSeq = 0
 
-const reportCode = computed(() => decodeURIComponent(String(route.params.reportCode ?? '').trim()))
+const reportCode = computed(() => decodeURIComponent(String(route.params.reportCode).trim()))
 const routeBootstrapKey = computed(() => stableStringify({
   reportCode: reportCode.value,
   variant: route.query.variant ?? null,
@@ -224,7 +224,7 @@ const activeParameterBadges = computed<ReportPageBadge[]>(() => {
       return true
     })
     .map((parameter) => {
-      const raw = String(draft.value?.parameters[parameter.code] ?? '').trim()
+      const raw = draft.value!.parameters[parameter.code]!.trim()
       if (raw.length === 0) return null
       return {
         key: `parameter:${parameter.code}`,
@@ -236,15 +236,15 @@ const activeParameterBadges = computed<ReportPageBadge[]>(() => {
 
 const optionalFilterBadges = computed<ReportPageBadge[]>(() => {
   if (!definition.value || !draft.value) return []
+  const currentDraft = draft.value
 
   return (definition.value.filters ?? [])
     .filter((field) => !field.isRequired)
     .map((field) => {
-      const state = draft.value?.filters[field.fieldCode]
-      if (!state) return null
+      const state = currentDraft.filters[field.fieldCode]!
 
       const itemLabels = state.items
-        .map((item) => String(item.label ?? item.id ?? '').trim())
+        .map((item) => item.label.trim())
         .filter((label) => label.length > 0)
 
       const rawValues = itemLabels.length === 0
@@ -270,7 +270,7 @@ const currentRouteContext = computed<ReportRouteContext | null>(() => {
     ...context,
     request: {
       ...context.request,
-      limit: resolveDefinitionInitialPageLimit(context.request.limit ?? 500),
+      limit: resolveDefinitionInitialPageLimit(),
       variantCode: activeVariantCode.value || null,
     },
   }
@@ -295,7 +295,7 @@ const emptyReportMessage = computed(() => {
   return 'Open the Composer, adjust filters, rows, measures, or sorting, and run again.'
 })
 const hasPagedExecutionState = computed(() => !!response.value && (response.value.hasMore || consumedAppendCursors.value.length > 0))
-const showEndOfList = computed(() => hasPagedExecutionState.value && !canLoadMore.value && !loadingMore.value && !running.value && (response.value?.sheet.rows?.length ?? 0) > 0)
+const showEndOfList = computed(() => hasPagedExecutionState.value && !canLoadMore.value && !loadingMore.value && !running.value && response.value!.sheet.rows.length > 0)
 const loadedRowCount = computed(() => countLoadedReportRows(response.value?.sheet))
 const totalRowCount = computed(() => {
   const total = response.value?.total
@@ -306,21 +306,18 @@ const reportRowNoun = computed(() => {
   return configured.length > 0 ? configured : 'row'
 })
 
-function resolveDefinitionInitialPageLimit(fallback: number) {
-  const normalizedFallback = Number.isFinite(fallback) && fallback > 0 ? Math.max(1, Math.floor(fallback)) : 500
+function resolveDefinitionInitialPageLimit() {
   const configured = reportPresentation.value?.initialPageSize
   return typeof configured === 'number' && Number.isFinite(configured) && configured > 0
     ? Math.max(1, Math.floor(configured))
-    : normalizedFallback
+    : 500
 }
 
 function buildPageExecutionRequest() {
-  if (!definition.value || !draft.value) throw new Error('Report definition and draft are required.')
-
-  const request = buildExecutionRequest(definition.value, draft.value)
+  const request = buildExecutionRequest(definition.value!, draft.value!)
   return {
     ...request,
-    limit: resolveDefinitionInitialPageLimit(request.limit ?? 500),
+    limit: resolveDefinitionInitialPageLimit(),
   }
 }
 
@@ -330,12 +327,7 @@ function clearReportPageSnapshot() {
 }
 
 function persistReportExecutionSnapshot() {
-  if (!response.value) {
-    clearReportPageExecutionSnapshot(reportPageStateKey.value)
-    return
-  }
-
-  saveReportPageExecutionSnapshot(reportPageStateKey.value, response.value, consumedAppendCursors.value)
+  saveReportPageExecutionSnapshot(reportPageStateKey.value, response.value!, consumedAppendCursors.value)
 }
 
 function onReportScrollTopChange(scrollTop: number) {
@@ -363,8 +355,7 @@ function tryRestoreReportExecutionSnapshot(): boolean {
 }
 
 function updateDraft(mutator: (next: ReportComposerDraft) => void) {
-  if (!draft.value) return
-  const next = cloneComposerDraft(draft.value)
+  const next = cloneComposerDraft(draft.value!)
   mutator(next)
   draft.value = next
 }
@@ -385,17 +376,14 @@ function setParameterValue(code: string, value: string | null) {
 
 function setFilterRaw(fieldCode: string, value: string) {
   updateDraft((next) => {
-    const state = next.filters[fieldCode]
-    if (!state) return
-    state.raw = value
+    next.filters[fieldCode]!.raw = value
   })
 }
 
 function setFilterItem(fieldCode: string, value: unknown) {
   const item = coerceReportComposerLookupItem(value)
   updateDraft((next) => {
-    const state = next.filters[fieldCode]
-    if (!state) return
+    const state = next.filters[fieldCode]!
     state.items = item ? [{ ...item }] : []
     if (item) state.raw = ''
   })
@@ -403,7 +391,7 @@ function setFilterItem(fieldCode: string, value: unknown) {
 
 async function openFilterItem(field: ReportFilterFieldDto) {
   const target = await resolveReportLookupTarget({
-    hint: field.lookup ?? null,
+    hint: field.lookup!,
     value: selectedFilterItem(field),
     routeFullPath: route.fullPath,
   })
@@ -435,19 +423,19 @@ async function createDraftFromContext(definitionValue: ReportDefinitionDto, cont
   return nextDraft
 }
 
-async function refreshVariants(options?: {
-  preferredSelectedVariantCode?: string
-  preferredActiveVariantCode?: string
+async function refreshVariants(options: {
+  preferredSelectedVariantCode: string
+  preferredActiveVariantCode: string
 }) {
   const list = await getReportVariants(reportCode.value)
   variants.value = list
 
-  const preferredActive = options?.preferredActiveVariantCode ?? activeVariantCode.value
+  const preferredActive = options.preferredActiveVariantCode
   activeVariantCode.value = preferredActive && list.some((variant) => variant.variantCode === preferredActive)
     ? preferredActive
     : ''
 
-  const preferredSelected = options?.preferredSelectedVariantCode ?? selectedVariantCode.value
+  const preferredSelected = options.preferredSelectedVariantCode
   if (preferredSelected && list.some((variant) => variant.variantCode === preferredSelected)) {
     selectedVariantCode.value = preferredSelected
     return
@@ -462,14 +450,11 @@ async function refreshVariants(options?: {
 }
 
 async function syncRouteStateWithCurrentReportContext() {
-  if (!definition.value || !draft.value) return
-
   const nextQuery: Record<string, unknown> = { ...route.query }
-  const nextContext = encodeReportRouteContextParam(currentRouteContext.value)
+  const nextContext = encodeReportRouteContextParam(currentRouteContext.value)!
   const nextSourceTrail = encodeReportSourceTrailParam(sourceTrail.value)
 
-  if (nextContext) nextQuery.ctx = nextContext
-  else delete nextQuery.ctx
+  nextQuery.ctx = nextContext
 
   if (nextSourceTrail) nextQuery.src = nextSourceTrail
   else delete nextQuery.src
@@ -489,7 +474,7 @@ async function syncRouteStateWithCurrentReportContext() {
   suppressedBootstrapKey.value = stableStringify({
     reportCode: reportCode.value,
     variant: nextQuery.variant ?? null,
-    ctx: nextQuery.ctx ?? null,
+    ctx: nextQuery.ctx,
     src: nextQuery.src ?? null,
   })
 
@@ -497,8 +482,6 @@ async function syncRouteStateWithCurrentReportContext() {
 }
 
 async function runReport() {
-  if (!definition.value || !draft.value) return
-
   const seq = ++runSeq
   running.value = true
   loadingMore.value = false
@@ -523,9 +506,7 @@ async function runReport() {
 }
 
 async function appendReportPage() {
-  if (!definition.value || !draft.value || !response.value) return
-
-  const nextCursor = String(response.value.nextCursor ?? '').trim()
+  const nextCursor = response.value!.nextCursor!.trim()
   if (!nextCursor || loadingMore.value || running.value) return
   if (consumedAppendCursors.value.includes(nextCursor)) return
 
@@ -537,7 +518,7 @@ async function appendReportPage() {
     const page = await executeReport(reportCode.value, buildAppendRequest(buildPageExecutionRequest(), nextCursor))
     if (seq !== runSeq) return
 
-    response.value = mergePagedReportResponses(response.value, page)
+    response.value = mergePagedReportResponses(response.value!, page)
     consumedAppendCursors.value = [...consumedAppendCursors.value, nextCursor]
     persistReportExecutionSnapshot()
   } catch (err) {
@@ -549,16 +530,15 @@ async function appendReportPage() {
 }
 
 async function downloadReport() {
-  if (!definition.value || !draft.value) return
   downloading.value = true
   error.value = null
 
   try {
-    const file = await exportReportXlsx(reportCode.value, buildExportRequest(definition.value, draft.value))
+    const file = await exportReportXlsx(reportCode.value, buildExportRequest(definition.value!, draft.value!))
     const url = URL.createObjectURL(file.blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = file.fileName || `${reportCode.value.replace(/[^a-z0-9]+/gi, '-') || 'report'}.xlsx`
+    link.download = file.fileName || `${reportCode.value.replace(/[^a-z0-9]+/gi, '-')}.xlsx`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -571,16 +551,14 @@ async function downloadReport() {
 }
 
 async function loadSelectedVariant() {
-  if (!definition.value) return
-
   const variant = selectedVariant.value
   if (!variant) return
 
   try {
-    draft.value = await createDraftFromVariant(definition.value, variant)
+    draft.value = await createDraftFromVariant(definition.value!, variant)
     activeVariantCode.value = variant.variantCode
     selectedVariantCode.value = variant.variantCode
-    if (draft.value && canAutoRunReport(definition.value, draft.value)) await runReport()
+    if (canAutoRunReport(definition.value!, draft.value)) await runReport()
     else {
       response.value = null
       consumedAppendCursors.value = []
@@ -594,21 +572,19 @@ async function loadSelectedVariant() {
 }
 
 async function resetToDefault() {
-  if (!definition.value) return
-
   try {
     const defaultVariant = variants.value.find((variant) => !!variant.isDefault) ?? null
     if (defaultVariant) {
       selectedVariantCode.value = defaultVariant.variantCode
       activeVariantCode.value = defaultVariant.variantCode
-      draft.value = await createDraftFromVariant(definition.value, defaultVariant)
+      draft.value = await createDraftFromVariant(definition.value!, defaultVariant)
     } else {
       selectedVariantCode.value = ''
       activeVariantCode.value = ''
-      draft.value = createComposerDraft(definition.value)
+      draft.value = createComposerDraft(definition.value!)
     }
 
-    if (draft.value && canAutoRunReport(definition.value, draft.value)) await runReport()
+    if (canAutoRunReport(definition.value!, draft.value)) await runReport()
     else {
       response.value = null
       consumedAppendCursors.value = []
@@ -633,16 +609,14 @@ function openEditVariantDialog() {
   if (!selectedVariant.value) return
 
   variantDialogMode.value = 'edit'
-  variantDialogName.value = selectedVariant.value.name ?? ''
+  variantDialogName.value = selectedVariant.value.name
   variantDialogDefault.value = !!selectedVariant.value.isDefault
   variantDialogError.value = null
   variantDialogOpen.value = true
 }
 
 async function submitVariantDialog() {
-  if (!definition.value || !draft.value) return
-
-  const name = String(variantDialogName.value ?? '').trim()
+  const name = variantDialogName.value.trim()
   savingVariant.value = true
   variantDialogError.value = null
   error.value = null
@@ -650,7 +624,7 @@ async function submitVariantDialog() {
   try {
     if (variantDialogMode.value === 'create') {
       const variantCode = chooseAvailableVariantCode(name, variants.value)
-      const payload = buildVariantDto(definition.value, draft.value, {
+      const payload = buildVariantDto(definition.value!, draft.value!, {
         variantCode,
         name,
         isDefault: variantDialogDefault.value,
@@ -736,13 +710,13 @@ async function deleteSelectedVariant() {
 }
 
 async function saveCurrentVariant() {
-  if (!definition.value || !draft.value || !activeVariant.value) return
+  if (!activeVariant.value) return
 
   savingVariant.value = true
   error.value = null
 
   try {
-    const saved = await saveReportVariant(reportCode.value, activeVariant.value.variantCode, buildVariantDto(definition.value, draft.value, {
+    const saved = await saveReportVariant(reportCode.value, activeVariant.value.variantCode, buildVariantDto(definition.value!, draft.value!, {
       variantCode: activeVariant.value.variantCode,
       name: activeVariant.value.name,
       isDefault: !!activeVariant.value.isDefault,
@@ -927,7 +901,7 @@ watch(routeBootstrapKey, (nextKey) => {
   <div class="h-full min-h-0 flex flex-col" data-testid="report-page">
     <NgbPageHeader :title="pageTitle" can-back @back="navigateBack(router, route, backToSourceUrl)">
       <template #secondary>
-        <div v-if="pageSubtitle" class="text-xs text-ngb-muted truncate">{{ pageSubtitle }}</div>
+        <div class="text-xs text-ngb-muted truncate">{{ pageSubtitle }}</div>
       </template>
       <template #actions>
         <div class="flex flex-wrap items-center justify-end gap-2">
@@ -955,14 +929,14 @@ watch(routeBootstrapKey, (nextKey) => {
               :model-value="filterState(field).raw"
               :disabled="loadingDefinition || running || downloading || !draft"
               :placeholder="field.label"
-              @update:model-value="setFilterRaw(field.fieldCode, String($event ?? ''))"
+              @update:model-value="setFilterRaw(field.fieldCode, String($event))"
             />
           </div>
 
           <DocumentDateRangeFilter
             v-if="inlineDateRange && draft"
-            :from-date="String(draft.parameters[inlineDateRange.fromCode] ?? '')"
-            :to-date="String(draft.parameters[inlineDateRange.toCode] ?? '')"
+            :from-date="draft.parameters[inlineDateRange.fromCode]"
+            :to-date="draft.parameters[inlineDateRange.toCode]"
             :from-placeholder="inlineDateRange.fromLabel"
             :to-placeholder="inlineDateRange.toLabel"
             :title="inlineDateRange.title ?? undefined"

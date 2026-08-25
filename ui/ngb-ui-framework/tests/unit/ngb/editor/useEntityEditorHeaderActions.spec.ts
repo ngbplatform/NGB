@@ -299,10 +299,90 @@ describe('entity editor header actions', () => {
     actions.handleDocumentHeaderAction('document-action:view_effects')
     actions.handleDocumentHeaderAction('customMore')
     actions.handleDocumentHeaderAction('unknownAction')
+    actions.handleDocumentHeaderAction('openCompactPage')
+    actions.handleDocumentHeaderAction('openFullPage')
+    actions.handleDocumentHeaderAction('copyDocument')
+    actions.handleDocumentHeaderAction('copyShareLink')
 
     expect(handlers.onSave).toHaveBeenCalledTimes(1)
     expect(handlers.onOpenEffectsPage).toHaveBeenCalledTimes(1)
     expect(extraActionHandlers.customMore).toHaveBeenCalledTimes(1)
     expect(handlers.onUnhandledAction).toHaveBeenCalledWith('unknownAction')
+    expect(handlers.onOpenCompactPage).toHaveBeenCalledTimes(1)
+    expect(handlers.onOpenFullPage).toHaveBeenCalledTimes(1)
+    expect(handlers.onCopyDocument).toHaveBeenCalledTimes(1)
+    expect(handlers.onCopyShareLink).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns no document actions for catalogs and tolerates an unhandled action without a fallback', () => {
+    const { args, state } = createArgs()
+    state.kind.value = 'catalog'
+    const withoutFallback = {
+      ...args,
+      onUnhandledAction: undefined,
+      extraActionHandlers: undefined,
+    }
+    const actions = useEntityEditorHeaderActions(withoutFallback)
+
+    expect(actions.documentPrimaryActions.value).toEqual([])
+    expect(actions.documentMoreActionGroups.value).toEqual([])
+    expect(() => actions.handleDocumentHeaderAction('missing')).not.toThrow()
+  })
+
+  it('covers absent navigation, lifecycle, extras, and every disabled-state operand', () => {
+    const { args, state } = createArgs()
+    state.compactTo.value = null
+    state.expandTo.value = null
+    state.currentId.value = null
+    state.canShareLink.value = false
+    state.isNew.value = true
+    state.isMarkedForDeletion.value = true
+    state.canMarkForDeletion.value = false
+    state.canPost.value = false
+    state.loading.value = true
+    state.saving.value = false
+    state.canSave.value = false
+
+    const minimalArgs = {
+      ...args,
+      documentLifecycleActions: undefined,
+      extraPrimaryActions: undefined,
+      extraMoreActionGroups: undefined,
+    }
+    const actions = useEntityEditorHeaderActions(minimalArgs)
+
+    expect(actions.documentPrimaryActions.value).toEqual([{
+      key: 'save',
+      title: 'Save',
+      icon: 'save',
+      disabled: true,
+    }])
+    expect(actions.documentMoreActionGroups.value).toEqual([])
+
+    state.loading.value = false
+    state.saving.value = true
+    state.mode.value = 'drawer'
+    state.expandTo.value = '/full'
+    state.currentId.value = 'doc-1'
+    state.canShareLink.value = true
+    expect(actions.documentPrimaryActions.value[0]?.disabled).toBe(true)
+    expect(actions.documentMoreActionGroups.value.flatMap((group) => group.items).every((item) => item.disabled === true)).toBe(true)
+  })
+
+  it('orders canonical and multiple custom groups deterministically', () => {
+    const { args, state } = createArgs()
+    state.currentId.value = null
+    state.canShareLink.value = false
+    state.extraMoreActionGroups.value = [
+      { key: 'z-custom', label: 'Z', items: [] },
+      { key: 'danger-zone', label: 'Danger', items: [] },
+      { key: 'actions', label: 'Actions', items: [] },
+      { key: 'a-custom', label: 'A', items: [] },
+    ]
+
+    const actions = useEntityEditorHeaderActions(args)
+    expect(actions.documentMoreActionGroups.value.map((group) => group.key)).toEqual([
+      'actions', 'danger-zone', 'z-custom', 'a-custom',
+    ])
   })
 })

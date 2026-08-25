@@ -116,7 +116,7 @@ const visibleMoreGroups = computed(() =>
   props.moreGroups
     .map((group) => ({
       ...group,
-      items: (group.items ?? []).filter(Boolean),
+      items: group.items.filter(Boolean),
     }))
     .filter((group) => group.items.length > 0),
 )

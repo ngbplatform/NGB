@@ -86,7 +86,13 @@ const DocumentDrawerHarness = defineComponent({
 })
 
 const CatalogPageHarness = defineComponent({
-  setup() {
+  props: {
+    showSubtitle: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  setup(props) {
     const events = ref<string[]>([])
     const push = (value: string) => {
       events.value = [...events.value, value]
@@ -98,7 +104,7 @@ const CatalogPageHarness = defineComponent({
         mode: 'page',
         canBack: true,
         title: 'Property record',
-        subtitle: 'Portfolio setup',
+        subtitle: props.showSubtitle ? 'Portfolio setup' : '',
         documentStatusLabel: 'Draft',
         documentStatusTone: 'neutral',
         loading: false,
@@ -155,4 +161,11 @@ test('renders catalog page actions, subtitle, and close button through page head
   await view.getByTitle('Close').click()
 
   expect(eventsLog.element().textContent ?? '').toBe('back|action:copyShareLink|close')
+})
+
+test('omits the optional catalog subtitle when it is blank', async () => {
+  const view = await render(CatalogPageHarness, { props: { showSubtitle: false } })
+
+  await expect.element(view.getByRole('heading', { name: 'Property record' })).toBeVisible()
+  expect(document.body.textContent?.includes('Portfolio setup')).toBe(false)
 })

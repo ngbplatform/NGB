@@ -231,11 +231,16 @@ describe('trade home data', () => {
       if (reportCode === 'trd.sales_by_customer') throw new Error('Customer cube timed out')
 
       if (reportCode === 'trd.dashboard_overview') {
-        return response(['category', 'subject', 'value', 'secondary', 'notes'], [], undefined, { inventory_position_count: '0' })
+        return response(['category', 'subject', 'value', 'secondary', 'notes'], [])
       }
 
       if (reportCode === 'trd.sales_by_item') {
-        return response(['item', 'sold_quantity', 'net_sales', 'gross_margin', 'margin_percent'], [], 0)
+        return {
+          sheet: {
+            columns: ['item', 'sold_quantity', 'net_sales', 'gross_margin', 'margin_percent'].map((code) => ({ code })),
+          },
+          total: 0,
+        }
       }
 
       return response(['vendor', 'purchase_document_count', 'return_document_count', 'net_purchases'], [], 0)
@@ -247,6 +252,164 @@ describe('trade home data', () => {
     expect(data.topCustomers).toEqual([])
     expect(data.warnings).toEqual(['Sales by customer analytics are unavailable: Customer cube timed out'])
     expect(data.routes.currentPrices).toBe('/reports/trd.current_item_prices')
+  })
+
+  it('normalizes sparse report cells, invalid diagnostics, and ranking ties', async () => {
+    mocks.executeReport.mockImplementation(async (reportCode: string) => {
+      switch (reportCode) {
+        case 'trd.dashboard_overview':
+          return response(
+            ['category', 'subject', 'value', 'secondary', 'notes'],
+            [
+              {
+                rowKind: 'Summary',
+                cells: [{ display: 'KPI' }, { display: 'Ignored summary' }, { value: 999 }, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'KPI' }, { display: 'Purchases This Month' }, { value: 25 }, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'KPI' }, { display: 'Sales This Month' }, { value: 31 }, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'KPI' }, { display: 'Inventory On Hand' }, { value: 12 }, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'KPI' }, { display: 'Gross Margin' }, { value: 7, action: { url: '/reports/custom-gross-margin' } }, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'KPI' }, { display: 'Gross Margin' }, { value: 8 }, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'KPI' }, { display: 'Unsupported KPI' }, { value: 123 }, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'Inventory Position' }, {}, { value: 3 }, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [
+                  { display: 'Inventory Position' },
+                  { display: 'Adapter Kit', action: { url: '/catalogs/trd.item/adapter' } },
+                  { value: 4 },
+                  { display: 'Main', action: { url: '/catalogs/trd.warehouse/main' } },
+                  {},
+                ],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'Recent Document' }, {}, {}, {}, {}],
+              },
+              {
+                rowKind: 'Detail',
+                cells: [{ display: 'Unknown category' }, {}, {}, {}, {}],
+              },
+            ],
+            undefined,
+            { inventory_position_count: '-1' },
+          )
+        case 'trd.sales_by_item':
+          return response(
+            ['item', 'sold_quantity', 'net_sales', 'gross_margin', 'margin_percent'],
+            [
+              { rowKind: 'Detail', cells: [{ display: 'Zulu' }, {}, { value: 100 }, { value: 10 }, {}] },
+              { rowKind: 'Detail', cells: [{ display: 'Alpha' }, {}, { value: 100 }, { value: 10 }, {}] },
+              { rowKind: 'Detail', cells: [{ display: 'Higher Margin' }, {}, { value: 100 }, { value: 20 }, {}] },
+              { rowKind: 'Detail', cells: [{}, {}, { value: 90 }, { value: 50 }, {}] },
+            ],
+          )
+        case 'trd.sales_by_customer':
+          return response(
+            ['customer', 'sales_document_count', 'return_document_count', 'net_sales', 'gross_margin', 'margin_percent'],
+            [
+              { rowKind: 'Detail', cells: [{ display: 'Zulu', action: { url: '/catalogs/trd.customer/zulu' } }, {}, {}, { value: 100 }, { value: 10 }, {}] },
+              { rowKind: 'Detail', cells: [{ display: 'Alpha' }, {}, {}, { value: 100 }, { value: 10 }, {}] },
+              { rowKind: 'Detail', cells: [{ display: 'Higher Margin' }, {}, {}, { value: 100 }, { value: 20 }, {}] },
+              { rowKind: 'Detail', cells: [{}, {}, {}, { value: 90 }, { value: 50 }, {}] },
+            ],
+          )
+        case 'trd.purchases_by_vendor':
+          return response(
+            ['vendor', 'purchase_document_count', 'return_document_count', 'net_purchases'],
+            [
+              { rowKind: 'Detail', cells: [{ display: 'Zulu' }, {}, {}, { value: 100 }] },
+              { rowKind: 'Detail', cells: [{ display: 'Alpha' }, {}, {}, { value: 100 }] },
+              { rowKind: 'Detail', cells: [{}, {}, {}, { value: 90 }] },
+            ],
+          )
+        default:
+          throw new Error(`Unexpected report ${reportCode}`)
+      }
+    })
+
+    const data = await loadHomeDashboard('2026-04-18')
+
+    expect(data.purchasesThisMonth).toBe(25)
+    expect(data.grossMargin).toBe(8)
+    expect(data.routes.grossMargin).toBe('/reports/custom-gross-margin')
+    expect(data.inventoryPositionCount).toBe(2)
+    expect(data.inventoryPositions[0]).toMatchObject({
+      item: 'Item',
+      warehouse: 'Warehouse',
+      route: null,
+      itemRoute: null,
+      warehouseRoute: null,
+    })
+    expect(data.inventoryPositions[1]).toMatchObject({
+      route: '/catalogs/trd.item/adapter',
+      itemRoute: '/catalogs/trd.item/adapter',
+      warehouseRoute: '/catalogs/trd.warehouse/main',
+    })
+    expect(data.recentDocuments[0]).toMatchObject({
+      title: 'Trade document',
+      amountDisplay: null,
+      documentDate: null,
+      route: null,
+    })
+    expect(data.activeSalesItemCount).toBe(4)
+    expect(data.topItems.map((item) => item.item)).toEqual(['Higher Margin', 'Alpha', 'Zulu', 'Item'])
+    expect(data.activeCustomerCount).toBe(4)
+    expect(data.topCustomers.map((customer) => customer.customer)).toEqual(['Higher Margin', 'Alpha', 'Zulu', 'Customer'])
+    expect(data.topCustomers.find((customer) => customer.customer === 'Zulu')?.route).toBe('/catalogs/trd.customer/zulu')
+    expect(data.activeVendorCount).toBe(3)
+    expect(data.topVendors.map((vendor) => vendor.vendor)).toEqual(['Alpha', 'Zulu', 'Vendor'])
+  })
+
+  it('returns safe defaults and a warning for every unavailable report slice', async () => {
+    mocks.executeReport.mockImplementation(async (reportCode: string) => {
+      throw new Error(`${reportCode} offline`)
+    })
+
+    const data = await loadHomeDashboard('2026-04-18')
+
+    expect(data.warnings).toEqual([
+      'Overview analytics are unavailable: trd.dashboard_overview offline',
+      'Sales by item analytics are unavailable: trd.sales_by_item offline',
+      'Sales by customer analytics are unavailable: trd.sales_by_customer offline',
+      'Purchases by vendor analytics are unavailable: trd.purchases_by_vendor offline',
+    ])
+    expect(data).toMatchObject({
+      salesThisMonth: 0,
+      purchasesThisMonth: 0,
+      inventoryOnHand: 0,
+      grossMargin: 0,
+      activeSalesItemCount: 0,
+      activeCustomerCount: 0,
+      activeVendorCount: 0,
+      inventoryPositionCount: 0,
+      topItems: [],
+      topCustomers: [],
+      topVendors: [],
+      inventoryPositions: [],
+      recentDocuments: [],
+    })
   })
 
   it('rejects invalid as-of dates before issuing any report calls', async () => {

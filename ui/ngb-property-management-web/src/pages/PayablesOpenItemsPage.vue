@@ -410,13 +410,11 @@ const suggestedApplyItems = computed(() => {
 const suggestedSummary = computed(() => {
   const items = suggestedApplyItems.value
   const count = items.length
-  if (count === 0) return { count: 0, creditLabel: 'credit sources', chargeLabel: 'charges' }
-
-  const first = items[0]
+  const first = items[0]!
   return {
     count,
-    creditLabel: docLabel(null, first?.creditDocumentDisplay, first?.creditDocumentId),
-    chargeLabel: docLabel(null, first?.chargeDisplay, first?.chargeDocumentId),
+    creditLabel: docLabel(null, first.creditDocumentDisplay, first.creditDocumentId),
+    chargeLabel: docLabel(null, first.chargeDisplay, first.chargeDocumentId),
   }
 })
 
@@ -428,7 +426,7 @@ const applyWizardTitle = computed(() => {
 
 const formattedSuggestWarnings = computed(() => {
   return (suggestData.value?.warnings ?? []).map((warning) => {
-    switch (String(warning.code ?? '').trim()) {
+    switch (warning.code.trim()) {
       case 'no_charges':
         return { title: 'No open charges', message: 'There are no outstanding payable charges to apply right now for this vendor/property.' }
       case 'no_credits':
@@ -436,9 +434,9 @@ const formattedSuggestWarnings = computed(() => {
       case 'limit_reached':
         return { title: 'Suggestion limit reached', message: 'The wizard stopped early because the current suggestion limit was reached. Review the remaining items before continuing.' }
       case 'outstanding_remaining':
-        return { title: 'Some charges will remain open', message: String(warning.message ?? '').replace('Outstanding charges remain', 'Open payable balance will remain after this apply') }
+        return { title: 'Some charges will remain open', message: warning.message.replace('Outstanding charges remain', 'Open payable balance will remain after this apply') }
       case 'credit_remaining':
-        return { title: 'Some credit will remain', message: String(warning.message ?? '').replace('Unapplied credits remain', 'Available credit source balance will remain after this apply') }
+        return { title: 'Some credit will remain', message: warning.message.replace('Unapplied credits remain', 'Available credit source balance will remain after this apply') }
       default:
         return { title: 'Review before posting', message: warning.message }
     }

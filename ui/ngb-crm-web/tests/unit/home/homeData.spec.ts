@@ -70,7 +70,11 @@ describe('CRM home dashboard data', () => {
         case 'crm.sales_pipeline':
           return Promise.resolve(report(
             ['opportunity_display', 'customer_display', 'stage_display', 'amount__sum', 'weighted_amount__sum'],
-            [['Enterprise CRM rollout', 'Acme Distribution', 'Proposal', 1000, 400]],
+            [
+              ['Enterprise CRM rollout', 'Acme Distribution', 'Proposal', 1000, 400],
+              ['', '', '', 200, 600],
+              ['Filtered opportunity', 'Filtered account', 'Prospect', 0, 0],
+            ],
             {
               opportunity_display: {
                 kind: 'open_document',
@@ -99,8 +103,8 @@ describe('CRM home dashboard data', () => {
 
     const data = await loadHomeDashboard('2026-07-05')
 
-    expect(data.pipelineAmount).toBe(1000)
-    expect(data.weightedPipelineAmount).toBe(400)
+    expect(data.pipelineAmount).toBe(1200)
+    expect(data.weightedPipelineAmount).toBe(1000)
     expect(data.leadCount).toBe(2)
     expect(data.qualifiedLeadCount).toBe(1)
     expect(data.convertedLeadCount).toBe(1)
@@ -108,6 +112,14 @@ describe('CRM home dashboard data', () => {
     expect(data.quoteAmount).toBe(250)
     expect(data.quoteCount).toBe(3)
     expect(data.openOpportunities).toEqual([
+      {
+        opportunity: 'Opportunity',
+        account: 'Account',
+        stage: 'Stage',
+        amount: 200,
+        weightedAmount: 600,
+        route: '/documents/crm.lead_conversion/opp-1',
+      },
       {
         opportunity: 'Enterprise CRM rollout',
         account: 'Acme Distribution',
@@ -158,5 +170,103 @@ describe('CRM home dashboard data', () => {
     const funnelRequest = executeReportMock.mock.calls.find(([reportCode]) => reportCode === 'crm.lead_conversion_funnel')?.[1]
     expect(funnelRequest.layout.detailFields).not.toContain('document_id')
     expect(funnelRequest.layout.detailFields).not.toContain('document_display')
+  })
+
+  it('uses first-cell funnel labels and direct measure columns at report boundaries', async () => {
+    executeReportMock.mockImplementation((reportCode: string) => {
+      switch (reportCode) {
+        case 'crm.sales_pipeline':
+          return Promise.resolve(report(
+            ['amount', 'weighted_amount'],
+            [[125, 75]],
+          ))
+        case 'crm.lead_conversion_funnel':
+          return Promise.resolve({
+            sheet: {
+              columns: [{ code: 'unknown' }, { code: 'lead_count' }],
+              rows: [
+                {
+                  rowKind: 'Group',
+                  cells: [
+                    { value: '01 Imported', display: '01 Imported' },
+                    { value: 9, display: '9' },
+                  ],
+                },
+                {
+                  rowKind: 'Group',
+                  cells: undefined,
+                },
+              ],
+            },
+          })
+        case 'crm.activity_summary':
+        case 'crm.quote_register':
+          return Promise.resolve({
+            sheet: {
+              columns: [],
+              rows: undefined,
+            },
+          })
+        default:
+          throw new Error(`Unexpected report ${reportCode}`)
+      }
+    })
+
+    const data = await loadHomeDashboard('2026-07-05')
+
+    expect(data.pipelineAmount).toBe(125)
+    expect(data.weightedPipelineAmount).toBe(75)
+    expect(data.leadCount).toBe(9)
+    expect(data.qualifiedLeadCount).toBe(0)
+    expect(data.openOpportunities).toEqual([
+      {
+        opportunity: 'Opportunity',
+        account: 'Account',
+        stage: 'Stage',
+        amount: 125,
+        weightedAmount: 75,
+        route: null,
+      },
+    ])
+
+    executeReportMock.mockImplementation((reportCode: string) => {
+      if (reportCode === 'crm.lead_conversion_funnel') {
+        return Promise.resolve({
+          sheet: {
+            columns: [],
+            rows: undefined,
+          },
+        })
+      }
+      return Promise.resolve(report([], []))
+    })
+
+    const emptyFunnel = await loadHomeDashboard('2026-07-05')
+    expect(emptyFunnel.leadCount).toBe(0)
+  })
+
+  it('returns zeroed dashboard sections and warnings when report calls fail', async () => {
+    executeReportMock.mockImplementation((reportCode: string) => {
+      if (reportCode === 'crm.sales_pipeline') throw new Error('Pipeline offline')
+      throw 'report unavailable'
+    })
+
+    const data = await loadHomeDashboard('2026-07-05')
+
+    expect(data.pipelineAmount).toBe(0)
+    expect(data.weightedPipelineAmount).toBe(0)
+    expect(data.leadCount).toBe(0)
+    expect(data.qualifiedLeadCount).toBe(0)
+    expect(data.convertedLeadCount).toBe(0)
+    expect(data.quoteAmount).toBe(0)
+    expect(data.quoteCount).toBe(0)
+    expect(data.activityCount).toBe(0)
+    expect(data.openOpportunities).toEqual([])
+    expect(data.warnings).toEqual(expect.arrayContaining([
+      'crm.sales_pipeline: Pipeline offline',
+      'crm.lead_conversion_funnel: Unable to load report data.',
+      'crm.activity_summary: Unable to load report data.',
+      'crm.quote_register: Unable to load report data.',
+    ]))
   })
 })

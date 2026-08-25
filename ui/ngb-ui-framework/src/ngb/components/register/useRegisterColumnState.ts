@@ -14,7 +14,7 @@ type UseRegisterColumnStateArgs = {
   storageKey: ComputedRef<string | undefined>;
   showStatusColumn: ComputedRef<boolean>;
   statusColWidth: ComputedRef<number>;
-  emitVisibleColumnKeys: (value: string[]) => void;
+  emitVisibleColumnKeys?: (value: string[]) => void;
 };
 
 type RegisterColumnState = {
@@ -69,10 +69,7 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
     derivedFromPartialColumns.value = columns.length <= 1;
   }
 
-  function hydrateFromStorage() {
-    const storageKey = args.storageKey.value;
-    if (!storageKey) return;
-
+  function hydrateFromStorage(storageKey: string) {
     const saved = loadJson<PersistedColumns | string[] | null>(storageKey, null);
     if (!saved) return;
 
@@ -88,11 +85,10 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
 
   watch(
     args.storageKey,
-    (next, prev) => {
+    (next) => {
       if (!next) return;
-      if (prev && next === prev) return;
       resetLocalStateFromColumns();
-      hydrateFromStorage();
+      hydrateFromStorage(next);
       ensureStateAfterColumnsReady();
     },
     { immediate: true },
@@ -154,7 +150,7 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
 
   function setVisible(keys: string[]) {
     localVisible.value = keys;
-    args.emitVisibleColumnKeys(keys);
+    args.emitVisibleColumnKeys?.(keys);
   }
 
   function colWidth(column: RegisterColumn) {

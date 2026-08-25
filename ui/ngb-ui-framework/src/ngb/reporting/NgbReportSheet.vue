@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { useRouter } from 'vue-router'
 import NgbBadge from '../primitives/NgbBadge.vue'
 
@@ -28,14 +28,13 @@ const emit = defineEmits<{
   (e: 'scroll-top-change', value: number): void
 }>()
 
-const hasRows = computed(() => (props.sheet?.rows?.length ?? 0) > 0)
+const columns = computed(() => props.sheet!.columns)
+const rows = computed(() => props.sheet?.rows ?? [])
+const hasRows = computed(() => rows.value.length > 0)
 const headerRows = computed(() => props.sheet?.headerRows ?? [])
 const hasColumnGroups = computed(() => headerRows.value.length > 0)
 const rowAxisColumnCount = computed(() => {
-  if (!hasColumnGroups.value) return 0
-
-  const firstHeaderRow = headerRows.value[0]
-  if (!firstHeaderRow) return 0
+  const firstHeaderRow = headerRows.value[0]!
 
   const headerDepth = headerRows.value.length
   let count = 0
@@ -47,12 +46,10 @@ const rowAxisColumnCount = computed(() => {
   return count
 })
 const totalColumnStartIndex = computed(() => {
-  if (!hasColumnGroups.value) return -1
-  return props.sheet?.columns?.findIndex(column => column.semanticRole === 'pivot-total') ?? -1
+  return columns.value.findIndex(column => column.semanticRole === 'pivot-total')
 })
 const totalMeasureColumnCount = computed(() => {
-  if (!hasColumnGroups.value) return 0
-  return props.sheet?.columns?.filter(column => column.semanticRole === 'pivot-total').length ?? 0
+  return columns.value.filter(column => column.semanticRole === 'pivot-total').length
 })
 
 const router = useRouter()
@@ -131,8 +128,8 @@ function isDecimalValueType(valueType?: string | null): boolean {
   return normalized === 'decimal' || normalized === 'double' || normalized === 'float' || normalized === 'single'
 }
 
-function normalizeCount(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null
+function normalizeCount(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value) || value < 0) return null
   return Math.floor(value)
 }
 
@@ -154,20 +151,16 @@ function formatCountWithRowNoun(count: number): string {
 }
 
 const footerStatusText = computed(() => {
-  const loadedCount = normalizeCount(props.loadedCount) ?? (props.sheet?.rows?.length ?? 0)
+  const loadedCount = normalizeCount(props.loadedCount) ?? rows.value.length
   const totalCount = normalizeCount(props.totalCount)
 
   if (props.loadingMore) return `Loading more ${pluralizeRowNoun(Math.max(loadedCount, 2), normalizeRowNoun(props.rowNoun))}…`
   if (props.canLoadMore) return `Loaded ${formatCountWithRowNoun(loadedCount)}. Scroll to continue loading.`
-  if (props.showEndOfList) {
-    if (totalCount != null && totalCount >= loadedCount) {
-      return `Loaded ${formatCountWithRowNoun(totalCount)}. End of list.`
-    }
-
-    return `Loaded ${formatCountWithRowNoun(loadedCount)}. End of list.`
+  if (totalCount != null && totalCount >= loadedCount) {
+    return `Loaded ${formatCountWithRowNoun(totalCount)}. End of list.`
   }
 
-  return null
+  return `Loaded ${formatCountWithRowNoun(loadedCount)}. End of list.`
 })
 
 function tryFormatDecimal(value: unknown): string | null {
@@ -208,16 +201,11 @@ function headerCellStyle(rowIndex: number): CSSProperties {
 }
 
 function rowRenderKey(row: ReportSheetRowDto, rowIndex: number): string {
-  return `${String(row.rowKind ?? 'row')}:${String(row.groupKey ?? 'nogroup')}:${rowIndex}`
+  return `${String(row.rowKind)}:${String(row.groupKey ?? 'nogroup')}:${rowIndex}`
 }
 
 function headerCellClass(cell: ReportCellDto, headerIndex: number, cellIndex: number): string {
   const classes = ['border-b', 'border-ngb-border', 'text-left', 'leading-snug', 'whitespace-pre-wrap', 'break-words']
-
-  if (!hasColumnGroups.value) {
-    classes.push('bg-ngb-card', 'px-4', 'py-3', 'font-semibold', 'text-ngb-text')
-    return classes.join(' ')
-  }
 
   classes.push('bg-ngb-card', 'px-4')
 
@@ -256,11 +244,7 @@ function bodyCellClass(row: ReportSheetRowDto, cellIndex: number): string {
   return classes.join(' ')
 }
 
-function tableClass(): string {
-  return hasColumnGroups.value
-    ? 'min-w-full border-collapse text-sm'
-    : 'min-w-full border-collapse text-sm'
-}
+const tableClass = 'min-w-full border-collapse text-sm'
 
 function bodyRowHoverClass(): string {
   return hasColumnGroups.value ? 'hover:bg-[rgba(11,60,93,.025)]' : ''
@@ -272,11 +256,10 @@ function bodyContentClass(cellIndex: number): string {
 }
 
 function isTotalLeafHeaderCell(headerIndex: number, cellIndex: number): boolean {
-  if (!hasColumnGroups.value) return false
   if (headerIndex !== headerRows.value.length - 1) return false
   if (totalMeasureColumnCount.value <= 0) return false
 
-  const firstTotalHeaderIndex = headerRows.value[headerIndex].cells.length - totalMeasureColumnCount.value
+  const firstTotalHeaderIndex = headerRows.value[headerIndex]!.cells.length - totalMeasureColumnCount.value
   return cellIndex === firstTotalHeaderIndex
 }
 
@@ -301,21 +284,20 @@ function syncLoadMoreObserver() {
 
   if (typeof IntersectionObserver === 'undefined') return
   if (!shouldEmitLoadMore()) return
-  if (!scrollHost.value || !loadMoreSentinel.value) return
 
   loadMoreObserver = new IntersectionObserver((entries) => {
     if (entries.some((entry) => entry.isIntersecting)) requestLoadMore()
   }, {
-    root: scrollHost.value,
+    root: scrollHost.value!,
     rootMargin: '0px 0px 320px 0px',
     threshold: 0.01,
   })
 
-  loadMoreObserver.observe(loadMoreSentinel.value)
+  loadMoreObserver.observe(loadMoreSentinel.value!)
 }
 
-function onScroll() {
-  emit('scroll-top-change', scrollHost.value?.scrollTop ?? 0)
+function onScroll(event: Event) {
+  emit('scroll-top-change', (event.currentTarget as HTMLDivElement).scrollTop)
 }
 
 function restoreScrollTop(value: number) {
@@ -328,17 +310,16 @@ defineExpose({
 })
 
 watch(
-  () => [props.canLoadMore, props.loadingMore, props.loading, hasRows.value, props.sheet, props.sheet?.rows?.length ?? 0],
-  async () => {
+  () => [props.canLoadMore, props.loadingMore, props.loading, hasRows.value, props.sheet, rows.value.length],
+  () => {
     loadMoreRequestPending = false
-    await nextTick()
     syncLoadMoreObserver()
   },
+  { flush: 'post' },
 )
 
-onMounted(async () => {
+onMounted(() => {
   loadMoreRequestPending = false
-  await nextTick()
   syncLoadMoreObserver()
   emit('scroll-top-change', scrollHost.value?.scrollTop ?? 0)
 })
@@ -376,7 +357,7 @@ onBeforeUnmount(() => {
       class="min-h-0 min-w-0 overflow-auto overscroll-contain rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card shadow-card"
       @scroll="onScroll"
     >
-      <table :class="tableClass()" data-testid="report-sheet-table">
+      <table :class="tableClass" data-testid="report-sheet-table">
         <thead class="bg-ngb-card">
           <template v-if="headerRows.length > 0">
             <tr v-for="(headerRow, headerIndex) in headerRows" :key="headerRow.groupKey ?? `header:${headerIndex}`">
@@ -403,7 +384,7 @@ onBeforeUnmount(() => {
 
           <tr v-else class="sticky top-0 z-10 bg-ngb-card">
             <th
-              v-for="column in sheet?.columns ?? []"
+              v-for="column in columns"
               :key="column.code"
               class="border-b border-ngb-border px-4 py-3 text-left font-semibold leading-snug text-ngb-text whitespace-pre-wrap break-words"
             >
@@ -414,7 +395,7 @@ onBeforeUnmount(() => {
 
         <tbody>
           <tr
-            v-for="(row, rowIndex) in sheet?.rows ?? []"
+            v-for="(row, rowIndex) in rows"
             :key="rowRenderKey(row, rowIndex)"
             :class="[rowClass(row), bodyRowHoverClass()]"
           >

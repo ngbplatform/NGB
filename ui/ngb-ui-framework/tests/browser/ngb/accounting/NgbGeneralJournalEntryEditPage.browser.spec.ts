@@ -352,7 +352,15 @@ function setCheckbox(index: number, checked: boolean) {
   input.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
-async function renderPage(initialUrl: string) {
+function setSelect(index: number, value: string) {
+  const select = document.querySelectorAll('select')[index]
+  if (!(select instanceof HTMLSelectElement)) throw new Error(`Select ${index} not found.`)
+  select.value = value
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+async function renderPage(initialUrl: string, props: { listPath?: string | null } = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -370,6 +378,10 @@ async function renderPage(initialUrl: string) {
           template: '<div>Dashboard</div>',
         },
       },
+      {
+        path: '/',
+        component: NgbGeneralJournalEntryEditPage,
+      },
     ],
   })
 
@@ -377,6 +389,7 @@ async function renderPage(initialUrl: string) {
   await router.isReady()
 
   const view = await render(NgbGeneralJournalEntryEditPage, {
+    props,
     global: {
       plugins: [router],
     },
@@ -391,7 +404,9 @@ async function renderPage(initialUrl: string) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
+
+  gjeEditMocks.auth.userName = 'QA Owner'
 
   gjeEditMocks.lookupStore.ensureCoaLabels.mockResolvedValue(undefined)
   gjeEditMocks.lookupStore.ensureDocumentLabels.mockResolvedValue(undefined)
@@ -560,6 +575,10 @@ test('loads an existing entry, hydrates lookup labels, and wires share, audit, b
   clickButtonByTitle('Audit log')
   await expect.element(view.getByText('Audit entity: General Journal Entry JE-010')).toBeVisible()
   await view.getByRole('button', { name: 'Audit close' }).click()
+  await flushUi()
+
+  clickButtonByTitle('Audit log')
+  await view.getByRole('button', { name: 'Drawer close' }).click()
   await flushUi()
 
   clickButtonByTitle('Mark for deletion')
@@ -839,6 +858,22 @@ test('keeps approve and reject actions usable after workflow failures', async ()
 
   await expect.element(view.getByText('Reject reason is too long.')).toBeVisible()
   expect(queryButtonByTitle('Reject')?.disabled).toBe(false)
+
+  gjeEditMocks.reject.mockResolvedValueOnce(clone(makeDetails({
+    id: 'gje-32',
+    number: 'JE-032',
+    status: 1,
+    approvalState: 4,
+    rejectReason: 'Needs more detail before approval',
+  })))
+  clickButtonByTitle('Reject')
+  await flushUi()
+
+  expect(gjeEditMocks.toasts.push).toHaveBeenCalledWith(expect.objectContaining({
+    title: 'Rejected',
+    tone: 'warn',
+  }))
+  await expect.element(view.getByTestId('badge-warn')).toHaveTextContent('Rejected')
 })
 
 test('shows posting failures in the validation summary and restores the post action state', async () => {
@@ -893,4 +928,196 @@ test('keeps the current route and reverse action available when reversal fails',
   expect(router.currentRoute.value.fullPath).toBe('/accounting/general-journal-entries/gje-posted-2')
   await expect.element(view.getByText('Line 2 has invalid dimensions. Account: 2100. Reason: missing required dimension.')).toBeVisible()
   expect(queryButtonByTitle('Reverse')?.disabled).toBe(false)
+})
+
+test('hydrates optional header fields, actor fallbacks, account labels, dimensions, and an empty line collection', async () => {
+  await page.viewport(1280, 900)
+
+  Reflect.set(gjeEditMocks.auth, 'userName', null)
+  const sparseDetails = clone(makeDetails({
+    id: 'gje-system',
+    display: 'System allocation journal',
+    source: 2,
+    lines: [
+      {
+        lineNo: 1,
+        side: 1,
+        accountId: 'cash-id',
+        accountDisplay: null,
+        amount: 10,
+        memo: null,
+        dimensionSetId: 'set-1',
+        dimensions: [{
+          dimensionId: 'department',
+          valueId: 'department-1',
+          display: null,
+        }],
+      },
+      {
+        lineNo: 2,
+        side: 2,
+        accountId: 'unknown-id',
+        accountDisplay: null,
+        amount: 10,
+        memo: null,
+        dimensionSetId: 'set-2',
+        dimensions: [],
+      },
+    ],
+    accountContexts: [{
+      accountId: 'cash-id',
+      code: '1100',
+      name: 'Cash',
+      dimensionRules: [],
+    }],
+  }))
+  Object.assign(sparseDetails.header, {
+    reasonCode: null,
+    memo: null,
+    externalReference: null,
+    initiatedBy: '   ',
+    submittedBy: null,
+    approvedBy: null,
+    rejectedBy: null,
+    postedBy: null,
+  })
+  gjeEditMocks.getEntry.mockResolvedValueOnce(sparseDetails)
+
+  const { router, view } = await renderPage('/accounting/general-journal-entries/gje-system')
+
+  await expect.element(view.getByText('System allocation journal')).toBeVisible()
+  await expect.element(view.getByText('This is a system-generated journal entry. Header and lines are read-only.')).toBeVisible()
+  expect(view.getByTestId('gje-line-0').element().textContent ?? '').toContain('1100 — Cash')
+  expect(view.getByTestId('gje-line-1').element().textContent ?? '').toContain('unknown-id')
+  const initiatedByInput = view.getByTestId('form-row-Initiated By').element().querySelector('input')
+  expect(initiatedByInput?.value).toBe('Current user')
+
+  await view.getByRole('button', { name: 'Workflow' }).click()
+  for (const label of ['Submitted By', 'Approved By', 'Rejected By', 'Posted By', 'Reverse Initiated By']) {
+    const actorInput = view.getByTestId(`form-row-${label}`).element().querySelector('input')
+    expect(actorInput?.value).toBe('Current user')
+  }
+
+  const emptyDetails = clone(makeDetails({
+    id: 'gje-empty',
+    number: '',
+    display: '',
+    approvalState: 4,
+    lines: [],
+    accountContexts: [],
+  }))
+  Reflect.deleteProperty(emptyDetails, 'accountContexts')
+  gjeEditMocks.getEntry.mockResolvedValueOnce(emptyDetails)
+  await router.push('/accounting/general-journal-entries/gje-empty')
+  await flushUi()
+
+  await expect.element(view.getByRole('heading', { name: 'General Journal Entry' })).toBeVisible()
+  await expect.element(view.getByTestId('badge-warn')).toHaveTextContent('Rejected')
+  await view.getByRole('button', { name: 'Lines' }).click()
+  expect(view.getByTestId('gje-line-0').element().textContent ?? '').toContain('line:1:none:')
+})
+
+test('normalizes blank header and boundary line values in the saved draft request', async () => {
+  await page.viewport(1280, 900)
+
+  const { view } = await renderPage('/accounting/general-journal-entries/new')
+
+  setSelect(0, '2')
+  await view.getByPlaceholder('Optional business reason code').fill('   ')
+  await view.getByPlaceholder('Explain the journal entry').fill('   ')
+  await view.getByPlaceholder('External ticket, import id, or source ref').fill('   ')
+  await view.getByRole('button', { name: 'Set boundary lines' }).click()
+  clickButtonByTitle('Save')
+  await flushUi()
+
+  expect(gjeEditMocks.updateHeader).toHaveBeenCalledWith('gje-created', {
+    updatedBy: 'QA Owner',
+    journalType: 2,
+    reasonCode: null,
+    memo: null,
+    externalReference: null,
+    autoReverse: false,
+    autoReverseOnUtc: null,
+  })
+  expect(gjeEditMocks.replaceLines).toHaveBeenCalledWith('gje-created', {
+    updatedBy: 'QA Owner',
+    lines: [{
+      side: 1,
+      accountId: 'cash-id',
+      amount: 0,
+      memo: null,
+      dimensions: [{ dimensionId: 'department', valueId: 'department-1' }],
+    }],
+  })
+})
+
+test('maps every journal business validation code including missing error context', async () => {
+  await page.viewport(1280, 900)
+
+  gjeEditMocks.getEntry.mockResolvedValueOnce(clone(makeDetails({ id: 'gje-errors' })))
+  gjeEditMocks.updateHeader
+    .mockRejectedValueOnce(makeApiError({ errorCode: 'gje.lines.required' }))
+    .mockRejectedValueOnce(makeApiError({ errorCode: 'gje.lines.debit_and_credit_required' }))
+    .mockRejectedValueOnce(makeApiError({ errorCode: 'gje.lines.unbalanced' }))
+    .mockRejectedValueOnce(makeApiError({ errorCode: 'gje.business_field.required' }))
+    .mockRejectedValueOnce(makeApiError({ errorCode: 'gje.line.dimensions.invalid' }))
+    .mockRejectedValueOnce(makeApiError({ message: '' }))
+
+  const { view } = await renderPage('/accounting/general-journal-entries/gje-errors')
+  const expectedMessages = [
+    'Add at least one journal line.',
+    'Add at least one debit line and one credit line.',
+    'Journal is unbalanced. Debit 0.00 vs Credit 0.00.',
+    'Field is required.',
+    'Line ? has invalid dimensions.',
+    'Request failed.',
+  ]
+
+  for (const expectedMessage of expectedMessages) {
+    clickButtonByTitle('Submit')
+    await flushUi()
+    await expect.element(view.getByText(expectedMessage)).toBeVisible()
+    expect(queryButtonByTitle('Submit')?.disabled).toBe(false)
+  }
+})
+
+test('shows native and non-error failures from load and deletion operations', async () => {
+  await page.viewport(1280, 900)
+
+  gjeEditMocks.getEntry.mockRejectedValueOnce(new Error('Loading the journal failed.'))
+  const { router, view } = await renderPage('/accounting/general-journal-entries/gje-load-error')
+
+  await expect.element(view.getByText('Loading the journal failed.')).toBeVisible()
+
+  gjeEditMocks.getEntry.mockResolvedValueOnce(clone(makeDetails({ id: 'gje-delete-error' })))
+  await router.push('/accounting/general-journal-entries/gje-delete-error')
+  await flushUi()
+  gjeEditMocks.markForDeletion.mockRejectedValueOnce('Deletion failed.')
+  clickButtonByTitle('Mark for deletion')
+  await flushUi()
+
+  await expect.element(view.getByText('Deletion failed.')).toBeVisible()
+  expect(queryButtonByTitle('Mark for deletion')?.disabled).toBe(false)
+})
+
+test('uses an explicit list path for close navigation', async () => {
+  await page.viewport(1280, 900)
+
+  await renderPage('/', { listPath: '  /custom-journal-list  ' })
+
+  clickButtonByTitle('Close')
+  expect(gjeEditMocks.navigateBack).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.anything(),
+    '/custom-journal-list',
+  )
+})
+
+test('falls back to the standard list path when mounted at the router root', async () => {
+  await page.viewport(1280, 900)
+
+  await renderPage('/')
+
+  clickButtonByTitle('Close')
+  expect(gjeEditMocks.navigateBack.mock.calls.at(-1)?.[2]).toBe('/accounting/general-journal-entries')
 })

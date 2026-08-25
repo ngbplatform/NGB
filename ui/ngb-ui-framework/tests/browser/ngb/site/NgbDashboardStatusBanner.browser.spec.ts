@@ -53,3 +53,14 @@ test('renders error mode with priority over warnings', async () => {
   expect(document.body.textContent ?? '').not.toContain('Late data')
   await expect.element(view.getByTestId('icon-circle-x')).toBeVisible()
 })
+
+test('renders nothing for null warnings and a blank error', async () => {
+  await render(NgbDashboardStatusBanner, {
+    props: { warnings: null, error: '  ' },
+  })
+  await render(NgbDashboardStatusBanner, {
+    props: { warnings: [null] as never, error: null },
+  })
+
+  expect(document.querySelector('.ngb-dashboard-status-banner')).toBeNull()
+})

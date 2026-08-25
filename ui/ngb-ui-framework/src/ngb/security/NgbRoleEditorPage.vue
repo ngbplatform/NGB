@@ -117,8 +117,6 @@ async function load(): Promise<void> {
 }
 
 async function save(): Promise<void> {
-  if (!canEdit.value || saving.value) return
-
   saving.value = true
   error.value = null
 
@@ -140,7 +138,7 @@ async function save(): Promise<void> {
       code: form.value.code,
       name: form.value.name,
       description: form.value.description || null,
-      isActive: role.value?.isActive ?? true,
+      isActive: role.value!.isActive,
       permissions: permissions.value,
     })
     applyRole(updated)
@@ -153,14 +151,12 @@ async function save(): Promise<void> {
 }
 
 async function confirmActivationChange(): Promise<void> {
-  if (!role.value || !confirmMode.value) return
-
   activating.value = true
   error.value = null
 
   try {
-    if (confirmMode.value === 'deactivate') await deactivateRole(role.value.roleId)
-    else await reactivateRole(role.value.roleId)
+    if (confirmMode.value === 'deactivate') await deactivateRole(role.value!.roleId)
+    else await reactivateRole(role.value!.roleId)
     confirmMode.value = null
     await load()
   } catch (cause) {
@@ -175,7 +171,6 @@ function goBack(): void {
 }
 
 function openAuditLog(): void {
-  if (!canOpenAudit.value) return
   auditOpen.value = true
 }
 
@@ -300,7 +295,7 @@ watch(
       :confirm-text="confirmMode === 'reactivate' ? 'Reactivate' : 'Deactivate'"
       :danger="confirmMode === 'deactivate'"
       :confirm-loading="activating"
-      @update:open="(value) => { if (!value) confirmMode = null }"
+      @update:open="confirmMode = null"
       @confirm="confirmActivationChange"
     />
 
@@ -308,7 +303,7 @@ watch(
       <NgbEntityAuditSidebar
         :open="auditOpen"
         :entity-kind="AUDIT_ENTITY_KIND_SECURITY_ROLE"
-        :entity-id="role?.roleId ?? null"
+        :entity-id="role!.roleId"
         :entity-title="auditEntityTitle"
         :behavior="ROLE_AUDIT_BEHAVIOR"
         @back="closeAuditLog"

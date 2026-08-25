@@ -1,10 +1,11 @@
 import { computed, ref } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Router } from 'vue-router'
 
 import {
   buildDocumentEffectsPageUrl,
   buildDocumentFlowPageUrl,
+  buildDocumentFullPageUrl,
   buildDocumentPrintPageUrl,
 } from '../../../../src/ngb/editor/documentNavigation'
 import { useEntityEditorNavigationActions } from '../../../../src/ngb/editor/useEntityEditorNavigationActions'
@@ -135,6 +136,10 @@ function createArgs(overrides: Partial<Parameters<typeof useEntityEditorNavigati
 }
 
 describe('entity editor navigation actions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   it('copies writable document fields into a drawer copy target', () => {
     saveDocumentCopyDraftMock.mockReturnValueOnce('copy-token')
 
@@ -251,5 +256,151 @@ describe('entity editor navigation actions', () => {
       2,
       withBackTarget('/documents/pm.invoice/doc-1', restorableDrawerTarget),
     )
+  })
+
+  it('handles absent targets, disabled capabilities, and explicit close navigation without side effects', async () => {
+    const { args, router } = createArgs({
+      currentId: ref(null),
+      mode: computed(() => 'page' as const),
+      compactTo: computed(() => null),
+      expandTo: computed(() => null),
+      closeTo: computed(() => '/custom-close'),
+      canOpenAudit: computed(() => false),
+      canPrintDocument: computed(() => false),
+      canOpenDocumentFlowPage: computed(() => false),
+      canOpenEffectsPage: computed(() => false),
+    })
+    const actions = useEntityEditorNavigationActions(args)
+
+    await actions.copyShareLink()
+    actions.copyDocument()
+    actions.openDocumentPrintPage()
+    actions.openAuditLog()
+    actions.openDocumentEffectsPage()
+    actions.openDocumentFlowPage()
+    actions.openFullPage()
+    actions.openCompactPage()
+    actions.closePage()
+
+    expect(saveDocumentCopyDraftMock).not.toHaveBeenCalled()
+    expect(router.push).not.toHaveBeenCalled()
+    expect(actions.auditOpen.value).toBe(false)
+    expect(args.requestNavigate).toHaveBeenNthCalledWith(1, null)
+    expect(args.requestNavigate).toHaveBeenNthCalledWith(2, null)
+    expect(args.requestNavigate).toHaveBeenNthCalledWith(3, '/custom-close')
+  })
+
+  it('blocks copying independently while loading or saving and rejects catalog copies', () => {
+    const loading = createArgs({ loading: ref(true) }).args
+    useEntityEditorNavigationActions(loading).copyDocument()
+
+    const saving = createArgs({ saving: ref(true) }).args
+    useEntityEditorNavigationActions(saving).copyDocument()
+
+    const catalog = createArgs({ kind: computed(() => 'catalog' as const) }).args
+    useEntityEditorNavigationActions(catalog).copyDocument()
+
+    expect(saveDocumentCopyDraftMock).not.toHaveBeenCalled()
+  })
+
+  it('copies model keys without metadata or a parts builder into a full-page draft', () => {
+    saveDocumentCopyDraftMock.mockReturnValueOnce('page token')
+    const { args } = createArgs({
+      mode: computed(() => 'page' as const),
+      metadata: computed(() => null),
+      model: ref({
+        title: 'Invoice INV-001',
+        display: 'Generated display',
+        number: 'INV-001',
+      }),
+      buildCopyParts: undefined,
+    })
+    const actions = useEntityEditorNavigationActions(args)
+
+    actions.copyDocument()
+
+    expect(saveDocumentCopyDraftMock).toHaveBeenLastCalledWith({
+      documentType: 'pm.invoice',
+      fields: { title: 'Invoice INV-001' },
+      parts: null,
+    })
+    expect(args.requestNavigate).toHaveBeenCalledWith(
+      `${buildDocumentFullPageUrl('pm.invoice')}?copyDraft=page%20token`,
+    )
+  })
+
+  it('ignores blank and absent metadata keys plus fields missing from the model', () => {
+    saveDocumentCopyDraftMock.mockReturnValueOnce('filtered-token')
+    const metadata = createDocumentMetadata()
+    metadata.form.sections[0]!.rows[0]!.fields.unshift(
+      { isReadOnly: false } as never,
+      { key: ' ', isReadOnly: false } as never,
+      { key: 'missing', isReadOnly: false } as never,
+    )
+    const { args } = createArgs({ metadata: computed(() => metadata) })
+
+    useEntityEditorNavigationActions(args).copyDocument()
+
+    expect(saveDocumentCopyDraftMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      fields: {
+        title: 'Invoice INV-001',
+        notes: { internal: 'retain this note' },
+      },
+    }))
+  })
+
+  it('builds related-view back targets for catalog page and drawer modes', () => {
+    const pageCase = createArgs({
+      kind: computed(() => 'catalog' as const),
+      mode: computed(() => 'page' as const),
+      typeCode: computed(() => 'pm.property'),
+      currentId: ref('property-1'),
+      route: { fullPath: '/catalogs/pm.property?search=river' } as never,
+    })
+    const pageActions = useEntityEditorNavigationActions(pageCase.args)
+    pageActions.openDocumentPrintPage()
+
+    const drawerCase = createArgs({
+      kind: computed(() => 'catalog' as const),
+      mode: computed(() => 'drawer' as const),
+      typeCode: computed(() => 'pm.property'),
+      currentId: ref('property-1'),
+      route: { fullPath: '/catalogs/pm.property?search=river' } as never,
+    })
+    const drawerActions = useEntityEditorNavigationActions(drawerCase.args)
+    drawerActions.openDocumentEffectsPage()
+
+    expect(pageCase.args.requestNavigate).toHaveBeenCalledWith(expect.stringContaining('back='))
+    expect(drawerCase.router.push).toHaveBeenCalledWith(
+      withBackTarget(
+        buildDocumentEffectsPageUrl('pm.property', 'property-1'),
+        buildPathWithQuery('/catalogs/pm.property?search=river', {
+          panel: 'edit',
+          id: 'property-1',
+        }),
+      ),
+    )
+  })
+
+  it('restores a new drawer and closes it through the shell callback when no id exists', () => {
+    const { args } = createArgs({
+      currentId: ref(null),
+      expandTo: computed(() => '/documents/pm.invoice/new'),
+    })
+    const actions = useEntityEditorNavigationActions(args)
+
+    actions.openFullPage()
+    actions.closePage()
+
+    expect(args.requestNavigate).toHaveBeenCalledWith(
+      withBackTarget(
+        '/documents/pm.invoice/new',
+        buildPathWithQuery('/documents/pm.invoice?panel=edit&id=doc-1', {
+          panel: 'new',
+          id: null,
+        }),
+      ),
+    )
+    expect(args.requestClose).toHaveBeenCalledOnce()
   })
 })

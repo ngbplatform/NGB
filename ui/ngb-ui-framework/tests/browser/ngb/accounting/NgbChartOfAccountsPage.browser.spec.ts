@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
 
 import {
   StubEditorDiscardDialog,
@@ -79,7 +79,7 @@ vi.mock('../../../../src/ngb/accounting/NgbChartOfAccountEditor.vue', async () =
           default: '',
         },
       },
-      emits: ['created', 'saved', 'changed', 'close'],
+      emits: ['created', 'saved', 'changed', 'close', 'state', 'flags', 'shell'],
       setup(props, { emit, expose }) {
         expose(chartMocks.editorHandle)
 
@@ -103,6 +103,52 @@ vi.mock('../../../../src/ngb/accounting/NgbChartOfAccountEditor.vue', async () =
             type: 'button',
             onClick: () => emit('close'),
           }, 'Editor emit close'),
+          h('button', {
+            type: 'button',
+            onClick: () => emit('state', { title: 'Account audit', subtitle: 'History' }),
+          }, 'Editor emit heading'),
+          h('button', {
+            type: 'button',
+            onClick: () => emit('flags', {
+              canSave: true,
+              isDirty: true,
+              loading: false,
+              saving: false,
+              canExpand: false,
+              canDelete: false,
+              canMarkForDeletion: true,
+              canUnmarkForDeletion: false,
+              canPost: false,
+              canUnpost: false,
+              canShowAudit: true,
+              canShareLink: true,
+            }),
+          }, 'Editor emit dirty'),
+          h('button', {
+            type: 'button',
+            onClick: () => emit('flags', {
+              canSave: false,
+              isDirty: false,
+              loading: false,
+              saving: false,
+              canExpand: false,
+              canDelete: false,
+              canMarkForDeletion: false,
+              canUnmarkForDeletion: false,
+              canPost: false,
+              canUnpost: false,
+              canShowAudit: false,
+              canShareLink: false,
+            }),
+          }, 'Editor emit clean'),
+          h('button', {
+            type: 'button',
+            onClick: () => emit('shell', { hideHeader: true, flushBody: true }),
+          }, 'Editor emit audit shell'),
+          h('button', {
+            type: 'button',
+            onClick: () => emit('shell', { hideHeader: false, flushBody: false }),
+          }, 'Editor emit normal shell'),
         ])
       },
     }),
@@ -126,7 +172,7 @@ async function flushUi() {
   await new Promise((resolve) => window.setTimeout(resolve, 40))
 }
 
-async function renderPage(initialUrl: string) {
+async function renderPage(initialUrl: string, props: Record<string, unknown> = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -149,6 +195,7 @@ async function renderPage(initialUrl: string) {
   const view = await render(NgbChartOfAccountsPage, {
     props: {
       backTarget: '/home',
+      ...props,
     },
     global: {
       plugins: [router],
@@ -161,6 +208,24 @@ async function renderPage(initialUrl: string) {
     router,
     view,
   }
+}
+
+async function renderRoutedPage(initialUrl: string) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/admin/chart-of-accounts', component: NgbChartOfAccountsPage },
+      { path: '/home', component: { template: '<div>Home</div>' } },
+    ],
+  })
+  await router.push(initialUrl)
+  await router.isReady()
+
+  const view = await render(RouterView, {
+    global: { plugins: [router] },
+  })
+  await flushUi()
+  return { router, view }
 }
 
 beforeEach(() => {
@@ -256,6 +321,10 @@ test('updates paging and trash filters, opens create and edit drawers, and refre
     includeDeleted: true,
     onlyDeleted: true,
   })
+
+  await view.getByRole('button', { name: 'Layout prev' }).click()
+  await flushUi()
+  expect(router.currentRoute.value.query.offset).toBe('0')
 
   await view.getByRole('button', { name: 'Layout next' }).click()
   await flushUi()
@@ -443,4 +512,100 @@ test('ignores stale chart page responses when route paging changes before the fi
   await expect.element(view.getByText(/code=2020/)).toBeVisible()
   expect(document.body.textContent).not.toContain('code=1010')
   expect(router.currentRoute.value.query.offset).toBe('50')
+})
+
+test('covers explicit route/storage props, current-id legacy cleanup, row status variants, and grid header states', async () => {
+  await page.viewport(1280, 900)
+  chartMocks.getMetadata.mockResolvedValue({
+    accountTypeOptions: [],
+    cashFlowRoleOptions: null,
+    cashFlowLineOptions: [],
+  })
+  chartMocks.getPage.mockResolvedValue({
+    offset: 40,
+    limit: 20,
+    total: 4,
+    items: [
+      { accountId: 'deleted', code: '1', name: 'Deleted', accountType: 'Asset', cashFlowRole: null, isActive: false, isDeleted: true, isMarkedForDeletion: false },
+      { accountId: 'marked', code: '2', name: 'Marked', accountType: 'Asset', cashFlowRole: 'missing', isActive: true, isDeleted: false, isMarkedForDeletion: true },
+      { accountId: 'inactive', code: '3', name: 'Inactive', accountType: 'Liability', cashFlowRole: null, isActive: false, isDeleted: false, isMarkedForDeletion: false },
+      { accountId: 'active', code: '4', name: 'Active', accountType: 'Revenue', cashFlowRole: null, isActive: true, isDeleted: false, isMarkedForDeletion: false },
+    ],
+  })
+
+  const { router, view } = await renderPage(
+    '/admin/chart-of-accounts?id=current-id&accountId=legacy-id&panel=edit&offset=40&limit=0',
+    { backTarget: null, routeBasePath: '/custom-coa', storageKey: 'custom-storage' },
+  )
+
+  expect(router.currentRoute.value.query.id).toBe('current-id')
+  expect(router.currentRoute.value.query.accountId).toBeUndefined()
+  expect(chartMocks.getPage).toHaveBeenCalledWith(expect.objectContaining({ offset: 40, limit: 50 }))
+  expect(document.body.textContent).toContain('storage:custom-storage')
+  expect(document.body.textContent).toContain('cashFlowRole=')
+  expect(document.body.textContent).toContain('isActive=No')
+
+  await view.getByTitle('Collapse all').click()
+  await view.getByTitle('Expand all').click()
+  await view.getByRole('button', { name: 'Layout keep drawer open' }).click()
+})
+
+test('coordinates dirty-discard and audit-shell guards before route drawer transitions', async () => {
+  await page.viewport(1280, 900)
+  const { router, view } = await renderRoutedPage('/admin/chart-of-accounts?panel=edit&id=coa-1')
+
+  await view.getByRole('button', { name: 'Editor emit heading' }).click()
+  await view.getByRole('button', { name: 'Editor emit dirty' }).click()
+  await flushUi()
+  const cancelledNavigation = router.push('/admin/chart-of-accounts')
+  await expect.element(view.getByTestId('stub-discard-dialog')).toBeVisible()
+  await view.getByRole('button', { name: 'Discard cancel' }).click()
+  await cancelledNavigation
+  expect(router.currentRoute.value.query.id).toBe('coa-1')
+
+  await view.getByRole('button', { name: 'Layout create' }).click()
+  await expect.element(view.getByTestId('stub-discard-dialog')).toBeVisible()
+  await view.getByRole('button', { name: 'Discard cancel' }).click()
+  expect(router.currentRoute.value.query.id).toBe('coa-1')
+
+  await view.getByRole('button', { name: 'Editor emit clean' }).click()
+  await view.getByRole('button', { name: 'Editor emit audit shell' }).click()
+  await view.getByRole('button', { name: 'Layout close drawer' }).click()
+  expect(chartMocks.editorHandle.closeAuditLog).toHaveBeenCalled()
+  expect(router.currentRoute.value.query.id).toBe('coa-1')
+
+  await view.getByRole('button', { name: 'Layout create' }).click()
+  await flushUi()
+  expect(router.currentRoute.value.query.panel).toBe('new')
+  expect(chartMocks.editorHandle.closeAuditLog).toHaveBeenCalledTimes(2)
+
+  await router.push('/admin/chart-of-accounts')
+  expect(router.currentRoute.value.query.id).toBeUndefined()
+})
+
+test('ignores a stale rejection after a newer paging request succeeds', async () => {
+  await page.viewport(1280, 900)
+  const first = createDeferred<never>()
+  const second = createDeferred<{
+    offset: number
+    limit: number
+    total: number
+    items: Array<Record<string, unknown>>
+  }>()
+  chartMocks.getPage.mockImplementation(async (args: { offset: number }) => {
+    if (args.offset === 0) return await first.promise
+    return await second.promise
+  })
+
+  const { router, view } = await renderPage('/admin/chart-of-accounts?offset=0')
+  const navigation = router.push('/admin/chart-of-accounts?offset=50')
+  await flushUi()
+  second.resolve({ offset: 50, limit: 50, total: 0, items: [] })
+  await navigation
+  await flushUi()
+  first.reject(new Error('stale failure'))
+  await flushUi()
+
+  expect(document.body.textContent).not.toContain('stale failure')
+  await expect.element(view.getByText('drawer-open:false')).toBeVisible()
 })

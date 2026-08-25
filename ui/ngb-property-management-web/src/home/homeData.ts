@@ -230,14 +230,14 @@ async function loadLeaseAnalytics(asOf: string, totalUnits: number): Promise<Lea
   const leaseEvents: HomeLeaseEvent[] = [
     ...moveIns.map((document) => ({
       kind: 'Move-in' as const,
-      date: dashboardFieldDateOnly(document, 'start_on_utc') ?? '',
+      date: dashboardFieldDateOnly(document, 'start_on_utc')!,
       leaseDisplay: String(document.display ?? document.id).trim(),
       propertyDisplay: dashboardFieldDisplay(document, 'property_id') ?? 'Property',
       route: buildDocumentFullPageUrl('pm.lease', document.id),
     })),
     ...moveOuts.map((document) => ({
       kind: 'Move-out' as const,
-      date: dashboardFieldDateOnly(document, 'end_on_utc') ?? '',
+      date: dashboardFieldDateOnly(document, 'end_on_utc')!,
       leaseDisplay: String(document.display ?? document.id).trim(),
       propertyDisplay: dashboardFieldDisplay(document, 'property_id') ?? 'Property',
       route: buildDocumentFullPageUrl('pm.lease', document.id),
@@ -324,8 +324,8 @@ async function loadCollectionsAnalytics(asOf: string): Promise<CollectionsAnalyt
   accumulateMonthTotals(collectedByMonth, receivablePayments, 'received_on_utc')
   accumulateMonthTotals(collectedByMonth, returnedPayments, 'returned_on_utc', -1)
 
-  const billed = monthKeys.map((monthKey) => billedByMonth[monthKey] ?? 0)
-  const collected = monthKeys.map((monthKey) => collectedByMonth[monthKey] ?? 0)
+  const billed = monthKeys.map((monthKey) => billedByMonth[monthKey]!)
+  const collected = monthKeys.map((monthKey) => collectedByMonth[monthKey]!)
 
   return {
     labels: monthWindow.labels,

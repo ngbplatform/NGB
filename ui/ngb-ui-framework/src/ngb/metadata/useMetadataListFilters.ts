@@ -126,9 +126,7 @@ export function useMetadataListFilters<
       if (token !== filterDraftSyncToken.value) return;
     }
 
-    if (token === filterDraftSyncToken.value) {
-      filterDraft.value = next;
-    }
+    filterDraft.value = next;
   }
 
   async function replaceRouteQuery(mutator: (query: Record<string, unknown>) => void) {
@@ -172,7 +170,7 @@ export function useMetadataListFilters<
       ? await searchListFilterLookupItems(field, payload.query)
       : [];
 
-    if ((lookupSearchSeqByFilterKey.value[payload.key] ?? 0) !== nextSeq) return;
+    if (lookupSearchSeqByFilterKey.value[payload.key] !== nextSeq) return;
 
     lookupItemsByFilterKey.value = {
       ...lookupItemsByFilterKey.value,
@@ -240,12 +238,11 @@ export function useMetadataListFilters<
         const displayValues = (field.isMulti ? splitFilterValues(appliedRaw) : [appliedRaw])
           .map((value) => {
             const normalized = value.trim();
-            if (!normalized) return '';
 
             const fromDraft = selectedLabels.get(normalized.toLowerCase());
             if (fromDraft) return fromDraft;
             if (lookupHint) return labelForResolvedLookup(args.lookupStore, lookupHint, normalized);
-            return optionLabelForFilter(field, normalized) || normalized;
+            return optionLabelForFilter(field, normalized);
           })
           .filter((value) => value.length > 0);
         const summary = summarizeFilterValues(displayValues);

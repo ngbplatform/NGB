@@ -225,6 +225,9 @@ describe('editor config', () => {
       { code: 'unknown', parameters: undefined as never },
       context,
     )).toBeNull()
+    expect(navigation.resolveNgbNavigationTarget(
+      { code: 'document.editor', parameters: undefined as never },
+    )).toBeNull()
 
     navigation.configureNgbNavigation()
   })

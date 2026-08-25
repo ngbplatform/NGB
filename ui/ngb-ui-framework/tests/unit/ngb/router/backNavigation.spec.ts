@@ -26,6 +26,7 @@ describe('backNavigation', () => {
     expect(encoded).not.toBeNull()
     expect(decodeBackTarget(encoded)).toBe(target)
     expect(decodeBackTarget([encoded, 'ignored'])).toBe(target)
+    expect(decodeBackTarget([])).toBeNull()
     expect(decodeBackTarget('%%%')).toBeNull()
 
     const path = withBackTarget('/documents/pm.invoice?id=doc-1', target)
@@ -49,6 +50,7 @@ describe('backNavigation', () => {
     expect(query.get('search')).toBe('open items')
     expect(currentRouteBackTarget({ fullPath: '/documents/pm.invoice?panel=edit' })).toBe('/documents/pm.invoice?panel=edit')
     expect(currentRouteBackTarget({ fullPath: '' })).toBe('/')
+    expect(currentRouteBackTarget({ fullPath: null as never })).toBe('/')
     expect(resolveBackTarget({ query: { back: encodeBackTarget('/home') } })).toBe('/home')
   })
 
@@ -62,6 +64,7 @@ describe('backNavigation', () => {
     expect(routeTargetMatches('/documents/pm.invoice/doc-1?panel=edit&id=doc-1', compactTarget)).toBe(false)
     expect(resolveBackTargetFromPath(fullPageTarget)).toBe(compactWithState)
     expect(resolveBackTargetFromPath('/documents/pm.invoice/doc-1')).toBeNull()
+    expect(resolveBackTargetFromPath('http://[invalid')).toBeNull()
   })
 
   it('prefers an explicit encoded back target during navigation', async () => {
@@ -122,5 +125,8 @@ describe('backNavigation', () => {
 
     expect(router.replace).not.toHaveBeenCalled()
     expect(router.back).toHaveBeenCalledTimes(1)
+
+    await navigateBack(router as never, { query: {} } as never)
+    expect(router.back).toHaveBeenCalledTimes(2)
   })
 })

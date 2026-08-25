@@ -110,8 +110,7 @@ const resolvedListPath = computed(() => {
   const explicit = String(props.listPath ?? '').trim()
   if (explicit) return explicit
 
-  const currentPath = String(route.path ?? '').trim()
-  if (!currentPath) return buildGeneralJournalEntriesListPath()
+  const currentPath = route.path.trim()
   if (currentPath.endsWith('/new')) return currentPath.slice(0, -4)
 
   const lastSlash = currentPath.lastIndexOf('/')
@@ -208,7 +207,7 @@ function resetForNew() {
 async function applyDetails(dto: GeneralJournalEntryDetailsDto) {
   details.value = dto
   draftDate.value = dateOnlyFromIso(dto.dateUtc)
-  journalType.value = Number(dto.header.journalType ?? 1)
+  journalType.value = Number(dto.header.journalType)
   reasonCode.value = dto.header.reasonCode ?? ''
   memo.value = dto.header.memo ?? ''
   externalReference.value = dto.header.externalReference ?? ''
@@ -267,7 +266,7 @@ function hydrateLines(
     const context = contextsByAccount[line.accountId] ?? null
     const dimensions: Record<string, { id: string; label: string }> = {}
 
-    for (const dim of line.dimensions ?? []) {
+  for (const dim of line.dimensions) {
       dimensions[dim.dimensionId] = {
         id: dim.valueId,
         label: String(dim.display ?? dim.valueId),
@@ -276,12 +275,12 @@ function hydrateLines(
 
     return {
       clientKey: `line-${line.lineNo}`,
-      side: Number(line.side ?? 1),
+      side: Number(line.side),
       account: {
         id: line.accountId,
         label: String(line.accountDisplay ?? (context ? `${context.code} — ${context.name}` : line.accountId)),
       },
-      amount: String(line.amount ?? ''),
+      amount: String(line.amount),
       memo: line.memo ?? '',
       dimensions,
     }
@@ -310,7 +309,7 @@ function buildLinesRequest() {
         accountId: line.account!.id,
         amount: parseGeneralJournalEntryAmount(line.amount),
         memo: line.memo.trim() || null,
-        dimensions: Object.entries(line.dimensions ?? {})
+        dimensions: Object.entries(line.dimensions)
           .filter(([, item]) => !!item?.id)
           .map(([dimensionId, item]) => ({ dimensionId, valueId: item!.id })),
       })),
@@ -318,8 +317,6 @@ function buildLinesRequest() {
 }
 
 async function saveDraft(): Promise<boolean> {
-  if (!canSave.value) return false
-
   saving.value = true
   errorMessages.value = []
   try {
@@ -353,12 +350,12 @@ async function saveDraft(): Promise<boolean> {
 
 async function submit() {
   const ok = await saveDraft()
-  if (!ok || !currentId.value) return
+  if (!ok) return
 
   saving.value = true
   errorMessages.value = []
   try {
-    const dto = await submitGeneralJournalEntry(currentId.value, {})
+    const dto = await submitGeneralJournalEntry(currentId.value!, {})
     await applyDetails(dto)
     toasts.push({ title: 'Submitted', message: 'Journal entry was submitted.', tone: 'success' })
   } catch (cause) {
@@ -369,11 +366,10 @@ async function submit() {
 }
 
 async function approve() {
-  if (!currentId.value) return
   saving.value = true
   errorMessages.value = []
   try {
-    const dto = await approveGeneralJournalEntry(currentId.value, {})
+    const dto = await approveGeneralJournalEntry(currentId.value!, {})
     await applyDetails(dto)
     toasts.push({ title: 'Approved', message: 'Journal entry was approved.', tone: 'success' })
   } catch (cause) {
@@ -384,11 +380,10 @@ async function approve() {
 }
 
 async function reject() {
-  if (!currentId.value) return
   saving.value = true
   errorMessages.value = []
   try {
-    const dto = await rejectGeneralJournalEntry(currentId.value, {
+    const dto = await rejectGeneralJournalEntry(currentId.value!, {
       rejectReason: rejectReason.value.trim(),
     })
     await applyDetails(dto)
@@ -401,11 +396,10 @@ async function reject() {
 }
 
 async function postApproved() {
-  if (!currentId.value) return
   saving.value = true
   errorMessages.value = []
   try {
-    const dto = await postGeneralJournalEntry(currentId.value, {})
+    const dto = await postGeneralJournalEntry(currentId.value!, {})
     await applyDetails(dto)
     toasts.push({ title: 'Posted', message: 'Journal entry was posted.', tone: 'success' })
   } catch (cause) {
@@ -416,11 +410,10 @@ async function postApproved() {
 }
 
 async function reversePosted() {
-  if (!currentId.value) return
   saving.value = true
   errorMessages.value = []
   try {
-    const reversed = await reverseGeneralJournalEntry(currentId.value, {
+    const reversed = await reverseGeneralJournalEntry(currentId.value!, {
       reversalDateUtc: toUtcMidday(reversalDate.value),
       postImmediately: !!reversePostImmediately.value,
     })
@@ -438,14 +431,13 @@ async function reversePosted() {
 }
 
 async function toggleMarkForDeletion() {
-  if (!currentId.value) return
   const isRestore = isMarkedForDeletion.value
   saving.value = true
   errorMessages.value = []
   try {
     const dto = isRestore
-      ? await unmarkGeneralJournalEntryForDeletion(currentId.value)
-      : await markGeneralJournalEntryForDeletion(currentId.value)
+      ? await unmarkGeneralJournalEntryForDeletion(currentId.value!)
+      : await markGeneralJournalEntryForDeletion(currentId.value!)
 
     await applyDetails(dto)
     toasts.push({
@@ -461,16 +453,14 @@ async function toggleMarkForDeletion() {
 }
 
 async function copyShareLink(): Promise<void> {
-  if (!currentId.value) return
   await copyAppLink(
     router,
     toasts,
-    buildGeneralJournalEntriesPath(currentId.value, { basePath: resolvedListPath.value }),
+    buildGeneralJournalEntriesPath(currentId.value!, { basePath: resolvedListPath.value }),
   )
 }
 
 function openAuditLog() {
-  if (!canOpenAudit.value) return
   auditOpen.value = true
 }
 
@@ -505,18 +495,10 @@ function extractErrorMessages(error: unknown): string[] {
       messages.push(parts.join(' '))
     }
 
-    for (const issue of error.issues ?? []) {
-      const message = String(issue.message ?? '').trim()
-      if (message) messages.push(message)
-    }
+    for (const issue of error.issues ?? []) messages.push(issue.message)
 
-    if (messages.length === 0) {
-      const fromErrors = Object.values(error.errors ?? {}).flat().map((x) => String(x ?? '').trim()).filter(Boolean)
-      messages.push(...fromErrors)
-    }
-
-    if (messages.length === 0 && error.message) messages.push(error.message)
-    return Array.from(new Set(messages.filter(Boolean)))
+    if (messages.length === 0) messages.push(error.message || 'Request failed.')
+    return Array.from(new Set(messages))
   }
 
   return [error instanceof Error ? error.message : String(error)]
@@ -704,7 +686,7 @@ function extractErrorMessages(error: unknown): string[] {
                 />
 
                 <div
-                  v-if="details?.allocations?.length"
+                  v-if="details?.allocations.length"
                   class="overflow-hidden rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card"
                 >
                   <div class="border-b border-ngb-border px-4 py-3">
@@ -723,7 +705,7 @@ function extractErrorMessages(error: unknown): string[] {
                     </thead>
                     <tbody>
                       <tr
-                        v-for="allocation in details?.allocations ?? []"
+                        v-for="allocation in details!.allocations"
                         :key="allocation.entryNo"
                         class="border-t border-ngb-border transition-colors hover:bg-ngb-bg"
                       >

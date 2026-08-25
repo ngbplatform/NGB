@@ -33,6 +33,8 @@ const ConfirmDialogHarness = defineComponent({
         onConfirm: () => {
           confirmCount.value += 1
         },
+      }, {
+        default: () => h('div', 'Additional confirmation context'),
       }),
       h('div', { 'data-testid': 'confirm-state' }, `open:${open.value};confirm:${confirmCount.value}`),
     ])
@@ -49,6 +51,7 @@ test('uses the danger defaults and closes when cancel is pressed', async () => {
   })
 
   await expect.element(view.getByText('Delete record?', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('Additional confirmation context')).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Discard' })).toBeVisible()
 
   await view.getByRole('button', { name: 'Cancel' }).click()

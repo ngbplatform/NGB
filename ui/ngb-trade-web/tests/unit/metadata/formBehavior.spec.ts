@@ -133,4 +133,10 @@ describe('trade metadata form behavior', () => {
       sections: [{ title: 'Primary', rows: [{ fields: [{ ...baseField, key: 'name' }] }] }],
     })).toBeNull()
   })
+
+  it('handles omitted optional form containers', () => {
+    expect(findDisplayField({})).toBeNull()
+    expect(findDisplayField({ sections: [{}] })).toBeNull()
+    expect(findDisplayField({ sections: [{ rows: [{}] }] })).toBeNull()
+  })
 })

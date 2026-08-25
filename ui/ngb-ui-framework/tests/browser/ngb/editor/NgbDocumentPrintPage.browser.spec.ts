@@ -63,11 +63,40 @@ vi.mock('../../../../src/ngb/primitives/NgbIcon.vue', () => ({
 
 import NgbDocumentPrintPage from '../../../../src/ngb/editor/NgbDocumentPrintPage.vue'
 import { encodeBackTarget, withBackTarget } from '../../../../src/ngb/router/backNavigation'
+import type { ColumnMetadata, FieldMetadata, LookupHint } from '../../../../src/ngb/metadata/types'
 import { shortGuid } from '../../../../src/ngb/utils/guid'
+
+const defaultLookupStore = mocks.editorConfig.lookupStore
+
+function field(key: string, label: string, lookup?: FieldMetadata['lookup']): FieldMetadata {
+  return {
+    key,
+    label,
+    dataType: 'String',
+    uiControl: 0,
+    isRequired: false,
+    isReadOnly: false,
+    lookup,
+  }
+}
+
+function column(key: string, label: string, dataType = 'String', lookup?: ColumnMetadata['lookup']): ColumnMetadata {
+  return {
+    key,
+    label,
+    dataType,
+    isSortable: false,
+    align: 0,
+    lookup,
+  }
+}
 
 describe('NgbDocumentPrintPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.editorConfig.lookupStore = defaultLookupStore
+    for (const key of Object.keys(mocks.printBehavior))
+      delete (mocks.printBehavior as Record<string, unknown>)[key]
 
     mocks.route.params.documentType = 'pm.invoice'
     mocks.route.params.id = 'doc-1'
@@ -196,6 +225,236 @@ describe('NgbDocumentPrintPage', () => {
     const view = await render(NgbDocumentPrintPage)
 
     await expect.element(view.getByText('boom')).toBeVisible()
+  })
+
+  it('reports missing route parameters without calling backend services', async () => {
+    mocks.route.params.documentType = undefined as unknown as string
+    mocks.route.params.id = undefined as unknown as string
+    mocks.route.query = { autoprint: ['0', '1'] } as unknown as { autoprint: string }
+
+    const view = await render(NgbDocumentPrintPage)
+
+    await expect.element(view.getByText('Document type or id is missing.')).toBeVisible()
+    await view.getByRole('button', { name: 'Back' }).click()
+    expect(mocks.metadataStore.ensureDocumentType).not.toHaveBeenCalled()
+    expect(mocks.editorConfig.loadDocumentById).not.toHaveBeenCalled()
+  })
+
+  it('unwraps a compact source from a nested print back trail', async () => {
+    const compactSource = '/documents/pm.invoice?panel=edit&id=doc-1&search=late'
+    const nestedDocumentRoute = withBackTarget('/documents/pm.invoice/doc-1', compactSource)
+    mocks.route.query = { back: encodeBackTarget(nestedDocumentRoute) }
+
+    const view = await render(NgbDocumentPrintPage)
+    await expect.element(view.getByText('Customer Invoice INV-001')).toBeVisible()
+    await view.getByRole('button', { name: 'Back' }).click()
+
+    expect(mocks.router.replace).toHaveBeenCalledWith(compactSource)
+  })
+
+  it('renders an empty printable document when optional form, parts, and payload collections are absent', async () => {
+    mocks.route.query = {}
+    mocks.metadataStore.ensureDocumentType.mockResolvedValueOnce({
+      documentType: 'pm.invoice',
+      displayName: 'Empty invoice',
+      kind: 2,
+      form: null,
+      parts: null,
+    })
+    mocks.editorConfig.loadDocumentById.mockResolvedValueOnce({
+      id: 'doc-1',
+      display: null,
+      number: null,
+      status: 1,
+      payload: {
+        fields: null,
+        parts: null,
+      },
+    })
+
+    const view = await render(NgbDocumentPrintPage)
+
+    await expect.element(view.getByRole('heading', { name: 'Empty invoice' })).toBeVisible()
+    expect(document.querySelectorAll('.document-print-section')).toHaveLength(0)
+  })
+
+  it('prints boundary metadata safely without a lookup store', async () => {
+    mocks.route.query = { autoprint: ['0', '1'] } as unknown as { autoprint: string }
+    mocks.editorConfig.lookupStore = null as unknown as typeof defaultLookupStore
+    mocks.metadataStore.ensureDocumentType.mockResolvedValueOnce({
+      documentType: 'pm.invoice',
+      displayName: 'Invoice',
+      kind: 2,
+      form: {
+        sections: [
+          {
+            title: '',
+            rows: [
+              {
+                fields: [
+                  field('display', 'Hidden display'),
+                  field('number', 'Hidden number'),
+                  field('customer_id', 'Customer', { kind: 'catalog', catalogType: 'crm.counterparty' }),
+                  field('shown_reference', 'Shown reference', { kind: 'catalog', catalogType: 'crm.counterparty' }),
+                ],
+              },
+              { fields: [] },
+            ],
+          },
+        ],
+      },
+      parts: [
+        {
+          partCode: 'lines',
+          title: '',
+          list: {
+            columns: [
+              column('money', 'Money', 'Money'),
+              column('decimal', 'Decimal', 'Decimal'),
+              column('quantity', 'Quantity', 'Int32'),
+              column('description', 'Description'),
+            ],
+          },
+        },
+        {
+          partCode: 'empty-columns',
+          title: 'Empty columns',
+          list: { columns: [] },
+        },
+        {
+          partCode: 'missing-rows',
+          title: 'Missing rows',
+          list: { columns: [column('value', 'Value')] },
+        },
+      ],
+    })
+    mocks.editorConfig.loadDocumentById.mockResolvedValueOnce({
+      id: 'doc-1',
+      display: 'Boundary printable invoice',
+      number: '',
+      status: 3,
+      payload: {
+        fields: {
+          display: 'must stay hidden',
+          number: 'must stay hidden',
+          customer_id: '22222222-2222-2222-2222-222222222222',
+          shown_reference: { id: '33333333-3333-3333-3333-333333333333', display: 'Embedded customer' },
+        },
+        parts: {
+          lines: {
+            rows: [
+              { money: 12.5, decimal: 2.25, quantity: 3, description: 'Boundary line' },
+            ],
+          },
+          'empty-columns': { rows: [{}] },
+        },
+      },
+    })
+
+    const view = await render(NgbDocumentPrintPage)
+
+    await expect.element(view.getByText('Boundary printable invoice')).toBeVisible()
+    await expect.element(view.getByText('22222222-2222-2222-2222-222222222222')).toBeVisible()
+    await expect.element(view.getByText('Embedded customer')).toBeVisible()
+    await expect.element(view.getByText('Boundary line')).toBeVisible()
+    expect(document.querySelector('.print-status.deleted')).not.toBeNull()
+    expect(mocks.editorConfig.lookupStore).toBeNull()
+  })
+
+  it('prefetches and formats catalog, chart-of-accounts, and document lookups including duplicate and invalid values', async () => {
+    const catalogId = '44444444-4444-4444-4444-444444444444'
+    const coaId = '55555555-5555-5555-5555-555555555555'
+    const documentId = '66666666-6666-6666-6666-666666666666'
+    const overrideHint: LookupHint = { kind: 'coa' }
+    ;(mocks.printBehavior as { resolveLookupHint?: (context: { fieldKey: string }) => LookupHint | null }).resolveLookupHint =
+      ({ fieldKey }) => fieldKey === 'override_id' ? overrideHint : null
+
+    mocks.editorConfig.lookupStore.labelForCatalog.mockReturnValue('Catalog label')
+    mocks.editorConfig.lookupStore.labelForCoa.mockReturnValue('Account label')
+    mocks.editorConfig.lookupStore.labelForAnyDocument.mockReturnValue('Document label')
+    mocks.metadataStore.ensureDocumentType.mockResolvedValueOnce({
+      documentType: 'pm.invoice',
+      displayName: '',
+      kind: 2,
+      form: {
+        sections: [
+          {
+            title: 'Lookups',
+            rows: [
+              {
+                fields: [
+                  field('catalog_a', 'Catalog A', { kind: 'catalog', catalogType: 'crm.counterparty' }),
+                  field('catalog_b', 'Catalog B', { kind: 'catalog', catalogType: 'crm.counterparty' }),
+                  field('coa_id', 'Account', { kind: 'coa' }),
+                  field('document_a', 'Document A', { kind: 'document', documentTypes: ['pm.invoice'] }),
+                  field('document_b', 'Document B', { kind: 'document', documentTypes: ['pm.invoice'] }),
+                  field('override_id', 'Overridden lookup'),
+                  field('invalid_id', 'Invalid lookup', { kind: 'catalog', catalogType: 'crm.counterparty' }),
+                  field('empty_reference', 'Empty reference', { kind: 'catalog', catalogType: 'crm.counterparty' }),
+                  field('shown_reference', 'Shown reference', { kind: 'catalog', catalogType: 'crm.counterparty' }),
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      parts: [
+        {
+          partCode: 'lookup_lines',
+          title: 'Lookup lines',
+          list: {
+            columns: [
+              column('account_id', 'Line account', 'String', { kind: 'coa' }),
+              column('document_id', 'Line document', 'String', { kind: 'document', documentTypes: ['pm.invoice'] }),
+            ],
+          },
+        },
+        {
+          partCode: 'missing_lookup_lines',
+          title: 'Missing lookup lines',
+          list: { columns: [column('account_id', 'Account', 'String', { kind: 'coa' })] },
+        },
+      ],
+    })
+    mocks.editorConfig.loadDocumentById.mockResolvedValueOnce({
+      id: 'doc-1',
+      display: null,
+      number: null,
+      status: 0,
+      payload: {
+        fields: {
+          catalog_a: catalogId,
+          catalog_b: catalogId,
+          coa_id: coaId,
+          document_a: documentId,
+          document_b: documentId,
+          override_id: coaId,
+          invalid_id: 'not-a-guid',
+          empty_reference: { id: catalogId, display: '' },
+          shown_reference: { id: catalogId, display: 'Embedded lookup label' },
+        },
+        parts: {
+          lookup_lines: {
+            rows: [
+              { account_id: coaId, document_id: documentId },
+            ],
+          },
+        },
+      },
+    })
+
+    const view = await render(NgbDocumentPrintPage)
+
+    await expect.element(view.getByRole('heading', { name: 'Document', exact: true })).toBeVisible()
+    await expect.element(view.getByText('Catalog label').first()).toBeVisible()
+    await expect.element(view.getByText('Account label').first()).toBeVisible()
+    await expect.element(view.getByText('Document label').first()).toBeVisible()
+    await expect.element(view.getByText('not-a-guid')).toBeVisible()
+    await expect.element(view.getByText('Embedded lookup label')).toBeVisible()
+    expect(document.querySelector('.print-status.draft')).not.toBeNull()
+    expect(mocks.editorConfig.lookupStore.ensureCatalogLabels).toHaveBeenCalledWith('crm.counterparty', [catalogId])
+    expect(mocks.editorConfig.lookupStore.ensureCoaLabels).toHaveBeenCalledWith([coaId])
+    expect(mocks.editorConfig.lookupStore.ensureAnyDocumentLabels).toHaveBeenCalledWith(['pm.invoice'], [documentId])
   })
 
   it('keeps the print preview visible when lookup label prefetch fails and falls back to unresolved lookup labels', async () => {

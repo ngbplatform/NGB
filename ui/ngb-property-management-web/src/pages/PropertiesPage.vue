@@ -468,14 +468,14 @@ const unitsSubtitle = computed(() => {
 const headerSubtitle = computed(() => {
   const p = buildingsPage.value
   if (!p) return '\u00A0'
-  const left = String(p.items?.length ?? 0)
+  const left = String(p.items.length)
   const right = p.total != null ? ' / ' + String(p.total) : ''
   return left + right
 })
 
 const propertySummaryCards = computed(() => {
   const totalFallback = unitsPage.value
-    ? (unitsPage.value.total != null ? unitsPage.value.total : unitsPage.value.items?.length ?? 0)
+    ? (unitsPage.value.total != null ? unitsPage.value.total : unitsPage.value.items.length)
     : null
 
   if (buildingSummary.value) {
@@ -501,7 +501,7 @@ const propertySummaryCards = computed(() => {
   <div data-testid="properties-page" class="h-full min-h-0 flex flex-col">
     <NgbPageHeader title="Properties" :can-back="canBack" @back="router.back()">
       <template #secondary>
-        <div v-if="headerSubtitle" class="text-xs text-ngb-muted truncate">{{ headerSubtitle }}</div>
+        <div class="text-xs text-ngb-muted truncate">{{ headerSubtitle }}</div>
       </template>
       <template #actions>
         <!--

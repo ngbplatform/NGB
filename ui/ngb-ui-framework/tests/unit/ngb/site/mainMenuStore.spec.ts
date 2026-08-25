@@ -61,6 +61,17 @@ describe('mainMenuStore', () => {
     expect(store.isLoading).toBe(false)
   })
 
+  it('normalizes an empty response to an empty group collection', async () => {
+    mocks.httpGet.mockResolvedValue(null)
+    const store = useMainMenuStore()
+
+    await store.load()
+
+    expect(store.groups).toEqual([])
+    expect(store.error).toBeNull()
+    expect(store.isLoading).toBe(false)
+  })
+
   it('clears groups, stores a friendly error, and logs the failure', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mocks.httpGet.mockRejectedValue(new Error('Menu API offline'))

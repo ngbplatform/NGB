@@ -101,7 +101,7 @@ function setSelectedYear(year: number) {
   })
 }
 
-function setSelectedMonth(value: string) {
+function setSelectedMonth(value: string | null) {
   const normalized = normalizeMonthQueryValue(value) ?? defaultMonthValueForYear(selectedYear.value)
   const year = resolveSelectedYear({ month: normalized }, new Date())
   void replaceRouteQuery({
@@ -111,7 +111,7 @@ function setSelectedMonth(value: string) {
   })
 }
 
-function setSelectedFiscalYearEndMonth(value: string) {
+function setSelectedFiscalYearEndMonth(value: string | null) {
   const normalized = normalizeMonthQueryValue(value) ?? defaultMonthValueForYear(selectedYear.value)
   const year = resolveSelectedYear({ month: normalized }, new Date())
   void replaceRouteQuery({
@@ -165,7 +165,7 @@ const selectedFiscalYearEndPeriod = computed(() => toPeriodDateOnly(selectedFisc
 const yearMonths = computed(() => calendar.value?.months ?? [])
 const selectedMonthStatus = computed(() =>
   yearMonths.value.find((item) => item.period === selectedMonthPeriod.value) ?? null)
-const openPriorMonths = computed(() => (fiscalStatus.value?.priorMonths ?? []).filter((item) => !item.isClosed))
+const openPriorMonths = computed(() => fiscalStatus.value!.priorMonths.filter((item) => !item.isClosed))
 const closedMonthsCount = computed(() => yearMonths.value.filter((item) => item.isClosed).length)
 const activeMonthsCount = computed(() => yearMonths.value.filter((item) => item.hasActivity).length)
 const monthBusy = computed(() => monthActionLoading.value || monthReopenLoading.value)
@@ -338,14 +338,10 @@ function syncRetainedEarningsSelectionWithStatus() {
 
 function maybePickDefaultRetainedEarnings(items: LookupItem[]) {
   if (items.length === 0) return
-  if (fiscalStatus.value?.closedRetainedEarningsAccount) {
-    syncRetainedEarningsSelectionWithStatus()
-    return
-  }
   if (retainedEarnings.value && items.some((item) => item.id === retainedEarnings.value?.id)) return
 
   const preferred = items.find((item) => item.label.toLowerCase().includes('retained'))
-  retainedEarnings.value = preferred ?? items[0] ?? null
+  retainedEarnings.value = preferred ?? items[0]!
 }
 
 async function loadRetainedEarningsOptions(query = ''): Promise<void> {
@@ -422,26 +418,26 @@ watch(
 const monthCloseDisabled = computed(() =>
   calendarLoading.value
   || monthBusy.value
-  || !(selectedMonthStatus.value?.canClose ?? false))
+  || !selectedMonthStatus.value?.canClose)
 
 const monthReopenDisabled = computed(() =>
   calendarLoading.value
   || monthBusy.value
   || !reopenReasonTrimmed.value
-  || !(selectedMonthStatus.value?.canReopen ?? false))
+  || !selectedMonthStatus.value?.canReopen)
 
 const fiscalCloseDisabled = computed(() =>
   fiscalLoading.value
   || fiscalExecuting.value
   || retainedEarningsLoading.value
   || !retainedEarnings.value
-  || !(fiscalStatus.value?.canClose ?? false))
+  || !fiscalStatus.value?.canClose)
 
 const fiscalReopenDisabled = computed(() =>
   fiscalLoading.value
   || fiscalExecuting.value
   || !fiscalReopenReasonTrimmed.value
-  || !(fiscalStatus.value?.canReopen ?? false))
+  || !fiscalStatus.value?.canReopen)
 
 function openCloseMonthConfirm(period?: string) {
   const monthValue = period ? (selectMonthValue(period) ?? selectedMonth.value) : selectedMonth.value
@@ -451,16 +447,14 @@ function openCloseMonthConfirm(period?: string) {
   monthConfirmOpen.value = true
 }
 
-function openReopenMonthConfirm(period?: string) {
-  const monthValue = period ? (selectMonthValue(period) ?? selectedMonth.value) : selectedMonth.value
-  pendingReopenMonthValue.value = monthValue
-  if (period) selectMonth(period)
+function openReopenMonthConfirm() {
+  pendingReopenMonthValue.value = selectedMonth.value
   monthErrorMessages.value = []
   reopenConfirmOpen.value = true
 }
 
 async function executeMonthClose(): Promise<void> {
-  const targetMonthValue = pendingCloseMonthValue.value ?? selectedMonth.value
+  const targetMonthValue = pendingCloseMonthValue.value!
 
   monthConfirmOpen.value = false
   monthActionLoading.value = true
@@ -487,7 +481,7 @@ async function executeMonthClose(): Promise<void> {
 }
 
 async function executeMonthReopen(): Promise<void> {
-  const targetMonthValue = pendingReopenMonthValue.value ?? selectedMonth.value
+  const targetMonthValue = pendingReopenMonthValue.value!
 
   reopenConfirmOpen.value = false
   monthReopenLoading.value = true
@@ -547,7 +541,7 @@ async function executeFiscalReopen(): Promise<void> {
   fiscalExecuting.value = true
   fiscalErrorMessages.value = []
 
-  const willOpenMonth = fiscalStatus.value?.reopenWillOpenEndPeriod ?? false
+  const willOpenMonth = fiscalStatus.value!.reopenWillOpenEndPeriod
 
   try {
     await reopenFiscalYear({
@@ -668,18 +662,7 @@ function extractErrorMessages(error: unknown): string[] {
         break
     }
 
-    for (const issue of error.issues ?? []) {
-      const message = String(issue.message ?? '').trim()
-      if (message) messages.push(message)
-    }
-
-    if (messages.length === 0) {
-      const fromErrors = Object.values(error.errors ?? {})
-        .flat()
-        .map((value) => String(value ?? '').trim())
-        .filter(Boolean)
-      messages.push(...fromErrors)
-    }
+    for (const issue of error.issues ?? []) messages.push(issue.message)
 
     if (messages.length === 0 && error.message) messages.push(error.message)
     return Array.from(new Set(messages.filter(Boolean)))
@@ -855,7 +838,7 @@ function extractErrorMessages(error: unknown): string[] {
                   </td>
 
                   <td class="px-3 py-3">
-                    <NgbBadge class="whitespace-nowrap" :tone="month.hasActivity ? 'neutral' : 'neutral'">
+                    <NgbBadge class="whitespace-nowrap" tone="neutral">
                       {{ month.hasActivity ? 'Has activity' : 'No activity' }}
                     </NgbBadge>
                   </td>
@@ -920,7 +903,7 @@ function extractErrorMessages(error: unknown): string[] {
             <div class="mt-5 space-y-4">
               <div>
                 <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-ngb-muted">Month</label>
-                <NgbMonthPicker :model-value="selectedMonth" @update:modelValue="setSelectedMonth(String($event || defaultMonthValueForYear(selectedYear)))" />
+                <NgbMonthPicker :model-value="selectedMonth" @update:modelValue="setSelectedMonth" />
               </div>
 
               <div class="rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-bg px-4 py-3 text-sm">
@@ -992,7 +975,7 @@ function extractErrorMessages(error: unknown): string[] {
                 <label class="mb-1 block text-xs font-semibold uppercase tracking-[0.08em] text-ngb-muted">Fiscal Year End Month</label>
                 <NgbMonthPicker
                   :model-value="selectedFiscalYearEndMonth"
-                  @update:modelValue="setSelectedFiscalYearEndMonth(String($event || defaultMonthValueForYear(selectedYear)))"
+                  @update:modelValue="setSelectedFiscalYearEndMonth"
                 />
               </div>
 

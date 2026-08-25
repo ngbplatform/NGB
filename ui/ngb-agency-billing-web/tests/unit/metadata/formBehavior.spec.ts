@@ -45,6 +45,21 @@ describe('agency billing form behavior', () => {
       },
       status: 2,
     })).toBe(true)
+
+    expect(isFieldReadonly({
+      entityTypeCode: 'ab.sales_invoice',
+      model: {},
+      field: { key: 'memo', label: 'Memo', dataType: 'String', uiControl: 1, isRequired: false, isReadOnly: true },
+    })).toBe(true)
+  })
+
+  it('keeps ordinary editable fields writable', () => {
+    expect(isFieldReadonly({
+      entityTypeCode: 'ab.sales_invoice',
+      model: {},
+      field: { key: 'memo', label: 'Memo', dataType: 'String', uiControl: 1, isRequired: false, isReadOnly: false },
+      status: 1,
+    })).toBe(false)
   })
 
   it('hides structural and computed fields from document and catalog forms', () => {
@@ -70,6 +85,15 @@ describe('agency billing form behavior', () => {
     })).toBe(true)
   })
 
+  it('keeps ordinary catalog fields visible', () => {
+    expect(isFieldHidden({
+      entityTypeCode: 'ab.client',
+      model: {},
+      field: { key: 'client_code', label: 'Client Code', dataType: 'String', uiControl: 1, isRequired: false, isReadOnly: false },
+      isDocumentEntity: false,
+    })).toBe(false)
+  })
+
   it('finds the display field anywhere in the form tree', () => {
     expect(findDisplayField({
       sections: [
@@ -82,5 +106,11 @@ describe('agency billing form behavior', () => {
         },
       ],
     })?.label).toBe('Display')
+  })
+
+  it('returns null for omitted optional form containers', () => {
+    expect(findDisplayField({})).toBeNull()
+    expect(findDisplayField({ sections: [{}] })).toBeNull()
+    expect(findDisplayField({ sections: [{ rows: [{}] }] })).toBeNull()
   })
 })

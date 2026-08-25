@@ -112,4 +112,36 @@ describe('entity editor page actions', () => {
     state.mode.value = 'drawer'
     expect(actions.value).toEqual([])
   })
+
+  it('builds the minimal save action when optional capabilities and extras are absent', () => {
+    const { args, state } = createArgs()
+    state.compactTo.value = null
+    state.canShareLink.value = false
+    state.canOpenAudit.value = false
+    state.canMarkForDeletion.value = false
+    state.canUnmarkForDeletion.value = false
+    state.isNew.value = true
+    state.canSave.value = false
+
+    const actions = useEntityEditorPageActions({ ...args, extraActions: undefined })
+
+    expect(actions.value).toEqual([{
+      key: 'save',
+      title: 'Save',
+      icon: 'save',
+      disabled: true,
+    }])
+
+    state.canSave.value = true
+    state.canMarkForDeletion.value = true
+    expect(actions.value[0]).toEqual({
+      key: 'toggleMarkForDeletion',
+      title: 'Mark for deletion',
+      icon: 'trash',
+      disabled: false,
+    })
+
+    state.saving.value = true
+    expect(actions.value.every((action) => action.disabled)).toBe(true)
+  })
 })

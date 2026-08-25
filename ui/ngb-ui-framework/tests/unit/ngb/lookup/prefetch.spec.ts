@@ -34,6 +34,9 @@ describe('lookup prefetch', () => {
         { key: 'memo' },
       ],
       items: [
+        {},
+        { payload: null },
+        { payload: { fields: null } },
         { payload: { fields: { propertyId: '11111111-1111-1111-1111-111111111111' } } },
         { payload: { fields: { propertyId: 'not-a-guid' } } },
         { payload: { fields: { propertyId: '22222222-2222-2222-2222-222222222222' } } },
@@ -63,6 +66,18 @@ describe('lookup prefetch', () => {
       items: [{ payload: { fields: { memo: 'hello' } } }],
       lookupStore: {} as never,
       resolveLookupHint: () => null,
+    })
+
+    expect(filteringMocks.ensureResolvedLookupLabels).not.toHaveBeenCalled()
+  })
+
+  it('skips a resolved lookup column when every value is empty or malformed', async () => {
+    await prefetchLookupsForPage({
+      entityTypeCode: 'pm.invoice',
+      columns: [{ key: 'propertyId' }],
+      items: [{}, { payload: null }, { payload: { fields: { propertyId: '' } } }],
+      lookupStore: {} as never,
+      resolveLookupHint: () => ({ kind: 'catalog', catalogType: 'pm.property' }),
     })
 
     expect(filteringMocks.ensureResolvedLookupLabels).not.toHaveBeenCalled()

@@ -58,7 +58,7 @@ async function flushUi() {
   await new Promise((resolve) => window.setTimeout(resolve, 40))
 }
 
-async function renderPage(initialUrl: string) {
+async function renderPage(initialUrl: string, props: Record<string, unknown> = {}) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -93,6 +93,7 @@ async function renderPage(initialUrl: string) {
   const view = await render(NgbGeneralJournalEntryListPage, {
     props: {
       backTarget: '/dashboard',
+      ...props,
     },
     global: {
       plugins: [router],
@@ -141,6 +142,32 @@ beforeEach(() => {
         memo: 'Accrual cleanup',
         autoReverse: false,
       },
+      {
+        id: 'gje-3',
+        dateUtc: null,
+        number: null,
+        display: null,
+        documentStatus: 1,
+        isMarkedForDeletion: false,
+        journalType: 1,
+        source: 1,
+        approvalState: 1,
+        memo: undefined,
+        autoReverse: false,
+      },
+      {
+        id: 'gje-4',
+        dateUtc: 'not-a-date',
+        number: 'JE-004',
+        display: null,
+        documentStatus: 3,
+        isMarkedForDeletion: false,
+        journalType: 1,
+        source: 1,
+        approvalState: 1,
+        memo: 'Invalid date boundary',
+        autoReverse: false,
+      },
     ],
   })
 })
@@ -162,15 +189,19 @@ test('loads journal entries from route filters, formats row labels, and opens en
   await expect.element(view.getByText('from:2026-03')).toBeVisible()
   await expect.element(view.getByText('to:2026-04')).toBeVisible()
   await expect.element(view.getByText('storage:ngb:accounting:gje:list:/accounting/general-journal-entries')).toBeVisible()
-  await expect.element(view.getByText(/display=JE-001/)).toBeVisible()
-  await expect.element(view.getByText(/journalType=Standard/)).toBeVisible()
-  await expect.element(view.getByText(/approvalState=Approved/)).toBeVisible()
-  await expect.element(view.getByText(/source=System/)).toBeVisible()
-  await expect.element(view.getByText(/memo=—/)).toBeVisible()
-  await expect.element(view.getByText(/display=Adjustment Entry/)).toBeVisible()
-  await expect.element(view.getByText(/journalType=Adjusting/)).toBeVisible()
-  await expect.element(view.getByText(/approvalState=Rejected/)).toBeVisible()
-  await expect.element(view.getByText(/source=Manual/)).toBeVisible()
+  const standardRow = view.getByRole('button', { name: /display=JE-001/ })
+  await expect.element(standardRow).toHaveTextContent('journalType=Standard')
+  await expect.element(standardRow).toHaveTextContent('approvalState=Approved')
+  await expect.element(standardRow).toHaveTextContent('source=System')
+  await expect.element(standardRow).toHaveTextContent('memo=—')
+  const adjustmentRow = view.getByRole('button', { name: /display=Adjustment Entry/ })
+  await expect.element(adjustmentRow).toHaveTextContent('journalType=Adjusting')
+  await expect.element(adjustmentRow).toHaveTextContent('approvalState=Rejected')
+  await expect.element(adjustmentRow).toHaveTextContent('source=Manual')
+  await expect.element(view.getByText(/display=gje-3/)).toBeVisible()
+  await expect.element(view.getByText(/dateUtc=—/)).toBeVisible()
+  await expect.element(view.getByText(/display=JE-004/)).toBeVisible()
+  await expect.element(view.getByText(/dateUtc=not-a-date/)).toBeVisible()
 
   await view.getByRole('button', { name: /display=JE-001/ }).click()
   await flushUi()
@@ -307,4 +338,53 @@ test('ignores stale journal-entry pages when overlapping route changes resolve o
   await expect.element(view.getByText(/display=Fifty/)).toBeVisible()
   expect(document.body.textContent).not.toContain('display=JE-001')
   expect(router.currentRoute.value.query.offset).toBe('50')
+})
+
+test('shows loading and API errors while preserving null-safe header values', async () => {
+  await page.viewport(1280, 900)
+
+  const pending = createDeferred<never>()
+  gjeMocks.getPage.mockReturnValue(pending.promise)
+
+  const { view } = await renderPage('/accounting/general-journal-entries', {
+    backTarget: null,
+    storageKey: ' custom-journal-list ',
+  })
+
+  await expect.element(view.getByText('Loading…')).toBeVisible()
+  await expect.element(view.getByText('storage:custom-journal-list')).toBeVisible()
+
+  pending.reject(new Error('Journal service unavailable'))
+  await expect.element(view.getByText('Journal service unavailable')).toBeVisible()
+  expect(document.body.textContent).not.toContain('Loading…')
+
+  await view.getByRole('button', { name: 'Header back' }).click()
+  expect(gjeMocks.navigateBack.mock.calls[0]?.[2]).toBe('/')
+})
+
+test('ignores a stale journal-entry failure after a newer route load succeeds', async () => {
+  await page.viewport(1280, 900)
+
+  const stale = createDeferred<never>()
+  gjeMocks.getPage.mockImplementation(async (args: { offset: number }) => {
+    if (args.offset === 0) return await stale.promise
+    return {
+      offset: 50,
+      limit: 50,
+      total: 0,
+      items: [],
+    }
+  })
+
+  const { router, view } = await renderPage('/accounting/general-journal-entries?offset=0')
+  await router.push('/accounting/general-journal-entries?offset=50')
+  await flushUi()
+
+  stale.reject(new Error('obsolete failure'))
+  await flushUi()
+
+  expect(document.body.textContent).not.toContain('obsolete failure')
+  expect(document.body.textContent).not.toContain('Loading…')
+  expect(router.currentRoute.value.query.offset).toBe('50')
+  await expect.element(view.getByTestId('journal-entry-list-page')).toBeVisible()
 })

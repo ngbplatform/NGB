@@ -41,6 +41,10 @@ test('picks a month, clears the value, and restores the current month', async ()
   const view = await render(MonthPickerHarness)
 
   await view.getByRole('button', { name: /March 2026/i }).click()
+  await view.getByRole('button', { name: 'Previous year' }).click()
+  await expect.element(view.getByText('2025', { exact: true })).toBeVisible()
+  await view.getByRole('button', { name: 'Next year' }).click()
+  await expect.element(view.getByText('2026', { exact: true })).toBeVisible()
   await view.getByRole('button', { name: 'Apr' }).click()
   await expect.element(view.getByTestId('month-state')).toHaveTextContent('state:2026-04')
 
@@ -73,4 +77,23 @@ test('disables the trigger when readonly', async () => {
     },
   })
   expect((readonlyView.getByRole('button', { name: /March 2026/i }).element() as HTMLButtonElement).disabled).toBe(true)
+})
+
+test('uses the default placeholder and preserves an invalid boundary value for display', async () => {
+  await page.viewport(1280, 900)
+
+  const emptyView = await render(NgbMonthPicker, {
+    props: {
+      modelValue: null,
+    },
+  })
+  await expect.element(emptyView.getByRole('button', { name: 'Select month' })).toBeVisible()
+  emptyView.unmount()
+
+  const invalidView = await render(NgbMonthPicker, {
+    props: {
+      modelValue: 'not-a-month',
+    },
+  })
+  await expect.element(invalidView.getByRole('button', { name: 'not-a-month' })).toBeVisible()
 })

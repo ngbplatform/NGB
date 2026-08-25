@@ -26,9 +26,11 @@ vi.mock('@ngbplatform/ui', async () => {
     props: {
       title: { type: String, required: true },
     },
-    setup(props, { slots }) {
+    emits: ['back'],
+    setup(props, { emit, slots }) {
       return () => h('header', { 'data-testid': 'policy-header' }, [
         h('h1', props.title),
+        h('button', { type: 'button', onClick: () => emit('back') }, 'Header back'),
         h('div', slots.secondary?.()),
         h('div', slots.actions?.()),
       ])
@@ -65,15 +67,24 @@ vi.mock('@ngbplatform/ui', async () => {
     props: {
       open: { type: Boolean, default: false },
     },
-    setup(props, { slots }) {
-      return () => props.open ? h('aside', { 'data-testid': 'drawer' }, slots.default?.()) : null
+    emits: ['update:open'],
+    setup(props, { emit, slots }) {
+      return () => props.open ? h('aside', { 'data-testid': 'drawer' }, [
+        slots.default?.(),
+        h('button', { type: 'button', onClick: () => emit('update:open', false) }, 'Drawer close'),
+      ]) : h('div', { hidden: true }, slots.default?.())
     },
   })
 
   const StubAuditSidebar = defineComponent({
     name: 'StubAuditSidebar',
-    setup() {
-      return () => h('div', { 'data-testid': 'audit-sidebar' }, 'Audit sidebar')
+    emits: ['back', 'close'],
+    setup(_, { emit }) {
+      return () => h('div', { 'data-testid': 'audit-sidebar' }, [
+        'Audit sidebar',
+        h('button', { type: 'button', onClick: () => emit('back') }, 'Audit back'),
+        h('button', { type: 'button', onClick: () => emit('close') }, 'Audit close'),
+      ])
     },
   })
 
@@ -159,6 +170,11 @@ function metadataForm() {
               { key: 'item_prices_register_id', label: 'Price Register', dataType: 'Guid', uiControl: 1, isRequired: false, isReadOnly: false },
               { key: 'cash_account_id', label: 'Cash Account', dataType: 'Guid', uiControl: 1, isRequired: true, isReadOnly: false },
               { key: 'ar_account_id', label: 'AR Account', dataType: 'Guid', uiControl: 1, isRequired: true, isReadOnly: false },
+              { key: 'inventory_account_id', label: 'Inventory Account', dataType: 'Guid', uiControl: 1, isRequired: true, isReadOnly: false },
+              { key: 'ap_account_id', label: 'AP Account', dataType: 'Guid', uiControl: 1, isRequired: true, isReadOnly: false },
+              { key: 'sales_revenue_account_id', label: 'Revenue Account', dataType: 'Guid', uiControl: 1, isRequired: true, isReadOnly: false },
+              { key: 'cogs_account_id', label: 'COGS Account', dataType: 'Guid', uiControl: 1, isRequired: true, isReadOnly: false },
+              { key: 'inventory_adjustment_account_id', label: 'Adjustment Account', dataType: 'Guid', uiControl: 1, isRequired: true, isReadOnly: false },
             ],
           },
         ],
@@ -192,6 +208,11 @@ test('renders the trimmed policy form and saves edited values', async () => {
             display: '',
             cash_account_id: 'cash-100',
             ar_account_id: 'ar-100',
+            inventory_account_id: 'inventory-100',
+            ap_account_id: 'ap-100',
+            sales_revenue_account_id: 'revenue-100',
+            cogs_account_id: 'cogs-100',
+            inventory_adjustment_account_id: 'adjustment-100',
           }),
         },
       },
@@ -203,7 +224,30 @@ test('renders the trimmed policy form and saves edited values', async () => {
   await flushUi()
 
   await expect.element(view.getByTestId('trade-accounting-policy-form')).toBeVisible()
+  await view.getByRole('button', { name: 'Header back' }).click()
+  expect(mocks.routerBack).toHaveBeenCalledOnce()
+
+  await view.getByTitle('Share link').click()
+  expect(mocks.copyAppLink).toHaveBeenCalledWith(
+    expect.any(Object),
+    expect.any(Object),
+    { path: '/catalogs/trd.accounting_policy' },
+  )
+
+  await view.getByRole('button', { name: 'Audit log' }).click()
+  await expect.element(view.getByTestId('audit-sidebar')).toBeVisible()
+  await view.getByRole('button', { name: 'Audit back' }).click()
+  await view.getByRole('button', { name: 'Audit log' }).click()
+  await view.getByRole('button', { name: 'Audit close' }).click()
+  await view.getByRole('button', { name: 'Audit log' }).click()
+  await view.getByRole('button', { name: 'Drawer close' }).click()
   await expect.element(view.getByText('Default Cash / Bank Account')).toBeVisible()
+  await expect.element(view.getByText('Accounts Receivable Account')).toBeVisible()
+  await expect.element(view.getByText('Inventory Asset Account')).toBeVisible()
+  await expect.element(view.getByText('Accounts Payable Account')).toBeVisible()
+  await expect.element(view.getByText('Sales Revenue Account')).toBeVisible()
+  await expect.element(view.getByText('Cost of Goods Sold Account')).toBeVisible()
+  await expect.element(view.getByText('Inventory Adjustment Offset Account')).toBeVisible()
   expect(document.body.textContent ?? '').not.toContain('Inventory Register')
   expect(document.body.textContent ?? '').not.toContain('Price Register')
 
@@ -220,6 +264,11 @@ test('renders the trimmed policy form and saves edited values', async () => {
       display: 'Accounting Policy',
       cash_account_id: 'cash-200',
       ar_account_id: 'ar-100',
+      inventory_account_id: 'inventory-100',
+      ap_account_id: 'ap-100',
+      sales_revenue_account_id: 'revenue-100',
+      cogs_account_id: 'cogs-100',
+      inventory_adjustment_account_id: 'adjustment-100',
     }),
   })
   expect(mocks.toastPush).toHaveBeenCalledWith(expect.objectContaining({
@@ -254,6 +303,10 @@ test('shows the empty state and applies defaults before reloading the policy', a
 
   await expect.element(view.getByTestId('trade-accounting-policy-empty-state')).toBeVisible()
 
+  document.querySelector<HTMLButtonElement>('button[title="Save"]')!
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  expect(mocks.updateCatalog).not.toHaveBeenCalled()
+
   await view.getByTestId('trade-accounting-policy-empty-state').getByRole('button', { name: 'Apply defaults' }).click()
   await flushUi()
   await flushUi()
@@ -265,4 +318,127 @@ test('shows the empty state and applies defaults before reloading the policy', a
     tone: 'success',
   }))
   await expect.element(view.getByTestId('trade-accounting-policy-form')).toBeVisible()
+})
+
+test('handles sparse form metadata, an absent payload, and guarded share/audit actions without an id', async () => {
+  mocks.ensureCatalogType.mockResolvedValue({
+    form: {
+      sections: [
+        { title: 'Empty rows' },
+        { title: 'Empty fields', rows: [{}] },
+        { title: 'Other', rows: [{ fields: [
+          { key: 'display', label: 'Hidden display' },
+          { key: 'custom_setting', label: 'Custom Setting' },
+        ] }] },
+      ],
+    },
+  })
+  mocks.getCatalogPage.mockResolvedValue({
+    items: [{ id: '', display: null, payload: null }],
+  })
+
+  const view = await render(AccountingPolicySettingsPage)
+  await flushUi()
+
+  await expect.element(view.getByText('Custom Setting')).toBeVisible()
+  expect(document.body.textContent).not.toContain('Hidden display')
+
+  view.getByTitle('Share link').element()
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  view.getByRole('button', { name: 'Audit log' }).element()
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  expect(mocks.copyAppLink).not.toHaveBeenCalled()
+  expect(document.querySelector('[data-testid="drawer"]')).toBeNull()
+})
+
+test('renders no-form metadata and reports load, save, and defaults failures', async () => {
+  mocks.ensureCatalogType.mockResolvedValue({ form: null })
+  mocks.getCatalogPage.mockResolvedValue({
+    items: [{ id: 'policy-no-form', display: 'Policy', payload: { fields: {} } }],
+  })
+
+  const noForm = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  await expect.element(noForm.getByText('No form metadata available.')).toBeVisible()
+  noForm.getByTitle('Save').element()
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  expect(mocks.updateCatalog).not.toHaveBeenCalled()
+  noForm.unmount()
+
+  mocks.ensureCatalogType.mockRejectedValueOnce(new Error('Metadata unavailable'))
+  const loadFailure = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  await expect.element(loadFailure.getByText('Metadata unavailable')).toBeVisible()
+  loadFailure.unmount()
+
+  mocks.ensureCatalogType.mockResolvedValue({ form: metadataForm() })
+  mocks.getCatalogPage.mockResolvedValue({
+    items: [{
+      id: 'policy-1',
+      display: 'Policy',
+      payload: { fields: { display: 'Policy', cash_account_id: 'cash-1' } },
+    }],
+  })
+  mocks.updateCatalog.mockRejectedValueOnce(new Error('Save rejected'))
+  const saveFailure = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  const cash = saveFailure.getByLabelText('Default Cash / Bank Account').element() as HTMLInputElement
+  cash.value = 'cash-2'
+  cash.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await saveFailure.getByTitle('Save').click()
+  await flushUi()
+  await expect.element(saveFailure.getByText('Save rejected')).toBeVisible()
+  saveFailure.unmount()
+
+  mocks.getCatalogPage.mockResolvedValue({ items: [] })
+  mocks.httpPost.mockRejectedValueOnce(new Error('Defaults rejected'))
+  const defaultsFailure = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  await defaultsFailure.getByTitle('Apply defaults').click()
+  await flushUi()
+  await expect.element(defaultsFailure.getByText('Defaults rejected')).toBeVisible()
+})
+
+test('normalizes a form with absent sections and a retained section without a title', async () => {
+  mocks.ensureCatalogType
+    .mockResolvedValueOnce({ form: {} })
+    .mockResolvedValueOnce({
+      form: {
+        sections: [{
+          rows: [{ fields: [{ key: 'custom_setting', label: 'Custom Setting' }] }],
+        }],
+      },
+    })
+  mocks.getCatalogPage.mockResolvedValue({
+    items: [{ id: 'policy-1', payload: { fields: { custom_setting: 'enabled' } } }],
+  })
+
+  const emptyForm = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  expect(emptyForm.getByTestId('trade-accounting-policy-form').element()).not.toBeNull()
+  emptyForm.unmount()
+
+  const untitledForm = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  await expect.element(untitledForm.getByText('Custom Setting')).toBeVisible()
+})
+
+test('ignores a second defaults request while initialization is in progress', async () => {
+  let resolveDefaults!: () => void
+  mocks.getCatalogPage.mockResolvedValue({ items: [] })
+  mocks.httpPost.mockReturnValue(new Promise<void>((resolve) => {
+    resolveDefaults = resolve
+  }))
+
+  const view = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  const apply = view.getByTitle('Apply defaults').element()
+  apply.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  apply.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  expect(mocks.httpPost).toHaveBeenCalledTimes(1)
+
+  resolveDefaults()
+  await flushUi()
+  await flushUi()
 })

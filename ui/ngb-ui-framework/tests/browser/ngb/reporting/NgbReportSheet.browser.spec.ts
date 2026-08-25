@@ -499,11 +499,15 @@ test('disconnects the load-more observer when the report sheet unmounts', async 
 
   try {
     const view = await renderWithRouter(ReportSheetObserverLifecycleHarness)
+    const scrollHost = view.getByTestId('report-sheet-scroll').element() as HTMLDivElement
 
     expect(observer.state.observed.length).toBeGreaterThan(0)
     expect(observer.state.disconnectCount).toBe(0)
 
+    scrollHost.scrollTop = 32
+    scrollHost.dispatchEvent(new Event('scroll'))
     await view.getByRole('button', { name: 'Unmount sheet' }).click()
+    scrollHost.dispatchEvent(new Event('scroll'))
 
     await expect.poll(() => observer.state.disconnectCount).toBe(1)
   } finally {

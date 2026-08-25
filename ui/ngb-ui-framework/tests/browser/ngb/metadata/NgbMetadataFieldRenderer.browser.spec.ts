@@ -186,6 +186,72 @@ const DateTimeHarness = defineComponent({
   },
 })
 
+const BoundaryValuesHarness = defineComponent({
+  setup() {
+    const memo = ref<unknown>(null)
+    const baseField = {
+      label: 'Boundary',
+      dataType: 'String',
+      uiControl: 1,
+      isRequired: false,
+      isReadOnly: false,
+    }
+
+    return () => h('div', [
+      h(NgbMetadataFieldRenderer, {
+        field: {
+          ...baseField,
+          key: 'integer_option',
+          dataType: 'Int32',
+          options: [
+            { value: 1.9, label: 'Number' },
+            { value: '2', label: 'Numeric string' },
+            { value: 'bad', label: 'Invalid string' },
+            { value: true, label: 'Boolean' },
+            { value: { raw: 3 }, label: 'Object' },
+            { value: null, label: 'Null' },
+          ] as never,
+        },
+        model: {},
+        modelValue: null,
+        entityTypeCode: 'pm.invoice',
+      }),
+      h(NgbMetadataFieldRenderer, {
+        field: {
+          ...baseField,
+          key: 'symbol_option',
+          options: [{ value: Symbol('value'), label: 'Symbol' }] as never,
+        },
+        model: {},
+        modelValue: Symbol('model'),
+        entityTypeCode: 'pm.invoice',
+      }),
+      ...[
+        ['null_input', null],
+        ['number_input', 42],
+        ['boolean_input', true],
+        ['object_input', { raw: true }],
+        ['symbol_input', Symbol('input')],
+      ].map(([key, modelValue]) => h(NgbMetadataFieldRenderer, {
+        field: { ...baseField, key: String(key) },
+        model: {},
+        modelValue,
+        entityTypeCode: 'pm.invoice',
+        disabled: key === 'boolean_input',
+        readonly: key === 'object_input',
+      })),
+      h(NgbMetadataFieldRenderer, {
+        field: { ...baseField, key: 'empty_memo', uiControl: 2 },
+        model: {},
+        modelValue: memo.value,
+        entityTypeCode: 'pm.invoice',
+        'onUpdate:modelValue': (value: unknown) => { memo.value = value },
+      }),
+      h('div', { 'data-testid': 'memo-state' }, String(memo.value ?? 'empty')),
+    ])
+  },
+})
+
 test('renders the select branch and propagates updates through the renderer', async () => {
   const view = await render(SelectHarness)
 
@@ -229,4 +295,21 @@ test('renders UTC instants as datetime-local values', async () => {
   })()
 
   await expect.element(view.getByText(`input:datetime-local:${expectedLocalValue}`)).toBeVisible()
+})
+
+test('normalizes every supported and unsupported control value at renderer boundaries', async () => {
+  const view = await render(BoundaryValuesHarness)
+
+  await expect.element(view.getByText('select:Number|Numeric string|Invalid string|Boolean|Object|Null')).toBeVisible()
+  await expect.element(view.getByText('select:Symbol')).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'input:text:', exact: true })).toBeVisible()
+  await expect.element(view.getByText('input:text:42')).toBeVisible()
+  await expect.element(view.getByText('input:text:true')).toBeVisible()
+  await expect.element(view.getByText('input:text:[object Object]')).toBeVisible()
+  await expect.element(view.getByText('input:text:Symbol(input)')).toBeVisible()
+
+  const textarea = view.getByRole('textbox').last()
+  await expect.element(textarea).toHaveValue('')
+  await textarea.fill('Updated memo')
+  await expect.element(view.getByTestId('memo-state')).toHaveTextContent('Updated memo')
 })

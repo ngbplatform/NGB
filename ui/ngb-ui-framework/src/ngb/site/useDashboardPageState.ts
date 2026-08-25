@@ -52,7 +52,7 @@ export function useDashboardPageState<TDashboard>(
   const warnings = computed(() => {
     const values = resolveWarnings(dashboard.value) ?? []
     return values
-      .map((value) => String(value ?? '').trim())
+      .map((value) => String(value).trim())
       .filter((value, index, items) => value.length > 0 && items.indexOf(value) === index)
   })
 

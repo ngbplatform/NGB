@@ -80,7 +80,11 @@ function resetState() {
 watch(
   () => props.open,
   (v) => {
-    if (!v) return
+    if (!v) {
+      cancelScheduledDryRun()
+      dryRunSeq++
+      return
+    }
     resetState()
     // schedule the first preview after state is reset
     scheduleDryRun()
@@ -88,7 +92,7 @@ watch(
 )
 
 function parseIntStrict(raw: string): number | null {
-  const s = String(raw ?? '').trim()
+  const s = raw.trim()
   if (!s) return null
   const n = Number(s)
   if (!Number.isFinite(n)) return null
@@ -121,8 +125,7 @@ function padZeros(n: number, width: number): string {
 function formatPlaceholder(token: string, value: number): string {
   // Supports "{0}" and "{0:0000}" or "{1:00}".
   // If the format is unknown, falls back to String(value).
-  const m = token.match(/^\{\s*(\d+)\s*(?::\s*([0]+)\s*)?\}$/)
-  if (!m) return token
+  const m = token.match(/^\{\s*(\d+)\s*(?::\s*([0]+)\s*)?\}$/)!
 
   const zeros = m[2]
   if (!zeros) return String(value)
@@ -164,11 +167,10 @@ const validationError = computed(() => {
   if (step == null) return 'Enter a whole number for Step.'
   if (step <= 0) return 'Step must be greater than 0.'
   if (from > to) return 'From must be less than or equal to To.'
-  if (requestedCount.value <= 0) return 'Check the unit range.'
   if (requestedCount.value > 5000) return 'You can create up to 5,000 units in one run.'
   if (floorSize != null && floorSize <= 0) return 'Floor size must be greater than 0.'
 
-  const fmt = String(unitNoFormat.value ?? '').trim()
+  const fmt = unitNoFormat.value.trim()
   if (!fmt) return 'Unit number format is required.'
   if (!fmt.includes('{0')) return 'Unit number format must include {0}.'
 
@@ -194,14 +196,13 @@ function buildRequest(): PmPropertyBulkCreateUnitsRequest | null {
   if (validationError.value) return null
 
   const { from, to, step: st, floorSize: fl } = parsed.value
-  if (from == null || to == null || st == null) return null
 
   return {
     buildingId: props.buildingId,
-    fromInclusive: from,
-    toInclusive: to,
-    step: st,
-    unitNoFormat: String(unitNoFormat.value ?? '').trim() || '{0}',
+    fromInclusive: from!,
+    toInclusive: to!,
+    step: st!,
+    unitNoFormat: unitNoFormat.value.trim(),
     floorSize: fl,
   }
 }
@@ -211,7 +212,6 @@ function scheduleDryRun() {
 
   dryRunError.value = null
 
-  if (!props.open) return
   if (step.value === 'result') return
 
   const req = buildRequest()
@@ -253,17 +253,15 @@ function close() {
 }
 
 function goNext() {
-  if (validationError.value) return
   step.value = 'confirm'
   scheduleDryRun()
 }
 
 function goBack() {
-  if (step.value === 'confirm') step.value = 'pattern'
+  step.value = 'pattern'
 }
 
 async function create() {
-  if (validationError.value) return
   if (dryRunLoading.value) return
   if (!dryRun.value) return
   if (wouldCreateCount.value <= 0) {
@@ -276,13 +274,12 @@ async function create() {
       duplicateCount: duplicateCount.value,
       createdIds: [],
       createdUnitNosSample: [],
-      duplicateUnitNosSample: dryRun.value?.duplicateUnitNosSample ?? [],
+      duplicateUnitNosSample: dryRun.value.duplicateUnitNosSample,
     }
     return
   }
 
-  const req = buildRequest()
-  if (!req) return
+  const req = buildRequest()!
 
   loading.value = true
   error.value = null
@@ -409,7 +406,7 @@ function copyLines(lines: string[]) {
             <button
               v-if="dryRun?.duplicateUnitNosSample?.length"
               class="text-xs text-ngb-link hover:underline"
-              @click="copyLines(dryRun.duplicateUnitNosSample ?? [])"
+              @click="copyLines(dryRun.duplicateUnitNosSample)"
               title="Copy duplicates sample"
             >
               Copy duplicates
@@ -459,7 +456,7 @@ function copyLines(lines: string[]) {
               <div class="text-xs font-semibold text-ngb-muted">Duplicates (sample)</div>
               <button
                 class="text-xs text-ngb-link hover:underline"
-                @click="copyLines(result.duplicateUnitNosSample ?? [])"
+                @click="copyLines(result.duplicateUnitNosSample)"
               >
                 Copy
               </button>

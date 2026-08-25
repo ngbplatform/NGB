@@ -27,6 +27,7 @@ const TrendLineHarness = defineComponent({
         series: [
           { label: 'Revenue', color: 'var(--accent-color)', values: [1200, Number.NaN] },
           { label: 'Expenses', color: '#f97316', values: [300, 450, 500] },
+          { label: 'Fallback', color: 'var(--missing-color)', values: [] },
         ],
       }),
     ])
@@ -42,6 +43,17 @@ const TrendBarHarness = defineComponent({
         series: [
           { label: 'Vacancy', color: '#2563eb', values: [4, 2] },
         ],
+      }),
+    ])
+  },
+})
+
+const EmptyTrendHarness = defineComponent({
+  setup() {
+    return () => h('div', { class: 'h-[280px] w-[520px]' }, [
+      h(NgbTrendChart, {
+        labels: [],
+        series: [],
       }),
     ])
   },
@@ -71,11 +83,16 @@ test('normalizes series data and resolves CSS variable colors for line charts', 
   const series = option.series as Array<Record<string, unknown>>
   const legend = option.legend as Record<string, unknown>
 
-  expect(colors).toEqual(['#0f766e', '#f97316'])
+  expect(colors).toEqual(['#0f766e', '#f97316', 'var(--missing-color)'])
   expect(legend.show).toBe(true)
   expect(series[0]?.type).toBe('line')
   expect(series[0]?.data).toEqual([1200, 0, 0])
   expect(series[1]?.data).toEqual([300, 450, 500])
+  expect(series[2]?.data).toEqual([0, 0, 0])
+  expect(readJson(view.getByTestId('stub-vchart-axis-samples'))).toEqual([
+    '0', '1.5M', '-1.5M', '1.5K', '-1.5K', '100', '12.3', '12',
+  ])
+  expect(view.getByTestId('stub-vchart-tooltip-samples').element().textContent).toContain('Revenue')
   expect(readJson(view.getByTestId('stub-vchart-init-options'))).toEqual({ renderer: 'canvas' })
   await expect.element(view.getByTestId('stub-vchart-autoresize')).toHaveTextContent('true')
 })
@@ -106,4 +123,15 @@ test('switches to bar semantics and refreshes palette when theme variables chang
   const nextLegend = option.legend as Record<string, unknown>
   const nextTextStyle = nextLegend.textStyle as Record<string, unknown>
   expect(nextTextStyle.color).toBe('#f8fafc')
+})
+
+test('keeps an empty chart renderable with a single normalized point', async () => {
+  const view = await render(EmptyTrendHarness)
+
+  const option = readJson(view.getByTestId('stub-vchart-option'))
+  expect(option.color).toEqual([])
+  expect(option.series).toEqual([])
+  expect((option.legend as Record<string, unknown>).show).toBe(false)
+  expect((option.grid as Record<string, unknown>).top).toBe(20)
+  view.unmount()
 })

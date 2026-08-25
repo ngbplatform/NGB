@@ -34,8 +34,7 @@ export async function getGeneralJournalEntryPage(
   if (args.dateFrom) q.set('dateFrom', args.dateFrom);
   if (args.dateTo) q.set('dateTo', args.dateTo);
   if (args.trash) q.set('trash', args.trash);
-  const qs = q.toString();
-  return await httpGet<GeneralJournalEntryPageDto>(`${base}${qs ? `?${qs}` : ''}`);
+  return await httpGet<GeneralJournalEntryPageDto>(`${base}?${q.toString()}`);
 }
 
 export async function getGeneralJournalEntry(id: string): Promise<GeneralJournalEntryDetailsDto> {

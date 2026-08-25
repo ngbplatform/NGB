@@ -49,6 +49,7 @@ describe('general journal entry api', () => {
       dateTo: '2026-01-31',
       trash: 'all',
     })
+    await getGeneralJournalEntryPage({})
     await getGeneralJournalEntry('entry/1')
     await getGeneralJournalEntryAccountContext('acc/1')
 
@@ -56,9 +57,10 @@ describe('general journal entry api', () => {
       1,
       '/api/accounting/general-journal-entries?offset=10&limit=25&search=closing&dateFrom=2026-01-01&dateTo=2026-01-31&trash=all',
     )
-    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(2, '/api/accounting/general-journal-entries/entry%2F1')
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(2, '/api/accounting/general-journal-entries?offset=0&limit=50')
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(3, '/api/accounting/general-journal-entries/entry%2F1')
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(
-      3,
+      4,
       '/api/accounting/general-journal-entries/accounts/acc%2F1',
     )
   })

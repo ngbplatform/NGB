@@ -60,6 +60,12 @@ test('normalizes incoming month values and forwards picker updates', async () =>
   pickerButtons('stub-month-picker:Start month')[0]?.click()
   await expect.element(view.getByTestId('period-from')).toHaveTextContent('2026-04')
 
+  pickerButtons('stub-month-picker:Start month')[1]?.click()
+  await expect.element(view.getByTestId('period-from')).toHaveTextContent('')
+
+  pickerButtons('stub-month-picker:End month')[0]?.click()
+  await expect.element(view.getByTestId('period-to')).toHaveTextContent('2026-04')
+
   pickerButtons('stub-month-picker:End month')[1]?.click()
   await expect.element(view.getByTestId('period-to')).toHaveTextContent('')
 })

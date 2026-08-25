@@ -86,8 +86,9 @@ function reset() {
 function onDocClick(e: MouseEvent) {
   if (!open.value) return;
   const t = e.target as Node;
-  if (!root.value) return;
-  if (!root.value.contains(t)) open.value = false;
+  // The listener is installed after mount and removed before unmount, so the
+  // template root is guaranteed for every event observed by this handler.
+  if (!root.value!.contains(t)) open.value = false;
 }
 
 onMounted(() => {

@@ -51,4 +51,22 @@ describe('metadata useValidationFocus', () => {
     expect(input.focus).toHaveBeenCalledWith({ preventScroll: true })
     expect(validation.focus('missing')).toBe(false)
   })
+
+  it('handles an unavailable root and a container without a focusable control', () => {
+    const rootRef = ref<HTMLElement | null>(null)
+    const validationWithoutRoot = useValidationFocus(rootRef, {
+      attribute: 'data-validation-key',
+    })
+
+    expect(validationWithoutRoot.containerFor('amount')).toBeNull()
+
+    const amountContainer = createContainer('data-validation-key', 'amount')
+    const root = { querySelectorAll: vi.fn(() => [amountContainer]) }
+    const validationWithoutTarget = useValidationFocus(ref(root as never), {
+      attribute: 'data-validation-key',
+    })
+
+    expect(validationWithoutTarget.focus('amount')).toBe(true)
+    expect(amountContainer.querySelector).toHaveBeenCalled()
+  })
 })

@@ -46,6 +46,11 @@ describe('metadata filtering helpers', () => {
         { value: 'posted', label: 'Posted' },
       ],
     }, 'posted')).toBe('Posted')
+    expect(optionLabelForFilter({ options: null }, '   ')).toBe('')
+    expect(optionLabelForFilter({ options: null }, 'unknown')).toBe('unknown')
+    expect(optionLabelForFilter({
+      options: [{ value: null as never, label: 'Empty' }],
+    }, 'missing')).toBe('missing')
 
     expect(buildFilterOptionLabelsByKey([
       {
@@ -59,6 +64,18 @@ describe('metadata filtering helpers', () => {
         key: 'blank',
         options: [],
       },
+      {
+        key: '',
+        options: [{ value: 'ignored', label: 'Ignored' }],
+      },
+      {
+        key: 'invalid',
+        options: [
+          null as never,
+          { value: ' ', label: 'Blank value' },
+          { value: 'valid', label: ' ' },
+        ],
+      },
     ])).toEqual({
       status: new Map([
         ['open', 'Open'],
@@ -67,6 +84,8 @@ describe('metadata filtering helpers', () => {
     })
 
     expect(filterInputType('Decimal')).toBe('number')
+    expect(filterInputType('customInteger')).toBe('number')
+    expect(filterInputType(null)).toBe('text')
     expect(filterInputType('String')).toBe('text')
     expect(filterPlaceholder({ label: 'Property', lookup: { kind: 'catalog', catalogType: 'pm.property' }, isMulti: false })).toBe('Type property…')
     expect(filterPlaceholder({ label: 'Status', lookup: null, isMulti: true })).toBe('Comma-separated values…')
@@ -76,6 +95,9 @@ describe('metadata filtering helpers', () => {
     })).toEqual([
       { value: '', label: 'Any' },
       { value: 'open', label: 'Open' },
+    ])
+    expect(filterSelectOptions({ options: null }, 'Everything')).toEqual([
+      { value: '', label: 'Everything' },
     ])
   })
 
@@ -90,6 +112,10 @@ describe('metadata filtering helpers', () => {
       '11111111-1111-1111-1111-111111111111',
       '22222222-2222-2222-2222-222222222222',
     ])
+    expect(extractLookupIds('11111111-1111-1111-1111-111111111111')).toEqual([
+      '11111111-1111-1111-1111-111111111111',
+    ])
+    expect(extractLookupIds('invalid')).toEqual([])
 
     expect(labelForResolvedLookup(lookupStore, { kind: 'catalog', catalogType: 'pm.property' }, 'catalog-1')).toBe('pm.property:catalog-1')
     expect(labelForResolvedLookup(lookupStore, { kind: 'coa' }, 'coa-1')).toBe('COA:coa-1')
@@ -106,6 +132,9 @@ describe('metadata filtering helpers', () => {
     expect(await searchResolvedLookupItems(lookupStore, { kind: 'catalog', catalogType: 'pm.property', filters: { active: '1' } }, 'river')).toEqual([
       { id: 'catalog-1', label: 'Riverfront Tower' },
     ])
+    expect(await searchResolvedLookupItems(lookupStore, { kind: 'catalog', catalogType: 'pm.property' }, 'river')).toEqual([
+      { id: 'catalog-1', label: 'Riverfront Tower' },
+    ])
     expect(await searchResolvedLookupItems(lookupStore, { kind: 'coa' }, '1100')).toEqual([
       { id: 'coa-1', label: '1100 Cash' },
     ])
@@ -116,5 +145,6 @@ describe('metadata filtering helpers', () => {
     expect(await hydrateResolvedLookupItems(lookupStore, { kind: 'catalog', catalogType: 'pm.property' }, ['catalog-1'])).toEqual([
       { id: 'catalog-1', label: 'pm.property:catalog-1' },
     ])
+    await expect(hydrateResolvedLookupItems(lookupStore, { kind: 'coa' }, [])).resolves.toEqual([])
   })
 })

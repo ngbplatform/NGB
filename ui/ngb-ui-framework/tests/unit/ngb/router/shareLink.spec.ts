@@ -33,6 +33,9 @@ describe('shareLink', () => {
     expect(buildAbsoluteAppUrl(router as never, '/documents/pm.invoice')).toBe(
       'https://app.ngb.test/documents/pm.invoice?id=doc-1',
     )
+
+    globalThis.window = undefined as never
+    expect(buildAbsoluteAppUrl(router as never, '/documents/pm.invoice')).toBe('/documents/pm.invoice?id=doc-1')
   })
 
   it('copies an app link to the clipboard and pushes a success toast', async () => {
@@ -111,6 +114,35 @@ describe('shareLink', () => {
     expect(toasts.push).toHaveBeenCalledWith({
       title: 'Could not copy link',
       message: 'Clipboard denied',
+      tone: 'danger',
+    })
+  })
+
+  it('uses default success copy and reports an unavailable clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const toasts = { push: vi.fn() }
+    globalThis.window = { location: { origin: 'https://app.ngb.test' } } as typeof window
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { clipboard: { writeText } },
+    })
+    const router = { resolve: vi.fn(() => ({ href: '/home' })) }
+
+    await expect(copyAppLink(router as never, toasts, '/home')).resolves.toBe(true)
+    expect(toasts.push).toHaveBeenLastCalledWith({
+      title: 'Link copied',
+      message: 'Shareable link copied to clipboard.',
+      tone: 'neutral',
+    })
+
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: {},
+    })
+    await expect(copyAppLink(router as never, toasts, '/home')).resolves.toBe(false)
+    expect(toasts.push).toHaveBeenLastCalledWith({
+      title: 'Could not copy link',
+      message: 'Clipboard is not available.',
       tone: 'danger',
     })
   })

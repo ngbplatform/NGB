@@ -56,8 +56,8 @@ function normalizeValidationErrors(value: unknown): ApiValidationErrors | null {
   return Object.keys(result).length > 0 ? result : null
 }
 
-function normalizeValidationPath(raw: unknown): string {
-  let path = typeof raw === 'string' ? raw.trim() : ''
+function normalizeValidationPath(raw: string): string {
+  let path = raw.trim()
   if (!path) return '_form'
   if (path === '_form') return path
 
@@ -143,14 +143,12 @@ function validationIssuesFromErrors(errors: ApiValidationErrors | null | undefin
   for (const [rawPath, messages] of Object.entries(errors)) {
     const path = normalizeValidationPath(rawPath)
     const scope = inferIssueScope(path)
-    for (const message of messages ?? []) {
-      const text = String(message ?? '').trim()
-      if (!text) continue
-      issues.push({ path, message: text, scope, code: null })
+    for (const message of messages) {
+      issues.push({ path, message, scope, code: null })
     }
   }
 
-  return issues.length > 0 ? issues : null
+  return issues
 }
 
 function extractErrorEnvelope(body: unknown): ApiErrorEnvelope | null {
@@ -201,19 +199,9 @@ function isGenericProblemDetail(detail: string): boolean {
   return normalized === 'one or more validation errors has occurred.'
 }
 
-function firstValidationMessage(errors: ApiValidationErrors | null | undefined): string | null {
-  if (!errors) return null
-  for (const messages of Object.values(errors)) {
-    const first = messages.find((entry) => entry.trim().length > 0)
-    if (first) return first
-  }
-  return null
-}
-
 function firstValidationIssueMessage(issues: ApiValidationIssue[] | null | undefined): string | null {
   if (!issues) return null
-  const first = issues.find((issue) => issue.message.trim().length > 0)
-  return first?.message?.trim() || null
+  return issues[0]!.message
 }
 
 export class ApiError extends Error {
@@ -284,11 +272,9 @@ function toApiErrorMessage(status: number, body: unknown): string {
   const detail = isRecord(body) && typeof body.detail === 'string' ? body.detail.trim() : ''
   const title = isRecord(body) && typeof body.title === 'string' ? body.title.trim() : ''
   const firstIssue = firstValidationIssueMessage(envelope?.issues)
-  const firstError = firstValidationMessage(envelope?.errors)
 
   if (detail && !isGenericProblemDetail(detail)) return detail
   if (firstIssue) return firstIssue
-  if (firstError) return firstError
 
   if (isRecord(body) && typeof body.message === 'string' && body.message.trim().length > 0) return body.message.trim()
   if (title) return title
@@ -373,7 +359,7 @@ export async function httpGet<T>(
   query?: QueryParams | null,
   options?: HttpRequestOptions,
 ): Promise<T> {
-  return httpRequest<T>('GET', appendQuery(url, query ?? undefined), undefined, options)
+  return httpRequest<T>('GET', appendQuery(url, query), undefined, options)
 }
 
 export async function httpPost<TResponse, TBody = unknown>(

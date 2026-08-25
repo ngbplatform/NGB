@@ -16,6 +16,7 @@ vi.mock('../../../../src/ngb/lookup/config', () => ({
 import {
   buildLookupFieldTargetUrl,
   lookupValueId,
+  normalizeLookupValue,
 } from '../../../../src/ngb/lookup/navigation'
 
 describe('lookup navigation', () => {
@@ -33,6 +34,16 @@ describe('lookup navigation', () => {
     expect(lookupValueId({ id: ' catalog-1 ' })).toBe('catalog-1')
     expect(lookupValueId('   ')).toBeNull()
     expect(lookupValueId(null)).toBeNull()
+    expect(lookupValueId({})).toBeNull()
+    expect(lookupValueId({ id: null })).toBeNull()
+
+    expect(normalizeLookupValue('id')).toBe('id')
+    expect(normalizeLookupValue(null)).toBeNull()
+    expect(normalizeLookupValue(undefined)).toBeUndefined()
+    expect(normalizeLookupValue({ id: 'id' })).toEqual({ id: 'id' })
+    expect(normalizeLookupValue({ id: 42 })).toEqual({ id: null })
+    expect(normalizeLookupValue({ label: 'No id' })).toBeNull()
+    expect(normalizeLookupValue(42)).toBeNull()
   })
 
   it('builds coa and catalog targets while preserving the current page as back target', async () => {
@@ -98,6 +109,62 @@ describe('lookup navigation', () => {
       hint: { kind: 'document', documentTypes: ['pm.invoice', 'pm.credit_note'] },
       value: { id: 'missing-doc' },
       route: { fullPath: '/accounting/general-journal-entries/new' },
+    })).resolves.toBeNull()
+  })
+
+  it('handles absent, single, duplicate, and malformed document type candidates', async () => {
+    const route = { fullPath: '/documents' }
+
+    await expect(buildLookupFieldTargetUrl({
+      hint: { kind: 'document', documentTypes: [] },
+      value: 'doc-1',
+      route,
+    })).resolves.toBeNull()
+    await expect(buildLookupFieldTargetUrl({
+      hint: { kind: 'document', documentTypes: [null as never, ' '] },
+      value: 'doc-1',
+      route,
+    })).resolves.toBeNull()
+    await expect(buildLookupFieldTargetUrl({
+      hint: { kind: 'document', documentTypes: [' pm.invoice ', 'pm.invoice'] },
+      value: 'doc-1',
+      route,
+    })).resolves.toBe(withBackTarget('/documents/pm.invoice/doc-1', route.fullPath))
+    expect(lookupNavigationMocks.loadDocumentItemsByIds).not.toHaveBeenCalled()
+  })
+
+  it('skips malformed bulk results before finding an exact id and type match', async () => {
+    lookupNavigationMocks.loadDocumentItemsByIds.mockResolvedValue([
+      { id: null, documentType: null },
+      { id: 'other', documentType: 'pm.invoice' },
+      { id: 'doc-1', documentType: 'pm.unknown' },
+      { id: 'doc-1', documentType: 'pm.invoice' },
+    ])
+
+    await expect(buildLookupFieldTargetUrl({
+      hint: { kind: 'document', documentTypes: ['pm.invoice', 'pm.credit_note'] },
+      value: 'doc-1',
+      route: { fullPath: '/documents' },
+    })).resolves.toContain('/documents/pm.invoice/doc-1')
+  })
+
+  it('returns null for a missing hint, unsupported hint, or empty configured path', async () => {
+    await expect(buildLookupFieldTargetUrl({
+      hint: null,
+      value: 'id',
+      route: { fullPath: '/current' },
+    })).resolves.toBeNull()
+    await expect(buildLookupFieldTargetUrl({
+      hint: { kind: 'unsupported' } as never,
+      value: 'id',
+      route: { fullPath: '/current' },
+    })).resolves.toBeNull()
+
+    lookupNavigationMocks.buildCatalogUrl.mockReturnValueOnce(null)
+    await expect(buildLookupFieldTargetUrl({
+      hint: { kind: 'catalog', catalogType: 'pm.property' },
+      value: 'id',
+      route: { fullPath: '/current' },
     })).resolves.toBeNull()
   })
 })

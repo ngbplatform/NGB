@@ -373,12 +373,33 @@ export const StubConfirmDialog = defineComponent({
   },
   emits: ['update:open', 'confirm'],
   setup(props, { emit }) {
-    return () => props.open
-      ? h('div', { 'data-testid': 'confirm-dialog' }, [
+    return () => {
+      const actionLabel = props.title.startsWith('Unpost') ? 'Unpost' : 'Mark'
+      return props.open
+        ? h('div', { 'data-testid': 'confirm-dialog' }, [
         h('div', props.title),
         h('div', props.message),
-        h('button', { type: 'button', onClick: () => emit('update:open', false) }, 'Mark cancel'),
-        h('button', { type: 'button', onClick: () => emit('confirm') }, 'Mark confirm'),
+        h('button', { type: 'button', onClick: () => emit('update:open', false) }, `${actionLabel} cancel`),
+        h('button', { type: 'button', onClick: () => emit('confirm') }, `${actionLabel} confirm`),
+        ])
+        : null
+    }
+  },
+})
+
+export const StubDocumentActionConfirmationDialog = defineComponent({
+  props: {
+    confirmation: {
+      type: Object as PropType<Record<string, unknown> | null>,
+      default: null,
+    },
+  },
+  emits: ['cancel', 'confirm'],
+  setup(props, { emit }) {
+    return () => props.confirmation
+      ? h('div', { 'data-testid': 'document-action-confirmation' }, [
+        h('button', { type: 'button', onClick: () => emit('cancel') }, 'Document action cancel'),
+        h('button', { type: 'button', onClick: () => emit('confirm', 'Approved reason') }, 'Document action confirm'),
       ])
       : null
   },

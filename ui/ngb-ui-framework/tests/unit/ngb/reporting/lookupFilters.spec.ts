@@ -168,4 +168,28 @@ describe('reporting lookup filter helpers', () => {
       includeDescendants: false,
     })
   })
+
+  it('handles absent filters, definitions, draft state, lookup metadata, and empty hydration results', async () => {
+    const lookupStore = createLookupStore()
+    const draft = createDraft()
+
+    await hydrateReportLookupItemsFromFilters(lookupStore, definition, draft, null)
+    await hydrateReportLookupItemsFromFilters(lookupStore, { filters: null }, draft, {})
+    await hydrateReportLookupItemsFromFilters(lookupStore, {
+      filters: [
+        { fieldCode: 'missing_state', label: 'Missing state', dataType: 'Guid', lookup: { kind: 'coa' } },
+        { fieldCode: 'ignored', label: 'No lookup', dataType: 'Guid', lookup: null },
+        { fieldCode: 'property', label: 'No value', dataType: 'Guid', lookup: { kind: 'catalog', catalogType: 'pm.property' } },
+      ],
+    }, draft, {
+      missing_state: { value: accountId },
+      ignored: { value: accountId },
+    })
+
+    lookupStore.labelForCatalog.mockReturnValue('')
+    await hydrateReportLookupItemsFromFilters(lookupStore, definition, draft, {
+      property: { value: catalogId },
+    })
+    expect(draft.filters.property.raw).toBe('')
+  })
 })

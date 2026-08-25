@@ -39,6 +39,10 @@ vi.mock('../../../../src/ngb/auth/keycloak', () => ({
   subscribeAuth: authMocks.subscribeAuth,
 }))
 
+vi.mock('../../../../src/ngb/env/runtimeConfig', () => ({
+  readAppEnv: (key: string) => key === 'VITE_KEYCLOAK_ROLE_ADMIN' ? 'custom-admin' : '',
+}))
+
 import { useAuthStore } from '../../../../src/ngb/auth/useAuthStore'
 
 function createSnapshot(overrides: Partial<AuthSnapshot> = {}): AuthSnapshot {
@@ -193,5 +197,56 @@ describe('useAuthStore', () => {
 
     expect(failingStore.redirecting).toBe(false)
     expect(failingStore.error).toBe('Unable to initialize Keycloak. Check the UI env vars and the client redirect URI settings.')
+  })
+
+  it('normalizes every supported role alias, custom admin roles, and empty role boundaries', () => {
+    authMocks.state.snapshot = createSnapshot({
+      initialized: true,
+      roles: [
+        'z-operator',
+        'ngb-user',
+        'administrator',
+        'admin',
+        'ngb-admin',
+        'realm-admin',
+        'user',
+        'a-operator',
+        'ngb',
+      ],
+    })
+
+    const store = useAuthStore()
+
+    expect(store.userName).toBe('User')
+    expect(store.isAdmin).toBe(true)
+    expect(store.primaryTechnicalRole).toBe('admin')
+    expect(store.friendlyRoles).toEqual([
+      'Administrator',
+      'User',
+      'A Operator',
+      'Ngb',
+      'Z Operator',
+    ])
+    expect(store.hasRole(null as never)).toBe(false)
+
+    authMocks.state.subscriber?.(createSnapshot({ roles: ['custom-admin'] }))
+    expect(store.isAdmin).toBe(true)
+    expect(store.primaryRoleLabel).toBe('Custom Admin')
+
+    authMocks.state.subscriber?.(createSnapshot())
+    expect(store.primaryTechnicalRole).toBe('')
+    expect(store.primaryRoleLabel).toBe('User')
+
+    authMocks.state.subscriber?.(createSnapshot({ roles: [null as never] }))
+    expect(store.isAdmin).toBe(false)
+    expect(store.friendlyRoles).toEqual(['User'])
+  })
+
+  it('uses the generic initialization message for blank Error messages', async () => {
+    authMocks.initializeAuth.mockRejectedValueOnce(new Error('   '))
+    const store = useAuthStore()
+
+    await expect(store.initialize()).rejects.toThrow()
+    expect(store.error).toBe('Unable to initialize Keycloak. Check the UI env vars and the client redirect URI settings.')
   })
 })

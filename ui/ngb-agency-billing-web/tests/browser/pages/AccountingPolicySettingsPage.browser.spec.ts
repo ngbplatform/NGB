@@ -26,9 +26,11 @@ vi.mock('@ngbplatform/ui', async () => {
     props: {
       title: { type: String, required: true },
     },
-    setup(props, { slots }) {
+    emits: ['back'],
+    setup(props, { emit, slots }) {
       return () => h('header', { 'data-testid': 'policy-header' }, [
         h('h1', props.title),
+        h('button', { type: 'button', onClick: () => emit('back') }, 'Header back'),
         h('div', slots.secondary?.()),
         h('div', slots.actions?.()),
       ])
@@ -65,15 +67,24 @@ vi.mock('@ngbplatform/ui', async () => {
     props: {
       open: { type: Boolean, default: false },
     },
-    setup(props, { slots }) {
-      return () => props.open ? h('aside', { 'data-testid': 'drawer' }, slots.default?.()) : null
+    emits: ['update:open'],
+    setup(props, { emit, slots }) {
+      return () => props.open ? h('aside', { 'data-testid': 'drawer' }, [
+        slots.default?.(),
+        h('button', { type: 'button', onClick: () => emit('update:open', false) }, 'Drawer close'),
+      ]) : h('div', { hidden: true }, slots.default?.())
     },
   })
 
   const StubAuditSidebar = defineComponent({
     name: 'StubAuditSidebar',
-    setup() {
-      return () => h('div', { 'data-testid': 'audit-sidebar' }, 'Audit sidebar')
+    emits: ['back', 'close'],
+    setup(_, { emit }) {
+      return () => h('div', { 'data-testid': 'audit-sidebar' }, [
+        'Audit sidebar',
+        h('button', { type: 'button', onClick: () => emit('back') }, 'Audit back'),
+        h('button', { type: 'button', onClick: () => emit('close') }, 'Audit close'),
+      ])
     },
   })
 
@@ -208,6 +219,23 @@ test('renders the trimmed agency billing policy form and saves edited values', a
   await flushUi()
 
   await expect.element(view.getByTestId('agency-billing-accounting-policy-form')).toBeVisible()
+  await view.getByRole('button', { name: 'Header back' }).click()
+  expect(mocks.routerBack).toHaveBeenCalledOnce()
+
+  await view.getByTitle('Share link').click()
+  expect(mocks.copyAppLink).toHaveBeenCalledWith(
+    expect.any(Object),
+    expect.any(Object),
+    { path: '/catalogs/ab.accounting_policy' },
+  )
+
+  await view.getByRole('button', { name: 'Audit log' }).click()
+  await expect.element(view.getByTestId('audit-sidebar')).toBeVisible()
+  await view.getByRole('button', { name: 'Audit back' }).click()
+  await view.getByRole('button', { name: 'Audit log' }).click()
+  await view.getByRole('button', { name: 'Audit close' }).click()
+  await view.getByRole('button', { name: 'Audit log' }).click()
+  await view.getByRole('button', { name: 'Drawer close' }).click()
   await expect.element(view.getByText('Default Cash / Bank Account')).toBeVisible()
   await expect.element(view.getByText('Accounts Receivable Account')).toBeVisible()
   await expect.element(view.getByText('Service Revenue Account')).toBeVisible()
@@ -267,6 +295,10 @@ test('shows the empty state and applies defaults before reloading the policy', a
 
   await expect.element(view.getByTestId('agency-billing-accounting-policy-empty-state')).toBeVisible()
 
+  document.querySelector<HTMLButtonElement>('button[title="Save"]')!
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  expect(mocks.updateCatalog).not.toHaveBeenCalled()
+
   await view.getByTestId('agency-billing-accounting-policy-empty-state').getByRole('button', { name: 'Apply defaults' }).click()
   await flushUi()
   await flushUi()
@@ -278,4 +310,127 @@ test('shows the empty state and applies defaults before reloading the policy', a
     tone: 'success',
   }))
   await expect.element(view.getByTestId('agency-billing-accounting-policy-form')).toBeVisible()
+})
+
+test('handles sparse form metadata, an absent payload, and guarded share/audit actions without an id', async () => {
+  mocks.ensureCatalogType.mockResolvedValue({
+    form: {
+      sections: [
+        { title: 'Empty rows' },
+        { title: 'Empty fields', rows: [{}] },
+        { title: 'Other', rows: [{ fields: [
+          { key: 'display', label: 'Hidden display' },
+          { key: 'custom_setting', label: 'Custom Setting' },
+        ] }] },
+      ],
+    },
+  })
+  mocks.getCatalogPage.mockResolvedValue({
+    items: [{ id: '', display: null, payload: null }],
+  })
+
+  const view = await render(AccountingPolicySettingsPage)
+  await flushUi()
+
+  await expect.element(view.getByText('Custom Setting')).toBeVisible()
+  expect(document.body.textContent).not.toContain('Hidden display')
+
+  const share = view.getByTitle('Share link').element()
+  share.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  const audit = view.getByRole('button', { name: 'Audit log' }).element()
+  audit.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  expect(mocks.copyAppLink).not.toHaveBeenCalled()
+  expect(document.querySelector('[data-testid="drawer"]')).toBeNull()
+})
+
+test('renders no-form metadata and reports load, save, and defaults failures', async () => {
+  mocks.ensureCatalogType.mockResolvedValue({ form: null })
+  mocks.getCatalogPage.mockResolvedValue({
+    items: [{ id: 'policy-no-form', display: 'Policy', payload: { fields: {} } }],
+  })
+
+  const noForm = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  await expect.element(noForm.getByText('No form metadata available.')).toBeVisible()
+  noForm.getByTitle('Save').element()
+    .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  expect(mocks.updateCatalog).not.toHaveBeenCalled()
+  noForm.unmount()
+
+  mocks.ensureCatalogType.mockRejectedValueOnce(new Error('Metadata unavailable'))
+  const loadFailure = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  await expect.element(loadFailure.getByText('Metadata unavailable')).toBeVisible()
+  loadFailure.unmount()
+
+  mocks.ensureCatalogType.mockResolvedValue({ form: metadataForm() })
+  mocks.getCatalogPage.mockResolvedValue({
+    items: [{
+      id: 'policy-1',
+      display: 'Policy',
+      payload: { fields: { display: 'Policy', cash_account_id: 'cash-1' } },
+    }],
+  })
+  mocks.updateCatalog.mockRejectedValueOnce(new Error('Save rejected'))
+  const saveFailure = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  const cash = saveFailure.getByLabelText('Default Cash / Bank Account').element() as HTMLInputElement
+  cash.value = 'cash-2'
+  cash.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await saveFailure.getByTitle('Save').click()
+  await flushUi()
+  await expect.element(saveFailure.getByText('Save rejected')).toBeVisible()
+  saveFailure.unmount()
+
+  mocks.getCatalogPage.mockResolvedValue({ items: [] })
+  mocks.httpPost.mockRejectedValueOnce(new Error('Defaults rejected'))
+  const defaultsFailure = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  await defaultsFailure.getByTitle('Apply defaults').click()
+  await flushUi()
+  await expect.element(defaultsFailure.getByText('Defaults rejected')).toBeVisible()
+})
+
+test('normalizes a form with absent sections and a retained section without a title', async () => {
+  mocks.ensureCatalogType
+    .mockResolvedValueOnce({ form: {} })
+    .mockResolvedValueOnce({
+      form: {
+        sections: [{
+          rows: [{ fields: [{ key: 'custom_setting', label: 'Custom Setting' }] }],
+        }],
+      },
+    })
+  mocks.getCatalogPage.mockResolvedValue({
+    items: [{ id: 'policy-1', payload: { fields: { custom_setting: 'enabled' } } }],
+  })
+
+  const emptyForm = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  expect(emptyForm.getByTestId('agency-billing-accounting-policy-form').element()).not.toBeNull()
+  emptyForm.unmount()
+
+  const untitledForm = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  await expect.element(untitledForm.getByText('Custom Setting')).toBeVisible()
+})
+
+test('ignores a second defaults request while initialization is in progress', async () => {
+  let resolveDefaults!: () => void
+  mocks.getCatalogPage.mockResolvedValue({ items: [] })
+  mocks.httpPost.mockReturnValue(new Promise<void>((resolve) => {
+    resolveDefaults = resolve
+  }))
+
+  const view = await render(AccountingPolicySettingsPage)
+  await flushUi()
+  const apply = view.getByTitle('Apply defaults').element()
+  apply.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  apply.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+  expect(mocks.httpPost).toHaveBeenCalledTimes(1)
+
+  resolveDefaults()
+  await flushUi()
+  await flushUi()
 })

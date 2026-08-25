@@ -95,13 +95,19 @@ const chartMetadata = {
       supportsLineCode: false,
       requiresLineCode: false,
     },
+    {
+      value: 'FINANCING',
+      label: 'Financing activities',
+      supportsLineCode: true,
+      requiresLineCode: false,
+    },
   ],
   cashFlowLineOptions: [
     {
       value: 'NET_INCOME',
       label: 'Net income',
       section: 'Operating',
-      allowedRoles: ['OPERATING'],
+      allowedRoles: ['OPERATING', 'FINANCING'],
     },
   ],
 }
@@ -124,8 +130,17 @@ const ChartOfAccountEditorHarness = defineComponent({
       type: String,
       default: null,
     },
+    metadata: {
+      type: Object,
+      default: undefined,
+    },
+    routeBasePath: {
+      type: String,
+      default: undefined,
+    },
   },
   setup(props) {
+    const activeMetadata = ref(props.metadata)
     const editorRef = ref<{
       save: () => void
       copyShareLink: () => Promise<boolean>
@@ -138,6 +153,15 @@ const ChartOfAccountEditorHarness = defineComponent({
     const title = ref('none')
 
     return () => h('div', [
+      h('button', {
+        type: 'button',
+        onClick: () => {
+          activeMetadata.value = {
+            ...chartMetadata,
+            accountTypeOptions: [{ value: 'Liability', label: 'Liability' }],
+          }
+        },
+      }, 'Use liability metadata'),
       h('button', {
         type: 'button',
         onClick: () => editorRef.value?.save(),
@@ -157,8 +181,8 @@ const ChartOfAccountEditorHarness = defineComponent({
       h(NgbChartOfAccountEditor, {
         ref: editorRef,
         id: props.id,
-        metadata: chartMetadata,
-        routeBasePath: '/admin/chart-of-accounts',
+        metadata: activeMetadata.value,
+        routeBasePath: props.routeBasePath,
         onCreated: (id: string) => {
           events.value = [...events.value, `created:${id}`]
         },
@@ -167,6 +191,9 @@ const ChartOfAccountEditorHarness = defineComponent({
         },
         onChanged: () => {
           events.value = [...events.value, 'changed']
+        },
+        onClose: () => {
+          events.value = [...events.value, 'close']
         },
         onState: (value: { title: string }) => {
           title.value = value.title
@@ -216,7 +243,14 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-async function renderChartEditor(id: string | null = null) {
+async function renderChartEditor(
+  id: string | null = null,
+  options: {
+    metadata?: Record<string, unknown>
+    omitMetadata?: boolean
+    omitRouteBasePath?: boolean
+  } = {},
+) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -235,6 +269,8 @@ async function renderChartEditor(id: string | null = null) {
   const view = await render(ChartOfAccountEditorHarness, {
     props: {
       id,
+      ...(options.omitMetadata ? {} : { metadata: options.metadata ?? chartMetadata }),
+      ...(options.omitRouteBasePath ? {} : { routeBasePath: '/admin/chart-of-accounts' }),
     },
     global: {
       plugins: [router],
@@ -298,6 +334,13 @@ test('validates create mode, enforces cash-flow line requirements, and emits cre
 
   const { view } = await renderChartEditor()
 
+  await view.getByRole('button', { name: 'Invoke save' }).click()
+  await view.getByRole('button', { name: 'Invoke share' }).click()
+  await view.getByRole('button', { name: 'Invoke audit' }).click()
+  await view.getByRole('button', { name: 'Invoke mark' }).click()
+  expect(chartEditorMocks.createChartOfAccount).not.toHaveBeenCalled()
+  expect(chartEditorMocks.copyAppLink).not.toHaveBeenCalled()
+
   await expect.element(view.getByText('Code is required.', { exact: true })).toBeVisible()
   await expect.element(view.getByText('Name is required.', { exact: true })).toBeVisible()
 
@@ -306,9 +349,27 @@ test('validates create mode, enforces cash-flow line requirements, and emits cre
   setInputValue(inputs[1]!, 'Cash')
 
   const selects = Array.from(document.querySelectorAll('select')) as HTMLSelectElement[]
+  setSelectValue(selects[0]!, 'Liability')
+  setSelectValue(selects[0]!, 'Asset')
+  const active = document.querySelector('input[type="checkbox"]') as HTMLInputElement
+  active.checked = false
+  active.dispatchEvent(new Event('input', { bubbles: true }))
+  active.checked = true
+  active.dispatchEvent(new Event('input', { bubbles: true }))
   setSelectValue(selects[1]!, 'OPERATING')
   await expect.element(view.getByText('Cash Flow Line Code is required for the selected role.', { exact: true })).toBeVisible()
 
+  setSelectValue(selects[2]!, 'NET_INCOME')
+  setSelectValue(selects[1]!, 'FINANCING')
+  await vi.waitFor(() => {
+    expect(Array.from(selects[2]!.options).some((option) => option.textContent === 'None')).toBe(true)
+  })
+  setSelectValue(selects[1]!, 'OTHER')
+  await vi.waitFor(() => expect(selects[2]!.value).toBe(''))
+  setSelectValue(selects[1]!, 'OPERATING')
+  await vi.waitFor(() => {
+    expect(Array.from(selects[2]!.options).some((option) => option.value === 'NET_INCOME')).toBe(true)
+  })
   setSelectValue(selects[2]!, 'NET_INCOME')
   await view.getByRole('button', { name: 'Invoke save' }).click()
 
@@ -324,6 +385,25 @@ test('validates create mode, enforces cash-flow line requirements, and emits cre
   })
   await expect.element(view.getByTestId('chart-events')).toHaveTextContent('created:coa-1')
   await expect.element(view.getByTestId('chart-title')).toHaveTextContent('title:New account')
+})
+
+test('validates an empty account type and adopts the first option when metadata becomes available', async () => {
+  await page.viewport(1280, 900)
+
+  const { view } = await renderChartEditor(null, {
+    metadata: {
+      accountTypeOptions: [],
+      cashFlowRoleOptions: [],
+      cashFlowLineOptions: [],
+    },
+  })
+  const type = document.querySelectorAll('select')[0] as HTMLSelectElement
+  setSelectValue(type, '')
+  await expect.element(view.getByText('Type is required.', { exact: true })).toBeVisible()
+
+  await view.getByRole('button', { name: 'Use liability metadata' }).click()
+  await vi.waitFor(() => expect(type.value).toBe('Liability'))
+  expect(document.body.textContent).not.toContain('Type is required.')
 })
 
 test('loads an existing account, updates it, shares links, opens audit, and toggles mark-for-deletion', async () => {
@@ -381,12 +461,19 @@ test('loads an existing account, updates it, shares links, opens audit, and togg
   await view.getByRole('button', { name: 'Invoke audit' }).click()
   await expect.element(view.getByTestId('audit-sidebar')).toBeVisible()
   await expect.element(view.getByTestId('chart-shell')).toHaveTextContent('shell:{"hideHeader":true,"flushBody":true}')
+  await view.getByRole('button', { name: 'Audit close' }).click()
+  await expect.element(view.getByTestId('chart-events')).toHaveTextContent('saved|close')
   await view.getByRole('button', { name: 'Audit back' }).click()
   await expect.element(view.getByTestId('chart-shell')).toHaveTextContent('shell:{"hideHeader":false,"flushBody":false}')
 
   await view.getByRole('button', { name: 'Invoke mark' }).click()
   await expect.element(view.getByTestId('confirm-dialog')).toBeVisible()
-  await view.getByRole('button', { name: 'Dialog confirm:Mark' }).click()
+  await view.getByRole('button', { name: 'Dialog keep open' }).click()
+  await view.getByRole('button', { name: 'Dialog cancel' }).click()
+  await view.getByRole('button', { name: 'Invoke mark' }).click()
+  const confirmMark = view.getByRole('button', { name: 'Dialog confirm:Mark' }).element()
+  confirmMark.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  confirmMark.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   await vi.waitFor(() => {
     expect(chartEditorMocks.markChartOfAccountForDeletion).toHaveBeenCalledWith('coa-2')
   })
@@ -395,7 +482,7 @@ test('loads an existing account, updates it, shares links, opens audit, and togg
   await vi.waitFor(() => {
     expect(chartEditorMocks.unmarkChartOfAccountForDeletion).toHaveBeenCalledWith('coa-2')
   })
-  await expect.element(view.getByTestId('chart-events')).toHaveTextContent('saved|changed|changed')
+  await expect.element(view.getByTestId('chart-events')).toHaveTextContent('saved|close|changed|changed')
 })
 
 test('emits live state, flags, and shell updates as the real editor changes state', async () => {
@@ -428,6 +515,7 @@ test('emits live state, flags, and shell updates as the real editor changes stat
   const { view } = await renderChartEditor('coa-6')
 
   await expect.element(view.getByTestId('chart-title')).toHaveTextContent('title:1600 — Deposits')
+  await view.getByRole('button', { name: 'Use liability metadata' }).click()
   expect(readFlags(view)).toMatchObject({
     canSave: true,
     isDirty: false,
@@ -545,6 +633,94 @@ test('ignores stale account loads when the editor id switches before the first r
   expect(document.body.textContent ?? '').not.toContain('1100 — Cash')
 })
 
+test('ignores a stale account load failure after a newer account finishes loading', async () => {
+  await page.viewport(1280, 900)
+
+  let rejectStale!: (reason?: unknown) => void
+  let resolveFresh!: (value: Record<string, unknown>) => void
+  const stale = new Promise<Record<string, unknown>>((_, reject) => { rejectStale = reject })
+  const fresh = new Promise<Record<string, unknown>>((resolve) => { resolveFresh = resolve })
+  chartEditorMocks.getChartOfAccountById.mockImplementation(async (accountId: string) => (
+    accountId === 'coa-stale' ? await stale : await fresh
+  ))
+
+  const { view } = await renderSwitchingChartEditor()
+  await view.getByRole('button', { name: 'Switch account id' }).click()
+  resolveFresh({
+    accountId: 'coa-fresh',
+    code: '2200',
+    name: 'Receivables',
+    accountType: 'Asset',
+    cashFlowRole: null,
+    cashFlowLineCode: null,
+    isActive: true,
+    isDeleted: false,
+    isMarkedForDeletion: false,
+  })
+  await expect.element(view.getByTestId('switching-editor-title')).toHaveTextContent('title:2200 — Receivables')
+
+  rejectStale(new Error('stale failure'))
+  await vi.waitFor(() => {
+    expect(document.body.textContent ?? '').not.toContain('stale failure')
+  })
+})
+
+test('guards share, audit, mark, and restore operations and falls back to the route id when a response has no account id', async () => {
+  await page.viewport(1280, 900)
+
+  chartEditorMocks.getChartOfAccountById.mockResolvedValueOnce({
+    accountId: '',
+    code: '1700',
+    name: 'Damaged account',
+    accountType: 'Asset',
+    cashFlowRole: null,
+    cashFlowLineCode: null,
+    isActive: true,
+    isDeleted: false,
+    isMarkedForDeletion: false,
+  })
+  chartEditorMocks.updateChartOfAccount.mockResolvedValueOnce({
+    accountId: 'coa-damaged',
+    code: '1700',
+    name: 'Damaged account',
+    accountType: 'Asset',
+    cashFlowRole: null,
+    cashFlowLineCode: null,
+    isActive: true,
+    isDeleted: false,
+    isMarkedForDeletion: false,
+  })
+  const first = await renderChartEditor('coa-damaged')
+  await expect.element(first.view.getByTestId('chart-title')).toHaveTextContent('title:1700 — Damaged account')
+
+  await first.view.getByRole('button', { name: 'Invoke share' }).click()
+  await first.view.getByRole('button', { name: 'Invoke audit' }).click()
+  await first.view.getByRole('button', { name: 'Invoke mark' }).click()
+  await first.view.getByRole('button', { name: 'Dialog confirm:Mark' }).click()
+  await first.view.getByRole('button', { name: 'Invoke save' }).click()
+  await vi.waitFor(() => {
+    expect(chartEditorMocks.updateChartOfAccount).toHaveBeenCalledWith('coa-damaged', expect.any(Object))
+  })
+  expect(chartEditorMocks.copyAppLink).not.toHaveBeenCalled()
+  expect(chartEditorMocks.markChartOfAccountForDeletion).not.toHaveBeenCalled()
+  first.view.unmount()
+
+  chartEditorMocks.getChartOfAccountById.mockResolvedValueOnce({
+    accountId: '',
+    code: '1701',
+    name: 'Damaged deleted account',
+    accountType: 'Asset',
+    cashFlowRole: null,
+    cashFlowLineCode: null,
+    isActive: false,
+    isDeleted: false,
+    isMarkedForDeletion: true,
+  })
+  const second = await renderChartEditor('coa-damaged-deleted')
+  await second.view.getByRole('button', { name: 'Invoke mark' }).click()
+  expect(chartEditorMocks.unmarkChartOfAccountForDeletion).not.toHaveBeenCalled()
+})
+
 test('shows an inline load error when an existing account cannot be fetched', async () => {
   await page.viewport(1280, 900)
 
@@ -554,6 +730,84 @@ test('shows an inline load error when an existing account cannot be fetched', as
 
   await expect.element(view.getByText('Account lookup failed.')).toBeVisible()
   await expect.element(view.getByTestId('chart-title')).toHaveTextContent('title:Account')
+})
+
+test('uses route and metadata fallbacks and supports an empty audit title from a sparse account response', async () => {
+  await page.viewport(1280, 900)
+
+  chartEditorMocks.getChartOfAccountById.mockResolvedValue({
+    accountId: 'coa-sparse',
+    code: '',
+    name: '',
+    accountType: 'Asset',
+    cashFlowRole: null,
+    cashFlowLineCode: null,
+    isActive: true,
+    isDeleted: false,
+    isMarkedForDeletion: false,
+  })
+  chartEditorMocks.copyAppLink.mockResolvedValue(true)
+
+  const { view } = await renderChartEditor('coa-sparse', {
+    metadata: {},
+    omitRouteBasePath: true,
+  })
+  await expect.element(view.getByTestId('chart-title')).toHaveTextContent('title:Account')
+
+  await view.getByRole('button', { name: 'Invoke share' }).click()
+  expect(chartEditorMocks.copyAppLink).toHaveBeenCalledWith(
+    expect.anything(),
+    chartEditorMocks.toasts,
+    '/admin/chart-of-accounts?panel=edit&id=coa-sparse',
+    { message: 'Shareable account link copied to clipboard.' },
+  )
+
+  await view.getByRole('button', { name: 'Invoke audit' }).click()
+  await expect.element(view.getByTestId('audit-sidebar')).toBeVisible()
+  expect(view.getByTestId('audit-sidebar').element().textContent).toContain('Audit entity:')
+})
+
+test('keeps a loaded cash-flow role safe while metadata is still unavailable', async () => {
+  await page.viewport(1280, 900)
+
+  chartEditorMocks.getChartOfAccountById.mockResolvedValue({
+    accountId: 'coa-before-metadata',
+    code: '1810',
+    name: 'Pending metadata',
+    accountType: 'Asset',
+    cashFlowRole: 'OPERATING',
+    cashFlowLineCode: 'NET_INCOME',
+    isActive: true,
+    isDeleted: false,
+    isMarkedForDeletion: false,
+  })
+
+  const { view } = await renderChartEditor('coa-before-metadata', { omitMetadata: true })
+  await expect.element(view.getByTestId('chart-title')).toHaveTextContent('title:1810 — Pending metadata')
+  await expect.element(view.getByText('Loading…')).toBeVisible()
+})
+
+test('clears an incompatible cash-flow line returned by the API', async () => {
+  await page.viewport(1280, 900)
+
+  chartEditorMocks.getChartOfAccountById.mockResolvedValue({
+    accountId: 'coa-invalid-line',
+    code: '1800',
+    name: 'Invalid line mapping',
+    accountType: 'Asset',
+    cashFlowRole: 'OPERATING',
+    cashFlowLineCode: 'UNKNOWN_LINE',
+    isActive: true,
+    isDeleted: false,
+    isMarkedForDeletion: false,
+  })
+
+  const { view } = await renderChartEditor('coa-invalid-line')
+  await expect.element(view.getByTestId('chart-title')).toHaveTextContent('title:1800 — Invalid line mapping')
+  await vi.waitFor(() => {
+    const selects = Array.from(document.querySelectorAll('select')) as HTMLSelectElement[]
+    expect(selects[2]!.value).toBe('')
+  })
 })
 
 test('keeps the editor usable after save failures and allows a successful retry', async () => {

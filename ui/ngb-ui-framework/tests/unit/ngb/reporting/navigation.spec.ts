@@ -9,6 +9,8 @@ import {
   decodeReportDrilldownTarget,
   decodeReportRouteContextParam,
   decodeReportSourceTrailParam,
+  encodeReportRouteContextParam,
+  encodeReportSourceTrailParam,
   type ReportRouteContext,
 } from '../../../../src/ngb/reporting/navigation'
 import { decodeBackTarget } from '../../../../src/ngb/router/backNavigation'
@@ -130,5 +132,127 @@ describe('reporting navigation helpers', () => {
     expect(decodeReportDrilldownTarget('document:abc')).toBeNull()
     expect(decodeReportRouteContextParam('%%%')).toBeNull()
     expect(decodeReportSourceTrailParam('%%%')).toBeNull()
+  })
+
+  it('normalizes optional route request fields and removes malformed nested values', () => {
+    const token = encodeBase64UrlJson({
+      reportCode: '  pm.boundary  ',
+      reportName: '  Boundary report  ',
+      request: {
+        parameters: { keep: ' value ', blank: ' ', empty: null },
+        filters: {
+          keep: { value: 'open' },
+          descendants: { value: ['one'], includeDescendants: true },
+          missingValue: { includeDescendants: true },
+          invalid: null,
+        },
+        layout: { columns: ['number'] },
+        variantCode: '  compact  ',
+        offset: 25,
+        limit: 100,
+        cursor: '  next-page  ',
+      },
+    })
+
+    expect(decodeReportRouteContextParam([token])).toEqual({
+      reportCode: 'pm.boundary',
+      reportName: 'Boundary report',
+      request: {
+        parameters: { keep: 'value' },
+        filters: {
+          keep: { value: 'open', includeDescendants: false },
+          descendants: { value: ['one'], includeDescendants: true },
+        },
+        layout: { columns: ['number'] },
+        variantCode: 'compact',
+        offset: 25,
+        limit: 100,
+        cursor: 'next-page',
+      },
+    })
+
+    const fallbackToken = encodeBase64UrlJson({
+      reportCode: 'pm.fallback',
+      reportName: ' ',
+      request: {
+        parameters: [],
+        filters: 'invalid',
+        layout: null,
+        variantCode: ' ',
+        offset: 'invalid',
+        limit: null,
+        cursor: ' ',
+      },
+    })
+    expect(decodeReportRouteContextParam(fallbackToken)).toMatchObject({
+      reportName: null,
+      request: {
+        parameters: null,
+        filters: null,
+        layout: null,
+        variantCode: null,
+        offset: 0,
+        limit: 500,
+        cursor: null,
+      },
+    })
+  })
+
+  it('rejects empty, malformed, and structurally invalid route and trail payloads', () => {
+    expect(decodeReportRouteContextParam(null)).toBeNull()
+    expect(decodeReportRouteContextParam([])).toBeNull()
+    expect(decodeReportRouteContextParam(encodeBase64UrlJson(42))).toBeNull()
+    expect(decodeReportRouteContextParam(encodeBase64UrlJson({ request: {} }))).toBeNull()
+    expect(decodeReportRouteContextParam(encodeBase64UrlJson({ reportCode: ' ', request: {} }))).toBeNull()
+    expect(decodeReportRouteContextParam(encodeBase64UrlJson({ reportCode: 'pm.invalid', request: null }))).toBeNull()
+
+    expect(encodeReportRouteContextParam(null)).toBeNull()
+    expect(encodeReportSourceTrailParam(null)).toBeNull()
+    expect(encodeReportSourceTrailParam({ items: [] })).toBeNull()
+    expect(decodeReportSourceTrailParam(encodeBase64UrlJson({ items: 'invalid' }))).toBeNull()
+    expect(decodeReportSourceTrailParam(encodeBase64UrlJson({ items: [] }))).toBeNull()
+    expect(decodeReportSourceTrailParam(encodeBase64UrlJson({
+      items: [null, createRouteContext('pm.valid')],
+    }))).toEqual({ items: [createRouteContext('pm.valid')] })
+  })
+
+  it('handles minimal and invalid drilldown tokens without leaking malformed context', () => {
+    expect(decodeReportDrilldownTarget(null)).toBeNull()
+    expect(decodeReportDrilldownTarget('report:%%%')).toBeNull()
+    expect(decodeReportDrilldownTarget(`report:${encodeBase64UrlJson({})}`)).toBeNull()
+    expect(decodeReportDrilldownTarget(`report:${encodeBase64UrlJson({ reportCode: 42 })}`)).toBeNull()
+    expect(decodeReportDrilldownTarget(`report:${encodeBase64UrlJson({ reportCode: ' ' })}`)).toBeNull()
+    expect(decodeReportDrilldownTarget(`report:${encodeBase64UrlJson({
+      reportCode: ' pm.minimal ',
+      parameters: {},
+      filters: {},
+    })}`)).toEqual({
+      reportCode: 'pm.minimal',
+      request: {
+        parameters: null,
+        filters: null,
+        layout: null,
+        offset: 0,
+        limit: 500,
+        cursor: null,
+      },
+    })
+  })
+
+  it('handles empty navigation history and builds plain urls without optional state', () => {
+    const current = createRouteContext('pm.only')
+
+    expect(buildReportPageUrl('pm report')).toBe('/reports/pm%20report')
+    expect(appendSourceTrail(null, null)).toBeNull()
+    expect(appendSourceTrail({ items: [current] }, null)).toEqual({ items: [current] })
+    expect(buildBackToSourceUrl(null)).toBeNull()
+    expect(buildBackToSourceUrl({ items: [] })).toBeNull()
+
+    const url = buildBackToSourceUrl({ items: [current] })
+    expect(url).not.toBeNull()
+    const parsed = new URL(url!, 'https://ngb.test')
+    expect(parsed.pathname).toBe('/reports/pm.only')
+    expect(parsed.searchParams.has('src')).toBe(false)
+    expect(parsed.searchParams.has('back')).toBe(false)
   })
 })

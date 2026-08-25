@@ -43,6 +43,7 @@ const route = useRoute()
 const router = useRouter()
 const metaStore = useMetadataStore()
 const lookupStore = useLookupStore()
+const pageLookupResolver = props.resolveLookupHint
 
 const resolvedBackTarget = computed(() => String(props.backTarget ?? '').trim() || '/')
 const canBack = computed(() => route.path !== resolvedBackTarget.value)
@@ -104,8 +105,8 @@ const {
     })
   },
   lookupStore,
-  resolveLookupHint: props.resolveLookupHint
-    ? ({ entityTypeCode, fieldKey, lookup }) => props.resolveLookupHint?.({ entityTypeCode, fieldKey, lookup }) ?? null
+  resolveLookupHint: pageLookupResolver
+    ? ({ entityTypeCode, fieldKey, lookup }) => pageLookupResolver({ entityTypeCode, fieldKey, lookup })
     : undefined,
 })
 
@@ -285,7 +286,7 @@ async function createNew() {
     @prev="prevPage"
     @next="nextPage"
     @rowActivate="openEdit"
-    @update:drawerOpen="(value) => (!value ? closeDrawer() : null)"
+    @update:drawerOpen="void closeDrawer()"
   >
     <template #filters>
       <NgbDocumentPeriodFilter

@@ -1,7 +1,6 @@
 type PlainObject = Record<string, unknown>
 
-function isPlainObject(value: unknown): value is PlainObject {
-  if (value == null || typeof value !== 'object') return false
+function isPlainObject(value: object): value is PlainObject {
   const prototype = Object.getPrototypeOf(value)
   return prototype === Object.prototype || prototype === null
 }

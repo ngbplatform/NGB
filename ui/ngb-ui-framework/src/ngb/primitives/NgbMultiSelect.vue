@@ -56,7 +56,7 @@
               v-for="item in filteredItems"
               :key="item.id"
               :value="item"
-              v-slot="{ active, selected }"
+              v-slot="{ active }"
             >
               <div
                 class="px-3 py-2 rounded-[var(--ngb-radius)] text-sm flex items-center justify-between gap-3"
@@ -64,10 +64,9 @@
                 :title="multiSelectItemTooltip(item) || undefined"
               >
                 <div class="min-w-0">
-                  <div class="truncate" :class="selected ? 'font-semibold' : ''">{{ item.label }}</div>
+                  <div class="truncate">{{ item.label }}</div>
                   <div v-if="item.meta" class="text-xs text-ngb-muted truncate mt-0.5">{{ item.meta }}</div>
                 </div>
-                <div v-if="selected" class="text-ngb-blue shrink-0">✓</div>
               </div>
             </ComboboxOption>
           </ComboboxOptions>
@@ -145,7 +144,7 @@ function remove(item: MultiSelectItem) {
 }
 
 function multiSelectItemTooltip(item: MultiSelectItem): string {
-  const label = String(item.label ?? '').trim()
+  const label = item.label.trim()
   const meta = String(item.meta ?? '').trim()
   if (!meta) return label
   if (!label) return meta

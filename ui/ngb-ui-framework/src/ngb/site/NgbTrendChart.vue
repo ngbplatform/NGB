@@ -42,18 +42,17 @@ const normalizedSeries = computed(() =>
 
 function readCssVar(name: string, fallback: string): string {
   themeVersion.value
-  if (typeof window === 'undefined') return fallback
   const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim()
   return value.length > 0 ? value : fallback
 }
 
 function resolveColor(value: string): string {
-  const match = String(value ?? '').trim().match(/^var\((--[^)]+)\)$/)
+  const match = value.trim().match(/^var\((--[^)]+)\)$/)
   return match ? readCssVar(match[1], value) : value
 }
 
 function formatCompactNumber(value: number): string {
-  const numeric = Number(value ?? 0)
+  const numeric = Number(value)
   if (!Number.isFinite(numeric)) return '0'
   const abs = Math.abs(numeric)
   if (abs >= 1_000_000) return `${numeric < 0 ? '-' : ''}${(abs / 1_000_000).toFixed(1)}M`
@@ -111,14 +110,13 @@ const chartOptions = computed(() => ({
             color: 'rgba(148, 163, 184, 0.42)',
             width: 1,
           },
-        },
+    },
     formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: number; color?: string }>) => {
-      const rows = Array.isArray(params) ? params : [params]
-      const title = rows[0]?.axisValueLabel ?? ''
-      const body = rows.map((row) => {
-        const color = String(row?.color ?? palette.value.border)
-        const label = String(row?.seriesName ?? '').trim()
-        const value = formatCompactNumber(Number(row?.value ?? 0))
+      const title = params[0]?.axisValueLabel ?? ''
+      const body = params.map((row) => {
+        const color = String(row.color ?? palette.value.border)
+        const label = String(row.seriesName ?? '').trim()
+        const value = formatCompactNumber(Number(row.value ?? 0))
         return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:160px;"><span style="display:inline-flex;align-items:center;gap:8px;color:${palette.value.text};"><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${color};"></span>${label}</span><strong style="color:${palette.value.text};font-weight:700;">${value}</strong></div>`
       }).join('')
       return `<div style="display:grid;gap:8px;"><div style="font-weight:700;color:${palette.value.text};">${title}</div>${body}</div>`
@@ -209,7 +207,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  themeObserver?.disconnect()
+  themeObserver!.disconnect()
   themeObserver = null
 })
 </script>

@@ -13,6 +13,7 @@ describe('query params normalization helpers', () => {
   it('normalizes single query values from scalars and arrays', () => {
     expect(normalizeSingleQueryValue('  open items  ')).toBe('open items')
     expect(normalizeSingleQueryValue(['  first  ', 'second'])).toBe('first')
+    expect(normalizeSingleQueryValue([])).toBe('')
     expect(normalizeSingleQueryValue(undefined)).toBe('')
   })
 

@@ -28,8 +28,7 @@ export async function getChartOfAccountsPage(
   if (args.onlyActive != null) q.set('onlyActive', String(args.onlyActive));
   if (args.onlyDeleted != null) q.set('onlyDeleted', String(args.onlyDeleted));
 
-  const qs = q.toString();
-  return await httpGet<ChartOfAccountsPageDto>(`/api/chart-of-accounts${qs ? `?${qs}` : ''}`);
+  return await httpGet<ChartOfAccountsPageDto>(`/api/chart-of-accounts?${q.toString()}`);
 }
 
 export async function getChartOfAccountsMetadata(): Promise<ChartOfAccountsMetadataDto> {

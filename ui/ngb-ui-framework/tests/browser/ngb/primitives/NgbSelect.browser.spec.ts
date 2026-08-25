@@ -25,6 +25,10 @@ const SelectHarness = defineComponent({
       type: String,
       default: 'default',
     },
+    hint: {
+      type: String,
+      default: '',
+    },
   },
   setup(props) {
     const value = ref('open')
@@ -35,6 +39,7 @@ const SelectHarness = defineComponent({
         options: selectOptions,
         variant: props.variant as 'default' | 'grid' | 'compact',
         disabled: props.disabled,
+        hint: props.hint,
         'onUpdate:modelValue': (next: unknown) => {
           value.value = String(next ?? '')
         },
@@ -153,6 +158,12 @@ test('supports compact styling', async () => {
 
   const compactButton = compactView.getByRole('button', { name: /Open/i }).element() as HTMLButtonElement
   expect(compactButton.className).toContain('h-[26px]')
+})
+
+test('renders optional help text when supplied', async () => {
+  const view = await render(SelectHarness, { props: { hint: 'Choose a lifecycle state.' } })
+
+  await expect.element(view.getByText('Choose a lifecycle state.')).toBeVisible()
 })
 
 test('keeps the control disabled when requested and supports the grid variant', async () => {

@@ -36,7 +36,7 @@ export function lookupValueId(value: LookupValueLike): string | null {
 async function resolveDocumentType(documentTypes: string[], id: string): Promise<string | null> {
   const candidates = Array.from(new Set(documentTypes.map((entry) => String(entry ?? '').trim()).filter((entry) => entry.length > 0)))
   if (candidates.length === 0) return null
-  if (candidates.length === 1) return candidates[0] ?? null
+  if (candidates.length === 1) return candidates[0]!
 
   const config = getConfiguredNgbLookup()
 

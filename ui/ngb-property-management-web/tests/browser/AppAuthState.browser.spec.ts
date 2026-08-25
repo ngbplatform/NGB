@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { h, reactive } from 'vue'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 
@@ -40,18 +40,32 @@ vi.mock('@ngbplatform/ui', async () => {
   return {
     NgbCommandPaletteDialog: {
       name: 'NgbCommandPaletteDialog',
-      render: () => null,
+      render: () => h('div', { 'data-testid': 'pm-palette-dialog' }),
     },
     NgbSiteShell: {
       name: 'NgbSiteShell',
-      props: ['nodes', 'selectedId'],
-      setup(props: { nodes?: SiteNodeStub[]; selectedId?: string | null }) {
+      props: ['nodes', 'selectedId', 'userMeta', 'userEmail'],
+      emits: ['navigate', 'select', 'openPalette', 'signOut'],
+      setup(
+        props: { nodes?: SiteNodeStub[]; selectedId?: string | null; userMeta?: string; userEmail?: string },
+        { emit, slots }: { emit: (event: string, ...args: unknown[]) => void; slots: Record<string, () => unknown> },
+      ) {
         return () => h('div', { 'data-testid': 'pm-shell' }, [
           h('div', { 'data-testid': 'pm-shell-selected-id' }, props.selectedId ?? ''),
+          h('div', { 'data-testid': 'pm-shell-user-meta' }, props.userMeta ?? ''),
+          h('div', { 'data-testid': 'pm-shell-user-email' }, props.userEmail ?? ''),
           h('nav', { 'data-testid': 'pm-shell-nav' }, (props.nodes ?? []).flatMap((node) => [
             h('div', { 'data-testid': 'pm-shell-node' }, node.label),
             ...(node.children ?? []).map((child) => h('a', { href: child.route ?? '#', 'data-testid': 'pm-shell-node' }, child.label)),
           ])),
+          h('button', { type: 'button', onClick: () => emit('navigate', '') }, 'Navigate empty'),
+          h('button', { type: 'button', onClick: () => emit('navigate', null) }, 'Navigate null'),
+          h('button', { type: 'button', onClick: () => emit('navigate', '/properties') }, 'Navigate internal'),
+          h('button', { type: 'button', onClick: () => emit('navigate', 'https://status.example/pm') }, 'Navigate external'),
+          h('button', { type: 'button', onClick: () => emit('select', 'child', '/leases') }, 'Select route'),
+          h('button', { type: 'button', onClick: () => emit('openPalette') }, 'Open palette'),
+          h('button', { type: 'button', onClick: () => emit('signOut') }, 'Sign out'),
+          slots.default?.(),
         ])
       },
     },
@@ -149,7 +163,7 @@ async function renderApp() {
       stubs: {
         RouterView: {
           name: 'RouterView',
-          render: () => null,
+          render: () => h('div', { 'data-testid': 'pm-router-view' }),
         },
       },
     },
@@ -157,6 +171,7 @@ async function renderApp() {
 }
 
 beforeEach(() => {
+  vi.restoreAllMocks()
   mocks.routerPush.mockReset()
   mocks.route = reactive({
     fullPath: '/reports/accounting.posting_log?periodFrom=2026-01&periodTo=2026-04',
@@ -353,4 +368,158 @@ test('renders and selects Journal Entries as a document-backed menu item', async
   await expect.element(view.getByTestId('pm-shell-nav')).toHaveTextContent('Journal Entries')
   await expect.element(view.getByTestId('pm-shell-selected-id'))
     .toHaveTextContent('document:general_journal_entry')
+})
+
+test('handles shell actions, alias navigation, sign-out, and palette opening', async () => {
+  const logout = vi.fn(async () => undefined)
+  mocks.authStore = createAuthStore({ authenticated: true, logout })
+  mocks.accessStore = createAccessStore({ applicationRoleNames: [], current: null })
+  const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+  const view = await renderApp()
+
+  await view.getByRole('button', { name: 'Navigate empty' }).click()
+  await view.getByRole('button', { name: 'Navigate null' }).click()
+  expect(mocks.routerPush).not.toHaveBeenCalled()
+
+  await view.getByRole('button', { name: 'Navigate internal' }).click()
+  await view.getByRole('button', { name: 'Select route' }).click()
+  await view.getByRole('button', { name: 'Navigate external' }).click()
+  expect(mocks.routerPush).toHaveBeenNthCalledWith(1, '/properties')
+  expect(mocks.routerPush).toHaveBeenNthCalledWith(2, '/leases')
+  expect(open).toHaveBeenCalledWith('https://status.example/pm', '_self')
+  await expect.element(view.getByTestId('pm-shell-user-meta')).toHaveTextContent('')
+
+  await view.getByRole('button', { name: 'Open palette' }).click()
+  expect(mocks.paletteStore?.open).toHaveBeenCalledOnce()
+
+  await view.getByRole('button', { name: 'Sign out' }).click()
+  expect(logout).toHaveBeenCalledOnce()
+  expect(view.getByTestId('pm-palette-dialog').element()).not.toBeNull()
+  expect(view.getByTestId('pm-router-view').element()).not.toBeNull()
+})
+
+test('builds a root menu leaf, falls back to a stable group id, and marks descendant routes selected', async () => {
+  mocks.authStore = createAuthStore({ authenticated: true, email: null as unknown as string })
+  mocks.accessStore = createAccessStore({
+    applicationRoleNames: [],
+    current: { isBootstrapAdmin: true },
+  })
+  mocks.route = reactive({
+    fullPath: '/properties/active?view=cards',
+    path: '/properties/active',
+    matched: [{}],
+  }) as RouteState
+  mocks.menuStore = {
+    groups: [
+      {
+        label: '!!!',
+        ordinal: 20,
+        icon: null,
+        items: [{ kind: 'catalog', code: 'properties', label: '!!!', route: '/properties', icon: 'building', ordinal: 1 }],
+      },
+      {
+        label: 'Empty route',
+        ordinal: 10,
+        icon: null,
+        items: [{ kind: 'catalog', code: 'empty', label: 'Empty route', route: null, icon: null, ordinal: 1 }],
+      },
+      {
+        label: 'No icons',
+        ordinal: 30,
+        icon: null,
+        items: [
+          { kind: 'catalog', code: 'first', label: 'First', route: '/first', icon: null, ordinal: 2 },
+          { kind: 'catalog', code: 'second', label: 'Second', route: '/second', icon: 'star', ordinal: 1 },
+        ],
+      },
+    ],
+    load: vi.fn(async () => undefined),
+  }
+
+  const view = await renderApp()
+
+  await expect.element(view.getByTestId('pm-shell-selected-id')).toHaveTextContent('group:menu')
+  await expect.element(view.getByTestId('pm-shell-user-meta')).toHaveTextContent('Bootstrap admin')
+  await expect.element(view.getByTestId('pm-shell-user-email')).toHaveTextContent('')
+  expect(Array.from(document.querySelectorAll('[data-testid="pm-shell-node"]'), (element) => element.textContent)).toEqual([
+    'Empty route',
+    '!!!',
+    'No icons',
+    'Second',
+    'First',
+  ])
+})
+
+test('renders an empty shell navigation when the menu response has no groups', async () => {
+  mocks.authStore = createAuthStore({ authenticated: true })
+  mocks.menuStore = {
+    groups: null as unknown as unknown[],
+    load: vi.fn(async () => undefined),
+  }
+
+  const view = await renderApp()
+
+  await expect.element(view.getByTestId('pm-shell-nav')).toHaveTextContent('')
+  expect(document.querySelectorAll('[data-testid="pm-shell-node"]')).toHaveLength(0)
+})
+
+test('renders a bare route without the site shell or command palette', async () => {
+  mocks.authStore = createAuthStore({ authenticated: true })
+  mocks.route = reactive({
+    fullPath: '/public/print',
+    path: '/public/print',
+    matched: [{ meta: { bare: true } }],
+  }) as RouteState
+
+  const view = await renderApp()
+
+  expect(view.getByTestId('pm-router-view').element()).not.toBeNull()
+  expect(document.querySelector('[data-testid="pm-shell"]')).toBeNull()
+  expect(document.querySelector('[data-testid="pm-palette-dialog"]')).toBeNull()
+})
+
+test('does not start login after retry when authentication succeeds, remains failed, or initialization rejects', async () => {
+  const login = vi.fn(async () => undefined)
+
+  const authenticatedInitialize = vi.fn(async () => {
+    mocks.authStore!.authenticated = true
+    mocks.authStore!.error = null
+  })
+  mocks.authStore = createAuthStore({ error: 'Retry required', initialize: authenticatedInitialize, login })
+  const authenticated = await renderApp()
+  await authenticated.getByRole('button', { name: 'Retry' }).click()
+  await expect.poll(() => authenticatedInitialize.mock.calls.length).toBe(1)
+  expect(login).not.toHaveBeenCalled()
+  authenticated.unmount()
+
+  const stillFailedInitialize = vi.fn(async () => undefined)
+  mocks.authStore = createAuthStore({ error: 'Still failed', initialize: stillFailedInitialize, login })
+  const stillFailed = await renderApp()
+  await stillFailed.getByRole('button', { name: 'Retry' }).click()
+  await expect.poll(() => stillFailedInitialize.mock.calls.length).toBe(1)
+  expect(login).not.toHaveBeenCalled()
+  stillFailed.unmount()
+
+  const rejectedInitialize = vi.fn(async () => { throw new Error('identity offline') })
+  mocks.authStore = createAuthStore({ error: 'Offline', initialize: rejectedInitialize, login })
+  const rejected = await renderApp()
+  await rejected.getByRole('button', { name: 'Retry' }).click()
+  await expect.poll(() => rejectedInitialize.mock.calls.length).toBe(1)
+  expect(login).not.toHaveBeenCalled()
+})
+
+test('resets and rehydrates dependent stores when authentication changes', async () => {
+  mocks.authStore = createAuthStore({ authenticated: true })
+  const view = await renderApp()
+  await expect.poll(() => mocks.accessStore?.load.mock.calls.length ?? 0).toBe(1)
+
+  mocks.authStore.authenticated = false
+  await expect.poll(() => mocks.accessStore?.reset.mock.calls.length ?? 0).toBe(1)
+
+  mocks.authStore.authenticated = true
+  await expect.poll(() => mocks.accessStore?.load.mock.calls.length ?? 0).toBe(2)
+  expect(mocks.menuStore?.load).toHaveBeenCalledTimes(2)
+  expect(mocks.paletteStore?.hydrate).toHaveBeenCalledTimes(2)
+  expect(view.getByTestId('pm-shell').element()).not.toBeNull()
 })

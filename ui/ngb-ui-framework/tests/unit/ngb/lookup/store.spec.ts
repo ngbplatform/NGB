@@ -28,7 +28,7 @@ const coaId = '77777777-7777-7777-7777-777777777777'
 
 describe('lookup store', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
     setActivePinia(createPinia())
 
     lookupConfigMocks.loadCatalogItemsByIds.mockResolvedValue([])
@@ -65,6 +65,8 @@ describe('lookup store', () => {
   it('uses bulk coa resolution and falls back to short guid for unresolved accounts', async () => {
     const unresolvedCoaId = '55555555-5555-5555-5555-555555555555'
     lookupConfigMocks.loadCoaItemsByIds.mockResolvedValue([
+      { id: null, label: 'Missing id' },
+      { id: unresolvedCoaId, label: null },
       { id: coaId, label: '1010 — Cash' },
     ])
 
@@ -76,6 +78,7 @@ describe('lookup store', () => {
     expect(lookupConfigMocks.loadCoaItem).not.toHaveBeenCalled()
     expect(store.labelForCoa(coaId)).toBe('1010 — Cash')
     expect(store.labelForCoa(unresolvedCoaId)).toBe(shortGuid(unresolvedCoaId))
+    expect(store.labelForCoa(harborId)).toBe(shortGuid(harborId))
   })
 
   it('resolves labels across candidate document types with one bulk call and falls back to the first type short guid when none match', async () => {
@@ -121,5 +124,108 @@ describe('lookup store', () => {
     ])
     expect(store.labelForDocument('pm.invoice', '55555555-5555-5555-5555-555555555555')).toBe('Shared document')
     expect(store.labelForDocument('pm.credit_note', '55555555-5555-5555-5555-555555555555')).toBe('Shared credit memo')
+  })
+
+  it('handles empty, invalid, duplicate, and already cached catalog inputs', async () => {
+    lookupConfigMocks.loadCatalogItemsByIds.mockResolvedValue([
+      { id: null, label: 'Missing id' },
+      { id: propertyId, label: null },
+      { id: propertyId, label: 'Riverfront Tower' },
+    ])
+
+    const store = useLookupStore()
+
+    await store.ensureCatalogLabels('pm.property', ['invalid'])
+    expect(lookupConfigMocks.loadCatalogItemsByIds).not.toHaveBeenCalled()
+
+    await store.ensureCatalogLabels('pm.property', [propertyId])
+    await store.ensureCatalogLabels('pm.property', [propertyId])
+    expect(lookupConfigMocks.loadCatalogItemsByIds).toHaveBeenCalledTimes(1)
+    expect(store.labelForCatalog('pm.property', null)).toBe('—')
+    expect(store.labelForCatalog('pm.property', 'invalid')).toBe('invalid')
+  })
+
+  it('covers coa empty/cache/error fallbacks and search normalization', async () => {
+    const unresolvedCoaId = '55555555-5555-5555-5555-555555555555'
+    lookupConfigMocks.loadCoaItemsByIds.mockRejectedValueOnce(new Error('COA unavailable'))
+    lookupConfigMocks.searchCoa.mockResolvedValueOnce([
+      { id: null, label: 'Missing id' },
+      { id: coaId, label: null },
+      { id: coaId, label: '1010 — Cash' },
+    ])
+
+    const store = useLookupStore()
+
+    await store.ensureCoaLabels([])
+    await store.ensureCoaLabels([unresolvedCoaId])
+    await store.ensureCoaLabels([unresolvedCoaId])
+    expect(lookupConfigMocks.loadCoaItemsByIds).toHaveBeenCalledTimes(1)
+    expect(store.labelForCoa(unresolvedCoaId)).toBe(shortGuid(unresolvedCoaId))
+    expect(store.labelForCoa(null)).toBe('—')
+    expect(store.labelForCoa('invalid')).toBe('invalid')
+
+    const results = await store.searchCoa('cash')
+    expect(results).toHaveLength(3)
+    expect(store.labelForCoa(coaId)).toBe('1010 — Cash')
+  })
+
+  it('covers document ensure early exits, failed resolution, cache hits, and per-type loading', async () => {
+    const perTypeResolvedId = '55555555-5555-5555-5555-555555555555'
+    const perTypeMissingId = '66666666-6666-6666-6666-666666666666'
+    const store = useLookupStore()
+
+    await store.ensureAnyDocumentLabels([], [invoiceId])
+    await store.ensureAnyDocumentLabels([null as never, '  '], [invoiceId])
+    await store.ensureAnyDocumentLabels(['pm.invoice'], ['invalid'])
+    expect(lookupConfigMocks.loadDocumentItemsByIds).not.toHaveBeenCalled()
+
+    lookupConfigMocks.loadDocumentItemsByIds.mockRejectedValueOnce(new Error('Documents unavailable'))
+    await store.ensureAnyDocumentLabels(['pm.invoice'], [invoiceId])
+    await store.ensureAnyDocumentLabels(['pm.invoice'], [invoiceId])
+    expect(lookupConfigMocks.loadDocumentItemsByIds).toHaveBeenCalledTimes(1)
+    expect(store.labelForAnyDocument(['pm.invoice'], invoiceId)).toBe(shortGuid(invoiceId))
+
+    await store.ensureDocumentLabels('pm.adjustment', [])
+    lookupConfigMocks.loadDocumentItemsByIds.mockResolvedValueOnce([
+      { id: perTypeResolvedId, label: 'Invoice INV-002', documentType: 'pm.adjustment' },
+    ])
+    await store.ensureDocumentLabels('pm.adjustment', [perTypeResolvedId, perTypeMissingId])
+    await store.ensureDocumentLabels('pm.adjustment', [perTypeResolvedId, perTypeMissingId])
+
+    expect(store.labelForDocument('pm.adjustment', perTypeResolvedId)).toBe('Invoice INV-002')
+    expect(store.labelForDocument('pm.adjustment', perTypeMissingId)).toBe(shortGuid(perTypeMissingId))
+    expect(store.labelForAnyDocument(['pm.credit_note', 'pm.adjustment'], perTypeResolvedId)).toBe('Invoice INV-002')
+    expect(store.labelForAnyDocument([], perTypeResolvedId)).toBe(shortGuid(perTypeResolvedId))
+    expect(store.labelForAnyDocument([], null)).toBe('—')
+    expect(store.labelForDocument('pm.invoice', null)).toBe('—')
+    expect(store.labelForDocument('pm.invoice', harborId)).toBe(shortGuid(harborId))
+
+    lookupConfigMocks.loadDocumentItemsByIds.mockRejectedValueOnce(new Error('Single document type unavailable'))
+    await store.ensureDocumentLabels('pm.credit_note', [harborId])
+    expect(store.labelForDocument('pm.credit_note', harborId)).toBe(shortGuid(harborId))
+  })
+
+  it('handles empty and malformed cross-type searches and the single-type search API', async () => {
+    lookupConfigMocks.searchDocumentsAcrossTypes.mockResolvedValueOnce([
+      { id: null, label: 'Missing id', documentType: 'pm.invoice' },
+      { id: invoiceId, label: 'Invoice INV-003', documentType: 'pm.invoice', meta: 'Open' },
+      { id: invoiceId, label: 'Duplicate invoice', documentType: 'pm.credit_note' },
+    ])
+    lookupConfigMocks.searchDocument.mockResolvedValueOnce([
+      { id: null, label: 'Missing id' },
+      { id: invoiceId, label: null },
+      { id: invoiceId, label: 'Invoice INV-003' },
+    ])
+
+    const store = useLookupStore()
+
+    await expect(store.searchDocuments([], 'invoice')).resolves.toEqual([])
+    const acrossTypes = await store.searchDocuments(['pm.invoice', 'pm.invoice', '  '], 'invoice')
+    expect(lookupConfigMocks.searchDocumentsAcrossTypes).toHaveBeenCalledWith(['pm.invoice'], 'invoice')
+    expect(acrossTypes).toEqual([{ id: invoiceId, label: 'Invoice INV-003', meta: 'Open' }])
+
+    const singleType = await store.searchDocument('pm.invoice', 'INV-003')
+    expect(singleType).toHaveLength(3)
+    expect(store.labelForDocument('pm.invoice', invoiceId)).toBe('Invoice INV-003')
   })
 })

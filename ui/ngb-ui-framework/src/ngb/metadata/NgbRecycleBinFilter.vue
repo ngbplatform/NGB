@@ -20,7 +20,6 @@ const options: Option[] = [
 ]
 
 function pick(v: RecycleBinMode) {
-  if (props.disabled) return
   if (v === props.modelValue) return
   emit('update:modelValue', v)
 }

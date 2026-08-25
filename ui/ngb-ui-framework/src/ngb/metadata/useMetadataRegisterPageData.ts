@@ -161,7 +161,7 @@ export function useMetadataRegisterPageData<
   async function prefetchReferenceLabels(): Promise<void> {
     if (!args.lookupStore || !args.resolveLookupHint) return;
 
-    const entityTypeCode = String(args.entityTypeCode.value ?? '').trim();
+    const entityTypeCode = args.entityTypeCode.value.trim();
     const columns = metadata.value?.list?.columns ?? [];
     const items = page.value?.items ?? [];
     if (!entityTypeCode || columns.length === 0 || items.length === 0) return;
@@ -181,16 +181,14 @@ export function useMetadataRegisterPageData<
   }
 
   async function load(): Promise<boolean> {
-    const entityTypeCode = String(args.entityTypeCode.value ?? '').trim();
+    const entityTypeCode = args.entityTypeCode.value.trim();
     const seq = ++loadSeq.value;
 
     if (!entityTypeCode) {
-      if (seq === loadSeq.value) {
-        loading.value = false;
-        error.value = null;
-        metadata.value = null;
-        page.value = null;
-      }
+      loading.value = false;
+      error.value = null;
+      metadata.value = null;
+      page.value = null;
       return false;
     }
 

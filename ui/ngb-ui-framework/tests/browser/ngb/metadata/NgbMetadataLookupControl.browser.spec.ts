@@ -1,7 +1,7 @@
 import { page } from 'vitest/browser'
 import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
-import { defineComponent, h, ref } from 'vue'
+import { defineComponent, h, reactive, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { StubLookup } from '../accounting/stubs'
@@ -42,8 +42,12 @@ const ControlHarness = defineComponent({
       id: 'property-1',
       display: 'Riverfront Tower',
     })
+    const returnLookupTarget = ref(true)
 
-    const behavior = {
+    const behavior = reactive<{
+      searchLookup: (args: { query: string }) => Promise<Array<{ id: string; label: string }>>
+      buildLookupTargetUrl?: (args: { value: string; routeFullPath: string }) => Promise<string | null>
+    }>({
       searchLookup: async ({ query }: { query: string }) => {
         if (query.trim().toLowerCase() === 'tower') {
           return [{ id: 'property-2', label: 'Harbor Tower' }]
@@ -51,9 +55,11 @@ const ControlHarness = defineComponent({
         return []
       },
       buildLookupTargetUrl: async ({ value, routeFullPath }: { value: string; routeFullPath: string }) => {
-        return `/catalogs/pm.property/${value}?from=${encodeURIComponent(routeFullPath)}`
+        return returnLookupTarget.value
+          ? `/catalogs/pm.property/${value}?from=${encodeURIComponent(routeFullPath)}`
+          : null
       },
-    }
+    })
 
     return () => h('div', [
       h(NgbMetadataLookupControl, {
@@ -68,6 +74,18 @@ const ControlHarness = defineComponent({
         },
       }),
       h('div', `model:${model.value ? `${model.value.id}:${model.value.display}` : 'none'}`),
+      h('button', {
+        type: 'button',
+        onClick: () => {
+          returnLookupTarget.value = false
+        },
+      }, 'Return no lookup target'),
+      h('button', {
+        type: 'button',
+        onClick: () => {
+          behavior.buildLookupTargetUrl = undefined
+        },
+      }, 'Remove lookup target builder'),
     ])
   },
 })
@@ -88,6 +106,19 @@ const ReadonlyHarness = defineComponent({
       }),
       h('div', `model:${model.value}`),
     ])
+  },
+})
+
+const NoBehaviorHarness = defineComponent({
+  setup() {
+    return () => h(NgbMetadataLookupControl, {
+      hint: {
+        kind: 'catalog',
+        catalogType: 'pm.property',
+      },
+      modelValue: {},
+      behavior: {},
+    })
   },
 })
 
@@ -135,6 +166,16 @@ test('searches lookup values, maps selected items into reference objects, opens 
   await router.push('/documents/edit')
   await flushUi()
 
+  await view.getByRole('button', { name: 'Return no lookup target' }).click()
+  clickLookupAction(0, 'open')
+  await flushUi()
+  expect(router.currentRoute.value.fullPath).toBe('/documents/edit')
+
+  ;(view.getByRole('button', { name: 'Remove lookup target builder' }).element() as HTMLButtonElement).click()
+  clickLookupAction(0, 'open')
+  await flushUi()
+  expect(router.currentRoute.value.fullPath).toBe('/documents/edit')
+
   clickLookupAction(0, 'clear')
   await flushUi()
   await expect.element(view.getByText('model:none')).toBeVisible()
@@ -165,4 +206,26 @@ test('renders scalar reference ids read-only without exposing clear/open actions
   await expect.element(view.getByText('lookup-value:property-99')).toBeVisible()
   expect(queryLookupRoot(0).querySelector('button[data-action="open"]')).toBeNull()
   expect(queryLookupRoot(0).querySelector('button[data-action="clear"]')).toBeNull()
+})
+
+test('clears search results for empty queries or missing search behavior and ignores unknown values', async () => {
+  await page.viewport(1280, 900)
+
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/documents/edit', component: NoBehaviorHarness }],
+  })
+  await router.push('/documents/edit')
+  await router.isReady()
+
+  const view = await render(NoBehaviorHarness, {
+    global: {
+      plugins: [router],
+    },
+  })
+
+  await expect.element(view.getByText('lookup-value:none')).toBeVisible()
+  await queryLookup(0, '')
+  await queryLookup(0, 'unavailable')
+  await expect.element(view.getByText('lookup-items:none')).toBeVisible()
 })

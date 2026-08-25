@@ -205,6 +205,7 @@ describe('default lookup config', () => {
     lookupMocks.getDocumentPage.mockResolvedValueOnce({
       items: [
         { id: 'doc-2', display: 'Invoice 2' },
+        { id: '22222222-2222-2222-2222-222222222222', display: null },
       ],
       offset: 0,
       limit: 25,
@@ -231,6 +232,11 @@ describe('default lookup config', () => {
         label: 'Invoice 2',
         meta: undefined,
       },
+      {
+        id: '22222222-2222-2222-2222-222222222222',
+        label: '22222222…2222',
+        meta: undefined,
+      },
     ])
 
     expect(lookupMocks.getCatalogPage).toHaveBeenCalledWith('pm.property', {
@@ -253,5 +259,45 @@ describe('default lookup config', () => {
       limit: 25,
       search: 'invoice',
     })
+  })
+
+  it('handles empty collections, missing page items, and malformed optional metadata safely', async () => {
+    lookupMocks.getCatalogLookupByIds.mockResolvedValueOnce([
+      { id: 'cat-empty', label: 'Empty metadata', meta: {} },
+      { id: 'cat-number', label: 'Numeric metadata', meta: 42 as never },
+    ])
+    lookupMocks.getCatalogPage.mockResolvedValueOnce({ items: undefined, offset: 0, limit: 25 })
+    lookupMocks.getChartOfAccountsPage.mockResolvedValueOnce({ items: undefined, offset: 0, limit: 25 })
+    lookupMocks.getDocumentPage.mockResolvedValueOnce({ items: undefined, offset: 0, limit: 25 })
+    lookupMocks.getDocumentLookupByIds.mockResolvedValueOnce([
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        display: null,
+        documentType: 'pm.invoice',
+      },
+    ])
+
+    const config = createDefaultNgbLookupConfig()
+
+    await expect(config.loadCatalogItemsByIds('pm.property', ['cat-empty', 'cat-number'])).resolves.toEqual([
+      { id: 'cat-empty', label: 'Empty metadata', meta: undefined },
+      { id: 'cat-number', label: 'Numeric metadata', meta: '42' },
+    ])
+    await expect(config.searchCatalog('pm.property', '', { filters: { active: true } })).resolves.toEqual([])
+    await expect(config.searchCoa('')).resolves.toEqual([])
+    await expect(config.searchDocument('pm.invoice', '')).resolves.toEqual([])
+    await expect(config.loadDocumentItemsByIds([], ['doc-1'])).resolves.toEqual([])
+    await expect(config.loadDocumentItemsByIds(['pm.invoice'], [])).resolves.toEqual([])
+    await expect(config.searchDocumentsAcrossTypes([], 'invoice')).resolves.toEqual([])
+    await expect(config.loadDocumentItemsByIds(
+      ['pm.invoice'],
+      ['11111111-1111-1111-1111-111111111111'],
+    )).resolves.toEqual([
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        label: '11111111…1111',
+        documentType: 'pm.invoice',
+      },
+    ])
   })
 })

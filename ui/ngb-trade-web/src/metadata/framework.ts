@@ -44,11 +44,11 @@ const TRADE_PARTY_FALLBACK_COLUMNS: Record<string, ColumnMetadata> = {
 }
 
 function pickColumns(
-  columns: readonly ColumnMetadata[] | null | undefined,
+  columns: readonly ColumnMetadata[],
   keys: readonly string[],
   fallbacks?: Record<string, ColumnMetadata>,
 ): ColumnMetadata[] {
-  const available = new Map((columns ?? []).map((column) => [column.key, column] as const))
+  const available = new Map(columns.map((column) => [column.key, column] as const))
   return keys
     .map((key) => available.get(key) ?? fallbacks?.[key] ?? null)
     .filter((column): column is ColumnMetadata => column !== null)

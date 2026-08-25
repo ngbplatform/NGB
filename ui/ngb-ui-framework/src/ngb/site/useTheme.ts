@@ -76,6 +76,7 @@ export function useTheme() {
   })
 
   function apply() {
+    if (typeof document === 'undefined') return
     const el = document.documentElement
     if (resolved.value === 'dark') el.classList.add('dark')
     else el.classList.remove('dark')

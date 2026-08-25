@@ -45,6 +45,7 @@ describe('chart of accounts api', () => {
       includeDeleted: false,
       onlyDeleted: false,
     })
+    await getChartOfAccountsPage({})
     await getChartOfAccountsMetadata()
     await getChartOfAccountById('acc/1')
 
@@ -52,8 +53,9 @@ describe('chart of accounts api', () => {
       1,
       '/api/chart-of-accounts?offset=5&limit=10&search=cash&includeDeleted=false&onlyActive=true&onlyDeleted=false',
     )
-    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(2, '/api/chart-of-accounts/metadata')
-    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(3, '/api/chart-of-accounts/acc%2F1')
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(2, '/api/chart-of-accounts?offset=0&limit=20')
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(3, '/api/chart-of-accounts/metadata')
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(4, '/api/chart-of-accounts/acc%2F1')
   })
 
   it('posts bulk chart-of-accounts lookups to the by-ids endpoint', async () => {
