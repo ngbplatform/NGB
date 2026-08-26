@@ -8,6 +8,8 @@ public sealed class NgbSecurityCacheOptions
 
     public static TimeSpan DefaultPermissionAwareTtl { get; } = TimeSpan.FromMinutes(5);
 
+    public const int DefaultMaxEntries = 20_000;
+
     public TimeSpan PermissionSnapshotTtl { get; init; } = DefaultPermissionSnapshotTtl;
 
     public TimeSpan MainMenuTtl { get; init; } = DefaultPermissionAwareTtl;
@@ -17,6 +19,8 @@ public sealed class NgbSecurityCacheOptions
     public TimeSpan DocumentMetadataTtl { get; init; } = DefaultPermissionAwareTtl;
 
     public TimeSpan ReportDefinitionsTtl { get; init; } = DefaultPermissionAwareTtl;
+
+    public int MaxEntries { get; init; } = DefaultMaxEntries;
 }
 
 public sealed class NgbSecurityCacheOptionsValidator : IValidateOptions<NgbSecurityCacheOptions>
@@ -33,6 +37,9 @@ public sealed class NgbSecurityCacheOptionsValidator : IValidateOptions<NgbSecur
         ValidateTtl(options.CatalogMetadataTtl, nameof(options.CatalogMetadataTtl), failures);
         ValidateTtl(options.DocumentMetadataTtl, nameof(options.DocumentMetadataTtl), failures);
         ValidateTtl(options.ReportDefinitionsTtl, nameof(options.ReportDefinitionsTtl), failures);
+
+        if (options.MaxEntries is < 100 or > 200_000)
+            failures.Add($"{nameof(NgbSecurityCacheOptions)}.{nameof(options.MaxEntries)} must be between 100 and 200000.");
 
         return failures.Count == 0
             ? ValidateOptionsResult.Success

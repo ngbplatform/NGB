@@ -3,9 +3,7 @@ using Moq;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Services;
 using NGB.Core.Dimensions;
-using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.OperationalRegisters;
-using NGB.Runtime.OperationalRegisters;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 using NGB.Trade.Runtime.Documents.Validation;
@@ -22,10 +20,9 @@ public sealed class TradeInventoryAvailabilityService_P0Tests
     public async Task EnsureSufficientOnHandAsync_IgnoresEmptyOrNonPositiveWithdrawals()
     {
         var policyReader = new Mock<ITradeAccountingPolicyReader>(MockBehavior.Strict);
-        var readService = new Mock<IOperationalRegisterReadService>(MockBehavior.Strict);
-        var movementsReader = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
+        var netReader = new Mock<IOperationalRegisterResourceNetReader>(MockBehavior.Strict);
         var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
-        var sut = CreateSut(policyReader.Object, readService.Object, movementsReader.Object, catalogs.Object);
+        var sut = CreateSut(policyReader.Object, netReader.Object, catalogs.Object);
 
         await sut.EnsureSufficientOnHandAsync(
             new DateOnly(2026, 4, 18),
@@ -36,74 +33,44 @@ public sealed class TradeInventoryAvailabilityService_P0Tests
             CancellationToken.None);
 
         policyReader.VerifyNoOtherCalls();
-        readService.VerifyNoOtherCalls();
-        movementsReader.VerifyNoOtherCalls();
+        netReader.VerifyNoOtherCalls();
         catalogs.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task EnsureSufficientOnHandAsync_AggregatesShortages_AndUsesCatalogFallbackDisplays()
+    public async Task EnsureSufficientOnHandAsync_BatchesAggregatedKeys_AndUsesCatalogDisplays()
     {
         var registerId = Guid.NewGuid();
         var alphaWarehouseId = Guid.NewGuid();
         var bravoWarehouseId = Guid.NewGuid();
         var cableTiesId = Guid.NewGuid();
         var adapterId = Guid.NewGuid();
-
-        var policyReader = new Mock<ITradeAccountingPolicyReader>();
-        policyReader
-            .Setup(x => x.GetRequiredAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreatePolicy(registerId));
-
-        var readService = new Mock<IOperationalRegisterReadService>();
-        readService
-            .Setup(x => x.GetBalancesPageAsync(It.IsAny<OperationalRegisterMonthlyProjectionPageRequest>(), It.IsAny<CancellationToken>()))
-            .Returns<OperationalRegisterMonthlyProjectionPageRequest, CancellationToken>((request, _) =>
-            {
-                return Task.FromResult(new OperationalRegisterMonthlyProjectionPage(
-                    request.RegisterId,
-                    request.FromInclusive,
-                    request.ToInclusive,
-                    Array.Empty<OperationalRegisterMonthlyProjectionReadRow>(),
-                    HasMore: false,
-                    NextCursor: null));
-            });
-
-        var movementsReader = new Mock<IOperationalRegisterMovementsQueryReader>();
-        movementsReader
-            .Setup(x => x.GetByMonthsAsync(
+        var asOf = new DateOnly(2026, 4, 18);
+        var policyReader = PolicyReader(registerId);
+        var netReader = new Mock<IOperationalRegisterResourceNetReader>(MockBehavior.Strict);
+        netReader
+            .Setup(x => x.GetNetsByDimensionsAsync(
                 registerId,
-                It.IsAny<DateOnly>(),
-                It.IsAny<DateOnly>(),
-                It.IsAny<IReadOnlyList<DimensionValue>?>(),
-                null,
-                null,
-                null,
-                null,
-                1000,
+                It.IsAny<IReadOnlyList<IReadOnlyList<DimensionValue>>>(),
+                "qty_delta",
+                asOf,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<OperationalRegisterMovementQueryReadRow>());
-
-        var catalogs = new Mock<ICatalogService>();
+            .ReturnsAsync([0m, 0m]);
+        var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
         catalogs
             .Setup(x => x.GetByIdsAsync(TradeCodes.Item, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string _, IReadOnlyList<Guid> ids, CancellationToken _) =>
-                ids.Select(id => new LookupItemDto(
-                    id,
-                    id == cableTiesId ? "Cable Ties" : "Adapter Kit"))
+            .ReturnsAsync((string _, IReadOnlyList<Guid> ids, CancellationToken _) => ids
+                .Select(id => new LookupItemDto(id, id == cableTiesId ? "Cable Ties" : "Adapter Kit"))
                 .ToArray());
         catalogs
             .Setup(x => x.GetByIdsAsync(TradeCodes.Warehouse, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string _, IReadOnlyList<Guid> ids, CancellationToken _) =>
-                ids.Select(id => new LookupItemDto(
-                    id,
-                    id == alphaWarehouseId ? "Alpha DC" : "Bravo East"))
+            .ReturnsAsync((string _, IReadOnlyList<Guid> ids, CancellationToken _) => ids
+                .Select(id => new LookupItemDto(id, id == alphaWarehouseId ? "Alpha DC" : "Bravo East"))
                 .ToArray());
+        var sut = CreateSut(policyReader.Object, netReader.Object, catalogs.Object);
 
-        var sut = CreateSut(policyReader.Object, readService.Object, movementsReader.Object, catalogs.Object);
-
-        Func<Task> act = () => sut.EnsureSufficientOnHandAsync(
-            new DateOnly(2026, 4, 18),
+        var act = () => sut.EnsureSufficientOnHandAsync(
+            asOf,
             [
                 new TradeInventoryWithdrawalRequest(alphaWarehouseId, cableTiesId, 2.5m),
                 new TradeInventoryWithdrawalRequest(alphaWarehouseId, cableTiesId, 1.5m),
@@ -112,245 +79,95 @@ public sealed class TradeInventoryAvailabilityService_P0Tests
             ],
             CancellationToken.None);
 
-        var ex = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
-        ex.Which.ParamName.Should().Be("lines");
-        ex.Which.Reason.Should().Contain("Insufficient inventory on hand as of 2026-04-18.");
-        ex.Which.Reason.Should().Contain("Alpha DC / Cable Ties: requested 4, available 0.");
-        ex.Which.Reason.Should().Contain("Bravo East / Adapter Kit: requested 3, available 0.");
-        ex.Which.Reason.IndexOf("Alpha DC / Cable Ties", StringComparison.Ordinal)
-            .Should().BeLessThan(ex.Which.Reason.IndexOf("Bravo East / Adapter Kit", StringComparison.Ordinal));
+        var error = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
+        error.Which.ParamName.Should().Be("lines");
+        error.Which.Reason.Should().Contain("Alpha DC / Cable Ties: requested 4, available 0.");
+        error.Which.Reason.Should().Contain("Bravo East / Adapter Kit: requested 3, available 0.");
+        netReader.Verify(x => x.GetNetsByDimensionsAsync(
+            registerId,
+            It.Is<IReadOnlyList<IReadOnlyList<DimensionValue>>>(groups =>
+                groups.Count == 2
+                && Contains(groups[0], alphaWarehouseId, cableTiesId)
+                && Contains(groups[1], bravoWarehouseId, adapterId)),
+            "qty_delta",
+            asOf,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task EnsureSufficientOnHandAsync_UsesCurrentMonthMovements_ToCloseTheGap()
+    public async Task EnsureSufficientOnHandAsync_WhenBatchBalancesCoverRequests_DoesNotLoadDisplays()
     {
         var registerId = Guid.NewGuid();
         var warehouseId = Guid.NewGuid();
         var itemId = Guid.NewGuid();
-        var dimensionSetId = Guid.NewGuid();
-
-        var policyReader = new Mock<ITradeAccountingPolicyReader>();
-        policyReader
-            .Setup(x => x.GetRequiredAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreatePolicy(registerId));
-
-        var readService = new Mock<IOperationalRegisterReadService>();
-        readService
-            .Setup(x => x.GetBalancesPageAsync(It.IsAny<OperationalRegisterMonthlyProjectionPageRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((OperationalRegisterMonthlyProjectionPageRequest request, CancellationToken _) =>
-                new OperationalRegisterMonthlyProjectionPage(
-                    request.RegisterId,
-                    request.FromInclusive,
-                    request.ToInclusive,
-                    [
-                        CreateBalanceRowWithoutItem(warehouseId),
-                        CreateBalanceRowWithoutWarehouse(itemId),
-                        CreateBalanceRow(warehouseId, itemId, 2m, dimensionSetId, warehouseDisplay: "North Hub", itemDisplay: "Panel Kit")
-                    ],
-                    HasMore: false,
-                    NextCursor: null));
-
-        var movementsReader = new Mock<IOperationalRegisterMovementsQueryReader>();
-        movementsReader
-            .Setup(x => x.GetByMonthsAsync(
+        var netReader = new Mock<IOperationalRegisterResourceNetReader>(MockBehavior.Strict);
+        netReader.Setup(x => x.GetNetsByDimensionsAsync(
                 registerId,
-                new DateOnly(2026, 4, 1),
-                new DateOnly(2026, 4, 1),
-                It.IsAny<IReadOnlyList<DimensionValue>?>(),
-                null,
-                null,
-                null,
-                null,
-                1000,
+                It.IsAny<IReadOnlyList<IReadOnlyList<DimensionValue>>>(),
+                "qty_delta",
+                new DateOnly(2026, 4, 18),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(
-            [
-                CreateMovementRow(1, warehouseId, itemId, 2m, new DateTime(2026, 4, 10, 0, 0, 0, DateTimeKind.Utc), dimensionSetId: dimensionSetId)
-            ]);
-
-        var sut = CreateSut(policyReader.Object, readService.Object, movementsReader.Object, Mock.Of<ICatalogService>());
+            .ReturnsAsync([4m]);
+        var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
+        var sut = CreateSut(PolicyReader(registerId).Object, netReader.Object, catalogs.Object);
 
         var act = () => sut.EnsureSufficientOnHandAsync(
             new DateOnly(2026, 4, 18),
-            [
-                new TradeInventoryWithdrawalRequest(warehouseId, itemId, 4m)
-            ],
+            [new TradeInventoryWithdrawalRequest(warehouseId, itemId, 4m)],
             CancellationToken.None);
 
         await act.Should().NotThrowAsync();
+        catalogs.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task EnsureSufficientOnHandAsync_AppliesStornoMovements_AndIgnoresFutureMovements()
+    public async Task EnsureSufficientOnHandAsync_WhenCatalogRowsAreMissing_UsesStableGuidDisplays()
     {
         var registerId = Guid.NewGuid();
         var warehouseId = Guid.NewGuid();
         var itemId = Guid.NewGuid();
-        var dimensionSetId = Guid.NewGuid();
-
-        var policyReader = new Mock<ITradeAccountingPolicyReader>();
-        policyReader
-            .Setup(x => x.GetRequiredAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreatePolicy(registerId));
-
-        var readService = new Mock<IOperationalRegisterReadService>();
-        readService
-            .Setup(x => x.GetBalancesPageAsync(It.IsAny<OperationalRegisterMonthlyProjectionPageRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((OperationalRegisterMonthlyProjectionPageRequest request, CancellationToken _) =>
-                new OperationalRegisterMonthlyProjectionPage(
-                    request.RegisterId,
-                    request.FromInclusive,
-                    request.ToInclusive,
-                    [CreateBalanceRow(warehouseId, itemId, 5m, dimensionSetId, warehouseDisplay: "North Hub", itemDisplay: "Panel Kit")],
-                    HasMore: false,
-                    NextCursor: null));
-
-        var movementsReader = new Mock<IOperationalRegisterMovementsQueryReader>();
-        movementsReader
-            .Setup(x => x.GetByMonthsAsync(
+        var netReader = new Mock<IOperationalRegisterResourceNetReader>(MockBehavior.Strict);
+        netReader.Setup(x => x.GetNetsByDimensionsAsync(
                 registerId,
-                new DateOnly(2026, 4, 1),
-                new DateOnly(2026, 4, 1),
-                It.IsAny<IReadOnlyList<DimensionValue>?>(),
-                null,
-                null,
-                null,
-                null,
-                1000,
+                It.IsAny<IReadOnlyList<IReadOnlyList<DimensionValue>>>(),
+                "qty_delta",
+                It.IsAny<DateOnly>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(
-            [
-                CreateMovementRow(1, warehouseId, itemId, 2m, new DateTime(2026, 4, 10, 0, 0, 0, DateTimeKind.Utc), isStorno: true, dimensionSetId: dimensionSetId),
-                CreateMovementRow(2, warehouseId, itemId, 99m, new DateTime(2026, 4, 25, 0, 0, 0, DateTimeKind.Utc), dimensionSetId: dimensionSetId)
-            ]);
+            .ReturnsAsync([3m]);
+        var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
+        catalogs.Setup(x => x.GetByIdsAsync(
+                It.IsAny<string>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var sut = CreateSut(PolicyReader(registerId).Object, netReader.Object, catalogs.Object);
 
-        var catalogs = new Mock<ICatalogService>();
-        catalogs
-            .Setup(x => x.GetByIdsAsync(TradeCodes.Item, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LookupItemDto(itemId, "Panel Kit")]);
-        catalogs
-            .Setup(x => x.GetByIdsAsync(TradeCodes.Warehouse, It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new LookupItemDto(warehouseId, "North Hub")]);
-
-        var sut = CreateSut(policyReader.Object, readService.Object, movementsReader.Object, catalogs.Object);
-
-        Func<Task> act = () => sut.EnsureSufficientOnHandAsync(
+        var act = () => sut.EnsureSufficientOnHandAsync(
             new DateOnly(2026, 4, 18),
-            [
-                new TradeInventoryWithdrawalRequest(warehouseId, itemId, 4m)
-            ],
+            [new TradeInventoryWithdrawalRequest(warehouseId, itemId, 4m)],
             CancellationToken.None);
 
-        var ex = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
-        ex.Which.Reason.Should().Contain("North Hub / Panel Kit: requested 4, available 3.");
+        var error = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
+        error.Which.Reason.Should().Contain(warehouseId.ToString("D")).And.Contain(itemId.ToString("D"));
     }
 
+    private static bool Contains(IReadOnlyList<DimensionValue> dimensions, Guid warehouseId, Guid itemId)
+        => dimensions.Contains(new DimensionValue(WarehouseDimensionId, warehouseId))
+           && dimensions.Contains(new DimensionValue(ItemDimensionId, itemId));
+
     private static TradeInventoryAvailabilityService CreateSut(
-        ITradeAccountingPolicyReader? policyReader = null,
-        IOperationalRegisterReadService? readService = null,
-        IOperationalRegisterMovementsQueryReader? movementsReader = null,
-        ICatalogService? catalogs = null)
-        => new(
-            policyReader ?? Mock.Of<ITradeAccountingPolicyReader>(),
-            readService ?? Mock.Of<IOperationalRegisterReadService>(),
-            movementsReader ?? Mock.Of<IOperationalRegisterMovementsQueryReader>(),
-            catalogs ?? Mock.Of<ICatalogService>());
+        ITradeAccountingPolicyReader policyReader,
+        IOperationalRegisterResourceNetReader netReader,
+        ICatalogService catalogs)
+        => new(policyReader, netReader, catalogs);
+
+    private static Mock<ITradeAccountingPolicyReader> PolicyReader(Guid registerId)
+    {
+        var reader = new Mock<ITradeAccountingPolicyReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetRequiredAsync(It.IsAny<CancellationToken>())).ReturnsAsync(CreatePolicy(registerId));
+        return reader;
+    }
 
     private static TradeAccountingPolicy CreatePolicy(Guid registerId)
         => new(
-            PolicyId: Guid.NewGuid(),
-            CashAccountId: Guid.NewGuid(),
-            AccountsReceivableAccountId: Guid.NewGuid(),
-            InventoryAccountId: Guid.NewGuid(),
-            AccountsPayableAccountId: Guid.NewGuid(),
-            SalesRevenueAccountId: Guid.NewGuid(),
-            CostOfGoodsSoldAccountId: Guid.NewGuid(),
-            InventoryAdjustmentAccountId: Guid.NewGuid(),
-            InventoryMovementsRegisterId: registerId,
-            ItemPricesRegisterId: Guid.NewGuid());
-
-    private static OperationalRegisterMonthlyProjectionReadRow CreateBalanceRow(
-        Guid warehouseId,
-        Guid itemId,
-        decimal quantity,
-        Guid? dimensionSetId = null,
-        string? warehouseDisplay = null,
-        string? itemDisplay = null)
-    {
-        var displays = new Dictionary<Guid, string>();
-        if (!string.IsNullOrWhiteSpace(warehouseDisplay))
-            displays[WarehouseDimensionId] = warehouseDisplay;
-        if (!string.IsNullOrWhiteSpace(itemDisplay))
-            displays[ItemDimensionId] = itemDisplay;
-
-        return new OperationalRegisterMonthlyProjectionReadRow
-        {
-            PeriodMonth = new DateOnly(2026, 3, 1),
-            DimensionSetId = dimensionSetId ?? Guid.NewGuid(),
-            Dimensions = new DimensionBag(
-            [
-                new DimensionValue(ItemDimensionId, itemId),
-                new DimensionValue(WarehouseDimensionId, warehouseId)
-            ]),
-            DimensionValueDisplays = displays,
-            Values = new Dictionary<string, decimal>(StringComparer.Ordinal)
-            {
-                ["qty_delta"] = quantity
-            }
-        };
-    }
-
-    private static OperationalRegisterMonthlyProjectionReadRow CreateBalanceRowWithoutWarehouse(Guid itemId)
-        => new()
-        {
-            PeriodMonth = new DateOnly(2026, 3, 1),
-            DimensionSetId = Guid.NewGuid(),
-            Dimensions = new DimensionBag([new DimensionValue(ItemDimensionId, itemId)]),
-            DimensionValueDisplays = new Dictionary<Guid, string>(),
-            Values = new Dictionary<string, decimal>(StringComparer.Ordinal)
-            {
-                ["qty_delta"] = 999m
-            }
-        };
-
-    private static OperationalRegisterMonthlyProjectionReadRow CreateBalanceRowWithoutItem(Guid warehouseId)
-        => new()
-        {
-            PeriodMonth = new DateOnly(2026, 3, 1),
-            DimensionSetId = Guid.NewGuid(),
-            Dimensions = new DimensionBag([new DimensionValue(WarehouseDimensionId, warehouseId)]),
-            DimensionValueDisplays = new Dictionary<Guid, string>(),
-            Values = new Dictionary<string, decimal>(StringComparer.Ordinal)
-            {
-                ["qty_delta"] = 999m
-            }
-        };
-
-    private static OperationalRegisterMovementQueryReadRow CreateMovementRow(
-        long movementId,
-        Guid warehouseId,
-        Guid itemId,
-        decimal quantityDelta,
-        DateTime occurredAtUtc,
-        bool isStorno = false,
-        Guid? dimensionSetId = null)
-        => new()
-        {
-            MovementId = movementId,
-            DocumentId = Guid.NewGuid(),
-            OccurredAtUtc = occurredAtUtc,
-            PeriodMonth = new DateOnly(occurredAtUtc.Year, occurredAtUtc.Month, 1),
-            DimensionSetId = dimensionSetId ?? Guid.NewGuid(),
-            IsStorno = isStorno,
-            Dimensions = new DimensionBag(
-            [
-                new DimensionValue(ItemDimensionId, itemId),
-                new DimensionValue(WarehouseDimensionId, warehouseId)
-            ]),
-            DimensionValueDisplays = new Dictionary<Guid, string>(),
-            Values = new Dictionary<string, decimal>(StringComparer.Ordinal)
-            {
-                ["qty_delta"] = quantityDelta
-            }
-        };
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), registerId, Guid.NewGuid());
 }

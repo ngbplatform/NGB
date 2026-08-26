@@ -18,7 +18,7 @@ public sealed class SsoInfrastructureFullCoverageTests
     [Fact]
     public async Task MemoryCacheTicketStore_covers_store_retrieve_renew_expiration_and_remove()
     {
-        var sut = new MemoryCacheTicketStore();
+        using var sut = new MemoryCacheTicketStore();
         var first = Ticket("first", expiresUtc: null);
 
         var key = await sut.StoreAsync(first);
@@ -33,6 +33,15 @@ public sealed class SsoInfrastructureFullCoverageTests
         await sut.RemoveAsync(key);
         (await sut.RetrieveAsync(key)).Should().BeNull();
         (await sut.RetrieveAsync("missing")).Should().BeNull();
+
+        Action invalidCapacity = () => new MemoryCacheTicketStore(0);
+        invalidCapacity.Should().Throw<ArgumentOutOfRangeException>();
+
+        using var bounded = new MemoryCacheTicketStore(maximumSessionCount: 1);
+        var evictedKey = await bounded.StoreAsync(Ticket("evicted", null));
+        var retainedKey = await bounded.StoreAsync(Ticket("retained", null));
+        (await bounded.RetrieveAsync(evictedKey)).Should().BeNull();
+        (await bounded.RetrieveAsync(retainedKey)).Should().NotBeNull();
     }
 
     [Fact]

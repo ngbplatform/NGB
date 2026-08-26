@@ -112,6 +112,9 @@ public sealed class PropertyManagementRentChargeGenerationReaderFullCoverageTest
 
             var leases = await reader.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
                 new DateOnly(2026, 2, 1),
+                afterStartOnUtc: null,
+                afterLeaseId: null,
+                limit: 100,
                 ct);
             leases.Should().ContainSingle().Which.Should().Match<PmRentChargeGenerationLease>(x =>
                 x.LeaseId == includedLeaseId

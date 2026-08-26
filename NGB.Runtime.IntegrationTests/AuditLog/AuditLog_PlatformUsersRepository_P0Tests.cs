@@ -139,7 +139,7 @@ public sealed class AuditLog_PlatformUsersRepository_P0Tests(PostgresTestFixture
             updated!.UserId.Should().Be(id1);
             updated.Email.Should().Be(email.ToLowerInvariant());
 
-            var matchingUsers = (await users.GetAllAsync(CancellationToken.None))
+            var matchingUsers = (await users.GetByEmailsAsync([email], CancellationToken.None))
                 .Where(x => string.Equals(x.Email, email, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
             matchingUsers.Should().ContainSingle();

@@ -190,7 +190,9 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IDocumentService, DocumentService>();
         services.TryAddScoped<IDocumentSystemLifecycleService>(sp => sp.GetRequiredService<DocumentService>());
         services.TryAddScoped<IDocumentEffectsQueryService, DocumentEffectsQueryService>();
-        services.TryAddScoped<IDocumentRelationshipService, DocumentRelationshipService>();
+        services.TryAddScoped<DocumentRelationshipService>();
+        services.TryAddScoped<IDocumentRelationshipService>(sp => sp.GetRequiredService<DocumentRelationshipService>());
+        services.TryAddScoped<IDocumentRelationshipBatchService>(sp => sp.GetRequiredService<DocumentRelationshipService>());
         services.TryAddScoped<IDocumentRelationshipGraphReadService, DocumentRelationshipGraphReadService>();
         services.TryAddScoped<IDocumentDerivationService, DocumentDerivationService>();
         services.TryAddSingleton<DocumentActionRegistry>();
@@ -303,13 +305,7 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IReportVariantAccessContext, NullReportVariantAccessContext>();
         services.TryAddScoped<IReportVariantService, ReportVariantService>();
         services.TryAddSingleton<IReportExportService, ReportXlsxExportService>();
-        services.TryAddSingleton<IRenderedReportSnapshotStore>(sp =>
-        {
-            var cache = sp.GetService<IMemoryCache>();
-            return cache is null
-                ? NullRenderedReportSnapshotStore.Instance
-                : new MemoryCacheRenderedReportSnapshotStore(cache);
-        });
+        services.TryAddSingleton<IRenderedReportSnapshotStore>(static _ => new MemoryCacheRenderedReportSnapshotStore());
         services.TryAddScoped<ReportVariantRequestResolver>();
         services.TryAddScoped<IReportPlanExecutor, CompositeReportPlanExecutor>();
         services.TryAddScoped<IReportEngine, ReportEngine>();

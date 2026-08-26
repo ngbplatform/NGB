@@ -133,9 +133,17 @@ public sealed class PropertyCatalogUpsertValidatorFullCoverageTests
             }));
         fixture.Reader.Setup(x => x.GetByIdAsync(It.IsAny<CatalogHeadDescriptor>(), next, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Row(next, new Dictionary<string, object?> { ["parent_property_id"] = fixture.ParentId }));
+        fixture.Reader.Setup(x => x.HasParentChainViolationAsync(
+                It.IsAny<CatalogHeadDescriptor>(), fixture.CatalogId, fixture.ParentId,
+                "parent_property_id", 32, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         await AssertPropertyInvalid(() => fixture.ValidateValidUnitAsync());
 
         fixture.SetParentRow(new Dictionary<string, object?> { ["kind"] = "Building" });
+        fixture.Reader.Setup(x => x.HasParentChainViolationAsync(
+                It.IsAny<CatalogHeadDescriptor>(), fixture.CatalogId, fixture.ParentId,
+                "parent_property_id", 32, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
         fixture.Reader.Setup(x => x.GetPageAsync(
                 It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), 0, 5, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Row(Guid.CreateVersion7(), new Dictionary<string, object?>())]);
@@ -150,37 +158,23 @@ public sealed class PropertyCatalogUpsertValidatorFullCoverageTests
     }
 
     [Fact]
-    public async Task Parent_chain_stops_when_a_row_or_next_parent_is_missing_and_rejects_excessive_depth()
+    public async Task Parent_chain_is_checked_by_one_bounded_recursive_query()
     {
         var fixture = new Fixture();
-        var chainStart = fixture.ParentId;
-        var second = Guid.CreateVersion7();
-
-        fixture.Reader.Setup(x => x.GetByIdAsync(It.IsAny<CatalogHeadDescriptor>(), chainStart, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Row(chainStart, new Dictionary<string, object?>
-            {
-                ["kind"] = "Building",
-                ["parent_property_id"] = second
-            }));
-        fixture.Reader.Setup(x => x.GetByIdAsync(It.IsAny<CatalogHeadDescriptor>(), second, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((CatalogHeadRow?)null);
+        fixture.Reader.Setup(x => x.HasParentChainViolationAsync(
+                It.IsAny<CatalogHeadDescriptor>(), fixture.CatalogId, fixture.ParentId,
+                "parent_property_id", 32, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
         await fixture.ValidateValidUnitAsync();
 
-        var chain = Enumerable.Range(0, 34).Select(_ => Guid.CreateVersion7()).ToArray();
-        fixture.ParentId = chain[0];
-        fixture.SetParentCatalog(PropertyManagementCodes.Property, false);
-        for (var i = 0; i < chain.Length - 1; i++)
-        {
-            var current = chain[i];
-            var successor = chain[i + 1];
-            var fields = new Dictionary<string, object?> { ["parent_property_id"] = successor };
-            if (i == 0)
-                fields["kind"] = "Building";
-            fixture.Reader.Setup(x => x.GetByIdAsync(It.IsAny<CatalogHeadDescriptor>(), current, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Row(current, fields));
-        }
-
+        fixture.Reader.Setup(x => x.HasParentChainViolationAsync(
+                It.IsAny<CatalogHeadDescriptor>(), fixture.CatalogId, fixture.ParentId,
+                "parent_property_id", 32, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
         await AssertPropertyInvalid(() => fixture.ValidateValidUnitAsync());
+        fixture.Reader.Verify(x => x.HasParentChainViolationAsync(
+            It.IsAny<CatalogHeadDescriptor>(), fixture.CatalogId, fixture.ParentId,
+            "parent_property_id", 32, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]

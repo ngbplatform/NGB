@@ -20,7 +20,7 @@ public sealed class DocumentReader_ReadPathOptimization_P1Tests(SchemaPostgresTe
     private const string DisplayColumn = "display";
 
     [Fact]
-    public async Task CountAndGetPageAsync_WithoutHeadCriteria_PagesAcrossHeadRowsAndNullOrMissingHeadRows()
+    public async Task CombinedPageAsync_WithoutHeadCriteria_PagesAcrossHeadRowsAndNullOrMissingHeadRows()
     {
         await EnsureCleanDocumentTypeAsync(Fixture.ConnectionString);
 
@@ -44,10 +44,12 @@ public sealed class DocumentReader_ReadPathOptimization_P1Tests(SchemaPostgresTe
         var head = HeadDescriptor();
         var query = new DocumentQuery(Search: null, Filters: []);
 
-        var total = await reader.CountAsync(head, query, CancellationToken.None);
-        var page = await reader.GetPageAsync(head, query, offset: 2, limit: 10, CancellationToken.None);
+        var combined = reader.Should().BeAssignableTo<IDocumentCombinedPageReader>().Subject;
+        var result = await combined.GetPageWithTotalAsync(
+            head, query, offset: 2, limit: 10, CancellationToken.None);
+        var page = result.Rows;
 
-        total.Should().Be(4);
+        result.Total.Should().Be(4);
         page.Select(x => x.Id).Should().Equal(nullDisplayId, missingHeadId);
 
         page[0].Display.Should().Be(nullDisplayId.ToString("D"));
@@ -60,7 +62,7 @@ public sealed class DocumentReader_ReadPathOptimization_P1Tests(SchemaPostgresTe
     }
 
     [Fact]
-    public async Task CountAndGetPageAsync_WithoutHeadCriteria_PreservesActiveSoftDeleteFilter()
+    public async Task CombinedPageAsync_WithoutHeadCriteria_PreservesActiveSoftDeleteFilter()
     {
         await EnsureCleanDocumentTypeAsync(Fixture.ConnectionString);
 
@@ -84,10 +86,12 @@ public sealed class DocumentReader_ReadPathOptimization_P1Tests(SchemaPostgresTe
             SoftDeleteFilterMode = SoftDeleteFilterMode.Active
         };
 
-        var total = await reader.CountAsync(head, query, CancellationToken.None);
-        var page = await reader.GetPageAsync(head, query, offset: 0, limit: 10, CancellationToken.None);
+        var combined = reader.Should().BeAssignableTo<IDocumentCombinedPageReader>().Subject;
+        var result = await combined.GetPageWithTotalAsync(
+            head, query, offset: 0, limit: 10, CancellationToken.None);
+        var page = result.Rows;
 
-        total.Should().Be(2);
+        result.Total.Should().Be(2);
         page.Select(x => x.Id).Should().Equal(activeHeadId, activeMissingHeadId);
         page.Should().NotContain(x => x.Id == deletedId);
     }

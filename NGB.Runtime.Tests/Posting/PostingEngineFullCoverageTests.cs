@@ -188,8 +188,9 @@ public sealed class PostingEngineFullCoverageTests
                 .Setup(x => x.WriteAsync(It.IsAny<IEnumerable<AccountingTurnover>>(), Token))
                 .Returns(Task.CompletedTask);
             DimensionSets
-                .Setup(x => x.GetOrCreateIdAsync(It.IsAny<DimensionBag>(), Token))
-                .ReturnsAsync(Guid.Empty);
+                .Setup(x => x.GetOrCreateIdsAsync(It.IsAny<IReadOnlyList<DimensionBag>>(), Token))
+                .ReturnsAsync((IReadOnlyList<DimensionBag> bags, CancellationToken _) =>
+                    bags.Select(static _ => Guid.Empty).ToArray());
             ClosedPeriods
                 .Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), Token))
                 .ReturnsAsync(false);

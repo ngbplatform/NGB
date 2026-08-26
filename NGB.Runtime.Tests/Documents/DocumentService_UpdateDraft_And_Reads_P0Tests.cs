@@ -153,6 +153,47 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
     }
 
     [Fact]
+    public async Task GetPageAsync_UsesCombinedReaderCapabilityInsteadOfSeparateCalls()
+    {
+        var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true)
+        ]);
+        var id = Guid.NewGuid();
+        Mock<IDocumentReader>? capturedReader = null;
+        var service = CreateSut(meta, readerSetup: reader =>
+        {
+            capturedReader = reader;
+            reader.As<IDocumentCombinedPageReader>()
+                .Setup(x => x.GetPageWithTotalAsync(
+                    It.IsAny<DocumentHeadDescriptor>(),
+                    It.IsAny<DocumentQuery>(),
+                    4,
+                    2,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new DocumentHeadQueryPage(
+                    [new DocumentHeadRow(
+                        id,
+                        DocumentStatus.Posted,
+                        false,
+                        "Document #1",
+                        new Dictionary<string, object?> { ["display"] = "Document #1" },
+                        "DOC-1")],
+                    9));
+        });
+
+        var page = await service.GetPageAsync(TypeCode, new PageRequestDto(4, 2), default);
+
+        page.Total.Should().Be(9);
+        page.Items.Should().ContainSingle().Which.Id.Should().Be(id);
+        capturedReader!.Verify(x => x.CountAsync(
+            It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(), It.IsAny<CancellationToken>()), Times.Never);
+        capturedReader.Verify(x => x.GetPageAsync(
+            It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(),
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task GetPageAsync_PeriodFilters_validate_required_format_order_and_date_metadata()
     {
         var withDate = BuildMetaWithHead(TypeCode, "doc_test", [

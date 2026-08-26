@@ -50,8 +50,12 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
         f.Locks.Verify(x => x.LockOperationalRegisterAsync(registerId, It.IsAny<CancellationToken>()), Times.Once);
         f.Locks.Verify(x => x.LockPeriodAsync(month, AdvisoryLockPeriodScope.OperationalRegister, It.IsAny<CancellationToken>()), Times.Once);
         f.Locks.Verify(x => x.LockPeriodAsync(future, AdvisoryLockPeriodScope.OperationalRegister, It.IsAny<CancellationToken>()), Times.Once);
-        f.Finalizations.Verify(x => x.MarkDirtyAsync(registerId, month, Now, Now, It.IsAny<CancellationToken>()), Times.Once);
-        f.Finalizations.Verify(x => x.MarkDirtyAsync(registerId, future, Now, Now, It.IsAny<CancellationToken>()), Times.Once);
+        f.Finalizations.Verify(x => x.MarkDirtyPeriodsAsync(
+            registerId,
+            It.Is<IReadOnlyCollection<DateOnly>>(periods => periods.SequenceEqual(new[] { month, future })),
+            Now,
+            Now,
+            It.IsAny<CancellationToken>()), Times.Once);
 
         await ((Func<Task>)(() => f.Sut.MarkFinalizedAsync(Guid.Empty, requested)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();

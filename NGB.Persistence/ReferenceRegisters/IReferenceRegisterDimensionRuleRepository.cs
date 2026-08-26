@@ -13,6 +13,10 @@ public interface IReferenceRegisterDimensionRuleRepository
         Guid registerId,
         CancellationToken ct = default);
 
+    Task<IReadOnlyDictionary<Guid, int>> CountByRegisterIdsAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Replaces all dimension rules for the register.
     ///

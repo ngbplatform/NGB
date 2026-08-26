@@ -1,4 +1,3 @@
-using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using NGB.Core.Catalogs;
@@ -44,7 +43,7 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
     }
 
     [Fact]
-    public async Task Building_scope_expands_active_nested_hierarchy_and_snapshot_is_cached()
+    public async Task Building_scope_batches_selected_properties_and_expands_descendants_in_one_query()
     {
         var fixture = new Fixture();
         var root = Guid.CreateVersion7();
@@ -53,26 +52,20 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
         var nestedUnit = Guid.CreateVersion7();
         var unrelatedDimension = Guid.CreateVersion7();
         var unrelatedValue = Guid.CreateVersion7();
-        fixture.Reader.Setup(x => x.GetPageAsync(
-                It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), 0, 512,
+        fixture.Reader.Setup(x => x.GetByIdsWithFieldsAsync(
+                It.IsAny<CatalogHeadDescriptor>(), It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
                 Row(root, new Dictionary<string, object?> { ["kind"] = "building" }),
-                Row(unit, new Dictionary<string, object?> { ["kind"] = "Unit", ["parent_property_id"] = root }),
-                Row(nestedBuilding, new Dictionary<string, object?>
-                {
-                    ["kind"] = "Building",
-                    ["parent_property_id"] = root.ToString()
-                }),
-                Row(nestedUnit, new Dictionary<string, object?>
-                {
-                    ["kind"] = "Unit",
-                    ["parent_property_id"] = JsonSerializer.SerializeToElement(nestedBuilding.ToString())
-                }),
-                Row(Guid.CreateVersion7(), new Dictionary<string, object?> { ["kind"] = 42, ["parent_property_id"] = null }),
-                Row(Guid.CreateVersion7(), new Dictionary<string, object?> { ["kind"] = "Unit", ["parent_property_id"] = Guid.Empty })
+                Row(unit, new Dictionary<string, object?> { ["kind"] = "Unit" })
             ]);
+        fixture.Reader.Setup(x => x.GetActiveDescendantIdsAsync(
+                It.IsAny<CatalogHeadDescriptor>(),
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { root })),
+                "parent_property_id",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([nestedBuilding, nestedUnit]);
         var scopes = new DimensionScopeBag(
         [
             new DimensionScope(PropertyDimensionId, [root, unit], includeDescendants: true),
@@ -89,55 +82,50 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
         first.Single(x => x.DimensionId == unrelatedDimension).ValueIds.Should().Equal(unrelatedValue);
         second.Single(x => x.DimensionId == PropertyDimensionId).ValueIds.Should()
             .BeEquivalentTo([root, unit, nestedBuilding, nestedUnit]);
-        fixture.Reader.Verify(x => x.GetPageAsync(
-            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), 0, 512,
-            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Reader.Verify(x => x.GetByIdsWithFieldsAsync(
+            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<IReadOnlyList<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+        fixture.Reader.Verify(x => x.GetActiveDescendantIdsAsync(
+            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<IReadOnlyList<Guid>>(),
+            "parent_property_id", It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
     [Fact]
-    public async Task Full_page_loads_next_page_until_empty()
+    public async Task Unit_scope_does_not_query_descendants()
     {
         var fixture = new Fixture();
-        var root = Guid.CreateVersion7();
-        var rows = Enumerable.Range(0, 512)
-            .Select(index => Row(index == 0 ? root : Guid.CreateVersion7(),
-                new Dictionary<string, object?> { ["kind"] = index == 0 ? "Building" : "Unit" }))
-            .ToArray();
-        fixture.Reader.Setup(x => x.GetPageAsync(
-                It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), 0, 512,
+        var unit = Guid.CreateVersion7();
+        fixture.Reader.Setup(x => x.GetByIdsWithFieldsAsync(
+                It.IsAny<CatalogHeadDescriptor>(), It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(rows);
-        fixture.Reader.Setup(x => x.GetPageAsync(
-                It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), 512, 512,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+            .ReturnsAsync([Row(unit, new Dictionary<string, object?> { ["kind"] = "Unit" })]);
 
         var result = await fixture.Sut.ExpandAsync(
             AccountingReportCodes.GeneralJournal,
-            Bag(root),
+            Bag(unit),
             default);
 
-        result[0].ValueIds.Should().Equal(root);
-        fixture.Reader.Verify(x => x.GetPageAsync(
-            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), 512, 512,
-            It.IsAny<CancellationToken>()), Times.Once);
+        result[0].ValueIds.Should().Equal(unit);
+        fixture.Reader.Verify(x => x.GetActiveDescendantIdsAsync(
+            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<IReadOnlyList<Guid>>(),
+            It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public async Task Property_absent_from_active_snapshot_is_loaded_from_storage()
+    public async Task Selected_rows_are_loaded_in_one_batch_and_head_metadata_is_cached()
     {
         var fixture = new Fixture();
         var propertyId = Guid.CreateVersion7();
-        fixture.EmptyHierarchy();
-        fixture.Catalogs.Setup(x => x.GetAsync(propertyId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Catalog(propertyId));
-        fixture.Reader.Setup(x => x.GetByIdAsync(It.IsAny<CatalogHeadDescriptor>(), propertyId,
+        fixture.Reader.Setup(x => x.GetByIdsWithFieldsAsync(It.IsAny<CatalogHeadDescriptor>(),
+                It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Row(propertyId, new Dictionary<string, object?> { ["kind"] = "Unit" }));
+            .ReturnsAsync([Row(propertyId, new Dictionary<string, object?> { ["kind"] = "Unit" })]);
 
-        var result = await fixture.Sut.ExpandAsync(AccountingReportCodes.AccountCard, Bag(propertyId), default);
+        var first = await fixture.Sut.ExpandAsync(AccountingReportCodes.AccountCard, Bag(propertyId), default);
+        var second = await fixture.Sut.ExpandAsync(AccountingReportCodes.AccountCard, Bag(propertyId), default);
 
-        result[0].ValueIds.Should().Equal(propertyId);
+        first[0].ValueIds.Should().Equal(propertyId);
+        second[0].ValueIds.Should().Equal(propertyId);
         fixture.Types.Verify(x => x.GetRequired(PropertyManagementCodes.Property), Times.Once);
     }
 
@@ -146,21 +134,21 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
     {
         var missing = new Fixture();
         var missingId = Guid.CreateVersion7();
-        missing.EmptyHierarchy();
+        missing.EmptySelection();
         missing.Catalogs.Setup(x => x.GetAsync(missingId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((CatalogRecord?)null);
         await AssertInvalidAsync(missing.Sut, missingId);
 
         var wrong = new Fixture();
         var wrongId = Guid.CreateVersion7();
-        wrong.EmptyHierarchy();
+        wrong.EmptySelection();
         wrong.Catalogs.Setup(x => x.GetAsync(wrongId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Catalog(wrongId, code: "other"));
         await AssertInvalidAsync(wrong.Sut, wrongId);
 
         var deleted = new Fixture();
         var deletedId = Guid.CreateVersion7();
-        deleted.EmptyHierarchy();
+        deleted.EmptySelection();
         deleted.Catalogs.Setup(x => x.GetAsync(deletedId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Catalog(deletedId, isDeleted: true));
         await AssertInvalidAsync(deleted.Sut, deletedId);
@@ -171,13 +159,9 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
     {
         var fixture = new Fixture();
         var propertyId = Guid.CreateVersion7();
-        fixture.EmptyHierarchy();
+        fixture.EmptySelection();
         fixture.Catalogs.Setup(x => x.GetAsync(propertyId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Catalog(propertyId));
-        fixture.Reader.Setup(x => x.GetByIdAsync(It.IsAny<CatalogHeadDescriptor>(), propertyId,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync((CatalogHeadRow?)null);
-
         var act = () => fixture.Sut.ExpandAsync(AccountingReportCodes.GeneralLedgerAggregated, Bag(propertyId), default);
 
         await act.Should().ThrowAsync<NgbConfigurationViolationException>();
@@ -253,9 +237,9 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
         public Mock<ICatalogReader> Reader { get; } = new(MockBehavior.Strict);
         public PropertyManagementPropertyDimensionScopeExpander Sut { get; }
 
-        public void EmptyHierarchy()
-            => Reader.Setup(x => x.GetPageAsync(
-                    It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), 0, 512,
+        public void EmptySelection()
+            => Reader.Setup(x => x.GetByIdsWithFieldsAsync(
+                    It.IsAny<CatalogHeadDescriptor>(), It.IsAny<IReadOnlyList<Guid>>(),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
     }

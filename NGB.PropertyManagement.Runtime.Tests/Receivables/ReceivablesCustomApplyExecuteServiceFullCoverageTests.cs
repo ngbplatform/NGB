@@ -139,11 +139,8 @@ public sealed class ReceivablesCustomApplyExecuteServiceFullCoverageTests
             Uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-            Relationships.Setup(x => x.CreateAsync(
-                    It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), false, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(true);
             Sut = new ReceivablesCustomApplyExecuteService(
-                OpenItems.Object, Drafts.Object, Posting.Object, Relationships.Object, Heads.Object,
+                OpenItems.Object, Drafts.Object, Posting.Object, Heads.Object,
                 Readers.Object, Documents.Object, Locks.Object, Uow.Object, WorkCenter.Object);
         }
 
@@ -157,7 +154,6 @@ public sealed class ReceivablesCustomApplyExecuteServiceFullCoverageTests
         public Mock<IReceivablesOpenItemsService> OpenItems { get; } = new();
         public Mock<IDocumentDraftService> Drafts { get; } = new();
         public Mock<IDocumentPostingService> Posting { get; } = new();
-        public Mock<IDocumentRelationshipService> Relationships { get; } = new();
         public Mock<IReceivableApplyHeadWriter> Heads { get; } = new();
         public Mock<IPropertyManagementDocumentReaders> Readers { get; } = new();
         public Mock<IDocumentRepository> Documents { get; } = new();

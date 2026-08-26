@@ -45,11 +45,10 @@ public sealed class PayablesOpenItemsServiceFullCoverageTests
     }
 
     [Fact]
-    public async Task Register_rows_are_paged_aggregated_enriched_and_sorted_with_orphans_skipped()
+    public async Task Register_rows_are_aggregated_in_database_enriched_and_sorted_with_orphans_skipped()
     {
         var fixture = new Fixture();
         var itemDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.PayableItem}");
-        var anotherDimensionId = DeterministicGuid.Create("tests|payables-other");
         var chargeEarly = Guid.Parse("00000000-0000-0000-0000-000000000010");
         var chargeLow = Guid.Parse("00000000-0000-0000-0000-000000000020");
         var chargeHigh = Guid.Parse("00000000-0000-0000-0000-000000000030");
@@ -59,36 +58,21 @@ public sealed class PayablesOpenItemsServiceFullCoverageTests
         var missingInfo = Guid.CreateVersion7();
         var missingChargeHead = Guid.CreateVersion7();
         var missingCreditHead = Guid.CreateVersion7();
-        var zero = Guid.CreateVersion7();
         var chargeType = Guid.CreateVersion7();
-
-        var meaningful = new[]
-        {
-            Movement(1, new DimensionValue(anotherDimensionId, Guid.CreateVersion7()), false, ("amount", 999m)),
-            Movement(2, new DimensionValue(itemDimensionId, chargeEarly), false, ("amount", 5m)),
-            Movement(3, new DimensionValue(itemDimensionId, chargeLow), false, ("renamed", 10m)),
-            Movement(4, new DimensionValue(itemDimensionId, chargeHigh), false, ("amount", 20m)),
-            Movement(5, new DimensionValue(itemDimensionId, paymentEarly), true, ("amount", 3m)),
-            Movement(6, new DimensionValue(itemDimensionId, paymentLow), true, ("amount", 4m)),
-            Movement(7, new DimensionValue(itemDimensionId, memoHigh), true, ("amount", 6m)),
-            Movement(8, new DimensionValue(itemDimensionId, missingInfo), false, ("amount", 7m)),
-            Movement(9, new DimensionValue(itemDimensionId, missingChargeHead), false, ("amount", 8m)),
-            Movement(10, new DimensionValue(itemDimensionId, missingCreditHead), true, ("amount", 9m)),
-            Movement(11, new DimensionValue(itemDimensionId, zero), false, ("amount", 2m)),
-            Movement(12, new DimensionValue(itemDimensionId, zero), true, ("amount", 2m)),
-            Movement(13, new DimensionValue(itemDimensionId, chargeEarly), false, ("amount", 0m))
-        };
-        meaningful[1].DimensionValueDisplays = new Dictionary<Guid, string> { [itemDimensionId] = "Charge early" };
-        meaningful[2].DimensionValueDisplays = new Dictionary<Guid, string> { [itemDimensionId] = "Charge low" };
-        meaningful[3].DimensionValueDisplays = new Dictionary<Guid, string> { [itemDimensionId] = "Charge high" };
-
-        var firstPage = meaningful.Concat(Enumerable.Range(meaningful.Length + 1, 5000 - meaningful.Length)
-            .Select(i => Movement(i, new DimensionValue(itemDimensionId, chargeEarly), false))).ToArray();
-        fixture.Movements.Setup(x => x.GetByMonthsAsync(
+        fixture.Movements.Setup(x => x.GetResourceNetsByDimensionAsync(
                 fixture.RegisterId, It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
-                null, null, null, It.IsAny<long?>(), 5000, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid _, DateOnly _, DateOnly _, IReadOnlyList<DimensionValue>? _, Guid? _, Guid? _, bool? _, long? after, int _, CancellationToken _) =>
-                after is null ? firstPage : []);
+                itemDimensionId, "amount", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new(chargeEarly, 5m, "Charge early"),
+                new(chargeLow, 10m, "Charge low"),
+                new(chargeHigh, 20m, "Charge high"),
+                new(paymentEarly, -3m, null),
+                new(paymentLow, -4m, null),
+                new(memoHigh, -6m, null),
+                new(missingInfo, 7m, null),
+                new(missingChargeHead, 8m, null),
+                new(missingCreditHead, -9m, null)
+            ]);
         fixture.Movements.Setup(x => x.GetMaxPeriodMonthAsync(
                 fixture.RegisterId, It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DateOnly(2099, 12, 1));
@@ -130,53 +114,35 @@ public sealed class PayablesOpenItemsServiceFullCoverageTests
         result.Credits.Select(x => x.CreditDocumentId).Should().Equal(paymentEarly, paymentLow, memoHigh);
         result.TotalOutstanding.Should().Be(35m);
         result.TotalCredit.Should().Be(13m);
-        var lastMovementId = firstPage[firstPage.Length - 1].MovementId;
-        fixture.Movements.Verify(x => x.GetByMonthsAsync(
+        fixture.Movements.Verify(x => x.GetResourceNetsByDimensionAsync(
             fixture.RegisterId, new DateOnly(2026, 2, 1), new DateOnly(2026, 3, 1),
-            It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, null, lastMovementId, 5000,
+            It.IsAny<IReadOnlyList<DimensionValue>>(), itemDimensionId, "amount",
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task A_short_non_empty_page_stops_without_an_extra_query()
+    public async Task Aggregated_open_items_are_read_once()
     {
         var fixture = new Fixture();
         var itemDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.PayableItem}");
         var id = Guid.CreateVersion7();
-        fixture.Movements.Setup(x => x.GetByMonthsAsync(
+        fixture.Movements.Setup(x => x.GetResourceNetsByDimensionAsync(
                 It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
-                null, null, null, null, 5000, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([Movement(1, new DimensionValue(itemDimensionId, id), false, ("amount", 1m))]);
+                itemDimensionId, "amount", It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new(id, 1m, null)]);
         fixture.Readers.Setup(x => x.ReadDocumentInfosAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Info(id, PropertyManagementCodes.PayableCharge)]);
         fixture.Readers.Setup(x => x.ReadPayableChargeHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Charge(id, Guid.CreateVersion7(), new DateOnly(2026, 1, 1), 1m)]);
 
         (await fixture.QueryAsync()).TotalOutstanding.Should().Be(1m);
-        fixture.Movements.Verify(x => x.GetByMonthsAsync(
+        fixture.Movements.Verify(x => x.GetResourceNetsByDimensionAsync(
             It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
-            null, null, null, It.IsAny<long?>(), 5000, It.IsAny<CancellationToken>()), Times.Once);
+            itemDimensionId, "amount", It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static async Task AssertInvalid(Func<Task> action)
         => await action.Should().ThrowAsync<PayablesRequestValidationException>();
-
-    private static OperationalRegisterMovementQueryReadRow Movement(
-        long id,
-        DimensionValue dimension,
-        bool storno,
-        params (string Key, decimal Value)[] values)
-        => new()
-        {
-            MovementId = id,
-            DocumentId = Guid.CreateVersion7(),
-            OccurredAtUtc = DateTime.UnixEpoch,
-            PeriodMonth = new DateOnly(2026, 1, 1),
-            DimensionSetId = Guid.CreateVersion7(),
-            IsStorno = storno,
-            Dimensions = new DimensionBag([dimension]),
-            Values = values.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
-        };
 
     private static PmDocumentInfo Info(Guid id, string type) => new(id, type, $"N-{id}");
 
@@ -207,9 +173,9 @@ public sealed class PayablesOpenItemsServiceFullCoverageTests
             Movements.Setup(x => x.GetMaxPeriodMonthAsync(
                     It.IsAny<Guid>(), It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync((DateOnly?)null);
-            Movements.Setup(x => x.GetByMonthsAsync(
+            Movements.Setup(x => x.GetResourceNetsByDimensionAsync(
                     It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
-                    null, null, null, It.IsAny<long?>(), 5000, It.IsAny<CancellationToken>()))
+                    It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             Uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);

@@ -141,7 +141,8 @@ public sealed class RuntimeSmallLogicFullCoverageTests
     public async Task DefinitionsHostedServiceAndException_CoverStartStopNullEmptyAndDetailedErrors()
     {
         var validator = new Mock<IDefinitionsValidationService>(MockBehavior.Strict);
-        validator.Setup(x => x.ValidateOrThrow());
+        validator.Setup(x => x.ValidateOrThrowAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         var hosted = new DefinitionsStartupValidatorHostedService(validator.Object);
         await hosted.StartAsync(default);
         await hosted.StopAsync(default);

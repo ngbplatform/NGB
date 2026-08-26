@@ -154,27 +154,16 @@ public sealed class PropertyCatalogUpsertValidator(
 
     private async Task EnsureNoParentCycleAsync(Guid catalogId, Guid parentId, CancellationToken ct)
     {
-        var visited = new HashSet<Guid> { catalogId };
-        var cur = parentId;
-
-        for (var i = 0; i < 32; i++)
+        if (await reader.HasParentChainViolationAsync(
+                GetHead(),
+                catalogId,
+                parentId,
+                "parent_property_id",
+                maxDepth: 32,
+                ct))
         {
-            if (!visited.Add(cur))
-                throw PropertyValidationException.CycleDetected(catalogId, parentId);
-
-            var row = await reader.GetByIdAsync(GetHead(), cur, ct);
-            if (row is null)
-                return; // parent chain breaks - other validators will report parent not found
-
-            var next = ReadGuid(row.Fields, "parent_property_id");
-            if (next is null)
-                return;
-
-            cur = next.Value;
+            throw PropertyValidationException.CycleDetected(catalogId, parentId);
         }
-
-        // Too deep => treat as a cycle/invalid chain.
-        throw PropertyValidationException.CycleDetected(catalogId, parentId);
     }
 
     private CatalogHeadDescriptor GetHead()

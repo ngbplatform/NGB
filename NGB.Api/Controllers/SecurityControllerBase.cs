@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 using NGB.Core.Security;
 using NGB.Runtime.Security;
@@ -25,10 +26,14 @@ public abstract class SecurityControllerBase(
     }
 
     [HttpGet("~/api/security/users")]
-    public async Task<IReadOnlyList<UserListItemDto>> GetUsers(CancellationToken ct)
+    public async Task<PageResponseDto<UserListItemDto>> GetUsers(
+        [FromQuery] int offset = 0,
+        [FromQuery] int limit = PagingLimits.DefaultPageSize,
+        [FromQuery] bool? isActive = null,
+        CancellationToken ct = default)
     {
         await RequireAsync(NgbSystemPermissions.UsersView, ct);
-        return await users.GetUsersAsync(ct);
+        return await users.GetUsersAsync(new UserPageRequestDto(offset, limit, isActive), ct);
     }
 
     [HttpPost("~/api/security/users")]

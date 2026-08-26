@@ -29,8 +29,10 @@ vi.mock('../../../../src/ngb/metadata/NgbRegisterPageLayout.vue', async () => {
         error: { type: String, default: '' },
         loading: Boolean,
         disableCreate: Boolean,
+        disablePrev: Boolean,
+        disableNext: Boolean,
       },
-      emits: ['back', 'refresh', 'create', 'rowActivate'],
+      emits: ['back', 'refresh', 'create', 'prev', 'next', 'rowActivate'],
       setup(props, { emit, slots }) {
         state.layouts.push(props)
         return () => h('div', { 'data-testid': 'users-layout' }, [
@@ -40,6 +42,8 @@ vi.mock('../../../../src/ngb/metadata/NgbRegisterPageLayout.vue', async () => {
           h('button', { type: 'button', onClick: () => emit('back') }, 'Back stub'),
           h('button', { type: 'button', onClick: () => emit('refresh') }, 'Refresh stub'),
           h('button', { type: 'button', onClick: () => emit('create') }, 'Create stub'),
+          h('button', { type: 'button', onClick: () => emit('prev') }, 'Previous stub'),
+          h('button', { type: 'button', onClick: () => emit('next') }, 'Next stub'),
           h('button', { type: 'button', onClick: () => emit('rowActivate', 'user / special') }, 'Open user stub'),
         ])
       },
@@ -95,7 +99,7 @@ beforeEach(() => {
 
 test('covers user formatting, every status filter, refresh, and navigation actions', async () => {
   await page.viewport(1280, 900)
-  state.getUsers.mockResolvedValue([
+  state.getUsers.mockResolvedValue({ items: [
     {
       userId: 'user-empty', authSubject: 'subject-empty', email: null, displayName: null, isActive: true,
       keycloakEnabled: false, roles: [], createdAtUtc: '2026-06-01T00:00:00Z', updatedAtUtc: '2026-06-01T00:00:00Z',
@@ -122,7 +126,7 @@ test('covers user formatting, every status filter, refresh, and navigation actio
       roles: [{ roleId: 'role-1', code: 'auditor', name: 'Auditor', isSystem: false, isActive: true }],
       createdAtUtc: '2026-06-01T00:00:00Z', updatedAtUtc: '2026-06-01T00:00:00Z',
     },
-  ])
+  ], offset: 0, limit: 100, total: 106 })
 
   const view = await render(NgbUsersPage)
   await expect.element(view.getByTestId('layout-rows')).toHaveTextContent('Alpha')
@@ -141,11 +145,15 @@ test('covers user formatting, every status filter, refresh, and navigation actio
   await view.getByText('Create stub').click()
   await view.getByText('Back stub').click()
   await view.getByText('Open user stub').click()
+  await view.getByText('Next stub').click()
+  expect(state.getUsers).toHaveBeenLastCalledWith({ offset: 100, limit: 100, isActive: null })
+  await view.getByText('Previous stub').click()
+  expect(state.getUsers).toHaveBeenLastCalledWith({ offset: 0, limit: 100, isActive: null })
   expect(state.routerPush).toHaveBeenCalledWith('/admin/security/users/new')
   expect(state.routerPush).toHaveBeenCalledWith('/home')
   expect(state.routerPush).toHaveBeenCalledWith('/admin/security/users/user%20%2F%20special')
 
-  state.getUsers.mockResolvedValueOnce([])
+  state.getUsers.mockResolvedValueOnce({ items: [], offset: 0, limit: 100, total: 0 })
   await view.getByText('Refresh stub').click()
   await expect.element(view.getByTestId('layout-rows')).toHaveTextContent('[]')
 })

@@ -40,3 +40,13 @@ public interface IDocumentRelationshipService
     /// </summary>
     Task<bool> ExistsIncomingAsync(Guid toDocumentId, string relationshipCode, CancellationToken ct = default);
 }
+
+public interface IDocumentRelationshipBatchService : IDocumentRelationshipService
+{
+    Task<int> CreateManyAsync(
+        IReadOnlyCollection<DocumentRelationshipCreateRequest> requests,
+        bool manageTransaction = true,
+        CancellationToken ct = default);
+}
+
+public sealed record DocumentRelationshipCreateRequest(Guid FromDocumentId, Guid ToDocumentId, string RelationshipCode);

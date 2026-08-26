@@ -36,12 +36,18 @@ public sealed class TimesheetOperationalRegisterPostingHandler(
             throw new NgbConfigurationViolationException($"Operational register '{policy.UnbilledTimeOperationalRegisterId}' was not found.");
 
         var occurredAtUtc = AgencyBillingPostingCommon.ToOccurredAtUtc(head.WorkDate);
+        var dimensionSetIds = await dimensionSets.GetOrCreateIdsAsync(
+            lines.Select(line => AgencyBillingPostingCommon.TimeLedgerBag(
+                head.ClientId,
+                head.ProjectId,
+                head.TeamMemberId,
+                line.ServiceItemId)).ToArray(),
+            ct);
 
-        foreach (var line in lines)
+        for (var i = 0; i < lines.Count; i++)
         {
-            var dimensionSetId = await dimensionSets.GetOrCreateIdAsync(
-                AgencyBillingPostingCommon.TimeLedgerBag(head.ClientId, head.ProjectId, head.TeamMemberId, line.ServiceItemId),
-                ct);
+            var line = lines[i];
+            var dimensionSetId = dimensionSetIds[i];
 
             var lineAmount = AgencyBillingPostingCommon.ResolveTimesheetLineAmount(line);
             var lineCostAmount = AgencyBillingPostingCommon.ResolveTimesheetLineCostAmount(line);

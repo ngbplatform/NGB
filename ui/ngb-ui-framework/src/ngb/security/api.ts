@@ -1,4 +1,5 @@
 import { httpGet, httpPost, httpPut } from '../api/http'
+import type { PageResponseDto } from '../api/contracts'
 import type {
   CreateRoleRequestDto,
   CreateUserRequestDto,
@@ -23,8 +24,16 @@ export async function getPermissionDefinitions(): Promise<PermissionDefinitionDt
   return await httpGet<PermissionDefinitionDto[]>('/api/security/permissions/definitions')
 }
 
-export async function getUsers(): Promise<UserListItemDto[]> {
-  return await httpGet<UserListItemDto[]>('/api/security/users')
+export async function getUsers(request: {
+  offset?: number
+  limit?: number
+  isActive?: boolean | null
+} = {}): Promise<PageResponseDto<UserListItemDto>> {
+  const query = new URLSearchParams()
+  query.set('offset', String(Math.max(0, request.offset ?? 0)))
+  query.set('limit', String(Math.max(1, request.limit ?? 50)))
+  if (request.isActive != null) query.set('isActive', String(request.isActive))
+  return await httpGet<PageResponseDto<UserListItemDto>>(`/api/security/users?${query.toString()}`)
 }
 
 export async function createUser(request: CreateUserRequestDto): Promise<UserDetailsDto> {
@@ -88,4 +97,3 @@ export async function replaceRolePermissions(roleId: string, permissions: Replac
     { permissions },
   )
 }
-

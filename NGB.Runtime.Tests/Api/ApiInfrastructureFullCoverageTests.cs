@@ -8,6 +8,7 @@ using NGB.Api.Internal;
 using NGB.Api.Models;
 using NGB.Api.Reporting;
 using NGB.Api.Sso;
+using NGB.Contracts.Common;
 using NGB.Runtime.CurrentActor;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -103,14 +104,22 @@ public sealed class ApiInfrastructureFullCoverageTests
         var parsed = QueryParsing.ToPageRequest(Query(new Dictionary<string, string?>
         {
             ["offset"] = "-3",
-            ["limit"] = "125",
+            ["limit"] = "9999",
             ["search"] = "tenant",
             ["status"] = "open"
         }));
-        parsed.Offset.Should().Be(-3);
-        parsed.Limit.Should().Be(125);
+        parsed.Offset.Should().Be(0);
+        parsed.Limit.Should().Be(PagingLimits.MaxPageSize);
         parsed.Search.Should().Be("tenant");
         parsed.Filters.Should().Contain("status", "open");
+
+        var bounded = QueryParsing.ToPageRequest(Query(new Dictionary<string, string?>
+        {
+            ["offset"] = int.MaxValue.ToString(),
+            ["limit"] = "0"
+        }));
+        bounded.Offset.Should().Be(PagingLimits.MaxOffset);
+        bounded.Limit.Should().Be(PagingLimits.DefaultPageSize);
     }
 
     [Fact]

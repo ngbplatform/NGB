@@ -35,3 +35,15 @@ public interface IDocumentReader
         IReadOnlyList<Guid> ids,
         CancellationToken ct = default);
 }
+
+public interface IDocumentCombinedPageReader : IDocumentReader
+{
+    Task<DocumentHeadQueryPage> GetPageWithTotalAsync(
+        DocumentHeadDescriptor head,
+        DocumentQuery query,
+        int offset,
+        int limit,
+        CancellationToken ct = default);
+}
+
+public sealed record DocumentHeadQueryPage(IReadOnlyList<DocumentHeadRow> Rows, long Total);

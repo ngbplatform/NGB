@@ -120,11 +120,19 @@ public sealed class ReceivableApplyOpenItemsOperationalRegisterPostingHandler(
             new DimensionValue(itemDimId, apply.CreditDocumentId)
         ]);
 
-        var chargeDimSetId = await dimensionSets.GetOrCreateIdAsync(chargeBag, ct);
-        var paymentDimSetId = await dimensionSets.GetOrCreateIdAsync(paymentBag, ct);
+        var dimensionSetIds = await dimensionSets.GetOrCreateIdsAsync([chargeBag, paymentBag], ct);
+        if (dimensionSetIds.Count != 2)
+            throw new NgbInvariantViolationException("Dimension set service returned an unexpected number of ids for Receivable Apply.");
 
-        var chargeOutstanding = await netReader.GetNetByDimensionSetAsync(reg.RegisterId, chargeDimSetId, resourceColumnCode: "amount", ct);
-        var paymentNet = await netReader.GetNetByDimensionSetAsync(reg.RegisterId, paymentDimSetId, resourceColumnCode: "amount", ct);
+        var chargeDimSetId = dimensionSetIds[0];
+        var paymentDimSetId = dimensionSetIds[1];
+        var netAmounts = await netReader.GetNetByDimensionSetsAsync(
+            reg.RegisterId,
+            dimensionSetIds,
+            resourceColumnCode: "amount",
+            ct);
+        netAmounts.TryGetValue(chargeDimSetId, out var chargeOutstanding);
+        netAmounts.TryGetValue(paymentDimSetId, out var paymentNet);
 
         // During repost, the current posted apply is still present in register state while we are
         // building the fresh movement set. Validate against the effective pre-apply state by

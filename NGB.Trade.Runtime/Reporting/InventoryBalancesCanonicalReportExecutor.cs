@@ -1,18 +1,16 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
-using NGB.Persistence.OperationalRegisters;
-using NGB.Runtime.OperationalRegisters;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Trade.Runtime.Policy;
+using NGB.Trade.Reporting;
 
 namespace NGB.Trade.Runtime.Reporting;
 
 public sealed class InventoryBalancesCanonicalReportExecutor(
     ITradeAccountingPolicyReader policyReader,
-    IOperationalRegisterReadService readService,
-    IOperationalRegisterMovementsQueryReader movementsQueryReader,
+    ITradeInventoryBalanceReader balanceReader,
     TimeProvider timeProvider)
     : IReportSpecializedPlanExecutor
 {
@@ -26,27 +24,22 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
         var todayUtc = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
         var asOf = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc") ?? todayUtc;
         var currentMonth = CanonicalReportExecutionHelper.NormalizeToPeriodMonth(asOf);
-        var dimensions = TradeReportingHelpers.BuildItemWarehouseFilters(definition, request);
+        var itemIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "item_id");
+        var warehouseIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "warehouse_id");
         var policy = await policyReader.GetRequiredAsync(ct);
-        var balances = await TradeReportingHelpers.ReadInventoryBalancesAsync(
-            readService,
-            movementsQueryReader,
+        var offset = Math.Max(0, request.Offset);
+        var limit = request.DisablePaging ? int.MaxValue : (request.Limit <= 0 ? 100 : request.Limit);
+        var page = await balanceReader.GetPageAsync(
             policy.InventoryMovementsRegisterId,
             asOf,
-            dimensions,
+            itemIds,
+            warehouseIds,
+            TradeInventoryBalanceSort.ItemWarehouse,
+            offset,
+            limit,
             ct);
 
-        var ordered = balances
-            .Where(static x => x.Quantity != 0m)
-            .OrderBy(static x => TradeReportingHelpers.GetDisplay(x.Bag, x.Displays, TradeCodes.Item), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(static x => TradeReportingHelpers.GetDisplay(x.Bag, x.Displays, TradeCodes.Warehouse), StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var offset = Math.Max(0, request.Offset);
-        var limit = request.DisablePaging ? ordered.Length : (request.Limit <= 0 ? 100 : request.Limit);
-        var pageRows = ordered.Skip(offset).Take(limit).ToArray();
-
-        var rows = pageRows
+        var rows = page.Rows
             .Select(x => ToRow(x, currentMonth, asOf))
             .ToArray();
 
@@ -70,8 +63,8 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: ordered.Length,
-            hasMore: offset + pageRows.Length < ordered.Length,
+            total: page.Total,
+            hasMore: offset + page.Rows.Count < page.Total,
             nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -80,17 +73,9 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
             });
     }
 
-    private static ReportSheetRowDto ToRow(InventoryBalanceSnapshot row, DateOnly monthStart, DateOnly asOf)
+    private static ReportSheetRowDto ToRow(TradeInventoryBalanceRow row, DateOnly monthStart, DateOnly asOf)
     {
-        var itemDisplay = TradeReportingHelpers.GetDisplay(row.Bag, row.Displays, TradeCodes.Item);
-        var warehouseDisplay = TradeReportingHelpers.GetDisplay(row.Bag, row.Displays, TradeCodes.Warehouse);
-        var itemId = TradeReportingHelpers.TryGetValueId(row.Bag, TradeCodes.Item);
-        var warehouseId = TradeReportingHelpers.TryGetValueId(row.Bag, TradeCodes.Warehouse);
-
-        ReportCellActionDto? quantityAction = null;
-        if (itemId is { } actualItemId && warehouseId is { } actualWarehouseId)
-        {
-            quantityAction = ReportCellActions.BuildReportAction(
+        var quantityAction = ReportCellActions.BuildReportAction(
                 TradeCodes.InventoryMovementsReport,
                 parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -99,29 +84,24 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
                 },
                 filters: new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["item_id"] = new(JsonSerializer.SerializeToElement(actualItemId)),
-                    ["warehouse_id"] = new(JsonSerializer.SerializeToElement(actualWarehouseId))
+                    ["item_id"] = new(JsonSerializer.SerializeToElement(row.ItemId)),
+                    ["warehouse_id"] = new(JsonSerializer.SerializeToElement(row.WarehouseId))
                 });
-        }
 
         return new ReportSheetRowDto(
             ReportRowKind.Detail,
             Cells:
             [
                 new ReportCellDto(
-                    CanonicalReportExecutionHelper.JsonValue(itemDisplay),
-                    itemDisplay,
+                    CanonicalReportExecutionHelper.JsonValue(row.ItemDisplay),
+                    row.ItemDisplay,
                     "string",
-                    Action: itemId is { } catalogItemId
-                        ? ReportCellActions.BuildCatalogAction(TradeCodes.Item, catalogItemId)
-                        : null),
+                    Action: ReportCellActions.BuildCatalogAction(TradeCodes.Item, row.ItemId)),
                 new ReportCellDto(
-                    CanonicalReportExecutionHelper.JsonValue(warehouseDisplay),
-                    warehouseDisplay,
+                    CanonicalReportExecutionHelper.JsonValue(row.WarehouseDisplay),
+                    row.WarehouseDisplay,
                     "string",
-                    Action: warehouseId is { } catalogWarehouseId
-                        ? ReportCellActions.BuildCatalogAction(TradeCodes.Warehouse, catalogWarehouseId)
-                        : null),
+                    Action: ReportCellActions.BuildCatalogAction(TradeCodes.Warehouse, row.WarehouseId)),
                 new ReportCellDto(
                     CanonicalReportExecutionHelper.JsonValue(row.Quantity),
                     row.Quantity.ToString("0.####"),

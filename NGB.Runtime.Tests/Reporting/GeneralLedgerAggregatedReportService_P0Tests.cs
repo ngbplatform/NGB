@@ -432,6 +432,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
     {
         public Task<IReadOnlyList<Account>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Account>>([]);
         public Task<IReadOnlyList<ChartOfAccountsAdminItem>> GetForAdminAsync(bool includeDeleted = false, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ChartOfAccountsAdminItem>>([]);
+        public Task<ChartOfAccountsAdminPage> GetAdminPageAsync(ChartOfAccountsAdminPageQuery query, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<ChartOfAccountsAdminItem?> GetAdminByIdAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult<ChartOfAccountsAdminItem?>(null);
         public Task<IReadOnlyList<ChartOfAccountsAdminItem>> GetAdminByIdsAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ChartOfAccountsAdminItem>>([]);
         public Task<bool> HasMovementsAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(false);

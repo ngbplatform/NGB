@@ -369,8 +369,11 @@ public sealed class FiscalYearClosingUnitTests
         var engineTurnoverWriter = new Mock<IAccountingTurnoverWriter>(MockBehavior.Loose);
         var engineDimensionSetService = new Mock<NGB.Runtime.Dimensions.IDimensionSetService>(MockBehavior.Loose);
         engineDimensionSetService
-            .Setup(x => x.GetOrCreateIdAsync(It.IsAny<NGB.Core.Dimensions.DimensionBag>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.Empty);
+            .Setup(x => x.GetOrCreateIdsAsync(
+                It.IsAny<IReadOnlyList<NGB.Core.Dimensions.DimensionBag>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<NGB.Core.Dimensions.DimensionBag> bags, CancellationToken _) =>
+                bags.Select(static _ => Guid.Empty).ToArray());
         var engineOpBal = new Mock<IAccountingOperationalBalanceReader>(MockBehavior.Loose);
         var engineClosed = new Mock<IClosedPeriodRepository>(MockBehavior.Loose);
         var engineValidator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Loose);

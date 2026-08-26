@@ -11,6 +11,7 @@ using NGB.Persistence.Catalogs;
 using NGB.Persistence.Catalogs.Universal;
 using NGB.Persistence.Locks;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Catalogs;
 using NGB.PropertyManagement.Contracts.Catalogs;
 using NGB.PropertyManagement.Runtime.Catalogs;
 using NGB.PropertyManagement.Runtime.Exceptions;
@@ -64,19 +65,12 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
     }
 
     [Fact]
-    public async Task Dry_run_loads_all_pages_filters_bad_rows_bounds_samples_and_deduplicates_generated_numbers()
+    public async Task Dry_run_probes_only_requested_numbers_bounds_samples_and_deduplicates_generated_numbers()
     {
-        var rows = Enumerable.Range(0, 2000)
-            .Select(index => index switch
-            {
-                0 => Row(new Dictionary<string, object?>()),
-                1 => Row(new Dictionary<string, object?> { ["unit_no"] = null }),
-                2 => Row(new Dictionary<string, object?> { ["unit_no"] = " " }),
-                3 => Row(new Dictionary<string, object?> { ["unit_no"] = " 001 " }),
-                _ => Row(new Dictionary<string, object?> { ["unit_no"] = $"existing-{index}" })
-            })
-            .ToArray();
-        var harness = new Harness { ExistingRows = rows };
+        var harness = new Harness
+        {
+            ExistingUnitNumbers = new HashSet<string>(["001"], StringComparer.Ordinal)
+        };
 
         var response = await harness.Service.DryRunAsync(Request(from: 1, to: 120), default);
 
@@ -87,7 +81,8 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
         response.WouldCreateCount.Should().Be(119);
         response.PreviewUnitNosSample.Should().HaveCount(50);
         response.CreatedUnitNosSample.Should().BeEmpty();
-        harness.ReaderCalls.Should().Equal(0, 2000);
+        harness.UnitNumberProbes.Should().ContainSingle()
+            .Which.Should().Equal(Enumerable.Range(1, 120).Select(number => $"{number:000}"));
         harness.CreatedCatalogs.Should().BeEmpty();
 
         var duplicateFormat = await new Harness().Service.DryRunAsync(
@@ -120,7 +115,7 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
 
         var allDuplicates = new Harness
         {
-            ExistingRows = [Row(new Dictionary<string, object?> { ["unit_no"] = "001" })]
+            ExistingUnitNumbers = new HashSet<string>(["001"], StringComparer.Ordinal)
         };
         var duplicateResponse = await allDuplicates.Service.BulkCreateUnitsAsync(Request(), default);
         duplicateResponse.CreatedCount.Should().Be(0);
@@ -151,15 +146,15 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
         private readonly Mock<IAdvisoryLockManager> _locks = new(MockBehavior.Strict);
         private readonly Mock<ICatalogTypeRegistry> _types = new(MockBehavior.Strict);
         private readonly Mock<ICatalogRepository> _catalogs = new(MockBehavior.Strict);
-        private readonly Mock<ICatalogReader> _reader = new(MockBehavior.Strict);
+        private readonly Mock<IPropertyUnitNumberReader> _unitNumbers = new(MockBehavior.Strict);
         private readonly Mock<ICatalogWriter> _writer = new(MockBehavior.Strict);
         private readonly Mock<ICatalogValidatorResolver> _validators = new(MockBehavior.Strict);
         private readonly Mock<IAuditLogService> _audit = new(MockBehavior.Strict);
 
         public CatalogTypeMetadata Metadata { get; init; } = PropertyBulkCreateUnitsServiceFullCoverageTests.Metadata();
-        public IReadOnlyList<CatalogHeadRow> ExistingRows { get; init; } = [];
+        public IReadOnlySet<string> ExistingUnitNumbers { get; init; } = new HashSet<string>(StringComparer.Ordinal);
         public bool EnableAudit { get; init; }
-        public List<int> ReaderCalls { get; } = [];
+        public List<IReadOnlyCollection<string>> UnitNumberProbes { get; } = [];
         public List<CatalogRecord> CreatedCatalogs { get; } = [];
         public List<IReadOnlyList<CatalogHeadWriteRow>> WrittenHeads { get; } = [];
         public List<IReadOnlyList<AuditLogWriteRequest>> AuditBatches { get; } = [];
@@ -175,7 +170,7 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
                     _locks.Object,
                     _types.Object,
                     _catalogs.Object,
-                    _reader.Object,
+                    _unitNumbers.Object,
                     _writer.Object,
                     _validators.Object,
                     TimeProvider.System,
@@ -205,16 +200,13 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
                 .Returns(Task.CompletedTask);
             _validators.Setup(x => x.ResolveUpsertValidators(PropertyManagementCodes.Property))
                 .Returns([validator.Object]);
-            _reader.Setup(x => x.GetPageAsync(
-                    It.IsAny<CatalogHeadDescriptor>(),
-                    It.IsAny<CatalogQuery>(),
-                    It.IsAny<int>(),
-                    2000,
+            _unitNumbers.Setup(x => x.GetExistingAsync(
+                    It.IsAny<Guid>(),
+                    It.IsAny<IReadOnlyCollection<string>>(),
                     It.IsAny<CancellationToken>()))
-                .Callback<CatalogHeadDescriptor, CatalogQuery, int, int, CancellationToken>(
-                    (_, _, offset, _, _) => ReaderCalls.Add(offset))
-                .ReturnsAsync((CatalogHeadDescriptor _, CatalogQuery _, int offset, int _, CancellationToken _) =>
-                    offset == 0 ? ExistingRows : []);
+                .Callback<Guid, IReadOnlyCollection<string>, CancellationToken>(
+                    (_, values, _) => UnitNumberProbes.Add(values))
+                .ReturnsAsync(ExistingUnitNumbers);
             _catalogs.Setup(x => x.CreateManyAsync(
                     It.IsAny<IReadOnlyList<CatalogRecord>>(),
                     It.IsAny<CancellationToken>()))
@@ -274,9 +266,6 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
             ],
             new CatalogPresentationMetadata("cat_pm_property", displayColumn),
             new CatalogMetadataVersion(1, "tests"));
-
-    private static CatalogHeadRow Row(IReadOnlyDictionary<string, object?> fields)
-        => new(Guid.CreateVersion7(), false, null, fields);
 
     private static Task AssertThrows<T>(Func<Task> action) where T : Exception
         => action.Should().ThrowAsync<T>();

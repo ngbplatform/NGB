@@ -27,6 +27,32 @@ public sealed class ApplyExecutionHelpersFullCoverageTests
     }
 
     [Fact]
+    public async Task Lock_helpers_use_batch_capability_once_with_canonical_document_order()
+    {
+        var first = Guid.Parse("00000000-0000-0000-0000-000000000010");
+        var second = Guid.Parse("00000000-0000-0000-0000-000000000020");
+        var locks = new Mock<IAdvisoryLockBatchManager>(MockBehavior.Strict);
+        locks.Setup(x => x.LockDocumentsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first, second })),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await ReceivablesApplyExecutionHelpers.LockDocumentsDeterministicallyAsync(
+            locks.Object,
+            [second, Guid.Empty, first, second],
+            default);
+        await PayablesApplyExecutionHelpers.LockDocumentsDeterministicallyAsync(
+            locks.Object,
+            [second, Guid.Empty, first, second],
+            default);
+
+        locks.Verify(x => x.LockDocumentsAsync(
+            It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+        locks.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task Receivables_helpers_cover_payload_shapes_locks_and_full_draft_creation_pipeline()
     {
         var credit = Guid.Parse("00000000-0000-0000-0000-000000000020");

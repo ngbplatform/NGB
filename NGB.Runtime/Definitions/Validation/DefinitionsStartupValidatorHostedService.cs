@@ -9,10 +9,7 @@ internal sealed class DefinitionsStartupValidatorHostedService(IDefinitionsValid
     : IHostedService
 {
     public Task StartAsync(CancellationToken cancellationToken)
-    {
-        validator.ValidateOrThrow();
-        return Task.CompletedTask;
-    }
+        => validator.ValidateOrThrowAsync(cancellationToken);
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

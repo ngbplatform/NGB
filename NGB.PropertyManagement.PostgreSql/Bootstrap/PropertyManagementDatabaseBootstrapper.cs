@@ -42,7 +42,10 @@ public static class PropertyManagementDatabaseBootstrapper
         // Module migrations may create new doc_* tables; ensure all typed document tables are protected
         // by the reusable "posted document immutability" trigger (idempotent).
         await conn.ExecuteAsync(new CommandDefinition(
-            "SELECT ngb_install_typed_document_immutability_guards();",
+            """
+            SELECT ngb_install_typed_document_immutability_guards();
+            SELECT ngb_install_search_trigram_indexes(ARRAY['cat_pm_', 'doc_pm_']);
+            """,
             cancellationToken: ct));
     }
 }

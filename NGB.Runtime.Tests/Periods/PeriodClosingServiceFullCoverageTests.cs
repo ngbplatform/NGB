@@ -643,8 +643,11 @@ public sealed class PeriodClosingServiceFullCoverageTests
             contextFactory.Setup(x => x.CreateAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => new AccountingPostingContext(Chart));
             var dimensions = new Mock<IDimensionSetService>();
-            dimensions.Setup(x => x.GetOrCreateIdAsync(It.IsAny<NGB.Core.Dimensions.DimensionBag>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Guid.NewGuid());
+            dimensions.Setup(x => x.GetOrCreateIdsAsync(
+                    It.IsAny<IReadOnlyList<NGB.Core.Dimensions.DimensionBag>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyList<NGB.Core.Dimensions.DimensionBag> bags, CancellationToken _) =>
+                    bags.Select(static _ => Guid.NewGuid()).ToArray());
             var operational = new Mock<IAccountingOperationalBalanceReader>();
             operational.Setup(x => x.GetForKeysAsync(It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<AccountingBalanceKey>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);

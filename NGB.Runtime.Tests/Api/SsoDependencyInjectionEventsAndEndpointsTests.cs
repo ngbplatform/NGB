@@ -107,6 +107,8 @@ public sealed class SsoDependencyInjectionEventsAndEndpointsTests
         var cookieOptions = publicProvider.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
             .Get(CookieAuthenticationDefaults.AuthenticationScheme);
         cookieOptions.SessionStore.Should().BeOfType<MemoryCacheTicketStore>();
+        cookieOptions.SessionStore.Should().BeSameAs(
+            publicProvider.GetRequiredService<MemoryCacheTicketStore>());
         cookieOptions.Cookie.Name.Should().Be(".ngb.admin-client.auth");
         cookieOptions.Cookie.MaxAge.Should().Be(TimeSpan.FromMinutes(60));
         cookieOptions.SlidingExpiration.Should().BeTrue();

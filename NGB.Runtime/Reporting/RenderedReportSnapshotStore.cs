@@ -20,28 +20,52 @@ public sealed record RenderedReportSnapshot(
     int TotalContentRows,
     IReadOnlyDictionary<string, string>? Diagnostics = null);
 
-public sealed class MemoryCacheRenderedReportSnapshotStore(IMemoryCache cache) : IRenderedReportSnapshotStore
+public sealed class MemoryCacheRenderedReportSnapshotStore : IRenderedReportSnapshotStore, IDisposable
 {
+    internal const long MaxCachedRenderedRows = 50_000;
+
     private static readonly TimeSpan SlidingTtl = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan AbsoluteTtl = TimeSpan.FromMinutes(10);
+
+    private readonly IMemoryCache _cache;
+    private readonly IDisposable? _ownedCache;
+
+    public MemoryCacheRenderedReportSnapshotStore()
+    {
+        var memoryCache = new MemoryCache(new MemoryCacheOptions
+        {
+            SizeLimit = MaxCachedRenderedRows
+        });
+        _cache = memoryCache;
+        _ownedCache = memoryCache;
+    }
+
+    public MemoryCacheRenderedReportSnapshotStore(IMemoryCache cache)
+        => _cache = cache ?? throw new ArgumentNullException(nameof(cache));
 
     public Task<RenderedReportSnapshot?> GetAsync(Guid snapshotId, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        cache.TryGetValue(Key(snapshotId), out RenderedReportSnapshot? snapshot);
+        _cache.TryGetValue(Key(snapshotId), out RenderedReportSnapshot? snapshot);
         return Task.FromResult(snapshot);
     }
 
     public Task<bool> SetAsync(RenderedReportSnapshot snapshot, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        cache.Set(
+
+        var size = Math.Max(1, snapshot.ContentRows.Count);
+        if (size > MaxCachedRenderedRows)
+            return Task.FromResult(false);
+
+        _cache.Set(
             Key(snapshot.SnapshotId),
             snapshot,
             new MemoryCacheEntryOptions
             {
                 SlidingExpiration = SlidingTtl,
-                AbsoluteExpirationRelativeToNow = AbsoluteTtl
+                AbsoluteExpirationRelativeToNow = AbsoluteTtl,
+                Size = size
             });
 
         return Task.FromResult(true);
@@ -50,11 +74,13 @@ public sealed class MemoryCacheRenderedReportSnapshotStore(IMemoryCache cache) :
     public Task RemoveAsync(Guid snapshotId, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        cache.Remove(Key(snapshotId));
+        _cache.Remove(Key(snapshotId));
         return Task.CompletedTask;
     }
 
     private static string Key(Guid snapshotId) => $"report:snapshot:{snapshotId:D}";
+
+    public void Dispose() => _ownedCache?.Dispose();
 }
 
 public sealed class NullRenderedReportSnapshotStore : IRenderedReportSnapshotStore
@@ -68,9 +94,7 @@ public sealed class NullRenderedReportSnapshotStore : IRenderedReportSnapshotSto
     public Task<RenderedReportSnapshot?> GetAsync(Guid snapshotId, CancellationToken ct)
         => Task.FromResult<RenderedReportSnapshot?>(null);
 
-    public Task<bool> SetAsync(RenderedReportSnapshot snapshot, CancellationToken ct)
-        => Task.FromResult(false);
+    public Task<bool> SetAsync(RenderedReportSnapshot snapshot, CancellationToken ct) => Task.FromResult(false);
 
-    public Task RemoveAsync(Guid snapshotId, CancellationToken ct)
-        => Task.CompletedTask;
+    public Task RemoveAsync(Guid snapshotId, CancellationToken ct) => Task.CompletedTask;
 }

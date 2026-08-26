@@ -10,10 +10,10 @@ using NGB.Core.Documents;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.Documents;
 using NGB.Persistence.OperationalRegisters;
-using NGB.Runtime.OperationalRegisters;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 using NGB.Trade.Documents;
+using NGB.Trade.References;
 using NGB.Trade.Runtime.Documents.Validation;
 using NGB.Trade.Runtime.Policy;
 using static NGB.Trade.Runtime.Tests.Documents.Validation.TradePostValidatorTestSupport;
@@ -201,7 +201,7 @@ public sealed class PurchaseReceiptPostValidator_P0Tests
     }
 
     private static PurchaseReceiptPostValidator CreateSut(ITradeDocumentReaders readers, ICatalogService catalogs)
-        => new(readers, catalogs);
+        => new(readers, catalogs, CreateCatalogValidationReader(catalogs));
 
     private static Mock<ITradeDocumentReaders> CreateReaders(
         TradePurchaseReceiptHead head,
@@ -456,7 +456,7 @@ public sealed class SalesInvoicePostValidator_P0Tests
         ITradeDocumentReaders readers,
         ICatalogService catalogs,
         TradeInventoryAvailabilityService inventoryAvailability)
-        => new(readers, catalogs, inventoryAvailability);
+        => new(readers, catalogs, CreateCatalogValidationReader(catalogs), inventoryAvailability);
 
     private static Mock<ITradeDocumentReaders> CreateReaders(
         TradeSalesInvoiceHead head,
@@ -619,7 +619,7 @@ public sealed class InventoryTransferPostValidator_P0Tests
         ITradeDocumentReaders readers,
         ICatalogService catalogs,
         TradeInventoryAvailabilityService inventoryAvailability)
-        => new(readers, catalogs, inventoryAvailability);
+        => new(readers, catalogs, CreateCatalogValidationReader(catalogs), inventoryAvailability);
 
     private static Mock<ITradeDocumentReaders> CreateReaders(
         TradeInventoryTransferHead head,
@@ -830,7 +830,7 @@ public sealed class InventoryAdjustmentPostValidator_P0Tests
         ITradeDocumentReaders readers,
         ICatalogService catalogs,
         TradeInventoryAvailabilityService inventoryAvailability)
-        => new(readers, catalogs, inventoryAvailability);
+        => new(readers, catalogs, CreateCatalogValidationReader(catalogs), inventoryAvailability);
 
     private static Mock<ITradeDocumentReaders> CreateReaders(
         TradeInventoryAdjustmentHead head,
@@ -1097,7 +1097,7 @@ public sealed class CustomerReturnPostValidator_P0Tests
         ITradeDocumentReaders readers,
         ICatalogService catalogs,
         IDocumentRepository documents)
-        => new(readers, catalogs, documents);
+        => new(readers, catalogs, CreateCatalogValidationReader(catalogs), documents);
 
     private static Mock<ITradeDocumentReaders> CreateReaders(
         TradeCustomerReturnHead head,
@@ -1339,7 +1339,7 @@ public sealed class VendorReturnPostValidator_P0Tests
         ICatalogService catalogs,
         IDocumentRepository documents,
         TradeInventoryAvailabilityService inventoryAvailability)
-        => new(readers, catalogs, documents, inventoryAvailability);
+        => new(readers, catalogs, CreateCatalogValidationReader(catalogs), documents, inventoryAvailability);
 
     private static Mock<ITradeDocumentReaders> CreateReaders(
         TradeVendorReturnHead head,
@@ -1674,6 +1674,46 @@ internal static class TradePostValidatorTestSupport
         return catalogs;
     }
 
+    internal static ITradeCatalogValidationReader CreateCatalogValidationReader(ICatalogService catalogs)
+    {
+        var reader = new Mock<ITradeCatalogValidationReader>(MockBehavior.Strict);
+        reader
+            .Setup(x => x.GetInventoryItemsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(async (IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
+            {
+                var result = new Dictionary<Guid, TradeInventoryItemValidationSnapshot>();
+                foreach (var id in ids.Distinct())
+                {
+                    var item = await catalogs.GetByIdAsync(TradeCodes.Item, id, ct);
+                    result[id] = new TradeInventoryItemValidationSnapshot(
+                        id,
+                        item.IsDeleted || item.IsMarkedForDeletion,
+                        ReadBoolean(item, "is_active"),
+                        ReadBoolean(item, "is_inventory_item"));
+                }
+
+                return result;
+            });
+        return reader.Object;
+    }
+
+    private static bool? ReadBoolean(CatalogItemDto item, string field)
+    {
+        if (item.Payload.Fields is null || !item.Payload.Fields.TryGetValue(field, out var value))
+            return null;
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String when bool.TryParse(value.GetString(), out var parsed) => parsed,
+            JsonValueKind.Number when value.TryGetInt32(out var parsed) => parsed != 0,
+            _ => null
+        };
+    }
+
     internal static CatalogEntry PartyEntry(Guid id, IReadOnlyDictionary<string, object?>? fields = null)
         => new(TradeCodes.Party, id, CreateCatalogItem(id, fields));
 
@@ -1710,8 +1750,7 @@ internal static class TradePostValidatorTestSupport
     internal static TradeInventoryAvailabilityService CreateStrictInventoryAvailabilityService()
         => new(
             Mock.Of<ITradeAccountingPolicyReader>(MockBehavior.Strict),
-            Mock.Of<IOperationalRegisterReadService>(MockBehavior.Strict),
-            Mock.Of<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict),
+            Mock.Of<IOperationalRegisterResourceNetReader>(MockBehavior.Strict),
             Mock.Of<ICatalogService>(MockBehavior.Strict));
 
     internal static TradeInventoryAvailabilityService CreateAvailableInventoryService(Guid warehouseId, Guid itemId, decimal availableQuantity)
@@ -1733,37 +1772,19 @@ internal static class TradePostValidatorTestSupport
                 registerId,
                 Guid.NewGuid()));
 
-        var readService = new Mock<IOperationalRegisterReadService>(MockBehavior.Strict);
-        readService
-            .Setup(x => x.GetBalancesPageAsync(It.IsAny<OperationalRegisterMonthlyProjectionPageRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((OperationalRegisterMonthlyProjectionPageRequest request, CancellationToken _) =>
-                new OperationalRegisterMonthlyProjectionPage(
-                    request.RegisterId,
-                    request.FromInclusive,
-                    request.ToInclusive,
-                    [CreateBalanceRow(warehouseId, itemId, availableQuantity)],
-                    false,
-                    null));
-
-        var movementsReader = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
-        movementsReader
-            .Setup(x => x.GetByMonthsAsync(
+        var netReader = new Mock<IOperationalRegisterResourceNetReader>(MockBehavior.Strict);
+        netReader
+            .Setup(x => x.GetNetsByDimensionsAsync(
                 registerId,
+                It.IsAny<IReadOnlyList<IReadOnlyList<DimensionValue>>>(),
+                "qty_delta",
                 It.IsAny<DateOnly>(),
-                It.IsAny<DateOnly>(),
-                It.IsAny<IReadOnlyList<DimensionValue>?>(),
-                null,
-                null,
-                null,
-                null,
-                1000,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<OperationalRegisterMovementQueryReadRow>());
+            .ReturnsAsync([availableQuantity]);
 
         return new TradeInventoryAvailabilityService(
             policyReader.Object,
-            readService.Object,
-            movementsReader.Object,
+            netReader.Object,
             Mock.Of<ICatalogService>(MockBehavior.Strict));
     }
 

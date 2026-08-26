@@ -53,7 +53,7 @@ public sealed class RuntimeServiceCollectionExtensionsFullCoverageTests
     }
 
     [Fact]
-    public void SnapshotStore_WhenMemoryCacheWasRemoved_UsesNullObject()
+    public void SnapshotStore_WhenSharedMemoryCacheWasRemoved_StillUsesDedicatedBoundedStore()
     {
         var services = new ServiceCollection();
         services.AddNgbRuntime();
@@ -61,7 +61,7 @@ public sealed class RuntimeServiceCollectionExtensionsFullCoverageTests
         using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<IRenderedReportSnapshotStore>()
-            .Should().BeSameAs(NullRenderedReportSnapshotStore.Instance);
+            .Should().BeOfType<MemoryCacheRenderedReportSnapshotStore>();
     }
 
     private sealed class MetadataContributor : IDefinitionsContributor

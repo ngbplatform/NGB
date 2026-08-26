@@ -7,6 +7,7 @@ using NGB.Persistence.Locks;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.UnitOfWork;
+using NGB.Runtime.Locks;
 using NGB.Tools.Extensions;
 
 namespace NGB.Runtime.OperationalRegisters;
@@ -41,16 +42,18 @@ public sealed class OperationalRegisterFinalizationService(
                 await locks.LockOperationalRegisterAsync(registerId, innerCt);
 
                 var periods = await BuildInvalidatePeriodsAsync(registerId, month, innerCt);
-                foreach (var p in periods)
-                {
-                    await locks.LockPeriodAsync(p, AdvisoryLockPeriodScope.OperationalRegister, innerCt);
-                }
+                await locks.LockPeriodsDeterministicallyAsync(
+                    periods,
+                    AdvisoryLockPeriodScope.OperationalRegister,
+                    innerCt);
 
                 var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-                foreach (var p in periods)
-                {
-                    await finalizations.MarkDirtyAsync(registerId, p, dirtySinceUtc: nowUtc, nowUtc: nowUtc, innerCt);
-                }
+                await finalizations.MarkDirtyPeriodsAsync(
+                    registerId,
+                    periods,
+                    dirtySinceUtc: nowUtc,
+                    nowUtc: nowUtc,
+                    innerCt);
 
                 logger.LogInformation(
                     "Marked operational register periods Dirty. registerId={RegisterId}, period={Period}, affectedPeriods={AffectedPeriods}",

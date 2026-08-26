@@ -42,6 +42,17 @@ public interface IOperationalRegisterFinalizationRepository
         CancellationToken ct = default);
 
     /// <summary>
+    /// Marks multiple register-periods dirty in one persistence operation.
+    /// Requires an active transaction.
+    /// </summary>
+    Task MarkDirtyPeriodsAsync(
+        Guid registerId,
+        IReadOnlyCollection<DateOnly> periods,
+        DateTime dirtySinceUtc,
+        DateTime nowUtc,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Marks a register-period as blocked because no projector is registered for this register.
     /// Requires an active transaction.
     /// </summary>

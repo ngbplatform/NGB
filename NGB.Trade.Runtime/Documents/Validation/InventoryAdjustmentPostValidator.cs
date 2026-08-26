@@ -3,12 +3,14 @@ using NGB.Core.Documents;
 using NGB.Definitions.Documents.Validation;
 using NGB.Tools.Exceptions;
 using NGB.Trade.Documents;
+using NGB.Trade.References;
 
 namespace NGB.Trade.Runtime.Documents.Validation;
 
 public sealed class InventoryAdjustmentPostValidator(
     ITradeDocumentReaders readers,
     ICatalogService catalogs,
+    ITradeCatalogValidationReader catalogValidation,
     TradeInventoryAvailabilityService inventoryAvailability)
     : IDocumentPostValidator
 {
@@ -27,12 +29,15 @@ public sealed class InventoryAdjustmentPostValidator(
         await TradeCatalogValidationGuards.EnsureWarehouseAsync(head.WarehouseId, "warehouse_id", catalogs, ct);
         await TradeCatalogValidationGuards.EnsureInventoryAdjustmentReasonAsync(head.ReasonId, "reason_id", catalogs, ct);
 
+        var inventoryItems = await TradeCatalogValidationGuards.LoadInventoryItemsAsync(
+            lines.Select(static line => line.ItemId).ToArray(), catalogValidation, ct);
+
         for (var i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
             var prefix = $"lines[{i}]";
 
-            await TradeCatalogValidationGuards.EnsureInventoryItemAsync(line.ItemId, $"{prefix}.item_id", catalogs, ct);
+            TradeCatalogValidationGuards.EnsureInventoryItem(line.ItemId, $"{prefix}.item_id", inventoryItems);
 
             if (line.QuantityDelta == 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.quantity_delta", "Quantity Delta must not be zero.");

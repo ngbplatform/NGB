@@ -395,14 +395,14 @@ public sealed class DocumentPostingServiceFullCoverageTests
         var posted = Document(documentId, DocumentStatus.Posted);
         var state = RefregState(registerId, documentId, ReferenceRegisterWriteOperation.Unpost);
         var metadata = new Mock<IReferenceRegisterRepository>();
-        metadata.Setup(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ReferenceRegisterAdminItem?)null);
+        metadata.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
         var missingSut = WorkflowSut(posted, refregState: state.Object, refregRepository: metadata.Object);
         Func<Task> missingMetadata = () => missingSut.UnpostAsync(documentId);
         await missingMetadata.Should().ThrowAsync<ReferenceRegisterNotFoundException>();
 
-        metadata.Setup(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic));
+        metadata.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic)]);
         var dimensionSetId = Guid.NewGuid();
         var reader = new Mock<IReferenceRegisterRecordsReader>();
         reader.SetupSequence(x => x.SliceLastAllAsync(
@@ -491,8 +491,8 @@ public sealed class DocumentPostingServiceFullCoverageTests
         {
             var state = RefregState(registerId, documentId, ReferenceRegisterWriteOperation.Repost);
             var metadata = new Mock<IReferenceRegisterRepository>();
-            metadata.Setup(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic));
+            metadata.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync([Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic)]);
             var removedId = Guid.NewGuid();
             var reader = new Mock<IReferenceRegisterRecordsReader>();
             reader.SetupSequence(x => x.SliceLastAllAsync(
@@ -618,8 +618,8 @@ public sealed class DocumentPostingServiceFullCoverageTests
         var documentId = Guid.NewGuid();
         var posted = Document(documentId, DocumentStatus.Posted);
         var metadata = new Mock<IReferenceRegisterRepository>();
-        metadata.Setup(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic));
+        metadata.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic)]);
         var store = new Mock<IReferenceRegisterRecordsStore>();
         var writer = store.As<IReferenceRegisterRecorderTombstoneWriter>();
         writer.Setup(x => x.AppendTombstonesForRecorderAsync(

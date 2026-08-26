@@ -2,22 +2,16 @@ using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using NGB.Contracts.Reporting;
-using NGB.Core.Dimensions;
 using NGB.Persistence.Documents;
-using NGB.ReferenceRegisters.Contracts;
-using NGB.Runtime.ReferenceRegisters;
-using NGB.Tools.Extensions;
+using NGB.Trade.Reporting;
 using NGB.Trade.Runtime.Reporting;
 
 namespace NGB.Trade.Runtime.Tests.Reporting;
 
 public sealed class CurrentItemPricesCanonicalReportExecutorFullCoverageTests
 {
-    private static readonly Guid ItemDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Item}");
-    private static readonly Guid PriceTypeDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.PriceType}");
-
     [Fact]
-    public async Task ExecuteAsync_CoversAllValueShapesFallbacksFilteringAndPaging()
+    public async Task ExecuteAsync_UsesPersistencePagingFilteringAndBatchedDocumentDisplays()
     {
         var itemA = Guid.CreateVersion7();
         var itemB = Guid.CreateVersion7();
@@ -25,29 +19,20 @@ public sealed class CurrentItemPricesCanonicalReportExecutorFullCoverageTests
         var priceB = Guid.CreateVersion7();
         var sourceA = Guid.CreateVersion7();
         var sourceB = Guid.CreateVersion7();
-        var snapshots = new[]
+        var prices = new[]
         {
-            Snapshot(itemA, priceA, new DateOnly(2026, 4, 1), sourceA, "USD", withDisplays: true),
-            Snapshot(itemB, priceB, new DateTime(2026, 4, 2), sourceB.ToString("D"), "EUR"),
-            Snapshot(itemA, null, new DateTimeOffset(2026, 4, 3, 12, 0, 0, TimeSpan.Zero), null, null,
-                recorderId: sourceB),
-            Snapshot(null, priceA, "2026-04-04", "invalid-guid", "GBP"),
-            Snapshot(null, null, "2026-04-05T12:30:00Z", Guid.Empty, "CAD"),
-            Snapshot(itemB, priceA, 42, null, "JPY"),
-            Snapshot(itemA, priceB, null, Guid.Empty.ToString("D"), "AUD", unitPrice: null)
+            new TradeCurrentItemPriceRow(itemA, "Item A", priceA, "Retail", "USD", 12.3456m, new DateOnly(2026, 4, 1), sourceA),
+            new TradeCurrentItemPriceRow(itemB, "Item B", priceB, "Wholesale", "EUR", 20m, new DateOnly(2026, 4, 2), sourceB),
+            new TradeCurrentItemPriceRow(itemA, "Item A", priceB, "Wholesale", "AUD", 0m, null, null)
         };
-        var read = new Mock<IReferenceRegisterReadService>(MockBehavior.Strict);
-        read.Setup(x => x.SliceLastAllEnrichedAsync(
-                It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<IReadOnlyList<DimensionValue>?>(),
-                null, null, 200, false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(snapshots);
+        var read = new CurrentItemPriceReaderStub(prices);
         var displays = new Mock<IDocumentDisplayReader>(MockBehavior.Strict);
         displays.Setup(x => x.ResolveRefsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
                 ids.Where(id => id == sourceA).ToDictionary(
                     id => id,
                     id => new DocumentDisplayRef(id, TradeCodes.ItemPriceUpdate, "IPU-1")));
-        var sut = new CurrentItemPricesCanonicalReportExecutor(read.Object, displays.Object);
+        var sut = new CurrentItemPricesCanonicalReportExecutor(read, displays.Object);
         sut.ReportCode.Should().Be(TradeCodes.CurrentItemPricesReport);
         var definition = new TradeCanonicalReportDefinitionSource().GetDefinitions()
             .Single(item => item.ReportCode == sut.ReportCode);
@@ -56,9 +41,9 @@ public sealed class CurrentItemPricesCanonicalReportExecutorFullCoverageTests
         var all = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(DisablePaging: true), default);
         await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(Limit: 0), default);
 
-        first.Total.Should().Be(snapshots.Length);
+        first.Total.Should().Be(prices.Length);
         first.HasMore.Should().BeTrue();
-        all.PrebuiltSheet!.Rows.Should().HaveCount(snapshots.Length);
+        all.PrebuiltSheet!.Rows.Should().HaveCount(prices.Length);
 
         var exact = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(
             Filters: new Dictionary<string, ReportFilterValueDto>
@@ -74,39 +59,39 @@ public sealed class CurrentItemPricesCanonicalReportExecutorFullCoverageTests
                 ["item_id"] = Filter(itemB),
                 ["price_type_id"] = Filter(priceA)
             }, DisablePaging: true), default);
-        noSource.Total.Should().Be(1);
+        noSource.Total.Should().Be(0);
+        displays.Verify(x => x.ResolveRefsAsync(
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.Distinct().Count() == ids.Count),
+            It.IsAny<CancellationToken>()), Times.AtLeastOnce);
     }
 
     private static ReportFilterValueDto Filter(Guid id) =>
         new(JsonSerializer.SerializeToElement(new[] { id }));
 
-    private static ReferenceRegisterRecordSnapshot Snapshot(
-        Guid? itemId,
-        Guid? priceTypeId,
-        object? effectiveDate,
-        object? sourceDocumentId,
-        object? currency,
-        bool withDisplays = false,
-        Guid? recorderId = null,
-        decimal? unitPrice = 12.3456m)
+    private sealed class CurrentItemPriceReaderStub(IReadOnlyList<TradeCurrentItemPriceRow> rows)
+        : ITradeCurrentItemPriceReader
     {
-        var dimensions = new List<DimensionValue>();
-        if (itemId.HasValue) dimensions.Add(new DimensionValue(ItemDimensionId, itemId.Value));
-        if (priceTypeId.HasValue) dimensions.Add(new DimensionValue(PriceTypeDimensionId, priceTypeId.Value));
-        var displays = new Dictionary<Guid, string>();
-        if (withDisplays && itemId.HasValue) displays[ItemDimensionId] = "Item A";
-        if (withDisplays && priceTypeId.HasValue) displays[PriceTypeDimensionId] = "Retail";
-        var values = new Dictionary<string, object?>
+        public Task<TradeCurrentItemPricePage> GetPageAsync(
+            DateTime asOfUtc,
+            IReadOnlyList<Guid>? itemIds,
+            IReadOnlyList<Guid>? priceTypeIds,
+            int offset,
+            int limit,
+            CancellationToken ct = default)
         {
-            ["unit_price"] = unitPrice,
-            ["effective_date"] = effectiveDate,
-            ["source_document_id"] = sourceDocumentId,
-            ["currency"] = currency
-        };
-        return new ReferenceRegisterRecordSnapshot(
-            new ReferenceRegisterRecordRead(
-                1, Guid.CreateVersion7(), null, null, recorderId, DateTime.UtcNow, false, values),
-            new DimensionBag(dimensions),
-            displays);
+            IEnumerable<TradeCurrentItemPriceRow> filtered = rows;
+            if (itemIds is { Count: > 0 })
+                filtered = filtered.Where(row => itemIds.Contains(row.ItemId));
+            if (priceTypeIds is { Count: > 0 })
+                filtered = filtered.Where(row => priceTypeIds.Contains(row.PriceTypeId));
+            var materialized = filtered
+                .OrderBy(static row => row.ItemDisplay)
+                .ThenBy(static row => row.PriceTypeDisplay)
+                .ThenBy(static row => row.Currency)
+                .ToArray();
+            return Task.FromResult(new TradeCurrentItemPricePage(
+                materialized.Skip(offset).Take(limit).ToArray(),
+                materialized.Length));
+        }
     }
 }

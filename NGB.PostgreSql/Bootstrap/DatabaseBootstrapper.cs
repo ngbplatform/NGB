@@ -141,6 +141,9 @@ public static class DatabaseBootstrapper
         // Documents (guards/triggers)
         new PostedDocumentImmutabilityGuardMigration(),
         new PostedDocumentHeaderImmutabilityGuardMigration(),
+
+        // Search support (requires all platform search target tables).
+        new PlatformSearchTrigramIndexesMigration(),
     ];
 
     /// <summary>
@@ -257,6 +260,7 @@ public static class DatabaseBootstrapper
         new GeneralJournalEntryIndexesMigration(),
         new PostedDocumentImmutabilityGuardMigration(),
         new PostedDocumentHeaderImmutabilityGuardMigration(),
+        new PlatformSearchTrigramIndexesMigration(),
     ];
 
     public static async Task InitializeAsync(string connectionString, CancellationToken ct = default)

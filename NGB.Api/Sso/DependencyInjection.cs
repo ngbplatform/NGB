@@ -140,6 +140,7 @@ public static class DependencyInjection
         adminConsoleAuthOptions.ValidateAndNormalize();
 
         services.AddSingleton(keycloakSettings);
+        services.AddSingleton<MemoryCacheTicketStore>();
 
         services
             .AddAuthentication(options =>
@@ -151,7 +152,6 @@ public static class DependencyInjection
             })
             .AddCookie(options =>
             {
-                options.SessionStore = new MemoryCacheTicketStore();
                 options.Cookie.Name = $"{cookiePrefix}.auth";
                 options.Cookie.MaxAge = TimeSpan.FromMinutes(60);
                 options.Cookie.SameSite = SameSiteMode.None;
@@ -257,6 +257,10 @@ public static class DependencyInjection
 
                 options.Events = events;
             });
+
+        services.AddOptions<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme)
+            .PostConfigure<MemoryCacheTicketStore>((options, ticketStore) =>
+                options.SessionStore = ticketStore);
 
         AddAuthorizationAuthAdminPolicy(services);
 

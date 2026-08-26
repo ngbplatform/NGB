@@ -40,6 +40,10 @@ public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradeSchemaPostgresFixt
             .Should().BeTrue();
         (await IndexExistsAsync(fixture.ConnectionString, "doc_trd_item_price_update__lines", "ix_doc_trd_item_price_update__lines__currency"))
             .Should().BeTrue();
+        (await DisplayTrigramIndexExistsAsync(fixture.ConnectionString, "cat_trd_item"))
+            .Should().BeTrue();
+        (await DisplayTrigramIndexExistsAsync(fixture.ConnectionString, "doc_trd_sales_invoice"))
+            .Should().BeTrue();
     }
 
     [Fact]
@@ -149,5 +153,25 @@ public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradeSchemaPostgresFixt
             conn);
 
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> DisplayTrigramIndexExistsAsync(string cs, string tableName)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(
+            """
+            SELECT COUNT(*)::int
+              FROM pg_indexes
+             WHERE schemaname = 'public'
+               AND tablename = @table
+               AND indexdef ILIKE '%USING gin (display%gin_trgm_ops)%';
+            """,
+            conn);
+
+        cmd.Parameters.AddWithValue("table", tableName);
+        var count = (int)(await cmd.ExecuteScalarAsync())!;
+        return count > 0;
     }
 }

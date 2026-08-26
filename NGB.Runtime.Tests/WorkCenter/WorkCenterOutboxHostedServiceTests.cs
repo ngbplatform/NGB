@@ -125,6 +125,45 @@ public sealed class WorkCenterOutboxHostedServiceTests
     }
 
     [Fact]
+    public async Task Hosted_service_bounds_a_continuously_busy_drain_before_running_maintenance()
+    {
+        var maintained = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var processor = new Mock<IOutboxProcessor>(MockBehavior.Strict);
+        processor.Setup(candidate => candidate.ProcessBatchAsync(100, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+        var maintenance = new Mock<IWorkCenterMaintenanceService>(MockBehavior.Strict);
+        maintenance.Setup(service => service.PruneAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => maintained.TrySetResult())
+            .ReturnsAsync(0);
+        var provider = new Mock<IServiceProvider>(MockBehavior.Strict);
+        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxProcessor)))
+            .Returns(processor.Object);
+        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IWorkCenterMaintenanceService)))
+            .Returns(maintenance.Object);
+        var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
+        scopes.Setup(factory => factory.CreateScope()).Returns(Scope(provider.Object).Object);
+        var service = new WorkCenterOutboxHostedService(
+            scopes.Object,
+            TimeProvider.System,
+            Options(maximumProjectionBatchesPerPoll: 3, pollInterval: TimeSpan.FromMinutes(1)),
+            NullLogger<WorkCenterOutboxHostedService>.Instance);
+
+        await service.StartAsync(CancellationToken.None);
+        try
+        {
+            await maintained.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            await service.StopAsync(CancellationToken.None);
+        }
+
+        processor.Verify(
+            candidate => candidate.ProcessBatchAsync(100, It.IsAny<CancellationToken>()),
+            Times.Exactly(3));
+    }
+
+    [Fact]
     public async Task Hosted_service_contains_transient_processor_failures_until_the_next_tick()
     {
         var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -235,25 +274,34 @@ public sealed class WorkCenterOutboxHostedServiceTests
         {
             PollInterval = TimeSpan.Zero,
             MaintenanceInterval = TimeSpan.FromDays(8),
-            ProjectionBatchSize = 101
+            ProjectionBatchSize = 101,
+            MaximumProjectionBatchesPerPoll = 1_001
         });
 
         invalid.Failed.Should().BeTrue();
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.PollInterval)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.MaintenanceInterval)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.ProjectionBatchSize)));
+        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterHostingOptions.MaximumProjectionBatchesPerPoll)));
 
         validator.Validate(null, new NgbWorkCenterHostingOptions { ProjectionBatchSize = 0 })
             .Failures.Should()
             .ContainSingle(message => message.Contains(nameof(NgbWorkCenterHostingOptions.ProjectionBatchSize)));
+
+        validator.Validate(null, new NgbWorkCenterHostingOptions { MaximumProjectionBatchesPerPoll = 0 })
+            .Failures.Should()
+            .ContainSingle(message => message.Contains(nameof(NgbWorkCenterHostingOptions.MaximumProjectionBatchesPerPoll)));
     }
 
-    private static IOptions<NgbWorkCenterHostingOptions> Options()
+    private static IOptions<NgbWorkCenterHostingOptions> Options(
+        int maximumProjectionBatchesPerPoll = 20,
+        TimeSpan? pollInterval = null)
         => Microsoft.Extensions.Options.Options.Create(new NgbWorkCenterHostingOptions
         {
-            PollInterval = TimeSpan.FromMilliseconds(10),
+            PollInterval = pollInterval ?? TimeSpan.FromMilliseconds(10),
             MaintenanceInterval = TimeSpan.FromHours(6),
-            ProjectionBatchSize = 100
+            ProjectionBatchSize = 100,
+            MaximumProjectionBatchesPerPoll = maximumProjectionBatchesPerPoll
         });
 
     private static Mock<IWorkCenterMaintenanceService> Maintenance()

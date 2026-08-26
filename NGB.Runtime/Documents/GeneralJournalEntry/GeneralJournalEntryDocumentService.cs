@@ -33,7 +33,7 @@ public sealed class GeneralJournalEntryDocumentService(
     IDocumentDraftService draftService,
     IDocumentWorkflowExecutor workflow,
     IGeneralJournalEntryRepository gje,
-    IDocumentRelationshipService relationships,
+    IDocumentRelationshipBatchService relationships,
     IDocumentNumberingAndTypedSyncService numberingSync,
     IDocumentApprovalPolicyResolver approvalPolicies,
     IChartOfAccountsProvider coaProvider,
@@ -1204,28 +1204,28 @@ public sealed class GeneralJournalEntryDocumentService(
         IReadOnlyList<Guid>? basedOnDocumentIds,
         CancellationToken ct)
     {
+        var requests = new List<DocumentRelationshipCreateRequest>();
         if (createdFromDocumentId is not null)
         {
-            await relationships.CreateAsync(
+            requests.Add(new DocumentRelationshipCreateRequest(
                 fromDocumentId,
                 createdFromDocumentId.Value,
-                relationshipCode: "created_from",
-                manageTransaction: false,
-                ct: ct);
+                "created_from"));
         }
 
         if (basedOnDocumentIds is not null && basedOnDocumentIds.Count > 0)
         {
             foreach (var to in basedOnDocumentIds.Where(x => x != Guid.Empty).Distinct())
             {
-                await relationships.CreateAsync(
+                requests.Add(new DocumentRelationshipCreateRequest(
                     fromDocumentId,
                     to,
-                    relationshipCode: "based_on",
-                    manageTransaction: false,
-                    ct: ct);
+                    "based_on"));
             }
         }
+
+        if (requests.Count > 0)
+            await relationships.CreateManyAsync(requests, manageTransaction: false, ct: ct);
     }
 
     private async Task CreateSystemReversalRelationshipsAsync(
@@ -1233,21 +1233,13 @@ public sealed class GeneralJournalEntryDocumentService(
         Guid originalDocumentId,
         CancellationToken ct)
     {
-        // reversal_of: semantic link (this document is a reversal of the original)
-        await relationships.CreateAsync(
-            reversalId,
-            originalDocumentId,
-            relationshipCode: "reversal_of",
-            manageTransaction: false,
-            ct: ct);
-
-        // created_from: generic provenance link (this document was created from the original)
-        await relationships.CreateAsync(
-            reversalId,
-            originalDocumentId,
-            relationshipCode: "created_from",
-            manageTransaction: false,
-            ct: ct);
+        await relationships.CreateManyAsync(
+        [
+            new DocumentRelationshipCreateRequest(reversalId, originalDocumentId, "reversal_of"),
+            new DocumentRelationshipCreateRequest(reversalId, originalDocumentId, "created_from")
+        ],
+        manageTransaction: false,
+        ct: ct);
     }
 
     private static void EnsureBusinessFieldsArePresent(

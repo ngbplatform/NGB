@@ -15,6 +15,48 @@ namespace NGB.Persistence.OperationalRegisters;
 /// </summary>
 public interface IOperationalRegisterMovementsQueryReader
 {
+    /// <summary>
+    /// Returns an exact UTC-date range page ordered by occurrence and MovementId.
+    /// Filtering, counting, sorting and paging are performed in the database.
+    /// A null limit disables paging while retaining the total count.
+    /// </summary>
+    Task<OperationalRegisterMovementQueryPage> GetByOccurredAtPageAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions = null,
+        int offset = 0,
+        int? limit = 100,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Aggregates a resource by one Dimension value entirely in the database, using storno
+    /// semantics and AND filters for the remaining dimensions.
+    /// </summary>
+    Task<IReadOnlyList<OperationalRegisterDimensionResourceNetRow>> GetResourceNetsByDimensionAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Database-paged counterpart of <see cref="GetResourceNetsByDimensionAsync"/>.
+    /// Positive nets are ordered before negative nets; totals cover the complete filtered result.
+    /// </summary>
+    Task<OperationalRegisterDimensionResourceNetPage> GetResourceNetsByDimensionPageAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        int offset,
+        int limit,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByMonthsAsync(
         Guid registerId,
         DateOnly fromInclusive,

@@ -60,6 +60,15 @@ public sealed class PermissionAwareCatalogService(
         return await inner.GetByIdAsync(catalogType, id, ct);
     }
 
+    public async Task<IReadOnlyList<CatalogItemDto>> GetHeadItemsByIdsAsync(
+        string catalogType,
+        IReadOnlyList<Guid> ids,
+        CancellationToken ct)
+    {
+        await RequireAsync(catalogType, NgbPermissionActions.View, ct);
+        return await inner.GetHeadItemsByIdsAsync(catalogType, ids, ct);
+    }
+
     public async Task<IReadOnlyList<CatalogLookupDto>> LookupAcrossTypesAsync(
         IReadOnlyList<string> catalogTypes,
         string? query,

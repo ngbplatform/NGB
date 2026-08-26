@@ -16,8 +16,17 @@ internal static class PayablesApplyExecutionHelpers
         IEnumerable<Guid> documentIds,
         CancellationToken ct)
     {
-        foreach (var id in documentIds.Where(x => x != Guid.Empty).Distinct().OrderBy(x => x))
+        var ordered = documentIds.Where(x => x != Guid.Empty).Distinct().OrderBy(x => x).ToArray();
+        if (locks is IAdvisoryLockBatchManager batchLocks)
+        {
+            await batchLocks.LockDocumentsAsync(ordered, ct);
+            return;
+        }
+
+        foreach (var id in ordered)
+        {
             await locks.LockDocumentAsync(id, ct);
+        }
     }
 
     public static RecordPayload BuildApplyPayload(

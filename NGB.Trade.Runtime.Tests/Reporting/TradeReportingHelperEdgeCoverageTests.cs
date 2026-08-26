@@ -100,23 +100,20 @@ public sealed class TradeReportingHelperEdgeCoverageTests
         var warehouse = Guid.CreateVersion7();
         var policyReader = new Mock<ITradeAccountingPolicyReader>(MockBehavior.Strict);
         policyReader.Setup(x => x.GetRequiredAsync(It.IsAny<CancellationToken>())).ReturnsAsync(policy);
-        var read = new Mock<IOperationalRegisterReadService>(MockBehavior.Strict);
-        read.Setup(x => x.GetBalancesPageAsync(
-                It.IsAny<OperationalRegisterMonthlyProjectionPageRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((OperationalRegisterMonthlyProjectionPageRequest request, CancellationToken _) =>
-                new OperationalRegisterMonthlyProjectionPage(
-                    request.RegisterId, request.FromInclusive, request.ToInclusive, [], false, null));
-        var movements = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
-        movements.Setup(x => x.GetByMonthsAsync(
-                It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>?>(),
-                null, null, null, null, 1000, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+        var netReader = new Mock<IOperationalRegisterResourceNetReader>(MockBehavior.Strict);
+        netReader.Setup(x => x.GetNetsByDimensionsAsync(
+                policy.InventoryMovementsRegisterId,
+                It.IsAny<IReadOnlyList<IReadOnlyList<DimensionValue>>>(),
+                "qty_delta",
+                It.IsAny<DateOnly>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([0m]);
         var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
         catalogs.Setup(x => x.GetByIdsAsync(
                 It.IsAny<string>(), It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         var sut = new TradeInventoryAvailabilityService(
-            policyReader.Object, read.Object, movements.Object, catalogs.Object);
+            policyReader.Object, netReader.Object, catalogs.Object);
         var act = () => sut.EnsureSufficientOnHandAsync(
             new DateOnly(2026, 4, 18), [new TradeInventoryWithdrawalRequest(warehouse, item, 1m)], default);
 

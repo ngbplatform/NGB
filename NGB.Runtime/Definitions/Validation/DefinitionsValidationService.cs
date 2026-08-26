@@ -32,7 +32,7 @@ internal sealed class DefinitionsValidationService(
     {
     }
 
-    public void ValidateOrThrow()
+    public async Task ValidateOrThrowAsync(CancellationToken ct = default)
     {
         var errors = new List<string>();
 
@@ -40,174 +40,169 @@ internal sealed class DefinitionsValidationService(
         ValidateCatalogs(errors);
         ValidateDocumentRelationshipTypes(errors);
         ValidateDocumentDerivations(errors);
-        ValidateRuntimeBindings(errors);
+        await ValidateRuntimeBindingsAsync(errors, ct);
 
         if (errors.Count > 0)
             throw new DefinitionsValidationException(errors);
     }
 
-    private void ValidateRuntimeBindings(List<string> errors)
+    private async Task ValidateRuntimeBindingsAsync(List<string> errors, CancellationToken ct)
     {
         if (scopeFactory is null)
             return;
 
-        var scope = scopeFactory.CreateAsyncScope();
-        try
+        ct.ThrowIfCancellationRequested();
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+
+        var documentStorages = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentTypeStorage>());
+        var catalogStorages = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<ICatalogTypeStorage>());
+        var postingHandlers = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentPostingHandler>());
+        var operationalRegisterPostingHandlers = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentOperationalRegisterPostingHandler>());
+        var referenceRegisterPostingHandlers = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentReferenceRegisterPostingHandler>());
+        var numberingPolicies = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentNumberingPolicy>());
+        var approvalPolicies = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentApprovalPolicy>());
+        var draftValidators = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentDraftValidator>());
+        var postValidators = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentPostValidator>());
+        var catalogValidators = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<ICatalogUpsertValidator>());
+        var derivationHandlers = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentDerivationHandler>());
+
+        foreach (var def in _registry.Documents)
         {
-            var services = scope.ServiceProvider;
+            ValidateResolvedBinding(
+                errors,
+                "Document",
+                def.TypeCode,
+                nameof(DocumentTypeDefinition.TypedStorageType),
+                def.TypedStorageType,
+                typeof(IDocumentTypeStorage),
+                documentStorages,
+                storage => storage.TypeCode,
+                "TypeCode");
 
-            var documentStorages = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentTypeStorage>());
-            var catalogStorages = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<ICatalogTypeStorage>());
-            var postingHandlers = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentPostingHandler>());
-            var operationalRegisterPostingHandlers = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentOperationalRegisterPostingHandler>());
-            var referenceRegisterPostingHandlers = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentReferenceRegisterPostingHandler>());
-            var numberingPolicies = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentNumberingPolicy>());
-            var approvalPolicies = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentApprovalPolicy>());
-            var draftValidators = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentDraftValidator>());
-            var postValidators = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentPostValidator>());
-            var catalogValidators = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<ICatalogUpsertValidator>());
-            var derivationHandlers = DefinitionRuntimeBindingHelpers.ToReadOnlyList(services.GetServices<IDocumentDerivationHandler>());
+            ValidateResolvedBinding(
+                errors,
+                "Document",
+                def.TypeCode,
+                nameof(DocumentTypeDefinition.PostingHandlerType),
+                def.PostingHandlerType,
+                typeof(IDocumentPostingHandler),
+                postingHandlers,
+                handler => handler.TypeCode,
+                "TypeCode");
 
-            foreach (var def in _registry.Documents)
+            ValidateResolvedBinding(
+                errors,
+                "Document",
+                def.TypeCode,
+                nameof(DocumentTypeDefinition.OperationalRegisterPostingHandlerType),
+                def.OperationalRegisterPostingHandlerType,
+                typeof(IDocumentOperationalRegisterPostingHandler),
+                operationalRegisterPostingHandlers,
+                handler => handler.TypeCode,
+                "TypeCode");
+
+            ValidateResolvedBinding(
+                errors,
+                "Document",
+                def.TypeCode,
+                nameof(DocumentTypeDefinition.ReferenceRegisterPostingHandlerType),
+                def.ReferenceRegisterPostingHandlerType,
+                typeof(IDocumentReferenceRegisterPostingHandler),
+                referenceRegisterPostingHandlers,
+                handler => handler.TypeCode,
+                "TypeCode");
+
+            ValidateResolvedBinding(
+                errors,
+                "Document",
+                def.TypeCode,
+                nameof(DocumentTypeDefinition.NumberingPolicyType),
+                def.NumberingPolicyType,
+                typeof(IDocumentNumberingPolicy),
+                numberingPolicies,
+                policy => policy.TypeCode,
+                "TypeCode");
+
+            ValidateResolvedBinding(
+                errors,
+                "Document",
+                def.TypeCode,
+                nameof(DocumentTypeDefinition.ApprovalPolicyType),
+                def.ApprovalPolicyType,
+                typeof(IDocumentApprovalPolicy),
+                approvalPolicies,
+                policy => policy.TypeCode,
+                "TypeCode");
+
+            foreach (var validatorType in def.DraftValidatorTypes)
             {
                 ValidateResolvedBinding(
                     errors,
                     "Document",
                     def.TypeCode,
-                    nameof(DocumentTypeDefinition.TypedStorageType),
-                    def.TypedStorageType,
-                    typeof(IDocumentTypeStorage),
-                    documentStorages,
-                    storage => storage.TypeCode,
+                    nameof(DocumentTypeDefinition.DraftValidatorTypes),
+                    validatorType,
+                    typeof(IDocumentDraftValidator),
+                    draftValidators,
+                    validator => validator.TypeCode,
                     "TypeCode");
-
-                ValidateResolvedBinding(
-                    errors,
-                    "Document",
-                    def.TypeCode,
-                    nameof(DocumentTypeDefinition.PostingHandlerType),
-                    def.PostingHandlerType,
-                    typeof(IDocumentPostingHandler),
-                    postingHandlers,
-                    handler => handler.TypeCode,
-                    "TypeCode");
-
-                ValidateResolvedBinding(
-                    errors,
-                    "Document",
-                    def.TypeCode,
-                    nameof(DocumentTypeDefinition.OperationalRegisterPostingHandlerType),
-                    def.OperationalRegisterPostingHandlerType,
-                    typeof(IDocumentOperationalRegisterPostingHandler),
-                    operationalRegisterPostingHandlers,
-                    handler => handler.TypeCode,
-                    "TypeCode");
-
-                ValidateResolvedBinding(
-                    errors,
-                    "Document",
-                    def.TypeCode,
-                    nameof(DocumentTypeDefinition.ReferenceRegisterPostingHandlerType),
-                    def.ReferenceRegisterPostingHandlerType,
-                    typeof(IDocumentReferenceRegisterPostingHandler),
-                    referenceRegisterPostingHandlers,
-                    handler => handler.TypeCode,
-                    "TypeCode");
-
-                ValidateResolvedBinding(
-                    errors,
-                    "Document",
-                    def.TypeCode,
-                    nameof(DocumentTypeDefinition.NumberingPolicyType),
-                    def.NumberingPolicyType,
-                    typeof(IDocumentNumberingPolicy),
-                    numberingPolicies,
-                    policy => policy.TypeCode,
-                    "TypeCode");
-
-                ValidateResolvedBinding(
-                    errors,
-                    "Document",
-                    def.TypeCode,
-                    nameof(DocumentTypeDefinition.ApprovalPolicyType),
-                    def.ApprovalPolicyType,
-                    typeof(IDocumentApprovalPolicy),
-                    approvalPolicies,
-                    policy => policy.TypeCode,
-                    "TypeCode");
-
-                foreach (var validatorType in def.DraftValidatorTypes)
-                {
-                    ValidateResolvedBinding(
-                        errors,
-                        "Document",
-                        def.TypeCode,
-                        nameof(DocumentTypeDefinition.DraftValidatorTypes),
-                        validatorType,
-                        typeof(IDocumentDraftValidator),
-                        draftValidators,
-                        validator => validator.TypeCode,
-                        "TypeCode");
-                }
-
-                foreach (var validatorType in def.PostValidatorTypes)
-                {
-                    ValidateResolvedBinding(
-                        errors,
-                        "Document",
-                        def.TypeCode,
-                        nameof(DocumentTypeDefinition.PostValidatorTypes),
-                        validatorType,
-                        typeof(IDocumentPostValidator),
-                        postValidators,
-                        validator => validator.TypeCode,
-                        "TypeCode");
-                }
             }
 
-            foreach (var def in _registry.Catalogs)
+            foreach (var validatorType in def.PostValidatorTypes)
+            {
+                ValidateResolvedBinding(
+                    errors,
+                    "Document",
+                    def.TypeCode,
+                    nameof(DocumentTypeDefinition.PostValidatorTypes),
+                    validatorType,
+                    typeof(IDocumentPostValidator),
+                    postValidators,
+                    validator => validator.TypeCode,
+                    "TypeCode");
+            }
+        }
+
+        foreach (var def in _registry.Catalogs)
+        {
+            ValidateResolvedBinding(
+                errors,
+                "Catalog",
+                def.TypeCode,
+                nameof(CatalogTypeDefinition.TypedStorageType),
+                def.TypedStorageType,
+                typeof(ICatalogTypeStorage),
+                catalogStorages,
+                storage => storage.CatalogCode,
+                "CatalogCode");
+
+            foreach (var validatorType in def.ValidatorTypes)
             {
                 ValidateResolvedBinding(
                     errors,
                     "Catalog",
                     def.TypeCode,
-                    nameof(CatalogTypeDefinition.TypedStorageType),
-                    def.TypedStorageType,
-                    typeof(ICatalogTypeStorage),
-                    catalogStorages,
-                    storage => storage.CatalogCode,
-                    "CatalogCode");
-
-                foreach (var validatorType in def.ValidatorTypes)
-                {
-                    ValidateResolvedBinding(
-                        errors,
-                        "Catalog",
-                        def.TypeCode,
-                        nameof(CatalogTypeDefinition.ValidatorTypes),
-                        validatorType,
-                        typeof(ICatalogUpsertValidator),
-                        catalogValidators,
-                        validator => validator.TypeCode,
-                        "TypeCode");
-                }
-            }
-
-            foreach (var def in _registry.DocumentDerivations)
-            {
-                ValidateResolvedBinding(
-                    errors,
-                    "DocumentDerivation",
-                    def.Code,
-                    nameof(DocumentDerivationDefinition.HandlerType),
-                    def.HandlerType,
-                    typeof(IDocumentDerivationHandler),
-                    derivationHandlers);
+                    nameof(CatalogTypeDefinition.ValidatorTypes),
+                    validatorType,
+                    typeof(ICatalogUpsertValidator),
+                    catalogValidators,
+                    validator => validator.TypeCode,
+                    "TypeCode");
             }
         }
-        finally
+
+        foreach (var def in _registry.DocumentDerivations)
         {
-            scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            ValidateResolvedBinding(
+                errors,
+                "DocumentDerivation",
+                def.Code,
+                nameof(DocumentDerivationDefinition.HandlerType),
+                def.HandlerType,
+                typeof(IDocumentDerivationHandler),
+                derivationHandlers);
         }
     }
 

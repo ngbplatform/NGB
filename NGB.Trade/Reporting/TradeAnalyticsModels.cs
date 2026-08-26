@@ -41,6 +41,43 @@ public sealed record PurchasesByVendorSummaryRow(
     decimal ReturnedAmount,
     decimal NetPurchases);
 
+public sealed record TradeAnalyticsPage<TRow, TTotals>(IReadOnlyList<TRow> Rows, int Total, TTotals Totals);
+
+public sealed record SalesByItemTotals(
+    decimal SoldQuantity,
+    decimal GrossSales,
+    decimal ReturnedQuantity,
+    decimal ReturnedAmount,
+    decimal NetSales,
+    decimal NetCogs)
+{
+    public decimal GrossMargin => NetSales - NetCogs;
+    public decimal MarginPercent => NetSales == 0m
+        ? 0m
+        : Math.Round((GrossMargin / NetSales) * 100m, 2, MidpointRounding.AwayFromZero);
+}
+
+public sealed record SalesByCustomerTotals(
+    int SalesDocumentCount,
+    int ReturnDocumentCount,
+    decimal GrossSales,
+    decimal ReturnedAmount,
+    decimal NetSales,
+    decimal NetCogs)
+{
+    public decimal GrossMargin => NetSales - NetCogs;
+    public decimal MarginPercent => NetSales == 0m
+        ? 0m
+        : Math.Round((GrossMargin / NetSales) * 100m, 2, MidpointRounding.AwayFromZero);
+}
+
+public sealed record PurchasesByVendorTotals(
+    int PurchaseDocumentCount,
+    int ReturnDocumentCount,
+    decimal GrossPurchases,
+    decimal ReturnedAmount,
+    decimal NetPurchases);
+
 public sealed record RecentTradeDocumentSummaryRow(
     Guid DocumentId,
     string DocumentTypeCode,

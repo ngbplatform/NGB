@@ -1,13 +1,16 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Definitions;
-using NGB.PropertyManagement.Runtime.Receivables;
+using NGB.PropertyManagement.Reporting;
+using NGB.PropertyManagement.Runtime.Policy;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 
 namespace NGB.PropertyManagement.Runtime.Reporting;
 
-public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(IReceivablesOpenItemsDetailsService details)
+public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(
+    IReceivablesReportReader reader,
+    IPropertyManagementAccountingPolicyReader policyReader)
     : IReportSpecializedPlanExecutor
 {
     public string ReportCode => PropertyManagementSecurityDefaults.ReceivablesOpenItemsDetailsReport;
@@ -19,42 +22,31 @@ public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(IReceivab
     {
         var leaseId = CanonicalReportExecutionHelper.GetRequiredGuidFilter(definition, request, "lease_id");
 
-        var open = await details.GetOpenItemsDetailsAsync(Guid.Empty, Guid.Empty, leaseId, ct: ct);
-        var rowsAll = new List<OpenItemDetailsRow>(open.Charges.Count + open.Credits.Count);
-
-        rowsAll.AddRange(open.Charges.Select(x => new OpenItemDetailsRow(
-            Kind: "Charge",
-            ItemDisplay: x.ChargeDisplay,
-            DueOnUtc: x.DueOnUtc,
-            ReceivedOnUtc: null,
-            ChargeTypeDisplay: x.ChargeTypeDisplay,
-            OriginalAmount: x.OriginalAmount,
-            OutstandingAmount: x.OutstandingAmount,
-            AvailableCredit: null,
-            DocumentType: x.DocumentType,
-            DocumentId: x.ChargeDocumentId)));
-
-        rowsAll.AddRange(open.Credits.Select(x => new OpenItemDetailsRow(
-            Kind: "Credit",
-            ItemDisplay: x.CreditDocumentDisplay,
-            DueOnUtc: null,
-            ReceivedOnUtc: x.ReceivedOnUtc,
-            ChargeTypeDisplay: null,
-            OriginalAmount: x.OriginalAmount,
-            OutstandingAmount: null,
-            AvailableCredit: x.AvailableCredit,
-            DocumentType: x.DocumentType,
-            DocumentId: x.CreditDocumentId)));
-
-        var total = rowsAll.Count;
         var offset = Math.Max(0, request.Offset);
         var limit = request.Limit <= 0 ? 50 : request.Limit;
-        var slice = rowsAll.Skip(offset).Take(limit).ToArray();
-        var hasMore = offset + slice.Length < total;
+        var policy = await policyReader.GetRequiredAsync(ct);
+        var page = await reader.GetPageAsync(
+            policy.ReceivablesOpenItemsOperationalRegisterId,
+            leaseId,
+            ReceivablesReportMode.OpenItemsDetails,
+            offset,
+            limit,
+            ct);
 
-        var rows = slice.Select(ToDetailRow).ToList();
-        if (request.Layout?.ShowGrandTotals != false && rowsAll.Count > 0)
-            rows.Add(ToTotalRow(open.TotalOutstanding, open.TotalCredit));
+        var rows = page.Rows.Select(x => ToDetailRow(new OpenItemDetailsRow(
+            Kind: x.IsCharge ? "Charge" : "Credit",
+            ItemDisplay: x.Display,
+            DueOnUtc: x.DueOnUtc,
+            ReceivedOnUtc: x.ReceivedOnUtc,
+            ChargeTypeDisplay: x.ChargeTypeDisplay,
+            OriginalAmount: x.OriginalAmount,
+            OutstandingAmount: x.IsCharge ? x.OpenAmount : null,
+            AvailableCredit: x.IsCharge ? null : x.OpenAmount,
+            DocumentType: x.DocumentType,
+            DocumentId: x.DocumentId))).ToList();
+
+        if (request.Layout?.ShowGrandTotals != false && page.Total > 0)
+            rows.Add(ToTotalRow(page.TotalOutstanding, page.TotalCredit));
 
         var sheet = new ReportSheetDto(
             Columns:
@@ -71,7 +63,7 @@ public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(IReceivab
             Rows: rows,
             Meta: new ReportSheetMetaDto(
                 Title: definition.Name,
-                Subtitle: $"Outstanding {open.TotalOutstanding:0.##} · Credit {open.TotalCredit:0.##}",
+                Subtitle: $"Outstanding {page.TotalOutstanding:0.##} · Credit {page.TotalCredit:0.##}",
                 Diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["executor"] = "canonical-pm-receivables-open-items-details"
@@ -81,8 +73,8 @@ public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(IReceivab
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: total,
-            hasMore: hasMore,
+            total: page.Total,
+            hasMore: offset + page.Rows.Count < page.Total,
             nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {

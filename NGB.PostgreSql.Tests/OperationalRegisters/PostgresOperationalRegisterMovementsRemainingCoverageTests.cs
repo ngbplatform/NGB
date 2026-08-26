@@ -20,6 +20,21 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
 
         Func<Task> missingMaxRegister = async () => await sut.GetMaxPeriodMonthAsync(Guid.Empty);
         Func<Task> missingRegister = async () => await sut.GetByMonthsAsync(Guid.Empty, jan, jan);
+        Func<Task> missingPagedRegister = async () => await sut.GetByOccurredAtPageAsync(Guid.Empty, jan, jan);
+        Func<Task> reversedPage = async () => await sut.GetByOccurredAtPageAsync(
+            Guid.NewGuid(), new DateOnly(2026, 2, 1), jan);
+        Func<Task> negativeOffset = async () => await sut.GetByOccurredAtPageAsync(Guid.NewGuid(), jan, jan, offset: -1);
+        Func<Task> zeroPageLimit = async () => await sut.GetByOccurredAtPageAsync(Guid.NewGuid(), jan, jan, limit: 0);
+        Func<Task> missingAggregateRegister = async () => await sut.GetResourceNetsByDimensionAsync(
+            Guid.Empty, jan, jan, null, Guid.NewGuid(), "amount");
+        Func<Task> missingGroupDimension = async () => await sut.GetResourceNetsByDimensionAsync(
+            Guid.NewGuid(), jan, jan, null, Guid.Empty, "amount");
+        Func<Task> missingResource = async () => await sut.GetResourceNetsByDimensionAsync(
+            Guid.NewGuid(), jan, jan, null, Guid.NewGuid(), " ");
+        Func<Task> reversedAggregate = async () => await sut.GetResourceNetsByDimensionAsync(
+            Guid.NewGuid(), new DateOnly(2026, 2, 1), jan, null, Guid.NewGuid(), "amount");
+        Func<Task> aggregateNonMonth = async () => await sut.GetResourceNetsByDimensionAsync(
+            Guid.NewGuid(), new DateOnly(2026, 1, 2), new DateOnly(2026, 2, 1), null, Guid.NewGuid(), "amount");
         Func<Task> zeroLimit = async () => await sut.GetByMonthsAsync(Guid.NewGuid(), jan, jan, limit: 0);
         Func<Task> reversed = async () => await sut.GetByMonthsAsync(
             Guid.NewGuid(), new DateOnly(2026, 2, 1), jan);
@@ -30,6 +45,15 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
 
         await missingMaxRegister.Should().ThrowAsync<NgbArgumentRequiredException>();
         await missingRegister.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await missingPagedRegister.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await reversedPage.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await negativeOffset.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await zeroPageLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await missingAggregateRegister.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await missingGroupDimension.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await missingResource.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await reversedAggregate.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await aggregateNonMonth.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await zeroLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await reversed.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await invalidFrom.Should().ThrowAsync<NgbArgumentOutOfRangeException>();

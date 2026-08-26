@@ -1,5 +1,6 @@
 using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Contracts;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Receivables;
@@ -46,6 +47,11 @@ public sealed class ReceivablesFifoApplySuggestService(
         if (request.MaxApplications is not null && request.MaxApplications <= 0)
             throw ReceivablesRequestValidationException.MaxApplicationsInvalid();
 
+        if (request.MaxApplications > FifoApplyLimits.MaxApplications)
+            throw ReceivablesRequestValidationException.MaxApplicationsTooLarge(FifoApplyLimits.MaxApplications);
+
+        var maxApplications = request.MaxApplications ?? FifoApplyLimits.DefaultMaxApplications;
+
         var creditSource = await uow.ExecuteInUowTransactionAsync(
             innerCt => ReceivableCreditSourceResolver.ReadRequiredAsync(readers, documents, request.CreditDocumentId, innerCt),
             ct);
@@ -62,10 +68,7 @@ public sealed class ReceivablesFifoApplySuggestService(
         if (credit is null || credit.AvailableCredit <= 0m)
             throw ReceivablesRequestValidationException.PaymentHasNoAvailableCredit(request.CreditDocumentId);
 
-        var plan = ReceivablesFifoAllocator.Allocate(
-            charges: open.Charges,
-            credits: [credit],
-            limit: request.MaxApplications);
+        var plan = ReceivablesFifoAllocator.Allocate(charges: open.Charges, credits: [credit], limit: maxApplications);
 
         var suggested = plan.Lines
             .Select(x => new ReceivablesSuggestedApplyDto(
@@ -113,6 +116,11 @@ public sealed class ReceivablesFifoApplySuggestService(
         if (request.Limit is not null && request.Limit <= 0)
             throw ReceivablesRequestValidationException.LimitInvalid();
 
+        if (request.Limit > FifoApplyLimits.MaxApplications)
+            throw ReceivablesRequestValidationException.LimitTooLarge(FifoApplyLimits.MaxApplications);
+
+        var limit = request.Limit ?? FifoApplyLimits.DefaultMaxApplications;
+
         var open = await details.GetOpenItemsDetailsAsync(
             partyId: request.PartyId ?? Guid.Empty,
             propertyId: request.PropertyId ?? Guid.Empty,
@@ -132,7 +140,7 @@ public sealed class ReceivablesFifoApplySuggestService(
         var plan = ReceivablesFifoAllocator.Allocate(
             charges: open.Charges,
             credits: open.Credits,
-            limit: request.Limit);
+            limit: limit);
 
         var creditTypesById = open.Credits
             .GroupBy(x => x.CreditDocumentId)

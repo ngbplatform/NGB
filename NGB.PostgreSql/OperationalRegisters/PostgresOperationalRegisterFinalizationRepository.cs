@@ -111,10 +111,31 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
         DateTime dirtySinceUtc,
         DateTime nowUtc,
         CancellationToken ct = default)
+        => await MarkDirtyPeriodsAsync(registerId, [period], dirtySinceUtc, nowUtc, ct);
+
+    public async Task MarkDirtyPeriodsAsync(
+        Guid registerId,
+        IReadOnlyCollection<DateOnly> periods,
+        DateTime dirtySinceUtc,
+        DateTime nowUtc,
+        CancellationToken ct = default)
     {
-        EnsureValidKey(registerId, period);
+        ArgumentNullException.ThrowIfNull(periods);
+
+        if (registerId == Guid.Empty)
+            throw new NgbArgumentInvalidException(nameof(registerId), "Argument is required.");
+
         dirtySinceUtc.EnsureUtc(nameof(dirtySinceUtc));
         nowUtc.EnsureUtc(nameof(nowUtc));
+
+        var normalizedPeriods = periods.Distinct().OrderBy(static period => period).ToArray();
+        foreach (var period in normalizedPeriods)
+        {
+            EnsureValidKey(registerId, period);
+        }
+
+        if (normalizedPeriods.Length == 0)
+            return;
 
         await uow.EnsureOpenForTransactionAsync(ct);
 
@@ -130,9 +151,9 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
                                created_at_utc,
                                updated_at_utc
                            )
-                           VALUES (
+                           SELECT
                                @RegisterId,
-                               @Period,
+                               requested.period,
                                @Status,
                                NULL,
                                @DirtySinceUtc,
@@ -140,7 +161,7 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
                                NULL,
                                @NowUtc,
                                @NowUtc
-                           )
+                             FROM UNNEST(@Periods::date[]) AS requested(period)
                            ON CONFLICT (register_id, period) DO UPDATE
                            SET status = EXCLUDED.status,
                                finalized_at_utc = NULL,
@@ -155,7 +176,7 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
             new
             {
                 RegisterId = registerId,
-                Period = period,
+                Periods = normalizedPeriods,
                 Status = (short)OperationalRegisterFinalizationStatus.Dirty,
                 DirtySinceUtc = dirtySinceUtc,
                 NowUtc = nowUtc

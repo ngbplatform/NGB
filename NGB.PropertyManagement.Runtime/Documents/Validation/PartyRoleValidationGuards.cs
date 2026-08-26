@@ -23,6 +23,22 @@ internal static class PartyRoleValidationGuards
             throw DocumentPartyValidationException.MustBeTenant(documentType, partyId, field);
     }
 
+    public static void EnsureTenantParty(
+        string documentType,
+        string field,
+        Guid partyId,
+        IReadOnlyDictionary<Guid, PropertyManagementParty> parties)
+    {
+        if (!parties.TryGetValue(partyId, out var party))
+            throw DocumentPartyValidationException.NotFound(documentType, partyId, field);
+
+        if (party.IsDeleted)
+            throw DocumentPartyValidationException.Deleted(documentType, partyId, field);
+
+        if (!party.IsTenant)
+            throw DocumentPartyValidationException.MustBeTenant(documentType, partyId, field);
+    }
+
     public static async Task EnsureVendorPartyAsync(
         string documentType,
         string field,

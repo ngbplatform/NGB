@@ -43,6 +43,7 @@ public static class CrmPostgresModuleServiceCollectionExtensions
                 [PostgresHeadCatalogTypeStorage.Column.DraftString("display", "display")]));
 
         services.AddScoped<ICrmDocumentReaders, CrmDocumentReaders>();
+        services.AddScoped<ICrmPostedDocumentReader, CrmPostedDocumentReader>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostgresReportDatasetSource, CrmOperationalReportsPostgresDatasetSource>());
 
         return services;

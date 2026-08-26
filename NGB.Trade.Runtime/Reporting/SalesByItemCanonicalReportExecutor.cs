@@ -23,22 +23,20 @@ public sealed class SalesByItemCanonicalReportExecutor(
         var customerIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "customer_id");
         var warehouseIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "warehouse_id");
 
-        var ordered = (await analytics.GetSalesByItemAsync(fromInclusive, toInclusive, itemIds, customerIds, warehouseIds, ct))
-            .Where(static x => x.SoldQuantity != 0m || x.ReturnedQuantity != 0m)
-            .ToArray();
-
         var offset = Math.Max(0, request.Offset);
         var limit = request.DisablePaging
-            ? ordered.Length
+            ? int.MaxValue
             : (request.Limit <= 0 ? 100 : request.Limit);
-        var pageRows = ordered.Skip(offset).Take(limit).ToArray();
+        var page = await analytics.GetSalesByItemPageAsync(
+            fromInclusive, toInclusive, itemIds, customerIds, warehouseIds, offset, limit, ct);
+        var pageRows = page.Rows;
 
         var rows = pageRows
             .Select(ToDetailRow)
             .ToList();
 
-        if (request.Layout?.ShowGrandTotals != false && ordered.Length > 0)
-            rows.Add(ToTotalRow(ordered));
+        if (request.Layout?.ShowGrandTotals != false && page.Total > 0)
+            rows.Add(ToTotalRow(page.Totals));
 
         var sheet = new ReportSheetDto(
             Columns:
@@ -66,8 +64,8 @@ public sealed class SalesByItemCanonicalReportExecutor(
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: ordered.Length,
-            hasMore: offset + pageRows.Length < ordered.Length,
+            total: page.Total,
+            hasMore: offset + pageRows.Count < page.Total,
             nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -97,32 +95,21 @@ public sealed class SalesByItemCanonicalReportExecutor(
                 DecimalCell(row.MarginPercent)
             ]);
 
-    private static ReportSheetRowDto ToTotalRow(IReadOnlyList<SalesByItemSummaryRow> rows)
+    private static ReportSheetRowDto ToTotalRow(SalesByItemTotals totals)
     {
-        var soldQuantity = rows.Sum(static x => x.SoldQuantity);
-        var grossSales = rows.Sum(static x => x.GrossSales);
-        var returnedQuantity = rows.Sum(static x => x.ReturnedQuantity);
-        var returnedAmount = rows.Sum(static x => x.ReturnedAmount);
-        var netSales = rows.Sum(static x => x.NetSales);
-        var netCogs = rows.Sum(static x => x.NetCogs);
-        var grossMargin = rows.Sum(static x => x.GrossMargin);
-        var marginPercent = netSales == 0m
-            ? 0m
-            : Math.Round((grossMargin / netSales) * 100m, 2, MidpointRounding.AwayFromZero);
-
         return new ReportSheetRowDto(
             ReportRowKind.Total,
             Cells:
             [
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue("Total"), "Total", "string", SemanticRole: "label"),
-                DecimalCell(soldQuantity, semanticRole: "total"),
-                DecimalCell(grossSales, semanticRole: "total"),
-                DecimalCell(returnedQuantity, semanticRole: "total"),
-                DecimalCell(returnedAmount, semanticRole: "total"),
-                DecimalCell(netSales, semanticRole: "total"),
-                DecimalCell(netCogs, semanticRole: "total"),
-                DecimalCell(grossMargin, semanticRole: "total"),
-                DecimalCell(marginPercent, semanticRole: "total")
+                DecimalCell(totals.SoldQuantity, semanticRole: "total"),
+                DecimalCell(totals.GrossSales, semanticRole: "total"),
+                DecimalCell(totals.ReturnedQuantity, semanticRole: "total"),
+                DecimalCell(totals.ReturnedAmount, semanticRole: "total"),
+                DecimalCell(totals.NetSales, semanticRole: "total"),
+                DecimalCell(totals.NetCogs, semanticRole: "total"),
+                DecimalCell(totals.GrossMargin, semanticRole: "total"),
+                DecimalCell(totals.MarginPercent, semanticRole: "total")
             ],
             SemanticRole: "grand_total");
     }

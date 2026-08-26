@@ -151,6 +151,34 @@ public sealed class CatalogServiceReadFullCoverageTests
     }
 
     [Fact]
+    public async Task Page_UsesCombinedReaderCapabilityInsteadOfSeparateCountAndPageCalls()
+    {
+        var fixture = new CatalogServiceTestFixture();
+        var id = Guid.NewGuid();
+        var combined = fixture.Reader.As<ICatalogCombinedPageReader>();
+        combined.Setup(x => x.GetPageWithTotalAsync(
+                It.IsAny<CatalogHeadDescriptor>(),
+                It.IsAny<CatalogQuery>(),
+                4,
+                2,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CatalogHeadQueryPage(
+                [CatalogServiceTestFixture.Row(id, new Dictionary<string, object?> { ["display"] = "A" })],
+                9));
+
+        var page = await fixture.CreateService().GetPageAsync(
+            "rich", new PageRequestDto(4, 2), default);
+
+        page.Total.Should().Be(9);
+        page.Items.Should().ContainSingle().Which.Id.Should().Be(id);
+        fixture.Reader.Verify(x => x.CountAsync(
+            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.Reader.Verify(x => x.GetPageAsync(
+            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(),
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Page_RejectsUnknownScalarAndInvalidSoftDeleteFilters()
     {
         var sut = new CatalogServiceTestFixture().CreateService();

@@ -28,7 +28,6 @@ namespace NGB.PropertyManagement.Runtime.Receivables;
 public sealed class ReceivablesApplyBatchService(
     IDocumentDraftService drafts,
     IDocumentPostingService posting,
-    IDocumentRelationshipService relationships,
     IPropertyManagementAccountingPolicyReader policyReader,
     IReceivableApplyHeadWriter applyHeadWriter,
     IDocumentRepository documents,
@@ -97,7 +96,15 @@ public sealed class ReceivablesApplyBatchService(
             docIds.AddRange(parsed.Select(x => x.CreditDocumentId));
             docIds.AddRange(parsed.Select(x => x.ChargeDocumentId));
             docIds.AddRange(parsed.Where(x => x.ApplyId is not null).Select(x => x.ApplyId!.Value));
+
             await ReceivablesApplyExecutionHelpers.LockDocumentsDeterministicallyAsync(locks, docIds, innerCt);
+
+            var existingApplyDocuments = await documents.GetForUpdateByIdsAsync(
+                parsed.Where(static item => item.ApplyId.HasValue)
+                    .Select(static item => item.ApplyId!.Value)
+                    .Distinct()
+                    .ToArray(),
+                innerCt);
 
             foreach (var a in parsed)
             {
@@ -110,7 +117,7 @@ public sealed class ReceivablesApplyBatchService(
                     ct: innerCt);
 
                 if (!createdDraft)
-                    await EnsureExistingApplyDraftAsync(documents, applyId, innerCt);
+                    EnsureExistingApplyDraft(applyId, existingApplyDocuments);
 
                 await applyHeadWriter.UpsertAsync(
                     documentId: applyId,
@@ -119,13 +126,6 @@ public sealed class ReceivablesApplyBatchService(
                     appliedOnUtc: a.AppliedOnUtc,
                     amount: a.Amount,
                     memo: a.Memo,
-                    ct: innerCt);
-
-                await ReceivablesApplyExecutionHelpers.EnsureApplyRelationshipsAsync(
-                    relationships,
-                    applyId,
-                    creditDocumentId: a.CreditDocumentId,
-                    chargeDocumentId: a.ChargeDocumentId,
                     ct: innerCt);
 
                 await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
@@ -258,10 +258,9 @@ public sealed class ReceivablesApplyBatchService(
         };
     }
 
-    private static async Task EnsureExistingApplyDraftAsync(IDocumentRepository documents, Guid applyId, CancellationToken ct)
+    private static void EnsureExistingApplyDraft(Guid applyId, IReadOnlyDictionary<Guid, DocumentRecord> documents)
     {
-        var doc = await documents.GetForUpdateAsync(applyId, ct);
-        if (doc is null)
+        if (!documents.TryGetValue(applyId, out var doc))
             throw ReceivablesApplyBatchValidationException.ApplyNotFound(applyId);
 
         if (!string.Equals(doc.TypeCode, PropertyManagementCodes.ReceivableApply, StringComparison.Ordinal))

@@ -308,8 +308,9 @@ public sealed class AgencyBillingPostingHandlersFullCoverageTests
     private static Mock<IDimensionSetService> DimensionSets()
     {
         var service = new Mock<IDimensionSetService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOrCreateIdAsync(It.IsAny<DimensionBag>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.CreateVersion7());
+        service.Setup(x => x.GetOrCreateIdsAsync(It.IsAny<IReadOnlyList<DimensionBag>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DimensionBag> bags, CancellationToken _) =>
+                bags.Select(static _ => Guid.CreateVersion7()).ToArray());
         return service;
     }
 

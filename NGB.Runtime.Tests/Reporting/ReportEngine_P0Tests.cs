@@ -154,7 +154,7 @@ public sealed class ReportEngine_P0Tests
     }
 
     [Fact]
-    public async Task ExecuteExportSheetAsync_Forces_Unpaged_Execution_Request()
+    public async Task ExecuteExportSheetAsync_UsesDefinitionBoundedSourcePage()
     {
         var executor = new StubPlanExecutor();
         var sut = new ReportEngine(
@@ -181,7 +181,9 @@ public sealed class ReportEngine_P0Tests
             CancellationToken.None);
 
         executor.LastRequest.Should().NotBeNull();
-        executor.LastRequest!.DisablePaging.Should().BeTrue();
+        executor.LastRequest!.DisablePaging.Should().BeFalse();
+        executor.LastRequest.Offset.Should().Be(0);
+        executor.LastRequest.Limit.Should().Be(5_001);
         sheet.Rows.Should().HaveCount(2);
     }
 
@@ -217,7 +219,7 @@ public sealed class ReportEngine_P0Tests
             CancellationToken.None);
 
         executor.Requests.Should().HaveCount(1);
-        executor.Requests.Should().OnlyContain(request => request.DisablePaging);
+        executor.Requests.Should().OnlyContain(request => !request.DisablePaging && request.Limit == 100);
         snapshots.SetCalls.Should().Be(1);
         snapshots.GetCalls.Should().Be(1);
         secondPage.Total.Should().Be(5);
@@ -228,6 +230,27 @@ public sealed class ReportEngine_P0Tests
         secondPage.Sheet.Rows[1].RowKind.Should().Be(ReportRowKind.Total);
         secondPage.Sheet.Rows[1].Cells[0].Display.Should().Be("Total");
         secondPage.Sheet.Rows[1].Cells[1].Display.Should().Be("45");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ComposableGroupedPaging_RejectsSourceResultBeyondConfiguredCap()
+    {
+        var executor = new StubGroupedComposablePlanExecutor { HasMore = true };
+        var sut = new ReportEngine(
+            new ReportDefinitionCatalog([new StubComposableDefinitionSource()]),
+            new ReportLayoutValidator(),
+            new ReportExecutionPlanner(),
+            executor,
+            new ReportSheetBuilder());
+
+        var act = () => sut.ExecuteAsync(
+            StubComposableDefinitionSource.ReportCode,
+            new ReportExecutionRequestDto(Limit: 4),
+            CancellationToken.None);
+
+        var error = await act.Should().ThrowAsync<NGB.Core.Reporting.Exceptions.ReportLayoutValidationException>();
+        error.Which.Context["fieldPath"].Should().Be("layout.rowGroups");
+        executor.Requests.Should().ContainSingle(request => !request.DisablePaging && request.Limit == 100);
     }
 
     private sealed class StubDocumentPlanExecutor : IReportPlanExecutor
@@ -441,6 +464,7 @@ public sealed class ReportEngine_P0Tests
     private sealed class StubGroupedComposablePlanExecutor : IReportPlanExecutor
     {
         public List<ReportExecutionRequestDto> Requests { get; } = [];
+        public bool HasMore { get; init; }
 
         public Task<ReportDataPage> ExecuteAsync(
             ReportDefinitionDto definition,
@@ -490,7 +514,7 @@ public sealed class ReportEngine_P0Tests
                 Offset: paging.Offset,
                 Limit: paging.Limit,
                 Total: 3,
-                HasMore: false,
+                HasMore: HasMore,
                 Diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["executor"] = "stub-grouped-composable-plan-executor"

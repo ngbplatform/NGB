@@ -139,13 +139,13 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
                     DateTime.UtcNow, "Posted", null, null)
             ]
         };
-        var balances = ProjectionReader(
-            Balance(Guid.CreateVersion7(), item, warehouse, 5m, true),
-            Balance(Guid.CreateVersion7(), item, Guid.Empty, 3m, true),
-            Balance(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 0m, true),
-            Balance(Guid.CreateVersion7(), Guid.Empty, Guid.Empty, 2m, false));
+        var balances = new InventoryBalanceStub(
+        [
+            new(item, "Top", warehouse, "Main", 5m),
+            new(Guid.CreateVersion7(), "Second", Guid.CreateVersion7(), "Overflow", 2m)
+        ]);
         var sut = new TradeDashboardOverviewCanonicalReportExecutor(
-            populated, PolicyReader(policy), balances.Object, EmptyMovements().Object, Clock);
+            populated, PolicyReader(policy), balances, Clock);
         sut.ReportCode.Should().Be(TradeCodes.DashboardOverviewReport);
 
         var page = await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(), default);
@@ -153,7 +153,7 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         page.PrebuiltSheet!.Rows.Should().NotBeEmpty();
 
         var empty = new TradeDashboardOverviewCanonicalReportExecutor(
-            new AnalyticsStub(), PolicyReader(policy), ProjectionReader().Object, EmptyMovements().Object, Clock);
+            new AnalyticsStub(), PolicyReader(policy), new InventoryBalanceStub([]), Clock);
         var emptyPage = await empty.ExecuteAsync(
             Definition(empty.ReportCode),
             new ReportExecutionRequestDto(Parameters: new Dictionary<string, string> { ["as_of_utc"] = "2026-04-18" }),
@@ -167,13 +167,14 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         var policy = Policy();
         var item = Guid.CreateVersion7();
         var warehouse = Guid.CreateVersion7();
-        var reader = ProjectionReader(
-            Balance(Guid.CreateVersion7(), item, warehouse, 5m, true),
-            Balance(Guid.CreateVersion7(), item, Guid.Empty, 3m, true),
-            Balance(Guid.CreateVersion7(), Guid.Empty, Guid.Empty, 2m, false),
-            Balance(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 0m, true));
+        var reader = new InventoryBalanceStub(
+        [
+            new(item, "Item A", warehouse, "WH A", 5m),
+            new(Guid.CreateVersion7(), "Item B", Guid.CreateVersion7(), "WH B", 3m),
+            new(Guid.CreateVersion7(), "Item C", Guid.CreateVersion7(), "WH C", 2m)
+        ]);
         var sut = new InventoryBalancesCanonicalReportExecutor(
-            PolicyReader(policy), reader.Object, EmptyMovements().Object, Clock);
+            PolicyReader(policy), reader, Clock);
         sut.ReportCode.Should().Be(TradeCodes.InventoryBalancesReport);
 
         var first = await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(Offset: -5, Limit: 1), default);
@@ -207,6 +208,21 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
                     Status = DocumentStatus.Posted
                 }
                 : null);
+        documents.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids
+                    .Where(id => id == documentId)
+                    .Distinct()
+                    .ToDictionary(
+                        static id => id,
+                        static id => new DocumentRecord
+                        {
+                            Id = id,
+                            TypeCode = TradeCodes.SalesInvoice,
+                            Number = "SI-1",
+                            DateUtc = DateTime.UtcNow,
+                            Status = DocumentStatus.Posted
+                        }));
         var sut = new InventoryMovementsCanonicalReportExecutor(PolicyReader(policy), movements.Object, documents.Object, Clock);
         sut.ReportCode.Should().Be(TradeCodes.InventoryMovementsReport);
         var definition = Definition(sut.ReportCode);
@@ -266,6 +282,34 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         IReadOnlyList<OperationalRegisterMovementQueryReadRow> rows)
     {
         var reader = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetByOccurredAtPageAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<DateOnly>(),
+                It.IsAny<DateOnly>(),
+                It.IsAny<IReadOnlyList<DimensionValue>?>(),
+                It.IsAny<int>(),
+                It.IsAny<int?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((
+                Guid _,
+                DateOnly from,
+                DateOnly to,
+                IReadOnlyList<DimensionValue>? _,
+                int offset,
+                int? limit,
+                CancellationToken _) =>
+            {
+                var filtered = rows
+                    .Where(row => DateOnly.FromDateTime(row.OccurredAtUtc) >= from
+                                  && DateOnly.FromDateTime(row.OccurredAtUtc) <= to)
+                    .OrderBy(static row => row.OccurredAtUtc)
+                    .ThenBy(static row => row.MovementId)
+                    .ToArray();
+                var pageRows = limit.HasValue
+                    ? filtered.Skip(offset).Take(limit.Value).ToArray()
+                    : filtered.Skip(offset).ToArray();
+                return new OperationalRegisterMovementQueryPage(pageRows, filtered.Length);
+            });
         reader.Setup(x => x.GetByMonthsAsync(
                 It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(),
                 It.IsAny<IReadOnlyList<DimensionValue>?>(), null, null, null, null, 1000,
@@ -322,16 +366,95 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         public IReadOnlyList<SalesByCustomerSummaryRow> SalesByCustomer { get; init; } = [];
         public IReadOnlyList<PurchasesByVendorSummaryRow> PurchasesByVendor { get; init; } = [];
         public IReadOnlyList<RecentTradeDocumentSummaryRow> RecentDocuments { get; init; } = [];
+        public Task<TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>> GetSalesByItemPageAsync(
+            DateOnly fromInclusive, DateOnly toInclusive, IReadOnlyList<Guid>? itemIds,
+            IReadOnlyList<Guid>? customerIds, IReadOnlyList<Guid>? warehouseIds, int offset, int limit,
+            CancellationToken ct = default)
+        {
+            var rows = SalesByItem.Where(static row => row.SoldQuantity != 0m || row.ReturnedQuantity != 0m).ToArray();
+            return Task.FromResult(new TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>(
+                rows.Skip(offset).Take(limit).ToArray(),
+                rows.Length,
+                new SalesByItemTotals(
+                    rows.Sum(static row => row.SoldQuantity),
+                    rows.Sum(static row => row.GrossSales),
+                    rows.Sum(static row => row.ReturnedQuantity),
+                    rows.Sum(static row => row.ReturnedAmount),
+                    rows.Sum(static row => row.NetSales),
+                    rows.Sum(static row => row.NetCogs))));
+        }
         public Task<IReadOnlyList<SalesByItemSummaryRow>> GetSalesByItemAsync(DateOnly fromInclusive, DateOnly toInclusive,
             IReadOnlyList<Guid>? itemIds, IReadOnlyList<Guid>? customerIds, IReadOnlyList<Guid>? warehouseIds,
             CancellationToken ct = default) => Task.FromResult(SalesByItem);
+        public Task<TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>> GetSalesByCustomerPageAsync(
+            DateOnly fromInclusive, DateOnly toInclusive, IReadOnlyList<Guid>? customerIds,
+            IReadOnlyList<Guid>? itemIds, IReadOnlyList<Guid>? warehouseIds, int offset, int limit,
+            CancellationToken ct = default)
+        {
+            var rows = SalesByCustomer.Where(static row => row.SalesDocumentCount != 0 || row.ReturnDocumentCount != 0).ToArray();
+            return Task.FromResult(new TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>(
+                rows.Skip(offset).Take(limit).ToArray(),
+                rows.Length,
+                new SalesByCustomerTotals(
+                    rows.Sum(static row => row.SalesDocumentCount),
+                    rows.Sum(static row => row.ReturnDocumentCount),
+                    rows.Sum(static row => row.GrossSales),
+                    rows.Sum(static row => row.ReturnedAmount),
+                    rows.Sum(static row => row.NetSales),
+                    rows.Sum(static row => row.NetCogs))));
+        }
         public Task<IReadOnlyList<SalesByCustomerSummaryRow>> GetSalesByCustomerAsync(DateOnly fromInclusive,
             DateOnly toInclusive, IReadOnlyList<Guid>? customerIds, IReadOnlyList<Guid>? itemIds,
             IReadOnlyList<Guid>? warehouseIds, CancellationToken ct = default) => Task.FromResult(SalesByCustomer);
+        public Task<TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>> GetPurchasesByVendorPageAsync(
+            DateOnly fromInclusive, DateOnly toInclusive, IReadOnlyList<Guid>? vendorIds,
+            IReadOnlyList<Guid>? itemIds, IReadOnlyList<Guid>? warehouseIds, int offset, int limit,
+            CancellationToken ct = default)
+        {
+            var rows = PurchasesByVendor.Where(static row => row.PurchaseDocumentCount != 0 || row.ReturnDocumentCount != 0).ToArray();
+            return Task.FromResult(new TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>(
+                rows.Skip(offset).Take(limit).ToArray(),
+                rows.Length,
+                new PurchasesByVendorTotals(
+                    rows.Sum(static row => row.PurchaseDocumentCount),
+                    rows.Sum(static row => row.ReturnDocumentCount),
+                    rows.Sum(static row => row.GrossPurchases),
+                    rows.Sum(static row => row.ReturnedAmount),
+                    rows.Sum(static row => row.NetPurchases))));
+        }
         public Task<IReadOnlyList<PurchasesByVendorSummaryRow>> GetPurchasesByVendorAsync(DateOnly fromInclusive,
             DateOnly toInclusive, IReadOnlyList<Guid>? vendorIds, IReadOnlyList<Guid>? itemIds,
             IReadOnlyList<Guid>? warehouseIds, CancellationToken ct = default) => Task.FromResult(PurchasesByVendor);
         public Task<IReadOnlyList<RecentTradeDocumentSummaryRow>> GetRecentDocumentsAsync(DateOnly asOf, int limit,
             CancellationToken ct = default) => Task.FromResult(RecentDocuments);
+    }
+
+    private sealed class InventoryBalanceStub(IReadOnlyList<TradeInventoryBalanceRow> rows) : ITradeInventoryBalanceReader
+    {
+        public Task<TradeInventoryBalancePage> GetPageAsync(
+            Guid registerId,
+            DateOnly asOfInclusive,
+            IReadOnlyList<Guid>? itemIds,
+            IReadOnlyList<Guid>? warehouseIds,
+            TradeInventoryBalanceSort sort,
+            int offset,
+            int limit,
+            CancellationToken ct = default)
+        {
+            IEnumerable<TradeInventoryBalanceRow> filtered = rows.Where(static row => row.Quantity != 0m);
+            if (itemIds is { Count: > 0 })
+                filtered = filtered.Where(row => itemIds.Contains(row.ItemId));
+            if (warehouseIds is { Count: > 0 })
+                filtered = filtered.Where(row => warehouseIds.Contains(row.WarehouseId));
+
+            var materialized = (sort == TradeInventoryBalanceSort.AbsoluteQuantityDescending
+                    ? filtered.OrderByDescending(static row => Math.Abs(row.Quantity))
+                    : filtered.OrderBy(static row => row.ItemDisplay).ThenBy(static row => row.WarehouseDisplay))
+                .ToArray();
+            return Task.FromResult(new TradeInventoryBalancePage(
+                materialized.Skip(offset).Take(limit).ToArray(),
+                materialized.Length,
+                materialized.Sum(static row => row.Quantity)));
+        }
     }
 }

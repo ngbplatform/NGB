@@ -162,7 +162,7 @@ public sealed class KeycloakAdminClientFullCoverageTests
     [Fact]
     public async Task Batch_get_validates_normalizes_deduplicates_and_skips_missing_users()
     {
-        var (sut, handler) = Client(request => request.Uri.EndsWith("/users/id-1", StringComparison.Ordinal)
+        var (sut, handler) = Client(request => request.Uri.Contains("/users/id-1", StringComparison.Ordinal)
             ? Json(HttpStatusCode.OK, UserJson("id-1"))
             : Response(HttpStatusCode.NotFound), settings: Settings(adminBatchConcurrency: 0));
 
@@ -173,6 +173,7 @@ public sealed class KeycloakAdminClientFullCoverageTests
 
         result.Should().ContainSingle("id-1");
         handler.Requests.Should().HaveCount(2);
+        handler.Requests.Should().OnlyContain(request => !request.Uri.Contains("first=", StringComparison.Ordinal));
         Invoke<int>(sut, "ResolveBatchConcurrency").Should().Be(1);
         Invoke<int>(Client(_ => Response(HttpStatusCode.OK), settings: Settings(100)).Client, "ResolveBatchConcurrency")
             .Should().Be(32);

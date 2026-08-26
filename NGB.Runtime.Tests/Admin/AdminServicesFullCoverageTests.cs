@@ -32,9 +32,7 @@ public sealed class AdminServicesFullCoverageTests
         await ((Func<Task>)(() => sut.GetChartOfAccountsPageAsync(new(Limit: 501), default)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
-        var coaAdmin = new Mock<IChartOfAccountsAdminService>();
-        coaAdmin.Setup(x => x.GetAsync(false, It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        sut = Service(coaAdmin: coaAdmin.Object);
+        sut = Service(coaAdmin: Mock.Of<IChartOfAccountsAdminService>());
         await ((Func<Task>)(() => sut.GetChartOfAccountsPageAsync(new(AccountTypes: [" "]), default)))
             .Should().ThrowAsync<NgbArgumentRequiredException>();
 
@@ -60,8 +58,18 @@ public sealed class AdminServicesFullCoverageTests
         var menu = new Mock<IMainMenuService>(MockBehavior.Strict);
         menu.Setup(x => x.GetMainMenuAsync(It.IsAny<CancellationToken>())).ReturnsAsync(menuDto);
         var admin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
-        admin.Setup(x => x.GetAsync(true, It.IsAny<CancellationToken>())).ReturnsAsync([first, second, deleted]);
-        admin.Setup(x => x.GetAsync(false, It.IsAny<CancellationToken>())).ReturnsAsync([first, second]);
+        admin.SetupSequence(x => x.GetPageAsync(
+                It.IsAny<ChartOfAccountsAdminPageQuery>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([deleted], 1))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([first, second], 2))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([first], 1))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([second], 1))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([second], 1))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([first], 2));
+        admin.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid accountId, CancellationToken _) =>
+                accountId == first.Account.Id ? first : null);
         admin.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([first, second]);
         var lines = new Mock<ICashFlowLineRepository>(MockBehavior.Strict);
@@ -112,7 +120,7 @@ public sealed class AdminServicesFullCoverageTests
         var item = Item("1000", "Cash", AccountType.Asset);
         item = new ChartOfAccountsAdminItem { Account = new Account(id, "1000", "Cash", AccountType.Asset), IsActive = true };
         var admin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
-        admin.Setup(x => x.GetAsync(true, It.IsAny<CancellationToken>())).ReturnsAsync([item]);
+        admin.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
         var management = new Mock<IChartOfAccountsManagementService>(MockBehavior.Strict);
         management.Setup(x => x.CreateAsync(
                 It.Is<CreateAccountRequest>(r => r.Type == AccountType.Asset && r.CashFlowRole == null),
@@ -179,7 +187,11 @@ public sealed class AdminServicesFullCoverageTests
         var menu = new Mock<IMainMenuService>();
         menu.Setup(x => x.GetMainMenuAsync(It.IsAny<CancellationToken>())).ReturnsAsync(new MainMenuDto([]));
         var admin = new Mock<IChartOfAccountsAdminService>();
-        admin.Setup(x => x.GetAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>())).ReturnsAsync([item]);
+        admin.Setup(x => x.GetPageAsync(
+                It.IsAny<ChartOfAccountsAdminPageQuery>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([item], 1));
+        admin.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(item);
         admin.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>())).ReturnsAsync([item]);
         var management = new Mock<IChartOfAccountsManagementService>();
         management.Setup(x => x.CreateAsync(It.IsAny<CreateAccountRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(id);

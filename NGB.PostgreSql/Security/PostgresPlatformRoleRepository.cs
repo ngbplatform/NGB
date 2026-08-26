@@ -32,6 +32,56 @@ public sealed class PostgresPlatformRoleRepository(IUnitOfWork uow, TimeProvider
         return (await uow.Connection.QueryAsync<PlatformRole>(cmd)).AsList();
     }
 
+    public async Task<IReadOnlyList<PlatformRoleListRecord>> GetListAsync(int limit, CancellationToken ct = default)
+    {
+        if (limit is <= 0 or > 500)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+        const string sql = """
+                           WITH selected_roles AS (
+                               SELECT
+                                   role_id,
+                                   code,
+                                   name,
+                                   description,
+                                   is_system,
+                                   is_active,
+                                   created_at_utc,
+                                   updated_at_utc
+                               FROM platform_roles
+                               ORDER BY lower(trim(code)), role_id
+                               LIMIT @Limit
+                           )
+                           SELECT
+                               r.role_id AS RoleId,
+                               r.code AS Code,
+                               r.name AS Name,
+                               r.description AS Description,
+                               r.is_system AS IsSystem,
+                               r.is_active AS IsActive,
+                               r.created_at_utc AS CreatedAtUtc,
+                               r.updated_at_utc AS UpdatedAtUtc,
+                               count(ur.user_id)::int AS AssignedUserCount
+                           FROM selected_roles r
+                           LEFT JOIN platform_user_roles ur ON ur.role_id = r.role_id
+                           GROUP BY
+                               r.role_id, r.code, r.name, r.description, r.is_system,
+                               r.is_active, r.created_at_utc, r.updated_at_utc
+                           ORDER BY lower(trim(r.code)), r.role_id;
+                           """;
+
+        var rows = await uow.Connection.QueryAsync<RoleListRow>(new CommandDefinition(
+            sql,
+            new { Limit = limit },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        return rows
+            .Select(static row => new PlatformRoleListRecord(row.ToRole(), row.AssignedUserCount))
+            .ToArray();
+    }
+
     public async Task<PlatformRole?> GetByIdAsync(Guid roleId, CancellationToken ct = default)
     {
         roleId.EnsureRequired(nameof(roleId));
@@ -185,4 +235,26 @@ public sealed class PostgresPlatformRoleRepository(IUnitOfWork uow, TimeProvider
     }
 
     private sealed record RoleUserCountRow(Guid RoleId, int Count);
+
+    private sealed record RoleListRow(
+        Guid RoleId,
+        string Code,
+        string Name,
+        string? Description,
+        bool IsSystem,
+        bool IsActive,
+        DateTime CreatedAtUtc,
+        DateTime UpdatedAtUtc,
+        int AssignedUserCount)
+    {
+        public PlatformRole ToRole() => new(
+            RoleId,
+            Code,
+            Name,
+            Description,
+            IsSystem,
+            IsActive,
+            CreatedAtUtc,
+            UpdatedAtUtc);
+    }
 }

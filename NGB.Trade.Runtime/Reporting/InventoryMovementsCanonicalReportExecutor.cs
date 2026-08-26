@@ -38,40 +38,30 @@ public sealed class InventoryMovementsCanonicalReportExecutor(
                 $"{CanonicalReportExecutionHelper.GetParameterLabel(definition, "to_utc")} must be on or after {CanonicalReportExecutionHelper.GetParameterLabel(definition, "from_utc")}.");
         }
 
-        var monthFrom = CanonicalReportExecutionHelper.NormalizeToPeriodMonth(rawFrom);
-        var monthTo = CanonicalReportExecutionHelper.NormalizeToPeriodMonth(rawTo);
         var dimensions = TradeReportingHelpers.BuildItemWarehouseFilters(definition, request);
         var policy = await policyReader.GetRequiredAsync(ct);
 
-        var rows = await TradeReportingHelpers.ReadAllMovementsAsync(
-            movementsQueryReader,
+        var offset = Math.Max(0, request.Offset);
+        var requestedLimit = request.Limit <= 0 ? 100 : request.Limit;
+        var page = await movementsQueryReader.GetByOccurredAtPageAsync(
             policy.InventoryMovementsRegisterId,
-            monthFrom,
-            monthTo,
+            rawFrom,
+            rawTo,
             dimensions.Count == 0 ? null : dimensions,
+            offset,
+            request.DisablePaging ? null : requestedLimit,
             ct);
 
-        var ordered = rows
-            .Where(x =>
-            {
-                var occurredOn = DateOnly.FromDateTime(x.OccurredAtUtc);
-                return occurredOn >= rawFrom && occurredOn <= rawTo;
-            })
-            .OrderBy(static x => x.OccurredAtUtc)
-            .ThenBy(static x => x.MovementId)
-            .ToArray();
+        if (page.Total > int.MaxValue)
+            throw new InvalidOperationException("Inventory Movements report exceeds the supported row-count range.");
 
-        var documentMap = new Dictionary<Guid, DocumentRecord?>();
-        foreach (var documentId in ordered.Select(static x => x.DocumentId).Distinct())
-        {
-            documentMap[documentId] = await documents.GetAsync(documentId, ct);
-        }
+        var total = (int)page.Total;
+        var limit = request.DisablePaging ? total : requestedLimit;
+        var documentMap = await documents.GetByIdsAsync(
+            page.Rows.Select(static row => row.DocumentId).Distinct().ToArray(),
+            ct);
 
-        var offset = Math.Max(0, request.Offset);
-        var limit = request.DisablePaging ? ordered.Length : (request.Limit <= 0 ? 100 : request.Limit);
-        var pageRows = ordered.Skip(offset).Take(limit).ToArray();
-
-        var renderedRows = pageRows
+        var renderedRows = page.Rows
             .Select(row => ToRow(row, documentMap.GetValueOrDefault(row.DocumentId)))
             .ToArray();
 
@@ -100,8 +90,8 @@ public sealed class InventoryMovementsCanonicalReportExecutor(
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: ordered.Length,
-            hasMore: offset + pageRows.Length < ordered.Length,
+            total: total,
+            hasMore: offset + page.Rows.Count < total,
             nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {

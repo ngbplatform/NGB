@@ -5,6 +5,7 @@ using NGB.Accounting.Periods;
 using NGB.Accounting.PostingState;
 using NGB.Accounting.PostingState.Readers;
 using NGB.Core.AuditLog;
+using NGB.Core.Locks;
 using NGB.Persistence.AuditLog;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Checkers;
@@ -18,6 +19,7 @@ using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.Writers;
 using NGB.Runtime.Accounting;
+using NGB.Runtime.Locks;
 using NGB.Runtime.AuditLog;
 using NGB.Runtime.Diagnostics;
 using NGB.Runtime.Posting;
@@ -693,10 +695,13 @@ public sealed class PeriodClosingService(
         DateOnly fiscalYearEndPeriod,
         CancellationToken ct)
     {
-        for (var p = yearStart; p <= fiscalYearEndPeriod; p = p.AddMonths(1))
+        var periods = new List<DateOnly>();
+        for (var period = yearStart; period <= fiscalYearEndPeriod; period = period.AddMonths(1))
         {
-            await advisoryLocks.LockPeriodAsync(p, ct);
+            periods.Add(period);
         }
+
+        await advisoryLocks.LockPeriodsDeterministicallyAsync(periods, AdvisoryLockPeriodScope.Accounting, ct);
     }
 
     private async Task EnsureFiscalYearClosePrerequisitesAsync(

@@ -185,6 +185,15 @@ public sealed class PartsPersistenceFullCoverageTests
             id,
             Rows(("catalog_part_filtered", [Row(("value", 2))])));
         connection.Commands.Should().Contain(x => x.CommandText.Contains("INSERT INTO \"catalog_part\""));
+
+        var largeRows = Enumerable.Range(0, 501)
+            .Select(index => Row(("value", index)))
+            .ToArray();
+        var beforeLargeWrite = connection.Commands.Count;
+        await sut.ReplacePartsAsync([part], id, Rows(("catalog_part", largeRows)));
+        connection.Commands.Skip(beforeLargeWrite)
+            .Count(command => command.CommandText.Contains("INSERT INTO \"catalog_part\"", StringComparison.Ordinal))
+            .Should().Be(2);
     }
 
     [Fact]
@@ -226,6 +235,15 @@ public sealed class PartsPersistenceFullCoverageTests
             id,
             Rows(("document_part_filtered", [Row(("value", 2))])));
         connection.Commands.Should().Contain(x => x.CommandText.Contains("INSERT INTO \"document_part\""));
+
+        var largeRows = Enumerable.Range(0, 501)
+            .Select(index => Row(("value", index)))
+            .ToArray();
+        var beforeLargeWrite = connection.Commands.Count;
+        await sut.ReplacePartsAsync([part], id, Rows(("document_part", largeRows)));
+        connection.Commands.Skip(beforeLargeWrite)
+            .Count(command => command.CommandText.Contains("INSERT INTO \"document_part\"", StringComparison.Ordinal))
+            .Should().Be(2);
     }
 
     private static CatalogTableMetadata CatalogTable(

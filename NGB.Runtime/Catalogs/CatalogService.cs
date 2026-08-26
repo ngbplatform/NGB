@@ -69,12 +69,26 @@ public sealed class CatalogService(
         PageRequestDto request,
         CancellationToken ct)
     {
+        request = NormalizePageRequest(request);
         var model = GetModel(catalogType);
         var (softDeleteMode, scalarFilters) = ExtractSoftDeleteFilter(request.Filters);
         var query = BuildQuery(model, request.Search, scalarFilters) with { SoftDeleteFilterMode = softDeleteMode };
 
-        var total = await reader.CountAsync(model.Head, query, ct);
-        var rows = await reader.GetPageAsync(model.Head, query, request.Offset, request.Limit, ct);
+        CatalogHeadQueryPage page;
+
+        if (reader is ICatalogCombinedPageReader combinedPageReader)
+        {
+            page = await combinedPageReader.GetPageWithTotalAsync(model.Head, query, request.Offset, request.Limit, ct);
+        }
+        else
+        {
+            var fallbackTotal = await reader.CountAsync(model.Head, query, ct);
+            var fallbackRows = await reader.GetPageAsync(model.Head, query, request.Offset, request.Limit, ct);
+            page = new CatalogHeadQueryPage(fallbackRows, fallbackTotal);
+        }
+
+        var total = page.Total;
+        var rows = page.Rows;
         IReadOnlyList<CatalogItemDto> items = rows.Select(r => ToItemDto(model, r, parts: null)).ToList();
 
         if (items.Count > 0)
@@ -98,6 +112,35 @@ public sealed class CatalogService(
         return enriched[0];
     }
 
+    public async Task<IReadOnlyList<CatalogItemDto>> GetHeadItemsByIdsAsync(
+        string catalogType,
+        IReadOnlyList<Guid> ids,
+        CancellationToken ct)
+    {
+        if (ids is null)
+            throw new NgbArgumentRequiredException(nameof(ids));
+
+        if (ids.Count == 0)
+            return [];
+
+        var model = GetModel(catalogType);
+        var distinctIds = ids.Where(static id => id != Guid.Empty).Distinct().ToArray();
+
+        if (distinctIds.Length == 0)
+            return [];
+
+        EnsureLookupIdLimit(distinctIds.Length);
+
+        var rows = await reader.GetByIdsWithFieldsAsync(model.Head, distinctIds, ct);
+        IReadOnlyList<CatalogItemDto> items = rows
+            .Select(row => ToItemDto(model, row, parts: null))
+            .ToArray();
+
+        return items.Count == 0
+            ? items
+            : await refEnricher.EnrichCatalogItemsAsync(model.Head, model.Meta.CatalogCode, items, ct);
+    }
+
     public async Task<IReadOnlyList<CatalogLookupDto>> LookupAcrossTypesAsync(
         IReadOnlyList<string> catalogTypes,
         string? query,
@@ -110,6 +153,8 @@ public sealed class CatalogService(
 
         if (perTypeLimit <= 0 || catalogTypes.Count == 0)
             return [];
+
+        perTypeLimit = Math.Min(perTypeLimit, PagingLimits.MaxPerTypeLookupLimit);
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var heads = new List<CatalogHeadDescriptor>(catalogTypes.Count);
@@ -124,6 +169,8 @@ public sealed class CatalogService(
 
         if (heads.Count == 0)
             return [];
+
+        EnsureLookupTypeLimit(heads.Count);
 
         var rows = await reader.LookupAcrossTypesAsync(heads, query, perTypeLimit, activeOnly, ct);
 
@@ -382,6 +429,7 @@ public sealed class CatalogService(
         if (limit <= 0)
             return [];
 
+        limit = Math.Min(limit, PagingLimits.MaxPerTypeLookupLimit);
         var rows = await reader.LookupAsync(model.Head, query, limit, ct);
         return rows.Select(x => new LookupItemDto(x.Id, x.Label)).ToList();
     }
@@ -392,12 +440,65 @@ public sealed class CatalogService(
         CancellationToken ct)
     {
         var model = GetModel(catalogType);
+
+        if (ids is null)
+            throw new NgbArgumentRequiredException(nameof(ids));
+
         if (ids.Count == 0)
             return [];
 
-        var rows = await reader.GetByIdsAsync(model.Head, ids, ct);
+        var distinctIds = ids.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (distinctIds.Length == 0)
+            return [];
 
-        return rows.Select(x => new LookupItemDto(x.Id, x.Label)).ToList();
+        EnsureLookupIdLimit(distinctIds.Length);
+
+        var rows = await reader.GetByIdsAsync(model.Head, distinctIds, ct);
+        if (rows.Count == 0)
+            return [];
+
+        // Keep the database lookup bounded and de-duplicated, but preserve the
+        // public service contract: caller order and repeated IDs are significant.
+        var rowsById = rows.ToDictionary(static row => row.Id);
+
+        return ids
+            .Where(static id => id != Guid.Empty)
+            .Where(rowsById.ContainsKey)
+            .Select(id =>
+            {
+                var row = rowsById[id];
+                return new LookupItemDto(row.Id, row.Label);
+            })
+            .ToList();
+    }
+
+    private static PageRequestDto NormalizePageRequest(PageRequestDto request)
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        if (request.Offset < 0)
+            throw new NgbArgumentOutOfRangeException("offset", request.Offset, "Offset must be zero or greater.");
+
+        if (request.Limit <= 0)
+            throw new NgbArgumentOutOfRangeException("limit", request.Limit, "Limit must be greater than zero.");
+
+        var offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset);
+        var limit = Math.Min(request.Limit, PagingLimits.MaxPageSize);
+
+        return request with { Offset = offset, Limit = limit };
+    }
+
+    private static void EnsureLookupIdLimit(int count)
+    {
+        if (count > PagingLimits.MaxLookupIds)
+            throw new NgbArgumentOutOfRangeException("ids", count, $"At most {PagingLimits.MaxLookupIds} distinct IDs are allowed.");
+    }
+
+    private static void EnsureLookupTypeLimit(int count)
+    {
+        if (count > PagingLimits.MaxLookupTypes)
+            throw new NgbArgumentOutOfRangeException("catalogTypes", count, $"At most {PagingLimits.MaxLookupTypes} distinct catalog types are allowed.");
     }
 
     private CatalogModel GetModel(string catalogType)

@@ -111,6 +111,42 @@ public sealed class PostgresCatalogReaderFullCoverageTests
     }
 
     [Fact]
+    public async Task Combined_page_validates_bounds_and_returns_total_and_rows_in_one_round_trip()
+    {
+        var connection = Connection(reader: _ => CombinedHeadRows(
+            7,
+            (FirstId, false, "Acme", "open", 12)));
+        var sut = Reader(connection);
+
+        await ((Func<Task>)(() => sut.GetPageWithTotalAsync(Head(), Query(), -1, 10)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => sut.GetPageWithTotalAsync(Head(), Query(), 0, 0)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
+        var page = await sut.GetPageWithTotalAsync(Head(), Query(), 2, 10);
+        var filtered = await sut.GetPageWithTotalAsync(
+            Head(),
+            Query("acme", SoftDeleteFilterMode.Active, new CatalogFilter("status", "open")),
+            0,
+            5);
+
+        page.Total.Should().Be(7);
+        page.Rows.Should().ContainSingle().Which.Id.Should().Be(FirstId);
+        filtered.Total.Should().Be(7);
+        connection.Commands.Should().HaveCount(2);
+        connection.Commands[0].CommandText.Should()
+            .Contain("SELECT COUNT(*)")
+            .And.Contain("UNION ALL")
+            .And.Contain("NOT EXISTS")
+            .And.Contain("ORDER BY \"Display\" NULLS LAST");
+        connection.Commands[1].CommandText.Should()
+            .Contain("h.\"name\" ILIKE")
+            .And.NotContain("UNION ALL");
+        Parameter(connection.Commands[0], "offset").Should().Be(2);
+        Parameter(connection.Commands[0], "limit").Should().Be(10);
+    }
+
+    [Fact]
     public async Task Get_by_id_validates_id_and_returns_missing_or_mapped_row()
     {
         var missingConnection = Connection(reader: _ => HeadRows());
@@ -146,6 +182,9 @@ public sealed class PostgresCatalogReaderFullCoverageTests
 
         connection.Commands.Should().HaveCount(2);
         connection.Commands[0].CommandText.Should().Contain("ILIKE").And.NotContain("UNION ALL");
+        connection.Commands[0].CommandText.Should()
+            .Contain("h.\"name\" ILIKE")
+            .And.NotContain("COALESCE(h.\"name\", c.id::text) ILIKE");
         connection.Commands[1].CommandText.Should().Contain("UNION ALL").And.Contain("NOT EXISTS");
         Parameter(connection.Commands[0], "q").Should().Be("acme");
     }
@@ -163,6 +202,52 @@ public sealed class PostgresCatalogReaderFullCoverageTests
         rows.Select(row => row.Label).Should().Equal("Acme", "Beta", "Acme");
         connection.Commands.Should().ContainSingle();
         connection.Commands[0].CommandText.Should().Contain("ANY(");
+    }
+
+    [Fact]
+    public async Task Hierarchy_queries_validate_inputs_short_circuit_and_use_bounded_recursive_ctes()
+    {
+        var emptyConnection = Connection();
+        var empty = Reader(emptyConnection);
+        await ((Func<Task>)(() => empty.GetActiveDescendantIdsAsync(HeadWithParent(), null!, "parent_id")))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await ((Func<Task>)(() => empty.GetActiveDescendantIdsAsync(HeadWithParent(), [FirstId], " ")))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => empty.GetActiveDescendantIdsAsync(HeadWithParent(), [FirstId], "missing")))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => empty.GetActiveDescendantIdsAsync(HeadWithParent(), [Guid.Empty], "parent_id")))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+        (await empty.GetActiveDescendantIdsAsync(HeadWithParent(), [], "parent_id")).Should().BeEmpty();
+        emptyConnection.Commands.Should().BeEmpty();
+
+        var descendantsConnection = Connection(reader: _ => GuidRows(SecondId));
+        var descendants = await Reader(descendantsConnection).GetActiveDescendantIdsAsync(
+            HeadWithParent(), [FirstId, FirstId], "parent_id");
+        descendants.Should().Equal(SecondId);
+        descendantsConnection.Commands.Should().ContainSingle();
+        descendantsConnection.Commands[0].CommandText.Should()
+            .Contain("WITH RECURSIVE descendants")
+            .And.Contain("c.is_deleted = FALSE");
+
+        var hierarchy = Reader(Connection(scalar: _ => true));
+        await ((Func<Task>)(() => hierarchy.HasParentChainViolationAsync(
+                HeadWithParent(), Guid.Empty, FirstId, "parent_id", 32)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => hierarchy.HasParentChainViolationAsync(
+                HeadWithParent(), FirstId, Guid.Empty, "parent_id", 32)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => hierarchy.HasParentChainViolationAsync(
+                HeadWithParent(), FirstId, SecondId, " ", 32)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => hierarchy.HasParentChainViolationAsync(
+                HeadWithParent(), FirstId, SecondId, "missing", 32)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => hierarchy.HasParentChainViolationAsync(
+                HeadWithParent(), FirstId, SecondId, "parent_id", 0)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
+        (await hierarchy.HasParentChainViolationAsync(
+            HeadWithParent(), FirstId, SecondId, "parent_id", 32)).Should().BeTrue();
     }
 
     [Fact]
@@ -204,6 +289,7 @@ public sealed class PostgresCatalogReaderFullCoverageTests
             .And.Contain("LEFT JOIN")
             .And.Contain("c.is_deleted = FALSE")
             .And.Contain("ILIKE")
+            .And.NotContain("COALESCE(h.\"name\", c.id::text) ILIKE")
             .And.Contain("\"cat_\"\"vendors\"");
         connection.Commands[1].CommandText.Should().Contain("JOIN catalogs").And.NotContain("ILIKE");
         Parameter(connection.Commands[0], "q").Should().Be("inc");
@@ -267,6 +353,15 @@ public sealed class PostgresCatalogReaderFullCoverageTests
                 new CatalogHeadColumn("rank", ColumnType.Int32)
             ]);
 
+    private static CatalogHeadDescriptor HeadWithParent()
+        => Head() with
+        {
+            Columns = [
+                new CatalogHeadColumn("name", ColumnType.String),
+                new CatalogHeadColumn("parent_id", ColumnType.Guid)
+            ]
+        };
+
     private static CatalogQuery Query(
         string? search = null,
         SoftDeleteFilterMode mode = SoftDeleteFilterMode.All,
@@ -296,6 +391,44 @@ public sealed class PostgresCatalogReaderFullCoverageTests
                 row.Rank ?? (object)DBNull.Value);
         }
 
+        return table.CreateDataReader();
+    }
+
+    private static DbDataReader CombinedHeadRows(
+        long total,
+        params (Guid Id, bool Deleted, string? Display, string? Status, int? Rank)[] rows)
+    {
+        var count = new DataTable();
+        count.Columns.Add("Count", typeof(long));
+        count.Rows.Add(total);
+
+        var page = new DataTable();
+        page.Columns.Add("Id", typeof(Guid));
+        page.Columns.Add("IsDeleted", typeof(bool));
+        page.Columns.Add("Display", typeof(object));
+        page.Columns.Add("NAME", typeof(object));
+        page.Columns.Add("status", typeof(object));
+        page.Columns.Add("rank", typeof(object));
+        foreach (var row in rows)
+        {
+            page.Rows.Add(
+                row.Id,
+                row.Deleted,
+                row.Display ?? (object)DBNull.Value,
+                row.Display ?? (object)DBNull.Value,
+                row.Status ?? (object)DBNull.Value,
+                row.Rank ?? (object)DBNull.Value);
+        }
+
+        return new DataTableReader([count, page]);
+    }
+
+    private static DbDataReader GuidRows(params Guid[] ids)
+    {
+        var table = new DataTable();
+        table.Columns.Add("id", typeof(Guid));
+        foreach (var id in ids)
+            table.Rows.Add(id);
         return table.CreateDataReader();
     }
 

@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 public sealed class DefinitionsValidationService_PartCodes_P0Tests
 {
     [Fact]
-    public void ValidateOrThrow_WhenDocumentPartTableOmitsPartCode_FailsFast()
+    public async Task ValidateOrThrow_WhenDocumentPartTableOmitsPartCode_FailsFast()
     {
         var registry = BuildRegistry(
             documents:
@@ -49,12 +49,12 @@ public sealed class DefinitionsValidationService_PartCodes_P0Tests
 
         var validator = CreateInternalValidator(registry);
 
-        var ex = Assert.Throws<DefinitionsValidationException>(() => validator.ValidateOrThrow());
+        var ex = await Assert.ThrowsAsync<DefinitionsValidationException>(() => validator.ValidateOrThrowAsync());
         ex.Errors.Should().Contain(e => e.Contains("must declare a non-empty PartCode.", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ValidateOrThrow_WhenDocumentPartCodesDuplicate_FailsFast()
+    public async Task ValidateOrThrow_WhenDocumentPartCodesDuplicate_FailsFast()
     {
         var registry = BuildRegistry(
             documents:
@@ -97,12 +97,12 @@ public sealed class DefinitionsValidationService_PartCodes_P0Tests
 
         var validator = CreateInternalValidator(registry);
 
-        var ex = Assert.Throws<DefinitionsValidationException>(() => validator.ValidateOrThrow());
+        var ex = await Assert.ThrowsAsync<DefinitionsValidationException>(() => validator.ValidateOrThrowAsync());
         ex.Errors.Should().Contain(e => e.Contains("declares duplicate PartCode 'lines'.", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ValidateOrThrow_WhenCatalogHeadTableDeclaresPartCode_FailsFast()
+    public async Task ValidateOrThrow_WhenCatalogHeadTableDeclaresPartCode_FailsFast()
     {
         var registry = BuildRegistry(
             catalogs:
@@ -131,12 +131,12 @@ public sealed class DefinitionsValidationService_PartCodes_P0Tests
 
         var validator = CreateInternalValidator(registry);
 
-        var ex = Assert.Throws<DefinitionsValidationException>(() => validator.ValidateOrThrow());
+        var ex = await Assert.ThrowsAsync<DefinitionsValidationException>(() => validator.ValidateOrThrowAsync());
         ex.Errors.Should().Contain(e => e.Contains("is not a part table and cannot declare PartCode.", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ValidateOrThrow_WhenCatalogPartCodeIsNotTrimmed_FailsFast()
+    public async Task ValidateOrThrow_WhenCatalogPartCodeIsNotTrimmed_FailsFast()
     {
         var registry = BuildRegistry(
             catalogs:
@@ -174,7 +174,7 @@ public sealed class DefinitionsValidationService_PartCodes_P0Tests
 
         var validator = CreateInternalValidator(registry);
 
-        var ex = Assert.Throws<DefinitionsValidationException>(() => validator.ValidateOrThrow());
+        var ex = await Assert.ThrowsAsync<DefinitionsValidationException>(() => validator.ValidateOrThrowAsync());
         ex.Errors.Should().Contain(e => e.Contains("must declare a trimmed PartCode.", StringComparison.Ordinal));
     }
 

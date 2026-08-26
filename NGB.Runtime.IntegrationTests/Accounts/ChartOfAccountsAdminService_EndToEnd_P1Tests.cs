@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Accounting.Accounts;
+using NGB.Persistence.Accounts;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using Xunit;
@@ -125,6 +126,51 @@ public sealed class ChartOfAccountsAdminService_EndToEnd_P1Tests(PostgresTestFix
             var b200 = list.Single(x => x.Account.Code == "B200");
             b200.IsDeleted.Should().BeTrue();
             b200.IsActive.Should().BeFalse("repository sets is_active=false on soft delete");
+        }
+    }
+
+    [Fact]
+    public async Task GetPageAsync_filters_counts_and_pages_in_postgres()
+    {
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var management = scope.ServiceProvider.GetRequiredService<IChartOfAccountsManagementService>();
+            await management.CreateAsync(new CreateAccountRequest(
+                Code: "P2-001", Name: "P2 First", Type: AccountType.Asset,
+                StatementSection: StatementSection.Assets,
+                NegativeBalancePolicy: NegativeBalancePolicy.Allow,
+                IsActive: true), default);
+            await management.CreateAsync(new CreateAccountRequest(
+                Code: "P2-002", Name: "P2 Second", Type: AccountType.Asset,
+                StatementSection: StatementSection.Assets,
+                NegativeBalancePolicy: NegativeBalancePolicy.Allow,
+                IsActive: false), default);
+            await management.CreateAsync(new CreateAccountRequest(
+                Code: "P2-003", Name: "P2 Liability", Type: AccountType.Liability,
+                StatementSection: StatementSection.Liabilities,
+                NegativeBalancePolicy: NegativeBalancePolicy.Allow,
+                IsActive: true), default);
+        }
+
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var admin = scope.ServiceProvider.GetRequiredService<IChartOfAccountsAdminService>();
+            var page = await admin.GetPageAsync(new ChartOfAccountsAdminPageQuery(
+                IncludeDeleted: false,
+                OnlyDeleted: false,
+                OnlyActive: null,
+                AccountTypes: [AccountType.Asset],
+                Search: "P2-",
+                SearchAccountTypes: [],
+                Offset: 1,
+                Limit: 1), default);
+
+            page.Total.Should().Be(2);
+            page.Items.Should().ContainSingle().Which.Account.Code.Should().Be("P2-002");
+            (await admin.GetByIdAsync(page.Items[0].Account.Id, default))
+                .Should().NotBeNull();
         }
     }
 }

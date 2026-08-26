@@ -4,12 +4,14 @@ using NGB.Definitions.Documents.Validation;
 using NGB.Persistence.Documents;
 using NGB.Tools.Exceptions;
 using NGB.Trade.Documents;
+using NGB.Trade.References;
 
 namespace NGB.Trade.Runtime.Documents.Validation;
 
 public sealed class CustomerReturnPostValidator(
     ITradeDocumentReaders readers,
     ICatalogService catalogs,
+    ITradeCatalogValidationReader catalogValidation,
     IDocumentRepository documents)
     : IDocumentPostValidator
 {
@@ -38,12 +40,15 @@ public sealed class CustomerReturnPostValidator(
                 ct);
         }
 
+        var inventoryItems = await TradeCatalogValidationGuards.LoadInventoryItemsAsync(
+            lines.Select(static line => line.ItemId).ToArray(), catalogValidation, ct);
+
         for (var i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
             var prefix = $"lines[{i}]";
 
-            await TradeCatalogValidationGuards.EnsureInventoryItemAsync(line.ItemId, $"{prefix}.item_id", catalogs, ct);
+            TradeCatalogValidationGuards.EnsureInventoryItem(line.ItemId, $"{prefix}.item_id", inventoryItems);
 
             if (line.Quantity <= 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.quantity", "Quantity must be greater than zero.");

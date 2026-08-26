@@ -7,8 +7,11 @@ internal static class QueryParsing
 {
     public static PageRequestDto ToPageRequest(IQueryCollection query)
     {
-        var offset = TryGetInt(query, "offset") ?? 0;
-        var limit = TryGetInt(query, "limit") ?? 50;
+        var offset = Math.Clamp(TryGetInt(query, "offset") ?? 0, 0, PagingLimits.MaxOffset);
+        var requestedLimit = TryGetInt(query, "limit") ?? PagingLimits.DefaultPageSize;
+        var limit = requestedLimit <= 0
+            ? PagingLimits.DefaultPageSize
+            : Math.Min(requestedLimit, PagingLimits.MaxPageSize);
         var search = query.TryGetValue("search", out var s) ? s.ToString() : null;
 
         var filters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

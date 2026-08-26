@@ -54,18 +54,17 @@ public sealed class BackgroundJobsInfrastructureFullCoverageTests
 
         using var cancelled = new CancellationTokenSource();
         cancelled.Cancel();
-        var cancelAct = async () => await sut.TryGetAsync("cancelled", cancelled.Token);
+        var cancelAct = async () => await sut.GetManyAsync(["cancelled"], cancelled.Token);
         await cancelAct.Should().ThrowAsync<OperationCanceledException>();
-        (await sut.TryGetAsync("missing", default)).Should().BeNull();
-        (await sut.TryGetAsync("empty", default)).Should().BeNull();
-        var populated = await sut.TryGetAsync("job", default);
-        populated.Should().NotBeNull();
-        populated!.LastExecutionUtc.Should().Be(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        var states = await sut.GetManyAsync(["missing", "empty", "job", "invalid", "job"], default);
+        states.Should().NotContainKeys("missing", "empty").And.HaveCount(2);
+        var populated = states["job"];
+        populated.LastExecutionUtc.Should().Be(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
         populated.NextExecutionUtc.Should().NotBeNull();
-        var invalid = await sut.TryGetAsync("invalid", default);
-        invalid!.LastExecutionUtc.Should().BeNull();
+        var invalid = states["invalid"];
+        invalid.LastExecutionUtc.Should().BeNull();
         invalid.NextExecutionUtc.Should().BeNull();
-        connection.Verify(x => x.Dispose(), Times.Exactly(4));
+        connection.Verify(x => x.Dispose(), Times.Once);
     }
 
     [Fact]
@@ -121,7 +120,15 @@ public sealed class BackgroundJobsInfrastructureFullCoverageTests
     private sealed class StubRecurringReader(IReadOnlyDictionary<string, RecurringJobState?> states)
         : IRecurringJobStateReader
     {
-        public ValueTask<RecurringJobState?> TryGetAsync(string jobId, CancellationToken cancellationToken) =>
-            ValueTask.FromResult(states.GetValueOrDefault(jobId));
+        public ValueTask<IReadOnlyDictionary<string, RecurringJobState>> GetManyAsync(
+            IReadOnlyCollection<string> jobIds,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<IReadOnlyDictionary<string, RecurringJobState>>(
+                states
+                    .Where(pair => pair.Value is not null && jobIds.Contains(pair.Key, StringComparer.Ordinal))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value!, StringComparer.Ordinal));
+        }
     }
 }

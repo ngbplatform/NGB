@@ -703,6 +703,16 @@ public sealed class SalesInvoicePostValidator_P0Tests
                     clientId: head.ClientId,
                     projectId: head.ProjectId);
             });
+        readers.Setup(x => x.ReadTimesheetHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.Distinct().ToDictionary(
+                    static id => id,
+                    id => timesheetHeadsById is not null && timesheetHeadsById.TryGetValue(id, out var timesheetHead)
+                        ? timesheetHead
+                        : AgencyBillingTestData.ValidTimesheetHead(
+                            documentId: id,
+                            clientId: head.ClientId,
+                            projectId: head.ProjectId)));
         readers.Setup(x => x.ReadTimesheetLinesAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) =>
             {
@@ -714,6 +724,16 @@ public sealed class SalesInvoicePostValidator_P0Tests
                     AgencyBillingTestData.ValidTimesheetLine(documentId: id)
                 ];
             });
+        readers.Setup(x => x.ReadTimesheetLinesAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.Distinct().ToDictionary(
+                    static id => id,
+                    id => timesheetLinesById is not null && timesheetLinesById.TryGetValue(id, out var timesheetLines)
+                        ? timesheetLines
+                        : (IReadOnlyList<AgencyBillingTimesheetLine>)
+                        [
+                            AgencyBillingTestData.ValidTimesheetLine(documentId: id)
+                        ]));
 
         var usageReader = new Mock<IAgencyBillingInvoiceUsageReader>(MockBehavior.Strict);
         usageReader.Setup(x => x.GetPostedInvoiceUsageForTimesheetAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
@@ -724,11 +744,27 @@ public sealed class SalesInvoicePostValidator_P0Tests
 
                 return new AgencyBillingTimesheetInvoiceUsage(0m, 0m);
             });
+        usageReader.Setup(x => x.GetPostedInvoiceUsageForTimesheetsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<Guid?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, Guid? _, CancellationToken _) =>
+                (IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>)ids.Distinct().ToDictionary(
+                    static id => id,
+                    id => usageByTimesheetId is not null && usageByTimesheetId.TryGetValue(id, out var usage)
+                        ? usage
+                        : new AgencyBillingTimesheetInvoiceUsage(0m, 0m)));
 
         var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
         documents.Setup(x => x.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) =>
                 documentsById is not null && documentsById.TryGetValue(id, out var record) ? record : null);
+        documents.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids
+                    .Where(id => documentsById is not null && documentsById.ContainsKey(id))
+                    .Distinct()
+                    .ToDictionary(static id => id, id => documentsById![id]));
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
         var lockedDocumentIds = new List<Guid>();
@@ -1119,11 +1155,27 @@ public sealed class CustomerPaymentPostValidator_P0Tests
 
                 return AgencyBillingTestData.ValidSalesInvoiceHead(documentId: id, clientId: payment.ClientId, amount: 0m);
             });
+        readers.Setup(x => x.ReadSalesInvoiceHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.Distinct().ToDictionary(
+                    static id => id,
+                    id => invoicesById is not null && invoicesById.TryGetValue(id, out var invoice)
+                        ? invoice
+                        : AgencyBillingTestData.ValidSalesInvoiceHead(
+                            documentId: id,
+                            clientId: payment.ClientId,
+                            amount: 0m)));
 
         var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
         documents.Setup(x => x.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) =>
                 documentsById is not null && documentsById.TryGetValue(id, out var document) ? document : null);
+        documents.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids
+                    .Where(id => documentsById is not null && documentsById.ContainsKey(id))
+                    .Distinct()
+                    .ToDictionary(static id => id, id => documentsById![id]));
 
         var charts = new Mock<IChartOfAccountsProvider>(MockBehavior.Strict);
         charts.Setup(x => x.GetAsync(It.IsAny<CancellationToken>()))
@@ -1160,6 +1212,30 @@ public sealed class CustomerPaymentPostValidator_P0Tests
                 }
 
                 return 0m;
+            });
+        netReader.Setup(x => x.GetNetByDimensionSetsAsync(
+                policy.ArOpenItemsOperationalRegisterId,
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                "amount",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> dimensionSetIds, string _, CancellationToken _) =>
+            {
+                var result = dimensionSetIds.Distinct().ToDictionary(static id => id, static _ => 0m);
+                if (openAmountsByInvoiceId is null || invoicesById is null)
+                    return (IReadOnlyDictionary<Guid, decimal>)result;
+
+                foreach (var (invoiceId, invoice) in invoicesById)
+                {
+                    var dimensionSetId = DeterministicDimensionSetId.FromBag(
+                        AgencyBillingPostingCommon.ArOpenItemBag(invoice.ClientId, invoice.ProjectId, invoice.DocumentId));
+                    if (result.ContainsKey(dimensionSetId)
+                        && openAmountsByInvoiceId.TryGetValue(invoiceId, out var openAmount))
+                    {
+                        result[dimensionSetId] = openAmount;
+                    }
+                }
+
+                return result;
             });
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);

@@ -39,8 +39,14 @@ public sealed class PostgresOperationalRegisterFinalizationRepositoryFullCoverag
 
         Func<Task> dirtyLocalValue = () => sut.MarkDirtyAsync(RegisterId, Period, NowUtc.ToLocalTime(), NowUtc);
         Func<Task> dirtyLocalNow = () => sut.MarkDirtyAsync(RegisterId, Period, NowUtc, NowUtc.ToLocalTime());
+        Func<Task> dirtyBatchNull = () => sut.MarkDirtyPeriodsAsync(RegisterId, null!, NowUtc, NowUtc);
+        Func<Task> dirtyBatchEmptyId = () => sut.MarkDirtyPeriodsAsync(Guid.Empty, [Period], NowUtc, NowUtc);
+        Func<Task> dirtyBatchBadPeriod = () => sut.MarkDirtyPeriodsAsync(RegisterId, [Period.AddDays(1)], NowUtc, NowUtc);
         await dirtyLocalValue.Should().ThrowAsync<NgbArgumentInvalidException>();
         await dirtyLocalNow.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await dirtyBatchNull.Should().ThrowAsync<ArgumentNullException>();
+        await dirtyBatchEmptyId.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await dirtyBatchBadPeriod.Should().ThrowAsync<NgbArgumentInvalidException>();
 
         Func<Task> blockedLocalValue = () => sut.MarkBlockedNoProjectorAsync(
             RegisterId, Period, NowUtc.ToLocalTime(), "missing", NowUtc);
@@ -57,12 +63,20 @@ public sealed class PostgresOperationalRegisterFinalizationRepositoryFullCoverag
 
         var fixture = Fixture();
         await fixture.Repository.MarkFinalizedAsync(RegisterId, Period, NowUtc, NowUtc);
-        await fixture.Repository.MarkDirtyAsync(RegisterId, Period, NowUtc, NowUtc);
+        await fixture.Repository.MarkDirtyPeriodsAsync(
+            RegisterId,
+            [Period.AddMonths(1), Period, Period.AddMonths(1)],
+            NowUtc,
+            NowUtc);
+        await fixture.Repository.MarkDirtyPeriodsAsync(RegisterId, [], NowUtc, NowUtc);
         await fixture.Repository.MarkBlockedNoProjectorAsync(
             RegisterId, Period, NowUtc, new string('x', 128), NowUtc);
         fixture.Connection.Commands.Should().HaveCount(3);
         fixture.Connection.Commands[0].CommandText.Should().Contain("finalized_at_utc = EXCLUDED.finalized_at_utc");
-        fixture.Connection.Commands[1].CommandText.Should().Contain("dirty_since_utc = EXCLUDED.dirty_since_utc");
+        fixture.Connection.Commands[1].CommandText.Should()
+            .Contain("FROM UNNEST(")
+            .And.Contain("::date[]")
+            .And.Contain("dirty_since_utc = EXCLUDED.dirty_since_utc");
         fixture.Connection.Commands[2].CommandText.Should().Contain("blocked_reason = EXCLUDED.blocked_reason");
     }
 

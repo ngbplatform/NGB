@@ -120,8 +120,8 @@ public sealed class LeasePrimaryPartyPayloadValidatorFullCoverageTests
     {
         var partyId = Guid.CreateVersion7();
         var parties = new Mock<IPropertyManagementPartyReader>(MockBehavior.Strict);
-        parties.Setup(x => x.TryGetAsync(partyId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((PropertyManagementParty?)null);
+        parties.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, PropertyManagementParty>());
         var validator = new LeasePrimaryPartyPayloadValidator(parties.Object);
 
         await ((Func<Task>)(() => validator.ValidateCreateDraftPayloadAsync(
@@ -134,8 +134,11 @@ public sealed class LeasePrimaryPartyPayloadValidatorFullCoverageTests
     private static LeasePrimaryPartyPayloadValidator CreateValidator()
     {
         var parties = new Mock<IPropertyManagementPartyReader>(MockBehavior.Strict);
-        parties.Setup(x => x.TryGetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid id, CancellationToken _) => new PropertyManagementParty(id, "Tenant", true, false, false));
+        parties.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.ToDictionary(
+                    static id => id,
+                    static id => new PropertyManagementParty(id, "Tenant", true, false, false)));
         return new LeasePrimaryPartyPayloadValidator(parties.Object);
     }
 

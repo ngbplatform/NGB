@@ -340,15 +340,22 @@ LIMIT 1;
         if (afterDateUtc is null != afterDocumentId is null)
             throw new NgbArgumentRequiredException(afterDateUtc is null ? nameof(afterDateUtc) : nameof(afterDocumentId));
 
-        // Due = documents.date_utc::date <= utcDate AND documents.status=Draft AND typed header indicates system reversal.
-        const string sqlWithoutCursor = $"""
+        // A half-open UTC range keeps the predicate sargable on documents.date_utc.
+        var dueBeforeUtc = utcDate < DateOnly.MaxValue
+            ? DateTime.SpecifyKind(utcDate.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc)
+            : DateTime.SpecifyKind(DateOnly.MaxValue.ToDateTime(TimeOnly.MaxValue), DateTimeKind.Utc);
+        var dueDatePredicate = utcDate < DateOnly.MaxValue
+            ? "d.date_utc < @dueBeforeUtc"
+            : "d.date_utc <= @dueBeforeUtc";
+
+        var sqlWithoutCursor = $"""
 SELECT
     d.id AS DocumentId,
     d.date_utc AS DateUtc
 FROM documents d
 JOIN {HeaderTable} h ON h.document_id = d.id
 WHERE d.status = 1 -- Draft
-  AND d.date_utc::date <= @utcDate
+  AND {dueDatePredicate}
   AND h.source = 2
   AND h.journal_type = 2
   AND h.approval_state = 3
@@ -357,14 +364,14 @@ ORDER BY d.date_utc, d.id
 LIMIT @limit;
 """;
 
-        const string sqlWithCursor = $"""
+        var sqlWithCursor = $"""
 SELECT
     d.id AS DocumentId,
     d.date_utc AS DateUtc
 FROM documents d
 JOIN {HeaderTable} h ON h.document_id = d.id
 WHERE d.status = 1 -- Draft
-  AND d.date_utc::date <= @utcDate
+  AND {dueDatePredicate}
   AND h.source = 2
   AND h.journal_type = 2
   AND h.approval_state = 3
@@ -379,8 +386,8 @@ LIMIT @limit;
 
         var sql = afterDateUtc is null ? sqlWithoutCursor : sqlWithCursor;
         object args = afterDateUtc is null
-            ? new { utcDate, limit }
-            : new { utcDate, limit, afterDateUtc, afterDocumentId };
+            ? new { dueBeforeUtc, limit }
+            : new { dueBeforeUtc, limit, afterDateUtc, afterDocumentId };
 
         var rows = await uow.Connection.QueryAsync<GeneralJournalEntryDueSystemReversalCandidate>(
             new CommandDefinition(

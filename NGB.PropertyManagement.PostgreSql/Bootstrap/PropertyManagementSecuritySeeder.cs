@@ -98,8 +98,8 @@ public sealed class PropertyManagementSecuritySeeder(
 
         if (!string.IsNullOrWhiteSpace(adminEmail))
         {
-            var existingUsers = await users.GetAllAsync(ct);
-            foreach (var user in existingUsers.Where(user => string.Equals(user.Email, adminEmail, StringComparison.OrdinalIgnoreCase)))
+            var existingUsers = await users.GetByEmailsAsync([adminEmail], ct);
+            foreach (var user in existingUsers)
             {
                 candidateIds.Add(user.UserId);
             }

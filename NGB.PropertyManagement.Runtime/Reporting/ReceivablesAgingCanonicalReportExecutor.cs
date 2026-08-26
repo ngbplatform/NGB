@@ -1,14 +1,16 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
-using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Definitions;
-using NGB.PropertyManagement.Runtime.Receivables;
+using NGB.PropertyManagement.Reporting;
+using NGB.PropertyManagement.Runtime.Policy;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 
 namespace NGB.PropertyManagement.Runtime.Reporting;
 
-public sealed class ReceivablesAgingCanonicalReportExecutor(IReceivablesOpenItemsDetailsService details)
+public sealed class ReceivablesAgingCanonicalReportExecutor(
+    IReceivablesReportReader reader,
+    IPropertyManagementAccountingPolicyReader policyReader)
     : IReportSpecializedPlanExecutor
 {
     public string ReportCode => PropertyManagementSecurityDefaults.ReceivablesAgingReport;
@@ -21,26 +23,26 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(IReceivablesOpenItem
         var leaseId = CanonicalReportExecutionHelper.GetRequiredGuidFilter(definition, request, "lease_id");
         var asOf = CanonicalReportExecutionHelper.GetRequiredDateOnlyParameter(definition, request, "as_of_utc");
 
-        var open = await details.GetOpenItemsDetailsAsync(Guid.Empty, Guid.Empty, leaseId, ct: ct);
-        var rowsAll = open.Charges
-            .Select(charge => ToRow(charge, asOf))
-            .ToArray();
-
-        var total = rowsAll.Length;
         var offset = Math.Max(0, request.Offset);
         var limit = request.Limit <= 0 ? 50 : request.Limit;
-        var slice = rowsAll.Skip(offset).Take(limit).ToArray();
-        var hasMore = offset + slice.Length < total;
+        var policy = await policyReader.GetRequiredAsync(ct);
+        var page = await reader.GetPageAsync(
+            policy.ReceivablesOpenItemsOperationalRegisterId,
+            leaseId,
+            ReceivablesReportMode.Aging,
+            offset,
+            limit,
+            ct);
 
-        var rows = slice.Select(ToDetailRow).ToList();
-        if (request.Layout?.ShowGrandTotals != false && rowsAll.Length > 0)
-            rows.Add(ToTotalRow(rowsAll));
+        var rows = page.Rows.Select(row => ToDetailRow(ToRow(row, asOf))).ToList();
+        if (request.Layout?.ShowGrandTotals != false && page.Total > 0)
+            rows.Add(ToTotalRow(page.TotalOriginal, page.TotalOutstanding));
 
         var subtitle = string.Join(" · ", new[]
         {
-            open.PartyDisplay,
-            open.PropertyDisplay,
-            open.LeaseDisplay,
+            page.PartyDisplay,
+            page.PropertyDisplay,
+            page.LeaseDisplay,
             asOf.ToString("yyyy-MM-dd")
         }.Where(x => !string.IsNullOrWhiteSpace(x)));
 
@@ -68,8 +70,8 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(IReceivablesOpenItem
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: total,
-            hasMore: hasMore,
+            total: page.Total,
+            hasMore: offset + page.Rows.Count < page.Total,
             nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -77,19 +79,21 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(IReceivablesOpenItem
             });
     }
 
-    private static AgingRow ToRow(ReceivablesOpenChargeItemDetailsDto charge, DateOnly asOf)
+    private static AgingRow ToRow(ReceivablesReportRow charge, DateOnly asOf)
     {
-        var daysPastDue = (asOf.ToDateTime(TimeOnly.MinValue) - charge.DueOnUtc.ToDateTime(TimeOnly.MinValue)).Days;
+        var dueOnUtc = charge.DueOnUtc.GetValueOrDefault();
+        var daysPastDue = (asOf.ToDateTime(TimeOnly.MinValue) - dueOnUtc.ToDateTime(TimeOnly.MinValue)).Days;
+
         return new AgingRow(
             Bucket: BucketLabel(daysPastDue),
-            ChargeDisplay: charge.ChargeDisplay,
+            ChargeDisplay: charge.Display,
             ChargeTypeDisplay: charge.ChargeTypeDisplay,
-            DueOnUtc: charge.DueOnUtc,
+            DueOnUtc: dueOnUtc,
             DaysPastDue: daysPastDue,
             OriginalAmount: charge.OriginalAmount,
-            OutstandingAmount: charge.OutstandingAmount,
+            OutstandingAmount: charge.OpenAmount,
             DocumentType: charge.DocumentType,
-            DocumentId: charge.ChargeDocumentId);
+            DocumentId: charge.DocumentId);
     }
 
     private static string BucketLabel(int daysPastDue)
@@ -116,7 +120,7 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(IReceivablesOpenItem
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(row.OutstandingAmount), row.OutstandingAmount.ToString("0.##"), "decimal")
             ]);
 
-    private static ReportSheetRowDto ToTotalRow(IReadOnlyList<AgingRow> rows)
+    private static ReportSheetRowDto ToTotalRow(decimal totalOriginal, decimal totalOutstanding)
         => new(
             ReportRowKind.Total,
             Cells:
@@ -126,8 +130,8 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(IReceivablesOpenItem
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(string.Empty), string.Empty, "string"),
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(string.Empty), string.Empty, "string"),
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(string.Empty), string.Empty, "string"),
-                new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(rows.Sum(x => x.OriginalAmount)), rows.Sum(x => x.OriginalAmount).ToString("0.##"), "decimal", SemanticRole: "total"),
-                new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(rows.Sum(x => x.OutstandingAmount)), rows.Sum(x => x.OutstandingAmount).ToString("0.##"), "decimal", SemanticRole: "total")
+                new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(totalOriginal), totalOriginal.ToString("0.##"), "decimal", SemanticRole: "total"),
+                new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(totalOutstanding), totalOutstanding.ToString("0.##"), "decimal", SemanticRole: "total")
             ],
             SemanticRole: "grand_total");
 

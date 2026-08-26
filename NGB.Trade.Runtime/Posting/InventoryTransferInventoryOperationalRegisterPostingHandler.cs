@@ -35,15 +35,20 @@ public sealed class InventoryTransferInventoryOperationalRegisterPostingHandler(
         }
 
         var occurredAtUtc = TradePostingCommon.ToOccurredAtUtc(head.DocumentDateUtc);
-
-        foreach (var line in lines)
-        {
-            var sourceDimensionSetId = await dimensionSets.GetOrCreateIdAsync(
+        var bags = lines
+            .SelectMany(line => new[]
+            {
                 TradePostingCommon.InventoryBag(line.ItemId, head.FromWarehouseId),
-                ct);
-            var destinationDimensionSetId = await dimensionSets.GetOrCreateIdAsync(
-                TradePostingCommon.InventoryBag(line.ItemId, head.ToWarehouseId),
-                ct);
+                TradePostingCommon.InventoryBag(line.ItemId, head.ToWarehouseId)
+            })
+            .ToArray();
+        var dimensionSetIds = await dimensionSets.GetOrCreateIdsAsync(bags, ct);
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            var sourceDimensionSetId = dimensionSetIds[i * 2];
+            var destinationDimensionSetId = dimensionSetIds[(i * 2) + 1];
 
             builder.Add(
                 registerCode: register.Code,

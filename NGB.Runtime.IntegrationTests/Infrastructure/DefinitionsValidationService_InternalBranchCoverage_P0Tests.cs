@@ -32,7 +32,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 public sealed class DefinitionsValidationService_InternalBranchCoverage_P0Tests
 {
     [Fact]
-    public void ValidateOrThrow_WhenIServiceProviderIsServiceNotAvailable_ReportsCannotValidateDIRegistration()
+    public async Task ValidateOrThrow_WhenIServiceProviderIsServiceNotAvailable_ReportsCannotValidateDIRegistration()
     {
         var registry = BuildRegistry(
             documents:
@@ -45,16 +45,16 @@ public sealed class DefinitionsValidationService_InternalBranchCoverage_P0Tests
 
         var validator = CreateInternalValidator(registry, isService: null);
 
-        var act = () => validator.ValidateOrThrow();
+        var act = () => validator.ValidateOrThrowAsync();
 
-        var ex = act.Should().Throw<DefinitionsValidationException>().Which;
+        var ex = (await act.Should().ThrowAsync<DefinitionsValidationException>()).Which;
         ex.Errors.Should().ContainSingle(e => e.IndexOf("cannot validate DI registration", StringComparison.OrdinalIgnoreCase) >= 0);
         ex.Errors[0].Should().Contain("Document 'doc.di.probe'");
         ex.Errors[0].Should().Contain("TypedStorageType");
     }
 
     [Fact]
-    public void ValidateOrThrow_AccumulatesErrorsAcrossAllDefinitionCategories()
+    public async Task ValidateOrThrow_AccumulatesErrorsAcrossAllDefinitionCategories()
     {
         // NOTE: We bypass NgbDefinitionsBuilder normalization by constructing the registry manually.
         // This allows us to cover code-length / trimming checks that are otherwise prevented by the builder.
@@ -120,9 +120,9 @@ public sealed class DefinitionsValidationService_InternalBranchCoverage_P0Tests
 
         var validator = CreateInternalValidator(registry, new AlwaysTrueIsService());
 
-        var act = () => validator.ValidateOrThrow();
+        var act = () => validator.ValidateOrThrowAsync();
 
-        var ex = act.Should().Throw<DefinitionsValidationException>().Which;
+        var ex = (await act.Should().ThrowAsync<DefinitionsValidationException>()).Which;
 
         // The exact count matters here: it guards against accidental early returns and missing category validation.
         ex.Errors.Should().HaveCount(23);
@@ -138,7 +138,7 @@ public sealed class DefinitionsValidationService_InternalBranchCoverage_P0Tests
     }
 
     [Fact]
-    public void ValidateOrThrow_WhenIsServiceReturnsFalse_AddsNotRegisteredInDIError()
+    public async Task ValidateOrThrow_WhenIsServiceReturnsFalse_AddsNotRegisteredInDIError()
     {
         var registry = BuildRegistry(
             documents:
@@ -151,9 +151,9 @@ public sealed class DefinitionsValidationService_InternalBranchCoverage_P0Tests
 
         var validator = CreateInternalValidator(registry, new AlwaysFalseIsService());
 
-        var act = () => validator.ValidateOrThrow();
+        var act = () => validator.ValidateOrThrowAsync();
 
-        var ex = act.Should().Throw<DefinitionsValidationException>().Which;
+        var ex = (await act.Should().ThrowAsync<DefinitionsValidationException>()).Which;
         ex.Errors.Should().ContainSingle(e => e.IndexOf("is not registered in DI", StringComparison.Ordinal) >= 0);
         ex.Errors[0].Should().Contain(nameof(OkDocStorage), nameof(StringComparison.Ordinal));
     }

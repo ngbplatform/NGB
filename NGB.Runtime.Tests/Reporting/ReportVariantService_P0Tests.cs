@@ -202,8 +202,28 @@ public sealed class ReportVariantService_P0Tests
         public Task<PlatformUser?> GetByIdAsync(Guid userId, CancellationToken ct = default)
             => Task.FromResult(_byId.GetValueOrDefault(userId));
 
-        public Task<IReadOnlyList<PlatformUser>> GetAllAsync(CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<PlatformUser>>(_byId.Values.ToArray());
+        public Task<PlatformUserPage> GetPageAsync(
+            int offset,
+            int limit,
+            bool? isActive,
+            CancellationToken ct = default)
+        {
+            var filtered = _byId.Values
+                .Where(user => isActive is null || user.IsActive == isActive)
+                .OrderBy(user => user.DisplayName ?? user.Email ?? user.AuthSubject, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            return Task.FromResult(new PlatformUserPage(filtered.Skip(offset).Take(limit).ToArray(), filtered.Length));
+        }
+
+        public Task<IReadOnlyList<PlatformUser>> GetByEmailsAsync(
+            IReadOnlyList<string> emails,
+            CancellationToken ct = default)
+        {
+            var requested = emails.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult<IReadOnlyList<PlatformUser>>(_byId.Values
+                .Where(user => user.Email is not null && requested.Contains(user.Email))
+                .ToArray());
+        }
 
         public Task<IReadOnlyDictionary<Guid, PlatformUser>> GetByIdsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct = default)
         {

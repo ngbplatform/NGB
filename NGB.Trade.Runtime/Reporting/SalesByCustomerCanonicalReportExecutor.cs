@@ -24,22 +24,20 @@ public sealed class SalesByCustomerCanonicalReportExecutor(
         var itemIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "item_id");
         var warehouseIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "warehouse_id");
 
-        var ordered = (await analytics.GetSalesByCustomerAsync(fromInclusive, toInclusive, customerIds, itemIds, warehouseIds, ct))
-            .Where(static x => x.SalesDocumentCount != 0 || x.ReturnDocumentCount != 0)
-            .ToArray();
-
         var offset = Math.Max(0, request.Offset);
         var limit = request.DisablePaging
-            ? ordered.Length
+            ? int.MaxValue
             : (request.Limit <= 0 ? 100 : request.Limit);
-        var pageRows = ordered.Skip(offset).Take(limit).ToArray();
+        var page = await analytics.GetSalesByCustomerPageAsync(
+            fromInclusive, toInclusive, customerIds, itemIds, warehouseIds, offset, limit, ct);
+        var pageRows = page.Rows;
 
         var rows = pageRows
             .Select(row => ToDetailRow(row, fromInclusive, toInclusive))
             .ToList();
 
-        if (request.Layout?.ShowGrandTotals != false && ordered.Length > 0)
-            rows.Add(ToTotalRow(ordered));
+        if (request.Layout?.ShowGrandTotals != false && page.Total > 0)
+            rows.Add(ToTotalRow(page.Totals));
 
         var sheet = new ReportSheetDto(
             Columns:
@@ -67,8 +65,8 @@ public sealed class SalesByCustomerCanonicalReportExecutor(
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: ordered.Length,
-            hasMore: offset + pageRows.Length < ordered.Length,
+            total: page.Total,
+            hasMore: offset + pageRows.Count < page.Total,
             nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -115,32 +113,21 @@ public sealed class SalesByCustomerCanonicalReportExecutor(
                 DecimalCell(row.MarginPercent)
             ]);
 
-    private static ReportSheetRowDto ToTotalRow(IReadOnlyList<SalesByCustomerSummaryRow> rows)
+    private static ReportSheetRowDto ToTotalRow(SalesByCustomerTotals totals)
     {
-        var salesDocumentCount = rows.Sum(static x => x.SalesDocumentCount);
-        var returnDocumentCount = rows.Sum(static x => x.ReturnDocumentCount);
-        var grossSales = rows.Sum(static x => x.GrossSales);
-        var returnedAmount = rows.Sum(static x => x.ReturnedAmount);
-        var netSales = rows.Sum(static x => x.NetSales);
-        var netCogs = rows.Sum(static x => x.NetCogs);
-        var grossMargin = rows.Sum(static x => x.GrossMargin);
-        var marginPercent = netSales == 0m
-            ? 0m
-            : Math.Round((grossMargin / netSales) * 100m, 2, MidpointRounding.AwayFromZero);
-
         return new ReportSheetRowDto(
             ReportRowKind.Total,
             Cells:
             [
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue("Total"), "Total", "string", SemanticRole: "label"),
-                IntCell(salesDocumentCount, "total"),
-                IntCell(returnDocumentCount, "total"),
-                DecimalCell(grossSales, "total"),
-                DecimalCell(returnedAmount, "total"),
-                DecimalCell(netSales, "total"),
-                DecimalCell(netCogs, "total"),
-                DecimalCell(grossMargin, "total"),
-                DecimalCell(marginPercent, "total")
+                IntCell(totals.SalesDocumentCount, "total"),
+                IntCell(totals.ReturnDocumentCount, "total"),
+                DecimalCell(totals.GrossSales, "total"),
+                DecimalCell(totals.ReturnedAmount, "total"),
+                DecimalCell(totals.NetSales, "total"),
+                DecimalCell(totals.NetCogs, "total"),
+                DecimalCell(totals.GrossMargin, "total"),
+                DecimalCell(totals.MarginPercent, "total")
             ],
             SemanticRole: "grand_total");
     }

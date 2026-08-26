@@ -12,6 +12,10 @@ public interface IDocumentRelationshipRepository
 {
     Task<bool> TryCreateAsync(DocumentRelationshipRecord relationship, CancellationToken ct = default);
 
+    Task<IReadOnlyList<Guid>> TryCreateManyAsync(
+        IReadOnlyList<DocumentRelationshipRecord> relationships,
+        CancellationToken ct = default);
+
     Task<DocumentRelationshipRecord?> GetAsync(Guid relationshipId, CancellationToken ct = default);
 
     /// <summary>
@@ -55,4 +59,39 @@ public interface IDocumentRelationshipRepository
         string relationshipCodeNorm,
         int maxDepth,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<Guid>> FindTargetsWithPathToAsync(
+        Guid toDocumentId,
+        IReadOnlyCollection<Guid> fromDocumentIds,
+        string relationshipCodeNorm,
+        int maxDepth,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns indexes of proposed directed edges that would close an existing path and create
+    /// a cycle. All relationship codes are evaluated in one recursive query.
+    /// </summary>
+    Task<IReadOnlyList<int>> FindCycleCreatingRequestIndexesAsync(
+        IReadOnlyList<DocumentRelationshipCycleCheck> checks,
+        int maxDepth,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Loads existing relationships relevant to all requested cardinality checks in one query.
+    /// </summary>
+    Task<IReadOnlyList<DocumentRelationshipRecord>> GetCardinalityConflictsAsync(
+        IReadOnlyList<DocumentRelationshipCardinalityCheck> checks,
+        CancellationToken ct = default);
 }
+
+public sealed record DocumentRelationshipCycleCheck(
+    Guid FromDocumentId,
+    Guid ToDocumentId,
+    string RelationshipCodeNorm);
+
+public sealed record DocumentRelationshipCardinalityCheck(
+    Guid FromDocumentId,
+    Guid ToDocumentId,
+    string RelationshipCodeNorm,
+    bool CheckOutgoing,
+    bool CheckIncoming);

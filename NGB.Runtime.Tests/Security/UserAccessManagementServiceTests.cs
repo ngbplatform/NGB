@@ -300,8 +300,8 @@ public sealed class UserAccessManagementServiceTests
 
         var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
         users
-            .Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([platformUser]);
+            .Setup(x => x.GetPageAsync(0, 50, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([platformUser], 1));
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         userRoles
@@ -328,10 +328,10 @@ public sealed class UserAccessManagementServiceTests
             new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
             identityProvider.Object);
 
-        var result = await service.GetUsersAsync(CancellationToken.None);
+        var result = await service.GetUsersAsync(new UserPageRequestDto(), CancellationToken.None);
 
-        result.Should().ContainSingle();
-        result[0].KeycloakEnabled.Should().BeFalse();
+        result.Items.Should().ContainSingle();
+        result.Items[0].KeycloakEnabled.Should().BeFalse();
 
         users.VerifyAll();
         userRoles.VerifyAll();
@@ -366,8 +366,8 @@ public sealed class UserAccessManagementServiceTests
 
         var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
         users
-            .Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(platformUsers);
+            .Setup(x => x.GetPageAsync(0, 50, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage(platformUsers, platformUsers.Length));
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         userRoles
@@ -400,11 +400,11 @@ public sealed class UserAccessManagementServiceTests
             new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
             identityProvider.Object);
 
-        var result = await service.GetUsersAsync(CancellationToken.None);
+        var result = await service.GetUsersAsync(new UserPageRequestDto(), CancellationToken.None);
 
-        result.Should().HaveCount(2);
-        result.Single(x => x.UserId == firstUserId).KeycloakEnabled.Should().BeTrue();
-        result.Single(x => x.UserId == secondUserId).KeycloakEnabled.Should().BeFalse();
+        result.Items.Should().HaveCount(2);
+        result.Items.Single(x => x.UserId == firstUserId).KeycloakEnabled.Should().BeTrue();
+        result.Items.Single(x => x.UserId == secondUserId).KeycloakEnabled.Should().BeFalse();
 
         identityProvider.Verify(x => x.GetUserByIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         identityProvider.Verify(x => x.FindUserByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -1039,6 +1039,16 @@ public sealed class UserAccessManagementServiceTests
             .Callback<AuditEntityKind, Guid, string, IReadOnlyList<AuditFieldChange>?, object?, Guid?, CancellationToken>((kind, entityId, actionCode, changes, _, _, _) =>
                 auditCalls.Add(new AuditCall(kind, entityId, actionCode, changes ?? Array.Empty<AuditFieldChange>())))
             .Returns(Task.CompletedTask);
+        audit
+            .Setup(x => x.WriteBatchAsync(
+                It.IsAny<IReadOnlyList<AuditLogWriteRequest>>(), It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<AuditLogWriteRequest>, CancellationToken>((requests, _) =>
+                auditCalls.AddRange(requests.Select(request => new AuditCall(
+                    request.EntityKind,
+                    request.EntityId,
+                    request.ActionCode,
+                    request.Changes ?? Array.Empty<AuditFieldChange>()))))
+            .Returns(Task.CompletedTask);
 
         var service = CreateService(
             users.Object,
@@ -1233,6 +1243,10 @@ public sealed class UserAccessManagementServiceTests
                 It.IsAny<object?>(),
                 It.IsAny<Guid?>(),
                 It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        defaultAudit
+            .Setup(x => x.WriteBatchAsync(
+                It.IsAny<IReadOnlyList<AuditLogWriteRequest>>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         return new UserAccessManagementService(

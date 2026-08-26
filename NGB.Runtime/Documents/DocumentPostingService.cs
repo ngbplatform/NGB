@@ -910,8 +910,6 @@ internal sealed class DocumentPostingService(
                 unpostRecordsByRegister = builder.RecordsByRegister;
             }
 
-            var recordModeCache = new Dictionary<Guid, ReferenceRegisterRecordMode>(capacity: registerIds.Count);
-
             var startedAtUtc = timeProvider.GetUtcNowDateTime();
             foreach (var registerId in registerIds)
             {
@@ -923,15 +921,17 @@ internal sealed class DocumentPostingService(
                     innerCt);
 
                 EnsureReferenceRegisterWriteBegun(begin, registerId, doc.Id, ReferenceRegisterWriteOperation.Unpost);
+            }
 
-                if (!recordModeCache.TryGetValue(registerId, out var recordMode))
-                {
-                    var reg = RequireReferenceRegister(
-                        await refregRepository.GetByIdAsync(registerId, innerCt),
-                        registerId);
-                    recordMode = reg.RecordMode;
-                    recordModeCache.Add(registerId, recordMode);
-                }
+            var registersById = (await refregRepository.GetByIdsAsync(registerIds, innerCt))
+                .ToDictionary(static register => register.RegisterId);
+
+            foreach (var registerId in registerIds)
+            {
+
+                var recordMode = RequireReferenceRegister(
+                    registersById.GetValueOrDefault(registerId),
+                    registerId).RecordMode;
 
                 if (recordMode == ReferenceRegisterRecordMode.SubordinateToRecorder)
                 {
@@ -997,8 +997,6 @@ internal sealed class DocumentPostingService(
 
             foreach (var registerId in registerIds)
             {
-                var records = newRecordsByRegister.GetValueOrDefault(registerId, empty);
-
                 var begin = await refregWriteStateRepository.TryBeginAsync(
                     registerId,
                     doc.Id,
@@ -1007,6 +1005,16 @@ internal sealed class DocumentPostingService(
                     innerCt);
 
                 EnsureReferenceRegisterWriteBegun(begin, registerId, doc.Id, ReferenceRegisterWriteOperation.Repost);
+            }
+
+            var oldRegistersById = oldRegisterIds.Count == 0
+                ? new Dictionary<Guid, ReferenceRegisterAdminItem>()
+                : (await refregRepository.GetByIdsAsync(oldRegisterIds, innerCt))
+                    .ToDictionary(static register => register.RegisterId);
+
+            foreach (var registerId in registerIds)
+            {
+                var records = newRecordsByRegister.GetValueOrDefault(registerId, empty);
 
                 didWork = true;
                 // SubordinateToRecorder semantics: Repost = tombstone removed keys (storno) + append new.
@@ -1014,7 +1022,7 @@ internal sealed class DocumentPostingService(
                 if (oldRegisterIds.Contains(registerId))
                 {
                     var reg = RequireReferenceRegister(
-                        await refregRepository.GetByIdAsync(registerId, innerCt),
+                        oldRegistersById.GetValueOrDefault(registerId),
                         registerId);
 
                     if (reg.RecordMode == ReferenceRegisterRecordMode.SubordinateToRecorder)

@@ -148,6 +148,48 @@ public sealed class PostgresDocumentReaderFullCoverageTests
     }
 
     [Fact]
+    public async Task Combined_page_validates_bounds_and_returns_total_and_rows_in_one_round_trip()
+    {
+        var connection = Connection(reader: _ => CombinedHeadRows(
+            11,
+            (FirstId, (short)DocumentStatus.Posted, "INV-1", "Acme", 12.5m)));
+        var sut = Reader(connection);
+
+        await ((Func<Task>)(() => sut.GetPageWithTotalAsync(Head(), Query(), -1, 10)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => sut.GetPageWithTotalAsync(Head(), Query(), 0, 0)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
+        var page = await sut.GetPageWithTotalAsync(Head(), Query(), 3, 10);
+        var filtered = await sut.GetPageWithTotalAsync(
+            Head(),
+            Query("invoice", SoftDeleteFilterMode.Active),
+            0,
+            5);
+
+        page.Total.Should().Be(11);
+        page.Rows.Should().ContainSingle().Which.Should().BeEquivalentTo(new
+        {
+            Id = FirstId,
+            Status = DocumentStatus.Posted,
+            Display = "Acme",
+            Number = "INV-1"
+        });
+        filtered.Total.Should().Be(11);
+        connection.Commands.Should().HaveCount(2);
+        connection.Commands[0].CommandText.Should()
+            .Contain("SELECT COUNT(*)")
+            .And.Contain("UNION ALL")
+            .And.Contain("NOT EXISTS")
+            .And.Contain("ORDER BY \"SortDisplay\" NULLS LAST");
+        connection.Commands[1].CommandText.Should()
+            .Contain("h.\"name\" ILIKE")
+            .And.NotContain("UNION ALL");
+        Parameter(connection.Commands[0], "offset").Should().Be(3);
+        Parameter(connection.Commands[0], "limit").Should().Be(10);
+    }
+
+    [Fact]
     public async Task Get_by_id_validates_id_and_returns_null_or_a_row_with_absent_optional_aliases()
     {
         var missing = Reader(Connection(reader: _ => HeadRows()));
@@ -283,6 +325,7 @@ public sealed class PostgresDocumentReaderFullCoverageTests
             .And.Contain("LEFT JOIN")
             .And.Contain("d.status <> @deletedStatus")
             .And.Contain("ILIKE")
+            .And.NotContain("COALESCE(h.\"name\", d.id::text) ILIKE")
             .And.Contain("\"doc_\"\"memo\"");
         connection.Commands[1].CommandText.Should().Contain("JOIN documents").And.NotContain("ILIKE");
         Parameter(connection.Commands[0], "q").Should().Be("inv");
@@ -418,6 +461,35 @@ public sealed class PostgresDocumentReaderFullCoverageTests
         }
 
         return table.CreateDataReader();
+    }
+
+    private static DbDataReader CombinedHeadRows(
+        long total,
+        params (Guid Id, object Status, string? Number, string? Display, decimal? Amount)[] rows)
+    {
+        var count = new DataTable();
+        count.Columns.Add("Count", typeof(long));
+        count.Rows.Add(total);
+
+        var page = new DataTable();
+        page.Columns.Add("Id", typeof(Guid));
+        page.Columns.Add("Status", typeof(object));
+        page.Columns.Add("Number", typeof(object));
+        page.Columns.Add("Display", typeof(object));
+        page.Columns.Add("NAME", typeof(object));
+        page.Columns.Add("amount", typeof(object));
+        foreach (var row in rows)
+        {
+            page.Rows.Add(
+                row.Id,
+                row.Status,
+                row.Number ?? (object)DBNull.Value,
+                row.Display ?? (object)DBNull.Value,
+                row.Display ?? (object)DBNull.Value,
+                row.Amount ?? (object)DBNull.Value);
+        }
+
+        return new DataTableReader([count, page]);
     }
 
     private static DbDataReader AcrossHeadRows(

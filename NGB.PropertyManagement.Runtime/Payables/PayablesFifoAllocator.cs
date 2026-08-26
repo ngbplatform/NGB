@@ -29,12 +29,13 @@ internal static class PayablesFifoAllocator
         var remainingCredit = orderedCredits.ToDictionary(x => x.CreditDocumentId, x => x.AvailableCredit);
         var lines = new List<PayablesFifoAllocationLine>();
         var limitReached = false;
+        var chargeIndex = 0;
 
         foreach (var cr in orderedCredits)
         {
             var creditLeft = remainingCredit[cr.CreditDocumentId];
 
-            foreach (var ch in orderedCharges)
+            while (chargeIndex < orderedCharges.Length)
             {
                 if (creditLeft <= 0m)
                     break;
@@ -45,9 +46,13 @@ internal static class PayablesFifoAllocator
                     break;
                 }
 
+                var ch = orderedCharges[chargeIndex];
                 var chLeft = outstanding[ch.ChargeDocumentId];
                 if (chLeft <= 0m)
+                {
+                    chargeIndex++;
                     continue;
+                }
 
                 var amount = Math.Min(chLeft, creditLeft);
                 var creditBefore = creditLeft;
@@ -56,6 +61,9 @@ internal static class PayablesFifoAllocator
                 chLeft -= amount;
                 remainingCredit[cr.CreditDocumentId] = creditLeft;
                 outstanding[ch.ChargeDocumentId] = chLeft;
+
+                if (chLeft <= 0m)
+                    chargeIndex++;
 
                 lines.Add(new PayablesFifoAllocationLine(
                     cr.CreditDocumentId,
@@ -73,6 +81,9 @@ internal static class PayablesFifoAllocator
             }
 
             if (limitReached)
+                break;
+
+            if (chargeIndex >= orderedCharges.Length)
                 break;
         }
 

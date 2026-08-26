@@ -466,6 +466,9 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
         public Task<IReadOnlyList<ChartOfAccountsAdminItem>> GetForAdminAsync(bool includeDeleted = false, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<ChartOfAccountsAdminItem>>([]);
 
+        public Task<ChartOfAccountsAdminPage> GetAdminPageAsync(ChartOfAccountsAdminPageQuery query, CancellationToken ct = default)
+            => throw new NotSupportedException();
+
         public Task<ChartOfAccountsAdminItem?> GetAdminByIdAsync(Guid accountId, CancellationToken ct = default)
             => Task.FromResult<ChartOfAccountsAdminItem?>(null);
 

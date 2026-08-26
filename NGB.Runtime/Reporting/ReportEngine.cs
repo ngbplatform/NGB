@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Persistence.Documents;
 using NGB.Runtime.Reporting.Internal;
@@ -21,6 +22,7 @@ public sealed class ReportEngine(
     IRenderedReportSnapshotStore? renderedReportSnapshotStore = null)
     : IReportEngine
 {
+    private const int DefaultRenderedSourceRowLimit = 10_000;
     private readonly IReportDefinitionProvider _definitions = definitions ?? throw new NgbConfigurationViolationException("Reporting engine requires a definition provider registration.");
     private readonly IReportLayoutValidator _validator = validator ?? throw new NgbConfigurationViolationException("Reporting engine requires a layout validator registration.");
     private readonly ReportExecutionPlanner _planner = planner ?? throw new NgbConfigurationViolationException("Reporting engine requires a planner registration.");
@@ -33,7 +35,12 @@ public sealed class ReportEngine(
         ReportExecutionRequestDto request,
         CancellationToken ct)
     {
-        var result = await ExecuteCoreAsync(reportCode, request, ct);
+        var result = await ExecuteCoreAsync(
+            reportCode,
+            request,
+            ct,
+            hardSourceRowLimit: request?.DisablePaging == true ? DefaultRenderedSourceRowLimit : null);
+
         return BuildResponse(result.ReportCode, result.Engine, result.Execution);
     }
 
@@ -50,16 +57,22 @@ public sealed class ReportEngine(
             Filters: request.Filters,
             Parameters: request.Parameters,
             VariantCode: request.VariantCode,
-            DisablePaging: true);
+            DisablePaging: false);
 
-        var result = await ExecuteCoreAsync(reportCode, execution, ct);
+        var result = await ExecuteCoreAsync(
+            reportCode,
+            execution,
+            ct,
+            hardSourceRowLimit: DefaultRenderedSourceRowLimit);
+
         return result.Execution.Sheet;
     }
 
     private async Task<ReportEngineExecutionEnvelope> ExecuteCoreAsync(
         string reportCode,
         ReportExecutionRequestDto request,
-        CancellationToken ct)
+        CancellationToken ct,
+        int? hardSourceRowLimit = null)
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
@@ -68,6 +81,8 @@ public sealed class ReportEngine(
         var requestWithVariant = variantResolver is null
             ? request
             : await variantResolver.ResolveAsync(reportCode, request, ct);
+
+        requestWithVariant = NormalizeInteractivePaging(requestWithVariant);
         _validator.Validate(definition, requestWithVariant);
 
         var runtime = new ReportDefinitionRuntimeModel(definition);
@@ -78,7 +93,11 @@ public sealed class ReportEngine(
         var effectiveLayout = runtime.GetEffectiveLayout(effectiveRequest);
         var context = new ReportExecutionContext(runtime, effectiveRequest, effectiveLayout);
         var plan = _planner.BuildPlan(context);
-        var useRenderedSheetPaging = ShouldUseRenderedSheetPaging(runtime, effectiveRequest, plan);
+        var resolvedHardSourceRowLimit = hardSourceRowLimit is null
+            ? (int?)null
+            : Math.Min(hardSourceRowLimit.Value, ResolveRenderedSourceRowLimit(runtime));
+        var useRenderedSheetPaging = resolvedHardSourceRowLimit is null
+            && ShouldUseRenderedSheetPaging(runtime, effectiveRequest, plan);
         var pageSize = ResolveRequestedPageSize(runtime, effectiveRequest);
 
         if (useRenderedSheetPaging)
@@ -113,16 +132,30 @@ public sealed class ReportEngine(
             }
         }
 
-        var executorRequest = useRenderedSheetPaging
+        var renderedSourceRowLimit = useRenderedSheetPaging
+            ? ResolveRenderedSourceRowLimit(runtime)
+            : 0;
+        var executorRequest = resolvedHardSourceRowLimit is { } hardLimit
             ? effectiveRequest with
             {
-                DisablePaging = true,
+                DisablePaging = false,
                 Offset = 0,
+                Limit = checked(hardLimit + 1),
+                Cursor = null
+            }
+            : useRenderedSheetPaging
+            ? effectiveRequest with
+            {
+                DisablePaging = false,
+                Offset = 0,
+                Limit = renderedSourceRowLimit,
                 Cursor = null
             }
             : effectiveRequest;
-        var executorPaging = useRenderedSheetPaging
-            ? new ReportPlanPaging(0, pageSize)
+        var executorPaging = resolvedHardSourceRowLimit is { } sourceLimit
+            ? new ReportPlanPaging(0, checked(sourceLimit + 1))
+            : useRenderedSheetPaging
+            ? new ReportPlanPaging(0, renderedSourceRowLimit)
             : new ReportPlanPaging(plan.Paging.Offset, plan.Paging.Limit, plan.Paging.Cursor);
         var page = await _executor.ExecuteAsync(
             definition,
@@ -138,6 +171,21 @@ public sealed class ReportEngine(
             MapParameters(plan.Parameters),
             executorPaging,
             ct);
+
+        if (useRenderedSheetPaging)
+            EnsureRenderedSourceRowCap(runtime, plan, page, renderedSourceRowLimit);
+
+        if (resolvedHardSourceRowLimit is { } hardSourceLimit)
+        {
+            EnsureHardSourceRowCap(runtime, plan, page, hardSourceLimit);
+            // DisablePaging is executed internally as a bounded page (limit + 1)
+            // so exports and interactive requests cannot materialize unbounded
+            // data. Once the cap check proves the complete result fits, its row
+            // count is also the exact total expected by the public contract.
+            if (effectiveRequest.DisablePaging && page.Total is null)
+                page = page with { Total = page.Rows.Count };
+        }
+
         page = await EnrichInteractiveFieldsAsync(plan, page, ct);
         var fullSheet = _sheetBuilder.BuildSheet(runtime, plan, page);
 
@@ -177,6 +225,73 @@ public sealed class ReportEngine(
         return runtime.Definition.Presentation?.InitialPageSize is > 0
             ? runtime.Definition.Presentation.InitialPageSize.Value
             : 100;
+    }
+
+    private static ReportExecutionRequestDto NormalizeInteractivePaging(ReportExecutionRequestDto request)
+        => request with
+        {
+            Offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset),
+            Limit = request.Limit > PagingLimits.MaxPageSize
+                ? PagingLimits.MaxPageSize
+                : request.Limit
+        };
+
+    private static int ResolveRenderedSourceRowLimit(ReportDefinitionRuntimeModel runtime)
+        => Math.Clamp(
+            runtime.Capabilities.MaxVisibleRows ?? DefaultRenderedSourceRowLimit,
+            1,
+            DefaultRenderedSourceRowLimit);
+
+    private static void EnsureRenderedSourceRowCap(
+        ReportDefinitionRuntimeModel runtime,
+        ReportQueryPlan plan,
+        ReportDataPage page,
+        int sourceRowLimit)
+    {
+        if (!page.HasMore && page.Rows.Count <= sourceRowLimit)
+            return;
+
+        var fieldPath = plan.RowGroups.Count > 0 || plan.DetailFields.Count > 0
+            ? "layout.rowGroups"
+            : plan.ColumnGroups.Count > 0
+                ? "layout.columnGroups"
+                : "layout.measures";
+        var message = $"This report requires more than {sourceRowLimit} source rows to render safely. Narrow the filters or reduce the number of groups and try again.";
+        throw new NGB.Core.Reporting.Exceptions.ReportLayoutValidationException(
+            message,
+            fieldPath,
+            errors: new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                [fieldPath] = [message]
+            },
+            context: new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["reportCode"] = runtime.ReportCodeNorm,
+                ["sourceRowLimit"] = sourceRowLimit
+            });
+    }
+
+    private static void EnsureHardSourceRowCap(
+        ReportDefinitionRuntimeModel runtime,
+        ReportQueryPlan plan,
+        ReportDataPage page,
+        int sourceRowLimit)
+    {
+        if (!page.HasMore && page.Rows.Count <= sourceRowLimit && page.Total.GetValueOrDefault() <= sourceRowLimit)
+            return;
+
+        var fieldPath = plan.RowGroups.Count > 0 || plan.DetailFields.Count > 0
+            ? "layout.rowGroups"
+            : plan.ColumnGroups.Count > 0
+                ? "layout.columnGroups"
+                : "layout.measures";
+        throw new NGB.Core.Reporting.Exceptions.ReportLayoutValidationException(
+            $"The report requires more than {sourceRowLimit} source rows. Narrow the filters and try again.",
+            fieldPath,
+            errors: new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                [fieldPath] = [$"Report source rows must not exceed {sourceRowLimit}."]
+            });
     }
 
     private async Task<ReportExecutionResult> BuildRenderedSheetPagedResultAsync(

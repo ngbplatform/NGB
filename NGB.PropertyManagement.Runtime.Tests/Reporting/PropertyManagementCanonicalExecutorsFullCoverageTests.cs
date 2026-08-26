@@ -13,6 +13,7 @@ using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
 using NGB.PropertyManagement.Runtime.Receivables;
+using NGB.PropertyManagement.Runtime.Policy;
 using NGB.PropertyManagement.Runtime.Reporting;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -235,7 +236,14 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
     public async Task Receivables_open_items_covers_both_kinds_null_displays_actions_totals_and_paging()
     {
         var chargeId = Guid.CreateVersion7();
-        var response = new ReceivablesOpenItemsResponse(Guid.CreateVersion7(),
+        var registerId = Guid.CreateVersion7();
+        ReceivablesOpenItemPageRow[] responseRows =
+        [
+            new(true, chargeId, "Charge", 12m, PropertyManagementCodes.ReceivableCharge),
+            new(true, Guid.CreateVersion7(), null, 3m, " "),
+            new(false, Guid.CreateVersion7(), "Credit", 4m, PropertyManagementCodes.ReceivablePayment)
+        ];
+        var response = new ReceivablesOpenItemsResponse(registerId,
             [
                 new ReceivablesOpenItemDto(chargeId, "Charge", 12m, PropertyManagementCodes.ReceivableCharge),
                 new ReceivablesOpenItemDto(Guid.CreateVersion7(), null, 3m, " ")
@@ -244,8 +252,15 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             15m,
             4m);
         var service = new Mock<IReceivablesOpenItemsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsAsync(Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
+        service.Setup(x => x.GetOpenItemsPageAsync(
+                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, Guid _, int offset, int limit, CancellationToken _) =>
+                new ReceivablesOpenItemsPageResponse(
+                    registerId,
+                    responseRows.Skip(offset).Take(limit).ToArray(),
+                    responseRows.Length,
+                    response.TotalOutstanding,
+                    response.TotalCredit));
         var sut = new ReceivablesOpenItemsCanonicalReportExecutor(service.Object);
         var leaseId = Guid.CreateVersion7();
         var definition = Definition(sut.ReportCode);
@@ -269,8 +284,9 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
     public async Task Receivables_open_items_omits_totals_for_empty_response()
     {
         var service = new Mock<IReceivablesOpenItemsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsAsync(Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ReceivablesOpenItemsResponse(Guid.CreateVersion7(), [], [], 0m, 0m));
+        service.Setup(x => x.GetOpenItemsPageAsync(
+                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReceivablesOpenItemsPageResponse(Guid.CreateVersion7(), [], 0, 0m, 0m));
         var sut = new ReceivablesOpenItemsCanonicalReportExecutor(service.Object);
 
         var page = await sut.ExecuteAsync(Definition(sut.ReportCode), Request(filters: LeaseFilter(Guid.CreateVersion7())), default);
@@ -291,11 +307,8 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             ],
             credits:
             [new(Guid.CreateVersion7(), PropertyManagementCodes.ReceivablePayment, "RP-1", "Credit", Today, null, 5m, 4m)]);
-        var service = new Mock<IReceivablesOpenItemsDetailsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsDetailsAsync(Guid.Empty, Guid.Empty, It.IsAny<Guid>(), null, null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(response);
-        var sut = new ReceivablesOpenItemsDetailsCanonicalReportExecutor(service.Object);
+        var reportReader = ReceivablesReportReader(response);
+        var sut = new ReceivablesOpenItemsDetailsCanonicalReportExecutor(reportReader.Object, PolicyReader());
         var leaseId = Guid.CreateVersion7();
         var definition = Definition(sut.ReportCode);
 
@@ -316,11 +329,9 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
     [Fact]
     public async Task Receivables_open_item_details_omits_totals_for_empty_response()
     {
-        var service = new Mock<IReceivablesOpenItemsDetailsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsDetailsAsync(Guid.Empty, Guid.Empty, It.IsAny<Guid>(), null, null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(DetailsResponse([], []));
-        var sut = new ReceivablesOpenItemsDetailsCanonicalReportExecutor(service.Object);
+        var sut = new ReceivablesOpenItemsDetailsCanonicalReportExecutor(
+            ReceivablesReportReader(DetailsResponse([], [])).Object,
+            PolicyReader());
 
         var page = await sut.ExecuteAsync(Definition(sut.ReportCode), Request(filters: LeaseFilter(Guid.CreateVersion7())), default);
 
@@ -342,11 +353,10 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             AgingCharge(asOf.AddDays(-90), "Ninety", PropertyManagementCodes.ReceivableCharge),
             AgingCharge(asOf.AddDays(-91), "Old", PropertyManagementCodes.ReceivableCharge)
         };
-        var service = new Mock<IReceivablesOpenItemsDetailsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsDetailsAsync(Guid.Empty, Guid.Empty, It.IsAny<Guid>(), null, null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(DetailsResponse(charges, [], partyDisplay: null, propertyDisplay: " ", leaseDisplay: "Lease"));
-        var sut = new ReceivablesAgingCanonicalReportExecutor(service.Object);
+        var response = DetailsResponse(charges, [], partyDisplay: null, propertyDisplay: " ", leaseDisplay: "Lease");
+        var sut = new ReceivablesAgingCanonicalReportExecutor(
+            ReceivablesReportReader(response).Object,
+            PolicyReader());
         var leaseId = Guid.CreateVersion7();
         var definition = Definition(sut.ReportCode);
         var parameters = new Dictionary<string, string> { ["as_of_utc"] = asOf.ToString("yyyy-MM-dd") };
@@ -375,11 +385,9 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
     [Fact]
     public async Task Receivables_aging_omits_totals_for_empty_response()
     {
-        var service = new Mock<IReceivablesOpenItemsDetailsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsDetailsAsync(Guid.Empty, Guid.Empty, It.IsAny<Guid>(), null, null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(DetailsResponse([], []));
-        var sut = new ReceivablesAgingCanonicalReportExecutor(service.Object);
+        var sut = new ReceivablesAgingCanonicalReportExecutor(
+            ReceivablesReportReader(DetailsResponse([], [])).Object,
+            PolicyReader());
 
         var page = await sut.ExecuteAsync(Definition(sut.ReportCode), Request(
             filters: LeaseFilter(Guid.CreateVersion7()),
@@ -584,6 +592,66 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             Guid.CreateVersion7(), Guid.CreateVersion7(), partyDisplay, Guid.CreateVersion7(), propertyDisplay,
             Guid.CreateVersion7(), leaseDisplay, charges, credits, [],
             charges.Sum(x => x.OutstandingAmount), credits.Sum(x => x.AvailableCredit));
+
+    private static Mock<IReceivablesReportReader> ReceivablesReportReader(
+        ReceivablesOpenItemsDetailsResponse response)
+    {
+        var rows = response.Charges.Select(x => new ReceivablesReportRow(
+                true,
+                x.ChargeDocumentId,
+                x.DocumentType,
+                x.ChargeDisplay,
+                x.DueOnUtc,
+                null,
+                x.ChargeTypeDisplay,
+                x.OriginalAmount,
+                x.OutstandingAmount))
+            .Concat(response.Credits.Select(x => new ReceivablesReportRow(
+                false,
+                x.CreditDocumentId,
+                x.DocumentType,
+                x.CreditDocumentDisplay,
+                null,
+                x.ReceivedOnUtc,
+                null,
+                x.OriginalAmount,
+                x.AvailableCredit)))
+            .ToArray();
+        var reader = new Mock<IReceivablesReportReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetPageAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<ReceivablesReportMode>(),
+                It.IsAny<int>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, ReceivablesReportMode mode, int offset, int limit, CancellationToken _) =>
+            {
+                var filtered = mode == ReceivablesReportMode.Aging
+                    ? rows.Where(static row => row.IsCharge).ToArray()
+                    : rows;
+                return new ReceivablesReportPage(
+                    filtered.Skip(offset).Take(limit).ToArray(),
+                    filtered.Length,
+                    filtered.Where(static row => row.IsCharge).Sum(static row => row.OriginalAmount),
+                    filtered.Where(static row => row.IsCharge).Sum(static row => row.OpenAmount),
+                    filtered.Where(static row => !row.IsCharge).Sum(static row => row.OpenAmount),
+                    response.PartyDisplay,
+                    response.PropertyDisplay,
+                    response.LeaseDisplay);
+            });
+        return reader;
+    }
+
+    private static IPropertyManagementAccountingPolicyReader PolicyReader()
+    {
+        var ids = Enumerable.Range(0, 9).Select(_ => Guid.CreateVersion7()).ToArray();
+        var reader = new Mock<IPropertyManagementAccountingPolicyReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetRequiredAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PropertyManagementAccountingPolicy(
+                ids[0], ids[1], ids[2], ids[3], ids[4], ids[5], ids[6], ids[7], ids[8]));
+        return reader.Object;
+    }
 
     private static ReceivablesOpenChargeItemDetailsDto AgingCharge(
         DateOnly dueOn,

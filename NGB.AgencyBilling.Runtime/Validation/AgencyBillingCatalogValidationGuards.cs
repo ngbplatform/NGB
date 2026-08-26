@@ -39,6 +39,38 @@ internal static class AgencyBillingCatalogValidationGuards
             static item => item.IsActive,
             ct);
 
+    public static Task<IReadOnlyDictionary<Guid, AgencyBillingTeamMemberReference>> LoadTeamMembersAsync(
+        IEnumerable<Guid> teamMemberIds,
+        IAgencyBillingReferenceReaders references,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(teamMemberIds);
+
+        return references.ReadTeamMembersAsync(
+            teamMemberIds.Where(static id => id != Guid.Empty).Distinct().ToArray(),
+            ct);
+    }
+
+    public static AgencyBillingTeamMemberReference EnsureTeamMember(
+        Guid teamMemberId,
+        string fieldPath,
+        IReadOnlyDictionary<Guid, AgencyBillingTeamMemberReference> teamMembers)
+    {
+        if (teamMemberId == Guid.Empty)
+            throw new NgbArgumentInvalidException(fieldPath, $"{fieldPath} is required.");
+
+        if (!teamMembers.TryGetValue(teamMemberId, out var item))
+            throw new NgbArgumentInvalidException(fieldPath, "Referenced team member was not found.");
+
+        if (item.IsMarkedForDeletion)
+            throw new NgbArgumentInvalidException(fieldPath, "Referenced team member is not available.");
+
+        if (!item.IsActive)
+            throw new NgbArgumentInvalidException(fieldPath, "Referenced team member is inactive.");
+
+        return item;
+    }
+
     public static async Task<AgencyBillingProjectReference> EnsureProjectAsync(
         Guid projectId,
         string fieldPath,
@@ -68,6 +100,38 @@ internal static class AgencyBillingCatalogValidationGuards
             static item => item.IsMarkedForDeletion,
             static item => item.IsActive,
             ct);
+
+    public static Task<IReadOnlyDictionary<Guid, AgencyBillingServiceItemReference>> LoadServiceItemsAsync(
+        IEnumerable<Guid> serviceItemIds,
+        IAgencyBillingReferenceReaders references,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(serviceItemIds);
+
+        return references.ReadServiceItemsAsync(
+            serviceItemIds.Where(static id => id != Guid.Empty).Distinct().ToArray(),
+            ct);
+    }
+
+    public static AgencyBillingServiceItemReference EnsureServiceItem(
+        Guid serviceItemId,
+        string fieldPath,
+        IReadOnlyDictionary<Guid, AgencyBillingServiceItemReference> serviceItems)
+    {
+        if (serviceItemId == Guid.Empty)
+            throw new NgbArgumentInvalidException(fieldPath, $"{fieldPath} is required.");
+
+        if (!serviceItems.TryGetValue(serviceItemId, out var item))
+            throw new NgbArgumentInvalidException(fieldPath, "Referenced service item was not found.");
+
+        if (item.IsMarkedForDeletion)
+            throw new NgbArgumentInvalidException(fieldPath, "Referenced service item is not available.");
+
+        if (!item.IsActive)
+            throw new NgbArgumentInvalidException(fieldPath, "Referenced service item is inactive.");
+
+        return item;
+    }
 
     public static Task<AgencyBillingPaymentTermsReference> EnsurePaymentTermsAsync(
         Guid paymentTermsId,

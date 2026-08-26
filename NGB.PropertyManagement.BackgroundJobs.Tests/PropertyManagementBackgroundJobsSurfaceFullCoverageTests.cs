@@ -49,7 +49,8 @@ public sealed class PropertyManagementBackgroundJobsSurfaceFullCoverageTests
         uow.Setup(x => x.BeginTransactionAsync(cancellation.Token)).Returns(Task.CompletedTask);
         uow.Setup(x => x.CommitAsync(cancellation.Token)).Returns(Task.CompletedTask);
         var reader = new Mock<IPropertyManagementRentChargeGenerationReader>(MockBehavior.Strict);
-        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(expectedDate, cancellation.Token))
+        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                expectedDate, null, null, It.IsAny<int>(), cancellation.Token))
             .ReturnsAsync(Array.Empty<PmRentChargeGenerationLease>());
         var service = new GenerateMonthlyRentChargesService(
             uow.Object,

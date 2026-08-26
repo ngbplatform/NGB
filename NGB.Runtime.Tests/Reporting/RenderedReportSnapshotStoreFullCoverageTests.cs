@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
+using NGB.Contracts.Reporting;
 using NGB.Runtime.Reporting;
 using Xunit;
 
@@ -35,6 +36,20 @@ public sealed class RenderedReportSnapshotStoreFullCoverageTests
             .Should().ThrowAsync<OperationCanceledException>();
         await ((Func<Task>)(() => store.RemoveAsync(Guid.CreateVersion7(), cancellation.Token)))
             .Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task BoundedMemoryStore_RejectsSingleSnapshotLargerThanItsGlobalRowBudget()
+    {
+        using var store = new MemoryCacheRenderedReportSnapshotStore();
+        var snapshot = Snapshot() with
+        {
+            ContentRows = Enumerable.Repeat<ReportSheetRowDto>(null!, 50_001).ToArray(),
+            TotalContentRows = 50_001
+        };
+
+        (await store.SetAsync(snapshot, default)).Should().BeFalse();
+        (await store.GetAsync(snapshot.SnapshotId, default)).Should().BeNull();
     }
 
     [Fact]

@@ -30,7 +30,102 @@ public sealed class ReceivablesOpenItemsService(
     IDocumentDisplayReader documentDisplayReader)
     : IReceivablesOpenItemsService
 {
-    private const int PageSize = 5000;
+    public async Task<ReceivablesOpenItemsPageResponse> GetOpenItemsPageAsync(
+        Guid partyId,
+        Guid propertyId,
+        Guid leaseId,
+        int offset,
+        int limit,
+        CancellationToken ct = default)
+    {
+        if (leaseId == Guid.Empty)
+            throw ReceivablesRequestValidationException.LeaseRequired();
+
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be zero or greater.");
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
+
+        var policy = await policyReader.GetRequiredAsync(ct);
+        DateOnly leaseStart;
+
+        try
+        {
+            var lease = await documents.GetByIdAsync(PropertyManagementCodes.Lease, leaseId, ct);
+            leaseStart = ReadDateOnly(lease.Payload, "start_on_utc");
+            var leasePrimaryPartyId = ReadPrimaryPartyIdRequired(lease.Payload);
+            var leasePropertyId = ReadGuid(lease.Payload, "property_id");
+
+            if (partyId == Guid.Empty)
+                partyId = leasePrimaryPartyId;
+            else if (partyId != leasePrimaryPartyId)
+                throw ReceivablesOpenItemsQueryValidationException.PartyMismatch(leaseId, leasePrimaryPartyId, partyId);
+
+            if (propertyId == Guid.Empty)
+                propertyId = leasePropertyId;
+            else if (propertyId != leasePropertyId)
+                throw ReceivablesOpenItemsQueryValidationException.PropertyMismatch(leaseId, leasePropertyId, propertyId);
+        }
+        catch (DocumentNotFoundException)
+        {
+            return new ReceivablesOpenItemsPageResponse(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                [],
+                0,
+                0m,
+                0m);
+        }
+
+        var leaseStartMonth = new DateOnly(leaseStart.Year, leaseStart.Month, 1);
+        var nowMonth = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
+        var fromMonth = leaseStartMonth <= nowMonth ? leaseStartMonth : nowMonth;
+        var filter = new List<DimensionValue>(3)
+        {
+            new(DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}"), partyId),
+            new(DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}"), propertyId),
+            new(DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Lease}"), leaseId)
+        };
+        var toMonth = await OperationalRegisterScanBoundaries.ResolveToMonthInclusiveAsync(
+            movements,
+            policy.ReceivablesOpenItemsOperationalRegisterId,
+            fromMonth,
+            nowMonth,
+            dimensions: filter,
+            ct: ct);
+        var page = await movements.GetResourceNetsByDimensionPageAsync(
+            policy.ReceivablesOpenItemsOperationalRegisterId,
+            fromMonth,
+            toMonth,
+            filter,
+            DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}"),
+            "amount",
+            offset,
+            limit,
+            ct);
+        var documentRefs = page.Rows.Count == 0
+            ? new Dictionary<Guid, DocumentDisplayRef>()
+            : new Dictionary<Guid, DocumentDisplayRef>(
+                await documentDisplayReader.ResolveRefsAsync(page.Rows.Select(static row => row.ValueId).ToArray(), ct));
+        var rows = page.Rows.Select(row =>
+        {
+            documentRefs.TryGetValue(row.ValueId, out var documentRef);
+            var net = row.NetAmount;
+            return new ReceivablesOpenItemPageRow(
+                IsCharge: net > 0m,
+                ItemId: row.ValueId,
+                ItemDisplay: documentRef?.Display ?? row.Display,
+                Amount: Math.Abs(net),
+                DocumentType: string.IsNullOrWhiteSpace(documentRef?.TypeCode) ? null : documentRef.TypeCode);
+        }).ToArray();
+
+        return new ReceivablesOpenItemsPageResponse(
+            policy.ReceivablesOpenItemsOperationalRegisterId,
+            rows,
+            page.Total,
+            page.TotalPositive,
+            page.TotalNegativeAbsolute);
+    }
 
     public async Task<ReceivablesOpenItemsResponse> GetOpenItemsAsync(
         Guid partyId,
@@ -102,49 +197,16 @@ public sealed class ReceivablesOpenItemsService(
             dimensions: filter,
             ct: ct);
 
-        var netByItem = new Dictionary<Guid, decimal>();
-        var displayByItem = new Dictionary<Guid, string?>();
-
-        long? after = null;
-
-        while (true)
-        {
-            var page = await movements.GetByMonthsAsync(
-                policy.ReceivablesOpenItemsOperationalRegisterId,
-                fromMonth,
-                toMonth,
-                dimensions: filter,
-                afterMovementId: after,
-                limit: PageSize,
-                ct: ct);
-
-            if (page.Count == 0)
-                break;
-
-            foreach (var row in page)
-            {
-                if (!TryGetValueId(row.Dimensions, itemDimId, out var itemId))
-                    continue; // malformed row; ignore
-
-                var amount = ReadSingleAmount(row.Values);
-                if (amount == 0m)
-                    continue;
-
-                var signed = row.IsStorno ? -amount : amount;
-
-                netByItem.TryGetValue(itemId, out var existing);
-                netByItem[itemId] = existing + signed;
-
-                if (!displayByItem.ContainsKey(itemId))
-                {
-                    displayByItem[itemId] = row.DimensionValueDisplays.GetValueOrDefault(itemDimId);
-                }
-            }
-
-            after = page[^1].MovementId;
-            if (page.Count < PageSize)
-                break;
-        }
+        var aggregated = await movements.GetResourceNetsByDimensionAsync(
+            policy.ReceivablesOpenItemsOperationalRegisterId,
+            fromMonth,
+            toMonth,
+            filter,
+            itemDimId,
+            resourceColumnCode: "amount",
+            ct);
+        var netByItem = aggregated.ToDictionary(static row => row.ValueId, static row => row.NetAmount);
+        var displayByItem = aggregated.ToDictionary(static row => row.ValueId, static row => row.Display);
 
         var charges = new List<ReceivablesOpenItemDto>();
         var credits = new List<ReceivablesOpenItemDto>();
@@ -244,34 +306,6 @@ public sealed class ReceivablesOpenItemsService(
                     ["error"] = ex.Message
                 });
         }
-    }
-
-    private static bool TryGetValueId(DimensionBag bag, Guid dimensionId, out Guid valueId)
-    {
-        foreach (var x in bag)
-        {
-            if (x.DimensionId == dimensionId)
-            {
-                valueId = x.ValueId;
-                return true;
-            }
-        }
-
-        valueId = Guid.Empty;
-        return false;
-    }
-
-    private static decimal ReadSingleAmount(IReadOnlyDictionary<string, decimal> values)
-    {
-        if (values.Count == 0)
-            return 0m;
-
-        // Open-items register is expected to have a single resource: "amount".
-        if (values.TryGetValue("amount", out var v))
-            return v;
-
-        // Be tolerant in case resource column_code changes.
-        return values.Values.FirstOrDefault();
     }
 
     private static DateOnly ReadDateOnly(RecordPayload payload, string field)

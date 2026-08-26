@@ -20,6 +20,9 @@ public sealed class PayablesRequestValidationException(
     public static PayablesRequestValidationException LimitInvalid()
         => SingleField("limit", "Limit must be greater than zero.", "pm.validation.payables.limit_invalid");
 
+    public static PayablesRequestValidationException LimitTooLarge(int max)
+        => SingleField("limit", $"Limit must not exceed {max}.", "pm.validation.payables.limit_too_large");
+
     public static PayablesRequestValidationException MonthMustBeMonthStart(string field)
         => SingleField(field, $"{PropertyManagementValidationLabels.Label(field)} must be the first day of a month.", "pm.validation.payables.month_start_required");
 

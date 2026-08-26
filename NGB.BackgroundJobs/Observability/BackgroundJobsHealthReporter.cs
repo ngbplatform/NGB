@@ -39,6 +39,7 @@ internal sealed class BackgroundJobsHealthReporter(
         var desiredEnabled = 0;
         var registered = 0;
         var misconfigured = 0;
+        var recurringStates = await recurring.GetManyAsync(catalog.All, cancellationToken);
 
         foreach (var jobId in catalog.All)
         {
@@ -59,7 +60,7 @@ internal sealed class BackgroundJobsHealthReporter(
             if (desiredEnabledForJob)
                 desiredEnabled++;
 
-            var state = await recurring.TryGetAsync(jobId, cancellationToken);
+            recurringStates.TryGetValue(jobId, out var state);
             var isRegistered = state is not null;
             if (isRegistered)
                 registered++;

@@ -21,16 +21,18 @@ internal sealed class WorkCenterOutboxHostedService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(options.Value.PollInterval);
-        using var cancellationRegistration = stoppingToken.Register(timer.Dispose);
-
         try
         {
             do
             {
                 await DrainAsync(stoppingToken);
+                // Fixed-delay polling deliberately starts the interval after a
+                // drain. A periodic timer can retain a tick that elapsed while a
+                // busy drain was running and immediately start another drain,
+                // defeating the per-poll batch bound and creating a hot loop.
+                await Task.Delay(options.Value.PollInterval, timeProvider, stoppingToken);
             }
-            while (await timer.WaitForNextTickAsync());
+            while (!stoppingToken.IsCancellationRequested);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -44,9 +46,12 @@ internal sealed class WorkCenterOutboxHostedService(
         {
             await using var scope = scopes.CreateAsyncScope();
             var processor = scope.ServiceProvider.GetRequiredService<IOutboxProcessor>();
-            while (await processor.ProcessBatchAsync(options.Value.ProjectionBatchSize, stoppingToken) > 0)
+
+            for (var batch = 0; batch < options.Value.MaximumProjectionBatchesPerPoll; batch++)
             {
-                // Drain ready work in bounded batches before yielding to the timer.
+                var processed = await processor.ProcessBatchAsync(options.Value.ProjectionBatchSize, stoppingToken);
+                if (processed == 0)
+                    break;
             }
 
             var now = timeProvider.GetUtcNow();
@@ -55,6 +60,7 @@ internal sealed class WorkCenterOutboxHostedService(
                 _nextMaintenanceAtUtc = now.Add(options.Value.MaintenanceInterval);
                 var maintenance = scope.ServiceProvider.GetRequiredService<IWorkCenterMaintenanceService>();
                 var pruned = await maintenance.PruneAsync(stoppingToken);
+
                 if (pruned > 0)
                     logger.LogInformation("Pruned {PrunedCount} expired Work Center records.", pruned);
             }

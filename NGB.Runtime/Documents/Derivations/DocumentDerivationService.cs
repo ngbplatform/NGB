@@ -161,6 +161,12 @@ internal sealed class DocumentDerivationService(
         IReadOnlyList<Guid> documentIds,
         CancellationToken ct)
     {
+        if (locks is IAdvisoryLockBatchManager batchLocks)
+        {
+            await batchLocks.LockDocumentsAsync(documentIds, ct);
+            return;
+        }
+
         foreach (var id in documentIds.Where(x => x != Guid.Empty).Distinct().OrderBy(x => x))
         {
             await locks.LockDocumentAsync(id, ct);
@@ -175,6 +181,7 @@ internal sealed class DocumentDerivationService(
         IReadOnlyList<Guid> basedOnDocumentIds,
         CancellationToken ct)
     {
+        var requests = new List<DocumentRelationshipCreateRequest>();
         foreach (var relationshipCode in def.RelationshipCodes)
         {
             if (string.IsNullOrWhiteSpace(relationshipCode))
@@ -194,13 +201,27 @@ internal sealed class DocumentDerivationService(
                 if (toId == Guid.Empty)
                     continue;
 
-                await relationships.CreateAsync(
-                    fromDocumentId: derivedDraftId,
-                    toDocumentId: toId,
-                    relationshipCode: relationshipCode,
-                    manageTransaction: false,
-                    ct: ct);
+                requests.Add(new DocumentRelationshipCreateRequest(
+                    derivedDraftId,
+                    toId,
+                    relationshipCode));
             }
+        }
+
+        if (relationships is IDocumentRelationshipBatchService batchRelationships)
+        {
+            await batchRelationships.CreateManyAsync(requests, manageTransaction: false, ct);
+            return;
+        }
+
+        foreach (var request in requests)
+        {
+            await relationships.CreateAsync(
+                request.FromDocumentId,
+                request.ToDocumentId,
+                request.RelationshipCode,
+                manageTransaction: false,
+                ct);
         }
     }
 

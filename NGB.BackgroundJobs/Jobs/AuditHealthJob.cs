@@ -61,10 +61,16 @@ public sealed class AuditHealthJob(
                 cancellationToken: cancellationToken));
 
         const string orphanChangesSql = """
-                                       SELECT COUNT(*)
-                                       FROM platform_audit_event_changes c
-                                       LEFT JOIN platform_audit_events e ON e.audit_event_id = c.audit_event_id
-                                       WHERE e.audit_event_id IS NULL;
+                                       SELECT CASE WHEN EXISTS (
+                                           SELECT 1
+                                           FROM platform_audit_event_changes c
+                                           WHERE NOT EXISTS (
+                                               SELECT 1
+                                               FROM platform_audit_events e
+                                               WHERE e.audit_event_id = c.audit_event_id
+                                           )
+                                           LIMIT 1
+                                       ) THEN 1::bigint ELSE 0::bigint END;
                                        """;
 
         var orphanChanges = await uow.Connection.ExecuteScalarAsync<long>(
@@ -72,10 +78,23 @@ public sealed class AuditHealthJob(
 
         const string volumeSql = """
                                  SELECT
-                                     COUNT(*)::bigint                     AS events_count,
-                                     MIN(occurred_at_utc)                 AS min_occurred_at_utc,
-                                     MAX(occurred_at_utc)                 AS max_occurred_at_utc
-                                 FROM platform_audit_events;
+                                     GREATEST(c.reltuples, 0)::bigint AS events_count,
+                                     (
+                                         SELECT occurred_at_utc
+                                         FROM platform_audit_events
+                                         ORDER BY occurred_at_utc, audit_event_id
+                                         LIMIT 1
+                                     ) AS min_occurred_at_utc,
+                                     (
+                                         SELECT occurred_at_utc
+                                         FROM platform_audit_events
+                                         ORDER BY occurred_at_utc DESC, audit_event_id DESC
+                                         LIMIT 1
+                                     ) AS max_occurred_at_utc
+                                 FROM pg_class c
+                                 JOIN pg_namespace n ON n.oid = c.relnamespace
+                                 WHERE n.nspname = 'public'
+                                   AND c.relname = 'platform_audit_events';
                                  """;
 
         var volume = await uow.Connection.QuerySingleAsync<AuditVolumeRow>(

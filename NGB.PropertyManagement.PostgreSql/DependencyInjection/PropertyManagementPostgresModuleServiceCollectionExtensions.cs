@@ -8,6 +8,7 @@ using NGB.PostgreSql.Documents;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.PostgreSql.BackgroundJobs;
 using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.PostgreSql.Catalogs;
 using NGB.PropertyManagement.PostgreSql.Documents;
 using NGB.PropertyManagement.PostgreSql.Payables;
 using NGB.PropertyManagement.PostgreSql.Receivables;
@@ -15,6 +16,7 @@ using NGB.PropertyManagement.PostgreSql.Reporting;
 using NGB.PropertyManagement.Payables;
 using NGB.PropertyManagement.Receivables;
 using NGB.PropertyManagement.Reporting;
+using NGB.PropertyManagement.Catalogs;
 
 namespace NGB.PropertyManagement.PostgreSql.DependencyInjection;
 
@@ -24,6 +26,7 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
     {
         // IMPORTANT: do NOT use TryAddEnumerable with factory-based registrations; it can't deduplicate them.
         services.AddScoped<PropertyManagementSecuritySeeder>();
+        services.AddScoped<IPropertyUnitNumberReader, PostgresPropertyUnitNumberReader>();
 
         // Most PM catalogs are simple head-only tables => use the generic PostgresHeadCatalogTypeStorage.
         services.AddScoped<ICatalogTypeStorage>(sp =>
@@ -104,6 +107,7 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
         services.AddScoped<IOccupancySummaryReader, PostgresOccupancySummaryReader>();
         services.AddScoped<IMaintenanceQueueReader, PostgresMaintenanceQueueReader>();
         services.AddScoped<ITenantStatementReader, PostgresTenantStatementReader>();
+        services.AddScoped<IReceivablesReportReader, PostgresReceivablesReportReader>();
 
         // PM-specific reporting dataset bindings.
         services.AddSingleton<IPostgresReportDatasetSource, PmAccountingLedgerAnalysisPostgresDatasetSource>();

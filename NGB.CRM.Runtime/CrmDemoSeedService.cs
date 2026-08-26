@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Contracts;
+using NGB.CRM.Documents;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Core.Documents;
@@ -13,7 +14,6 @@ using NGB.Runtime.ReferenceRegisters;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 using CoreDocumentStatus = NGB.Core.Documents.DocumentStatus;
-using ContractDocumentStatus = NGB.Contracts.Metadata.DocumentStatus;
 
 namespace NGB.CRM.Runtime;
 
@@ -25,6 +25,7 @@ public sealed class CrmDemoSeedService(
     TimeProvider timeProvider,
     IDocumentReferenceRegisterPostingActionResolver refregPostingActionResolver,
     IReferenceRegisterRecordsApplier refregRecordsApplier,
+    ICrmPostedDocumentReader postedDocumentReader,
     IUnitOfWork uow,
     CrmDemoSeedOptions options)
     : ICrmDemoSeedService
@@ -682,28 +683,36 @@ public sealed class CrmDemoSeedService(
         foreach (var documentType in DemoDocumentTypes)
         {
             const int pageSize = 200;
-            var offset = 0;
+            Guid? afterId = null;
 
             while (true)
             {
-                var page = await documents.GetPageAsync(
+                var documentIds = await postedDocumentReader.GetIdsPageAfterAsync(
                     documentType,
-                    new PageRequestDto(Offset: offset, Limit: pageSize, Search: null),
+                    afterId,
+                    pageSize,
                     ct);
 
-                if (page.Items.Count == 0)
+                if (documentIds.Count == 0)
                     break;
 
-                foreach (var item in page.Items)
+                recordsApplied += await uow.ExecuteInUowTransactionAsync(async innerCt =>
                 {
-                    if (item.Status != ContractDocumentStatus.Posted)
-                        continue;
+                    var pageRecordsApplied = 0;
+                    foreach (var documentId in documentIds)
+                    {
+                        pageRecordsApplied += await BackfillDocumentReferenceRegistersAsync(
+                            documentType,
+                            documentId,
+                            innerCt);
+                    }
 
-                    recordsApplied += await BackfillDocumentReferenceRegistersAsync(documentType, item.Id, ct);
-                }
+                    return pageRecordsApplied;
+                }, ct);
 
-                offset += page.Items.Count;
-                if (page.Items.Count < pageSize)
+                afterId = documentIds[^1];
+
+                if (documentIds.Count < pageSize)
                     break;
             }
         }
@@ -716,44 +725,41 @@ public sealed class CrmDemoSeedService(
         Guid documentId,
         CancellationToken ct)
     {
-        return await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var record = new DocumentRecord
         {
-            var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-            var record = new DocumentRecord
-            {
-                Id = documentId,
-                TypeCode = documentType,
-                DateUtc = nowUtc,
-                Status = CoreDocumentStatus.Posted,
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                PostedAtUtc = nowUtc
-            };
+            Id = documentId,
+            TypeCode = documentType,
+            DateUtc = nowUtc,
+            Status = CoreDocumentStatus.Posted,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            PostedAtUtc = nowUtc
+        };
 
-            var action = refregPostingActionResolver.TryResolve(record);
-            if (action is null)
-                return 0;
+        var action = refregPostingActionResolver.TryResolve(record);
+        if (action is null)
+            return 0;
 
-            var builder = new CrmReferenceRegisterRecordsBuilder(documentId);
-            await action(builder, ReferenceRegisterWriteOperation.Post, innerCt);
+        var builder = new CrmReferenceRegisterRecordsBuilder(documentId);
+        await action(builder, ReferenceRegisterWriteOperation.Post, ct);
 
-            var appliedRecords = 0;
-            foreach (var (registerCode, records) in builder.RecordsByRegisterCode)
-            {
-                var result = await refregRecordsApplier.ApplyRecordsForDocumentAsync(
-                    ReferenceRegisterId.FromCode(registerCode),
-                    documentId,
-                    ReferenceRegisterWriteOperation.Post,
-                    records,
-                    manageTransaction: false,
-                    ct: innerCt);
+        var appliedRecords = 0;
+        foreach (var (registerCode, records) in builder.RecordsByRegisterCode)
+        {
+            var result = await refregRecordsApplier.ApplyRecordsForDocumentAsync(
+                ReferenceRegisterId.FromCode(registerCode),
+                documentId,
+                ReferenceRegisterWriteOperation.Post,
+                records,
+                manageTransaction: false,
+                ct: ct);
 
-                if (result == ReferenceRegisterWriteResult.Executed)
-                    appliedRecords += records.Count;
-            }
+            if (result == ReferenceRegisterWriteResult.Executed)
+                appliedRecords += records.Count;
+        }
 
-            return appliedRecords;
-        }, ct);
+        return appliedRecords;
     }
 
     private async Task<IReadOnlyList<CatalogItemDto>> EnsureGeneratedAccountsAsync(CancellationToken ct)
@@ -949,6 +955,7 @@ public sealed class CrmDemoSeedService(
             payload.Fields!["document_date_utc"].GetString()!,
             "yyyy-MM-dd",
             CultureInfo.InvariantCulture);
+
         parts.Add(date.ToString("M/d/yyyy", CultureInfo.InvariantCulture));
 
         return string.Join(' ', parts);

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Persistence.Documents;
 using NGB.Runtime.Reporting;
@@ -72,7 +73,7 @@ public sealed class ReportEngineFullCoverageTests
     [InlineData(0, true, 0, 100)]
     [InlineData(7, true, 0, 7)]
     [InlineData(7, true, 5, 5)]
-    public async Task Execute_ResolvesPositiveRequestedLimitOrPresentationFallback(
+    public async Task Execute_GroupedSheetUsesBoundedMaterializationAndResolvesRenderedPageLimit(
         int? initialPageSize,
         bool includePresentation,
         int requestLimit,
@@ -87,10 +88,60 @@ public sealed class ReportEngineFullCoverageTests
             new ReportExecutionRequestDto(Limit: requestLimit),
             default);
 
-        fixture.Executor.Paging!.Limit.Should().Be(expectedLimit);
+        fixture.Executor.Paging!.Limit.Should().Be(10_000);
         result.Limit.Should().Be(expectedLimit);
         result.HasMore.Should().BeFalse();
         fixture.Store.RemoveCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Execute_NormalizesExcessiveInteractiveOffsetAndLimit()
+    {
+        var definition = Definition();
+        var fixture = new EngineFixture(definition);
+        fixture.Executor.Page = DataPage(Row("A", 10m));
+
+        var result = await fixture.Sut.ExecuteAsync(
+            definition.ReportCode,
+            new ReportExecutionRequestDto(Offset: int.MaxValue, Limit: int.MaxValue),
+            default);
+
+        result.Offset.Should().Be(PagingLimits.MaxOffset);
+        result.Limit.Should().Be(PagingLimits.MaxPageSize);
+    }
+
+    [Fact]
+    public async Task Execute_DisablePagingUsesHardSourceCapAndRejectsTruncatedResult()
+    {
+        var definition = Definition();
+        var fixture = new EngineFixture(definition);
+        fixture.Executor.Page = DataPage(Row("A", 10m)) with { HasMore = true };
+
+        var action = () => fixture.Sut.ExecuteAsync(
+            definition.ReportCode,
+            new ReportExecutionRequestDto(DisablePaging: true),
+            default);
+
+        await action.Should().ThrowAsync<NGB.Core.Reporting.Exceptions.ReportLayoutValidationException>()
+            .WithMessage("*more than 10000 source rows*");
+        fixture.Executor.Paging.Should().Be(new ReportPlanPaging(0, 10_001));
+    }
+
+    [Fact]
+    public async Task Execute_DisablePagingRestoresExactTotalAfterBoundedMaterialization()
+    {
+        var definition = Definition();
+        var fixture = new EngineFixture(definition);
+        fixture.Executor.Page = DataPage(Row("A", 10m), Row("B", 20m)) with { Total = null };
+
+        var result = await fixture.Sut.ExecuteAsync(
+            definition.ReportCode,
+            new ReportExecutionRequestDto(DisablePaging: true),
+            default);
+
+        fixture.Executor.Paging.Should().Be(new ReportPlanPaging(0, 10_001));
+        result.Total.Should().Be(2);
+        result.HasMore.Should().BeFalse();
     }
 
     [Fact]

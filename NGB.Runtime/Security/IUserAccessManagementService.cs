@@ -1,10 +1,11 @@
+using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 
 namespace NGB.Runtime.Security;
 
 public interface IUserAccessManagementService
 {
-    Task<IReadOnlyList<UserListItemDto>> GetUsersAsync(CancellationToken ct);
+    Task<PageResponseDto<UserListItemDto>> GetUsersAsync(UserPageRequestDto request, CancellationToken ct);
 
     Task<UserDetailsDto> GetUserAsync(Guid userId, CancellationToken ct);
 

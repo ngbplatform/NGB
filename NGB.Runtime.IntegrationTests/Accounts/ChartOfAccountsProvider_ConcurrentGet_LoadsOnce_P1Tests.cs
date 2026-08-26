@@ -71,6 +71,9 @@ public sealed class ChartOfAccountsProvider_ConcurrentGet_LoadsOnce_P1Tests
         public Task<IReadOnlyList<ChartOfAccountsAdminItem>> GetForAdminAsync(bool includeDeleted = false, CancellationToken ct = default)
             => throw new NotSupportedException();
 
+        public Task<ChartOfAccountsAdminPage> GetAdminPageAsync(ChartOfAccountsAdminPageQuery query, CancellationToken ct = default)
+            => throw new NotSupportedException();
+
         public Task<ChartOfAccountsAdminItem?> GetAdminByIdAsync(Guid accountId, CancellationToken ct = default)
             => throw new NotSupportedException();
 

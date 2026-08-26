@@ -49,7 +49,8 @@ public sealed class ReferenceRegisterReadFullCoverageTests
         await ((Func<Task>)(() => f.Sut.SliceLastAllAsync(id, Now, limit: 0))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.SliceLastAllPageAsync(id, Now, limit: 0))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
-        f.Reader.SetupSequence(x => x.SliceLastAllAsync(id, Now, null, cursor, 2, It.IsAny<CancellationToken>()))
+        f.Reader.SetupSequence(x => x.SliceLastAllPageAsync(
+                id, Now, null, cursor, 2, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync([])
             .ReturnsAsync([Record(Guid.NewGuid()), Record(Guid.NewGuid())]);
         var empty = await f.Sut.SliceLastAllPageAsync(id, Now, afterDimensionSetId: cursor,
@@ -62,19 +63,21 @@ public sealed class ReferenceRegisterReadFullCoverageTests
         full.NextAfterDimensionSetId.Should().Be(full.Records[^1].DimensionSetId);
         full.HasMore.Should().BeTrue();
 
-        f.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, null, 1, It.IsAny<CancellationToken>()))
+        f.Reader.Setup(x => x.SliceLastAllPageAsync(
+                id, Now, null, null, 1, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Record(Guid.NewGuid())]);
         (await f.Sut.SliceLastAllAsync(id, Now, limit: 1, includeDeleted: true)).Should().ContainSingle();
     }
 
     [Fact]
-    public async Task SliceAllVisible_SkipsTombstonesFillsLimitStopsAtEndAndHandlesEmptyPage()
+    public async Task SliceAllVisible_UsesSingleRawScanAndPreservesPageMetadata()
     {
         var id = Guid.NewGuid();
 
         var emptyFixture = new Fixture();
         var cursor = Guid.NewGuid();
-        emptyFixture.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, cursor, 2, It.IsAny<CancellationToken>()))
+        emptyFixture.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, cursor, 2, 25, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         var empty = await emptyFixture.Sut.SliceLastAllPageAsync(id, Now, afterDimensionSetId: cursor, limit: 2);
         empty.Records.Should().BeEmpty();
@@ -82,21 +85,20 @@ public sealed class ReferenceRegisterReadFullCoverageTests
         empty.HasMore.Should().BeFalse();
 
         var fill = new Fixture();
-        var deletedKey = Guid.NewGuid();
         var visible1 = Guid.NewGuid();
         var visible2 = Guid.NewGuid();
-        fill.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, null, 2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([Record(deletedKey, true), Record(visible1)]);
-        fill.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, visible1, 2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([Record(visible2), Record(Guid.NewGuid(), true)]);
+        fill.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 2, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Record(visible1), Record(visible2)]);
         var filled = await fill.Sut.SliceLastAllPageAsync(id, Now, limit: 2);
         filled.Records.Select(x => x.DimensionSetId).Should().Equal(visible1, visible2);
         filled.HasMore.Should().BeTrue();
 
         var shortPage = new Fixture();
         var last = Guid.NewGuid();
-        shortPage.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, null, 3, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([Record(Guid.NewGuid(), true), Record(last)]);
+        shortPage.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 3, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Record(last)]);
         var shortResult = await shortPage.Sut.SliceLastAllPageAsync(id, Now, limit: 3);
         shortResult.Records.Should().ContainSingle();
         shortResult.NextAfterDimensionSetId.Should().Be(last);
@@ -104,20 +106,82 @@ public sealed class ReferenceRegisterReadFullCoverageTests
     }
 
     [Fact]
-    public async Task SliceAllVisible_TombstoneSafetyCapReturnsAdvancedCursorAndHasMore()
+    public async Task SliceAllVisible_EmptyVisibleResultRequiresOnlyOnePersistenceQuery()
     {
         var f = new Fixture();
         var id = Guid.NewGuid();
-        var calls = 0;
-        f.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, It.IsAny<Guid?>(), 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => [Record(Guid.Parse($"00000000-0000-0000-0000-{++calls:000000000000}"), true)]);
+        f.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         var page = await f.Sut.SliceLastAllPageAsync(id, Now, limit: 1);
 
-        calls.Should().Be(25);
         page.Records.Should().BeEmpty();
+        page.HasMore.Should().BeFalse();
+        f.Reader.Verify(x => x.ScanSliceLastAllForVisiblePageAsync(
+            id, Now, null, null, 1, 25, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SliceAllVisible_AdvancesCursorByLastExaminedRawPageWhenSkippingTombstones()
+    {
+        var f = new Fixture();
+        var id = Guid.NewGuid();
+        var tombstone1 = Guid.NewGuid();
+        var visible1 = Guid.NewGuid();
+        var visible2 = Guid.NewGuid();
+        var examinedAfterLimit = Guid.NewGuid();
+        f.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 2, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                Record(tombstone1, deleted: true),
+                Record(visible1),
+                Record(visible2),
+                Record(examinedAfterLimit)
+            ]);
+
+        var page = await f.Sut.SliceLastAllPageAsync(id, Now, limit: 2);
+
+        page.Records.Select(static x => x.DimensionSetId).Should().Equal(visible1, visible2);
+        page.NextAfterDimensionSetId.Should().Be(examinedAfterLimit);
         page.HasMore.Should().BeTrue();
-        page.NextAfterDimensionSetId.Should().NotBeNull();
+        f.Reader.VerifyAll();
+    }
+
+    [Fact]
+    public async Task SliceAllVisible_CoversExhaustedAndSafetyCappedTombstoneScans()
+    {
+        var id = Guid.NewGuid();
+
+        var exhausted = new Fixture();
+        var exhaustedRows = new[] { Record(Guid.NewGuid(), true), Record(Guid.NewGuid(), true) };
+        exhausted.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(exhaustedRows);
+        var exhaustedPage = await exhausted.Sut.SliceLastAllPageAsync(id, Now, limit: 1);
+        exhaustedPage.Records.Should().BeEmpty();
+        exhaustedPage.NextAfterDimensionSetId.Should().Be(exhaustedRows[^1].DimensionSetId);
+        exhaustedPage.HasMore.Should().BeFalse();
+
+        var capped = new Fixture();
+        var cappedRows = Enumerable.Range(0, 25)
+            .Select(_ => Record(Guid.NewGuid(), true))
+            .ToArray();
+        capped.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 1, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cappedRows);
+        var cappedPage = await capped.Sut.SliceLastAllPageAsync(id, Now, limit: 1);
+        cappedPage.Records.Should().BeEmpty();
+        cappedPage.NextAfterDimensionSetId.Should().Be(cappedRows[^1].DimensionSetId);
+        cappedPage.HasMore.Should().BeTrue();
+
+        var maximumLimit = new Fixture();
+        maximumLimit.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, int.MaxValue, 25, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var maximumPage = await maximumLimit.Sut.SliceLastAllPageAsync(id, Now, limit: int.MaxValue);
+        maximumPage.Records.Should().BeEmpty();
+        maximumPage.HasMore.Should().BeFalse();
     }
 
     [Fact]
@@ -128,7 +192,8 @@ public sealed class ReferenceRegisterReadFullCoverageTests
         var cursor = Guid.NewGuid();
 
         var delegated = new Fixture();
-        delegated.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, null, 2, It.IsAny<CancellationToken>()))
+        delegated.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 2, 25, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         (await delegated.Sut.SliceLastAllFilteredAsync(id, Now, null, limit: 2)).Should().BeEmpty();
         (await delegated.Sut.SliceLastAllFilteredPageAsync(id, Now, [], limit: 2)).Records.Should().BeEmpty();
@@ -142,8 +207,9 @@ public sealed class ReferenceRegisterReadFullCoverageTests
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
         var included = new Fixture();
-        included.Reader.SetupSequence(x => x.SliceLastAllFilteredByDimensionsAsync(id, Now,
-                It.Is<IReadOnlyList<DimensionValue>>(d => d.Count == 1), null, cursor, 2, It.IsAny<CancellationToken>()))
+        included.Reader.SetupSequence(x => x.SliceLastAllFilteredPageByDimensionsAsync(id, Now,
+                It.Is<IReadOnlyList<DimensionValue>>(d => d.Count == 1), null, cursor, 2, true,
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync([])
             .ReturnsAsync([Record(Guid.NewGuid()), Record(Guid.NewGuid(), true)]);
         var empty = await included.Sut.SliceLastAllFilteredPageAsync(id, Now, [dimension, dimension],
@@ -157,36 +223,29 @@ public sealed class ReferenceRegisterReadFullCoverageTests
         var visible = new Fixture();
         var first = Guid.NewGuid();
         var second = Guid.NewGuid();
-        visible.Reader.Setup(x => x.SliceLastAllFilteredByDimensionsAsync(id, Now,
-                It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, 2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([Record(Guid.NewGuid(), true), Record(first)]);
-        visible.Reader.Setup(x => x.SliceLastAllFilteredByDimensionsAsync(id, Now,
-                It.IsAny<IReadOnlyList<DimensionValue>>(), null, first, 2, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([Record(second)]);
+        visible.Reader.Setup(x => x.ScanSliceLastAllFilteredForVisiblePageAsync(id, Now,
+                It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, 2, 25,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Record(first), Record(second)]);
         var page = await visible.Sut.SliceLastAllFilteredPageAsync(id, Now, [dimension], limit: 2);
         page.Records.Select(x => x.DimensionSetId).Should().Equal(first, second);
-        page.HasMore.Should().BeFalse();
+        page.HasMore.Should().BeTrue();
     }
 
     [Fact]
-    public async Task FilteredSlice_HandlesEmptyPageAndSafetyCap()
+    public async Task FilteredSlice_HandlesEmptyVisiblePageWithOnePersistenceQuery()
     {
         var id = Guid.NewGuid();
         var dimension = new DimensionValue(Guid.NewGuid(), Guid.NewGuid());
         var empty = new Fixture();
-        empty.Reader.Setup(x => x.SliceLastAllFilteredByDimensionsAsync(id, Now,
-                It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, 1, It.IsAny<CancellationToken>()))
+        empty.Reader.Setup(x => x.ScanSliceLastAllFilteredForVisiblePageAsync(id, Now,
+                It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, 1, 25,
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         (await empty.Sut.SliceLastAllFilteredPageAsync(id, Now, [dimension], limit: 1)).Records.Should().BeEmpty();
-
-        var capped = new Fixture();
-        var calls = 0;
-        capped.Reader.Setup(x => x.SliceLastAllFilteredByDimensionsAsync(id, Now,
-                It.IsAny<IReadOnlyList<DimensionValue>>(), null, It.IsAny<Guid?>(), 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => [Record(Guid.Parse($"10000000-0000-0000-0000-{++calls:000000000000}"), true)]);
-        var page = await capped.Sut.SliceLastAllFilteredPageAsync(id, Now, [dimension], limit: 1);
-        calls.Should().Be(25);
-        page.HasMore.Should().BeTrue();
+        empty.Reader.Verify(x => x.ScanSliceLastAllFilteredForVisiblePageAsync(id, Now,
+            It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, 1, 25,
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -195,7 +254,8 @@ public sealed class ReferenceRegisterReadFullCoverageTests
         var id = Guid.NewGuid();
 
         var empty = new Fixture();
-        empty.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, null, 3, It.IsAny<CancellationToken>()))
+        empty.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 3, 25, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         var emptyPage = await empty.Sut.SliceLastAllEnrichedPageAsync(id, Now, limit: 3);
         emptyPage.Records.Should().BeEmpty();
@@ -203,7 +263,8 @@ public sealed class ReferenceRegisterReadFullCoverageTests
 
         var missingBag = new Fixture();
         var missingSet = Guid.NewGuid();
-        missingBag.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, null, 3, It.IsAny<CancellationToken>()))
+        missingBag.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 3, 25, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Record(missingSet)]);
         missingBag.Bags.Setup(x => x.GetBagsByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, DimensionBag>());
@@ -223,7 +284,8 @@ public sealed class ReferenceRegisterReadFullCoverageTests
             new DimensionValue(resolvedDimension, resolvedValue),
             new DimensionValue(fallbackDimension, fallbackValue)
         ]);
-        enriched.Reader.Setup(x => x.SliceLastAllAsync(id, Now, null, null, 3, It.IsAny<CancellationToken>()))
+        enriched.Reader.Setup(x => x.ScanSliceLastAllForVisiblePageAsync(
+                id, Now, null, null, 3, 25, It.IsAny<CancellationToken>()))
             .ReturnsAsync([Record(setId), Record(setId)]);
         enriched.Bags.Setup(x => x.GetBagsByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, DimensionBag> { [setId] = bag });

@@ -8,7 +8,9 @@ using NGB.Trade.Documents;
 using NGB.Trade.Pricing;
 using NGB.Trade.PostgreSql.Documents;
 using NGB.Trade.PostgreSql.Pricing;
+using NGB.Trade.PostgreSql.References;
 using NGB.Trade.PostgreSql.Reporting;
+using NGB.Trade.References;
 using NGB.Trade.Reporting;
 
 namespace NGB.Trade.PostgreSql.DependencyInjection;
@@ -75,7 +77,10 @@ public static class TradePostgresModuleServiceCollectionExtensions
 
         services.AddScoped<ITradeDocumentReaders, TradeDocumentReaders>();
         services.AddScoped<ITradePricingLookupReader, TradePricingLookupReader>();
+        services.AddScoped<ITradeCatalogValidationReader, TradeCatalogValidationReader>();
         services.AddScoped<ITradeAnalyticsReader, PostgresTradeAnalyticsReader>();
+        services.AddScoped<ITradeInventoryBalanceReader, PostgresTradeInventoryBalanceReader>();
+        services.AddScoped<ITradeCurrentItemPriceReader, PostgresTradeCurrentItemPriceReader>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostgresReportDatasetSource, TradeOperationalReportsPostgresDatasetSource>());
 
         return services;

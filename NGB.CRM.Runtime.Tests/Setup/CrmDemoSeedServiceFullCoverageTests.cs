@@ -6,6 +6,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using NGB.Application.Abstractions.Services;
+using NGB.CRM.Documents;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Core.Documents;
@@ -117,7 +118,7 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         var noHandlerId = Guid.CreateVersion7();
         var leadItems = Enumerable.Range(0, 200)
             .Select(index => Document(
-                index == 0 ? ContractDocumentStatus.Draft : ContractDocumentStatus.Posted,
+                ContractDocumentStatus.Posted,
                 index == 1 ? noHandlerId : Guid.CreateVersion7()))
             .ToArray();
         state.SetBackfillPage(CrmCodes.LeadIntake, 0, leadItems);
@@ -245,8 +246,7 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
                 if (request.Limit == 1)
                     return new PageResponseDto<DocumentDto>([], request.Offset, request.Limit, state.OperationalTotal);
 
-                var items = state.GetBackfillPage(type, request.Offset);
-                return new PageResponseDto<DocumentDto>(items, request.Offset, request.Limit, items.Count);
+                return new PageResponseDto<DocumentDto>([], request.Offset, request.Limit, 0);
             });
         documents.Setup(x => x.CreateDraftAsync(
                 It.IsAny<string>(), It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
@@ -285,6 +285,13 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
                 IReadOnlyList<ReferenceRegisterRecordWrite> records, bool _, CancellationToken _) =>
                 state.ApplyResult(records));
 
+        var postedDocumentReader = new Mock<ICrmPostedDocumentReader>(MockBehavior.Strict);
+        postedDocumentReader.Setup(x => x.GetIdsPageAfterAsync(
+                It.IsAny<string>(), It.IsAny<Guid?>(),
+                It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string type, Guid? afterId, int limit, CancellationToken _) =>
+                state.GetBackfillPage(type, afterId, limit));
+
         return new CrmDemoSeedService(
             setup.Object,
             catalogs.Object,
@@ -293,12 +300,13 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
             new FixedTimeProvider(new DateTimeOffset(2026, 8, 15, 12, 0, 0, TimeSpan.Zero)),
             resolver.Object,
             applier.Object,
+            postedDocumentReader.Object,
             state.UnitOfWork,
             new CrmDemoSeedOptions());
     }
 
     private static CrmDemoSeedService CreateServiceWithOptions(CrmDemoSeedOptions options) =>
-        new(null!, null!, null!, null!, null!, null!, null!, null!, options);
+        new(null!, null!, null!, null!, null!, null!, null!, null!, null!, options);
 
     private static DocumentDto Document(ContractDocumentStatus status, Guid? id = null) =>
         new(id ?? Guid.CreateVersion7(), null, new RecordPayload(), status, false);
@@ -345,7 +353,7 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         public List<(string Type, Guid Id, RecordPayload Payload)> DocumentCreates { get; } = [];
         public List<(string Type, Guid Id, RecordPayload Payload)> DocumentUpdates { get; } = [];
         public List<(string Type, Guid Id)> Posts { get; } = [];
-        public Dictionary<string, IReadOnlyList<DocumentDto>> BackfillPages { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, List<Guid>> BackfillDocumentIds { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Func<DocumentRecord, Func<IReferenceRegisterRecordsBuilder, ReferenceRegisterWriteOperation,
             CancellationToken, Task>?>? ResolveAction { get; set; }
         public Func<IReadOnlyList<ReferenceRegisterRecordWrite>, ReferenceRegisterWriteResult> ApplyResult { get; set; } =
@@ -353,11 +361,29 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         public List<(Guid RegisterId, Guid DocumentId, IReadOnlyList<ReferenceRegisterRecordWrite> Records)> Applies { get; } = [];
         public FakeUnitOfWork UnitOfWork { get; }
 
-        public void SetBackfillPage(string type, int offset, IReadOnlyList<DocumentDto> items) =>
-            BackfillPages[$"{type}|{offset}"] = items;
+        public void SetBackfillPage(string type, int offset, IReadOnlyList<DocumentDto> items)
+        {
+            if (!BackfillDocumentIds.TryGetValue(type, out var ids))
+            {
+                ids = [];
+                BackfillDocumentIds[type] = ids;
+            }
 
-        public IReadOnlyList<DocumentDto> GetBackfillPage(string type, int offset) =>
-            BackfillPages.GetValueOrDefault($"{type}|{offset}") ?? [];
+            if (offset < ids.Count)
+                ids.RemoveRange(offset, ids.Count - offset);
+            if (offset > ids.Count)
+                return;
+            ids.AddRange(items
+                .Where(static item => item.Status == ContractDocumentStatus.Posted)
+                .Select(static item => item.Id));
+            ids.Sort();
+        }
+
+        public IReadOnlyList<Guid> GetBackfillPage(string type, Guid? afterId, int limit) =>
+            BackfillDocumentIds.GetValueOrDefault(type)?
+                .Where(id => !afterId.HasValue || id.CompareTo(afterId.Value) > 0)
+                .Take(limit)
+                .ToArray() ?? [];
 
         private void AddDefault(string type, string display) =>
             DefaultCatalogs[$"{type}|{display}"] = Catalog(display, new RecordPayload());

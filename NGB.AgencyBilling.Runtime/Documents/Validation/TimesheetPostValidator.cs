@@ -30,6 +30,11 @@ public sealed class TimesheetPostValidator(
         if (lines.Count == 0)
             throw new NgbArgumentInvalidException("lines", "Timesheet must contain at least one line.");
 
+        var serviceItems = await AgencyBillingCatalogValidationGuards.LoadServiceItemsAsync(
+            lines.Select(static line => line.ServiceItemId.GetValueOrDefault()),
+            references,
+            ct);
+
         var expectedHours = 0m;
         var expectedAmount = 0m;
         var expectedCostAmount = 0m;
@@ -41,7 +46,7 @@ public sealed class TimesheetPostValidator(
 
             var serviceItemId = line.ServiceItemId.GetValueOrDefault();
             if (serviceItemId != Guid.Empty)
-                await AgencyBillingCatalogValidationGuards.EnsureServiceItemAsync(serviceItemId, $"{prefix}.service_item_id", references, ct);
+                AgencyBillingCatalogValidationGuards.EnsureServiceItem(serviceItemId, $"{prefix}.service_item_id", serviceItems);
 
             if (line.Hours <= 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.hours", "Hours must be greater than zero.");

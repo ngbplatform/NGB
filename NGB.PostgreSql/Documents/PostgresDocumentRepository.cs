@@ -89,6 +89,40 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
         return row?.ToRecord();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, DocumentRecord>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+
+        var ids = documentIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, DocumentRecord>();
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    id AS Id,
+    type_code AS TypeCode,
+    number AS Number,
+    date_utc AS DateUtc,
+    status AS Status,
+    version AS Version,
+    created_at_utc AS CreatedAtUtc,
+    updated_at_utc AS UpdatedAtUtc,
+    posted_at_utc AS PostedAtUtc,
+    marked_for_deletion_at_utc AS MarkedForDeletionAtUtc
+FROM documents
+WHERE id = ANY(@Ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync<DocumentRow>(
+            new CommandDefinition(sql, new { Ids = ids }, transaction: uow.Transaction, cancellationToken: ct));
+
+        return rows.ToDictionary(static row => row.Id, static row => row.ToRecord());
+    }
+
     public async Task<DocumentRecord?> GetForUpdateAsync(Guid documentId, CancellationToken ct = default)
     {
         await uow.EnsureOpenForTransactionAsync(ct);
@@ -112,7 +146,44 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
 
         var cmd = new CommandDefinition(sql, new { Id = documentId }, transaction: uow.Transaction, cancellationToken: ct);
         var row = await uow.Connection.QuerySingleOrDefaultAsync<DocumentRow>(cmd);
+
         return row?.ToRecord();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, DocumentRecord>> GetForUpdateByIdsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+
+        var ids = documentIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, DocumentRecord>();
+
+        await uow.EnsureOpenForTransactionAsync(ct);
+
+        const string sql = """
+SELECT
+    id AS Id,
+    type_code AS TypeCode,
+    number AS Number,
+    date_utc AS DateUtc,
+    status AS Status,
+    version AS Version,
+    created_at_utc AS CreatedAtUtc,
+    updated_at_utc AS UpdatedAtUtc,
+    posted_at_utc AS PostedAtUtc,
+    marked_for_deletion_at_utc AS MarkedForDeletionAtUtc
+FROM documents
+WHERE id = ANY(@Ids)
+ORDER BY id
+FOR UPDATE;
+""";
+
+        var rows = await uow.Connection.QueryAsync<DocumentRow>(
+            new CommandDefinition(sql, new { Ids = ids }, transaction: uow.Transaction, cancellationToken: ct));
+
+        return rows.ToDictionary(static row => row.Id, static row => row.ToRecord());
     }
 
     public async Task UpdateStatusAsync(

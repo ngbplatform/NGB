@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Moq;
+using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 using NGB.Core.AuditLog;
 using NGB.Core.Security;
@@ -69,7 +70,8 @@ public sealed class UserAccessManagementFullCoverageTests
         var b = User(Guid.NewGuid(), "missing-b", "b@example.com", null);
         var c = User(Guid.NewGuid(), " ", " ", null);
         var d = User(Guid.NewGuid(), "missing-d", null, null);
-        fixture.Users.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([a, b, c, d]);
+        fixture.Users.Setup(x => x.GetPageAsync(0, PagingLimits.DefaultPageSize, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([a, b, c, d], 4));
         fixture.UserRoles.Setup(x => x.GetRolesForUsersAsync(
                 It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>
@@ -93,24 +95,26 @@ public sealed class UserAccessManagementFullCoverageTests
                 ["b@example.com"] = Idp("id-b", "b@example.com", enabled: false)
             });
 
-        var result = await fixture.Sut.GetUsersAsync(default);
+        var result = await fixture.Sut.GetUsersAsync(new UserPageRequestDto(), default);
 
-        result.Should().HaveCount(4);
-        result.Single(x => x.UserId == a.UserId).Roles.Select(x => x.Name).Should().Equal("Alpha", "Zulu");
-        result.Single(x => x.UserId == a.UserId).KeycloakEnabled.Should().BeTrue();
-        result.Single(x => x.UserId == b.UserId).KeycloakEnabled.Should().BeFalse();
-        result.Single(x => x.UserId == c.UserId).KeycloakEnabled.Should().BeFalse();
-        result.Single(x => x.UserId == d.UserId).KeycloakEnabled.Should().BeFalse();
+        result.Items.Should().HaveCount(4);
+        result.Total.Should().Be(4);
+        result.Items.Single(x => x.UserId == a.UserId).Roles.Select(x => x.Name).Should().Equal("Alpha", "Zulu");
+        result.Items.Single(x => x.UserId == a.UserId).KeycloakEnabled.Should().BeTrue();
+        result.Items.Single(x => x.UserId == b.UserId).KeycloakEnabled.Should().BeFalse();
+        result.Items.Single(x => x.UserId == c.UserId).KeycloakEnabled.Should().BeFalse();
+        result.Items.Single(x => x.UserId == d.UserId).KeycloakEnabled.Should().BeFalse();
 
         var allPresent = new Fixture();
-        allPresent.Users.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([a]);
+        allPresent.Users.Setup(x => x.GetPageAsync(0, PagingLimits.DefaultPageSize, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([a], 1));
         allPresent.UserRoles.Setup(x => x.GetRolesForUsersAsync(
                 It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
         allPresent.IdentityProvider.Setup(x => x.GetUsersByIdsAsync(
                 It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto> { ["id-a"] = Idp("id-a", "a@example.com") });
-        (await allPresent.Sut.GetUsersAsync(default)).Should().ContainSingle();
+        (await allPresent.Sut.GetUsersAsync(new UserPageRequestDto(), default)).Items.Should().ContainSingle();
         allPresent.IdentityProvider.Verify(x => x.FindUsersByEmailsAsync(
             It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -316,6 +320,11 @@ public sealed class UserAccessManagementFullCoverageTests
                     It.IsAny<CancellationToken>()))
                 .Callback<AuditEntityKind, Guid, string, IReadOnlyList<AuditFieldChange>?, object?, Guid?, CancellationToken>(
                     (kind, _, _, _, _, _, _) => AuditKinds.Add(kind))
+                .Returns(Task.CompletedTask);
+            Audit.Setup(x => x.WriteBatchAsync(
+                    It.IsAny<IReadOnlyList<AuditLogWriteRequest>>(), It.IsAny<CancellationToken>()))
+                .Callback<IReadOnlyList<AuditLogWriteRequest>, CancellationToken>((requests, _) =>
+                    AuditKinds.AddRange(requests.Select(static request => request.EntityKind)))
                 .Returns(Task.CompletedTask);
 
             Sut = new UserAccessManagementService(

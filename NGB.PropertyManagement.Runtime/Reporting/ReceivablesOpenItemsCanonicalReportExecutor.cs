@@ -19,19 +19,19 @@ public sealed class ReceivablesOpenItemsCanonicalReportExecutor(IReceivablesOpen
     {
         var leaseId = CanonicalReportExecutionHelper.GetRequiredGuidFilter(definition, request, "lease_id");
 
-        var open = await openItems.GetOpenItemsAsync(Guid.Empty, Guid.Empty, leaseId, ct);
-        var rowsAll = new List<OpenItemRow>(open.Charges.Count + open.Credits.Count);
-        rowsAll.AddRange(open.Charges.Select(x => new OpenItemRow("Charge", x.ItemDisplay, x.Amount, null, x.DocumentType, x.ItemId)));
-        rowsAll.AddRange(open.Credits.Select(x => new OpenItemRow("Credit", x.ItemDisplay, null, x.Amount, x.DocumentType, x.ItemId)));
-
-        var total = rowsAll.Count;
         var offset = Math.Max(0, request.Offset);
         var limit = request.Limit <= 0 ? 50 : request.Limit;
-        var slice = rowsAll.Skip(offset).Take(limit).ToArray();
-        var hasMore = offset + slice.Length < total;
+        var open = await openItems.GetOpenItemsPageAsync(Guid.Empty, Guid.Empty, leaseId, offset, limit, ct);
 
-        var rows = slice.Select(ToDetailRow).ToList();
-        if (request.Layout?.ShowGrandTotals != false && rowsAll.Count > 0)
+        var rows = open.Rows.Select(x => ToDetailRow(new OpenItemRow(
+            x.IsCharge ? "Charge" : "Credit",
+            x.ItemDisplay,
+            x.IsCharge ? x.Amount : null,
+            x.IsCharge ? null : x.Amount,
+            x.DocumentType,
+            x.ItemId))).ToList();
+
+        if (request.Layout?.ShowGrandTotals != false && open.Total > 0)
             rows.Add(ToTotalRow(open.TotalOutstanding, open.TotalCredit));
 
         var sheet = new ReportSheetDto(
@@ -55,8 +55,8 @@ public sealed class ReceivablesOpenItemsCanonicalReportExecutor(IReceivablesOpen
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: total,
-            hasMore: hasMore,
+            total: open.Total,
+            hasMore: offset + open.Rows.Count < open.Total,
             nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {

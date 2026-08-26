@@ -19,7 +19,6 @@ namespace NGB.PropertyManagement.Runtime.Payables;
 public sealed class PayablesApplyBatchService(
     IDocumentDraftService drafts,
     IDocumentPostingService posting,
-    IDocumentRelationshipService relationships,
     IPropertyManagementAccountingPolicyReader policyReader,
     IPayableApplyHeadWriter applyHeadWriter,
     IDocumentRepository documents,
@@ -77,6 +76,12 @@ public sealed class PayablesApplyBatchService(
             docIds.AddRange(parsed.Where(x => x.ApplyId is not null).Select(x => x.ApplyId!.Value));
 
             await PayablesApplyExecutionHelpers.LockDocumentsDeterministicallyAsync(locks, docIds, innerCt);
+            var existingApplyDocuments = await documents.GetForUpdateByIdsAsync(
+                parsed.Where(static item => item.ApplyId.HasValue)
+                    .Select(static item => item.ApplyId!.Value)
+                    .Distinct()
+                    .ToArray(),
+                innerCt);
 
             foreach (var a in parsed)
             {
@@ -89,7 +94,7 @@ public sealed class PayablesApplyBatchService(
                     ct: innerCt);
 
                 if (!createdDraft)
-                    await EnsureExistingApplyDraftAsync(documents, applyId, innerCt);
+                    EnsureExistingApplyDraft(applyId, existingApplyDocuments);
 
                 await applyHeadWriter.UpsertAsync(
                     applyId,
@@ -98,13 +103,6 @@ public sealed class PayablesApplyBatchService(
                     a.AppliedOnUtc,
                     a.Amount,
                     a.Memo,
-                    innerCt);
-                
-                await PayablesApplyExecutionHelpers.EnsureApplyRelationshipsAsync(
-                    relationships,
-                    applyId,
-                    a.CreditDocumentId,
-                    a.ChargeDocumentId,
                     innerCt);
                 
                 await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
@@ -210,10 +208,9 @@ public sealed class PayablesApplyBatchService(
         };
     }
 
-    private static async Task EnsureExistingApplyDraftAsync(IDocumentRepository documents, Guid applyId, CancellationToken ct)
+    private static void EnsureExistingApplyDraft(Guid applyId, IReadOnlyDictionary<Guid, DocumentRecord> documents)
     {
-        var doc = await documents.GetForUpdateAsync(applyId, ct);
-        if (doc is null)
+        if (!documents.TryGetValue(applyId, out var doc))
             throw PayablesApplyBatchValidationException.ApplyNotFound(applyId);
 
         if (!string.Equals(doc.TypeCode, PropertyManagementCodes.PayableApply, StringComparison.Ordinal))

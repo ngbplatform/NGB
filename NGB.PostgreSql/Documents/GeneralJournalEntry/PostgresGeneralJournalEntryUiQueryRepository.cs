@@ -39,8 +39,12 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
             TypeCode = AccountingDocumentTypeCodes.GeneralJournalEntry,
             HasSearch = hasSearch,
             Like = like,
-            DateFrom = dateFrom,
-            DateTo = dateTo,
+            DateFromUtc = dateFrom is { } from
+                ? DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc)
+                : (DateTime?)null,
+            DateToExclusiveUtc = dateTo is { } to && to < DateOnly.MaxValue
+                ? DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc)
+                : (DateTime?)null,
             TrashMode = trashMode,
             Limit = limit,
             Offset = offset
@@ -50,13 +54,13 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
     d.type_code = @TypeCode
     AND (
         @HasSearch = FALSE
-        OR COALESCE(d.number, '') ILIKE @Like
-        OR COALESCE(g.reason_code, '') ILIKE @Like
-        OR COALESCE(g.memo, '') ILIKE @Like
-        OR COALESCE(g.external_reference, '') ILIKE @Like
+        OR d.number ILIKE @Like
+        OR g.reason_code ILIKE @Like
+        OR g.memo ILIKE @Like
+        OR g.external_reference ILIKE @Like
     )
-    AND (CAST(@DateFrom AS date) IS NULL OR (d.date_utc AT TIME ZONE 'UTC')::date >= CAST(@DateFrom AS date))
-    AND (CAST(@DateTo AS date) IS NULL OR (d.date_utc AT TIME ZONE 'UTC')::date <= CAST(@DateTo AS date))
+    AND (CAST(@DateFromUtc AS timestamp with time zone) IS NULL OR d.date_utc >= @DateFromUtc)
+    AND (CAST(@DateToExclusiveUtc AS timestamp with time zone) IS NULL OR d.date_utc < @DateToExclusiveUtc)
     AND (
         CAST(@TrashMode AS text) = 'all'
         OR (CAST(@TrashMode AS text) = 'active' AND d.status <> 3 AND d.marked_for_deletion_at_utc IS NULL)

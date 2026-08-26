@@ -26,14 +26,14 @@ namespace NGB.Runtime.Tests.Definitions;
 public sealed class DefinitionsValidationMetadataFullCoverageTests
 {
     [Fact]
-    public void ConstructorRejectsNullAndEmptyRegistryPassesWithoutScopeFactory()
+    public async Task ConstructorRejectsNullAndEmptyRegistryPassesWithoutScopeFactory()
     {
         ((Action)(() => new DefinitionsValidationService(null!))).Should().Throw<NgbArgumentRequiredException>();
-        new DefinitionsValidationService(Registry()).ValidateOrThrow();
+        await new DefinitionsValidationService(Registry()).ValidateOrThrowAsync();
     }
 
     [Fact]
-    public void DocumentsValidateMetadataAmountPartsAndEveryBindingShape()
+    public async Task DocumentsValidateMetadataAmountPartsAndEveryBindingShape()
     {
         var validNumberingProxy = Moq.Mock.Of<NGB.Definitions.Documents.Numbering.IDocumentNumberingPolicy>();
         var documents = new List<DocumentTypeDefinition>
@@ -65,7 +65,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
                 postValidatorTypes: [typeof(NGB.Definitions.Documents.Validation.IDocumentPostValidator)])
         };
 
-        var errors = Validate(Registry(documents: documents));
+        var errors = await ValidateAsync(Registry(documents: documents));
 
         errors.Should().Contain(x => x.Contains("Metadata.TypeCode"));
         errors.Should().Contain(x => x.Contains("AmountField") && x.Contains("trimmed"));
@@ -83,7 +83,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
     }
 
     [Fact]
-    public void MirroredRelationshipsValidateLocationSystemTypeCodeLookupAllowListsAndTargets()
+    public async Task MirroredRelationshipsValidateLocationSystemTypeCodeLookupAllowListsAndTargets()
     {
         var relationships = new[]
         {
@@ -111,7 +111,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
                 Head("head", columns[1..])])
         };
 
-        var errors = Validate(Registry(docs, relationships: relationships));
+        var errors = await ValidateAsync(Registry(docs, relationships: relationships));
 
         errors.Should().Contain(x => x.Contains("head-table column"));
         errors.Should().Contain(x => x.Contains("system column 'document_id'"));
@@ -125,7 +125,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
     }
 
     [Fact]
-    public void CatalogsValidateMetadataPartsAndValidatorBindings()
+    public async Task CatalogsValidateMetadataPartsAndValidatorBindings()
     {
         var catalogs = new[]
         {
@@ -142,7 +142,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
                 validatorTypes: [typeof(string), typeof(NGB.Definitions.Catalogs.Validation.ICatalogUpsertValidator)])
         };
 
-        var errors = Validate(Registry(catalogs: catalogs));
+        var errors = await ValidateAsync(Registry(catalogs: catalogs));
 
         errors.Should().Contain(x => x.Contains("Metadata.CatalogCode"));
         errors.Should().Contain(x => x.Contains("cannot declare PartCode"));
@@ -154,7 +154,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
     }
 
     [Fact]
-    public void RelationshipTypesValidateCodesNamesAllowedDocumentsAndBidirectionalSymmetry()
+    public async Task RelationshipTypesValidateCodesNamesAllowedDocumentsAndBidirectionalSymmetry()
     {
         var docs = new[] { Doc("source"), Doc("target") };
         var longCode = new string('x', 129);
@@ -169,7 +169,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
             Rel("open", bidirectional: true)
         };
 
-        var errors = Validate(Registry(docs, relationships: relationships));
+        var errors = await ValidateAsync(Registry(docs, relationships: relationships));
 
         errors.Should().Contain(x => x.Contains("Code must be a non-empty trimmed"));
         errors.Should().Contain(x => x.Contains("exceeds max length 128"));
@@ -180,7 +180,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
     }
 
     [Fact]
-    public void DerivationsValidateCodesEndpointsRelationshipsDuplicatesAndHandlerBindings()
+    public async Task DerivationsValidateCodesEndpointsRelationshipsDuplicatesAndHandlerBindings()
     {
         var docs = new[] { Doc("source"), Doc("target") };
         var relationships = new[] { Rel("valid") };
@@ -196,7 +196,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
             Derivation("valid", "Valid", "source", "target", ["valid"])
         };
 
-        var errors = Validate(Registry(docs, relationships: relationships, derivations: derivations));
+        var errors = await ValidateAsync(Registry(docs, relationships: relationships, derivations: derivations));
 
         errors.Should().Contain(x => x.Contains("DocumentDerivation: Code"));
         errors.Should().Contain(x => x.Contains("Code exceeds max length"));
@@ -213,7 +213,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
     }
 
     [Fact]
-    public void RuntimeBindingsAcceptEveryRegisteredBindingAndMatchingCode()
+    public async Task RuntimeBindingsAcceptEveryRegisteredBindingAndMatchingCode()
     {
         var services = new ServiceCollection();
 
@@ -264,11 +264,11 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
             [Rel("derived")],
             [Derivation("derive", "Derive", "bound", "bound", ["derived"], derivationHandlerType)]);
 
-        CreateRuntimeValidator(registry, provider).ValidateOrThrow();
+        await CreateRuntimeValidator(registry, provider).ValidateOrThrowAsync();
     }
 
     [Fact]
-    public void RuntimeBindingsReportMissingDuplicateAndMismatchedRegistrations()
+    public async Task RuntimeBindingsReportMissingDuplicateAndMismatchedRegistrations()
     {
         var missing = MockWithCode<IDocumentTypeStorage>("missing", x => x.TypeCode);
         using var missingProvider = new ServiceCollection().BuildServiceProvider();
@@ -280,7 +280,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
                 typedStorageType: missing.Object.GetType())
         ]);
 
-        var missingErrors = ValidateRuntime(missingRegistry, missingProvider, claimsRegistered.Object);
+        var missingErrors = await ValidateRuntimeAsync(missingRegistry, missingProvider, claimsRegistered.Object);
         missingErrors.Should().ContainSingle(x => x.Contains("is not registered in DI as IDocumentTypeStorage"));
 
         var duplicateA = MockWithCode<IDocumentTypeStorage>("duplicate", x => x.TypeCode);
@@ -296,7 +296,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
                 typedStorageType: duplicateA.Object.GetType())
         ]);
 
-        var duplicateErrors = ValidateRuntime(duplicateRegistry, duplicateProvider);
+        var duplicateErrors = await ValidateRuntimeAsync(duplicateRegistry, duplicateProvider);
         duplicateErrors.Should().ContainSingle(x => x.Contains("multiple matching DI registrations") && x.Contains("count=2"));
 
         var mismatch = MockWithCode<ICatalogTypeStorage>("actual", x => x.CatalogCode);
@@ -308,19 +308,20 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
             new CatalogTypeDefinition("expected", CatalogMetadata("expected", []), mismatchType)
         ]);
 
-        var mismatchErrors = ValidateRuntime(mismatchRegistry, mismatchProvider);
+        var mismatchErrors = await ValidateRuntimeAsync(mismatchRegistry, mismatchProvider);
         mismatchErrors.Should().ContainSingle(x => x.Contains("resolved CatalogCode 'actual'") && x.Contains("definition code 'expected'"));
 
         var nullIsService = new DefinitionsValidationService(
             mismatchRegistry,
             isService: null,
             mismatchProvider.GetRequiredService<IServiceScopeFactory>());
-        ((Action)nullIsService.ValidateOrThrow).Should().Throw<DefinitionsValidationException>()
+        (await ((Func<Task>)(() => nullIsService.ValidateOrThrowAsync()))
+                .Should().ThrowAsync<DefinitionsValidationException>())
             .Which.Errors.Should().Contain(x => x.Contains("IServiceProviderIsService is not available"));
     }
 
     [Fact]
-    public void RuntimeBindingValidationSkipsAbsentInvalidAndUnregisteredConcreteCandidates()
+    public async Task RuntimeBindingValidationSkipsAbsentInvalidAndUnregisteredConcreteCandidates()
     {
         var unregistered = MockWithCode<IDocumentNumberingPolicy>("doc", x => x.TypeCode);
         using var provider = new ServiceCollection().BuildServiceProvider();
@@ -334,7 +335,7 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
             numberingPolicyType: unregistered.Object.GetType(),
             approvalPolicyType: typeof(string));
 
-        var errors = ValidateRuntime(Registry(documents: [document]), provider);
+        var errors = await ValidateRuntimeAsync(Registry(documents: [document]), provider);
 
         errors.Should().Contain(x => x.Contains("PostingHandlerType must be a concrete type"));
         errors.Should().Contain(x => x.Contains("OperationalRegisterPostingHandlerType must be a concrete type"));
@@ -344,20 +345,20 @@ public sealed class DefinitionsValidationMetadataFullCoverageTests
         errors.Should().NotContain(x => x.Contains("is not registered in DI as"));
     }
 
-    private static IReadOnlyList<string> Validate(DefinitionsRegistry registry)
+    private static async Task<IReadOnlyList<string>> ValidateAsync(DefinitionsRegistry registry)
     {
-        var exception = ((Action)(() => new DefinitionsValidationService(registry).ValidateOrThrow()))
-            .Should().Throw<DefinitionsValidationException>().Which;
+        var exception = (await ((Func<Task>)(() => new DefinitionsValidationService(registry).ValidateOrThrowAsync()))
+                .Should().ThrowAsync<DefinitionsValidationException>()).Which;
         return exception.Errors;
     }
 
-    private static IReadOnlyList<string> ValidateRuntime(
+    private static async Task<IReadOnlyList<string>> ValidateRuntimeAsync(
         DefinitionsRegistry registry,
         ServiceProvider provider,
         IServiceProviderIsService? isService = null)
     {
-        var exception = ((Action)(() => CreateRuntimeValidator(registry, provider, isService).ValidateOrThrow()))
-            .Should().Throw<DefinitionsValidationException>().Which;
+        var exception = (await ((Func<Task>)(() => CreateRuntimeValidator(registry, provider, isService).ValidateOrThrowAsync()))
+                .Should().ThrowAsync<DefinitionsValidationException>()).Which;
         return exception.Errors;
     }
 

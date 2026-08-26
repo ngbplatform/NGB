@@ -13,6 +13,10 @@ public interface IReferenceRegisterFieldRepository
         Guid registerId,
         CancellationToken ct = default);
 
+    Task<IReadOnlyDictionary<Guid, int>> CountByRegisterIdsAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Replaces all fields for the register.
     ///

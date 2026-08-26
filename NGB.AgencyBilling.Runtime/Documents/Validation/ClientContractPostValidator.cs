@@ -37,16 +37,28 @@ public sealed class ClientContractPostValidator(
         if (lines.Count == 0)
             throw new NgbArgumentInvalidException("lines", "Client Contract must contain at least one line.");
 
+        var serviceItems = await AgencyBillingCatalogValidationGuards.LoadServiceItemsAsync(
+            lines.Where(static line => line.ServiceItemId.HasValue)
+                .Select(static line => line.ServiceItemId!.Value),
+            references,
+            ct);
+
+        var teamMembers = await AgencyBillingCatalogValidationGuards.LoadTeamMembersAsync(
+            lines.Where(static line => line.TeamMemberId.HasValue)
+                .Select(static line => line.TeamMemberId!.Value),
+            references,
+            ct);
+
         for (var i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
             var prefix = $"lines[{i}]";
 
             if (line.ServiceItemId is { } serviceItemId && serviceItemId != Guid.Empty)
-                await AgencyBillingCatalogValidationGuards.EnsureServiceItemAsync(serviceItemId, $"{prefix}.service_item_id", references, ct);
+                AgencyBillingCatalogValidationGuards.EnsureServiceItem(serviceItemId, $"{prefix}.service_item_id", serviceItems);
 
             if (line.TeamMemberId is { } teamMemberId && teamMemberId != Guid.Empty)
-                await AgencyBillingCatalogValidationGuards.EnsureTeamMemberAsync(teamMemberId, $"{prefix}.team_member_id", references, ct);
+                AgencyBillingCatalogValidationGuards.EnsureTeamMember(teamMemberId, $"{prefix}.team_member_id", teamMembers);
 
             if (line.BillingRate <= 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.billing_rate", "Billing Rate must be greater than zero.");

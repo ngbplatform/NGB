@@ -162,6 +162,74 @@ public sealed class DocumentRelationshipServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task CreateMany_BatchesLocksDocumentReadsRelationshipWritesAndAudit()
+    {
+        var fixture = new Fixture();
+        var secondTarget = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        fixture.Documents.Setup(x => x.GetForUpdateByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [Low] = Document(Low, "a"),
+                [High] = Document(High, "b"),
+                [secondTarget] = Document(secondTarget, "b")
+            });
+        fixture.Relationships.Setup(x => x.TryCreateManyAsync(
+                It.IsAny<IReadOnlyList<DocumentRelationshipRecord>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DocumentRelationshipRecord> records, CancellationToken _) =>
+                records.Select(static record => record.Id).ToArray());
+
+        var created = await fixture.Sut.CreateManyAsync(
+        [
+            new DocumentRelationshipCreateRequest(Low, High, "direct"),
+            new DocumentRelationshipCreateRequest(Low, secondTarget, " DIRECT "),
+            new DocumentRelationshipCreateRequest(Low, High, "direct")
+        ]);
+
+        created.Should().Be(2);
+        fixture.Documents.Verify(x => x.GetForUpdateByIdsAsync(
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 3), It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Relationships.Verify(x => x.TryCreateManyAsync(
+            It.Is<IReadOnlyList<DocumentRelationshipRecord>>(records => records.Count == 2),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Audit.Verify(x => x.WriteBatchAsync(
+            It.Is<IReadOnlyList<AuditLogWriteRequest>>(requests => requests.Count == 2),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateMany_ValidatesBatchAndDetectsMissingDocumentsAndBatchCycles()
+    {
+        var fixture = new Fixture();
+        await ((Func<Task>)(() => fixture.Sut.CreateManyAsync(null!)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        (await fixture.Sut.CreateManyAsync([])).Should().Be(0);
+        await ((Func<Task>)(() => fixture.Sut.CreateManyAsync([null!])))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+
+        fixture.Documents.Setup(x => x.GetForUpdateByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord> { [Low] = Document(Low) });
+        await ((Func<Task>)(() => fixture.Sut.CreateManyAsync(
+                [new DocumentRelationshipCreateRequest(Low, High, "bidi-open")])))
+            .Should().ThrowAsync<DocumentNotFoundException>();
+
+        fixture.Documents.Setup(x => x.GetForUpdateByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [Low] = Document(Low),
+                [High] = Document(High)
+            });
+        await ((Func<Task>)(() => fixture.Sut.CreateManyAsync(
+        [
+            new DocumentRelationshipCreateRequest(Low, High, "direct-open"),
+            new DocumentRelationshipCreateRequest(High, Low, "direct-open")
+        ]))).Should().ThrowAsync<DocumentRelationshipValidationException>()
+            .WithMessage("*cycle_detected*");
+    }
+
+    [Fact]
     public async Task Delete_CoversMissingExistingRaceSuccessDirectedAndBidirectional()
     {
         var id = NGB.Core.Documents.DeterministicDocumentRelationshipId.FromNormalizedCode(Low, "direct", High);
@@ -257,6 +325,15 @@ public sealed class DocumentRelationshipServiceFullCoverageTests
             Relationships.Setup(x => x.ExistsPathAsync(
                 It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>(),
                 It.IsAny<CancellationToken>())).ReturnsAsync(false);
+            Relationships.Setup(x => x.FindCycleCreatingRequestIndexesAsync(
+                    It.IsAny<IReadOnlyList<DocumentRelationshipCycleCheck>>(),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+            Relationships.Setup(x => x.GetCardinalityConflictsAsync(
+                    It.IsAny<IReadOnlyList<DocumentRelationshipCardinalityCheck>>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
 
             Sut = new DocumentRelationshipService(
                 Definitions(), Uow.Object, Locks.Object, Documents.Object, Relationships.Object,
@@ -286,6 +363,7 @@ public sealed class DocumentRelationshipServiceFullCoverageTests
         builder.AddDocumentRelationshipType("bidi-reverse-to", x => x.Name("Reverse To").Bidirectional().ManyToMany()
             .AllowFromDocumentTypes("a", "b").AllowToDocumentTypes("b"));
         builder.AddDocumentRelationshipType("one", x => x.Name("One").OneToOne());
+        builder.AddDocumentRelationshipType("direct-open", x => x.Name("Direct Open").ManyToMany());
         return builder.Build();
     }
 

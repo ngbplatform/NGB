@@ -1,4 +1,5 @@
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Contracts;
 using NGB.PropertyManagement.Contracts.Payables;
 using NGB.PropertyManagement.Payables;
 using NGB.PropertyManagement.Runtime.Exceptions;
@@ -43,6 +44,11 @@ public sealed class PayablesFifoApplySuggestService(
         if (request.Limit is not null && request.Limit <= 0)
             throw PayablesRequestValidationException.LimitInvalid();
 
+        if (request.Limit > FifoApplyLimits.MaxApplications)
+            throw PayablesRequestValidationException.LimitTooLarge(FifoApplyLimits.MaxApplications);
+
+        var limit = request.Limit ?? FifoApplyLimits.DefaultMaxApplications;
+
         var open = await details.GetOpenItemsDetailsAsync(request.PartyId, request.PropertyId, request.AsOfMonth, request.ToMonth, ct);
         var warnings = new List<PayablesApplyWarningDto>();
 
@@ -52,7 +58,7 @@ public sealed class PayablesFifoApplySuggestService(
         if (open.Credits.All(x => x.AvailableCredit <= 0m))
             warnings.Add(new PayablesApplyWarningDto(WarnNoCredits, "No available credits were found for the requested range."));
 
-        var plan = PayablesFifoAllocator.Allocate(open.Charges, open.Credits, request.Limit);
+        var plan = PayablesFifoAllocator.Allocate(open.Charges, open.Credits, limit);
 
         var suggested = plan.Lines
             .Select(x => new PayablesSuggestedApplyDto(

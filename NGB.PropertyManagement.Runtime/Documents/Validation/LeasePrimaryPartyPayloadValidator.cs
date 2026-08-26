@@ -57,11 +57,13 @@ internal sealed class LeasePrimaryPartyPayloadValidator(IPropertyManagementParty
             }
         }
 
+        var partiesById = await parties.GetByIdsAsync(partyIds, ct);
+
         for (var i = 0; i < rows.Count; i++)
         {
             var r = rows[i];
             if (r.TryGetValue("party_id", out var partyObj) && partyObj is Guid partyId && partyId != Guid.Empty)
-                await PartyRoleValidationGuards.EnsureTenantPartyAsync(TypeCode, $"parties[{i}].party_id", partyId, parties, ct);
+                PartyRoleValidationGuards.EnsureTenantParty(TypeCode, $"parties[{i}].party_id", partyId, partiesById);
         }
 
         var primaryIndices = new List<int>();

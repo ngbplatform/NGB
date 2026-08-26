@@ -7,9 +7,9 @@ using NGB.Metadata.Base;
 using NGB.Metadata.Catalogs.Storage;
 using NGB.Persistence.Catalogs;
 using NGB.Persistence.Catalogs.Universal;
-using NGB.Persistence.Common;
 using NGB.Persistence.Locks;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Catalogs;
 using NGB.PropertyManagement.Contracts.Catalogs;
 using NGB.PropertyManagement.Runtime.Exceptions;
 using NGB.Runtime.AuditLog;
@@ -32,7 +32,7 @@ public sealed class PropertyBulkCreateUnitsService(
     IAdvisoryLockManager locks,
     ICatalogTypeRegistry catalogTypes,
     ICatalogRepository catalogs,
-    ICatalogReader reader,
+    IPropertyUnitNumberReader unitNumbers,
     ICatalogWriter writer,
     ICatalogValidatorResolver validators,
     TimeProvider timeProvider,
@@ -114,14 +114,19 @@ public sealed class PropertyBulkCreateUnitsService(
                     await v.ValidateUpsertAsync(probeContext, innerCt);
                 }
 
-                // Preload existing active unit_nos under the building.
-                var existing = await LoadExistingUnitNosAsync(head, request.BuildingId, innerCt);
-
                 // Generate requested unit_nos.
                 var requestedNos = GenerateUnitNos(request);
 
                 if (requestedNos.Count > MaxUnitsPerRequest)
                     throw PropertyBulkCreateUnitsValidationException.TooManyUnitsRequested(requestedNos.Count, MaxUnitsPerRequest);
+
+                // Probe only values requested by this operation. The old implementation
+                // paged through every unit in the building and became progressively slower
+                // as the building grew.
+                var existing = await unitNumbers.GetExistingAsync(
+                    request.BuildingId,
+                    requestedNos,
+                    innerCt);
 
                 var preview = requestedNos.Take(PreviewSampleLimit).ToList();
                 var duplicateNos = requestedNos
@@ -266,52 +271,6 @@ public sealed class PropertyBulkCreateUnitsService(
 
         return list;
     }
-
-    private static async Task<HashSet<string>> LoadExistingUnitNosAsync(
-        CatalogHeadDescriptor head,
-        Guid buildingId,
-        ICatalogReader reader,
-        CancellationToken ct)
-    {
-        var q = new CatalogQuery(
-            Search: null,
-            Filters: new List<CatalogFilter>
-            {
-                new("kind", "Unit"),
-                new("parent_property_id", buildingId.ToString())
-            })
-        {
-            SoftDeleteFilterMode = SoftDeleteFilterMode.Active
-        };
-
-        var result = new HashSet<string>(StringComparer.Ordinal);
-        const int pageSize = 2000;
-
-        for (var offset = 0; ; offset += pageSize)
-        {
-            var rows = await reader.GetPageAsync(head, q, offset, pageSize, ct);
-            if (rows.Count == 0)
-                break;
-
-            foreach (var r in rows)
-            {
-                if (!r.Fields.TryGetValue("unit_no", out var raw) || raw is null)
-                    continue;
-
-                var s = raw.ToString();
-                if (!string.IsNullOrWhiteSpace(s))
-                    result.Add(s.Trim());
-            }
-
-            if (rows.Count < pageSize)
-                break;
-        }
-
-        return result;
-    }
-
-    private Task<HashSet<string>> LoadExistingUnitNosAsync(CatalogHeadDescriptor head, Guid buildingId, CancellationToken ct)
-        => LoadExistingUnitNosAsync(head, buildingId, reader, ct);
 
     private static AuditFieldChange CreateAuditChange(string fieldPath, object? oldValue, object? newValue)
         => new(

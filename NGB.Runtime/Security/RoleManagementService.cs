@@ -20,22 +20,23 @@ public sealed class RoleManagementService(
     IAuditLogService audit)
     : IRoleManagementService
 {
+    private const int MaxRoleListSize = 500;
+
     public async Task<IReadOnlyList<RoleListItemDto>> GetRolesAsync(CancellationToken ct)
     {
-        var all = await roles.GetAllAsync(ct);
-        var counts = await roles.GetAssignedUserCountsAsync(ct);
+        var all = await roles.GetListAsync(MaxRoleListSize, ct);
 
         return all
-            .Select(role => new RoleListItemDto(
-                role.RoleId,
-                role.Code,
-                role.Name,
-                role.Description,
-                role.IsSystem,
-                role.IsActive,
-                counts.GetValueOrDefault(role.RoleId),
-                role.CreatedAtUtc,
-                role.UpdatedAtUtc))
+            .Select(item => new RoleListItemDto(
+                item.Role.RoleId,
+                item.Role.Code,
+                item.Role.Name,
+                item.Role.Description,
+                item.Role.IsSystem,
+                item.Role.IsActive,
+                item.AssignedUserCount,
+                item.Role.CreatedAtUtc,
+                item.Role.UpdatedAtUtc))
             .ToArray();
     }
 

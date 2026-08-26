@@ -29,6 +29,10 @@ public sealed class ReferenceRegisterAdminFullCoverageTests
         registers.SetupSequence(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([]).ReturnsAsync([register]);
         (await sut.GetListAsync()).Should().BeEmpty();
+        fields.Setup(x => x.CountByRegisterIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [id] = 1 });
+        dimensions.Setup(x => x.CountByRegisterIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [id] = 2 });
         fields.Setup(x => x.GetByRegisterIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync([Field(id)]);
         dimensions.Setup(x => x.GetByRegisterIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync([
             new ReferenceRegisterDimensionRule(Guid.NewGuid(), "department", 1, true),

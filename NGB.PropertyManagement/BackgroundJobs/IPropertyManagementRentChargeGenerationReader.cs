@@ -13,6 +13,9 @@ public interface IPropertyManagementRentChargeGenerationReader
 {
     Task<IReadOnlyList<PmRentChargeGenerationLease>> ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
         DateOnly asOfUtc,
+        DateOnly? afterStartOnUtc,
+        Guid? afterLeaseId,
+        int limit,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<PmRentChargePeriodKey>> ReadExistingRentChargePeriodsAsync(

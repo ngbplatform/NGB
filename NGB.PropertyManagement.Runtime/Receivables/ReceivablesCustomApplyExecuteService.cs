@@ -20,7 +20,6 @@ public sealed class ReceivablesCustomApplyExecuteService(
     IReceivablesOpenItemsService openItems,
     IDocumentDraftService drafts,
     IDocumentPostingService posting,
-    IDocumentRelationshipService relationships,
     IReceivableApplyHeadWriter applyHeadWriter,
     IPropertyManagementDocumentReaders readers,
     IDocumentRepository documents,
@@ -128,13 +127,6 @@ public sealed class ReceivablesCustomApplyExecuteService(
                     appliedOnUtc: creditSource.CreditDateUtc,
                     amount: a.Amount,
                     memo: null,
-                    ct: innerCt);
-
-                await ReceivablesApplyExecutionHelpers.EnsureApplyRelationshipsAsync(
-                    relationships,
-                    applyId,
-                    creditDocumentId: request.CreditDocumentId,
-                    chargeDocumentId: a.ChargeDocumentId,
                     ct: innerCt);
 
                 await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);

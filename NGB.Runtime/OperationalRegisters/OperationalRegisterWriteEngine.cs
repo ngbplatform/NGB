@@ -10,6 +10,7 @@ using NGB.Persistence.Locks;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.UnitOfWork;
+using NGB.Runtime.Locks;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -76,10 +77,10 @@ public sealed class OperationalRegisterWriteEngine(
                     await locks.LockOperationalRegisterAsync(registerId, innerCt);
 
                     periodsToInvalidate = await BuildInvalidatePeriodsAsync(registerId, months, innerCt);
-                    foreach (var m in periodsToInvalidate)
-                    {
-                        await locks.LockPeriodAsync(m, AdvisoryLockPeriodScope.OperationalRegister, innerCt);
-                    }
+                    await locks.LockPeriodsDeterministicallyAsync(
+                        periodsToInvalidate,
+                        AdvisoryLockPeriodScope.OperationalRegister,
+                        innerCt);
                 }
 
                 var startedAtUtc = timeProvider.GetUtcNow().UtcDateTime;
@@ -107,10 +108,12 @@ public sealed class OperationalRegisterWriteEngine(
                 if (periodsToInvalidate.Count > 0)
                 {
                     var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-                    foreach (var m in periodsToInvalidate)
-                    {
-                        await finalizations.MarkDirtyAsync(registerId, m, dirtySinceUtc: nowUtc, nowUtc: nowUtc, innerCt);
-                    }
+                    await finalizations.MarkDirtyPeriodsAsync(
+                        registerId,
+                        periodsToInvalidate,
+                        dirtySinceUtc: nowUtc,
+                        nowUtc: nowUtc,
+                        innerCt);
                 }
 
                 await writeLog.MarkCompletedAsync(registerId, documentId, operation, timeProvider.GetUtcNow().UtcDateTime, innerCt);

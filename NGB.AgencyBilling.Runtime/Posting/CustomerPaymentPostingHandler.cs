@@ -4,6 +4,7 @@ using NGB.AgencyBilling.Runtime.Policy;
 using NGB.Core.Dimensions;
 using NGB.Core.Documents;
 using NGB.Definitions.Documents.Posting;
+using NGB.Tools.Exceptions;
 
 namespace NGB.AgencyBilling.Runtime.Posting;
 
@@ -24,15 +25,14 @@ public sealed class CustomerPaymentPostingHandler(
         var cash = chart.Get(payment.CashAccountId ?? policy.CashAccountId);
         var accountsReceivable = chart.Get(policy.AccountsReceivableAccountId);
         var occurredAtUtc = AgencyBillingPostingCommon.ToOccurredAtUtc(payment.DocumentDateUtc);
-        var invoiceHeads = new Dictionary<Guid, AgencyBillingSalesInvoiceHead>();
+        var invoiceHeads = await readers.ReadSalesInvoiceHeadsAsync(
+            applies.Select(static apply => apply.SalesInvoiceId).Distinct().ToArray(),
+            ct);
 
         foreach (var apply in applies)
         {
             if (!invoiceHeads.TryGetValue(apply.SalesInvoiceId, out var invoice))
-            {
-                invoice = await readers.ReadSalesInvoiceHeadAsync(apply.SalesInvoiceId, ct);
-                invoiceHeads[apply.SalesInvoiceId] = invoice;
-            }
+                throw new NgbInvariantViolationException($"Sales Invoice '{apply.SalesInvoiceId}' is missing its Agency Billing head row.");
 
             var amount = AgencyBillingPostingCommon.RoundScale4(apply.AppliedAmount);
             if (amount <= 0m)

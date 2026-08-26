@@ -36,26 +36,36 @@ public sealed class CustomerPaymentOperationalRegisterPostingHandler(
             throw new NgbConfigurationViolationException($"Operational register '{policy.ArOpenItemsOperationalRegisterId}' was not found.");
 
         var occurredAtUtc = AgencyBillingPostingCommon.ToOccurredAtUtc(payment.DocumentDateUtc);
-        var invoiceHeads = new Dictionary<Guid, AgencyBillingSalesInvoiceHead>();
+        var invoiceHeads = await readers.ReadSalesInvoiceHeadsAsync(
+            applies.Select(static apply => apply.SalesInvoiceId).Distinct().ToArray(),
+            ct);
+        var movementDrafts = new List<(decimal Amount, NGB.Core.Dimensions.DimensionBag ProjectBag, NGB.Core.Dimensions.DimensionBag OpenItemBag)>();
 
         foreach (var apply in applies)
         {
             if (!invoiceHeads.TryGetValue(apply.SalesInvoiceId, out var invoice))
-            {
-                invoice = await readers.ReadSalesInvoiceHeadAsync(apply.SalesInvoiceId, ct);
-                invoiceHeads[apply.SalesInvoiceId] = invoice;
-            }
+                throw new NgbInvariantViolationException($"Sales Invoice '{apply.SalesInvoiceId}' is missing its Agency Billing head row.");
 
             var amount = AgencyBillingPostingCommon.RoundScale4(apply.AppliedAmount);
             if (amount <= 0m)
                 continue;
 
-            var dimensionSetId = await dimensionSets.GetOrCreateIdAsync(
+            movementDrafts.Add((
+                amount,
                 AgencyBillingPostingCommon.ProjectBag(invoice.ClientId, invoice.ProjectId),
-                ct);
-            var arOpenItemDimensionSetId = await dimensionSets.GetOrCreateIdAsync(
-                AgencyBillingPostingCommon.ArOpenItemBag(invoice.ClientId, invoice.ProjectId, invoice.DocumentId),
-                ct);
+                AgencyBillingPostingCommon.ArOpenItemBag(invoice.ClientId, invoice.ProjectId, invoice.DocumentId)));
+        }
+
+        var bags = movementDrafts
+            .SelectMany(static x => new[] { x.ProjectBag, x.OpenItemBag })
+            .ToArray();
+        var dimensionSetIds = await dimensionSets.GetOrCreateIdsAsync(bags, ct);
+
+        for (var i = 0; i < movementDrafts.Count; i++)
+        {
+            var draft = movementDrafts[i];
+            var dimensionSetId = dimensionSetIds[i * 2];
+            var arOpenItemDimensionSetId = dimensionSetIds[(i * 2) + 1];
 
             builder.Add(
                 projectBillingStatusRegister.Code,
@@ -65,8 +75,8 @@ public sealed class CustomerPaymentOperationalRegisterPostingHandler(
                     DimensionSetId: dimensionSetId,
                     Resources: AgencyBillingPostingCommon.BuildProjectBillingStatusResources(
                         billedAmountDelta: 0m,
-                        collectedAmountDelta: amount,
-                        outstandingArAmountDelta: -amount)));
+                        collectedAmountDelta: draft.Amount,
+                        outstandingArAmountDelta: -draft.Amount)));
 
             builder.Add(
                 arOpenItemsRegister.Code,
@@ -74,7 +84,7 @@ public sealed class CustomerPaymentOperationalRegisterPostingHandler(
                     DocumentId: document.Id,
                     OccurredAtUtc: occurredAtUtc,
                     DimensionSetId: arOpenItemDimensionSetId,
-                    Resources: new Dictionary<string, decimal> { ["amount"] = -amount }));
+                    Resources: new Dictionary<string, decimal> { ["amount"] = -draft.Amount }));
         }
     }
 }

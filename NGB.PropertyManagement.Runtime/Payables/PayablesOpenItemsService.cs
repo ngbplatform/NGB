@@ -18,8 +18,6 @@ public sealed class PayablesOpenItemsService(
     IUnitOfWork uow)
     : IPayablesOpenItemsService
 {
-    private const int PageSize = 5000;
-
     public async Task<(Guid RegisterId, IReadOnlyList<PayablesOpenChargeItemDetailsDto> Charges, IReadOnlyList<PayablesOpenCreditItemDetailsDto> Credits, decimal TotalOutstanding, decimal TotalCredit)> GetOpenItemsAsync(
         Guid partyId,
         Guid propertyId,
@@ -73,44 +71,16 @@ public sealed class PayablesOpenItemsService(
                 resolvedTo = toMonth.Value;
 
             var itemDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.PayableItem}");
-            var netByItem = new Dictionary<Guid, decimal>();
-            var displayByItem = new Dictionary<Guid, string?>();
-            long? after = null;
-
-            while (true)
-            {
-                var page = await movements.GetByMonthsAsync(
-                    policy.PayablesOpenItemsOperationalRegisterId,
-                    fromMonth,
-                    resolvedTo,
-                    dimensions: dims,
-                    afterMovementId: after,
-                    limit: PageSize,
-                    ct: innerCt);
-
-                if (page.Count == 0)
-                    break;
-
-                foreach (var row in page)
-                {
-                    if (!TryGetValueId(row.Dimensions, itemDimId, out var itemId))
-                        continue;
-
-                    var amount = ReadSingleAmount(row.Values);
-                    if (amount == 0m)
-                        continue;
-
-                    var signed = row.IsStorno ? -amount : amount;
-                    netByItem[itemId] = netByItem.TryGetValue(itemId, out var existing) ? existing + signed : signed;
-
-                    if (!displayByItem.ContainsKey(itemId))
-                        displayByItem[itemId] = row.DimensionValueDisplays.GetValueOrDefault(itemDimId);
-                }
-
-                after = page[^1].MovementId;
-                if (page.Count < PageSize)
-                    break;
-            }
+            var aggregated = await movements.GetResourceNetsByDimensionAsync(
+                policy.PayablesOpenItemsOperationalRegisterId,
+                fromMonth,
+                resolvedTo,
+                dims,
+                itemDimId,
+                resourceColumnCode: "amount",
+                innerCt);
+            var netByItem = aggregated.ToDictionary(static row => row.ValueId, static row => row.NetAmount);
+            var displayByItem = aggregated.ToDictionary(static row => row.ValueId, static row => row.Display);
 
             var chargeIds = netByItem
                 .Where(x => x.Value > 0m)
@@ -219,21 +189,4 @@ public sealed class PayablesOpenItemsService(
         }, ct);
     }
 
-    private static bool TryGetValueId(DimensionBag bag, Guid dimensionId, out Guid valueId)
-    {
-        foreach (var x in bag)
-        {
-            if (x.DimensionId == dimensionId)
-            {
-                valueId = x.ValueId;
-                return true;
-            }
-        }
-
-        valueId = Guid.Empty;
-        return false;
-    }
-
-    private static decimal ReadSingleAmount(IReadOnlyDictionary<string, decimal> values)
-        => values.TryGetValue("amount", out var v) ? v : values.Values.FirstOrDefault();
 }

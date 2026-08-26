@@ -179,6 +179,12 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         Func<Task> blankPathCode = () => sut.ExistsPathAsync(id, Guid.NewGuid(), " ", 1);
         Func<Task> zeroDepth = () => sut.ExistsPathAsync(id, Guid.NewGuid(), "derived", 0);
         Func<Task> negativeDepth = () => sut.ExistsPathAsync(id, Guid.NewGuid(), "derived", -1);
+        Func<Task> nullBatch = () => sut.TryCreateManyAsync(null!);
+        Func<Task> nullBatchItem = () => sut.TryCreateManyAsync([null!]);
+        Func<Task> nullPathSources = () => sut.FindTargetsWithPathToAsync(id, null!, "derived", 1);
+        Func<Task> blankBatchPathCode = () => sut.FindTargetsWithPathToAsync(id, [Guid.NewGuid()], " ", 1);
+        Func<Task> invalidBatchDepth = () => sut.FindTargetsWithPathToAsync(id, [Guid.NewGuid()], "derived", 0);
+        Func<Task> invalidBatchSource = () => sut.FindTargetsWithPathToAsync(id, [Guid.Empty], "derived", 1);
 
         await nullRecord.Should().ThrowAsync<NgbArgumentRequiredException>();
         await blankOutgoingCode.Should().ThrowAsync<NgbArgumentRequiredException>();
@@ -186,6 +192,14 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         await blankPathCode.Should().ThrowAsync<NgbArgumentRequiredException>();
         await zeroDepth.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await negativeDepth.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await nullBatch.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await nullBatchItem.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await nullPathSources.Should().ThrowAsync<ArgumentNullException>();
+        await blankBatchPathCode.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await invalidBatchDepth.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await invalidBatchSource.Should().ThrowAsync<NgbArgumentInvalidException>();
+        (await sut.TryCreateManyAsync([])).Should().BeEmpty();
+        (await sut.FindTargetsWithPathToAsync(id, [], "derived", 1)).Should().BeEmpty();
 
         var relationship = new DocumentRelationshipRecord
         {
@@ -200,6 +214,9 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         (await sut.GetSingleOutgoingByCodeNormAsync(id, "derived")).Should().BeNull();
         (await sut.GetSingleIncomingByCodeNormAsync(relationship.ToDocumentId, "derived")).Should().BeNull();
         (await sut.ExistsPathAsync(id, relationship.ToDocumentId, "derived", 1)).Should().BeFalse();
+        (await sut.TryCreateManyAsync([relationship])).Should().BeEmpty();
+        (await sut.FindTargetsWithPathToAsync(
+            relationship.ToDocumentId, [id, id], "derived", 2)).Should().BeEmpty();
     }
 
     [Fact]
@@ -239,9 +256,13 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         Func<Task> blankRoleLookup = () => roles.GetByCodeAsync(" ");
         Func<Task> blankRoleCode = () => roles.UpsertAsync(Guid.NewGuid(), " ", "Name", null, false, true);
         Func<Task> blankRoleName = () => roles.UpsertAsync(Guid.NewGuid(), "code", "\t", null, false, true);
+        Func<Task> zeroRoleLimit = () => roles.GetListAsync(0);
+        Func<Task> excessiveRoleLimit = () => roles.GetListAsync(501);
         await blankRoleLookup.Should().ThrowAsync<NgbArgumentRequiredException>();
         await blankRoleCode.Should().ThrowAsync<NgbArgumentRequiredException>();
         await blankRoleName.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await zeroRoleLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await excessiveRoleLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
         var userRoles = new PostgresPlatformUserRoleRepository(uow, TimeProvider.System);
         Func<Task> nullUserIds = () => userRoles.GetRolesForUsersAsync(null!);
@@ -280,6 +301,8 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         var positiveConnection = new RecordingDbConnection(
             readerFactory: sql =>
             {
+                if (sql.Contains("WITH selected_roles", StringComparison.Ordinal))
+                    return RoleListRows(roleId, assignedUserCount: 3);
                 if (sql.Contains("platform_user_roles ur", StringComparison.Ordinal))
                     return new System.Data.DataTable().CreateDataReader();
 
@@ -291,6 +314,8 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         var positiveUow = new RecordingUnitOfWork(positiveConnection, hasActiveTransaction: true);
 
         var positiveRoles = new PostgresPlatformRoleRepository(positiveUow, TimeProvider.System);
+        var roleList = await positiveRoles.GetListAsync(50);
+        roleList.Should().ContainSingle().Which.AssignedUserCount.Should().Be(3);
         (await positiveRoles.GetByCodeAsync("admin")).Should().NotBeNull();
         (await positiveRoles.UpsertAsync(roleId, "admin", "Administrator", null, true, true))
             .RoleId.Should().Be(roleId);
@@ -345,6 +370,22 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         table.Columns.Add("CreatedAtUtc", typeof(DateTime));
         table.Columns.Add("UpdatedAtUtc", typeof(DateTime));
         table.Rows.Add(roleId, "admin", "Administrator", DBNull.Value, true, true, Now, Now);
+        return table.CreateDataReader();
+    }
+
+    private static System.Data.DataTableReader RoleListRows(Guid roleId, int assignedUserCount)
+    {
+        var table = new System.Data.DataTable();
+        table.Columns.Add("RoleId", typeof(Guid));
+        table.Columns.Add("Code", typeof(string));
+        table.Columns.Add("Name", typeof(string));
+        table.Columns.Add("Description", typeof(string));
+        table.Columns.Add("IsSystem", typeof(bool));
+        table.Columns.Add("IsActive", typeof(bool));
+        table.Columns.Add("CreatedAtUtc", typeof(DateTime));
+        table.Columns.Add("UpdatedAtUtc", typeof(DateTime));
+        table.Columns.Add("AssignedUserCount", typeof(int));
+        table.Rows.Add(roleId, "admin", "Administrator", DBNull.Value, true, true, Now, Now, assignedUserCount);
         return table.CreateDataReader();
     }
 }

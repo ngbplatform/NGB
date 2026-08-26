@@ -113,31 +113,33 @@ public sealed class ReferenceRegisterReadService(
 
         if (includeDeleted)
         {
-            var list = await recordsReader.SliceLastAllAsync(
+            var list = await recordsReader.SliceLastAllPageAsync(
                 registerId,
                 asOfUtc,
                 recorderDocumentId,
                 afterDimensionSetId,
                 limit,
+                includeDeleted: true,
                 ct);
 
-            return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
-                Records: list,
-                NextAfterDimensionSetId: list.Count == 0 ? afterDimensionSetId : list[^1].DimensionSetId,
-                HasMore: list.Count == limit);
+            return CreatePage(list, afterDimensionSetId, limit);
         }
 
-        // If many keys are tombstoned, a single persistence page might return mostly deleted rows
-        // and UI would see short pages. We "skip" tombstones by fetching subsequent key pages
-        // until we fill the requested visible limit (or the keyspace ends). Cursor-aware variant
-        // returns the next key cursor advanced by the last *examined* key.
-        return await SliceLastAllVisiblePageSkippingTombstonesAsync(
+        // Preserve the public cursor contract (advance by the last examined key),
+        // while avoiding the former N-query tombstone skipping loop. Persistence
+        // returns at most 25 raw pages in one round-trip and we replay the paging
+        // semantics in memory.
+        var scanLimit = GetTombstoneScanLimit(limit);
+        var rawRecords = await recordsReader.ScanSliceLastAllForVisiblePageAsync(
             registerId,
             asOfUtc,
             recorderDocumentId,
             afterDimensionSetId,
             limit,
+            MaxTombstoneSkipIterations,
             ct);
+
+        return CreateVisiblePageFromRawRecords(rawRecords, afterDimensionSetId, limit, scanLimit);
     }
 
     public async Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllFilteredAsync(
@@ -196,147 +198,90 @@ public sealed class ReferenceRegisterReadService(
 
         if (includeDeleted)
         {
-            var list = await recordsReader.SliceLastAllFilteredByDimensionsAsync(
+            var list = await recordsReader.SliceLastAllFilteredPageByDimensionsAsync(
                 registerId,
                 asOfUtc,
                 bag.Items,
                 recorderDocumentId,
                 afterDimensionSetId,
                 limit,
+                includeDeleted: true,
                 ct);
 
-            return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
-                Records: list,
-                NextAfterDimensionSetId: list.Count == 0 ? afterDimensionSetId : list[^1].DimensionSetId,
-                HasMore: list.Count == limit);
+            return CreatePage(list, afterDimensionSetId, limit);
         }
 
-        return await SliceLastAllVisiblePageSkippingTombstonesAsync(
+        var scanLimit = GetTombstoneScanLimit(limit);
+        var rawRecords = await recordsReader.ScanSliceLastAllFilteredForVisiblePageAsync(
             registerId,
             asOfUtc,
             bag.Items,
             recorderDocumentId,
             afterDimensionSetId,
             limit,
+            MaxTombstoneSkipIterations,
             ct);
+
+        return CreateVisiblePageFromRawRecords(rawRecords, afterDimensionSetId, limit, scanLimit);
     }
 
-    private async Task<ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>> SliceLastAllVisiblePageSkippingTombstonesAsync(
-        Guid registerId,
-        DateTime asOfUtc,
-        Guid? recorderDocumentId,
+    private static int GetTombstoneScanLimit(int pageSize) =>
+        pageSize > int.MaxValue / MaxTombstoneSkipIterations
+            ? int.MaxValue
+            : pageSize * MaxTombstoneSkipIterations;
+
+    private static ReferenceRegisterSlicePage<ReferenceRegisterRecordRead> CreatePage(
+        IReadOnlyList<ReferenceRegisterRecordRead> records,
         Guid? afterDimensionSetId,
-        int limit,
-        CancellationToken ct)
+        int limit) =>
+        new(
+            Records: records,
+            NextAfterDimensionSetId: records.Count == 0 ? afterDimensionSetId : records[^1].DimensionSetId,
+            HasMore: records.Count == limit);
+
+    private static ReferenceRegisterSlicePage<ReferenceRegisterRecordRead> CreateVisiblePageFromRawRecords(
+        IReadOnlyList<ReferenceRegisterRecordRead> rawRecords,
+        Guid? afterDimensionSetId,
+        int pageSize,
+        int scanLimit)
     {
-        var result = new List<ReferenceRegisterRecordRead>(capacity: limit);
+        if (rawRecords.Count == 0)
+            return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>([], afterDimensionSetId, false);
 
-        Guid? cursor = afterDimensionSetId;
+        var visible = new List<ReferenceRegisterRecordRead>(Math.Min(pageSize, rawRecords.Count));
+        var cursor = afterDimensionSetId;
 
-        var hasMore = false;
-
-        for (var i = 0; i < MaxTombstoneSkipIterations && result.Count < limit; i++)
+        for (var offset = 0; offset < rawRecords.Count; offset += pageSize)
         {
-            var page = await recordsReader.SliceLastAllAsync(
-                registerId,
-                asOfUtc,
-                recorderDocumentId,
-                cursor,
-                limit,
-                ct);
+            var rawPageCount = Math.Min(pageSize, rawRecords.Count - offset);
 
-            if (page.Count == 0)
-                return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
-                    Records: result,
-                    NextAfterDimensionSetId: cursor,
-                    HasMore: false);
-
-            hasMore = page.Count == limit;
-
-            foreach (var r in page)
+            for (var index = 0; index < rawPageCount && visible.Count < pageSize; index++)
             {
-                if (!r.IsDeleted)
-                {
-                    result.Add(r);
-                    if (result.Count == limit)
-                        break;
-                }
+                var record = rawRecords[offset + index];
+                if (!record.IsDeleted)
+                    visible.Add(record);
             }
 
-            // Advance key cursor by last seen key.
-            cursor = page[^1].DimensionSetId;
+            // The legacy contract advances past the complete persistence page,
+            // including tombstones and visible rows not returned after the limit.
+            cursor = rawRecords[offset + rawPageCount - 1].DimensionSetId;
 
-            // End of keyspace.
-            if (page.Count < limit)
-                return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
-                    Records: result,
-                    NextAfterDimensionSetId: cursor,
-                    HasMore: false);
-        }
-
-        return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
-            Records: result,
-            NextAfterDimensionSetId: cursor,
-            HasMore: hasMore);
-    }
-
-    private async Task<ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>> SliceLastAllVisiblePageSkippingTombstonesAsync(
-        Guid registerId,
-        DateTime asOfUtc,
-        IReadOnlyList<DimensionValue> requiredDimensions,
-        Guid? recorderDocumentId,
-        Guid? afterDimensionSetId,
-        int limit,
-        CancellationToken ct)
-    {
-        var result = new List<ReferenceRegisterRecordRead>(capacity: limit);
-
-        Guid? cursor = afterDimensionSetId;
-
-        var hasMore = false;
-
-        for (var i = 0; i < MaxTombstoneSkipIterations && result.Count < limit; i++)
-        {
-            var page = await recordsReader.SliceLastAllFilteredByDimensionsAsync(
-                registerId,
-                asOfUtc,
-                requiredDimensions,
-                recorderDocumentId,
-                cursor,
-                limit,
-                ct);
-
-            if (page.Count == 0)
-                return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
-                    Records: result,
-                    NextAfterDimensionSetId: cursor,
-                    HasMore: false);
-
-            hasMore = page.Count == limit;
-
-            foreach (var r in page)
+            if (visible.Count == pageSize)
             {
-                if (!r.IsDeleted)
-                {
-                    result.Add(r);
-                    if (result.Count == limit)
-                        break;
-                }
+                return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
+                    visible,
+                    cursor,
+                    HasMore: rawPageCount == pageSize);
             }
 
-            cursor = page[^1].DimensionSetId;
-
-            if (page.Count < limit)
-                return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
-                    Records: result,
-                    NextAfterDimensionSetId: cursor,
-                    HasMore: false);
+            if (rawPageCount < pageSize)
+                return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(visible, cursor, false);
         }
 
-        return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(
-            Records: result,
-            NextAfterDimensionSetId: cursor,
-            HasMore: hasMore);
+        // If the single over-fetch exhausted the underlying keyspace before the
+        // safety cap, the old implementation would perform one final empty read.
+        var reachedSafetyCap = rawRecords.Count == scanLimit;
+        return new ReferenceRegisterSlicePage<ReferenceRegisterRecordRead>(visible, cursor, reachedSafetyCap);
     }
 
     public async Task<IReadOnlyList<ReferenceRegisterRecordSnapshot>> SliceLastAllEnrichedAsync(

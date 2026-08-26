@@ -40,7 +40,7 @@ test('renders users from backend-filtered security API and exposes create when m
       { resourceKind: 'system', resourceCode: 'users', actionCode: 'manage' },
     ],
   })
-  mocks.getUsers.mockResolvedValue([
+  mocks.getUsers.mockResolvedValue({ items: [
     {
       userId: 'user-1',
       authSubject: 'kc-user-1',
@@ -63,7 +63,7 @@ test('renders users from backend-filtered security API and exposes create when m
       createdAtUtc: '2026-06-01T00:00:00Z',
       updatedAtUtc: '2026-06-01T00:00:00Z',
     },
-  ])
+  ], offset: 0, limit: 100, total: 2 })
 
   const view = await render(NgbUsersPage)
 
@@ -95,7 +95,7 @@ test('disables create when access profile lacks manage permission', async () => 
       { resourceKind: 'system', resourceCode: 'users', actionCode: 'view' },
     ],
   })
-  mocks.getUsers.mockResolvedValue([])
+  mocks.getUsers.mockResolvedValue({ items: [], offset: 0, limit: 100, total: 0 })
 
   const view = await render(NgbUsersPage)
 
@@ -116,7 +116,7 @@ test('enables create for bootstrap admin even before explicit application roles 
     accessVersion: 1,
     permissions: [],
   })
-  mocks.getUsers.mockResolvedValue([])
+  mocks.getUsers.mockResolvedValue({ items: [], offset: 0, limit: 100, total: 0 })
 
   const view = await render(NgbUsersPage)
 

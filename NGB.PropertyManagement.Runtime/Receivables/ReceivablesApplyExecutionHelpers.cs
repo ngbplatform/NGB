@@ -22,6 +22,12 @@ internal static class ReceivablesApplyExecutionHelpers
             .OrderBy(x => x)
             .ToArray();
 
+        if (locks is IAdvisoryLockBatchManager batchLocks)
+        {
+            await batchLocks.LockDocumentsAsync(ordered, ct);
+            return;
+        }
+
         foreach (var id in ordered)
             await locks.LockDocumentAsync(id, ct);
     }

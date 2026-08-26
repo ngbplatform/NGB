@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using NGB.Api.Controllers;
+using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 using NGB.Runtime.Security;
 using Xunit;
@@ -26,15 +27,17 @@ public sealed class SecurityControllerBaseFullCoverageTests
         users.Setup(x => x.UpdateUserAsync(userId, userRequest, It.IsAny<CancellationToken>()))
             .ReturnsAsync((UserDetailsDto)null!);
         users.Setup(x => x.ReactivateUserAsync(userId, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        users.Setup(x => x.GetUsersAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Array.Empty<UserListItemDto>());
+        users.Setup(x => x.GetUsersAsync(
+                new UserPageRequestDto(7, 25, false),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PageResponseDto<UserListItemDto>([], 7, 25, 0));
         roles.Setup(x => x.UpdateRoleAsync(roleId, roleRequest, It.IsAny<CancellationToken>()))
             .ReturnsAsync((RoleDetailsDto)null!);
         var sut = Controller(users.Object, roles.Object, access.Object);
 
         (await sut.UpdateUser(userId, userRequest, default)).Should().BeNull();
         (await sut.ReactivateUser(userId, default)).Should().BeOfType<NoContentResult>();
-        (await sut.GetUsers(default)).Should().BeEmpty();
+        (await sut.GetUsers(7, 25, false, default)).Items.Should().BeEmpty();
         (await sut.UpdateRole(roleId, roleRequest, default)).Should().BeNull();
 
         users.VerifyAll();

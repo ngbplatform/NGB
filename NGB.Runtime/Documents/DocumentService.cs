@@ -82,12 +82,27 @@ public sealed class DocumentService(
         PageRequestDto request,
         CancellationToken ct)
     {
+        request = NormalizePageRequest(request);
         var model = GetModel(documentType);
         var (softDeleteMode, scalarFilters) = ExtractSoftDeleteFilter(request.Filters);
         var query = BuildQuery(model, request.Search, scalarFilters) with { SoftDeleteFilterMode = softDeleteMode };
 
-        var total = await reader.CountAsync(model.Head, query, ct);
-        var rows = await reader.GetPageAsync(model.Head, query, request.Offset, request.Limit, ct);
+        DocumentHeadQueryPage page;
+        if (reader is IDocumentCombinedPageReader combinedPageReader)
+        {
+            page = await combinedPageReader.GetPageWithTotalAsync(
+                model.Head, query, request.Offset, request.Limit, ct);
+        }
+        else
+        {
+            var fallbackTotal = await reader.CountAsync(model.Head, query, ct);
+            var fallbackRows = await reader.GetPageAsync(
+                model.Head, query, request.Offset, request.Limit, ct);
+            page = new DocumentHeadQueryPage(fallbackRows, fallbackTotal);
+        }
+
+        var total = page.Total;
+        var rows = page.Rows;
         IReadOnlyList<DocumentDto> items = rows.Select(r => ToDto(model, r, parts: null)).ToList();
 
         if (items.Count > 0)
@@ -124,9 +139,13 @@ public sealed class DocumentService(
         if (perTypeLimit <= 0 || docTypes.Count == 0)
             return [];
 
+        perTypeLimit = Math.Min(perTypeLimit, PagingLimits.MaxPerTypeLookupLimit);
+
         var heads = ResolveDistinctLookupHeads(docTypes);
         if (heads.Count == 0)
             return [];
+
+        EnsureLookupTypeLimit(heads.Count);
 
         var rows = await reader.LookupAcrossTypesAsync(heads, query, perTypeLimit, activeOnly, ct);
         return MapDocumentLookups(rows);
@@ -150,8 +169,36 @@ public sealed class DocumentService(
         if (heads.Count == 0)
             return [];
 
-        var rows = await reader.GetByIdsAcrossTypesAsync(heads, ids, ct);
+        EnsureLookupTypeLimit(heads.Count);
+
+        var distinctIds = ids.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (distinctIds.Length == 0)
+            return [];
+
+        if (distinctIds.Length > PagingLimits.MaxLookupIds)
+            throw new NgbArgumentOutOfRangeException(nameof(ids), distinctIds.Length, $"At most {PagingLimits.MaxLookupIds} distinct IDs are allowed.");
+
+        var rows = await reader.GetByIdsAcrossTypesAsync(heads, distinctIds, ct);
         return MapDocumentLookups(rows);
+    }
+
+    private static PageRequestDto NormalizePageRequest(PageRequestDto request)
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        var offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset);
+        var limit = request.Limit <= 0
+            ? PagingLimits.DefaultPageSize
+            : Math.Min(request.Limit, PagingLimits.MaxPageSize);
+
+        return request with { Offset = offset, Limit = limit };
+    }
+
+    private static void EnsureLookupTypeLimit(int count)
+    {
+        if (count > PagingLimits.MaxLookupTypes)
+            throw new NgbArgumentOutOfRangeException("docTypes", count, $"At most {PagingLimits.MaxLookupTypes} distinct document types are allowed.");
     }
 
     private IReadOnlyList<DocumentHeadDescriptor> ResolveDistinctLookupHeads(IReadOnlyList<string> docTypes)

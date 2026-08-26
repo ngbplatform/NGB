@@ -69,53 +69,43 @@ public sealed class AdminService(
         if (request.Limit is <= 0 or > 500)
             throw new NgbArgumentOutOfRangeException(nameof(request.Limit), request.Limit, "Limit must be between 1 and 500.");
 
-        var items = await coaAdmin.GetAsync(includeDeleted: request.IncludeDeleted, ct);
-
-        // Soft delete filter (recycle bin).
-        // - OnlyDeleted == true  => deleted only
-        // - OnlyDeleted == false => not deleted only
-        // - null                 => no extra filter (respect IncludeDeleted)
-        if (request.OnlyDeleted is not null)
-            items = items.Where(x => x.IsDeleted == request.OnlyDeleted.Value).ToArray();
-
-        if (request.OnlyActive is not null)
-            items = items.Where(x => x.IsActive == request.OnlyActive.Value).ToArray();
-
-        if (request.AccountTypes is { Count: > 0 })
-        {
-            var allowed = request.AccountTypes
+        var accountTypes = request.AccountTypes is { Count: > 0 }
+            ? request.AccountTypes
                 .Select(x => ParseAccountType(x, nameof(request.AccountTypes)))
-                .ToHashSet();
+                .Distinct()
+                .ToArray()
+            : [];
 
-            items = items.Where(x => allowed.Contains(x.Account.Type)).ToArray();
-        }
+        var search = string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim();
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var s = request.Search.Trim();
-            items = items
-                .Where(x => x.Account.Code.Contains(s, StringComparison.OrdinalIgnoreCase)
-                            || x.Account.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
-                            || x.Account.Type.ToString().Contains(s, StringComparison.OrdinalIgnoreCase))
+        var searchAccountTypes = search is null
+            ? []
+            : Enum.GetValues<AccountType>()
+                .Where(type => type.ToString().Contains(search, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-        }
 
-        var total = items.Count;
+        var result = await coaAdmin.GetPageAsync(
+            new ChartOfAccountsAdminPageQuery(
+                request.IncludeDeleted,
+                request.OnlyDeleted,
+                request.OnlyActive,
+                accountTypes,
+                search,
+                searchAccountTypes,
+                request.Offset,
+                request.Limit),
+            ct);
 
-        var page = items
-            .OrderBy(x => x.Account.Code, StringComparer.OrdinalIgnoreCase)
-            .Skip(request.Offset)
-            .Take(request.Limit)
+        var page = result.Items
             .Select(Map)
             .ToArray();
 
-        return new ChartOfAccountsPageDto(page, request.Offset, request.Limit, total);
+        return new ChartOfAccountsPageDto(page, request.Offset, request.Limit, result.Total);
     }
 
     public async Task<ChartOfAccountsAccountDto> GetChartOfAccountAsync(Guid accountId, CancellationToken ct)
     {
-        var items = await coaAdmin.GetAsync(includeDeleted: true, ct);
-        var item = items.FirstOrDefault(x => x.Account.Id == accountId);
+        var item = await coaAdmin.GetByIdAsync(accountId, ct);
         if (item is null)
             throw new AccountNotFoundException(accountId);
 

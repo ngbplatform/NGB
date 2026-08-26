@@ -21,7 +21,15 @@ public interface IPlatformUserRepository
 
     Task<PlatformUser?> GetByIdAsync(Guid userId, CancellationToken ct = default);
 
-    Task<IReadOnlyList<PlatformUser>> GetAllAsync(CancellationToken ct = default);
+    Task<PlatformUserPage> GetPageAsync(
+        int offset,
+        int limit,
+        bool? isActive,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<PlatformUser>> GetByEmailsAsync(
+        IReadOnlyList<string> emails,
+        CancellationToken ct = default);
 
     Task<IReadOnlyDictionary<Guid, PlatformUser>> GetByIdsAsync(
         IReadOnlyList<Guid> userIds,
@@ -29,3 +37,5 @@ public interface IPlatformUserRepository
 
     Task SetActiveAsync(Guid userId, bool isActive, CancellationToken ct = default);
 }
+
+public sealed record PlatformUserPage(IReadOnlyList<PlatformUser> Items, long Total);

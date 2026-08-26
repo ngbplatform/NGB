@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -164,22 +163,15 @@ public sealed class KeycloakAdminClient(
         if (ids.Length == 0)
             return new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
 
-        var result = new ConcurrentDictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
-        await Parallel.ForEachAsync(
-            ids,
-            new ParallelOptions
-            {
-                CancellationToken = ct,
-                MaxDegreeOfParallelism = ResolveBatchConcurrency()
-            },
-            async (id, innerCt) =>
-            {
-                var user = await GetUserByIdAsync(id, innerCt);
-                if (user is not null)
-                    result.TryAdd(id, user);
-            });
+        var rows = await ExecuteBoundedBatchAsync(ids, GetUserByIdAsync, ct);
+        var result = new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
+        for (var i = 0; i < ids.Length; i++)
+        {
+            if (rows[i] is { } row)
+                result[ids[i]] = row;
+        }
 
-        return new Dictionary<string, IdentityProviderUserDto>(result, StringComparer.Ordinal);
+        return result;
     }
 
     public async Task<IdentityProviderUserDto?> FindUserByEmailAsync(string email, CancellationToken ct)
@@ -236,22 +228,34 @@ public sealed class KeycloakAdminClient(
         if (normalizedEmails.Length == 0)
             return new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
 
-        var result = new ConcurrentDictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+        var rows = await ExecuteBoundedBatchAsync(normalizedEmails, FindUserByEmailAsync, ct);
+        var result = new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < normalizedEmails.Length; i++)
+        {
+            if (rows[i] is { } row)
+                result[normalizedEmails[i]] = row;
+        }
+
+        return result;
+    }
+
+    private async Task<TResult?[]> ExecuteBoundedBatchAsync<TInput, TResult>(
+        IReadOnlyList<TInput> inputs,
+        Func<TInput, CancellationToken, Task<TResult?>> action,
+        CancellationToken ct)
+        where TResult : class
+    {
+        var result = new TResult?[inputs.Count];
         await Parallel.ForEachAsync(
-            normalizedEmails,
+            Enumerable.Range(0, inputs.Count),
             new ParallelOptions
             {
                 CancellationToken = ct,
                 MaxDegreeOfParallelism = ResolveBatchConcurrency()
             },
-            async (email, innerCt) =>
-            {
-                var user = await FindUserByEmailAsync(email, innerCt);
-                if (user is not null)
-                    result.TryAdd(email, user);
-            });
+            async (index, innerCt) => result[index] = await action(inputs[index], innerCt));
 
-        return new Dictionary<string, IdentityProviderUserDto>(result, StringComparer.OrdinalIgnoreCase);
+        return result;
     }
 
     public async Task SetTemporaryPasswordAsync(

@@ -62,6 +62,30 @@ public interface IReferenceRegisterRecordsReader
         int limit = 200,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllPageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        Guid? recorderDocumentId = null,
+        Guid? afterDimensionSetId = null,
+        int limit = 200,
+        bool includeDeleted = false,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the raw latest rows that a visible page must examine, including
+    /// tombstones. The scan stops at the end of the logical key page containing
+    /// the <paramref name="pageSize"/>-th visible row, or at the safety cap.
+    /// This preserves cursor-by-last-examined-key semantics in one database query.
+    /// </summary>
+    Task<IReadOnlyList<ReferenceRegisterRecordRead>> ScanSliceLastAllForVisiblePageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        Guid? recorderDocumentId,
+        Guid? afterDimensionSetId,
+        int pageSize,
+        int maxScanPages,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Same as <see cref="SliceLastAllAsync"/>, but filters the keys by requiring that DimensionSet contains ALL provided pairs
     /// (DimensionId -&gt; ValueId). This enables selections by dimensions without knowing DimensionSetId upfront.
@@ -77,6 +101,31 @@ public interface IReferenceRegisterRecordsReader
         Guid? recorderDocumentId = null,
         Guid? afterDimensionSetId = null,
         int limit = 200,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllFilteredPageByDimensionsAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        IReadOnlyList<DimensionValue> requiredDimensions,
+        Guid? recorderDocumentId = null,
+        Guid? afterDimensionSetId = null,
+        int limit = 200,
+        bool includeDeleted = false,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Dimension-filtered counterpart of <see cref="ScanSliceLastAllForVisiblePageAsync"/>.
+    /// Tombstones are intentionally returned so the runtime can retain the public
+    /// last-examined-key cursor contract without issuing N paging queries.
+    /// </summary>
+    Task<IReadOnlyList<ReferenceRegisterRecordRead>> ScanSliceLastAllFilteredForVisiblePageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        IReadOnlyList<DimensionValue> requiredDimensions,
+        Guid? recorderDocumentId,
+        Guid? afterDimensionSetId,
+        int pageSize,
+        int maxScanPages,
         CancellationToken ct = default);
 
     /// <summary>

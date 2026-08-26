@@ -97,6 +97,47 @@ public sealed class AgencyBillingReferenceReaders(IUnitOfWork uow) : IAgencyBill
             : new AgencyBillingTeamMemberReference(row.Id, row.IsMarkedForDeletion, row.Display, row.IsActive);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, AgencyBillingTeamMemberReference>> ReadTeamMembersAsync(
+        IReadOnlyCollection<Guid> teamMemberIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(teamMemberIds);
+
+        var ids = teamMemberIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, AgencyBillingTeamMemberReference>();
+
+        uow.EnsureActiveTransaction();
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    c.id AS Id,
+    c.is_deleted AS IsMarkedForDeletion,
+    h.display AS Display,
+    h.is_active AS IsActive
+FROM catalogs c
+LEFT JOIN cat_ab_team_member h
+  ON h.catalog_id = c.id
+WHERE c.catalog_code = @catalog_code
+  AND c.id = ANY(@catalog_ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync<ActiveReferenceRow>(new CommandDefinition(
+            sql,
+            new { catalog_code = AgencyBillingCodes.TeamMember, catalog_ids = ids },
+            uow.Transaction,
+            cancellationToken: ct));
+
+        return rows.ToDictionary(
+            static row => row.Id,
+            static row => new AgencyBillingTeamMemberReference(
+                row.Id,
+                row.IsMarkedForDeletion,
+                row.Display,
+                row.IsActive));
+    }
+
     public async Task<AgencyBillingServiceItemReference?> ReadServiceItemAsync(
         Guid serviceItemId,
         CancellationToken ct = default)
@@ -121,6 +162,48 @@ public sealed class AgencyBillingReferenceReaders(IUnitOfWork uow) : IAgencyBill
         return row is null
             ? null
             : new AgencyBillingServiceItemReference(row.Id, row.IsMarkedForDeletion, row.Display, row.IsActive);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, AgencyBillingServiceItemReference>> ReadServiceItemsAsync(
+        IReadOnlyCollection<Guid> serviceItemIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(serviceItemIds);
+
+        var ids = serviceItemIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, AgencyBillingServiceItemReference>();
+
+        uow.EnsureActiveTransaction();
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    c.id AS Id,
+    c.is_deleted AS IsMarkedForDeletion,
+    h.display AS Display,
+    h.is_active AS IsActive
+FROM catalogs c
+LEFT JOIN cat_ab_service_item h
+  ON h.catalog_id = c.id
+WHERE c.catalog_code = @catalog_code
+  AND c.id = ANY(@catalog_ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync<ActiveReferenceRow>(
+            new CommandDefinition(
+                sql,
+                new { catalog_code = AgencyBillingCodes.ServiceItem, catalog_ids = ids },
+                uow.Transaction,
+                cancellationToken: ct));
+
+        return rows.ToDictionary(
+            static row => row.Id,
+            static row => new AgencyBillingServiceItemReference(
+                row.Id,
+                row.IsMarkedForDeletion,
+                row.Display,
+                row.IsActive));
     }
 
     public async Task<AgencyBillingPaymentTermsReference?> ReadPaymentTermsAsync(

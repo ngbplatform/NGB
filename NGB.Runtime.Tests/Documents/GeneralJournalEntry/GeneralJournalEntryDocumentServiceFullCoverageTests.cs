@@ -88,8 +88,13 @@ public sealed class GeneralJournalEntryDocumentServiceFullCoverageTests
 
         created.Should().Be(f.DocumentId);
         f.Headers[created].InitiatedBy.Should().Be("initiator");
-        f.Relationships.Verify(x => x.CreateAsync(created, source, "created_from", false, Ct), Times.Once);
-        f.Relationships.Verify(x => x.CreateAsync(created, basedOn, "based_on", false, Ct), Times.Once);
+        f.Relationships.Verify(x => x.CreateManyAsync(
+            It.Is<IReadOnlyCollection<DocumentRelationshipCreateRequest>>(requests =>
+                requests.Count == 2
+                && requests.Contains(new DocumentRelationshipCreateRequest(created, source, "created_from"))
+                && requests.Contains(new DocumentRelationshipCreateRequest(created, basedOn, "based_on"))),
+            false,
+            Ct), Times.Once);
 
         await f.Sut.CreateDraftAsync(Fixture.Now, "initiator", Ct, null, []);
     }
@@ -786,7 +791,7 @@ public sealed class GeneralJournalEntryDocumentServiceFullCoverageTests
         public Mock<IDocumentDraftService> Drafts { get; } = new();
         public Mock<IDocumentWorkflowExecutor> Workflow { get; } = new();
         public Mock<IGeneralJournalEntryRepository> Gje { get; } = new();
-        public Mock<IDocumentRelationshipService> Relationships { get; } = new();
+        public Mock<IDocumentRelationshipBatchService> Relationships { get; } = new();
         public Mock<IDocumentNumberingAndTypedSyncService> Numbering { get; } = new();
         public Mock<IDocumentApprovalPolicyResolver> ApprovalPolicies { get; } = new();
         public Mock<IChartOfAccountsProvider> ChartProvider { get; } = new();
@@ -889,9 +894,11 @@ public sealed class GeneralJournalEntryDocumentServiceFullCoverageTests
             Gje.Setup(x => x.TryGetSystemReversalByOriginalAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => ExistingReversal);
 
-            Relationships.Setup(x => x.CreateAsync(
-                    It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync(true);
+            Relationships.Setup(x => x.CreateManyAsync(
+                    It.IsAny<IReadOnlyCollection<DocumentRelationshipCreateRequest>>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyCollection<DocumentRelationshipCreateRequest> requests, bool _, CancellationToken _) => requests.Count);
             Numbering.Setup(x => x.EnsureNumberAndSyncTypedAsync(
                     It.IsAny<DocumentRecord>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync("GJE-1");

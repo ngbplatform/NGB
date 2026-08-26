@@ -107,8 +107,12 @@ public sealed class OperationalRegisterWriteFullCoverageTests
         f.Locks.Verify(x => x.LockOperationalRegisterAsync(registerId, It.IsAny<CancellationToken>()), Times.Once);
         f.Locks.Verify(x => x.LockPeriodAsync(february, AdvisoryLockPeriodScope.OperationalRegister, It.IsAny<CancellationToken>()), Times.Once);
         f.Locks.Verify(x => x.LockPeriodAsync(april, AdvisoryLockPeriodScope.OperationalRegister, It.IsAny<CancellationToken>()), Times.Once);
-        f.Finalizations.Verify(x => x.MarkDirtyAsync(registerId, february, Now, Now, It.IsAny<CancellationToken>()), Times.Once);
-        f.Finalizations.Verify(x => x.MarkDirtyAsync(registerId, april, Now, Now, It.IsAny<CancellationToken>()), Times.Once);
+        f.Finalizations.Verify(x => x.MarkDirtyPeriodsAsync(
+            registerId,
+            It.Is<IReadOnlyCollection<DateOnly>>(periods => periods.SequenceEqual(new[] { february, april })),
+            Now,
+            Now,
+            It.IsAny<CancellationToken>()), Times.Once);
         f.WriteLog.Verify(x => x.MarkCompletedAsync(registerId, documentId,
             OperationalRegisterWriteOperation.Repost, Now, It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -128,7 +132,7 @@ public sealed class OperationalRegisterWriteFullCoverageTests
             [], _ => Task.CompletedTask)).Should().Be(OperationalRegisterWriteResult.Executed);
 
         f.Locks.Verify(x => x.LockOperationalRegisterAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
-        f.Finalizations.Verify(x => x.MarkDirtyAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(),
+        f.Finalizations.Verify(x => x.MarkDirtyPeriodsAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<DateOnly>>(),
             It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 

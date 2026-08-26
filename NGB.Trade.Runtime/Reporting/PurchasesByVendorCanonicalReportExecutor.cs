@@ -23,22 +23,20 @@ public sealed class PurchasesByVendorCanonicalReportExecutor(
         var itemIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "item_id");
         var warehouseIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "warehouse_id");
 
-        var ordered = (await analytics.GetPurchasesByVendorAsync(fromInclusive, toInclusive, vendorIds, itemIds, warehouseIds, ct))
-            .Where(static x => x.PurchaseDocumentCount != 0 || x.ReturnDocumentCount != 0)
-            .ToArray();
-
         var offset = Math.Max(0, request.Offset);
         var limit = request.DisablePaging
-            ? ordered.Length
+            ? int.MaxValue
             : (request.Limit <= 0 ? 100 : request.Limit);
-        var pageRows = ordered.Skip(offset).Take(limit).ToArray();
+        var page = await analytics.GetPurchasesByVendorPageAsync(
+            fromInclusive, toInclusive, vendorIds, itemIds, warehouseIds, offset, limit, ct);
+        var pageRows = page.Rows;
 
         var rows = pageRows
             .Select(ToDetailRow)
             .ToList();
 
-        if (request.Layout?.ShowGrandTotals != false && ordered.Length > 0)
-            rows.Add(ToTotalRow(ordered));
+        if (request.Layout?.ShowGrandTotals != false && page.Total > 0)
+            rows.Add(ToTotalRow(page.Totals));
 
         var sheet = new ReportSheetDto(
             Columns:
@@ -63,8 +61,8 @@ public sealed class PurchasesByVendorCanonicalReportExecutor(
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: ordered.Length,
-            hasMore: offset + pageRows.Length < ordered.Length,
+            total: page.Total,
+            hasMore: offset + pageRows.Count < page.Total,
             nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -91,17 +89,17 @@ public sealed class PurchasesByVendorCanonicalReportExecutor(
                 DecimalCell(row.NetPurchases)
             ]);
 
-    private static ReportSheetRowDto ToTotalRow(IReadOnlyList<PurchasesByVendorSummaryRow> rows)
+    private static ReportSheetRowDto ToTotalRow(PurchasesByVendorTotals totals)
         => new(
             ReportRowKind.Total,
             Cells:
             [
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue("Total"), "Total", "string", SemanticRole: "label"),
-                IntCell(rows.Sum(static x => x.PurchaseDocumentCount), "total"),
-                IntCell(rows.Sum(static x => x.ReturnDocumentCount), "total"),
-                DecimalCell(rows.Sum(static x => x.GrossPurchases), "total"),
-                DecimalCell(rows.Sum(static x => x.ReturnedAmount), "total"),
-                DecimalCell(rows.Sum(static x => x.NetPurchases), "total")
+                IntCell(totals.PurchaseDocumentCount, "total"),
+                IntCell(totals.ReturnDocumentCount, "total"),
+                DecimalCell(totals.GrossPurchases, "total"),
+                DecimalCell(totals.ReturnedAmount, "total"),
+                DecimalCell(totals.NetPurchases, "total")
             ],
             SemanticRole: "grand_total");
 

@@ -1,6 +1,7 @@
 using NGB.Persistence.Documents;
 using NGB.Persistence.Locks;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Contracts;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Receivables;
@@ -42,9 +43,14 @@ public sealed class ReceivablesFifoApplyExecuteService(
         if (request.MaxApplications is not null && request.MaxApplications <= 0)
             throw ReceivablesRequestValidationException.MaxApplicationsInvalid();
 
+        if (request.MaxApplications > FifoApplyLimits.MaxApplications)
+            throw ReceivablesRequestValidationException.MaxApplicationsTooLarge(FifoApplyLimits.MaxApplications);
+
+        var maxApplications = request.MaxApplications ?? FifoApplyLimits.DefaultMaxApplications;
+
         // 1) Plan (no writes).
         var plan = await suggest.SuggestAsync(
-            new ReceivablesFifoApplySuggestRequest(request.CreditDocumentId, request.MaxApplications),
+            new ReceivablesFifoApplySuggestRequest(request.CreditDocumentId, maxApplications),
             ct);
 
         if (plan.SuggestedApplies.Count == 0)

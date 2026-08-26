@@ -170,11 +170,31 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
 
         var first = await independent.Reader.SliceLastAllAsync(RegisterId, AsOf, null, null, 10, default);
         var after = await independent.Reader.SliceLastAllAsync(RegisterId, AsOf, null, DimensionSetId, 10, default);
+        var visibleOnly = await independent.Reader.SliceLastAllPageAsync(
+            RegisterId, AsOf, null, null, 10, includeDeleted: false, default);
+        var rawVisibleScan = await independent.Reader.ScanSliceLastAllForVisiblePageAsync(
+            RegisterId, AsOf, null, null, pageSize: 10, maxScanPages: 25, default);
         first.Should().HaveCount(2);
         after.Should().HaveCount(2);
+        visibleOnly.Should().HaveCount(2);
+        rawVisibleScan.Should().HaveCount(2);
         first[0].Values.Should().Contain("value", null);
         independent.Connection.Commands.Should().Contain(x =>
             x.CommandText.Contains("dimension_set_id > @AfterDimensionSetId", StringComparison.Ordinal));
+        independent.Connection.Commands.Should().Contain(x =>
+            x.CommandText.Contains("WHERE @IncludeDeleted OR \"IsDeleted\" = FALSE", StringComparison.Ordinal));
+        independent.Connection.Commands.Should().Contain(x =>
+            x.CommandText.Contains("numbered_rows", StringComparison.Ordinal)
+            && x.CommandText.Contains("__VisibleCount", StringComparison.Ordinal));
+
+        Func<Task> invalidScanPageSize = async () => await independent.Reader.ScanSliceLastAllForVisiblePageAsync(
+            RegisterId, AsOf, null, null, pageSize: 0, maxScanPages: 25, default);
+        Func<Task> invalidScanPages = async () => await independent.Reader.ScanSliceLastAllForVisiblePageAsync(
+            RegisterId, AsOf, null, null, pageSize: 10, maxScanPages: 0, default);
+        await invalidScanPageSize.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await invalidScanPages.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        (await independent.Reader.ScanSliceLastAllForVisiblePageAsync(
+            RegisterId, AsOf, null, null, int.MaxValue, 2, default)).Should().HaveCount(2);
 
         var subordinate = Fixture(
             ReferenceRegisterPeriodicity.Day,
@@ -231,10 +251,17 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
 
         var rows = await sut.Reader.SliceLastAllFilteredByDimensionsAsync(
             RegisterId, AsOf, [d1, d2], null, DimensionSetId, 10, default);
+        var visibleRows = await sut.Reader.SliceLastAllFilteredPageByDimensionsAsync(
+            RegisterId, AsOf, [d1, d2], null, DimensionSetId, 10, includeDeleted: false, default);
+        var rawVisibleScan = await sut.Reader.ScanSliceLastAllFilteredForVisiblePageAsync(
+            RegisterId, AsOf, [d1, d2], null, DimensionSetId, 10, 25, default);
         rows.Should().ContainSingle();
+        visibleRows.Should().ContainSingle();
+        rawVisibleScan.Should().ContainSingle();
         sut.Connection.Commands.Last().CommandText.Should()
             .Contain("s.dimension_id = @D0").And.Contain("s.dimension_id = @D1")
-            .And.Contain("HAVING COUNT(*) = @DimCount");
+            .And.Contain("HAVING COUNT(*) = @DimCount")
+            .And.Contain("numbered_rows");
 
         var missingRegister = Fixture(
             ReferenceRegisterPeriodicity.NonPeriodic,

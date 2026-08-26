@@ -41,11 +41,12 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
                 true,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(upsertedUserId);
-        fixture.Users.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
+        fixture.Users.Setup(x => x.GetByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "admin@example.com" })),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync([
                 User(upsertedUserId, "ADMIN@example.com"),
-                User(emailMatchedUserId, "admin@example.com"),
-                User(Guid.CreateVersion7(), "other@example.com")
+                User(emailMatchedUserId, "admin@example.com")
             ]);
         fixture.UserRoles.Setup(x => x.GetRolesForUserAsync(upsertedUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([administratorRole]);
@@ -91,8 +92,10 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
                 true,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(userId);
-        fixture.Users.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([User(Guid.CreateVersion7(), "not-admin@example.com")]);
+        fixture.Users.Setup(x => x.GetByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "admin@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
         fixture.UserRoles.Setup(x => x.GetRolesForUserAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
         fixture.Versions.Setup(x => x.GetAsync(userId, It.IsAny<CancellationToken>()))
@@ -131,7 +134,8 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
             It.IsAny<string?>(),
             It.IsAny<bool>(),
             It.IsAny<CancellationToken>()), Times.Never);
-        fixture.Users.Verify(x => x.GetAllAsync(It.IsAny<CancellationToken>()), Times.Never);
+        fixture.Users.Verify(x => x.GetByEmailsAsync(
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

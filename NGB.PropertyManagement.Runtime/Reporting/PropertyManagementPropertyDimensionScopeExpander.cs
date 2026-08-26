@@ -41,7 +41,6 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
         $"Dimension|{CodeNormalizer.NormalizeCodeNorm(PropertyManagementCodes.Property, nameof(PropertyManagementCodes.Property))}");
 
     private CatalogHeadDescriptor? _head;
-    private Task<PropertyHierarchySnapshot>? _activeHierarchySnapshotTask;
 
     public async Task<DimensionScopeBag> ExpandAsync(string reportCode, DimensionScopeBag scopes, CancellationToken ct)
     {
@@ -75,81 +74,44 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
 
     private async Task<DimensionScope> ExpandPropertyScopeAsync(DimensionScope scope, CancellationToken ct)
     {
-        var hierarchy = await GetActiveHierarchySnapshotAsync(ct);
+        var selectedIds = scope.ValueIds.Distinct().ToArray();
+        var selectedRows = await reader.GetByIdsWithFieldsAsync(GetHead(), selectedIds, ct);
+        var rowsById = selectedRows.ToDictionary(static row => row.Id);
         var ids = new SortedSet<Guid>();
+        var buildingIds = new List<Guid>();
 
-        foreach (var propertyId in scope.ValueIds)
+        foreach (var propertyId in selectedIds)
         {
-            var propertyRow = await GetActivePropertyRowAsync(propertyId, hierarchy, ct);
+            var propertyRow = rowsById.TryGetValue(propertyId, out var row)
+                ? row
+                : await ThrowInvalidPropertyAsync(propertyId, ct);
+
+            if (propertyRow.IsMarkedForDeletion)
+                throw new NgbArgumentInvalidException(FilterParameterName, "Selected property is deleted.");
+
             ids.Add(propertyId);
 
             var kind = NormalizeKind(ReadString(propertyRow.Fields, "kind"));
             if (string.Equals(kind, "Building", StringComparison.Ordinal))
-                hierarchy.AddDescendants(propertyId, ids);
+                buildingIds.Add(propertyId);
+        }
+
+        if (buildingIds.Count > 0)
+        {
+            var descendants = await reader.GetActiveDescendantIdsAsync(
+                GetHead(),
+                buildingIds,
+                "parent_property_id",
+                ct);
+            ids.UnionWith(descendants);
         }
 
         // Effective scope is already expanded, so the descendants flag is consumed here.
         return new DimensionScope(scope.DimensionId, ids, includeDescendants: false);
     }
 
-    private async Task<PropertyHierarchySnapshot> GetActiveHierarchySnapshotAsync(CancellationToken ct)
+    private async Task<CatalogHeadRow> ThrowInvalidPropertyAsync(Guid propertyId, CancellationToken ct)
     {
-        if (_activeHierarchySnapshotTask is not null)
-            return await _activeHierarchySnapshotTask;
-
-        _activeHierarchySnapshotTask = LoadActiveHierarchySnapshotAsync(ct);
-        return await _activeHierarchySnapshotTask;
-    }
-
-    private async Task<PropertyHierarchySnapshot> LoadActiveHierarchySnapshotAsync(CancellationToken ct)
-    {
-        var rowsById = new Dictionary<Guid, CatalogHeadRow>();
-        var childrenByParentId = new Dictionary<Guid, List<Guid>>();
-        var query = new CatalogQuery(Search: null, Filters: [])
-        {
-            SoftDeleteFilterMode = SoftDeleteFilterMode.Active
-        };
-
-        const int limit = 512;
-
-        for (var offset = 0; ; offset += limit)
-        {
-            var rows = await reader.GetPageAsync(GetHead(), query, offset, limit, ct);
-            if (rows.Count == 0)
-                break;
-
-            foreach (var row in rows)
-            {
-                rowsById[row.Id] = row;
-
-                if (TryReadGuid(row.Fields, "parent_property_id", out var parentPropertyId)
-                    && parentPropertyId != Guid.Empty)
-                {
-                    if (!childrenByParentId.TryGetValue(parentPropertyId, out var children))
-                    {
-                        children = [];
-                        childrenByParentId[parentPropertyId] = children;
-                    }
-
-                    children.Add(row.Id);
-                }
-            }
-
-            if (rows.Count < limit)
-                break;
-        }
-
-        return new PropertyHierarchySnapshot(rowsById, childrenByParentId);
-    }
-
-    private async Task<CatalogHeadRow> GetActivePropertyRowAsync(
-        Guid propertyId,
-        PropertyHierarchySnapshot hierarchy,
-        CancellationToken ct)
-    {
-        if (hierarchy.RowsById.TryGetValue(propertyId, out var activeRow))
-            return activeRow;
-
         var catalog = await catalogs.GetAsync(propertyId, ct);
         if (catalog is null)
             throw new NgbArgumentInvalidException(FilterParameterName, "Selected property was not found.");
@@ -160,20 +122,14 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
         if (catalog.IsDeleted)
             throw new NgbArgumentInvalidException(FilterParameterName, "Selected property is deleted.");
 
-        var row = await reader.GetByIdAsync(GetHead(), propertyId, ct);
-        if (row is null)
-        {
-            throw new NgbConfigurationViolationException(
-                "Selected property data is incomplete.",
-                context: new Dictionary<string, object?>
-                {
-                    ["catalogType"] = PropertyManagementCodes.Property,
-                    ["propertyId"] = propertyId,
-                    ["filter"] = FilterParameterName
-                });
-        }
-
-        return row;
+        throw new NgbConfigurationViolationException(
+            "Selected property data is incomplete.",
+            context: new Dictionary<string, object?>
+            {
+                ["catalogType"] = PropertyManagementCodes.Property,
+                ["propertyId"] = propertyId,
+                ["filter"] = FilterParameterName
+            });
     }
 
     private CatalogHeadDescriptor GetHead()
@@ -230,61 +186,5 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
             JsonElement e => e.ToString(),
             _ => raw.ToString()
         };
-    }
-
-    private static bool TryReadGuid(IReadOnlyDictionary<string, object?> fields, string field, out Guid value)
-    {
-        if (!fields.TryGetValue(field, out var raw) || raw is null)
-        {
-            value = Guid.Empty;
-            return false;
-        }
-
-        switch (raw)
-        {
-            case Guid guid when guid != Guid.Empty:
-                value = guid;
-                return true;
-            case string s when Guid.TryParse(s, out var parsed) && parsed != Guid.Empty:
-                value = parsed;
-                return true;
-            case JsonElement { ValueKind: JsonValueKind.String } json
-                when Guid.TryParse(json.GetString(), out var parsed) && parsed != Guid.Empty:
-                value = parsed;
-                return true;
-            default:
-                value = Guid.Empty;
-                return false;
-        }
-    }
-
-    private sealed class PropertyHierarchySnapshot(
-        IReadOnlyDictionary<Guid, CatalogHeadRow> rowsById,
-        IReadOnlyDictionary<Guid, List<Guid>> childrenByParentId)
-    {
-        public IReadOnlyDictionary<Guid, CatalogHeadRow> RowsById => rowsById;
-
-        public void AddDescendants(Guid rootPropertyId, SortedSet<Guid> ids)
-        {
-            var queue = new Queue<Guid>();
-            queue.Enqueue(rootPropertyId);
-
-            while (queue.Count > 0)
-            {
-                var parentId = queue.Dequeue();
-                if (!childrenByParentId.TryGetValue(parentId, out var children))
-                    continue;
-
-                foreach (var childId in children)
-                {
-                    if (!ids.Add(childId) || !rowsById.TryGetValue(childId, out var childRow))
-                        continue;
-
-                    var kind = NormalizeKind(ReadString(childRow.Fields, "kind"));
-                    if (string.Equals(kind, "Building", StringComparison.Ordinal))
-                        queue.Enqueue(childId);
-                }
-            }
-        }
     }
 }

@@ -153,16 +153,17 @@ public sealed class PayableApplyOpenItemsPostingHandlerFullCoverageTests
             Relationships.Setup(x => x.CreateAsync(
                     It.IsAny<Guid>(), It.IsAny<Guid>(), "based_on", false, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
-            DimensionSets.Setup(x => x.GetOrCreateIdAsync(
-                    It.IsAny<DimensionBag>(), It.IsAny<CancellationToken>()))
-                .Callback<DimensionBag, CancellationToken>((bag, _) => Bags.Add(bag))
-                .ReturnsAsync(() => Bags.Count == 1 ? ChargeDimensionSetId : CreditDimensionSetId);
-            Net.Setup(x => x.GetNetByDimensionSetAsync(
-                    RegisterId, ChargeDimensionSetId, "amount", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(() => ChargeNet);
-            Net.Setup(x => x.GetNetByDimensionSetAsync(
-                    RegisterId, CreditDimensionSetId, "amount", It.IsAny<CancellationToken>()))
-                .ReturnsAsync(() => CreditNet);
+            DimensionSets.Setup(x => x.GetOrCreateIdsAsync(
+                    It.IsAny<IReadOnlyList<DimensionBag>>(), It.IsAny<CancellationToken>()))
+                .Callback<IReadOnlyList<DimensionBag>, CancellationToken>((bags, _) => Bags.AddRange(bags))
+                .ReturnsAsync([ChargeDimensionSetId, CreditDimensionSetId]);
+            Net.Setup(x => x.GetNetByDimensionSetsAsync(
+                    RegisterId, It.IsAny<IReadOnlyCollection<Guid>>(), "amount", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(() => new Dictionary<Guid, decimal>
+                {
+                    [ChargeDimensionSetId] = ChargeNet,
+                    [CreditDimensionSetId] = CreditNet
+                });
             Builder.Setup(x => x.Add("pm.payables.open_items", It.IsAny<OperationalRegisterMovement>()))
                 .Callback<string, OperationalRegisterMovement>((_, movement) => Movements.Add(movement));
             Sut = new PayableApplyOpenItemsOperationalRegisterPostingHandler(

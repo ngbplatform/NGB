@@ -7,14 +7,19 @@ namespace NGB.Trade.PostgreSql.Reporting;
 
 public sealed class PostgresTradeAnalyticsReader(IUnitOfWork uow) : ITradeAnalyticsReader
 {
-    public async Task<IReadOnlyList<SalesByItemSummaryRow>> GetSalesByItemAsync(
+    public async Task<TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>> GetSalesByItemPageAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,
         IReadOnlyList<Guid>? itemIds,
         IReadOnlyList<Guid>? customerIds,
         IReadOnlyList<Guid>? warehouseIds,
+        int offset,
+        int limit,
         CancellationToken ct = default)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         const string sql = """
@@ -71,7 +76,14 @@ SELECT
     COALESCE(r.returned_quantity, 0) AS ReturnedQuantity,
     COALESCE(r.returned_amount, 0) AS ReturnedAmount,
     COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) AS NetSales,
-    COALESCE(s.sold_cogs, 0) - COALESCE(r.returned_cogs, 0) AS NetCogs
+    COALESCE(s.sold_cogs, 0) - COALESCE(r.returned_cogs, 0) AS NetCogs,
+    COUNT(*) OVER()::integer AS TotalCount,
+    SUM(COALESCE(s.sold_quantity, 0)) OVER() AS TotalSoldQuantity,
+    SUM(COALESCE(s.gross_sales, 0)) OVER() AS TotalGrossSales,
+    SUM(COALESCE(r.returned_quantity, 0)) OVER() AS TotalReturnedQuantity,
+    SUM(COALESCE(r.returned_amount, 0)) OVER() AS TotalReturnedAmount,
+    SUM(COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0)) OVER() AS TotalNetSales,
+    SUM(COALESCE(s.sold_cogs, 0) - COALESCE(r.returned_cogs, 0)) OVER() AS TotalNetCogs
 FROM keys k
 LEFT JOIN cat_trd_item i
     ON i.catalog_id = k.item_id
@@ -79,16 +91,20 @@ LEFT JOIN sales s
     ON s.item_id = k.item_id
 LEFT JOIN returns r
     ON r.item_id = k.item_id
+WHERE COALESCE(s.sold_quantity, 0) <> 0
+   OR COALESCE(r.returned_quantity, 0) <> 0
 ORDER BY
     COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) DESC,
-    COALESCE(i.display, k.item_id::text) ASC;
+    COALESCE(i.display, k.item_id::text) ASC
+OFFSET @offset
+LIMIT @limit;
 """;
 
         var itemIdArray = NormalizeIds(itemIds);
         var customerIdArray = NormalizeIds(customerIds);
         var warehouseIdArray = NormalizeIds(warehouseIds);
 
-        var rows = await uow.Connection.QueryAsync<SalesByItemSummaryRow>(new CommandDefinition(
+        var rows = (await uow.Connection.QueryAsync<SalesByItemPageSqlRow>(new CommandDefinition(
             sql,
             new
             {
@@ -102,22 +118,67 @@ ORDER BY
                 has_warehouse_filter = warehouseIdArray.Length > 0,
                 item_ids = itemIdArray,
                 customer_ids = customerIdArray,
-                warehouse_ids = warehouseIdArray
+                warehouse_ids = warehouseIdArray,
+                offset,
+                limit
             },
             transaction: uow.Transaction,
-            cancellationToken: ct));
+            cancellationToken: ct))).AsList();
 
-        return rows.ToArray();
+        var first = rows.FirstOrDefault();
+
+        return new TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>(
+            rows.Select(static row => new SalesByItemSummaryRow(
+                row.ItemId,
+                row.ItemDisplay,
+                row.SoldQuantity,
+                row.GrossSales,
+                row.ReturnedQuantity,
+                row.ReturnedAmount,
+                row.NetSales,
+                row.NetCogs)).ToArray(),
+            first?.TotalCount ?? 0,
+            first is null
+                ? new SalesByItemTotals(0m, 0m, 0m, 0m, 0m, 0m)
+                : new SalesByItemTotals(
+                    first.TotalSoldQuantity,
+                    first.TotalGrossSales,
+                    first.TotalReturnedQuantity,
+                    first.TotalReturnedAmount,
+                    first.TotalNetSales,
+                    first.TotalNetCogs));
     }
 
-    public async Task<IReadOnlyList<SalesByCustomerSummaryRow>> GetSalesByCustomerAsync(
+    public async Task<IReadOnlyList<SalesByItemSummaryRow>> GetSalesByItemAsync(
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? customerIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        CancellationToken ct = default)
+        => (await GetSalesByItemPageAsync(
+            fromInclusive,
+            toInclusive,
+            itemIds,
+            customerIds,
+            warehouseIds,
+            0,
+            int.MaxValue,
+            ct)).Rows;
+
+    public async Task<TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>> GetSalesByCustomerPageAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,
         IReadOnlyList<Guid>? customerIds,
         IReadOnlyList<Guid>? itemIds,
         IReadOnlyList<Guid>? warehouseIds,
+        int offset,
+        int limit,
         CancellationToken ct = default)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         const string sql = """
@@ -174,7 +235,14 @@ SELECT
     COALESCE(s.gross_sales, 0) AS GrossSales,
     COALESCE(r.returned_amount, 0) AS ReturnedAmount,
     COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) AS NetSales,
-    COALESCE(s.sold_cogs, 0) - COALESCE(r.returned_cogs, 0) AS NetCogs
+    COALESCE(s.sold_cogs, 0) - COALESCE(r.returned_cogs, 0) AS NetCogs,
+    COUNT(*) OVER()::integer AS TotalCount,
+    SUM(COALESCE(s.sales_document_count, 0)) OVER()::integer AS TotalSalesDocumentCount,
+    SUM(COALESCE(r.return_document_count, 0)) OVER()::integer AS TotalReturnDocumentCount,
+    SUM(COALESCE(s.gross_sales, 0)) OVER() AS TotalGrossSales,
+    SUM(COALESCE(r.returned_amount, 0)) OVER() AS TotalReturnedAmount,
+    SUM(COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0)) OVER() AS TotalNetSales,
+    SUM(COALESCE(s.sold_cogs, 0) - COALESCE(r.returned_cogs, 0)) OVER() AS TotalNetCogs
 FROM keys k
 LEFT JOIN cat_trd_party p
     ON p.catalog_id = k.customer_id
@@ -182,16 +250,20 @@ LEFT JOIN sales s
     ON s.customer_id = k.customer_id
 LEFT JOIN returns r
     ON r.customer_id = k.customer_id
+WHERE COALESCE(s.sales_document_count, 0) <> 0
+   OR COALESCE(r.return_document_count, 0) <> 0
 ORDER BY
     COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) DESC,
-    COALESCE(p.display, k.customer_id::text) ASC;
+    COALESCE(p.display, k.customer_id::text) ASC
+OFFSET @offset
+LIMIT @limit;
 """;
 
         var customerIdArray = NormalizeIds(customerIds);
         var itemIdArray = NormalizeIds(itemIds);
         var warehouseIdArray = NormalizeIds(warehouseIds);
 
-        var rows = await uow.Connection.QueryAsync<SalesByCustomerSummaryRow>(new CommandDefinition(
+        var rows = (await uow.Connection.QueryAsync<SalesByCustomerPageSqlRow>(new CommandDefinition(
             sql,
             new
             {
@@ -205,22 +277,67 @@ ORDER BY
                 has_warehouse_filter = warehouseIdArray.Length > 0,
                 customer_ids = customerIdArray,
                 item_ids = itemIdArray,
-                warehouse_ids = warehouseIdArray
+                warehouse_ids = warehouseIdArray,
+                offset,
+                limit
             },
             transaction: uow.Transaction,
-            cancellationToken: ct));
+            cancellationToken: ct))).AsList();
 
-        return rows.ToArray();
+        var first = rows.FirstOrDefault();
+
+        return new TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>(
+            rows.Select(static row => new SalesByCustomerSummaryRow(
+                row.CustomerId,
+                row.CustomerDisplay,
+                row.SalesDocumentCount,
+                row.ReturnDocumentCount,
+                row.GrossSales,
+                row.ReturnedAmount,
+                row.NetSales,
+                row.NetCogs)).ToArray(),
+            first?.TotalCount ?? 0,
+            first is null
+                ? new SalesByCustomerTotals(0, 0, 0m, 0m, 0m, 0m)
+                : new SalesByCustomerTotals(
+                    first.TotalSalesDocumentCount,
+                    first.TotalReturnDocumentCount,
+                    first.TotalGrossSales,
+                    first.TotalReturnedAmount,
+                    first.TotalNetSales,
+                    first.TotalNetCogs));
     }
 
-    public async Task<IReadOnlyList<PurchasesByVendorSummaryRow>> GetPurchasesByVendorAsync(
+    public async Task<IReadOnlyList<SalesByCustomerSummaryRow>> GetSalesByCustomerAsync(
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<Guid>? customerIds,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        CancellationToken ct = default)
+        => (await GetSalesByCustomerPageAsync(
+            fromInclusive,
+            toInclusive,
+            customerIds,
+            itemIds,
+            warehouseIds,
+            0,
+            int.MaxValue,
+            ct)).Rows;
+
+    public async Task<TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>> GetPurchasesByVendorPageAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,
         IReadOnlyList<Guid>? vendorIds,
         IReadOnlyList<Guid>? itemIds,
         IReadOnlyList<Guid>? warehouseIds,
+        int offset,
+        int limit,
         CancellationToken ct = default)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         const string sql = """
@@ -275,6 +392,12 @@ SELECT
     COALESCE(pr.gross_purchases, 0) AS GrossPurchases,
     COALESCE(vr.returned_amount, 0) AS ReturnedAmount,
     COALESCE(pr.gross_purchases, 0) - COALESCE(vr.returned_amount, 0) AS NetPurchases
+    ,COUNT(*) OVER()::integer AS TotalCount
+    ,SUM(COALESCE(pr.purchase_document_count, 0)) OVER()::integer AS TotalPurchaseDocumentCount
+    ,SUM(COALESCE(vr.return_document_count, 0)) OVER()::integer AS TotalReturnDocumentCount
+    ,SUM(COALESCE(pr.gross_purchases, 0)) OVER() AS TotalGrossPurchases
+    ,SUM(COALESCE(vr.returned_amount, 0)) OVER() AS TotalReturnedAmount
+    ,SUM(COALESCE(pr.gross_purchases, 0) - COALESCE(vr.returned_amount, 0)) OVER() AS TotalNetPurchases
 FROM keys k
 LEFT JOIN cat_trd_party p
     ON p.catalog_id = k.vendor_id
@@ -282,16 +405,20 @@ LEFT JOIN purchases pr
     ON pr.vendor_id = k.vendor_id
 LEFT JOIN returns vr
     ON vr.vendor_id = k.vendor_id
+WHERE COALESCE(pr.purchase_document_count, 0) <> 0
+   OR COALESCE(vr.return_document_count, 0) <> 0
 ORDER BY
     COALESCE(pr.gross_purchases, 0) - COALESCE(vr.returned_amount, 0) DESC,
-    COALESCE(p.display, k.vendor_id::text) ASC;
+    COALESCE(p.display, k.vendor_id::text) ASC
+OFFSET @offset
+LIMIT @limit;
 """;
 
         var vendorIdArray = NormalizeIds(vendorIds);
         var itemIdArray = NormalizeIds(itemIds);
         var warehouseIdArray = NormalizeIds(warehouseIds);
 
-        var rows = await uow.Connection.QueryAsync<PurchasesByVendorSummaryRow>(new CommandDefinition(
+        var rows = (await uow.Connection.QueryAsync<PurchasesByVendorPageSqlRow>(new CommandDefinition(
             sql,
             new
             {
@@ -305,13 +432,51 @@ ORDER BY
                 has_warehouse_filter = warehouseIdArray.Length > 0,
                 vendor_ids = vendorIdArray,
                 item_ids = itemIdArray,
-                warehouse_ids = warehouseIdArray
+                warehouse_ids = warehouseIdArray,
+                offset,
+                limit
             },
             transaction: uow.Transaction,
-            cancellationToken: ct));
+            cancellationToken: ct))).AsList();
 
-        return rows.ToArray();
+        var first = rows.FirstOrDefault();
+
+        return new TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>(
+            rows.Select(static row => new PurchasesByVendorSummaryRow(
+                row.VendorId,
+                row.VendorDisplay,
+                row.PurchaseDocumentCount,
+                row.ReturnDocumentCount,
+                row.GrossPurchases,
+                row.ReturnedAmount,
+                row.NetPurchases)).ToArray(),
+            first?.TotalCount ?? 0,
+            first is null
+                ? new PurchasesByVendorTotals(0, 0, 0m, 0m, 0m)
+                : new PurchasesByVendorTotals(
+                    first.TotalPurchaseDocumentCount,
+                    first.TotalReturnDocumentCount,
+                    first.TotalGrossPurchases,
+                    first.TotalReturnedAmount,
+                    first.TotalNetPurchases));
     }
+
+    public async Task<IReadOnlyList<PurchasesByVendorSummaryRow>> GetPurchasesByVendorAsync(
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<Guid>? vendorIds,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        CancellationToken ct = default)
+        => (await GetPurchasesByVendorPageAsync(
+            fromInclusive,
+            toInclusive,
+            vendorIds,
+            itemIds,
+            warehouseIds,
+            0,
+            int.MaxValue,
+            ct)).Rows;
 
     public async Task<IReadOnlyList<RecentTradeDocumentSummaryRow>> GetRecentDocumentsAsync(
         DateOnly asOf,
@@ -321,27 +486,7 @@ ORDER BY
         await uow.EnsureConnectionOpenAsync(ct);
 
         const string sql = """
-WITH purchase_receipt_totals AS (
-    SELECT document_id, SUM(line_amount) AS amount
-    FROM doc_trd_purchase_receipt__lines
-    GROUP BY document_id
-),
-sales_invoice_totals AS (
-    SELECT document_id, SUM(line_amount) AS amount
-    FROM doc_trd_sales_invoice__lines
-    GROUP BY document_id
-),
-customer_return_totals AS (
-    SELECT document_id, SUM(line_amount) AS amount
-    FROM doc_trd_customer_return__lines
-    GROUP BY document_id
-),
-vendor_return_totals AS (
-    SELECT document_id, SUM(line_amount) AS amount
-    FROM doc_trd_vendor_return__lines
-    GROUP BY document_id
-),
-recent AS (
+WITH recent_candidates AS (
     SELECT
         d.id AS DocumentId,
         d.type_code AS DocumentTypeCode,
@@ -356,14 +501,12 @@ recent AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        totals.amount AS Amount
+        NULL::numeric AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_purchase_receipt h
         ON h.document_id = d.id
     LEFT JOIN cat_trd_party partner
         ON partner.catalog_id = h.vendor_id
-    LEFT JOIN purchase_receipt_totals totals
-        ON totals.document_id = h.document_id
     WHERE d.type_code = @purchase_receipt_type
       AND d.status <> @deleted_status
       AND h.document_date_utc <= @as_of_utc
@@ -384,14 +527,12 @@ recent AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        totals.amount AS Amount
+        NULL::numeric AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_sales_invoice h
         ON h.document_id = d.id
     LEFT JOIN cat_trd_party partner
         ON partner.catalog_id = h.customer_id
-    LEFT JOIN sales_invoice_totals totals
-        ON totals.document_id = h.document_id
     WHERE d.type_code = @sales_invoice_type
       AND d.status <> @deleted_status
       AND h.document_date_utc <= @as_of_utc
@@ -412,7 +553,7 @@ recent AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        h.amount AS Amount
+        h.amount AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_customer_payment h
         ON h.document_id = d.id
@@ -438,7 +579,7 @@ recent AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        h.amount AS Amount
+        h.amount AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_vendor_payment h
         ON h.document_id = d.id
@@ -464,14 +605,12 @@ recent AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        totals.amount AS Amount
+        NULL::numeric AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_customer_return h
         ON h.document_id = d.id
     LEFT JOIN cat_trd_party partner
         ON partner.catalog_id = h.customer_id
-    LEFT JOIN customer_return_totals totals
-        ON totals.document_id = h.document_id
     WHERE d.type_code = @customer_return_type
       AND d.status <> @deleted_status
       AND h.document_date_utc <= @as_of_utc
@@ -492,17 +631,21 @@ recent AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        totals.amount AS Amount
+        NULL::numeric AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_vendor_return h
         ON h.document_id = d.id
     LEFT JOIN cat_trd_party partner
         ON partner.catalog_id = h.vendor_id
-    LEFT JOIN vendor_return_totals totals
-        ON totals.document_id = h.document_id
     WHERE d.type_code = @vendor_return_type
       AND d.status <> @deleted_status
       AND h.document_date_utc <= @as_of_utc
+),
+recent AS (
+    SELECT *
+    FROM recent_candidates
+    ORDER BY UpdatedAtUtc DESC, DocumentDateUtc DESC, DocumentDisplay ASC
+    LIMIT @limit
 )
 SELECT
     DocumentId,
@@ -513,10 +656,27 @@ SELECT
     UpdatedAtUtc,
     StatusDisplay,
     PartnerDisplay,
-    Amount
+    CASE DocumentTypeCode
+        WHEN @purchase_receipt_type THEN (
+            SELECT SUM(line.line_amount)
+            FROM doc_trd_purchase_receipt__lines line
+            WHERE line.document_id = recent.DocumentId)
+        WHEN @sales_invoice_type THEN (
+            SELECT SUM(line.line_amount)
+            FROM doc_trd_sales_invoice__lines line
+            WHERE line.document_id = recent.DocumentId)
+        WHEN @customer_return_type THEN (
+            SELECT SUM(line.line_amount)
+            FROM doc_trd_customer_return__lines line
+            WHERE line.document_id = recent.DocumentId)
+        WHEN @vendor_return_type THEN (
+            SELECT SUM(line.line_amount)
+            FROM doc_trd_vendor_return__lines line
+            WHERE line.document_id = recent.DocumentId)
+        ELSE HeaderAmount
+    END AS Amount
 FROM recent
-ORDER BY UpdatedAtUtc DESC, DocumentDateUtc DESC, DocumentDisplay ASC
-LIMIT @limit;
+ORDER BY UpdatedAtUtc DESC, DocumentDateUtc DESC, DocumentDisplay ASC;
 """;
 
         var rows = await uow.Connection.QueryAsync<RecentTradeDocumentSummaryRow>(new CommandDefinition(
@@ -545,4 +705,53 @@ LIMIT @limit;
             .Distinct()
             .ToArray()
            ?? [];
+
+    private sealed record SalesByItemPageSqlRow(
+        Guid ItemId,
+        string ItemDisplay,
+        decimal SoldQuantity,
+        decimal GrossSales,
+        decimal ReturnedQuantity,
+        decimal ReturnedAmount,
+        decimal NetSales,
+        decimal NetCogs,
+        int TotalCount,
+        decimal TotalSoldQuantity,
+        decimal TotalGrossSales,
+        decimal TotalReturnedQuantity,
+        decimal TotalReturnedAmount,
+        decimal TotalNetSales,
+        decimal TotalNetCogs);
+
+    private sealed record SalesByCustomerPageSqlRow(
+        Guid CustomerId,
+        string CustomerDisplay,
+        int SalesDocumentCount,
+        int ReturnDocumentCount,
+        decimal GrossSales,
+        decimal ReturnedAmount,
+        decimal NetSales,
+        decimal NetCogs,
+        int TotalCount,
+        int TotalSalesDocumentCount,
+        int TotalReturnDocumentCount,
+        decimal TotalGrossSales,
+        decimal TotalReturnedAmount,
+        decimal TotalNetSales,
+        decimal TotalNetCogs);
+
+    private sealed record PurchasesByVendorPageSqlRow(
+        Guid VendorId,
+        string VendorDisplay,
+        int PurchaseDocumentCount,
+        int ReturnDocumentCount,
+        decimal GrossPurchases,
+        decimal ReturnedAmount,
+        decimal NetPurchases,
+        int TotalCount,
+        int TotalPurchaseDocumentCount,
+        int TotalReturnDocumentCount,
+        decimal TotalGrossPurchases,
+        decimal TotalReturnedAmount,
+        decimal TotalNetPurchases);
 }

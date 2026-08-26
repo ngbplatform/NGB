@@ -51,6 +51,45 @@ public sealed class NgbSecurityCacheTests
 
         result.Failed.Should().BeTrue();
         result.Failures.Should().Contain(x => x.Contains(nameof(NgbSecurityCacheOptions.ReportDefinitionsTtl), StringComparison.Ordinal));
+
+        validator.Validate(
+                Options.DefaultName,
+                new NgbSecurityCacheOptions { MaxEntries = 99 })
+            .Failed.Should().BeTrue();
+        validator.Validate(
+                Options.DefaultName,
+                new NgbSecurityCacheOptions { MaxEntries = 200_001 })
+            .Failed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Cache_EvictsOldestTrackedSecurityKeyAtConfiguredBound()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions { MaxEntries = 100 }));
+        var firstUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+
+        for (var index = 0; index <= 100; index++)
+        {
+            var userId = index == 0
+                ? firstUserId
+                : Guid.Parse($"00000000-0000-0000-0000-{index + 1:000000000000}");
+            await cache.GetOrCreatePermissionSnapshotAsync(
+                userId,
+                accessVersion: 1,
+                _ => Task.FromResult(index),
+                CancellationToken.None);
+        }
+
+        var reloaded = await cache.GetOrCreatePermissionSnapshotAsync(
+            firstUserId,
+            accessVersion: 1,
+            _ => Task.FromResult(999),
+            CancellationToken.None);
+
+        reloaded.Should().Be(999);
     }
 
     private static PermissionSnapshot CreateSnapshot(Guid userId, long accessVersion)

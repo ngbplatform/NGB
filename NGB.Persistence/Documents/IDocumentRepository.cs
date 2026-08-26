@@ -16,11 +16,19 @@ public interface IDocumentRepository
 
     Task<DocumentRecord?> GetAsync(Guid documentId, CancellationToken ct = default);
 
+    Task<IReadOnlyDictionary<Guid, DocumentRecord>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Loads and locks the document row until the current transaction completes (SELECT ... FOR UPDATE).
     /// Requires an active transaction.
     /// </summary>
     Task<DocumentRecord?> GetForUpdateAsync(Guid documentId, CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, DocumentRecord>> GetForUpdateByIdsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default);
 
     Task UpdateStatusAsync(
         Guid documentId,

@@ -44,7 +44,11 @@ describe('security api client', () => {
 
     mocks.httpGet.mockResolvedValueOnce([])
     await getUsers()
-    expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/users')
+    expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/users?offset=0&limit=50')
+
+    mocks.httpGet.mockResolvedValueOnce([])
+    await getUsers({ offset: -10, limit: 25, isActive: false })
+    expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/users?offset=0&limit=25&isActive=false')
 
     mocks.httpGet.mockResolvedValueOnce({})
     await getUser('user/id')

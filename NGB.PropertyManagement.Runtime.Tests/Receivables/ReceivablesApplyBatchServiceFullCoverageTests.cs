@@ -84,16 +84,16 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
     {
         var fixture = new Fixture();
         var applyId = Guid.CreateVersion7();
-        fixture.Documents.Setup(x => x.GetForUpdateAsync(applyId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((DocumentRecord?)null);
+        fixture.Documents.SetupSequence(x => x.GetForUpdateByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>())
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord> { [applyId] = Document(applyId, "wrong", DocumentStatus.Draft) })
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [applyId] = Document(applyId, PropertyManagementCodes.ReceivableApply, DocumentStatus.Posted)
+            });
         await AssertBatchInvalid(() => fixture.ExecuteAsync(fixture.Payload(), applyId));
-
-        fixture.Documents.Setup(x => x.GetForUpdateAsync(applyId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Document(applyId, "wrong", DocumentStatus.Draft));
         await AssertBatchInvalid(() => fixture.ExecuteAsync(fixture.Payload(), applyId));
-
-        fixture.Documents.Setup(x => x.GetForUpdateAsync(applyId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Document(applyId, PropertyManagementCodes.ReceivableApply, DocumentStatus.Posted));
         await AssertBatchInvalid(() => fixture.ExecuteAsync(fixture.Payload(), applyId));
     }
 
@@ -108,8 +108,12 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
         var charge2 = Guid.CreateVersion7();
         var user1 = Guid.CreateVersion7();
         var user2 = Guid.CreateVersion7();
-        fixture.Documents.Setup(x => x.GetForUpdateAsync(existingApply, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Document(existingApply, PropertyManagementCodes.ReceivableApply, DocumentStatus.Draft));
+        fixture.Documents.Setup(x => x.GetForUpdateByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [existingApply] = Document(existingApply, PropertyManagementCodes.ReceivableApply, DocumentStatus.Draft)
+            });
         fixture.Drafts.Setup(x => x.CreateDraftAsync(
                 PropertyManagementCodes.ReceivableApply, null, It.IsAny<DateTime>(), false, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(newApply);
@@ -132,8 +136,6 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
         fixture.Heads.Verify(x => x.UpsertAsync(
             It.IsAny<Guid>(), payment, It.IsAny<Guid>(), new DateOnly(2026, 1, 15), It.IsAny<decimal>(),
             It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
-        fixture.Relationships.Verify(x => x.CreateAsync(
-            It.IsAny<Guid>(), It.IsAny<Guid>(), "based_on", false, It.IsAny<CancellationToken>()), Times.Exactly(4));
         fixture.Posting.Verify(x => x.PostAsync(It.IsAny<Guid>(), false, It.IsAny<CancellationToken>()), Times.Exactly(2));
         fixture.Uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -174,13 +176,13 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
             Uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-            Relationships.Setup(x => x.CreateAsync(
-                    It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), false, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(true);
+            Documents.Setup(x => x.GetForUpdateByIdsAsync(
+                    It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<Guid, DocumentRecord>());
             WorkCenter.Setup(x => x.CompleteIfExhaustedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             Sut = new ReceivablesApplyBatchService(
-                Drafts.Object, Posting.Object, Relationships.Object, Policy.Object, Heads.Object,
+                Drafts.Object, Posting.Object, Policy.Object, Heads.Object,
                 Documents.Object, Locks.Object, Uow.Object, WorkCenter.Object);
         }
 
@@ -189,7 +191,6 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
         public Guid ChargeId { get; } = Guid.CreateVersion7();
         public Mock<IDocumentDraftService> Drafts { get; } = new();
         public Mock<IDocumentPostingService> Posting { get; } = new();
-        public Mock<IDocumentRelationshipService> Relationships { get; } = new();
         public Mock<IPropertyManagementAccountingPolicyReader> Policy { get; } = new();
         public Mock<IReceivableApplyHeadWriter> Heads { get; } = new();
         public Mock<IDocumentRepository> Documents { get; } = new();

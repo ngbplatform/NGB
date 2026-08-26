@@ -28,7 +28,8 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
         uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var reader = new Mock<IPropertyManagementRentChargeGenerationReader>();
-        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(asOfUtc, It.IsAny<CancellationToken>()))
+        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                asOfUtc, null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
                 new PmRentChargeGenerationLease(
@@ -106,7 +107,8 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
         uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
         var reader = new Mock<IPropertyManagementRentChargeGenerationReader>();
-        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(asOfUtc, It.IsAny<CancellationToken>()))
+        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                asOfUtc, null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
                 new PmRentChargeGenerationLease(
@@ -243,7 +245,8 @@ public sealed class GenerateMonthlyRentChargesService_P0Tests
         Guid leaseId)
     {
         var reader = new Mock<IPropertyManagementRentChargeGenerationReader>();
-        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(asOfUtc, It.IsAny<CancellationToken>()))
+        reader.Setup(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                asOfUtc, null, null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
                 new PmRentChargeGenerationLease(

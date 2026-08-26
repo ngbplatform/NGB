@@ -42,11 +42,17 @@ public sealed class PostgresAdvisoryLockManagerFullCoverageTests
         Func<Task> periodInactive = () => inactive.LockPeriodAsync(new DateOnly(2026, 8, 15));
         Func<Task> periodNullTransaction = () => activeWithoutTransaction.LockPeriodAsync(new DateOnly(2026, 8, 15));
         Func<Task> document = () => inactive.LockDocumentAsync(Guid.NewGuid());
+        Func<Task> documents = () => inactive.LockDocumentsAsync([Guid.NewGuid()]);
+        Func<Task> periods = () => inactive.LockPeriodsAsync(
+            [new DateOnly(2026, 8, 1)],
+            AdvisoryLockPeriodScope.Accounting);
         Func<Task> catalog = () => inactive.LockCatalogAsync(Guid.NewGuid());
         Func<Task> register = () => inactive.LockOperationalRegisterAsync(Guid.NewGuid());
         await periodInactive.Should().ThrowAsync<NgbInvariantViolationException>();
         await periodNullTransaction.Should().ThrowAsync<NgbInvariantViolationException>();
         await document.Should().ThrowAsync<NgbInvariantViolationException>();
+        await documents.Should().ThrowAsync<NgbInvariantViolationException>();
+        await periods.Should().ThrowAsync<NgbInvariantViolationException>();
         await catalog.Should().ThrowAsync<NgbInvariantViolationException>();
         await register.Should().ThrowAsync<NgbInvariantViolationException>();
     }
@@ -92,6 +98,43 @@ public sealed class PostgresAdvisoryLockManagerFullCoverageTests
         }
         Parameter(fixture.Connection.Commands[0], "Key1").Should().NotBe(Parameter(fixture.Connection.Commands[2], "Key1"));
         Parameter(fixture.Connection.Commands[2], "Key1").Should().NotBe(Parameter(fixture.Connection.Commands[4], "Key1"));
+    }
+
+    [Fact]
+    public async Task Document_batch_lock_uses_one_roundtrip_and_cached_single_lock_is_a_no_op()
+    {
+        var fixture = ActiveManager(new RecordingDbConnection(scalar: _ => true));
+        var first = Guid.Parse("00000000-0000-0000-0000-000000000010");
+        var second = Guid.Parse("00000000-0000-0000-0000-000000000020");
+
+        await fixture.Manager.LockDocumentsAsync([second, Guid.Empty, first, second]);
+        await fixture.Manager.LockDocumentAsync(first);
+
+        fixture.Connection.Commands.Should().ContainSingle();
+        fixture.Connection.Commands[0].CommandText.Should()
+            .Contain("UNNEST").And.Contain("pg_try_advisory_xact_lock");
+    }
+
+    [Fact]
+    public async Task Period_batch_lock_normalizes_deduplicates_orders_and_uses_one_roundtrip()
+    {
+        var fixture = ActiveManager(new RecordingDbConnection(scalar: _ => true));
+
+        await fixture.Manager.LockPeriodsAsync(
+            [new DateOnly(2026, 9, 30), new DateOnly(2026, 8, 15), new DateOnly(2026, 9, 1)],
+            AdvisoryLockPeriodScope.OperationalRegister);
+        await fixture.Manager.LockPeriodsAsync([], AdvisoryLockPeriodScope.Accounting);
+
+        fixture.Connection.Commands.Should().ContainSingle();
+        fixture.Connection.Commands[0].CommandText.Should().Contain("UNNEST");
+        PostgresAdvisoryLockManager.NormalizePeriodLockKeys(
+                [new DateOnly(2026, 9, 30), new DateOnly(2026, 8, 15), new DateOnly(2026, 9, 1)])
+            .Should().Equal(202608, 202609);
+
+        Func<Task> invalidScope = () => fixture.Manager.LockPeriodsAsync(
+            [new DateOnly(2026, 8, 1)],
+            (AdvisoryLockPeriodScope)999);
+        await invalidScope.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
     }
 
     [Fact]

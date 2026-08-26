@@ -221,13 +221,71 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         return MapRow((IDictionary<string, object?>)row, fields);
     }
 
-    public async Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllAsync(
+    public Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllAsync(
         Guid registerId,
         DateTime asOfUtc,
         Guid? recorderDocumentId = null,
         Guid? afterDimensionSetId = null,
         int limit = 200,
         CancellationToken ct = default)
+        => SliceLastAllPageAsync(
+            registerId,
+            asOfUtc,
+            recorderDocumentId,
+            afterDimensionSetId,
+            limit,
+            includeDeleted: true,
+            ct);
+
+    public Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllPageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        Guid? recorderDocumentId = null,
+        Guid? afterDimensionSetId = null,
+        int limit = 200,
+        bool includeDeleted = false,
+        CancellationToken ct = default)
+        => SliceLastAllPageCoreAsync(
+            registerId,
+            asOfUtc,
+            recorderDocumentId,
+            afterDimensionSetId,
+            limit,
+            includeDeleted,
+            visiblePageSize: null,
+            ct);
+
+    public Task<IReadOnlyList<ReferenceRegisterRecordRead>> ScanSliceLastAllForVisiblePageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        Guid? recorderDocumentId,
+        Guid? afterDimensionSetId,
+        int pageSize,
+        int maxScanPages,
+        CancellationToken ct = default)
+    {
+        var scanLimit = GetRawScanLimit(pageSize, maxScanPages);
+
+        return SliceLastAllPageCoreAsync(
+            registerId,
+            asOfUtc,
+            recorderDocumentId,
+            afterDimensionSetId,
+            scanLimit,
+            includeDeleted: true,
+            visiblePageSize: pageSize,
+            ct);
+    }
+
+    private async Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllPageCoreAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        Guid? recorderDocumentId,
+        Guid? afterDimensionSetId,
+        int limit,
+        bool includeDeleted,
+        int? visiblePageSize,
+        CancellationToken ct)
     {
         registerId.EnsureNonEmpty(nameof(registerId));
         asOfUtc.EnsureUtc(nameof(asOfUtc));
@@ -277,28 +335,71 @@ public sealed class PostgresReferenceRegisterRecordsReader(
             ? string.Empty
             : "AND t.dimension_set_id > @AfterDimensionSetId";
 
-        // DISTINCT ON picks the first row per key according to ORDER BY.
+        // Filter tombstones only after DISTINCT ON has selected the latest version;
+        // filtering them in the inner WHERE would resurrect an older active version.
+        var resultSql = visiblePageSize is null
+            ? """
+              SELECT *
+                FROM last_rows
+               WHERE @IncludeDeleted OR "IsDeleted" = FALSE
+               ORDER BY "DimensionSetId", "RecorderDocumentId"
+               LIMIT @Limit
+              """
+            : """
+              , numbered_rows AS (
+                  SELECT
+                      last_rows.*,
+                      ROW_NUMBER() OVER (
+                          ORDER BY "DimensionSetId", "RecorderDocumentId"
+                      ) AS "__ScanPosition",
+                      COUNT(*) FILTER (WHERE "IsDeleted" = FALSE) OVER (
+                          ORDER BY "DimensionSetId", "RecorderDocumentId"
+                          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                      ) AS "__VisibleCount"
+                  FROM last_rows
+              )
+              SELECT *
+                FROM numbered_rows
+               WHERE "__ScanPosition" <= LEAST(
+                   CAST(@Limit AS bigint),
+                   COALESCE(
+                       (
+                           SELECT CAST(
+                               CEIL(MIN(candidate."__ScanPosition")::numeric / @VisiblePageSize)
+                               * @VisiblePageSize
+                               AS bigint)
+                             FROM numbered_rows candidate
+                            WHERE candidate."__VisibleCount" >= @VisiblePageSize
+                       ),
+                       CAST(@Limit AS bigint)
+                   )
+               )
+               ORDER BY "DimensionSetId", "RecorderDocumentId"
+              """;
+
         var sql = $"""
-                  SELECT DISTINCT ON (t.dimension_set_id, t.recorder_document_id)
-                      record_id            AS "RecordId",
-                      dimension_set_id     AS "DimensionSetId",
-                      period_utc           AS "PeriodUtc",
-                      period_bucket_utc    AS "PeriodBucketUtc",
-                      recorder_document_id AS "RecorderDocumentId",
-                      recorded_at_utc      AS "RecordedAtUtc",
-                      is_deleted           AS "IsDeleted"{fieldsSelect}
-                  FROM {table} t
-                  WHERE
-                      t.recorded_at_utc <= @AsOfUtc
-                      {whereRecorder}
-                      {whereAfter}
-                      {wherePeriod}
-                  ORDER BY
-                      t.dimension_set_id,
-                      t.recorder_document_id,
-                      {orderByPeriod} t.recorded_at_utc DESC,
-                      t.record_id DESC
-                  LIMIT @Limit;
+                  WITH last_rows AS (
+                      SELECT DISTINCT ON (t.dimension_set_id, t.recorder_document_id)
+                          record_id            AS "RecordId",
+                          dimension_set_id     AS "DimensionSetId",
+                          period_utc           AS "PeriodUtc",
+                          period_bucket_utc    AS "PeriodBucketUtc",
+                          recorder_document_id AS "RecorderDocumentId",
+                          recorded_at_utc      AS "RecordedAtUtc",
+                          is_deleted           AS "IsDeleted"{fieldsSelect}
+                      FROM {table} t
+                      WHERE
+                          t.recorded_at_utc <= @AsOfUtc
+                          {whereRecorder}
+                          {whereAfter}
+                          {wherePeriod}
+                      ORDER BY
+                          t.dimension_set_id,
+                          t.recorder_document_id,
+                          {orderByPeriod} t.recorded_at_utc DESC,
+                          t.record_id DESC
+                  )
+                  {resultSql};
                   """;
 
         var cmd = new CommandDefinition(
@@ -309,6 +410,8 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                 BucketAsOfUtc = bucketAsOf,
                 RecorderDocumentId = recorderDocumentId,
                 AfterDimensionSetId = afterDimensionSetId,
+                IncludeDeleted = includeDeleted,
+                VisiblePageSize = visiblePageSize,
                 Limit = limit
             },
             transaction: uow.Transaction,
@@ -318,7 +421,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         return MapRows(rows, fields);
     }
 
-    public async Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllFilteredByDimensionsAsync(
+    public Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllFilteredByDimensionsAsync(
         Guid registerId,
         DateTime asOfUtc,
         IReadOnlyList<DimensionValue> requiredDimensions,
@@ -326,6 +429,69 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         Guid? afterDimensionSetId = null,
         int limit = 200,
         CancellationToken ct = default)
+        => SliceLastAllFilteredPageByDimensionsAsync(
+            registerId,
+            asOfUtc,
+            requiredDimensions,
+            recorderDocumentId,
+            afterDimensionSetId,
+            limit,
+            includeDeleted: true,
+            ct);
+
+    public Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllFilteredPageByDimensionsAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        IReadOnlyList<DimensionValue> requiredDimensions,
+        Guid? recorderDocumentId = null,
+        Guid? afterDimensionSetId = null,
+        int limit = 200,
+        bool includeDeleted = false,
+        CancellationToken ct = default)
+        => SliceLastAllFilteredPageByDimensionsCoreAsync(
+            registerId,
+            asOfUtc,
+            requiredDimensions,
+            recorderDocumentId,
+            afterDimensionSetId,
+            limit,
+            includeDeleted,
+            visiblePageSize: null,
+            ct);
+
+    public Task<IReadOnlyList<ReferenceRegisterRecordRead>> ScanSliceLastAllFilteredForVisiblePageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        IReadOnlyList<DimensionValue> requiredDimensions,
+        Guid? recorderDocumentId,
+        Guid? afterDimensionSetId,
+        int pageSize,
+        int maxScanPages,
+        CancellationToken ct = default)
+    {
+        var scanLimit = GetRawScanLimit(pageSize, maxScanPages);
+        return SliceLastAllFilteredPageByDimensionsCoreAsync(
+            registerId,
+            asOfUtc,
+            requiredDimensions,
+            recorderDocumentId,
+            afterDimensionSetId,
+            scanLimit,
+            includeDeleted: true,
+            visiblePageSize: pageSize,
+            ct);
+    }
+
+    private async Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllFilteredPageByDimensionsCoreAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        IReadOnlyList<DimensionValue> requiredDimensions,
+        Guid? recorderDocumentId,
+        Guid? afterDimensionSetId,
+        int limit,
+        bool includeDeleted,
+        int? visiblePageSize,
+        CancellationToken ct)
     {
         registerId.EnsureNonEmpty(nameof(registerId));
         if (requiredDimensions is null)
@@ -408,37 +574,81 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         p.Add("BucketAsOfUtc", bucketAsOf);
         p.Add("RecorderDocumentId", recorderDocumentId);
         p.Add("AfterDimensionSetId", afterDimensionSetId);
+        p.Add("IncludeDeleted", includeDeleted);
+        p.Add("VisiblePageSize", visiblePageSize);
         p.Add("Limit", limit);
 
-        // DISTINCT ON picks the first row per key according to ORDER BY.
+        // Filter tombstones only after DISTINCT ON has selected the latest version.
+        var resultSql = visiblePageSize is null
+            ? """
+              SELECT *
+                FROM last_rows
+               WHERE @IncludeDeleted OR "IsDeleted" = FALSE
+               ORDER BY "DimensionSetId", "RecorderDocumentId"
+               LIMIT @Limit
+              """
+            : """
+              , numbered_rows AS (
+                  SELECT
+                      last_rows.*,
+                      ROW_NUMBER() OVER (
+                          ORDER BY "DimensionSetId", "RecorderDocumentId"
+                      ) AS "__ScanPosition",
+                      COUNT(*) FILTER (WHERE "IsDeleted" = FALSE) OVER (
+                          ORDER BY "DimensionSetId", "RecorderDocumentId"
+                          ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                      ) AS "__VisibleCount"
+                  FROM last_rows
+              )
+              SELECT *
+                FROM numbered_rows
+               WHERE "__ScanPosition" <= LEAST(
+                   CAST(@Limit AS bigint),
+                   COALESCE(
+                       (
+                           SELECT CAST(
+                               CEIL(MIN(candidate."__ScanPosition")::numeric / @VisiblePageSize)
+                               * @VisiblePageSize
+                               AS bigint)
+                             FROM numbered_rows candidate
+                            WHERE candidate."__VisibleCount" >= @VisiblePageSize
+                       ),
+                       CAST(@Limit AS bigint)
+                   )
+               )
+               ORDER BY "DimensionSetId", "RecorderDocumentId"
+              """;
+
         var sql = $"""
-                  SELECT DISTINCT ON (t.dimension_set_id, t.recorder_document_id)
-                      record_id            AS "RecordId",
-                      dimension_set_id     AS "DimensionSetId",
-                      period_utc           AS "PeriodUtc",
-                      period_bucket_utc    AS "PeriodBucketUtc",
-                      recorder_document_id AS "RecorderDocumentId",
-                      recorded_at_utc      AS "RecordedAtUtc",
-                      is_deleted           AS "IsDeleted"{fieldsSelect}
-                  FROM {table} t
-                  WHERE
-                      t.recorded_at_utc <= @AsOfUtc
-                      {whereRecorder}
-                      {whereAfter}
-                      {wherePeriod}
-                      AND t.dimension_set_id IN (
-                          SELECT s.dimension_set_id
-                          FROM platform_dimension_set_items s
-                          WHERE {string.Join(" OR ", dimPredicates)}
-                          GROUP BY s.dimension_set_id
-                          HAVING COUNT(*) = @DimCount
-                      )
-                  ORDER BY
-                      t.dimension_set_id,
-                      t.recorder_document_id,
-                      {orderByPeriod} t.recorded_at_utc DESC,
-                      t.record_id DESC
-                  LIMIT @Limit;
+                  WITH last_rows AS (
+                      SELECT DISTINCT ON (t.dimension_set_id, t.recorder_document_id)
+                          record_id            AS "RecordId",
+                          dimension_set_id     AS "DimensionSetId",
+                          period_utc           AS "PeriodUtc",
+                          period_bucket_utc    AS "PeriodBucketUtc",
+                          recorder_document_id AS "RecorderDocumentId",
+                          recorded_at_utc      AS "RecordedAtUtc",
+                          is_deleted           AS "IsDeleted"{fieldsSelect}
+                      FROM {table} t
+                      WHERE
+                          t.recorded_at_utc <= @AsOfUtc
+                          {whereRecorder}
+                          {whereAfter}
+                          {wherePeriod}
+                          AND t.dimension_set_id IN (
+                              SELECT s.dimension_set_id
+                              FROM platform_dimension_set_items s
+                              WHERE {string.Join(" OR ", dimPredicates)}
+                              GROUP BY s.dimension_set_id
+                              HAVING COUNT(*) = @DimCount
+                          )
+                      ORDER BY
+                          t.dimension_set_id,
+                          t.recorder_document_id,
+                          {orderByPeriod} t.recorded_at_utc DESC,
+                          t.record_id DESC
+                  )
+                  {resultSql};
                   """;
 
         var cmd = new CommandDefinition(
@@ -656,6 +866,19 @@ public sealed class PostgresReferenceRegisterRecordsReader(
 
         var rows = await uow.Connection.QueryAsync(cmd);
         return MapRows(rows, fields);
+    }
+
+    private static int GetRawScanLimit(int pageSize, int maxScanPages)
+    {
+        if (pageSize < 1)
+            throw new NgbArgumentOutOfRangeException(nameof(pageSize), pageSize, "Page size must be >= 1");
+
+        if (maxScanPages < 1)
+            throw new NgbArgumentOutOfRangeException(nameof(maxScanPages), maxScanPages, "Maximum scan pages must be >= 1");
+
+        return pageSize > int.MaxValue / maxScanPages
+            ? int.MaxValue
+            : pageSize * maxScanPages;
     }
 
     private static IReadOnlyList<ReferenceRegisterRecordRead> MapRows(

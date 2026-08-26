@@ -42,6 +42,7 @@ public static class CrmDatabaseBootstrapper
                 ON doc_crm_quote__lines(product_id);
 
             SELECT ngb_install_typed_document_immutability_guards();
+            SELECT ngb_install_search_trigram_indexes(ARRAY['cat_crm_', 'doc_crm_']);
             """,
             cancellationToken: ct));
     }

@@ -1,20 +1,18 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Core.Dimensions;
 using NGB.Persistence.OperationalRegisters;
-using NGB.Runtime.OperationalRegisters;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 using NGB.Trade.Runtime.Policy;
-using NGB.Trade.Runtime.Reporting;
 
 namespace NGB.Trade.Runtime.Documents.Validation;
 
 public sealed class TradeInventoryAvailabilityService(
     ITradeAccountingPolicyReader policyReader,
-    IOperationalRegisterReadService readService,
-    IOperationalRegisterMovementsQueryReader movementsQueryReader,
+    IOperationalRegisterResourceNetReader resourceNetReader,
     ICatalogService catalogs)
 {
+    private static readonly Guid ItemDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Item}");
     private static readonly Guid WarehouseDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Warehouse}");
 
     internal async Task EnsureSufficientOnHandAsync(
@@ -37,40 +35,25 @@ public sealed class TradeInventoryAvailabilityService(
             return;
 
         var policy = await policyReader.GetRequiredAsync(ct);
-        var balancesByKey = new Dictionary<TradeInventoryBalanceKey, decimal>();
-        var displayByKey = new Dictionary<TradeInventoryBalanceKey, (string Warehouse, string Item)>();
-
-        foreach (var warehouseId in aggregated.Select(static x => x.Key.WarehouseId).Distinct())
-        {
-            var balances = await TradeReportingHelpers.ReadInventoryBalancesAsync(
-                readService,
-                movementsQueryReader,
-                policy.InventoryMovementsRegisterId,
-                asOf,
-                [new DimensionValue(WarehouseDimensionId, warehouseId)],
-                ct);
-
-            foreach (var balance in balances)
-            {
-                var itemId = TradeReportingHelpers.TryGetValueId(balance.Bag, TradeCodes.Item);
-                var balanceWarehouseId = TradeReportingHelpers.TryGetValueId(balance.Bag, TradeCodes.Warehouse);
-
-                if (itemId is null || balanceWarehouseId is null)
-                    continue;
-
-                var key = new TradeInventoryBalanceKey(balanceWarehouseId.Value, itemId.Value);
-                balancesByKey[key] = balance.Quantity;
-                displayByKey[key] = (
-                    TradeReportingHelpers.GetDisplay(balance.Bag, balance.Displays, TradeCodes.Warehouse),
-                    TradeReportingHelpers.GetDisplay(balance.Bag, balance.Displays, TradeCodes.Item));
-            }
-        }
+        var balanceValues = await resourceNetReader.GetNetsByDimensionsAsync(
+            policy.InventoryMovementsRegisterId,
+            aggregated
+                .Select(static request => (IReadOnlyList<DimensionValue>)
+                [
+                    new DimensionValue(WarehouseDimensionId, request.Key.WarehouseId),
+                    new DimensionValue(ItemDimensionId, request.Key.ItemId)
+                ])
+                .ToArray(),
+            "qty_delta",
+            asOf,
+            ct);
 
         var shortageDetails = new List<(TradeInventoryWithdrawalAggregate Request, decimal Available)>();
 
-        foreach (var request in aggregated)
+        for (var index = 0; index < aggregated.Length; index++)
         {
-            var available = balancesByKey.GetValueOrDefault(request.Key);
+            var request = aggregated[index];
+            var available = balanceValues[index];
             if (available >= request.Quantity)
                 continue;
 
@@ -90,12 +73,12 @@ public sealed class TradeInventoryAvailabilityService(
             ct);
 
         var shortages = shortageDetails
-            .OrderBy(x => ResolveWarehouseDisplay(x.Request.Key, displayByKey, warehouseDisplayById), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(x => ResolveItemDisplay(x.Request.Key, displayByKey, itemDisplayById), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => ResolveDisplay(x.Request.Key.WarehouseId, warehouseDisplayById), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => ResolveDisplay(x.Request.Key.ItemId, itemDisplayById), StringComparer.OrdinalIgnoreCase)
             .Select(x =>
             {
-                var warehouseDisplay = ResolveWarehouseDisplay(x.Request.Key, displayByKey, warehouseDisplayById);
-                var itemDisplay = ResolveItemDisplay(x.Request.Key, displayByKey, itemDisplayById);
+                var warehouseDisplay = ResolveDisplay(x.Request.Key.WarehouseId, warehouseDisplayById);
+                var itemDisplay = ResolveDisplay(x.Request.Key.ItemId, itemDisplayById);
                 return $"{warehouseDisplay} / {itemDisplay}: requested {x.Request.Quantity:0.####}, available {x.Available:0.####}.";
             })
             .ToArray();
@@ -114,25 +97,8 @@ public sealed class TradeInventoryAvailabilityService(
         return items.ToDictionary(static x => x.Id, static x => x.Label);
     }
 
-    private static string ResolveWarehouseDisplay(
-        TradeInventoryBalanceKey key,
-        IReadOnlyDictionary<TradeInventoryBalanceKey, (string Warehouse, string Item)> displayByKey,
-        IReadOnlyDictionary<Guid, string> warehouseDisplayById)
-        => displayByKey.TryGetValue(key, out var display)
-            ? display.Warehouse
-            : warehouseDisplayById.TryGetValue(key.WarehouseId, out var fallback)
-                ? fallback
-                : key.WarehouseId.ToString("D");
-
-    private static string ResolveItemDisplay(
-        TradeInventoryBalanceKey key,
-        IReadOnlyDictionary<TradeInventoryBalanceKey, (string Warehouse, string Item)> displayByKey,
-        IReadOnlyDictionary<Guid, string> itemDisplayById)
-        => displayByKey.TryGetValue(key, out var display)
-            ? display.Item
-            : itemDisplayById.TryGetValue(key.ItemId, out var fallback)
-                ? fallback
-                : key.ItemId.ToString("D");
+    private static string ResolveDisplay(Guid id, IReadOnlyDictionary<Guid, string> displayById)
+        => displayById.TryGetValue(id, out var display) ? display : id.ToString("D");
 }
 
 internal readonly record struct TradeInventoryWithdrawalRequest(Guid WarehouseId, Guid ItemId, decimal Quantity);

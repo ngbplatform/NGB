@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 using NGB.Core.AuditLog;
 using NGB.Core.Security;
@@ -21,9 +22,17 @@ public sealed class UserAccessManagementService(
     IAuditLogService audit)
     : IUserAccessManagementService
 {
-    public async Task<IReadOnlyList<UserListItemDto>> GetUsersAsync(CancellationToken ct)
+    public async Task<PageResponseDto<UserListItemDto>> GetUsersAsync(UserPageRequestDto request, CancellationToken ct)
     {
-        var platformUsers = await users.GetAllAsync(ct);
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        var offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset);
+        var limit = request.Limit <= 0
+            ? PagingLimits.DefaultPageSize
+            : Math.Min(request.Limit, PagingLimits.MaxPageSize);
+        var platformPage = await users.GetPageAsync(offset, limit, request.IsActive, ct);
+        var platformUsers = platformPage.Items;
         var userIds = platformUsers.Select(x => x.UserId).ToArray();
         var identityProviderIds = platformUsers
             .Select(static x => NormalizeIdentityProviderId(x.AuthSubject))
@@ -47,7 +56,7 @@ public sealed class UserAccessManagementService(
             ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
             : await identityProvider.FindUsersByEmailsAsync(fallbackEmails, ct);
 
-        return platformUsers
+        var items = platformUsers
             .Select(user =>
             {
                 rolesByUser.TryGetValue(user.UserId, out var assignedRoles);
@@ -73,6 +82,8 @@ public sealed class UserAccessManagementService(
             })
             .OrderBy(static x => x.DisplayName ?? x.Email ?? x.AuthSubject, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        return new PageResponseDto<UserListItemDto>(items, offset, limit, checked((int)platformPage.Total));
     }
 
     public async Task<UserDetailsDto> GetUserAsync(Guid userId, CancellationToken ct)
@@ -548,44 +559,46 @@ public sealed class UserAccessManagementService(
     {
         var oldRoleIds = oldRoles.Select(static role => role.RoleId).ToHashSet();
         var newRoleIds = newRoles.Select(static role => role.RoleId).ToHashSet();
+        var requests = new List<AuditLogWriteRequest>();
 
         foreach (var role in newRoles.Where(role => !oldRoleIds.Contains(role.RoleId)))
         {
-            await audit.WriteAsync(
+            requests.Add(new AuditLogWriteRequest(
                 AuditEntityKind.SecurityRole,
                 role.RoleId,
                 AuditActionCodes.SecurityRoleUpdate,
-                changes:
+                Changes:
                 [
                     AuditLogService.Change("assigned_users", null, auditUser)
                 ],
-                metadata: new
+                Metadata: new
                 {
                     assignment = "added",
                     roleCode = role.Code,
                     user = auditUser
-                },
-                ct: ct);
+                }));
         }
 
         foreach (var role in oldRoles.Where(role => !newRoleIds.Contains(role.RoleId)))
         {
-            await audit.WriteAsync(
+            requests.Add(new AuditLogWriteRequest(
                 AuditEntityKind.SecurityRole,
                 role.RoleId,
                 AuditActionCodes.SecurityRoleUpdate,
-                changes:
+                Changes:
                 [
                     AuditLogService.Change("assigned_users", auditUser, null)
                 ],
-                metadata: new
+                Metadata: new
                 {
                     assignment = "removed",
                     roleCode = role.Code,
                     user = auditUser
-                },
-                ct: ct);
+                }));
         }
+
+        if (requests.Count > 0)
+            await audit.WriteBatchAsync(requests, ct);
     }
 
     private static IReadOnlyList<AuditFieldChange> BuildUserAuditChanges(

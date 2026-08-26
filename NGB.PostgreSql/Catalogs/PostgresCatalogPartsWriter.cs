@@ -9,6 +9,9 @@ namespace NGB.PostgreSql.Catalogs;
 
 internal sealed class PostgresCatalogPartsWriter(IUnitOfWork uow) : ICatalogPartsWriter
 {
+    private const int MaxParametersPerBatch = 2000;
+    private const int MaxRowsPerBatch = 500;
+
     public async Task ReplacePartsAsync(
         IReadOnlyList<CatalogTableMetadata> partTables,
         Guid catalogId,
@@ -86,41 +89,46 @@ internal sealed class PostgresCatalogPartsWriter(IUnitOfWork uow) : ICatalogPart
             var insertColumnsSql = new List<string> { "catalog_id" };
             insertColumnsSql.AddRange(orderedColumns.Select(Qi));
 
-            var p = new DynamicParameters();
-            p.Add("catalogId", catalogId);
+            var batchSize = Math.Clamp(MaxParametersPerBatch / orderedColumns.Count, 1, MaxRowsPerBatch);
 
-            var valuesSql = new List<string>(rows.Count);
-            for (var i = 0; i < rows.Count; i++)
+            for (var offset = 0; offset < rows.Count; offset += batchSize)
             {
-                var r = rows[i];
-                var rowParams = new List<string> { "@catalogId" };
+                var take = Math.Min(batchSize, rows.Count - offset);
+                var p = new DynamicParameters();
+                p.Add("catalogId", catalogId);
+                var valuesSql = new List<string>(take);
 
-                foreach (var col in orderedColumns)
+                for (var batchIndex = 0; batchIndex < take; batchIndex++)
                 {
-                    var paramName = $"p_{col}_{i}";
-                    r.TryGetValue(col, out var value);
-                    p.Add(paramName, value);
-                    rowParams.Add("@" + paramName);
+                    var row = rows[offset + batchIndex];
+                    var rowParams = new List<string> { "@catalogId" };
+
+                    foreach (var col in orderedColumns)
+                    {
+                        var paramName = $"p_{col}_{batchIndex}";
+                        row.TryGetValue(col, out var value);
+                        p.Add(paramName, value);
+                        rowParams.Add("@" + paramName);
+                    }
+
+                    valuesSql.Add("(" + string.Join(", ", rowParams) + ")");
                 }
 
-                valuesSql.Add("(" + string.Join(", ", rowParams) + ")");
+                var insertSql = $"""
+                                INSERT INTO {Qi(tableName)} ({string.Join(", ", insertColumnsSql)})
+                                VALUES {string.Join(", ", valuesSql)};
+                                """;
+
+                await uow.Connection.ExecuteAsync(new CommandDefinition(
+                    insertSql,
+                    p,
+                    transaction: uow.Transaction,
+                    cancellationToken: ct));
             }
-
-            var insertSql = $"""
-                            INSERT INTO {Qi(tableName)} ({string.Join(", ", insertColumnsSql)})
-                            VALUES {string.Join(", ", valuesSql)};
-                            """;
-
-            await uow.Connection.ExecuteAsync(new CommandDefinition(
-                insertSql,
-                p,
-                transaction: uow.Transaction,
-                cancellationToken: ct));
         }
     }
 
-    private static bool IsCatalogId(string name)
-        => string.Equals(name, "catalog_id", StringComparison.OrdinalIgnoreCase);
+    private static bool IsCatalogId(string name) => string.Equals(name, "catalog_id", StringComparison.OrdinalIgnoreCase);
 
     private static string Qi(string ident)
     {

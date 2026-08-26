@@ -11,6 +11,12 @@ public interface ICatalogService
 
     Task<PageResponseDto<CatalogItemDto>> GetPageAsync(string catalogType, PageRequestDto request, CancellationToken ct);
     Task<CatalogItemDto> GetByIdAsync(string catalogType, Guid id, CancellationToken ct);
+
+    Task<IReadOnlyList<CatalogItemDto>> GetHeadItemsByIdsAsync(
+        string catalogType,
+        IReadOnlyList<Guid> ids,
+        CancellationToken ct);
+
     Task<IReadOnlyList<CatalogLookupDto>> LookupAcrossTypesAsync(
         IReadOnlyList<string> catalogTypes,
         string? query,
