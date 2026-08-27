@@ -28,7 +28,7 @@ public sealed class ReceivablesCustomApplyExecuteService(
     IReceivablePaymentWorkCenterSynchronizer workCenter)
     : IReceivablesCustomApplyExecuteService
 {
-    private const int MaxLines = 500;
+    private const int MaxLines = 100;
 
     public async Task<ReceivablesCustomApplyExecuteResponse> ExecuteAsync(
         ReceivablesCustomApplyExecuteRequest request,

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using Dapper;
 using NGB.Metadata.Base;
@@ -36,6 +37,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
     IReferenceRegisterFieldRepository fieldsRepo)
     : IReferenceRegisterRecordsStore, IReferenceRegisterRecorderTombstoneWriter
 {
+    private readonly ConcurrentDictionary<Guid, SchemaReadiness> _schemasReadyForWrite = new();
+
     public async Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default)
     {
         registerId.EnsureNonEmpty(nameof(registerId));
@@ -62,6 +65,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         // Ensure append-only guards + indexes.
         await PostgresAppendOnlyGuardSql.EnsureUpdateDeleteForbiddenTriggerAsync(uow, table, Trg("trg_refreg_append_only_", table), ct);
         await EnsureIndexesAsync(table, reg, ct);
+        _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
     }
 
     public async Task AppendAsync(
@@ -78,8 +82,10 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
         await uow.EnsureOpenForTransactionAsync(ct);
 
-        // Ensure physical schema before inserting.
-        await EnsureSchemaAsync(registerId, ct);
+        // Schema drift repair is expensive DDL. Once it succeeds for this scoped store,
+        // metadata guards guarantee that the register shape cannot change underneath the write batch.
+        if (!IsSchemaReadyInCurrentTransaction(registerId))
+            await EnsureSchemaAsync(registerId, ct);
 
         var reg = await registers.GetByIdAsync(registerId, ct)
                   ?? throw new ReferenceRegisterNotFoundException(registerId);
@@ -181,8 +187,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         recorderDocumentId.EnsureNonEmpty(nameof(recorderDocumentId));
         await uow.EnsureOpenForTransactionAsync(ct);
 
-        // Ensure physical schema before inserting.
-        await EnsureSchemaAsync(registerId, ct);
+        if (!IsSchemaReadyInCurrentTransaction(registerId))
+            await EnsureSchemaAsync(registerId, ct);
 
         var reg = await registers.GetByIdAsync(registerId, ct)
                   ?? throw new ReferenceRegisterNotFoundException(registerId);
@@ -281,6 +287,12 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
         await uow.Connection.ExecuteAsync(cmdInsert);
     }
+
+    private bool IsSchemaReadyInCurrentTransaction(Guid registerId)
+        => _schemasReadyForWrite.TryGetValue(registerId, out var readiness)
+           && ReferenceEquals(readiness.Transaction, uow.Transaction);
+
+    private sealed record SchemaReadiness(object? Transaction);
 
     private static void ValidateRecords(
         Guid registerId,

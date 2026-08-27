@@ -22,10 +22,25 @@ public sealed class PostgresPayablesReconciliationServiceFullCoverageTests
         Func<Task> reversed = async () => await withoutDatabase.GetAsync(new PayablesReconciliationRequest(
             new DateOnly(2026, 3, 1),
             new DateOnly(2026, 2, 1)));
+        Func<Task> negativeOffset = async () => await withoutDatabase.GetAsync(new PayablesReconciliationRequest(
+            new DateOnly(2026, 2, 1),
+            new DateOnly(2026, 2, 1),
+            Offset: -1));
+        Func<Task> zeroLimit = async () => await withoutDatabase.GetAsync(new PayablesReconciliationRequest(
+            new DateOnly(2026, 2, 1),
+            new DateOnly(2026, 2, 1),
+            Limit: 0));
+        Func<Task> excessiveLimit = async () => await withoutDatabase.GetAsync(new PayablesReconciliationRequest(
+            new DateOnly(2026, 2, 1),
+            new DateOnly(2026, 2, 1),
+            Limit: 501));
 
         await invalidFrom.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await invalidTo.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await reversed.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await negativeOffset.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await zeroLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await excessiveLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
     }
 
     [Fact]
@@ -42,6 +57,9 @@ public sealed class PostgresPayablesReconciliationServiceFullCoverageTests
             .Should().Be(PostgresPayablesReconciliationService.BuildEmptyOiSourceSql());
         PostgresPayablesReconciliationService.BuildBalanceOiSourceSql("opreg_safe__movements", true)
             .Should().Contain("FROM opreg_safe__movements").And.NotContain("@FromMonth");
+        PostgresPayablesReconciliationService.BuildBalanceOiSourceSql(
+                "opreg_safe__movements", true, "opreg_safe__balances", true)
+            .Should().Contain("oi_latest_snapshot").And.Contain("FROM opreg_safe__balances");
         PostgresPayablesReconciliationService.BuildBalanceOiSourceSql("ignored", false)
             .Should().Be(PostgresPayablesReconciliationService.BuildEmptyOiSourceSql());
 

@@ -11,7 +11,10 @@ using NGB.Tools.Extensions;
 
 namespace NGB.PropertyManagement.Runtime.Receivables;
 
-public interface IReceivablesApplyAvailabilitySource : IPropertyManagementApplyAvailabilitySource;
+public interface IReceivablesApplyAvailabilitySource : IPropertyManagementApplyAvailabilitySource
+{
+    Task<IReadOnlySet<Guid>> GetExhaustedPaymentIdsAsync(IReadOnlyCollection<Guid> paymentIds, CancellationToken ct);
+}
 
 /// <summary>
 /// Canonical availability source for receivables apply actions.
@@ -31,6 +34,81 @@ public sealed class ReceivablesApplyAvailabilitySource(
     IOperationalRegisterResourceNetReader resourceNetReader)
     : IReceivablesApplyAvailabilitySource
 {
+    public async Task<IReadOnlySet<Guid>> GetExhaustedPaymentIdsAsync(
+        IReadOnlyCollection<Guid> paymentIds,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(paymentIds);
+
+        var ids = paymentIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new HashSet<Guid>();
+
+        var documentsById = await documents.GetByIdsAsync(ids, ct);
+        var postedIds = new List<Guid>(ids.Length);
+        var exhausted = new HashSet<Guid>();
+
+        foreach (var id in ids)
+        {
+            if (!documentsById.TryGetValue(id, out var document))
+                throw new NGB.Core.Documents.Exceptions.DocumentNotFoundException(id);
+
+            if (!string.Equals(document.TypeCode, PropertyManagementCodes.ReceivablePayment, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new NGB.Core.Documents.Exceptions.DocumentTypeMismatchException(
+                    id,
+                    PropertyManagementCodes.ReceivablePayment,
+                    document.TypeCode);
+            }
+
+            if (document.Status == NGB.Core.Documents.DocumentStatus.Posted)
+                postedIds.Add(id);
+            else
+                exhausted.Add(id);
+        }
+
+        if (postedIds.Count == 0)
+            return exhausted;
+
+        var heads = (await readers.ReadReceivablePaymentHeadsAsync(postedIds, ct))
+            .ToDictionary(static head => head.DocumentId);
+        var policy = await policyReader.GetRequiredAsync(ct);
+        var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
+        var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
+        var leaseDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Lease}");
+        var itemDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}");
+        var groups = new List<IReadOnlyList<DimensionValue>>(postedIds.Count);
+
+        foreach (var paymentId in postedIds)
+        {
+            if (!heads.TryGetValue(paymentId, out var head))
+                throw new NGB.Tools.Exceptions.NgbConfigurationViolationException($"Receivable payment '{paymentId}' has no typed head row.");
+
+            groups.Add(
+            [
+                new DimensionValue(partyDimId, head.PartyId),
+                new DimensionValue(propertyDimId, head.PropertyId),
+                new DimensionValue(leaseDimId, head.LeaseId),
+                new DimensionValue(itemDimId, paymentId)
+            ]);
+        }
+
+        var nets = await resourceNetReader.GetNetsByDimensionsAsync(
+            policy.ReceivablesOpenItemsOperationalRegisterId,
+            groups,
+            resourceColumnCode: "amount",
+            asOfInclusive: DateOnly.MaxValue,
+            ct);
+
+        for (var index = 0; index < postedIds.Count; index++)
+        {
+            if (nets[index] >= 0m)
+                exhausted.Add(postedIds[index]);
+        }
+
+        return exhausted;
+    }
+
     public async Task<DocumentActionAvailabilityResult> EvaluateAsync(
         string documentType,
         Guid documentId,

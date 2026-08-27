@@ -726,11 +726,20 @@ public sealed class PeriodClosingService(
         }
 
         // Strict rule: all months BEFORE the fiscal year-end month must already be closed.
+        // Read the complete range once; checking each month separately turns a yearly close into an N+1 query.
         // Closing entries are posted into the open end month; afterward the caller may close that month via IPeriodClosingService.
-        for (var p = yearStart; p < fiscalYearEndPeriod; p = p.AddMonths(1))
+        if (yearStart >= fiscalYearEndPeriod)
+            return;
+
+        var lastRequiredPeriod = fiscalYearEndPeriod.AddMonths(-1);
+        var closedPeriods = (await closedPeriodReader.GetClosedAsync(yearStart, lastRequiredPeriod, ct))
+            .Select(static row => row.Period)
+            .ToHashSet();
+
+        for (var period = yearStart; period <= lastRequiredPeriod; period = period.AddMonths(1))
         {
-            if (!await closedPeriodRepository.IsClosedAsync(p, ct))
-                throw new FiscalYearClosingPrerequisiteNotMetException(p);
+            if (!closedPeriods.Contains(period))
+                throw new FiscalYearClosingPrerequisiteNotMetException(period);
         }
     }
 

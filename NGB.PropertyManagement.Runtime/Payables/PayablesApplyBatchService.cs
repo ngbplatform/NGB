@@ -26,7 +26,7 @@ public sealed class PayablesApplyBatchService(
     IUnitOfWork uow)
     : IPayablesApplyBatchService
 {
-    private const int MaxLines = 500;
+    private const int MaxLines = 100;
 
     public async Task<PayablesApplyBatchResponse> ExecuteAsync(
         PayablesApplyBatchRequest request,

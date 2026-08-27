@@ -53,6 +53,7 @@ public sealed class PostgresTradeInventoryBalanceReader(
             throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column 'qty_delta'.");
 
         var tableName = OperationalRegisterNaming.MovementsTable(register.TableCode);
+        var balancesTableName = OperationalRegisterNaming.BalancesTable(register.TableCode);
         var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
             "SELECT to_regclass(@TableName) IS NOT NULL;",
             new { TableName = tableName },
@@ -61,6 +62,12 @@ public sealed class PostgresTradeInventoryBalanceReader(
 
         if (!exists)
             return new TradeInventoryBalancePage([], 0, 0m);
+
+        var balancesExist = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT to_regclass(@TableName) IS NOT NULL;",
+            new { TableName = balancesTableName },
+            uow.Transaction,
+            cancellationToken: ct));
 
         var itemIdArray = NormalizeIds(itemIds);
         var warehouseIdArray = NormalizeIds(warehouseIds);
@@ -71,25 +78,27 @@ public sealed class PostgresTradeInventoryBalanceReader(
             ? "ABS(position.quantity) DESC, item_display ASC, warehouse_display ASC, position.item_id, position.warehouse_id"
             : "item_display ASC, warehouse_display ASC, position.item_id, position.warehouse_id";
 
+        var positionSourceSql = balancesExist
+            ? BuildSnapshotBackedPositionSourceSql(tableName, balancesTableName)
+            : BuildMovementOnlyPositionSourceSql(tableName);
         var sql = $"""
-WITH positions AS (
+{positionSourceSql},
+positions AS (
     SELECT
         item.value_id AS item_id,
         warehouse.value_id AS warehouse_id,
-        SUM(CASE WHEN movement.is_storno THEN -movement.qty_delta ELSE movement.qty_delta END) AS quantity
-    FROM {tableName} movement
+        SUM(source.quantity) AS quantity
+    FROM dimension_positions source
     JOIN platform_dimension_set_items item
-      ON item.dimension_set_id = movement.dimension_set_id
+      ON item.dimension_set_id = source.dimension_set_id
      AND item.dimension_id = @ItemDimensionId
     JOIN platform_dimension_set_items warehouse
-      ON warehouse.dimension_set_id = movement.dimension_set_id
+      ON warehouse.dimension_set_id = source.dimension_set_id
      AND warehouse.dimension_id = @WarehouseDimensionId
-    WHERE movement.period_month <= @AsOfMonth
-      AND movement.occurred_at_utc < @OccurredToExclusiveUtc
-      AND (@HasItemFilter = FALSE OR item.value_id = ANY(@ItemIds))
+    WHERE (@HasItemFilter = FALSE OR item.value_id = ANY(@ItemIds))
       AND (@HasWarehouseFilter = FALSE OR warehouse.value_id = ANY(@WarehouseIds))
     GROUP BY item.value_id, warehouse.value_id
-    HAVING SUM(CASE WHEN movement.is_storno THEN -movement.qty_delta ELSE movement.qty_delta END) <> 0
+    HAVING SUM(source.quantity) <> 0
 ),
 enriched AS (
     SELECT
@@ -146,6 +155,55 @@ LIMIT @Limit;
             first?.TotalCount ?? 0,
             first?.TotalQuantity ?? 0m);
     }
+
+    private static string BuildMovementOnlyPositionSourceSql(string movementsTable) => $"""
+WITH dimension_positions AS (
+    SELECT
+        movement.dimension_set_id,
+        SUM(CASE WHEN movement.is_storno THEN -movement.qty_delta ELSE movement.qty_delta END) AS quantity
+    FROM {movementsTable} movement
+    WHERE movement.period_month <= @AsOfMonth
+      AND movement.occurred_at_utc < @OccurredToExclusiveUtc
+    GROUP BY movement.dimension_set_id
+)
+""";
+
+    private static string BuildSnapshotBackedPositionSourceSql(string movementsTable, string balancesTable) => $"""
+WITH latest_snapshot AS (
+    SELECT MAX(period_month) AS period_month
+    FROM {balancesTable}
+    WHERE period_month < @AsOfMonth
+),
+opening AS (
+    SELECT balance.dimension_set_id, balance.qty_delta AS quantity
+    FROM {balancesTable} balance
+    CROSS JOIN latest_snapshot latest
+    WHERE balance.period_month = latest.period_month
+),
+movement_delta AS (
+    SELECT
+        movement.dimension_set_id,
+        SUM(CASE WHEN movement.is_storno THEN -movement.qty_delta ELSE movement.qty_delta END) AS quantity
+    FROM {movementsTable} movement
+    CROSS JOIN latest_snapshot latest
+    WHERE (latest.period_month IS NULL OR movement.period_month > latest.period_month)
+      AND movement.period_month <= @AsOfMonth
+      AND movement.occurred_at_utc < @OccurredToExclusiveUtc
+    GROUP BY movement.dimension_set_id
+),
+dimension_positions AS (
+    SELECT
+        keys.dimension_set_id,
+        COALESCE(opening.quantity, 0) + COALESCE(delta.quantity, 0) AS quantity
+    FROM (
+        SELECT dimension_set_id FROM opening
+        UNION
+        SELECT dimension_set_id FROM movement_delta
+    ) keys
+    LEFT JOIN opening ON opening.dimension_set_id = keys.dimension_set_id
+    LEFT JOIN movement_delta delta ON delta.dimension_set_id = keys.dimension_set_id
+)
+""";
 
     private static Guid[] NormalizeIds(IReadOnlyList<Guid>? ids)
         => ids?.Where(static id => id != Guid.Empty).Distinct().ToArray() ?? [];

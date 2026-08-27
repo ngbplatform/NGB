@@ -7,6 +7,235 @@ namespace NGB.Trade.PostgreSql.Reporting;
 
 public sealed class PostgresTradeAnalyticsReader(IUnitOfWork uow) : ITradeAnalyticsReader
 {
+    public async Task<TradeDashboardAnalyticsSnapshot> GetDashboardOverviewAsync(
+        DateOnly fromInclusive,
+        DateOnly asOfInclusive,
+        int topItemLimit,
+        int recentDocumentLimit,
+        CancellationToken ct = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(topItemLimit, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(recentDocumentLimit, 1);
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+WITH sales AS (
+    SELECT
+        line.item_id,
+        SUM(line.quantity) AS sold_quantity,
+        SUM(line.line_amount) AS gross_sales,
+        SUM(line.quantity * line.unit_cost) AS sold_cogs
+    FROM doc_trd_sales_invoice head
+    JOIN documents document
+      ON document.id = head.document_id
+     AND document.status = @posted_status
+    JOIN doc_trd_sales_invoice__lines line ON line.document_id = head.document_id
+    WHERE head.document_date_utc >= @from_utc
+      AND head.document_date_utc <= @as_of_utc
+    GROUP BY line.item_id
+),
+returns AS (
+    SELECT
+        line.item_id,
+        SUM(line.quantity) AS returned_quantity,
+        SUM(line.line_amount) AS returned_amount,
+        SUM(line.quantity * line.unit_cost) AS returned_cogs
+    FROM doc_trd_customer_return head
+    JOIN documents document
+      ON document.id = head.document_id
+     AND document.status = @posted_status
+    JOIN doc_trd_customer_return__lines line ON line.document_id = head.document_id
+    WHERE head.document_date_utc >= @from_utc
+      AND head.document_date_utc <= @as_of_utc
+    GROUP BY line.item_id
+),
+keys AS (
+    SELECT item_id FROM sales
+    UNION
+    SELECT item_id FROM returns
+)
+SELECT
+    keys.item_id AS ItemId,
+    COALESCE(item.display, keys.item_id::text) AS ItemDisplay,
+    COALESCE(sales.sold_quantity, 0) AS SoldQuantity,
+    COALESCE(sales.gross_sales, 0) AS GrossSales,
+    COALESCE(returns.returned_quantity, 0) AS ReturnedQuantity,
+    COALESCE(returns.returned_amount, 0) AS ReturnedAmount,
+    COALESCE(sales.gross_sales, 0) - COALESCE(returns.returned_amount, 0) AS NetSales,
+    COALESCE(sales.sold_cogs, 0) - COALESCE(returns.returned_cogs, 0) AS NetCogs,
+    COUNT(*) OVER()::integer AS TotalCount,
+    SUM(COALESCE(sales.sold_quantity, 0)) OVER() AS TotalSoldQuantity,
+    SUM(COALESCE(sales.gross_sales, 0)) OVER() AS TotalGrossSales,
+    SUM(COALESCE(returns.returned_quantity, 0)) OVER() AS TotalReturnedQuantity,
+    SUM(COALESCE(returns.returned_amount, 0)) OVER() AS TotalReturnedAmount,
+    SUM(COALESCE(sales.gross_sales, 0) - COALESCE(returns.returned_amount, 0)) OVER() AS TotalNetSales,
+    SUM(COALESCE(sales.sold_cogs, 0) - COALESCE(returns.returned_cogs, 0)) OVER() AS TotalNetCogs
+FROM keys
+LEFT JOIN cat_trd_item item ON item.catalog_id = keys.item_id
+LEFT JOIN sales ON sales.item_id = keys.item_id
+LEFT JOIN returns ON returns.item_id = keys.item_id
+WHERE COALESCE(sales.sold_quantity, 0) <> 0
+   OR COALESCE(returns.returned_quantity, 0) <> 0
+ORDER BY NetSales DESC, ItemDisplay
+LIMIT @top_item_limit;
+
+WITH purchases AS (
+    SELECT COALESCE(SUM(line.line_amount), 0) AS amount
+    FROM doc_trd_purchase_receipt head
+    JOIN documents document
+      ON document.id = head.document_id
+     AND document.status = @posted_status
+    JOIN doc_trd_purchase_receipt__lines line ON line.document_id = head.document_id
+    WHERE head.document_date_utc >= @from_utc
+      AND head.document_date_utc <= @as_of_utc
+),
+vendor_returns AS (
+    SELECT COALESCE(SUM(line.line_amount), 0) AS amount
+    FROM doc_trd_vendor_return head
+    JOIN documents document
+      ON document.id = head.document_id
+     AND document.status = @posted_status
+    JOIN doc_trd_vendor_return__lines line ON line.document_id = head.document_id
+    WHERE head.document_date_utc >= @from_utc
+      AND head.document_date_utc <= @as_of_utc
+)
+SELECT purchases.amount - vendor_returns.amount AS NetPurchases
+FROM purchases CROSS JOIN vendor_returns;
+
+SELECT
+    document.id AS DocumentId,
+    document.type_code AS DocumentTypeCode,
+    CASE document.type_code
+        WHEN @purchase_receipt_type THEN 'Purchase Receipt'
+        WHEN @sales_invoice_type THEN 'Sales Invoice'
+        WHEN @customer_payment_type THEN 'Customer Payment'
+        WHEN @vendor_payment_type THEN 'Vendor Payment'
+        WHEN @customer_return_type THEN 'Customer Return'
+        WHEN @vendor_return_type THEN 'Vendor Return'
+    END AS DocumentTypeDisplay,
+    COALESCE(
+        purchase.display,
+        sale.display,
+        customer_payment.display,
+        vendor_payment.display,
+        customer_return.display,
+        vendor_return.display,
+        document.number,
+        document.id::text) AS DocumentDisplay,
+    COALESCE(
+        purchase.document_date_utc,
+        sale.document_date_utc,
+        customer_payment.document_date_utc,
+        vendor_payment.document_date_utc,
+        customer_return.document_date_utc,
+        vendor_return.document_date_utc) AS DocumentDateUtc,
+    document.updated_at_utc AS UpdatedAtUtc,
+    CASE document.status
+        WHEN 1 THEN 'Draft'
+        WHEN 2 THEN 'Posted'
+        WHEN 3 THEN 'Marked for deletion'
+        ELSE document.status::text
+    END AS StatusDisplay,
+    partner.display AS PartnerDisplay,
+    COALESCE(
+        purchase.amount,
+        sale.amount,
+        customer_payment.amount,
+        vendor_payment.amount,
+        customer_return.amount,
+        vendor_return.amount) AS Amount
+FROM documents document
+LEFT JOIN doc_trd_purchase_receipt purchase
+  ON document.type_code = @purchase_receipt_type AND purchase.document_id = document.id
+LEFT JOIN doc_trd_sales_invoice sale
+  ON document.type_code = @sales_invoice_type AND sale.document_id = document.id
+LEFT JOIN doc_trd_customer_payment customer_payment
+  ON document.type_code = @customer_payment_type AND customer_payment.document_id = document.id
+LEFT JOIN doc_trd_vendor_payment vendor_payment
+  ON document.type_code = @vendor_payment_type AND vendor_payment.document_id = document.id
+LEFT JOIN doc_trd_customer_return customer_return
+  ON document.type_code = @customer_return_type AND customer_return.document_id = document.id
+LEFT JOIN doc_trd_vendor_return vendor_return
+  ON document.type_code = @vendor_return_type AND vendor_return.document_id = document.id
+LEFT JOIN cat_trd_party partner ON partner.catalog_id = COALESCE(
+    purchase.vendor_id,
+    sale.customer_id,
+    customer_payment.customer_id,
+    vendor_payment.vendor_id,
+    customer_return.customer_id,
+    vendor_return.vendor_id)
+WHERE document.type_code = ANY(@recent_document_types)
+  AND document.status <> @deleted_status
+  AND COALESCE(
+        purchase.document_date_utc,
+        sale.document_date_utc,
+        customer_payment.document_date_utc,
+        vendor_payment.document_date_utc,
+        customer_return.document_date_utc,
+        vendor_return.document_date_utc) <= @as_of_utc
+ORDER BY document.updated_at_utc DESC, DocumentDateUtc DESC, DocumentDisplay
+LIMIT @recent_document_limit;
+""";
+
+        var command = new CommandDefinition(
+            sql,
+            new
+            {
+                posted_status = (short)DocumentStatus.Posted,
+                deleted_status = (short)DocumentStatus.MarkedForDeletion,
+                from_utc = fromInclusive,
+                as_of_utc = asOfInclusive,
+                top_item_limit = topItemLimit,
+                recent_document_limit = recentDocumentLimit,
+                purchase_receipt_type = TradeCodes.PurchaseReceipt,
+                sales_invoice_type = TradeCodes.SalesInvoice,
+                customer_payment_type = TradeCodes.CustomerPayment,
+                vendor_payment_type = TradeCodes.VendorPayment,
+                customer_return_type = TradeCodes.CustomerReturn,
+                vendor_return_type = TradeCodes.VendorReturn,
+                recent_document_types = new[]
+                {
+                    TradeCodes.PurchaseReceipt,
+                    TradeCodes.SalesInvoice,
+                    TradeCodes.CustomerPayment,
+                    TradeCodes.VendorPayment,
+                    TradeCodes.CustomerReturn,
+                    TradeCodes.VendorReturn
+                }
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct);
+
+        await using var grid = await uow.Connection.QueryMultipleAsync(command);
+        var salesRows = (await grid.ReadAsync<SalesByItemPageSqlRow>()).AsList();
+        var purchases = await grid.ReadSingleAsync<DashboardPurchasesSqlRow>();
+        var recentDocuments = (await grid.ReadAsync<RecentTradeDocumentSummaryRow>()).AsList();
+        var first = salesRows.FirstOrDefault();
+        var salesPage = new TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>(
+            salesRows.Select(static row => new SalesByItemSummaryRow(
+                row.ItemId,
+                row.ItemDisplay,
+                row.SoldQuantity,
+                row.GrossSales,
+                row.ReturnedQuantity,
+                row.ReturnedAmount,
+                row.NetSales,
+                row.NetCogs)).ToArray(),
+            first?.TotalCount ?? 0,
+            first is null
+                ? new SalesByItemTotals(0m, 0m, 0m, 0m, 0m, 0m)
+                : new SalesByItemTotals(
+                    first.TotalSoldQuantity,
+                    first.TotalGrossSales,
+                    first.TotalReturnedQuantity,
+                    first.TotalReturnedAmount,
+                    first.TotalNetSales,
+                    first.TotalNetCogs));
+
+        return new TradeDashboardAnalyticsSnapshot(salesPage, purchases.NetPurchases, recentDocuments);
+    }
+
     public async Task<TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>> GetSalesByItemPageAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,
@@ -501,7 +730,7 @@ WITH recent_candidates AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        NULL::numeric AS HeaderAmount
+        h.amount AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_purchase_receipt h
         ON h.document_id = d.id
@@ -527,7 +756,7 @@ WITH recent_candidates AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        NULL::numeric AS HeaderAmount
+        h.amount AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_sales_invoice h
         ON h.document_id = d.id
@@ -605,7 +834,7 @@ WITH recent_candidates AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        NULL::numeric AS HeaderAmount
+        h.amount AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_customer_return h
         ON h.document_id = d.id
@@ -631,7 +860,7 @@ WITH recent_candidates AS (
             ELSE d.status::text
         END AS StatusDisplay,
         partner.display AS PartnerDisplay,
-        NULL::numeric AS HeaderAmount
+        h.amount AS HeaderAmount
     FROM documents d
     INNER JOIN doc_trd_vendor_return h
         ON h.document_id = d.id
@@ -656,25 +885,7 @@ SELECT
     UpdatedAtUtc,
     StatusDisplay,
     PartnerDisplay,
-    CASE DocumentTypeCode
-        WHEN @purchase_receipt_type THEN (
-            SELECT SUM(line.line_amount)
-            FROM doc_trd_purchase_receipt__lines line
-            WHERE line.document_id = recent.DocumentId)
-        WHEN @sales_invoice_type THEN (
-            SELECT SUM(line.line_amount)
-            FROM doc_trd_sales_invoice__lines line
-            WHERE line.document_id = recent.DocumentId)
-        WHEN @customer_return_type THEN (
-            SELECT SUM(line.line_amount)
-            FROM doc_trd_customer_return__lines line
-            WHERE line.document_id = recent.DocumentId)
-        WHEN @vendor_return_type THEN (
-            SELECT SUM(line.line_amount)
-            FROM doc_trd_vendor_return__lines line
-            WHERE line.document_id = recent.DocumentId)
-        ELSE HeaderAmount
-    END AS Amount
+    HeaderAmount AS Amount
 FROM recent
 ORDER BY UpdatedAtUtc DESC, DocumentDateUtc DESC, DocumentDisplay ASC;
 """;
@@ -754,4 +965,6 @@ ORDER BY UpdatedAtUtc DESC, DocumentDateUtc DESC, DocumentDisplay ASC;
         decimal TotalGrossPurchases,
         decimal TotalReturnedAmount,
         decimal TotalNetPurchases);
+
+    private sealed record DashboardPurchasesSqlRow(decimal NetPurchases);
 }

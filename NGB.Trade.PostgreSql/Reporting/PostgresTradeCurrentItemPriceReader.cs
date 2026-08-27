@@ -48,7 +48,17 @@ public sealed class PostgresTradeCurrentItemPriceReader(IUnitOfWork uow, IRefere
         var itemIdArray = NormalizeIds(itemIds);
         var priceTypeIdArray = NormalizeIds(priceTypeIds);
         var sql = $"""
-WITH latest AS (
+WITH candidate_dimension_sets AS (
+    SELECT item.dimension_set_id
+    FROM platform_dimension_set_items item
+    JOIN platform_dimension_set_items price_type
+      ON price_type.dimension_set_id = item.dimension_set_id
+     AND price_type.dimension_id = @PriceTypeDimensionId
+    WHERE item.dimension_id = @ItemDimensionId
+      AND (@HasItemFilter = FALSE OR item.value_id = ANY(@ItemIds))
+      AND (@HasPriceTypeFilter = FALSE OR price_type.value_id = ANY(@PriceTypeIds))
+),
+latest AS (
     SELECT DISTINCT ON (record.dimension_set_id)
         record.dimension_set_id,
         record.currency,
@@ -56,7 +66,9 @@ WITH latest AS (
         record.effective_date,
         record.source_document_id,
         record.is_deleted
-    FROM {tableName} record
+    FROM candidate_dimension_sets candidate
+    JOIN {tableName} record
+      ON record.dimension_set_id = candidate.dimension_set_id
     WHERE record.recorded_at_utc <= @AsOfUtc
     ORDER BY record.dimension_set_id, record.recorded_at_utc DESC, record.record_id DESC
 ),
@@ -80,8 +92,6 @@ enriched AS (
     LEFT JOIN cat_trd_item item_catalog ON item_catalog.catalog_id = item.value_id
     LEFT JOIN cat_trd_price_type price_type_catalog ON price_type_catalog.catalog_id = price_type.value_id
     WHERE latest.is_deleted = FALSE
-      AND (@HasItemFilter = FALSE OR item.value_id = ANY(@ItemIds))
-      AND (@HasPriceTypeFilter = FALSE OR price_type.value_id = ANY(@PriceTypeIds))
 )
 SELECT
     item_id AS ItemId,

@@ -175,6 +175,7 @@ public sealed class CloseFiscalYear_Prerequisites_AreReadInsideLockedWindow_P1Te
         public bool SawPriorMonthCheckWhileLockHeld => Volatile.Read(ref sawPriorMonthCheckWhileLockHeld) == 1;
         public int TotalChainReads => Volatile.Read(ref totalChainReads);
         public int TotalPriorMonthChecks => Volatile.Read(ref totalPriorMonthChecks);
+        public DateOnly WatchedPriorMonth => watchedPriorMonth;
 
         public void SetPriorMonthLockHeld(bool value)
             => Volatile.Write(ref priorMonthLockHeld, value ? 1 : 0);
@@ -234,6 +235,8 @@ public sealed class CloseFiscalYear_Prerequisites_AreReadInsideLockedWindow_P1Te
             CancellationToken ct = default)
         {
             probe.RecordChainRead();
+            if (fromInclusive <= probe.WatchedPriorMonth && toInclusive >= probe.WatchedPriorMonth)
+                probe.RecordPriorMonthCheck(probe.WatchedPriorMonth);
             return await inner.GetClosedAsync(fromInclusive, toInclusive, ct);
         }
 

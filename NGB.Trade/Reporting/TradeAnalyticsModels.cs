@@ -43,6 +43,11 @@ public sealed record PurchasesByVendorSummaryRow(
 
 public sealed record TradeAnalyticsPage<TRow, TTotals>(IReadOnlyList<TRow> Rows, int Total, TTotals Totals);
 
+public sealed record TradeDashboardAnalyticsSnapshot(
+    TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals> SalesByItem,
+    decimal NetPurchases,
+    IReadOnlyList<RecentTradeDocumentSummaryRow> RecentDocuments);
+
 public sealed record SalesByItemTotals(
     decimal SoldQuantity,
     decimal GrossSales,

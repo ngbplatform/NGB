@@ -131,8 +131,8 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             "amount",
             DateOnly.MaxValue)).Should().Equal(0m, 0m);
 
-        dependencies.Registers.Verify(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()), Times.Exactly(3));
-        dependencies.Resources.Verify(x => x.GetByRegisterIdAsync(RegisterId, It.IsAny<CancellationToken>()), Times.Exactly(3));
+        dependencies.Registers.Verify(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()), Times.Once);
+        dependencies.Resources.Verify(x => x.GetByRegisterIdAsync(RegisterId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

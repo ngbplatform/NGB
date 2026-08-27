@@ -21,6 +21,8 @@ public interface IReceivablePaymentWorkCenterSynchronizer
 
     Task<IReadOnlyList<Guid>> CompleteIfExhaustedAsync(Guid paymentId, CancellationToken ct);
 
+    Task<IReadOnlyList<Guid>> CompleteIfExhaustedAsync(IReadOnlyCollection<Guid> paymentIds, CancellationToken ct);
+
     Task<IReadOnlyList<Guid>> CancelAsync(Guid paymentId, CancellationToken ct);
 
     Task NotifyChangedAsync(IReadOnlyCollection<Guid> userIds, CancellationToken ct);
@@ -119,6 +121,28 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
                 ct);
 
         return [];
+    }
+
+    public async Task<IReadOnlyList<Guid>> CompleteIfExhaustedAsync(
+        IReadOnlyCollection<Guid> paymentIds,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(paymentIds);
+
+        var exhaustedIds = await availability.GetExhaustedPaymentIdsAsync(paymentIds, ct);
+        if (exhaustedIds.Count == 0)
+            return [];
+
+        var changedUsers = new HashSet<Guid>();
+        foreach (var paymentId in exhaustedIds.OrderBy(static id => id))
+        {
+            changedUsers.UnionWith(await tasks.CompleteByDeduplicationKeyAsync(
+                PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
+                DeduplicationKey(paymentId),
+                ct));
+        }
+
+        return changedUsers.ToArray();
     }
 
     public Task<IReadOnlyList<Guid>> CancelAsync(Guid paymentId, CancellationToken ct)

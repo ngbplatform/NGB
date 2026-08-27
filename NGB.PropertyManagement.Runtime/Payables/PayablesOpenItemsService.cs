@@ -71,9 +71,8 @@ public sealed class PayablesOpenItemsService(
                 resolvedTo = toMonth.Value;
 
             var itemDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.PayableItem}");
-            var aggregated = await movements.GetResourceNetsByDimensionAsync(
+            var aggregated = await movements.GetResourceBalancesByDimensionAsync(
                 policy.PayablesOpenItemsOperationalRegisterId,
-                fromMonth,
                 resolvedTo,
                 dims,
                 itemDimId,

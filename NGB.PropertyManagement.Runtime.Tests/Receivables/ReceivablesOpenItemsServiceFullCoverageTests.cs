@@ -109,9 +109,8 @@ public sealed class ReceivablesOpenItemsServiceFullCoverageTests
         var chargeA = Guid.Parse("00000000-0000-0000-0000-000000000003");
         var chargeB = Guid.Parse("00000000-0000-0000-0000-000000000001");
         var credit = Guid.Parse("00000000-0000-0000-0000-000000000002");
-        fixture.Movements.Setup(x => x.GetResourceNetsByDimensionAsync(
+        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionAsync(
                 fixture.RegisterId,
-                It.IsAny<DateOnly>(),
                 It.IsAny<DateOnly>(),
                 It.IsAny<IReadOnlyList<DimensionValue>>(),
                 itemDimensionId,
@@ -151,9 +150,8 @@ public sealed class ReceivablesOpenItemsServiceFullCoverageTests
         result.Credits.Single().ItemDisplay.Should().Be("fallback-credit");
         result.Credits.Single().DocumentType.Should().BeNull();
         result.Credits.Single().Amount.Should().Be(4m);
-        fixture.Movements.Verify(x => x.GetResourceNetsByDimensionAsync(
+        fixture.Movements.Verify(x => x.GetResourceBalancesByDimensionAsync(
             fixture.RegisterId,
-            It.IsAny<DateOnly>(),
             new DateOnly(2099, 12, 1),
             It.IsAny<IReadOnlyList<DimensionValue>>(),
             itemDimensionId,
@@ -166,14 +164,14 @@ public sealed class ReceivablesOpenItemsServiceFullCoverageTests
     {
         var fixture = new Fixture();
         var itemDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}");
-        fixture.Movements.Setup(x => x.GetResourceNetsByDimensionAsync(
-                It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
+        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionAsync(
+                It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
                 itemDimensionId, "amount", It.IsAny<CancellationToken>()))
             .ReturnsAsync([new(Guid.CreateVersion7(), 1m, null)]);
 
         (await fixture.Sut.GetOpenItemsAsync(Guid.Empty, Guid.Empty, fixture.LeaseId)).TotalOutstanding.Should().Be(1m);
-        fixture.Movements.Verify(x => x.GetResourceNetsByDimensionAsync(
-            It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
+        fixture.Movements.Verify(x => x.GetResourceBalancesByDimensionAsync(
+            It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
             itemDimensionId, "amount", It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -224,8 +222,8 @@ public sealed class ReceivablesOpenItemsServiceFullCoverageTests
             Movements.Setup(x => x.GetMaxPeriodMonthAsync(
                     It.IsAny<Guid>(), It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync((DateOnly?)null);
-            Movements.Setup(x => x.GetResourceNetsByDimensionAsync(
-                    It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
+            Movements.Setup(x => x.GetResourceBalancesByDimensionAsync(
+                    It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
                     It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             Displays.Setup(x => x.ResolveRefsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))

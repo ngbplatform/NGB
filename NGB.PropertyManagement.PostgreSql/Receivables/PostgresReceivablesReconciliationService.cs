@@ -30,13 +30,21 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
         if (request.ToMonthInclusive < request.FromMonthInclusive)
             throw new NgbArgumentOutOfRangeException(nameof(request.ToMonthInclusive), request.ToMonthInclusive, "To month must be on or after From month.");
 
+        if (request.Offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(request.Offset), request.Offset, "Offset must be zero or greater.");
+
+        if (request.Limit is <= 0 or > 500)
+            throw new NgbArgumentOutOfRangeException(nameof(request.Limit), request.Limit, "Limit must be between 1 and 500.");
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         var policy = await ReadRequiredPolicyAsync(ct);
         var tableCode = await ReadOperationalRegisterTableCodeOrThrowAsync(policy.OpenItemsRegisterId, ct);
 
         var movementsTable = $"opreg_{tableCode}__movements";
+        var balancesTable = $"opreg_{tableCode}__balances";
         var movementsTableExists = await TableExistsAsync(movementsTable, ct);
+        var balancesTableExists = await TableExistsAsync(balancesTable, ct);
 
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
         var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
@@ -49,7 +57,7 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
                 BuildMovementOiSourceSql(movementsTable, movementsTableExists)),
             ReceivablesReconciliationMode.Balance => (
                 BuildBalanceGlSourceSql(),
-                BuildBalanceOiSourceSql(movementsTable, movementsTableExists)),
+                BuildBalanceOiSourceSql(movementsTable, movementsTableExists, balancesTable, balancesTableExists)),
             _ => throw new NgbArgumentInvalidException(nameof(request.Mode), "Select a valid reconciliation mode.")
         };
 
@@ -88,21 +96,51 @@ oi_agg AS (
     LEFT JOIN platform_dimension_set_items l
         ON l.dimension_set_id = oi_source.dimension_set_id AND l.dimension_id = @LeaseDimId::uuid
     GROUP BY 1,2,3
+),
+reconciliation AS (
+    SELECT
+        COALESCE(gl_agg.party_id, oi_agg.party_id)        AS party_id,
+        COALESCE(gl_agg.property_id, oi_agg.property_id)  AS property_id,
+        COALESCE(gl_agg.lease_id, oi_agg.lease_id)        AS lease_id,
+        COALESCE(gl_agg.ar_net, 0)                        AS ar_net,
+        COALESCE(oi_agg.open_items_net, 0)                AS open_items_net
+    FROM gl_agg
+    FULL OUTER JOIN oi_agg
+        ON gl_agg.party_id = oi_agg.party_id
+       AND gl_agg.property_id = oi_agg.property_id
+       AND gl_agg.lease_id = oi_agg.lease_id
+    WHERE COALESCE(gl_agg.ar_net, 0) <> 0
+       OR COALESCE(oi_agg.open_items_net, 0) <> 0
+),
+stats AS (
+    SELECT
+        COUNT(*)::integer AS total_row_count,
+        COUNT(*) FILTER (WHERE ar_net <> open_items_net)::integer AS total_mismatch_row_count,
+        COALESCE(SUM(ar_net), 0) AS total_ar_net,
+        COALESCE(SUM(open_items_net), 0) AS total_open_items_net
+    FROM reconciliation
+),
+paged AS (
+    SELECT *
+    FROM reconciliation
+    ORDER BY party_id, property_id, lease_id
+    OFFSET @Offset
+    LIMIT @LimitPlusOne
 )
 SELECT
-    COALESCE(gl_agg.party_id, oi_agg.party_id)        AS PartyId,
-    COALESCE(gl_agg.property_id, oi_agg.property_id)  AS PropertyId,
-    COALESCE(gl_agg.lease_id, oi_agg.lease_id)        AS LeaseId,
-    COALESCE(gl_agg.ar_net, 0)                        AS ArNet,
-    COALESCE(oi_agg.open_items_net, 0)                AS OpenItemsNet
-FROM gl_agg
-FULL OUTER JOIN oi_agg
-    ON gl_agg.party_id = oi_agg.party_id
-   AND gl_agg.property_id = oi_agg.property_id
-   AND gl_agg.lease_id = oi_agg.lease_id
-WHERE COALESCE(gl_agg.ar_net, 0) <> 0
-   OR COALESCE(oi_agg.open_items_net, 0) <> 0
-ORDER BY 1,2,3;
+    paged.party_id AS PartyId,
+    paged.property_id AS PropertyId,
+    paged.lease_id AS LeaseId,
+    COALESCE(paged.ar_net, 0) AS ArNet,
+    COALESCE(paged.open_items_net, 0) AS OpenItemsNet,
+    (paged.party_id IS NOT NULL) AS HasRow,
+    stats.total_row_count AS TotalRowCount,
+    stats.total_mismatch_row_count AS TotalMismatchRowCount,
+    stats.total_ar_net AS TotalArNet,
+    stats.total_open_items_net AS TotalOpenItemsNet
+FROM stats
+LEFT JOIN paged ON TRUE
+ORDER BY paged.party_id, paged.property_id, paged.lease_id;
 """;
 
         var cmd = new CommandDefinition(
@@ -115,6 +153,8 @@ ORDER BY 1,2,3;
                 PartyDimId = partyDimId,
                 PropertyDimId = propertyDimId,
                 LeaseDimId = leaseDimId,
+                request.Offset,
+                LimitPlusOne = request.Limit + 1,
                 Guid.Empty
             },
             transaction: uow.Transaction,
@@ -122,23 +162,23 @@ ORDER BY 1,2,3;
 
         var rows = (await uow.Connection.QueryAsync<RawRow>(cmd)).AsList();
 
-        var partyDisplays = await ReadCatalogDisplaysAsync(PropertyManagementCodes.Party, "cat_pm_party", rows.Select(x => x.PartyId), ct);
-        var propertyDisplays = await ReadCatalogDisplaysAsync(PropertyManagementCodes.Property, "cat_pm_property", rows.Select(x => x.PropertyId), ct);
-        var leaseDisplays = await ReadDocumentDisplaysAsync(PropertyManagementCodes.Lease, "doc_pm_lease", rows.Select(x => x.LeaseId), ct);
+        var stats = rows[0];
+        var pageRows = rows.Where(static row => row.HasRow).ToList();
+        var hasMore = pageRows.Count > request.Limit;
+        if (hasMore)
+            pageRows.RemoveAt(pageRows.Count - 1);
 
-        var resultRows = new List<ReceivablesReconciliationRow>(rows.Count);
-        decimal totalAr = 0m;
-        decimal totalOi = 0m;
-        var mismatchRowCount = 0;
+        var partyDisplays = await ReadCatalogDisplaysAsync(PropertyManagementCodes.Party, "cat_pm_party", pageRows.Select(x => x.PartyId), ct);
+        var propertyDisplays = await ReadCatalogDisplaysAsync(PropertyManagementCodes.Property, "cat_pm_property", pageRows.Select(x => x.PropertyId), ct);
+        var leaseDisplays = await ReadDocumentDisplaysAsync(PropertyManagementCodes.Lease, "doc_pm_lease", pageRows.Select(x => x.LeaseId), ct);
 
-        foreach (var r in rows)
+        var resultRows = new List<ReceivablesReconciliationRow>(pageRows.Count);
+
+        foreach (var r in pageRows)
         {
             var diff = r.ArNet - r.OpenItemsNet;
             var hasDiff = diff != 0m;
             var rowKind = ResolveRowKind(r.ArNet, r.OpenItemsNet, hasDiff);
-            if (hasDiff)
-                mismatchRowCount++;
-
             resultRows.Add(new ReceivablesReconciliationRow(
                 PartyId: r.PartyId,
                 PartyDisplay: ResolveDisplay(partyDisplays, r.PartyId),
@@ -151,9 +191,6 @@ ORDER BY 1,2,3;
                 Diff: diff,
                 RowKind: rowKind,
                 HasDiff: hasDiff));
-
-            totalAr += r.ArNet;
-            totalOi += r.OpenItemsNet;
         }
 
         return new ReceivablesReconciliationReport(
@@ -162,12 +199,15 @@ ORDER BY 1,2,3;
             request.Mode,
             policy.ArAccountId,
             policy.OpenItemsRegisterId,
-            TotalArNet: totalAr,
-            TotalOpenItemsNet: totalOi,
-            TotalDiff: totalAr - totalOi,
-            RowCount: resultRows.Count,
-            MismatchRowCount: mismatchRowCount,
-            Rows: resultRows);
+            TotalArNet: stats.TotalArNet,
+            TotalOpenItemsNet: stats.TotalOpenItemsNet,
+            TotalDiff: stats.TotalArNet - stats.TotalOpenItemsNet,
+            RowCount: stats.TotalRowCount,
+            MismatchRowCount: stats.TotalMismatchRowCount,
+            Rows: resultRows,
+            Offset: request.Offset,
+            Limit: request.Limit,
+            HasMore: hasMore);
     }
 
     internal async Task<IReadOnlyDictionary<Guid, string?>> ReadCatalogDisplaysAsync(
@@ -312,8 +352,48 @@ oi_source AS (
             : BuildEmptyOiSourceSql();
 
     internal static string BuildBalanceOiSourceSql(string movementsTable, bool movementsTableExists)
+        => BuildBalanceOiSourceSql(movementsTable, movementsTableExists, string.Empty, balancesTableExists: false);
+
+    internal static string BuildBalanceOiSourceSql(
+        string movementsTable,
+        bool movementsTableExists,
+        string balancesTable,
+        bool balancesTableExists)
         => movementsTableExists
-            ? $"""
+            ? balancesTableExists
+                ? $"""
+oi_latest_snapshot AS (
+    SELECT MAX(period_month) AS period_month
+    FROM {balancesTable}
+    WHERE period_month <= @ToMonth::date
+),
+oi_seed AS (
+    SELECT b.dimension_set_id, b.amount AS net
+    FROM {balancesTable} b
+    CROSS JOIN oi_latest_snapshot latest
+    WHERE b.period_month = latest.period_month
+),
+oi_roll AS (
+    SELECT
+        m.dimension_set_id,
+        SUM(CASE WHEN m.is_storno THEN -m.amount ELSE m.amount END) AS net
+    FROM {movementsTable} m
+    CROSS JOIN oi_latest_snapshot latest
+    WHERE m.period_month <= @ToMonth::date
+      AND (latest.period_month IS NULL OR m.period_month > latest.period_month)
+    GROUP BY m.dimension_set_id
+),
+oi_source AS (
+    SELECT source.dimension_set_id, SUM(source.net) AS net
+    FROM (
+        SELECT dimension_set_id, net FROM oi_seed
+        UNION ALL
+        SELECT dimension_set_id, net FROM oi_roll
+    ) source
+    GROUP BY source.dimension_set_id
+)
+"""
+                : $"""
 oi_source AS (
     SELECT
         m.dimension_set_id,
@@ -337,7 +417,17 @@ oi_source AS (
 
     private sealed record DisplayRow(Guid Id, string? Display);
 
-    private sealed record RawRow(Guid PartyId, Guid PropertyId, Guid LeaseId, decimal ArNet, decimal OpenItemsNet);
+    private sealed record RawRow(
+        Guid PartyId,
+        Guid PropertyId,
+        Guid LeaseId,
+        decimal ArNet,
+        decimal OpenItemsNet,
+        bool HasRow,
+        int TotalRowCount,
+        int TotalMismatchRowCount,
+        decimal TotalArNet,
+        decimal TotalOpenItemsNet);
 
     internal static ReceivablesReconciliationRowKind ResolveRowKind(decimal arNet, decimal openItemsNet, bool hasDiff)
     {

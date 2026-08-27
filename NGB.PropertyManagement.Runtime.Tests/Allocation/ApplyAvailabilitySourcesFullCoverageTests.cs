@@ -21,6 +21,66 @@ public sealed class ApplyAvailabilitySourcesFullCoverageTests
     private static readonly DateOnly Day = new(2026, 8, 16);
 
     [Fact]
+    public async Task Receivables_batch_availability_reads_documents_heads_and_balances_once()
+    {
+        var fixture = new ReceivablesFixture();
+        (await fixture.Sut.GetExhaustedPaymentIdsAsync([], default)).Should().BeEmpty();
+
+        var availableId = Guid.CreateVersion7();
+        var exhaustedId = Guid.CreateVersion7();
+        var draftId = Guid.CreateVersion7();
+        var documents = new Dictionary<Guid, DocumentRecord>
+        {
+            [availableId] = Document(availableId, PropertyManagementCodes.ReceivablePayment),
+            [exhaustedId] = Document(exhaustedId, PropertyManagementCodes.ReceivablePayment),
+            [draftId] = new DocumentRecord
+            {
+                Id = draftId,
+                TypeCode = PropertyManagementCodes.ReceivablePayment,
+                DateUtc = DateTime.UnixEpoch,
+                Status = StoredDocumentStatus.Draft
+            }
+        };
+        fixture.Documents.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 3),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(documents);
+        fixture.Readers.Setup(x => x.ReadReceivablePaymentHeadsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new PmReceivablePaymentHead(availableId, fixture.PartyId, fixture.PropertyId,
+                    fixture.LeaseId, null, Day, 10m, null),
+                new PmReceivablePaymentHead(exhaustedId, fixture.PartyId, fixture.PropertyId,
+                    fixture.LeaseId, null, Day, 10m, null)
+            ]);
+        fixture.Net.Setup(x => x.GetNetsByDimensionsAsync(
+                fixture.RegisterId,
+                It.Is<IReadOnlyList<IReadOnlyList<DimensionValue>>>(groups => groups.Count == 2),
+                "amount",
+                DateOnly.MaxValue,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([-1m, 0m]);
+
+        var result = await fixture.Sut.GetExhaustedPaymentIdsAsync(
+            [Guid.Empty, availableId, exhaustedId, draftId, availableId],
+            default);
+
+        result.Should().BeEquivalentTo([exhaustedId, draftId]);
+        fixture.Documents.Verify(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Readers.Verify(x => x.ReadReceivablePaymentHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Net.Verify(x => x.GetNetsByDimensionsAsync(
+            fixture.RegisterId,
+            It.IsAny<IReadOnlyList<IReadOnlyList<DimensionValue>>>(),
+            "amount",
+            DateOnly.MaxValue,
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Payables_source_rejects_unsupported_and_non_posted_documents_without_reads()
     {
         var fixture = new PayablesFixture();

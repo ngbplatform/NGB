@@ -57,6 +57,32 @@ public interface IOperationalRegisterMovementsQueryReader
         int limit,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Returns the cumulative resource balance as of the end of <paramref name="asOfMonthInclusive"/>.
+    /// Implementations may use the latest finalized monthly balance snapshot and only roll forward
+    /// movements posted after that snapshot.
+    /// </summary>
+    Task<IReadOnlyList<OperationalRegisterDimensionResourceNetRow>> GetResourceBalancesByDimensionAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Database-paged counterpart of <see cref="GetResourceBalancesByDimensionAsync"/>.
+    /// </summary>
+    Task<OperationalRegisterDimensionResourceNetPage> GetResourceBalancesByDimensionPageAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        int offset,
+        int limit,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByMonthsAsync(
         Guid registerId,
         DateOnly fromInclusive,

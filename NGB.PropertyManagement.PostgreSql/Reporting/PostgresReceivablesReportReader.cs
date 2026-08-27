@@ -51,6 +51,7 @@ public sealed class PostgresReceivablesReportReader(
             throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column 'amount'.");
 
         var tableName = OperationalRegisterNaming.MovementsTable(register.TableCode);
+        var balancesTableName = OperationalRegisterNaming.BalancesTable(register.TableCode);
         var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
             "SELECT to_regclass(@TableName) IS NOT NULL;",
             new { TableName = tableName },
@@ -60,25 +61,35 @@ public sealed class PostgresReceivablesReportReader(
         if (!exists)
             return new ReceivablesReportPage([], 0, 0m, 0m, 0m, null, null, null);
 
+        var balancesExist = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT to_regclass(@TableName) IS NOT NULL;",
+            new { TableName = balancesTableName },
+            uow.Transaction,
+            cancellationToken: ct));
+
         var chargesOnly = mode == ReceivablesReportMode.Aging;
         var orderBy = chargesOnly
             ? "item.due_on_utc, item.document_id"
             : "CASE WHEN item.net_amount > 0 THEN 0 ELSE 1 END, COALESCE(item.due_on_utc, item.received_on_utc), item.document_id";
+        var netSourceSql = balancesExist
+            ? BuildSnapshotBackedNetSourceSql(tableName, balancesTableName)
+            : BuildMovementOnlyNetSourceSql(tableName);
         var sql = $"""
-WITH nets AS (
+{netSourceSql},
+nets AS (
     SELECT
         item.value_id AS document_id,
-        SUM(CASE WHEN movement.is_storno THEN -movement.amount ELSE movement.amount END) AS net_amount
-    FROM {tableName} movement
+        SUM(source.net_amount) AS net_amount
+    FROM dimension_nets source
     JOIN platform_dimension_set_items lease
-      ON lease.dimension_set_id = movement.dimension_set_id
+      ON lease.dimension_set_id = source.dimension_set_id
      AND lease.dimension_id = @LeaseDimensionId
      AND lease.value_id = @LeaseId
     JOIN platform_dimension_set_items item
-      ON item.dimension_set_id = movement.dimension_set_id
+      ON item.dimension_set_id = source.dimension_set_id
      AND item.dimension_id = @ItemDimensionId
     GROUP BY item.value_id
-    HAVING SUM(CASE WHEN movement.is_storno THEN -movement.amount ELSE movement.amount END) <> 0
+    HAVING SUM(source.net_amount) <> 0
 ),
 items AS (
     SELECT
@@ -200,6 +211,50 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
             first.PropertyDisplay,
             first.LeaseDisplay);
     }
+
+    private static string BuildMovementOnlyNetSourceSql(string movementsTable) => $"""
+WITH dimension_nets AS (
+    SELECT
+        movement.dimension_set_id,
+        SUM(CASE WHEN movement.is_storno THEN -movement.amount ELSE movement.amount END) AS net_amount
+    FROM {movementsTable} movement
+    GROUP BY movement.dimension_set_id
+)
+""";
+
+    private static string BuildSnapshotBackedNetSourceSql(string movementsTable, string balancesTable) => $"""
+WITH latest_snapshot AS (
+    SELECT MAX(period_month) AS period_month
+    FROM {balancesTable}
+),
+snapshot_values AS (
+    SELECT balance.dimension_set_id, balance.amount AS net_amount
+    FROM {balancesTable} balance
+    CROSS JOIN latest_snapshot latest
+    WHERE balance.period_month = latest.period_month
+),
+movement_values AS (
+    SELECT
+        movement.dimension_set_id,
+        SUM(CASE WHEN movement.is_storno THEN -movement.amount ELSE movement.amount END) AS net_amount
+    FROM {movementsTable} movement
+    CROSS JOIN latest_snapshot latest
+    WHERE latest.period_month IS NULL OR movement.period_month > latest.period_month
+    GROUP BY movement.dimension_set_id
+),
+dimension_nets AS (
+    SELECT
+        keys.dimension_set_id,
+        COALESCE(snapshot.net_amount, 0) + COALESCE(delta.net_amount, 0) AS net_amount
+    FROM (
+        SELECT dimension_set_id FROM snapshot_values
+        UNION
+        SELECT dimension_set_id FROM movement_values
+    ) keys
+    LEFT JOIN snapshot_values snapshot ON snapshot.dimension_set_id = keys.dimension_set_id
+    LEFT JOIN movement_values delta ON delta.dimension_set_id = keys.dimension_set_id
+)
+""";
 
     private sealed record ReceivablesReportSqlRow(
         Guid? DocumentId,

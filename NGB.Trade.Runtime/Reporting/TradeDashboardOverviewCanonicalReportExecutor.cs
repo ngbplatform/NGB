@@ -26,27 +26,14 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
             ?? DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
         var fromInclusive = new DateOnly(asOf.Year, asOf.Month, 1);
 
-        var salesByItem = await analytics.GetSalesByItemPageAsync(
+        var analyticsSnapshot = await analytics.GetDashboardOverviewAsync(
             fromInclusive,
             asOf,
-            itemIds: null,
-            customerIds: null,
-            warehouseIds: null,
-            offset: 0,
-            limit: 5,
+            topItemLimit: 5,
+            recentDocumentLimit: 8,
             ct);
-
-        var purchasesByVendor = await analytics.GetPurchasesByVendorPageAsync(
-            fromInclusive,
-            asOf,
-            vendorIds: null,
-            itemIds: null,
-            warehouseIds: null,
-            offset: 0,
-            limit: 1,
-            ct);
-
-        var recentDocuments = await analytics.GetRecentDocumentsAsync(asOf, limit: 8, ct);
+        var salesByItem = analyticsSnapshot.SalesByItem;
+        var recentDocuments = analyticsSnapshot.RecentDocuments;
         var policy = await policyReader.GetRequiredAsync(ct);
         var balances = await balanceReader.GetPageAsync(
             policy.InventoryMovementsRegisterId,
@@ -61,7 +48,7 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
         var inventoryPositionCount = balances.Total;
 
         var salesThisMonth = salesByItem.Totals.NetSales;
-        var purchasesThisMonth = purchasesByVendor.Totals.NetPurchases;
+        var purchasesThisMonth = analyticsSnapshot.NetPurchases;
         var grossMargin = salesByItem.Totals.GrossMargin;
         var inventoryOnHand = balances.TotalQuantity;
         var topItems = salesByItem.Rows

@@ -132,6 +132,8 @@ public sealed class ReceivablesController(INgbAccessChecker access) : Controller
         [FromQuery] DateOnly fromMonthInclusive,
         [FromQuery] DateOnly toMonthInclusive,
         [FromQuery] ReceivablesReconciliationMode? mode,
+        [FromQuery] int? offset,
+        [FromQuery] int? limit,
         CancellationToken ct)
     {
         await RequirePageAsync(PropertyManagementSecurityDefaults.ReceivablesReconciliationPage, ct);
@@ -139,7 +141,9 @@ public sealed class ReceivablesController(INgbAccessChecker access) : Controller
             new ReceivablesReconciliationRequest(
                 fromMonthInclusive,
                 toMonthInclusive,
-                mode ?? ReceivablesReconciliationMode.Movement),
+                mode ?? ReceivablesReconciliationMode.Movement,
+                offset ?? 0,
+                limit ?? 200),
             ct);
     }
 

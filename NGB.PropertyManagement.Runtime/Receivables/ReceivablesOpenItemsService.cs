@@ -93,9 +93,8 @@ public sealed class ReceivablesOpenItemsService(
             nowMonth,
             dimensions: filter,
             ct: ct);
-        var page = await movements.GetResourceNetsByDimensionPageAsync(
+        var page = await movements.GetResourceBalancesByDimensionPageAsync(
             policy.ReceivablesOpenItemsOperationalRegisterId,
-            fromMonth,
             toMonth,
             filter,
             DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}"),
@@ -197,9 +196,8 @@ public sealed class ReceivablesOpenItemsService(
             dimensions: filter,
             ct: ct);
 
-        var aggregated = await movements.GetResourceNetsByDimensionAsync(
+        var aggregated = await movements.GetResourceBalancesByDimensionAsync(
             policy.ReceivablesOpenItemsOperationalRegisterId,
-            fromMonth,
             toMonth,
             filter,
             itemDimId,

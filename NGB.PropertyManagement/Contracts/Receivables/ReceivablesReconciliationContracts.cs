@@ -20,7 +20,9 @@ namespace NGB.PropertyManagement.Contracts.Receivables;
 public sealed record ReceivablesReconciliationRequest(
     DateOnly FromMonthInclusive,
     DateOnly ToMonthInclusive,
-    ReceivablesReconciliationMode Mode = ReceivablesReconciliationMode.Movement);
+    ReceivablesReconciliationMode Mode = ReceivablesReconciliationMode.Movement,
+    int Offset = 0,
+    int Limit = 200);
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ReceivablesReconciliationMode
@@ -49,7 +51,10 @@ public sealed record ReceivablesReconciliationReport(
     decimal TotalDiff,
     int RowCount,
     int MismatchRowCount,
-    IReadOnlyList<ReceivablesReconciliationRow> Rows);
+    IReadOnlyList<ReceivablesReconciliationRow> Rows,
+    int Offset = 0,
+    int Limit = 200,
+    bool HasMore = false);
 
 public sealed record ReceivablesReconciliationRow(
     Guid PartyId,

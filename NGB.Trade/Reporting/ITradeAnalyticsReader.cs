@@ -2,6 +2,22 @@ namespace NGB.Trade.Reporting;
 
 public interface ITradeAnalyticsReader
 {
+    async Task<TradeDashboardAnalyticsSnapshot> GetDashboardOverviewAsync(
+        DateOnly fromInclusive,
+        DateOnly asOfInclusive,
+        int topItemLimit,
+        int recentDocumentLimit,
+        CancellationToken ct = default)
+    {
+        var sales = await GetSalesByItemPageAsync(
+            fromInclusive, asOfInclusive, null, null, null, 0, topItemLimit, ct);
+        var purchases = await GetPurchasesByVendorPageAsync(
+            fromInclusive, asOfInclusive, null, null, null, 0, 1, ct);
+        var recent = await GetRecentDocumentsAsync(asOfInclusive, recentDocumentLimit, ct);
+
+        return new TradeDashboardAnalyticsSnapshot(sales, purchases.Totals.NetPurchases, recent);
+    }
+
     Task<TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>> GetSalesByItemPageAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,

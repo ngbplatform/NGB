@@ -127,28 +127,40 @@ internal static class PostgresOperationalRegisterMonthlyProjectionReaderCore
             ? string.Empty
             : "LIMIT @Limit";
 
+        var dimensionFilterCte = dimCount == 0
+            ? string.Empty
+            : """
+              WITH requested_dimensions AS (
+                  SELECT *
+                  FROM unnest(@DimIds::uuid[], @DimValueIds::uuid[])
+                      AS requested(dimension_id, value_id)
+              ),
+              matching_dimension_sets AS (
+                  SELECT item.dimension_set_id
+                  FROM platform_dimension_set_items item
+                  JOIN requested_dimensions requested
+                    ON requested.dimension_id = item.dimension_id
+                   AND requested.value_id = item.value_id
+                  GROUP BY item.dimension_set_id
+                  HAVING COUNT(*) = @DimCount::int
+              )
+              """;
+
+        var dimensionFilterJoin = dimCount == 0
+            ? string.Empty
+            : "JOIN matching_dimension_sets matched ON matched.dimension_set_id = t.dimension_set_id";
+
         var sql = $"""
+                  {dimensionFilterCte}
                   SELECT
-                      period_month      AS "PeriodMonth",
-                      dimension_set_id  AS "DimensionSetId"{resourcesSelect}
+                      t.period_month      AS "PeriodMonth",
+                      t.dimension_set_id  AS "DimensionSetId"{resourcesSelect}
                   FROM {tableName} t
+                  {dimensionFilterJoin}
                   WHERE
                       t.period_month >= @FromMonth::date
                       AND t.period_month <= @ToMonth::date
                       AND (@DimensionSetId IS NULL OR t.dimension_set_id = @DimensionSetId)
-                      AND (
-                          @DimCount::int = 0
-                          OR (
-                              SELECT COUNT(*)
-                              FROM platform_dimension_set_items di
-                              JOIN (
-                                  SELECT
-                                      unnest(@DimIds::uuid[]) AS dimension_id,
-                                      unnest(@DimValueIds::uuid[]) AS value_id
-                              ) req ON req.dimension_id = di.dimension_id AND req.value_id = di.value_id
-                              WHERE di.dimension_set_id = t.dimension_set_id
-                          ) = @DimCount::int
-                      )
                       {cursorSql}
                   ORDER BY t.period_month, t.dimension_set_id
                   {limitSql};

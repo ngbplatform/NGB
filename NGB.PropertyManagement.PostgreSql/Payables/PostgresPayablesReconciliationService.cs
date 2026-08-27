@@ -30,13 +30,21 @@ public sealed class PostgresPayablesReconciliationService(IUnitOfWork uow) : IPa
         if (request.ToMonthInclusive < request.FromMonthInclusive)
             throw new NgbArgumentOutOfRangeException(nameof(request.ToMonthInclusive), request.ToMonthInclusive, "To month must be on or after From month.");
 
+        if (request.Offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(request.Offset), request.Offset, "Offset must be zero or greater.");
+
+        if (request.Limit is <= 0 or > 500)
+            throw new NgbArgumentOutOfRangeException(nameof(request.Limit), request.Limit, "Limit must be between 1 and 500.");
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         var policy = await ReadRequiredPolicyAsync(ct);
         var tableCode = await ReadOperationalRegisterTableCodeOrThrowAsync(policy.OpenItemsRegisterId, ct);
 
         var movementsTable = $"opreg_{tableCode}__movements";
+        var balancesTable = $"opreg_{tableCode}__balances";
         var movementsTableExists = await TableExistsAsync(movementsTable, ct);
+        var balancesTableExists = await TableExistsAsync(balancesTable, ct);
 
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
         var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
@@ -48,7 +56,7 @@ public sealed class PostgresPayablesReconciliationService(IUnitOfWork uow) : IPa
                 BuildMovementOiSourceSql(movementsTable, movementsTableExists)),
             PayablesReconciliationMode.Balance => (
                 BuildBalanceGlSourceSql(),
-                BuildBalanceOiSourceSql(movementsTable, movementsTableExists)),
+                BuildBalanceOiSourceSql(movementsTable, movementsTableExists, balancesTable, balancesTableExists)),
             _ => throw new NgbArgumentInvalidException(nameof(request.Mode), "Select a valid reconciliation mode.")
         };
 
@@ -79,19 +87,48 @@ oi_agg AS (
     LEFT JOIN platform_dimension_set_items pr
         ON pr.dimension_set_id = oi_source.dimension_set_id AND pr.dimension_id = @PropertyDimId::uuid
     GROUP BY 1,2
+),
+reconciliation AS (
+    SELECT
+        COALESCE(gl_agg.vendor_id, oi_agg.vendor_id)      AS vendor_id,
+        COALESCE(gl_agg.property_id, oi_agg.property_id)  AS property_id,
+        COALESCE(gl_agg.ap_net, 0)                        AS ap_net,
+        COALESCE(oi_agg.open_items_net, 0)                AS open_items_net
+    FROM gl_agg
+    FULL OUTER JOIN oi_agg
+        ON gl_agg.vendor_id = oi_agg.vendor_id
+       AND gl_agg.property_id = oi_agg.property_id
+    WHERE COALESCE(gl_agg.ap_net, 0) <> 0
+       OR COALESCE(oi_agg.open_items_net, 0) <> 0
+),
+stats AS (
+    SELECT
+        COUNT(*)::integer AS total_row_count,
+        COUNT(*) FILTER (WHERE ap_net <> open_items_net)::integer AS total_mismatch_row_count,
+        COALESCE(SUM(ap_net), 0) AS total_ap_net,
+        COALESCE(SUM(open_items_net), 0) AS total_open_items_net
+    FROM reconciliation
+),
+paged AS (
+    SELECT *
+    FROM reconciliation
+    ORDER BY vendor_id, property_id
+    OFFSET @Offset
+    LIMIT @LimitPlusOne
 )
 SELECT
-    COALESCE(gl_agg.vendor_id, oi_agg.vendor_id)      AS VendorId,
-    COALESCE(gl_agg.property_id, oi_agg.property_id)  AS PropertyId,
-    COALESCE(gl_agg.ap_net, 0)                        AS ApNet,
-    COALESCE(oi_agg.open_items_net, 0)                AS OpenItemsNet
-FROM gl_agg
-FULL OUTER JOIN oi_agg
-    ON gl_agg.vendor_id = oi_agg.vendor_id
-   AND gl_agg.property_id = oi_agg.property_id
-WHERE COALESCE(gl_agg.ap_net, 0) <> 0
-   OR COALESCE(oi_agg.open_items_net, 0) <> 0
-ORDER BY 1,2;
+    paged.vendor_id AS VendorId,
+    paged.property_id AS PropertyId,
+    COALESCE(paged.ap_net, 0) AS ApNet,
+    COALESCE(paged.open_items_net, 0) AS OpenItemsNet,
+    (paged.vendor_id IS NOT NULL) AS HasRow,
+    stats.total_row_count AS TotalRowCount,
+    stats.total_mismatch_row_count AS TotalMismatchRowCount,
+    stats.total_ap_net AS TotalApNet,
+    stats.total_open_items_net AS TotalOpenItemsNet
+FROM stats
+LEFT JOIN paged ON TRUE
+ORDER BY paged.vendor_id, paged.property_id;
 """;
 
         var cmd = new CommandDefinition(
@@ -103,6 +140,8 @@ ORDER BY 1,2;
                 ToMonth = request.ToMonthInclusive,
                 PartyDimId = partyDimId,
                 PropertyDimId = propertyDimId,
+                request.Offset,
+                LimitPlusOne = request.Limit + 1,
                 Guid.Empty
             },
             transaction: uow.Transaction,
@@ -110,31 +149,31 @@ ORDER BY 1,2;
 
         var rows = (await uow.Connection.QueryAsync<RawRow>(cmd)).AsList();
 
+        var stats = rows[0];
+        var pageRows = rows.Where(static row => row.HasRow).ToList();
+        var hasMore = pageRows.Count > request.Limit;
+        if (hasMore)
+            pageRows.RemoveAt(pageRows.Count - 1);
+
         var vendorDisplays = await ReadCatalogDisplaysAsync(
             PropertyManagementCodes.Party,
             "cat_pm_party",
-            rows.Select(x => x.VendorId),
+            pageRows.Select(x => x.VendorId),
             ct);
 
         var propertyDisplays = await ReadCatalogDisplaysAsync(
             PropertyManagementCodes.Property,
             "cat_pm_property",
-            rows.Select(x => x.PropertyId),
+            pageRows.Select(x => x.PropertyId),
             ct);
 
-        var resultRows = new List<PayablesReconciliationRow>(rows.Count);
-        var totalAp = 0m;
-        var totalOi = 0m;
-        var mismatchRowCount = 0;
+        var resultRows = new List<PayablesReconciliationRow>(pageRows.Count);
 
-        foreach (var r in rows)
+        foreach (var r in pageRows)
         {
             var diff = r.ApNet - r.OpenItemsNet;
             var hasDiff = diff != 0m;
             var rowKind = ResolveRowKind(r.ApNet, r.OpenItemsNet, hasDiff);
-
-            if (hasDiff)
-                mismatchRowCount++;
 
             resultRows.Add(new PayablesReconciliationRow(
                 VendorId: r.VendorId,
@@ -146,9 +185,6 @@ ORDER BY 1,2;
                 Diff: diff,
                 RowKind: rowKind,
                 HasDiff: hasDiff));
-
-            totalAp += r.ApNet;
-            totalOi += r.OpenItemsNet;
         }
 
         return new PayablesReconciliationReport(
@@ -157,12 +193,15 @@ ORDER BY 1,2;
             request.Mode,
             policy.ApAccountId,
             policy.OpenItemsRegisterId,
-            TotalApNet: totalAp,
-            TotalOpenItemsNet: totalOi,
-            TotalDiff: totalAp - totalOi,
-            RowCount: resultRows.Count,
-            MismatchRowCount: mismatchRowCount,
-            Rows: resultRows);
+            TotalApNet: stats.TotalApNet,
+            TotalOpenItemsNet: stats.TotalOpenItemsNet,
+            TotalDiff: stats.TotalApNet - stats.TotalOpenItemsNet,
+            RowCount: stats.TotalRowCount,
+            MismatchRowCount: stats.TotalMismatchRowCount,
+            Rows: resultRows,
+            Offset: request.Offset,
+            Limit: request.Limit,
+            HasMore: hasMore);
     }
 
     internal async Task<IReadOnlyDictionary<Guid, string?>> ReadCatalogDisplaysAsync(
@@ -276,8 +315,48 @@ oi_source AS (
             : BuildEmptyOiSourceSql();
 
     internal static string BuildBalanceOiSourceSql(string movementsTable, bool movementsTableExists)
+        => BuildBalanceOiSourceSql(movementsTable, movementsTableExists, string.Empty, balancesTableExists: false);
+
+    internal static string BuildBalanceOiSourceSql(
+        string movementsTable,
+        bool movementsTableExists,
+        string balancesTable,
+        bool balancesTableExists)
         => movementsTableExists
-            ? $"""
+            ? balancesTableExists
+                ? $"""
+oi_latest_snapshot AS (
+    SELECT MAX(period_month) AS period_month
+    FROM {balancesTable}
+    WHERE period_month <= @ToMonth::date
+),
+oi_seed AS (
+    SELECT b.dimension_set_id, b.amount AS net
+    FROM {balancesTable} b
+    CROSS JOIN oi_latest_snapshot latest
+    WHERE b.period_month = latest.period_month
+),
+oi_roll AS (
+    SELECT
+        m.dimension_set_id,
+        SUM(CASE WHEN m.is_storno THEN -m.amount ELSE m.amount END) AS net
+    FROM {movementsTable} m
+    CROSS JOIN oi_latest_snapshot latest
+    WHERE m.period_month <= @ToMonth::date
+      AND (latest.period_month IS NULL OR m.period_month > latest.period_month)
+    GROUP BY m.dimension_set_id
+),
+oi_source AS (
+    SELECT source.dimension_set_id, SUM(source.net) AS net
+    FROM (
+        SELECT dimension_set_id, net FROM oi_seed
+        UNION ALL
+        SELECT dimension_set_id, net FROM oi_roll
+    ) source
+    GROUP BY source.dimension_set_id
+)
+"""
+                : $"""
 oi_source AS (
     SELECT
         m.dimension_set_id,
@@ -301,7 +380,16 @@ oi_source AS (
 
     private sealed record DisplayRow(Guid Id, string? Display);
 
-    private sealed record RawRow(Guid VendorId, Guid PropertyId, decimal ApNet, decimal OpenItemsNet);
+    private sealed record RawRow(
+        Guid VendorId,
+        Guid PropertyId,
+        decimal ApNet,
+        decimal OpenItemsNet,
+        bool HasRow,
+        int TotalRowCount,
+        int TotalMismatchRowCount,
+        decimal TotalApNet,
+        decimal TotalOpenItemsNet);
 
     internal static PayablesReconciliationRowKind ResolveRowKind(decimal apNet, decimal openItemsNet, bool hasDiff)
     {

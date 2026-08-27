@@ -300,7 +300,7 @@ public sealed class PeriodClosingServiceFullCoverageTests
 
         f.EarliestActivity = null;
         f.LatestClosed = null;
-        f.ClosedRows = [];
+        f.ClosedRows = [Closed(January)];
         f.IsClosedQuery = p => p == January;
         await ((Func<Task>)(() => f.Sut.CloseFiscalYearAsync(march, retained.Id, "actor", Ct)))
             .Should().ThrowAsync<FiscalYearClosingPrerequisiteNotMetException>()

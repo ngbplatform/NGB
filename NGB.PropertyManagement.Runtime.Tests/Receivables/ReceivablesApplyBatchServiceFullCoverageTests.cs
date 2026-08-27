@@ -117,7 +117,9 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
         fixture.Drafts.Setup(x => x.CreateDraftAsync(
                 PropertyManagementCodes.ReceivableApply, null, It.IsAny<DateTime>(), false, false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(newApply);
-        fixture.WorkCenter.Setup(x => x.CompleteIfExhaustedAsync(payment, It.IsAny<CancellationToken>()))
+        fixture.WorkCenter.Setup(x => x.CompleteIfExhaustedAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(payment)),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync([user1, user2, user1]);
 
         var response = await fixture.Sut.ExecuteAsync(new ReceivablesApplyBatchRequest([
@@ -129,7 +131,9 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
         response.TotalApplied.Should().Be(5m);
         response.ExecutedApplies.Select(x => x.ApplyId).Should().Equal(existingApply, newApply);
         response.ExecutedApplies.Select(x => x.CreatedDraft).Should().Equal(false, true);
-        fixture.WorkCenter.Verify(x => x.CompleteIfExhaustedAsync(payment, It.IsAny<CancellationToken>()), Times.Once);
+        fixture.WorkCenter.Verify(x => x.CompleteIfExhaustedAsync(
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 1 && ids.Contains(payment)),
+            It.IsAny<CancellationToken>()), Times.Once);
         fixture.WorkCenter.Verify(x => x.NotifyChangedAsync(
             It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2 && ids.Contains(user1) && ids.Contains(user2)),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -179,7 +183,8 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
             Documents.Setup(x => x.GetForUpdateByIdsAsync(
                     It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Dictionary<Guid, DocumentRecord>());
-            WorkCenter.Setup(x => x.CompleteIfExhaustedAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            WorkCenter.Setup(x => x.CompleteIfExhaustedAsync(
+                    It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             Sut = new ReceivablesApplyBatchService(
                 Drafts.Object, Posting.Object, Policy.Object, Heads.Object,

@@ -152,6 +152,26 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
     }
 
     [Fact]
+    public async Task Repeated_appends_in_the_same_transaction_reuse_successful_schema_repair()
+    {
+        var fixture = Fixture(Reg(), []);
+        var store = fixture.Store;
+
+        await store.AppendAsync(RegisterId, [Write()], default);
+        var schemaCommandCount = fixture.Connection.Commands.Count(command =>
+            command.CommandText.Contains("CREATE TABLE IF NOT EXISTS refreg_prices__records", StringComparison.Ordinal));
+
+        await store.AppendAsync(RegisterId, [Write()], default);
+
+        fixture.Connection.Commands.Count(command =>
+                command.CommandText.Contains("CREATE TABLE IF NOT EXISTS refreg_prices__records", StringComparison.Ordinal))
+            .Should().Be(schemaCommandCount).And.Be(1);
+        fixture.Connection.Commands.Count(command =>
+                command.CommandText.StartsWith("INSERT INTO refreg_prices__records", StringComparison.Ordinal))
+            .Should().Be(2);
+    }
+
+    [Fact]
     public async Task Tombstones_cover_independent_periodic_nonperiodic_fields_and_keep_filters()
     {
         var independent = Fixture(Reg(), []);

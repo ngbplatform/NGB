@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS {table}(
         //   (we only storno non-storno rows).
         var ixMonthMove = Ix(table, "month_move");
         var ixMonthDimMove = Ix(table, "month_dim_move");
+        var ixDimMonthOccurred = Ix(table, "dim_month_occurred");
         var ixDocMonthNoStorno = Ix(table, "doc_month_nostorno");
 
         await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixDoc} ON {table}(document_id);", transaction: uow.Transaction);
@@ -82,6 +83,7 @@ CREATE TABLE IF NOT EXISTS {table}(
 
         await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixMonthMove} ON {table}(period_month, movement_id);", transaction: uow.Transaction);
         await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixMonthDimMove} ON {table}(period_month, dimension_set_id, movement_id);", transaction: uow.Transaction);
+        await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixDimMonthOccurred} ON {table}(dimension_set_id, period_month, occurred_at_utc);", transaction: uow.Transaction);
         await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixDocMonthNoStorno} ON {table}(document_id, period_month) WHERE is_storno = FALSE;", transaction: uow.Transaction);
     }
 

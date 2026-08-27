@@ -156,6 +156,28 @@ public sealed class PropertyManagementWorkCenterFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_completion_resolves_availability_once_and_deduplicates_changed_users()
+    {
+        var fixture = new SynchronizerFixture();
+        var first = Guid.CreateVersion7();
+        var second = Guid.CreateVersion7();
+        fixture.Availability.Setup(x => x.GetExhaustedPaymentIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 3),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<Guid> { first, second });
+
+        var result = await fixture.Sut.CompleteIfExhaustedAsync([first, second, first], default);
+
+        result.Should().BeEquivalentTo(fixture.ChangedUsers);
+        fixture.Availability.Verify(x => x.GetExhaustedPaymentIdsAsync(
+            It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Tasks.Verify(x => x.CompleteByDeduplicationKeyAsync(
+            PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task Cancel_uses_stable_deduplication_key()
     {
         var fixture = new SynchronizerFixture();

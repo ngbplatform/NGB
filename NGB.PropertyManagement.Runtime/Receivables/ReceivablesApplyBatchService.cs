@@ -36,7 +36,7 @@ public sealed class ReceivablesApplyBatchService(
     IReceivablePaymentWorkCenterSynchronizer workCenter)
     : IReceivablesApplyBatchService
 {
-    private const int MaxLines = 500;
+    private const int MaxLines = 100;
 
     public async Task<ReceivablesApplyBatchResponse> ExecuteAsync(
         ReceivablesApplyBatchRequest request,
@@ -139,10 +139,9 @@ public sealed class ReceivablesApplyBatchService(
                     CreatedDraft: createdDraft));
             }
 
-            foreach (var paymentId in parsed.Select(static x => x.CreditDocumentId).Distinct())
-            {
-                affectedUsers.UnionWith(await workCenter.CompleteIfExhaustedAsync(paymentId, innerCt));
-            }
+            affectedUsers.UnionWith(await workCenter.CompleteIfExhaustedAsync(
+                parsed.Select(static x => x.CreditDocumentId).Distinct().ToArray(),
+                innerCt));
 
             return (IReadOnlyCollection<Guid>)affectedUsers.ToArray();
         }, ct);
