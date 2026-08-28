@@ -199,10 +199,20 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         var resourceDefinitions = new Mock<IOperationalRegisterResourceRepository>(MockBehavior.Strict);
         resourceDefinitions.Setup(x => x.GetByRegisterIdAsync(registerId, It.IsAny<CancellationToken>()))
             .ReturnsAsync([resource]);
+        var resourceConnection = new RecordingDbConnection();
         var resourceStore = new PostgresOperationalRegisterMovementsStore(
-            new RecordingUnitOfWork(new RecordingDbConnection(), hasActiveTransaction: true),
+            new RecordingUnitOfWork(resourceConnection, hasActiveTransaction: true),
             resourceRegisters.Object,
             resourceDefinitions.Object);
+        await resourceStore.EnsureSchemaAsync(registerId);
+        var schemaCommand = resourceConnection.Commands
+            .Should().ContainSingle(command => command.CommandText.Contains("CREATE TABLE IF NOT EXISTS", StringComparison.Ordinal))
+            .Which.CommandText;
+        schemaCommand.Should()
+            .Contain("ADD COLUMN IF NOT EXISTS amount")
+            .And.Contain("CREATE TRIGGER")
+            .And.Contain("WHERE is_storno = FALSE");
+        schemaCommand.Split("CREATE INDEX IF NOT EXISTS", StringSplitOptions.None).Should().HaveCount(8);
         await resourceStore.AppendStornoByDocumentAsync(registerId, documentId);
     }
 

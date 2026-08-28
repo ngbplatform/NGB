@@ -15,6 +15,7 @@ using NGB.Metadata.Documents.Storage;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.Documents.Storage;
+using NGB.Persistence.Documents;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.Admin;
 using NGB.Runtime.AuditLog;
@@ -207,6 +208,7 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IDocumentNumberingPolicyResolver, DefinitionsDocumentNumberingPolicyResolver>();
         services.TryAddScoped<IDocumentApprovalPolicyResolver, DefinitionsDocumentApprovalPolicyResolver>();
         services.TryAddScoped<IDocumentWorkflowExecutor, DocumentWorkflowExecutor>();
+        services.TryAddScoped<IDocumentPostingReadCache, DocumentPostingReadCache>();
 
         // Platform policies
         services.TryAddScoped<GeneralJournalEntryNumberingPolicy>();

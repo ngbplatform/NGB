@@ -128,6 +128,52 @@ public sealed class PartsPersistenceFullCoverageTests
     }
 
     [Fact]
+    public async Task Readers_fetch_all_physical_parts_in_one_database_command()
+    {
+        static DataSet Results(string first, string second)
+        {
+            var dataSet = new DataSet();
+            var firstTable = new DataTable();
+            firstTable.Columns.Add("value", typeof(string));
+            firstTable.Rows.Add(first);
+            dataSet.Tables.Add(firstTable);
+            var secondTable = new DataTable();
+            secondTable.Columns.Add("value", typeof(string));
+            secondTable.Rows.Add(second);
+            dataSet.Tables.Add(secondTable);
+            return dataSet;
+        }
+
+        var catalogResults = Results("catalog-a", "catalog-b");
+        var catalogConnection = new RecordingDbConnection(_ => catalogResults.CreateDataReader());
+        var catalog = new PostgresCatalogPartsReader(new RecordingUnitOfWork(catalogConnection));
+        var catalogParts = await catalog.GetPartsAsync(
+            [
+                CatalogTable("catalog_part_a", TableKind.Part, CatalogColumn("value")),
+                CatalogTable("catalog_part_b", TableKind.Part, CatalogColumn("value"))
+            ],
+            Guid.NewGuid());
+
+        catalogConnection.Commands.Should().ContainSingle();
+        catalogParts["catalog_part_a"].Should().ContainSingle().Which.Should().Contain("value", "catalog-a");
+        catalogParts["catalog_part_b"].Should().ContainSingle().Which.Should().Contain("value", "catalog-b");
+
+        var documentResults = Results("document-a", "document-b");
+        var documentConnection = new RecordingDbConnection(_ => documentResults.CreateDataReader());
+        var document = new PostgresDocumentPartsReader(new RecordingUnitOfWork(documentConnection));
+        var documentParts = await document.GetPartsAsync(
+            [
+                DocumentTable("document_part_a", TableKind.Part, DocumentColumn("value")),
+                DocumentTable("document_part_b", TableKind.Part, DocumentColumn("value"))
+            ],
+            Guid.NewGuid());
+
+        documentConnection.Commands.Should().ContainSingle();
+        documentParts["document_part_a"].Should().ContainSingle().Which.Should().Contain("value", "document-a");
+        documentParts["document_part_b"].Should().ContainSingle().Which.Should().Contain("value", "document-b");
+    }
+
+    [Fact]
     public async Task Writers_validate_required_arguments_and_empty_metadata_without_a_transaction()
     {
         var catalog = new PostgresCatalogPartsWriter(null!);
@@ -244,6 +290,51 @@ public sealed class PartsPersistenceFullCoverageTests
         connection.Commands.Skip(beforeLargeWrite)
             .Count(command => command.CommandText.Contains("INSERT INTO \"document_part\"", StringComparison.Ordinal))
             .Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Writers_validate_every_part_before_one_batched_delete_command()
+    {
+        var catalogConnection = new RecordingDbConnection();
+        var catalog = new PostgresCatalogPartsWriter(
+            new RecordingUnitOfWork(catalogConnection, hasActiveTransaction: true));
+        var catalogId = Guid.NewGuid();
+        await catalog.ReplacePartsAsync(
+            [
+                CatalogTable("catalog_part_a", TableKind.Part, CatalogColumn("value")),
+                CatalogTable("catalog_part_b", TableKind.Part, CatalogColumn("value"))
+            ],
+            catalogId,
+            EmptyRows());
+        catalogConnection.Commands.Should().ContainSingle();
+        catalogConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"catalog_part_a\"")
+            .And.Contain("DELETE FROM \"catalog_part_b\"");
+
+        var invalidCatalogConnection = new RecordingDbConnection();
+        var invalidCatalog = new PostgresCatalogPartsWriter(
+            new RecordingUnitOfWork(invalidCatalogConnection, hasActiveTransaction: true));
+        await AssertInvalid(() => invalidCatalog.ReplacePartsAsync(
+            [
+                CatalogTable("catalog_part_a", TableKind.Part, CatalogColumn("value")),
+                CatalogTable("catalog_part_b", TableKind.Part, CatalogColumn("value"))
+            ],
+            catalogId,
+            Rows(("catalog_part_b", [Row(("unknown", 1))]))));
+        invalidCatalogConnection.Commands.Should().BeEmpty();
+
+        var documentConnection = new RecordingDbConnection();
+        var document = new PostgresDocumentPartsWriter(
+            new RecordingUnitOfWork(documentConnection, hasActiveTransaction: true));
+        await document.ReplacePartsAsync(
+            [
+                DocumentTable("document_part_a", TableKind.Part, DocumentColumn("value")),
+                DocumentTable("document_part_b", TableKind.Part, DocumentColumn("value"))
+            ],
+            Guid.NewGuid(),
+            EmptyRows());
+        documentConnection.Commands.Should().ContainSingle();
+        documentConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"document_part_a\"")
+            .And.Contain("DELETE FROM \"document_part_b\"");
     }
 
     private static CatalogTableMetadata CatalogTable(

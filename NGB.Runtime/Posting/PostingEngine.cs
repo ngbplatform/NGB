@@ -411,10 +411,8 @@ public sealed class PostingEngine(
             .OrderBy(p => p) // keep deterministic order for diagnostics/predictability
             .ToList();
 
-        foreach (var p in periods)
-        {
-            if (await closedPeriodRepository.IsClosedAsync(p, ct))
-                throw new PostingPeriodClosedException(operation.ToString(), p);
-        }
+        var firstClosed = await closedPeriodRepository.FindFirstClosedAsync(periods, ct);
+        if (firstClosed is not null)
+            throw new PostingPeriodClosedException(operation.ToString(), firstClosed.Value);
     }
 }

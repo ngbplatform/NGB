@@ -1,4 +1,5 @@
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Core.Documents;
 using NGB.Persistence.UnitOfWork;
 using NGB.Trade.Reporting;
@@ -348,7 +349,7 @@ LIMIT @limit;
                 item_ids = itemIdArray,
                 customer_ids = customerIdArray,
                 warehouse_ids = warehouseIdArray,
-                offset,
+                offset = PagingLimits.BoundOffset(offset),
                 limit
             },
             transaction: uow.Transaction,
@@ -507,7 +508,7 @@ LIMIT @limit;
                 customer_ids = customerIdArray,
                 item_ids = itemIdArray,
                 warehouse_ids = warehouseIdArray,
-                offset,
+                offset = PagingLimits.BoundOffset(offset),
                 limit
             },
             transaction: uow.Transaction,
@@ -662,7 +663,7 @@ LIMIT @limit;
                 vendor_ids = vendorIdArray,
                 item_ids = itemIdArray,
                 warehouse_ids = warehouseIdArray,
-                offset,
+                offset = PagingLimits.BoundOffset(offset),
                 limit
             },
             transaction: uow.Transaction,

@@ -2,6 +2,7 @@ using System.Data;
 using FluentAssertions;
 using NGB.PostgreSql.Dimensions;
 using NGB.PostgreSql.Documents.Numbering;
+using NGB.PostgreSql.Periods;
 using NGB.PostgreSql.Readers;
 using NGB.PostgreSql.Tests.TestDoubles;
 using NGB.Tools.Exceptions;
@@ -98,6 +99,28 @@ public sealed class SimpleReadersAndNumberingFullCoverageTests
         });
         (await sut.GetLatestClosedPeriodAsync(default)).Should().Be(new DateOnly(2026, 8, 1));
         (await sut.ExistsClosedAfterAsync(new DateOnly(2026, 7, 1), default)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Closed_period_repository_batches_distinct_period_lookup_and_handles_empty_input()
+    {
+        var march = new DateOnly(2026, 3, 1);
+        var april = new DateOnly(2026, 4, 1);
+        var table = Table([("Period", typeof(DateOnly))], [march]);
+        var connection = new RecordingDbConnection(_ => table.CreateDataReader());
+        var sut = new PostgresClosedPeriodRepository(new RecordingUnitOfWork(connection));
+
+        (await sut.FindFirstClosedAsync([], default)).Should().BeNull();
+        Func<Task> missing = async () => await sut.FindFirstClosedAsync(null!, default);
+        await missing.Should().ThrowAsync<ArgumentNullException>();
+
+        (await sut.FindFirstClosedAsync([april, march, april], default)).Should().Be(march);
+        connection.Commands.Should().ContainSingle();
+        connection.Commands[0].CommandText.Should().Contain("period = ANY(");
+        connection.Commands[0].ParametersSnapshot
+            .Where(parameter => parameter.ParameterName.StartsWith("Periods", StringComparison.Ordinal))
+            .Select(parameter => parameter.Value)
+            .Should().Equal(march, april);
     }
 
     [Fact]

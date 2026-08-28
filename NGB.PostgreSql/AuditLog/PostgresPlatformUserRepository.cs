@@ -1,4 +1,5 @@
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Core.AuditLog;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.UnitOfWork;
@@ -183,6 +184,8 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
 
         if (limit <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+
+        offset = PagingLimits.BoundOffset(offset);
 
         await uow.EnsureConnectionOpenAsync(ct);
 

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using NGB.Persistence.Documents;
 using NGB.AgencyBilling.Documents;
 using NGB.AgencyBilling.Derivations;
 using NGB.AgencyBilling.PostgreSql.Documents;
@@ -17,7 +18,13 @@ public static class AgencyBillingPostgresModuleServiceCollectionExtensions
 {
     public static IServiceCollection AddAgencyBillingPostgresModule(this IServiceCollection services)
     {
-        services.AddScoped<IAgencyBillingDocumentReaders, AgencyBillingDocumentReaders>();
+        services.AddScoped<AgencyBillingDocumentReaders>();
+        services.AddScoped<IAgencyBillingDocumentReaders>(sp =>
+        {
+            var inner = sp.GetRequiredService<AgencyBillingDocumentReaders>();
+            var cache = sp.GetService<IDocumentPostingReadCache>();
+            return cache is null ? inner : new PostingCachedAgencyBillingDocumentReaders(inner, cache);
+        });
         services.AddScoped<IAgencyBillingReferenceReaders, AgencyBillingReferenceReaders>();
         services.AddScoped<IAgencyBillingInvoiceUsageReader, AgencyBillingInvoiceUsageReader>();
         services.AddScoped<IAgencyBillingInvoiceDraftDerivationReader, AgencyBillingInvoiceDraftDerivationReader>();

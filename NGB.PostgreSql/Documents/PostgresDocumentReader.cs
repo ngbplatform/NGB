@@ -2,6 +2,7 @@ using System.Data;
 using System.Globalization;
 using System.Text.Json;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Core.Documents;
 using NGB.Metadata.Base;
 using NGB.Persistence.Common;
@@ -62,6 +63,8 @@ internal sealed class PostgresDocumentReader(
         if (limit <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
 
+        offset = PagingLimits.BoundOffset(offset);
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         var where = BuildWhere(head, query);
@@ -117,6 +120,8 @@ internal sealed class PostgresDocumentReader(
 
         if (limit <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        offset = PagingLimits.BoundOffset(offset);
 
         await uow.EnsureConnectionOpenAsync(ct);
 

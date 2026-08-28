@@ -205,6 +205,12 @@ public sealed class TradeSeedDemoCliFullCoverageTests
             .ReturnsAsync(new PageResponseDto<CatalogItemDto>([Catalog(existingCatalogId, "Existing")], 0, 50, 1))
             .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 50, 0))
             .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
+                [Catalog(Guid.NewGuid(), "Duplicate"), Catalog(Guid.NewGuid(), "duplicate")], 0, 50, 2))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
+                [Catalog(existingCatalogId, "Existing"), new CatalogItemDto(Guid.NewGuid(), null, new RecordPayload(), false, false)],
+                0, 50, 2))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 50, 0))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
                 [Catalog(Guid.NewGuid(), "Duplicate"), Catalog(Guid.NewGuid(), "duplicate")], 0, 50, 2));
         var catalogSeeder = CreateSeeder(catalogs: catalogs.Object);
         (await catalogSeeder.GetCatalogIdByDisplayAsync(
@@ -215,6 +221,15 @@ public sealed class TradeSeedDemoCliFullCoverageTests
         await FluentActions.Awaiting(() => catalogSeeder.GetCatalogIdByDisplayAsync(
                 "catalog", "Duplicate", CancellationToken.None))
             .Should().ThrowAsync<NgbConfigurationViolationException>();
+        (await catalogSeeder.GetCatalogIdsByDisplayAsync(
+                "catalog", ["existing"], CancellationToken.None))["EXISTING"]
+            .Should().Be(existingCatalogId);
+        await FluentActions.Awaiting(() => catalogSeeder.GetCatalogIdsByDisplayAsync(
+                "catalog", ["Missing"], CancellationToken.None))
+            .Should().ThrowAsync<NgbConfigurationViolationException>().WithMessage("*was not found*");
+        await FluentActions.Awaiting(() => catalogSeeder.GetCatalogIdsByDisplayAsync(
+                "catalog", ["Duplicate"], CancellationToken.None))
+            .Should().ThrowAsync<NgbConfigurationViolationException>().WithMessage("Multiple*");
 
         var documents = DocumentMocks(out var lifecycle, out var drafts);
         var documentSeeder = CreateSeeder(

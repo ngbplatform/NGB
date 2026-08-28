@@ -38,22 +38,22 @@ internal sealed class PostgresOperationalRegisterMonthlyProjectionStoreCore(
 
         var (table, resources) = await ResolveTableAndResourcesOrThrowAsync(registerId, ct);
 
-        // Base table (derived data: replace semantics per month => NOT append-only).
-        await uow.Connection.ExecuteAsync($"""
+        // Execute the complete idempotent DDL batch in one roundtrip. PostgreSQL still
+        // serializes it under the per-register advisory lock, while wide registers no
+        // longer pay one network roundtrip per resource column.
+        var ddl = new StringBuilder($"""
 CREATE TABLE IF NOT EXISTS {table}(
     period_month DATE NOT NULL,
     dimension_set_id UUID NOT NULL DEFAULT '{Guid.Empty}',
     FOREIGN KEY (dimension_set_id) REFERENCES platform_dimension_sets(dimension_set_id),
     UNIQUE (period_month, dimension_set_id)
 );
-""", transaction: uow.Transaction);
+""");
 
         // Resource columns (NUMERIC(28,8) NOT NULL DEFAULT 0).
         foreach (var r in resources)
         {
-            await uow.Connection.ExecuteAsync(
-                $"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {r.ColumnCode} NUMERIC(28,8) NOT NULL DEFAULT 0;",
-                transaction: uow.Transaction);
+            ddl.AppendLine($"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {r.ColumnCode} NUMERIC(28,8) NOT NULL DEFAULT 0;");
         }
 
         // Indexes
@@ -61,13 +61,13 @@ CREATE TABLE IF NOT EXISTS {table}(
         var ixMonth = Ix(table, "month");
         var ixDim = Ix(table, "dim");
 
-        await uow.Connection.ExecuteAsync(
-            $"CREATE INDEX IF NOT EXISTS {ixMonth} ON {table}(period_month);",
-            transaction: uow.Transaction);
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixMonth} ON {table}(period_month);");
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixDim} ON {table}(dimension_set_id);");
 
-        await uow.Connection.ExecuteAsync(
-            $"CREATE INDEX IF NOT EXISTS {ixDim} ON {table}(dimension_set_id);",
-            transaction: uow.Transaction);
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            ddl.ToString(),
+            transaction: uow.Transaction,
+            cancellationToken: ct));
     }
 
     public async Task ReplaceForMonthAsync(

@@ -467,12 +467,25 @@ internal sealed class TradeDemoSeeder(
     }
 
     private async Task<TradeSeedLookups> LoadLookupsAsync(CancellationToken ct)
-        => new(
-            UnitOfMeasureId: await GetCatalogIdByDisplayAsync(TradeCodes.UnitOfMeasure, "Each", ct),
-            RetailPriceTypeId: await GetCatalogIdByDisplayAsync(TradeCodes.PriceType, "Retail", ct),
-            Net30TermsId: await GetCatalogIdByDisplayAsync(TradeCodes.PaymentTerms, "Net 30", ct),
-            DueOnReceiptTermsId: await GetCatalogIdByDisplayAsync(TradeCodes.PaymentTerms, "Due on Receipt", ct),
-            CountCorrectionReasonId: await GetCatalogIdByDisplayAsync(TradeCodes.InventoryAdjustmentReason, "Count Correction", ct));
+    {
+        var units = await GetCatalogIdsByDisplayAsync(TradeCodes.UnitOfMeasure, ["Each"], ct);
+        var priceTypes = await GetCatalogIdsByDisplayAsync(TradeCodes.PriceType, ["Retail"], ct);
+        var paymentTerms = await GetCatalogIdsByDisplayAsync(
+            TradeCodes.PaymentTerms,
+            ["Net 30", "Due on Receipt"],
+            ct);
+        var adjustmentReasons = await GetCatalogIdsByDisplayAsync(
+            TradeCodes.InventoryAdjustmentReason,
+            ["Count Correction"],
+            ct);
+
+        return new TradeSeedLookups(
+            UnitOfMeasureId: units["Each"],
+            RetailPriceTypeId: priceTypes["Retail"],
+            Net30TermsId: paymentTerms["Net 30"],
+            DueOnReceiptTermsId: paymentTerms["Due on Receipt"],
+            CountCorrectionReasonId: adjustmentReasons["Count Correction"]);
+    }
 
     internal async Task<Guid> EnsureRetainedEarningsAccountAsync(CancellationToken ct)
     {
@@ -1331,6 +1344,36 @@ internal sealed class TradeDemoSeeder(
             0 => throw new NgbConfigurationViolationException($"Default '{catalogType}' record '{display}' was not found."),
             _ => throw new NgbConfigurationViolationException($"Multiple '{catalogType}' records exist for display '{display}'.")
         };
+    }
+
+    internal async Task<IReadOnlyDictionary<string, Guid>> GetCatalogIdsByDisplayAsync(
+        string catalogType,
+        IReadOnlyCollection<string> displays,
+        CancellationToken ct)
+    {
+        var requested = displays.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var page = await catalogs.GetPageAsync(
+            catalogType,
+            new PageRequestDto(Offset: 0, Limit: PagingLimits.MaxPageSize, Search: null),
+            ct);
+        var grouped = page.Items
+            .Where(item => item.Display is not null && requested.Contains(item.Display))
+            .GroupBy(item => item.Display!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var display in requested)
+        {
+            if (!grouped.TryGetValue(display, out var matches) || matches.Length == 0)
+                throw new NgbConfigurationViolationException($"Default '{catalogType}' record '{display}' was not found.");
+
+            if (matches.Length > 1)
+                throw new NgbConfigurationViolationException($"Multiple '{catalogType}' records exist for display '{display}'.");
+
+            result[display] = matches[0].Id;
+        }
+
+        return result;
     }
 
     internal async Task<DocumentDto> CreateAndPostAsync(

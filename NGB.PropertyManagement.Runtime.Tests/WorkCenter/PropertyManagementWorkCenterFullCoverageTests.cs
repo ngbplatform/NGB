@@ -171,10 +171,13 @@ public sealed class PropertyManagementWorkCenterFullCoverageTests
         result.Should().BeEquivalentTo(fixture.ChangedUsers);
         fixture.Availability.Verify(x => x.GetExhaustedPaymentIdsAsync(
             It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
-        fixture.Tasks.Verify(x => x.CompleteByDeduplicationKeyAsync(
+        fixture.Tasks.Verify(x => x.CompleteByDeduplicationKeysAsync(
             PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
-            It.IsAny<string>(),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
+            It.Is<IReadOnlyCollection<string>>(keys =>
+                keys.Count == 2
+                && keys.Contains($"pm:receivable-payment:{first:D}:apply")
+                && keys.Contains($"pm:receivable-payment:{second:D}:apply")),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -257,6 +260,9 @@ public sealed class PropertyManagementWorkCenterFullCoverageTests
                 .ReturnsAsync(() => new WorkCenterMutationResult(Guid.CreateVersion7(), ChangedUsers));
             Tasks.Setup(x => x.CompleteByDeduplicationKeyAsync(
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ChangedUsers);
+            Tasks.Setup(x => x.CompleteByDeduplicationKeysAsync(
+                    It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(ChangedUsers);
             Tasks.Setup(x => x.CancelByDeduplicationKeyAsync(
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))

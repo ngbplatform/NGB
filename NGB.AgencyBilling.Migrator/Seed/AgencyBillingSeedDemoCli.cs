@@ -322,12 +322,19 @@ internal sealed class AgencyBillingDemoSeeder(
     }
 
     private async Task<IReadOnlyList<PaymentTermSeed>> LoadPaymentTermsAsync(CancellationToken ct)
-        =>
+    {
+        var ids = await GetCatalogIdsByDisplayAsync(
+            AgencyBillingCodes.PaymentTerms,
+            ["Due on Receipt", "Net 15", "Net 30"],
+            ct);
+
+        return
         [
-            new PaymentTermSeed("Due on Receipt", await GetCatalogIdByDisplayAsync(AgencyBillingCodes.PaymentTerms, "Due on Receipt", ct), 0),
-            new PaymentTermSeed("Net 15", await GetCatalogIdByDisplayAsync(AgencyBillingCodes.PaymentTerms, "Net 15", ct), 15),
-            new PaymentTermSeed("Net 30", await GetCatalogIdByDisplayAsync(AgencyBillingCodes.PaymentTerms, "Net 30", ct), 30)
+            new PaymentTermSeed("Due on Receipt", ids["Due on Receipt"], 0),
+            new PaymentTermSeed("Net 15", ids["Net 15"], 15),
+            new PaymentTermSeed("Net 30", ids["Net 30"], 30)
         ];
+    }
 
     private async Task<IReadOnlyList<ServiceItemSeed>> SeedServiceItemsAsync(CancellationToken ct)
     {
@@ -806,6 +813,36 @@ internal sealed class AgencyBillingDemoSeeder(
         var existing = await FindCatalogByDisplayAsync(catalogType, display, ct);
         return existing?.Id
             ?? throw new NgbConfigurationViolationException($"Default '{catalogType}' record '{display}' was not found.");
+    }
+
+    internal async Task<IReadOnlyDictionary<string, Guid>> GetCatalogIdsByDisplayAsync(
+        string catalogType,
+        IReadOnlyCollection<string> displays,
+        CancellationToken ct)
+    {
+        var requested = displays.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var page = await catalogs.GetPageAsync(
+            catalogType,
+            new PageRequestDto(Offset: 0, Limit: PagingLimits.MaxPageSize, Search: null),
+            ct);
+        var grouped = page.Items
+            .Where(item => item.Display is not null && requested.Contains(item.Display))
+            .GroupBy(item => item.Display!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var display in requested)
+        {
+            if (!grouped.TryGetValue(display, out var matches) || matches.Length == 0)
+                throw new NgbConfigurationViolationException($"Default '{catalogType}' record '{display}' was not found.");
+
+            if (matches.Length > 1)
+                throw new NgbConfigurationViolationException($"Multiple '{catalogType}' records exist for display '{display}'.");
+
+            result[display] = matches[0].Id;
+        }
+
+        return result;
     }
 
     internal bool CanPostAgencyDocuments()

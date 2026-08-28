@@ -25,7 +25,8 @@ public sealed class ReceivablesCustomApplyExecuteService(
     IDocumentRepository documents,
     IAdvisoryLockManager advisoryLocks,
     IUnitOfWork uow,
-    IReceivablePaymentWorkCenterSynchronizer workCenter)
+    IReceivablePaymentWorkCenterSynchronizer workCenter,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IReceivablesCustomApplyExecuteService
 {
     private const int MaxLines = 100;
@@ -42,6 +43,8 @@ public sealed class ReceivablesCustomApplyExecuteService(
 
         if (request.Applies.Count > MaxLines)
             throw ReceivablesRequestValidationException.ApplicationsTooLarge(request.Applies.Count, MaxLines);
+
+        using var postingReadScope = postingReadCache?.BeginScope();
 
         // Canonicalize lines before going to the DB.
         var grouped = new Dictionary<Guid, decimal>();

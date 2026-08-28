@@ -399,6 +399,50 @@ public sealed class WorkCenterServicesTests
     }
 
     [Fact]
+    public async Task Task_service_completes_multiple_deduplication_keys_in_one_transaction()
+    {
+        var uow = new RecordingUnitOfWork();
+        var tasks = new Mock<IWorkCenterTaskRepository>(MockBehavior.Strict);
+        var recipient = Guid.NewGuid();
+        var keys = new[] { "task:1", "task:2" };
+        tasks.Setup(repository => repository.CompleteByDeduplicationKeysAsync(
+                "task.code", keys, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkCenterTaskMutationResult(true, [recipient]));
+        var service = new WorkCenterTaskService(
+            uow,
+            tasks.Object,
+            RecipientResolver(),
+            new FixedTimeProvider(Now));
+
+        var completedUsers = await service.CompleteByDeduplicationKeysAsync(
+            "task.code",
+            keys,
+            CancellationToken.None);
+
+        completedUsers.Should().Equal(recipient);
+        uow.CommitCount.Should().Be(1);
+        tasks.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Task_service_skips_repository_for_empty_deduplication_key_batch()
+    {
+        var uow = new RecordingUnitOfWork();
+        var tasks = new Mock<IWorkCenterTaskRepository>(MockBehavior.Strict);
+        var service = new WorkCenterTaskService(
+            uow,
+            tasks.Object,
+            RecipientResolver(),
+            new FixedTimeProvider(Now));
+
+        (await service.CompleteByDeduplicationKeysAsync("task.code", [], CancellationToken.None))
+            .Should().BeEmpty();
+
+        uow.CommitCount.Should().Be(0);
+        tasks.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task Notification_service_batches_recipients_and_resolves_preferences_severity_and_retention()
     {
         var uow = new RecordingUnitOfWork();

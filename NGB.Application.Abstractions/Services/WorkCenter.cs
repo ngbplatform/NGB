@@ -59,6 +59,11 @@ public interface IWorkCenterTaskService
         string deduplicationKey,
         CancellationToken ct);
 
+    Task<IReadOnlyList<Guid>> CompleteByDeduplicationKeysAsync(
+        string taskCode,
+        IReadOnlyCollection<string> deduplicationKeys,
+        CancellationToken ct);
+
     Task<IReadOnlyList<Guid>> CancelByDeduplicationKeyAsync(
         string taskCode,
         string deduplicationKey,

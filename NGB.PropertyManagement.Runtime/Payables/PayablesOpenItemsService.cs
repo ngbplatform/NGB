@@ -18,6 +18,8 @@ public sealed class PayablesOpenItemsService(
     IUnitOfWork uow)
     : IPayablesOpenItemsService
 {
+    internal const int MaxMaterializedOpenItems = 5_000;
+
     public async Task<(Guid RegisterId, IReadOnlyList<PayablesOpenChargeItemDetailsDto> Charges, IReadOnlyList<PayablesOpenCreditItemDetailsDto> Credits, decimal TotalOutstanding, decimal TotalCredit)> GetOpenItemsAsync(
         Guid partyId,
         Guid propertyId,
@@ -71,13 +73,20 @@ public sealed class PayablesOpenItemsService(
                 resolvedTo = toMonth.Value;
 
             var itemDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.PayableItem}");
-            var aggregated = await movements.GetResourceBalancesByDimensionAsync(
+            var page = await movements.GetResourceBalancesByDimensionPageAsync(
                 policy.PayablesOpenItemsOperationalRegisterId,
                 resolvedTo,
                 dims,
                 itemDimId,
                 resourceColumnCode: "amount",
-                innerCt);
+                offset: 0,
+                limit: MaxMaterializedOpenItems,
+                ct: innerCt);
+
+            if (page.Total > MaxMaterializedOpenItems)
+                throw new OpenItemsResultLimitExceededException(page.Total, MaxMaterializedOpenItems);
+
+            var aggregated = page.Rows;
             var netByItem = aggregated.ToDictionary(static row => row.ValueId, static row => row.NetAmount);
             var displayByItem = aggregated.ToDictionary(static row => row.ValueId, static row => row.Display);
 

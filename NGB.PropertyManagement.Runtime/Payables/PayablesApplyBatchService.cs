@@ -23,7 +23,8 @@ public sealed class PayablesApplyBatchService(
     IPayableApplyHeadWriter applyHeadWriter,
     IDocumentRepository documents,
     IAdvisoryLockManager locks,
-    IUnitOfWork uow)
+    IUnitOfWork uow,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IPayablesApplyBatchService
 {
     private const int MaxLines = 100;
@@ -65,6 +66,7 @@ public sealed class PayablesApplyBatchService(
         if (parsed.Count == 0)
             throw PayablesApplyBatchValidationException.AppliesMustNotBeEmpty();
 
+        using var postingReadScope = postingReadCache?.BeginScope();
         var policy = await policyReader.GetRequiredAsync(ct);
         var executed = new List<PayablesApplyBatchExecutedItem>(parsed.Count);
 

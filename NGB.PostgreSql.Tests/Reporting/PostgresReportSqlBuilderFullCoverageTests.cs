@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using Dapper;
 using FluentAssertions;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.PostgreSql.Reporting;
 using NGB.Tools.Exceptions;
@@ -41,6 +42,24 @@ public sealed class PostgresReportSqlBuilderFullCoverageTests
         [
             new PostgresReportFieldSelection("account_display", "account_display", "Account", "string")
         ])).Columns.Should().ContainSingle();
+    }
+
+    [Fact]
+    public void Build_bounds_legacy_offset_before_it_reaches_postgresql()
+    {
+        var sut = Builder();
+        var request = Request(details:
+        [
+            new PostgresReportFieldSelection("name", "name", "Name", "string")
+        ]) with
+        {
+            Paging = new PostgresReportPaging(int.MaxValue, 20)
+        };
+
+        var statement = sut.Build(request);
+
+        statement.Offset.Should().Be(PagingLimits.MaxOffset);
+        statement.Parameters.Get<int>("offset").Should().Be(PagingLimits.MaxOffset);
     }
 
     [Fact]

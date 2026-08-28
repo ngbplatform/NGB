@@ -69,9 +69,12 @@ internal sealed class DocumentPostingService(
     IDocumentNumberingPolicyResolver numberingPolicies,
     IAuditLogService audit,
     ILogger<DocumentPostingService> logger,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IDocumentPostingService
 {
+    private readonly IDocumentPostingReadCache _postingReadCache = postingReadCache ?? new DocumentPostingReadCache();
+
     /// <summary>
     /// Posts a Draft document.
     /// Preferred overload: <paramref name="postingAction"/> receives CancellationToken.
@@ -105,6 +108,7 @@ internal sealed class DocumentPostingService(
             await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
+                using var postingReadScope = _postingReadCache.BeginScope();
 
                 var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
@@ -243,6 +247,7 @@ internal sealed class DocumentPostingService(
             await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
+                using var postingReadScope = _postingReadCache.BeginScope();
 
                 var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 
@@ -413,6 +418,7 @@ internal sealed class DocumentPostingService(
             await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
+                using var postingReadScope = _postingReadCache.BeginScope();
 
                 var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
 

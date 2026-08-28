@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
 using NGB.OperationalRegisters.Contracts;
@@ -110,7 +111,7 @@ LIMIT @Limit;
                 ToMonth = new DateOnly(toInclusive.Year, toInclusive.Month, 1),
                 OccurredFromUtc = occurredFromUtc,
                 OccurredToExclusiveUtc = occurredToExclusiveUtc,
-                Offset = offset,
+                Offset = PagingLimits.BoundOffset(offset),
                 Limit = limit,
                 DimCount = dimCount,
                 DimIds = dimIds,
@@ -241,7 +242,7 @@ LIMIT @Limit;
                 DimCount = dimCount,
                 DimIds = dimIds,
                 DimValueIds = dimValueIds,
-                Offset = offset,
+                Offset = PagingLimits.BoundOffset(offset),
                 Limit = limit
             },
             transaction: uow.Transaction,
@@ -350,7 +351,7 @@ LIMIT @Limit;
                 DimCount = dimCount,
                 DimIds = dimIds,
                 DimValueIds = dimValueIds,
-                Offset = offset,
+                Offset = PagingLimits.BoundOffset(offset),
                 Limit = limit
             },
             transaction: uow.Transaction,

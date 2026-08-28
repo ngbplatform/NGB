@@ -1,4 +1,5 @@
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Exceptions;
 using NGB.Persistence.OperationalRegisters;
@@ -137,7 +138,7 @@ LIMIT @Limit;
                 HasWarehouseFilter = warehouseIdArray.Length > 0,
                 ItemIds = itemIdArray,
                 WarehouseIds = warehouseIdArray,
-                Offset = offset,
+                Offset = PagingLimits.BoundOffset(offset),
                 Limit = limit
             },
             uow.Transaction,

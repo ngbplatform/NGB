@@ -84,6 +84,12 @@ public interface IWorkCenterTaskRepository
         DateTime completedAtUtc,
         CancellationToken ct);
 
+    Task<WorkCenterTaskMutationResult> CompleteByDeduplicationKeysAsync(
+        string taskCode,
+        IReadOnlyCollection<string> deduplicationKeys,
+        DateTime completedAtUtc,
+        CancellationToken ct);
+
     Task<WorkCenterTaskMutationResult> CancelByDeduplicationKeyAsync(
         string taskCode,
         string deduplicationKey,

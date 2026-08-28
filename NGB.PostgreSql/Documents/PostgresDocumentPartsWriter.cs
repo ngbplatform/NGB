@@ -33,8 +33,12 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
+        var preparedParts = new List<PreparedPart>();
         foreach (var t in partTables)
         {
+            if (t is null)
+                continue;
+
             if (t.Kind != TableKind.Part)
                 continue;
 
@@ -42,19 +46,14 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
             if (string.IsNullOrWhiteSpace(tableName))
                 throw new NgbArgumentInvalidException(nameof(partTables), "Part table name is required.");
 
-            // Replace semantics: wipe rows for document_id, then insert.
-            var deleteSql = $"DELETE FROM {Qi(tableName)} WHERE document_id = @documentId;";
-            await uow.Connection.ExecuteAsync(new CommandDefinition(
-                deleteSql,
-                new { documentId },
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-
             rowsByTable.TryGetValue(tableName, out var rows);
             rows ??= Array.Empty<IReadOnlyDictionary<string, object?>>();
 
             if (rows.Count == 0)
+            {
+                preparedParts.Add(new PreparedPart(tableName, rows, []));
                 continue;
+            }
 
             var allowed = t.Columns
                 .Where(c => !IsDocumentId(c.ColumnName) && c.Type != ColumnType.Json)
@@ -88,24 +87,45 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
             if (orderedColumns.Count == 0)
                 throw new NgbArgumentInvalidException(nameof(rowsByTable), $"No insertable columns provided for '{tableName}'.");
 
+            preparedParts.Add(new PreparedPart(tableName, rows, orderedColumns));
+        }
+
+        if (preparedParts.Count == 0)
+            return;
+
+        var deleteSql = string.Join(
+            Environment.NewLine,
+            preparedParts.Select(part => $"DELETE FROM {Qi(part.TableName)} WHERE document_id = @documentId;"));
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            deleteSql,
+            new { documentId },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        foreach (var part in preparedParts)
+        {
+            if (part.Rows.Count == 0)
+                continue;
+
             var insertColumnsSql = new List<string> { "document_id" };
-            insertColumnsSql.AddRange(orderedColumns.Select(Qi));
+            insertColumnsSql.AddRange(part.OrderedColumns.Select(Qi));
 
-            var batchSize = Math.Clamp(MaxParametersPerBatch / orderedColumns.Count, 1, MaxRowsPerBatch);
+            var batchSize = Math.Clamp(MaxParametersPerBatch / part.OrderedColumns.Count, 1, MaxRowsPerBatch);
 
-            for (var offset = 0; offset < rows.Count; offset += batchSize)
+            for (var offset = 0; offset < part.Rows.Count; offset += batchSize)
             {
-                var take = Math.Min(batchSize, rows.Count - offset);
+                var take = Math.Min(batchSize, part.Rows.Count - offset);
                 var p = new DynamicParameters();
                 p.Add("documentId", documentId);
                 var valuesSql = new List<string>(take);
 
                 for (var batchIndex = 0; batchIndex < take; batchIndex++)
                 {
-                    var row = rows[offset + batchIndex];
+                    var row = part.Rows[offset + batchIndex];
                     var rowParams = new List<string> { "@documentId" };
 
-                    foreach (var col in orderedColumns)
+                    foreach (var col in part.OrderedColumns)
                     {
                         var paramName = $"p_{col}_{batchIndex}";
                         row.TryGetValue(col, out var value);
@@ -117,7 +137,7 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
                 }
 
                 var insertSql = $"""
-                                INSERT INTO {Qi(tableName)} ({string.Join(", ", insertColumnsSql)})
+                                INSERT INTO {Qi(part.TableName)} ({string.Join(", ", insertColumnsSql)})
                                 VALUES {string.Join(", ", valuesSql)};
                                 """;
 
@@ -129,6 +149,11 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
             }
         }
     }
+
+    private sealed record PreparedPart(
+        string TableName,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows,
+        IReadOnlyList<string> OrderedColumns);
 
     private static bool IsDocumentId(string name)
         => string.Equals(name, "document_id", StringComparison.OrdinalIgnoreCase);

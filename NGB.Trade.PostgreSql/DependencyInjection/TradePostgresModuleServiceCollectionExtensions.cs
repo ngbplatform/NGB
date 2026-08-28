@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.Persistence.Catalogs.Storage;
+using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Catalogs;
 using NGB.PostgreSql.Reporting;
@@ -75,7 +76,13 @@ public static class TradePostgresModuleServiceCollectionExtensions
                 "cat_trd_accounting_policy",
                 [PostgresHeadCatalogTypeStorage.Column.DraftString("display", "display")]));
 
-        services.AddScoped<ITradeDocumentReaders, TradeDocumentReaders>();
+        services.AddScoped<TradeDocumentReaders>();
+        services.AddScoped<ITradeDocumentReaders>(sp =>
+        {
+            var inner = sp.GetRequiredService<TradeDocumentReaders>();
+            var cache = sp.GetService<IDocumentPostingReadCache>();
+            return cache is null ? inner : new PostingCachedTradeDocumentReaders(inner, cache);
+        });
         services.AddScoped<ITradePricingLookupReader, TradePricingLookupReader>();
         services.AddScoped<ITradeCatalogValidationReader, TradeCatalogValidationReader>();
         services.AddScoped<ITradeAnalyticsReader, PostgresTradeAnalyticsReader>();

@@ -8,6 +8,8 @@ public static class PagingLimits
     public const int MaxLookupIds = 500;
     public const int MaxLookupTypes = 50;
     public const int MaxPerTypeLookupLimit = 100;
+
+    public static int BoundOffset(int offset) => Math.Clamp(offset, 0, MaxOffset);
 }
 
 public sealed record PageRequestDto(

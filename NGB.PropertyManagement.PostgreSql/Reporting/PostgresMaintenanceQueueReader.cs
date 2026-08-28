@@ -1,5 +1,6 @@
 using Dapper;
 using NGB.Core.Documents;
+using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Reporting;
 using NGB.Tools.Exceptions;
@@ -160,37 +161,46 @@ queue_rows AS (
 )
 """;
 
-    private static readonly string CountSql = QueueCte + """
-SELECT COUNT(*)::int
-FROM queue_rows;
-""";
-
     private static readonly string PageSql = QueueCte + """
+,
+stats AS (
+    SELECT COUNT(*)::int AS total_count
+    FROM queue_rows
+),
+paged AS (
 SELECT
-    request_id AS RequestId,
-    request_display AS RequestDisplay,
-    subject AS Subject,
-    requested_at_utc AS RequestedAtUtc,
-    aging_days AS AgingDays,
-    building_id AS BuildingId,
-    building_display AS BuildingDisplay,
-    property_id AS PropertyId,
-    property_display AS PropertyDisplay,
-    category_id AS CategoryId,
-    category_display AS CategoryDisplay,
-    priority AS Priority,
-    requested_by_party_id AS RequestedByPartyId,
-    requested_by_display AS RequestedByDisplay,
-    work_order_id AS WorkOrderId,
-    work_order_display AS WorkOrderDisplay,
-    assigned_party_id AS AssignedPartyId,
-    assigned_party_display AS AssignedPartyDisplay,
-    due_by_utc AS DueByUtc,
-    queue_state AS QueueState
+    *
 FROM queue_rows
 ORDER BY requested_at_utc DESC, request_id DESC, work_order_id NULLS FIRST
 OFFSET @offset
-LIMIT @limit;
+LIMIT @limit
+)
+SELECT
+    paged.request_id AS RequestId,
+    paged.request_display AS RequestDisplay,
+    paged.subject AS Subject,
+    paged.requested_at_utc AS RequestedAtUtc,
+    paged.aging_days AS AgingDays,
+    paged.building_id AS BuildingId,
+    paged.building_display AS BuildingDisplay,
+    paged.property_id AS PropertyId,
+    paged.property_display AS PropertyDisplay,
+    paged.category_id AS CategoryId,
+    paged.category_display AS CategoryDisplay,
+    paged.priority AS Priority,
+    paged.requested_by_party_id AS RequestedByPartyId,
+    paged.requested_by_display AS RequestedByDisplay,
+    paged.work_order_id AS WorkOrderId,
+    paged.work_order_display AS WorkOrderDisplay,
+    paged.assigned_party_id AS AssignedPartyId,
+    paged.assigned_party_display AS AssignedPartyDisplay,
+    paged.due_by_utc AS DueByUtc,
+    paged.queue_state AS QueueState,
+    (paged.request_id IS NOT NULL) AS HasRow,
+    stats.total_count AS TotalCount
+FROM stats
+LEFT JOIN paged ON TRUE
+ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id NULLS FIRST;
 """;
 
     public async Task<MaintenanceQueuePage> GetPageAsync(MaintenanceQueueQuery query, CancellationToken ct = default)
@@ -213,31 +223,41 @@ LIMIT @limit;
             priority = query.Priority,
             queue_state = query.QueueState?.ToCode(),
             posted = (int)DocumentStatus.Posted,
-            offset = query.Offset,
+            offset = PagingLimits.BoundOffset(query.Offset),
             limit = query.Limit
         };
 
-        var total = await uow.Connection.QuerySingleAsync<int>(new CommandDefinition(
-            CountSql,
+        var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
+            PageSql,
             parameters,
             transaction: uow.Transaction,
-            cancellationToken: ct));
+            cancellationToken: ct))).AsList();
 
-        IReadOnlyList<MaintenanceQueueRow> rows;
-        if (query.Offset >= total)
-        {
-            rows = [];
-        }
-        else
-        {
-            var dbRows = await uow.Connection.QueryAsync<PageRow>(new CommandDefinition(
-                PageSql,
-                parameters,
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-
-            rows = dbRows.Select(MapRow).ToArray();
-        }
+        var total = dbRows[0].TotalCount;
+        var rows = dbRows
+            .Where(row => row.HasRow)
+            .Select(row => MapRow(new PageRow(
+                row.RequestId!.Value,
+                row.RequestDisplay!,
+                row.Subject!,
+                row.RequestedAtUtc!.Value,
+                row.AgingDays!.Value,
+                row.BuildingId!.Value,
+                row.BuildingDisplay!,
+                row.PropertyId!.Value,
+                row.PropertyDisplay!,
+                row.CategoryId!.Value,
+                row.CategoryDisplay!,
+                row.Priority!,
+                row.RequestedByPartyId!.Value,
+                row.RequestedByDisplay!,
+                row.WorkOrderId,
+                row.WorkOrderDisplay,
+                row.AssignedPartyId,
+                row.AssignedPartyDisplay,
+                row.DueByUtc,
+                row.QueueState!)))
+            .ToArray();
 
         var result = new MaintenanceQueuePage(rows, total);
         result.EnsureInvariant();
@@ -411,4 +431,28 @@ WHERE c.catalog_code = @code
         string? AssignedPartyDisplay,
         DateOnly? DueByUtc,
         string QueueState);
+
+    private sealed record CombinedRow(
+        Guid? RequestId,
+        string? RequestDisplay,
+        string? Subject,
+        DateOnly? RequestedAtUtc,
+        int? AgingDays,
+        Guid? BuildingId,
+        string? BuildingDisplay,
+        Guid? PropertyId,
+        string? PropertyDisplay,
+        Guid? CategoryId,
+        string? CategoryDisplay,
+        string? Priority,
+        Guid? RequestedByPartyId,
+        string? RequestedByDisplay,
+        Guid? WorkOrderId,
+        string? WorkOrderDisplay,
+        Guid? AssignedPartyId,
+        string? AssignedPartyDisplay,
+        DateOnly? DueByUtc,
+        string? QueueState,
+        bool HasRow,
+        int TotalCount);
 }

@@ -1,4 +1,5 @@
 using Dapper;
+using System.Text;
 using NGB.Metadata.Base;
 using NGB.Metadata.Catalogs.Hybrid;
 using NGB.Persistence.Catalogs.Universal;
@@ -26,6 +27,8 @@ internal sealed class PostgresCatalogPartsReader(IUnitOfWork uow) : ICatalogPart
         await uow.EnsureConnectionOpenAsync(ct);
 
         var result = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase);
+        var queries = new List<CatalogTableMetadata>();
+        var sql = new StringBuilder();
 
         foreach (var t in partTables)
         {
@@ -52,18 +55,27 @@ internal sealed class PostgresCatalogPartsReader(IUnitOfWork uow) : ICatalogPart
             var select = string.Join(",\n       ", cols.Select(c => $"p.{Qi(c)} AS \"{c}\""));
             var orderBy = BuildOrderBy(cols);
 
-            var sql = $"""
-                      SELECT {select}
-                        FROM {Qi(t.TableName)} p
-                       WHERE p.catalog_id = @catalogId
-                       {orderBy};
-                      """;
+            sql.AppendLine($"""
+                SELECT {select}
+                  FROM {Qi(t.TableName)} p
+                 WHERE p.catalog_id = @catalogId
+                 {orderBy};
+                """);
+            queries.Add(t);
+        }
 
-            var rows = await uow.Connection.QueryAsync(new CommandDefinition(
-                sql,
-                new { catalogId },
-                transaction: uow.Transaction,
-                cancellationToken: ct));
+        if (queries.Count == 0)
+            return result;
+
+        await using var grid = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+            sql.ToString(),
+            new { catalogId },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        foreach (var table in queries)
+        {
+            var rows = await grid.ReadAsync();
 
             var list = new List<IReadOnlyDictionary<string, object?>>();
             foreach (var r in rows)
@@ -72,7 +84,7 @@ internal sealed class PostgresCatalogPartsReader(IUnitOfWork uow) : ICatalogPart
                 list.Add(new Dictionary<string, object?>(dict, StringComparer.OrdinalIgnoreCase));
             }
 
-            result[t.TableName] = list;
+            result[table.TableName] = list;
         }
 
         return result;

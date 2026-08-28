@@ -1,5 +1,6 @@
 using Dapper;
 using NGB.Accounting.Documents;
+using NGB.Contracts.Common;
 using NGB.Core.Documents;
 using NGB.Core.Documents.GeneralJournalEntry;
 using NGB.Persistence.Documents.GeneralJournalEntry;
@@ -25,6 +26,8 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
 
         if (limit is <= 0 or > 500)
             throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be in range [1..500].");
+
+        offset = PagingLimits.BoundOffset(offset);
 
         var trashMode = NormalizeTrashMode(trash);
 

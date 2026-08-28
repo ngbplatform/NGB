@@ -523,6 +523,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                     cancellationToken: ct)))
             .ToDictionary(x => x.ColumnName, StringComparer.Ordinal);
 
+        var ddl = new StringBuilder();
+
         foreach (var f in fields)
         {
             ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
@@ -539,9 +541,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                 }
 
                 var nullable = f.IsNullable ? "NULL" : "NOT NULL";
-
-                var sqlAdd = $"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {f.ColumnCode} {sqlType} {nullable};";
-                await uow.Connection.ExecuteAsync(new CommandDefinition(sqlAdd, transaction: uow.Transaction, cancellationToken: ct));
+                ddl.AppendLine(
+                    $"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {f.ColumnCode} {sqlType} {nullable};");
                 continue;
             }
 
@@ -555,8 +556,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                         details: new { column = f.ColumnCode, expectedSqlType = sqlType, actualUdtName = col.UdtName });
                 }
 
-                var sqlAlterType = $"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} TYPE {sqlType} USING {f.ColumnCode}::{sqlType};";
-                await uow.Connection.ExecuteAsync(new CommandDefinition(sqlAlterType, transaction: uow.Transaction, cancellationToken: ct));
+                ddl.AppendLine(
+                    $"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} TYPE {sqlType} USING {f.ColumnCode}::{sqlType};");
             }
 
             // Nullability drift repair.
@@ -570,8 +571,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                         details: new { column = f.ColumnCode, expectedNullable = true, actualNullable = false });
                 }
 
-                var sqlDropNotNull = $"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} DROP NOT NULL;";
-                await uow.Connection.ExecuteAsync(new CommandDefinition(sqlDropNotNull, transaction: uow.Transaction, cancellationToken: ct));
+                ddl.AppendLine($"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} DROP NOT NULL;");
             }
             else if (!f.IsNullable && isNullable)
             {
@@ -582,10 +582,14 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                         details: new { column = f.ColumnCode, expectedNullable = false, actualNullable = true });
                 }
 
-                var sqlSetNotNull = $"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} SET NOT NULL;";
-                await uow.Connection.ExecuteAsync(new CommandDefinition(sqlSetNotNull, transaction: uow.Transaction, cancellationToken: ct));
+                ddl.AppendLine($"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} SET NOT NULL;");
             }
         }
+
+        if (ddl.Length == 0)
+            return;
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(ddl.ToString(), transaction: uow.Transaction, cancellationToken: ct));
     }
 
     private async Task EnsureIndexesAsync(string table, ReferenceRegisterAdminItem reg, CancellationToken ct)
@@ -603,8 +607,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
             ? "(dimension_set_id, recorder_document_id, recorded_at_utc DESC, record_id DESC)"
             : "(dimension_set_id, recorder_document_id, period_bucket_utc DESC, period_utc DESC, recorded_at_utc DESC, record_id DESC)";
 
-        var sqlKeyV2 = $"CREATE INDEX IF NOT EXISTS {ixKeyV2} ON {table} {keyCols};";
-        await uow.Connection.ExecuteAsync(new CommandDefinition(sqlKeyV2, transaction: uow.Transaction, cancellationToken: ct));
+        var ddl = new StringBuilder();
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixKeyV2} ON {table} {keyCols};");
 
         // 2) Recorder scan index: optimized for tombstone generation (Unpost/Repost) and recorder-scoped slices.
         //    We only create it for SubordinateToRecorder registers.
@@ -616,9 +620,10 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                 ? "(recorder_document_id, dimension_set_id, recorded_at_utc DESC, record_id DESC)"
                 : "(recorder_document_id, dimension_set_id, period_bucket_utc DESC, period_utc DESC, recorded_at_utc DESC, record_id DESC)";
 
-            var sqlRecorderKeyV2 = $"CREATE INDEX IF NOT EXISTS {ixRecorderKeyV2} ON {table} {recorderCols};";
-            await uow.Connection.ExecuteAsync(new CommandDefinition(sqlRecorderKeyV2, transaction: uow.Transaction, cancellationToken: ct));
+            ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixRecorderKeyV2} ON {table} {recorderCols};");
         }
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(ddl.ToString(), transaction: uow.Transaction, cancellationToken: ct));
     }
 
     private sealed record ColumnMeta(

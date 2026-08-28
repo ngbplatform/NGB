@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using NGB.Persistence.Documents;
 using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Catalogs;
@@ -93,7 +94,13 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
         services.AddScoped<IPostgresDocumentListFilterSqlContributor, PropertyManagementDocumentListFilterSqlContributor>();
 
         // Posting handlers need fast typed reads for posting.
-        services.AddScoped<IPropertyManagementDocumentReaders, PropertyManagementDocumentReaders>();
+        services.AddScoped<PropertyManagementDocumentReaders>();
+        services.AddScoped<IPropertyManagementDocumentReaders>(sp =>
+        {
+            var inner = sp.GetRequiredService<PropertyManagementDocumentReaders>();
+            var cache = sp.GetService<IDocumentPostingReadCache>();
+            return cache is null ? inner : new PostingCachedPropertyManagementDocumentReaders(inner, cache);
+        });
         services.AddScoped<IPropertyManagementRentChargeGenerationReader, PropertyManagementRentChargeGenerationReader>();
 
         // Receivables read/report services (PostgreSQL).

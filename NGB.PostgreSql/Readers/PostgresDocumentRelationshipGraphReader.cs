@@ -214,48 +214,39 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
                 break;
 
             var nextFrontier = new List<Guid>();
+            var frontierSet = frontier.ToHashSet();
+            var includeOutgoing = request.Direction.HasFlag(DocumentRelationshipTraversalDirection.Outgoing);
+            var includeIncoming = request.Direction.HasFlag(DocumentRelationshipTraversalDirection.Incoming);
+            var adjacentEdges = await QueryEdgesByNodeIdsAsync(
+                frontier,
+                codeNorms,
+                includeOutgoing,
+                includeIncoming,
+                remainingEdges,
+                ct);
 
-            if (request.Direction.HasFlag(DocumentRelationshipTraversalDirection.Outgoing))
+            foreach (var edge in adjacentEdges)
             {
-                var outEdges = await QueryEdgesByFromIdsAsync(frontier, codeNorms, remainingEdges, ct);
-                foreach (var e in outEdges)
+                if (!edgeIds.Add(edge.RelationshipId))
+                    continue;
+
+                edges.Add(edge);
+                if (visited.Count >= request.MaxNodes)
+                    continue;
+
+                if (includeOutgoing && frontierSet.Contains(edge.FromDocumentId) && visited.Add(edge.ToDocumentId))
                 {
-                    if (!edgeIds.Add(e.RelationshipId))
-                        continue;
-
-                    edges.Add(e);
-
-                    if (visited.Count >= request.MaxNodes)
-                        continue;
-
-                    if (visited.Add(e.ToDocumentId))
-                    {
-                        depthById[e.ToDocumentId] = depth;
-                        nextFrontier.Add(e.ToDocumentId);
-                    }
+                    depthById[edge.ToDocumentId] = depth;
+                    nextFrontier.Add(edge.ToDocumentId);
                 }
-            }
 
-            if (request.Direction.HasFlag(DocumentRelationshipTraversalDirection.Incoming))
-            {
-                var remainingAfterOutgoing = request.MaxEdges - edges.Count;
-                var inEdges = await QueryEdgesByToIdsAsync(frontier, codeNorms, remainingAfterOutgoing, ct);
-                
-                foreach (var e in inEdges)
+                if (visited.Count < request.MaxNodes
+                    && includeIncoming
+                    && frontierSet.Contains(edge.ToDocumentId)
+                    && visited.Add(edge.FromDocumentId))
                 {
-                    if (!edgeIds.Add(e.RelationshipId))
-                        continue;
-
-                    edges.Add(e);
-
-                    if (visited.Count >= request.MaxNodes)
-                        continue;
-
-                    if (visited.Add(e.FromDocumentId))
-                    {
-                        depthById[e.FromDocumentId] = depth;
-                        nextFrontier.Add(e.FromDocumentId);
-                    }
+                    depthById[edge.FromDocumentId] = depth;
+                    nextFrontier.Add(edge.FromDocumentId);
                 }
             }
 
@@ -342,16 +333,20 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
         return norm.Count == 0 ? null : norm.ToArray();
     }
 
-    private async Task<IReadOnlyList<DocumentRelationshipGraphEdge>> QueryEdgesByFromIdsAsync(
-        IReadOnlyList<Guid> fromIds,
+    private async Task<IReadOnlyList<DocumentRelationshipGraphEdge>> QueryEdgesByNodeIdsAsync(
+        IReadOnlyList<Guid> nodeIds,
         string[]? codeNorms,
+        bool includeOutgoing,
+        bool includeIncoming,
         int limit,
         CancellationToken ct)
     {
-        if (limit <= 0)
+        if (limit <= 0 || (!includeOutgoing && !includeIncoming))
             return [];
 
         const string sql = """
+                           SELECT *
+                           FROM (
                            SELECT
                                r.relationship_id       AS "RelationshipId",
                                r.from_document_id      AS "FromDocumentId",
@@ -361,32 +356,12 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
                                r.created_at_utc         AS "CreatedAtUtc"
                            FROM document_relationships r
                            WHERE
-                               r.from_document_id = ANY(@FromIds)
+                               @IncludeOutgoing
+                               AND r.from_document_id = ANY(@NodeIds)
                                AND (@CodeNorms::text[] IS NULL OR r.relationship_code_norm = ANY(@CodeNorms))
-                           ORDER BY r.created_at_utc DESC, r.relationship_id DESC
-                           LIMIT @Limit;
-                           """;
 
-        var rows = await uow.Connection.QueryAsync<DocumentRelationshipGraphEdge>(
-            new CommandDefinition(
-                sql,
-                new { FromIds = fromIds.ToArray(), CodeNorms = codeNorms, Limit = limit },
-                uow.Transaction,
-                cancellationToken: ct));
+                           UNION
 
-        return rows.AsList();
-    }
-
-    private async Task<IReadOnlyList<DocumentRelationshipGraphEdge>> QueryEdgesByToIdsAsync(
-        IReadOnlyList<Guid> toIds,
-        string[]? codeNorms,
-        int limit,
-        CancellationToken ct)
-    {
-        if (limit <= 0)
-            return [];
-
-        const string sql = """
                            SELECT
                                r.relationship_id       AS "RelationshipId",
                                r.from_document_id      AS "FromDocumentId",
@@ -396,16 +371,25 @@ public sealed class PostgresDocumentRelationshipGraphReader(IUnitOfWork uow) : I
                                r.created_at_utc         AS "CreatedAtUtc"
                            FROM document_relationships r
                            WHERE
-                               r.to_document_id = ANY(@ToIds)
+                               @IncludeIncoming
+                               AND r.to_document_id = ANY(@NodeIds)
                                AND (@CodeNorms::text[] IS NULL OR r.relationship_code_norm = ANY(@CodeNorms))
-                           ORDER BY r.created_at_utc DESC, r.relationship_id DESC
+                           ) adjacent
+                           ORDER BY "CreatedAtUtc" DESC, "RelationshipId" DESC
                            LIMIT @Limit;
                            """;
 
         var rows = await uow.Connection.QueryAsync<DocumentRelationshipGraphEdge>(
             new CommandDefinition(
                 sql,
-                new { ToIds = toIds.ToArray(), CodeNorms = codeNorms, Limit = limit },
+                new
+                {
+                    NodeIds = nodeIds.ToArray(),
+                    CodeNorms = codeNorms,
+                    IncludeOutgoing = includeOutgoing,
+                    IncludeIncoming = includeIncoming,
+                    Limit = limit
+                },
                 uow.Transaction,
                 cancellationToken: ct));
 

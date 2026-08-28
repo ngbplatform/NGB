@@ -1,14 +1,22 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
+using NGB.Persistence.Documents;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
 namespace NGB.PropertyManagement.Runtime.Policy;
 
-public sealed class PropertyManagementAccountingPolicyReader(ICatalogService catalogs)
+public sealed class PropertyManagementAccountingPolicyReader(
+    ICatalogService catalogs,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IPropertyManagementAccountingPolicyReader
 {
-    public async Task<PropertyManagementAccountingPolicy> GetRequiredAsync(CancellationToken ct = default)
+    public Task<PropertyManagementAccountingPolicy> GetRequiredAsync(CancellationToken ct = default)
+        => postingReadCache is null
+            ? ReadRequiredAsync(ct)
+            : postingReadCache.GetOrAddAsync("policy:property-management", ReadRequiredAsync, ct);
+
+    private async Task<PropertyManagementAccountingPolicy> ReadRequiredAsync(CancellationToken ct)
     {
         // Single-record policy: read first 2 to detect duplicates.
         var page = await catalogs.GetPageAsync(

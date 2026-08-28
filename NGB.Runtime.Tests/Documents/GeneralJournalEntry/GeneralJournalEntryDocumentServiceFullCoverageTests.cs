@@ -929,6 +929,9 @@ public sealed class GeneralJournalEntryDocumentServiceFullCoverageTests
                 .ReturnsAsync([]);
             var closed = new Mock<IClosedPeriodRepository>();
             closed.Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>())).ReturnsAsync(false);
+            closed.Setup(x => x.FindFirstClosedAsync(
+                    It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((DateOnly?)null);
             var postingState = new Mock<IPostingStateRepository>();
             postingState.Setup(x => x.TryBeginAsync(It.IsAny<Guid>(), It.IsAny<PostingOperation>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(PostingStateBeginResult.Begun);

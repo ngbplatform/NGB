@@ -28,7 +28,7 @@ public sealed class WorkCenterOutboxHostedServiceTests
         var service = new WorkCenterOutboxHostedService(
             scopes.Object,
             TimeProvider.System,
-            Options(),
+            Options(pollInterval: TimeSpan.FromMinutes(1)),
             NullLogger<WorkCenterOutboxHostedService>.Instance);
 
         await service.StartAsync(CancellationToken.None);
@@ -66,7 +66,7 @@ public sealed class WorkCenterOutboxHostedServiceTests
         var service = new WorkCenterOutboxHostedService(
             scopes.Object,
             TimeProvider.System,
-            Options(),
+            Options(pollInterval: TimeSpan.FromMinutes(1)),
             NullLogger<WorkCenterOutboxHostedService>.Instance);
 
         await service.StartAsync(CancellationToken.None);

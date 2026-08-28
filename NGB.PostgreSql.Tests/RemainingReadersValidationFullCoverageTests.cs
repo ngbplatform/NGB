@@ -606,15 +606,19 @@ public sealed class RemainingReadersValidationFullCoverageTests
         included.Nodes.Should().HaveCount(2);
         included.Edges.Should().ContainSingle();
 
-        var queryFrom = typeof(PostgresDocumentRelationshipGraphReader).GetMethod(
-            "QueryEdgesByFromIdsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        var zeroLimit = (Task<IReadOnlyList<DocumentRelationshipGraphEdge>>)queryFrom.Invoke(
+        var queryAdjacent = typeof(PostgresDocumentRelationshipGraphReader).GetMethod(
+            "QueryEdgesByNodeIdsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var zeroLimit = (Task<IReadOnlyList<DocumentRelationshipGraphEdge>>)queryAdjacent.Invoke(
             includedReader,
-            [new[] { root }, null, 0, CancellationToken.None])!;
+            [new[] { root }, null, true, false, 0, CancellationToken.None])!;
         (await zeroLimit).Should().BeEmpty();
-        var positiveLimit = (Task<IReadOnlyList<DocumentRelationshipGraphEdge>>)typeof(PostgresDocumentRelationshipGraphReader)
-            .GetMethod("QueryEdgesByToIdsAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(includedReader, [new[] { child }, null, 1, CancellationToken.None])!;
+        var noDirections = (Task<IReadOnlyList<DocumentRelationshipGraphEdge>>)queryAdjacent.Invoke(
+            includedReader,
+            [new[] { root }, null, false, false, 1, CancellationToken.None])!;
+        (await noDirections).Should().BeEmpty();
+        var positiveLimit = (Task<IReadOnlyList<DocumentRelationshipGraphEdge>>)queryAdjacent.Invoke(
+            includedReader,
+            [new[] { child }, null, false, true, 1, CancellationToken.None])!;
         (await positiveLimit).Should().ContainSingle();
 
         PostgresDocumentRelationshipGraphReader.FilterEdgesToVisited(

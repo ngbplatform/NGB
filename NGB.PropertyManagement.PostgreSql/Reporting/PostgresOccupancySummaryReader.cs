@@ -1,5 +1,6 @@
 using Dapper;
 using NGB.Core.Documents;
+using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Reporting;
 using NGB.Tools.Exceptions;
@@ -26,17 +27,14 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
         await uow.EnsureConnectionOpenAsync(ct);
 
         var validatedBuilding = await ValidateBuildingFilterAsync(buildingId, ct);
-        var total = validatedBuilding is null
-            ? await ReadTotalAsync(ct)
-            : 1;
+        var page = await ReadPageAndTotalsAsync(
+            validatedBuilding?.BuildingId,
+            asOfUtc,
+            PagingLimits.BoundOffset(offset),
+            limit,
+            ct);
 
-        var rows = offset >= total
-            ? []
-            : await ReadPageRowsAsync(validatedBuilding?.BuildingId, asOfUtc, offset, limit, ct);
-
-        var totals = await ReadTotalsAsync(validatedBuilding?.BuildingId, asOfUtc, total, ct);
-
-        var result = new OccupancySummaryPage(rows, total, totals);
+        var result = new OccupancySummaryPage(page.Rows, page.Total, page.Totals);
         result.EnsureInvariant();
         return result;
     }
@@ -79,25 +77,7 @@ WHERE c.catalog_code = @code
         return row;
     }
 
-    private async Task<int> ReadTotalAsync(CancellationToken ct)
-    {
-        const string sql = """
-SELECT COUNT(*)::int
-FROM catalogs c
-JOIN cat_pm_property p ON p.catalog_id = c.id
-WHERE c.catalog_code = @code
-  AND c.is_deleted = FALSE
-  AND p.kind = 'Building';
-""";
-
-        return await uow.Connection.QuerySingleAsync<int>(new CommandDefinition(
-            sql,
-            new { code = PropertyCode },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
-    }
-
-    private async Task<IReadOnlyList<OccupancySummaryRow>> ReadPageRowsAsync(
+    private async Task<PageAndTotals> ReadPageAndTotalsAsync(
         Guid? buildingId,
         DateOnly asOfUtc,
         int offset,
@@ -109,97 +89,6 @@ WITH candidate_buildings AS (
     SELECT
         c.id AS building_id,
         COALESCE(NULLIF(btrim(p.display), ''), '[Building]') AS building_display
-    FROM catalogs c
-    JOIN cat_pm_property p ON p.catalog_id = c.id
-    WHERE c.catalog_code = @code
-      AND c.is_deleted = FALSE
-      AND p.kind = 'Building'
-      AND (@building_id::uuid IS NULL OR c.id = @building_id::uuid)
-),
-paged_buildings AS (
-    SELECT building_id, building_display
-    FROM candidate_buildings
-    ORDER BY building_display, building_id
-    OFFSET @offset
-    LIMIT @limit
-),
-units AS (
-    SELECT
-        pb.building_id,
-        u.catalog_id AS unit_id
-    FROM paged_buildings pb
-    JOIN cat_pm_property u
-      ON u.parent_property_id = pb.building_id
-     AND u.kind = 'Unit'
-    JOIN catalogs c
-      ON c.id = u.catalog_id
-     AND c.catalog_code = @code
-     AND c.is_deleted = FALSE
-),
-occupied AS (
-    SELECT DISTINCT
-        u.building_id,
-        l.property_id AS unit_id
-    FROM units u
-    JOIN doc_pm_lease l
-      ON l.property_id = u.unit_id
-    JOIN documents d
-      ON d.id = l.document_id
-     AND d.status = @posted
-    WHERE l.start_on_utc <= @as_of
-      AND @as_of <= COALESCE(l.end_on_utc, 'infinity'::date)
-)
-SELECT
-    pb.building_id AS BuildingId,
-    pb.building_display AS BuildingDisplay,
-    COUNT(u.unit_id)::int AS TotalUnits,
-    COUNT(o.unit_id)::int AS OccupiedUnits
-FROM paged_buildings pb
-LEFT JOIN units u
-  ON u.building_id = pb.building_id
-LEFT JOIN occupied o
-  ON o.building_id = u.building_id
- AND o.unit_id = u.unit_id
-GROUP BY pb.building_id, pb.building_display
-ORDER BY pb.building_display, pb.building_id;
-""";
-
-        var rows = await uow.Connection.QueryAsync<PageRow>(new CommandDefinition(
-            sql,
-            new
-            {
-                code = PropertyCode,
-                building_id = buildingId,
-                as_of = asOfUtc,
-                posted = (int)DocumentStatus.Posted,
-                offset,
-                limit
-            },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
-
-        return rows.Select(row =>
-        {
-            var result = new OccupancySummaryRow(
-                BuildingId: row.BuildingId,
-                BuildingDisplay: row.BuildingDisplay,
-                AsOfUtc: asOfUtc,
-                TotalUnits: row.TotalUnits,
-                OccupiedUnits: row.OccupiedUnits);
-            result.EnsureInvariant();
-            return result;
-        }).ToArray();
-    }
-
-    private async Task<OccupancySummaryTotals> ReadTotalsAsync(
-        Guid? buildingId,
-        DateOnly asOfUtc,
-        int buildingCount,
-        CancellationToken ct)
-    {
-        const string sql = """
-WITH candidate_buildings AS (
-    SELECT c.id AS building_id
     FROM catalogs c
     JOIN cat_pm_property p ON p.catalog_id = c.id
     WHERE c.catalog_code = @code
@@ -232,34 +121,97 @@ occupied AS (
      AND d.status = @posted
     WHERE l.start_on_utc <= @as_of
       AND @as_of <= COALESCE(l.end_on_utc, 'infinity'::date)
+),
+building_rows AS (
+SELECT
+    cb.building_id AS building_id,
+    cb.building_display AS building_display,
+    COUNT(u.unit_id)::int AS TotalUnits,
+    COUNT(o.unit_id)::int AS OccupiedUnits
+FROM candidate_buildings cb
+LEFT JOIN units u
+  ON u.building_id = cb.building_id
+LEFT JOIN occupied o
+  ON o.building_id = u.building_id
+ AND o.unit_id = u.unit_id
+GROUP BY cb.building_id, cb.building_display
+),
+stats AS (
+    SELECT
+        COUNT(*)::int AS BuildingCount,
+        COALESCE(SUM(totalunits), 0)::int AS TotalUnits,
+        COALESCE(SUM(occupiedunits), 0)::int AS OccupiedUnits
+    FROM building_rows
+),
+paged AS (
+    SELECT *
+    FROM building_rows
+    ORDER BY building_display, building_id
+    OFFSET @offset
+    LIMIT @limit
 )
 SELECT
-    (SELECT COUNT(*)::int FROM units) AS TotalUnits,
-    (SELECT COUNT(*)::int FROM occupied) AS OccupiedUnits;
+    paged.building_id AS BuildingId,
+    paged.building_display AS BuildingDisplay,
+    paged.totalunits AS TotalUnits,
+    paged.occupiedunits AS OccupiedUnits,
+    (paged.building_id IS NOT NULL) AS HasRow,
+    stats.BuildingCount,
+    stats.TotalUnits AS AllTotalUnits,
+    stats.OccupiedUnits AS AllOccupiedUnits
+FROM stats
+LEFT JOIN paged ON TRUE
+ORDER BY paged.building_display, paged.building_id;
 """;
 
-        var counts = await uow.Connection.QuerySingleAsync<CountsRow>(new CommandDefinition(
+        var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
             sql,
             new
             {
                 code = PropertyCode,
                 building_id = buildingId,
                 as_of = asOfUtc,
-                posted = (int)DocumentStatus.Posted
+                posted = (int)DocumentStatus.Posted,
+                offset,
+                limit
             },
             transaction: uow.Transaction,
-            cancellationToken: ct));
+            cancellationToken: ct))).AsList();
+
+        var stats = dbRows[0];
+        var rows = dbRows.Where(row => row.HasRow).Select(row =>
+        {
+            var result = new OccupancySummaryRow(
+                BuildingId: row.BuildingId!.Value,
+                BuildingDisplay: row.BuildingDisplay!,
+                AsOfUtc: asOfUtc,
+                TotalUnits: row.TotalUnits!.Value,
+                OccupiedUnits: row.OccupiedUnits!.Value);
+            result.EnsureInvariant();
+            return result;
+        }).ToArray();
 
         var totals = new OccupancySummaryTotals(
             AsOfUtc: asOfUtc,
-            BuildingCount: buildingCount,
-            TotalUnits: counts.TotalUnits,
-            OccupiedUnits: counts.OccupiedUnits);
+            BuildingCount: stats.BuildingCount,
+            TotalUnits: stats.AllTotalUnits,
+            OccupiedUnits: stats.AllOccupiedUnits);
         totals.EnsureInvariant();
-        return totals;
+
+        return new PageAndTotals(rows, stats.BuildingCount, totals);
     }
 
     private sealed record ValidatedBuildingRow(Guid BuildingId, string Kind, string? BuildingDisplay, bool IsDeleted);
-    private sealed record PageRow(Guid BuildingId, string BuildingDisplay, int TotalUnits, int OccupiedUnits);
-    private sealed record CountsRow(int TotalUnits, int OccupiedUnits);
+
+    private sealed record CombinedRow(
+        Guid? BuildingId,
+        string? BuildingDisplay,
+        int? TotalUnits,
+        int? OccupiedUnits,
+        bool HasRow,
+        int BuildingCount,
+        int AllTotalUnits,
+        int AllOccupiedUnits);
+
+    private sealed record PageAndTotals(IReadOnlyList<OccupancySummaryRow> Rows, int Total, OccupancySummaryTotals Totals);
 }

@@ -133,16 +133,14 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
         if (exhaustedIds.Count == 0)
             return [];
 
-        var changedUsers = new HashSet<Guid>();
-        foreach (var paymentId in exhaustedIds.OrderBy(static id => id))
-        {
-            changedUsers.UnionWith(await tasks.CompleteByDeduplicationKeyAsync(
-                PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
-                DeduplicationKey(paymentId),
-                ct));
-        }
-
-        return changedUsers.ToArray();
+        return await tasks.CompleteByDeduplicationKeysAsync(
+            PropertyManagementWorkCenterCodes.ApplyReceivablePaymentTask,
+            exhaustedIds
+                .Distinct()
+                .OrderBy(static id => id)
+                .Select(DeduplicationKey)
+                .ToArray(),
+            ct);
     }
 
     public Task<IReadOnlyList<Guid>> CancelAsync(Guid paymentId, CancellationToken ct)

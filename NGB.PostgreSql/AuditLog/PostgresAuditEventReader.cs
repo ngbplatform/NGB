@@ -1,5 +1,6 @@
 using System.Text;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Core.AuditLog;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.UnitOfWork;
@@ -122,7 +123,7 @@ public sealed class PostgresAuditEventReader(IUnitOfWork uow) : IAuditEventReade
         sql.AppendLine("ORDER BY occurred_at_utc DESC, audit_event_id DESC");
         sql.AppendLine("LIMIT @Limit OFFSET @Offset;");
         p.Add("Limit", query.Limit);
-        p.Add("Offset", query.Offset);
+        p.Add("Offset", PagingLimits.BoundOffset(query.Offset));
 
         var cmd = new CommandDefinition(
             sql.ToString(),

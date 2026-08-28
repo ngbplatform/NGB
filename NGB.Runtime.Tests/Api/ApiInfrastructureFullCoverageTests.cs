@@ -120,6 +120,10 @@ public sealed class ApiInfrastructureFullCoverageTests
         }));
         bounded.Offset.Should().Be(PagingLimits.MaxOffset);
         bounded.Limit.Should().Be(PagingLimits.DefaultPageSize);
+
+        PagingLimits.BoundOffset(-1).Should().Be(0);
+        PagingLimits.BoundOffset(17).Should().Be(17);
+        PagingLimits.BoundOffset(int.MaxValue).Should().Be(PagingLimits.MaxOffset);
     }
 
     [Fact]

@@ -269,6 +269,28 @@ internal sealed class WorkCenterTaskService(
             return result.RecipientUserIds;
         }, ct);
 
+    public Task<IReadOnlyList<Guid>> CompleteByDeduplicationKeysAsync(
+        string taskCode,
+        IReadOnlyCollection<string> deduplicationKeys,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deduplicationKeys);
+
+        if (deduplicationKeys.Count == 0)
+            return Task.FromResult<IReadOnlyList<Guid>>([]);
+
+        return InTransactionAsync(async innerCt =>
+        {
+            var result = await tasks.CompleteByDeduplicationKeysAsync(
+                taskCode,
+                deduplicationKeys,
+                timeProvider.GetUtcNowDateTime(),
+                innerCt);
+
+            return result.RecipientUserIds;
+        }, ct);
+    }
+
     public Task<IReadOnlyList<Guid>> CancelByDeduplicationKeyAsync(
         string taskCode,
         string deduplicationKey,

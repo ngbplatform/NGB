@@ -1,5 +1,6 @@
 using Dapper;
 using NGB.Core.Documents;
+using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Reporting;
 using NGB.Tools.Exceptions;
@@ -150,34 +151,56 @@ visible_rows AS (
 )
 """;
 
-    private const string CountSql = StatementCte + """
-SELECT COUNT(*)::int
-FROM visible_rows;
-""";
-
-    private const string TotalsSql = StatementCte + """
-SELECT
-    (SELECT opening_balance FROM opening_balance) AS OpeningBalance,
-    COALESCE((SELECT SUM(charge_amount) FROM visible_rows), 0)::numeric(18,4) AS TotalCharges,
-    COALESCE((SELECT SUM(credit_amount) FROM visible_rows), 0)::numeric(18,4) AS TotalCredits;
-""";
-
     private const string PageSql = StatementCte + """
+,
+stats AS (
+    SELECT
+        COUNT(visible.document_id)::int AS total_count,
+        opening.opening_balance AS opening_balance,
+        COALESCE(SUM(visible.charge_amount), 0)::numeric(18,4) AS total_charges,
+        COALESCE(SUM(visible.credit_amount), 0)::numeric(18,4) AS total_credits
+    FROM opening_balance opening
+    LEFT JOIN visible_rows visible ON TRUE
+    GROUP BY opening.opening_balance
+),
+paged AS (
+    SELECT
+        visible.occurred_on_utc,
+        visible.document_id,
+        visible.document_type,
+        visible.document_display,
+        visible.entry_type_display,
+        visible.description,
+        visible.sort_order,
+        visible.charge_amount,
+        visible.credit_amount,
+        (opening.opening_balance
+          + SUM(visible.delta_amount) OVER (
+              ORDER BY visible.occurred_on_utc, visible.sort_order, visible.document_id))::numeric(18,4) AS running_balance
+    FROM visible_rows visible
+    CROSS JOIN opening_balance opening
+    ORDER BY visible.occurred_on_utc, visible.sort_order, visible.document_id
+    OFFSET @offset
+    LIMIT @limit
+)
 SELECT
-    occurred_on_utc AS OccurredOnUtc,
-    document_id AS DocumentId,
-    document_type AS DocumentType,
-    document_display AS DocumentDisplay,
-    entry_type_display AS EntryTypeDisplay,
-    description AS Description,
-    charge_amount AS ChargeAmount,
-    credit_amount AS CreditAmount,
-    ((SELECT opening_balance FROM opening_balance)
-      + SUM(delta_amount) OVER (ORDER BY occurred_on_utc, sort_order, document_id))::numeric(18,4) AS RunningBalance
-FROM visible_rows
-ORDER BY occurred_on_utc, sort_order, document_id
-OFFSET @offset
-LIMIT @limit;
+    paged.occurred_on_utc AS OccurredOnUtc,
+    paged.document_id AS DocumentId,
+    paged.document_type AS DocumentType,
+    paged.document_display AS DocumentDisplay,
+    paged.entry_type_display AS EntryTypeDisplay,
+    paged.description AS Description,
+    COALESCE(paged.charge_amount, 0) AS ChargeAmount,
+    COALESCE(paged.credit_amount, 0) AS CreditAmount,
+    COALESCE(paged.running_balance, stats.opening_balance) AS RunningBalance,
+    (paged.document_id IS NOT NULL) AS HasRow,
+    stats.total_count AS TotalCount,
+    stats.opening_balance AS OpeningBalance,
+    stats.total_charges AS TotalCharges,
+    stats.total_credits AS TotalCredits
+FROM stats
+LEFT JOIN paged ON TRUE
+ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
 """;
 
     public async Task<TenantStatementPage> GetPageAsync(TenantStatementQuery query, CancellationToken ct = default)
@@ -193,60 +216,44 @@ LIMIT @limit;
             from_utc = query.FromUtc,
             to_utc = query.ToUtc,
             posted = (int)DocumentStatus.Posted,
-            offset = query.Offset,
+            offset = PagingLimits.BoundOffset(query.Offset),
             limit = query.Limit
         };
 
-        var total = await uow.Connection.QuerySingleAsync<int>(new CommandDefinition(
-            CountSql,
+        var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
+            PageSql,
             parameters,
             transaction: uow.Transaction,
-            cancellationToken: ct));
-
-        var totalsRow = await uow.Connection.QuerySingleAsync<TotalsRow>(new CommandDefinition(
-            TotalsSql,
-            parameters,
-            transaction: uow.Transaction,
-            cancellationToken: ct));
-
-        IReadOnlyList<TenantStatementRow> rows;
-        if (query.Offset >= total)
-        {
-            rows = [];
-        }
-        else
-        {
-            var dbRows = await uow.Connection.QueryAsync<PageRow>(new CommandDefinition(
-                PageSql,
-                parameters,
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-
-            rows = dbRows.Select(MapRow).ToArray();
-        }
+            cancellationToken: ct))).AsList();
+        var stats = dbRows[0];
+        var rows = dbRows
+            .Where(static row => row.HasRow)
+            .Select(MapRow)
+            .ToArray();
 
         var totals = new TenantStatementTotals(
             FromUtc: query.FromUtc,
             ToUtc: query.ToUtc,
-            OpeningBalance: totalsRow.OpeningBalance,
-            TotalCharges: totalsRow.TotalCharges,
-            TotalCredits: totalsRow.TotalCredits,
-            ClosingBalance: totalsRow.OpeningBalance + totalsRow.TotalCharges - totalsRow.TotalCredits);
+            OpeningBalance: stats.OpeningBalance,
+            TotalCharges: stats.TotalCharges,
+            TotalCredits: stats.TotalCredits,
+            ClosingBalance: stats.OpeningBalance + stats.TotalCharges - stats.TotalCredits);
         totals.EnsureInvariant();
 
-        var page = new TenantStatementPage(rows, total, totals);
+        var page = new TenantStatementPage(rows, stats.TotalCount, totals);
         page.EnsureInvariant();
+
         return page;
     }
 
-    private static TenantStatementRow MapRow(PageRow row)
+    private static TenantStatementRow MapRow(CombinedRow row)
     {
         var result = new TenantStatementRow(
-            OccurredOnUtc: row.OccurredOnUtc,
-            DocumentId: row.DocumentId,
-            DocumentType: row.DocumentType,
-            DocumentDisplay: row.DocumentDisplay,
-            EntryTypeDisplay: row.EntryTypeDisplay,
+            OccurredOnUtc: row.OccurredOnUtc!.Value,
+            DocumentId: row.DocumentId!.Value,
+            DocumentType: row.DocumentType!,
+            DocumentDisplay: row.DocumentDisplay!,
+            EntryTypeDisplay: row.EntryTypeDisplay!,
             Description: row.Description,
             ChargeAmount: row.ChargeAmount,
             CreditAmount: row.CreditAmount,
@@ -274,16 +281,19 @@ WHERE id = @lease_id
             throw new NgbArgumentInvalidException(nameof(leaseId), "Select a valid Lease.");
     }
 
-    private sealed record TotalsRow(decimal OpeningBalance, decimal TotalCharges, decimal TotalCredits);
-
-    private sealed record PageRow(
-        DateOnly OccurredOnUtc,
-        Guid DocumentId,
-        string DocumentType,
-        string DocumentDisplay,
-        string EntryTypeDisplay,
+    private sealed record CombinedRow(
+        DateOnly? OccurredOnUtc,
+        Guid? DocumentId,
+        string? DocumentType,
+        string? DocumentDisplay,
+        string? EntryTypeDisplay,
         string? Description,
         decimal ChargeAmount,
         decimal CreditAmount,
-        decimal RunningBalance);
+        decimal RunningBalance,
+        bool HasRow,
+        int TotalCount,
+        decimal OpeningBalance,
+        decimal TotalCharges,
+        decimal TotalCredits);
 }

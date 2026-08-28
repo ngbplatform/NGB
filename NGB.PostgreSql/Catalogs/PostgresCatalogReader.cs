@@ -1,5 +1,6 @@
 using System.Data;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Persistence.Catalogs.Universal;
 using NGB.Persistence.Common;
 using NGB.Persistence.UnitOfWork;
@@ -56,6 +57,8 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogCombinedP
         if (limit <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
 
+        offset = PagingLimits.BoundOffset(offset);
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         var where = BuildWhere(head, query);
@@ -106,6 +109,8 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogCombinedP
 
         if (limit <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        offset = PagingLimits.BoundOffset(offset);
 
         await uow.EnsureConnectionOpenAsync(ct);
 

@@ -30,7 +30,8 @@ public sealed class ReceivablesFifoApplyExecuteService(
     IDocumentRepository documents,
     IAdvisoryLockManager advisoryLocks,
     IUnitOfWork uow,
-    IReceivablePaymentWorkCenterSynchronizer workCenter)
+    IReceivablePaymentWorkCenterSynchronizer workCenter,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IReceivablesFifoApplyExecuteService
 {
     public async Task<ReceivablesFifoApplyExecuteResponse> ExecuteAsync(
@@ -47,6 +48,8 @@ public sealed class ReceivablesFifoApplyExecuteService(
             throw ReceivablesRequestValidationException.MaxApplicationsTooLarge(FifoApplyLimits.MaxApplications);
 
         var maxApplications = request.MaxApplications ?? FifoApplyLimits.DefaultMaxApplications;
+
+        using var postingReadScope = postingReadCache?.BeginScope();
 
         // 1) Plan (no writes).
         var plan = await suggest.SuggestAsync(

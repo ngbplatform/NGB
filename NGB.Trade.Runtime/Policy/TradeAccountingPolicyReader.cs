@@ -1,14 +1,22 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
+using NGB.Persistence.Documents;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
 namespace NGB.Trade.Runtime.Policy;
 
-public sealed class TradeAccountingPolicyReader(ICatalogService catalogs)
+public sealed class TradeAccountingPolicyReader(
+    ICatalogService catalogs,
+    IDocumentPostingReadCache? postingReadCache = null)
     : ITradeAccountingPolicyReader
 {
-    public async Task<TradeAccountingPolicy> GetRequiredAsync(CancellationToken ct = default)
+    public Task<TradeAccountingPolicy> GetRequiredAsync(CancellationToken ct = default)
+        => postingReadCache is null
+            ? ReadRequiredAsync(ct)
+            : postingReadCache.GetOrAddAsync("policy:trade", ReadRequiredAsync, ct);
+
+    private async Task<TradeAccountingPolicy> ReadRequiredAsync(CancellationToken ct)
     {
         var page = await catalogs.GetPageAsync(
             TradeCodes.AccountingPolicy,

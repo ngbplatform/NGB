@@ -71,6 +71,42 @@ public sealed class PostingEngineFullCoverageTests
     }
 
     [Fact]
+    public async Task PostAsync_ChecksAllDistinctPeriodsWithOneBatchRead_AndRejectsFirstClosed()
+    {
+        var fixture = new Fixture();
+        var documentId = Guid.CreateVersion7();
+        var debit = CreateAccount("1010", NegativeBalancePolicy.Allow);
+        var credit = CreateAccount("2010", NegativeBalancePolicy.Allow);
+        var march = new DateOnly(2026, 3, 1);
+        var april = new DateOnly(2026, 4, 1);
+        fixture.ClosedPeriods
+            .Setup(x => x.FindFirstClosedAsync(
+                It.Is<IReadOnlyCollection<DateOnly>>(periods =>
+                    periods.SequenceEqual(new[] { march, april })),
+                fixture.Token))
+            .ReturnsAsync(march);
+
+        var act = () => fixture.Sut.PostAsync(
+            PostingOperation.Post,
+            (context, _) =>
+            {
+                context.Post(documentId, new DateTime(2026, 4, 15, 0, 0, 0, DateTimeKind.Utc), debit, credit, 1m);
+                context.Post(documentId, MarchUtc, debit, credit, 1m);
+                return Task.CompletedTask;
+            },
+            manageTransaction: true,
+            fixture.Token);
+
+        var exception = await act.Should().ThrowAsync<PostingPeriodClosedException>();
+        exception.Which.Period.Should().Be(march);
+        fixture.ClosedPeriods.Verify(x => x.FindFirstClosedAsync(
+            It.IsAny<IReadOnlyCollection<DateOnly>>(), fixture.Token), Times.Once);
+        fixture.EntryWriter.Verify(
+            x => x.WriteAsync(It.IsAny<IReadOnlyList<AccountingEntry>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task PostAsync_WhenValidatorIllegallyRemovesEntries_RejectsTheMutatedContext()
     {
         var fixture = new Fixture();
@@ -192,8 +228,8 @@ public sealed class PostingEngineFullCoverageTests
                 .ReturnsAsync((IReadOnlyList<DimensionBag> bags, CancellationToken _) =>
                     bags.Select(static _ => Guid.Empty).ToArray());
             ClosedPeriods
-                .Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), Token))
-                .ReturnsAsync(false);
+                .Setup(x => x.FindFirstClosedAsync(It.IsAny<IReadOnlyCollection<DateOnly>>(), Token))
+                .ReturnsAsync((DateOnly?)null);
             Validator.Setup(x => x.Validate(It.IsAny<IReadOnlyList<AccountingEntry>>()));
             PostingState
                 .Setup(x => x.TryBeginAsync(

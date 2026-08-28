@@ -217,16 +217,16 @@ public sealed class CloseFiscalYear_Prerequisites_AreReadInsideLockedWindow_P1Te
             return await inner.IsClosedAsync(period, ct);
         }
 
+        public Task<DateOnly?> FindFirstClosedAsync(IReadOnlyCollection<DateOnly> periods, CancellationToken ct = default)
+            => inner.FindFirstClosedAsync(periods, ct);
+
         public Task MarkClosedAsync(DateOnly period, string closedBy, DateTime closedAtUtc, CancellationToken ct = default)
             => inner.MarkClosedAsync(period, closedBy, closedAtUtc, ct);
 
-        public Task ReopenAsync(DateOnly period, CancellationToken ct = default)
-            => inner.ReopenAsync(period, ct);
+        public Task ReopenAsync(DateOnly period, CancellationToken ct = default) => inner.ReopenAsync(period, ct);
     }
 
-    private sealed class ProbingClosedPeriodReader(
-        IClosedPeriodReader inner,
-        FiscalYearPrerequisiteReadProbe probe)
+    private sealed class ProbingClosedPeriodReader(IClosedPeriodReader inner, FiscalYearPrerequisiteReadProbe probe)
         : IClosedPeriodReader
     {
         public async Task<IReadOnlyList<ClosedPeriodRecord>> GetClosedAsync(

@@ -604,6 +604,13 @@ public sealed class PeriodClosingServiceFullCoverageTests
                 .ReturnsAsync(() => DeletedEntryPeriods);
             ClosedPeriods.Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((DateOnly period, CancellationToken _) => IsClosedQuery?.Invoke(period) ?? IsClosed);
+            ClosedPeriods.Setup(x => x.FindFirstClosedAsync(
+                    It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyCollection<DateOnly> periods, CancellationToken _) => periods
+                    .Order()
+                    .Where(period => IsClosedQuery?.Invoke(period) ?? IsClosed)
+                    .Select(static period => (DateOnly?)period)
+                    .FirstOrDefault());
             ClosedPeriods.Setup(x => x.MarkClosedAsync(It.IsAny<DateOnly>(), It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
             ClosedPeriods.Setup(x => x.ReopenAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))

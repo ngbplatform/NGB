@@ -29,8 +29,16 @@ public sealed class PostgresOperationalRegisterMovementsStore(
 
         OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, "opreg movements table name");
 
-        // Base table.
-        await uow.Connection.ExecuteAsync($"""
+        // Resolve and validate all metadata before mutating the physical schema.
+        var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct)).OrderBy(r => r.Ordinal).ToArray();
+        foreach (var resource in resources)
+        {
+            OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
+        }
+
+        // Execute the complete idempotent schema contract in one roundtrip while
+        // the per-register advisory lock is held.
+        var ddl = new StringBuilder($"""
 CREATE TABLE IF NOT EXISTS {table}(
     movement_id BIGSERIAL PRIMARY KEY,
     document_id UUID NOT NULL,
@@ -41,25 +49,17 @@ CREATE TABLE IF NOT EXISTS {table}(
     is_storno BOOLEAN NOT NULL DEFAULT FALSE,
     FOREIGN KEY (dimension_set_id) REFERENCES platform_dimension_sets(dimension_set_id)
 );
-""", transaction: uow.Transaction);
+""");
 
         // Resource columns (NUMERIC(28,8) NOT NULL DEFAULT 0).
-        var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct)).OrderBy(r => r.Ordinal).ToArray();
-        foreach (var r in resources)
+        foreach (var resource in resources)
         {
-            OperationalRegisterSqlIdentifiers.EnsureOrThrow(r.ColumnCode, "opreg resource column_code");
-        }
-        
-        foreach (var r in resources)
-        {
-            OperationalRegisterSqlIdentifiers.EnsureOrThrow(r.ColumnCode, "opreg resource column_code");
-
-            await uow.Connection.ExecuteAsync($"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {r.ColumnCode} NUMERIC(28,8) NOT NULL DEFAULT 0;", transaction: uow.Transaction);
+            ddl.AppendLine($"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {resource.ColumnCode} NUMERIC(28,8) NOT NULL DEFAULT 0;");
         }
 
         // Append-only guard.
         var trgAppendOnly = Trg(table, "append_only");
-        await PostgresAppendOnlyGuardSql.EnsureUpdateDeleteForbiddenTriggerAsync(uow, table, trgAppendOnly, ct);
+        ddl.AppendLine(PostgresAppendOnlyGuardSql.BuildUpdateDeleteForbiddenTriggerSql(table, trgAppendOnly));
 
         // Basic indexes.
         // NOTE: avoid string literals inside interpolation (would break C# parsing).
@@ -77,14 +77,18 @@ CREATE TABLE IF NOT EXISTS {table}(
         var ixDimMonthOccurred = Ix(table, "dim_month_occurred");
         var ixDocMonthNoStorno = Ix(table, "doc_month_nostorno");
 
-        await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixDoc} ON {table}(document_id);", transaction: uow.Transaction);
-        await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixMonth} ON {table}(period_month);", transaction: uow.Transaction);
-        await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixMonthDim} ON {table}(period_month, dimension_set_id);", transaction: uow.Transaction);
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixDoc} ON {table}(document_id);");
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixMonth} ON {table}(period_month);");
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixMonthDim} ON {table}(period_month, dimension_set_id);");
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixMonthMove} ON {table}(period_month, movement_id);");
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixMonthDimMove} ON {table}(period_month, dimension_set_id, movement_id);");
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixDimMonthOccurred} ON {table}(dimension_set_id, period_month, occurred_at_utc);");
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixDocMonthNoStorno} ON {table}(document_id, period_month) WHERE is_storno = FALSE;");
 
-        await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixMonthMove} ON {table}(period_month, movement_id);", transaction: uow.Transaction);
-        await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixMonthDimMove} ON {table}(period_month, dimension_set_id, movement_id);", transaction: uow.Transaction);
-        await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixDimMonthOccurred} ON {table}(dimension_set_id, period_month, occurred_at_utc);", transaction: uow.Transaction);
-        await uow.Connection.ExecuteAsync($"CREATE INDEX IF NOT EXISTS {ixDocMonthNoStorno} ON {table}(document_id, period_month) WHERE is_storno = FALSE;", transaction: uow.Transaction);
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            ddl.ToString(),
+            transaction: uow.Transaction,
+            cancellationToken: ct));
     }
 
     public async Task AppendAsync(Guid registerId, IReadOnlyList<OperationalRegisterMovement> movements, CancellationToken ct = default)

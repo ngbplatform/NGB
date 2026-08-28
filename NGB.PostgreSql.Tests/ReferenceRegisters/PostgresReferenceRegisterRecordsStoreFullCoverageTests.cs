@@ -251,6 +251,11 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
             .And.Contain("ALTER COLUMN int64_col TYPE BIGINT")
             .And.Contain("ALTER COLUMN boolean_col DROP NOT NULL")
             .And.Contain("ALTER COLUMN guid_col SET NOT NULL");
+
+        fixture.Connection.Commands.Should().ContainSingle(command =>
+            command.CommandText.Contains("ADD COLUMN IF NOT EXISTS missing_nullable", StringComparison.Ordinal) &&
+            command.CommandText.Contains("ALTER COLUMN int64_col TYPE BIGINT", StringComparison.Ordinal) &&
+            command.CommandText.Contains("ALTER COLUMN guid_col SET NOT NULL", StringComparison.Ordinal));
     }
 
     [Theory]

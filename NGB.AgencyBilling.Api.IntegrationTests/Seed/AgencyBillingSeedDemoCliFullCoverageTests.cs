@@ -188,7 +188,13 @@ public sealed class AgencyBillingSeedDemoCliFullCoverageTests
                 [Catalog(Guid.NewGuid(), "Duplicate"), Catalog(Guid.NewGuid(), "duplicate")], 0, 50, 2))
             .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
                 [Catalog(existingCatalogId, "Existing")], 0, 50, 1))
-            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 50, 0));
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 50, 0))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
+                [Catalog(existingCatalogId, "Existing"), new CatalogItemDto(Guid.NewGuid(), null, new RecordPayload(), false, false)],
+                0, 50, 2))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 50, 0))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
+                [Catalog(Guid.NewGuid(), "Duplicate"), Catalog(Guid.NewGuid(), "duplicate")], 0, 50, 2));
         catalogs.Setup(x => x.CreateAsync("catalog", It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Catalog(createdCatalogId, "Created"));
         catalogs.Setup(x => x.UpdateAsync(
@@ -211,6 +217,15 @@ public sealed class AgencyBillingSeedDemoCliFullCoverageTests
         await FluentActions.Awaiting(() => seeder.GetCatalogIdByDisplayAsync(
                 "catalog", "Missing", CancellationToken.None))
             .Should().ThrowAsync<NgbConfigurationViolationException>();
+        (await seeder.GetCatalogIdsByDisplayAsync(
+                "catalog", ["existing"], CancellationToken.None))["EXISTING"]
+            .Should().Be(existingCatalogId);
+        await FluentActions.Awaiting(() => seeder.GetCatalogIdsByDisplayAsync(
+                "catalog", ["Missing"], CancellationToken.None))
+            .Should().ThrowAsync<NgbConfigurationViolationException>().WithMessage("*was not found*");
+        await FluentActions.Awaiting(() => seeder.GetCatalogIdsByDisplayAsync(
+                "catalog", ["Duplicate"], CancellationToken.None))
+            .Should().ThrowAsync<NgbConfigurationViolationException>().WithMessage("Multiple*");
         seeder.IsDocumentPostable("missing.document").Should().BeFalse();
         seeder.CanPostAgencyDocuments().Should().BeFalse();
 

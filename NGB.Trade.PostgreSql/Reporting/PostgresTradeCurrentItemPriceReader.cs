@@ -1,4 +1,5 @@
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.ReferenceRegisters;
@@ -121,7 +122,7 @@ LIMIT @Limit;
                 HasPriceTypeFilter = priceTypeIdArray.Length > 0,
                 ItemIds = itemIdArray,
                 PriceTypeIds = priceTypeIdArray,
-                Offset = offset,
+                Offset = PagingLimits.BoundOffset(offset),
                 Limit = limit
             },
             uow.Transaction,

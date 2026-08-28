@@ -59,20 +59,25 @@ public sealed class PayablesOpenItemsServiceFullCoverageTests
         var missingChargeHead = Guid.CreateVersion7();
         var missingCreditHead = Guid.CreateVersion7();
         var chargeType = Guid.CreateVersion7();
-        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionAsync(
+        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionPageAsync(
                 fixture.RegisterId, It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
-                itemDimensionId, "amount", It.IsAny<CancellationToken>()))
-            .ReturnsAsync([
-                new(chargeEarly, 5m, "Charge early"),
-                new(chargeLow, 10m, "Charge low"),
-                new(chargeHigh, 20m, "Charge high"),
-                new(paymentEarly, -3m, null),
-                new(paymentLow, -4m, null),
-                new(memoHigh, -6m, null),
-                new(missingInfo, 7m, null),
-                new(missingChargeHead, 8m, null),
-                new(missingCreditHead, -9m, null)
-            ]);
+                itemDimensionId, "amount", 0, PayablesOpenItemsService.MaxMaterializedOpenItems,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OperationalRegisterDimensionResourceNetPage(
+                [
+                    new(chargeEarly, 5m, "Charge early"),
+                    new(chargeLow, 10m, "Charge low"),
+                    new(chargeHigh, 20m, "Charge high"),
+                    new(paymentEarly, -3m, null),
+                    new(paymentLow, -4m, null),
+                    new(memoHigh, -6m, null),
+                    new(missingInfo, 7m, null),
+                    new(missingChargeHead, 8m, null),
+                    new(missingCreditHead, -9m, null)
+                ],
+                9,
+                50m,
+                22m));
         fixture.Movements.Setup(x => x.GetMaxPeriodMonthAsync(
                 fixture.RegisterId, It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DateOnly(2099, 12, 1));
@@ -114,9 +119,10 @@ public sealed class PayablesOpenItemsServiceFullCoverageTests
         result.Credits.Select(x => x.CreditDocumentId).Should().Equal(paymentEarly, paymentLow, memoHigh);
         result.TotalOutstanding.Should().Be(35m);
         result.TotalCredit.Should().Be(13m);
-        fixture.Movements.Verify(x => x.GetResourceBalancesByDimensionAsync(
+        fixture.Movements.Verify(x => x.GetResourceBalancesByDimensionPageAsync(
             fixture.RegisterId, new DateOnly(2026, 3, 1),
             It.IsAny<IReadOnlyList<DimensionValue>>(), itemDimensionId, "amount",
+            0, PayablesOpenItemsService.MaxMaterializedOpenItems,
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -126,19 +132,35 @@ public sealed class PayablesOpenItemsServiceFullCoverageTests
         var fixture = new Fixture();
         var itemDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.PayableItem}");
         var id = Guid.CreateVersion7();
-        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionAsync(
+        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionPageAsync(
                 It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
-                itemDimensionId, "amount", It.IsAny<CancellationToken>()))
-            .ReturnsAsync([new(id, 1m, null)]);
+                itemDimensionId, "amount", 0, PayablesOpenItemsService.MaxMaterializedOpenItems,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OperationalRegisterDimensionResourceNetPage([new(id, 1m, null)], 1, 1m, 0m));
         fixture.Readers.Setup(x => x.ReadDocumentInfosAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Info(id, PropertyManagementCodes.PayableCharge)]);
         fixture.Readers.Setup(x => x.ReadPayableChargeHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([Charge(id, Guid.CreateVersion7(), new DateOnly(2026, 1, 1), 1m)]);
 
         (await fixture.QueryAsync()).TotalOutstanding.Should().Be(1m);
-        fixture.Movements.Verify(x => x.GetResourceBalancesByDimensionAsync(
+        fixture.Movements.Verify(x => x.GetResourceBalancesByDimensionPageAsync(
             It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
-            itemDimensionId, "amount", It.IsAny<CancellationToken>()), Times.Once);
+            itemDimensionId, "amount", 0, PayablesOpenItemsService.MaxMaterializedOpenItems,
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Materialized_open_items_are_hard_bounded()
+    {
+        var fixture = new Fixture();
+        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionPageAsync(
+                It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
+                It.IsAny<Guid>(), "amount", 0, PayablesOpenItemsService.MaxMaterializedOpenItems,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OperationalRegisterDimensionResourceNetPage([], PayablesOpenItemsService.MaxMaterializedOpenItems + 1, 0m, 0m));
+
+        await ((Func<Task>)(() => fixture.QueryAsync()))
+            .Should().ThrowAsync<OpenItemsResultLimitExceededException>();
     }
 
     private static async Task AssertInvalid(Func<Task> action)
@@ -173,10 +195,11 @@ public sealed class PayablesOpenItemsServiceFullCoverageTests
             Movements.Setup(x => x.GetMaxPeriodMonthAsync(
                     It.IsAny<Guid>(), It.IsAny<IReadOnlyList<DimensionValue>>(), null, null, null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync((DateOnly?)null);
-            Movements.Setup(x => x.GetResourceBalancesByDimensionAsync(
+            Movements.Setup(x => x.GetResourceBalancesByDimensionPageAsync(
                     It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<IReadOnlyList<DimensionValue>>(),
-                    It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync([]);
+                    It.IsAny<Guid>(), It.IsAny<string>(), 0, PayablesOpenItemsService.MaxMaterializedOpenItems,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m));
             Uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);

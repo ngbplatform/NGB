@@ -33,7 +33,8 @@ public sealed class ReceivablesApplyBatchService(
     IDocumentRepository documents,
     IAdvisoryLockManager locks,
     IUnitOfWork uow,
-    IReceivablePaymentWorkCenterSynchronizer workCenter)
+    IReceivablePaymentWorkCenterSynchronizer workCenter,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IReceivablesApplyBatchService
 {
     private const int MaxLines = 100;
@@ -83,6 +84,8 @@ public sealed class ReceivablesApplyBatchService(
 
         if (parsed.Count == 0)
             throw ReceivablesApplyBatchValidationException.AppliesMustNotBeEmpty();
+
+        using var postingReadScope = postingReadCache?.BeginScope();
 
         // Resolve register id for response (also validates policy existence early).
         var policy = await policyReader.GetRequiredAsync(ct);

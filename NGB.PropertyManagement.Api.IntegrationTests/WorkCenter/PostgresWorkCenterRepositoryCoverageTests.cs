@@ -362,6 +362,33 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
             result.Should().BeEmpty();
         }
 
+        var emptyBatch = await tasks.CompleteByDeduplicationKeysAsync(
+            task.TaskCode,
+            [],
+            now,
+            CancellationToken.None);
+        emptyBatch.Should().Be(new WorkCenterTaskMutationResult(false, []));
+        await FluentActions.Awaiting(() => tasks.CompleteByDeduplicationKeysAsync(
+                task.TaskCode,
+                null!,
+                now,
+                CancellationToken.None))
+            .Should().ThrowAsync<ArgumentNullException>();
+
+        var secondTask = ValidTask(now.AddSeconds(6), role.RoleId);
+        await uow.ExecuteInUowTransactionAsync(
+            ct => tasks.CreateAsync(secondTask, null, null, [recipientId], ct),
+            CancellationToken.None);
+        var batchCompletion = await uow.ExecuteInUowTransactionAsync(
+            ct => tasks.CompleteByDeduplicationKeysAsync(
+                task.TaskCode,
+                [task.DeduplicationKey, secondTask.DeduplicationKey, task.DeduplicationKey],
+                now.AddSeconds(7),
+                ct),
+            CancellationToken.None);
+        batchCompletion.Changed.Should().BeTrue();
+        batchCompletion.RecipientUserIds.Should().Equal(recipientId);
+
         await uow.ExecuteInUowTransactionAsync(
             ct => tasks.CancelByDeduplicationKeyAsync(task.TaskCode, "missing-task", now, ct),
             CancellationToken.None);

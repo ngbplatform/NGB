@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Receivables;
@@ -35,6 +36,8 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
 
         if (request.Limit is <= 0 or > 500)
             throw new NgbArgumentOutOfRangeException(nameof(request.Limit), request.Limit, "Limit must be between 1 and 500.");
+
+        var boundedOffset = PagingLimits.BoundOffset(request.Offset);
 
         await uow.EnsureConnectionOpenAsync(ct);
 
@@ -153,7 +156,7 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
                 PartyDimId = partyDimId,
                 PropertyDimId = propertyDimId,
                 LeaseDimId = leaseDimId,
-                request.Offset,
+                Offset = boundedOffset,
                 LimitPlusOne = request.Limit + 1,
                 Guid.Empty
             },
@@ -205,7 +208,7 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
             RowCount: stats.TotalRowCount,
             MismatchRowCount: stats.TotalMismatchRowCount,
             Rows: resultRows,
-            Offset: request.Offset,
+            Offset: boundedOffset,
             Limit: request.Limit,
             HasMore: hasMore);
     }

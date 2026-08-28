@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dapper;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.PostgreSql.Internal;
 using NGB.Tools.Exceptions;
@@ -107,7 +108,7 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
 
         if (!request.Paging.DisablePaging)
         {
-            parameters.Add("offset", request.Paging.Offset);
+            parameters.Add("offset", PagingLimits.BoundOffset(request.Paging.Offset));
             parameters.Add("limit_plus_one", request.Paging.Limit + 1);
         }
 
@@ -133,7 +134,7 @@ ORDER BY {string.Join(", ", orderBySql)}
             Parameters: parameters,
             Columns: columns,
             IsAggregated: request.Measures.Count > 0,
-            Offset: request.Paging.DisablePaging ? 0 : request.Paging.Offset,
+            Offset: request.Paging.DisablePaging ? 0 : PagingLimits.BoundOffset(request.Paging.Offset),
             Limit: request.Paging.DisablePaging ? 0 : request.Paging.Limit);
     }
 

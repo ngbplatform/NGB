@@ -1,4 +1,5 @@
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Exceptions;
 using NGB.Persistence.OperationalRegisters;
@@ -81,10 +82,6 @@ nets AS (
         item.value_id AS document_id,
         SUM(source.net_amount) AS net_amount
     FROM dimension_nets source
-    JOIN platform_dimension_set_items lease
-      ON lease.dimension_set_id = source.dimension_set_id
-     AND lease.dimension_id = @LeaseDimensionId
-     AND lease.value_id = @LeaseId
     JOIN platform_dimension_set_items item
       ON item.dimension_set_id = source.dimension_set_id
      AND item.dimension_id = @ItemDimensionId
@@ -182,7 +179,7 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
                 ItemDimensionId,
                 LeaseId = leaseId,
                 ChargesOnly = chargesOnly,
-                Offset = offset,
+                Offset = PagingLimits.BoundOffset(offset),
                 Limit = limit
             },
             uow.Transaction,
@@ -213,23 +210,39 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
     }
 
     private static string BuildMovementOnlyNetSourceSql(string movementsTable) => $"""
-WITH dimension_nets AS (
+WITH lease_dimension_sets AS (
+    SELECT dimension_set_id
+    FROM platform_dimension_set_items
+    WHERE dimension_id = @LeaseDimensionId
+      AND value_id = @LeaseId
+),
+dimension_nets AS (
     SELECT
         movement.dimension_set_id,
         SUM(CASE WHEN movement.is_storno THEN -movement.amount ELSE movement.amount END) AS net_amount
     FROM {movementsTable} movement
+    JOIN lease_dimension_sets lease
+      ON lease.dimension_set_id = movement.dimension_set_id
     GROUP BY movement.dimension_set_id
 )
 """;
 
     private static string BuildSnapshotBackedNetSourceSql(string movementsTable, string balancesTable) => $"""
-WITH latest_snapshot AS (
+WITH lease_dimension_sets AS (
+    SELECT dimension_set_id
+    FROM platform_dimension_set_items
+    WHERE dimension_id = @LeaseDimensionId
+      AND value_id = @LeaseId
+),
+latest_snapshot AS (
     SELECT MAX(period_month) AS period_month
     FROM {balancesTable}
 ),
 snapshot_values AS (
     SELECT balance.dimension_set_id, balance.amount AS net_amount
     FROM {balancesTable} balance
+    JOIN lease_dimension_sets lease
+      ON lease.dimension_set_id = balance.dimension_set_id
     CROSS JOIN latest_snapshot latest
     WHERE balance.period_month = latest.period_month
 ),
@@ -238,6 +251,8 @@ movement_values AS (
         movement.dimension_set_id,
         SUM(CASE WHEN movement.is_storno THEN -movement.amount ELSE movement.amount END) AS net_amount
     FROM {movementsTable} movement
+    JOIN lease_dimension_sets lease
+      ON lease.dimension_set_id = movement.dimension_set_id
     CROSS JOIN latest_snapshot latest
     WHERE latest.period_month IS NULL OR movement.period_month > latest.period_month
     GROUP BY movement.dimension_set_id

@@ -46,10 +46,11 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionStoreCoreFullCov
 
         await fixture.Store.EnsureSchemaAsync(RegisterId);
 
-        fixture.Connection.Commands.Should().Contain(command => command.CommandText.Contains("CREATE TABLE IF NOT EXISTS opreg_sales_turnovers"));
-        fixture.Connection.Commands.Should().Contain(command => command.CommandText.Contains("ADD COLUMN IF NOT EXISTS quantity"));
-        fixture.Connection.Commands.Should().Contain(command => command.CommandText.Contains("ADD COLUMN IF NOT EXISTS amount"));
-        fixture.Connection.Commands.Count(command => command.CommandText.Contains("CREATE INDEX IF NOT EXISTS")).Should().Be(2);
+        var ddl = fixture.Connection.Commands.Should().ContainSingle(command =>
+            command.CommandText.Contains("CREATE TABLE IF NOT EXISTS opreg_sales_turnovers")).Which.CommandText;
+        ddl.Should().Contain("ADD COLUMN IF NOT EXISTS quantity")
+            .And.Contain("ADD COLUMN IF NOT EXISTS amount");
+        ddl.Split("CREATE INDEX IF NOT EXISTS", StringSplitOptions.None).Length.Should().Be(3);
     }
 
     [Fact]

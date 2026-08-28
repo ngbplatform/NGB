@@ -2,6 +2,7 @@ using Dapper;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.CashFlow;
 using NGB.Accounting.Dimensions;
+using NGB.Contracts.Common;
 using NGB.Persistence.Accounts;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.UnitOfWork;
@@ -155,7 +156,7 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
             Search = query.Search is null ? null : $"%{EscapeLike(query.Search)}%",
             FilterSearchAccountTypes = query.SearchAccountTypes.Count > 0,
             SearchAccountTypes = query.SearchAccountTypes.Select(static type => (short)type).ToArray(),
-            query.Offset,
+            Offset = PagingLimits.BoundOffset(query.Offset),
             query.Limit
         };
 
