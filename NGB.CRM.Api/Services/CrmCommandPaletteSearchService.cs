@@ -4,6 +4,7 @@ using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
 using NGB.Contracts.Search;
 using NGB.Contracts.Services;
+using NGB.Tools.Exceptions;
 
 namespace NGB.CRM.Api.Services;
 
@@ -17,6 +18,7 @@ public sealed class CrmCommandPaletteSearchService(
     private const string DocumentsCode = "documents";
     private const string CatalogsCode = "catalogs";
     private const string ReportsCode = "reports";
+    private const int MaxQueryLength = 256;
 
     private static readonly TimeSpan MetadataCacheTtl = TimeSpan.FromMinutes(10);
 
@@ -24,8 +26,8 @@ public sealed class CrmCommandPaletteSearchService(
         CommandPaletteSearchRequestDto request,
         CancellationToken ct)
     {
-        var query = (request.Query ?? string.Empty).Trim();
-        if (query.Length == 0)
+        var query = NormalizeQuery(request.Query);
+        if (query is null)
             return new CommandPaletteSearchResponseDto([]);
 
         var scope = NormalizeScope(request.Scope);
@@ -42,6 +44,17 @@ public sealed class CrmCommandPaletteSearchService(
             await AddGroupAsync(groups, ReportsCode, () => SearchReportsAsync(query, limit, ct), ct);
 
         return new CommandPaletteSearchResponseDto(groups);
+    }
+
+    private static string? NormalizeQuery(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return null;
+
+        if (query.Length > MaxQueryLength)
+            throw new NgbArgumentOutOfRangeException(nameof(query), query.Length, $"Search text can contain up to {MaxQueryLength} characters.");
+
+        return query.Trim();
     }
 
     private async Task AddGroupAsync(

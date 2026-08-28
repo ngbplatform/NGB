@@ -177,6 +177,57 @@ public sealed class ReportLayoutValidatorFullCoverageTests
     }
 
     [Fact]
+    public void Validate_RejectsOversizedRequestCollectionsBeforeSemanticPlanning()
+    {
+        var definition = Definition(maxRowDepth: ReportLayoutLimits.MaxRowGroups + 1);
+
+        AssertInvalid(
+            definition,
+            new ReportExecutionRequestDto(Layout: Layout(rowGroups: Enumerable
+                .Range(0, ReportLayoutLimits.MaxRowGroups + 1)
+                .Select(_ => new ReportGroupingDto("group_ok"))
+                .ToArray())),
+            "layout.rowGroups");
+
+        var filters = Enumerable.Range(0, ReportLayoutLimits.MaxFilters + 1)
+            .ToDictionary(
+                index => $"filter_{index}",
+                index => new ReportFilterValueDto(JsonSerializer.SerializeToElement(index)));
+        AssertInvalid(definition, new ReportExecutionRequestDto(Filters: filters), "filters");
+
+        var parameters = Enumerable.Range(0, ReportLayoutLimits.MaxParameters + 1)
+            .ToDictionary(index => $"parameter_{index}", _ => "value");
+        AssertInvalid(definition, new ReportExecutionRequestDto(Parameters: parameters), "parameters");
+
+        var tooManyValues = Enumerable.Range(0, ReportLayoutLimits.MaxValuesPerFilter + 1).ToArray();
+        AssertInvalid(
+            definition,
+            new ReportExecutionRequestDto(Filters: new Dictionary<string, ReportFilterValueDto>
+            {
+                ["filterable"] = new(JsonSerializer.SerializeToElement(tooManyValues))
+            }),
+            "filters.filterable");
+
+        var duplicatedNormalizedCode = new Dictionary<string, ReportFilterValueDto>(StringComparer.Ordinal)
+        {
+            ["filterable"] = new(JsonSerializer.SerializeToElement(1)),
+            [" FILTERABLE "] = new(JsonSerializer.SerializeToElement(2))
+        };
+        AssertInvalid(
+            definition,
+            new ReportExecutionRequestDto(Filters: duplicatedNormalizedCode),
+            "filters.filterable");
+
+        AssertInvalid(
+            definition,
+            new ReportExecutionRequestDto(Parameters: new Dictionary<string, string>
+            {
+                ["value"] = new string('x', ReportLayoutLimits.MaxParameterValueLength + 1)
+            }),
+            "parameters.value");
+    }
+
+    [Fact]
     public void Validate_FilterErrorsResolveMetadataDatasetAndFriendlyLabels()
     {
         var definition = Definition() with

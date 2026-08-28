@@ -197,6 +197,46 @@ public sealed class ReportSheetBuilderFullCoverageTests
     }
 
     [Fact]
+    public void BuildSheet_PrebuiltCanonicalSheet_EnforcesVisibleRowAndColumnCaps()
+    {
+        var source = Definition(ReportExecutionMode.Canonical, maxVisibleRows: 1);
+        var definition = new ReportDefinitionRuntimeModel(source.Definition with
+        {
+            Capabilities = source.Definition.Capabilities! with
+            {
+                MaxVisibleRows = 1,
+                MaxVisibleColumns = 1
+            }
+        });
+        var plan = Plan(
+            definition,
+            new ReportLayoutDto(Measures: [new ReportMeasureSelectionDto("debit_amount")]))
+            with { Mode = ReportExecutionMode.Canonical };
+
+        var tooManyRows = () => new ReportSheetBuilder().BuildSheet(
+            definition,
+            plan,
+            Page(prebuiltSheet: new ReportSheetDto(
+                [new ReportSheetColumnDto("value", "Value", "string")],
+                [
+                    new ReportSheetRowDto(ReportRowKind.Detail, []),
+                    new ReportSheetRowDto(ReportRowKind.Detail, [])
+                ])));
+        tooManyRows.Should().Throw<ReportLayoutValidationException>();
+
+        var tooManyColumns = () => new ReportSheetBuilder().BuildSheet(
+            definition,
+            plan,
+            Page(prebuiltSheet: new ReportSheetDto(
+                [
+                    new ReportSheetColumnDto("first", "First", "string"),
+                    new ReportSheetColumnDto("second", "Second", "string")
+                ],
+                [])));
+        tooManyColumns.Should().Throw<ReportLayoutValidationException>();
+    }
+
+    [Fact]
     public void BuildSheet_EmptyPivot_MergesPageDiagnostics()
     {
         var definition = Definition();

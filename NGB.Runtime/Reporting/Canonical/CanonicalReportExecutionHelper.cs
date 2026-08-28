@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using NGB.Contracts.Metadata;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Core.Dimensions;
 using NGB.Core.Reporting.Exceptions;
@@ -199,6 +200,29 @@ public static class CanonicalReportExecutionHelper
             Diagnostics: diagnostics,
             PrebuiltSheet: sheet);
 
+    public static ReportDataPage CreateBoundedPrebuiltPage(
+        ReportDefinitionDto definition,
+        ReportSheetDto sheet,
+        IReadOnlyDictionary<string, string>? diagnostics = null)
+    {
+        var total = sheet.Rows.Count;
+        if (total > PagingLimits.MaxMaterializedRows)
+        {
+            throw Invalid(
+                definition,
+                "filters",
+                $"This report contains more than {PagingLimits.MaxMaterializedRows} rows. Narrow the filters and try again.");
+        }
+
+        return CreatePrebuiltPage(
+            sheet,
+            offset: 0,
+            limit: total,
+            total,
+            hasMore: false,
+            diagnostics: diagnostics);
+    }
+
     public static JsonElement JsonValue<T>(T value) => JsonSerializer.SerializeToElement(value);
 
     public static string? GetExecutorVariantCode(ReportExecutionRequestDto request)
@@ -261,7 +285,16 @@ public static class CanonicalReportExecutionHelper
         if (value.ValueKind != JsonValueKind.Array)
             throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
 
-        var list = new List<Guid>();
+        var arrayLength = value.GetArrayLength();
+        if (arrayLength > ReportLayoutLimits.MaxValuesPerFilter)
+        {
+            throw Invalid(
+                definition,
+                $"filters.{filterCode}",
+                $"Select up to {ReportLayoutLimits.MaxValuesPerFilter} {GetFilterLabel(definition, filterCode)} values.");
+        }
+
+        var list = new List<Guid>(arrayLength);
         foreach (var item in value.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.String || !item.TryGetGuid(out var itemGuid) || itemGuid == Guid.Empty)
@@ -311,10 +344,23 @@ public static class CanonicalReportExecutionHelper
         if (request.Filters is null)
             return false;
 
+        if (request.Filters.TryGetValue(filterCode, out var exactFilterValue) && exactFilterValue is not null)
+        {
+            filterValue = exactFilterValue;
+            value = filterValue.Value;
+            return true;
+        }
+
+        var filterCodeNorm = CodeNormalizer.NormalizeCodeNorm(filterCode, nameof(filterCode));
+
         foreach (var pair in request.Filters)
         {
-            if (!string.Equals(CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(filterCode)), CodeNormalizer.NormalizeCodeNorm(filterCode, nameof(filterCode)), StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(pair.Key, filterCode, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(filterCode)), filterCodeNorm,
+                    StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
             filterValue = pair.Value;
             value = pair.Value.Value;

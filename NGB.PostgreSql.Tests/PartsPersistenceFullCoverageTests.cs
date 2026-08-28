@@ -237,9 +237,11 @@ public sealed class PartsPersistenceFullCoverageTests
             .ToArray();
         var beforeLargeWrite = connection.Commands.Count;
         await sut.ReplacePartsAsync([part], id, Rows(("catalog_part", largeRows)));
-        connection.Commands.Skip(beforeLargeWrite)
-            .Count(command => command.CommandText.Contains("INSERT INTO \"catalog_part\"", StringComparison.Ordinal))
-            .Should().Be(2);
+        var largeWriteCommands = connection.Commands.Skip(beforeLargeWrite).ToArray();
+        largeWriteCommands.Should().ContainSingle("the delete and bounded insert statements should share one round trip");
+        largeWriteCommands[0].CommandText
+            .Split("INSERT INTO \"catalog_part\"", StringSplitOptions.None)
+            .Length.Should().Be(3, "501 rows are emitted as two statements capped at 500 rows each");
     }
 
     [Fact]
@@ -287,9 +289,11 @@ public sealed class PartsPersistenceFullCoverageTests
             .ToArray();
         var beforeLargeWrite = connection.Commands.Count;
         await sut.ReplacePartsAsync([part], id, Rows(("document_part", largeRows)));
-        connection.Commands.Skip(beforeLargeWrite)
-            .Count(command => command.CommandText.Contains("INSERT INTO \"document_part\"", StringComparison.Ordinal))
-            .Should().Be(2);
+        var largeWriteCommands = connection.Commands.Skip(beforeLargeWrite).ToArray();
+        largeWriteCommands.Should().ContainSingle("the delete and bounded insert statements should share one round trip");
+        largeWriteCommands[0].CommandText
+            .Split("INSERT INTO \"document_part\"", StringSplitOptions.None)
+            .Length.Should().Be(3, "501 rows are emitted as two statements capped at 500 rows each");
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using NGB.Contracts.Metadata;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.Runtime.Reporting.Canonical;
@@ -247,6 +248,35 @@ public sealed class CanonicalReportExecutionHelperFullCoverageTests
         CanonicalReportExecutionHelper.GetExecutorVariantCode(new ReportExecutionRequestDto(VariantCode: " \t ")).Should().BeNull();
         CanonicalReportExecutionHelper.GetExecutorVariantCode(new ReportExecutionRequestDto(VariantCode: "  Month-End  "))
             .Should().Be("Month-End");
+    }
+
+    [Fact]
+    public void CreateBoundedPrebuiltPage_ReturnsFullSheetAndAppliesHardCap()
+    {
+        var definition = Definition();
+        var rows = Enumerable.Range(0, 3)
+            .Select(_ => new ReportSheetRowDto(ReportRowKind.Detail, []))
+            .ToArray();
+        var sheet = new ReportSheetDto([], rows);
+
+        var page = CanonicalReportExecutionHelper.CreateBoundedPrebuiltPage(
+            definition,
+            sheet);
+        page.PrebuiltSheet!.Rows.Should().HaveCount(3);
+        page.Offset.Should().Be(0);
+        page.Limit.Should().Be(3);
+        page.Total.Should().Be(3);
+        page.HasMore.Should().BeFalse();
+
+        var oversized = new ReportSheetDto(
+            [],
+            Enumerable.Range(0, PagingLimits.MaxMaterializedRows + 1)
+                .Select(_ => new ReportSheetRowDto(ReportRowKind.Detail, []))
+                .ToArray());
+        var action = () => CanonicalReportExecutionHelper.CreateBoundedPrebuiltPage(
+            definition,
+            oversized);
+        action.Should().Throw<ReportLayoutValidationException>();
     }
 
     private static ReportDefinitionDto Definition()

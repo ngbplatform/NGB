@@ -11,4 +11,6 @@ public interface IUserAccessVersionRepository
     Task<PlatformUserAccessVersion> IncrementAsync(Guid userId, CancellationToken ct = default);
 
     Task IncrementManyAsync(IReadOnlyList<Guid> userIds, CancellationToken ct = default);
+
+    Task IncrementForRoleAsync(Guid roleId, CancellationToken ct = default);
 }

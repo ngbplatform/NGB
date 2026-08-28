@@ -66,6 +66,26 @@ public sealed class RoleManagementFullCoverageTests
     }
 
     [Fact]
+    public async Task GetRole_RejectsOversizedAssignedUserProjectionBeforeLoadingUsers()
+    {
+        var roleId = Guid.NewGuid();
+        var fixture = new Fixture();
+        fixture.Roles.Setup(x => x.GetByIdAsync(roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Role(roleId));
+        fixture.Permissions.Setup(x => x.GetRolePermissionsAsync(roleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        fixture.UserRoles.Setup(x => x.GetUserIdsForRoleAsync(roleId, 501, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Range(0, 501).Select(_ => Guid.NewGuid()).ToArray());
+
+        await ((Func<Task>)(() => fixture.Sut.GetRoleAsync(roleId, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
+        fixture.Users.Verify(
+            x => x.GetByIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
     public async Task CreateRole_CoversCompleteAuditNormalizationHumanizationAndReadback()
     {
         var fixture = new Fixture();
@@ -107,7 +127,7 @@ public sealed class RoleManagementFullCoverageTests
             .ReturnsAsync(Role(id, system: true, active: true));
         fixture.Permissions.Setup(x => x.GetRolePermissionsAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new NgbPermissionKey("system", "users", "view")]);
-        fixture.UserRoles.Setup(x => x.GetUserIdsForRoleAsync(id, It.IsAny<CancellationToken>()))
+        fixture.UserRoles.Setup(x => x.GetUserIdsForRoleAsync(id, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([userId]);
 
         var result = await fixture.Sut.UpdateRoleAsync(
@@ -119,8 +139,8 @@ public sealed class RoleManagementFullCoverageTests
         result.IsActive.Should().BeTrue("the readback mock returns the stored fixture role");
         fixture.Roles.Verify(x => x.UpsertAsync(
             id, "updated", "Updated", null, true, false, It.IsAny<CancellationToken>()), Times.Once);
-        fixture.Versions.Verify(x => x.IncrementManyAsync(
-            It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { userId })),
+        fixture.Versions.Verify(x => x.IncrementForRoleAsync(
+            id,
             It.IsAny<CancellationToken>()), Times.Once);
         fixture.AuditPayloads.Should().Contain(payload =>
             payload.Contains("\"Yes\"", StringComparison.Ordinal)
@@ -134,7 +154,7 @@ public sealed class RoleManagementFullCoverageTests
         var fixture = new Fixture();
         fixture.Roles.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Role(id, active: false));
-        fixture.UserRoles.Setup(x => x.GetUserIdsForRoleAsync(id, It.IsAny<CancellationToken>()))
+        fixture.UserRoles.Setup(x => x.GetUserIdsForRoleAsync(id, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         await fixture.Sut.ReactivateRoleAsync(id, default);
@@ -167,11 +187,11 @@ public sealed class RoleManagementFullCoverageTests
             Permissions.Setup(x => x.ReplaceRolePermissionsAsync(
                     It.IsAny<Guid>(), It.IsAny<IReadOnlyList<NgbPermissionKey>>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
-            UserRoles.Setup(x => x.GetUserIdsForRoleAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            UserRoles.Setup(x => x.GetUserIdsForRoleAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
             Users.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Dictionary<Guid, PlatformUser>());
-            Versions.Setup(x => x.IncrementManyAsync(It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            Versions.Setup(x => x.IncrementForRoleAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
             Audit.Setup(x => x.WriteAsync(
                     It.IsAny<AuditEntityKind>(),

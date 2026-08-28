@@ -156,7 +156,12 @@ public sealed class RemainingSmallGapCoverageTests
             new RecordingUnitOfWork(executingConnection, hasActiveTransaction: true),
             TimeProvider.System);
         await executing.IncrementManyAsync([Guid.NewGuid(), Guid.NewGuid()], default);
-        executingConnection.Commands.Should().ContainSingle();
+        await ((Func<Task>)(() => executing.IncrementForRoleAsync(Guid.Empty, default)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentRequiredException>();
+        var roleId = Guid.NewGuid();
+        await executing.IncrementForRoleAsync(roleId, default);
+        executingConnection.Commands.Should().HaveCount(2);
+        executingConnection.Commands[1].CommandText.Should().Contain("FROM platform_user_roles");
     }
 
     [Fact]

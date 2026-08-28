@@ -7,6 +7,7 @@ using NGB.Persistence.Documents;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Tools.Extensions;
 using NGB.Tools.Exceptions;
+using NGB.Tools.Normalization;
 
 namespace NGB.Runtime.Reporting;
 
@@ -84,6 +85,7 @@ public sealed class ReportEngine(
 
         requestWithVariant = NormalizeInteractivePaging(requestWithVariant);
         _validator.Validate(definition, requestWithVariant);
+        requestWithVariant = NormalizeRequestMaps(requestWithVariant);
 
         var runtime = new ReportDefinitionRuntimeModel(definition);
         var effectiveRequest = filterScopeExpander is null
@@ -234,6 +236,19 @@ public sealed class ReportEngine(
             Limit = request.Limit > PagingLimits.MaxPageSize
                 ? PagingLimits.MaxPageSize
                 : request.Limit
+        };
+
+    private static ReportExecutionRequestDto NormalizeRequestMaps(ReportExecutionRequestDto request)
+        => request with
+        {
+            Filters = request.Filters?.ToDictionary(
+                pair => CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(pair.Key)),
+                pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase),
+            Parameters = request.Parameters?.ToDictionary(
+                pair => CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(pair.Key)),
+                pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase)
         };
 
     private static int ResolveRenderedSourceRowLimit(ReportDefinitionRuntimeModel runtime)

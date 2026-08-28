@@ -184,6 +184,8 @@ public sealed class CatalogService(
         if (catalogTypes is null)
             throw new NgbArgumentRequiredException(nameof(catalogTypes));
 
+        query = InputTextLimits.NormalizeSearch(query, nameof(query));
+
         if (perTypeLimit <= 0 || catalogTypes.Count == 0)
             return [];
 
@@ -458,6 +460,7 @@ public sealed class CatalogService(
         CancellationToken ct)
     {
         var model = GetModel(catalogType);
+        query = InputTextLimits.NormalizeSearch(query, nameof(query));
 
         if (limit <= 0)
             return [];
@@ -526,6 +529,7 @@ public sealed class CatalogService(
         {
             Offset = offset,
             Limit = limit,
+            Search = InputTextLimits.NormalizeSearch(request.Search),
             Cursor = string.IsNullOrWhiteSpace(request.Cursor) ? null : request.Cursor.Trim()
         };
     }

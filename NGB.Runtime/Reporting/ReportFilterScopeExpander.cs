@@ -63,6 +63,15 @@ public sealed class ReportFilterScopeExpander(
         if (expanded is null || expanded.IsEmpty)
             return request;
 
+        var expandedValueCount = expanded.Sum(static scope => scope.ValueIds.Count);
+        if (expandedValueCount > ReportLayoutLimits.MaxExpandedDimensionValues)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                "filters",
+                expandedValueCount,
+                $"Expanded dimension filters can contain up to {ReportLayoutLimits.MaxExpandedDimensionValues} values.");
+        }
+
         var fieldByDimensionId = candidates
             .Where(x => dimensionIdsByCode.TryGetValue(x.DimensionCode, out _))
             .GroupBy(x => dimensionIdsByCode[x.DimensionCode])
@@ -156,7 +165,11 @@ public sealed class ReportFilterScopeExpander(
 
             case JsonValueKind.Array:
             {
-                var list = new List<Guid>();
+                var arrayLength = value.GetArrayLength();
+                if (arrayLength > ReportLayoutLimits.MaxValuesPerFilter)
+                    return false;
+
+                var list = new List<Guid>(arrayLength);
                 foreach (var item in value.EnumerateArray())
                 {
                     if (item.ValueKind != JsonValueKind.String || !item.TryGetGuid(out var itemGuid))

@@ -21,6 +21,7 @@ public sealed class RoleManagementService(
     : IRoleManagementService
 {
     private const int MaxRoleListSize = 500;
+    private const int MaxAssignedUsersInDetails = 500;
     internal const int MaxPermissionsPerRole = 5_000;
 
     public async Task<IReadOnlyList<RoleListItemDto>> GetRolesAsync(CancellationToken ct)
@@ -45,7 +46,15 @@ public sealed class RoleManagementService(
     {
         var role = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
         var perms = await permissions.GetRolePermissionsAsync(roleId, ct);
-        var userIds = await userRoles.GetUserIdsForRoleAsync(roleId, ct);
+        var userIds = await userRoles.GetUserIdsForRoleAsync(roleId, MaxAssignedUsersInDetails + 1, ct);
+
+        if (userIds.Count > MaxAssignedUsersInDetails)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(roleId),
+                userIds.Count,
+                $"Role details can include up to {MaxAssignedUsersInDetails} assigned users.");
+        }
         var usersById = await users.GetByIdsAsync(userIds, ct);
 
         return new RoleDetailsDto(
@@ -185,8 +194,7 @@ public sealed class RoleManagementService(
 
     private async Task IncrementRoleUsersAsync(Guid roleId, CancellationToken ct)
     {
-        var affectedUsers = await userRoles.GetUserIdsForRoleAsync(roleId, ct);
-        await versions.IncrementManyAsync(affectedUsers, ct);
+        await versions.IncrementForRoleAsync(roleId, ct);
     }
 
     private static IReadOnlyList<NgbPermissionKey> Normalize(IReadOnlyList<PermissionAssignmentDto> assignments)

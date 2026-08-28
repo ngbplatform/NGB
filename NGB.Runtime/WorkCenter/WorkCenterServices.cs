@@ -31,6 +31,7 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
     IPlatformUserRoleRepository userRoles,
     WorkCenterPreferenceDefinitionRegistry definitions)
 {
+    private const int MaxRoleFanOut = 2_000;
     private readonly Dictionary<Guid, NGB.Core.AuditLog.PlatformUser?> _users = [];
     private readonly HashSet<Guid> _loadedUsers = [];
     private readonly Dictionary<Guid, IReadOnlyList<PlatformRole>> _rolesByUser = [];
@@ -69,7 +70,18 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
 
         if (!_membersByRole.TryGetValue(role.RoleId, out var candidates))
         {
-            candidates = await userRoles.GetUserIdsForRoleAsync(role.RoleId, ct);
+            candidates = await userRoles.GetUserIdsForRoleAsync(role.RoleId, MaxRoleFanOut + 1, ct);
+            if (candidates.Count > MaxRoleFanOut)
+            {
+                throw new NgbConfigurationViolationException(
+                    $"Work Center role assignment exceeds the supported fan-out of {MaxRoleFanOut:N0} users.",
+                    context: new Dictionary<string, object?>
+                    {
+                        ["roleCode"] = role.Code,
+                        ["roleId"] = role.RoleId,
+                        ["fanOutLimit"] = MaxRoleFanOut
+                    });
+            }
             _membersByRole[role.RoleId] = candidates;
         }
 

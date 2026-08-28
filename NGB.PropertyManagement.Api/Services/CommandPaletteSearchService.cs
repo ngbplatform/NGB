@@ -10,6 +10,7 @@ using NGB.PropertyManagement.Definitions;
 using NGB.Runtime.Catalogs;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Security;
+using NGB.Tools.Exceptions;
 
 namespace NGB.PropertyManagement.Api.Services;
 
@@ -24,13 +25,14 @@ public sealed class CommandPaletteSearchService(
     private const string DocumentsCode = "documents";
     private const string CatalogsCode = "catalogs";
     private const string ReportsCode = "reports";
+    private const int MaxQueryLength = 256;
     
     public async Task<CommandPaletteSearchResponseDto> SearchAsync(
         CommandPaletteSearchRequestDto request,
         CancellationToken ct)
     {
-        var query = (request.Query ?? string.Empty).Trim();
-        if (query.Length == 0)
+        var query = NormalizeQuery(request.Query);
+        if (query is null)
             return new CommandPaletteSearchResponseDto([]);
 
         var scope = NormalizeScope(request.Scope);
@@ -60,6 +62,17 @@ public sealed class CommandPaletteSearchService(
         }
 
         return new CommandPaletteSearchResponseDto(groups);
+    }
+
+    private static string? NormalizeQuery(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return null;
+
+        if (query.Length > MaxQueryLength)
+            throw new NgbArgumentOutOfRangeException(nameof(query), query.Length, $"Search text can contain up to {MaxQueryLength} characters.");
+
+        return query.Trim();
     }
 
     private async Task<CommandPaletteGroupDto?> SafeGroupAsync(

@@ -51,14 +51,16 @@ public sealed class OperationalRegisterAdminMaintenanceService(
     {
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var all = await registers.GetAllAsync(ct);
-        if (all.Count == 0)
-            return await health.GetReportAsync(ct);
+        var before = await health.GetReportAsync(ct);
+        var unhealthy = before.Items.Where(static item => !item.IsOk).ToArray();
+        if (unhealthy.Length == 0)
+            return before;
 
-        // Ensure each register in its own transaction to keep transactions small.
-        foreach (var r in all)
+        // Healthy schemas are intentionally skipped: EnsureSchema performs DDL
+        // discovery and locking even when there is nothing to repair.
+        foreach (var item in unhealthy)
         {
-            var registerId = r.RegisterId;
+            var registerId = item.Register.RegisterId;
 
             await uow.ExecuteInUowTransactionAsync(
                 async token =>

@@ -83,14 +83,16 @@ public sealed class ReferenceRegisterAdminFullCoverageTests
         (await sut.EnsurePhysicalSchemaByIdAsync(id)).Should().BeSameAs(itemHealth);
         store.Verify(x => x.EnsureSchemaAsync(id, It.IsAny<CancellationToken>()), Times.Once);
 
-        registers.SetupSequence(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]).ReturnsAsync([register, Register(second)]);
-        (await sut.EnsurePhysicalSchemaForAllAsync()).Items.Should().BeEmpty();
         var report = new ReferenceRegisterPhysicalSchemaHealthReport([itemHealth]);
-        health.Setup(x => x.GetReportAsync(It.IsAny<CancellationToken>())).ReturnsAsync(report);
+        var emptyReport = new ReferenceRegisterPhysicalSchemaHealthReport([]);
+        health.SetupSequence(x => x.GetReportAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(emptyReport)
+            .ReturnsAsync(report)
+            .ReturnsAsync(report);
+        (await sut.EnsurePhysicalSchemaForAllAsync()).Should().BeSameAs(emptyReport);
         (await sut.EnsurePhysicalSchemaForAllAsync()).Should().BeSameAs(report);
         store.Verify(x => x.EnsureSchemaAsync(id, It.IsAny<CancellationToken>()), Times.Exactly(2));
-        store.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

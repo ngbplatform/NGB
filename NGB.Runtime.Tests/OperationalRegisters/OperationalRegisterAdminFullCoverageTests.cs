@@ -203,13 +203,15 @@ public sealed class OperationalRegisterAdminFullCoverageTests
         f.Balances.Verify(x => x.EnsureSchemaAsync(first, It.IsAny<CancellationToken>()), Times.Once);
 
         var report = HealthReport(firstRegister);
-        f.Health.Setup(x => x.GetReportAsync(It.IsAny<CancellationToken>())).ReturnsAsync(report);
-        f.Registers.SetupSequence(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([])
-            .ReturnsAsync([firstRegister, Register(second)]);
+        var healthyReport = HealthyReport(firstRegister);
+        f.Health.SetupSequence(x => x.GetReportAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(report)
+            .ReturnsAsync(report)
+            .ReturnsAsync(healthyReport);
         (await f.Sut.EnsurePhysicalSchemaForAllAsync()).Should().BeSameAs(report);
-        (await f.Sut.EnsurePhysicalSchemaForAllAsync()).Should().BeSameAs(report);
-        f.Movements.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Once);
+        (await f.Sut.EnsurePhysicalSchemaForAllAsync()).Should().BeSameAs(healthyReport);
+        f.Movements.Verify(x => x.EnsureSchemaAsync(first, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        f.Movements.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Never);
 
         await ((Func<Task>)(() => f.Sut.MarkFinalizationDirtyAsync(Guid.Empty, month)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
@@ -267,6 +269,15 @@ public sealed class OperationalRegisterAdminFullCoverageTests
                 register,
                 new OperationalRegisterPhysicalTableHealth("movements", true, ["missing"], [], false),
                 new OperationalRegisterPhysicalTableHealth("turnovers", true, [], [], null),
+                new OperationalRegisterPhysicalTableHealth("balances", true, [], [], true))
+        ]);
+
+    private static OperationalRegisterPhysicalSchemaHealthReport HealthyReport(OperationalRegisterAdminItem register)
+        => new([
+            new OperationalRegisterPhysicalSchemaHealth(
+                register,
+                new OperationalRegisterPhysicalTableHealth("movements", true, [], [], true),
+                new OperationalRegisterPhysicalTableHealth("turnovers", true, [], [], true),
                 new OperationalRegisterPhysicalTableHealth("balances", true, [], [], true))
         ]);
 

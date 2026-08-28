@@ -27,7 +27,9 @@ public sealed class PayablesApplyBatchService(
     IDocumentPostingReadCache? postingReadCache = null)
     : IPayablesApplyBatchService
 {
-    private const int MaxLines = 100;
+    // Each line posts a document and updates accounting/open-item registers in the
+    // same atomic transaction. Keep the lock-holding budget deliberately small.
+    private const int MaxLines = 25;
 
     public async Task<PayablesApplyBatchResponse> ExecuteAsync(
         PayablesApplyBatchRequest request,

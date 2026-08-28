@@ -169,6 +169,8 @@ public sealed class DocumentService(
         if (docTypes is null)
             throw new NgbArgumentRequiredException(nameof(docTypes));
 
+        query = InputTextLimits.NormalizeSearch(query, nameof(query));
+
         if (perTypeLimit <= 0 || docTypes.Count == 0)
             return [];
 
@@ -232,6 +234,7 @@ public sealed class DocumentService(
         {
             Offset = offset,
             Limit = limit,
+            Search = InputTextLimits.NormalizeSearch(request.Search),
             Cursor = string.IsNullOrWhiteSpace(request.Cursor) ? null : request.Cursor.Trim()
         };
     }

@@ -77,7 +77,7 @@ public sealed class AdminService(
                 .ToArray()
             : [];
 
-        var search = string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim();
+        var search = InputTextLimits.NormalizeSearch(request.Search);
 
         var searchAccountTypes = search is null
             ? []

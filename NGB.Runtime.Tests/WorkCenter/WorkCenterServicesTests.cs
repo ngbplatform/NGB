@@ -61,6 +61,7 @@ public sealed class WorkCenterServicesTests
             .ReturnsAsync(Role("sales", active: true));
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
                 It.IsAny<Guid>(),
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([roleRecipient]);
         var service = new WorkCenterTaskService(
@@ -159,6 +160,7 @@ public sealed class WorkCenterServicesTests
             .ReturnsAsync(role);
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
                 role.RoleId,
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([firstRecipient, secondRecipient]);
         userRoles.Setup(repository => repository.GetRolesForUsersAsync(
@@ -214,6 +216,7 @@ public sealed class WorkCenterServicesTests
             .ReturnsAsync(role);
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
                 role.RoleId,
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([enabledRecipient, disabledRecipient]);
         userRoles.Setup(repository => repository.GetRolesForUsersAsync(
@@ -660,6 +663,7 @@ public sealed class WorkCenterServicesTests
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
                 role.RoleId,
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([recipient]);
         var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);

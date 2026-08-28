@@ -74,7 +74,7 @@ public sealed class RoleManagementServiceTests
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         userRoles
-            .Setup(x => x.GetUserIdsForRoleAsync(roleId, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetUserIdsForRoleAsync(roleId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([zedUserId, alphaUserId, emailOnlyUserId]);
 
         var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
@@ -140,14 +140,11 @@ public sealed class RoleManagementServiceTests
             .Returns(Task.CompletedTask);
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
-        userRoles
-            .Setup(x => x.GetUserIdsForRoleAsync(roleId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([firstUserId, secondUserId]);
 
         var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
         versions
-            .Setup(x => x.IncrementManyAsync(
-                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { firstUserId, secondUserId })),
+            .Setup(x => x.IncrementForRoleAsync(
+                roleId,
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -202,14 +199,11 @@ public sealed class RoleManagementServiceTests
             .Returns(Task.CompletedTask);
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
-        userRoles
-            .Setup(x => x.GetUserIdsForRoleAsync(roleId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([userId]);
 
         var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
         versions
-            .Setup(x => x.IncrementManyAsync(
-                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { userId })),
+            .Setup(x => x.IncrementForRoleAsync(
+                roleId,
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 

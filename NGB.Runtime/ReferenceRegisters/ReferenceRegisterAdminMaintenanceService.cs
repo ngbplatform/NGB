@@ -38,14 +38,16 @@ internal sealed class ReferenceRegisterAdminMaintenanceService(
     {
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var list = await registers.GetAllAsync(ct);
-        if (list.Count == 0)
-            return new ReferenceRegisterPhysicalSchemaHealthReport([]);
+        var before = await healthReader.GetReportAsync(ct);
+        var unhealthy = before.Items.Where(static item => !item.IsOk).ToArray();
+        if (unhealthy.Length == 0)
+            return before;
 
-        // Ensure each register in its own transaction to keep transactions small.
-        foreach (var r in list)
+        // Healthy schemas are intentionally skipped: EnsureSchema performs DDL
+        // discovery and locking even when there is nothing to repair.
+        foreach (var item in unhealthy)
         {
-            var registerId = r.RegisterId;
+            var registerId = item.Register.RegisterId;
 
             await uow.ExecuteInUowTransactionAsync(
                 token => recordsStore.EnsureSchemaAsync(registerId, token),

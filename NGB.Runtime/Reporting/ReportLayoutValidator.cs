@@ -27,6 +27,11 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         var detailFields = layout.DetailFields ?? [];
         var sorts = layout.Sorts ?? [];
 
+        ValidateCount(runtime, "layout.rowGroups", rowGroups.Count, ReportLayoutLimits.MaxRowGroups, "row groupings");
+        ValidateCount(runtime, "layout.columnGroups", columnGroups.Count, ReportLayoutLimits.MaxColumnGroups, "column groupings");
+        ValidateCount(runtime, "layout.measures", measures.Count, ReportLayoutLimits.MaxMeasures, "measures");
+        ValidateCount(runtime, "layout.detailFields", detailFields.Count, ReportLayoutLimits.MaxDetailFields, "detail fields");
+
         if (sorts.Count > ReportLayoutLimits.MaxSorts)
         {
             throw Invalid(
@@ -35,6 +40,10 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                 $"You can select up to {ReportLayoutLimits.MaxSorts} sort fields.");
         }
 
+        var normalizedFilters = NormalizeAndValidateFilters(runtime, request.Filters);
+        var normalizedFilterCodes = normalizedFilters.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var normalizedParameters = NormalizeAndValidateParameters(runtime, request.Parameters);
+
         var parameterMetadata = (definition.Parameters ?? [])
             .ToDictionary(x => CodeNormalizer.NormalizeCodeNorm(x.Code, nameof(x.Code)), StringComparer.OrdinalIgnoreCase);
         var filterMetadata = (definition.Filters ?? [])
@@ -42,24 +51,20 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
         foreach (var parameter in parameterMetadata.Values.Where(x => x.IsRequired))
         {
-            if (request.Parameters is not null
-                && request.Parameters.TryGetValue(parameter.Code, out var raw)
-                && !string.IsNullOrWhiteSpace(raw))
-            {
+            var parameterCodeNorm = CodeNormalizer.NormalizeCodeNorm(parameter.Code, nameof(parameter.Code));
+            if (normalizedParameters.TryGetValue(parameterCodeNorm, out var raw) && !string.IsNullOrWhiteSpace(raw))
                 continue;
-            }
 
             throw Invalid(runtime, $"parameters.{parameter.Code}", $"'{ResolveParameterLabel(parameter)}' is required.");
         }
 
-        foreach (var filter in request.Filters ?? new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase))
+        foreach (var filter in normalizedFilters)
         {
-            var codeNorm = CodeNormalizer.NormalizeCodeNorm(filter.Key, nameof(filter.Key));
-            if (filterMetadata.TryGetValue(codeNorm, out var filterDefinition)
+            if (filterMetadata.TryGetValue(filter.Key, out var filterDefinition)
                 && filter.Value.IncludeDescendants
                 && !filterDefinition.SupportsIncludeDescendants)
             {
-                throw Invalid(runtime, $"filters.{codeNorm}", $"'{ResolveFilterLabel(filterDefinition)}' does not support including child items.");
+                throw Invalid(runtime, $"filters.{filter.Key}", $"'{ResolveFilterLabel(filterDefinition)}' does not support including child items.");
             }
         }
 
@@ -101,25 +106,21 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
         if (dataset is null)
         {
-            foreach (var filter in request.Filters ?? new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase))
+            foreach (var filter in normalizedFilters)
             {
-                var codeNorm = CodeNormalizer.NormalizeCodeNorm(filter.Key, nameof(filter.Key));
-                if (!filterMetadata.TryGetValue(codeNorm, out var filterDefinition))
+                if (!filterMetadata.TryGetValue(filter.Key, out var filterDefinition))
                 {
                     throw Invalid(
                         runtime,
-                        $"filters.{codeNorm}",
+                        $"filters.{filter.Key}",
                         $"'{ToFriendlyLabel(filter.Key)}' is not available as a filter in this report.");
                 }
             }
 
             foreach (var filter in filterMetadata.Values.Where(x => x.IsRequired))
             {
-                if (request.Filters is not null
-                    && request.Filters.Keys.Any(key => string.Equals(CodeNormalizer.NormalizeCodeNorm(key, nameof(key)), CodeNormalizer.NormalizeCodeNorm(filter.FieldCode, nameof(filter.FieldCode)), StringComparison.OrdinalIgnoreCase)))
-                {
+                if (normalizedFilterCodes.Contains(CodeNormalizer.NormalizeCodeNorm(filter.FieldCode, nameof(filter.FieldCode))))
                     continue;
-                }
 
                 throw Invalid(runtime, $"filters.{filter.FieldCode}", $"'{ResolveFilterLabel(filter)}' is required.");
             }
@@ -127,14 +128,13 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
             return;
         }
 
-        foreach (var filter in request.Filters ?? new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase))
+        foreach (var filter in normalizedFilters)
         {
-            var codeNorm = CodeNormalizer.NormalizeCodeNorm(filter.Key, nameof(filter.Key));
             if (!dataset.IsFilterableField(filter.Key))
             {
                 throw Invalid(
                     runtime,
-                    $"filters.{codeNorm}",
+                    $"filters.{filter.Key}",
                     $"'{ResolveFieldLabel(filter.Key, dataset, filterMetadata)}' cannot be used as a filter in this report.");
             }
         }
@@ -203,6 +203,88 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
             throw Invalid(runtime, $"layout.sorts[{i}].fieldCode", "The selected sort field is no longer available in this report.");
         }
+    }
+
+    private static IReadOnlyDictionary<string, ReportFilterValueDto> NormalizeAndValidateFilters(
+        ReportDefinitionRuntimeModel runtime,
+        IReadOnlyDictionary<string, ReportFilterValueDto>? filters)
+    {
+        if (filters is null || filters.Count == 0)
+            return new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase);
+
+        ValidateCount(runtime, "filters", filters.Count, ReportLayoutLimits.MaxFilters, "filters");
+
+        var normalized = new Dictionary<string, ReportFilterValueDto>(filters.Count, StringComparer.OrdinalIgnoreCase);
+        var totalValues = 0;
+
+        foreach (var pair in filters)
+        {
+            var codeNorm = CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(pair.Key));
+            if (!normalized.TryAdd(codeNorm, pair.Value))
+                throw Invalid(runtime, $"filters.{codeNorm}", "The same filter can be specified only once.");
+
+            var valueCount = pair.Value.Value.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? pair.Value.Value.GetArrayLength()
+                : 1;
+
+            if (valueCount > ReportLayoutLimits.MaxValuesPerFilter)
+            {
+                throw Invalid(
+                    runtime,
+                    $"filters.{codeNorm}",
+                    $"A filter can contain up to {ReportLayoutLimits.MaxValuesPerFilter} values.");
+            }
+
+            totalValues = checked(totalValues + valueCount);
+            if (totalValues > ReportLayoutLimits.MaxTotalFilterValues)
+            {
+                throw Invalid(
+                    runtime,
+                    "filters",
+                    $"Filters can contain up to {ReportLayoutLimits.MaxTotalFilterValues} values in total.");
+            }
+        }
+
+        return normalized;
+    }
+
+    private static IReadOnlyDictionary<string, string> NormalizeAndValidateParameters(
+        ReportDefinitionRuntimeModel runtime,
+        IReadOnlyDictionary<string, string>? parameters)
+    {
+        if (parameters is null || parameters.Count == 0)
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        ValidateCount(runtime, "parameters", parameters.Count, ReportLayoutLimits.MaxParameters, "parameters");
+
+        var normalized = new Dictionary<string, string>(parameters.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in parameters)
+        {
+            var codeNorm = CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(pair.Key));
+            if (!normalized.TryAdd(codeNorm, pair.Value))
+                throw Invalid(runtime, $"parameters.{codeNorm}", "The same parameter can be specified only once.");
+
+            if (pair.Value is { Length: > ReportLayoutLimits.MaxParameterValueLength })
+            {
+                throw Invalid(
+                    runtime,
+                    $"parameters.{codeNorm}",
+                    $"A parameter value can contain up to {ReportLayoutLimits.MaxParameterValueLength} characters.");
+            }
+        }
+
+        return normalized;
+    }
+
+    private static void ValidateCount(
+        ReportDefinitionRuntimeModel runtime,
+        string fieldPath,
+        int count,
+        int maximum,
+        string noun)
+    {
+        if (count > maximum)
+            throw Invalid(runtime, fieldPath, $"You can select up to {maximum} {noun}.");
     }
 
     private static IReadOnlyList<NormalizedGrouping> ValidateGroups(

@@ -116,13 +116,9 @@ public sealed class CashFlowIndirectCanonicalReportExecutor(ICashFlowIndirectRep
                     ["executor"] = "canonical-cash-flow-indirect"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: 0,
-            limit: rows.Count,
-            total: rows.Count,
-            hasMore: false,
-            nextCursor: null,
+        return CanonicalReportExecutionHelper.CreateBoundedPrebuiltPage(
+            definition,
+            sheet,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-cash-flow-indirect"

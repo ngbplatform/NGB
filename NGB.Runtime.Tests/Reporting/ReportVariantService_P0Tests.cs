@@ -251,13 +251,20 @@ public sealed class ReportVariantService_P0Tests
     {
         private readonly List<ReportVariantRecord> _rows = [];
 
-        public Task<IReadOnlyList<ReportVariantRecord>> ListVisibleAsync(string reportCodeNorm, Guid? currentUserId, CancellationToken ct)
+        public Task<IReadOnlyList<ReportVariantRecord>> ListVisibleAsync(string reportCodeNorm, Guid? currentUserId, int limit, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<ReportVariantRecord>>(_rows
                 .Where(x => x.ReportCodeNorm == reportCodeNorm && (x.IsShared || (currentUserId.HasValue && x.OwnerPlatformUserId == currentUserId)))
                 .OrderByDescending(x => x.IsDefault)
                 .ThenByDescending(x => x.IsShared)
                 .ThenBy(x => x.Name)
+                .Take(limit)
                 .ToList());
+
+        public Task<int> CountInScopeAsync(string reportCodeNorm, Guid? ownerPlatformUserId, bool isShared, CancellationToken ct)
+            => Task.FromResult(_rows.Count(x =>
+                x.ReportCodeNorm == reportCodeNorm
+                && x.IsShared == isShared
+                && (isShared || x.OwnerPlatformUserId == ownerPlatformUserId)));
 
         public Task<ReportVariantRecord?> GetVisibleAsync(string reportCodeNorm, string variantCodeNorm, Guid? currentUserId, CancellationToken ct)
             => Task.FromResult(_rows.SingleOrDefault(x => x.ReportCodeNorm == reportCodeNorm && x.VariantCodeNorm == variantCodeNorm && (x.IsShared || (currentUserId.HasValue && x.OwnerPlatformUserId == currentUserId))));

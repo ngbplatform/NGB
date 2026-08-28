@@ -29,7 +29,9 @@ public sealed class ReceivablesCustomApplyExecuteService(
     IDocumentPostingReadCache? postingReadCache = null)
     : IReceivablesCustomApplyExecuteService
 {
-    private const int MaxLines = 100;
+    // Each allocation posts a document inside one atomic transaction. Bounding the
+    // request keeps advisory locks and row locks from being held for too long.
+    private const int MaxLines = 25;
 
     public async Task<ReceivablesCustomApplyExecuteResponse> ExecuteAsync(
         ReceivablesCustomApplyExecuteRequest request,

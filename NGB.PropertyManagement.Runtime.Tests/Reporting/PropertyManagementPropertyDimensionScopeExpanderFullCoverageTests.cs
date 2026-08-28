@@ -135,22 +135,28 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
         var missing = new Fixture();
         var missingId = Guid.CreateVersion7();
         missing.EmptySelection();
-        missing.Catalogs.Setup(x => x.GetAsync(missingId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((CatalogRecord?)null);
+        missing.Catalogs.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { missingId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, CatalogRecord>());
         await AssertInvalidAsync(missing.Sut, missingId);
 
         var wrong = new Fixture();
         var wrongId = Guid.CreateVersion7();
         wrong.EmptySelection();
-        wrong.Catalogs.Setup(x => x.GetAsync(wrongId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Catalog(wrongId, code: "other"));
+        wrong.Catalogs.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { wrongId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, CatalogRecord> { [wrongId] = Catalog(wrongId, code: "other") });
         await AssertInvalidAsync(wrong.Sut, wrongId);
 
         var deleted = new Fixture();
         var deletedId = Guid.CreateVersion7();
         deleted.EmptySelection();
-        deleted.Catalogs.Setup(x => x.GetAsync(deletedId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Catalog(deletedId, isDeleted: true));
+        deleted.Catalogs.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { deletedId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, CatalogRecord> { [deletedId] = Catalog(deletedId, isDeleted: true) });
         await AssertInvalidAsync(deleted.Sut, deletedId);
     }
 
@@ -160,11 +166,41 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
         var fixture = new Fixture();
         var propertyId = Guid.CreateVersion7();
         fixture.EmptySelection();
-        fixture.Catalogs.Setup(x => x.GetAsync(propertyId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Catalog(propertyId));
+        fixture.Catalogs.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { propertyId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, CatalogRecord> { [propertyId] = Catalog(propertyId) });
         var act = () => fixture.Sut.ExpandAsync(AccountingReportCodes.GeneralLedgerAggregated, Bag(propertyId), default);
 
         await act.Should().ThrowAsync<NgbConfigurationViolationException>();
+    }
+
+    [Fact]
+    public async Task Missing_head_fallbacks_are_loaded_in_one_batch()
+    {
+        var fixture = new Fixture();
+        var first = Guid.CreateVersion7();
+        var second = Guid.CreateVersion7();
+        fixture.EmptySelection();
+        fixture.Catalogs.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.Count == 2 && ids.Contains(first) && ids.Contains(second)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, CatalogRecord>
+            {
+                [first] = Catalog(first),
+                [second] = Catalog(second)
+            });
+
+        var action = () => fixture.Sut.ExpandAsync(
+            AccountingReportCodes.TrialBalance,
+            new DimensionScopeBag([new DimensionScope(PropertyDimensionId, [first, second], includeDescendants: true)]),
+            default);
+
+        await action.Should().ThrowAsync<NgbConfigurationViolationException>();
+        fixture.Catalogs.Verify(x => x.GetByIdsAsync(
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Catalogs.Verify(x => x.GetAsync(
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]

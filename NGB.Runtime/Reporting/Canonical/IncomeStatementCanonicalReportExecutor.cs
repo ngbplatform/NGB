@@ -78,13 +78,9 @@ public sealed class IncomeStatementCanonicalReportExecutor(IIncomeStatementRepor
                     ["executor"] = "canonical-income-statement"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: 0,
-            limit: rows.Count,
-            total: rows.Count,
-            hasMore: false,
-            nextCursor: null,
+        return CanonicalReportExecutionHelper.CreateBoundedPrebuiltPage(
+            definition,
+            sheet,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-income-statement"

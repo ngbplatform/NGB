@@ -85,19 +85,26 @@ public sealed class PostgresPlatformUserRoleRepository(IUnitOfWork uow, TimeProv
                     .ToArray());
     }
 
-    public async Task<IReadOnlyList<Guid>> GetUserIdsForRoleAsync(Guid roleId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Guid>> GetUserIdsForRoleAsync(
+        Guid roleId,
+        int limit,
+        CancellationToken ct = default)
     {
         roleId.EnsureRequired(nameof(roleId));
+        if (limit <= 0)
+            throw new Tools.Exceptions.NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         const string sql = """
                            SELECT user_id
                            FROM platform_user_roles
                            WHERE role_id = @RoleId
-                           ORDER BY user_id;
+                           ORDER BY user_id
+                           LIMIT @Limit;
                            """;
 
-        var cmd = new CommandDefinition(sql, new { RoleId = roleId }, transaction: uow.Transaction, cancellationToken: ct);
+        var cmd = new CommandDefinition(sql, new { RoleId = roleId, Limit = limit }, transaction: uow.Transaction, cancellationToken: ct);
         return (await uow.Connection.QueryAsync<Guid>(cmd)).AsList();
     }
 

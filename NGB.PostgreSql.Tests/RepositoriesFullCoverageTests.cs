@@ -40,6 +40,23 @@ public sealed class RepositoriesFullCoverageTests
     }
 
     [Fact]
+    public async Task Catalog_get_by_ids_validates_and_executes_one_bounded_query()
+    {
+        var connection = new RecordingDbConnection();
+        var sut = CatalogRepository(connection);
+
+        await ((Func<Task>)(() => sut.GetByIdsAsync(null!)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        (await sut.GetByIdsAsync([Guid.Empty])).Should().BeEmpty();
+        connection.Commands.Should().BeEmpty();
+
+        var id = Guid.NewGuid();
+        (await sut.GetByIdsAsync([id, id])).Should().BeEmpty();
+        connection.Commands.Should().ContainSingle();
+        connection.Commands[0].CommandText.Should().Contain("id = ANY");
+    }
+
+    [Fact]
     public async Task Catalog_state_updates_distinguish_missing_success_and_impossible_row_counts()
     {
         var id = Guid.NewGuid();
@@ -136,7 +153,8 @@ public sealed class RepositoriesFullCoverageTests
 
         Func<Task>[] reportCodeCases =
         [
-            () => sut.ListVisibleAsync(" ", null, default),
+            () => sut.ListVisibleAsync(" ", null, 1, default),
+            () => sut.CountInScopeAsync(" ", null, true, default),
             () => sut.GetVisibleAsync(" ", "variant", null, default),
             () => sut.ListByCodeAsync(" ", "variant", default),
             () => sut.ClearDefaultAsync(" ", null, true, null, default),
@@ -161,16 +179,25 @@ public sealed class RepositoriesFullCoverageTests
             .Where(x => Equals(x.Context["paramName"], "record"));
         connection.Commands.Should().BeEmpty();
 
+        await ((Func<Task>)(() => sut.ListVisibleAsync("report", null, 0, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
         var record = ReportVariant();
         var positive = ReportRepository(new RecordingDbConnection(
             readerFactory: sql => sql.Contains("RETURNING", StringComparison.Ordinal)
                 ? ReportVariantRows(record)
                 : new DataTable().CreateDataReader()));
-        (await positive.ListVisibleAsync("report", null, default)).Should().BeEmpty();
+        (await positive.ListVisibleAsync("report", null, 10, default)).Should().BeEmpty();
         (await positive.GetVisibleAsync("report", "variant", null, default)).Should().BeNull();
         (await positive.ListByCodeAsync("report", "variant", default)).Should().BeEmpty();
         (await positive.UpsertAsync(record, default)).Should().Be(record);
         (await positive.DeleteVisibleAsync("report", "variant", null, default)).Should().BeTrue();
+
+        var countTable = new DataTable();
+        countTable.Columns.Add("Count", typeof(int));
+        countTable.Rows.Add(7);
+        var counting = ReportRepository(new RecordingDbConnection(readerFactory: _ => countTable.CreateDataReader()));
+        (await counting.CountInScopeAsync("report", null, true, default)).Should().Be(7);
     }
 
     [Theory]

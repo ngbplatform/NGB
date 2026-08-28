@@ -95,12 +95,28 @@ internal sealed class PostgresCatalogPartsWriter(IUnitOfWork uow) : ICatalogPart
         var deleteSql = string.Join(
             Environment.NewLine,
             preparedParts.Select(part => $"DELETE FROM {Qi(part.TableName)} WHERE catalog_id = @catalogId;"));
+        var pendingSql = new List<string> { deleteSql };
+        var pendingParameters = new DynamicParameters();
+        pendingParameters.Add("catalogId", catalogId);
+        var pendingParameterCount = 0;
+        var statementIndex = 0;
 
-        await uow.Connection.ExecuteAsync(new CommandDefinition(
-            deleteSql,
-            new { catalogId },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
+        async Task FlushAsync()
+        {
+            if (pendingSql.Count == 0)
+                return;
+
+            await uow.Connection.ExecuteAsync(new CommandDefinition(
+                string.Join(Environment.NewLine, pendingSql),
+                pendingParameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+
+            pendingSql = [];
+            pendingParameters = new DynamicParameters();
+            pendingParameters.Add("catalogId", catalogId);
+            pendingParameterCount = 0;
+        }
 
         foreach (var part in preparedParts)
         {
@@ -115,38 +131,40 @@ internal sealed class PostgresCatalogPartsWriter(IUnitOfWork uow) : ICatalogPart
             for (var offset = 0; offset < part.Rows.Count; offset += batchSize)
             {
                 var take = Math.Min(batchSize, part.Rows.Count - offset);
-                var p = new DynamicParameters();
-                p.Add("catalogId", catalogId);
+                var requiredParameters = take * part.OrderedColumns.Count;
+
+                if (pendingParameterCount > 0 && pendingParameterCount + requiredParameters > MaxParametersPerBatch)
+                    await FlushAsync();
+
                 var valuesSql = new List<string>(take);
+                var currentStatementIndex = statementIndex++;
 
                 for (var batchIndex = 0; batchIndex < take; batchIndex++)
                 {
                     var row = part.Rows[offset + batchIndex];
                     var rowParams = new List<string> { "@catalogId" };
 
-                    foreach (var col in part.OrderedColumns)
+                    for (var columnIndex = 0; columnIndex < part.OrderedColumns.Count; columnIndex++)
                     {
-                        var paramName = $"p_{col}_{batchIndex}";
+                        var col = part.OrderedColumns[columnIndex];
+                        var paramName = $"p_{currentStatementIndex}_{batchIndex}_{columnIndex}";
                         row.TryGetValue(col, out var value);
-                        p.Add(paramName, value);
+                        pendingParameters.Add(paramName, value);
                         rowParams.Add("@" + paramName);
                     }
 
                     valuesSql.Add("(" + string.Join(", ", rowParams) + ")");
                 }
 
-                var insertSql = $"""
+                pendingSql.Add($"""
                                 INSERT INTO {Qi(part.TableName)} ({string.Join(", ", insertColumnsSql)})
                                 VALUES {string.Join(", ", valuesSql)};
-                                """;
-
-                await uow.Connection.ExecuteAsync(new CommandDefinition(
-                    insertSql,
-                    p,
-                    transaction: uow.Transaction,
-                    cancellationToken: ct));
+                                """);
+                pendingParameterCount += requiredParameters;
             }
         }
+
+        await FlushAsync();
     }
 
     private sealed record PreparedPart(

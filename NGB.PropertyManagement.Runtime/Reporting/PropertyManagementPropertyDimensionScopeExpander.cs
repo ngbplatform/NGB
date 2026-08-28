@@ -77,6 +77,10 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
         var selectedIds = scope.ValueIds.Distinct().ToArray();
         var selectedRows = await reader.GetByIdsWithFieldsAsync(GetHead(), selectedIds, ct);
         var rowsById = selectedRows.ToDictionary(static row => row.Id);
+        var missingIds = selectedIds.Where(id => !rowsById.ContainsKey(id)).ToArray();
+        var missingCatalogs = missingIds.Length == 0
+            ? new Dictionary<Guid, NGB.Core.Catalogs.CatalogRecord>()
+            : await catalogs.GetByIdsAsync(missingIds, ct);
         var ids = new SortedSet<Guid>();
         var buildingIds = new List<Guid>();
 
@@ -84,7 +88,7 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
         {
             var propertyRow = rowsById.TryGetValue(propertyId, out var row)
                 ? row
-                : await ThrowInvalidPropertyAsync(propertyId, ct);
+                : ThrowInvalidProperty(propertyId, missingCatalogs);
 
             if (propertyRow.IsMarkedForDeletion)
                 throw new NgbArgumentInvalidException(FilterParameterName, "Selected property is deleted.");
@@ -110,10 +114,11 @@ public sealed class PropertyManagementPropertyDimensionScopeExpander(
         return new DimensionScope(scope.DimensionId, ids, includeDescendants: false);
     }
 
-    private async Task<CatalogHeadRow> ThrowInvalidPropertyAsync(Guid propertyId, CancellationToken ct)
+    private static CatalogHeadRow ThrowInvalidProperty(
+        Guid propertyId,
+        IReadOnlyDictionary<Guid, NGB.Core.Catalogs.CatalogRecord> catalogs)
     {
-        var catalog = await catalogs.GetAsync(propertyId, ct);
-        if (catalog is null)
+        if (!catalogs.TryGetValue(propertyId, out var catalog))
             throw new NgbArgumentInvalidException(FilterParameterName, "Selected property was not found.");
 
         if (!string.Equals(catalog.CatalogCode, PropertyManagementCodes.Property, StringComparison.OrdinalIgnoreCase))

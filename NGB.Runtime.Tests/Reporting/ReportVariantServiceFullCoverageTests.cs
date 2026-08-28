@@ -78,6 +78,45 @@ public sealed class ReportVariantServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task VariantQueriesAndWrites_EnforceOperationalBudgets()
+    {
+        var fixture = new Fixture();
+
+        await fixture.Sut.GetAllAsync("ignored", default);
+        fixture.Repository.Verify(repository => repository.ListVisibleAsync(
+            "accounting.ledger.analysis",
+            null,
+            ReportVariantLimits.MaxVisibleVariants,
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        var longName = async () => await fixture.Sut.SaveAsync(
+            Variant(name: new string('n', ReportVariantLimits.MaxNameLength + 1)),
+            default);
+        (await longName.Should().ThrowAsync<ReportVariantValidationException>())
+            .Which.Context["reason"].Should().Be("limit_exceeded");
+
+        var longCode = async () => await fixture.Sut.SaveAsync(
+            Variant(variantCode: new string('v', ReportVariantLimits.MaxVariantCodeLength + 1)),
+            default);
+        await longCode.Should().ThrowAsync<ReportVariantValidationException>();
+
+        var largePayload = async () => await fixture.Sut.SaveAsync(
+            Variant(parameters: new Dictionary<string, string>
+            {
+                ["payload"] = new string('x', ReportVariantLimits.MaxSerializedPayloadBytes)
+            }),
+            default);
+        await largePayload.Should().ThrowAsync<ReportVariantValidationException>();
+
+        fixture.Repository
+            .Setup(repository => repository.CountInScopeAsync(
+                "accounting.ledger.analysis", null, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ReportVariantLimits.MaxVariantsPerScope);
+        var quota = async () => await fixture.Sut.SaveAsync(Variant(), default);
+        await quota.Should().ThrowAsync<ReportVariantValidationException>();
+    }
+
+    [Fact]
     public async Task SaveAsync_PrivateVariantWithActor_RequiresPlatformProjectionSupport()
     {
         var fixture = new Fixture(authSubject: "actor-1", includePlatformUsers: false);
@@ -266,8 +305,13 @@ public sealed class ReportVariantServiceFullCoverageTests
         {
             Repository = new Mock<IReportVariantRepository>(MockBehavior.Loose);
             Repository
-                .Setup(repository => repository.ListVisibleAsync(It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+                .Setup(repository => repository.ListVisibleAsync(
+                    It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);
+            Repository
+                .Setup(repository => repository.CountInScopeAsync(
+                    It.IsAny<string>(), It.IsAny<Guid?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(0);
             Repository
                 .Setup(repository => repository.ListByCodeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync([]);

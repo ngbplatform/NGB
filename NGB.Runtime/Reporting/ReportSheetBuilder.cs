@@ -52,7 +52,19 @@ public sealed class ReportSheetBuilder
             throw new NgbInvariantViolationException("Reporting sheet builder requires a materialized data page.");
 
         if (page.PrebuiltSheet is not null)
+        {
+            EnsureVisibleRowCap(definition, plan, page.PrebuiltSheet.Rows.Count, includeCanonical: true);
+            if (definition.Capabilities.MaxVisibleColumns is > 0 and { } maxColumns
+                && page.PrebuiltSheet.Columns.Count > maxColumns)
+            {
+                throw Invalid(
+                    definition,
+                    "layout",
+                    $"This report would display {page.PrebuiltSheet.Columns.Count} columns, which exceeds the limit of {maxColumns}.");
+            }
+
             return MergePrebuiltSheet(definition, plan, page);
+        }
 
         var actionResolver = new ReportComposableCellActionResolver(plan, definition.Dataset);
         var cellFormatter = new ReportCellFormatter();
@@ -235,16 +247,18 @@ public sealed class ReportSheetBuilder
     private static void EnsureVisibleRowCap(
         ReportDefinitionRuntimeModel definition,
         ReportQueryPlan plan,
-        int visibleRows)
+        int visibleRows,
+        bool includeCanonical = false)
     {
-        if (definition.Definition.Mode != ReportExecutionMode.Composable)
+        if (!includeCanonical && definition.Definition.Mode != ReportExecutionMode.Composable)
             return;
 
-        if (definition.Capabilities.MaxVisibleRows is not { } maxRows || visibleRows <= maxRows)
+        var maxRows = definition.Capabilities.MaxVisibleRows;
+        if (maxRows is null || visibleRows <= maxRows.Value)
             return;
 
         var fieldPath = ResolveVisibleRowFieldPath(plan);
-        var message = $"This report would display {visibleRows} rows, which exceeds the limit of {maxRows}. Narrow the filters or reduce the number of groups and try again.";
+        var message = $"This report would display {visibleRows} rows, which exceeds the limit of {maxRows.Value}. Narrow the filters or reduce the number of groups and try again.";
         throw Invalid(definition, fieldPath, message);
     }
 

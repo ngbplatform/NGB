@@ -3,6 +3,7 @@ using NGB.Accounting.Reports.TrialBalance;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Tools.Exceptions;
+using NGB.Contracts.Common;
 
 namespace NGB.Runtime.Reporting;
 
@@ -36,6 +37,14 @@ public sealed class TrialBalanceReportService(
         var accountsById = await accountByIdResolver.GetByIdsAsync(accountIds, ct);
         var accountRows = BuildAccountRows(snapshot, accountsById);
         var rows = BuildBoundedRows(accountRows, request.ShowSubtotals);
+
+        if (rows.Count > PagingLimits.MaxMaterializedRows)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(request),
+                rows.Count,
+                $"Trial balance can materialize up to {PagingLimits.MaxMaterializedRows} rows. Narrow the filters and try again.");
+        }
 
         return new TrialBalanceReportPage(
             Rows: rows,

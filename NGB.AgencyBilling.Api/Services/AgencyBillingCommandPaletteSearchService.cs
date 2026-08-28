@@ -5,6 +5,7 @@ using NGB.Contracts.Reporting;
 using NGB.Contracts.Search;
 using NGB.Contracts.Services;
 using NGB.Core.Reporting;
+using NGB.Tools.Exceptions;
 
 namespace NGB.AgencyBilling.Api.Services;
 
@@ -18,6 +19,7 @@ public sealed class AgencyBillingCommandPaletteSearchService(
     private const string DocumentsCode = "documents";
     private const string CatalogsCode = "catalogs";
     private const string ReportsCode = "reports";
+    private const int MaxQueryLength = 256;
 
     private static readonly TimeSpan MetadataCacheTtl = TimeSpan.FromMinutes(10);
 
@@ -25,8 +27,8 @@ public sealed class AgencyBillingCommandPaletteSearchService(
         CommandPaletteSearchRequestDto request,
         CancellationToken ct)
     {
-        var query = (request.Query ?? string.Empty).Trim();
-        if (query.Length == 0)
+        var query = NormalizeQuery(request.Query);
+        if (query is null)
             return new CommandPaletteSearchResponseDto([]);
 
         var scope = NormalizeScope(request.Scope);
@@ -55,6 +57,17 @@ public sealed class AgencyBillingCommandPaletteSearchService(
         }
 
         return new CommandPaletteSearchResponseDto(groups);
+    }
+
+    private static string? NormalizeQuery(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return null;
+
+        if (query.Length > MaxQueryLength)
+            throw new NgbArgumentOutOfRangeException(nameof(query), query.Length, $"Search text can contain up to {MaxQueryLength} characters.");
+
+        return query.Trim();
     }
 
     private async Task<CommandPaletteGroupDto?> SafeGroupAsync(

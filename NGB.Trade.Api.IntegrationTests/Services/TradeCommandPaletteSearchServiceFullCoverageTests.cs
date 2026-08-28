@@ -31,6 +31,17 @@ public sealed class TradeCommandPaletteSearchServiceFullCoverageTests
         fixture.Reports.VerifyNoOtherCalls();
     }
 
+    [Fact]
+    public async Task SearchAsync_OversizedQuery_IsRejectedBeforeCallingProviders()
+    {
+        using var fixture = new Fixture();
+        var action = () => fixture.Sut.SearchAsync(
+            new CommandPaletteSearchRequestDto(new string('x', 257)), CancellationToken.None);
+        await action.Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+        fixture.Documents.VerifyNoOtherCalls();
+        fixture.Catalogs.VerifyNoOtherCalls();
+    }
+
     [Theory]
     [InlineData(null, 1, 1, 1)]
     [InlineData("", 1, 1, 1)]
