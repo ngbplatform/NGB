@@ -18,6 +18,7 @@ public sealed class PostgresTradeInventoryBalanceReader(
 {
     private static readonly Guid ItemDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Item}");
     private static readonly Guid WarehouseDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Warehouse}");
+    private readonly Dictionary<Guid, RegisterReadContext> _registerContexts = new();
 
     public async Task<TradeInventoryBalancePage> GetPageAsync(
         Guid registerId,
@@ -43,32 +44,9 @@ public sealed class PostgresTradeInventoryBalanceReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var register = await registers.GetByIdAsync(registerId, ct)
-            ?? throw new OperationalRegisterNotFoundException(registerId);
-        
-        var resourceColumns = (await resources.GetByRegisterIdAsync(registerId, ct))
-            .Select(static resource => resource.ColumnCode)
-            .ToHashSet(StringComparer.Ordinal);
-
-        if (!resourceColumns.Contains("qty_delta"))
-            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column 'qty_delta'.");
-
-        var tableName = OperationalRegisterNaming.MovementsTable(register.TableCode);
-        var balancesTableName = OperationalRegisterNaming.BalancesTable(register.TableCode);
-        var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            "SELECT to_regclass(@TableName) IS NOT NULL;",
-            new { TableName = tableName },
-            uow.Transaction,
-            cancellationToken: ct));
-
-        if (!exists)
+        var context = await GetRegisterContextAsync(registerId, ct);
+        if (!context.MovementsExist)
             return new TradeInventoryBalancePage([], 0, 0m);
-
-        var balancesExist = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            "SELECT to_regclass(@TableName) IS NOT NULL;",
-            new { TableName = balancesTableName },
-            uow.Transaction,
-            cancellationToken: ct));
 
         var itemIdArray = NormalizeIds(itemIds);
         var warehouseIdArray = NormalizeIds(warehouseIds);
@@ -79,9 +57,9 @@ public sealed class PostgresTradeInventoryBalanceReader(
             ? "ABS(position.quantity) DESC, item_display ASC, warehouse_display ASC, position.item_id, position.warehouse_id"
             : "item_display ASC, warehouse_display ASC, position.item_id, position.warehouse_id";
 
-        var positionSourceSql = balancesExist
-            ? BuildSnapshotBackedPositionSourceSql(tableName, balancesTableName)
-            : BuildMovementOnlyPositionSourceSql(tableName);
+        var positionSourceSql = context.BalancesExist
+            ? BuildSnapshotBackedPositionSourceSql(context.MovementsTable, context.BalancesTable)
+            : BuildMovementOnlyPositionSourceSql(context.MovementsTable);
         var sql = $"""
 {positionSourceSql},
 positions AS (
@@ -208,6 +186,42 @@ dimension_positions AS (
 
     private static Guid[] NormalizeIds(IReadOnlyList<Guid>? ids)
         => ids?.Where(static id => id != Guid.Empty).Distinct().ToArray() ?? [];
+
+    private async Task<RegisterReadContext> GetRegisterContextAsync(Guid registerId, CancellationToken ct)
+    {
+        if (_registerContexts.TryGetValue(registerId, out var cached))
+            return cached;
+
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+        var hasQuantity = (await resources.GetByRegisterIdAsync(registerId, ct))
+            .Any(static resource => string.Equals(resource.ColumnCode, "qty_delta", StringComparison.Ordinal));
+
+        if (!hasQuantity)
+            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column 'qty_delta'.");
+
+        var movementsTable = OperationalRegisterNaming.MovementsTable(register.TableCode);
+        var balancesTable = OperationalRegisterNaming.BalancesTable(register.TableCode);
+        var presence = await uow.Connection.QuerySingleAsync<TablePresence>(new CommandDefinition(
+            "SELECT to_regclass(@MovementsTable) IS NOT NULL AS \"MovementsExist\", to_regclass(@BalancesTable) IS NOT NULL AS \"BalancesExist\";",
+            new { MovementsTable = movementsTable, BalancesTable = balancesTable },
+            uow.Transaction,
+            cancellationToken: ct));
+        var context = new RegisterReadContext(movementsTable, balancesTable, presence.MovementsExist, presence.BalancesExist);
+
+        if (context.MovementsExist)
+            _registerContexts[registerId] = context;
+
+        return context;
+    }
+
+    private sealed record RegisterReadContext(
+        string MovementsTable,
+        string BalancesTable,
+        bool MovementsExist,
+        bool BalancesExist);
+
+    private sealed record TablePresence(bool MovementsExist, bool BalancesExist);
 
     private sealed record InventoryBalanceSqlRow(
         Guid ItemId,

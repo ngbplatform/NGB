@@ -48,23 +48,25 @@ public sealed class PostgresAccountingBalanceReader(
         CancellationToken ct = default)
     {
         const string sql = """
-                           SELECT MAX(period)
-                           FROM accounting_closed_periods
-                           WHERE period <= @Period;
+                           WITH latest_closed AS (
+                               SELECT MAX(period) AS period
+                               FROM accounting_closed_periods
+                               WHERE period <= @Period
+                           )
+                           SELECT
+                               b.period AS Period,
+                               b.account_id AS AccountId,
+                               b.dimension_set_id AS DimensionSetId,
+                               a.code AS AccountCode,
+                               b.opening_balance AS OpeningBalance,
+                               b.closing_balance AS ClosingBalance
+                           FROM latest_closed closed
+                           JOIN accounting_balances b ON b.period = closed.period
+                           JOIN accounting_accounts a ON a.account_id = b.account_id AND a.is_deleted = FALSE
+                           ORDER BY b.account_id, b.dimension_set_id;
                            """;
 
-        var cmd = new CommandDefinition(
-            sql,
-            new { Period = period },
-            transaction: uow.Transaction,
-            cancellationToken: ct);
-
-        await uow.EnsureConnectionOpenAsync(ct);
-        var closed = await uow.Connection.ExecuteScalarAsync<DateOnly?>(cmd);
-        if (closed is null)
-            return [];
-
-        return await GetForPeriodAsync(closed.Value, ct);
+        return await QueryRowsAsync(sql, new { Period = period }, ct);
     }
 
     private async Task<IReadOnlyDictionary<Guid, DimensionBag>> ResolveBagsAsync(

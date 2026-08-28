@@ -343,6 +343,7 @@ public sealed class AccountCardCanonicalReportExecutor_P0Tests
         public Task<IReadOnlyDictionary<Guid, Account>> GetByIdsAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyDictionary<Guid, Account>>(new Dictionary<Guid, Account>
             {
+                [selectedAccountId] = new(selectedAccountId, "1000", "Operating Cash", AccountType.Asset),
                 [counterAccountId] = new(counterAccountId, "4900", "Reporting Revenue", AccountType.Income)
             });
     }

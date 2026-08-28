@@ -328,6 +328,7 @@ public sealed class CommandPaletteSearchService(
     private async Task<IReadOnlyList<ReportDefinitionDto>> GetReportDefinitionsAsync(CancellationToken ct)
     {
         var definitions = await reports.GetAllDefinitionsAsync(ct);
+        var snapshot = await access.GetSnapshotAsync(ct);
         var result = new List<ReportDefinitionDto>();
 
         foreach (var definition in definitions
@@ -338,8 +339,8 @@ public sealed class CommandPaletteSearchService(
                          !string.Equals(definition.ReportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase)
                          && !string.Equals(definition.ReportCode, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase)))
         {
-            if (await access.HasAsync(NgbResourceKinds.Report, definition.ReportCode, NgbPermissionActions.View, ct)
-                || await access.HasAsync(NgbResourceKinds.Report, definition.ReportCode, NgbPermissionActions.Execute, ct))
+            if (snapshot.Has(NgbResourceKinds.Report, definition.ReportCode, NgbPermissionActions.View)
+                || snapshot.Has(NgbResourceKinds.Report, definition.ReportCode, NgbPermissionActions.Execute))
             {
                 result.Add(definition);
             }

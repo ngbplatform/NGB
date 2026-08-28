@@ -115,6 +115,59 @@ public sealed class StateRepositoriesFullCoverageTests
     }
 
     [Fact]
+    public async Task Reference_write_state_batches_begin_and_completion_in_constant_roundtrips()
+    {
+        var registerA = Guid.NewGuid();
+        var registerB = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+        var connection = new RecordingDbConnection(
+            _ => BatchBeginRows(
+                (registerA, PostingStateBeginResult.Begun),
+                (registerB, PostingStateBeginResult.AlreadyCompleted)),
+            scalar: _ => 2);
+        var sut = new PostgresReferenceRegisterWriteStateRepository(
+            new RecordingUnitOfWork(connection, hasActiveTransaction: true));
+
+        (await sut.TryBeginManyAsync([], documentId, ReferenceRegisterWriteOperation.Post, Now))
+            .Should().BeEmpty();
+        await sut.MarkCompletedManyAsync([], documentId, ReferenceRegisterWriteOperation.Post, Now);
+        connection.Commands.Should().BeEmpty();
+
+        var results = await sut.TryBeginManyAsync(
+            [registerB, registerA, registerB],
+            documentId,
+            ReferenceRegisterWriteOperation.Post,
+            Now);
+        await sut.MarkCompletedManyAsync(
+            [registerB, registerA, registerA],
+            documentId,
+            ReferenceRegisterWriteOperation.Post,
+            Now);
+
+        results.Should().Contain(registerA, PostingStateBeginResult.Begun)
+            .And.Contain(registerB, PostingStateBeginResult.AlreadyCompleted);
+        connection.Commands.Should().HaveCount(2);
+        connection.Commands[0].CommandText.Should().Contain("unnest(").And.Contain("ON CONFLICT");
+        connection.Commands[1].CommandText.Should().Contain("completed_events");
+
+        Func<Task> nullBegin = () => sut.TryBeginManyAsync(
+            null!, documentId, ReferenceRegisterWriteOperation.Post, Now);
+        Func<Task> nullComplete = () => sut.MarkCompletedManyAsync(
+            null!, documentId, ReferenceRegisterWriteOperation.Post, Now);
+        await nullBegin.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await nullComplete.Should().ThrowAsync<NgbArgumentRequiredException>();
+
+        var mismatch = new PostgresReferenceRegisterWriteStateRepository(
+            new RecordingUnitOfWork(
+                new RecordingDbConnection(_ => BatchBeginRows()),
+                hasActiveTransaction: true));
+        Func<Task> missingResult = () => mismatch.TryBeginManyAsync(
+            [registerA], documentId, ReferenceRegisterWriteOperation.Post, Now);
+        await missingResult.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("*batch begin returned 0 states for 1 registers*");
+    }
+
+    [Fact]
     public async Task Independent_reference_write_state_covers_both_diagnostic_messages()
     {
         var registerId = Guid.NewGuid();
@@ -161,5 +214,23 @@ public sealed class StateRepositoriesFullCoverageTests
         table.Columns.Add("register_id", typeof(Guid));
         table.Rows.Add(value);
         return table;
+    }
+
+    private static DataTableReader BatchBeginRows(params (Guid RegisterId, PostingStateBeginResult Result)[] rows)
+    {
+        var count = new DataTable();
+        count.Columns.Add("count", typeof(int));
+        count.Rows.Add(rows.Count(static row => row.Result == PostingStateBeginResult.Begun));
+
+        var states = new DataTable();
+        states.Columns.Add("RegisterId", typeof(Guid));
+        states.Columns.Add("Result", typeof(short));
+
+        foreach (var row in rows)
+        {
+            states.Rows.Add(row.RegisterId, (short)row.Result);
+        }
+
+        return new DataTableReader([count, states]);
     }
 }

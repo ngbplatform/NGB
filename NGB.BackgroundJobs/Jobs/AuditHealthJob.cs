@@ -35,95 +35,78 @@ public sealed class AuditHealthJob(
 
         await uow.EnsureConnectionOpenAsync(cancellationToken);
 
-        const string triggerCheckSql = """
-                                       SELECT COUNT(*)
-                                       FROM pg_trigger t
-                                       JOIN pg_class c ON c.oid = t.tgrelid
-                                       JOIN pg_namespace n ON n.oid = c.relnamespace
-                                       WHERE n.nspname = 'public'
-                                         AND c.relname = @TableName
-                                         AND t.tgname = @TriggerName
-                                         AND NOT t.tgisinternal;
-                                       """;
-
-        var eventsTrigger = await uow.Connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(
-                triggerCheckSql,
-                new { TableName = "platform_audit_events", TriggerName = "trg_platform_audit_events_append_only" },
-                uow.Transaction,
-                cancellationToken: cancellationToken));
-
-        var changesTrigger = await uow.Connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(
-                triggerCheckSql,
-                new { TableName = "platform_audit_event_changes", TriggerName = "trg_platform_audit_event_changes_append_only" },
-                uow.Transaction,
-                cancellationToken: cancellationToken));
-
-        const string orphanChangesSql = """
-                                       SELECT CASE WHEN EXISTS (
-                                           SELECT 1
-                                           FROM platform_audit_event_changes c
-                                           WHERE NOT EXISTS (
-                                               SELECT 1
-                                               FROM platform_audit_events e
-                                               WHERE e.audit_event_id = c.audit_event_id
-                                           )
-                                           LIMIT 1
-                                       ) THEN 1::bigint ELSE 0::bigint END;
-                                       """;
-
-        var orphanChanges = await uow.Connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(orphanChangesSql, transaction: uow.Transaction, cancellationToken: cancellationToken));
-
-        const string volumeSql = """
+        const string healthSql = """
                                  SELECT
-                                     GREATEST(c.reltuples, 0)::bigint AS events_count,
+                                     (
+                                         SELECT COUNT(*)
+                                         FROM pg_trigger t
+                                         JOIN pg_class trigger_table ON trigger_table.oid = t.tgrelid
+                                         JOIN pg_namespace trigger_namespace ON trigger_namespace.oid = trigger_table.relnamespace
+                                         WHERE trigger_namespace.nspname = 'public'
+                                           AND trigger_table.relname = 'platform_audit_events'
+                                           AND t.tgname = 'trg_platform_audit_events_append_only'
+                                           AND NOT t.tgisinternal
+                                     ) AS "EventsTrigger",
+                                     (
+                                         SELECT COUNT(*)
+                                         FROM pg_trigger t
+                                         JOIN pg_class trigger_table ON trigger_table.oid = t.tgrelid
+                                         JOIN pg_namespace trigger_namespace ON trigger_namespace.oid = trigger_table.relnamespace
+                                         WHERE trigger_namespace.nspname = 'public'
+                                           AND trigger_table.relname = 'platform_audit_event_changes'
+                                           AND t.tgname = 'trg_platform_audit_event_changes_append_only'
+                                           AND NOT t.tgisinternal
+                                     ) AS "ChangesTrigger",
+                                     CASE WHEN EXISTS (
+                                         SELECT 1
+                                         FROM platform_audit_event_changes change
+                                         WHERE NOT EXISTS (
+                                             SELECT 1
+                                             FROM platform_audit_events event
+                                             WHERE event.audit_event_id = change.audit_event_id
+                                         )
+                                         LIMIT 1
+                                     ) THEN 1::bigint ELSE 0::bigint END AS "OrphanChanges",
+                                     GREATEST(c.reltuples, 0)::bigint AS "EventsCount",
                                      (
                                          SELECT occurred_at_utc
                                          FROM platform_audit_events
                                          ORDER BY occurred_at_utc, audit_event_id
                                          LIMIT 1
-                                     ) AS min_occurred_at_utc,
+                                     ) AS "MinOccurredAtUtc",
                                      (
                                          SELECT occurred_at_utc
                                          FROM platform_audit_events
                                          ORDER BY occurred_at_utc DESC, audit_event_id DESC
                                          LIMIT 1
-                                     ) AS max_occurred_at_utc
+                                     ) AS "MaxOccurredAtUtc"
                                  FROM pg_class c
                                  JOIN pg_namespace n ON n.oid = c.relnamespace
                                  WHERE n.nspname = 'public'
                                    AND c.relname = 'platform_audit_events';
                                  """;
 
-        var volume = await uow.Connection.QuerySingleAsync<AuditVolumeRow>(
-            new CommandDefinition(volumeSql, transaction: uow.Transaction, cancellationToken: cancellationToken));
+        var health = await uow.Connection.QuerySingleAsync<AuditHealthRow>(
+            new CommandDefinition(healthSql, transaction: uow.Transaction, cancellationToken: cancellationToken));
 
-        metrics.Set("audit.events_trigger_present", eventsTrigger > 0 ? 1 : 0);
-        metrics.Set("audit.changes_trigger_present", changesTrigger > 0 ? 1 : 0);
-        metrics.Set("audit.missing_triggers", (eventsTrigger > 0 ? 0 : 1) + (changesTrigger > 0 ? 0 : 1));
-        metrics.Set("audit.orphan_changes", orphanChanges);
-        metrics.Set("audit.events_count", volume.EventsCount);
+        metrics.Set("audit.events_trigger_present", health.EventsTrigger > 0 ? 1 : 0);
+        metrics.Set("audit.changes_trigger_present", health.ChangesTrigger > 0 ? 1 : 0);
+        metrics.Set("audit.missing_triggers", (health.EventsTrigger > 0 ? 0 : 1) + (health.ChangesTrigger > 0 ? 0 : 1));
+        metrics.Set("audit.orphan_changes", health.OrphanChanges);
+        metrics.Set("audit.events_count", health.EventsCount);
 
         logger.LogInformation(
             "[{JobId}] Metrics: EventsCount={EventsCount}, MinOccurredAtUtc={MinOccurredAtUtc:O}, MaxOccurredAtUtc={MaxOccurredAtUtc:O}",
             JobId,
-            volume.EventsCount,
-            volume.MinOccurredAtUtc,
-            volume.MaxOccurredAtUtc);
+            health.EventsCount,
+            health.MinOccurredAtUtc,
+            health.MaxOccurredAtUtc);
 
-        if (eventsTrigger <= 0 || changesTrigger <= 0)
-        {
-            throw new NgbInvariantViolationException(
-                $"Audit append-only triggers are missing. eventsTrigger={eventsTrigger}, changesTrigger={changesTrigger}.");
-        }
+        if (health.EventsTrigger <= 0 || health.ChangesTrigger <= 0)
+            throw new NgbInvariantViolationException($"Audit append-only triggers are missing. eventsTrigger={health.EventsTrigger}, changesTrigger={health.ChangesTrigger}.");
 
-        if (orphanChanges > 0)
-        {
-            throw new NgbInvariantViolationException(
-                $"Audit health failed: found {orphanChanges} orphan change rows (platform_audit_event_changes without platform_audit_events)." );
-        }
+        if (health.OrphanChanges > 0)
+            throw new NgbInvariantViolationException($"Audit health failed: found {health.OrphanChanges} orphan change rows (platform_audit_event_changes without platform_audit_events)." );
 
         metrics.Set("health_ok", 1);
 
@@ -131,12 +114,15 @@ public sealed class AuditHealthJob(
         logger.LogInformation(
             "[{JobId}] OK. OrphanChanges={OrphanChanges}. DurationMs={DurationMs}",
             JobId,
-            orphanChanges,
+            health.OrphanChanges,
             (long)(finishedAt - startedAt).TotalMilliseconds);
     }
 
-    private sealed class AuditVolumeRow
+    private sealed class AuditHealthRow
     {
+        public long EventsTrigger { get; init; }
+        public long ChangesTrigger { get; init; }
+        public long OrphanChanges { get; init; }
         public long EventsCount { get; init; }
         public DateTime? MinOccurredAtUtc { get; init; }
         public DateTime? MaxOccurredAtUtc { get; init; }

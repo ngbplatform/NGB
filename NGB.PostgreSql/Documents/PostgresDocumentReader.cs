@@ -8,6 +8,7 @@ using NGB.Metadata.Base;
 using NGB.Persistence.Common;
 using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Search;
 using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Documents;
@@ -493,12 +494,22 @@ internal sealed class PostgresDocumentReader(
 
         var normalizedQuery = (query ?? string.Empty).Trim();
         var hasQuery = normalizedQuery.Length > 0;
+        var queryId = Guid.TryParse(normalizedQuery, out var parsedQueryId) ? parsedQueryId : (Guid?)null;
+        var queryIdRange = default(GuidSearchRange);
+        var hasQueryIdPrefix = queryId is null && GuidSearchRange.TryCreate(normalizedQuery, out queryIdRange);
 
         var p = new DynamicParameters();
         p.Add("perTypeLimit", perTypeLimit, dbType: DbType.Int32);
         p.Add("deletedStatus", (short)DocumentStatus.MarkedForDeletion, dbType: DbType.Int16);
+
         if (hasQuery)
+        {
             p.Add("q", normalizedQuery, dbType: DbType.String);
+            p.Add("queryId", queryId, dbType: DbType.Guid);
+            p.Add("hasQueryIdPrefix", hasQueryIdPrefix, dbType: DbType.Boolean);
+            p.Add("queryIdPrefixLower", hasQueryIdPrefix ? queryIdRange.Lower : Guid.Empty, dbType: DbType.Guid);
+            p.Add("queryIdPrefixUpper", hasQueryIdPrefix ? queryIdRange.Upper : Guid.Empty, dbType: DbType.Guid);
+        }
 
         var subqueries = new List<string>(distinctHeads.Length);
 
@@ -519,7 +530,10 @@ internal sealed class PostgresDocumentReader(
                   AND (
                       d.number ILIKE ('%' || @q::text || '%')
                       OR {headDisplaySql} ILIKE ('%' || @q::text || '%')
-                      OR ({headDisplaySql} IS NULL AND d.id::text ILIKE ('%' || @q::text || '%'))
+                      OR ({headDisplaySql} IS NULL AND (
+                          (@queryId IS NOT NULL AND d.id = @queryId)
+                          OR (@hasQueryIdPrefix AND d.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper)
+                      ))
                   )
                   """
                 : string.Empty;
@@ -528,7 +542,8 @@ internal sealed class PostgresDocumentReader(
                   CASE
                       WHEN d.number IS NOT NULL AND d.number ILIKE ('%' || @q::text || '%') THEN 0
                       WHEN {headDisplaySql} ILIKE ('%' || @q::text || '%') THEN 1
-                      WHEN {headDisplaySql} IS NULL AND d.id::text ILIKE ('%' || @q::text || '%') THEN 2
+                      WHEN {headDisplaySql} IS NULL AND @queryId IS NOT NULL AND d.id = @queryId THEN 2
+                      WHEN {headDisplaySql} IS NULL AND @hasQueryIdPrefix AND d.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper THEN 2
                       ELSE 2
                   END,
                   {labelSql},

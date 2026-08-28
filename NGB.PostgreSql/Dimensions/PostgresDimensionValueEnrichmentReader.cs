@@ -25,6 +25,8 @@ public sealed class PostgresDimensionValueEnrichmentReader(
     IDocumentDisplayReader documentDisplayReader)
     : IDimensionValueEnrichmentReader
 {
+    private readonly Dictionary<Guid, string?> _dimensionCodeById = new();
+
     private sealed class DimensionRow
     {
         public Guid DimensionId { get; init; }
@@ -41,31 +43,45 @@ public sealed class PostgresDimensionValueEnrichmentReader(
         if (keys.Count == 0)
             return new Dictionary<DimensionValueKey, string>();
 
-        await uow.EnsureConnectionOpenAsync(ct);
-
         var dimIds = keys.Select(k => k.DimensionId).Distinct().ToArray();
+        var missingDimIds = dimIds.Where(id => !_dimensionCodeById.ContainsKey(id)).ToArray();
 
-        const string dimSql = """
-                             SELECT
-                                 dimension_id AS DimensionId,
-                                 code_norm AS CodeNorm
-                             FROM platform_dimensions
-                             WHERE dimension_id = ANY(@Ids)
-                               AND is_deleted = false;
-                             """;
+        if (missingDimIds.Length > 0)
+        {
+            await uow.EnsureConnectionOpenAsync(ct);
 
-        var dimCmd = new CommandDefinition(dimSql, new { Ids = dimIds }, transaction: uow.Transaction, cancellationToken: ct);
-        var dimRows = (await uow.Connection.QueryAsync<DimensionRow>(dimCmd)).AsList();
+            const string dimSql = """
+                                 SELECT
+                                     dimension_id AS DimensionId,
+                                     code_norm AS CodeNorm
+                                 FROM platform_dimensions
+                                 WHERE dimension_id = ANY(@Ids)
+                                   AND is_deleted = false;
+                                 """;
 
-        var dimCodeById = dimRows
-            .GroupBy(r => r.DimensionId)
-            .ToDictionary(g => g.Key, g => g.First().CodeNorm);
+            var dimCmd = new CommandDefinition(
+                dimSql,
+                new { Ids = missingDimIds },
+                transaction: uow.Transaction,
+                cancellationToken: ct);
+            var dimRows = (await uow.Connection.QueryAsync<DimensionRow>(dimCmd)).AsList();
+
+            foreach (var dimensionId in missingDimIds)
+            {
+                _dimensionCodeById[dimensionId] = null;
+            }
+
+            foreach (var row in dimRows)
+            {
+                _dimensionCodeById[row.DimensionId] = row.CodeNorm;
+            }
+        }
 
         var result = new Dictionary<DimensionValueKey, string>(capacity: keys.Count);
         var unresolvedValueIds = new HashSet<Guid>();
 
         var groupedByCode = keys
-            .Select(key => new { Key = key, Code = dimCodeById.GetValueOrDefault(key.DimensionId) })
+            .Select(key => new { Key = key, Code = _dimensionCodeById.GetValueOrDefault(key.DimensionId) })
             .Where(x => !string.IsNullOrWhiteSpace(x.Code))
             .GroupBy(x => x.Code!, StringComparer.OrdinalIgnoreCase)
             .ToList();

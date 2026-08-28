@@ -284,11 +284,15 @@ public sealed class BackgroundJobExecutionFullCoverageTests
         protected override DbParameter CreateDbParameter() => new FakeDbParameter();
         protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
         {
+            var health = scalars.ToArray();
             var table = new DataTable();
+            table.Columns.Add("EventsTrigger", typeof(long));
+            table.Columns.Add("ChangesTrigger", typeof(long));
+            table.Columns.Add("OrphanChanges", typeof(long));
             table.Columns.Add("EventsCount", typeof(long));
             table.Columns.Add("MinOccurredAtUtc", typeof(DateTime));
             table.Columns.Add("MaxOccurredAtUtc", typeof(DateTime));
-            table.Rows.Add(eventsCount, min ?? (object)DBNull.Value, max ?? (object)DBNull.Value);
+            table.Rows.Add(health[0], health[1], health[2], eventsCount, min ?? (object)DBNull.Value, max ?? (object)DBNull.Value);
             return table.CreateDataReader();
         }
     }

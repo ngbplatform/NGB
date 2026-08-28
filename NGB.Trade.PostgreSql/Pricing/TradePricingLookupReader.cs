@@ -1,19 +1,17 @@
 using Dapper;
 using NGB.Core.Dimensions;
-using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.ReferenceRegisters;
-using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 using NGB.Trade.Pricing;
 
 namespace NGB.Trade.PostgreSql.Pricing;
 
-public sealed class TradePricingLookupReader(
-    IUnitOfWork uow,
-    IReferenceRegisterRepository referenceRegisters)
-    : ITradePricingLookupReader
+public sealed class TradePricingLookupReader(IUnitOfWork uow) : ITradePricingLookupReader
 {
+    private static readonly string ItemPricesTable = ReferenceRegisterNaming.RecordsTable(TradeCodes.ItemPricesRegisterCode);
+    private bool? _itemPricesTableExists;
+
     public async Task<IReadOnlyDictionary<Guid, TradeItemSalesProfile>> GetItemSalesProfilesAsync(
         IReadOnlyCollection<Guid> itemIds,
         CancellationToken ct = default)
@@ -56,12 +54,7 @@ WHERE i.catalog_id = ANY(@ItemIds);
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var register = await referenceRegisters.GetByCodeAsync(TradeCodes.ItemPricesRegisterCode, ct)
-            ?? throw new NgbConfigurationViolationException($"Reference register '{TradeCodes.ItemPricesRegisterCode}' is not configured.");
-
-        var table = ReferenceRegisterNaming.RecordsTable(register.TableCode);
-
-        if (!await RecordsTableExistsAsync(table, ct))
+        if (!await ItemPricesTableExistsAsync(ct))
             return new Dictionary<TradePriceLookupKey, TradeItemPriceSnapshot>();
 
         var distinctKeys = keys.Distinct().ToArray();
@@ -83,38 +76,36 @@ WITH requested AS (
         q.item_id,
         q.price_type_id,
         q.dimension_set_id
-    FROM unnest(@ItemIds::uuid[], @PriceTypeIds::uuid[], @DimensionSetIds::uuid[]) AS q(item_id, price_type_id, dimension_set_id)
-),
-latest AS (
-    SELECT DISTINCT ON (r.item_id, r.price_type_id)
-        r.item_id AS ItemId,
-        r.price_type_id AS PriceTypeId,
-        t.unit_price AS UnitPrice,
-        t.currency AS Currency,
-        t.effective_date AS EffectiveDate,
-        t.source_document_id AS SourceDocumentId,
-        t.is_deleted AS IsDeleted
-    FROM requested r
-    LEFT JOIN {table} t
-        ON t.dimension_set_id = r.dimension_set_id
-       AND t.effective_date IS NOT NULL
-       AND t.effective_date <= @AsOfDate::date
-    ORDER BY
-        r.item_id,
-        r.price_type_id,
-        t.effective_date DESC NULLS LAST,
-        t.recorded_at_utc DESC NULLS LAST,
-        t.record_id DESC NULLS LAST
+    FROM unnest(@ItemIds::uuid[], @PriceTypeIds::uuid[], @DimensionSetIds::uuid[])
+        AS q(item_id, price_type_id, dimension_set_id)
 )
 SELECT
-    ItemId,
-    PriceTypeId,
-    UnitPrice,
-    Currency,
-    EffectiveDate,
-    SourceDocumentId,
-    IsDeleted
-FROM latest;
+    requested.item_id AS ItemId,
+    requested.price_type_id AS PriceTypeId,
+    latest.unit_price AS UnitPrice,
+    latest.currency AS Currency,
+    latest.effective_date AS EffectiveDate,
+    latest.source_document_id AS SourceDocumentId,
+    latest.is_deleted AS IsDeleted
+FROM requested
+LEFT JOIN LATERAL (
+    SELECT
+        record.unit_price,
+        record.currency,
+        record.effective_date,
+        record.source_document_id,
+        record.is_deleted
+    FROM {ItemPricesTable} record
+    WHERE record.dimension_set_id = requested.dimension_set_id
+      AND record.recorder_document_id IS NULL
+      AND record.effective_date IS NOT NULL
+      AND record.effective_date <= @AsOfDate::date
+    ORDER BY
+        record.effective_date DESC,
+        record.recorded_at_utc DESC,
+        record.record_id DESC
+    LIMIT 1
+) latest ON TRUE;
 """;
 
         var rows = await uow.Connection.QueryAsync<ItemPriceSnapshotRow>(
@@ -359,23 +350,21 @@ FROM latest;
         return DeterministicDimensionSetId.FromBag(bag);
     }
 
-    private async Task<bool> RecordsTableExistsAsync(string tableName, CancellationToken ct)
+    private async Task<bool> ItemPricesTableExistsAsync(CancellationToken ct)
     {
-        const string sql = """
-SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-      AND table_name = @TableName
-);
-""";
+        if (_itemPricesTableExists == true)
+            return true;
 
-        return await uow.Connection.ExecuteScalarAsync<bool>(
-            new CommandDefinition(
-                sql,
-                new { TableName = tableName },
-                transaction: uow.Transaction,
-                cancellationToken: ct));
+        var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT to_regclass(@TableName) IS NOT NULL;",
+            new { TableName = ItemPricesTable },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        if (exists)
+            _itemPricesTableExists = true;
+
+        return exists;
     }
 
     private sealed record ItemSalesProfileRow(

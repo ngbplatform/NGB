@@ -62,6 +62,27 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
             harness.Service.DryRunAsync(Request(format: "{0:;;}"), default));
         await AssertThrows<PropertyBulkCreateUnitsValidationException>(() =>
             harness.Service.DryRunAsync(Request(from: 1, to: 5001), default));
+
+        await AssertThrows<PropertyBulkCreateUnitsValidationException>(() =>
+            harness.Service.DryRunAsync(
+                Request(from: int.MaxValue - 10_000, to: int.MaxValue),
+                default));
+
+        harness.TransactionStartCount.Should().Be(0, "invalid ranges must fail before opening a transaction");
+        harness.LockCount.Should().Be(0, "invalid ranges must fail before taking the building lock");
+    }
+
+    [Fact]
+    public async Task Generation_handles_the_Int32_upper_boundary_without_overflow()
+    {
+        var harness = new Harness();
+
+        var response = await harness.Service.DryRunAsync(
+            Request(from: int.MaxValue - 2, to: int.MaxValue, step: 2, format: "{0}"),
+            default);
+
+        response.RequestedCount.Should().Be(2);
+        response.PreviewUnitNosSample.Should().Equal("2147483645", "2147483647");
     }
 
     [Fact]
@@ -158,6 +179,8 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
         public List<CatalogRecord> CreatedCatalogs { get; } = [];
         public List<IReadOnlyList<CatalogHeadWriteRow>> WrittenHeads { get; } = [];
         public List<IReadOnlyList<AuditLogWriteRequest>> AuditBatches { get; } = [];
+        public int TransactionStartCount { get; private set; }
+        public int LockCount { get; private set; }
         public int CommitCount { get; private set; }
 
         public PropertyBulkCreateUnitsService Service
@@ -181,12 +204,15 @@ public sealed class PropertyBulkCreateUnitsServiceFullCoverageTests
         private void Configure()
         {
             _uow.SetupGet(x => x.HasActiveTransaction).Returns(false);
-            _uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            _uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()))
+                .Callback(() => TransactionStartCount++)
+                .Returns(Task.CompletedTask);
             _uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>()))
                 .Callback(() => CommitCount++)
                 .Returns(Task.CompletedTask);
             _uow.Setup(x => x.RollbackAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             _locks.Setup(x => x.LockCatalogAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .Callback(() => LockCount++)
                 .Returns(Task.CompletedTask);
             _types.Setup(x => x.GetRequired(PropertyManagementCodes.Property)).Returns(Metadata);
 

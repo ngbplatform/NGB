@@ -81,6 +81,15 @@ public sealed class PropertyBulkCreateUnitsService(
         if (request.FloorSize is not null && request.FloorSize <= 0)
             throw PropertyBulkCreateUnitsValidationException.FloorSizeMustBePositive(request.FloorSize.Value);
 
+        var requestedRangeCount = GetRequestedRangeCount(request);
+        if (requestedRangeCount > MaxUnitsPerRequest)
+            throw PropertyBulkCreateUnitsValidationException.TooManyUnitsRequested(requestedRangeCount, MaxUnitsPerRequest);
+
+        // Generate before opening the transaction and taking the building lock. Besides keeping
+        // formatting work out of the critical section, the prevalidated bound guarantees that
+        // this operation cannot consume unbounded CPU or memory from a crafted numeric range.
+        var requestedNos = GenerateUnitNos(request);
+
         return await uow.ExecuteInUowTransactionAsync(
             manageTransaction: true,
             async innerCt =>
@@ -113,12 +122,6 @@ public sealed class PropertyBulkCreateUnitsService(
                 {
                     await v.ValidateUpsertAsync(probeContext, innerCt);
                 }
-
-                // Generate requested unit_nos.
-                var requestedNos = GenerateUnitNos(request);
-
-                if (requestedNos.Count > MaxUnitsPerRequest)
-                    throw PropertyBulkCreateUnitsValidationException.TooManyUnitsRequested(requestedNos.Count, MaxUnitsPerRequest);
 
                 // Probe only values requested by this operation. The old implementation
                 // paged through every unit in the building and became progressively slower
@@ -242,11 +245,15 @@ public sealed class PropertyBulkCreateUnitsService(
 
     private static List<string> GenerateUnitNos(PropertyBulkCreateUnitsRequest request)
     {
-        var list = new List<string>();
+        var rangeCount = checked((int)GetRequestedRangeCount(request));
+        var list = new List<string>(rangeCount);
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        for (var n = request.FromInclusive; n <= request.ToInclusive; n += request.Step)
+        for (long current = request.FromInclusive; current <= request.ToInclusive; current += request.Step)
         {
+            // The request boundaries are Int32 and current is range-checked above, while the
+            // Int64 induction variable prevents wraparound at Int32.MaxValue.
+            var n = checked((int)current);
             var floor = request.FloorSize is null
                 ? 0
                 : (n - request.FromInclusive) / request.FloorSize.Value + 1;
@@ -271,6 +278,9 @@ public sealed class PropertyBulkCreateUnitsService(
 
         return list;
     }
+
+    private static long GetRequestedRangeCount(PropertyBulkCreateUnitsRequest request)
+        => ((long)request.ToInclusive - request.FromInclusive) / request.Step + 1L;
 
     private static AuditFieldChange CreateAuditChange(string fieldPath, object? oldValue, object? newValue)
         => new(

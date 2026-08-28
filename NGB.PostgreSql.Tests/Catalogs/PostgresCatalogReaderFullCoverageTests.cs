@@ -178,15 +178,18 @@ public sealed class PostgresCatalogReaderFullCoverageTests
 
         (await sut.LookupAsync(Head(), "ignored", 0, default)).Should().BeEmpty();
         (await sut.LookupAsync(Head(), "  acme  ", 5, default)).Should().HaveCount(2);
+        (await sut.LookupAsync(Head(), FirstId.ToString(), 5, default)).Should().HaveCount(2);
         (await sut.LookupAsync(Head(), null, 5, default)).Should().HaveCount(2);
 
-        connection.Commands.Should().HaveCount(2);
+        connection.Commands.Should().HaveCount(3);
         connection.Commands[0].CommandText.Should().Contain("ILIKE").And.NotContain("UNION ALL");
         connection.Commands[0].CommandText.Should()
             .Contain("h.\"name\" ILIKE")
-            .And.NotContain("COALESCE(h.\"name\", c.id::text) ILIKE");
-        connection.Commands[1].CommandText.Should().Contain("UNION ALL").And.Contain("NOT EXISTS");
+            .And.Contain("c.id = @queryId")
+            .And.NotContain("c.id::text ILIKE");
+        connection.Commands[2].CommandText.Should().Contain("UNION ALL").And.Contain("NOT EXISTS");
         Parameter(connection.Commands[0], "q").Should().Be("acme");
+        Parameter(connection.Commands[1], "queryId").Should().Be(FirstId);
     }
 
     [Fact]
@@ -290,6 +293,7 @@ public sealed class PostgresCatalogReaderFullCoverageTests
             .And.Contain("c.is_deleted = FALSE")
             .And.Contain("ILIKE")
             .And.NotContain("COALESCE(h.\"name\", c.id::text) ILIKE")
+            .And.NotContain("c.id::text ILIKE")
             .And.Contain("\"cat_\"\"vendors\"");
         connection.Commands[1].CommandText.Should().Contain("JOIN catalogs").And.NotContain("ILIKE");
         Parameter(connection.Commands[0], "q").Should().Be("inc");

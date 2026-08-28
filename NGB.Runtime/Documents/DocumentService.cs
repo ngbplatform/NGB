@@ -1073,6 +1073,8 @@ public sealed class DocumentService(
                 new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase));
         }
 
+        RecordPayloadLimits.EnsureWithinLimits(parts);
+
         var partTables = model.Meta.Tables
             .Where(t => t.Kind == TableKind.Part)
             .ToList();

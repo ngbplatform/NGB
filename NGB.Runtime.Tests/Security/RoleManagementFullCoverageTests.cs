@@ -53,6 +53,19 @@ public sealed class RoleManagementFullCoverageTests
     }
 
     [Fact]
+    public async Task RoleOperations_RejectOversizedPermissionCollectionsBeforePersistence()
+    {
+        var fixture = new Fixture();
+        var permissions = Enumerable.Repeat(
+            new PermissionAssignmentDto("document", "invoice", "view"),
+            RoleManagementService.MaxPermissionsPerRole + 1).ToArray();
+
+        await ((Func<Task>)(() => fixture.Sut.CreateRoleAsync(
+                new("role", "Role", null, permissions), default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public async Task CreateRole_CoversCompleteAuditNormalizationHumanizationAndReadback()
     {
         var fixture = new Fixture();

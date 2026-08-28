@@ -39,13 +39,18 @@ public sealed class AccountCardCanonicalReportExecutor(
         }, ct);
 
         var documentRefs = await documentDisplayReader.ResolveRefsAsync(page.Lines.Select(x => x.DocumentId).Distinct().ToArray(), ct);
-        var counterAccounts = await accountByIdResolver.GetByIdsAsync(page.Lines.Select(x => x.CounterAccountId).Distinct().ToArray(), ct);
-        var selectedAccount = await accountByIdResolver.GetByIdAsync(accountId, ct);
+        var accountIds = page.Lines
+            .Select(static line => line.CounterAccountId)
+            .Append(accountId)
+            .Distinct()
+            .ToArray();
+        var accounts = await accountByIdResolver.GetByIdsAsync(accountIds, ct);
+        var selectedAccount = accounts.GetValueOrDefault(accountId);
         var accountDisplay = selectedAccount is null
             ? page.AccountCode
             : ReportDisplayHelpers.BuildAccountDisplay(selectedAccount.Code, selectedAccount.Name);
 
-        var rows = page.Lines.Select(line => ToDetailRow(line, rawFrom, rawTo, request.Filters, documentRefs, counterAccounts)).ToList();
+        var rows = page.Lines.Select(line => ToDetailRow(line, rawFrom, rawTo, request.Filters, documentRefs, accounts)).ToList();
 
         var sheet = new ReportSheetDto(
             Columns:

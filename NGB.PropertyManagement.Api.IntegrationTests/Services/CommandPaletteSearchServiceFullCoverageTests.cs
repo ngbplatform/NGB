@@ -159,6 +159,12 @@ public sealed class CommandPaletteSearchServiceFullCoverageTests
         fixture.Documents.Verify(x => x.GetAllMetadataAsync(It.IsAny<CancellationToken>()), Times.Once);
         fixture.Catalogs.Verify(x => x.GetAllMetadataAsync(It.IsAny<CancellationToken>()), Times.Once);
         fixture.Reports.Verify(x => x.GetAllDefinitionsAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+        fixture.Access.Verify(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>()), Times.Exactly(10));
+        fixture.Access.Verify(x => x.HasAsync(
+            NgbResourceKinds.Report,
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Theory]
@@ -371,19 +377,6 @@ public sealed class CommandPaletteSearchServiceFullCoverageTests
 
             var snapshot = CreateSnapshot();
             Access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(snapshot);
-            Access.Setup(x => x.HasAsync(
-                    NgbResourceKinds.Report,
-                    It.IsAny<string>(),
-                    It.IsAny<string>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync((string _, string code, string action, CancellationToken _) =>
-                    code switch
-                    {
-                        "pm.denied" => false,
-                        "pm.execute-only" => action == NgbPermissionActions.Execute,
-                        _ => true,
-                    });
-
             var securityCache = new NgbSecurityCache(_cache, new OptionsMonitor(new NgbSecurityCacheOptions()));
             var permissionAwareDocuments = new PermissionAwareDocumentService(Documents.Object, Access.Object, securityCache);
             var permissionAwareCatalogs = new PermissionAwareCatalogService(Catalogs.Object, Access.Object, securityCache);
@@ -458,6 +451,19 @@ public sealed class CommandPaletteSearchServiceFullCoverageTests
                     NgbResourceKinds.Catalog,
                     PropertyManagementCodes.AccountingPolicy,
                     NgbPermissionActions.View))
+                .Concat(AllReportIconCodes()
+                    .Append(PropertyManagementCodes.TenantStatement)
+                    .Append("pm.custom")
+                    .Append("accounting.balance_sheet")
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Select(static code => new NgbPermissionKey(
+                        NgbResourceKinds.Report,
+                        code,
+                        NgbPermissionActions.View)))
+                .Append(new NgbPermissionKey(
+                    NgbResourceKinds.Report,
+                    "pm.execute-only",
+                    NgbPermissionActions.Execute))
                 .ToArray();
 
             return new PermissionSnapshot(Guid.NewGuid(), "subject", true, true, false, 1, permissions);

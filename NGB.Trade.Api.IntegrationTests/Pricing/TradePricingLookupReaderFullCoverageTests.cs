@@ -1,11 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.UnitOfWork;
-using NGB.ReferenceRegisters;
-using NGB.ReferenceRegisters.Contracts;
-using NGB.Tools.Exceptions;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.PostgreSql.Pricing;
 using NGB.Trade.Pricing;
@@ -20,11 +16,9 @@ public sealed class TradePricingLookupReaderFullCoverageTests(TradePostgresFixtu
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
-    public async Task Empty_missing_configuration_and_missing_table_paths_are_deterministic()
+    public async Task Empty_and_missing_price_paths_are_deterministic()
     {
-        var dependencyFree = new TradePricingLookupReader(
-            Mock.Of<IUnitOfWork>(MockBehavior.Strict),
-            Mock.Of<IReferenceRegisterRepository>(MockBehavior.Strict));
+        var dependencyFree = new TradePricingLookupReader(Mock.Of<IUnitOfWork>(MockBehavior.Strict));
 
         (await dependencyFree.GetItemSalesProfilesAsync([], CancellationToken.None)).Should().BeEmpty();
         (await dependencyFree.GetLatestItemPricesAsync([], DateOnly.MinValue, CancellationToken.None)).Should().BeEmpty();
@@ -33,34 +27,11 @@ public sealed class TradePricingLookupReaderFullCoverageTests(TradePostgresFixtu
         using var host = TradeHostFactory.Create(fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var registers = new Mock<IReferenceRegisterRepository>(MockBehavior.Strict);
-        registers.Setup(x => x.GetByCodeAsync(TradeCodes.ItemPricesRegisterCode, It.IsAny<CancellationToken>()))
-            .ReturnsAsync((ReferenceRegisterAdminItem?)null);
-        var reader = new TradePricingLookupReader(uow, registers.Object);
+        var reader = new TradePricingLookupReader(uow);
         var key = new TradePriceLookupKey(Guid.NewGuid(), Guid.NewGuid());
-
-        Func<Task> missingConfiguration = () => reader.GetLatestItemPricesAsync(
-            [key],
-            DateOnly.MinValue,
-            CancellationToken.None);
-        await missingConfiguration.Should().ThrowAsync<NgbConfigurationViolationException>();
-
-        registers.Setup(x => x.GetByCodeAsync(TradeCodes.ItemPricesRegisterCode, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ReferenceRegisterAdminItem(
-                Guid.NewGuid(),
-                TradeCodes.ItemPricesRegisterCode,
-                TradeCodes.ItemPricesRegisterCode.ToLowerInvariant(),
-                "trd_prices_table_that_does_not_exist",
-                "Missing prices",
-                ReferenceRegisterPeriodicity.NonPeriodic,
-                ReferenceRegisterRecordMode.Independent,
-                false,
-                DateTime.UnixEpoch,
-                DateTime.UnixEpoch));
 
         (await reader.GetLatestItemPricesAsync([key], DateOnly.MaxValue, CancellationToken.None))
             .Should().BeEmpty();
-        registers.VerifyAll();
     }
 
     [Fact]

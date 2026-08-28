@@ -313,7 +313,7 @@ public sealed class PostgresDocumentReaderFullCoverageTests
         var invoice = Head();
         var memo = Head("memo", "doc_\"memo", "title");
         var searched = await sut.LookupAcrossTypesAsync(
-            [invoice, invoice with { TypeCode = "INVOICE" }, memo], "  inv  ", 3, true, default);
+            [invoice, invoice with { TypeCode = "INVOICE" }, memo], FirstId.ToString(), 3, true, default);
         var browsed = await sut.LookupAcrossTypesAsync([invoice], null, 2, false, default);
 
         searched.Should().HaveCount(2);
@@ -326,9 +326,11 @@ public sealed class PostgresDocumentReaderFullCoverageTests
             .And.Contain("d.status <> @deletedStatus")
             .And.Contain("ILIKE")
             .And.NotContain("COALESCE(h.\"name\", d.id::text) ILIKE")
+            .And.NotContain("d.id::text ILIKE")
             .And.Contain("\"doc_\"\"memo\"");
         connection.Commands[1].CommandText.Should().Contain("JOIN documents").And.NotContain("ILIKE");
-        Parameter(connection.Commands[0], "q").Should().Be("inv");
+        Parameter(connection.Commands[0], "q").Should().Be(FirstId.ToString());
+        Parameter(connection.Commands[0], "queryId").Should().Be(FirstId);
     }
 
     [Fact]

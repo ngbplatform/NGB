@@ -54,16 +54,20 @@ public sealed class RemainingReadersValidationFullCoverageTests
         var dimensionRows = new DataTable();
         dimensionRows.Columns.Add("DimensionId", typeof(Guid));
         dimensionRows.Columns.Add("CodeNorm", typeof(string));
+        var connection = new RecordingDbConnection(_ => dimensionRows.CreateDataReader());
         var sut = new PostgresDimensionValueEnrichmentReader(
-            new RecordingUnitOfWork(new RecordingDbConnection(_ => dimensionRows.CreateDataReader())),
+            new RecordingUnitOfWork(connection),
             catalogRegistry.Object,
             catalogReader.Object,
             documentReader.Object);
         var key = new DimensionValueKey(Guid.NewGuid(), valueId);
 
         var result = await sut.ResolveAsync([key]);
+        var cachedResult = await sut.ResolveAsync([key]);
 
         result.Should().Contain(key, "12345678");
+        cachedResult.Should().Contain(key, "12345678");
+        connection.Commands.Should().ContainSingle("dimension metadata should be cached for the scoped reader");
         catalogRegistry.VerifyNoOtherCalls();
         catalogReader.VerifyAll();
         documentReader.VerifyAll();
@@ -244,6 +248,21 @@ public sealed class RemainingReadersValidationFullCoverageTests
     }
 
     [Fact]
+    public async Task Operational_balance_reader_resolves_previous_period_and_balances_in_one_roundtrip()
+    {
+        var connection = new RecordingDbConnection();
+        var reader = new PostgresAccountingOperationalBalanceReader(new RecordingUnitOfWork(connection));
+
+        await reader.GetForKeysAsync(
+            new DateOnly(2026, 8, 1),
+            [new AccountingBalanceKey(Guid.NewGuid(), Guid.NewGuid())]);
+
+        connection.Commands.Should().ContainSingle();
+        connection.Commands[0].CommandText.Should().Contain("WITH previous_period AS");
+        connection.Commands[0].CommandText.Should().NotContain("@PreviousPeriod");
+    }
+
+    [Fact]
     public async Task Balance_and_turnover_readers_use_empty_dimension_bag_when_resolution_is_missing()
     {
         var dimensionSetId = Guid.NewGuid();
@@ -258,6 +277,14 @@ public sealed class RemainingReadersValidationFullCoverageTests
         var balanceRow = (await balance.GetForPeriodAsync(DateOnly.MinValue)).Should().ContainSingle().Subject;
         balanceRow.Dimensions.Should().BeSameAs(NGB.Core.Dimensions.DimensionBag.Empty);
 
+        var latestConnection = new RecordingDbConnection(_ => BalanceRows(dimensionSetId));
+        var latestBalance = new PostgresAccountingBalanceReader(
+            new RecordingUnitOfWork(latestConnection),
+            dimensions.Object);
+        (await latestBalance.GetLatestClosedAsync(DateOnly.MaxValue)).Should().ContainSingle();
+        latestConnection.Commands.Should().ContainSingle();
+        latestConnection.Commands[0].CommandText.Should().Contain("WITH latest_closed AS");
+
         var turnover = new PostgresAccountingTurnoverReader(
             new RecordingUnitOfWork(new RecordingDbConnection(_ => TurnoverRows(dimensionSetId))),
             dimensions.Object);
@@ -265,7 +292,7 @@ public sealed class RemainingReadersValidationFullCoverageTests
         turnoverRow.Dimensions.Should().BeSameAs(NGB.Core.Dimensions.DimensionBag.Empty);
 
         dimensions.Verify(x => x.GetBagsByIdsAsync(
-            It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
 
         var emptyDimensions = new Mock<IDimensionSetReader>(MockBehavior.Strict);
         var emptyBalance = new PostgresAccountingBalanceReader(

@@ -18,6 +18,7 @@ public sealed class PostgresReceivablesReportReader(
 {
     private static readonly Guid LeaseDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Lease}");
     private static readonly Guid ItemDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}");
+    private readonly Dictionary<Guid, RegisterReadContext> _registerContexts = new();
 
     public async Task<ReceivablesReportPage> GetPageAsync(
         Guid registerId,
@@ -41,40 +42,17 @@ public sealed class PostgresReceivablesReportReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var register = await registers.GetByIdAsync(registerId, ct)
-            ?? throw new OperationalRegisterNotFoundException(registerId);
-
-        var resourceColumns = (await resources.GetByRegisterIdAsync(registerId, ct))
-            .Select(static resource => resource.ColumnCode)
-            .ToHashSet(StringComparer.Ordinal);
-
-        if (!resourceColumns.Contains("amount"))
-            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column 'amount'.");
-
-        var tableName = OperationalRegisterNaming.MovementsTable(register.TableCode);
-        var balancesTableName = OperationalRegisterNaming.BalancesTable(register.TableCode);
-        var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            "SELECT to_regclass(@TableName) IS NOT NULL;",
-            new { TableName = tableName },
-            uow.Transaction,
-            cancellationToken: ct));
-
-        if (!exists)
+        var context = await GetRegisterContextAsync(registerId, ct);
+        if (!context.MovementsExist)
             return new ReceivablesReportPage([], 0, 0m, 0m, 0m, null, null, null);
-
-        var balancesExist = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            "SELECT to_regclass(@TableName) IS NOT NULL;",
-            new { TableName = balancesTableName },
-            uow.Transaction,
-            cancellationToken: ct));
 
         var chargesOnly = mode == ReceivablesReportMode.Aging;
         var orderBy = chargesOnly
             ? "item.due_on_utc, item.document_id"
             : "CASE WHEN item.net_amount > 0 THEN 0 ELSE 1 END, COALESCE(item.due_on_utc, item.received_on_utc), item.document_id";
-        var netSourceSql = balancesExist
-            ? BuildSnapshotBackedNetSourceSql(tableName, balancesTableName)
-            : BuildMovementOnlyNetSourceSql(tableName);
+        var netSourceSql = context.BalancesExist
+            ? BuildSnapshotBackedNetSourceSql(context.MovementsTable, context.BalancesTable)
+            : BuildMovementOnlyNetSourceSql(context.MovementsTable);
         var sql = $"""
 {netSourceSql},
 nets AS (
@@ -270,6 +248,42 @@ dimension_nets AS (
     LEFT JOIN movement_values delta ON delta.dimension_set_id = keys.dimension_set_id
 )
 """;
+
+    private async Task<RegisterReadContext> GetRegisterContextAsync(Guid registerId, CancellationToken ct)
+    {
+        if (_registerContexts.TryGetValue(registerId, out var cached))
+            return cached;
+
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+        var hasAmount = (await resources.GetByRegisterIdAsync(registerId, ct))
+            .Any(static resource => string.Equals(resource.ColumnCode, "amount", StringComparison.Ordinal));
+
+        if (!hasAmount)
+            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column 'amount'.");
+
+        var movementsTable = OperationalRegisterNaming.MovementsTable(register.TableCode);
+        var balancesTable = OperationalRegisterNaming.BalancesTable(register.TableCode);
+        var presence = await uow.Connection.QuerySingleAsync<TablePresence>(new CommandDefinition(
+            "SELECT to_regclass(@MovementsTable) IS NOT NULL AS \"MovementsExist\", to_regclass(@BalancesTable) IS NOT NULL AS \"BalancesExist\";",
+            new { MovementsTable = movementsTable, BalancesTable = balancesTable },
+            uow.Transaction,
+            cancellationToken: ct));
+        var context = new RegisterReadContext(movementsTable, balancesTable, presence.MovementsExist, presence.BalancesExist);
+
+        if (context.MovementsExist)
+            _registerContexts[registerId] = context;
+
+        return context;
+    }
+
+    private sealed record RegisterReadContext(
+        string MovementsTable,
+        string BalancesTable,
+        bool MovementsExist,
+        bool BalancesExist);
+
+    private sealed record TablePresence(bool MovementsExist, bool BalancesExist);
 
     private sealed record ReceivablesReportSqlRow(
         Guid? DocumentId,

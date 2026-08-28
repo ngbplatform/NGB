@@ -43,6 +43,23 @@ public sealed class UserAccessManagementFullCoverageTests
     }
 
     [Fact]
+    public async Task UserMutations_RejectOversizedRoleCollectionsBeforeExternalCalls()
+    {
+        var fixture = new Fixture();
+        var roles = Enumerable.Repeat(Guid.NewGuid(), UserAccessManagementService.MaxRoleAssignmentsPerUser + 1).ToArray();
+
+        await ((Func<Task>)(() => fixture.Sut.CreateUserAsync(
+                new("user@example.com", null, null, null, true, null, false, roles), default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => fixture.Sut.UpdateUserAsync(
+                Guid.NewGuid(), new(null, null, null, null, true, null, false, roles), default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => fixture.Sut.ReplaceUserRolesAsync(
+                Guid.NewGuid(), new(roles), default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public async Task CreateUser_CoversFailureAuditAndCancellationFilter()
     {
         var failed = new Fixture();

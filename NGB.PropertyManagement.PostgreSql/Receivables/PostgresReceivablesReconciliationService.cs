@@ -46,8 +46,10 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
 
         var movementsTable = $"opreg_{tableCode}__movements";
         var balancesTable = $"opreg_{tableCode}__balances";
-        var movementsTableExists = await TableExistsAsync(movementsTable, ct);
-        var balancesTableExists = await TableExistsAsync(balancesTable, ct);
+        var (movementsTableExists, balancesTableExists) = await ReadTablePresenceAsync(
+            movementsTable,
+            balancesTable,
+            ct);
 
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
         var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
@@ -567,18 +569,25 @@ LIMIT 2;
 
     private sealed record TableCodeRow(string? TableCode);
 
-    private async Task<bool> TableExistsAsync(string tableName, CancellationToken ct)
+    private async Task<(bool MovementsExist, bool BalancesExist)> ReadTablePresenceAsync(
+        string movementsTable,
+        string balancesTable,
+        CancellationToken ct)
     {
         const string sql = """
-SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-      AND table_name = @TableName
-);
+SELECT
+    to_regclass(@MovementsTable) IS NOT NULL AS "MovementsExist",
+    to_regclass(@BalancesTable) IS NOT NULL AS "BalancesExist";
 """;
 
-        return await uow.Connection.QuerySingleAsync<bool>(
-            new CommandDefinition(sql, new { TableName = tableName }, transaction: uow.Transaction, cancellationToken: ct));
+        var row = await uow.Connection.QuerySingleAsync<TablePresenceRow>(
+            new CommandDefinition(
+                sql,
+                new { MovementsTable = movementsTable, BalancesTable = balancesTable },
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+        return (row.MovementsExist, row.BalancesExist);
     }
+
+    private sealed record TablePresenceRow(bool MovementsExist, bool BalancesExist);
 }

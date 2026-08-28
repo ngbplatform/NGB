@@ -12,27 +12,19 @@ public sealed class CrmOperationalReportsPostgresDatasetSource : IPostgresReport
                 fromSql:
                 """
                 (
-                    WITH latest AS (
-                        SELECT DISTINCT ON (dimension_set_id) *
-                        FROM refreg_crm_opportunities__records
-                        ORDER BY dimension_set_id, recorded_at_utc DESC, record_id DESC
-                    )
                     SELECT
                         o.opportunity_id,
                         o.opportunity_name AS opportunity_display,
                         o.account_id AS customer_id,
-                        a.display AS customer_display,
+                        o.account_display AS customer_display,
                         o.stage_id,
-                        s.display AS stage_display,
+                        o.stage_display,
                         o.status,
                         o.expected_close_date,
                         o.amount,
                         o.probability,
-                        ROUND(o.amount * o.probability / 100.0, 4) AS weighted_amount
-                    FROM latest o
-                    LEFT JOIN cat_crm_account a ON a.catalog_id = o.account_id
-                    LEFT JOIN cat_crm_opportunity_stage s ON s.catalog_id = o.stage_id
-                    WHERE NOT o.is_deleted
+                        o.weighted_amount
+                    FROM crm_opportunities_current o
                 ) x
                 """,
                 fields:
@@ -57,35 +49,19 @@ public sealed class CrmOperationalReportsPostgresDatasetSource : IPostgresReport
                 fromSql:
                 """
                 (
-                    WITH latest AS (
-                        SELECT DISTINCT ON (dimension_set_id)
-                            dimension_set_id,
-                            is_deleted
-                        FROM refreg_crm_opportunities__records
-                        ORDER BY dimension_set_id, recorded_at_utc DESC, record_id DESC
-                    ),
-                    live_keys AS (
-                        SELECT dimension_set_id
-                        FROM latest
-                        WHERE NOT is_deleted
-                    )
                     SELECT
                         o.event_at_utc,
                         o.event_type,
                         o.opportunity_id,
                         o.opportunity_name AS opportunity_display,
                         o.account_id AS customer_id,
-                        a.display AS customer_display,
+                        o.account_display AS customer_display,
                         o.stage_id,
-                        s.display AS stage_display,
+                        o.stage_display,
                         o.status,
                         o.amount,
                         o.probability
-                    FROM refreg_crm_opportunities__records o
-                    JOIN live_keys lk ON lk.dimension_set_id = o.dimension_set_id
-                    LEFT JOIN cat_crm_account a ON a.catalog_id = o.account_id
-                    LEFT JOIN cat_crm_opportunity_stage s ON s.catalog_id = o.stage_id
-                    WHERE NOT o.is_deleted
+                    FROM crm_opportunity_history o
                 ) x
                 """,
                 fields:
@@ -110,21 +86,56 @@ public sealed class CrmOperationalReportsPostgresDatasetSource : IPostgresReport
                 fromSql:
                 """
                 (
-                    WITH latest AS (
-                        SELECT DISTINCT ON (dimension_set_id) *
-                        FROM refreg_crm_lead_funnel__records
-                        ORDER BY dimension_set_id, recorded_at_utc DESC, record_id DESC
-                    )
                     SELECT
-                        source_document_id AS document_id,
-                        source_document_id::text AS document_display,
-                        event_at_utc,
-                        funnel_step,
-                        lead_source,
-                        industry,
+                        history.source_document_id AS document_id,
+                        COALESCE(history.document_display, history.source_document_id::text) AS document_display,
+                        history.event_at_utc,
+                        history.funnel_step,
+                        history.lead_source,
+                        history.industry,
                         1::bigint AS lead_count
-                    FROM latest
-                    WHERE NOT is_deleted
+                    FROM (
+                        SELECT
+                            li.document_id AS source_document_id,
+                            li.display AS document_display,
+                            d.posted_at_utc AS event_at_utc,
+                            '01 Intake'::text AS funnel_step,
+                            li.lead_source,
+                            li.industry
+                        FROM doc_crm_lead_intake li
+                        JOIN documents d ON d.id = li.document_id AND d.status = 2
+
+                        UNION ALL
+
+                        SELECT
+                            lq.document_id,
+                            lq.display,
+                            d.posted_at_utc,
+                            CASE lq.qualification_state
+                                WHEN 'Qualified' THEN '02 Qualified'
+                                WHEN 'Disqualified' THEN '02 Disqualified'
+                                WHEN 'Converted' THEN '03 Converted'
+                                ELSE '02 ' || lq.qualification_state
+                            END,
+                            li.lead_source,
+                            li.industry
+                        FROM doc_crm_lead_qualification lq
+                        JOIN documents d ON d.id = lq.document_id AND d.status = 2
+                        JOIN doc_crm_lead_intake li ON li.document_id = lq.lead_intake_id
+
+                        UNION ALL
+
+                        SELECT
+                            lc.document_id,
+                            lc.display,
+                            d.posted_at_utc,
+                            '03 Converted'::text,
+                            li.lead_source,
+                            li.industry
+                        FROM doc_crm_lead_conversion lc
+                        JOIN documents d ON d.id = lc.document_id AND d.status = 2
+                        JOIN doc_crm_lead_intake li ON li.document_id = lc.lead_intake_id
+                    ) history
                 ) x
                 """,
                 fields:
@@ -145,29 +156,23 @@ public sealed class CrmOperationalReportsPostgresDatasetSource : IPostgresReport
                 fromSql:
                 """
                 (
-                    WITH latest AS (
-                        SELECT DISTINCT ON (dimension_set_id) *
-                        FROM refreg_crm_activities__records
-                        ORDER BY dimension_set_id, recorded_at_utc DESC, record_id DESC
-                    )
                     SELECT
-                        latest.activity_id,
-                        latest.activity_date,
-                        latest.activity_type,
-                        latest.subject,
-                        latest.lead_intake_id,
-                        latest.account_id AS customer_id,
+                        activity.activity_id,
+                        activity.activity_date,
+                        activity.activity_type,
+                        activity.subject,
+                        activity.lead_intake_id,
+                        activity.account_id AS customer_id,
                         a.display AS customer_display,
-                        latest.contact_id,
+                        activity.contact_id,
                         c.display AS contact_display,
-                        latest.opportunity_id,
-                        latest.due_at_utc,
-                        latest.completed_at_utc,
-                        latest.outcome
-                    FROM latest
-                    LEFT JOIN cat_crm_account a ON a.catalog_id = latest.account_id
-                    LEFT JOIN cat_crm_contact c ON c.catalog_id = latest.contact_id
-                    WHERE NOT is_deleted
+                        activity.opportunity_id,
+                        activity.due_at_utc,
+                        activity.completed_at_utc,
+                        activity.outcome
+                    FROM crm_activities_current activity
+                    LEFT JOIN cat_crm_account a ON a.catalog_id = activity.account_id
+                    LEFT JOIN cat_crm_contact c ON c.catalog_id = activity.contact_id
                 ) x
                 """,
                 fields:
@@ -189,27 +194,19 @@ public sealed class CrmOperationalReportsPostgresDatasetSource : IPostgresReport
                 fromSql:
                 """
                 (
-                    WITH latest AS (
-                        SELECT DISTINCT ON (dimension_set_id) *
-                        FROM refreg_crm_quotes__records
-                        ORDER BY dimension_set_id, recorded_at_utc DESC, record_id DESC
-                    )
                     SELECT
-                        latest.quote_id,
-                        latest.quote_date,
-                        latest.opportunity_id,
-                        latest.account_id AS customer_id,
-                        a.display AS customer_display,
-                        latest.contact_id,
-                        c.display AS contact_display,
-                        latest.valid_until,
-                        latest.currency,
-                        latest.quote_status,
-                        latest.amount
-                    FROM latest
-                    LEFT JOIN cat_crm_account a ON a.catalog_id = latest.account_id
-                    LEFT JOIN cat_crm_contact c ON c.catalog_id = latest.contact_id
-                    WHERE NOT is_deleted
+                        quote.quote_id,
+                        quote.quote_date,
+                        quote.opportunity_id,
+                        quote.account_id AS customer_id,
+                        quote.account_display AS customer_display,
+                        quote.contact_id,
+                        quote.contact_display,
+                        quote.valid_until,
+                        quote.currency,
+                        quote.quote_status,
+                        quote.amount
+                    FROM crm_quotes_current quote
                 ) x
                 """,
                 fields:

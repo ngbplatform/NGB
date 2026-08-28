@@ -868,26 +868,27 @@ internal sealed class DocumentPostingService(
             var builder = new ReferenceRegisterRecordsBuilder(doc.Id);
             await rrAction(builder, ReferenceRegisterWriteOperation.Post, innerCt);
 
+            var registerIds = builder.RecordsByRegister.Keys.OrderBy(static id => id).ToArray();
             var startedAtUtc = timeProvider.GetUtcNowDateTime();
-            foreach (var (registerId, records) in builder.RecordsByRegister)
+            await BeginReferenceRegisterWritesAsync(
+                registerIds,
+                doc.Id,
+                ReferenceRegisterWriteOperation.Post,
+                startedAtUtc,
+                innerCt);
+
+            foreach (var registerId in registerIds)
             {
-                var begin = await refregWriteStateRepository.TryBeginAsync(
-                    registerId,
-                    doc.Id,
-                    ReferenceRegisterWriteOperation.Post,
-                    startedAtUtc,
-                    innerCt);
-
-                EnsureReferenceRegisterWriteBegun(begin, registerId, doc.Id, ReferenceRegisterWriteOperation.Post);
-
+                var records = builder.RecordsByRegister[registerId];
                 await refregRecordsStore.AppendAsync(registerId, records, innerCt);
-                await refregWriteStateRepository.MarkCompletedAsync(
-                    registerId,
-                    doc.Id,
-                    ReferenceRegisterWriteOperation.Post,
-                    timeProvider.GetUtcNowDateTime(),
-                    innerCt);
             }
+
+            await CompleteReferenceRegisterWritesAsync(
+                registerIds,
+                doc.Id,
+                ReferenceRegisterWriteOperation.Post,
+                timeProvider.GetUtcNowDateTime(),
+                innerCt);
         }, ct);
     }
 
@@ -917,17 +918,12 @@ internal sealed class DocumentPostingService(
             }
 
             var startedAtUtc = timeProvider.GetUtcNowDateTime();
-            foreach (var registerId in registerIds)
-            {
-                var begin = await refregWriteStateRepository.TryBeginAsync(
-                    registerId,
-                    doc.Id,
-                    ReferenceRegisterWriteOperation.Unpost,
-                    startedAtUtc,
-                    innerCt);
-
-                EnsureReferenceRegisterWriteBegun(begin, registerId, doc.Id, ReferenceRegisterWriteOperation.Unpost);
-            }
+            await BeginReferenceRegisterWritesAsync(
+                registerIds,
+                doc.Id,
+                ReferenceRegisterWriteOperation.Unpost,
+                startedAtUtc,
+                innerCt);
 
             var registersById = (await refregRepository.GetByIdsAsync(registerIds, innerCt))
                 .ToDictionary(static register => register.RegisterId);
@@ -959,13 +955,14 @@ internal sealed class DocumentPostingService(
                         await refregRecordsStore.AppendAsync(registerId, records, innerCt);
                 }
 
-                await refregWriteStateRepository.MarkCompletedAsync(
-                    registerId,
-                    doc.Id,
-                    ReferenceRegisterWriteOperation.Unpost,
-                    timeProvider.GetUtcNowDateTime(),
-                    innerCt);
             }
+
+            await CompleteReferenceRegisterWritesAsync(
+                registerIds,
+                doc.Id,
+                ReferenceRegisterWriteOperation.Unpost,
+                timeProvider.GetUtcNowDateTime(),
+                innerCt);
         }, ct);
     }
 
@@ -1001,17 +998,12 @@ internal sealed class DocumentPostingService(
             IReadOnlyList<ReferenceRegisterRecordWrite> empty = [];
             var startedAtUtc = timeProvider.GetUtcNowDateTime();
 
-            foreach (var registerId in registerIds)
-            {
-                var begin = await refregWriteStateRepository.TryBeginAsync(
-                    registerId,
-                    doc.Id,
-                    ReferenceRegisterWriteOperation.Repost,
-                    startedAtUtc,
-                    innerCt);
-
-                EnsureReferenceRegisterWriteBegun(begin, registerId, doc.Id, ReferenceRegisterWriteOperation.Repost);
-            }
+            await BeginReferenceRegisterWritesAsync(
+                registerIds,
+                doc.Id,
+                ReferenceRegisterWriteOperation.Repost,
+                startedAtUtc,
+                innerCt);
 
             var oldRegistersById = oldRegisterIds.Count == 0
                 ? new Dictionary<Guid, ReferenceRegisterAdminItem>()
@@ -1061,13 +1053,14 @@ internal sealed class DocumentPostingService(
 
                 await refregRecordsStore.AppendAsync(registerId, records, innerCt);
 
-                await refregWriteStateRepository.MarkCompletedAsync(
-                    registerId,
-                    doc.Id,
-                    ReferenceRegisterWriteOperation.Repost,
-                    timeProvider.GetUtcNowDateTime(),
-                    innerCt);
             }
+
+            await CompleteReferenceRegisterWritesAsync(
+                registerIds,
+                doc.Id,
+                ReferenceRegisterWriteOperation.Repost,
+                timeProvider.GetUtcNowDateTime(),
+                innerCt);
         }, ct);
 
         return didWork;
@@ -1229,6 +1222,69 @@ internal sealed class DocumentPostingService(
             throw new ReferenceRegisterWriteAlreadyInProgressException(registerId, documentId, operation.ToString());
     }
 
+    private async Task BeginReferenceRegisterWritesAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        Guid documentId,
+        ReferenceRegisterWriteOperation operation,
+        DateTime startedAtUtc,
+        CancellationToken ct)
+    {
+        if (registerIds.Count == 0)
+            return;
+
+        if (refregWriteStateRepository is IReferenceRegisterWriteStateBatchRepository batch)
+        {
+            var results = await batch.TryBeginManyAsync(registerIds, documentId, operation, startedAtUtc, ct);
+            foreach (var registerId in registerIds)
+            {
+                if (!results.TryGetValue(registerId, out var result))
+                    throw new NgbInvariantViolationException($"Reference register batch begin did not return state for register '{registerId}'.");
+
+                EnsureReferenceRegisterWriteBegun(result, registerId, documentId, operation);
+            }
+
+            return;
+        }
+
+        foreach (var registerId in registerIds)
+        {
+            var result = await refregWriteStateRepository.TryBeginAsync(
+                registerId,
+                documentId,
+                operation,
+                startedAtUtc,
+                ct);
+            EnsureReferenceRegisterWriteBegun(result, registerId, documentId, operation);
+        }
+    }
+
+    private async Task CompleteReferenceRegisterWritesAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        Guid documentId,
+        ReferenceRegisterWriteOperation operation,
+        DateTime completedAtUtc,
+        CancellationToken ct)
+    {
+        if (registerIds.Count == 0)
+            return;
+
+        if (refregWriteStateRepository is IReferenceRegisterWriteStateBatchRepository batch)
+        {
+            await batch.MarkCompletedManyAsync(registerIds, documentId, operation, completedAtUtc, ct);
+            return;
+        }
+
+        foreach (var registerId in registerIds)
+        {
+            await refregWriteStateRepository.MarkCompletedAsync(
+                registerId,
+                documentId,
+                operation,
+                completedAtUtc,
+                ct);
+        }
+    }
+
     internal static void EnsureOperationalRegisterExecuted(
         OperationalRegisterWriteResult result,
         Guid registerId,
@@ -1253,5 +1309,4 @@ internal sealed class DocumentPostingService(
                 ["registerId"] = registerId,
                 ["operation"] = operation
             });
-
 }

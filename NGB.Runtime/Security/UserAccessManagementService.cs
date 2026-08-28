@@ -22,6 +22,8 @@ public sealed class UserAccessManagementService(
     IAuditLogService audit)
     : IUserAccessManagementService
 {
+    internal const int MaxRoleAssignmentsPerUser = 500;
+
     public async Task<PageResponseDto<UserListItemDto>> GetUsersAsync(UserPageRequestDto request, CancellationToken ct)
     {
         if (request is null)
@@ -101,6 +103,8 @@ public sealed class UserAccessManagementService(
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
+
+        EnsureRoleAssignmentLimit(request.RoleIds);
 
         var email = NormalizeRequiredEmail(request.Email, nameof(request.Email));
         var temporaryPassword = string.IsNullOrWhiteSpace(request.TemporaryPassword)
@@ -219,6 +223,8 @@ public sealed class UserAccessManagementService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
+        EnsureRoleAssignmentLimit(request.RoleIds);
+
         var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
         var email = NormalizeOptionalEmail(request.Email, nameof(request.Email))
             ?? NormalizeRequiredEmail(user.Email, nameof(request.Email));
@@ -317,6 +323,8 @@ public sealed class UserAccessManagementService(
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
+
+        EnsureRoleAssignmentLimit(request.RoleIds);
 
         var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
         var oldRoles = await userRoles.GetRolesForUserAsync(userId, ct);
@@ -437,6 +445,20 @@ public sealed class UserAccessManagementService(
 
     private static RoleBadgeDto ToRoleBadge(PlatformRole role)
         => new(role.RoleId, role.Code, role.Name, role.IsSystem, role.IsActive);
+
+    private static void EnsureRoleAssignmentLimit(IReadOnlyList<Guid> roleIds)
+    {
+        if (roleIds is null)
+            throw new NgbArgumentRequiredException(nameof(roleIds));
+
+        if (roleIds.Count > MaxRoleAssignmentsPerUser)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(roleIds),
+                roleIds.Count,
+                $"At most {MaxRoleAssignmentsPerUser:N0} roles are allowed per user.");
+        }
+    }
 
     private async Task<string> ResolveIdentityProviderUserIdAsync(
         PlatformUser user,

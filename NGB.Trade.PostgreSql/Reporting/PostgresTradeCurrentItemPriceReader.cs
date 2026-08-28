@@ -1,6 +1,5 @@
 using Dapper;
 using NGB.Contracts.Common;
-using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.ReferenceRegisters;
 using NGB.Tools.Exceptions;
@@ -9,11 +8,13 @@ using NGB.Trade.Reporting;
 
 namespace NGB.Trade.PostgreSql.Reporting;
 
-public sealed class PostgresTradeCurrentItemPriceReader(IUnitOfWork uow, IReferenceRegisterRepository registers)
+public sealed class PostgresTradeCurrentItemPriceReader(IUnitOfWork uow)
     : ITradeCurrentItemPriceReader
 {
     private static readonly Guid ItemDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Item}");
     private static readonly Guid PriceTypeDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.PriceType}");
+    private static readonly string ItemPricesTable = ReferenceRegisterNaming.RecordsTable(TradeCodes.ItemPricesRegisterCode);
+    private bool? _itemPricesTableExists;
 
     public async Task<TradeCurrentItemPricePage> GetPageAsync(
         DateTime asOfUtc,
@@ -33,24 +34,17 @@ public sealed class PostgresTradeCurrentItemPriceReader(IUnitOfWork uow, IRefere
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var register = await registers.GetByCodeAsync(TradeCodes.ItemPricesRegisterCode, ct)
-            ?? throw new NgbConfigurationViolationException($"Reference register '{TradeCodes.ItemPricesRegisterCode}' is not configured.");
-        
-        var tableName = ReferenceRegisterNaming.RecordsTable(register.TableCode);
-        var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            "SELECT to_regclass(@TableName) IS NOT NULL;",
-            new { TableName = tableName },
-            uow.Transaction,
-            cancellationToken: ct));
-
-        if (!exists)
+        if (!await ItemPricesTableExistsAsync(ct))
             return new TradeCurrentItemPricePage([], 0);
 
         var itemIdArray = NormalizeIds(itemIds);
         var priceTypeIdArray = NormalizeIds(priceTypeIds);
         var sql = $"""
 WITH candidate_dimension_sets AS (
-    SELECT item.dimension_set_id
+    SELECT
+        item.dimension_set_id,
+        item.value_id AS item_id,
+        price_type.value_id AS price_type_id
     FROM platform_dimension_set_items item
     JOIN platform_dimension_set_items price_type
       ON price_type.dimension_set_id = item.dimension_set_id
@@ -60,38 +54,43 @@ WITH candidate_dimension_sets AS (
       AND (@HasPriceTypeFilter = FALSE OR price_type.value_id = ANY(@PriceTypeIds))
 ),
 latest AS (
-    SELECT DISTINCT ON (record.dimension_set_id)
-        record.dimension_set_id,
+    SELECT
+        candidate.item_id,
+        candidate.price_type_id,
         record.currency,
         record.unit_price,
         record.effective_date,
         record.source_document_id,
         record.is_deleted
     FROM candidate_dimension_sets candidate
-    JOIN {tableName} record
-      ON record.dimension_set_id = candidate.dimension_set_id
-    WHERE record.recorded_at_utc <= @AsOfUtc
-    ORDER BY record.dimension_set_id, record.recorded_at_utc DESC, record.record_id DESC
+    JOIN LATERAL (
+        SELECT
+            price.currency,
+            price.unit_price,
+            price.effective_date,
+            price.source_document_id,
+            price.is_deleted
+        FROM {ItemPricesTable} price
+        WHERE price.dimension_set_id = candidate.dimension_set_id
+          AND price.recorder_document_id IS NULL
+          AND price.recorded_at_utc <= @AsOfUtc
+        ORDER BY price.recorded_at_utc DESC, price.record_id DESC
+        LIMIT 1
+    ) record ON TRUE
 ),
 enriched AS (
     SELECT
-        item.value_id AS item_id,
-        COALESCE(item_catalog.display, item.value_id::text) AS item_display,
-        price_type.value_id AS price_type_id,
-        COALESCE(price_type_catalog.display, price_type.value_id::text) AS price_type_display,
+        latest.item_id,
+        COALESCE(item.display, latest.item_id::text) AS item_display,
+        latest.price_type_id,
+        COALESCE(price_type.display, latest.price_type_id::text) AS price_type_display,
         COALESCE(latest.currency, '') AS currency,
-        COALESCE(latest.unit_price, 0) AS unit_price,
+        latest.unit_price,
         latest.effective_date,
         latest.source_document_id
     FROM latest
-    JOIN platform_dimension_set_items item
-      ON item.dimension_set_id = latest.dimension_set_id
-     AND item.dimension_id = @ItemDimensionId
-    JOIN platform_dimension_set_items price_type
-      ON price_type.dimension_set_id = latest.dimension_set_id
-     AND price_type.dimension_id = @PriceTypeDimensionId
-    LEFT JOIN cat_trd_item item_catalog ON item_catalog.catalog_id = item.value_id
-    LEFT JOIN cat_trd_price_type price_type_catalog ON price_type_catalog.catalog_id = price_type.value_id
+    LEFT JOIN cat_trd_item item ON item.catalog_id = latest.item_id
+    LEFT JOIN cat_trd_price_type price_type ON price_type.catalog_id = latest.price_type_id
     WHERE latest.is_deleted = FALSE
 )
 SELECT
@@ -143,6 +142,23 @@ LIMIT @Limit;
 
     private static Guid[] NormalizeIds(IReadOnlyList<Guid>? ids)
         => ids?.Where(static id => id != Guid.Empty).Distinct().ToArray() ?? [];
+
+    private async Task<bool> ItemPricesTableExistsAsync(CancellationToken ct)
+    {
+        if (_itemPricesTableExists == true)
+            return true;
+
+        var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT to_regclass(@TableName) IS NOT NULL;",
+            new { TableName = ItemPricesTable },
+            uow.Transaction,
+            cancellationToken: ct));
+
+        if (exists)
+            _itemPricesTableExists = true;
+
+        return exists;
+    }
 
     private sealed record CurrentItemPriceSqlRow(
         Guid ItemId,

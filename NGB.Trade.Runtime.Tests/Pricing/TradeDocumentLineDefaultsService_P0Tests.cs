@@ -24,6 +24,32 @@ public sealed class TradeDocumentLineDefaultsService_P0Tests
     }
 
     [Fact]
+    public async Task ResolveAsync_RejectsNullAndOversizedRowsBeforeCallingDependencies()
+    {
+        var sut = CreateSut();
+        var row = new TradeDocumentLineDefaultsRowRequestDto("line", Guid.NewGuid(), null);
+
+        var nullRows = () => sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(TradeCodes.SalesInvoice, null, null, null, null, null, null!),
+            CancellationToken.None);
+        var oversized = () => sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(
+                TradeCodes.SalesInvoice,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Enumerable.Repeat(row, TradeDocumentLineDefaultsService.MaxRowsPerRequest + 1).ToArray()),
+            CancellationToken.None);
+
+        (await nullRows.Should().ThrowAsync<NgbArgumentRequiredException>())
+            .Which.ParamName.Should().Be("Rows");
+        (await oversized.Should().ThrowAsync<NgbArgumentOutOfRangeException>())
+            .Which.ParamName.Should().Be("Rows");
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenDocumentTypeIsUnsupported_Throws()
     {
         var sut = CreateSut();
