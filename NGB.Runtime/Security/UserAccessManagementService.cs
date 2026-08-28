@@ -476,9 +476,17 @@ public sealed class UserAccessManagementService(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var usersByEmail = normalizedEmails.Length == 0
+            ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+            : await identityProvider.FindUsersByEmailsAsync(normalizedEmails, ct);
+
         foreach (var email in normalizedEmails)
         {
-            var byEmail = await identityProvider.FindUserByEmailAsync(email, ct);
+            usersByEmail.TryGetValue(email, out var byEmail);
+            byEmail ??= usersByEmail
+                .FirstOrDefault(pair => pair.Key.Equals(email, StringComparison.OrdinalIgnoreCase))
+                .Value;
+
             if (byEmail is not null)
                 return byEmail.UserId;
         }

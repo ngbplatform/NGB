@@ -286,10 +286,10 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
                 state.ApplyResult(records));
 
         var postedDocumentReader = new Mock<ICrmPostedDocumentReader>(MockBehavior.Strict);
-        postedDocumentReader.Setup(x => x.GetIdsPageAfterAsync(
-                It.IsAny<string>(), It.IsAny<Guid?>(),
+        postedDocumentReader.Setup(x => x.GetIdsMissingReferenceRegisterPostPageAfterAsync(
+                It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<Guid?>(),
                 It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string type, Guid? afterId, int limit, CancellationToken _) =>
+            .ReturnsAsync((string type, Guid _, Guid? _, Guid? afterId, int limit, CancellationToken _) =>
                 state.GetBackfillPage(type, afterId, limit));
 
         return new CrmDemoSeedService(

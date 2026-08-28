@@ -137,7 +137,8 @@ LIMIT @Limit;
         Guid groupDimensionId,
         string resourceColumnCode,
         CancellationToken ct = default)
-        => (await GetResourceNetsByDimensionPageAsync(
+    {
+        var page = await GetResourceNetsByDimensionPageAsync(
             registerId,
             fromInclusive,
             toInclusive,
@@ -145,8 +146,13 @@ LIMIT @Limit;
             groupDimensionId,
             resourceColumnCode,
             offset: 0,
-            limit: int.MaxValue,
-            ct)).Rows;
+            limit: PagingLimits.MaxMaterializedRows + 1,
+            ct);
+
+        EnsureLegacyMaterializationBound(page.Total);
+
+        return page.Rows;
+    }
 
     public async Task<OperationalRegisterDimensionResourceNetPage> GetResourceNetsByDimensionPageAsync(
         Guid registerId,
@@ -271,15 +277,32 @@ LIMIT @Limit;
         Guid groupDimensionId,
         string resourceColumnCode,
         CancellationToken ct = default)
-        => (await GetResourceBalancesByDimensionPageAsync(
+    {
+        var page = await GetResourceBalancesByDimensionPageAsync(
             registerId,
             asOfMonthInclusive,
             dimensions,
             groupDimensionId,
             resourceColumnCode,
             offset: 0,
-            limit: int.MaxValue,
-            ct)).Rows;
+            limit: PagingLimits.MaxMaterializedRows + 1,
+            ct);
+
+        EnsureLegacyMaterializationBound(page.Total);
+
+        return page.Rows;
+    }
+
+    private static void EnsureLegacyMaterializationBound(int total)
+    {
+        if (total <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new NgbArgumentOutOfRangeException(
+            "resultCount",
+            total,
+            $"The unpaged operational-register result exceeds {PagingLimits.MaxMaterializedRows:N0} rows. Use the paged API.");
+    }
 
     public async Task<OperationalRegisterDimensionResourceNetPage> GetResourceBalancesByDimensionPageAsync(
         Guid registerId,

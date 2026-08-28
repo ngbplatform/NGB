@@ -782,8 +782,13 @@ public sealed class UserAccessManagementServiceTests
             .Setup(x => x.GetUserByIdAsync("stale-kc-user", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IdentityProviderUserDto?)null);
         identityProvider
-            .Setup(x => x.FindUserByEmailAsync("clerk@example.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(idpUser);
+            .Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "clerk@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["clerk@example.com"] = idpUser
+            });
         identityProvider
             .Setup(x => x.UpdateUserAsync(
                 "actual-kc-user",
@@ -910,8 +915,10 @@ public sealed class UserAccessManagementServiceTests
             .Setup(x => x.GetUserByIdAsync("stale-kc-user", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IdentityProviderUserDto?)null);
         identityProvider
-            .Setup(x => x.FindUserByEmailAsync("clerk@example.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IdentityProviderUserDto?)null);
+            .Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "clerk@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase));
         identityProvider
             .Setup(x => x.CreateUserAsync(
                 It.Is<CreateIdentityProviderUserRequest>(request =>
@@ -1195,8 +1202,13 @@ public sealed class UserAccessManagementServiceTests
             .Setup(x => x.GetUserByIdAsync("stale-kc-user", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IdentityProviderUserDto?)null);
         identityProvider
-            .Setup(x => x.FindUserByEmailAsync("clerk@example.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(idpUser);
+            .Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "clerk@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["clerk@example.com"] = idpUser
+            });
         identityProvider
             .Setup(x => x.SetUserEnabledAsync("actual-kc-user", false, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);

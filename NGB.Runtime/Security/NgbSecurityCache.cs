@@ -7,6 +7,7 @@ namespace NGB.Runtime.Security;
 public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecurityCacheOptions> options)
 {
     private readonly ConcurrentDictionary<string, byte> trackedKeys = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Lazy<Task<object?>>> pendingPopulations = new(StringComparer.Ordinal);
     private readonly ConcurrentQueue<string> insertionOrder = new();
     private int trackedKeyCount;
 
@@ -91,22 +92,46 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
     {
         ct.ThrowIfCancellationRequested();
 
-        TrackAndTrim(key, options.CurrentValue.MaxEntries);
+        if (cache.TryGetValue<T>(key, out var cached))
+            return cached;
 
-        return await cache.GetOrCreateAsync(key, async entry =>
-        {
-            entry.AbsoluteExpirationRelativeToNow = ttl;
-            entry.Size = 1;
-            entry.RegisterPostEvictionCallback(
-                static (evictedKey, _, _, state) =>
+        var population = pendingPopulations.GetOrAdd(
+            key,
+            _ => new Lazy<Task<object?>>(
+                async () =>
                 {
-                    if (evictedKey is string stringKey && state is NgbSecurityCache securityCache)
-                        securityCache.TryRemoveTracked(stringKey);
-                },
-                this);
+                    var created = await factory(ct);
+                    TrackAndTrim(key, options.CurrentValue.MaxEntries);
+                    cache.Set(
+                        key,
+                        created,
+                        new MemoryCacheEntryOptions
+                        {
+                            AbsoluteExpirationRelativeToNow = ttl,
+                            Size = 1
+                        }.RegisterPostEvictionCallback(static (evictedKey, _, _, state) =>
+                            {
+                                if (evictedKey is string stringKey && state is NgbSecurityCache securityCache)
+                                    securityCache.TryRemoveTracked(stringKey);
+                            },
+                            this));
 
-            return await factory(ct);
-        });
+                    return created;
+                },
+                LazyThreadSafetyMode.ExecutionAndPublication));
+
+        try
+        {
+            var value = await population.Value.WaitAsync(ct);
+            return (T?)value;
+        }
+        finally
+        {
+            if (population.IsValueCreated && population.Value.IsCompleted)
+            {
+                pendingPopulations.TryRemove(new KeyValuePair<string, Lazy<Task<object?>>>(key, population));
+            }
+        }
     }
 
     private void TrackAndTrim(string key, int maxEntries)

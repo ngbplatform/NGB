@@ -7,4 +7,12 @@ public interface ICrmPostedDocumentReader
         Guid? afterId,
         int limit,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<Guid>> GetIdsMissingReferenceRegisterPostPageAfterAsync(
+        string documentType,
+        Guid primaryRegisterId,
+        Guid? createOpportunityRegisterId,
+        Guid? afterId,
+        int limit,
+        CancellationToken ct = default);
 }

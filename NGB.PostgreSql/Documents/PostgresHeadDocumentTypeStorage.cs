@@ -13,7 +13,7 @@ namespace NGB.PostgreSql.Documents;
 ///
 /// If a document has parts tables or custom semantics, implement <see cref="IDocumentTypeStorage"/> manually.
 /// </summary>
-public sealed class PostgresHeadDocumentTypeStorage : IDocumentTypeStorage
+public sealed class PostgresHeadDocumentTypeStorage : IDocumentTypeDraftBatchStorage
 {
     private static readonly Regex SafeParameter = new(
         "^[a-z_][a-z0-9_]*$",
@@ -37,6 +37,7 @@ public sealed class PostgresHeadDocumentTypeStorage : IDocumentTypeStorage
             throw new NgbArgumentRequiredException(nameof(columns));
 
         TypeCode = typeCode;
+        _headTable = headTable;
         _insertSql = BuildInsertSql(headTable, columns);
         _deleteSql = BuildDeleteSql(headTable);
     }
@@ -45,6 +46,7 @@ public sealed class PostgresHeadDocumentTypeStorage : IDocumentTypeStorage
 
     private readonly string _insertSql;
     private readonly string _deleteSql;
+    private readonly string _headTable;
 
     public async Task CreateDraftAsync(Guid documentId, CancellationToken ct = default)
     {
@@ -61,6 +63,44 @@ public sealed class PostgresHeadDocumentTypeStorage : IDocumentTypeStorage
         await _uow.Connection.ExecuteAsync(new CommandDefinition(
             _insertSql,
             p,
+            _uow.Transaction,
+            cancellationToken: ct));
+    }
+
+    public async Task CreateDraftsAsync(IReadOnlyList<Guid> documentIds, CancellationToken ct = default)
+    {
+        _uow.EnsureActiveTransaction();
+        ArgumentNullException.ThrowIfNull(documentIds);
+
+        if (documentIds.Count == 0)
+            return;
+
+        var parameters = new DynamicParameters();
+        var rows = new string[documentIds.Count];
+        for (var index = 0; index < documentIds.Count; index++)
+        {
+            var documentId = documentIds[index];
+            parameters.Add($"documentId_{index}", documentId);
+
+            var values = new List<string>(_columns.Count + 1) { $"@documentId_{index}" };
+            foreach (var column in _columns)
+            {
+                var parameterName = $"{column.ParameterName}_{index}";
+                parameters.Add(parameterName, column.ValueFactory(documentId));
+                values.Add($"@{parameterName}");
+            }
+
+            rows[index] = $"({string.Join(", ", values)})";
+        }
+
+        var columns = "document_id";
+        if (_columns.Count > 0)
+            columns += ", " + string.Join(", ", _columns.Select(static column => column.ColumnName));
+
+        var sql = $"INSERT INTO {_headTable}({columns}) VALUES {string.Join(", ", rows)} ON CONFLICT (document_id) DO NOTHING;";
+        await _uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            parameters,
             _uow.Transaction,
             cancellationToken: ct));
     }

@@ -78,28 +78,33 @@ public sealed class ReceivablesFifoApplyExecuteService(
             var creditSource = await ReceivableCreditSourceResolver.ReadRequiredAsync(readers, documents, request.CreditDocumentId, innerCt);
             var dateUtc = DateTime.SpecifyKind(creditSource.CreditDateUtc.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-            foreach (var s in plan.SuggestedApplies)
-            {
-                if (s.Amount <= 0m)
-                    continue;
+            var suggestions = plan.SuggestedApplies
+                .Where(static suggestion => suggestion.Amount > 0m)
+                .ToArray();
+            var applyIds = await ReceivablesApplyExecutionHelpers.CreateApplyDraftsAndUpsertHeadsAsync(
+                drafts,
+                relationships,
+                applyHeadWriter,
+                suggestions.Select(suggestion => new ReceivablesApplyExecutionHelpers.ApplyDraftRequest(
+                        PropertyManagementCodes.ReceivableApply,
+                        dateUtc,
+                        request.CreditDocumentId,
+                        suggestion.ChargeDocumentId,
+                        creditSource.CreditDateUtc,
+                        suggestion.Amount,
+                        Memo: null))
+                    .ToArray(),
+                innerCt);
 
-                var applyId = await ReceivablesApplyExecutionHelpers.CreateApplyDraftAndUpsertHeadAsync(
-                    drafts: drafts,
-                    relationships: relationships,
-                    headWriter: applyHeadWriter,
-                    typeCode: PropertyManagementCodes.ReceivableApply,
-                    dateUtc: dateUtc,
-                    creditDocumentId: request.CreditDocumentId,
-                    chargeDocumentId: s.ChargeDocumentId,
-                    appliedOnUtc: creditSource.CreditDateUtc,
-                    amount: s.Amount,
-                    memo: null,
-                    ct: innerCt);
+            for (var index = 0; index < suggestions.Length; index++)
+            {
+                var suggestion = suggestions[index];
+                var applyId = applyIds[index];
 
                 // Post inside the same outer transaction.
                 await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
 
-                executed.Add(new ReceivablesExecutedApplyDto(applyId, s.ChargeDocumentId, s.Amount));
+                executed.Add(new ReceivablesExecutedApplyDto(applyId, suggestion.ChargeDocumentId, suggestion.Amount));
             }
 
             if (executed.Count > 0)

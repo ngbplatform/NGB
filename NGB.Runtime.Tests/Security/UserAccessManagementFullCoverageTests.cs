@@ -256,8 +256,10 @@ public sealed class UserAccessManagementFullCoverageTests
         mismatch.Users.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(stale);
         mismatch.IdentityProvider.Setup(x => x.GetUserByIdAsync("stale", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IdentityProviderUserDto?)null);
-        mismatch.IdentityProvider.Setup(x => x.FindUserByEmailAsync("user@example.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IdentityProviderUserDto?)null);
+        mismatch.IdentityProvider.Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "user@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase));
         mismatch.IdentityProvider.Setup(x => x.CreateUserAsync(
                 It.Is<CreateIdentityProviderUserRequest>(request => request.Email == "user@example.com" && request.Enabled),
                 It.IsAny<CancellationToken>()))

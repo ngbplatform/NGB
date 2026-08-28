@@ -11,6 +11,8 @@ public static class PropertyManagementBackgroundJobsServiceCollectionExtensions
 {
     public static IServiceCollection AddPropertyManagementBackgroundJobsModule(this IServiceCollection services)
     {
+        services.TryAddScoped<RentChargeCandidateWorker>();
+        services.TryAddScoped<IRentChargeCandidateBatchExecutor, ScopedRentChargeCandidateBatchExecutor>();
         services.TryAddScoped<GenerateMonthlyRentChargesService>();
         services.TryAddTransient<GenerateMonthlyRentChargesJob>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IBackgroundJobCatalogContributor, PropertyManagementBackgroundJobCatalogContributor>());

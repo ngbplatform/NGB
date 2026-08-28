@@ -18,3 +18,16 @@ public interface IReceivableApplyHeadWriter
         string? memo,
         CancellationToken ct = default);
 }
+
+public interface IReceivableApplyHeadBatchWriter : IReceivableApplyHeadWriter
+{
+    Task UpsertManyAsync(IReadOnlyList<ReceivableApplyHeadWrite> items, CancellationToken ct = default);
+}
+
+public sealed record ReceivableApplyHeadWrite(
+    Guid DocumentId,
+    Guid CreditDocumentId,
+    Guid ChargeDocumentId,
+    DateOnly AppliedOnUtc,
+    decimal Amount,
+    string? Memo);

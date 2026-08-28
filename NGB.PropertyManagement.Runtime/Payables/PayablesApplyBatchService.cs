@@ -85,37 +85,91 @@ public sealed class PayablesApplyBatchService(
                     .ToArray(),
                 innerCt);
 
-            foreach (var a in parsed)
+            var applyIds = new Guid[parsed.Count];
+            var newDraftIndexes = Enumerable.Range(0, parsed.Count)
+                .Where(index => parsed[index].ApplyId is null)
+                .ToArray();
+
+            if (newDraftIndexes.Length > 0 && drafts is IDocumentDraftBatchService batchDrafts)
             {
-                var createdDraft = a.ApplyId is null;
-                var applyId = a.ApplyId ?? await drafts.CreateDraftAsync(
-                    PropertyManagementCodes.PayableApply,
-                    number: null,
-                    dateUtc: new DateTime(a.AppliedOnUtc.Year, a.AppliedOnUtc.Month, a.AppliedOnUtc.Day, 0, 0, 0, DateTimeKind.Utc),
+                var createdIds = await batchDrafts.CreateDraftsAsync(
+                    newDraftIndexes.Select(index => new DocumentDraftCreateRequest(
+                            PropertyManagementCodes.PayableApply,
+                            Number: null,
+                            ToDocumentDateUtc(parsed[index].AppliedOnUtc)))
+                        .ToArray(),
                     manageTransaction: false,
                     ct: innerCt);
 
-                if (!createdDraft)
-                    EnsureExistingApplyDraft(applyId, existingApplyDocuments);
+                for (var index = 0; index < newDraftIndexes.Length; index++)
+                {
+                    applyIds[newDraftIndexes[index]] = createdIds[index];
+                }
+            }
 
-                await applyHeadWriter.UpsertAsync(
-                    applyId,
-                    a.CreditDocumentId,
-                    a.ChargeDocumentId,
-                    a.AppliedOnUtc,
-                    a.Amount,
-                    a.Memo,
-                    innerCt);
-                
+            for (var index = 0; index < parsed.Count; index++)
+            {
+                var item = parsed[index];
+                if (item.ApplyId is { } existingId)
+                {
+                    EnsureExistingApplyDraft(existingId, existingApplyDocuments);
+                    applyIds[index] = existingId;
+                    continue;
+                }
+
+                if (applyIds[index] == Guid.Empty)
+                {
+                    applyIds[index] = await drafts.CreateDraftAsync(
+                        PropertyManagementCodes.PayableApply,
+                        number: null,
+                        dateUtc: ToDocumentDateUtc(item.AppliedOnUtc),
+                        manageTransaction: false,
+                        ct: innerCt);
+                }
+            }
+
+            var headWrites = parsed.Select((item, index) => new PayableApplyHeadWrite(
+                    applyIds[index],
+                    item.CreditDocumentId,
+                    item.ChargeDocumentId,
+                    item.AppliedOnUtc,
+                    item.Amount,
+                    item.Memo))
+                .ToArray();
+
+            if (applyHeadWriter is IPayableApplyHeadBatchWriter batchHeadWriter)
+            {
+                await batchHeadWriter.UpsertManyAsync(headWrites, innerCt);
+            }
+            else
+            {
+                foreach (var head in headWrites)
+                {
+                    await applyHeadWriter.UpsertAsync(
+                        head.DocumentId,
+                        head.CreditDocumentId,
+                        head.ChargeDocumentId,
+                        head.AppliedOnUtc,
+                        head.Amount,
+                        head.Memo,
+                        innerCt);
+                }
+            }
+
+            for (var index = 0; index < parsed.Count; index++)
+            {
+                var item = parsed[index];
+                var applyId = applyIds[index];
+
                 await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
 
                 executed.Add(new PayablesApplyBatchExecutedItem(
                     applyId,
-                    a.CreditDocumentId,
-                    a.ChargeDocumentId,
-                    a.AppliedOnUtc,
-                    a.Amount,
-                    createdDraft));
+                    item.CreditDocumentId,
+                    item.ChargeDocumentId,
+                    item.AppliedOnUtc,
+                    item.Amount,
+                    item.ApplyId is null));
             }
         }, ct);
 
@@ -139,6 +193,9 @@ public sealed class PayablesApplyBatchService(
 
         return new ApplyFields(creditDocumentId, chargeDocumentId, appliedOnUtc, amount, memo);
     }
+
+    private static DateTime ToDocumentDateUtc(DateOnly date)
+        => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
     private static Guid ReadGuid(IReadOnlyDictionary<string, JsonElement> fields, string name)
     {

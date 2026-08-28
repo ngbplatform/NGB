@@ -92,6 +92,70 @@ public sealed class NgbSecurityCacheTests
         reloaded.Should().Be(999);
     }
 
+    [Fact]
+    public async Task Concurrent_cold_reads_share_one_population_and_reuse_the_cached_value()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+
+        async Task<int> Load(CancellationToken ct)
+        {
+            Interlocked.Increment(ref calls);
+            await release.Task.WaitAsync(ct);
+            return 42;
+        }
+
+        var reads = Enumerable.Range(0, 24)
+            .Select(_ => cache.GetOrCreateMainMenuAsync(snapshot, Load, CancellationToken.None))
+            .ToArray();
+        await Task.Yield();
+        release.SetResult();
+
+        var values = await Task.WhenAll(reads);
+        var cached = await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            _ => Task.FromResult(99),
+            CancellationToken.None);
+
+        values.Should().OnlyContain(value => value == 42);
+        cached.Should().Be(42);
+        calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Failed_population_is_not_cached_and_a_later_request_can_retry()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var calls = 0;
+
+        Func<Task> failed = async () => await cache.GetOrCreateCatalogMetadataAsync<int>(
+            snapshot,
+            _ =>
+            {
+                Interlocked.Increment(ref calls);
+                return Task.FromException<int>(new InvalidOperationException("failed"));
+            },
+            CancellationToken.None);
+
+        await failed.Should().ThrowAsync<InvalidOperationException>();
+        var retried = await cache.GetOrCreateCatalogMetadataAsync(
+            snapshot,
+            _ => Task.FromResult(17),
+            CancellationToken.None);
+
+        retried.Should().Be(17);
+        calls.Should().Be(1);
+    }
+
     private static PermissionSnapshot CreateSnapshot(Guid userId, long accessVersion)
         => new(
             userId,

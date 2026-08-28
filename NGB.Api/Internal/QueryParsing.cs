@@ -13,6 +13,7 @@ internal static class QueryParsing
             ? PagingLimits.DefaultPageSize
             : Math.Min(requestedLimit, PagingLimits.MaxPageSize);
         var search = query.TryGetValue("search", out var s) ? s.ToString() : null;
+        var cursor = query.TryGetValue("cursor", out var c) ? c.ToString() : null;
 
         var filters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var kv in query)
@@ -20,7 +21,8 @@ internal static class QueryParsing
             var key = kv.Key;
             if (string.Equals(key, "offset", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(key, "limit", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(key, "search", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(key, "search", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(key, "cursor", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -28,7 +30,7 @@ internal static class QueryParsing
             filters[key] = kv.Value.ToString();
         }
 
-        return new PageRequestDto(offset, limit, search, filters.Count == 0 ? null : filters);
+        return new PageRequestDto(offset, limit, search, filters.Count == 0 ? null : filters, cursor);
     }
 
     private static int? TryGetInt(IQueryCollection query, string key)

@@ -69,3 +69,9 @@ public interface IDocumentRepository
     
     Task<bool> TryDeleteAsync(Guid documentId, CancellationToken ct = default);
 }
+
+/// <summary>Provider capability for inserting validated Draft registry rows in one command.</summary>
+public interface IDocumentDraftBatchRepository : IDocumentRepository
+{
+    Task CreateDraftsAsync(IReadOnlyList<DocumentRecord> drafts, CancellationToken ct = default);
+}

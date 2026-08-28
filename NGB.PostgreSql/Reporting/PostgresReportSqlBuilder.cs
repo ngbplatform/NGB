@@ -10,6 +10,7 @@ namespace NGB.PostgreSql.Reporting;
 
 public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datasets)
 {
+    internal const int MaxCursorlessOffset = 10_000;
     private const string DisplayFieldSuffix = "_display";
     private const string IdFieldSuffix = "_id";
 
@@ -20,6 +21,8 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
+
+        ValidatePaging(request.Paging);
 
         var dataset = _datasets.GetDataset(request.DatasetCodeNorm);
         var selectSql = new List<string>();
@@ -136,6 +139,27 @@ ORDER BY {string.Join(", ", orderBySql)}
             IsAggregated: request.Measures.Count > 0,
             Offset: request.Paging.DisablePaging ? 0 : PagingLimits.BoundOffset(request.Paging.Offset),
             Limit: request.Paging.DisablePaging ? 0 : request.Paging.Limit);
+    }
+
+    private static void ValidatePaging(PostgresReportPaging paging)
+    {
+        if (paging.DisablePaging)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(paging.Cursor))
+        {
+            throw new NgbArgumentInvalidException(
+                "cursor",
+                "This composable dataset does not define a stable keyset cursor. Use a canonical cursor-enabled report or omit cursor paging.");
+        }
+
+        if (paging.Offset > MaxCursorlessOffset)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                "offset",
+                paging.Offset,
+                $"Composable report offset must be between 0 and {MaxCursorlessOffset}. Narrow the filters or use a canonical cursor-enabled report for deeper navigation.");
+        }
     }
 
     private static void AppendInteractiveSupportFields(

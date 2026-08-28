@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.IntegrationEvents;
+using NGB.Core.WorkCenter;
+using NGB.Definitions.WorkCenter;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.Security;
@@ -130,6 +132,88 @@ public sealed class OutboxProcessorTests
             It.IsAny<long>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
         outbox.VerifyAll();
         uow.CommitCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Recipient_metadata_is_cached_within_a_batch_and_reset_between_batches()
+    {
+        var uow = new RecordingUnitOfWork();
+        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
+        var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
+        var preferences = new Mock<INotificationPreferenceRepository>(MockBehavior.Strict);
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        var roles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
+        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        var recipientUserId = Guid.NewGuid();
+        var first = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid());
+        var second = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid());
+
+        outbox.Setup(repository => repository.ClaimBatchAsync(
+                "work-center", 2, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([first, second]);
+        foreach (var item in new[] { first, second })
+        {
+            outbox.Setup(repository => repository.MarkCompletedAsync(
+                    item.Event.EventId, "work-center", 1, Now, It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+        }
+
+        users.Setup(repository => repository.GetByIdsAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { recipientUserId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, NGB.Core.AuditLog.PlatformUser>
+            {
+                [recipientUserId] = new(
+                    recipientUserId,
+                    $"subject-{recipientUserId:N}",
+                    Email: null,
+                    DisplayName: null,
+                    IsActive: true,
+                    Now,
+                    Now)
+            });
+        preferences.Setup(repository => repository.GetForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { recipientUserId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var source = new Mock<IWorkCenterPreferenceDefinitionSource>(MockBehavior.Strict);
+        source.Setup(candidate => candidate.GetDefinitions())
+            .Returns([
+                new WorkCenterPreferenceDefinition(
+                    "test.notification",
+                    WorkCenterPreferenceKind.Notification,
+                    "Test notification",
+                    "Tests",
+                    DefaultEnabled: true,
+                    UserCanDisable: true,
+                    NotificationSeverity.Information,
+                    new HashSet<NotificationChannel> { NotificationChannel.InApp },
+                    Retention: null)
+            ]);
+        var resolver = new WorkCenterPreferenceRecipientResolver(
+            preferences.Object,
+            users.Object,
+            roles.Object,
+            userRoles.Object,
+            new WorkCenterPreferenceDefinitionRegistry([source.Object]));
+        var processor = Processor(
+            uow,
+            outbox,
+            [new ResolvingPolicy(resolver, recipientUserId)],
+            realtime.Object,
+            resolver);
+
+        (await processor.ProcessBatchAsync(2, CancellationToken.None)).Should().Be(2);
+        (await processor.ProcessBatchAsync(2, CancellationToken.None)).Should().Be(2);
+
+        users.Verify(repository => repository.GetByIdsAsync(
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        preferences.Verify(repository => repository.GetForUsersAsync(
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        outbox.VerifyAll();
+        source.VerifyAll();
+        realtime.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -382,13 +466,14 @@ public sealed class OutboxProcessorTests
         RecordingUnitOfWork uow,
         Mock<IOutboxEventRepository> outbox,
         IEnumerable<IDocumentActionCompletedWorkCenterPolicy> policies,
-        IWorkCenterRealtimeNotifier realtime)
+        IWorkCenterRealtimeNotifier realtime,
+        WorkCenterPreferenceRecipientResolver? recipientResolver = null)
         => new(
             uow,
             outbox.Object,
             policies,
             realtime,
-            RecipientResolver(),
+            recipientResolver ?? RecipientResolver(),
             new FixedTimeProvider(Now),
             NullLogger<OutboxProcessor>.Instance);
 
@@ -510,6 +595,24 @@ public sealed class OutboxProcessorTests
     private sealed class FixedTimeProvider(DateTime now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => new(now);
+    }
+
+    private sealed class ResolvingPolicy(
+        WorkCenterPreferenceRecipientResolver resolver,
+        Guid recipientUserId)
+        : IDocumentActionCompletedWorkCenterPolicy
+    {
+        public async Task<IReadOnlyList<Guid>> HandleAsync(
+            DocumentActionCompletedV1 completed,
+            CancellationToken ct)
+        {
+            await resolver.ResolveAsync(
+                "test.notification",
+                WorkCenterPreferenceKind.Notification,
+                [recipientUserId],
+                ct);
+            return [];
+        }
     }
 
     private sealed class RecordingUnitOfWork : IUnitOfWork

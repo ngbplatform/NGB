@@ -43,3 +43,18 @@ public interface IDocumentDraftService
     /// </summary>
     Task<bool> DeleteDraftAsync(Guid documentId, bool manageTransaction = true, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Optional high-throughput capability for creating draft batches while preserving the same
+/// validation, typed-storage, numbering and audit semantics as single-draft creation.
+/// </summary>
+public interface IDocumentDraftBatchService : IDocumentDraftService
+{
+    Task<IReadOnlyList<Guid>> CreateDraftsAsync(
+        IReadOnlyList<DocumentDraftCreateRequest> requests,
+        bool manageTransaction = true,
+        bool suppressAudit = false,
+        CancellationToken ct = default);
+}
+
+public sealed record DocumentDraftCreateRequest(string TypeCode, string? Number, DateTime DateUtc);

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
@@ -28,7 +29,9 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
         var warehouseIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "warehouse_id");
         var policy = await policyReader.GetRequiredAsync(ct);
         var offset = Math.Max(0, request.Offset);
-        var limit = request.DisablePaging ? int.MaxValue : (request.Limit <= 0 ? 100 : request.Limit);
+        var limit = request.DisablePaging
+            ? PagingLimits.MaxMaterializedRows + 1
+            : request.Limit <= 0 ? 100 : request.Limit;
         var page = await balanceReader.GetPageAsync(
             policy.InventoryMovementsRegisterId,
             asOf,

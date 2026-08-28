@@ -26,6 +26,7 @@ using NGB.Runtime.Ui;
 using NGB.Runtime.Validation;
 using NGB.Runtime.AuditLog;
 using NGB.Runtime.UnitOfWork;
+using NGB.Runtime.Common;
 using NGB.Tools;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
@@ -87,28 +88,60 @@ public sealed class DocumentService(
         var (softDeleteMode, scalarFilters) = ExtractSoftDeleteFilter(request.Filters);
         var query = BuildQuery(model, request.Search, scalarFilters) with { SoftDeleteFilterMode = softDeleteMode };
 
-        DocumentHeadQueryPage page;
-        if (reader is IDocumentCombinedPageReader combinedPageReader)
+        IReadOnlyList<DocumentHeadRow> rows;
+        long? total;
+        var hasMore = false;
+        string? nextCursor = null;
+
+        if (request.Offset == 0 && reader is IDocumentSeekPageReader seekPageReader)
         {
-            page = await combinedPageReader.GetPageWithTotalAsync(
-                model.Head, query, request.Offset, request.Limit, ct);
+            var cursor = string.IsNullOrWhiteSpace(request.Cursor)
+                ? null
+                : ListPageCursorCodec.Decode(request.Cursor);
+
+            var page = await seekPageReader.GetSeekPageAsync(
+                model.Head,
+                query,
+                cursor?.AfterDisplay,
+                cursor?.AfterId,
+                request.Limit,
+                includeTotal: cursor is null,
+                ct);
+
+            rows = page.Rows;
+            total = page.Total;
+            hasMore = page.HasMore;
+
+            if (hasMore && page.NextAfterId is { } nextId)
+                nextCursor = ListPageCursorCodec.Encode(page.NextAfterDisplay, nextId);
+        }
+        else if (reader is IDocumentCombinedPageReader combinedPageReader)
+        {
+            var page = await combinedPageReader.GetPageWithTotalAsync(model.Head, query, request.Offset, request.Limit, ct);
+            rows = page.Rows;
+            total = page.Total;
         }
         else
         {
             var fallbackTotal = await reader.CountAsync(model.Head, query, ct);
             var fallbackRows = await reader.GetPageAsync(
                 model.Head, query, request.Offset, request.Limit, ct);
-            page = new DocumentHeadQueryPage(fallbackRows, fallbackTotal);
+            rows = fallbackRows;
+            total = fallbackTotal;
         }
 
-        var total = page.Total;
-        var rows = page.Rows;
         IReadOnlyList<DocumentDto> items = rows.Select(r => ToDto(model, r, parts: null)).ToList();
 
         if (items.Count > 0)
             items = await refEnricher.EnrichDocumentItemsAsync(model.Head, model.Meta.TypeCode, items, ct);
 
-        return new PageResponseDto<DocumentDto>(items, request.Offset, request.Limit, (int)total);
+        return new PageResponseDto<DocumentDto>(
+            items,
+            request.Offset,
+            request.Limit,
+            total is null ? null : checked((int)total.Value),
+            hasMore,
+            nextCursor);
     }
 
     public async Task<DocumentDto> GetByIdAsync(string documentType, Guid id, CancellationToken ct)
@@ -187,12 +220,20 @@ public sealed class DocumentService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
+        if (!string.IsNullOrWhiteSpace(request.Cursor) && request.Offset != 0)
+            throw new NgbArgumentInvalidException("cursor", "Cursor paging requires offset=0.");
+
         var offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset);
         var limit = request.Limit <= 0
             ? PagingLimits.DefaultPageSize
             : Math.Min(request.Limit, PagingLimits.MaxPageSize);
 
-        return request with { Offset = offset, Limit = limit };
+        return request with
+        {
+            Offset = offset,
+            Limit = limit,
+            Cursor = string.IsNullOrWhiteSpace(request.Cursor) ? null : request.Cursor.Trim()
+        };
     }
 
     private static void EnsureLookupTypeLimit(int count)

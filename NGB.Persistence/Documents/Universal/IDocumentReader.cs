@@ -46,4 +46,23 @@ public interface IDocumentCombinedPageReader : IDocumentReader
         CancellationToken ct = default);
 }
 
+public interface IDocumentSeekPageReader : IDocumentCombinedPageReader
+{
+    Task<DocumentHeadSeekPage> GetSeekPageAsync(
+        DocumentHeadDescriptor head,
+        DocumentQuery query,
+        string? afterDisplay,
+        Guid? afterId,
+        int limit,
+        bool includeTotal,
+        CancellationToken ct = default);
+}
+
 public sealed record DocumentHeadQueryPage(IReadOnlyList<DocumentHeadRow> Rows, long Total);
+
+public sealed record DocumentHeadSeekPage(
+    IReadOnlyList<DocumentHeadRow> Rows,
+    long? Total,
+    bool HasMore,
+    string? NextAfterDisplay,
+    Guid? NextAfterId);

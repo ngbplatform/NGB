@@ -64,6 +64,25 @@ public interface ICatalogCombinedPageReader : ICatalogReader
         CancellationToken ct = default);
 }
 
+public interface ICatalogSeekPageReader : ICatalogCombinedPageReader
+{
+    Task<CatalogHeadSeekPage> GetSeekPageAsync(
+        CatalogHeadDescriptor head,
+        CatalogQuery query,
+        string? afterDisplay,
+        Guid? afterId,
+        int limit,
+        bool includeTotal,
+        CancellationToken ct = default);
+}
+
 public sealed record CatalogHeadQueryPage(
     IReadOnlyList<CatalogHeadRow> Rows,
     long Total);
+
+public sealed record CatalogHeadSeekPage(
+    IReadOnlyList<CatalogHeadRow> Rows,
+    long? Total,
+    bool HasMore,
+    string? NextAfterDisplay,
+    Guid? NextAfterId);

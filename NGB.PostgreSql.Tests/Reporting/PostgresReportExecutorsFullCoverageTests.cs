@@ -70,7 +70,7 @@ public sealed class PostgresReportExecutorsFullCoverageTests
                 new("as_of_utc", "2026-08-15"),
                 new("tenant", "north")
             ],
-            new(0, 1, "cursor"));
+            new(0, 1));
 
         page.Columns.Should().HaveCount(4);
         page.Columns.Select(x => x.Code).Should().Equal("period_out", "category_out", "name_out", "amount_out");

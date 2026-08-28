@@ -76,16 +76,116 @@ internal static class PayablesApplyExecutionHelpers
         string? memo,
         CancellationToken ct)
     {
-        var applyId = await drafts.CreateDraftAsync(
-            PropertyManagementCodes.PayableApply,
-            number: null,
-            dateUtc,
-            manageTransaction: false,
-            ct: ct);
+        var ids = await CreateApplyDraftsAndUpsertHeadsAsync(
+            drafts,
+            relationships,
+            headWriter,
+            [new ApplyDraftRequest(dateUtc, creditDocumentId, chargeDocumentId, appliedOnUtc, amount, memo)],
+            ct);
 
-        await headWriter.UpsertAsync(applyId, creditDocumentId, chargeDocumentId, appliedOnUtc, amount, memo, ct);
-        await EnsureApplyRelationshipsAsync(relationships, applyId, creditDocumentId, chargeDocumentId, ct);
-
-        return applyId;
+        return ids[0];
     }
+
+    public static async Task<IReadOnlyList<Guid>> CreateApplyDraftsAndUpsertHeadsAsync(
+        IDocumentDraftService drafts,
+        IDocumentRelationshipService relationships,
+        IPayableApplyHeadWriter headWriter,
+        IReadOnlyList<ApplyDraftRequest> requests,
+        CancellationToken ct)
+    {
+        if (requests.Count == 0)
+            return [];
+
+        IReadOnlyList<Guid> applyIds;
+        if (drafts is IDocumentDraftBatchService batchDrafts)
+        {
+            applyIds = await batchDrafts.CreateDraftsAsync(
+                requests.Select(static request => new DocumentDraftCreateRequest(
+                        PropertyManagementCodes.PayableApply,
+                        Number: null,
+                        request.DateUtc))
+                    .ToArray(),
+                manageTransaction: false,
+                ct: ct);
+        }
+        else
+        {
+            var created = new Guid[requests.Count];
+            for (var index = 0; index < requests.Count; index++)
+            {
+                created[index] = await drafts.CreateDraftAsync(
+                    PropertyManagementCodes.PayableApply,
+                    number: null,
+                    requests[index].DateUtc,
+                    manageTransaction: false,
+                    ct: ct);
+            }
+
+            applyIds = created;
+        }
+
+        var headWrites = requests.Select((request, index) => new PayableApplyHeadWrite(
+                applyIds[index],
+                request.CreditDocumentId,
+                request.ChargeDocumentId,
+                request.AppliedOnUtc,
+                request.Amount,
+                request.Memo))
+            .ToArray();
+
+        if (headWriter is IPayableApplyHeadBatchWriter batchHeadWriter)
+        {
+            await batchHeadWriter.UpsertManyAsync(headWrites, ct);
+        }
+        else
+        {
+            foreach (var head in headWrites)
+            {
+                await headWriter.UpsertAsync(
+                    head.DocumentId,
+                    head.CreditDocumentId,
+                    head.ChargeDocumentId,
+                    head.AppliedOnUtc,
+                    head.Amount,
+                    head.Memo,
+                    ct);
+            }
+        }
+
+        if (relationships is IDocumentRelationshipBatchService batchRelationships)
+        {
+            await batchRelationships.CreateManyAsync(
+                requests.SelectMany((request, index) => new[]
+                    {
+                        new DocumentRelationshipCreateRequest(applyIds[index], request.CreditDocumentId, BasedOnRelationshipCode),
+                        new DocumentRelationshipCreateRequest(applyIds[index], request.ChargeDocumentId, BasedOnRelationshipCode)
+                    })
+                    .ToArray(),
+                manageTransaction: false,
+                ct: ct);
+        }
+        else
+        {
+            for (var index = 0; index < requests.Count; index++)
+            {
+                var request = requests[index];
+                await EnsureApplyRelationshipsAsync(
+                    relationships,
+                    applyIds[index],
+                    request.CreditDocumentId,
+                    request.ChargeDocumentId,
+                    ct);
+            }
+        }
+
+        return applyIds;
+    }
+
+    public sealed record ApplyDraftRequest(
+        DateTime DateUtc,
+        Guid CreditDocumentId,
+        Guid ChargeDocumentId,
+        DateOnly AppliedOnUtc,
+        decimal Amount,
+        string? Memo);
 }

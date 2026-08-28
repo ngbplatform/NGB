@@ -117,10 +117,11 @@ CREATE TABLE IF NOT EXISTS {table}(
 
         // Flip has_movements inside the same transaction as the append.
         // This is used by DB-level guards (e.g. resources immutability) and must be rollback-safe.
-        await uow.Connection.ExecuteAsync(
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
             "UPDATE operational_registers SET has_movements = TRUE, updated_at_utc = NOW() WHERE register_id = @RegisterId AND has_movements = FALSE;",
             new { RegisterId = registerId },
-            transaction: uow.Transaction);
+            transaction: uow.Transaction,
+            cancellationToken: ct));
 
         // Defensive: per-register tables compute period_month from occurred_at_utc (UTC).
         // Enforce UTC timestamps at the boundary to prevent subtle drift when callers pass Local/Unspecified DateTime.
@@ -167,7 +168,11 @@ FROM UNNEST({string.Join(", ", unnestArgs)}) AS x({string.Join(", ", unnestCols)
         foreach (var (paramName, values) in resourceArrays)
             parameters.Add(paramName, values);
 
-        await uow.Connection.ExecuteAsync(sql, parameters, transaction: uow.Transaction);
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            parameters,
+            transaction: uow.Transaction,
+            cancellationToken: ct));
     }
 
     public async Task AppendStornoByDocumentAsync(Guid registerId, Guid documentId, CancellationToken ct = default)
@@ -203,12 +208,17 @@ WHERE document_id = @DocumentId;
 """;
 
         // Storno append also counts as a movement (if someone somehow calls it first).
-        await uow.Connection.ExecuteAsync(
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
             "UPDATE operational_registers SET has_movements = TRUE, updated_at_utc = NOW() WHERE register_id = @RegisterId AND has_movements = FALSE;",
             new { RegisterId = registerId },
-            transaction: uow.Transaction);
+            transaction: uow.Transaction,
+            cancellationToken: ct));
 
-        await uow.Connection.ExecuteAsync(sql, new { DocumentId = documentId }, transaction: uow.Transaction);
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new { DocumentId = documentId },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
     }
 
     internal static List<(string ParamName, decimal[] Values)> BuildResourceArrays(

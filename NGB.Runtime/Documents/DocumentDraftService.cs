@@ -10,6 +10,7 @@ using NGB.Runtime.Documents.Validation;
 using NGB.Runtime.Documents.Numbering;
 using NGB.Runtime.Documents.Policies;
 using NGB.Runtime.Documents.Workflow;
+using NGB.Runtime.Locks;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
@@ -33,8 +34,9 @@ internal sealed class DocumentDraftService(
     IDocumentTypeRegistry documentTypes,
     IAuditLogService audit,
     TimeProvider timeProvider)
-    : IDocumentDraftService
+    : IDocumentDraftBatchService
 {
+    private const int MaxCreateBatchSize = 1_000;
     private const string OpUpdateDraft = "DocumentDraft.UpdateDraft";
     private const string OpDeleteDraft = "DocumentDraft.DeleteDraft";
 
@@ -67,6 +69,135 @@ internal sealed class DocumentDraftService(
                 var now = timeProvider.GetUtcNowDateTime();
                 await CreateInCurrentTransactionAsync(id, typeCode, normalizedNumber, dateUtc, now, suppressAudit, innerCt);
                 return id;
+            },
+            ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> CreateDraftsAsync(
+        IReadOnlyList<DocumentDraftCreateRequest> requests,
+        bool manageTransaction = true,
+        bool suppressAudit = false,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+
+        if (requests.Count == 0)
+            return [];
+
+        if (requests.Count > MaxCreateBatchSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(requests),
+                requests.Count,
+                $"At most {MaxCreateBatchSize} drafts are allowed per batch.");
+        }
+
+        var prepared = new PreparedDraft[requests.Count];
+        for (var index = 0; index < requests.Count; index++)
+        {
+            var request = requests[index]
+                ?? throw new NgbArgumentInvalidException(nameof(requests), "Draft batch must not contain null items.");
+
+            if (string.IsNullOrWhiteSpace(request.TypeCode))
+                throw new NgbArgumentRequiredException(nameof(requests));
+
+            request.DateUtc.EnsureUtc(nameof(requests));
+            if (documentTypes.TryGet(request.TypeCode) is null)
+                throw new DocumentTypeNotFoundException(request.TypeCode);
+
+            prepared[index] = new PreparedDraft(
+                Guid.CreateVersion7(),
+                request.TypeCode,
+                string.IsNullOrWhiteSpace(request.Number) ? null : request.Number.Trim(),
+                request.DateUtc);
+        }
+
+        return await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
+            {
+                // Number-on-create policies may update typed storage and must retain their exact
+                // single-document orchestration. Other drafts take the set-based provider path.
+                if (prepared.Any(item => numberingPolicies.Resolve(item.TypeCode)?.EnsureNumberOnCreateDraft == true))
+                {
+                    var fallbackIds = new Guid[prepared.Length];
+                    for (var index = 0; index < prepared.Length; index++)
+                    {
+                        var item = prepared[index];
+                        await CreateInCurrentTransactionAsync(
+                            item.Id,
+                            item.TypeCode,
+                            item.Number,
+                            item.DateUtc,
+                            timeProvider.GetUtcNowDateTime(),
+                            suppressAudit,
+                            innerCt);
+                        fallbackIds[index] = item.Id;
+                    }
+
+                    return (IReadOnlyList<Guid>)fallbackIds;
+                }
+
+                var now = timeProvider.GetUtcNowDateTime();
+                var records = prepared
+                    .Select(item => new DocumentRecord
+                    {
+                        Id = item.Id,
+                        TypeCode = item.TypeCode,
+                        Number = item.Number,
+                        DateUtc = item.DateUtc,
+                        Status = DocumentStatus.Draft,
+                        CreatedAtUtc = now,
+                        UpdatedAtUtc = now
+                    })
+                    .ToArray();
+
+                foreach (var record in records)
+                {
+                    foreach (var validator in validators.ResolveDraftValidators(record.TypeCode))
+                    {
+                        await validator.ValidateCreateDraftAsync(record, innerCt);
+                    }
+                }
+
+                await advisoryLocks.LockDocumentsDeterministicallyAsync(
+                    records.Select(static record => record.Id).ToArray(),
+                    innerCt);
+
+                if (documents is IDocumentDraftBatchRepository batchRepository)
+                    await batchRepository.CreateDraftsAsync(records, innerCt);
+                else
+                    foreach (var record in records)
+                    {
+                        await documents.CreateAsync(record, innerCt);
+                    }
+
+                foreach (var group in records.GroupBy(static record => record.TypeCode, StringComparer.OrdinalIgnoreCase))
+                {
+                    await writeEngine.EnsureDraftStorageCreatedManyAsync(
+                        group.Select(static record => record.Id).ToArray(),
+                        group.Key,
+                        acquireLocks: false,
+                        innerCt);
+                }
+
+                if (!suppressAudit)
+                {
+                    await audit.WriteBatchAsync(
+                        records.Select(record => new AuditLogWriteRequest(
+                            AuditEntityKind.Document,
+                            record.Id,
+                            AuditActionCodes.DocumentCreateDraft,
+                            BuildCreateDraftChanges(record.TypeCode, record.Number, record.DateUtc),
+                            new
+                            {
+                                typeCode = record.TypeCode,
+                                number = record.Number,
+                                dateUtc = record.DateUtc
+                            }))
+                            .ToArray(),
+                        innerCt);
+                }
+
+                return (IReadOnlyList<Guid>)records.Select(static record => record.Id).ToArray();
             },
             ct);
     }
@@ -316,4 +447,24 @@ internal sealed class DocumentDraftService(
                 ct: ct);
         }
     }
+
+    private static IReadOnlyList<AuditFieldChange> BuildCreateDraftChanges(
+        string typeCode,
+        string? number,
+        DateTime dateUtc)
+    {
+        var changes = new List<AuditFieldChange>
+        {
+            AuditLogService.Change("type_code", null, typeCode),
+            AuditLogService.Change("date_utc", null, dateUtc),
+            AuditLogService.Change("status", null, DocumentStatus.Draft)
+        };
+
+        if (!string.IsNullOrWhiteSpace(number))
+            changes.Add(AuditLogService.Change("number", null, number));
+
+        return changes;
+    }
+
+    private sealed record PreparedDraft(Guid Id, string TypeCode, string? Number, DateTime DateUtc);
 }

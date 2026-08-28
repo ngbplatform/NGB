@@ -45,7 +45,7 @@ public sealed class PostgresReportSqlBuilderFullCoverageTests
     }
 
     [Fact]
-    public void Build_bounds_legacy_offset_before_it_reaches_postgresql()
+    public void Build_rejects_deep_cursorless_offset_before_it_reaches_postgresql()
     {
         var sut = Builder();
         var request = Request(details:
@@ -56,10 +56,31 @@ public sealed class PostgresReportSqlBuilderFullCoverageTests
             Paging = new PostgresReportPaging(int.MaxValue, 20)
         };
 
-        var statement = sut.Build(request);
+        var act = () => sut.Build(request);
 
-        statement.Offset.Should().Be(PagingLimits.MaxOffset);
-        statement.Parameters.Get<int>("offset").Should().Be(PagingLimits.MaxOffset);
+        act.Should().Throw<NgbArgumentOutOfRangeException>()
+            .Which.ActualValue.Should().Be(int.MaxValue);
+    }
+
+    [Fact]
+    public void Build_rejects_unsupported_cursor_and_allows_unpaged_export_to_ignore_interactive_paging()
+    {
+        var sut = Builder();
+        var details = new[] { new PostgresReportFieldSelection("name", "name", "Name", "string") };
+
+        var cursorRequest = Request(details: details) with
+        {
+            Paging = new PostgresReportPaging(0, 20, Cursor: "opaque")
+        };
+        var cursorAct = () => sut.Build(cursorRequest);
+        cursorAct.Should().Throw<NgbArgumentInvalidException>()
+            .WithMessage("*does not define a stable keyset cursor*");
+
+        var unpaged = Request(details: details) with
+        {
+            Paging = new PostgresReportPaging(int.MaxValue, 20, Cursor: "ignored", DisablePaging: true)
+        };
+        sut.Build(unpaged).Sql.Should().NotContain("OFFSET");
     }
 
     [Fact]

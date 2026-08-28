@@ -684,11 +684,14 @@ public sealed class CrmDemoSeedService(
         {
             const int pageSize = 200;
             Guid? afterId = null;
+            var (primaryRegisterId, createOpportunityRegisterId) = ResolveBackfillRegisters(documentType);
 
             while (true)
             {
-                var documentIds = await postedDocumentReader.GetIdsPageAfterAsync(
+                var documentIds = await postedDocumentReader.GetIdsMissingReferenceRegisterPostPageAfterAsync(
                     documentType,
+                    primaryRegisterId,
+                    createOpportunityRegisterId,
                     afterId,
                     pageSize,
                     ct);
@@ -719,6 +722,25 @@ public sealed class CrmDemoSeedService(
 
         return recordsApplied;
     }
+
+    private static (Guid PrimaryRegisterId, Guid? CreateOpportunityRegisterId) ResolveBackfillRegisters(
+        string documentType)
+        => documentType switch
+        {
+            CrmCodes.LeadIntake or CrmCodes.LeadQualification =>
+                (ReferenceRegisterId.FromCode(CrmCodes.LeadFunnelRegisterCode), null),
+            CrmCodes.LeadConversion =>
+                (ReferenceRegisterId.FromCode(CrmCodes.LeadFunnelRegisterCode),
+                    ReferenceRegisterId.FromCode(CrmCodes.OpportunitiesRegisterCode)),
+            CrmCodes.OpportunityUpdate =>
+                (ReferenceRegisterId.FromCode(CrmCodes.OpportunitiesRegisterCode), null),
+            CrmCodes.Quote =>
+                (ReferenceRegisterId.FromCode(CrmCodes.QuotesRegisterCode), null),
+            CrmCodes.ActivityLog =>
+                (ReferenceRegisterId.FromCode(CrmCodes.ActivitiesRegisterCode), null),
+            _ => throw new NgbConfigurationViolationException(
+                $"CRM reference-register backfill does not define a target register for document type '{documentType}'.")
+        };
 
     private async Task<int> BackfillDocumentReferenceRegistersAsync(
         string documentType,
@@ -869,8 +891,12 @@ public sealed class CrmDemoSeedService(
             catalogType,
             new PageRequestDto(
                 Offset: 0,
-                Limit: 200,
-                Search: null),
+                Limit: 2,
+                Search: null,
+                Filters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [matchField] = matchValue
+                }),
             ct);
 
         var matches = page.Items

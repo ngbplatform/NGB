@@ -114,27 +114,29 @@ public sealed class ReceivablesCustomApplyExecuteService(
                     throw ReceivableApplyValidationException.OverApplyCharge(a.ChargeDocumentId, a.Amount, outstanding);
             }
 
-            foreach (var a in allocations)
-            {
-                var applyId = await drafts.CreateDraftAsync(
-                    typeCode: PropertyManagementCodes.ReceivableApply,
-                    number: null,
-                    dateUtc: dateUtc,
-                    manageTransaction: false,
-                    ct: innerCt);
+            var applyIds = await ReceivablesApplyExecutionHelpers.CreateApplyDraftsAndUpsertHeadsAsync(
+                drafts,
+                relationships: null,
+                applyHeadWriter,
+                allocations.Select(allocation => new ReceivablesApplyExecutionHelpers.ApplyDraftRequest(
+                        PropertyManagementCodes.ReceivableApply,
+                        dateUtc,
+                        request.CreditDocumentId,
+                        allocation.ChargeDocumentId,
+                        creditSource.CreditDateUtc,
+                        allocation.Amount,
+                        Memo: null))
+                    .ToArray(),
+                innerCt);
 
-                await applyHeadWriter.UpsertAsync(
-                    documentId: applyId,
-                    creditDocumentId: request.CreditDocumentId,
-                    chargeDocumentId: a.ChargeDocumentId,
-                    appliedOnUtc: creditSource.CreditDateUtc,
-                    amount: a.Amount,
-                    memo: null,
-                    ct: innerCt);
+            for (var index = 0; index < allocations.Length; index++)
+            {
+                var allocation = allocations[index];
+                var applyId = applyIds[index];
 
                 await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
 
-                executed.Add(new ReceivablesExecutedApplyDto(applyId, a.ChargeDocumentId, a.Amount));
+                executed.Add(new ReceivablesExecutedApplyDto(applyId, allocation.ChargeDocumentId, allocation.Amount));
             }
 
             return (IReadOnlyCollection<Guid>)(await workCenter.CompleteIfExhaustedAsync(request.CreditDocumentId, innerCt));

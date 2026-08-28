@@ -11,6 +11,9 @@ namespace NGB.Testing.PostgreSql;
 /// </summary>
 public abstract class PostgreSqlIntegrationFixtureBase : IAsyncLifetime
 {
+    private static readonly TimeSpan DatabaseReadyTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DatabaseReadyRetryDelay = TimeSpan.FromMilliseconds(200);
+
     private readonly SemaphoreSlim _resetSemaphore = new(1, 1);
     private PostgreSqlContainer? _container;
     private Respawner? _respawner;
@@ -48,6 +51,11 @@ public abstract class PostgreSqlIntegrationFixtureBase : IAsyncLifetime
 
         ConnectionString = BuildPooledConnectionString(_container.GetConnectionString());
 
+        // Testcontainers waits for PostgreSQL inside the container. On Docker Desktop the
+        // host-side port forward may still briefly accept and then close connections, which
+        // Npgsql reports as an invalid/empty SSL negotiation response. Verify the actual
+        // client path before migrations start instead of relying only on container readiness.
+        await WaitUntilDatabaseAcceptsConnectionsAsync(ConnectionString, CancellationToken.None);
         await ApplyMigrationsAsync(ConnectionString, CancellationToken.None);
         _respawner = await CreateRespawnerAsync(CancellationToken.None);
     }
@@ -112,11 +120,91 @@ public abstract class PostgreSqlIntegrationFixtureBase : IAsyncLifetime
             ConnectionPruningInterval = 5,
             Timeout = 15,
             CommandTimeout = 30,
-            NoResetOnClose = false
+            NoResetOnClose = false,
+            // The disposable PostgreSQL container is local and is not configured with TLS.
+            // Being explicit avoids an unnecessary SSLRequest during every new connection.
+            SslMode = SslMode.Disable
         };
 
         return builder.ConnectionString;
     }
+
+    private static async Task WaitUntilDatabaseAcceptsConnectionsAsync(
+        string connectionString,
+        CancellationToken cancellationToken)
+    {
+        var readinessConnectionString = new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Pooling = false,
+            Timeout = 3,
+            CommandTimeout = 3
+        }.ConnectionString;
+
+        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutSource.CancelAfter(DatabaseReadyTimeout);
+
+        Exception? lastError = null;
+
+        while (!timeoutSource.IsCancellationRequested)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(readinessConnectionString);
+                await connection.OpenAsync(timeoutSource.Token);
+
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT 1;";
+                await command.ExecuteScalarAsync(timeoutSource.Token);
+                return;
+            }
+            catch (Exception exception) when (
+                IsTransientReadinessFailure(exception) &&
+                !cancellationToken.IsCancellationRequested)
+            {
+                lastError = exception;
+                if (timeoutSource.IsCancellationRequested)
+                    break;
+
+                try
+                {
+                    await Task.Delay(DatabaseReadyRetryDelay, timeoutSource.Token);
+                }
+                catch (OperationCanceledException) when (
+                    timeoutSource.IsCancellationRequested &&
+                    !cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+            }
+            catch (OperationCanceledException) when (
+                timeoutSource.IsCancellationRequested &&
+                !cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        throw new TimeoutException(
+            $"PostgreSQL test container did not accept client connections within {DatabaseReadyTimeout.TotalSeconds:0} seconds.",
+            lastError);
+    }
+
+    private static bool IsTransientReadinessFailure(Exception exception) =>
+        exception switch
+        {
+            PostgresException postgresException => postgresException.SqlState is
+                "08000" or // connection_exception
+                "08001" or // sqlclient_unable_to_establish_sqlconnection
+                "08003" or // connection_does_not_exist
+                "08004" or // sqlserver_rejected_establishment_of_sqlconnection
+                "08006" or // connection_failure
+                "53300" or // too_many_connections
+                "57P03",   // cannot_connect_now
+            NpgsqlException => true,
+            TimeoutException => true,
+            _ => false
+        };
 
     private async Task ResetDataAsync(CancellationToken cancellationToken)
     {

@@ -26,4 +26,23 @@ public sealed class CrmPostedDocumentReaderFullCoverageTests
 
         await action.Should().ThrowAsync<NgbArgumentRequiredException>();
     }
+
+    [Fact]
+    public async Task MissingReferenceRegisterPage_ValidatesArgumentsBeforeOpeningConnection()
+    {
+        var sut = new CrmPostedDocumentReader(null!);
+
+        await ((Func<Task>)(() => sut.GetIdsMissingReferenceRegisterPostPageAfterAsync(
+                " ", Guid.NewGuid(), null, null, 200)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => sut.GetIdsMissingReferenceRegisterPostPageAfterAsync(
+                "crm.quote", Guid.Empty, null, null, 200)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => sut.GetIdsMissingReferenceRegisterPostPageAfterAsync(
+                "crm.quote", Guid.NewGuid(), Guid.Empty, null, 200)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => sut.GetIdsMissingReferenceRegisterPostPageAfterAsync(
+                "crm.quote", Guid.NewGuid(), null, null, 0)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
 }

@@ -42,10 +42,14 @@ internal sealed class OutboxProcessor(
                 innerCt),
             ct);
 
+        // Recipient metadata is stable for the duration of one claimed batch and is deliberately
+        // discarded between polls. Keeping the cache across events avoids reloading the same users,
+        // roles and preferences for every projected event while preserving bounded staleness.
+        recipientResolver.Reset();
+
         var changedUsers = new HashSet<Guid>();
         foreach (var item in items)
         {
-            recipientResolver.Reset();
             var eventChangedUsers = new HashSet<Guid>();
             using var activity = NgbFeatureTelemetry.Activities.StartActivity("work_center.outbox.project", ActivityKind.Consumer);
             activity?.SetTag("messaging.system", "postgresql");

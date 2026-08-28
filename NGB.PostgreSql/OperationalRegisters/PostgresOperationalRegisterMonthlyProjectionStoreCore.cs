@@ -158,7 +158,11 @@ FROM UNNEST({string.Join(", ", unnestArgs)}) AS x({string.Join(", ", unnestCols)
             p.Add(paramName, values);
         }
 
-        await uow.Connection.ExecuteAsync(sqlInsert, p, transaction: uow.Transaction);
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sqlInsert,
+            p,
+            transaction: uow.Transaction,
+            cancellationToken: ct));
     }
 
     public async Task<IReadOnlyList<OperationalRegisterMonthlyProjectionRow>> GetByMonthAsync(

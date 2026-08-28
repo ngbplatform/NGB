@@ -118,22 +118,25 @@ public sealed class PayablesFifoApplySuggestService(
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            foreach (var s in plan)
-            {
-                var dateUtc = DateTime.SpecifyKind(s.CreditDocumentDateUtc.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
-                var applyId = await PayablesApplyExecutionHelpers.CreateApplyDraftAndUpsertHeadAsync(
-                    drafts,
-                    relationships,
-                    applyHeadWriter,
-                    dateUtc,
-                    s.CreditDocumentId,
-                    s.ChargeDocumentId,
-                    s.CreditDocumentDateUtc,
-                    s.Amount,
-                    memo: null,
-                    innerCt);
+            var applyIds = await PayablesApplyExecutionHelpers.CreateApplyDraftsAndUpsertHeadsAsync(
+                drafts,
+                relationships,
+                applyHeadWriter,
+                plan.Select(suggestion => new PayablesApplyExecutionHelpers.ApplyDraftRequest(
+                        DateTime.SpecifyKind(
+                            suggestion.CreditDocumentDateUtc.ToDateTime(TimeOnly.MinValue),
+                            DateTimeKind.Utc),
+                        suggestion.CreditDocumentId,
+                        suggestion.ChargeDocumentId,
+                        suggestion.CreditDocumentDateUtc,
+                        suggestion.Amount,
+                        Memo: null))
+                    .ToArray(),
+                innerCt);
 
-                result.Add(s with { ApplyId = applyId });
+            for (var index = 0; index < plan.Count; index++)
+            {
+                result.Add(plan[index] with { ApplyId = applyIds[index] });
             }
         }, ct);
 

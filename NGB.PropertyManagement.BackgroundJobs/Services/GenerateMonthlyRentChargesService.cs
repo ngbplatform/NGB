@@ -14,15 +14,28 @@ namespace NGB.PropertyManagement.BackgroundJobs.Services;
 internal sealed class GenerateMonthlyRentChargesService(
     IUnitOfWork uow,
     IPropertyManagementRentChargeGenerationReader reader,
-    IDocumentService documents,
-    IDocumentSystemLifecycleService lifecycle,
-    IDocumentDraftService drafts,
+    IRentChargeCandidateBatchExecutor candidateExecutor,
     ILogger<GenerateMonthlyRentChargesService> logger)
 {
     private const int LeasePageSize = 256;
     private const int MaxLeasePagesPerChunk = 4;
     private const int MaxCandidatesPerChunk = 250;
     private const int MaxRetainedFailures = 16;
+
+    internal GenerateMonthlyRentChargesService(
+        IUnitOfWork uow,
+        IPropertyManagementRentChargeGenerationReader reader,
+        IDocumentService documents,
+        IDocumentSystemLifecycleService lifecycle,
+        IDocumentDraftService drafts,
+        ILogger<GenerateMonthlyRentChargesService> logger)
+        : this(
+            uow,
+            reader,
+            new SequentialRentChargeCandidateBatchExecutor(RentChargeCandidateWorker.CreateSequential(documents, lifecycle, drafts)),
+            logger)
+    {
+    }
 
     public Task<GenerateMonthlyRentChargesResult> ExecuteAsync(DateOnly asOfUtc, CancellationToken ct)
         => ExecuteChunkAsync(asOfUtc, cursor: null, ct);
@@ -90,6 +103,8 @@ internal sealed class GenerateMonthlyRentChargesService(
                     .ToList();
             }
 
+            var candidatesToExecute = new List<MonthlyRentChargeCandidate>();
+            var scheduledKeys = new HashSet<PmRentChargePeriodKey>();
             for (var candidateIndex = 0; candidateIndex < candidates.Count; candidateIndex++)
             {
                 var candidate = candidates[candidateIndex];
@@ -97,7 +112,7 @@ internal sealed class GenerateMonthlyRentChargesService(
                 candidateCount++;
 
                 var key = new PmRentChargePeriodKey(candidate.LeaseId, candidate.PeriodFromUtc, candidate.PeriodToUtc);
-                if (existingKeys.Contains(key))
+                if (existingKeys.Contains(key) || !scheduledKeys.Add(key))
                 {
                     skippedExisting++;
                     if (candidateCount >= MaxCandidatesPerChunk && candidateIndex + 1 < candidates.Count)
@@ -114,62 +129,7 @@ internal sealed class GenerateMonthlyRentChargesService(
                     continue;
                 }
 
-                DocumentDto? draft = null;
-
-                try
-                {
-                    draft = await documents.CreateDraftAsync(
-                        PropertyManagementCodes.RentCharge,
-                        BuildPayload(candidate),
-                        ct);
-
-                    await drafts.UpdateDraftAsync(
-                        draft.Id,
-                        number: null,
-                        dateUtc: ToDocumentDateUtc(candidate.DueOnUtc),
-                        manageTransaction: true,
-                        ct: ct);
-
-                    await lifecycle.PostAsync(PropertyManagementCodes.RentCharge, draft.Id, ct);
-
-                    existingKeys.Add(key);
-                    created++;
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    if (failures.Count < MaxRetainedFailures)
-                        failures.Add(ex);
-
-                    logger.LogError(
-                        ex,
-                        "PM background job '{JobId}' failed for LeaseId='{LeaseId}' period {PeriodFromUtc:yyyy-MM-dd}..{PeriodToUtc:yyyy-MM-dd}.",
-                        PropertyManagementBackgroundJobCatalog.GenerateMonthlyRentCharges,
-                        candidate.LeaseId,
-                        candidate.PeriodFromUtc,
-                        candidate.PeriodToUtc);
-
-                    if (draft is not null)
-                    {
-                        try
-                        {
-                            if (await drafts.DeleteDraftAsync(draft.Id, manageTransaction: true, ct))
-                                cleanedUpDrafts++;
-                        }
-                        catch (Exception cleanupEx)
-                        {
-                            logger.LogWarning(
-                                cleanupEx,
-                                "PM background job '{JobId}' could not delete failed Draft Rent Charge '{DocumentId}'.",
-                                PropertyManagementBackgroundJobCatalog.GenerateMonthlyRentCharges,
-                                draft.Id);
-                        }
-                    }
-                }
+                candidatesToExecute.Add(candidate);
 
                 if (candidateCount >= MaxCandidatesPerChunk && candidateIndex + 1 < candidates.Count)
                 {
@@ -180,6 +140,38 @@ internal sealed class GenerateMonthlyRentChargesService(
                         candidate.LeaseId,
                         candidate.PeriodFromUtc);
                     break;
+                }
+            }
+
+            var executionResults = await candidateExecutor.ExecuteAsync(candidatesToExecute, ct);
+            foreach (var execution in executionResults)
+            {
+                if (execution.Created)
+                {
+                    existingKeys.Add(new PmRentChargePeriodKey(
+                        execution.Candidate.LeaseId,
+                        execution.Candidate.PeriodFromUtc,
+                        execution.Candidate.PeriodToUtc));
+                    created++;
+                    continue;
+                }
+
+                failed++;
+                if (execution.CleanedUpDraft)
+                    cleanedUpDrafts++;
+
+                if (execution.Error is { } error)
+                {
+                    if (failures.Count < MaxRetainedFailures)
+                        failures.Add(error);
+
+                    logger.LogError(
+                        error,
+                        "PM background job '{JobId}' failed for LeaseId='{LeaseId}' period {PeriodFromUtc:yyyy-MM-dd}..{PeriodToUtc:yyyy-MM-dd}.",
+                        PropertyManagementBackgroundJobCatalog.GenerateMonthlyRentCharges,
+                        execution.Candidate.LeaseId,
+                        execution.Candidate.PeriodFromUtc,
+                        execution.Candidate.PeriodToUtc);
                 }
             }
 
@@ -244,7 +236,7 @@ internal sealed class GenerateMonthlyRentChargesService(
         return result;
     }
 
-    private static RecordPayload BuildPayload(MonthlyRentChargeCandidate candidate)
+    internal static RecordPayload BuildPayload(MonthlyRentChargeCandidate candidate)
     {
         return new RecordPayload(
             new Dictionary<string, JsonElement>(StringComparer.Ordinal)
@@ -258,7 +250,7 @@ internal sealed class GenerateMonthlyRentChargesService(
             });
     }
 
-    private static DateTime ToDocumentDateUtc(DateOnly date)
+    internal static DateTime ToDocumentDateUtc(DateOnly date)
         => new(date.Year, date.Month, date.Day, 12, 0, 0, DateTimeKind.Utc);
 
     private static int CompareCandidateKey(

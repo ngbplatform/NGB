@@ -212,26 +212,26 @@ public sealed class ReceivablesFifoApplySuggestService(
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            foreach (var s in plan)
+            var applyIds = await ReceivablesApplyExecutionHelpers.CreateApplyDraftsAndUpsertHeadsAsync(
+                drafts,
+                relationships,
+                applyHeadWriter,
+                plan.Select(suggestion => new ReceivablesApplyExecutionHelpers.ApplyDraftRequest(
+                        PropertyManagementCodes.ReceivableApply,
+                        DateTime.SpecifyKind(
+                            suggestion.CreditDocumentDateUtc.ToDateTime(TimeOnly.MinValue),
+                            DateTimeKind.Utc),
+                        suggestion.CreditDocumentId,
+                        suggestion.ChargeDocumentId,
+                        suggestion.CreditDocumentDateUtc,
+                        suggestion.Amount,
+                        Memo: null))
+                    .ToArray(),
+                innerCt);
+
+            for (var index = 0; index < plan.Count; index++)
             {
-                var dateUtc = DateTime.SpecifyKind(
-                    s.CreditDocumentDateUtc.ToDateTime(TimeOnly.MinValue),
-                    DateTimeKind.Utc);
-
-                var applyId = await ReceivablesApplyExecutionHelpers.CreateApplyDraftAndUpsertHeadAsync(
-                    drafts: drafts,
-                    relationships: relationships,
-                    headWriter: applyHeadWriter,
-                    typeCode: PropertyManagementCodes.ReceivableApply,
-                    dateUtc: dateUtc,
-                    creditDocumentId: s.CreditDocumentId,
-                    chargeDocumentId: s.ChargeDocumentId,
-                    appliedOnUtc: s.CreditDocumentDateUtc,
-                    amount: s.Amount,
-                    memo: null,
-                    ct: innerCt);
-
-                result.Add(s with { ApplyId = applyId });
+                result.Add(plan[index] with { ApplyId = applyIds[index] });
             }
         }, ct);
 

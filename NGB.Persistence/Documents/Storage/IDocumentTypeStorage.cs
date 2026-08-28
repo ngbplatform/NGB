@@ -24,3 +24,9 @@ public interface IDocumentTypeStorage
     /// </summary>
     Task DeleteDraftAsync(Guid documentId, CancellationToken ct = default);
 }
+
+/// <summary>Optional typed-storage capability for creating multiple draft heads in one command.</summary>
+public interface IDocumentTypeDraftBatchStorage : IDocumentTypeStorage
+{
+    Task CreateDraftsAsync(IReadOnlyList<Guid> documentIds, CancellationToken ct = default);
+}

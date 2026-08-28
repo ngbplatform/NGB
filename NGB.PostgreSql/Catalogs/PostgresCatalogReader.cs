@@ -9,7 +9,7 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Catalogs;
 
-internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogCombinedPageReader
+internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogSeekPageReader
 {
     public async Task<long> CountAsync(CatalogHeadDescriptor head, CatalogQuery query, CancellationToken ct = default)
     {
@@ -189,6 +189,135 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogCombinedP
             .ToArray();
 
         return new CatalogHeadQueryPage(rows, total);
+    }
+
+    public async Task<CatalogHeadSeekPage> GetSeekPageAsync(
+        CatalogHeadDescriptor head,
+        CatalogQuery query,
+        string? afterDisplay,
+        Guid? afterId,
+        int limit,
+        bool includeTotal,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        if (afterId == Guid.Empty)
+            throw new NgbArgumentInvalidException(nameof(afterId), "Cursor ID must not be empty.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var where = BuildWhere(head, query);
+        var parameters = where.Params;
+
+        parameters.Add("catalogCode", head.CatalogCode);
+        parameters.Add("afterDisplay", afterDisplay);
+        parameters.Add("afterId", afterId);
+        parameters.Add("limitPlusOne", checked(limit + 1));
+
+        var countSql = where.HasHeadCriteria
+            ? $"""
+               SELECT COUNT(*)
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN catalogs c ON c.id = h.catalog_id
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.HeadWhereSql});
+               """
+            : $"""
+               SELECT COUNT(*)
+                 FROM catalogs c
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.CatalogWhereSql});
+               """;
+
+        var sourceSql = where.HasHeadCriteria
+            ? $"""
+               SELECT c.id AS "Id",
+                      c.is_deleted AS "IsDeleted",
+                      h.{Qi(head.DisplayColumn)} AS "Display",
+                      h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN catalogs c ON c.id = h.catalog_id
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.HeadWhereSql})
+               """
+            : $"""
+               SELECT c.id AS "Id",
+                      c.is_deleted AS "IsDeleted",
+                      h.{Qi(head.DisplayColumn)} AS "Display",
+                      h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN catalogs c ON c.id = h.catalog_id
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.CatalogWhereSql})
+               UNION ALL
+               SELECT c.id AS "Id",
+                      c.is_deleted AS "IsDeleted",
+                      NULL::text AS "Display",
+                      NULL::text AS "SortDisplay"{BuildNullSelectFields(head)}
+                 FROM catalogs c
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.CatalogWhereSql})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {Qi(head.HeadTableName)} h WHERE h.catalog_id = c.id)
+               """;
+
+        var pageSql = $"""
+SELECT *
+FROM (
+{sourceSql}
+) rows
+WHERE @afterId::uuid IS NULL
+   OR (
+        @afterDisplay::text IS NULL
+        AND "SortDisplay" IS NULL
+        AND "Id" > @afterId)
+   OR (
+        @afterDisplay::text IS NOT NULL
+        AND (
+            "SortDisplay" > @afterDisplay
+            OR ("SortDisplay" = @afterDisplay AND "Id" > @afterId)
+            OR "SortDisplay" IS NULL))
+ORDER BY "SortDisplay" NULLS LAST, "Id"
+LIMIT @limitPlusOne;
+""";
+
+        long? total = null;
+        IReadOnlyList<IDictionary<string, object?>> materialized;
+        if (includeTotal)
+        {
+            await using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                $"{countSql}\n{pageSql}",
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+            total = await results.ReadSingleAsync<long>();
+            materialized = (await results.ReadAsync())
+                .Select(static row => (IDictionary<string, object?>)row)
+                .ToArray();
+        }
+        else
+        {
+            materialized = (await uow.Connection.QueryAsync(new CommandDefinition(
+                    pageSql,
+                    parameters,
+                    transaction: uow.Transaction,
+                    cancellationToken: ct)))
+                .Select(static row => (IDictionary<string, object?>)row)
+                .ToArray();
+        }
+
+        var hasMore = materialized.Count > limit;
+        var visible = materialized.Take(limit).ToArray();
+        var last = visible.LastOrDefault();
+        return new CatalogHeadSeekPage(
+            visible.Select(row => ToRow(head, row)).ToArray(),
+            total,
+            hasMore,
+            last is null ? null : last["SortDisplay"] as string,
+            last is null ? null : (Guid?)last["Id"]);
     }
 
     private async Task<IReadOnlyList<CatalogHeadRow>> GetPageWithoutHeadCriteriaAsync(

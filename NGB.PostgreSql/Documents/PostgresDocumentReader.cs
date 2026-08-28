@@ -16,7 +16,7 @@ namespace NGB.PostgreSql.Documents;
 internal sealed class PostgresDocumentReader(
     IUnitOfWork uow,
     IEnumerable<IPostgresDocumentListFilterSqlContributor> filterSqlContributors)
-    : IDocumentCombinedPageReader
+    : IDocumentSeekPageReader
 {
     public async Task<long> CountAsync(DocumentHeadDescriptor head, DocumentQuery query, CancellationToken ct = default)
     {
@@ -205,6 +205,141 @@ internal sealed class PostgresDocumentReader(
             .ToArray();
 
         return new DocumentHeadQueryPage(rows, total);
+    }
+
+    public async Task<DocumentHeadSeekPage> GetSeekPageAsync(
+        DocumentHeadDescriptor head,
+        DocumentQuery query,
+        string? afterDisplay,
+        Guid? afterId,
+        int limit,
+        bool includeTotal,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        if (afterId == Guid.Empty)
+            throw new NgbArgumentInvalidException(nameof(afterId), "Cursor ID must not be empty.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var where = BuildWhere(head, query);
+        var parameters = where.Params;
+
+        parameters.Add("typeCode", head.TypeCode);
+        parameters.Add("afterDisplay", afterDisplay);
+        parameters.Add("afterId", afterId);
+        parameters.Add("limitPlusOne", checked(limit + 1));
+
+        var countSql = where.HasHeadCriteria
+            ? $"""
+               SELECT COUNT(*)
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql});
+               """
+            : $"""
+               SELECT COUNT(*)
+                 FROM documents d
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql});
+               """;
+
+        var sourceSql = where.HasHeadCriteria
+            ? $"""
+               SELECT d.id AS "Id",
+                      d.status AS "Status",
+                      d.number AS "Number",
+                      COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display",
+                      h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql})
+               """
+            : $"""
+               SELECT d.id AS "Id",
+                      d.status AS "Status",
+                      d.number AS "Number",
+                      COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display",
+                      h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql})
+               UNION ALL
+               SELECT d.id AS "Id",
+                      d.status AS "Status",
+                      d.number AS "Number",
+                      d.id::text AS "Display",
+                      NULL::text AS "SortDisplay"{BuildNullSelectFields(head)}
+                 FROM documents d
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {Qi(head.HeadTableName)} h WHERE h.document_id = d.id)
+               """;
+
+        var pageSql = $"""
+SELECT *
+FROM (
+{sourceSql}
+) rows
+WHERE @afterId::uuid IS NULL
+   OR (
+        @afterDisplay::text IS NULL
+        AND "SortDisplay" IS NULL
+        AND "Id" > @afterId)
+   OR (
+        @afterDisplay::text IS NOT NULL
+        AND (
+            "SortDisplay" > @afterDisplay
+            OR ("SortDisplay" = @afterDisplay AND "Id" > @afterId)
+            OR "SortDisplay" IS NULL))
+ORDER BY "SortDisplay" NULLS LAST, "Id"
+LIMIT @limitPlusOne;
+""";
+
+        long? total = null;
+        IReadOnlyList<IDictionary<string, object?>> materialized;
+        if (includeTotal)
+        {
+            await using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                $"{countSql}\n{pageSql}",
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+
+            total = await results.ReadSingleAsync<long>();
+
+            materialized = (await results.ReadAsync())
+                .Select(static row => (IDictionary<string, object?>)row)
+                .ToArray();
+        }
+        else
+        {
+            materialized = (await uow.Connection.QueryAsync(new CommandDefinition(
+                    pageSql,
+                    parameters,
+                    transaction: uow.Transaction,
+                    cancellationToken: ct)))
+                .Select(static row => (IDictionary<string, object?>)row)
+                .ToArray();
+        }
+
+        var hasMore = materialized.Count > limit;
+        var visible = materialized.Take(limit).ToArray();
+        var last = visible.LastOrDefault();
+
+        return new DocumentHeadSeekPage(
+            visible.Select(row => ToRow(head, row)).ToArray(),
+            total,
+            hasMore,
+            last?["SortDisplay"] as string,
+            (Guid?)last?["Id"]);
     }
 
     private async Task<IReadOnlyList<DocumentHeadRow>> GetPageWithoutHeadCriteriaAsync(

@@ -2,6 +2,7 @@ using Dapper;
 using NGB.Contracts.Common;
 using NGB.Core.Documents;
 using NGB.Persistence.UnitOfWork;
+using NGB.Tools.Exceptions;
 using NGB.Trade.Reporting;
 
 namespace NGB.Trade.PostgreSql.Reporting;
@@ -104,78 +105,148 @@ vendor_returns AS (
 SELECT purchases.amount - vendor_returns.amount AS NetPurchases
 FROM purchases CROSS JOIN vendor_returns;
 
+WITH recent_candidates AS (
+    (
+        SELECT
+            document.id AS document_id,
+            document.type_code AS document_type_code,
+            'Purchase Receipt' AS document_type_display,
+            COALESCE(head.display, document.number, document.id::text) AS document_display,
+            head.document_date_utc,
+            document.updated_at_utc,
+            document.status,
+            head.vendor_id AS partner_id,
+            head.amount
+        FROM documents document
+        JOIN doc_trd_purchase_receipt head ON head.document_id = document.id
+        WHERE document.type_code = @purchase_receipt_type
+          AND document.status <> @deleted_status
+          AND head.document_date_utc <= @as_of_utc
+        ORDER BY document.updated_at_utc DESC, head.document_date_utc DESC, head.display, document.id DESC
+        LIMIT @recent_document_limit
+    )
+    UNION ALL
+    (
+        SELECT
+            document.id,
+            document.type_code,
+            'Sales Invoice',
+            COALESCE(head.display, document.number, document.id::text),
+            head.document_date_utc,
+            document.updated_at_utc,
+            document.status,
+            head.customer_id,
+            head.amount
+        FROM documents document
+        JOIN doc_trd_sales_invoice head ON head.document_id = document.id
+        WHERE document.type_code = @sales_invoice_type
+          AND document.status <> @deleted_status
+          AND head.document_date_utc <= @as_of_utc
+        ORDER BY document.updated_at_utc DESC, head.document_date_utc DESC, head.display, document.id DESC
+        LIMIT @recent_document_limit
+    )
+    UNION ALL
+    (
+        SELECT
+            document.id,
+            document.type_code,
+            'Customer Payment',
+            COALESCE(head.display, document.number, document.id::text),
+            head.document_date_utc,
+            document.updated_at_utc,
+            document.status,
+            head.customer_id,
+            head.amount
+        FROM documents document
+        JOIN doc_trd_customer_payment head ON head.document_id = document.id
+        WHERE document.type_code = @customer_payment_type
+          AND document.status <> @deleted_status
+          AND head.document_date_utc <= @as_of_utc
+        ORDER BY document.updated_at_utc DESC, head.document_date_utc DESC, head.display, document.id DESC
+        LIMIT @recent_document_limit
+    )
+    UNION ALL
+    (
+        SELECT
+            document.id,
+            document.type_code,
+            'Vendor Payment',
+            COALESCE(head.display, document.number, document.id::text),
+            head.document_date_utc,
+            document.updated_at_utc,
+            document.status,
+            head.vendor_id,
+            head.amount
+        FROM documents document
+        JOIN doc_trd_vendor_payment head ON head.document_id = document.id
+        WHERE document.type_code = @vendor_payment_type
+          AND document.status <> @deleted_status
+          AND head.document_date_utc <= @as_of_utc
+        ORDER BY document.updated_at_utc DESC, head.document_date_utc DESC, head.display, document.id DESC
+        LIMIT @recent_document_limit
+    )
+    UNION ALL
+    (
+        SELECT
+            document.id,
+            document.type_code,
+            'Customer Return',
+            COALESCE(head.display, document.number, document.id::text),
+            head.document_date_utc,
+            document.updated_at_utc,
+            document.status,
+            head.customer_id,
+            head.amount
+        FROM documents document
+        JOIN doc_trd_customer_return head ON head.document_id = document.id
+        WHERE document.type_code = @customer_return_type
+          AND document.status <> @deleted_status
+          AND head.document_date_utc <= @as_of_utc
+        ORDER BY document.updated_at_utc DESC, head.document_date_utc DESC, head.display, document.id DESC
+        LIMIT @recent_document_limit
+    )
+    UNION ALL
+    (
+        SELECT
+            document.id,
+            document.type_code,
+            'Vendor Return',
+            COALESCE(head.display, document.number, document.id::text),
+            head.document_date_utc,
+            document.updated_at_utc,
+            document.status,
+            head.vendor_id,
+            head.amount
+        FROM documents document
+        JOIN doc_trd_vendor_return head ON head.document_id = document.id
+        WHERE document.type_code = @vendor_return_type
+          AND document.status <> @deleted_status
+          AND head.document_date_utc <= @as_of_utc
+        ORDER BY document.updated_at_utc DESC, head.document_date_utc DESC, head.display, document.id DESC
+        LIMIT @recent_document_limit
+    )
+)
 SELECT
-    document.id AS DocumentId,
-    document.type_code AS DocumentTypeCode,
-    CASE document.type_code
-        WHEN @purchase_receipt_type THEN 'Purchase Receipt'
-        WHEN @sales_invoice_type THEN 'Sales Invoice'
-        WHEN @customer_payment_type THEN 'Customer Payment'
-        WHEN @vendor_payment_type THEN 'Vendor Payment'
-        WHEN @customer_return_type THEN 'Customer Return'
-        WHEN @vendor_return_type THEN 'Vendor Return'
-    END AS DocumentTypeDisplay,
-    COALESCE(
-        purchase.display,
-        sale.display,
-        customer_payment.display,
-        vendor_payment.display,
-        customer_return.display,
-        vendor_return.display,
-        document.number,
-        document.id::text) AS DocumentDisplay,
-    COALESCE(
-        purchase.document_date_utc,
-        sale.document_date_utc,
-        customer_payment.document_date_utc,
-        vendor_payment.document_date_utc,
-        customer_return.document_date_utc,
-        vendor_return.document_date_utc) AS DocumentDateUtc,
-    document.updated_at_utc AS UpdatedAtUtc,
-    CASE document.status
+    candidate.document_id AS DocumentId,
+    candidate.document_type_code AS DocumentTypeCode,
+    candidate.document_type_display AS DocumentTypeDisplay,
+    candidate.document_display AS DocumentDisplay,
+    candidate.document_date_utc AS DocumentDateUtc,
+    candidate.updated_at_utc AS UpdatedAtUtc,
+    CASE candidate.status
         WHEN 1 THEN 'Draft'
         WHEN 2 THEN 'Posted'
         WHEN 3 THEN 'Marked for deletion'
-        ELSE document.status::text
+        ELSE candidate.status::text
     END AS StatusDisplay,
     partner.display AS PartnerDisplay,
-    COALESCE(
-        purchase.amount,
-        sale.amount,
-        customer_payment.amount,
-        vendor_payment.amount,
-        customer_return.amount,
-        vendor_return.amount) AS Amount
-FROM documents document
-LEFT JOIN doc_trd_purchase_receipt purchase
-  ON document.type_code = @purchase_receipt_type AND purchase.document_id = document.id
-LEFT JOIN doc_trd_sales_invoice sale
-  ON document.type_code = @sales_invoice_type AND sale.document_id = document.id
-LEFT JOIN doc_trd_customer_payment customer_payment
-  ON document.type_code = @customer_payment_type AND customer_payment.document_id = document.id
-LEFT JOIN doc_trd_vendor_payment vendor_payment
-  ON document.type_code = @vendor_payment_type AND vendor_payment.document_id = document.id
-LEFT JOIN doc_trd_customer_return customer_return
-  ON document.type_code = @customer_return_type AND customer_return.document_id = document.id
-LEFT JOIN doc_trd_vendor_return vendor_return
-  ON document.type_code = @vendor_return_type AND vendor_return.document_id = document.id
-LEFT JOIN cat_trd_party partner ON partner.catalog_id = COALESCE(
-    purchase.vendor_id,
-    sale.customer_id,
-    customer_payment.customer_id,
-    vendor_payment.vendor_id,
-    customer_return.customer_id,
-    vendor_return.vendor_id)
-WHERE document.type_code = ANY(@recent_document_types)
-  AND document.status <> @deleted_status
-  AND COALESCE(
-        purchase.document_date_utc,
-        sale.document_date_utc,
-        customer_payment.document_date_utc,
-        vendor_payment.document_date_utc,
-        customer_return.document_date_utc,
-        vendor_return.document_date_utc) <= @as_of_utc
-ORDER BY document.updated_at_utc DESC, DocumentDateUtc DESC, DocumentDisplay
+    candidate.amount AS Amount
+FROM recent_candidates candidate
+LEFT JOIN cat_trd_party partner ON partner.catalog_id = candidate.partner_id
+ORDER BY candidate.updated_at_utc DESC,
+         candidate.document_date_utc DESC,
+         candidate.document_display,
+         candidate.document_id DESC
 LIMIT @recent_document_limit;
 """;
 
@@ -194,16 +265,7 @@ LIMIT @recent_document_limit;
                 customer_payment_type = TradeCodes.CustomerPayment,
                 vendor_payment_type = TradeCodes.VendorPayment,
                 customer_return_type = TradeCodes.CustomerReturn,
-                vendor_return_type = TradeCodes.VendorReturn,
-                recent_document_types = new[]
-                {
-                    TradeCodes.PurchaseReceipt,
-                    TradeCodes.SalesInvoice,
-                    TradeCodes.CustomerPayment,
-                    TradeCodes.VendorPayment,
-                    TradeCodes.CustomerReturn,
-                    TradeCodes.VendorReturn
-                }
+                vendor_return_type = TradeCodes.VendorReturn
             },
             transaction: uow.Transaction,
             cancellationToken: ct);
@@ -386,15 +448,20 @@ LIMIT @limit;
         IReadOnlyList<Guid>? customerIds,
         IReadOnlyList<Guid>? warehouseIds,
         CancellationToken ct = default)
-        => (await GetSalesByItemPageAsync(
+    {
+        var page = await GetSalesByItemPageAsync(
             fromInclusive,
             toInclusive,
             itemIds,
             customerIds,
             warehouseIds,
             0,
-            int.MaxValue,
-            ct)).Rows;
+            PagingLimits.MaxMaterializedRows + 1,
+            ct);
+
+        EnsureLegacyMaterializationBound(page.Total);
+        return page.Rows;
+    }
 
     public async Task<TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>> GetSalesByCustomerPageAsync(
         DateOnly fromInclusive,
@@ -545,15 +612,20 @@ LIMIT @limit;
         IReadOnlyList<Guid>? itemIds,
         IReadOnlyList<Guid>? warehouseIds,
         CancellationToken ct = default)
-        => (await GetSalesByCustomerPageAsync(
+    {
+        var page = await GetSalesByCustomerPageAsync(
             fromInclusive,
             toInclusive,
             customerIds,
             itemIds,
             warehouseIds,
             0,
-            int.MaxValue,
-            ct)).Rows;
+            PagingLimits.MaxMaterializedRows + 1,
+            ct);
+
+        EnsureLegacyMaterializationBound(page.Total);
+        return page.Rows;
+    }
 
     public async Task<TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>> GetPurchasesByVendorPageAsync(
         DateOnly fromInclusive,
@@ -698,15 +770,31 @@ LIMIT @limit;
         IReadOnlyList<Guid>? itemIds,
         IReadOnlyList<Guid>? warehouseIds,
         CancellationToken ct = default)
-        => (await GetPurchasesByVendorPageAsync(
+    {
+        var page = await GetPurchasesByVendorPageAsync(
             fromInclusive,
             toInclusive,
             vendorIds,
             itemIds,
             warehouseIds,
             0,
-            int.MaxValue,
-            ct)).Rows;
+            PagingLimits.MaxMaterializedRows + 1,
+            ct);
+
+        EnsureLegacyMaterializationBound(page.Total);
+        return page.Rows;
+    }
+
+    private static void EnsureLegacyMaterializationBound(int total)
+    {
+        if (total <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new NgbArgumentOutOfRangeException(
+            "resultCount",
+            total,
+            $"The unpaged Trade analytics result exceeds {PagingLimits.MaxMaterializedRows:N0} rows. Use the paged API.");
+    }
 
     public async Task<IReadOnlyList<RecentTradeDocumentSummaryRow>> GetRecentDocumentsAsync(
         DateOnly asOf,

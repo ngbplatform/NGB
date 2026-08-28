@@ -9,7 +9,7 @@ using NGB.Tools.Extensions;
 
 namespace NGB.PostgreSql.Documents;
 
-public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepository
+public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentDraftBatchRepository
 {
     public async Task CreateAsync(DocumentRecord doc, CancellationToken ct = default)
     {
@@ -62,6 +62,65 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
             cancellationToken: ct);
 
         await uow.Connection.ExecuteAsync(cmd);
+    }
+
+    public async Task CreateDraftsAsync(IReadOnlyList<DocumentRecord> drafts, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(drafts);
+
+        if (drafts.Count == 0)
+            return;
+
+        foreach (var draft in drafts)
+        {
+            if (string.IsNullOrWhiteSpace(draft.TypeCode))
+                throw new NgbArgumentRequiredException(nameof(drafts));
+
+            if (draft.Status != DocumentStatus.Draft || draft.PostedAtUtc is not null || draft.MarkedForDeletionAtUtc is not null)
+                throw new NgbArgumentInvalidException(nameof(drafts), "Batch document insertion accepts Draft rows only.");
+
+            draft.DateUtc.EnsureUtc(nameof(drafts));
+            draft.CreatedAtUtc.EnsureUtc(nameof(drafts));
+            draft.UpdatedAtUtc.EnsureUtc(nameof(drafts));
+        }
+
+        await uow.EnsureOpenForTransactionAsync(ct);
+
+        const string sql = """
+INSERT INTO documents(
+    id, type_code, number, date_utc,
+    status, posted_at_utc, marked_for_deletion_at_utc,
+    version, created_at_utc, updated_at_utc)
+SELECT
+    source.id, source.type_code, source.number, source.date_utc,
+    @DraftStatus, NULL, NULL,
+    source.version, source.created_at_utc, source.updated_at_utc
+FROM UNNEST(
+    @Ids::uuid[],
+    @TypeCodes::text[],
+    @Numbers::text[],
+    @DatesUtc::timestamptz[],
+    @Versions::bigint[],
+    @CreatedAtUtc::timestamptz[],
+    @UpdatedAtUtc::timestamptz[])
+AS source(id, type_code, number, date_utc, version, created_at_utc, updated_at_utc);
+""";
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                Ids = drafts.Select(static draft => draft.Id).ToArray(),
+                TypeCodes = drafts.Select(static draft => draft.TypeCode).ToArray(),
+                Numbers = drafts.Select(static draft => draft.Number).ToArray(),
+                DatesUtc = drafts.Select(static draft => draft.DateUtc).ToArray(),
+                Versions = drafts.Select(static draft => draft.Version).ToArray(),
+                CreatedAtUtc = drafts.Select(static draft => draft.CreatedAtUtc).ToArray(),
+                UpdatedAtUtc = drafts.Select(static draft => draft.UpdatedAtUtc).ToArray(),
+                DraftStatus = (short)DocumentStatus.Draft
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
     }
 
     public async Task<DocumentRecord?> GetAsync(Guid documentId, CancellationToken ct = default)

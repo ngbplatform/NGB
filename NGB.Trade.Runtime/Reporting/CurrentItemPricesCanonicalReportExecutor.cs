@@ -1,4 +1,5 @@
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Persistence.Documents;
 using NGB.Runtime.Reporting.Canonical;
@@ -22,7 +23,9 @@ public sealed class CurrentItemPricesCanonicalReportExecutor(
         var itemIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "item_id");
         var priceTypeIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "price_type_id");
         var offset = Math.Max(0, request.Offset);
-        var limit = request.DisablePaging ? int.MaxValue : (request.Limit <= 0 ? 100 : request.Limit);
+        var limit = request.DisablePaging
+            ? PagingLimits.MaxMaterializedRows + 1
+            : request.Limit <= 0 ? 100 : request.Limit;
         var page = await priceReader.GetPageAsync(
             DateTime.UtcNow,
             itemIds,
