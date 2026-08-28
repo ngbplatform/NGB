@@ -11,7 +11,7 @@ namespace NGB.PostgreSql.Migrations.Evolve;
 /// </summary>
 public static class PostgresEvolveMigrator
 {
-    public static Task MigrateAsync(
+    public static async Task MigrateAsync(
         string connectionString,
         IReadOnlyCollection<Assembly> migrationAssemblies,
         MigrationExecutionOptions? options = null,
@@ -28,12 +28,32 @@ public static class PostgresEvolveMigrator
 
         ct.ThrowIfCancellationRequested();
 
-        using var conn = new NpgsqlConnection(connectionString);
-        conn.Open();
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(ct);
 
-        ApplySessionDefaults(conn, options);
+        await ApplySessionDefaultsAsync(conn, options, ct);
 
-        return MigrateAsync(conn, migrationAssemblies, log, metadataTableName, metadataTableSchema, ct);
+        // PostgreSQL's IF NOT EXISTS DDL is not sufficient to serialize concurrent
+        // catalog writes. In particular, two fresh Evolve runs can race while
+        // creating the metadata table's underlying composite type. Hold the same
+        // database-wide session lock used by SchemaMigrator and repair operations
+        // for the complete Evolve run.
+        await SchemaMigrationAdvisoryLock.AcquireOrThrowAsync(
+            conn,
+            SchemaMigrationLockMode.Wait,
+            waitTimeout: null,
+            log,
+            ct);
+
+        try
+        {
+            await MigrateAsync(conn, migrationAssemblies, log, metadataTableName, metadataTableSchema, ct);
+        }
+        finally
+        {
+            await SchemaMigrator.ReleaseLockBestEffortAsync(
+                () => SchemaMigrationAdvisoryLock.ReleaseAsync(conn, CancellationToken.None));
+        }
     }
 
     /// <summary>
@@ -172,13 +192,16 @@ public static class PostgresEvolveMigrator
         }
     }
 
-    internal static void ApplySessionDefaults(DbConnection connection, MigrationExecutionOptions? options)
+    internal static async Task ApplySessionDefaultsAsync(
+        DbConnection connection,
+        MigrationExecutionOptions? options,
+        CancellationToken ct = default)
     {
         // Deterministic UTC semantics.
-        using (var cmd = connection.CreateCommand())
+        await using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = "SET TIME ZONE 'UTC';";
-            cmd.ExecuteNonQuery();
+            await cmd.ExecuteNonQueryAsync(ct);
         }
 
         if (options is null)
@@ -187,17 +210,17 @@ public static class PostgresEvolveMigrator
         if (options.LockTimeout is not null)
         {
             var ms = (long)Math.Max(0, options.LockTimeout.Value.TotalMilliseconds);
-            using var cmd = connection.CreateCommand();
+            await using var cmd = connection.CreateCommand();
             cmd.CommandText = $"SET lock_timeout = '{ms}ms';";
-            cmd.ExecuteNonQuery();
+            await cmd.ExecuteNonQueryAsync(ct);
         }
 
         if (options.StatementTimeout is not null)
         {
             var ms = (long)Math.Max(0, options.StatementTimeout.Value.TotalMilliseconds);
-            using var cmd = connection.CreateCommand();
+            await using var cmd = connection.CreateCommand();
             cmd.CommandText = $"SET statement_timeout = '{ms}ms';";
-            cmd.ExecuteNonQuery();
+            await cmd.ExecuteNonQueryAsync(ct);
         }
     }
 }

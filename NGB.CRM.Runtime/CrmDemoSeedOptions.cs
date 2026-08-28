@@ -8,6 +8,8 @@ public sealed record CrmDemoSeedOptions
 {
     public const int ProductionGeneratedAccountCount = 80;
     public const int ProductionGeneratedOpportunityCycleCount = 520;
+    public const int MaxGeneratedAccountCount = 1_000;
+    public const int MaxGeneratedOpportunityCycleCount = 10_000;
 
     public int GeneratedAccountCount { get; init; } = ProductionGeneratedAccountCount;
 

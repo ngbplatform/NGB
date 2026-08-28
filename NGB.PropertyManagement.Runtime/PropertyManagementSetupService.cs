@@ -484,8 +484,7 @@ public sealed class PropertyManagementSetupService(
                 innerException: ex);
         }
 
-        var refreshed = (await coaAdmin.GetAsync(includeDeleted: true, ct))
-            .FirstOrDefault(x => string.Equals(x.Account.Code, existing.Account.Code, StringComparison.OrdinalIgnoreCase));
+        var refreshed = await coaAdmin.GetByIdAsync(existing.Account.Id, ct);
 
         if (refreshed is null)
             throw new NgbConfigurationViolationException($"Chart of Accounts account '{existing.Account.Code}' disappeared during ApplyDefaults.");
@@ -496,7 +495,7 @@ public sealed class PropertyManagementSetupService(
         }
     }
 
-    private async Task EnsureOrRepairCashFlowMetadataAsync(
+    private async Task<ChartOfAccountsAdminItem> EnsureOrRepairCashFlowMetadataAsync(
         ChartOfAccountsAdminItem existing,
         CashFlowRole expectedRole,
         string? expectedLineCode,
@@ -507,7 +506,7 @@ public sealed class PropertyManagementSetupService(
         var normalizedExpectedLineCode = NormalizeLineCode(expectedLineCode);
 
         if (actualRole == expectedRole && string.Equals(actualLineCode, normalizedExpectedLineCode, StringComparison.Ordinal))
-            return;
+            return existing;
 
         try
         {
@@ -528,8 +527,7 @@ public sealed class PropertyManagementSetupService(
                 innerException: ex);
         }
 
-        var refreshed = (await coaAdmin.GetAsync(includeDeleted: true, ct))
-            .FirstOrDefault(x => string.Equals(x.Account.Code, existing.Account.Code, StringComparison.OrdinalIgnoreCase));
+        var refreshed = await coaAdmin.GetByIdAsync(existing.Account.Id, ct);
 
         if (refreshed is null)
             throw new NgbConfigurationViolationException($"Chart of Accounts account '{existing.Account.Code}' disappeared during ApplyDefaults.");
@@ -540,6 +538,8 @@ public sealed class PropertyManagementSetupService(
             throw new NgbConfigurationViolationException(
                 $"Chart of Accounts account '{existing.Account.Code}' cash flow metadata could not be repaired automatically.");
         }
+
+        return refreshed;
     }
 
     private static string? NormalizeLineCode(string? lineCode)
@@ -812,7 +812,8 @@ public sealed class PropertyManagementSetupService(
 
     private async Task EnsureBankAccountGlAccountsAsync(CancellationToken ct)
     {
-        var coa = await coaAdmin.GetAsync(includeDeleted: true, ct);
+        var coaById = (await coaAdmin.GetAsync(includeDeleted: true, ct))
+            .ToDictionary(x => x.Account.Id);
 
         const int pageSize = 200;
         for (var offset = 0; ; offset += pageSize)
@@ -847,9 +848,11 @@ public sealed class PropertyManagementSetupService(
                         innerException: ex);
                 }
 
-                var linkedAccount = coa.FirstOrDefault(x => x.Account.Id == glAccountId)
-                                    ?? throw new NgbConfigurationViolationException(
-                                        $"Bank account '{bankAccount.Display ?? bankAccount.Id.ToString()}' references missing GL account '{glAccountId}'.");
+                if (!coaById.TryGetValue(glAccountId, out var linkedAccount))
+                {
+                    throw new NgbConfigurationViolationException(
+                        $"Bank account '{bankAccount.Display ?? bankAccount.Id.ToString()}' references missing GL account '{glAccountId}'.");
+                }
 
                 if (linkedAccount.IsDeleted)
                     throw new NgbConfigurationViolationException(
@@ -867,7 +870,11 @@ public sealed class PropertyManagementSetupService(
                     throw new NgbConfigurationViolationException(
                         $"Bank account '{bankAccount.Display ?? bankAccount.Id.ToString()}' references GL account '{linkedAccount.Account.Code}' with unexpected statement section '{linkedAccount.Account.StatementSection}'. Expected '{StatementSection.Assets}'.");
 
-                await EnsureOrRepairCashFlowMetadataAsync(linkedAccount, CashFlowRole.CashEquivalent, expectedLineCode: null, ct);
+                coaById[glAccountId] = await EnsureOrRepairCashFlowMetadataAsync(
+                    linkedAccount,
+                    CashFlowRole.CashEquivalent,
+                    expectedLineCode: null,
+                    ct);
             }
 
             if (page.Items.Count < pageSize)

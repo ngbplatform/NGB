@@ -5,6 +5,7 @@ using Moq;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.CashFlow;
 using NGB.Contracts.Admin;
+using NGB.Contracts.Common;
 using NGB.Core.Reporting;
 using NGB.Core.Security;
 using NGB.Persistence.Accounts;
@@ -108,6 +109,11 @@ public sealed class AdminServicesFullCoverageTests
             .Should().ThrowAsync<NgbArgumentRequiredException>();
         (await sut.GetChartOfAccountsByIdsAsync([], default)).Should().BeEmpty();
         (await sut.GetChartOfAccountsByIdsAsync([Guid.Empty, Guid.Empty], default)).Should().BeEmpty();
+        var tooManyIds = Enumerable.Range(0, PagingLimits.MaxLookupIds + 1)
+            .Select(_ => Guid.NewGuid())
+            .ToArray();
+        await ((Func<Task>)(() => sut.GetChartOfAccountsByIdsAsync(tooManyIds, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         var lookup = await sut.GetChartOfAccountsByIdsAsync(
             [first.Account.Id, Guid.Empty, first.Account.Id, second.Account.Id], default);
         lookup.Select(x => x.Label).Should().Equal("2000 — Liability account", "1000 — Cash");

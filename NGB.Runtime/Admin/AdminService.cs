@@ -2,6 +2,7 @@ using NGB.Accounting.Accounts;
 using NGB.Accounting.CashFlow;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Admin;
+using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Persistence.Accounts;
 using NGB.Runtime.Accounts;
@@ -125,6 +126,14 @@ public sealed class AdminService(
         var uniqIds = ids.Where(static id => id != Guid.Empty).Distinct().ToArray();
         if (uniqIds.Length == 0)
             return [];
+
+        if (uniqIds.Length > PagingLimits.MaxLookupIds)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(ids),
+                uniqIds.Length,
+                $"At most {PagingLimits.MaxLookupIds} distinct IDs are allowed.");
+        }
 
         var items = await coaAdmin.GetByIdsAsync(uniqIds, ct);
         return items

@@ -625,11 +625,19 @@ public sealed class AccountingPolicyCatalogUpsertValidator_P0Tests
         IReadOnlyDictionary<Guid, OperationalRegisterAdminItem> registers)
     {
         var coaAdmin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
-        coaAdmin.Setup(x => x.GetAsync(true, It.IsAny<CancellationToken>())).ReturnsAsync(accounts);
+        coaAdmin.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+            {
+                var idSet = ids.ToHashSet();
+                return accounts.Where(x => idSet.Contains(x.Account.Id)).ToArray();
+            });
 
         var registerRepo = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
-        registerRepo.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid id, CancellationToken _) => registers.TryGetValue(id, out var register) ? register : null);
+        registerRepo.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.Where(registers.ContainsKey).Select(id => registers[id]).ToArray());
 
         return new AccountingPolicyCatalogUpsertValidator(coaAdmin.Object, registerRepo.Object);
     }

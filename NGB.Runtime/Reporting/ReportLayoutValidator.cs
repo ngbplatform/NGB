@@ -27,6 +27,14 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         var detailFields = layout.DetailFields ?? [];
         var sorts = layout.Sorts ?? [];
 
+        if (sorts.Count > ReportLayoutLimits.MaxSorts)
+        {
+            throw Invalid(
+                runtime,
+                "layout.sorts",
+                $"You can select up to {ReportLayoutLimits.MaxSorts} sort fields.");
+        }
+
         var parameterMetadata = (definition.Parameters ?? [])
             .ToDictionary(x => CodeNormalizer.NormalizeCodeNorm(x.Code, nameof(x.Code)), StringComparer.OrdinalIgnoreCase);
         var filterMetadata = (definition.Filters ?? [])
@@ -159,10 +167,20 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
         ValidateProjectedOutputUniqueness(runtime, dataset, normalizedRowGroups, normalizedColumnGroups, detailFields, measures);
 
+        var usedSorts = new HashSet<ReportSortIdentity>();
         for (var i = 0; i < sorts.Count; i++)
         {
             var sort = sorts[i];
             var codeNorm = CodeNormalizer.NormalizeCodeNorm(sort.FieldCode, nameof(sort.FieldCode));
+            var identity = new ReportSortIdentity(
+                codeNorm,
+                sort.TimeGrain,
+                sort.AppliesToColumnAxis,
+                string.IsNullOrWhiteSpace(sort.GroupKey) ? null : sort.GroupKey.Trim().ToUpperInvariant());
+
+            if (!usedSorts.Add(identity))
+                throw Invalid(runtime, $"layout.sorts[{i}]", "The same sort field can be selected only once.");
+
             if (dataset.TryGetField(codeNorm, out var field))
             {
                 if (!dataset.IsSortableField(codeNorm))
@@ -562,4 +580,10 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         bool IsColumnAxis);
 
     private sealed record ProjectedOutputSelection(string SelectionKind);
+
+    private sealed record ReportSortIdentity(
+        string FieldCodeNorm,
+        ReportTimeGrain? TimeGrain,
+        bool AppliesToColumnAxis,
+        string? GroupKeyNorm);
 }

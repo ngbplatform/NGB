@@ -66,7 +66,9 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationServiceFullCov
         connection.Commands.Should().Contain(command => command.CommandText.Contains("FROM reference_registers"));
         connection.Commands.Should().Contain(command => command.CommandText.Contains("information_schema.columns"));
         connection.Commands.Count(command => command.CommandText.Contains("pg_get_constraintdef", StringComparison.Ordinal))
-            .Should().Be(4);
+            .Should().Be(1);
+        connection.Commands.Count(command => command.CommandText.Contains("SELECT DISTINCT cl.relname", StringComparison.Ordinal))
+            .Should().Be(1);
     }
 
     [Fact]
@@ -178,16 +180,21 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationServiceFullCov
                     return FieldRows(fields);
 
                 if (sql.Contains("pg_get_constraintdef", StringComparison.Ordinal))
-                    return StringRows(constraintDefinitions);
+                    return ConstraintRows(registers, constraintDefinitions);
+
+                if (sql.Contains("SELECT DISTINCT cl.relname", StringComparison.Ordinal))
+                {
+                    return StringRows(appendTriggerCount == 0
+                        ? []
+                        : registers.Select(Table).ToArray());
+                }
 
                 if (sql.Contains("information_schema.columns", StringComparison.Ordinal))
-                    return ColumnMetaRows(meta);
+                    return ColumnMetaRows(registers, fields, meta);
 
                 return new DataTable().CreateDataReader();
             },
-            scalar: sql => sql.Contains("p.proname = 'ngb_forbid_mutation", StringComparison.Ordinal)
-                ? appendTriggerCount
-                : coreObjectCount);
+            scalar: _ => coreObjectCount);
 
     private static DbSchemaSnapshot ValidSnapshot(IReadOnlyList<RegisterSpec> registers)
     {
@@ -470,9 +477,13 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationServiceFullCov
         return table.CreateDataReader();
     }
 
-    private static DbDataReader ColumnMetaRows(IReadOnlyList<ColumnMetaSpec> rows)
+    private static DbDataReader ColumnMetaRows(
+        IReadOnlyList<RegisterSpec> registers,
+        IReadOnlyList<FieldSpec> fields,
+        IReadOnlyList<ColumnMetaSpec> rows)
     {
         var table = new DataTable();
+        table.Columns.Add("TableName", typeof(string));
         table.Columns.Add("ColumnName", typeof(string));
         table.Columns.Add("IsNullable", typeof(string));
         table.Columns.Add("UdtName", typeof(string));
@@ -480,7 +491,10 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationServiceFullCov
         table.Columns.Add("NumericScale", typeof(int));
         foreach (var row in rows)
         {
+            var field = fields.First(x => x.ColumnCode == row.ColumnName);
+            var register = registers.First(x => x.Id == field.RegisterId);
             table.Rows.Add(
+                Table(register),
                 row.ColumnName,
                 row.IsNullable,
                 row.UdtName,
@@ -491,12 +505,32 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationServiceFullCov
         return table.CreateDataReader();
     }
 
+    private static DbDataReader ConstraintRows(IReadOnlyList<RegisterSpec> registers, IReadOnlyList<string> definitions)
+    {
+        var table = new DataTable();
+        table.Columns.Add("TableName", typeof(string));
+        table.Columns.Add("Definition", typeof(string));
+
+        foreach (var register in registers)
+        {
+            foreach (var definition in definitions)
+            {
+                table.Rows.Add(Table(register), definition);
+            }
+        }
+
+        return table.CreateDataReader();
+    }
+
     private static DbDataReader StringRows(IReadOnlyList<string> rows)
     {
         var table = new DataTable();
         table.Columns.Add("Definition", typeof(string));
+
         foreach (var row in rows)
+        {
             table.Rows.Add(row);
+        }
 
         return table.CreateDataReader();
     }

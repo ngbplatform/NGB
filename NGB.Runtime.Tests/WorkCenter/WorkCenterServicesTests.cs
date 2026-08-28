@@ -1154,6 +1154,16 @@ public sealed class WorkCenterServicesTests
                 null!,
                 CancellationToken.None))
             .Should().ThrowAsync<ArgumentNullException>();
+        var tooManyPreferences = Enumerable.Range(0, WorkCenterQueryService.MaxPreferenceUpdates + 1)
+            .Select(_ => new UpdateNotificationPreferenceDto(
+                "test.optional",
+                NGB.Contracts.WorkCenter.NotificationChannel.InApp,
+                true))
+            .ToArray();
+        await FluentActions.Awaiting(() => harness.Service.UpdateNotificationPreferencesAsync(
+                new UpdateNotificationPreferencesRequestDto(tooManyPreferences),
+                CancellationToken.None))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
         harness.UserRoles
             .Setup(repository => repository.GetRolesForUserAsync(

@@ -101,7 +101,8 @@ public sealed class PropertyManagementSetupServiceEdgeCoverageTests
         var existing = Admin(Account("1100", AccountType.Asset, StatementSection.Assets));
         var validRefresh = Admin(Account(
             "1100", AccountType.Asset, StatementSection.Assets,
-            [Dimension(PropertyManagementCodes.Party, true)]));
+            [Dimension(PropertyManagementCodes.Party, true)],
+            id: existing.Account.Id));
         var success = new Harness { Accounts = [validRefresh] };
         await InvokeDimensionRepair(success.Service, existing);
         success.Updates.Should().ContainSingle();
@@ -120,7 +121,8 @@ public sealed class PropertyManagementSetupServiceEdgeCoverageTests
 
         var optional = Admin(Account(
             "1100", AccountType.Asset, StatementSection.Assets,
-            [Dimension(PropertyManagementCodes.Party)]));
+            [Dimension(PropertyManagementCodes.Party)],
+            id: existing.Account.Id));
         await AssertThrows<NgbConfigurationViolationException>(() =>
             InvokeDimensionRepair(new Harness { Accounts = [optional] }.Service, existing));
     }
@@ -154,19 +156,19 @@ public sealed class PropertyManagementSetupServiceEdgeCoverageTests
 
         var wrongRole = Admin(Account(
             "1100", AccountType.Asset, StatementSection.Assets,
-            role: CashFlowRole.None, lineCode: expectedLine));
+            role: CashFlowRole.None, lineCode: expectedLine, id: existing.Account.Id));
         await AssertThrows<NgbConfigurationViolationException>(() =>
             InvokeCashFlowRepair(new Harness { Accounts = [wrongRole] }.Service, existing, expectedLine));
 
         var wrongLine = Admin(Account(
             "1100", AccountType.Asset, StatementSection.Assets,
-            role: CashFlowRole.WorkingCapital, lineCode: "wrong"));
+            role: CashFlowRole.WorkingCapital, lineCode: "wrong", id: existing.Account.Id));
         await AssertThrows<NgbConfigurationViolationException>(() =>
             InvokeCashFlowRepair(new Harness { Accounts = [wrongLine] }.Service, existing, expectedLine));
 
         var valid = Admin(Account(
             "1100", AccountType.Asset, StatementSection.Assets,
-            role: CashFlowRole.WorkingCapital, lineCode: expectedLine));
+            role: CashFlowRole.WorkingCapital, lineCode: expectedLine, id: existing.Account.Id));
         await InvokeCashFlowRepair(new Harness { Accounts = [valid] }.Service, existing, $" {expectedLine} ");
     }
 
@@ -266,6 +268,9 @@ public sealed class PropertyManagementSetupServiceEdgeCoverageTests
             get
             {
                 _admin.Setup(x => x.GetAsync(true, It.IsAny<CancellationToken>())).ReturnsAsync(Accounts);
+                _admin.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((Guid id, CancellationToken _) =>
+                        Accounts.FirstOrDefault(x => x.Account.Id == id));
                 _management.Setup(x => x.UpdateAsync(It.IsAny<UpdateAccountRequest>(), It.IsAny<CancellationToken>()))
                     .Callback<UpdateAccountRequest, CancellationToken>((request, _) => Updates.Add(request))
                     .Returns((UpdateAccountRequest request, CancellationToken _) =>

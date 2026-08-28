@@ -177,8 +177,10 @@ public sealed class BankAccountCatalogUpsertValidatorFullCoverageTests
             CatalogTypeMetadata? metadata = null)
         {
             Types.Setup(x => x.GetRequired(PropertyManagementCodes.BankAccount)).Returns(metadata ?? Metadata());
-            Coa.Setup(x => x.GetAsync(true, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(accounts ?? [Admin(Account(AccountType.Asset))]);
+            var configuredAccounts = accounts ?? [Admin(Account(AccountType.Asset))];
+            Coa.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((Guid id, CancellationToken _) =>
+                    configuredAccounts.FirstOrDefault(x => x.Account.Id == id));
             Sut = new BankAccountCatalogUpsertValidator(Types.Object, Reader.Object, Coa.Object);
         }
 

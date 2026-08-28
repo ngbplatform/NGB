@@ -410,7 +410,8 @@ public sealed class ChartOfAccountsManagementServiceFullCoverageTests
                 Repository.Object,
                 CashFlowLines.Object,
                 Audit.Object,
-                NullLogger<ChartOfAccountsManagementService>.Instance);
+                NullLogger<ChartOfAccountsManagementService>.Instance,
+                new ChartOfAccountsSnapshotCache());
         }
 
         public Mock<IUnitOfWork> Uow { get; } = new(MockBehavior.Loose);

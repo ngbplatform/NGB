@@ -201,6 +201,14 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
             .GroupBy(f => f.RegisterId)
             .ToDictionary(g => g.Key, IReadOnlyList<FieldRow> (g) => g.ToList());
 
+        var physicalTables = regs
+            .Select(r => ReferenceRegisterNaming.RecordsTable(r.TableCode))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var constraintsByTable = await LoadConstraintDefinitionsAsync(physicalTables, ct);
+        var appendOnlyTables = await LoadAppendOnlyTriggerTablesAsync(physicalTables, ct);
+        var fieldColumnsByTable = await LoadFieldColumnsAsync(physicalTables, ct);
+
         foreach (var r in regs)
         {
             var table = ReferenceRegisterNaming.RecordsTable(r.TableCode);
@@ -215,18 +223,109 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
             ValidateBaseColumns(snapshot, table, r, errors);
 
             // Check constraints (semantic invariants)
-            await ValidateSemanticConstraintsAsync(table, r, errors, ct);
+            constraintsByTable.TryGetValue(table, out var constraintDefinitions);
+            ValidateSemanticConstraints(table, r, constraintDefinitions ?? [], errors);
 
             // Append-only trigger must exist (trigger name is hashed; validate by function binding).
-            await ValidateAppendOnlyGuardTriggerAsync(table, errors, ct);
+            if (!appendOnlyTables.Contains(table))
+                errors.Add($"Table '{table}' is missing append-only trigger (ngb_forbid_mutation_of_append_only_table).");
 
             // Per-register indexes are part of the physical contract.
             ValidatePerRegisterIndexes(snapshot, table, r, errors);
 
             // Field columns: existence, type, nullability (including decimal precision/scale).
             fieldsByReg.TryGetValue(r.RegisterId, out var f);
-            await ValidateFieldColumnsAsync(table, f ?? Array.Empty<FieldRow>(), errors, ct);
+            fieldColumnsByTable.TryGetValue(table, out var columnMeta);
+            ValidateFieldColumns(table, f ?? [], columnMeta ?? EmptyColumnMetadata, errors);
         }
+    }
+
+    private static readonly IReadOnlyDictionary<string, ColumnMeta> EmptyColumnMetadata =
+        new Dictionary<string, ColumnMeta>(StringComparer.OrdinalIgnoreCase);
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> LoadConstraintDefinitionsAsync(
+        IReadOnlyCollection<string> tables,
+        CancellationToken ct)
+    {
+        var rows = await uow.Connection.QueryAsync<ConstraintDefinitionRow>(
+            new CommandDefinition(
+                """
+                SELECT
+                    cl.relname AS "TableName",
+                    pg_get_constraintdef(c.oid) AS "Definition"
+                FROM pg_constraint c
+                JOIN pg_class cl ON cl.oid = c.conrelid
+                JOIN pg_namespace ns ON ns.oid = cl.relnamespace
+                WHERE ns.nspname = 'public'
+                  AND cl.relname = ANY(@Tables)
+                  AND c.contype = 'c';
+                """,
+                new { Tables = tables.ToArray() },
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+
+        return rows
+            .GroupBy(x => x.TableName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                IReadOnlyList<string> (group) => group.Select(x => x.Definition).ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<IReadOnlySet<string>> LoadAppendOnlyTriggerTablesAsync(
+        IReadOnlyCollection<string> tables,
+        CancellationToken ct)
+    {
+        var rows = await uow.Connection.QueryAsync<string>(
+            new CommandDefinition(
+                """
+                SELECT DISTINCT cl.relname
+                FROM pg_trigger t
+                JOIN pg_class cl ON cl.oid = t.tgrelid
+                JOIN pg_namespace ns ON ns.oid = cl.relnamespace
+                JOIN pg_proc p ON p.oid = t.tgfoid
+                WHERE ns.nspname = 'public'
+                  AND cl.relname = ANY(@Tables)
+                  AND NOT t.tgisinternal
+                  AND p.proname = 'ngb_forbid_mutation_of_append_only_table';
+                """,
+                new { Tables = tables.ToArray() },
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+
+        return rows.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, ColumnMeta>>> LoadFieldColumnsAsync(
+        IReadOnlyCollection<string> tables,
+        CancellationToken ct)
+    {
+        var rows = await uow.Connection.QueryAsync<ColumnMeta>(
+            new CommandDefinition(
+                """
+                SELECT
+                    table_name        AS "TableName",
+                    column_name       AS "ColumnName",
+                    is_nullable       AS "IsNullable",
+                    udt_name          AS "UdtName",
+                    numeric_precision AS "NumericPrecision",
+                    numeric_scale     AS "NumericScale"
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = ANY(@Tables);
+                """,
+                new { Tables = tables.ToArray() },
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+
+        return rows
+            .GroupBy(x => x.TableName, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                IReadOnlyDictionary<string, ColumnMeta> (group) => group.ToDictionary(
+                    x => x.ColumnName,
+                    StringComparer.OrdinalIgnoreCase),
+                StringComparer.OrdinalIgnoreCase);
     }
 
     private static void ValidateBaseColumns(DbSchemaSnapshot snapshot, string table, RegisterRow r, List<string> errors)
@@ -285,29 +384,13 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
         }
     }
 
-    private async Task ValidateSemanticConstraintsAsync(
+    private static void ValidateSemanticConstraints(
         string table,
         RegisterRow reg,
-        List<string> errors,
-        CancellationToken ct)
+        IReadOnlyList<string> definitions,
+        List<string> errors)
     {
-        var defs = (await uow.Connection.QueryAsync<string>(
-                new CommandDefinition(
-                    """
-                    SELECT pg_get_constraintdef(c.oid)
-                    FROM pg_constraint c
-                    JOIN pg_class cl ON cl.oid = c.conrelid
-                    JOIN pg_namespace ns ON ns.oid = cl.relnamespace
-                    WHERE ns.nspname = 'public'
-                      AND cl.relname = @table
-                      AND c.contype = 'c';
-                    """,
-                    new { table },
-                    transaction: uow.Transaction,
-                    cancellationToken: ct)))
-            .ToList();
-
-        var defsText = string.Join("\n", defs).ToLowerInvariant();
+        var defsText = string.Join("\n", definitions).ToLowerInvariant();
 
         if (reg.RecordMode != ReferenceRegisterRecordMode.SubordinateToRecorder)
         {
@@ -320,29 +403,6 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
             if (!defsText.Contains("period_utc is null") || !defsText.Contains("period_bucket_utc is null"))
                 errors.Add($"Table '{table}' is missing semantic CHECK constraint enforcing period_utc IS NULL AND period_bucket_utc IS NULL (NonPeriodic register).");
         }
-    }
-
-    private async Task ValidateAppendOnlyGuardTriggerAsync(string table, List<string> errors, CancellationToken ct)
-    {
-        var exists = await uow.Connection.ExecuteScalarAsync<int>(
-            new CommandDefinition(
-                """
-                SELECT COUNT(*)
-                FROM pg_trigger t
-                JOIN pg_class cl ON cl.oid = t.tgrelid
-                JOIN pg_namespace ns ON ns.oid = cl.relnamespace
-                JOIN pg_proc p ON p.oid = t.tgfoid
-                WHERE ns.nspname = 'public'
-                  AND cl.relname = @table
-                  AND NOT t.tgisinternal
-                  AND p.proname = 'ngb_forbid_mutation_of_append_only_table';
-                """,
-                new { table },
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-
-        if (exists == 0)
-            errors.Add($"Table '{table}' is missing append-only trigger (ngb_forbid_mutation_of_append_only_table).");
     }
 
     private static void ValidatePerRegisterIndexes(
@@ -430,39 +490,14 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
         return true;
     }
 
-    private async Task ValidateFieldColumnsAsync(
+    private static void ValidateFieldColumns(
         string table,
         IReadOnlyList<FieldRow> fields,
-        List<string> errors,
-        CancellationToken ct)
+        IReadOnlyDictionary<string, ColumnMeta> meta,
+        List<string> errors)
     {
         if (fields.Count == 0)
             return;
-
-        // Load column meta once per table and reuse for both type and nullability checks.
-        var columnCodes = fields
-            .Select(f => f.ColumnCode)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var meta = (await uow.Connection.QueryAsync<ColumnMeta>(
-                new CommandDefinition(
-                    """
-                    SELECT
-                        column_name       AS "ColumnName",
-                        is_nullable       AS "IsNullable",
-                        udt_name          AS "UdtName",
-                        numeric_precision AS "NumericPrecision",
-                        numeric_scale     AS "NumericScale"
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = @Table
-                      AND column_name = ANY(@Columns);
-                    """,
-                    new { Table = table, Columns = columnCodes },
-                    transaction: uow.Transaction,
-                    cancellationToken: ct)))
-            .ToDictionary(x => x.ColumnName, StringComparer.OrdinalIgnoreCase);
 
         foreach (var f in fields)
         {
@@ -501,7 +536,10 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
         short ColumnType,
         bool IsNullable);
 
+    private sealed record ConstraintDefinitionRow(string TableName, string Definition);
+
     private sealed record ColumnMeta(
+        string TableName,
         string ColumnName,
         string IsNullable,
         string UdtName,

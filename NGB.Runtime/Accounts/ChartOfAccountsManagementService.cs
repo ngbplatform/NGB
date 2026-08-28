@@ -18,7 +18,8 @@ public sealed class ChartOfAccountsManagementService(
     IChartOfAccountsRepository repository,
     ICashFlowLineRepository cashFlowLines,
     IAuditLogService audit,
-    ILogger<ChartOfAccountsManagementService> logger)
+    ILogger<ChartOfAccountsManagementService> logger,
+    ChartOfAccountsSnapshotCache snapshotCache)
     : IChartOfAccountsManagementService
 {
     public async Task<Guid> CreateAsync(CreateAccountRequest request, CancellationToken ct = default)
@@ -54,6 +55,7 @@ public sealed class ChartOfAccountsManagementService(
             return acc.Id;
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Created account {AccountId} ({Code})", accountId, acc.Code);
         return accountId;
     }
@@ -100,6 +102,7 @@ public sealed class ChartOfAccountsManagementService(
                 ct: innerCt);
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Updated account {AccountId} ({Code})", updated.Id, updated.Code);
     }
 
@@ -127,6 +130,7 @@ public sealed class ChartOfAccountsManagementService(
                 ct: innerCt);
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Set account {AccountId} active={IsActive}", accountId, isActive);
     }
 
@@ -163,6 +167,7 @@ public sealed class ChartOfAccountsManagementService(
                 ct: innerCt);
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Marked for deletion account {AccountId}", accountId);
     }
 
@@ -192,6 +197,7 @@ public sealed class ChartOfAccountsManagementService(
                 ct: innerCt);
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Unmarked account {AccountId} for deletion", accountId);
     }
 

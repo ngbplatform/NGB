@@ -136,16 +136,16 @@ public sealed class PostgresEvolveMigratorFullCoverageTests
     }
 
     [Fact]
-    public void Session_defaults_always_set_utc_and_apply_each_optional_clamped_timeout()
+    public async Task Session_defaults_always_set_utc_and_apply_each_optional_clamped_timeout()
     {
         var defaults = new RecordingDbConnection();
         defaults.Open();
-        PostgresEvolveMigrator.ApplySessionDefaults(defaults, null);
+        await PostgresEvolveMigrator.ApplySessionDefaultsAsync(defaults, null);
         defaults.Commands.Select(command => command.CommandText).Should().Equal("SET TIME ZONE 'UTC';");
 
         var lockOnly = new RecordingDbConnection();
         lockOnly.Open();
-        PostgresEvolveMigrator.ApplySessionDefaults(
+        await PostgresEvolveMigrator.ApplySessionDefaultsAsync(
             lockOnly,
             new MigrationExecutionOptions(LockTimeout: TimeSpan.FromMilliseconds(-10)));
         lockOnly.Commands.Select(command => command.CommandText).Should().Equal(
@@ -154,7 +154,7 @@ public sealed class PostgresEvolveMigratorFullCoverageTests
 
         var statementOnly = new RecordingDbConnection();
         statementOnly.Open();
-        PostgresEvolveMigrator.ApplySessionDefaults(
+        await PostgresEvolveMigrator.ApplySessionDefaultsAsync(
             statementOnly,
             new MigrationExecutionOptions(StatementTimeout: TimeSpan.FromMilliseconds(1500)));
         statementOnly.Commands.Select(command => command.CommandText).Should().Equal(
@@ -163,7 +163,7 @@ public sealed class PostgresEvolveMigratorFullCoverageTests
 
         var both = new RecordingDbConnection();
         both.Open();
-        PostgresEvolveMigrator.ApplySessionDefaults(
+        await PostgresEvolveMigrator.ApplySessionDefaultsAsync(
             both,
             new MigrationExecutionOptions(
                 LockTimeout: TimeSpan.FromMilliseconds(10),

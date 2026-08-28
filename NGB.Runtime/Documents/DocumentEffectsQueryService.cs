@@ -1,4 +1,5 @@
 using System.Text.Json;
+using NGB.Contracts.Common;
 using NGB.Contracts.Effects;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
@@ -44,8 +45,13 @@ public sealed class DocumentEffectsQueryService(
         if (record is null)
             throw new NgbArgumentRequiredException(nameof(record));
 
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        if (limit is <= 0 or > PagingLimits.MaxPageSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(limit),
+                limit,
+                $"Limit must be between 1 and {PagingLimits.MaxPageSize}.");
+        }
 
         if (record.Status != DocumentStatus.Posted)
             return new DocumentEffectsQueryResult([], [], []);

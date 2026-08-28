@@ -1,6 +1,7 @@
 using NGB.Accounting.Accounts;
 using NGB.AgencyBilling.Runtime.Validation;
 using NGB.Definitions.Catalogs.Validation;
+using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Runtime.Accounts;
 using NGB.Tools.Exceptions;
@@ -34,22 +35,36 @@ public sealed class AccountingPolicyCatalogUpsertValidator(
         if (string.IsNullOrWhiteSpace(defaultCurrency))
             throw new NgbArgumentInvalidException("default_currency", "Default Currency is required.");
 
-        var accounts = await coaAdmin.GetAsync(includeDeleted: true, ct);
+        var accountIds = new[] { cashAccountId, arAccountId, serviceRevenueAccountId };
+        var accounts = await coaAdmin.GetByIdsAsync(accountIds, ct);
 
         EnsureAccount(accounts, cashAccountId, "cash_account_id", AccountType.Asset, mustNotRequireDimensions: true);
         EnsureAccount(accounts, arAccountId, "ar_account_id", AccountType.Asset, mustNotRequireDimensions: false);
         EnsureAccount(accounts, serviceRevenueAccountId, "service_revenue_account_id", AccountType.Income, mustNotRequireDimensions: false);
 
-        await EnsureRegisterAsync(projectTimeLedgerRegisterId, "project_time_ledger_register_id", AgencyBillingCodes.ProjectTimeLedgerRegisterCode, ct);
-        await EnsureRegisterAsync(unbilledTimeRegisterId, "unbilled_time_register_id", AgencyBillingCodes.UnbilledTimeRegisterCode, ct);
-        await EnsureRegisterAsync(projectBillingStatusRegisterId, "project_billing_status_register_id", AgencyBillingCodes.ProjectBillingStatusRegisterCode, ct);
-        await EnsureRegisterAsync(arOpenItemsRegisterId, "ar_open_items_register_id", AgencyBillingCodes.ArOpenItemsRegisterCode, ct);
+        var registerIds = new[]
+        {
+            projectTimeLedgerRegisterId,
+            unbilledTimeRegisterId,
+            projectBillingStatusRegisterId,
+            arOpenItemsRegisterId
+        };
+        var registerMap = (await registers.GetByIdsAsync(registerIds, ct))
+            .ToDictionary(x => x.RegisterId);
+
+        EnsureRegister(registerMap, projectTimeLedgerRegisterId, "project_time_ledger_register_id", AgencyBillingCodes.ProjectTimeLedgerRegisterCode);
+        EnsureRegister(registerMap, unbilledTimeRegisterId, "unbilled_time_register_id", AgencyBillingCodes.UnbilledTimeRegisterCode);
+        EnsureRegister(registerMap, projectBillingStatusRegisterId, "project_billing_status_register_id", AgencyBillingCodes.ProjectBillingStatusRegisterCode);
+        EnsureRegister(registerMap, arOpenItemsRegisterId, "ar_open_items_register_id", AgencyBillingCodes.ArOpenItemsRegisterCode);
     }
 
-    private async Task EnsureRegisterAsync(Guid registerId, string fieldPath, string expectedCode, CancellationToken ct)
+    private static void EnsureRegister(
+        IReadOnlyDictionary<Guid, OperationalRegisterAdminItem> registers,
+        Guid registerId,
+        string fieldPath,
+        string expectedCode)
     {
-        var register = await registers.GetByIdAsync(registerId, ct);
-        if (register is null)
+        if (!registers.TryGetValue(registerId, out var register))
             throw new NgbArgumentInvalidException(fieldPath, "Referenced operational register was not found.");
 
         if (!string.Equals(register.Code, expectedCode, StringComparison.OrdinalIgnoreCase))

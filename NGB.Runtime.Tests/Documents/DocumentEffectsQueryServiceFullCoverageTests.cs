@@ -3,6 +3,7 @@ using Moq;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Posting;
 using NGB.Accounting.Registers;
+using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
 using NGB.Core.Documents;
@@ -35,6 +36,9 @@ public sealed class DocumentEffectsQueryServiceFullCoverageTests
         await ((Func<Task>)(() => fixture.Sut.GetAsync(Document(DocumentStatus.Posted), 0, default)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => fixture.Sut.GetAsync(Document(DocumentStatus.Posted), -1, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => fixture.Sut.GetAsync(
+                Document(DocumentStatus.Posted), PagingLimits.MaxPageSize + 1, default)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
         foreach (var status in new[] { DocumentStatus.Draft, DocumentStatus.MarkedForDeletion })

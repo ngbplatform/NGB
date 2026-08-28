@@ -34,7 +34,9 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
     [Theory]
     [InlineData(0, 30, "GeneratedAccountCount")]
     [InlineData(10, 0, "GeneratedOpportunityCycleCount")]
-    public void Constructor_RejectsNonPositiveProfileSizes(
+    [InlineData(1001, 30, "GeneratedAccountCount")]
+    [InlineData(10, 10001, "GeneratedOpportunityCycleCount")]
+    public void Constructor_RejectsOutOfRangeProfileSizes(
         int accountCount,
         int opportunityCycleCount,
         string expectedParameter)
@@ -144,7 +146,7 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         state.Applies.Should().NotBeEmpty();
         state.Applies.Should().Contain(apply => apply.Records.Count == 2);
         state.Applies.Should().Contain(apply => apply.Records.Count == 1);
-        state.UnitOfWork.BeginCount.Should().BeGreaterThan(0);
+        state.UnitOfWork.BeginCount.Should().Be(9);
         state.UnitOfWork.CommitCount.Should().Be(state.UnitOfWork.BeginCount);
     }
 

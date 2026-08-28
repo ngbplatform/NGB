@@ -17,6 +17,7 @@ public sealed class ChartOfAccountsProvider_ConcurrentGet_LoadsOnce_P1Tests
 
         var services = new ServiceCollection();
         services.AddScoped<IChartOfAccountsRepository>(_ => repo);
+        services.AddSingleton<ChartOfAccountsSnapshotCache>();
         services.AddScoped<IChartOfAccountsProvider, ChartOfAccountsProvider>();
 
         await using var sp = services.BuildServiceProvider(new ServiceProviderOptions

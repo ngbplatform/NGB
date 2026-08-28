@@ -69,7 +69,7 @@ public sealed class RuntimeAccountsAndMenusFullCoverageTests
                 await release.Task;
                 return [account];
             });
-        var sut = new ChartOfAccountsProvider(repository.Object);
+        var sut = new ChartOfAccountsProvider(repository.Object, new ChartOfAccountsSnapshotCache());
 
         var first = sut.GetAsync();
         await entered.Task;
@@ -81,6 +81,59 @@ public sealed class RuntimeAccountsAndMenusFullCoverageTests
         (await sut.GetAsync()).Should().BeSameAs(charts[0]);
         charts[0].Get("1000").Should().BeSameAs(account);
         repository.Verify(x => x.GetAllAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SharedProviderCache_ReusesSnapshotAcrossScopesAndReloadsAfterInvalidation()
+    {
+        var firstAccount = Item("1000").Account;
+        var secondAccount = Item("2000").Account;
+        var repository = new Mock<IChartOfAccountsRepository>(MockBehavior.Strict);
+        repository.SetupSequence(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([firstAccount])
+            .ReturnsAsync([firstAccount, secondAccount]);
+        var cache = new ChartOfAccountsSnapshotCache();
+
+        var firstProvider = new ChartOfAccountsProvider(repository.Object, cache);
+        var first = await firstProvider.GetAsync();
+        var secondProvider = new ChartOfAccountsProvider(repository.Object, cache);
+        (await secondProvider.GetAsync()).Should().BeSameAs(first);
+
+        cache.Invalidate();
+        var thirdProvider = new ChartOfAccountsProvider(repository.Object, cache);
+        var refreshed = await thirdProvider.GetAsync();
+
+        refreshed.Should().NotBeSameAs(first);
+        refreshed.Get("2000").Should().BeSameAs(secondAccount);
+        (await firstProvider.GetAsync()).Should().BeSameAs(first);
+        repository.Verify(x => x.GetAllAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+    }
+
+    [Fact]
+    public async Task SharedProviderCache_DoesNotPublishLoadThatRacedWithInvalidation()
+    {
+        var stale = new ChartOfAccounts();
+        var fresh = new ChartOfAccounts();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cache = new ChartOfAccountsSnapshotCache();
+
+        var staleLoad = cache.GetOrLoadAsync(async _ =>
+        {
+            entered.SetResult();
+            await release.Task;
+            return stale;
+        }, default);
+
+        await entered.Task;
+        cache.Invalidate();
+        release.SetResult();
+        (await staleLoad).Should().BeSameAs(stale);
+        (await cache.GetOrLoadAsync(_ => Task.FromResult(fresh), default)).Should().BeSameAs(fresh);
+        (await cache.GetOrLoadAsync(_ => throw new InvalidOperationException(), default)).Should().BeSameAs(fresh);
+
+        await ((Func<Task>)(() => cache.GetOrLoadAsync(null!, default)))
+            .Should().ThrowAsync<ArgumentNullException>();
     }
 
     [Fact]

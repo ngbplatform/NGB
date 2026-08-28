@@ -400,6 +400,8 @@ internal sealed class WorkCenterQueryService(
     IWorkCenterRealtimeNotifier realtime)
     : IWorkCenterQueryService
 {
+    internal const int MaxPreferenceUpdates = 500;
+
     public async Task<WorkCenterSummaryDto> GetSummaryAsync(string? vertical, CancellationToken ct)
     {
         using var activity = NgbFeatureTelemetry.Activities.StartActivity("work_center.summary.query");
@@ -654,10 +656,18 @@ internal sealed class WorkCenterQueryService(
         UpdateNotificationPreferencesRequestDto request,
         CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Preferences.Count > MaxPreferenceUpdates)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(request.Preferences),
+                request.Preferences.Count,
+                $"At most {MaxPreferenceUpdates} notification preferences can be updated at once.");
+        }
+
         var userId = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            ArgumentNullException.ThrowIfNull(request);
-
             var access = await GetAccessAsync(innerCt);
             var now = timeProvider.GetUtcNowDateTime();
             var updates = new Dictionary<(string Code, NotificationChannel Channel), NotificationPreferenceRecord>();

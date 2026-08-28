@@ -156,6 +156,27 @@ public sealed class ReportLayoutValidatorFullCoverageTests
     }
 
     [Fact]
+    public void Validate_RejectsTooManyAndDuplicateSorts()
+    {
+        var definition = Definition();
+        var tooMany = Enumerable.Range(0, ReportLayoutLimits.MaxSorts + 1)
+            .Select(_ => new ReportSortDto("amount"))
+            .ToArray();
+
+        AssertInvalid(
+            definition,
+            new ReportExecutionRequestDto(Layout: Layout(measures: [new("amount")], sorts: tooMany)),
+            "layout.sorts");
+
+        AssertInvalid(
+            definition,
+            new ReportExecutionRequestDto(Layout: Layout(
+                measures: [new("amount")],
+                sorts: [new("amount"), new(" AMOUNT ")])),
+            "layout.sorts[1]");
+    }
+
+    [Fact]
     public void Validate_FilterErrorsResolveMetadataDatasetAndFriendlyLabels()
     {
         var definition = Definition() with

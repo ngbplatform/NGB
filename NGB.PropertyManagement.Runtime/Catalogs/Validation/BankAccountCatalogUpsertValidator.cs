@@ -36,8 +36,7 @@ public sealed class BankAccountCatalogUpsertValidator(
         if (glAccountId is null)
             throw BankAccountValidationException.GlAccountRequired(context.CatalogId);
 
-        var accounts = await coaAdmin.GetAsync(includeDeleted: true, ct);
-        var account = accounts.FirstOrDefault(x => x.Account.Id == glAccountId.Value);
+        var account = await coaAdmin.GetByIdAsync(glAccountId.Value, ct);
         if (account is null)
             throw BankAccountValidationException.GlAccountNotFound(glAccountId.Value, context.CatalogId);
 

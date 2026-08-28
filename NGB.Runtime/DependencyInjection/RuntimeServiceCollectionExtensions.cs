@@ -158,6 +158,7 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IAccountByIdResolver, AccountByIdResolver>();
 
         // Chart of Accounts (loaded from persistence)
+        services.TryAddSingleton<ChartOfAccountsSnapshotCache>();
         services.TryAddScoped<IChartOfAccountsProvider, ChartOfAccountsProvider>();
         services.TryAddScoped<IChartOfAccountsAdminService, ChartOfAccountsAdminService>();
         services.TryAddScoped<IChartOfAccountsManagementService, ChartOfAccountsManagementService>();

@@ -34,6 +34,9 @@ public sealed class CrmSmallSurfaceCoverageTests
         seedOptions.GeneratedAccountCount.Should().Be(CrmDemoSeedOptions.ProductionGeneratedAccountCount);
         seedOptions.GeneratedOpportunityCycleCount.Should()
             .Be(CrmDemoSeedOptions.ProductionGeneratedOpportunityCycleCount);
+        CrmDemoSeedOptions.MaxGeneratedAccountCount.Should().BeGreaterThan(seedOptions.GeneratedAccountCount);
+        CrmDemoSeedOptions.MaxGeneratedOpportunityCycleCount.Should()
+            .BeGreaterThan(seedOptions.GeneratedOpportunityCycleCount);
         services.Count(descriptor => descriptor.ServiceType == typeof(IDocumentPostValidator)
                                      && descriptor.ImplementationType == typeof(LeadIntakePostValidator)).Should().Be(1);
         services.Should().Contain(descriptor => descriptor.ServiceType == typeof(IDefinitionsContributor));

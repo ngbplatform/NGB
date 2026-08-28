@@ -4,7 +4,9 @@ public static class PagingLimits
 {
     public const int DefaultPageSize = 50;
     public const int MaxPageSize = 500;
-    public const int MaxOffset = 100_000;
+    // Offset paging is retained for backward compatibility only. Keep the scan/discard
+    // budget aligned with reporting; new clients should use cursor paging.
+    public const int MaxOffset = 10_000;
     public const int MaxMaterializedRows = 10_000;
     public const int MaxLookupIds = 500;
     public const int MaxLookupTypes = 50;

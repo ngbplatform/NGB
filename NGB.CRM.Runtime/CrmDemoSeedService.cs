@@ -683,6 +683,7 @@ public sealed class CrmDemoSeedService(
         foreach (var documentType in DemoDocumentTypes)
         {
             const int pageSize = 200;
+            const int transactionBatchSize = 25;
             Guid? afterId = null;
             var (primaryRegisterId, createOpportunityRegisterId) = ResolveBackfillRegisters(documentType);
 
@@ -699,19 +700,22 @@ public sealed class CrmDemoSeedService(
                 if (documentIds.Count == 0)
                     break;
 
-                recordsApplied += await uow.ExecuteInUowTransactionAsync(async innerCt =>
+                foreach (var documentBatch in documentIds.Chunk(transactionBatchSize))
                 {
-                    var pageRecordsApplied = 0;
-                    foreach (var documentId in documentIds)
+                    recordsApplied += await uow.ExecuteInUowTransactionAsync(async innerCt =>
                     {
-                        pageRecordsApplied += await BackfillDocumentReferenceRegistersAsync(
-                            documentType,
-                            documentId,
-                            innerCt);
-                    }
+                        var batchRecordsApplied = 0;
+                        foreach (var documentId in documentBatch)
+                        {
+                            batchRecordsApplied += await BackfillDocumentReferenceRegistersAsync(
+                                documentType,
+                                documentId,
+                                innerCt);
+                        }
 
-                    return pageRecordsApplied;
-                }, ct);
+                        return batchRecordsApplied;
+                    }, ct);
+                }
 
                 afterId = documentIds[^1];
 
@@ -1000,12 +1004,28 @@ public sealed class CrmDemoSeedService(
                 "GeneratedAccountCount must be positive.");
         }
 
+        if (options.GeneratedAccountCount > CrmDemoSeedOptions.MaxGeneratedAccountCount)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(options.GeneratedAccountCount),
+                options.GeneratedAccountCount,
+                $"GeneratedAccountCount cannot exceed {CrmDemoSeedOptions.MaxGeneratedAccountCount}.");
+        }
+
         if (options.GeneratedOpportunityCycleCount <= 0)
         {
             throw new NgbArgumentOutOfRangeException(
                 nameof(options.GeneratedOpportunityCycleCount),
                 options.GeneratedOpportunityCycleCount,
                 "GeneratedOpportunityCycleCount must be positive.");
+        }
+
+        if (options.GeneratedOpportunityCycleCount > CrmDemoSeedOptions.MaxGeneratedOpportunityCycleCount)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(options.GeneratedOpportunityCycleCount),
+                options.GeneratedOpportunityCycleCount,
+                $"GeneratedOpportunityCycleCount cannot exceed {CrmDemoSeedOptions.MaxGeneratedOpportunityCycleCount}.");
         }
 
         return options;

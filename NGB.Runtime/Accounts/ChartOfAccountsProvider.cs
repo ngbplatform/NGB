@@ -3,7 +3,9 @@ using NGB.Persistence.Accounts;
 
 namespace NGB.Runtime.Accounts;
 
-public sealed class ChartOfAccountsProvider(IChartOfAccountsRepository repo) : IChartOfAccountsProvider
+public sealed class ChartOfAccountsProvider(
+    IChartOfAccountsRepository repo,
+    ChartOfAccountsSnapshotCache snapshotCache) : IChartOfAccountsProvider
 {
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private ChartOfAccounts? _cached;
@@ -16,7 +18,7 @@ public sealed class ChartOfAccountsProvider(IChartOfAccountsRepository repo) : I
         await _semaphore.WaitAsync(ct);
         try
         {
-            _cached ??= await LoadAsync(ct);
+            _cached ??= await snapshotCache.GetOrLoadAsync(LoadAsync, ct);
         }
         finally
         {
