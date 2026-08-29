@@ -240,7 +240,7 @@ public sealed class OperationalRegisterWriteFullCoverageTests
             OperationalRegisterWriteOperation.Post, movements)).Should().Be(OperationalRegisterWriteResult.Executed);
 
         f.Engine.Periods.Should().BeEquivalentTo([new DateOnly(2026, 1, 1), new DateOnly(2026, 2, 1)]);
-        f.Movements.Verify(x => x.EnsureSchemaAsync(registerId, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        f.Movements.Verify(x => x.EnsureReadyForWriteAsync(registerId, It.IsAny<CancellationToken>()), Times.Exactly(2));
         f.Movements.Verify(x => x.AppendAsync(registerId, movements, It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -268,7 +268,7 @@ public sealed class OperationalRegisterWriteFullCoverageTests
             .Should().Be(OperationalRegisterWriteResult.AlreadyCompleted);
 
         f.Engine.Periods.Should().BeEquivalentTo([march, april, new DateOnly(2026, 5, 1)]);
-        f.Movements.Verify(x => x.EnsureSchemaAsync(registerId, It.IsAny<CancellationToken>()), Times.Exactly(2));
+        f.Movements.Verify(x => x.EnsureReadyForWriteAsync(registerId, It.IsAny<CancellationToken>()), Times.Exactly(2));
         f.Movements.Verify(x => x.AppendStornoByDocumentAsync(registerId, documentId, It.IsAny<CancellationToken>()), Times.Exactly(2));
         f.Movements.Verify(x => x.AppendAsync(registerId, It.IsAny<IReadOnlyList<OperationalRegisterMovement>>(), It.IsAny<CancellationToken>()), Times.Once);
     }

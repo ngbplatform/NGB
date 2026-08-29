@@ -18,6 +18,9 @@ namespace NGB.PostgreSql.Dimensions;
 /// </summary>
 public sealed class PostgresDimensionSetWriter(IUnitOfWork uow) : IDimensionSetWriter
 {
+    private const int MaxSetsPerBatch = 2_000;
+    private const int MaxItemsPerBatch = 10_000;
+
     public async Task EnsureExistsAsync(
 	    Guid dimensionSetId,
 	    IReadOnlyList<DimensionValue> items,
@@ -44,11 +47,45 @@ public sealed class PostgresDimensionSetWriter(IUnitOfWork uow) : IDimensionSetW
         if (sets.Count == 0)
             return;
 
-        var normalizedSets = NormalizeSets(sets);
+        var normalizedSets = NormalizeSets(sets).ToArray();
 
         // Dimension sets are part of the business transaction.
         // Autocommit would break atomicity and could produce orphan sets/items.
         await uow.EnsureOpenForTransactionAsync(ct);
+
+        for (var offset = 0; offset < normalizedSets.Length;)
+        {
+            var take = 0;
+            var itemCount = 0;
+
+            while (offset + take < normalizedSets.Length && take < MaxSetsPerBatch)
+            {
+                var nextItemCount = normalizedSets[offset + take].Items.Count;
+                if (take > 0 && itemCount + nextItemCount > MaxItemsPerBatch)
+                    break;
+
+                itemCount = checked(itemCount + nextItemCount);
+                take++;
+            }
+
+            await EnsureChunkAsync(normalizedSets, offset, take, itemCount, ct);
+
+            offset += take;
+        }
+    }
+
+    private async Task EnsureChunkAsync(
+        NormalizedDimensionSet[] normalizedSets,
+        int offset,
+        int count,
+        int totalItemCount,
+        CancellationToken ct)
+    {
+        var setIds = new Guid[count];
+        for (var i = 0; i < count; i++)
+        {
+            setIds[i] = normalizedSets[offset + i].DimensionSetId;
+        }
 
         const string insertSetSql = """
                                      INSERT INTO platform_dimension_sets (dimension_set_id)
@@ -59,20 +96,20 @@ public sealed class PostgresDimensionSetWriter(IUnitOfWork uow) : IDimensionSetW
 
         var insertSetCmd = new CommandDefinition(
             insertSetSql,
-            new { DimensionSetIds = normalizedSets.Select(x => x.DimensionSetId).ToArray() },
+            new { DimensionSetIds = setIds },
             transaction: uow.Transaction,
             cancellationToken: ct);
 
         await uow.Connection.ExecuteAsync(insertSetCmd);
 
-        var totalItemCount = normalizedSets.Sum(x => x.Items.Count);
         var dimensionSetIds = new Guid[totalItemCount];
         var dimensionIds = new Guid[totalItemCount];
         var valueIds = new Guid[totalItemCount];
 
         var index = 0;
-        foreach (var set in normalizedSets)
+        for (var setIndex = 0; setIndex < count; setIndex++)
         {
+            var set = normalizedSets[offset + setIndex];
             foreach (var (dimensionId, valueId) in set.Items)
             {
                 dimensionSetIds[index] = set.DimensionSetId;
@@ -109,12 +146,12 @@ public sealed class PostgresDimensionSetWriter(IUnitOfWork uow) : IDimensionSetW
 
         var selectExistingCmd = new CommandDefinition(
             selectExistingSql,
-            new { DimensionSetIds = normalizedSets.Select(x => x.DimensionSetId).ToArray() },
+            new { DimensionSetIds = setIds },
             transaction: uow.Transaction,
             cancellationToken: ct);
 
         var rows = (await uow.Connection.QueryAsync<DimensionItemRow>(selectExistingCmd)).AsList();
-        VerifyExistingRows(normalizedSets, rows);
+        VerifyExistingRows(new ArraySegment<NormalizedDimensionSet>(normalizedSets, offset, count), rows);
     }
 
     private sealed class DimensionItemRow

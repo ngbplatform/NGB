@@ -172,6 +172,25 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
     }
 
     [Fact]
+    public async Task Ready_check_uses_committed_has_records_marker_and_scoped_transaction_cache()
+    {
+        var fixture = Fixture(
+            Reg(hasRecords: true),
+            [],
+            [Meta("record_id", "NO", "int8")]);
+        var store = fixture.Store;
+
+        await store.EnsureReadyForWriteAsync(RegisterId, default);
+        await store.EnsureReadyForWriteAsync(RegisterId, default);
+
+        fixture.Connection.Commands.Should().ContainSingle(command =>
+            command.CommandText.Contains("information_schema.columns", StringComparison.Ordinal));
+        fixture.Registers.Verify(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Fields.Verify(x => x.GetByRegisterIdAsync(
+            RegisterId, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Tombstones_cover_independent_periodic_nonperiodic_fields_and_keep_filters()
     {
         var independent = Fixture(Reg(), []);

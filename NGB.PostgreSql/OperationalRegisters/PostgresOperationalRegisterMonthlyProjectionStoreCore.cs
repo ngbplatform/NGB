@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Collections.Concurrent;
 using Dapper;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
@@ -27,6 +28,8 @@ internal sealed class PostgresOperationalRegisterMonthlyProjectionStoreCore(
     string indexPrefix,
     bool aliasResourceColumns)
 {
+    private readonly ConcurrentDictionary<Guid, ProjectionSchemaState> _schemaStates = new();
+
     public async Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default)
     {
         if (registerId == Guid.Empty)
@@ -36,7 +39,14 @@ internal sealed class PostgresOperationalRegisterMonthlyProjectionStoreCore(
 
         await using var schemaLock = await PostgresOperationalRegisterSchemaLock.AcquireAsync(uow, registerId, ct);
 
-        var (table, resources) = await ResolveTableAndResourcesOrThrowAsync(registerId, ct);
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+
+        var table = tableNameFactory(register.TableCode);
+
+        OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, tableNameDescription);
+
+        var resources = await ResolveResourcesAsync(registerId, ct);
 
         // Execute the complete idempotent DDL batch in one roundtrip. PostgreSQL still
         // serializes it under the per-register advisory lock, while wide registers no
@@ -68,6 +78,41 @@ CREATE TABLE IF NOT EXISTS {table}(
             ddl.ToString(),
             transaction: uow.Transaction,
             cancellationToken: ct));
+
+        _schemaStates[registerId] = new ProjectionSchemaState(uow.Transaction, table, resources);
+    }
+
+    public async Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
+    {
+        if (_schemaStates.TryGetValue(registerId, out var ready)
+            && ReferenceEquals(ready.Transaction, uow.Transaction))
+        {
+            return;
+        }
+
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+
+        var table = tableNameFactory(register.TableCode);
+
+        OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, tableNameDescription);
+
+        if (register.HasMovements)
+        {
+            var stableResources = await ResolveResourcesAsync(registerId, ct);
+            var requiredColumns = stableResources
+                .Select(resource => resource.ColumnCode)
+                .Prepend("period_month")
+                .ToArray();
+            
+            if (await PostgresTableColumnReadiness.HasRequiredColumnsAsync(uow, table, requiredColumns, ct))
+            {
+                _schemaStates[registerId] = new ProjectionSchemaState(uow.Transaction, table, stableResources);
+                return;
+            }
+        }
+
+        await EnsureSchemaAsync(registerId, ct);
     }
 
     public async Task ReplaceForMonthAsync(
@@ -84,7 +129,7 @@ CREATE TABLE IF NOT EXISTS {table}(
 
         await uow.EnsureOpenForTransactionAsync(ct);
 
-        await EnsureSchemaAsync(registerId, ct);
+        await EnsureReadyForWriteAsync(registerId, ct);
         var (table, resources) = await ResolveTableAndResourcesOrThrowAsync(registerId, ct);
 
         periodMonth = OperationalRegisterPeriod.MonthStart(periodMonth);
@@ -230,6 +275,9 @@ ORDER BY dimension_set_id;
         Guid registerId,
         CancellationToken ct)
     {
+        if (_schemaStates.TryGetValue(registerId, out var state) && ReferenceEquals(state.Transaction, uow.Transaction))
+            return (state.TableName, state.Resources);
+
         var reg = await registers.GetByIdAsync(registerId, ct);
         if (reg is null)
             throw new OperationalRegisterNotFoundException(registerId);
@@ -237,6 +285,13 @@ ORDER BY dimension_set_id;
         var tableName = tableNameFactory(reg.TableCode);
         OperationalRegisterSqlIdentifiers.EnsureOrThrow(tableName, tableNameDescription);
 
+        var resources = await ResolveResourcesAsync(registerId, ct);
+
+        return (tableName, resources);
+    }
+
+    private async Task<OperationalRegisterResource[]> ResolveResourcesAsync(Guid registerId, CancellationToken ct)
+    {
         var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct))
             .OrderBy(r => r.Ordinal)
             .ToArray();
@@ -246,8 +301,13 @@ ORDER BY dimension_set_id;
             OperationalRegisterSqlIdentifiers.EnsureOrThrow(r.ColumnCode, "opreg resource column_code");
         }
 
-        return (tableName, resources);
+        return resources;
     }
+
+    private sealed record ProjectionSchemaState(
+        object? Transaction,
+        string TableName,
+        OperationalRegisterResource[] Resources);
 
     private static void ValidateResourceKeys(
         Guid registerId,
@@ -305,8 +365,7 @@ ORDER BY dimension_set_id;
 
     private static string Param(string columnCode) => "p_" + columnCode;
 
-    private string Ix(string table, string purpose)
-        => indexPrefix + Hash8(table + "|" + purpose);
+    private string Ix(string table, string purpose) => indexPrefix + Hash8(table + "|" + purpose);
 
     private static string Hash8(string s)
         => Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(s))).ToLowerInvariant()[..8];

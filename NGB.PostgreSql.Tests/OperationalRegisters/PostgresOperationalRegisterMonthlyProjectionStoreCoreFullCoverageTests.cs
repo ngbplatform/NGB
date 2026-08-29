@@ -54,6 +54,35 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionStoreCoreFullCov
     }
 
     [Fact]
+    public async Task Ready_check_uses_existing_table_marker_and_reuses_transaction_scoped_shape()
+    {
+        var fixture = Fixture(
+            resources: [Resource("amount", 1)],
+            tableExists: true,
+            registerHasMovements: true);
+        var store = fixture.Store;
+
+        await store.EnsureReadyForWriteAsync(RegisterId);
+        await store.EnsureReadyForWriteAsync(RegisterId);
+
+        fixture.Connection.Commands.Should().ContainSingle(command =>
+            command.CommandText.Contains("to_regclass", StringComparison.Ordinal));
+        fixture.Connection.Commands.Should().NotContain(command =>
+            command.CommandText.Contains("CREATE TABLE", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Ready_check_repairs_schema_when_durable_table_is_missing()
+    {
+        var fixture = Fixture(tableExists: false, registerHasMovements: true);
+
+        await fixture.Store.EnsureReadyForWriteAsync(RegisterId);
+
+        fixture.Connection.Commands.Should().Contain(command =>
+            command.CommandText.Contains("CREATE TABLE IF NOT EXISTS", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Replace_handles_empty_rows_no_resources_unknown_keys_and_sparse_resource_arrays()
     {
         var emptyRows = Fixture(resources: [Resource("amount", 1)]);
@@ -172,14 +201,16 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionStoreCoreFullCov
         bool tableExists = true,
         IReadOnlyList<IReadOnlyDictionary<string, object?>>? rows = null,
         bool aliasResourceColumns = false,
-        Func<string, string>? tableNameFactory = null)
+        Func<string, string>? tableNameFactory = null,
+        bool registerHasMovements = false)
         => new(
             registerExists,
             resources ?? [],
             tableExists,
             rows ?? [],
             aliasResourceColumns,
-            tableNameFactory ?? (tableCode => $"opreg_{tableCode}_turnovers"));
+            tableNameFactory ?? (tableCode => $"opreg_{tableCode}_turnovers"),
+            registerHasMovements);
 
     private sealed class FixtureState(
         bool registerExists,
@@ -187,7 +218,8 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionStoreCoreFullCov
         bool tableExists,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> rows,
         bool aliasResourceColumns,
-        Func<string, string> tableNameFactory)
+        Func<string, string> tableNameFactory,
+        bool registerHasMovements)
     {
         private readonly Mock<IOperationalRegisterRepository> _registers = new();
         private readonly Mock<IOperationalRegisterResourceRepository> _resources = new();
@@ -202,7 +234,7 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionStoreCoreFullCov
             {
                 _registers
                     .Setup(repository => repository.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(registerExists ? Register() : null);
+                    .ReturnsAsync(registerExists ? Register(registerHasMovements) : null);
                 _resources
                     .Setup(repository => repository.GetByRegisterIdAsync(RegisterId, It.IsAny<CancellationToken>()))
                     .ReturnsAsync(resources);
@@ -219,11 +251,10 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionStoreCoreFullCov
         }
     }
 
-    private static OperationalRegisterAdminItem Register()
-        => new(RegisterId, "Sales", "sales", "sales", "Sales", false, DateTime.UnixEpoch, DateTime.UnixEpoch);
+    private static OperationalRegisterAdminItem Register(bool hasMovements = false)
+        => new(RegisterId, "Sales", "sales", "sales", "Sales", hasMovements, DateTime.UnixEpoch, DateTime.UnixEpoch);
 
-    private static System.Data.Common.DbDataReader Rows(
-        IReadOnlyList<IReadOnlyDictionary<string, object?>> rows)
+    private static System.Data.Common.DbDataReader Rows(IReadOnlyList<IReadOnlyDictionary<string, object?>> rows)
     {
         var table = new DataTable();
         foreach (var column in rows.SelectMany(row => row.Keys).Distinct(StringComparer.OrdinalIgnoreCase))

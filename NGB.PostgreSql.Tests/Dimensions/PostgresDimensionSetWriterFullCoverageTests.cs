@@ -88,6 +88,28 @@ public sealed class PostgresDimensionSetWriterFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_is_chunked_before_postgresql_parameter_arrays_can_grow_without_bound()
+    {
+        var sets = Enumerable.Range(1, 2_001)
+            .Select(index => new DimensionSetWrite(Id(index), [Item(DimensionA, ValueA)]))
+            .ToArray();
+        var rows = sets
+            .Select(set => (set.DimensionSetId, DimensionA, ValueA))
+            .ToArray();
+        var connection = Connection(rows);
+
+        await Writer(connection).EnsureExistsBatchAsync(sets, default);
+
+        connection.Commands.Should().HaveCount(6);
+        connection.Commands.Count(command =>
+                command.CommandText.Contains("INSERT INTO platform_dimension_sets", StringComparison.Ordinal))
+            .Should().Be(2);
+        connection.Commands.Count(command =>
+                command.CommandText.Contains("INSERT INTO platform_dimension_set_items", StringComparison.Ordinal))
+            .Should().Be(2);
+    }
+
+    [Fact]
     public async Task Batch_rejects_duplicate_item_and_duplicate_set_conflicts_for_every_equality_shape()
     {
         var sut = Writer([]);
@@ -132,6 +154,13 @@ public sealed class PostgresDimensionSetWriterFullCoverageTests
     }
 
     private static DimensionValue Item(Guid dimensionId, Guid valueId) => new(dimensionId, valueId);
+
+    private static Guid Id(int value)
+    {
+        var bytes = new byte[16];
+        BitConverter.GetBytes(value).CopyTo(bytes, 0);
+        return new Guid(bytes);
+    }
 
     private static PostgresDimensionSetWriter Writer(
         IReadOnlyList<(Guid SetId, Guid DimensionId, Guid ValueId)> rows)

@@ -1,11 +1,8 @@
 using FluentAssertions;
 using NGB.Accounting.Accounts;
-using NGB.Accounting.Balances;
 using NGB.Accounting.Reports.AccountCard;
-using NGB.Accounting.Turnovers;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Accounts;
-using NGB.Persistence.Readers;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting;
 using NGB.Tools.Exceptions;
@@ -28,8 +25,6 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
                 TotalDebit = missingDebit ? null : 0m,
                 TotalCredit = missingDebit ? 0m : null
             }),
-            new StubBalanceReader([]),
-            new StubTurnoverReader([]),
             new StubChartOfAccountsRepository(accountId, null));
 
         var action = () => service.GetPageAsync(new AccountCardReportPageRequest
@@ -57,8 +52,6 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
                 TotalDebit = 0m,
                 TotalCredit = 0m
             }),
-            new StubBalanceReader([]),
-            new StubTurnoverReader([]),
             new StubChartOfAccountsRepository(accountId, repositoryCode));
 
         var page = await service.GetPageAsync(new AccountCardReportPageRequest
@@ -77,7 +70,7 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
     [Fact]
     public async Task GetPageAsync_WhenRequestIsNull_ThrowsArgumentRequired()
     {
-        var service = new AccountCardEffectivePagedReportService(null!, null!, null!, null!);
+        var service = new AccountCardEffectivePagedReportService(null!, null!);
 
         var action = () => service.GetPageAsync(null!, default);
 
@@ -87,7 +80,7 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
     [Fact]
     public async Task GetPageAsync_WhenAccountIdIsEmpty_ThrowsArgumentRequired()
     {
-        var service = new AccountCardEffectivePagedReportService(null!, null!, null!, null!);
+        var service = new AccountCardEffectivePagedReportService(null!, null!);
 
         var action = () => service.GetPageAsync(new AccountCardReportPageRequest
         {
@@ -102,7 +95,7 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
     [Fact]
     public async Task GetPageAsync_WhenRangeIsReversed_ThrowsOutOfRange()
     {
-        var service = new AccountCardEffectivePagedReportService(null!, null!, null!, null!);
+        var service = new AccountCardEffectivePagedReportService(null!, null!);
 
         var action = () => service.GetPageAsync(new AccountCardReportPageRequest
         {
@@ -119,7 +112,7 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
     [InlineData(false)]
     public async Task GetPageAsync_WhenRangeBoundaryIsNotMonthStart_ThrowsOutOfRange(bool invalidFrom)
     {
-        var service = new AccountCardEffectivePagedReportService(null!, null!, null!, null!);
+        var service = new AccountCardEffectivePagedReportService(null!, null!);
         var request = new AccountCardReportPageRequest
         {
             AccountId = Guid.CreateVersion7(),
@@ -166,12 +159,8 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
                 TotalCredit = 11m
             });
 
-        var balanceReader = new StubBalanceReader([]);
-        var turnoverReader = new StubTurnoverReader([]);
         var service = new AccountCardEffectivePagedReportService(
             reader,
-            balanceReader,
-            turnoverReader,
             new StubChartOfAccountsRepository(accountId, "1000"));
 
         var page = await service.GetPageAsync(new AccountCardReportPageRequest
@@ -183,8 +172,7 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
         }, CancellationToken.None);
 
         reader.TotalsCallCount.Should().Be(1);
-        balanceReader.LatestClosedCallCount.Should().Be(1);
-        turnoverReader.RangeCallCount.Should().Be(1);
+        reader.OpeningBalanceCallCount.Should().Be(1);
         reader.PageRequests.Should().ContainSingle();
         reader.PageRequests[0].IncludeTotals.Should().BeTrue();
         page.OpeningBalance.Should().Be(0m);
@@ -229,12 +217,8 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
                 NextCursor = null
             });
 
-        var balanceReader = new StubBalanceReader([]);
-        var turnoverReader = new StubTurnoverReader([]);
         var service = new AccountCardEffectivePagedReportService(
             reader,
-            balanceReader,
-            turnoverReader,
             new StubChartOfAccountsRepository(accountId, "1000"));
 
         var page = await service.GetPageAsync(new AccountCardReportPageRequest
@@ -255,8 +239,7 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
         }, CancellationToken.None);
 
         reader.TotalsCallCount.Should().Be(0);
-        balanceReader.LatestClosedCallCount.Should().Be(0);
-        turnoverReader.RangeCallCount.Should().Be(0);
+        reader.OpeningBalanceCallCount.Should().Be(0);
         reader.PageRequests.Should().ContainSingle();
         reader.PageRequests[0].IncludeTotals.Should().BeFalse();
         page.OpeningBalance.Should().Be(20m);
@@ -297,33 +280,11 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
                 NextCursor = null,
                 TotalDebit = 10m,
                 TotalCredit = 0m
-            });
+            },
+            openingBalance: 60m);
 
         var service = new AccountCardEffectivePagedReportService(
             reader,
-            new StubBalanceReader([]),
-            new StubTurnoverReader([
-                new AccountingTurnover
-                {
-                    Period = new DateOnly(2026, 1, 1),
-                    AccountId = accountId,
-                    DimensionSetId = Guid.Empty,
-                    AccountCode = "1000",
-                    DebitAmount = 100m,
-                    CreditAmount = 0m,
-                    Dimensions = DimensionBag.Empty
-                },
-                new AccountingTurnover
-                {
-                    Period = new DateOnly(2026, 2, 1),
-                    AccountId = accountId,
-                    DimensionSetId = Guid.Empty,
-                    AccountCode = "1000",
-                    DebitAmount = 0m,
-                    CreditAmount = 40m,
-                    Dimensions = DimensionBag.Empty
-                }
-            ]),
             new StubChartOfAccountsRepository(accountId, "1000"));
 
         var page = await service.GetPageAsync(new AccountCardReportPageRequest
@@ -386,12 +347,8 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
                 TotalCredit = 5m
             });
 
-        var balanceReader = new StubBalanceReader([]);
-        var turnoverReader = new StubTurnoverReader([]);
         var service = new AccountCardEffectivePagedReportService(
             reader,
-            balanceReader,
-            turnoverReader,
             new StubChartOfAccountsRepository(accountId, "1000"));
 
         var page = await service.GetPageAsync(new AccountCardReportPageRequest
@@ -420,41 +377,26 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
         page.Lines.Should().HaveCount(2);
     }
 
-    private sealed class StubEffectivePageReader(AccountCardLinePage page) : IAccountCardEffectivePageReader
+    private sealed class StubEffectivePageReader(AccountCardLinePage page, decimal openingBalance = 0m) : IAccountCardEffectivePageReader
     {
         public List<AccountCardLinePageRequest> PageRequests { get; } = [];
         public int TotalsCallCount => PageRequests.Count(x => x.IncludeTotals);
+        public int OpeningBalanceCallCount { get; private set; }
+
+        public Task<decimal> GetOpeningBalanceAsync(
+            Guid accountId,
+            DateOnly fromInclusive,
+            DimensionScopeBag? dimensionScopes,
+            CancellationToken ct = default)
+        {
+            OpeningBalanceCallCount++;
+            return Task.FromResult(openingBalance);
+        }
 
         public Task<AccountCardLinePage> GetPageAsync(AccountCardLinePageRequest request, CancellationToken ct = default)
         {
             PageRequests.Add(request);
             return Task.FromResult(page);
-        }
-    }
-
-    private sealed class StubBalanceReader(IReadOnlyList<AccountingBalance> rows) : IAccountingBalanceReader
-    {
-        public int ForPeriodCallCount { get; private set; }
-        public int LatestClosedCallCount { get; private set; }
-
-        public Task<IReadOnlyList<AccountingBalance>> GetForPeriodAsync(DateOnly period, CancellationToken ct = default) => Task.FromResult(rows);
-        public Task<IReadOnlyList<AccountingBalance>> GetLatestClosedAsync(DateOnly period, CancellationToken ct = default)
-        {
-            LatestClosedCallCount++;
-            return Task.FromResult(rows);
-        }
-    }
-
-    private sealed class StubTurnoverReader(IReadOnlyList<AccountingTurnover> rows) : IAccountingTurnoverReader
-    {
-        public int ForPeriodCallCount { get; private set; }
-        public int RangeCallCount { get; private set; }
-
-        public Task<IReadOnlyList<AccountingTurnover>> GetForPeriodAsync(DateOnly period, CancellationToken ct = default) => Task.FromResult(rows);
-        public Task<IReadOnlyList<AccountingTurnover>> GetRangeAsync(DateOnly fromInclusive, DateOnly toInclusive, CancellationToken ct = default)
-        {
-            RangeCallCount++;
-            return Task.FromResult(rows);
         }
     }
 

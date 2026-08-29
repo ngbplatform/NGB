@@ -18,7 +18,8 @@ public sealed class DefaultOperationalRegisterMonthProjector(
     IOperationalRegisterMonthlyProjectionAggregator aggregator,
     IOperationalRegisterFinalizationRepository finalizations,
     IOperationalRegisterTurnoversStore turnovers,
-    IOperationalRegisterBalancesStore balances)
+    IOperationalRegisterBalancesStore balances,
+    IOperationalRegisterDefaultProjectionRebuilder? optimizedRebuilder = null)
     : IOperationalRegisterDefaultMonthProjector
 {
     public async Task RebuildMonthAsync(OperationalRegisterMonthProjectionContext context, CancellationToken ct = default)
@@ -28,16 +29,26 @@ public sealed class DefaultOperationalRegisterMonthProjector(
 
         // Keep the lock order aligned with explicit projectors:
         // schema first, then movements read, then projection replace.
-        await turnovers.EnsureSchemaAsync(context.RegisterId, ct);
-        await balances.EnsureSchemaAsync(context.RegisterId, ct);
-
-        var turnoverRows = await aggregator.AggregateMonthAsync(context.RegisterId, context.PeriodMonth, ct);
-        await turnovers.ReplaceForMonthAsync(context.RegisterId, context.PeriodMonth, turnoverRows, ct);
+        await turnovers.EnsureReadyForWriteAsync(context.RegisterId, ct);
+        await balances.EnsureReadyForWriteAsync(context.RegisterId, ct);
 
         var previousFinalizedPeriod = await finalizations.GetLatestFinalizedPeriodBeforeAsync(
             context.RegisterId,
             context.PeriodMonth,
             ct);
+
+        if (optimizedRebuilder is not null)
+        {
+            await optimizedRebuilder.RebuildMonthAsync(
+                context.RegisterId,
+                context.PeriodMonth,
+                previousFinalizedPeriod,
+                ct);
+            return;
+        }
+
+        var turnoverRows = await aggregator.AggregateMonthAsync(context.RegisterId, context.PeriodMonth, ct);
+        await turnovers.ReplaceForMonthAsync(context.RegisterId, context.PeriodMonth, turnoverRows, ct);
 
         var previousBalanceRows = previousFinalizedPeriod is { } previousPeriod
             ? await balances.GetByMonthAsync(context.RegisterId, previousPeriod, ct: ct)

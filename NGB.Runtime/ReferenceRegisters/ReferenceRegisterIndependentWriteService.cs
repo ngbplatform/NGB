@@ -146,14 +146,10 @@ public sealed class ReferenceRegisterIndependentWriteService(
 
         var reg = await GetIndependentRegisterOrThrowAsync(registerId, ct);
 
-        // IMPORTANT (deadlock prevention):
-        // Acquire the per-register schema lock before *any* reads from the physical records table.
-        // Otherwise, we can deadlock with concurrent EnsureSchema:
-        // - Tx A (writer) reads from refreg_*__records (AccessShare), then later tries to acquire schema advisory lock.
-        // - Tx B (EnsureSchema) holds schema advisory lock and tries to take an AccessExclusive DDL lock on the same table.
-        //   => classic cycle (A waits for advisory lock; B waits for table lock held by A).
-        // Holding the schema lock for the whole transaction prevents DDL from racing with writer reads.
-        await recordsStore.EnsureSchemaAsync(registerId, ct);
+        // Check the physical shape before the first records-table read. Healthy schemas only use a
+        // read-only catalog query; drift repair acquires the schema advisory lock before table access.
+        // No later operation in this transaction attempts to upgrade to the schema lock.
+        await recordsStore.EnsureReadyForWriteAsync(registerId, ct);
 
         // Serialize writes for the same key.
         await keyLock.LockKeyAsync(registerId, dimensionSetId, ct);
@@ -281,7 +277,7 @@ public sealed class ReferenceRegisterIndependentWriteService(
         var reg = await GetIndependentRegisterOrThrowAsync(registerId, ct);
 
         // See UpsertByDimensionSetIdCoreAsync for the deadlock rationale.
-        await recordsStore.EnsureSchemaAsync(registerId, ct);
+        await recordsStore.EnsureReadyForWriteAsync(registerId, ct);
 
         // Serialize writes for the same key.
         await keyLock.LockKeyAsync(registerId, dimensionSetId, ct);

@@ -14,6 +14,9 @@ public interface IOperationalRegisterBalancesStore
     /// </summary>
     Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default);
 
+    Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
+        => EnsureSchemaAsync(registerId, ct);
+
     /// <summary>
     /// Replaces balances for a specific month (YYYY-MM-01).
     /// Requires an active transaction.
@@ -34,4 +37,3 @@ public interface IOperationalRegisterBalancesStore
         Guid? dimensionSetId = null,
         CancellationToken ct = default);
 }
-

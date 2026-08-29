@@ -68,6 +68,71 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
     }
 
+    public async Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
+    {
+        registerId.EnsureNonEmpty(nameof(registerId));
+        if (IsSchemaReadyInCurrentTransaction(registerId))
+            return;
+
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new ReferenceRegisterNotFoundException(registerId);
+
+        if (register.HasRecords)
+        {
+            var table = ReferenceRegisterNaming.RecordsTable(register.TableCode);
+            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
+            var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
+
+            if (await HasCurrentFieldShapeAsync(table, fields, ct))
+            {
+                _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
+                return;
+            }
+        }
+
+        await EnsureSchemaAsync(registerId, ct);
+    }
+
+    private async Task<bool> HasCurrentFieldShapeAsync(
+        string table,
+        IReadOnlyList<ReferenceRegisterField> fields,
+        CancellationToken ct)
+    {
+        await uow.EnsureConnectionOpenAsync(ct);
+        var existing = (await uow.Connection.QueryAsync<ColumnMeta>(new CommandDefinition(
+                """
+                SELECT
+                    column_name       AS "ColumnName",
+                    is_nullable       AS "IsNullable",
+                    udt_name          AS "UdtName",
+                    numeric_precision AS "NumericPrecision",
+                    numeric_scale     AS "NumericScale"
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = @Table;
+                """,
+                new { Table = table },
+                transaction: uow.Transaction,
+                cancellationToken: ct)))
+            .ToDictionary(column => column.ColumnName, StringComparer.Ordinal);
+
+        if (!existing.ContainsKey("record_id"))
+            return false;
+
+        foreach (var field in fields)
+        {
+            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(field.ColumnCode, "field column_code");
+            if (!existing.TryGetValue(field.ColumnCode, out var column)
+                || !ColumnTypeMatches(column, field.ColumnType)
+                || string.Equals(column.IsNullable, "YES", StringComparison.OrdinalIgnoreCase) != field.IsNullable)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public async Task AppendAsync(
         Guid registerId,
         IReadOnlyList<ReferenceRegisterRecordWrite> records,
@@ -82,10 +147,10 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
         await uow.EnsureOpenForTransactionAsync(ct);
 
-        // Schema drift repair is expensive DDL. Once it succeeds for this scoped store,
-        // metadata guards guarantee that the register shape cannot change underneath the write batch.
+        // A scoped readiness result is reused for the rest of the transaction. Healthy shapes are
+        // verified read-only; drift repair completes before the records table is accessed.
         if (!IsSchemaReadyInCurrentTransaction(registerId))
-            await EnsureSchemaAsync(registerId, ct);
+            await EnsureReadyForWriteAsync(registerId, ct);
 
         var reg = await registers.GetByIdAsync(registerId, ct)
                   ?? throw new ReferenceRegisterNotFoundException(registerId);

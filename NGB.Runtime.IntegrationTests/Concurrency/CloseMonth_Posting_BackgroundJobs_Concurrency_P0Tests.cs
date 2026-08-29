@@ -6,14 +6,14 @@ using Microsoft.Extensions.Logging;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.PostingState;
 using NGB.Accounting.PostingState.Readers;
-using NGB.Accounting.Turnovers;
 using NGB.BackgroundJobs.Jobs;
 using NGB.Core.Documents;
 using NGB.Persistence.Checkers;
 using NGB.Persistence.Readers;
 using NGB.Persistence.Readers.Periods;
 using NGB.Persistence.Readers.PostingState;
-using NGB.PostgreSql.Readers;
+using NGB.Persistence.Writers;
+using NGB.PostgreSql.Writers;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
@@ -32,7 +32,7 @@ public sealed class CloseMonth_Posting_BackgroundJobs_Concurrency_P0Tests(Postgr
         // Arrange
         await fixture.ResetDatabaseAsync();
 
-        var closeMonthEnteredTurnovers = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closeMonthEnteredProjection = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var allowCloseMonthToContinue = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         using var host = IntegrationHostFactory.Create(
@@ -40,14 +40,14 @@ public sealed class CloseMonth_Posting_BackgroundJobs_Concurrency_P0Tests(Postgr
             configureTestServices: services =>
             {
                 // Deterministic overlap:
-                // CloseMonth acquires the period lock and then reads turnovers. We pause at that point,
+                // CloseMonth acquires the period lock and then starts its set-based balance projection. We pause there,
                 // so concurrent PostAsync must wait for the period lock, while the job reads the ledger.
-                services.RemoveAll<IAccountingTurnoverReader>();
-                services.AddScoped<PostgresAccountingTurnoverReader>();
-                services.AddScoped<IAccountingTurnoverReader>(sp =>
-                    new GateTurnoverReader(
-                        sp.GetRequiredService<PostgresAccountingTurnoverReader>(),
-                        closeMonthEnteredTurnovers,
+                services.RemoveAll<IAccountingBalanceProjectionWriter>();
+                services.AddScoped<PostgresAccountingBalanceProjectionWriter>();
+                services.AddScoped<IAccountingBalanceProjectionWriter>(sp =>
+                    new GateBalanceProjectionWriter(
+                        sp.GetRequiredService<PostgresAccountingBalanceProjectionWriter>(),
+                        closeMonthEnteredProjection,
                         allowCloseMonthToContinue));
             });
 
@@ -71,7 +71,7 @@ public sealed class CloseMonth_Posting_BackgroundJobs_Concurrency_P0Tests(Postgr
         });
 
         // Wait until CloseMonth entered the transaction, acquired the period lock, and is about to read turnovers.
-        await closeMonthEnteredTurnovers.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await closeMonthEnteredProjection.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
         var postTask = Task.Run(async () =>
         {
@@ -213,23 +213,21 @@ public sealed class CloseMonth_Posting_BackgroundJobs_Concurrency_P0Tests(Postgr
         return documentId;
     }
 
-    private sealed class GateTurnoverReader(
-        IAccountingTurnoverReader inner,
+    private sealed class GateBalanceProjectionWriter(
+        IAccountingBalanceProjectionWriter inner,
         TaskCompletionSource<bool> entered,
-        TaskCompletionSource<bool> allowContinue) : IAccountingTurnoverReader
+        TaskCompletionSource<bool> allowContinue)
+        : IAccountingBalanceProjectionWriter
     {
-        public async Task<IReadOnlyList<AccountingTurnover>> GetForPeriodAsync(DateOnly period, CancellationToken ct = default)
+        public async Task<AccountingBalanceProjectionResult> ProjectAsync(
+            DateOnly period,
+            bool replaceExisting,
+            CancellationToken ct = default)
         {
             entered.TrySetResult(true);
-            await allowContinue.Task;
-            return await inner.GetForPeriodAsync(period, ct);
+            await allowContinue.Task.WaitAsync(ct);
+            return await inner.ProjectAsync(period, replaceExisting, ct);
         }
-
-        public Task<IReadOnlyList<AccountingTurnover>> GetRangeAsync(
-            DateOnly fromInclusive,
-            DateOnly toInclusive,
-            CancellationToken ct = default) =>
-            inner.GetRangeAsync(fromInclusive, toInclusive, ct);
     }
 
     private sealed class TestJobRunMetrics : BackgroundJobs.Contracts.IJobRunMetrics

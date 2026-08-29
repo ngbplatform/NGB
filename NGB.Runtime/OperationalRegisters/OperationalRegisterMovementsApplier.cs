@@ -59,9 +59,10 @@ public sealed class OperationalRegisterMovementsApplier(
         // transaction exists. Otherwise, callers expecting a deterministic "missing ambient transaction"
         // invariant violation might observe unrelated DB exceptions (e.g., register not found).
         //
-        // EnsureSchemaAsync itself is serialized via OperationalRegisterSchema advisory lock.
+        // Healthy schemas use a read-only shape check. Any required repair is serialized by the
+        // OperationalRegisterSchema advisory lock before business locks are acquired.
         if (manageTransaction)
-            await movements.EnsureSchemaAsync(registerId, ct);
+            await movements.EnsureReadyForWriteAsync(registerId, ct);
 
         IReadOnlyCollection<DateOnly> months;
 
@@ -103,7 +104,7 @@ public sealed class OperationalRegisterMovementsApplier(
                 // External transaction mode: ensure physical schema inside the ambient transaction
                 // (after UoW has validated transaction presence).
                 if (!manageTransaction)
-                    await movements.EnsureSchemaAsync(registerId, innerCt);
+                    await movements.EnsureReadyForWriteAsync(registerId, innerCt);
 
                 switch (operation)
                 {

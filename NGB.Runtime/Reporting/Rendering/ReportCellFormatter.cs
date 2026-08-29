@@ -139,8 +139,6 @@ internal sealed class ReportCellFormatter
         if (value is null)
             return null;
 
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(value, value.GetType());
-        using var doc = JsonDocument.Parse(bytes);
-        return doc.RootElement.Clone();
+        return JsonSerializer.SerializeToElement(value, value.GetType());
     }
 }

@@ -169,7 +169,7 @@ public sealed class AccountingRebuildService_EndToEnd_P0Tests(PostgresTestFixtur
     }
 
     [Fact]
-    public async Task RebuildBalancesAsync_WhenWriterFailsAfterDelete_RollsBackAndKeepsOldBalances()
+    public async Task RebuildBalancesAsync_WhenProjectionFailsAfterWrite_RollsBackAndKeepsOldBalances()
     {
         // Arrange: create balances in open period by running rebuild once.
         using (var host = IntegrationHostFactory.Create(Fixture.ConnectionString))
@@ -193,15 +193,16 @@ public sealed class AccountingRebuildService_EndToEnd_P0Tests(PostgresTestFixtur
             before.Should().NotBeEmpty();
         }
 
-        // Act: run rebuild with fault injection (throw AFTER delete).
+        // Act: run the set-based rebuild with fault injection after the database projection statement.
         using var faultyHost = IntegrationHostFactory.Create(
             Fixture.ConnectionString,
             configureTestServices: services =>
             {
-                services.RemoveAll<IAccountingBalanceWriter>();
-                services.AddScoped<PostgresAccountingBalanceWriter>();
-                services.AddScoped<IAccountingBalanceWriter>(sp =>
-                    new FailAfterDeleteBalanceWriter(sp.GetRequiredService<PostgresAccountingBalanceWriter>()));
+                services.RemoveAll<IAccountingBalanceProjectionWriter>();
+                services.AddScoped<PostgresAccountingBalanceProjectionWriter>();
+                services.AddScoped<IAccountingBalanceProjectionWriter>(sp =>
+                    new FailAfterBalanceProjectionWriter(
+                        sp.GetRequiredService<PostgresAccountingBalanceProjectionWriter>()));
             });
 
         Func<Task> act = async () =>
@@ -212,7 +213,7 @@ public sealed class AccountingRebuildService_EndToEnd_P0Tests(PostgresTestFixtur
         };
 
         await act.Should().ThrowAsync<NotSupportedException>()
-            .WithMessage("*Simulated failure after balances delete*");
+            .WithMessage("*Simulated failure after balance projection*");
 
         // Assert: old rows must still exist (rollback).
         using (var host = IntegrationHostFactory.Create(Fixture.ConnectionString))
@@ -326,22 +327,16 @@ public sealed class AccountingRebuildService_EndToEnd_P0Tests(PostgresTestFixtur
             inner.WriteAsync(turnovers, ct);
     }
 
-    private sealed class FailAfterDeleteBalanceWriter(IAccountingBalanceWriter inner) : IAccountingBalanceWriter
+    private sealed class FailAfterBalanceProjectionWriter(IAccountingBalanceProjectionWriter inner)
+        : IAccountingBalanceProjectionWriter
     {
-        private bool _failed;
-
-        public async Task DeleteForPeriodAsync(DateOnly period, CancellationToken ct = default)
+        public async Task<AccountingBalanceProjectionResult> ProjectAsync(
+            DateOnly period,
+            bool replaceExisting,
+            CancellationToken ct = default)
         {
-            await inner.DeleteForPeriodAsync(period, ct);
-
-            if (_failed)
-                return;
-
-            _failed = true;
-            throw new NotSupportedException("Simulated failure after balances delete");
+            _ = await inner.ProjectAsync(period, replaceExisting, ct);
+            throw new NotSupportedException("Simulated failure after balance projection");
         }
-
-        public Task SaveAsync(IEnumerable<AccountingBalance> balances, CancellationToken ct = default) =>
-            inner.SaveAsync(balances, ct);
     }
 }

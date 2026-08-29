@@ -31,7 +31,8 @@ public sealed class AccountingRebuildService(
     AccountingBalanceCalculator balanceCalculator,
     AccountingNegativeBalanceChecker negativeBalanceChecker,
     IAccountingConsistencyReportReader consistencyReportReader,
-    ILogger<AccountingRebuildService> logger)
+    ILogger<AccountingRebuildService> logger,
+    IAccountingBalanceProjectionWriter? balanceProjectionWriter = null)
     : IAccountingRebuildService
 {
     public async Task<AccountingConsistencyReport> VerifyAsync(
@@ -86,13 +87,19 @@ public sealed class AccountingRebuildService(
             {
                 await advisoryLocks.LockPeriodAsync(period, innerCt);
 
+                if (balanceProjectionWriter is not null)
+                {
+                    var projection = await balanceProjectionWriter.ProjectAsync(period, replaceExisting: true, innerCt);
+                    HandleProjectionViolations(projection);
+                    return projection.RowsWritten;
+                }
+
                 var previousPeriod = period.AddMonths(-1);
                 var previousBalances = await balanceReader.GetForPeriodAsync(previousPeriod, innerCt);
                 var turnovers = await turnoverReader.GetForPeriodAsync(period, innerCt);
-
                 var balances = balanceCalculator.Calculate(turnovers, previousBalances, period).ToList();
-                await CheckNegativeBalancesAsync(balances, innerCt);
 
+                await CheckNegativeBalancesAsync(balances, innerCt);
                 await balanceWriter.DeleteForPeriodAsync(period, innerCt);
                 await balanceWriter.SaveAsync(balances, innerCt);
 
@@ -171,13 +178,23 @@ public sealed class AccountingRebuildService(
                 await turnoverWriter.WriteAsync(computedTurnovers, innerCt);
 
                 // 2) Balances: delete -> compute (prev + turnovers) -> save
-                var previousPeriod = period.AddMonths(-1);
-                var previousBalances = await balanceReader.GetForPeriodAsync(previousPeriod, innerCt);
-                var balances = balanceCalculator.Calculate(computedTurnovers, previousBalances, period).ToList();
-                await CheckNegativeBalancesAsync(balances, innerCt);
-
-                await balanceWriter.DeleteForPeriodAsync(period, innerCt);
-                await balanceWriter.SaveAsync(balances, innerCt);
+                int balanceRowsWritten;
+                if (balanceProjectionWriter is not null)
+                {
+                    var projection = await balanceProjectionWriter.ProjectAsync(period, replaceExisting: true, innerCt);
+                    HandleProjectionViolations(projection);
+                    balanceRowsWritten = projection.RowsWritten;
+                }
+                else
+                {
+                    var previousPeriod = period.AddMonths(-1);
+                    var previousBalances = await balanceReader.GetForPeriodAsync(previousPeriod, innerCt);
+                    var balances = balanceCalculator.Calculate(computedTurnovers, previousBalances, period).ToList();
+                    await CheckNegativeBalancesAsync(balances, innerCt);
+                    await balanceWriter.DeleteForPeriodAsync(period, innerCt);
+                    await balanceWriter.SaveAsync(balances, innerCt);
+                    balanceRowsWritten = balances.Count;
+                }
 
                 // 3) Verify (still inside txn for a consistent view)
                 var report = await consistencyReportReader.RunForPeriodAsync(period, previousPeriodForChainCheck, innerCt);
@@ -186,7 +203,7 @@ public sealed class AccountingRebuildService(
                 {
                     Period = period,
                     TurnoverRowsWritten = computedTurnovers.Count,
-                    BalanceRowsWritten = balances.Count,
+                    BalanceRowsWritten = balanceRowsWritten,
                     VerifyReport = report
                 };
             }
@@ -234,6 +251,30 @@ public sealed class AccountingRebuildService(
                 w.AccountType,
                 w.ClosingBalance,
                 w.Period);
+        }
+    }
+
+    private void HandleProjectionViolations(AccountingBalanceProjectionResult projection)
+    {
+        if (projection.ForbiddenCount > 0)
+        {
+            var details = projection.ViolationSamples
+                .Where(x => x.Policy == NegativeBalancePolicy.Forbid)
+                .Select(x => $"Negative balance forbidden: {x.AccountCode} {x.AccountName} ({x.AccountType}) = {x.ClosingBalance} period={x.Period:yyyy-MM-dd}")
+                .ToArray();
+
+            throw new AccountingNegativeBalanceForbiddenException(string.Join(Environment.NewLine, details));
+        }
+
+        foreach (var warning in projection.ViolationSamples.Where(x => x.Policy == NegativeBalancePolicy.Warn))
+        {
+            logger.LogWarning(
+                "WARN: Negative balance: {AccountCode} {AccountName} ({AccountType}) = {ClosingBalance} period={Period}",
+                warning.AccountCode,
+                warning.AccountName,
+                warning.AccountType,
+                warning.ClosingBalance,
+                warning.Period);
         }
     }
 }

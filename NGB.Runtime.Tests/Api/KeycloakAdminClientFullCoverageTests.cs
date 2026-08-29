@@ -182,6 +182,36 @@ public sealed class KeycloakAdminClientFullCoverageTests
     }
 
     [Fact]
+    public async Task Bulk_get_scans_bounded_pages_and_resolves_ids_and_emails_without_per_user_requests()
+    {
+        var firstPage = string.Join(",", Enumerable.Range(0, 500)
+            .Select(index => UserJson($"unrelated-{index}", email: $"unrelated-{index}@example.com")));
+        var (sut, handler) = Client(request => request.Uri.Contains("first=0", StringComparison.Ordinal)
+            ? Json(HttpStatusCode.OK, $"[{firstPage}]")
+            : Json(HttpStatusCode.OK, $"[{UserJson("target-id", email: "TARGET@example.com")}]"));
+
+        await ((Func<Task>)(() => sut.GetUsersAsync(null!, [], default)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => sut.GetUsersAsync([], null!, default)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        (await sut.GetUsersAsync([" "], [""], default)).ById.Should().BeEmpty();
+
+        var result = await sut.GetUsersAsync(
+            [" target-id ", "target-id"],
+            [" target@example.com ", "TARGET@example.com"],
+            default);
+
+        result.ById.Should().ContainSingle("target-id");
+        result.ByEmail.Should().ContainSingle("target@example.com");
+        handler.Requests.Should().HaveCount(2);
+        handler.Requests.Should().OnlyContain(request =>
+            request.Uri.Contains("briefRepresentation=false", StringComparison.Ordinal)
+            && request.Uri.Contains("max=500", StringComparison.Ordinal));
+        handler.Requests.Should().Contain(request => request.Uri.Contains("first=500", StringComparison.Ordinal));
+        handler.Requests.Should().OnlyContain(request => !request.Uri.Contains("/users/target-id", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task FindUser_covers_email_match_username_fallback_null_arrays_and_no_match()
     {
         var direct = Client(_ => Json(HttpStatusCode.OK,

@@ -53,7 +53,8 @@ public sealed class PeriodClosingService(
     AccountingNegativeBalanceChecker negativeBalanceChecker,
     IAccountByIdResolver accountByIdResolver,
     ILogger<PeriodClosingService> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IAccountingBalanceProjectionWriter? balanceProjectionWriter = null)
     : IPeriodClosingService
 {
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
@@ -100,20 +101,24 @@ public sealed class PeriodClosingService(
                 // Integrity check (turnovers must match register aggregation for this period)
                 await integrityChecker.AssertPeriodIsBalancedAsync(period, innerCt);
 
-                // Get turnover for the period
-                var turnovers = await turnoverReader.GetForPeriodAsync(period, innerCt);
-
-                // Get balances from the previous period (month)
-                var previousPeriod = period.AddMonths(-1);
-                var previousBalances = await balanceReader.GetForPeriodAsync(previousPeriod, innerCt);
-
-                // Calculate the new balances (with carry-forward)
-                var balances = calculator.Calculate(turnovers, previousBalances, period).ToList();
-
-                await CheckNegativeBalanceAsync(balances, innerCt);
-
-                // Save balances
-                await balanceWriter.SaveAsync(balances, innerCt);
+                if (balanceProjectionWriter is not null)
+                {
+                    var projection = await balanceProjectionWriter.ProjectAsync(
+                        period,
+                        replaceExisting: false,
+                        innerCt);
+                    HandleProjectionViolations(projection);
+                }
+                else
+                {
+                    // Portable fallback for non-PostgreSQL persistence adapters.
+                    var turnovers = await turnoverReader.GetForPeriodAsync(period, innerCt);
+                    var previousPeriod = period.AddMonths(-1);
+                    var previousBalances = await balanceReader.GetForPeriodAsync(previousPeriod, innerCt);
+                    var balances = calculator.Calculate(turnovers, previousBalances, period).ToList();
+                    await CheckNegativeBalanceAsync(balances, innerCt);
+                    await balanceWriter.SaveAsync(balances, innerCt);
+                }
 
                 var closedAtUtc = _timeProvider.GetUtcNowDateTime();
                 closedAtUtc.EnsureUtc(nameof(closedAtUtc));
@@ -680,6 +685,40 @@ public sealed class PeriodClosingService(
             logger.LogWarning(
                 "WARN: Negative balance: {WAccountCode} {WAccountName} ({WAccountType}) = {WClosingBalance} period={DateOnly:yyyy-MM-dd}",
                 w.AccountCode, w.AccountName, w.AccountType, w.ClosingBalance, w.Period);
+        }
+    }
+
+    private void HandleProjectionViolations(AccountingBalanceProjectionResult projection)
+    {
+        if (projection.ForbiddenCount > 0)
+        {
+            var details = projection.ViolationSamples
+                .Where(x => x.Policy == NegativeBalancePolicy.Forbid)
+                .Select(x => $"Negative balance forbidden: {x.AccountCode} {x.AccountName} ({x.AccountType}) = {x.ClosingBalance} period={x.Period:yyyy-MM-dd}")
+                .ToArray();
+            var suffix = projection.ForbiddenCount > details.Length
+                ? $"{Environment.NewLine}... and {projection.ForbiddenCount - details.Length} more forbidden balances."
+                : string.Empty;
+
+            throw new AccountingNegativeBalanceForbiddenException(string.Join(Environment.NewLine, details) + suffix);
+        }
+
+        foreach (var warning in projection.ViolationSamples.Where(x => x.Policy == NegativeBalancePolicy.Warn))
+        {
+            logger.LogWarning(
+                "WARN: Negative balance: {WAccountCode} {WAccountName} ({WAccountType}) = {WClosingBalance} period={DateOnly:yyyy-MM-dd}",
+                warning.AccountCode,
+                warning.AccountName,
+                warning.AccountType,
+                warning.ClosingBalance,
+                warning.Period);
+        }
+
+        if (projection.WarningCount > projection.ViolationSamples.Count(x => x.Policy == NegativeBalancePolicy.Warn))
+        {
+            logger.LogWarning(
+                "Additional negative-balance warnings omitted from per-row logging. count={Count}",
+                projection.WarningCount - projection.ViolationSamples.Count(x => x.Policy == NegativeBalancePolicy.Warn));
         }
     }
 

@@ -151,6 +151,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IOperationalRegisterBalancesReader, PostgresOperationalRegisterBalancesReader>();
         services.TryAddScoped<IOperationalRegisterTurnoversStore, PostgresOperationalRegisterTurnoversStore>();
         services.TryAddScoped<IOperationalRegisterBalancesStore, PostgresOperationalRegisterBalancesStore>();
+        services.TryAddScoped<IOperationalRegisterDefaultProjectionRebuilder, PostgresOperationalRegisterDefaultProjectionRebuilder>();
 
         // Reference Registers (metadata + idempotency state)
         services.TryAddScoped<IReferenceRegisterRepository, PostgresReferenceRegisterRepository>();
@@ -263,6 +264,7 @@ public static class PostgresServiceCollectionExtensions
         
         // Writers
         services.TryAddScoped<IAccountingBalanceWriter, PostgresAccountingBalanceWriter>();
+        services.TryAddScoped<IAccountingBalanceProjectionWriter, PostgresAccountingBalanceProjectionWriter>();
         services.TryAddScoped<IAccountingEntryMaintenanceWriter, PostgresAccountingEntryMaintenanceWriter>();
         services.TryAddScoped<IAccountingEntryWriter, PostgresAccountingEntryWriter>();
         services.TryAddScoped<IAccountingTurnoverWriter, PostgresAccountingTurnoverWriter>();

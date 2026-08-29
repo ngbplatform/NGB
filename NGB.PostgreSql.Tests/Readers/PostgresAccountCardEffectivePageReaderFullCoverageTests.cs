@@ -24,6 +24,50 @@ public sealed class PostgresAccountCardEffectivePageReaderFullCoverageTests
     private static readonly DateTime PeriodUtc = new(2026, 8, 10, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
+    public async Task GetOpeningBalance_validates_account_and_month_boundary()
+    {
+        var sut = Fixture().Reader;
+
+        Func<Task> missingAccount = () => sut.GetOpeningBalanceAsync(Guid.Empty, new DateOnly(2026, 8, 1), null);
+        Func<Task> invalidPeriod = () => sut.GetOpeningBalanceAsync(AccountId, new DateOnly(2026, 8, 2), null);
+
+        await missingAccount.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await invalidPeriod.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task GetOpeningBalance_filters_account_in_sql_without_materializing_ledger()
+    {
+        var fixture = Fixture(scalar: 60m);
+
+        var balance = await fixture.Reader.GetOpeningBalanceAsync(AccountId, new DateOnly(2026, 8, 1), null);
+
+        balance.Should().Be(60m);
+        var command = fixture.Connection.Commands.Should().ContainSingle().Subject;
+        command.CommandText.Should().Contain("b.account_id = @AccountId::uuid");
+        command.CommandText.Should().Contain("t.account_id = @AccountId::uuid");
+        command.CommandText.Should().Contain("t.period < @FromInclusive::date");
+        command.CommandText.Should().NotContain("requested_scope_pairs");
+        fixture.Dimensions.Calls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetOpeningBalance_pushes_dimension_scope_matching_into_sql()
+    {
+        var fixture = Fixture(scalar: 25m);
+        var scopes = new DimensionScopeBag([new DimensionScope(DimensionId, [ValueId])]);
+
+        var balance = await fixture.Reader.GetOpeningBalanceAsync(AccountId, new DateOnly(2026, 8, 1), scopes);
+
+        balance.Should().Be(25m);
+        var command = fixture.Connection.Commands.Should().ContainSingle().Subject;
+        command.CommandText.Should().Contain("requested_scope_pairs");
+        command.CommandText.Should().Contain("matching_dimension_sets");
+        command.CommandText.Should().Contain("b.dimension_set_id IN");
+        command.CommandText.Should().Contain("t.dimension_set_id IN");
+    }
+
+    [Fact]
     public async Task GetPage_validates_request_account_range_and_month_boundaries()
     {
         var sut = Fixture().Reader;
@@ -200,8 +244,9 @@ public sealed class PostgresAccountCardEffectivePageReaderFullCoverageTests
     private static FixtureState Fixture(
         IReadOnlyList<IReadOnlyDictionary<string, object?>>? rows = null,
         IReadOnlyDictionary<Guid, DimensionBag>? bags = null,
-        IReadOnlyDictionary<DimensionValueKey, string>? displays = null)
-        => new(rows ?? [], bags ?? new Dictionary<Guid, DimensionBag>(), displays ?? new Dictionary<DimensionValueKey, string>());
+        IReadOnlyDictionary<DimensionValueKey, string>? displays = null,
+        object? scalar = null)
+        => new(rows ?? [], bags ?? new Dictionary<Guid, DimensionBag>(), displays ?? new Dictionary<DimensionValueKey, string>(), scalar);
 
     private static IReadOnlyDictionary<string, object?> LineRow(long entryId, Guid primarySetId, Guid counterSetId)
         => new Dictionary<string, object?>
@@ -249,9 +294,10 @@ public sealed class PostgresAccountCardEffectivePageReaderFullCoverageTests
     private sealed class FixtureState(
         IReadOnlyList<IReadOnlyDictionary<string, object?>> rows,
         IReadOnlyDictionary<Guid, DimensionBag> bags,
-        IReadOnlyDictionary<DimensionValueKey, string> displays)
+        IReadOnlyDictionary<DimensionValueKey, string> displays,
+        object? scalar)
     {
-        public RecordingDbConnection Connection { get; } = new(readerFactory: _ => Rows(rows));
+        public RecordingDbConnection Connection { get; } = new(readerFactory: _ => Rows(rows), scalar: _ => scalar);
         public StubDimensionSetReader Dimensions { get; } = new(bags);
         public StubEnrichmentReader Enrichment { get; } = new(displays);
 

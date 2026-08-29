@@ -91,6 +91,38 @@ CREATE TABLE IF NOT EXISTS {table}(
             cancellationToken: ct));
     }
 
+    public async Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
+    {
+        var register = await registersRepo.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+
+        if (register.HasMovements)
+        {
+            var table = OperationalRegisterNaming.MovementsTable(register.TableCode);
+
+            OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, "opreg movements table name");
+
+            var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct))
+                .OrderBy(resource => resource.Ordinal)
+                .ToArray();
+
+            foreach (var resource in resources)
+            {
+                OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
+            }
+
+            var requiredColumns = resources
+                .Select(resource => resource.ColumnCode)
+                .Prepend("movement_id")
+                .ToArray();
+
+            if (await PostgresTableColumnReadiness.HasRequiredColumnsAsync(uow, table, requiredColumns, ct))
+                return;
+        }
+
+        await EnsureSchemaAsync(registerId, ct);
+    }
+
     public async Task AppendAsync(Guid registerId, IReadOnlyList<OperationalRegisterMovement> movements, CancellationToken ct = default)
     {
         if (movements is null)

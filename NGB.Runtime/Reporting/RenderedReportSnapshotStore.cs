@@ -54,7 +54,7 @@ public sealed class MemoryCacheRenderedReportSnapshotStore : IRenderedReportSnap
     {
         ct.ThrowIfCancellationRequested();
 
-        var size = Math.Max(1, snapshot.ContentRows.Count);
+        var size = EstimateRetainedCellUnits(snapshot);
         if (size > MaxCachedRenderedRows)
             return Task.FromResult(false);
 
@@ -79,6 +79,32 @@ public sealed class MemoryCacheRenderedReportSnapshotStore : IRenderedReportSnap
     }
 
     private static string Key(Guid snapshotId) => $"report:snapshot:{snapshotId:D}";
+
+    private static long EstimateRetainedCellUnits(RenderedReportSnapshot snapshot)
+    {
+        long size = 0;
+        foreach (var row in snapshot.ContentRows)
+        {
+            size = checked(size + Math.Max(1, row?.Cells.Count ?? 0));
+        }
+
+        if (snapshot.GrandTotalRow is { } grandTotal)
+            size = checked(size + Math.Max(1, grandTotal.Cells.Count));
+
+        if (snapshot.TemplateSheet is { } template)
+        {
+            size = checked(size + Math.Max(1, template.Columns.Count));
+            if (template.HeaderRows is not null)
+            {
+                foreach (var header in template.HeaderRows)
+                {
+                    size = checked(size + Math.Max(1, header.Cells.Count));
+                }
+            }
+        }
+
+        return Math.Max(1, size);
+    }
 
     public void Dispose() => _ownedCache?.Dispose();
 }

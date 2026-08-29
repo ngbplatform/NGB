@@ -1,7 +1,9 @@
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
 using NGB.Tools.Extensions;
+using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Readers;
 
@@ -107,7 +109,8 @@ public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow)
                                fr.has_previous_balance_row AS HasPreviousBalanceRow
                            FROM final_rows fr
                            JOIN accounting_accounts a ON a.account_id = fr.account_id AND a.is_deleted = FALSE
-                           ORDER BY a.code, fr.dimension_set_id;
+                           ORDER BY a.code, fr.dimension_set_id
+                           LIMIT @LimitPlusOne;
                            """;
 
         await uow.EnsureConnectionOpenAsync(ct);
@@ -118,10 +121,19 @@ public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow)
                 new
                 {
                     Period = period,
-                    PreviousPeriod = previousPeriodForChainCheck
+                    PreviousPeriod = previousPeriodForChainCheck,
+                    LimitPlusOne = PagingLimits.MaxMaterializedRows + 1
                 },
                 transaction: uow.Transaction,
                 cancellationToken: ct))).AsList();
+
+        if (rows.Count > PagingLimits.MaxMaterializedRows)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                "period",
+                rows.Count,
+                $"Accounting consistency can materialize up to {PagingLimits.MaxMaterializedRows} account/dimension rows.");
+        }
 
         return new AccountingConsistencySnapshot(
             rows.Select(x => new AccountingConsistencySnapshotRow(

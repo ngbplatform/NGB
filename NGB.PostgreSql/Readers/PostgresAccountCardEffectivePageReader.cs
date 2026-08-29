@@ -36,6 +36,94 @@ public sealed class PostgresAccountCardEffectivePageReader(
         public bool HasMore { get; init; }
     }
 
+    public async Task<decimal> GetOpeningBalanceAsync(
+        Guid accountId,
+        DateOnly fromInclusive,
+        DimensionScopeBag? dimensionScopes,
+        CancellationToken ct = default)
+    {
+        if (accountId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(accountId));
+
+        fromInclusive.EnsureMonthStart(nameof(fromInclusive));
+
+        var (scopeDimIds, scopeValueIds, scopeDimensionCount) = SqlDimensionFilter.NormalizeScopes(dimensionScopes);
+        var hasDimensionScopes = scopeDimensionCount > 0;
+        var scopeCtes = hasDimensionScopes
+            ? """
+              requested_scope_pairs AS (
+                  SELECT *
+                  FROM unnest(@ScopeDimIds::uuid[], @ScopeValueIds::uuid[]) AS sp(dimension_id, value_id)
+              ),
+              matching_dimension_sets AS (
+                  SELECT di.dimension_set_id
+                  FROM platform_dimension_set_items di
+                  JOIN requested_scope_pairs sp
+                    ON sp.dimension_id = di.dimension_id
+                   AND sp.value_id = di.value_id
+                  GROUP BY di.dimension_set_id
+                  HAVING COUNT(DISTINCT di.dimension_id) = @ScopeDimensionCount::int
+              ),
+              """
+            : string.Empty;
+        var balanceScope = hasDimensionScopes
+            ? "AND b.dimension_set_id IN (SELECT dimension_set_id FROM matching_dimension_sets)"
+            : string.Empty;
+        var turnoverScope = hasDimensionScopes
+            ? "AND t.dimension_set_id IN (SELECT dimension_set_id FROM matching_dimension_sets)"
+            : string.Empty;
+
+        var sql = $"""
+                   WITH
+                   {scopeCtes}
+                   latest_closed AS (
+                       SELECT MAX(period) AS period
+                       FROM accounting_closed_periods
+                       WHERE period <= @FromInclusive::date
+                   ),
+                   snapshot AS (
+                       SELECT COALESCE(SUM(
+                           CASE
+                               WHEN lc.period = @FromInclusive::date THEN b.opening_balance
+                               ELSE b.closing_balance
+                           END), 0::numeric) AS amount
+                       FROM latest_closed lc
+                       LEFT JOIN accounting_balances b
+                         ON b.period = lc.period
+                        AND b.account_id = @AccountId::uuid
+                        {balanceScope}
+                   ),
+                   turnover_delta AS (
+                       SELECT COALESCE(SUM(t.debit_amount - t.credit_amount), 0::numeric) AS amount
+                       FROM latest_closed lc
+                       JOIN accounting_turnovers t
+                         ON t.account_id = @AccountId::uuid
+                        AND t.period < @FromInclusive::date
+                        AND (lc.period IS NULL OR t.period > lc.period)
+                        {turnoverScope}
+                   )
+                   SELECT snapshot.amount + turnover_delta.amount
+                   FROM snapshot
+                   CROSS JOIN turnover_delta;
+                   """;
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        return await uow.Connection.ExecuteScalarAsync<decimal>(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                    AccountId = accountId,
+                    FromInclusive = fromInclusive,
+                    ScopeDimensionCount = scopeDimensionCount,
+                    ScopeDimIds = scopeDimIds,
+                    ScopeValueIds = scopeValueIds
+                },
+                uow.Transaction,
+                cancellationToken: ct));
+    }
+
     public async Task<AccountCardLinePage> GetPageAsync(
         AccountCardLinePageRequest request,
         CancellationToken ct = default)

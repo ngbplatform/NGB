@@ -18,6 +18,9 @@ public interface IOperationalRegisterMovementsStore
     /// </summary>
     Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default);
 
+    /// <summary>Fast write-path readiness check; implementations may use durable metadata markers.</summary>
+    Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default) => EnsureSchemaAsync(registerId, ct);
+
     /// <summary>
     /// Appends movements.
     /// Must be called inside an active transaction.

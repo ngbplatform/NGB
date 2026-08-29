@@ -24,6 +24,22 @@ public sealed record UpdateIdentityProviderUserRequest(
     string? DisplayName,
     bool Enabled);
 
+public sealed record IdentityProviderUserBatch(
+    IReadOnlyDictionary<string, IdentityProviderUserDto> ById,
+    IReadOnlyDictionary<string, IdentityProviderUserDto> ByEmail);
+
+/// <summary>
+/// Optional optimized read boundary for providers that can scan/list users in pages instead of issuing
+/// one remote request per platform user.
+/// </summary>
+public interface IIdentityProviderBulkUserReader
+{
+    Task<IdentityProviderUserBatch> GetUsersAsync(
+        IReadOnlyList<string> identityProviderUserIds,
+        IReadOnlyList<string> emails,
+        CancellationToken ct);
+}
+
 public interface IIdentityProviderUserAdminClient
 {
     Task<IdentityProviderUserDto> CreateUserAsync(CreateIdentityProviderUserRequest request, CancellationToken ct);

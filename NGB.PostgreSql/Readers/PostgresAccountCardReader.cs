@@ -1,6 +1,7 @@
 using Dapper;
 using System.Text;
 using NGB.Accounting.Reports.AccountCard;
+using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
 using NGB.Persistence.Dimensions;
@@ -39,8 +40,7 @@ public sealed class PostgresAccountCardReader(
         var (scopeDimIds, scopeValueIds, scopeDimensionCount) = SqlDimensionFilter.NormalizeScopes(dimensionScopes);
         var sql = BuildLinesSql(
             hasDimensionScopes: scopeDimensionCount > 0,
-            hasCursor: false,
-            paged: false);
+            hasCursor: false);
 
         var rows = (await uow.Connection.QueryAsync<AccountCardLine>(
             new CommandDefinition(
@@ -52,10 +52,19 @@ public sealed class PostgresAccountCardReader(
                     ToExclusiveUtc = ToMonthStartUtc(toInclusive.AddMonths(1)),
                     ScopeDimensionCount = scopeDimensionCount,
                     ScopeDimIds = scopeDimIds,
-                    ScopeValueIds = scopeValueIds
+                    ScopeValueIds = scopeValueIds,
+                    LimitPlusOne = PagingLimits.MaxMaterializedRows + 1
                 },
                 uow.Transaction,
                 cancellationToken: ct))).AsList();
+
+        if (rows.Count > PagingLimits.MaxMaterializedRows)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                "filters",
+                rows.Count,
+                $"Account card can materialize up to {PagingLimits.MaxMaterializedRows} rows. Use the paged reader.");
+        }
 
         await ResolveDimensionsAsync(rows, ct);
         await ResolveDimensionValueDisplaysAsync(rows, ct);
@@ -84,8 +93,7 @@ public sealed class PostgresAccountCardReader(
         var (scopeDimIds, scopeValueIds, scopeDimensionCount) = SqlDimensionFilter.NormalizeScopes(request.DimensionScopes);
         var sql = BuildLinesSql(
             hasDimensionScopes: scopeDimensionCount > 0,
-            hasCursor: request.Cursor is not null,
-            paged: true);
+            hasCursor: request.Cursor is not null);
 
         var rows = (await uow.Connection.QueryAsync<AccountCardLine>(
             new CommandDefinition(
@@ -178,7 +186,7 @@ public sealed class PostgresAccountCardReader(
         };
     }
 
-    private static string BuildLinesSql(bool hasDimensionScopes, bool hasCursor, bool paged)
+    private static string BuildLinesSql(bool hasDimensionScopes, bool hasCursor)
     {
         var sql = new StringBuilder();
 
@@ -291,10 +299,7 @@ public sealed class PostgresAccountCardReader(
                        ORDER BY "PeriodUtc", "EntryId"
                        """);
 
-        if (paged)
-            sql.AppendLine("LIMIT @LimitPlusOne;");
-        else
-            sql.AppendLine(";");
+        sql.AppendLine("LIMIT @LimitPlusOne;");
 
         return sql.ToString();
     }

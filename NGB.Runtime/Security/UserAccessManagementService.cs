@@ -40,23 +40,45 @@ public sealed class UserAccessManagementService(
             .Select(static x => NormalizeIdentityProviderId(x.AuthSubject))
             .OfType<string>()
             .ToArray();
-
-        var rolesByUserTask = userRoles.GetRolesForUsersAsync(userIds, ct);
-        var identityProviderUsersByIdTask = identityProvider.GetUsersByIdsAsync(identityProviderIds, ct);
-        await Task.WhenAll(rolesByUserTask, identityProviderUsersByIdTask);
-
-        var rolesByUser = await rolesByUserTask;
-        var identityProviderUsersById = await identityProviderUsersByIdTask;
-        var fallbackEmails = platformUsers
-            .Where(user => !HasIdentityProviderUser(identityProviderUsersById, user.AuthSubject))
+        var platformEmails = platformUsers
             .Select(static user => NormalizeIdentityProviderEmail(user.Email))
             .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var identityProviderUsersByEmail = fallbackEmails.Length == 0
-            ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
-            : await identityProvider.FindUsersByEmailsAsync(fallbackEmails, ct);
+        var rolesByUserTask = userRoles.GetRolesForUsersAsync(userIds, ct);
+        IReadOnlyDictionary<string, IdentityProviderUserDto> identityProviderUsersById;
+        IReadOnlyDictionary<string, IdentityProviderUserDto> identityProviderUsersByEmail;
+
+        if (identityProvider is IIdentityProviderBulkUserReader bulkReader)
+        {
+            var batchTask = bulkReader.GetUsersAsync(identityProviderIds, platformEmails, ct);
+
+            await Task.WhenAll(rolesByUserTask, batchTask);
+
+            var batch = await batchTask;
+            identityProviderUsersById = batch.ById;
+            identityProviderUsersByEmail = batch.ByEmail;
+        }
+        else
+        {
+            var identityProviderUsersByIdTask = identityProvider.GetUsersByIdsAsync(identityProviderIds, ct);
+
+            await Task.WhenAll(rolesByUserTask, identityProviderUsersByIdTask);
+
+            identityProviderUsersById = await identityProviderUsersByIdTask;
+            var fallbackEmails = platformUsers
+                .Where(user => !HasIdentityProviderUser(identityProviderUsersById, user.AuthSubject))
+                .Select(static user => NormalizeIdentityProviderEmail(user.Email))
+                .OfType<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            identityProviderUsersByEmail = fallbackEmails.Length == 0
+                ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+                : await identityProvider.FindUsersByEmailsAsync(fallbackEmails, ct);
+        }
+
+        var rolesByUser = await rolesByUserTask;
 
         var items = platformUsers
             .Select(user =>

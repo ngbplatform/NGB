@@ -414,6 +414,58 @@ public sealed class UserAccessManagementServiceTests
     }
 
     [Fact]
+    public async Task GetUsersAsync_UsesSingleBulkIdentityProviderScanWhenSupported()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var platformUser = new PlatformUser(
+            userId,
+            "kc-user",
+            "user@example.com",
+            "User",
+            IsActive: true,
+            now,
+            now);
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        users.Setup(x => x.GetPageAsync(0, 50, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([platformUser], 1));
+        var roles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        roles.Setup(x => x.GetRolesForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { userId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+        var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
+        identityProvider.As<IIdentityProviderBulkUserReader>()
+            .Setup(x => x.GetUsersAsync(
+                It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "kc-user" })),
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "user@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IdentityProviderUserBatch(
+                new Dictionary<string, IdentityProviderUserDto>
+                {
+                    ["kc-user"] = new("kc-user", "user@example.com", null, null, "User", true)
+                },
+                new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)));
+
+        var service = CreateService(
+            users.Object,
+            roles.Object,
+            new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
+            identityProvider.Object);
+
+        var result = await service.GetUsersAsync(new UserPageRequestDto(), default);
+
+        result.Items.Should().ContainSingle().Which.KeycloakEnabled.Should().BeTrue();
+        identityProvider.Verify(x => x.GetUsersByIdsAsync(
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+        identityProvider.Verify(x => x.FindUsersByEmailsAsync(
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+        users.VerifyAll();
+        roles.VerifyAll();
+        identityProvider.VerifyAll();
+    }
+
+    [Fact]
     public async Task GetUserAsync_WhenIdentityProviderDisplayNameIsEmail_ReturnsStoredApplicationDisplayName()
     {
         var userId = Guid.NewGuid();

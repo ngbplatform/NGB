@@ -116,6 +116,13 @@ internal sealed class ReportGroupTreeBuilder(
         var grandTotals = _subtotalBuilder.CreateAccumulator(plan.Measures);
         var openGroups = new List<OpenGroupState>();
         var hasDetailRows = plan.Shape.ShowDetails || plan.DetailFields.Count > 0;
+
+        var detailCodes = plan.DetailFields.Select(x => x.OutputCode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var measureCodes = plan.Measures.Select(x => x.OutputCode)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         ReportDataRow? previous = null;
 
         foreach (var dataRow in dataRows)
@@ -148,7 +155,7 @@ internal sealed class ReportGroupTreeBuilder(
                 _subtotalBuilder.Add(state.Totals, dataRow.Values);
 
             if (hasDetailRows)
-                rows.Add(BuildDetailRow(columns, plan, dataRow.Values, openGroups[^1].GroupKey));
+                rows.Add(BuildDetailRow(columns, plan, dataRow.Values, openGroups[^1].GroupKey, detailCodes, measureCodes));
 
             previous = dataRow;
         }
@@ -237,10 +244,10 @@ internal sealed class ReportGroupTreeBuilder(
         IReadOnlyList<ReportSheetColumnDto> columns,
         ReportQueryPlan plan,
         IReadOnlyDictionary<string, object?> values,
-        string groupKey)
+        string groupKey,
+        IReadOnlySet<string> detailCodes,
+        IReadOnlySet<string> measureCodes)
     {
-        var detailCodes = new HashSet<string>(plan.DetailFields.Select(x => x.OutputCode), StringComparer.OrdinalIgnoreCase);
-        var measureCodes = new HashSet<string>(plan.Measures.Select(x => x.OutputCode), StringComparer.OrdinalIgnoreCase);
         var cells = new List<ReportCellDto>(columns.Count);
 
         foreach (var column in columns)

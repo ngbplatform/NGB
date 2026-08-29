@@ -53,6 +53,38 @@ public sealed class RenderedReportSnapshotStoreFullCoverageTests
     }
 
     [Fact]
+    public async Task BoundedMemoryStore_AccountsForRetainedCellsInsteadOfOnlyRowCount()
+    {
+        using var store = new MemoryCacheRenderedReportSnapshotStore();
+        var cells = Enumerable.Repeat(new ReportCellDto(Display: "value"), 100).ToArray();
+        var rows = Enumerable.Repeat(new ReportSheetRowDto(ReportRowKind.Detail, cells), 501).ToArray();
+        var snapshot = Snapshot() with
+        {
+            ContentRows = rows,
+            TotalContentRows = rows.Length
+        };
+
+        (await store.SetAsync(snapshot, default)).Should().BeFalse();
+        (await store.GetAsync(snapshot.SnapshotId, default)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task BoundedMemoryStore_IncludesTemplateHeadersAndGrandTotalInEntrySize()
+    {
+        using var store = new MemoryCacheRenderedReportSnapshotStore();
+        var header = new ReportSheetRowDto(ReportRowKind.Header, [new ReportCellDto(Display: "Header")]);
+        var total = new ReportSheetRowDto(ReportRowKind.Total, [new ReportCellDto(Display: "Total")]);
+        var template = new ReportSheetDto(
+            [new ReportSheetColumnDto("code", "Code", "string")],
+            [],
+            HeaderRows: [header]);
+        var snapshot = Snapshot() with { TemplateSheet = template, GrandTotalRow = total };
+
+        (await store.SetAsync(snapshot, default)).Should().BeTrue();
+        (await store.GetAsync(snapshot.SnapshotId, default)).Should().BeSameAs(snapshot);
+    }
+
+    [Fact]
     public async Task NullStore_AlwaysMissesRejectsSetAndAcceptsRemove()
     {
         var store = NullRenderedReportSnapshotStore.Instance;

@@ -93,6 +93,63 @@ public sealed class TradeReportingHelperEdgeCoverageTests
     }
 
     [Fact]
+    public async Task ReadInventoryBalances_Rejects_combined_projection_and_movement_cardinality_over_global_bound()
+    {
+        var registerId = Guid.CreateVersion7();
+        var read = new Mock<IOperationalRegisterReadService>(MockBehavior.Strict);
+        var snapshots = Enumerable.Range(0, PagingLimits.MaxMaterializedRows)
+            .Select(index => Projection(
+                Id(index + 1),
+                new DateOnly(2026, 3, 1),
+                Guid.CreateVersion7(),
+                Guid.CreateVersion7(),
+                1m))
+            .ToArray();
+        read.Setup(x => x.GetBalancesPageAsync(
+                It.IsAny<OperationalRegisterMonthlyProjectionPageRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OperationalRegisterMonthlyProjectionPageRequest request, CancellationToken _) =>
+                new OperationalRegisterMonthlyProjectionPage(
+                    request.RegisterId,
+                    request.FromInclusive,
+                    request.ToInclusive,
+                    snapshots,
+                    false,
+                    null));
+        var movements = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
+        movements.Setup(x => x.GetByMonthsAsync(
+                registerId,
+                It.IsAny<DateOnly>(),
+                It.IsAny<DateOnly>(),
+                It.IsAny<IReadOnlyList<DimensionValue>?>(),
+                null,
+                null,
+                null,
+                null,
+                1000,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                Movement(
+                    1,
+                    Id(PagingLimits.MaxMaterializedRows + 1),
+                    Guid.CreateVersion7(),
+                    Guid.CreateVersion7(),
+                    1m,
+                    bagEmpty: false,
+                    displaysEmpty: false)
+            ]);
+
+        await ((Func<Task>)(() => TradeReportingHelpers.ReadInventoryBalancesAsync(
+                read.Object,
+                movements.Object,
+                registerId,
+                new DateOnly(2026, 4, 18),
+                dimensions: null,
+                CancellationToken.None)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public async Task InventoryAvailability_WhenCatalogFallbackIsMissing_UsesStableGuidDisplays()
     {
         var policy = Policy();
@@ -159,6 +216,13 @@ public sealed class TradeReportingHelperEdgeCoverageTests
 
     private static IReadOnlyDictionary<string, JsonElement> Fields(params (string Key, object Value)[] values) =>
         values.ToDictionary(value => value.Key, value => JsonSerializer.SerializeToElement(value.Value));
+
+    private static Guid Id(int value)
+    {
+        var bytes = new byte[16];
+        BitConverter.GetBytes(value).CopyTo(bytes, 0);
+        return new Guid(bytes);
+    }
 
     private static OperationalRegisterMonthlyProjectionReadRow Projection(
         Guid id, DateOnly month, Guid item, Guid warehouse, decimal quantity) => new()

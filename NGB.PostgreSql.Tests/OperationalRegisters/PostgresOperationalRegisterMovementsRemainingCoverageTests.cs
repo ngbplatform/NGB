@@ -216,6 +216,30 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         await resourceStore.AppendStornoByDocumentAsync(registerId, documentId);
     }
 
+    [Fact]
+    public async Task Movement_store_skips_schema_ddl_when_durable_metadata_proves_write_readiness()
+    {
+        var registerId = Guid.NewGuid();
+        var registers = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
+        registers.Setup(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Register(registerId, hasMovements: true));
+        var resources = new Mock<IOperationalRegisterResourceRepository>(MockBehavior.Strict);
+        resources.Setup(x => x.GetByRegisterIdAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        var connection = new RecordingDbConnection(scalar: _ => true);
+        var sut = new PostgresOperationalRegisterMovementsStore(
+            new RecordingUnitOfWork(connection, hasActiveTransaction: true),
+            registers.Object,
+            resources.Object);
+
+        await sut.EnsureReadyForWriteAsync(registerId, default);
+
+        connection.Commands.Should().ContainSingle(command =>
+            command.CommandText.Contains("pg_attribute", StringComparison.Ordinal));
+        resources.VerifyAll();
+        registers.VerifyAll();
+    }
+
     private static OperationalRegisterMovement Movement(IReadOnlyDictionary<string, decimal> resources)
         => new(
             Guid.NewGuid(),
@@ -223,6 +247,6 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
             Guid.Empty,
             resources);
 
-    private static OperationalRegisterAdminItem Register(Guid id)
-        => new(id, "Sales", "sales", "sales", "Sales", false, DateTime.UnixEpoch, DateTime.UnixEpoch);
+    private static OperationalRegisterAdminItem Register(Guid id, bool hasMovements = false)
+        => new(id, "Sales", "sales", "sales", "Sales", hasMovements, DateTime.UnixEpoch, DateTime.UnixEpoch);
 }

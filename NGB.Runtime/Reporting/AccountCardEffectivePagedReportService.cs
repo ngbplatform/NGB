@@ -1,8 +1,6 @@
 using NGB.Accounting.Reports.AccountCard;
 using NGB.Persistence.Accounts;
-using NGB.Persistence.Readers;
 using NGB.Persistence.Readers.Reports;
-using NGB.Runtime.Reporting.Internal;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -15,8 +13,6 @@ namespace NGB.Runtime.Reporting;
 /// </summary>
 public sealed class AccountCardEffectivePagedReportService(
     IAccountCardEffectivePageReader pageReader,
-    IAccountingBalanceReader balanceReader,
-    IAccountingTurnoverReader turnoverReader,
     IChartOfAccountsRepository chartOfAccountsRepository)
     : IAccountCardEffectivePagedReportReader
 {
@@ -40,12 +36,10 @@ public sealed class AccountCardEffectivePagedReportService(
         var dimensionScopes = request.DimensionScopes;
 
         var rangeOpening = cursor is null
-            ? await AccountingReportHelpers.ComputeOpeningBalanceAsync(
+            ? await pageReader.GetOpeningBalanceAsync(
                 request.AccountId,
-                dimensionScopes,
                 request.FromInclusive,
-                balanceReader,
-                turnoverReader,
+                dimensionScopes,
                 ct)
             : cursor.RunningBalance;
 

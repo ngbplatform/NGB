@@ -23,6 +23,9 @@ public sealed class PostgresOperationalRegisterTurnoversStore(
     public Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default)
         => _core.EnsureSchemaAsync(registerId, ct);
 
+    public Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
+        => _core.EnsureReadyForWriteAsync(registerId, ct);
+
     public Task ReplaceForMonthAsync(
         Guid registerId,
         DateOnly periodMonth,

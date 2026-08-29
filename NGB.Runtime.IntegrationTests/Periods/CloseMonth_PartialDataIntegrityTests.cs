@@ -29,11 +29,12 @@ public sealed class CloseMonth_PartialDataIntegrityTests(PostgresTestFixture fix
             fixture.ConnectionString,
             configureTestServices: services =>
             {
-                // Replace balance writer with a fault-injecting wrapper that fails AFTER it writes balances.
-                services.RemoveAll<IAccountingBalanceWriter>();
-                services.AddScoped<PostgresAccountingBalanceWriter>();
-                services.AddScoped<IAccountingBalanceWriter>(sp =>
-                    new FailAfterSaveBalanceWriter(sp.GetRequiredService<PostgresAccountingBalanceWriter>()));
+                // Replace the active set-based projection writer with a fault-injecting wrapper.
+                services.RemoveAll<IAccountingBalanceProjectionWriter>();
+                services.AddScoped<PostgresAccountingBalanceProjectionWriter>();
+                services.AddScoped<IAccountingBalanceProjectionWriter>(sp =>
+                    new FailAfterBalanceProjectionWriter(
+                        sp.GetRequiredService<PostgresAccountingBalanceProjectionWriter>()));
             });
 
         var periodUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -49,7 +50,7 @@ public sealed class CloseMonth_PartialDataIntegrityTests(PostgresTestFixture fix
 
         // Assert: CloseMonth fails, but MUST rollback all balance writes + not mark the period closed.
         await act.Should().ThrowAsync<NotSupportedException>()
-            .WithMessage("*Simulated failure after balances save*");
+            .WithMessage("*Simulated failure after balance projection*");
 
         await using var scope = host.Services.CreateAsyncScope();
         var sp = scope.ServiceProvider;
@@ -109,22 +110,16 @@ public sealed class CloseMonth_PartialDataIntegrityTests(PostgresTestFixture fix
             CancellationToken.None);
     }
 
-    private sealed class FailAfterSaveBalanceWriter(IAccountingBalanceWriter inner) : IAccountingBalanceWriter
+    private sealed class FailAfterBalanceProjectionWriter(IAccountingBalanceProjectionWriter inner)
+        : IAccountingBalanceProjectionWriter
     {
-        private bool _failed;
-
-        public Task DeleteForPeriodAsync(DateOnly period, CancellationToken ct = default) =>
-            inner.DeleteForPeriodAsync(period, ct);
-
-        public async Task SaveAsync(IEnumerable<NGB.Accounting.Balances.AccountingBalance> balances, CancellationToken ct = default)
+        public async Task<AccountingBalanceProjectionResult> ProjectAsync(
+            DateOnly period,
+            bool replaceExisting,
+            CancellationToken ct = default)
         {
-            await inner.SaveAsync(balances, ct);
-
-            if (_failed)
-                return;
-
-            _failed = true;
-            throw new NotSupportedException("Simulated failure after balances save");
+            _ = await inner.ProjectAsync(period, replaceExisting, ct);
+            throw new NotSupportedException("Simulated failure after balance projection");
         }
     }
 }
