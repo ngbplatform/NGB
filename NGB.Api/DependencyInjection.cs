@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.OpenApi;
 using Serilog;
 using Swashbuckle.AspNetCore.SwaggerUI;
@@ -64,6 +65,7 @@ public static class DependencyInjection
         var section = configuration.GetSection(nameof(KeycloakAdminClientSettings));
         var settings = section.Get<KeycloakAdminClientSettings>() ?? new KeycloakAdminClientSettings();
 
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton(settings);
         services.TryAddSingleton(new KeycloakApiClientSettings(
             settings.BaseUrl,
@@ -71,10 +73,49 @@ public static class DependencyInjection
             settings.ClientId,
             settings.ClientSecret));
 
-        services.AddHttpClient<TokenCacheService>();
-        services.AddHttpClient<IIdentityProviderUserAdminClient, KeycloakAdminClient>();
+        ValidateKeycloakClientSettings(settings);
+
+        services
+            .AddHttpClient(KeycloakHttpClientNames.Token, static client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler(options => ConfigureKeycloakResilience(options, settings, retryUnsafeMethods: true));
+
+        services.TryAddSingleton<TokenCacheService>();
+        services.TryAddSingleton<KeycloakUserLookupCache>();
+
+        services
+            .AddHttpClient<IIdentityProviderUserAdminClient, KeycloakAdminClient>(
+                static client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddStandardResilienceHandler(options => ConfigureKeycloakResilience(options, settings, retryUnsafeMethods: false));
 
         return services;
+    }
+
+    private static void ConfigureKeycloakResilience(
+        HttpStandardResilienceOptions options,
+        KeycloakAdminClientSettings settings,
+        bool retryUnsafeMethods)
+    {
+        options.TotalRequestTimeout.Timeout = settings.TotalRequestTimeout;
+        options.AttemptTimeout.Timeout = settings.AttemptTimeout;
+        options.Retry.MaxRetryAttempts = 2;
+
+        if (!retryUnsafeMethods)
+            options.Retry.DisableForUnsafeHttpMethods();
+    }
+
+    private static void ValidateKeycloakClientSettings(KeycloakAdminClientSettings settings)
+    {
+        if (settings.TotalRequestTimeout <= TimeSpan.Zero)
+            throw new NgbConfigurationViolationException("Keycloak total request timeout must be positive.");
+
+        if (settings.AttemptTimeout <= TimeSpan.Zero || settings.AttemptTimeout > settings.TotalRequestTimeout)
+            throw new NgbConfigurationViolationException("Keycloak attempt timeout must be positive and not exceed the total request timeout.");
+
+        if (settings.UserLookupCacheTtl <= TimeSpan.Zero || settings.MissingUserCacheTtl <= TimeSpan.Zero)
+            throw new NgbConfigurationViolationException("Keycloak user lookup cache TTL values must be positive.");
+
+        if (settings.MaxCachedUserLookups is < 100 or > 200_000)
+            throw new NgbConfigurationViolationException("Keycloak user lookup cache size must be between 100 and 200000.");
     }
 
     public static IServiceCollection AddExternalLinks(this IServiceCollection services, IConfiguration configuration)

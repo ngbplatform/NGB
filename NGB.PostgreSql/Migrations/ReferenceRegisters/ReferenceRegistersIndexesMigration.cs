@@ -10,6 +10,9 @@ public sealed class ReferenceRegistersIndexesMigration : IDdlObject
     public string Name => "reference_registers_indexes";
 
     public string Generate() => """
+                                -- Legacy index duplicated uq_refreg_dim_rules_register_ordinal exactly.
+                                DROP INDEX IF EXISTS ix_refreg_dim_rules_register_ordinal;
+
                                 -- registry
                                 CREATE UNIQUE INDEX IF NOT EXISTS ux_reference_registers_code_norm
                                     ON reference_registers(code_norm);
@@ -21,10 +24,6 @@ public sealed class ReferenceRegistersIndexesMigration : IDdlObject
                                 -- fields (metadata -> physical column schema)
                                 CREATE INDEX IF NOT EXISTS ix_refreg_fields_register_ordinal
                                     ON reference_register_fields(register_id, ordinal, code_norm);
-
-                                -- key dimension rules
-                                CREATE INDEX IF NOT EXISTS ix_refreg_dim_rules_register_ordinal
-                                    ON reference_register_dimension_rules(register_id, ordinal);
 
                                 -- idempotency log
                                 CREATE INDEX IF NOT EXISTS ix_refreg_write_log_document

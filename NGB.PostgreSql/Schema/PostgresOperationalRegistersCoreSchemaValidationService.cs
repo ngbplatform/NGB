@@ -108,8 +108,6 @@ public sealed class PostgresOperationalRegistersCoreSchemaValidationService(
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_registers", "ux_operational_registers_table_code", errors);
 
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_resources", "ix_opreg_resources_register_ordinal", errors);
-        PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_dimension_rules", "ix_opreg_dim_rules_register_ordinal", errors);
-        PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_finalizations", "ix_opreg_finalizations_register_period", errors);
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_write_state", "ix_opreg_write_log_document", errors);
 
         // 4) Critical unique constraints (surfaced as indexes)

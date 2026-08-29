@@ -156,6 +156,72 @@ public sealed class NgbSecurityCacheTests
         calls.Should().Be(1);
     }
 
+    [Fact]
+    public async Task Cancelling_one_waiter_does_not_cancel_a_shared_population_for_healthy_waiters()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+
+        async Task<int> Load(CancellationToken ct)
+        {
+            Interlocked.Increment(ref calls);
+            started.SetResult();
+            await release.Task.WaitAsync(ct);
+            return 42;
+        }
+
+        using var cancelledWaiter = new CancellationTokenSource();
+        var first = cache.GetOrCreateMainMenuAsync(snapshot, Load, cancelledWaiter.Token);
+        await started.Task;
+        var healthy = cache.GetOrCreateMainMenuAsync(snapshot, Load, CancellationToken.None);
+
+        cancelledWaiter.Cancel();
+        await ((Func<Task>)(async () => await first)).Should().ThrowAsync<OperationCanceledException>();
+        release.SetResult();
+
+        (await healthy).Should().Be(42);
+        calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Cancelling_the_only_waiter_abandons_population_and_allows_retry()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var cancellation = new CancellationTokenSource();
+        var cancelled = cache.GetOrCreateCatalogMetadataAsync<int>(
+            snapshot,
+            async ct =>
+            {
+                started.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                return 1;
+            },
+            cancellation.Token);
+
+        await started.Task;
+        cancellation.Cancel();
+        await ((Func<Task>)(async () => await cancelled)).Should().ThrowAsync<OperationCanceledException>();
+
+        var retried = await cache.GetOrCreateCatalogMetadataAsync(
+            snapshot,
+            _ => Task.FromResult(17),
+            CancellationToken.None);
+
+        retried.Should().Be(17);
+    }
+
     private static PermissionSnapshot CreateSnapshot(Guid userId, long accessVersion)
         => new(
             userId,

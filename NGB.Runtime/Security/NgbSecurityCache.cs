@@ -7,9 +7,9 @@ namespace NGB.Runtime.Security;
 public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecurityCacheOptions> options)
 {
     private readonly ConcurrentDictionary<string, byte> trackedKeys = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, Lazy<Task<object?>>> pendingPopulations = new(StringComparer.Ordinal);
-    private readonly ConcurrentQueue<string> insertionOrder = new();
-    private int trackedKeyCount;
+    private readonly ConcurrentDictionary<string, PendingPopulation> pendingPopulations = new(StringComparer.Ordinal);
+    private readonly ConcurrentQueue<string> _insertionOrder = new();
+    private int _trackedKeyCount;
 
     public Task<T?> GetOrCreatePermissionSnapshotAsync<T>(
         Guid userId,
@@ -95,12 +95,13 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
         if (cache.TryGetValue<T>(key, out var cached))
             return cached;
 
-        var population = pendingPopulations.GetOrAdd(
-            key,
-            _ => new Lazy<Task<object?>>(
-                async () =>
+        while (true)
+        {
+            var population = pendingPopulations.GetOrAdd(
+                key,
+                _ => new PendingPopulation(async populationCt =>
                 {
-                    var created = await factory(ct);
+                    var created = await factory(populationCt);
                     TrackAndTrim(key, options.CurrentValue.MaxEntries);
                     cache.Set(
                         key,
@@ -117,19 +118,40 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
                             this));
 
                     return created;
-                },
-                LazyThreadSafetyMode.ExecutionAndPublication));
+                }));
 
-        try
-        {
-            var value = await population.Value.WaitAsync(ct);
-            return (T?)value;
-        }
-        finally
-        {
-            if (population.IsValueCreated && population.Value.IsCompleted)
+            if (!population.TryAddWaiter())
             {
-                pendingPopulations.TryRemove(new KeyValuePair<string, Lazy<Task<object?>>>(key, population));
+                pendingPopulations.TryRemove(new KeyValuePair<string, PendingPopulation>(key, population));
+                continue;
+            }
+
+            var task = population.Task;
+            _ = task.ContinueWith(
+                static (_, state) =>
+                {
+                    var cleanup = ((NgbSecurityCache Cache, string Key, PendingPopulation Population))state!;
+                    cleanup.Cache.pendingPopulations.TryRemove(
+                        new KeyValuePair<string, PendingPopulation>(cleanup.Key, cleanup.Population));
+                    cleanup.Population.Dispose();
+                },
+                (this, key, population),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+
+            try
+            {
+                var value = await task.WaitAsync(ct);
+                return (T?)value;
+            }
+            finally
+            {
+                if (population.ReleaseWaiterAndAbandonIfLast())
+                {
+                    pendingPopulations.TryRemove(new KeyValuePair<string, PendingPopulation>(key, population));
+                    population.Cancel();
+                }
             }
         }
     }
@@ -138,11 +160,11 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
     {
         if (trackedKeys.TryAdd(key, 0))
         {
-            Interlocked.Increment(ref trackedKeyCount);
-            insertionOrder.Enqueue(key);
+            Interlocked.Increment(ref _trackedKeyCount);
+            _insertionOrder.Enqueue(key);
         }
 
-        while (Volatile.Read(ref trackedKeyCount) > maxEntries && insertionOrder.TryDequeue(out var oldest))
+        while (Volatile.Read(ref _trackedKeyCount) > maxEntries && _insertionOrder.TryDequeue(out var oldest))
         {
             if (!TryRemoveTracked(oldest))
                 continue;
@@ -156,9 +178,66 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
         if (!trackedKeys.TryRemove(key, out _))
             return false;
 
-        Interlocked.Decrement(ref trackedKeyCount);
+        Interlocked.Decrement(ref _trackedKeyCount);
         return true;
     }
 
     private static string NormalizeCachePart(string value) => value.Trim().ToLowerInvariant();
+
+    private sealed class PendingPopulation : IDisposable
+    {
+        private readonly Lock _sync = new();
+        private readonly CancellationTokenSource _cts = new();
+        private readonly Lazy<Task<object?>> _task;
+        private int _waiters;
+        private bool _abandoned;
+
+        public PendingPopulation(Func<CancellationToken, Task<object?>> factory)
+        {
+            _task = new Lazy<Task<object?>>(
+                () => factory(_cts.Token),
+                LazyThreadSafetyMode.ExecutionAndPublication);
+        }
+
+        public Task<object?> Task => _task.Value;
+
+        public bool TryAddWaiter()
+        {
+            lock (_sync)
+            {
+                if (_abandoned)
+                    return false;
+
+                _waiters++;
+                return true;
+            }
+        }
+
+        public bool ReleaseWaiterAndAbandonIfLast()
+        {
+            lock (_sync)
+            {
+                _waiters--;
+                if (_waiters != 0 || (_task.IsValueCreated && _task.Value.IsCompleted))
+                    return false;
+
+                _abandoned = true;
+                return true;
+            }
+        }
+
+        public void Cancel()
+        {
+            try
+            {
+                _cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Completion won the race and already disposed the population token source.
+            }
+        }
+
+        public void Dispose() => _cts.Dispose();
+    }
 }

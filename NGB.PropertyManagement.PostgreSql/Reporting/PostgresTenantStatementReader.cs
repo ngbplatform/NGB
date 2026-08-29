@@ -12,7 +12,15 @@ public sealed class PostgresTenantStatementReader(IUnitOfWork uow) : ITenantStat
     private const string LeaseTypeCode = PropertyManagementCodes.Lease;
 
     private const string StatementCte = """
-WITH statement_rows AS (
+WITH lease_validation AS (
+    SELECT EXISTS (
+        SELECT 1
+        FROM documents
+        WHERE id = @lease_id
+          AND type_code = @lease_type_code
+    ) AS lease_valid
+),
+statement_rows AS (
     SELECT
         rc.due_on_utc AS occurred_on_utc,
         rc.document_id AS document_id,
@@ -197,8 +205,10 @@ SELECT
     stats.total_count AS TotalCount,
     stats.opening_balance AS OpeningBalance,
     stats.total_charges AS TotalCharges,
-    stats.total_credits AS TotalCredits
+    stats.total_credits AS TotalCredits,
+    lease_validation.lease_valid AS LeaseValid
 FROM stats
+CROSS JOIN lease_validation
 LEFT JOIN paged ON TRUE
 ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
 """;
@@ -208,11 +218,10 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
         query.EnsureInvariant();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        await ValidateLeaseFilterAsync(query.LeaseId, ct);
-
         var parameters = new
         {
             lease_id = query.LeaseId,
+            lease_type_code = LeaseTypeCode,
             from_utc = query.FromUtc,
             to_utc = query.ToUtc,
             posted = (int)DocumentStatus.Posted,
@@ -226,6 +235,10 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
         var stats = dbRows[0];
+
+        if (!stats.LeaseValid)
+            throw new NgbArgumentInvalidException("leaseId", "Select a valid Lease.");
+
         var rows = dbRows
             .Where(static row => row.HasRow)
             .Select(MapRow)
@@ -262,25 +275,6 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
         return result;
     }
 
-    private async Task ValidateLeaseFilterAsync(Guid leaseId, CancellationToken ct)
-    {
-        const string sql = """
-SELECT 1
-FROM documents
-WHERE id = @lease_id
-  AND type_code = @lease_type_code;
-""";
-
-        var exists = await uow.Connection.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
-            sql,
-            new { lease_id = leaseId, lease_type_code = LeaseTypeCode },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
-
-        if (exists is null)
-            throw new NgbArgumentInvalidException(nameof(leaseId), "Select a valid Lease.");
-    }
-
     private sealed record CombinedRow(
         DateOnly? OccurredOnUtc,
         Guid? DocumentId,
@@ -295,5 +289,6 @@ WHERE id = @lease_id
         int TotalCount,
         decimal OpeningBalance,
         decimal TotalCharges,
-        decimal TotalCredits);
+        decimal TotalCredits,
+        bool LeaseValid);
 }

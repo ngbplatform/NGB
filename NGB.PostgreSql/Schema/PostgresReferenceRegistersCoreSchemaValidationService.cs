@@ -104,7 +104,6 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "reference_registers", "ux_reference_registers_table_code", errors);
 
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "reference_register_fields", "ix_refreg_fields_register_ordinal", errors);
-        PostgresSchemaValidationChecks.RequireIndex(snapshot, "reference_register_dimension_rules", "ix_refreg_dim_rules_register_ordinal", errors);
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "reference_register_write_state", "ix_refreg_write_log_document", errors);
 
         // 4) Critical unique constraints (surfaced as indexes)

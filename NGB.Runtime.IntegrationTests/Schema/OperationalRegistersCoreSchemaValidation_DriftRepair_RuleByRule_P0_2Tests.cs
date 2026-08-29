@@ -17,22 +17,16 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     : IntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task ValidateAsync_WhenFinalizationsIndexMissing_FailsThenBootstrapperRepairs()
+    public async Task Bootstrapper_RemovesLegacyRedundantFinalizationsIndex_AndSchemaRemainsValid()
     {
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
-        await DropIndexAsync(Fixture.ConnectionString, "ix_opreg_finalizations_register_period");
-
-        await using (var scope = host.Services.CreateAsyncScope())
-        {
-            var validator = scope.ServiceProvider.GetRequiredService<IOperationalRegistersCoreSchemaValidationService>();
-
-            Func<Task> act = () => validator.ValidateAsync(CancellationToken.None);
-            await act.Should().ThrowAsync<NgbConfigurationViolationException>()
-                .WithMessage("*ix_opreg_finalizations_register_period*");
-        }
+        await ExecuteAsync(
+            Fixture.ConnectionString,
+            "CREATE INDEX IF NOT EXISTS ix_opreg_finalizations_register_period ON operational_register_finalizations(register_id, period);");
 
         await MigrationSet.ApplyPlatformMigrationsAsync(Fixture.ConnectionString);
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_opreg_finalizations_register_period")).Should().BeFalse();
 
         await using (var scope = host.Services.CreateAsyncScope())
         {
@@ -132,6 +126,27 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
 
         await using var cmd = new NpgsqlCommand($"DROP INDEX IF EXISTS {indexName};", conn);
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task ExecuteAsync(string cs, string sql)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> IndexExistsAsync(string cs, string indexName)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = @name);",
+            conn);
+        cmd.Parameters.AddWithValue("name", indexName);
+        return (bool)(await cmd.ExecuteScalarAsync())!;
     }
 
     private static async Task DropTriggerAsync(string cs, string tableName, string triggerName)

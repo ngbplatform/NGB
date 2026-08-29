@@ -293,7 +293,6 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationServiceFullCov
             ],
             ["reference_register_dimension_rules"] =
             [
-                Index("reference_register_dimension_rules", "ix_refreg_dim_rules_register_ordinal"),
                 Index("reference_register_dimension_rules", "ux_reference_register_dimension_rules__register_ordinal")
             ],
             ["reference_register_write_state"] =

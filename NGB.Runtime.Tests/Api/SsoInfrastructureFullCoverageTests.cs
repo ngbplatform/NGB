@@ -114,7 +114,12 @@ public sealed class SsoInfrastructureFullCoverageTests
             Realm = string.Empty,
             ClientId = string.Empty,
             ClientSecret = string.Empty,
-            AdminBatchConcurrency = 8
+            AdminBatchConcurrency = 8,
+            TotalRequestTimeout = TimeSpan.FromSeconds(30),
+            AttemptTimeout = TimeSpan.FromSeconds(10),
+            UserLookupCacheTtl = TimeSpan.FromMinutes(2),
+            MissingUserCacheTtl = TimeSpan.FromSeconds(15),
+            MaxCachedUserLookups = 20_000
         });
         new KeycloakApiClientSettings("url", "realm", "client", "secret")
             .Should().BeEquivalentTo(new { Url = "url", Realm = "realm", ClientId = "client", ClientSecret = "secret" });

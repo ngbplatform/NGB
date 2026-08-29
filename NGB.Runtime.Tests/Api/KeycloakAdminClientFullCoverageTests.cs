@@ -14,6 +14,105 @@ namespace NGB.Runtime.Tests.Api;
 public sealed class KeycloakAdminClientFullCoverageTests
 {
     [Fact]
+    public async Task User_lookup_cache_coalesces_requests_and_isolates_caller_cancellation()
+    {
+        var cache = new KeycloakUserLookupCache(Settings(), TimeProvider.System);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<IdentityProviderUserDto?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+
+        async Task<IdentityProviderUserDto?> Load(CancellationToken _)
+        {
+            Interlocked.Increment(ref calls);
+            started.TrySetResult();
+            return await release.Task;
+        }
+
+        using var canceledCaller = new CancellationTokenSource();
+        var canceled = cache.GetByIdAsync("user-1", Load, canceledCaller.Token);
+        await started.Task;
+        var healthy = cache.GetByIdAsync("user-1", Load, CancellationToken.None);
+
+        canceledCaller.Cancel();
+        await ((Func<Task>)(async () => await canceled)).Should().ThrowAsync<OperationCanceledException>();
+
+        var expected = new IdentityProviderUserDto(
+            "user-1", "User@Example.com", "First", "Last", "Display", true);
+        release.SetResult(expected);
+
+        (await healthy).Should().BeSameAs(expected);
+        (await cache.GetByIdAsync(
+            " user-1 ",
+            _ => throw new Xunit.Sdk.XunitException("A cached id must not be reloaded."),
+            default)).Should().BeSameAs(expected);
+        (await cache.GetByEmailAsync(
+            " USER@example.COM ",
+            _ => throw new Xunit.Sdk.XunitException("A remembered email must not be reloaded."),
+            default)).Should().BeSameAs(expected);
+        calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task User_lookup_cache_negative_entries_invalidation_and_bound_are_deterministic()
+    {
+        var settings = Settings() with { MaxCachedUserLookups = 100 };
+        var cache = new KeycloakUserLookupCache(settings, TimeProvider.System);
+        var missingCalls = 0;
+
+        (await cache.GetByEmailAsync(
+            "missing@example.com",
+            _ => Task.FromResult<IdentityProviderUserDto?>(null),
+            default)).Should().BeNull();
+        (await cache.GetByEmailAsync(
+            "MISSING@example.com",
+            _ =>
+            {
+                Interlocked.Increment(ref missingCalls);
+                return Task.FromResult<IdentityProviderUserDto?>(null);
+            },
+            default)).Should().BeNull();
+        missingCalls.Should().Be(0);
+
+        cache.InvalidateEmail("missing@example.com");
+        (await cache.GetByEmailAsync(
+            "missing@example.com",
+            _ =>
+            {
+                Interlocked.Increment(ref missingCalls);
+                return Task.FromResult<IdentityProviderUserDto?>(null);
+            },
+            default)).Should().BeNull();
+        missingCalls.Should().Be(1);
+
+        for (var i = 0; i < 101; i++)
+        {
+            await cache.GetByIdAsync(
+                $"absent-{i}",
+                _ => Task.FromResult<IdentityProviderUserDto?>(null),
+                default);
+        }
+
+        var reloads = 0;
+        await cache.GetByIdAsync(
+            "absent-0",
+            _ =>
+            {
+                Interlocked.Increment(ref reloads);
+                return Task.FromResult<IdentityProviderUserDto?>(null);
+            },
+            default);
+        reloads.Should().Be(1);
+
+        var remembered = new IdentityProviderUserDto("remembered", "remembered@example.com", null, null, null, true);
+        cache.Remember(remembered);
+        cache.InvalidateUser("remembered");
+        (await cache.GetByEmailAsync(
+            "remembered@example.com",
+            _ => Task.FromResult<IdentityProviderUserDto?>(null),
+            default)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task CreateUser_validates_request_sends_normalized_payload_and_loads_location_user()
     {
         var (sut, handler) = Client(request =>
@@ -375,7 +474,10 @@ public sealed class KeycloakAdminClientFullCoverageTests
     {
         var handler = new RecordingHandler(response);
         var client = new HttpClient(handler);
-        return new ClientFixture(new KeycloakAdminClient(client, CachedTokenService(), settings ?? Settings()), handler);
+        var effectiveSettings = settings ?? Settings();
+        var cache = new KeycloakUserLookupCache(effectiveSettings, TimeProvider.System);
+
+        return new ClientFixture(new KeycloakAdminClient(client, CachedTokenService(), cache, effectiveSettings), handler);
     }
 
     private static TokenCacheService CachedTokenService()

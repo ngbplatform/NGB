@@ -24,6 +24,7 @@ public sealed class Migrations_UpgradeDrift_PlatformIndexes_Audit_Dimensions_Use
         // Platform Users
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ux_platform_users_auth_subject");
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_platform_users_email");
+        await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_platform_users_display_sort");
 
         // Platform Dimensions
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ux_platform_dimensions_code_norm_not_deleted");
@@ -37,7 +38,6 @@ public sealed class Migrations_UpgradeDrift_PlatformIndexes_Audit_Dimensions_Use
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_entity");
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_action");
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_actor");
-        await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_platform_audit_event_changes_event");
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ux_platform_audit_event_changes_event_ordinal");
 
         // Platform Audit paging indexes (critical for cursor pagination)
@@ -47,6 +47,7 @@ public sealed class Migrations_UpgradeDrift_PlatformIndexes_Audit_Dimensions_Use
         // Sanity: dropped.
         (await IndexExistsAsync(Fixture.ConnectionString, "ux_platform_users_auth_subject")).Should().BeFalse();
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_users_email")).Should().BeFalse();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_users_display_sort")).Should().BeFalse();
 
         (await IndexExistsAsync(Fixture.ConnectionString, "ux_platform_dimensions_code_norm_not_deleted")).Should().BeFalse();
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_dimensions_is_active")).Should().BeFalse();
@@ -57,7 +58,6 @@ public sealed class Migrations_UpgradeDrift_PlatformIndexes_Audit_Dimensions_Use
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_entity")).Should().BeFalse();
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_action")).Should().BeFalse();
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_actor")).Should().BeFalse();
-        (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_event_changes_event")).Should().BeFalse();
         (await IndexExistsAsync(Fixture.ConnectionString, "ux_platform_audit_event_changes_event_ordinal")).Should().BeFalse();
 
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_occurred_at_id_desc")).Should().BeFalse();
@@ -69,6 +69,7 @@ public sealed class Migrations_UpgradeDrift_PlatformIndexes_Audit_Dimensions_Use
         // Assert: recreated.
         (await IndexExistsAsync(Fixture.ConnectionString, "ux_platform_users_auth_subject")).Should().BeTrue();
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_users_email")).Should().BeTrue();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_users_display_sort")).Should().BeTrue();
 
         (await IndexExistsAsync(Fixture.ConnectionString, "ux_platform_dimensions_code_norm_not_deleted")).Should().BeTrue();
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_dimensions_is_active")).Should().BeTrue();
@@ -79,7 +80,7 @@ public sealed class Migrations_UpgradeDrift_PlatformIndexes_Audit_Dimensions_Use
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_entity")).Should().BeTrue();
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_action")).Should().BeTrue();
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_actor")).Should().BeTrue();
-        (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_event_changes_event")).Should().BeTrue();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_event_changes_event")).Should().BeFalse();
         (await IndexExistsAsync(Fixture.ConnectionString, "ux_platform_audit_event_changes_event_ordinal")).Should().BeTrue();
 
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_audit_events_occurred_at_id_desc")).Should().BeTrue();

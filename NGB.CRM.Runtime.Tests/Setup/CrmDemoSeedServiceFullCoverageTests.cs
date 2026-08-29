@@ -75,6 +75,7 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         state.DocumentUpdates.Should().Contain(update =>
             update.Type == CrmCodes.Quote && update.Payload.Parts!["lines"].Rows.Count == 2);
         state.DocumentUpdates.Select(update => Display(update.Payload)).Should().OnlyContain(display => display != null);
+        state.OperationalExistenceReads.Should().Be(6);
     }
 
     [Fact]
@@ -97,6 +98,7 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         state.CatalogUpdates.Should().HaveCount(2);
         state.CatalogCreates.Should().HaveCount(4);
         state.DocumentCreates.Should().BeEmpty();
+        state.OperationalExistenceReads.Should().Be(1);
     }
 
     [Fact]
@@ -246,7 +248,10 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
             .ReturnsAsync((string type, PageRequestDto request, CancellationToken _) =>
             {
                 if (request.Limit == 1)
+                {
+                    state.OperationalExistenceReads++;
                     return new PageResponseDto<DocumentDto>([], request.Offset, request.Limit, state.OperationalTotal);
+                }
 
                 return new PageResponseDto<DocumentDto>([], request.Offset, request.Limit, 0);
             });
@@ -347,6 +352,7 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         public int GeneratedLeadCount { get; init; }
         public int OperationalTotal { get; init; }
         public int SetupCalls { get; set; }
+        public int OperationalExistenceReads { get; set; }
         public Dictionary<string, CatalogItemDto> DefaultCatalogs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, IReadOnlyList<CatalogItemDto>> LookupOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Queue<IReadOnlyList<CatalogItemDto>> CatalogEnsurePages { get; } = new();

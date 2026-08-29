@@ -1,24 +1,19 @@
 using Dapper;
 using NGB.Contracts.Common;
 using NGB.OperationalRegisters;
-using NGB.OperationalRegisters.Exceptions;
-using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.OperationalRegisters;
 using NGB.PropertyManagement.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
 namespace NGB.PropertyManagement.PostgreSql.Reporting;
 
-public sealed class PostgresReceivablesReportReader(
-    IUnitOfWork uow,
-    IOperationalRegisterRepository registers,
-    IOperationalRegisterResourceRepository resources)
+public sealed class PostgresReceivablesReportReader(IUnitOfWork uow, OperationalRegisterReadContextCache contextCache)
     : IReceivablesReportReader
 {
     private static readonly Guid LeaseDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Lease}");
     private static readonly Guid ItemDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}");
-    private readonly Dictionary<Guid, RegisterReadContext> _registerContexts = new();
 
     public async Task<ReceivablesReportPage> GetPageAsync(
         Guid registerId,
@@ -249,41 +244,53 @@ dimension_nets AS (
 )
 """;
 
-    private async Task<RegisterReadContext> GetRegisterContextAsync(Guid registerId, CancellationToken ct)
+    private Task<OperationalRegisterReadContext> GetRegisterContextAsync(Guid registerId, CancellationToken ct)
+        => contextCache.GetOrCreateAsync(
+            registerId,
+            "amount",
+            loadCt => LoadRegisterContextAsync(registerId, loadCt),
+            ct);
+
+    private async Task<OperationalRegisterReadContext> LoadRegisterContextAsync(Guid registerId, CancellationToken ct)
     {
-        if (_registerContexts.TryGetValue(registerId, out var cached))
-            return cached;
-
-        var register = await registers.GetByIdAsync(registerId, ct)
-            ?? throw new OperationalRegisterNotFoundException(registerId);
-        var hasAmount = (await resources.GetByRegisterIdAsync(registerId, ct))
-            .Any(static resource => string.Equals(resource.ColumnCode, "amount", StringComparison.Ordinal));
-
-        if (!hasAmount)
-            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column 'amount'.");
-
-        var movementsTable = OperationalRegisterNaming.MovementsTable(register.TableCode);
-        var balancesTable = OperationalRegisterNaming.BalancesTable(register.TableCode);
-        var presence = await uow.Connection.QuerySingleAsync<TablePresence>(new CommandDefinition(
-            "SELECT to_regclass(@MovementsTable) IS NOT NULL AS \"MovementsExist\", to_regclass(@BalancesTable) IS NOT NULL AS \"BalancesExist\";",
-            new { MovementsTable = movementsTable, BalancesTable = balancesTable },
+        const string sql = """
+SELECT
+    r.table_code AS TableCode,
+    EXISTS (
+        SELECT 1
+        FROM operational_register_resources resource
+        WHERE resource.register_id = r.register_id
+          AND resource.column_code = 'amount'
+    ) AS HasRequiredResource,
+    to_regclass('opreg_' || r.table_code || '__movements') IS NOT NULL AS MovementsExist,
+    to_regclass('opreg_' || r.table_code || '__balances') IS NOT NULL AS BalancesExist
+FROM operational_registers r
+WHERE r.register_id = @RegisterId;
+""";
+        var row = await uow.Connection.QuerySingleOrDefaultAsync<RegisterContextSqlRow>(new CommandDefinition(
+            sql,
+            new { RegisterId = registerId },
             uow.Transaction,
             cancellationToken: ct));
-        var context = new RegisterReadContext(movementsTable, balancesTable, presence.MovementsExist, presence.BalancesExist);
 
-        if (context.MovementsExist)
-            _registerContexts[registerId] = context;
+        if (row is null)
+            throw new NGB.OperationalRegisters.Exceptions.OperationalRegisterNotFoundException(registerId);
 
-        return context;
+        if (!row.HasRequiredResource)
+            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column 'amount'.");
+
+        return new OperationalRegisterReadContext(
+            OperationalRegisterNaming.MovementsTable(row.TableCode),
+            OperationalRegisterNaming.BalancesTable(row.TableCode),
+            row.MovementsExist,
+            row.BalancesExist);
     }
 
-    private sealed record RegisterReadContext(
-        string MovementsTable,
-        string BalancesTable,
+    private sealed record RegisterContextSqlRow(
+        string TableCode,
+        bool HasRequiredResource,
         bool MovementsExist,
         bool BalancesExist);
-
-    private sealed record TablePresence(bool MovementsExist, bool BalancesExist);
 
     private sealed record ReceivablesReportSqlRow(
         Guid? DocumentId,

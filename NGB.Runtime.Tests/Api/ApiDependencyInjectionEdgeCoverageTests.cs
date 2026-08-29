@@ -129,7 +129,12 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
             Realm = string.Empty,
             ClientId = string.Empty,
             ClientSecret = string.Empty,
-            AdminBatchConcurrency = 8
+            AdminBatchConcurrency = 8,
+            TotalRequestTimeout = TimeSpan.FromSeconds(30),
+            AttemptTimeout = TimeSpan.FromSeconds(10),
+            UserLookupCacheTtl = TimeSpan.FromMinutes(2),
+            MissingUserCacheTtl = TimeSpan.FromSeconds(15),
+            MaxCachedUserLookups = 20_000
         });
         provider.GetRequiredService<KeycloakApiClientSettings>().Should().Be(
             new KeycloakApiClientSettings(string.Empty, string.Empty, string.Empty, string.Empty));

@@ -23,6 +23,7 @@ public sealed class UserAccessManagementService(
     : IUserAccessManagementService
 {
     internal const int MaxRoleAssignmentsPerUser = 500;
+    internal const int MaxUserPageSize = 100;
 
     public async Task<PageResponseDto<UserListItemDto>> GetUsersAsync(UserPageRequestDto request, CancellationToken ct)
     {
@@ -32,7 +33,7 @@ public sealed class UserAccessManagementService(
         var offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset);
         var limit = request.Limit <= 0
             ? PagingLimits.DefaultPageSize
-            : Math.Min(request.Limit, PagingLimits.MaxPageSize);
+            : Math.Min(request.Limit, MaxUserPageSize);
         var platformPage = await users.GetPageAsync(offset, limit, request.IsActive, ct);
         var platformUsers = platformPage.Items;
         var userIds = platformUsers.Select(x => x.UserId).ToArray();

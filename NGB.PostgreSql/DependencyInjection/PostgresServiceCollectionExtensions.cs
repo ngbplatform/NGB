@@ -93,6 +93,7 @@ public static class PostgresServiceCollectionExtensions
         // Configure options
         services.Configure(configureOptions);
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<PostgresRelationPresenceCache>();
 
         // Validate options on startup
         services.AddOptions<PostgresOptions>()
@@ -136,6 +137,7 @@ public static class PostgresServiceCollectionExtensions
 
         // Operational Registers (persistence contracts only; runtime/write engine comes later)
         services.TryAddScoped<IOperationalRegisterRepository, PostgresOperationalRegisterRepository>();
+        services.TryAddSingleton<OperationalRegisterReadContextCache>();
         services.TryAddScoped<IOperationalRegisterAdminReader, PostgresOperationalRegisterAdminReader>();
         services.TryAddScoped<IOperationalRegisterPhysicalSchemaHealthReader, PostgresOperationalRegisterPhysicalSchemaHealthReader>();
         services.TryAddScoped<IOperationalRegisterDimensionRuleRepository, PostgresOperationalRegisterDimensionRuleRepository>();

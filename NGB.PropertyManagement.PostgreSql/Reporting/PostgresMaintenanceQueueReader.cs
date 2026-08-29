@@ -208,10 +208,7 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
         query.EnsureInvariant();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        await ValidateBuildingFilterAsync(query.BuildingId, ct);
-        await ValidatePropertyFilterAsync(query.PropertyId, ct);
-        await ValidateCategoryFilterAsync(query.CategoryId, ct);
-        await ValidateAssignedPartyFilterAsync(query.AssignedPartyId, ct);
+        await ValidateFiltersAsync(query, ct);
 
         var parameters = new
         {
@@ -300,6 +297,86 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
 
         result.EnsureInvariant();
         return result;
+    }
+
+    private async Task ValidateFiltersAsync(MaintenanceQueueQuery query, CancellationToken ct)
+    {
+        if (query.BuildingId == Guid.Empty)
+            throw new NgbArgumentInvalidException("buildingId", "Select a valid Building.");
+
+        if (query.PropertyId == Guid.Empty)
+            throw new NgbArgumentInvalidException("propertyId", "Select a valid Property.");
+
+        if (query.CategoryId == Guid.Empty)
+            throw new NgbArgumentInvalidException("categoryId", "Select a valid Category.");
+
+        if (query.AssignedPartyId == Guid.Empty)
+            throw new NgbArgumentInvalidException("assignedPartyId", "Select a valid Assigned To.");
+
+        if (query.BuildingId is null && query.PropertyId is null && query.CategoryId is null && query.AssignedPartyId is null)
+            return;
+
+        const string sql = """
+SELECT
+    @building_id::uuid IS NULL OR EXISTS (
+        SELECT 1
+        FROM catalogs c
+        JOIN cat_pm_property p ON p.catalog_id = c.id
+        WHERE c.catalog_code = @property_code
+          AND c.id = @building_id::uuid
+          AND c.is_deleted = FALSE
+          AND LOWER(p.kind) = 'building'
+    ) AS BuildingValid,
+    @property_id::uuid IS NULL OR EXISTS (
+        SELECT 1
+        FROM catalogs c
+        JOIN cat_pm_property p ON p.catalog_id = c.id
+        WHERE c.catalog_code = @property_code
+          AND c.id = @property_id::uuid
+          AND c.is_deleted = FALSE
+    ) AS PropertyValid,
+    @category_id::uuid IS NULL OR EXISTS (
+        SELECT 1
+        FROM catalogs c
+        WHERE c.catalog_code = @category_code
+          AND c.id = @category_id::uuid
+          AND c.is_deleted = FALSE
+    ) AS CategoryValid,
+    @assigned_party_id::uuid IS NULL OR EXISTS (
+        SELECT 1
+        FROM catalogs c
+        WHERE c.catalog_code = @party_code
+          AND c.id = @assigned_party_id::uuid
+          AND c.is_deleted = FALSE
+    ) AS AssignedPartyValid;
+""";
+
+        var validation = await uow.Connection.QuerySingleAsync<FilterValidationRow>(new CommandDefinition(
+            sql,
+            new
+            {
+                building_id = query.BuildingId,
+                property_id = query.PropertyId,
+                category_id = query.CategoryId,
+                assigned_party_id = query.AssignedPartyId,
+                property_code = PropertyCode,
+                category_code = MaintenanceCategoryCode,
+                party_code = PartyCode
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        if (!validation.BuildingValid)
+            throw new NgbArgumentInvalidException("buildingId", "Select a valid Building.");
+
+        if (!validation.PropertyValid)
+            throw new NgbArgumentInvalidException("propertyId", "Select a valid Property.");
+
+        if (!validation.CategoryValid)
+            throw new NgbArgumentInvalidException("categoryId", "Select a valid Category.");
+
+        if (!validation.AssignedPartyValid)
+            throw new NgbArgumentInvalidException("assignedPartyId", "Select a valid Assigned To.");
     }
 
     internal async Task ValidateBuildingFilterAsync(Guid? buildingId, CancellationToken ct)
@@ -409,6 +486,12 @@ WHERE c.catalog_code = @code
     private sealed record PropertyFilterRow(string Kind, bool IsDeleted);
 
     private sealed record DeletedFilterRow(bool IsDeleted);
+
+    private sealed record FilterValidationRow(
+        bool BuildingValid,
+        bool PropertyValid,
+        bool CategoryValid,
+        bool AssignedPartyValid);
 
     internal sealed record PageRow(
         Guid RequestId,

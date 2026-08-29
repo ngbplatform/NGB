@@ -1,6 +1,7 @@
 using Dapper;
 using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Schema;
 using NGB.ReferenceRegisters;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
@@ -8,13 +9,16 @@ using NGB.Trade.Reporting;
 
 namespace NGB.Trade.PostgreSql.Reporting;
 
-public sealed class PostgresTradeCurrentItemPriceReader(IUnitOfWork uow)
+public sealed class PostgresTradeCurrentItemPriceReader(
+    IUnitOfWork uow,
+    PostgresRelationPresenceCache? relationPresenceCache = null)
     : ITradeCurrentItemPriceReader
 {
     private static readonly Guid ItemDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Item}");
     private static readonly Guid PriceTypeDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.PriceType}");
     private static readonly string ItemPricesTable = ReferenceRegisterNaming.RecordsTable(TradeCodes.ItemPricesRegisterCode);
-    private bool? _itemPricesTableExists;
+    private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
+        ?? new PostgresRelationPresenceCache(TimeProvider.System);
 
     public async Task<TradeCurrentItemPricePage> GetPageAsync(
         DateTime asOfUtc,
@@ -145,19 +149,14 @@ LIMIT @Limit;
 
     private async Task<bool> ItemPricesTableExistsAsync(CancellationToken ct)
     {
-        if (_itemPricesTableExists == true)
-            return true;
-
-        var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            "SELECT to_regclass(@TableName) IS NOT NULL;",
-            new { TableName = ItemPricesTable },
-            uow.Transaction,
-            cancellationToken: ct));
-
-        if (exists)
-            _itemPricesTableExists = true;
-
-        return exists;
+        return await _relationPresenceCache.ExistsAsync(
+            ItemPricesTable,
+            async innerCt => await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+                "SELECT to_regclass(@TableName) IS NOT NULL;",
+                new { TableName = ItemPricesTable },
+                uow.Transaction,
+                cancellationToken: innerCt)),
+            ct);
     }
 
     private sealed record CurrentItemPriceSqlRow(

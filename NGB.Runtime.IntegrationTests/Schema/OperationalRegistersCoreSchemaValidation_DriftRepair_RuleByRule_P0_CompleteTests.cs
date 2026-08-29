@@ -67,8 +67,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [InlineData("operational_registers", "ux_operational_registers_code_norm")]
     [InlineData("operational_registers", "ux_operational_registers_table_code")]
     [InlineData("operational_register_resources", "ix_opreg_resources_register_ordinal")]
-    [InlineData("operational_register_dimension_rules", "ix_opreg_dim_rules_register_ordinal")]
-    [InlineData("operational_register_finalizations", "ix_opreg_finalizations_register_period")]
     [InlineData("operational_register_write_state", "ix_opreg_write_log_document")]
     public async Task ValidateAsync_WhenCriticalIndexMissing_FailsAndIsRepaired(string tableName, string indexName)
     {

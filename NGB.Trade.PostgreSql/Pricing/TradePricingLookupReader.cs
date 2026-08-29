@@ -1,16 +1,20 @@
 using Dapper;
 using NGB.Core.Dimensions;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Schema;
 using NGB.ReferenceRegisters;
 using NGB.Tools.Extensions;
 using NGB.Trade.Pricing;
 
 namespace NGB.Trade.PostgreSql.Pricing;
 
-public sealed class TradePricingLookupReader(IUnitOfWork uow) : ITradePricingLookupReader
+public sealed class TradePricingLookupReader(
+    IUnitOfWork uow,
+    PostgresRelationPresenceCache? relationPresenceCache = null) : ITradePricingLookupReader
 {
     private static readonly string ItemPricesTable = ReferenceRegisterNaming.RecordsTable(TradeCodes.ItemPricesRegisterCode);
-    private bool? _itemPricesTableExists;
+    private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
+        ?? new PostgresRelationPresenceCache(TimeProvider.System);
 
     public async Task<IReadOnlyDictionary<Guid, TradeItemSalesProfile>> GetItemSalesProfilesAsync(
         IReadOnlyCollection<Guid> itemIds,
@@ -352,19 +356,14 @@ FROM latest;
 
     private async Task<bool> ItemPricesTableExistsAsync(CancellationToken ct)
     {
-        if (_itemPricesTableExists == true)
-            return true;
-
-        var exists = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
-            "SELECT to_regclass(@TableName) IS NOT NULL;",
-            new { TableName = ItemPricesTable },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
-
-        if (exists)
-            _itemPricesTableExists = true;
-
-        return exists;
+        return await _relationPresenceCache.ExistsAsync(
+            ItemPricesTable,
+            async innerCt => await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+                "SELECT to_regclass(@TableName) IS NOT NULL;",
+                new { TableName = ItemPricesTable },
+                transaction: uow.Transaction,
+                cancellationToken: innerCt)),
+            ct);
     }
 
     private sealed record ItemSalesProfileRow(

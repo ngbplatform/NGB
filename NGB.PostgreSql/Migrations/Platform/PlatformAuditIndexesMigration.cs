@@ -7,6 +7,9 @@ public sealed class PlatformAuditIndexesMigration : IDdlObject
     public string Name => "platform_audit_indexes";
 
     public string Generate() => """
+                                -- Legacy index duplicated the unique (audit_event_id, ordinal) index exactly.
+                                DROP INDEX IF EXISTS ix_platform_audit_event_changes_event;
+
                                 CREATE INDEX IF NOT EXISTS ix_platform_audit_events_occurred_at
                                     ON platform_audit_events(occurred_at_utc);
 
@@ -20,11 +23,7 @@ public sealed class PlatformAuditIndexesMigration : IDdlObject
                                     ON platform_audit_events(actor_user_id, occurred_at_utc DESC)
                                     WHERE actor_user_id IS NOT NULL;
 
-                                CREATE INDEX IF NOT EXISTS ix_platform_audit_event_changes_event
-                                    ON platform_audit_event_changes(audit_event_id, ordinal);
-
                                 CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_audit_event_changes_event_ordinal
                                     ON platform_audit_event_changes(audit_event_id, ordinal);
                                 """;
 }
-

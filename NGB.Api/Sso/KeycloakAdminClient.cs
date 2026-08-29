@@ -12,6 +12,7 @@ namespace NGB.Api.Sso;
 public sealed class KeycloakAdminClient(
     HttpClient httpClient,
     TokenCacheService tokenCache,
+    KeycloakUserLookupCache lookupCache,
     KeycloakAdminClientSettings settings)
     : IIdentityProviderUserAdminClient, IIdentityProviderBulkUserReader
 {
@@ -55,6 +56,8 @@ public sealed class KeycloakAdminClient(
             payload,
             operation: UsersCreateOperation,
             ct);
+
+        lookupCache.InvalidateEmail(email);
 
         if (response.StatusCode == HttpStatusCode.Conflict)
         {
@@ -110,6 +113,7 @@ public sealed class KeycloakAdminClient(
             ct);
 
         await EnsureSuccessAsync(response, UsersUpdateOperation, ct);
+        lookupCache.InvalidateUser(identityProviderUserId.Trim(), email);
     }
 
     public async Task SetUserEnabledAsync(string identityProviderUserId, bool enabled, CancellationToken ct)
@@ -125,6 +129,7 @@ public sealed class KeycloakAdminClient(
             ct);
 
         await EnsureSuccessAsync(response, UsersSetEnabledOperation, ct);
+        lookupCache.InvalidateUser(identityProviderUserId.Trim());
     }
 
     public async Task<IdentityProviderUserDto?> GetUserByIdAsync(string identityProviderUserId, CancellationToken ct)
@@ -132,9 +137,19 @@ public sealed class KeycloakAdminClient(
         if (string.IsNullOrWhiteSpace(identityProviderUserId))
             throw new NgbArgumentRequiredException(nameof(identityProviderUserId));
 
+        var normalizedId = identityProviderUserId.Trim();
+
+        return await lookupCache.GetByIdAsync(
+            normalizedId,
+            innerCt => GetUserByIdCoreAsync(normalizedId, innerCt),
+            ct);
+    }
+
+    private async Task<IdentityProviderUserDto?> GetUserByIdCoreAsync(string identityProviderUserId, CancellationToken ct)
+    {
         var response = await SendAsync(
             HttpMethod.Get,
-            AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId.Trim())}"),
+            AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId)}"),
             body: null,
             operation: UsersGetOperation,
             ct);
@@ -238,6 +253,15 @@ public sealed class KeycloakAdminClient(
             throw new NgbArgumentRequiredException(nameof(email));
 
         var normalizedEmail = email.Trim();
+
+        return await lookupCache.GetByEmailAsync(
+            normalizedEmail,
+            innerCt => FindUserByEmailCoreAsync(normalizedEmail, innerCt),
+            ct);
+    }
+
+    private async Task<IdentityProviderUserDto?> FindUserByEmailCoreAsync(string normalizedEmail, CancellationToken ct)
+    {
         var query = QueryHelpers.AddQueryString(
             AdminPath("users"),
             new Dictionary<string, string?>

@@ -174,7 +174,7 @@ public sealed class CrmDemoSeedService(
             matchField: "email",
             matchValue: "maya.chen@contoso-health.example");
 
-        if (await CountOperationalCrmDocumentsAsync(ct) > 0)
+        if (await HasOperationalCrmDocumentsAsync(ct))
         {
             var generatedDocuments = await EnsureGeneratedDemoDocumentsAsync(
                 todayUtc,
@@ -472,9 +472,8 @@ public sealed class CrmDemoSeedService(
             SeededOperationalData: true);
     }
 
-    private async Task<int> CountOperationalCrmDocumentsAsync(CancellationToken ct)
+    private async Task<bool> HasOperationalCrmDocumentsAsync(CancellationToken ct)
     {
-        var total = 0;
         foreach (var documentType in DemoDocumentTypes)
         {
             var page = await documents.GetPageAsync(
@@ -482,10 +481,11 @@ public sealed class CrmDemoSeedService(
                 new PageRequestDto(Offset: 0, Limit: 1, Search: null),
                 ct);
 
-            total += page.Total.GetValueOrDefault(page.Items.Count);
+            if (page.Total.GetValueOrDefault(page.Items.Count) > 0)
+                return true;
         }
 
-        return total;
+        return false;
     }
 
     private async Task<int> EnsureGeneratedDemoDocumentsAsync(

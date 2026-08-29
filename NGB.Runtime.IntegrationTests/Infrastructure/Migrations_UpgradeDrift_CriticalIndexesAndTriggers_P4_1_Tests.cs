@@ -17,21 +17,17 @@ public sealed class Migrations_UpgradeDrift_CriticalIndexesAndTriggers_P4_1_Test
         // This drift test verifies that dropping *indexes* is recoverable by re-applying migrations.
 
         await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_acc_reg_period_month");
-        await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_acc_turnovers_period_account");
-        await DropIndexIfExistsAsync(Fixture.ConnectionString, "ix_acc_balances_period_account");
 
         // Sanity: dropped.
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_reg_period_month")).Should().BeFalse();
-        (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_turnovers_period_account")).Should().BeFalse();
-        (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_balances_period_account")).Should().BeFalse();
 
         // Act
         await MigrationSet.ApplyPlatformMigrationsAsync(Fixture.ConnectionString);
 
         // Assert: recreated.
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_reg_period_month")).Should().BeTrue();
-        (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_turnovers_period_account")).Should().BeTrue();
-        (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_balances_period_account")).Should().BeTrue();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_turnovers_period_account")).Should().BeFalse();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_balances_period_account")).Should().BeFalse();
     }
 
     [Fact]

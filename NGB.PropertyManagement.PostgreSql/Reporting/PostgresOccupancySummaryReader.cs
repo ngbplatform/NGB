@@ -24,11 +24,13 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
         if (offset < 0)
             throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be zero or positive.");
 
+        if (buildingId == Guid.Empty)
+            throw new NgbArgumentInvalidException(nameof(buildingId), "Select a building.");
+
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var validatedBuilding = await ValidateBuildingFilterAsync(buildingId, ct);
         var page = await ReadPageAndTotalsAsync(
-            validatedBuilding?.BuildingId,
+            buildingId,
             asOfUtc,
             PagingLimits.BoundOffset(offset),
             limit,
@@ -39,44 +41,6 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
         return result;
     }
 
-    private async Task<ValidatedBuildingRow?> ValidateBuildingFilterAsync(Guid? buildingId, CancellationToken ct)
-    {
-        if (buildingId is null)
-            return null;
-
-        if (buildingId.Value == Guid.Empty)
-            throw new NgbArgumentInvalidException(nameof(buildingId), "Select a building.");
-
-        const string sql = """
-SELECT
-    c.id AS BuildingId,
-    p.kind AS Kind,
-    p.display AS BuildingDisplay,
-    c.is_deleted AS IsDeleted
-FROM catalogs c
-JOIN cat_pm_property p ON p.catalog_id = c.id
-WHERE c.catalog_code = @code
-  AND c.id = @building_id;
-""";
-
-        var row = await uow.Connection.QuerySingleOrDefaultAsync<ValidatedBuildingRow>(new CommandDefinition(
-            sql,
-            new { code = PropertyCode, building_id = buildingId },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
-
-        if (row is null)
-            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected building was not found.");
-
-        if (row.IsDeleted)
-            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected building is deleted.");
-
-        if (!string.Equals(row.Kind, "Building", StringComparison.OrdinalIgnoreCase))
-            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected property must be a building.");
-
-        return row;
-    }
-
     private async Task<PageAndTotals> ReadPageAndTotalsAsync(
         Guid? buildingId,
         DateOnly asOfUtc,
@@ -85,7 +49,30 @@ WHERE c.catalog_code = @code
         CancellationToken ct)
     {
         const string sql = """
-WITH candidate_buildings AS (
+WITH filter_validation AS (
+    SELECT
+        @building_id::uuid IS NULL OR EXISTS (
+            SELECT 1
+            FROM catalogs c
+            JOIN cat_pm_property p ON p.catalog_id = c.id
+            WHERE c.catalog_code = @code
+              AND c.id = @building_id::uuid
+        ) AS building_found,
+        COALESCE((
+            SELECT c.is_deleted
+            FROM catalogs c
+            WHERE c.catalog_code = @code
+              AND c.id = @building_id::uuid
+        ), FALSE) AS building_deleted,
+        (
+            SELECT p.kind
+            FROM catalogs c
+            JOIN cat_pm_property p ON p.catalog_id = c.id
+            WHERE c.catalog_code = @code
+              AND c.id = @building_id::uuid
+        ) AS building_kind
+),
+candidate_buildings AS (
     SELECT
         c.id AS building_id,
         COALESCE(NULLIF(btrim(p.display), ''), '[Building]') AS building_display
@@ -158,8 +145,12 @@ SELECT
     (paged.building_id IS NOT NULL) AS HasRow,
     stats.BuildingCount,
     stats.TotalUnits AS AllTotalUnits,
-    stats.OccupiedUnits AS AllOccupiedUnits
+    stats.OccupiedUnits AS AllOccupiedUnits,
+    filter_validation.building_found AS BuildingFound,
+    filter_validation.building_deleted AS BuildingDeleted,
+    filter_validation.building_kind AS BuildingKind
 FROM stats
+CROSS JOIN filter_validation
 LEFT JOIN paged ON TRUE
 ORDER BY paged.building_display, paged.building_id;
 """;
@@ -179,6 +170,8 @@ ORDER BY paged.building_display, paged.building_id;
             cancellationToken: ct))).AsList();
 
         var stats = dbRows[0];
+        ValidateBuildingFilter(buildingId, stats);
+
         var rows = dbRows.Where(row => row.HasRow).Select(row =>
         {
             var result = new OccupancySummaryRow(
@@ -201,7 +194,20 @@ ORDER BY paged.building_display, paged.building_id;
         return new PageAndTotals(rows, stats.BuildingCount, totals);
     }
 
-    private sealed record ValidatedBuildingRow(Guid BuildingId, string Kind, string? BuildingDisplay, bool IsDeleted);
+    private static void ValidateBuildingFilter(Guid? buildingId, CombinedRow validation)
+    {
+        if (buildingId is null)
+            return;
+
+        if (!validation.BuildingFound)
+            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected building was not found.");
+
+        if (validation.BuildingDeleted)
+            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected building is deleted.");
+
+        if (!string.Equals(validation.BuildingKind, "Building", StringComparison.OrdinalIgnoreCase))
+            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected property must be a building.");
+    }
 
     private sealed record CombinedRow(
         Guid? BuildingId,
@@ -211,7 +217,10 @@ ORDER BY paged.building_display, paged.building_id;
         bool HasRow,
         int BuildingCount,
         int AllTotalUnits,
-        int AllOccupiedUnits);
+        int AllOccupiedUnits,
+        bool BuildingFound,
+        bool BuildingDeleted,
+        string? BuildingKind);
 
     private sealed record PageAndTotals(IReadOnlyList<OccupancySummaryRow> Rows, int Total, OccupancySummaryTotals Totals);
 }
