@@ -104,6 +104,10 @@ public sealed class TradeSetupService(
 
         var (inventoryMovementsId, createdInventoryMovements) = await EnsureInventoryMovementsOperationalRegisterAsync(ct);
         var (itemPricesId, createdItemPrices) = await EnsureItemPricesReferenceRegisterAsync(ct);
+
+        await opregMaintenance.EnsurePhysicalSchemasByIdsAsync([inventoryMovementsId], ct);
+        await refregMaintenance.EnsurePhysicalSchemasByIdsAsync([itemPricesId], ct);
+
         var (policyId, createdPolicy) = await EnsureAccountingPolicyAsync(
             cashId,
             arId,
@@ -173,7 +177,6 @@ public sealed class TradeSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 
@@ -214,7 +217,6 @@ public sealed class TradeSetupService(
             ],
             ct);
 
-        await refregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 

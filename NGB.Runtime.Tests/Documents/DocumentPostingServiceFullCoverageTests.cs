@@ -36,6 +36,51 @@ namespace NGB.Runtime.Tests.Documents;
 public sealed class DocumentPostingServiceFullCoverageTests
 {
     [Fact]
+    public async Task Batch_post_deduplicates_ids_batches_locked_reads_and_handles_empty_missing_and_null_inputs()
+    {
+        var first = Document(Guid.NewGuid(), DocumentStatus.Posted);
+        var second = Document(Guid.NewGuid(), DocumentStatus.Posted);
+        var missingId = Guid.NewGuid();
+        var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
+        var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+
+        locks.Setup(x => x.LockDocumentAsync(first.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        locks.Setup(x => x.LockDocumentAsync(second.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        locks.Setup(x => x.LockDocumentAsync(missingId, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        documents.Setup(x => x.GetForUpdateByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first.Id, second.Id })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [first.Id] = first,
+                [second.Id] = second
+            });
+        documents.Setup(x => x.GetForUpdateByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first.Id, missingId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord> { [first.Id] = first });
+
+        var sut = CreateSut(
+            uow: TransactionalUow().Object,
+            advisoryLocks: locks.Object,
+            documents: documents.Object);
+
+        await sut.PostManyAsync([first.Id, first.Id, second.Id], manageTransaction: true);
+        await sut.PostManyAsync([], manageTransaction: true);
+
+        Func<Task> missing = () => sut.PostManyAsync([first.Id, missingId], manageTransaction: true);
+        await missing.Should().ThrowAsync<DocumentNotFoundException>();
+
+        Func<Task> nullIds = () => sut.PostManyAsync(null!, manageTransaction: true);
+        (await nullIds.Should().ThrowAsync<NgbArgumentRequiredException>())
+            .Which.ParamName.Should().Be("documentIds");
+
+        documents.Verify(x => x.GetForUpdateByIdsAsync(
+            It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first.Id, second.Id })),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Explicit_post_and_repost_actions_are_required()
     {
         var sut = CreateSut();

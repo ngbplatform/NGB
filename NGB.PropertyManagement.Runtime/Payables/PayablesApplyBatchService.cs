@@ -158,12 +158,22 @@ public sealed class PayablesApplyBatchService(
                 }
             }
 
+            if (posting is IDocumentPostingBatchService batchPosting)
+            {
+                await batchPosting.PostManyAsync(applyIds, manageTransaction: false, ct: innerCt);
+            }
+            else
+            {
+                foreach (var applyId in applyIds)
+                {
+                    await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
+                }
+            }
+
             for (var index = 0; index < parsed.Count; index++)
             {
                 var item = parsed[index];
                 var applyId = applyIds[index];
-
-                await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
 
                 executed.Add(new PayablesApplyBatchExecutedItem(
                     applyId,

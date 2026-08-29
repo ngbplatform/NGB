@@ -182,13 +182,21 @@ public sealed class KeycloakAdminClientFullCoverageTests
     }
 
     [Fact]
-    public async Task Bulk_get_scans_bounded_pages_and_resolves_ids_and_emails_without_per_user_requests()
+    public async Task Bulk_get_resolves_known_ids_directly_and_only_looks_up_unresolved_emails()
     {
-        var firstPage = string.Join(",", Enumerable.Range(0, 500)
-            .Select(index => UserJson($"unrelated-{index}", email: $"unrelated-{index}@example.com")));
-        var (sut, handler) = Client(request => request.Uri.Contains("first=0", StringComparison.Ordinal)
-            ? Json(HttpStatusCode.OK, $"[{firstPage}]")
-            : Json(HttpStatusCode.OK, $"[{UserJson("target-id", email: "TARGET@example.com")}]"));
+        var (sut, handler) = Client(request =>
+        {
+            if (request.Uri.Contains("/users/target-id", StringComparison.Ordinal))
+                return Json(HttpStatusCode.OK, UserJson("target-id", email: "TARGET@example.com"));
+
+            if (request.Uri.Contains("/users/missing-id", StringComparison.Ordinal))
+                return Response(HttpStatusCode.NotFound);
+
+            if (request.Uri.Contains("email=lookup", StringComparison.Ordinal))
+                return Json(HttpStatusCode.OK, $"[{UserJson("lookup-id", email: "lookup@example.com") }]");
+
+            throw new Xunit.Sdk.XunitException($"Unexpected Keycloak request: {request.Uri}");
+        });
 
         await ((Func<Task>)(() => sut.GetUsersAsync(null!, [], default)))
             .Should().ThrowAsync<NgbArgumentRequiredException>();
@@ -197,18 +205,17 @@ public sealed class KeycloakAdminClientFullCoverageTests
         (await sut.GetUsersAsync([" "], [""], default)).ById.Should().BeEmpty();
 
         var result = await sut.GetUsersAsync(
-            [" target-id ", "target-id"],
-            [" target@example.com ", "TARGET@example.com"],
+            [" target-id ", "target-id", "missing-id"],
+            [" target@example.com ", "TARGET@example.com", "lookup@example.com"],
             default);
 
         result.ById.Should().ContainSingle("target-id");
-        result.ByEmail.Should().ContainSingle("target@example.com");
-        handler.Requests.Should().HaveCount(2);
-        handler.Requests.Should().OnlyContain(request =>
-            request.Uri.Contains("briefRepresentation=false", StringComparison.Ordinal)
-            && request.Uri.Contains("max=500", StringComparison.Ordinal));
-        handler.Requests.Should().Contain(request => request.Uri.Contains("first=500", StringComparison.Ordinal));
-        handler.Requests.Should().OnlyContain(request => !request.Uri.Contains("/users/target-id", StringComparison.Ordinal));
+        result.ByEmail.Should().ContainKeys("target@example.com", "lookup@example.com");
+        handler.Requests.Should().HaveCount(3);
+        handler.Requests.Should().Contain(request => request.Uri.Contains("/users/target-id", StringComparison.Ordinal));
+        handler.Requests.Should().Contain(request => request.Uri.Contains("/users/missing-id", StringComparison.Ordinal));
+        handler.Requests.Should().Contain(request => request.Uri.Contains("email=lookup", StringComparison.Ordinal));
+        handler.Requests.Should().OnlyContain(request => !request.Uri.Contains("first=", StringComparison.Ordinal));
     }
 
     [Fact]

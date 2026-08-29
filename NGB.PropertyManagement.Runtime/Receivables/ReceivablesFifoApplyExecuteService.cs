@@ -96,13 +96,22 @@ public sealed class ReceivablesFifoApplyExecuteService(
                     .ToArray(),
                 innerCt);
 
+            if (posting is IDocumentPostingBatchService batchPosting)
+            {
+                await batchPosting.PostManyAsync(applyIds, manageTransaction: false, ct: innerCt);
+            }
+            else
+            {
+                foreach (var applyId in applyIds)
+                {
+                    await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
+                }
+            }
+
             for (var index = 0; index < suggestions.Length; index++)
             {
                 var suggestion = suggestions[index];
                 var applyId = applyIds[index];
-
-                // Post inside the same outer transaction.
-                await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
 
                 executed.Add(new ReceivablesExecutedApplyDto(applyId, suggestion.ChargeDocumentId, suggestion.Amount));
             }

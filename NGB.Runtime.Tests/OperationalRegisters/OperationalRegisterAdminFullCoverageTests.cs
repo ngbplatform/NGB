@@ -213,6 +213,26 @@ public sealed class OperationalRegisterAdminFullCoverageTests
         f.Movements.Verify(x => x.EnsureSchemaAsync(first, It.IsAny<CancellationToken>()), Times.Exactly(2));
         f.Movements.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Never);
 
+        await ((Func<Task>)(() => f.Sut.EnsurePhysicalSchemasByIdsAsync(null!)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await f.Sut.EnsurePhysicalSchemasByIdsAsync([]);
+        var missing = Guid.NewGuid();
+        f.Registers.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { missing })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        await f.Sut.EnsurePhysicalSchemasByIdsAsync([missing]);
+        var secondRegister = Register(second);
+        f.Registers.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first, second }.OrderBy(x => x))),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([firstRegister, secondRegister]);
+        await f.Sut.EnsurePhysicalSchemasByIdsAsync([Guid.Empty, second, first, first]);
+        f.Movements.Verify(x => x.EnsureSchemaAsync(first, It.IsAny<CancellationToken>()), Times.Exactly(3));
+        f.Movements.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Once);
+        f.Turnovers.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Once);
+        f.Balances.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Once);
+
         await ((Func<Task>)(() => f.Sut.MarkFinalizationDirtyAsync(Guid.Empty, month)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.MarkFinalizationDirtyAsync(first, month.AddDays(1))))
@@ -224,6 +244,34 @@ public sealed class OperationalRegisterAdminFullCoverageTests
         (await f.Sut.FinalizeDirtyAsync(7)).Should().Be(2);
         f.Runner.Setup(x => x.FinalizeRegisterDirtyAsync(first, 8, true, It.IsAny<CancellationToken>())).ReturnsAsync(1);
         (await f.Sut.FinalizeRegisterDirtyAsync(first, 8)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task BatchMaintenanceExtension_UsesBatchWhenAvailable_AndFallsBackCompatibly()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        IOperationalRegisterAdminMaintenanceService nullMaintenance = null!;
+        await ((Func<Task>)(() => nullMaintenance.EnsurePhysicalSchemasByIdsAsync([first])))
+            .Should().ThrowAsync<ArgumentNullException>();
+
+        var fallback = new Mock<IOperationalRegisterAdminMaintenanceService>(MockBehavior.Strict);
+        fallback.Setup(x => x.EnsurePhysicalSchemaByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OperationalRegisterPhysicalSchemaHealth?)null);
+        await ((Func<Task>)(() => fallback.Object.EnsurePhysicalSchemasByIdsAsync(null!)))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await fallback.Object.EnsurePhysicalSchemasByIdsAsync([first, second]);
+        fallback.Verify(x => x.EnsurePhysicalSchemaByIdAsync(first, It.IsAny<CancellationToken>()), Times.Once);
+        fallback.Verify(x => x.EnsurePhysicalSchemaByIdAsync(second, It.IsAny<CancellationToken>()), Times.Once);
+
+        var batch = new Mock<IOperationalRegisterAdminBatchMaintenanceService>(MockBehavior.Strict);
+        batch.Setup(x => x.EnsurePhysicalSchemasByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first, second })),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        IOperationalRegisterAdminMaintenanceService maintenance = batch.Object;
+        await maintenance.EnsurePhysicalSchemasByIdsAsync([first, second]);
+        batch.VerifyAll();
     }
 
     private static async Task AssertRegisterListVariants(

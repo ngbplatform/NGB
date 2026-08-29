@@ -23,42 +23,59 @@ public sealed class PostgresOperationalRegisterPhysicalSchemaHealthReader(
     : IOperationalRegisterPhysicalSchemaHealthReader
 {
     public async Task<OperationalRegisterPhysicalSchemaHealthReport> GetReportAsync(CancellationToken ct = default)
+        => await GetReportCoreAsync(registerId: null, ct);
+
+    public async Task<OperationalRegisterPhysicalSchemaHealth?> GetByRegisterIdAsync(
+        Guid registerId,
+        CancellationToken ct = default)
+    {
+        registerId.EnsureNonEmpty(nameof(registerId));
+        var report = await GetReportCoreAsync(registerId, ct);
+        return report.Items.FirstOrDefault();
+    }
+
+    private async Task<OperationalRegisterPhysicalSchemaHealthReport> GetReportCoreAsync(
+        Guid? registerId,
+        CancellationToken ct)
     {
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var registers = (await uow.Connection.QueryAsync<OperationalRegisterAdminItemRow>(
+        const string metadataSql =
+            """
+            SELECT
+                register_id     AS "RegisterId",
+                code            AS "Code",
+                code_norm       AS "CodeNorm",
+                table_code      AS "TableCode",
+                name            AS "Name",
+                has_movements   AS "HasMovements",
+                created_at_utc  AS "CreatedAtUtc",
+                updated_at_utc  AS "UpdatedAtUtc"
+            FROM operational_registers
+            WHERE @RegisterId::uuid IS NULL OR register_id = @RegisterId::uuid
+            ORDER BY code_norm;
+
+            SELECT
+                register_id AS "RegisterId",
+                column_code AS "ColumnCode"
+            FROM operational_register_resources
+            WHERE @RegisterId::uuid IS NULL OR register_id = @RegisterId::uuid;
+            """;
+
+        await using var grid = await uow.Connection.QueryMultipleAsync(
             new CommandDefinition(
-                """
-                SELECT
-                    register_id     AS "RegisterId",
-                    code            AS "Code",
-                    code_norm       AS "CodeNorm",
-                    table_code      AS "TableCode",
-                    name            AS "Name",
-                    has_movements   AS "HasMovements",
-                    created_at_utc  AS "CreatedAtUtc",
-                    updated_at_utc  AS "UpdatedAtUtc"
-                FROM operational_registers
-                ORDER BY code_norm;
-                """,
+                metadataSql,
+                new { RegisterId = registerId },
                 transaction: uow.Transaction,
-                cancellationToken: ct))).AsList();
+                cancellationToken: ct));
+
+        var registers = (await grid.ReadAsync<OperationalRegisterAdminItemRow>()).AsList();
+        var resourceRows = (await grid.ReadAsync<ResourceRow>()).AsList();
 
         if (registers.Count == 0)
             return new OperationalRegisterPhysicalSchemaHealthReport([]);
 
         // Load all resources once and group by RegisterId.
-        var resourceRows = (await uow.Connection.QueryAsync<ResourceRow>(
-            new CommandDefinition(
-                """
-                SELECT
-                    register_id AS "RegisterId",
-                    column_code AS "ColumnCode"
-                FROM operational_register_resources;
-                """,
-                transaction: uow.Transaction,
-                cancellationToken: ct))).AsList();
-
         var resourceColumnsByRegister = resourceRows
             .GroupBy(r => r.RegisterId)
             .ToDictionary(
@@ -113,15 +130,6 @@ public sealed class PostgresOperationalRegisterPhysicalSchemaHealthReader(
         }
 
         return new OperationalRegisterPhysicalSchemaHealthReport(result);
-    }
-
-    public async Task<OperationalRegisterPhysicalSchemaHealth?> GetByRegisterIdAsync(
-        Guid registerId,
-        CancellationToken ct = default)
-    {
-        registerId.EnsureNonEmpty(nameof(registerId));
-        var report = await GetReportAsync(ct);
-        return report.Items.FirstOrDefault(x => x.Register.RegisterId == registerId);
     }
 
     private static OperationalRegisterPhysicalTableHealth BuildMovementsHealth(

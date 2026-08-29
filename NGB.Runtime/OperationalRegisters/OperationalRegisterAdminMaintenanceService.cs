@@ -19,7 +19,7 @@ public sealed class OperationalRegisterAdminMaintenanceService(
     IOperationalRegisterPhysicalSchemaHealthReader health,
     IOperationalRegisterFinalizationService finalizations,
     IOperationalRegisterFinalizationRunner finalizationRunner)
-    : IOperationalRegisterAdminMaintenanceService
+    : IOperationalRegisterAdminBatchMaintenanceService
 {
     public async Task<OperationalRegisterPhysicalSchemaHealth?> EnsurePhysicalSchemaByIdAsync(
         Guid registerId,
@@ -44,6 +44,39 @@ public sealed class OperationalRegisterAdminMaintenanceService(
 
         // Re-read after ensure (outside the transaction) to provide the actual current state.
         return await health.GetByRegisterIdAsync(registerId, ct);
+    }
+
+    public async Task EnsurePhysicalSchemasByIdsAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        CancellationToken ct = default)
+    {
+        if (registerIds is null)
+            throw new NgbArgumentRequiredException(nameof(registerIds));
+
+        var ids = registerIds
+            .Where(static id => id != Guid.Empty)
+            .Distinct()
+            .OrderBy(static id => id)
+            .ToArray();
+        if (ids.Length == 0)
+            return;
+
+        await uow.EnsureConnectionOpenAsync(ct);
+        var existing = await registers.GetByIdsAsync(ids, ct);
+        if (existing.Count == 0)
+            return;
+
+        await uow.ExecuteInUowTransactionAsync(
+            async token =>
+            {
+                foreach (var reg in existing.OrderBy(static item => item.RegisterId))
+                {
+                    await movements.EnsureSchemaAsync(reg.RegisterId, token);
+                    await turnovers.EnsureSchemaAsync(reg.RegisterId, token);
+                    await balances.EnsureSchemaAsync(reg.RegisterId, token);
+                }
+            },
+            ct);
     }
 
     public async Task<OperationalRegisterPhysicalSchemaHealthReport> EnsurePhysicalSchemaForAllAsync(

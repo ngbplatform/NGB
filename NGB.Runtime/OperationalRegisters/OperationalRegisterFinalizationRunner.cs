@@ -54,10 +54,16 @@ public sealed class OperationalRegisterFinalizationRunner(
         if (dirty.Count == 0)
             return 0;
 
+        var registerRows = await registers.GetByIdsAsync(
+            dirty.Select(static item => item.RegisterId).Distinct().ToArray(),
+            ct);
+        var registersById = registerRows.ToDictionary(static item => item.RegisterId);
         var finalizedCount = 0;
+
         foreach (var item in dirty)
         {
-            if (await FinalizeOneAsync(item.RegisterId, item.Period, manageTransaction, ct))
+            registersById.TryGetValue(item.RegisterId, out var register);
+            if (await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct))
                 finalizedCount++;
         }
 
@@ -80,10 +86,11 @@ public sealed class OperationalRegisterFinalizationRunner(
         if (dirty.Count == 0)
             return 0;
 
+        var register = await registers.GetByIdAsync(registerId, ct);
         var finalizedCount = 0;
         foreach (var item in dirty)
         {
-            if (await FinalizeOneAsync(item.RegisterId, item.Period, manageTransaction, ct))
+            if (await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct))
                 finalizedCount++;
         }
 
@@ -93,6 +100,7 @@ public sealed class OperationalRegisterFinalizationRunner(
     private async Task<bool> FinalizeOneAsync(
         Guid registerId,
         DateOnly periodMonth,
+        OperationalRegisterAdminItem? register,
         bool manageTransaction,
         CancellationToken ct)
     {
@@ -120,15 +128,14 @@ public sealed class OperationalRegisterFinalizationRunner(
                 return false;
             }
 
-            var reg = await registers.GetByIdAsync(registerId, ct);
-            if (reg is null)
+            if (register is null)
                 throw new OperationalRegisterNotFoundException(registerId);
 
-            var codeNorm = NormalizeCodeNorm(reg.Code);
+            var codeNorm = NormalizeCodeNorm(register.Code);
             var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
             var ctx = new OperationalRegisterMonthProjectionContext(
                 RegisterId: registerId,
-                RegisterCode: reg.Code,
+                RegisterCode: register.Code,
                 RegisterCodeNorm: codeNorm,
                 PeriodMonth: periodMonth,
                 NowUtc: nowUtc,
@@ -155,7 +162,7 @@ public sealed class OperationalRegisterFinalizationRunner(
 
                 logger.LogWarning(
                     "No operational register projector registered for '{RegisterCode}' (code_norm='{CodeNorm}') and no default projector is available. Month marked BlockedNoProjector to avoid repeated retries. Mark it Dirty again after a projector is installed.",
-                    reg.Code,
+                    register.Code,
                     codeNorm);
 
                 if (manageTransaction)

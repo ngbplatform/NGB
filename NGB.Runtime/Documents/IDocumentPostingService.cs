@@ -57,3 +57,12 @@ public interface IDocumentPostingService
     Task UnmarkForDeletionAsync(Guid documentId, CancellationToken ct = default);
     Task UnmarkForDeletionAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Optional optimized boundary for posting several documents in one transaction. Implementations
+/// preserve per-document posting order while batching deterministic locks and document reads.
+/// </summary>
+public interface IDocumentPostingBatchService : IDocumentPostingService
+{
+    Task PostManyAsync(IReadOnlyList<Guid> documentIds, bool manageTransaction, CancellationToken ct = default);
+}

@@ -69,17 +69,19 @@ public sealed class PostgresSchemaInspector(IUnitOfWork uow) : IDbSchemaInspecto
                               GROUP BY t.relname, i.relname, ix.indisunique;
                               """;
 
-        var tables = (await uow.Connection.QueryAsync<string>(
-            new CommandDefinition(tablesSql, cancellationToken: ct))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // All catalog reads describe one logical snapshot. Sending them as one command avoids
+        // four network round-trips and keeps the inspector cheap enough for startup/health paths.
+        var snapshotSql = $"{tablesSql}\n{colsSql}\n{fksSql}\n{idxSql}";
+        await using var grid = await uow.Connection.QueryMultipleAsync(
+            new CommandDefinition(
+                snapshotSql,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
 
-        var cols = (await uow.Connection.QueryAsync<DbColumnSchema>(
-            new CommandDefinition(colsSql, cancellationToken: ct))).ToList();
-
-        var fks = (await uow.Connection.QueryAsync<DbForeignKeySchema>(
-            new CommandDefinition(fksSql, cancellationToken: ct))).ToList();
-
-        var idxRaw = await uow.Connection.QueryAsync<dynamic>(
-            new CommandDefinition(idxSql, cancellationToken: ct));
+        var tables = (await grid.ReadAsync<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var cols = (await grid.ReadAsync<DbColumnSchema>()).ToList();
+        var fks = (await grid.ReadAsync<DbForeignKeySchema>()).ToList();
+        var idxRaw = await grid.ReadAsync<dynamic>();
 
         var idx = new List<DbIndexSchema>();
         foreach (var row in idxRaw)

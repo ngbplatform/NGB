@@ -132,7 +132,7 @@ public sealed class RemainingReadersValidationFullCoverageTests
     {
         foreach (var trash in new string?[] { null, "", "active", "deleted", "all", " ACTIVE ", " DELETED ", " ALL " })
         {
-            var connection = new RecordingDbConnection(scalar: _ => 0);
+            var connection = new RecordingDbConnection(readerFactory: _ => EmptyCountAndPageRows());
             var sut = new PostgresGeneralJournalEntryUiQueryRepository(
                 new RecordingUnitOfWork(connection));
 
@@ -675,6 +675,32 @@ public sealed class RemainingReadersValidationFullCoverageTests
         table.Columns.Add("TypeCode", typeof(string));
         table.Columns.Add("Number", typeof(string));
         return table.CreateDataReader();
+    }
+
+    private static DataTableReader EmptyCountAndPageRows()
+    {
+        var count = new DataTable();
+        count.Columns.Add("Count", typeof(int));
+        count.Rows.Add(0);
+        var page = new DataTable();
+        page.Columns.Add("Id", typeof(Guid));
+        page.Columns.Add("DateUtc", typeof(DateTime));
+        page.Columns.Add("Number", typeof(string));
+        page.Columns.Add("Display", typeof(string));
+        page.Columns.Add("DocumentStatus", typeof(short));
+        page.Columns.Add("IsMarkedForDeletion", typeof(bool));
+        page.Columns.Add("JournalType", typeof(short));
+        page.Columns.Add("Source", typeof(short));
+        page.Columns.Add("ApprovalState", typeof(short));
+        page.Columns.Add("ReasonCode", typeof(string));
+        page.Columns.Add("Memo", typeof(string));
+        page.Columns.Add("ExternalReference", typeof(string));
+        page.Columns.Add("AutoReverse", typeof(bool));
+        page.Columns.Add("AutoReverseOnUtc", typeof(DateOnly));
+        page.Columns.Add("ReversalOfDocumentId", typeof(Guid));
+        page.Columns.Add("PostedBy", typeof(string));
+        page.Columns.Add("PostedAtUtc", typeof(DateTime));
+        return new DataTableReader([count, page]);
     }
 
     private static DataTableReader DocumentDisplayRows(

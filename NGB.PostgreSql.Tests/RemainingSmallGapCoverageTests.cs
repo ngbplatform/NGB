@@ -123,19 +123,26 @@ public sealed class RemainingSmallGapCoverageTests
         new ReferenceRegisterExtraGuardsMigration().Name.Should()
             .Be("reference_registers_extra_guards");
 
-        var changeRowType = typeof(PostgresAuditEventReader).GetNestedType(
-            "ChangeRow",
+        var eventRowType = typeof(PostgresAuditEventReader).GetNestedType(
+            "EventRow",
             BindingFlags.NonPublic);
-        changeRowType.Should().NotBeNull();
+        eventRowType.Should().NotBeNull();
         var row = Activator.CreateInstance(
-            changeRowType!,
+            eventRowType!,
             Guid.NewGuid(),
+            (short)1,
+            Guid.NewGuid(),
+            "updated",
+            null,
+            DateTime.UnixEpoch,
+            null,
+            null,
             7,
             "amount",
             "1",
             "2");
 
-        changeRowType!.GetProperty("Ordinal")!.GetValue(row).Should().Be(7);
+        eventRowType!.GetProperty("ChangeOrdinal")!.GetValue(row).Should().Be(7);
     }
 
     [Fact]

@@ -58,6 +58,11 @@ public sealed class AgencyBillingSetupService(
         var (unbilledTimeId, createdUnbilledTime) = await EnsureUnbilledTimeOperationalRegisterAsync(ct);
         var (projectBillingStatusId, createdProjectBillingStatus) = await EnsureProjectBillingStatusOperationalRegisterAsync(ct);
         var (arOpenItemsId, createdArOpenItems) = await EnsureArOpenItemsOperationalRegisterAsync(ct);
+
+        await opregMaintenance.EnsurePhysicalSchemasByIdsAsync(
+            [projectTimeLedgerId, unbilledTimeId, projectBillingStatusId, arOpenItemsId],
+            ct);
+
         var (policyId, createdPolicy) = await EnsureAccountingPolicyAsync(
             cashId,
             arId,
@@ -131,7 +136,6 @@ public sealed class AgencyBillingSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 
@@ -174,7 +178,6 @@ public sealed class AgencyBillingSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 
@@ -208,7 +211,6 @@ public sealed class AgencyBillingSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 
@@ -245,7 +247,6 @@ public sealed class AgencyBillingSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 

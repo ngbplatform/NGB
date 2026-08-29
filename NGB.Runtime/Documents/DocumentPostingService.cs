@@ -26,6 +26,7 @@ using NGB.Runtime.Documents.Numbering;
 using NGB.Runtime.Documents.Policies;
 using NGB.Runtime.OperationalRegisters;
 using NGB.Runtime.ReferenceRegisters;
+using NGB.Runtime.Locks;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Extensions;
 
@@ -71,7 +72,7 @@ internal sealed class DocumentPostingService(
     ILogger<DocumentPostingService> logger,
     TimeProvider timeProvider,
     IDocumentPostingReadCache? postingReadCache = null)
-    : IDocumentPostingService
+    : IDocumentPostingBatchService
 {
     private readonly IDocumentPostingReadCache _postingReadCache = postingReadCache ?? new DocumentPostingReadCache();
 
@@ -96,127 +97,57 @@ internal sealed class DocumentPostingService(
     public Task PostAsync(Guid documentId, bool manageTransaction, CancellationToken ct = default)
         => PostInternalAsync(documentId, postingAction: null, manageTransaction, ct);
 
+    public async Task PostManyAsync(
+        IReadOnlyList<Guid> documentIds,
+        bool manageTransaction,
+        CancellationToken ct = default)
+    {
+        if (documentIds is null)
+            throw new NgbArgumentRequiredException(nameof(documentIds));
+
+        var ids = documentIds.Distinct().ToArray();
+        if (ids.Length == 0)
+            return;
+
+        try
+        {
+            await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
+            {
+                await advisoryLocks.LockDocumentsDeterministicallyAsync(ids, innerCt);
+                using var postingReadScope = _postingReadCache.BeginScope();
+
+                var rows = await documents.GetForUpdateByIdsAsync(ids, innerCt);
+                foreach (var documentId in ids)
+                {
+                    var doc = RequireDocument(rows.GetValueOrDefault(documentId), documentId);
+                    if (await PostLockedAsync(doc, postingAction: null, innerCt))
+                        RuntimeLog.DocumentOperationCompleted(logger, "Post");
+                }
+            }, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Post batch failed.");
+            throw;
+        }
+    }
+
     private async Task PostInternalAsync(
         Guid documentId,
         Func<IAccountingPostingContext, CancellationToken, Task>? postingAction,
         bool manageTransaction,
         CancellationToken ct)
     {
-        var didWork = false;
         try
         {
+            var didWork = false;
             await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
                 await advisoryLocks.LockDocumentAsync(documentId, innerCt);
                 using var postingReadScope = _postingReadCache.BeginScope();
 
                 var doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
-
-                var oldStatus = doc.Status;
-                var oldPostedAt = doc.PostedAtUtc;
-                var oldMarkedForDeletionAt = doc.MarkedForDeletionAtUtc;
-                var oldUpdatedAt = doc.UpdatedAtUtc;
-                var oldNumber = doc.Number;
-
-                var period = new DateOnly(doc.DateUtc.Year, doc.DateUtc.Month, 1);
-                using var scope = logger.BeginScope(new Dictionary<string, object?>
-                {
-                    ["DocumentId"] = documentId,
-                    ["Operation"] = "Post",
-                    ["Period"] = period.ToString("yyyy-MM-dd")
-                });
-                RuntimeLog.DocumentOperationStarted(logger, "Post");
-
-                if (doc.Status == DocumentStatus.MarkedForDeletion)
-                    throw new DocumentMarkedForDeletionException("Document.Post", documentId, ResolveDeletionMarkTimestamp(doc));
-
-                if (doc.Status == DocumentStatus.Posted)
-                {
-                    RuntimeLog.DocumentOperationNoOp(logger, "Post");
-                    return; // idempotent no-op
-                }
-
-                var numberingPolicy = numberingPolicies.Resolve(doc.TypeCode);
-                if (numberingPolicy?.EnsureNumberOnPost == true && string.IsNullOrWhiteSpace(doc.Number))
-                {
-                    var nowForNumber = timeProvider.GetUtcNowDateTime();
-                    await numberingSync.EnsureNumberAndSyncTypedAsync(doc, nowForNumber, innerCt);
-
-                    // Re-read: numbering updates the DB, and validators / posting action may depend on the assigned number.
-                    doc = RequireDocument(await documents.GetForUpdateAsync(documentId, innerCt), documentId);
-                }
-
-                foreach (var v in validators.ResolvePostValidators(doc.TypeCode))
-                {
-                    await v.ValidateBeforePostAsync(doc, innerCt);
-                }
-
-                var hasOpreg = opregPostingActionResolver.TryResolve(doc) is not null;
-                var hasRefreg = refregPostingActionResolver.TryResolve(doc) is not null;
-                var accountingPostingAction = postingAction ?? postingActionResolver.TryResolve(doc);
-
-                if (accountingPostingAction is null && !hasOpreg && !hasRefreg)
-                    throw new DocumentPostingHandlerNotConfiguredException(doc.Id, doc.TypeCode);
-
-                _ = await lifecycleCoordinator.BeginAsync(documentId, PostingOperation.Post, innerCt);
-
-                if (accountingPostingAction is not null)
-                {
-                    async Task<PostingResult> ExecuteAccountingPostAsync()
-                        => await postingEngine.PostAsync(
-                            PostingOperation.Post,
-                            accountingPostingAction,
-                            manageTransaction: false,
-                            innerCt);
-
-                    await lifecycleCoordinator.ExecuteAccountingAsync(
-                        documentId,
-                        PostingOperation.Post,
-                        ExecuteAccountingPostAsync,
-                        innerCt);
-                }
-
-                await ApplyOperationalRegisterMovementsForPostAsync(doc, manageTransaction: false, innerCt);
-                await ApplyReferenceRegisterRecordsForPostAsync(doc, manageTransaction: false, innerCt);
-
-                var now = timeProvider.GetUtcNowDateTime();
-                await documents.UpdateStatusAsync(
-                    documentId,
-                    DocumentStatus.Posted,
-                    updatedAtUtc: now,
-                    postedAtUtc: now,
-                    markedForDeletionAtUtc: null,
-                    innerCt);
-
-                await lifecycleCoordinator.CompleteSuccessfulTransitionAsync(documentId, PostingOperation.Post, innerCt);
-
-                // Audit: document.post (no-op is handled by early returns)
-                var postChanges = new List<AuditFieldChange>
-                {
-                    AuditLogService.Change("status", oldStatus, DocumentStatus.Posted),
-                    AuditLogService.Change("posted_at_utc", oldPostedAt, now),
-                    AuditLogService.Change("updated_at_utc", oldUpdatedAt, now)
-                };
-
-                if (!string.Equals(oldNumber, doc.Number, StringComparison.Ordinal))
-                    postChanges.Add(AuditLogService.Change("number", oldNumber, doc.Number));
-
-                AddClearedDeletionMarkChange(postChanges, oldMarkedForDeletionAt);
-
-                await audit.WriteAsync(
-                    entityKind: AuditEntityKind.Document,
-                    entityId: documentId,
-                    actionCode: AuditActionCodes.DocumentPost,
-                    changes: postChanges,
-                    metadata: new
-                    {
-                        doc.TypeCode,
-                        doc.Number,
-                        doc.DateUtc
-                    },
-                    ct: innerCt);
-
-                didWork = true;
+                didWork = await PostLockedAsync(doc, postingAction, innerCt);
             }, ct);
 
             if (didWork)
@@ -227,6 +158,119 @@ internal sealed class DocumentPostingService(
             logger.LogError(ex, "Post failed.");
             throw;
         }
+    }
+
+    private async Task<bool> PostLockedAsync(
+        DocumentRecord doc,
+        Func<IAccountingPostingContext, CancellationToken, Task>? postingAction,
+        CancellationToken ct)
+    {
+        var documentId = doc.Id;
+        var oldStatus = doc.Status;
+        var oldPostedAt = doc.PostedAtUtc;
+        var oldMarkedForDeletionAt = doc.MarkedForDeletionAtUtc;
+        var oldUpdatedAt = doc.UpdatedAtUtc;
+        var oldNumber = doc.Number;
+
+        var period = new DateOnly(doc.DateUtc.Year, doc.DateUtc.Month, 1);
+        using var scope = logger.BeginScope(new Dictionary<string, object?>
+        {
+            ["DocumentId"] = documentId,
+            ["Operation"] = "Post",
+            ["Period"] = period.ToString("yyyy-MM-dd")
+        });
+        RuntimeLog.DocumentOperationStarted(logger, "Post");
+
+        if (doc.Status == DocumentStatus.MarkedForDeletion)
+            throw new DocumentMarkedForDeletionException("Document.Post", documentId, ResolveDeletionMarkTimestamp(doc));
+
+        if (doc.Status == DocumentStatus.Posted)
+        {
+            RuntimeLog.DocumentOperationNoOp(logger, "Post");
+            return false;
+        }
+
+        var numberingPolicy = numberingPolicies.Resolve(doc.TypeCode);
+        if (numberingPolicy?.EnsureNumberOnPost == true && string.IsNullOrWhiteSpace(doc.Number))
+        {
+            var nowForNumber = timeProvider.GetUtcNowDateTime();
+            await numberingSync.EnsureNumberAndSyncTypedAsync(doc, nowForNumber, ct);
+
+            // Re-read: numbering updates the DB, and validators / posting action may depend on the assigned number.
+            doc = RequireDocument(await documents.GetForUpdateAsync(documentId, ct), documentId);
+        }
+
+        foreach (var v in validators.ResolvePostValidators(doc.TypeCode))
+        {
+            await v.ValidateBeforePostAsync(doc, ct);
+        }
+
+        var hasOpreg = opregPostingActionResolver.TryResolve(doc) is not null;
+        var hasRefreg = refregPostingActionResolver.TryResolve(doc) is not null;
+        var accountingPostingAction = postingAction ?? postingActionResolver.TryResolve(doc);
+
+        if (accountingPostingAction is null && !hasOpreg && !hasRefreg)
+            throw new DocumentPostingHandlerNotConfiguredException(doc.Id, doc.TypeCode);
+
+        _ = await lifecycleCoordinator.BeginAsync(documentId, PostingOperation.Post, ct);
+
+        if (accountingPostingAction is not null)
+        {
+            async Task<PostingResult> ExecuteAccountingPostAsync()
+                => await postingEngine.PostAsync(
+                    PostingOperation.Post,
+                    accountingPostingAction,
+                    manageTransaction: false,
+                    ct);
+
+            await lifecycleCoordinator.ExecuteAccountingAsync(
+                documentId,
+                PostingOperation.Post,
+                ExecuteAccountingPostAsync,
+                ct);
+        }
+
+        await ApplyOperationalRegisterMovementsForPostAsync(doc, manageTransaction: false, ct);
+        await ApplyReferenceRegisterRecordsForPostAsync(doc, manageTransaction: false, ct);
+
+        var now = timeProvider.GetUtcNowDateTime();
+        await documents.UpdateStatusAsync(
+            documentId,
+            DocumentStatus.Posted,
+            updatedAtUtc: now,
+            postedAtUtc: now,
+            markedForDeletionAtUtc: null,
+            ct);
+
+        await lifecycleCoordinator.CompleteSuccessfulTransitionAsync(documentId, PostingOperation.Post, ct);
+
+        // Audit: document.post (no-op is handled by early returns)
+        var postChanges = new List<AuditFieldChange>
+        {
+            AuditLogService.Change("status", oldStatus, DocumentStatus.Posted),
+            AuditLogService.Change("posted_at_utc", oldPostedAt, now),
+            AuditLogService.Change("updated_at_utc", oldUpdatedAt, now)
+        };
+
+        if (!string.Equals(oldNumber, doc.Number, StringComparison.Ordinal))
+            postChanges.Add(AuditLogService.Change("number", oldNumber, doc.Number));
+
+        AddClearedDeletionMarkChange(postChanges, oldMarkedForDeletionAt);
+
+        await audit.WriteAsync(
+            entityKind: AuditEntityKind.Document,
+            entityId: documentId,
+            actionCode: AuditActionCodes.DocumentPost,
+            changes: postChanges,
+            metadata: new
+            {
+                doc.TypeCode,
+                doc.Number,
+                doc.DateUtc
+            },
+            ct: ct);
+
+        return true;
     }
 
     /// <summary>

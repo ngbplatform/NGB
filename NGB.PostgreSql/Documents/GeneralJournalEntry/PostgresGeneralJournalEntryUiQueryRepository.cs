@@ -79,13 +79,6 @@ WHERE
 {filtersSql};
 """;
 
-        var total = await uow.Connection.ExecuteScalarAsync<int>(
-            new CommandDefinition(
-                countSql,
-                args,
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-
         var pageSql = $"""
 SELECT
     d.id AS Id,
@@ -113,12 +106,17 @@ ORDER BY d.date_utc DESC, d.created_at_utc DESC, d.id DESC
 LIMIT @Limit OFFSET @Offset;
 """;
 
-        var rows = await uow.Connection.QueryAsync<Row>(
+        // Count and page share the same filters and belong to one logical read. Sending both
+        // statements together removes a network round-trip while retaining the existing result contract.
+        await using var grid = await uow.Connection.QueryMultipleAsync(
             new CommandDefinition(
-                pageSql,
+                $"{countSql}\n{pageSql}",
                 args,
                 transaction: uow.Transaction,
                 cancellationToken: ct));
+
+        var total = await grid.ReadSingleAsync<int>();
+        var rows = await grid.ReadAsync<Row>();
 
         return new GeneralJournalEntryPageRecord(rows.Select(Map).ToArray(), offset, limit, total);
     }

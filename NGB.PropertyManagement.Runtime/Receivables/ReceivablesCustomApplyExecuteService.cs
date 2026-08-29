@@ -131,12 +131,22 @@ public sealed class ReceivablesCustomApplyExecuteService(
                     .ToArray(),
                 innerCt);
 
+            if (posting is IDocumentPostingBatchService batchPosting)
+            {
+                await batchPosting.PostManyAsync(applyIds, manageTransaction: false, ct: innerCt);
+            }
+            else
+            {
+                foreach (var applyId in applyIds)
+                {
+                    await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
+                }
+            }
+
             for (var index = 0; index < allocations.Length; index++)
             {
                 var allocation = allocations[index];
                 var applyId = applyIds[index];
-
-                await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
 
                 executed.Add(new ReceivablesExecutedApplyDto(applyId, allocation.ChargeDocumentId, allocation.Amount));
             }

@@ -13,6 +13,36 @@ public interface IReferenceRegisterAdminMaintenanceService
         Guid registerId,
         CancellationToken ct = default);
 
-    Task<ReferenceRegisterPhysicalSchemaHealthReport> EnsurePhysicalSchemaForAllAsync(
-        CancellationToken ct = default);
+    Task<ReferenceRegisterPhysicalSchemaHealthReport> EnsurePhysicalSchemaForAllAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Optional optimized maintenance boundary for bounded setup/bootstrap batches.
+/// </summary>
+public interface IReferenceRegisterAdminBatchMaintenanceService : IReferenceRegisterAdminMaintenanceService
+{
+    Task EnsurePhysicalSchemasByIdsAsync(IReadOnlyCollection<Guid> registerIds, CancellationToken ct = default);
+}
+
+public static class ReferenceRegisterAdminMaintenanceServiceExtensions
+{
+    public static async Task EnsurePhysicalSchemasByIdsAsync(
+        this IReferenceRegisterAdminMaintenanceService maintenance,
+        IReadOnlyCollection<Guid> registerIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(maintenance);
+        ArgumentNullException.ThrowIfNull(registerIds);
+
+        if (maintenance is IReferenceRegisterAdminBatchMaintenanceService batchMaintenance)
+        {
+            await batchMaintenance.EnsurePhysicalSchemasByIdsAsync(registerIds, ct);
+            return;
+        }
+
+        foreach (var registerId in registerIds)
+        {
+            await maintenance.EnsurePhysicalSchemaByIdAsync(registerId, ct);
+        }
+    }
 }

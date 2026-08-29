@@ -17,43 +17,30 @@ public sealed class PostgresBuildingSummaryReader(IUnitOfWork uow) : IBuildingSu
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        // 1) Validate building head.
-        const string buildingSql = """
-SELECT
-    p.kind AS Kind,
-    p.display AS Display,
-    c.is_deleted AS IsDeleted
-FROM catalogs c
-JOIN cat_pm_property p ON p.catalog_id = c.id
-WHERE c.catalog_code = @code
-  AND c.id = @building_id;
-""";
-
-        var b = await uow.Connection.QuerySingleOrDefaultAsync<BuildingRow>(new CommandDefinition(
-            buildingSql,
-            new { code = PropertyCode, building_id = buildingId },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
-
-        if (b is null)
-            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected building was not found.");
-
-        if (b.IsDeleted)
-            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected building is deleted.");
-
-        if (!string.Equals(b.Kind, "Building", StringComparison.OrdinalIgnoreCase))
-            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected property must be a building.");
-
-        // 2) Counts.
+        // Validate the head and calculate both counts from one consistent database snapshot.
+        // The building predicate inside units also prevents unnecessary lease work for invalid heads.
         const string sql = """
-WITH units AS (
+WITH building AS (
+    SELECT
+        p.kind AS kind,
+        p.display AS display,
+        c.is_deleted AS is_deleted
+    FROM catalogs c
+    JOIN cat_pm_property p ON p.catalog_id = c.id
+    WHERE c.catalog_code = @code
+      AND c.id = @building_id
+),
+units AS (
     SELECT u.catalog_id AS unit_id
     FROM catalogs c
     JOIN cat_pm_property u ON u.catalog_id = c.id
+    CROSS JOIN building b
     WHERE c.catalog_code = @code
       AND c.is_deleted = FALSE
       AND u.kind = 'Unit'
       AND u.parent_property_id = @building_id
+      AND b.is_deleted = FALSE
+      AND LOWER(b.kind) = 'building'
 ),
 occupied AS (
     SELECT DISTINCT l.property_id AS unit_id
@@ -65,11 +52,15 @@ occupied AS (
       AND @as_of <= COALESCE(l.end_on_utc, 'infinity'::date)
 )
 SELECT
+    b.kind AS Kind,
+    b.display AS Display,
+    b.is_deleted AS IsDeleted,
     (SELECT COUNT(*)::int FROM units) AS TotalUnits,
-    (SELECT COUNT(*)::int FROM occupied) AS OccupiedUnits;
+    (SELECT COUNT(*)::int FROM occupied) AS OccupiedUnits
+FROM building b;
 """;
 
-        var counts = await uow.Connection.QuerySingleAsync<CountsRow>(new CommandDefinition(
+        var row = await uow.Connection.QuerySingleOrDefaultAsync<SummaryRow>(new CommandDefinition(
             sql,
             new
             {
@@ -81,18 +72,30 @@ SELECT
             transaction: uow.Transaction,
             cancellationToken: ct));
 
+        if (row is null)
+            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected building was not found.");
+
+        if (row.IsDeleted)
+            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected building is deleted.");
+
+        if (!string.Equals(row.Kind, "Building", StringComparison.OrdinalIgnoreCase))
+            throw new NgbArgumentInvalidException(nameof(buildingId), "Selected property must be a building.");
+
         var result = new BuildingSummary(
             BuildingId: buildingId,
-            BuildingDisplay: b.Display,
+            BuildingDisplay: row.Display,
             AsOfUtc: asOfUtc,
-            TotalUnits: counts.TotalUnits,
-            OccupiedUnits: counts.OccupiedUnits);
+            TotalUnits: row.TotalUnits,
+            OccupiedUnits: row.OccupiedUnits);
 
         result.EnsureInvariant();
         return result;
     }
 
-    private sealed record BuildingRow(string Kind, string Display, bool IsDeleted);
-    
-    private sealed record CountsRow(int TotalUnits, int OccupiedUnits);
+    private sealed record SummaryRow(
+        string Kind,
+        string Display,
+        bool IsDeleted,
+        int TotalUnits,
+        int OccupiedUnits);
 }

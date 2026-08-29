@@ -277,6 +277,8 @@ public sealed class PropertyManagementSetupService(
         var (openItemsId, createdOpenItems) = await EnsureReceivablesOpenItemsOperationalRegisterAsync(ct);
         var (payablesOpenItemsId, createdPayablesOpenItems) = await EnsurePayablesOpenItemsOperationalRegisterAsync(ct);
 
+        await opregMaintenance.EnsurePhysicalSchemasByIdsAsync([opregId, openItemsId, payablesOpenItemsId], ct);
+
         // 3) Ensure pm.accounting_policy exists as a single row (if multiple exist -> config violation)
         await EnsureDefaultReceivableChargeTypesAsync(
             [
@@ -630,9 +632,6 @@ public sealed class PropertyManagementSetupService(
             ],
             ct);
 
-        // Ensure physical per-register tables now (so the first posting doesn't pay the schema-creation tax).
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
-
         return (id, existed is null);
     }
 
@@ -667,8 +666,6 @@ public sealed class PropertyManagementSetupService(
                     IsRequired: true)
             ],
             ct);
-
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
 
         return (id, existed is null);
     }

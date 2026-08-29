@@ -34,6 +34,9 @@ public sealed class AgencyBillingCommandPaletteSearchService(
         var scope = NormalizeScope(request.Scope);
         var limit = Math.Min(request.Limit <= 0 ? 20 : request.Limit, 30);
         var groups = new List<CommandPaletteGroupDto>(capacity: 3);
+        var reportsTask = scope is null or ReportsCode
+            ? SafeGroupAsync(ReportsCode, () => SearchReportsAsync(query, limit, ct), ct)
+            : null;
 
         if (scope is null or DocumentsCode)
         {
@@ -49,9 +52,9 @@ public sealed class AgencyBillingCommandPaletteSearchService(
                 groups.Add(catalogsGroup);
         }
 
-        if (scope is null or ReportsCode)
+        if (reportsTask is not null)
         {
-            var reportsGroup = await SafeGroupAsync(ReportsCode, () => SearchReportsAsync(query, limit, ct), ct);
+            var reportsGroup = await reportsTask;
             if (reportsGroup is not null)
                 groups.Add(reportsGroup);
         }

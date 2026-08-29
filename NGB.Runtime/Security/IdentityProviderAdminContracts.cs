@@ -29,8 +29,8 @@ public sealed record IdentityProviderUserBatch(
     IReadOnlyDictionary<string, IdentityProviderUserDto> ByEmail);
 
 /// <summary>
-/// Optional optimized read boundary for providers that can scan/list users in pages instead of issuing
-/// one remote request per platform user.
+/// Optional optimized read boundary for providers that can resolve a mixed page of subjects and emails
+/// with provider-specific bounded concurrency and without an unbounded directory scan.
 /// </summary>
 public interface IIdentityProviderBulkUserReader
 {

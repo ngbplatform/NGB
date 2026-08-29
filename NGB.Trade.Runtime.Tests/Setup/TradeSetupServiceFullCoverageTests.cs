@@ -200,10 +200,12 @@ public sealed class TradeSetupServiceFullCoverageTests
             .ReturnsAsync(state.OperationalRegisterExists
                 ? OperationalRegister(operationalId, TradeCodes.InventoryMovementsRegisterCode)
                 : null);
-        var operationalMaintenance = new Mock<IOperationalRegisterAdminMaintenanceService>(MockBehavior.Strict);
-        operationalMaintenance.Setup(x => x.EnsurePhysicalSchemaByIdAsync(operationalId, It.IsAny<CancellationToken>()))
-            .Callback<Guid, CancellationToken>((id, _) => state.EnsuredOperationalSchemas.Add(id))
-            .ReturnsAsync((OperationalRegisterPhysicalSchemaHealth?)null);
+        var operationalMaintenance = new Mock<IOperationalRegisterAdminBatchMaintenanceService>(MockBehavior.Strict);
+        operationalMaintenance.Setup(x => x.EnsurePhysicalSchemasByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { operationalId })),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyCollection<Guid>, CancellationToken>((ids, _) => state.EnsuredOperationalSchemas.AddRange(ids))
+            .Returns(Task.CompletedTask);
 
         var referenceId = DeterministicGuid.Create($"ReferenceRegister|{TradeCodes.ItemPricesRegisterCode}");
         var referenceManagement = new Mock<IReferenceRegisterManagementService>(MockBehavior.Strict);
@@ -226,10 +228,12 @@ public sealed class TradeSetupServiceFullCoverageTests
             .ReturnsAsync(state.ReferenceRegisterExists
                 ? ReferenceRegister(referenceId, TradeCodes.ItemPricesRegisterCode)
                 : null);
-        var referenceMaintenance = new Mock<IReferenceRegisterAdminMaintenanceService>(MockBehavior.Strict);
-        referenceMaintenance.Setup(x => x.EnsurePhysicalSchemaByIdAsync(referenceId, It.IsAny<CancellationToken>()))
-            .Callback<Guid, CancellationToken>((id, _) => state.EnsuredReferenceSchemas.Add(id))
-            .ReturnsAsync((ReferenceRegisterPhysicalSchemaHealth?)null);
+        var referenceMaintenance = new Mock<IReferenceRegisterAdminBatchMaintenanceService>(MockBehavior.Strict);
+        referenceMaintenance.Setup(x => x.EnsurePhysicalSchemasByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { referenceId })),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyCollection<Guid>, CancellationToken>((ids, _) => state.EnsuredReferenceSchemas.AddRange(ids))
+            .Returns(Task.CompletedTask);
 
         var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
         catalogs.Setup(x => x.GetPageAsync(It.IsAny<string>(), It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()))

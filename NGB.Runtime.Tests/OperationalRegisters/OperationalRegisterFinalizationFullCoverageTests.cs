@@ -136,8 +136,10 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
         finalizations.Setup(x => x.GetAsync(secondId, period, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Finalization(secondId, period, OperationalRegisterFinalizationStatus.Finalized));
         var registers = new Mock<IOperationalRegisterRepository>(MockBehavior.Loose);
-        registers.Setup(x => x.GetByIdAsync(firstId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Register(firstId, "  Sales  "));
+        registers.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Contains(firstId) && ids.Contains(secondId)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Register(firstId, "  Sales  ")]);
         var projector = Projector("sales");
         OperationalRegisterMonthProjectionContext? observed = null;
         projector.Setup(x => x.RebuildMonthAsync(It.IsAny<OperationalRegisterMonthProjectionContext>(), It.IsAny<CancellationToken>()))
@@ -159,7 +161,7 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
         observed.Movements.Should().BeSameAs(movements);
         observed.UnitOfWork.Should().BeSameAs(uow.Object);
         finalizations.Verify(x => x.MarkFinalizedAsync(firstId, period, Now, Now, It.IsAny<CancellationToken>()), Times.Once);
-        registers.Verify(x => x.GetByIdAsync(secondId, It.IsAny<CancellationToken>()), Times.Never);
+        registers.Verify(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
         uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 

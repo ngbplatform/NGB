@@ -33,6 +33,9 @@ public sealed class CrmCommandPaletteSearchService(
         var scope = NormalizeScope(request.Scope);
         var limit = Math.Min(request.Limit <= 0 ? 20 : request.Limit, 30);
         var groups = new List<CommandPaletteGroupDto>(capacity: 3);
+        var reportsTask = scope is null or ReportsCode
+            ? SearchReportsAsync(query, limit, ct)
+            : null;
 
         if (scope is null or DocumentsCode)
             await AddGroupAsync(groups, DocumentsCode, () => SearchDocumentsAsync(query, limit, request.Context, ct), ct);
@@ -40,8 +43,8 @@ public sealed class CrmCommandPaletteSearchService(
         if (scope is null or CatalogsCode)
             await AddGroupAsync(groups, CatalogsCode, () => SearchCatalogsAsync(query, limit, request.Context, ct), ct);
 
-        if (scope is null or ReportsCode)
-            await AddGroupAsync(groups, ReportsCode, () => SearchReportsAsync(query, limit, ct), ct);
+        if (reportsTask is not null)
+            await AddGroupAsync(groups, ReportsCode, () => reportsTask, ct);
 
         return new CommandPaletteSearchResponseDto(groups);
     }

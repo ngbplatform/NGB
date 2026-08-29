@@ -232,10 +232,11 @@ public sealed class AgencyBillingSetupServiceFullCoverageTests
                 ? Register(OperationalRegisterId.FromCode(code), code)
                 : null);
 
-        var maintenance = new Mock<IOperationalRegisterAdminMaintenanceService>(MockBehavior.Strict);
-        maintenance.Setup(x => x.EnsurePhysicalSchemaByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .Callback<Guid, CancellationToken>((id, _) => state.EnsuredRegisterIds.Add(id))
-            .ReturnsAsync((OperationalRegisterPhysicalSchemaHealth?)null);
+        var maintenance = new Mock<IOperationalRegisterAdminBatchMaintenanceService>(MockBehavior.Strict);
+        maintenance.Setup(x => x.EnsurePhysicalSchemasByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyCollection<Guid>, CancellationToken>((ids, _) => state.EnsuredRegisterIds.AddRange(ids))
+            .Returns(Task.CompletedTask);
 
         var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
         catalogs.Setup(x => x.GetPageAsync(It.IsAny<string>(), It.IsAny<PageRequestDto>(), It.IsAny<CancellationToken>()))

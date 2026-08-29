@@ -17,7 +17,6 @@ public sealed class KeycloakAdminClient(
 {
     private const int MinAdminBatchConcurrency = 1;
     private const int MaxAdminBatchConcurrency = 32;
-    private const int BulkUserPageSize = 500;
     
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -28,7 +27,6 @@ public sealed class KeycloakAdminClient(
     private const string UsersUpdateOperation = "keycloak.users.update";
     private const string UsersSetEnabledOperation = "keycloak.users.set_enabled";
     private const string UsersGetOperation = "keycloak.users.get";
-    private const string UsersListOperation = "keycloak.users.list";
     private const string UsersFindByEmailOperation = "keycloak.users.find_by_email";
     private const string UsersFindByUsernameOperation = "keycloak.users.find_by_username";
     private const string UsersResetPasswordOperation = "keycloak.users.reset_password";
@@ -187,61 +185,48 @@ public sealed class KeycloakAdminClient(
         if (emails is null)
             throw new NgbArgumentRequiredException(nameof(emails));
 
-        var remainingIds = identityProviderUserIds
+        var ids = identityProviderUserIds
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .Select(static value => value.Trim())
-            .ToHashSet(StringComparer.Ordinal);
-        var remainingEmails = emails
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var normalizedEmails = emails
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .Select(static value => value.Trim())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var byId = new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
-        var byEmail = new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        if (remainingIds.Count == 0 && remainingEmails.Count == 0)
-            return new IdentityProviderUserBatch(byId, byEmail);
-
-        var first = 0;
-        while (remainingIds.Count > 0 || remainingEmails.Count > 0)
+        if (ids.Length == 0 && normalizedEmails.Length == 0)
         {
-            var query = QueryHelpers.AddQueryString(
-                AdminPath("users"),
-                new Dictionary<string, string?>
-                {
-                    ["first"] = first.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    ["max"] = BulkUserPageSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    ["briefRepresentation"] = "false"
-                });
+            return new IdentityProviderUserBatch(
+                new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal),
+                new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase));
+        }
 
-            var response = await SendAsync(HttpMethod.Get, query, body: null, UsersListOperation, ct);
+        // A realm-wide paged scan has unbounded cost as the realm grows and can make a single
+        // platform-user page read traverse every Keycloak user. Resolve known subjects directly,
+        // then issue exact lookups only for emails that were not already supplied by those users.
+        var byId = ids.Length == 0
+            ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal)
+            : new Dictionary<string, IdentityProviderUserDto>(await GetUsersByIdsAsync(ids, ct), StringComparer.Ordinal);
+        var byEmail = new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+        var requestedEmails = normalizedEmails.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            await EnsureSuccessAsync(response, UsersListOperation, ct);
+        foreach (var user in byId.Values)
+        {
+            if (string.IsNullOrWhiteSpace(user.Email) || !requestedEmails.Remove(user.Email))
+                continue;
 
-            var rows = await response.Content.ReadFromJsonAsync<KeycloakUserDto[]>(Json, ct) ?? [];
+            byEmail[user.Email] = user;
+        }
 
-            foreach (var row in rows)
+        if (requestedEmails.Count > 0)
+        {
+            var foundByEmail = await FindUsersByEmailsAsync(requestedEmails.ToArray(), ct);
+            foreach (var (email, user) in foundByEmail)
             {
-                IdentityProviderUserDto? mapped = null;
-                if (remainingIds.Remove(row.Id))
-                {
-                    mapped = Map(row);
-                    byId[row.Id] = mapped;
-                }
-
-                foreach (var candidate in new[] { row.Email, row.Username })
-                {
-                    if (string.IsNullOrWhiteSpace(candidate) || !remainingEmails.Remove(candidate))
-                        continue;
-
-                    mapped ??= Map(row);
-                    byEmail[candidate] = mapped;
-                }
+                byEmail[email] = user;
             }
-
-            if (rows.Length < BulkUserPageSize)
-                break;
-
-            first = checked(first + rows.Length);
         }
 
         return new IdentityProviderUserBatch(byId, byEmail);

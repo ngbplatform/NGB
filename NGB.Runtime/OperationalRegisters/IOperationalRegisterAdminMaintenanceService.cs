@@ -43,3 +43,37 @@ public interface IOperationalRegisterAdminMaintenanceService
     /// </summary>
     Task<int> FinalizeRegisterDirtyAsync(Guid registerId, int maxPeriods = 50, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Optional optimized maintenance boundary for bounded setup/bootstrap batches.
+/// </summary>
+public interface IOperationalRegisterAdminBatchMaintenanceService : IOperationalRegisterAdminMaintenanceService
+{
+    /// <summary>
+    /// Ensures physical tables for the requested registers without scanning or repairing unrelated registers.
+    /// </summary>
+    Task EnsurePhysicalSchemasByIdsAsync(IReadOnlyCollection<Guid> registerIds, CancellationToken ct = default);
+}
+
+public static class OperationalRegisterAdminMaintenanceServiceExtensions
+{
+    public static async Task EnsurePhysicalSchemasByIdsAsync(
+        this IOperationalRegisterAdminMaintenanceService maintenance,
+        IReadOnlyCollection<Guid> registerIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(maintenance);
+        ArgumentNullException.ThrowIfNull(registerIds);
+
+        if (maintenance is IOperationalRegisterAdminBatchMaintenanceService batchMaintenance)
+        {
+            await batchMaintenance.EnsurePhysicalSchemasByIdsAsync(registerIds, ct);
+            return;
+        }
+
+        foreach (var registerId in registerIds)
+        {
+            await maintenance.EnsurePhysicalSchemaByIdAsync(registerId, ct);
+        }
+    }
+}

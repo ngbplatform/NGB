@@ -93,6 +93,52 @@ public sealed class ReferenceRegisterAdminFullCoverageTests
         (await sut.EnsurePhysicalSchemaForAllAsync()).Should().BeSameAs(report);
         store.Verify(x => x.EnsureSchemaAsync(id, It.IsAny<CancellationToken>()), Times.Exactly(2));
         store.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Never);
+
+        await ((Func<Task>)(() => sut.EnsurePhysicalSchemasByIdsAsync(null!)))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await sut.EnsurePhysicalSchemasByIdsAsync([]);
+        var missing = Guid.NewGuid();
+        registers.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { missing })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        await sut.EnsurePhysicalSchemasByIdsAsync([missing]);
+        var secondRegister = Register(second);
+        registers.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { id, second }.OrderBy(x => x))),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([register, secondRegister]);
+        await sut.EnsurePhysicalSchemasByIdsAsync([Guid.Empty, second, id, id]);
+        store.Verify(x => x.EnsureSchemaAsync(id, It.IsAny<CancellationToken>()), Times.Exactly(3));
+        store.Verify(x => x.EnsureSchemaAsync(second, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task BatchMaintenanceExtension_UsesBatchWhenAvailable_AndFallsBackCompatibly()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        IReferenceRegisterAdminMaintenanceService nullMaintenance = null!;
+        await ((Func<Task>)(() => nullMaintenance.EnsurePhysicalSchemasByIdsAsync([first])))
+            .Should().ThrowAsync<ArgumentNullException>();
+
+        var fallback = new Mock<IReferenceRegisterAdminMaintenanceService>(MockBehavior.Strict);
+        fallback.Setup(x => x.EnsurePhysicalSchemaByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ReferenceRegisterPhysicalSchemaHealth?)null);
+        await ((Func<Task>)(() => fallback.Object.EnsurePhysicalSchemasByIdsAsync(null!)))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await fallback.Object.EnsurePhysicalSchemasByIdsAsync([first, second]);
+        fallback.Verify(x => x.EnsurePhysicalSchemaByIdAsync(first, It.IsAny<CancellationToken>()), Times.Once);
+        fallback.Verify(x => x.EnsurePhysicalSchemaByIdAsync(second, It.IsAny<CancellationToken>()), Times.Once);
+
+        var batch = new Mock<IReferenceRegisterAdminBatchMaintenanceService>(MockBehavior.Strict);
+        batch.Setup(x => x.EnsurePhysicalSchemasByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first, second })),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        IReferenceRegisterAdminMaintenanceService maintenance = batch.Object;
+        await maintenance.EnsurePhysicalSchemasByIdsAsync([first, second]);
+        batch.VerifyAll();
     }
 
     [Fact]

@@ -41,15 +41,14 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var policy = await ReadRequiredPolicyAsync(ct);
-        var tableCode = await ReadOperationalRegisterTableCodeOrThrowAsync(policy.OpenItemsRegisterId, ct);
+        var context = await ReadQueryContextAsync(ct);
+        var policy = (context.ArAccountId, context.OpenItemsRegisterId);
+        var tableCode = context.TableCode;
 
         var movementsTable = $"opreg_{tableCode}__movements";
         var balancesTable = $"opreg_{tableCode}__balances";
-        var (movementsTableExists, balancesTableExists) = await ReadTablePresenceAsync(
-            movementsTable,
-            balancesTable,
-            ct);
+        var movementsTableExists = context.MovementsTableExists;
+        var balancesTableExists = context.BalancesTableExists;
 
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
         var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
@@ -138,6 +137,9 @@ SELECT
     paged.lease_id AS LeaseId,
     COALESCE(paged.ar_net, 0) AS ArNet,
     COALESCE(paged.open_items_net, 0) AS OpenItemsNet,
+    party_head.display AS PartyDisplay,
+    property_head.display AS PropertyDisplay,
+    lease_head.display AS LeaseDisplay,
     (paged.party_id IS NOT NULL) AS HasRow,
     stats.total_row_count AS TotalRowCount,
     stats.total_mismatch_row_count AS TotalMismatchRowCount,
@@ -145,6 +147,15 @@ SELECT
     stats.total_open_items_net AS TotalOpenItemsNet
 FROM stats
 LEFT JOIN paged ON TRUE
+LEFT JOIN catalogs party_catalog
+    ON party_catalog.id = paged.party_id AND party_catalog.catalog_code = @PartyCatalogCode
+LEFT JOIN cat_pm_party party_head ON party_head.catalog_id = party_catalog.id
+LEFT JOIN catalogs property_catalog
+    ON property_catalog.id = paged.property_id AND property_catalog.catalog_code = @PropertyCatalogCode
+LEFT JOIN cat_pm_property property_head ON property_head.catalog_id = property_catalog.id
+LEFT JOIN documents lease_document
+    ON lease_document.id = paged.lease_id AND lease_document.type_code = @LeaseDocumentTypeCode
+LEFT JOIN doc_pm_lease lease_head ON lease_head.document_id = lease_document.id
 ORDER BY paged.party_id, paged.property_id, paged.lease_id;
 """;
 
@@ -158,6 +169,9 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
                 PartyDimId = partyDimId,
                 PropertyDimId = propertyDimId,
                 LeaseDimId = leaseDimId,
+                PartyCatalogCode = PropertyManagementCodes.Party,
+                PropertyCatalogCode = PropertyManagementCodes.Property,
+                LeaseDocumentTypeCode = PropertyManagementCodes.Lease,
                 Offset = boundedOffset,
                 LimitPlusOne = request.Limit + 1,
                 Guid.Empty
@@ -173,10 +187,6 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
         if (hasMore)
             pageRows.RemoveAt(pageRows.Count - 1);
 
-        var partyDisplays = await ReadCatalogDisplaysAsync(PropertyManagementCodes.Party, "cat_pm_party", pageRows.Select(x => x.PartyId), ct);
-        var propertyDisplays = await ReadCatalogDisplaysAsync(PropertyManagementCodes.Property, "cat_pm_property", pageRows.Select(x => x.PropertyId), ct);
-        var leaseDisplays = await ReadDocumentDisplaysAsync(PropertyManagementCodes.Lease, "doc_pm_lease", pageRows.Select(x => x.LeaseId), ct);
-
         var resultRows = new List<ReceivablesReconciliationRow>(pageRows.Count);
 
         foreach (var r in pageRows)
@@ -186,11 +196,11 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
             var rowKind = ResolveRowKind(r.ArNet, r.OpenItemsNet, hasDiff);
             resultRows.Add(new ReceivablesReconciliationRow(
                 PartyId: r.PartyId,
-                PartyDisplay: ResolveDisplay(partyDisplays, r.PartyId),
+                PartyDisplay: r.PartyDisplay,
                 PropertyId: r.PropertyId,
-                PropertyDisplay: ResolveDisplay(propertyDisplays, r.PropertyId),
+                PropertyDisplay: r.PropertyDisplay,
                 LeaseId: r.LeaseId,
-                LeaseDisplay: ResolveDisplay(leaseDisplays, r.LeaseId),
+                LeaseDisplay: r.LeaseDisplay,
                 ArNet: r.ArNet,
                 OpenItemsNet: r.OpenItemsNet,
                 Diff: diff,
@@ -428,6 +438,9 @@ oi_source AS (
         Guid LeaseId,
         decimal ArNet,
         decimal OpenItemsNet,
+        string? PartyDisplay,
+        string? PropertyDisplay,
+        string? LeaseDisplay,
         bool HasRow,
         int TotalRowCount,
         int TotalMismatchRowCount,
@@ -526,6 +539,87 @@ LIMIT 2;
     }
 
     private sealed record PolicyRow(Guid? ArAccountId, Guid? OpenItemsRegisterId);
+
+    private async Task<QueryContext> ReadQueryContextAsync(CancellationToken ct)
+    {
+        const string sql = """
+WITH policy AS (
+    SELECT
+        ar_tenants_account_id AS "ArAccountId",
+        receivables_open_items_register_id AS "OpenItemsRegisterId"
+    FROM cat_pm_accounting_policy
+    LIMIT 2
+)
+SELECT
+    policy."ArAccountId" AS "ArAccountId",
+    policy."OpenItemsRegisterId" AS "OpenItemsRegisterId",
+    registers.register_id AS "ResolvedRegisterId",
+    registers.table_code AS "TableCode",
+    to_regclass('opreg_' || registers.table_code || '__movements') IS NOT NULL AS "MovementsTableExists",
+    to_regclass('opreg_' || registers.table_code || '__balances') IS NOT NULL AS "BalancesTableExists"
+FROM policy
+LEFT JOIN operational_registers registers
+  ON registers.register_id = policy."OpenItemsRegisterId";
+""";
+
+        var rows = (await uow.Connection.QueryAsync<QueryContextRow>(
+            new CommandDefinition(sql, transaction: uow.Transaction, cancellationToken: ct))).AsList();
+
+        if (rows.Count == 0)
+        {
+            throw new NgbConfigurationViolationException(
+                "PM accounting policy is missing.",
+                new Dictionary<string, object?>
+                {
+                    ["catalogCode"] = PropertyManagementCodes.AccountingPolicy,
+                    ["headTable"] = "cat_pm_accounting_policy"
+                });
+        }
+
+        if (rows.Count > 1)
+        {
+            throw new NgbConfigurationViolationException(
+                "Multiple pm.accounting_policy records exist. Expected a single record.",
+                new Dictionary<string, object?>
+                {
+                    ["catalogCode"] = PropertyManagementCodes.AccountingPolicy,
+                    ["headTable"] = "cat_pm_accounting_policy",
+                    ["actualCount"] = rows.Count
+                });
+        }
+
+        var row = rows[0];
+        var (arAccountId, registerId) = EnsureRequiredPolicyValues(row.ArAccountId, row.OpenItemsRegisterId);
+
+        if (!row.ResolvedRegisterId.HasValue)
+        {
+            throw new NgbConfigurationViolationException(
+                "Receivables open-items operational register does not exist.",
+                new Dictionary<string, object?> { ["registerId"] = registerId });
+        }
+
+        return new QueryContext(
+            arAccountId,
+            registerId,
+            EnsureSafeTableCode(row.TableCode, registerId),
+            row.MovementsTableExists,
+            row.BalancesTableExists);
+    }
+
+    private sealed record QueryContext(
+        Guid ArAccountId,
+        Guid OpenItemsRegisterId,
+        string TableCode,
+        bool MovementsTableExists,
+        bool BalancesTableExists);
+
+    private sealed record QueryContextRow(
+        Guid? ArAccountId,
+        Guid? OpenItemsRegisterId,
+        Guid? ResolvedRegisterId,
+        string? TableCode,
+        bool MovementsTableExists,
+        bool BalancesTableExists);
 
     internal async Task<string> ReadOperationalRegisterTableCodeOrThrowAsync(Guid registerId, CancellationToken ct)
     {

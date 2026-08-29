@@ -99,7 +99,7 @@ public sealed class PhysicalSchemaHealthReaderFullCoverageTests
         var inspector = new Mock<IDbSchemaInspector>(MockBehavior.Strict);
         var sut = new PostgresReferenceRegisterPhysicalSchemaHealthReader(
             inspector.Object,
-            new RecordingUnitOfWork(new RecordingDbConnection(_ => EmptyRegisterRows())));
+            new RecordingUnitOfWork(new RecordingDbConnection(_ => ReferenceMetadataRows())));
 
         var report = await sut.GetReportAsync();
 
@@ -116,11 +116,11 @@ public sealed class PhysicalSchemaHealthReaderFullCoverageTests
         var connection = new RecordingDbConnection(sql =>
         {
             if (sql.Contains("FROM reference_registers", StringComparison.Ordinal))
-                return RegisterRows(registerId);
-            if (sql.Contains("FROM reference_register_fields", StringComparison.Ordinal))
-                return EmptyFieldRows();
+                return ReferenceMetadataRows(registerId);
+
             if (sql.Contains("FROM pg_trigger", StringComparison.Ordinal))
                 return EmptyAppendOnlyRows();
+
             throw new InvalidOperationException($"Unexpected SQL: {sql}");
         });
         var sut = new PostgresReferenceRegisterPhysicalSchemaHealthReader(
@@ -146,11 +146,11 @@ public sealed class PhysicalSchemaHealthReaderFullCoverageTests
         var connection = new RecordingDbConnection(sql =>
         {
             if (sql.Contains("FROM reference_registers", StringComparison.Ordinal))
-                return RegisterRows(registerId, ReferenceRegisterPeriodicity.Day, ReferenceRegisterRecordMode.SubordinateToRecorder);
-            if (sql.Contains("FROM reference_register_fields", StringComparison.Ordinal))
-                return EmptyFieldRows();
+                return ReferenceMetadataRows(registerId, ReferenceRegisterPeriodicity.Day);
+            
             if (sql.Contains("FROM pg_trigger", StringComparison.Ordinal))
                 return EmptyAppendOnlyRows();
+
             throw new InvalidOperationException($"Unexpected SQL: {sql}");
         });
 
@@ -168,26 +168,28 @@ public sealed class PhysicalSchemaHealthReaderFullCoverageTests
         new Dictionary<string, IReadOnlyList<DbForeignKeySchema>>(StringComparer.OrdinalIgnoreCase),
         new Dictionary<string, IReadOnlyList<DbIndexSchema>>(StringComparer.OrdinalIgnoreCase));
 
-    private static DataTableReader EmptyRegisterRows() => RegisterTable().CreateDataReader();
-
-    private static DataTableReader RegisterRows(
-        Guid registerId,
+    private static DataTableReader ReferenceMetadataRows(
+        Guid? registerId = null,
         ReferenceRegisterPeriodicity periodicity = ReferenceRegisterPeriodicity.NonPeriodic,
         ReferenceRegisterRecordMode mode = ReferenceRegisterRecordMode.SubordinateToRecorder)
     {
-        var table = RegisterTable();
-        table.Rows.Add(
-            registerId,
-            "Prices",
-            "prices",
-            "prices",
-            "Prices",
-            (short)periodicity,
-            (short)mode,
-            false,
-            DateTime.UnixEpoch,
-            DateTime.UnixEpoch);
-        return table.CreateDataReader();
+        var registers = RegisterTable();
+        if (registerId.HasValue)
+        {
+            registers.Rows.Add(
+                registerId.Value,
+                "Prices",
+                "prices",
+                "prices",
+                "Prices",
+                (short)periodicity,
+                (short)mode,
+                false,
+                DateTime.UnixEpoch,
+                DateTime.UnixEpoch);
+        }
+
+        return new DataTableReader([registers, FieldTable()]);
     }
 
     private static DataTable RegisterTable()
@@ -206,12 +208,12 @@ public sealed class PhysicalSchemaHealthReaderFullCoverageTests
         return table;
     }
 
-    private static DataTableReader EmptyFieldRows()
+    private static DataTable FieldTable()
     {
         var table = new DataTable();
         table.Columns.Add("RegisterId", typeof(Guid));
         table.Columns.Add("ColumnCode", typeof(string));
-        return table.CreateDataReader();
+        return table;
     }
 
     private static DataTableReader EmptyAppendOnlyRows()
