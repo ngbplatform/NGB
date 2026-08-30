@@ -98,6 +98,7 @@ public static class DatabaseBootstrapper
         new OperationalRegisterWriteStateMigration(),
         new OperationalRegisterWriteLogHistoryMigration(),
         new OperationalRegistersIndexesMigration(),
+        new OperationalRegisterMovementsPagingIndexesMigration(),
 
         // Reference Registers (registry / fields / key rules / idempotency)
         new ReferenceRegistersMigration(),
@@ -226,6 +227,7 @@ public static class DatabaseBootstrapper
         new OperationalRegisterWriteStateMigration(),
         new OperationalRegisterWriteLogHistoryMigration(),
         new OperationalRegistersIndexesMigration(),
+        new OperationalRegisterMovementsPagingIndexesMigration(),
 
         // Reference registers: core tables + normalization + critical guards/indexes.
         new ReferenceRegistersMigration(),

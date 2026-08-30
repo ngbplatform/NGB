@@ -1,6 +1,8 @@
+using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.WebUtilities;
@@ -50,7 +52,7 @@ public sealed class KeycloakAdminClient(
             RequiredActions: request.RequirePasswordUpdate ? ["UPDATE_PASSWORD"] : [],
             Attributes: BuildAttributes(request.DisplayName));
 
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Post,
             AdminPath("users"),
             payload,
@@ -105,7 +107,7 @@ public sealed class KeycloakAdminClient(
             RequiredActions: null,
             Attributes: BuildAttributes(request.DisplayName));
 
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Put,
             AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId.Trim())}"),
             payload,
@@ -121,7 +123,7 @@ public sealed class KeycloakAdminClient(
         if (string.IsNullOrWhiteSpace(identityProviderUserId))
             throw new NgbArgumentRequiredException(nameof(identityProviderUserId));
 
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Put,
             AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId.Trim())}"),
             new { enabled },
@@ -147,7 +149,7 @@ public sealed class KeycloakAdminClient(
 
     private async Task<IdentityProviderUserDto?> GetUserByIdCoreAsync(string identityProviderUserId, CancellationToken ct)
     {
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Get,
             AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId)}"),
             body: null,
@@ -270,7 +272,7 @@ public sealed class KeycloakAdminClient(
                 ["exact"] = "true"
             });
 
-        var response = await SendAsync(HttpMethod.Get, query, body: null, operation: UsersFindByEmailOperation, ct);
+        using var response = await SendAsync(HttpMethod.Get, query, body: null, operation: UsersFindByEmailOperation, ct);
         await EnsureSuccessAsync(response, UsersFindByEmailOperation, ct);
 
         var rows = await response.Content.ReadFromJsonAsync<KeycloakUserDto[]>(Json, ct) ?? [];
@@ -286,7 +288,7 @@ public sealed class KeycloakAdminClient(
                 ["exact"] = "true"
             });
 
-        var usernameResponse = await SendAsync(HttpMethod.Get, usernameQuery, body: null, operation: UsersFindByUsernameOperation, ct);
+        using var usernameResponse = await SendAsync(HttpMethod.Get, usernameQuery, body: null, operation: UsersFindByUsernameOperation, ct);
         await EnsureSuccessAsync(usernameResponse, UsersFindByUsernameOperation, ct);
 
         var usernameRows = await usernameResponse.Content.ReadFromJsonAsync<KeycloakUserDto[]>(Json, ct) ?? [];
@@ -361,7 +363,7 @@ public sealed class KeycloakAdminClient(
             temporary = requireUpdate
         };
 
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Put,
             AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId.Trim())}/reset-password"),
             payload,
@@ -387,7 +389,7 @@ public sealed class KeycloakAdminClient(
         if (body is not null)
             request.Content = JsonContent.Create(body, options: Json);
 
-        return await httpClient.SendAsync(request, ct);
+        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
     }
 
     private async Task EnsureSuccessAsync(HttpResponseMessage response, string operation, CancellationToken ct)
@@ -399,11 +401,11 @@ public sealed class KeycloakAdminClient(
         string? errorCode = null;
         string? errorBody = null;
 
-        var text = await response.Content.ReadAsStringAsync(ct);
+        var text = await ReadBoundedErrorBodyAsync(response.Content, ct);
         if (!string.IsNullOrWhiteSpace(text))
         {
             errorCode = "keycloak_error_body_present";
-            errorBody = text.Length > 512 ? text[..512] : text;
+            errorBody = text;
         }
 
         var context = new Dictionary<string, object?>();
@@ -414,6 +416,39 @@ public sealed class KeycloakAdminClient(
             context["keycloakErrorBody"] = errorBody;
 
         throw new KeycloakAdminClientException(operation, statusCode, context.Count == 0 ? null : context);
+    }
+
+    private static async Task<string> ReadBoundedErrorBodyAsync(HttpContent content, CancellationToken ct)
+    {
+        const int maxChars = 512;
+        var buffer = ArrayPool<char>.Shared.Rent(maxChars + 1);
+
+        try
+        {
+            await using var stream = await content.ReadAsStreamAsync(ct);
+            using var reader = new StreamReader(
+                stream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true,
+                bufferSize: maxChars + 1,
+                leaveOpen: false);
+
+            var total = 0;
+            while (total < maxChars)
+            {
+                var read = await reader.ReadAsync(buffer.AsMemory(total, maxChars - total), ct);
+                if (read == 0)
+                    break;
+
+                total += read;
+            }
+
+            return new string(buffer, 0, total);
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(buffer);
+        }
     }
 
     private string BuildUri(string pathOrUri)

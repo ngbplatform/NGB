@@ -42,6 +42,24 @@ public sealed class SsoInfrastructureFullCoverageTests
         var retainedKey = await bounded.StoreAsync(Ticket("retained", null));
         (await bounded.RetrieveAsync(evictedKey)).Should().BeNull();
         (await bounded.RetrieveAsync(retainedKey)).Should().NotBeNull();
+
+        using var concurrent = new MemoryCacheTicketStore(maximumSessionCount: 4);
+        var hotKey = await concurrent.StoreAsync(Ticket("hot", null));
+        var reads = Enumerable.Range(0, 10_000)
+            .Select(_ => concurrent.RetrieveAsync(hotKey))
+            .ToArray();
+        (await Task.WhenAll(reads)).Should().OnlyContain(ticket => ticket != null);
+        concurrent.TrackedSessionCount.Should().Be(1);
+        concurrent.RecencyMetadataCount.Should().BeLessThanOrEqualTo(128);
+
+        using var frequentlyRenewed = new MemoryCacheTicketStore(maximumSessionCount: 4);
+        var renewedKey = await frequentlyRenewed.StoreAsync(Ticket("renewed-often", null));
+        for (var index = 0; index < 1_000; index++)
+            await frequentlyRenewed.RenewAsync(renewedKey, Ticket($"renewed-{index}", null));
+
+        frequentlyRenewed.TrackedSessionCount.Should().Be(1);
+        frequentlyRenewed.RecencyMetadataCount.Should().BeLessThanOrEqualTo(128);
+        (await frequentlyRenewed.RetrieveAsync(renewedKey)).Should().NotBeNull();
     }
 
     [Fact]

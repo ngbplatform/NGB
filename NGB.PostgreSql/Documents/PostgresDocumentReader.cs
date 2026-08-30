@@ -152,7 +152,8 @@ internal sealed class PostgresDocumentReader(
                SELECT d.id     AS "Id",
                       d.status AS "Status",
                       d.number AS "Number",
-                      COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display"{BuildSelectFields(head)}
+                      COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display"{BuildSelectFields(head)},
+                      COUNT(*) OVER() AS "TotalCount"
                  FROM {Qi(head.HeadTableName)} h
                  JOIN documents d ON d.id = h.document_id
                 WHERE d.type_code = @typeCode
@@ -162,7 +163,8 @@ internal sealed class PostgresDocumentReader(
                  LIMIT @limit;
                """
             : $"""
-               SELECT *
+               SELECT rows.*,
+                      COUNT(*) OVER() AS "TotalCount"
                  FROM (
                      SELECT d.id     AS "Id",
                             d.status AS "Status",
@@ -193,18 +195,27 @@ internal sealed class PostgresDocumentReader(
                  LIMIT @limit;
                """;
 
-        await using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
-            $"{countSql}\n{pageSql}",
+        var rows = (await uow.Connection.QueryAsync(new CommandDefinition(
+            pageSql,
             parameters,
             transaction: uow.Transaction,
-            cancellationToken: ct));
+            cancellationToken: ct))).AsList();
+        var total = rows.Count == 0
+            ? 0
+            : Convert.ToInt64(((IDictionary<string, object?>)rows[0])["TotalCount"]!);
 
-        var total = await results.ReadSingleAsync<long>();
-        var rows = (await results.ReadAsync())
-            .Select(row => ToRow(head, (IDictionary<string, object?>)row))
-            .ToArray();
+        if (rows.Count == 0 && offset > 0)
+        {
+            total = await uow.Connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                countSql,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+        }
 
-        return new DocumentHeadQueryPage(rows, total);
+        return new DocumentHeadQueryPage(
+            rows.Select(row => ToRow(head, (IDictionary<string, object?>)row)).ToArray(),
+            total);
     }
 
     public async Task<DocumentHeadSeekPage> GetSeekPageAsync(
@@ -657,39 +668,65 @@ LIMIT @limitPlusOne;
             var activeFilterSql = activeOnly ? "AND d.status <> @deletedStatus" : string.Empty;
             var headDisplaySql = $"h.{Qi(head.DisplayColumn)}";
             var labelSql = $"COALESCE({headDisplaySql}, d.id::text)";
-            var fromSql = hasQuery
-                ? $"documents d LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id"
-                : $"{Qi(head.HeadTableName)} h JOIN documents d ON d.id = h.document_id";
-            var searchFilterSql = hasQuery
-                ? $"""
-                  AND (
-                      d.number ILIKE ('%' || @q::text || '%')
-                      OR {headDisplaySql} ILIKE ('%' || @q::text || '%')
-                      OR ({headDisplaySql} IS NULL AND (
-                          (@queryId IS NOT NULL AND d.id = @queryId)
-                          OR (@hasQueryIdPrefix AND d.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper)
-                      ))
-                  )
-                  """
-                : string.Empty;
-            var orderBySql = hasQuery
-                ? $"""
-                  CASE
-                      WHEN d.number IS NOT NULL AND d.number ILIKE ('%' || @q::text || '%') THEN 0
-                      WHEN {headDisplaySql} ILIKE ('%' || @q::text || '%') THEN 1
-                      WHEN {headDisplaySql} IS NULL AND @queryId IS NOT NULL AND d.id = @queryId THEN 2
-                      WHEN {headDisplaySql} IS NULL AND @hasQueryIdPrefix AND d.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper THEN 2
-                      ELSE 2
-                  END,
-                  {labelSql},
-                  d.id
-                  """
-                : $"""
-                  {headDisplaySql} NULLS LAST,
-                  d.id
-                  """;
 
-            subqueries.Add($"""
+            if (hasQuery)
+            {
+                subqueries.Add($"""
+                            (
+                                WITH candidates AS (
+                                    SELECT d.id, 0 AS rank
+                                      FROM documents d
+                                     WHERE d.type_code = @{typeCodeParam}
+                                       {activeFilterSql}
+                                       AND d.number ILIKE ('%' || @q::text || '%')
+                                    UNION ALL
+                                    SELECT h.document_id, 1 AS rank
+                                      FROM {Qi(head.HeadTableName)} h
+                                      JOIN documents d ON d.id = h.document_id
+                                     WHERE d.type_code = @{typeCodeParam}
+                                       {activeFilterSql}
+                                       AND {headDisplaySql} ILIKE ('%' || @q::text || '%')
+                                    UNION ALL
+                                    SELECT d.id, 2 AS rank
+                                      FROM documents d
+                                     WHERE d.type_code = @{typeCodeParam}
+                                       {activeFilterSql}
+                                       AND (
+                                           (@queryId IS NOT NULL AND d.id = @queryId)
+                                           OR (@hasQueryIdPrefix AND d.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper)
+                                       )
+                                       AND NOT EXISTS (
+                                           SELECT 1
+                                             FROM {Qi(head.HeadTableName)} missing_head
+                                            WHERE missing_head.document_id = d.id
+                                       )
+                                ),
+                                ranked_candidates AS (
+                                    SELECT id, MIN(rank) AS rank
+                                      FROM candidates
+                                     GROUP BY id
+                                )
+                                SELECT
+                                    d.id AS "Id",
+                                    @{typeCodeParam} AS "TypeCode",
+                                    d.status AS "Status",
+                                    d.status = @deletedStatus AS "IsMarkedForDeletion",
+                                    d.number AS "Number",
+                                    {labelSql} AS "Label"
+                                FROM ranked_candidates candidate
+                                JOIN documents d ON d.id = candidate.id
+                                LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id
+                                ORDER BY
+                                    candidate.rank,
+                                    {labelSql},
+                                    d.id
+                                LIMIT @perTypeLimit
+                            )
+                            """);
+            }
+            else
+            {
+                subqueries.Add($"""
                             (
                                 SELECT
                                     d.id AS "Id",
@@ -698,15 +735,17 @@ LIMIT @limitPlusOne;
                                     d.status = @deletedStatus AS "IsMarkedForDeletion",
                                     d.number AS "Number",
                                     {labelSql} AS "Label"
-                                FROM {fromSql}
+                                FROM {Qi(head.HeadTableName)} h
+                                JOIN documents d ON d.id = h.document_id
                                 WHERE d.type_code = @{typeCodeParam}
                                   {activeFilterSql}
-                                  {searchFilterSql}
                                 ORDER BY
-                                    {orderBySql}
+                                    {headDisplaySql} NULLS LAST,
+                                    d.id
                                 LIMIT @perTypeLimit
                             )
                             """);
+            }
         }
 
         var sql = string.Join("\nUNION ALL\n", subqueries);

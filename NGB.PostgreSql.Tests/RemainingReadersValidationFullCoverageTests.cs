@@ -132,7 +132,7 @@ public sealed class RemainingReadersValidationFullCoverageTests
     {
         foreach (var trash in new string?[] { null, "", "active", "deleted", "all", " ACTIVE ", " DELETED ", " ALL " })
         {
-            var connection = new RecordingDbConnection(readerFactory: _ => EmptyCountAndPageRows());
+            var connection = new RecordingDbConnection(readerFactory: _ => EmptyGeneralJournalPageRows());
             var sut = new PostgresGeneralJournalEntryUiQueryRepository(
                 new RecordingUnitOfWork(connection));
 
@@ -140,7 +140,29 @@ public sealed class RemainingReadersValidationFullCoverageTests
 
             page.Items.Should().BeEmpty();
             page.Total.Should().Be(0);
+            connection.Commands.Should().ContainSingle()
+                .Which.CommandText.Should().Contain("COUNT(*) OVER()");
         }
+    }
+
+    [Fact]
+    public async Task General_journal_ui_query_uses_count_fallback_only_beyond_the_last_page()
+    {
+        var connection = new RecordingDbConnection(
+            readerFactory: _ => EmptyGeneralJournalPageRows(),
+            scalar: _ => 9);
+        var sut = new PostgresGeneralJournalEntryUiQueryRepository(
+            new RecordingUnitOfWork(connection));
+
+        var page = await sut.GetPageAsync(50, 10, " memo ", null, null, "all");
+
+        page.Items.Should().BeEmpty();
+        page.Total.Should().Be(9);
+        connection.Commands.Should().HaveCount(2);
+        connection.Commands[0].CommandText.Should()
+            .Contain("WITH search_candidates")
+            .And.Contain("COUNT(*) OVER()");
+        connection.Commands[1].CommandText.Should().Contain("SELECT COUNT(*)");
     }
 
     [Fact]
@@ -677,11 +699,8 @@ public sealed class RemainingReadersValidationFullCoverageTests
         return table.CreateDataReader();
     }
 
-    private static DataTableReader EmptyCountAndPageRows()
+    private static DataTableReader EmptyGeneralJournalPageRows()
     {
-        var count = new DataTable();
-        count.Columns.Add("Count", typeof(int));
-        count.Rows.Add(0);
         var page = new DataTable();
         page.Columns.Add("Id", typeof(Guid));
         page.Columns.Add("DateUtc", typeof(DateTime));
@@ -700,7 +719,8 @@ public sealed class RemainingReadersValidationFullCoverageTests
         page.Columns.Add("ReversalOfDocumentId", typeof(Guid));
         page.Columns.Add("PostedBy", typeof(string));
         page.Columns.Add("PostedAtUtc", typeof(DateTime));
-        return new DataTableReader([count, page]);
+        page.Columns.Add("TotalCount", typeof(int));
+        return page.CreateDataReader();
     }
 
     private static DataTableReader DocumentDisplayRows(

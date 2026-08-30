@@ -17,6 +17,7 @@ using NGB.Persistence.Documents;
 using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.Readers.Accounts;
+using NGB.Persistence.Ui;
 using NGB.Runtime.Ui;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -30,6 +31,102 @@ public sealed class ReferencePayloadEnricherTests
     private const string OwnerDocumentType = "doc.sale";
     private const string LeaseDocumentType = "doc.lease";
     private const string InvoiceDocumentType = "doc.invoice";
+
+    [Fact]
+    public async Task EnrichDocumentItemsAsync_WhenBatchReaderIsAvailable_ResolvesEveryReferenceKindOnce()
+    {
+        var accountId = Guid.Parse("11111111-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var registerId = Guid.Parse("22222222-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var partyId = Guid.Parse("33333333-cccc-cccc-cccc-cccccccccccc");
+        var leaseId = Guid.Parse("44444444-dddd-dddd-dddd-dddddddddddd");
+
+        var catalogTypes = new CatalogTypeRegistry();
+        catalogTypes.Register(BuildPartyCatalogMetadata());
+        var documentTypes = new DocumentTypeRegistry([
+            new DocumentTypeMetadata(
+                OwnerDocumentType,
+                [new DocumentTableMetadata(
+                    "doc_sale",
+                    TableKind.Head,
+                    [
+                        new DocumentColumnMetadata("counter_account_id", ColumnType.Guid),
+                        new DocumentColumnMetadata("warehouse_register_id", ColumnType.Guid),
+                        new DocumentColumnMetadata(
+                            "party_id",
+                            ColumnType.Guid,
+                            Lookup: new CatalogLookupSourceMetadata(PartyCatalogCode)),
+                        new DocumentColumnMetadata(
+                            "lease_id",
+                            ColumnType.Guid,
+                            Lookup: new DocumentLookupSourceMetadata([LeaseDocumentType]))
+                    ])],
+                new DocumentPresentationMetadata("Sale"))
+        ]);
+
+        var batchReader = new Mock<IReferencePayloadBatchEnrichmentReader>(MockBehavior.Strict);
+        batchReader
+            .Setup(x => x.ResolveAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => SameIds(ids, accountId)),
+                It.Is<IReadOnlyCollection<Guid>>(ids => SameIds(ids, registerId)),
+                It.Is<IReadOnlyDictionary<string, IReadOnlyCollection<Guid>>>(batch =>
+                    HasCatalogBatch(batch, PartyCatalogCode, partyId)),
+                It.Is<IReadOnlyCollection<Guid>>(ids => SameIds(ids, leaseId)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReferencePayloadBatchEnrichment(
+                new Dictionary<Guid, string> { [accountId] = "1010 — Cash" },
+                new Dictionary<Guid, string> { [registerId] = "WAREHOUSE — Warehouse" },
+                new Dictionary<string, IReadOnlyDictionary<Guid, string>>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [PartyCatalogCode] = new Dictionary<Guid, string> { [partyId] = "Party" }
+                },
+                new Dictionary<Guid, string> { [leaseId] = "Lease L-1" }));
+
+        var catalogReader = new Mock<ICatalogEnrichmentReader>(MockBehavior.Strict);
+        var documentReader = new Mock<IDocumentDisplayReader>(MockBehavior.Strict);
+        var accountReader = new Mock<IAccountLookupReader>(MockBehavior.Strict);
+        var registerReader = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
+        var sut = new ReferencePayloadEnricher(
+            catalogTypes,
+            documentTypes,
+            catalogReader.Object,
+            documentReader.Object,
+            accountReader.Object,
+            registerReader.Object,
+            batchReader.Object);
+        var payload = new RecordPayload(new Dictionary<string, JsonElement>
+        {
+            ["counter_account_id"] = JsonSerializer.SerializeToElement(accountId),
+            ["warehouse_register_id"] = JsonSerializer.SerializeToElement(registerId),
+            ["party_id"] = JsonSerializer.SerializeToElement(partyId),
+            ["lease_id"] = JsonSerializer.SerializeToElement(leaseId)
+        });
+        var head = new DocumentHeadDescriptor(
+            OwnerDocumentType,
+            "doc_sale",
+            "display",
+            [
+                new("counter_account_id", ColumnType.Guid),
+                new("warehouse_register_id", ColumnType.Guid),
+                new("party_id", ColumnType.Guid),
+                new("lease_id", ColumnType.Guid)
+            ]);
+
+        var result = await sut.EnrichDocumentItemsAsync(
+            head,
+            OwnerDocumentType,
+            [DocumentItem(payload)],
+            CancellationToken.None);
+
+        ReadRef(result[0].Payload.Fields!, "counter_account_id").Display.Should().Be("1010 — Cash");
+        ReadRef(result[0].Payload.Fields!, "warehouse_register_id").Display.Should().Be("WAREHOUSE — Warehouse");
+        ReadRef(result[0].Payload.Fields!, "party_id").Display.Should().Be("Party");
+        ReadRef(result[0].Payload.Fields!, "lease_id").Display.Should().Be("Lease L-1");
+        batchReader.VerifyAll();
+        catalogReader.VerifyNoOtherCalls();
+        documentReader.VerifyNoOtherCalls();
+        accountReader.VerifyNoOtherCalls();
+        registerReader.VerifyNoOtherCalls();
+    }
 
     [Fact]
     public async Task EnrichCatalogItemsAsync_ResolvesSharedCatalogRefsOnceAcrossHeadAndParts()

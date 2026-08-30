@@ -19,7 +19,11 @@ public abstract class BaseHttpExternalHealthCheck(
                 ? httpClientFactory.CreateClient()
                 : httpClientFactory.CreateClient(httpClientName);
 
-            var response = await httpClient.GetAsync(url, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
             if (response.IsSuccessStatusCode)
                 return HealthCheckResult.Healthy($"{name} is reachable and responding.");
 

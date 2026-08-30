@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using NGB.Testing.Containers;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 
@@ -45,7 +46,8 @@ public sealed class PmKeycloakFixture : IAsyncDisposable
                 .ForPath($"/realms/{RealmName}/.well-known/openid-configuration")))
             .Build();
 
-        await _container.StartAsync();
+        await using (var startupLease = await TestcontainerStartupGate.AcquireAsync())
+            await _container.StartAsync();
 
         BaseUrl = $"http://{_container.Hostname}:{_container.GetMappedPublicPort(HttpPort)}";
         Issuer = $"{BaseUrl}/realms/{RealmName}";

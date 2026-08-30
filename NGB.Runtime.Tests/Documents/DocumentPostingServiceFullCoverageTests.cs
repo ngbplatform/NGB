@@ -75,6 +75,14 @@ public sealed class DocumentPostingServiceFullCoverageTests
         (await nullIds.Should().ThrowAsync<NgbArgumentRequiredException>())
             .Which.ParamName.Should().Be("documentIds");
 
+        Func<Task> oversized = () => sut.PostManyAsync(
+            Enumerable.Range(0, DocumentPostingService.MaxAtomicBatchSize + 1)
+                .Select(_ => Guid.NewGuid())
+                .ToArray(),
+            manageTransaction: true);
+        (await oversized.Should().ThrowAsync<NgbArgumentOutOfRangeException>())
+            .Which.Context.Should().Contain("actualValue", DocumentPostingService.MaxAtomicBatchSize + 1);
+
         documents.Verify(x => x.GetForUpdateByIdsAsync(
             It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first.Id, second.Id })),
             It.IsAny<CancellationToken>()), Times.Once);

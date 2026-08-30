@@ -18,9 +18,15 @@ public sealed class MigrationRunner_IdempotencyTests(PostgresTestFixture fixture
         await using var scope = host.Services.CreateAsyncScope();
         var inspector = scope.ServiceProvider.GetRequiredService<IDbSchemaInspector>();
 
+        // This collection shares a fixture and dynamic register tables intentionally survive
+        // data resets. Earlier tests may therefore have created a table before a newer repair
+        // contract existed, or may have exercised drift scenarios. Establish the canonical
+        // post-migration state first; idempotency is the comparison between two consecutive
+        // applications of the same complete migration/bootstrap set.
+        await MigrationSet.ApplyPlatformMigrationsAsync(Fixture.ConnectionString, CancellationToken.None);
         var before = await inspector.GetSnapshotAsync(CancellationToken.None);
 
-        // Act: run the same migration/bootstrap set again.
+        // Act: run the same migration/bootstrap set for the second consecutive time.
         await MigrationSet.ApplyPlatformMigrationsAsync(Fixture.ConnectionString, CancellationToken.None);
 
         var after = await inspector.GetSnapshotAsync(CancellationToken.None);

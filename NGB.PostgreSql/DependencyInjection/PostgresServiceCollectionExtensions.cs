@@ -27,6 +27,7 @@ using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.Reporting;
 using NGB.Persistence.Readers;
 using NGB.Persistence.Readers.Accounts;
+using NGB.Persistence.Ui;
 using NGB.Persistence.Readers.PostingState;
 using NGB.Persistence.Readers.Documents;
 using NGB.Persistence.Readers.Reports;
@@ -237,6 +238,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IAccountingTurnoverAggregationReader, PostgresAccountingTurnoverAggregationReader>();
         services.TryAddScoped<IAccountingPeriodActivityReader, PostgresAccountingPeriodActivityReader>();
         services.TryAddScoped<IAccountLookupReader, PostgresAccountLookupReader>();
+        services.TryAddScoped<IReferencePayloadBatchEnrichmentReader, PostgresReferencePayloadBatchEnrichmentReader>();
         services.TryAddScoped<IRetainedEarningsAccountLookupReader, PostgresRetainedEarningsAccountLookupReader>();
         services.TryAddScoped<IClosedPeriodReader, PostgresClosedPeriodReader>();
         services.TryAddScoped<IDimensionDefinitionReader, PostgresDimensionDefinitionReader>();

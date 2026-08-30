@@ -140,7 +140,8 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogSeekPageR
             ? $"""
                SELECT c.id         AS "Id",
                       c.is_deleted AS "IsDeleted",
-                      h.{Qi(head.DisplayColumn)} AS "Display"{BuildSelectFields(head)}
+                      h.{Qi(head.DisplayColumn)} AS "Display"{BuildSelectFields(head)},
+                      COUNT(*) OVER() AS "TotalCount"
                  FROM {Qi(head.HeadTableName)} h
                  JOIN catalogs c ON c.id = h.catalog_id
                 WHERE c.catalog_code = @catalogCode
@@ -150,7 +151,8 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogSeekPageR
                  LIMIT @limit;
                """
             : $"""
-               SELECT *
+               SELECT rows.*,
+                      COUNT(*) OVER() AS "TotalCount"
                  FROM (
                      SELECT c.id         AS "Id",
                             c.is_deleted AS "IsDeleted",
@@ -177,18 +179,27 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogSeekPageR
                  LIMIT @limit;
                """;
 
-        using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
-            $"{countSql}\n{pageSql}",
+        var rows = (await uow.Connection.QueryAsync(new CommandDefinition(
+            pageSql,
             parameters,
             transaction: uow.Transaction,
-            cancellationToken: ct));
+            cancellationToken: ct))).AsList();
+        var total = rows.Count == 0
+            ? 0
+            : Convert.ToInt64(((IDictionary<string, object?>)rows[0])["TotalCount"]!);
 
-        var total = await results.ReadSingleAsync<long>();
-        var rows = (await results.ReadAsync())
-            .Select(row => ToRow(head, (IDictionary<string, object?>)row))
-            .ToArray();
+        if (rows.Count == 0 && offset > 0)
+        {
+            total = await uow.Connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                countSql,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+        }
 
-        return new CatalogHeadQueryPage(rows, total);
+        return new CatalogHeadQueryPage(
+            rows.Select(row => ToRow(head, (IDictionary<string, object?>)row)).ToArray(),
+            total);
     }
 
     public async Task<CatalogHeadSeekPage> GetSeekPageAsync(
@@ -801,52 +812,74 @@ SELECT COALESCE(BOOL_OR(violation), FALSE)
             var activeFilterSql = activeOnly ? "AND c.is_deleted = FALSE" : string.Empty;
             var headDisplaySql = $"h.{Qi(head.DisplayColumn)}";
             var labelSql = $"COALESCE({headDisplaySql}, c.id::text)";
-            var fromSql = hasQuery
-                ? $"catalogs c LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id"
-                : $"{Qi(head.HeadTableName)} h JOIN catalogs c ON c.id = h.catalog_id";
-            var searchFilterSql = hasQuery
-                ? $"""
-                  AND (
-                      {headDisplaySql} ILIKE ('%' || @q::text || '%')
-                      OR ({headDisplaySql} IS NULL AND (
-                          (@queryId IS NOT NULL AND c.id = @queryId)
-                          OR (@hasQueryIdPrefix AND c.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper)
-                      ))
-                  )
-                  """
-                : string.Empty;
-            var orderBySql = hasQuery
-                ? $"""
-                  CASE
-                      WHEN {headDisplaySql} ILIKE ('%' || @q::text || '%') THEN 0
-                      WHEN {headDisplaySql} IS NULL AND @queryId IS NOT NULL AND c.id = @queryId THEN 1
-                      WHEN {headDisplaySql} IS NULL AND @hasQueryIdPrefix AND c.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper THEN 1
-                      ELSE 1
-                  END,
-                  {labelSql},
-                  c.id
-                  """
-                : $"""
-                  {headDisplaySql} NULLS LAST,
-                  c.id
-                  """;
 
-            subqueries.Add($"""
+            if (hasQuery)
+            {
+                subqueries.Add($"""
+                            (
+                                WITH candidates AS (
+                                    SELECT h.catalog_id AS id, 0 AS rank
+                                      FROM {Qi(head.HeadTableName)} h
+                                      JOIN catalogs c ON c.id = h.catalog_id
+                                     WHERE c.catalog_code = @{catalogCodeParam}
+                                       {activeFilterSql}
+                                       AND {headDisplaySql} ILIKE ('%' || @q::text || '%')
+                                    UNION ALL
+                                    SELECT c.id, 1 AS rank
+                                      FROM catalogs c
+                                     WHERE c.catalog_code = @{catalogCodeParam}
+                                       {activeFilterSql}
+                                       AND (
+                                           (@queryId IS NOT NULL AND c.id = @queryId)
+                                           OR (@hasQueryIdPrefix AND c.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper)
+                                       )
+                                       AND NOT EXISTS (
+                                           SELECT 1
+                                             FROM {Qi(head.HeadTableName)} missing_head
+                                            WHERE missing_head.catalog_id = c.id
+                                       )
+                                ),
+                                ranked_candidates AS (
+                                    SELECT id, MIN(rank) AS rank
+                                      FROM candidates
+                                     GROUP BY id
+                                )
+                                SELECT
+                                    c.id AS "Id",
+                                    @{catalogCodeParam} AS "CatalogCode",
+                                    c.is_deleted AS "IsMarkedForDeletion",
+                                    {labelSql} AS "Label"
+                                FROM ranked_candidates candidate
+                                JOIN catalogs c ON c.id = candidate.id
+                                LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id
+                                ORDER BY
+                                    candidate.rank,
+                                    {labelSql},
+                                    c.id
+                                LIMIT @perTypeLimit
+                            )
+                            """);
+            }
+            else
+            {
+                subqueries.Add($"""
                             (
                                 SELECT
                                     c.id AS "Id",
                                     @{catalogCodeParam} AS "CatalogCode",
                                     c.is_deleted AS "IsMarkedForDeletion",
                                     {labelSql} AS "Label"
-                                FROM {fromSql}
+                                FROM {Qi(head.HeadTableName)} h
+                                JOIN catalogs c ON c.id = h.catalog_id
                                 WHERE c.catalog_code = @{catalogCodeParam}
                                   {activeFilterSql}
-                                  {searchFilterSql}
                                 ORDER BY
-                                    {orderBySql}
+                                    {headDisplaySql} NULLS LAST,
+                                    c.id
                                 LIMIT @perTypeLimit
                             )
                             """);
+            }
         }
 
         var sql = string.Join("\nUNION ALL\n", subqueries);

@@ -90,6 +90,34 @@ public sealed class NgbSecurityCacheTests
             CancellationToken.None);
 
         reloaded.Should().Be(999);
+        cache.TrackedEntryCount.Should().Be(100);
+        cache.EvictionMetadataCount.Should().Be(100);
+    }
+
+    [Fact]
+    public async Task Replacing_and_expiring_entries_does_not_grow_eviction_metadata_or_remove_a_new_generation()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions { MaxEntries = 100 }));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+
+        for (var index = 0; index < 500; index++)
+        {
+            memoryCache.Remove($"ngb:security:main-menu:{snapshot.AccessCacheKey}");
+            (await cache.GetOrCreateMainMenuAsync(
+                snapshot,
+                _ => Task.FromResult(index),
+                CancellationToken.None)).Should().Be(index);
+        }
+
+        cache.TrackedEntryCount.Should().Be(1);
+        cache.EvictionMetadataCount.Should().Be(1);
+        (await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            _ => Task.FromResult(-1),
+            CancellationToken.None)).Should().Be(499);
     }
 
     [Fact]

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NGB.BackgroundJobs.Hosting;
+using NGB.Testing.Containers;
 using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -29,7 +30,8 @@ public sealed class PostgreSqlFixture : IAsyncLifetime
             .WithPassword("postgres")
             .Build();
 
-        await _container.StartAsync();
+        await using (var startupLease = await TestcontainerStartupGate.AcquireAsync())
+            await _container.StartAsync();
 
         ConnectionString = new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {

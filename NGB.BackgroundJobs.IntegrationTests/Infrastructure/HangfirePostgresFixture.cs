@@ -3,6 +3,7 @@ using Hangfire.PostgreSql;
 using Hangfire.PostgreSql.Factories;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Dapper;
+using NGB.Testing.Containers;
 using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -29,7 +30,8 @@ public sealed class HangfirePostgresFixture : IAsyncLifetime
             .WithPassword("postgres")
             .Build();
 
-        await _container.StartAsync();
+        await using (var startupLease = await TestcontainerStartupGate.AcquireAsync())
+            await _container.StartAsync();
 
         var csb = new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {

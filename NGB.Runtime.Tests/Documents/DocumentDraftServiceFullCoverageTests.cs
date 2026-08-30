@@ -110,6 +110,58 @@ public sealed class DocumentDraftServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_create_partitions_only_auto_numbered_items_and_preserves_request_order()
+    {
+        var fixture = new Fixture(batchRepository: true);
+        fixture.Types.Setup(x => x.TryGet("numbered"))
+            .Returns(new DocumentTypeMetadata("numbered", []));
+        fixture.Policies.Setup(x => x.Resolve("numbered")).Returns(Policy(ensureOnCreate: true));
+        var batchRecords = new List<DocumentRecord>();
+        fixture.BatchDocuments!.Setup(x => x.CreateDraftsAsync(
+                It.IsAny<IReadOnlyList<DocumentRecord>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<DocumentRecord>, CancellationToken>((records, _) => batchRecords.AddRange(records))
+            .Returns(Task.CompletedTask);
+        fixture.Documents.Setup(x => x.GetForUpdateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, CancellationToken _) => new DocumentRecord
+            {
+                Id = id,
+                TypeCode = "numbered",
+                DateUtc = Date,
+                Status = DocumentStatus.Draft,
+                CreatedAtUtc = Now,
+                UpdatedAtUtc = Now
+            });
+        fixture.Numbering.Setup(x => x.EnsureNumberAndSyncTypedAsync(
+                It.Is<DocumentRecord>(record => record.TypeCode == "numbered"),
+                Now,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync("AUTO-1");
+
+        var ids = await fixture.Sut.CreateDraftsAsync(
+        [
+            new DocumentDraftCreateRequest("doc", null, Date),
+            new DocumentDraftCreateRequest("numbered", null, Date),
+            new DocumentDraftCreateRequest("numbered", " MANUAL ", Date)
+        ], suppressAudit: true);
+
+        ids.Should().HaveCount(3).And.OnlyHaveUniqueItems();
+        batchRecords.Select(record => record.Id).Should().Equal(ids[0], ids[2]);
+        batchRecords.Select(record => record.Number).Should().Equal(null, "MANUAL");
+        fixture.Documents.Verify(x => x.CreateAsync(
+            It.Is<DocumentRecord>(record => record.Id == ids[1]),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Numbering.VerifyAll();
+        fixture.BatchDocuments.Verify(x => x.CreateDraftsAsync(
+            It.Is<IReadOnlyList<DocumentRecord>>(records => records.Count == 2),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Locks.Invocations
+            .Where(invocation => invocation.Method.Name == nameof(IAdvisoryLockManager.LockDocumentAsync))
+            .Select(invocation => (Guid)invocation.Arguments[0])
+            .Should().Equal(ids.OrderBy(static id => id));
+    }
+
+    [Fact]
     public async Task Update_CoversInputNoopMissingMarkedFallbackAndWrongWorkflowState()
     {
         var fixture = new Fixture();
@@ -245,8 +297,11 @@ public sealed class DocumentDraftServiceFullCoverageTests
 
     private sealed class Fixture
     {
-        public Fixture()
+        public Fixture(bool batchRepository = false)
         {
+            if (batchRepository)
+                BatchDocuments = Documents.As<IDocumentDraftBatchRepository>();
+
             Uow.SetupGet(x => x.HasActiveTransaction).Returns(false);
             Uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -282,6 +337,7 @@ public sealed class DocumentDraftServiceFullCoverageTests
         public Mock<IUnitOfWork> Uow { get; } = new(MockBehavior.Loose);
         public Mock<IAdvisoryLockManager> Locks { get; } = new(MockBehavior.Loose);
         public Mock<IDocumentRepository> Documents { get; } = new(MockBehavior.Loose);
+        public Mock<IDocumentDraftBatchRepository>? BatchDocuments { get; }
         public Mock<IDocumentTypeStorageResolver> Storage { get; } = new(MockBehavior.Loose);
         public Mock<IDocumentValidatorResolver> Validators { get; } = new(MockBehavior.Loose);
         public Mock<IDocumentNumberingAndTypedSyncService> Numbering { get; } = new(MockBehavior.Loose);

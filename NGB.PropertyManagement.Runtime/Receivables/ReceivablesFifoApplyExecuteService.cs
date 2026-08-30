@@ -44,10 +44,10 @@ public sealed class ReceivablesFifoApplyExecuteService(
         if (request.MaxApplications is not null && request.MaxApplications <= 0)
             throw ReceivablesRequestValidationException.MaxApplicationsInvalid();
 
-        if (request.MaxApplications > FifoApplyLimits.MaxApplications)
-            throw ReceivablesRequestValidationException.MaxApplicationsTooLarge(FifoApplyLimits.MaxApplications);
+        if (request.MaxApplications > FifoApplyLimits.MaxAtomicApplications)
+            throw ReceivablesRequestValidationException.MaxApplicationsTooLarge(FifoApplyLimits.MaxAtomicApplications);
 
-        var maxApplications = request.MaxApplications ?? FifoApplyLimits.DefaultMaxApplications;
+        var maxApplications = request.MaxApplications ?? FifoApplyLimits.DefaultMaxAtomicApplications;
 
         using var postingReadScope = postingReadCache?.BeginScope();
 

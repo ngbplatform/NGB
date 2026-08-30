@@ -178,7 +178,7 @@ public sealed class PostgresDocumentReaderFullCoverageTests
         filtered.Total.Should().Be(11);
         connection.Commands.Should().HaveCount(2);
         connection.Commands[0].CommandText.Should()
-            .Contain("SELECT COUNT(*)")
+            .Contain("COUNT(*) OVER()")
             .And.Contain("UNION ALL")
             .And.Contain("NOT EXISTS")
             .And.Contain("ORDER BY \"SortDisplay\" NULLS LAST");
@@ -187,6 +187,22 @@ public sealed class PostgresDocumentReaderFullCoverageTests
             .And.NotContain("UNION ALL");
         Parameter(connection.Commands[0], "offset").Should().Be(3);
         Parameter(connection.Commands[0], "limit").Should().Be(10);
+    }
+
+    [Fact]
+    public async Task Combined_page_beyond_the_end_uses_a_count_fallback_for_exact_total()
+    {
+        var connection = Connection(
+            reader: _ => CombinedHeadRows(0),
+            scalar: _ => 11L);
+
+        var page = await Reader(connection).GetPageWithTotalAsync(Head(), Query(), 50, 10);
+
+        page.Rows.Should().BeEmpty();
+        page.Total.Should().Be(11);
+        connection.Commands.Should().HaveCount(2);
+        connection.Commands[0].CommandText.Should().Contain("COUNT(*) OVER()");
+        connection.Commands[1].CommandText.Should().Contain("SELECT COUNT(*)");
     }
 
     [Fact]
@@ -469,10 +485,6 @@ public sealed class PostgresDocumentReaderFullCoverageTests
         long total,
         params (Guid Id, object Status, string? Number, string? Display, decimal? Amount)[] rows)
     {
-        var count = new DataTable();
-        count.Columns.Add("Count", typeof(long));
-        count.Rows.Add(total);
-
         var page = new DataTable();
         page.Columns.Add("Id", typeof(Guid));
         page.Columns.Add("Status", typeof(object));
@@ -480,6 +492,7 @@ public sealed class PostgresDocumentReaderFullCoverageTests
         page.Columns.Add("Display", typeof(object));
         page.Columns.Add("NAME", typeof(object));
         page.Columns.Add("amount", typeof(object));
+        page.Columns.Add("TotalCount", typeof(long));
         foreach (var row in rows)
         {
             page.Rows.Add(
@@ -488,10 +501,11 @@ public sealed class PostgresDocumentReaderFullCoverageTests
                 row.Number ?? (object)DBNull.Value,
                 row.Display ?? (object)DBNull.Value,
                 row.Display ?? (object)DBNull.Value,
-                row.Amount ?? (object)DBNull.Value);
+                row.Amount ?? (object)DBNull.Value,
+                total);
         }
 
-        return new DataTableReader([count, page]);
+        return page.CreateDataReader();
     }
 
     private static DbDataReader AcrossHeadRows(

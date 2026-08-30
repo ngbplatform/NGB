@@ -12,6 +12,7 @@ using NGB.Persistence.Documents;
 using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.Readers.Accounts;
+using NGB.Persistence.Ui;
 using NGB.Tools;
 using NGB.Tools.Exceptions;
 
@@ -54,7 +55,8 @@ public sealed class ReferencePayloadEnricher(
     ICatalogEnrichmentReader catalogEnrichmentReader,
     IDocumentDisplayReader documentDisplayReader,
     IAccountLookupReader accountLookupReader,
-    IOperationalRegisterRepository opregRepo)
+    IOperationalRegisterRepository opregRepo,
+    IReferencePayloadBatchEnrichmentReader? batchEnrichmentReader = null)
     : IReferencePayloadEnricher
 {
     private sealed record RefSource(RefKind Kind, IReadOnlyList<string>? TypeCodes);
@@ -283,17 +285,38 @@ public sealed class ReferencePayloadEnricher(
             }
         }
 
-        var coaLabels = await ResolveChartOfAccountsAsync(coaIds, ct);
-        var opregLabels = await ResolveOperationalRegistersAsync(opregIds, ct);
-        var catalogLabelsByType = catalogTypeToIds.Count == 0
-            ? new Dictionary<string, IReadOnlyDictionary<Guid, string>>(StringComparer.OrdinalIgnoreCase)
-            : await catalogEnrichmentReader.ResolveManyAsync(
-                catalogTypeToIds.ToDictionary(
-                    x => x.Key,
-                    x => (IReadOnlyCollection<Guid>)x.Value,
-                    StringComparer.OrdinalIgnoreCase),
+        IReadOnlyDictionary<Guid, string> coaLabels;
+        IReadOnlyDictionary<Guid, string> opregLabels;
+        IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, string>> catalogLabelsByType;
+        IReadOnlyDictionary<Guid, string> documentLabels;
+
+        var catalogBatch = catalogTypeToIds.ToDictionary(
+            x => x.Key,
+            x => (IReadOnlyCollection<Guid>)x.Value,
+            StringComparer.OrdinalIgnoreCase);
+
+        if (batchEnrichmentReader is not null)
+        {
+            var batch = await batchEnrichmentReader.ResolveAsync(
+                coaIds,
+                opregIds,
+                catalogBatch,
+                documentIds,
                 ct);
-        var documentLabels = await ResolveDocumentsAsync(documentIds, ct);
+            coaLabels = batch.AccountLabels;
+            opregLabels = batch.OperationalRegisterLabels;
+            catalogLabelsByType = batch.CatalogLabelsByType;
+            documentLabels = batch.DocumentLabels;
+        }
+        else
+        {
+            coaLabels = await ResolveChartOfAccountsAsync(coaIds, ct);
+            opregLabels = await ResolveOperationalRegistersAsync(opregIds, ct);
+            catalogLabelsByType = catalogBatch.Count == 0
+                ? new Dictionary<string, IReadOnlyDictionary<Guid, string>>(StringComparer.OrdinalIgnoreCase)
+                : await catalogEnrichmentReader.ResolveManyAsync(catalogBatch, ct);
+            documentLabels = await ResolveDocumentsAsync(documentIds, ct);
+        }
 
         var result = new List<RecordPayload>(payloads.Count);
 

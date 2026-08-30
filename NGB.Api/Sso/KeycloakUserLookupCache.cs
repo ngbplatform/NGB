@@ -12,8 +12,19 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
 {
     private readonly ConcurrentDictionary<string, CacheEntry> _entries = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Task<IdentityProviderUserDto?>> _pending = new(StringComparer.Ordinal);
-    private readonly ConcurrentQueue<Insertion> _insertionOrder = new();
+    private readonly Lock _orderSync = new();
+    private readonly LinkedList<string> _insertionOrder = [];
+    private readonly Dictionary<string, LinkedListNode<string>> _orderNodes = new(StringComparer.Ordinal);
     private long _nextVersion;
+
+    internal int InsertionMetadataCount
+    {
+        get
+        {
+            lock (_orderSync)
+                return _insertionOrder.Count;
+        }
+    }
 
     public Task<IdentityProviderUserDto?> GetByIdAsync(
         string userId,
@@ -37,18 +48,18 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
 
     public void InvalidateUser(string userId, string? email = null)
     {
-        _entries.TryRemove(IdKey(userId), out _);
+        Remove(IdKey(userId));
         if (!string.IsNullOrWhiteSpace(email))
-            _entries.TryRemove(EmailKey(email), out _);
+            Remove(EmailKey(email));
 
         foreach (var (key, entry) in _entries)
         {
             if (entry.User is { } user && string.Equals(user.UserId, userId, StringComparison.Ordinal))
-                _entries.TryRemove(key, out _);
+                Remove(key, entry.Version);
         }
     }
 
-    public void InvalidateEmail(string email) => _entries.TryRemove(EmailKey(email), out _);
+    public void InvalidateEmail(string email) => Remove(EmailKey(email));
 
     private async Task<IdentityProviderUserDto?> GetOrCreateAsync(
         string key,
@@ -99,7 +110,7 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
                 return true;
             }
 
-            _entries.TryRemove(key, out _);
+            Remove(key, entry.Version);
         }
 
         user = null;
@@ -116,22 +127,44 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
             user,
             timeProvider.GetUtcNow().Add(ttl),
             Interlocked.Increment(ref _nextVersion));
-        _entries[key] = entry;
-        _insertionOrder.Enqueue(new Insertion(key, entry.Version));
-
         var maxEntries = Math.Clamp(settings.MaxCachedUserLookups, 100, 200_000);
-        while (_entries.Count > maxEntries && _insertionOrder.TryDequeue(out var oldest))
+
+        lock (_orderSync)
         {
-            if (_entries.TryGetValue(oldest.Key, out var candidate) && candidate.Version == oldest.Version)
-                _entries.TryRemove(new KeyValuePair<string, CacheEntry>(oldest.Key, candidate));
+            _entries[key] = entry;
+
+            if (_orderNodes.Remove(key, out var existingNode))
+                _insertionOrder.Remove(existingNode);
+
+            _orderNodes[key] = _insertionOrder.AddLast(key);
+
+            while (_orderNodes.Count > maxEntries)
+            {
+                var oldestNode = _insertionOrder.First!;
+                var oldestKey = oldestNode.Value;
+                _insertionOrder.RemoveFirst();
+                _orderNodes.Remove(oldestKey);
+                _entries.TryRemove(oldestKey, out _);
+            }
+        }
+    }
+
+    private void Remove(string key, long? expectedVersion = null)
+    {
+        lock (_orderSync)
+        {
+            if (!_entries.TryGetValue(key, out var entry) || (expectedVersion.HasValue && entry.Version != expectedVersion.Value))
+                return;
+
+            _entries.TryRemove(new KeyValuePair<string, CacheEntry>(key, entry));
+            if (_orderNodes.Remove(key, out var node))
+                _insertionOrder.Remove(node);
         }
     }
 
     private static string IdKey(string userId) => $"id:{userId.Trim()}";
 
     private static string EmailKey(string email) => $"email:{email.Trim().ToLowerInvariant()}";
-
-    private readonly record struct Insertion(string Key, long Version);
 
     private sealed record CacheEntry(IdentityProviderUserDto? User, DateTimeOffset ExpiresAtUtc, long Version);
 }

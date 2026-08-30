@@ -74,6 +74,8 @@ internal sealed class DocumentPostingService(
     IDocumentPostingReadCache? postingReadCache = null)
     : IDocumentPostingBatchService
 {
+    internal const int MaxAtomicBatchSize = 25;
+
     private readonly IDocumentPostingReadCache _postingReadCache = postingReadCache ?? new DocumentPostingReadCache();
 
     /// <summary>
@@ -108,6 +110,14 @@ internal sealed class DocumentPostingService(
         var ids = documentIds.Distinct().ToArray();
         if (ids.Length == 0)
             return;
+
+        if (ids.Length > MaxAtomicBatchSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(documentIds),
+                ids.Length,
+                $"An atomic posting batch must not exceed {MaxAtomicBatchSize} distinct documents.");
+        }
 
         try
         {

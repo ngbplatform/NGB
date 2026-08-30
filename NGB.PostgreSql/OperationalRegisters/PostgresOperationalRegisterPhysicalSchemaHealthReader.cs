@@ -154,7 +154,8 @@ public sealed class PostgresOperationalRegisterPhysicalSchemaHealthReader(
             (Columns: ["document_id"], UniqueRequired: false, Label: "index(document_id)"),
             (Columns: ["period_month"], UniqueRequired: false, Label: "index(period_month)"),
             (Columns: ["period_month", "dimension_set_id"], UniqueRequired: false, Label: "index(period_month, dimension_set_id)"),
-            (Columns: new[] { "dimension_set_id", "period_month", "occurred_at_utc" }, UniqueRequired: false, Label: "index(dimension_set_id, period_month, occurred_at_utc)"),
+            (Columns: ["dimension_set_id", "period_month", "occurred_at_utc"], UniqueRequired: false, Label: "index(dimension_set_id, period_month, occurred_at_utc)"),
+            (Columns: new[] { "occurred_at_utc", "movement_id" }, UniqueRequired: false, Label: "index(occurred_at_utc, movement_id)"),
         };
 
         var diff = PostgresPhysicalSchemaHealthHelpers.ComputeTableDiff(snapshot, tableName, requiredCols, requiredIndexes);

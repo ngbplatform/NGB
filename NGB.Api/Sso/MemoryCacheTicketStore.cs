@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.Extensions.Caching.Memory;
@@ -12,11 +13,16 @@ public sealed class MemoryCacheTicketStore : ITicketStore, IDisposable
     private readonly MemoryCache _cache;
     private readonly object _writeGate = new();
     private readonly int _maximumSessionCount;
-    private readonly LinkedList<string> _recency = [];
-    private readonly Dictionary<string, LinkedListNode<string>> _recencyNodes = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, long> _versions = new(StringComparer.Ordinal);
+    private ConcurrentQueue<AccessStamp> _recency = new();
+    private long _nextVersion;
+    private int _recencyStampCount;
 
-    public MemoryCacheTicketStore()
-        : this(DefaultMaximumSessionCount)
+    internal int TrackedSessionCount => _versions.Count;
+
+    internal int RecencyMetadataCount => Volatile.Read(ref _recencyStampCount);
+
+    public MemoryCacheTicketStore() : this(DefaultMaximumSessionCount)
     {
     }
 
@@ -54,43 +60,38 @@ public sealed class MemoryCacheTicketStore : ITicketStore, IDisposable
 
         lock (_writeGate)
         {
-            if (_recencyNodes.Remove(key, out var existingNode))
+            if (!_versions.ContainsKey(key))
             {
-                _recency.Remove(existingNode);
-            }
-            else
-            {
-                while (_recencyNodes.Count >= _maximumSessionCount)
+                while (_versions.Count >= _maximumSessionCount)
                 {
-                    RemoveLeastRecentlyUsed();
+                    RemoveLeastRecentlyUsedLocked();
                 }
             }
 
             _cache.Set(key, ticket, options);
-            _recencyNodes[key] = _recency.AddLast(key);
+            RecordNewGeneration(key);
         }
+
+        CompactRecencyMetadataIfNeeded();
         
         return Task.CompletedTask;
     }
 
     public Task<AuthenticationTicket?> RetrieveAsync(string key)
     {
-        lock (_writeGate)
+        _versions.TryGetValue(key, out var observedVersion);
+        if (!_cache.TryGetValue(key, out AuthenticationTicket? ticket))
         {
-            if (!_cache.TryGetValue(key, out AuthenticationTicket? ticket))
+            if (observedVersion != 0)
             {
-                RemoveRecencyNode(key);
-                return Task.FromResult<AuthenticationTicket?>(null);
+                _versions.TryRemove(new KeyValuePair<string, long>(key, observedVersion));
             }
 
-            if (_recencyNodes.Remove(key, out var node))
-            {
-                _recency.Remove(node);
-                _recencyNodes[key] = _recency.AddLast(key);
-            }
-
-            return Task.FromResult(ticket);
+            return Task.FromResult<AuthenticationTicket?>(null);
         }
+
+        Touch(key);
+        return Task.FromResult(ticket);
     }
 
     public Task RemoveAsync(string key)
@@ -98,29 +99,88 @@ public sealed class MemoryCacheTicketStore : ITicketStore, IDisposable
         lock (_writeGate)
         {
             _cache.Remove(key);
-            RemoveRecencyNode(key);
+            _versions.TryRemove(key, out _);
         }
         return Task.CompletedTask;
     }
 
-    private void RemoveLeastRecentlyUsed()
+    private void RemoveLeastRecentlyUsedLocked()
     {
-        var node = _recency.First;
-        if (node is null)
-            return;
+        while (_recency.TryDequeue(out var oldest))
+        {
+            Interlocked.Decrement(ref _recencyStampCount);
+            if (!_versions.TryGetValue(oldest.Key, out var currentVersion)
+                || currentVersion != oldest.Version
+                || !_versions.TryRemove(new KeyValuePair<string, long>(oldest.Key, currentVersion)))
+            {
+                continue;
+            }
 
-        _recency.RemoveFirst();
-        _recencyNodes.Remove(node.Value);
-        _cache.Remove(node.Value);
+            _cache.Remove(oldest.Key);
+            return;
+        }
+
+        // A concurrent compaction may have dropped a racing access stamp. Capacity must
+        // still be enforced, so fall back to any tracked entry in this extremely rare race.
+        if (_versions.FirstOrDefault() is { Key.Length: > 0 } fallback
+            && _versions.TryRemove(fallback))
+        {
+            _cache.Remove(fallback.Key);
+        }
     }
 
-    private void RemoveRecencyNode(string key)
+    private void RecordNewGeneration(string key)
     {
-        if (!_recencyNodes.Remove(key, out var node))
+        var version = Interlocked.Increment(ref _nextVersion);
+        _versions[key] = version;
+        EnqueueAccess(new AccessStamp(key, version));
+    }
+
+    private void Touch(string key)
+    {
+        while (_versions.TryGetValue(key, out var currentVersion))
+        {
+            var nextVersion = Interlocked.Increment(ref _nextVersion);
+            if (!_versions.TryUpdate(key, nextVersion, currentVersion))
+                continue;
+
+            EnqueueAccess(new AccessStamp(key, nextVersion));
+            CompactRecencyMetadataIfNeeded();
+            return;
+        }
+    }
+
+    private void EnqueueAccess(AccessStamp stamp)
+    {
+        Volatile.Read(ref _recency).Enqueue(stamp);
+        Interlocked.Increment(ref _recencyStampCount);
+    }
+
+    private void CompactRecencyMetadataIfNeeded()
+    {
+        var metadataLimit = (int)Math.Min(
+            Math.Max((long)_maximumSessionCount * 4, 128L),
+            int.MaxValue);
+
+        if (Volatile.Read(ref _recencyStampCount) <= metadataLimit || !Monitor.TryEnter(_writeGate))
             return;
 
-        _recency.Remove(node);
+        try
+        {
+            if (Volatile.Read(ref _recencyStampCount) <= metadataLimit)
+                return;
+
+            var compacted = new ConcurrentQueue<AccessStamp>(_versions.Select(static pair => new AccessStamp(pair.Key, pair.Value)));
+            Volatile.Write(ref _recency, compacted);
+            Volatile.Write(ref _recencyStampCount, compacted.Count);
+        }
+        finally
+        {
+            Monitor.Exit(_writeGate);
+        }
     }
+
+    private readonly record struct AccessStamp(string Key, long Version);
 
     public void Dispose() => _cache.Dispose();
 }

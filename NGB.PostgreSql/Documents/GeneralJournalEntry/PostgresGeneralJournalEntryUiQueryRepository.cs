@@ -40,7 +40,6 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
         var args = new
         {
             TypeCode = AccountingDocumentTypeCodes.GeneralJournalEntry,
-            HasSearch = hasSearch,
             Like = like,
             DateFromUtc = dateFrom is { } from
                 ? DateTime.SpecifyKind(from.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc)
@@ -55,13 +54,6 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
 
         const string filtersSql = """
     d.type_code = @TypeCode
-    AND (
-        @HasSearch = FALSE
-        OR d.number ILIKE @Like
-        OR g.reason_code ILIKE @Like
-        OR g.memo ILIKE @Like
-        OR g.external_reference ILIKE @Like
-    )
     AND (CAST(@DateFromUtc AS timestamp with time zone) IS NULL OR d.date_utc >= @DateFromUtc)
     AND (CAST(@DateToExclusiveUtc AS timestamp with time zone) IS NULL OR d.date_utc < @DateToExclusiveUtc)
     AND (
@@ -71,15 +63,44 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
     )
 """;
 
+        var searchCandidatesSql = hasSearch
+            ? """
+WITH search_candidates AS (
+    SELECT d.id AS document_id
+      FROM documents d
+     WHERE d.type_code = @TypeCode
+       AND d.number ILIKE @Like
+    UNION
+    SELECT g.document_id
+      FROM doc_general_journal_entry g
+     WHERE g.reason_code ILIKE @Like
+    UNION
+    SELECT g.document_id
+      FROM doc_general_journal_entry g
+     WHERE g.memo ILIKE @Like
+    UNION
+    SELECT g.document_id
+      FROM doc_general_journal_entry g
+     WHERE g.external_reference ILIKE @Like
+)
+"""
+            : string.Empty;
+        var searchJoinSql = hasSearch
+            ? "INNER JOIN search_candidates s ON s.document_id = d.id"
+            : string.Empty;
+
         var countSql = $"""
+{searchCandidatesSql}
 SELECT COUNT(*)
 FROM documents d
 INNER JOIN doc_general_journal_entry g ON g.document_id = d.id
+{searchJoinSql}
 WHERE
 {filtersSql};
 """;
 
         var pageSql = $"""
+{searchCandidatesSql}
 SELECT
     d.id AS Id,
     d.date_utc AS DateUtc,
@@ -97,26 +118,35 @@ SELECT
     g.auto_reverse_on_utc AS AutoReverseOnUtc,
     g.reversal_of_document_id AS ReversalOfDocumentId,
     g.posted_by AS PostedBy,
-    g.posted_at_utc AS PostedAtUtc
+    g.posted_at_utc AS PostedAtUtc,
+    COUNT(*) OVER() AS TotalCount
 FROM documents d
 INNER JOIN doc_general_journal_entry g ON g.document_id = d.id
+{searchJoinSql}
 WHERE
 {filtersSql}
 ORDER BY d.date_utc DESC, d.created_at_utc DESC, d.id DESC
 LIMIT @Limit OFFSET @Offset;
 """;
 
-        // Count and page share the same filters and belong to one logical read. Sending both
-        // statements together removes a network round-trip while retaining the existing result contract.
-        await using var grid = await uow.Connection.QueryMultipleAsync(
+        var rows = (await uow.Connection.QueryAsync<Row>(
             new CommandDefinition(
-                $"{countSql}\n{pageSql}",
+                pageSql,
+                args,
+                transaction: uow.Transaction,
+                cancellationToken: ct))).AsList();
+        var total = rows.Count == 0 ? 0 : rows[0].TotalCount;
+
+        // A window count has no carrier row when an offset lies beyond the result.
+        // Keep the exact-total contract with a count-only fallback for that rare case.
+        if (rows.Count == 0 && offset > 0)
+        {
+            total = await uow.Connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                countSql,
                 args,
                 transaction: uow.Transaction,
                 cancellationToken: ct));
-
-        var total = await grid.ReadSingleAsync<int>();
-        var rows = await grid.ReadAsync<Row>();
+        }
 
         return new GeneralJournalEntryPageRecord(rows.Select(Map).ToArray(), offset, limit, total);
     }
@@ -176,5 +206,6 @@ LIMIT @Limit OFFSET @Offset;
         public Guid? ReversalOfDocumentId { get; init; }
         public string? PostedBy { get; init; }
         public DateTime? PostedAtUtc { get; init; }
+        public int TotalCount { get; init; }
     }
 }

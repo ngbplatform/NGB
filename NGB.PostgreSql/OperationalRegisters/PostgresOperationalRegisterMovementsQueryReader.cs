@@ -84,18 +84,14 @@ AND t.occurred_at_utc < @OccurredToExclusiveUtc
         var cte = BuildDimensionFilterCte(dimCount);
         var sql = $"""
 {cte}
-SELECT COUNT(*)
-FROM {context.TableName} t
-WHERE {filterSql};
-
-{cte}
 SELECT
     movement_id AS "MovementId",
     document_id AS "DocumentId",
     occurred_at_utc AS "OccurredAtUtc",
     period_month AS "PeriodMonth",
     dimension_set_id AS "DimensionSetId",
-    is_storno AS "IsStorno"{resourcesSelect}
+    is_storno AS "IsStorno",
+    COUNT(*) OVER() AS "TotalCount"{resourcesSelect}
 FROM {context.TableName} t
 WHERE {filterSql}
 ORDER BY t.occurred_at_utc, t.movement_id
@@ -103,26 +99,46 @@ OFFSET @Offset
 LIMIT @Limit;
 """;
 
+        var parameters = new
+        {
+            FromMonth = new DateOnly(fromInclusive.Year, fromInclusive.Month, 1),
+            ToMonth = new DateOnly(toInclusive.Year, toInclusive.Month, 1),
+            OccurredFromUtc = occurredFromUtc,
+            OccurredToExclusiveUtc = occurredToExclusiveUtc,
+            Offset = PagingLimits.BoundOffset(offset),
+            Limit = limit,
+            DimCount = dimCount,
+            DimIds = dimIds,
+            DimValueIds = dimValueIds
+        };
         var command = new CommandDefinition(
             sql,
-            new
-            {
-                FromMonth = new DateOnly(fromInclusive.Year, fromInclusive.Month, 1),
-                ToMonth = new DateOnly(toInclusive.Year, toInclusive.Month, 1),
-                OccurredFromUtc = occurredFromUtc,
-                OccurredToExclusiveUtc = occurredToExclusiveUtc,
-                Offset = PagingLimits.BoundOffset(offset),
-                Limit = limit,
-                DimCount = dimCount,
-                DimIds = dimIds,
-                DimValueIds = dimValueIds
-            },
+            parameters,
             transaction: uow.Transaction,
             cancellationToken: ct);
 
-        await using var grid = await uow.Connection.QueryMultipleAsync(command);
-        var total = await grid.ReadSingleAsync<long>();
-        var rows = await grid.ReadAsync();
+        var rows = (await uow.Connection.QueryAsync(command)).AsList();
+        var total = rows.Count == 0
+            ? 0
+            : Convert.ToInt64(((IDictionary<string, object?>)rows[0])["TotalCount"]!);
+
+        // COUNT(*) OVER() cannot carry a total when OFFSET points beyond the final row.
+        // Preserve the exact-total API contract with a fallback only for that uncommon request shape.
+        if (rows.Count == 0 && parameters.Offset > 0)
+        {
+            var countSql = $"""
+{cte}
+SELECT COUNT(*)
+FROM {context.TableName} t
+WHERE {filterSql};
+""";
+            total = await uow.Connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                countSql,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+        }
+
         var result = MaterializeRows(rows, context);
         await ResolveDimensionsAsync(result, ct);
         await ResolveDimensionValueDisplaysAsync(result, ct);

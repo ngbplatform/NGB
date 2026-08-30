@@ -110,6 +110,30 @@ public sealed class KeycloakAdminClientFullCoverageTests
             "remembered@example.com",
             _ => Task.FromResult<IdentityProviderUserDto?>(null),
             default)).Should().BeNull();
+        cache.InsertionMetadataCount.Should().BeLessThanOrEqualTo(settings.MaxCachedUserLookups);
+    }
+
+    [Fact]
+    public void User_lookup_cache_repeated_refresh_and_invalidation_keep_eviction_metadata_bounded()
+    {
+        var cache = new KeycloakUserLookupCache(
+            Settings() with { MaxCachedUserLookups = 100 },
+            TimeProvider.System);
+
+        for (var index = 0; index < 10_000; index++)
+        {
+            cache.Remember(new IdentityProviderUserDto(
+                "same-user",
+                "same@example.com",
+                null,
+                null,
+                $"Display {index}",
+                true));
+        }
+
+        cache.InsertionMetadataCount.Should().Be(2);
+        cache.InvalidateUser("same-user");
+        cache.InsertionMetadataCount.Should().Be(0);
     }
 
     [Fact]

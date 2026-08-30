@@ -6,10 +6,29 @@ namespace NGB.Runtime.Security;
 
 public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecurityCacheOptions> options)
 {
-    private readonly ConcurrentDictionary<string, byte> trackedKeys = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, PendingPopulation> pendingPopulations = new(StringComparer.Ordinal);
-    private readonly ConcurrentQueue<string> _insertionOrder = new();
-    private int _trackedKeyCount;
+    private readonly Lock _trackingSync = new();
+    private readonly Dictionary<string, TrackedKey> _trackedKeys = new(StringComparer.Ordinal);
+    private readonly LinkedList<string> _insertionOrder = [];
+    private long _nextTrackingVersion;
+
+    internal int TrackedEntryCount
+    {
+        get
+        {
+            lock (_trackingSync)
+                return _trackedKeys.Count;
+        }
+    }
+
+    internal int EvictionMetadataCount
+    {
+        get
+        {
+            lock (_trackingSync)
+                return _insertionOrder.Count;
+        }
+    }
 
     public Task<T?> GetOrCreatePermissionSnapshotAsync<T>(
         Guid userId,
@@ -102,7 +121,13 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
                 _ => new PendingPopulation(async populationCt =>
                 {
                     var created = await factory(populationCt);
-                    TrackAndTrim(key, options.CurrentValue.MaxEntries);
+                    var tracking = TrackAndTrim(key, options.CurrentValue.MaxEntries);
+
+                    foreach (var evictedKey in tracking.EvictedKeys)
+                    {
+                        cache.Remove(evictedKey);
+                    }
+
                     cache.Set(
                         key,
                         created,
@@ -110,12 +135,12 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
                         {
                             AbsoluteExpirationRelativeToNow = ttl,
                             Size = 1
-                        }.RegisterPostEvictionCallback(static (evictedKey, _, _, state) =>
+                        }.RegisterPostEvictionCallback(static (_, _, _, state) =>
                             {
-                                if (evictedKey is string stringKey && state is NgbSecurityCache securityCache)
-                                    securityCache.TryRemoveTracked(stringKey);
+                                var eviction = (EvictionState)state!;
+                                eviction.Cache.TryRemoveTracked(eviction.Key, eviction.Version);
                             },
-                            this));
+                            new EvictionState(this, key, tracking.Version)));
 
                     return created;
                 }));
@@ -156,33 +181,51 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
         }
     }
 
-    private void TrackAndTrim(string key, int maxEntries)
+    private TrackingResult TrackAndTrim(string key, int maxEntries)
     {
-        if (trackedKeys.TryAdd(key, 0))
+        lock (_trackingSync)
         {
-            Interlocked.Increment(ref _trackedKeyCount);
-            _insertionOrder.Enqueue(key);
-        }
+            if (_trackedKeys.Remove(key, out var previous))
+                _insertionOrder.Remove(previous.Node);
 
-        while (Volatile.Read(ref _trackedKeyCount) > maxEntries && _insertionOrder.TryDequeue(out var oldest))
-        {
-            if (!TryRemoveTracked(oldest))
-                continue;
+            var version = ++_nextTrackingVersion;
+            var node = _insertionOrder.AddLast(key);
+            _trackedKeys[key] = new TrackedKey(version, node);
+            List<string>? evictedKeys = null;
 
-            cache.Remove(oldest);
+            while (_trackedKeys.Count > maxEntries)
+            {
+                var oldestNode = _insertionOrder.First!;
+                var oldestKey = oldestNode.Value;
+                _insertionOrder.RemoveFirst();
+                _trackedKeys.Remove(oldestKey);
+                (evictedKeys ??= []).Add(oldestKey);
+            }
+
+            return new TrackingResult(version, evictedKeys ?? []);
         }
     }
 
-    private bool TryRemoveTracked(string key)
+    private bool TryRemoveTracked(string key, long version)
     {
-        if (!trackedKeys.TryRemove(key, out _))
-            return false;
+        lock (_trackingSync)
+        {
+            if (!_trackedKeys.TryGetValue(key, out var tracked) || tracked.Version != version)
+                return false;
 
-        Interlocked.Decrement(ref _trackedKeyCount);
-        return true;
+            _trackedKeys.Remove(key);
+            _insertionOrder.Remove(tracked.Node);
+            return true;
+        }
     }
 
     private static string NormalizeCachePart(string value) => value.Trim().ToLowerInvariant();
+
+    private sealed record TrackedKey(long Version, LinkedListNode<string> Node);
+
+    private sealed record EvictionState(NgbSecurityCache Cache, string Key, long Version);
+
+    private readonly record struct TrackingResult(long Version, IReadOnlyList<string> EvictedKeys);
 
     private sealed class PendingPopulation : IDisposable
     {

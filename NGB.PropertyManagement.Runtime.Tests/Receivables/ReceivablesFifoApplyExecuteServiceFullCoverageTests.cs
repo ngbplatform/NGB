@@ -5,6 +5,7 @@ using NGB.Core.Documents;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Locks;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Contracts;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Receivables;
@@ -25,6 +26,9 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
         await AssertInvalid(() => fixture.Sut.ExecuteAsync(new ReceivablesFifoApplyExecuteRequest(Guid.Empty, null)));
         await AssertInvalid(() => fixture.Sut.ExecuteAsync(new ReceivablesFifoApplyExecuteRequest(fixture.CreditId, 0)));
         await AssertInvalid(() => fixture.Sut.ExecuteAsync(new ReceivablesFifoApplyExecuteRequest(fixture.CreditId, -1)));
+        await AssertInvalid(() => fixture.Sut.ExecuteAsync(new ReceivablesFifoApplyExecuteRequest(
+            fixture.CreditId,
+            FifoApplyLimits.MaxAtomicApplications + 1)));
     }
 
     [Fact]
@@ -40,6 +44,10 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
         result.ExecutedApplies.Should().BeEmpty();
         fixture.Uow.Verify(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
         fixture.WorkCenter.VerifyNoOtherCalls();
+        fixture.Suggest.Verify(x => x.SuggestAsync(
+            It.Is<ReceivablesFifoApplySuggestRequest>(request =>
+                request.MaxApplications == FifoApplyLimits.DefaultMaxAtomicApplications),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]

@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS {table}(
         var ixMonthMove = Ix(table, "month_move");
         var ixMonthDimMove = Ix(table, "month_dim_move");
         var ixDimMonthOccurred = Ix(table, "dim_month_occurred");
+        var ixOccurredMove = Ix(table, "occurred_move");
         var ixDocMonthNoStorno = Ix(table, "doc_month_nostorno");
 
         ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixDoc} ON {table}(document_id);");
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS {table}(
         ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixMonthMove} ON {table}(period_month, movement_id);");
         ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixMonthDimMove} ON {table}(period_month, dimension_set_id, movement_id);");
         ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixDimMonthOccurred} ON {table}(dimension_set_id, period_month, occurred_at_utc);");
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixOccurredMove} ON {table}(occurred_at_utc, movement_id);");
         ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixDocMonthNoStorno} ON {table}(document_id, period_month) WHERE is_storno = FALSE;");
 
         await uow.Connection.ExecuteAsync(new CommandDefinition(

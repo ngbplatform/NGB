@@ -67,7 +67,16 @@ internal sealed class DocumentDraftService(
             async innerCt =>
             {
                 var now = timeProvider.GetUtcNowDateTime();
-                await CreateInCurrentTransactionAsync(id, typeCode, normalizedNumber, dateUtc, now, suppressAudit, innerCt);
+                await CreateInCurrentTransactionAsync(
+                    id,
+                    typeCode,
+                    normalizedNumber,
+                    dateUtc,
+                    now,
+                    suppressAudit,
+                    acquireLock: true,
+                    ct: innerCt);
+
                 return id;
             },
             ct);
@@ -114,91 +123,116 @@ internal sealed class DocumentDraftService(
 
         return await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
             {
-                // Number-on-create policies may update typed storage and must retain their exact
-                // single-document orchestration. Other drafts take the set-based provider path.
-                if (prepared.Any(item => numberingPolicies.Resolve(item.TypeCode)?.EnsureNumberOnCreateDraft == true))
-                {
-                    var fallbackIds = new Guid[prepared.Length];
-                    for (var index = 0; index < prepared.Length; index++)
-                    {
-                        var item = prepared[index];
-                        await CreateInCurrentTransactionAsync(
-                            item.Id,
-                            item.TypeCode,
-                            item.Number,
-                            item.DateUtc,
-                            timeProvider.GetUtcNowDateTime(),
-                            suppressAudit,
-                            innerCt);
-                        fallbackIds[index] = item.Id;
-                    }
-
-                    return (IReadOnlyList<Guid>)fallbackIds;
-                }
-
                 var now = timeProvider.GetUtcNowDateTime();
-                var records = prepared
-                    .Select(item => new DocumentRecord
-                    {
-                        Id = item.Id,
-                        TypeCode = item.TypeCode,
-                        Number = item.Number,
-                        DateUtc = item.DateUtc,
-                        Status = DocumentStatus.Draft,
-                        CreatedAtUtc = now,
-                        UpdatedAtUtc = now
-                    })
+                var requiresIndividualNumbering = prepared
+                    .Where(item => item.Number is null
+                        && numberingPolicies.Resolve(item.TypeCode)?.EnsureNumberOnCreateDraft == true)
+                    .ToArray();
+                var individuallyNumberedIds = requiresIndividualNumbering
+                    .Select(static item => item.Id)
+                    .ToHashSet();
+                var batchable = prepared
+                    .Where(item => !individuallyNumberedIds.Contains(item.Id))
                     .ToArray();
 
-                foreach (var record in records)
-                {
-                    foreach (var validator in validators.ResolveDraftValidators(record.TypeCode))
-                    {
-                        await validator.ValidateCreateDraftAsync(record, innerCt);
-                    }
-                }
-
+                // Mixed batches must use one global lock order. Locking the batchable
+                // subset first and auto-numbered drafts afterwards can otherwise invert
+                // the order seen by another transaction and create a deadlock cycle.
                 await advisoryLocks.LockDocumentsDeterministicallyAsync(
-                    records.Select(static record => record.Id).ToArray(),
+                    prepared.Select(static item => item.Id).ToArray(),
                     innerCt);
 
-                if (documents is IDocumentDraftBatchRepository batchRepository)
-                    await batchRepository.CreateDraftsAsync(records, innerCt);
-                else
-                    foreach (var record in records)
-                    {
-                        await documents.CreateAsync(record, innerCt);
-                    }
-
-                foreach (var group in records.GroupBy(static record => record.TypeCode, StringComparer.OrdinalIgnoreCase))
+                if (batchable.Length > 0)
                 {
-                    await writeEngine.EnsureDraftStorageCreatedManyAsync(
-                        group.Select(static record => record.Id).ToArray(),
-                        group.Key,
-                        acquireLocks: false,
+                    await CreateBatchInCurrentTransactionAsync(
+                        batchable,
+                        now,
+                        suppressAudit,
                         innerCt);
                 }
 
-                if (!suppressAudit)
+                foreach (var item in requiresIndividualNumbering)
                 {
-                    await audit.WriteBatchAsync(
-                        records.Select(record => new AuditLogWriteRequest(
-                            AuditEntityKind.Document,
-                            record.Id,
-                            AuditActionCodes.DocumentCreateDraft,
-                            BuildCreateDraftChanges(record.TypeCode, record.Number, record.DateUtc),
-                            new
-                            {
-                                typeCode = record.TypeCode,
-                                number = record.Number,
-                                dateUtc = record.DateUtc
-                            }))
-                            .ToArray(),
-                        innerCt);
+                    await CreateInCurrentTransactionAsync(
+                        item.Id,
+                        item.TypeCode,
+                        item.Number,
+                        item.DateUtc,
+                        now,
+                        suppressAudit,
+                        acquireLock: false,
+                        ct: innerCt);
                 }
 
-                return (IReadOnlyList<Guid>)records.Select(static record => record.Id).ToArray();
+                return (IReadOnlyList<Guid>)prepared.Select(static item => item.Id).ToArray();
             },
+            ct);
+    }
+
+    private async Task CreateBatchInCurrentTransactionAsync(
+        IReadOnlyList<PreparedDraft> prepared,
+        DateTime now,
+        bool suppressAudit,
+        CancellationToken ct)
+    {
+        var records = prepared
+            .Select(item => new DocumentRecord
+            {
+                Id = item.Id,
+                TypeCode = item.TypeCode,
+                Number = item.Number,
+                DateUtc = item.DateUtc,
+                Status = DocumentStatus.Draft,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            })
+            .ToArray();
+
+        foreach (var record in records)
+        {
+            foreach (var validator in validators.ResolveDraftValidators(record.TypeCode))
+            {
+                await validator.ValidateCreateDraftAsync(record, ct);
+            }
+        }
+
+        if (documents is IDocumentDraftBatchRepository batchRepository)
+        {
+            await batchRepository.CreateDraftsAsync(records, ct);
+        }
+        else
+        {
+            foreach (var record in records)
+            {
+                await documents.CreateAsync(record, ct);
+            }
+        }
+
+        foreach (var group in records.GroupBy(static record => record.TypeCode, StringComparer.OrdinalIgnoreCase))
+        {
+            await writeEngine.EnsureDraftStorageCreatedManyAsync(
+                group.Select(static record => record.Id).ToArray(),
+                group.Key,
+                acquireLocks: false,
+                ct);
+        }
+
+        if (suppressAudit)
+            return;
+
+        await audit.WriteBatchAsync(
+            records.Select(record => new AuditLogWriteRequest(
+                    AuditEntityKind.Document,
+                    record.Id,
+                    AuditActionCodes.DocumentCreateDraft,
+                    BuildCreateDraftChanges(record.TypeCode, record.Number, record.DateUtc),
+                    new
+                    {
+                        typeCode = record.TypeCode,
+                        number = record.Number,
+                        dateUtc = record.DateUtc
+                    }))
+                .ToArray(),
             ct);
     }
 
@@ -380,9 +414,11 @@ internal sealed class DocumentDraftService(
         DateTime dateUtc,
         DateTime nowUtc,
         bool suppressAudit,
+        bool acquireLock,
         CancellationToken ct)
     {
-        await advisoryLocks.LockDocumentAsync(id, ct);
+        if (acquireLock)
+            await advisoryLocks.LockDocumentAsync(id, ct);
 
         var numberingPolicy = numberingPolicies.Resolve(typeCode);
 

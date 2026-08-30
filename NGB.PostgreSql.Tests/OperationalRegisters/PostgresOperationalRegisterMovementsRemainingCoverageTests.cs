@@ -211,8 +211,9 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         schemaCommand.Should()
             .Contain("ADD COLUMN IF NOT EXISTS amount")
             .And.Contain("CREATE TRIGGER")
-            .And.Contain("WHERE is_storno = FALSE");
-        schemaCommand.Split("CREATE INDEX IF NOT EXISTS", StringSplitOptions.None).Should().HaveCount(8);
+            .And.Contain("WHERE is_storno = FALSE")
+            .And.Contain("(occurred_at_utc, movement_id)");
+        schemaCommand.Split("CREATE INDEX IF NOT EXISTS", StringSplitOptions.None).Should().HaveCount(9);
         await resourceStore.AppendStornoByDocumentAsync(registerId, documentId);
     }
 

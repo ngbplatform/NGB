@@ -1,3 +1,5 @@
+using DotNet.Testcontainers.Containers;
+using NGB.Testing.Containers;
 using Npgsql;
 using Respawn;
 using Testcontainers.PostgreSql;
@@ -13,6 +15,8 @@ public abstract class PostgreSqlIntegrationFixtureBase : IAsyncLifetime
 {
     private static readonly TimeSpan DatabaseReadyTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan DatabaseReadyRetryDelay = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan ContainerStartupRetryDelay = TimeSpan.FromMilliseconds(500);
+    private const int ContainerStartupAttempts = 3;
 
     private readonly SemaphoreSlim _resetSemaphore = new(1, 1);
     private PostgreSqlContainer? _container;
@@ -39,17 +43,10 @@ public abstract class PostgreSqlIntegrationFixtureBase : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _container = new PostgreSqlBuilder(PostgreSqlImage)
-            .WithDatabase(DatabaseName)
-            .WithUsername("postgres")
-            .WithPassword("postgres")
-            .Build();
+        await StartDatabaseContainerAsync(CancellationToken.None);
+        await InitializeAuxiliaryResourcesAsync();
 
-        await Task.WhenAll(
-            _container.StartAsync(),
-            InitializeAuxiliaryResourcesAsync());
-
-        ConnectionString = BuildPooledConnectionString(_container.GetConnectionString());
+        ConnectionString = BuildPooledConnectionString(_container!.GetConnectionString());
 
         // Testcontainers waits for PostgreSQL inside the container. On Docker Desktop the
         // host-side port forward may still briefly accept and then close connections, which
@@ -58,6 +55,59 @@ public abstract class PostgreSqlIntegrationFixtureBase : IAsyncLifetime
         await WaitUntilDatabaseAcceptsConnectionsAsync(ConnectionString, CancellationToken.None);
         await ApplyMigrationsAsync(ConnectionString, CancellationToken.None);
         _respawner = await CreateRespawnerAsync(CancellationToken.None);
+    }
+
+    private async Task StartDatabaseContainerAsync(CancellationToken cancellationToken)
+    {
+        Exception? lastError = null;
+
+        for (var attempt = 1; attempt <= ContainerStartupAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _container = new PostgreSqlBuilder(PostgreSqlImage)
+                .WithDatabase(DatabaseName)
+                .WithUsername("postgres")
+                .WithPassword("postgres")
+                .Build();
+
+            try
+            {
+                // Rider and coverage runners start several testhost processes concurrently.
+                // Testcontainers initializes one Ryuk resource reaper per process; flooding
+                // Docker Desktop with those handshakes can cancel an otherwise healthy fixture.
+                // Serialize only container startup across processes. Once started, test
+                // collections and projects continue to execute in parallel.
+                await using var startupLease = await TestcontainerStartupGate.AcquireAsync(cancellationToken);
+                await _container.StartAsync(cancellationToken);
+                return;
+            }
+            catch (ResourceReaperException exception) when (
+                attempt < ContainerStartupAttempts &&
+                !cancellationToken.IsCancellationRequested)
+            {
+                lastError = exception;
+                await DisposeFailedContainerAsync(_container);
+                _container = null;
+                await Task.Delay(ContainerStartupRetryDelay * attempt, cancellationToken);
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"Testcontainers resource reaper could not initialize after {ContainerStartupAttempts} serialized attempts.",
+            lastError);
+    }
+
+    private static async Task DisposeFailedContainerAsync(PostgreSqlContainer container)
+    {
+        try
+        {
+            await container.DisposeAsync();
+        }
+        catch
+        {
+            // Preserve the ResourceReaperException that caused the retry. The failed
+            // container may not have reached a state in which disposal can contact Docker.
+        }
     }
 
     public async Task ResetDatabaseAsync(CancellationToken cancellationToken = default)

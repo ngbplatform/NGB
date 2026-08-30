@@ -43,4 +43,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
+
+  <ItemGroup Condition="$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.IntegrationTests'))">
+    <Compile Include="$(MSBuildThisFileDirectory)quality/integration/TestcontainerStartupGate.cs"
+             Link="Infrastructure/TestcontainerStartupGate.cs" />
+  </ItemGroup>
 </Project>
