@@ -10,7 +10,9 @@ public sealed record TradeCurrentItemPriceRow(
     DateOnly? EffectiveDate,
     Guid? SourceDocumentId);
 
-public sealed record TradeCurrentItemPricePage(IReadOnlyList<TradeCurrentItemPriceRow> Rows, int Total);
+public sealed record TradeCurrentItemPricePage(IReadOnlyList<TradeCurrentItemPriceRow> Rows, int Total, bool HasMore = false);
+
+public sealed record TradeCurrentItemPricePageCursor(int Offset, int Total, DateTime AsOfUtc = default);
 
 public interface ITradeCurrentItemPriceReader
 {
@@ -21,4 +23,17 @@ public interface ITradeCurrentItemPriceReader
         int offset,
         int limit,
         CancellationToken ct = default);
+
+    async Task<TradeCurrentItemPricePage> GetCursorPageAsync(
+        DateTime asOfUtc,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? priceTypeIds,
+        TradeCurrentItemPricePageCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.Offset ?? 0;
+        var page = await GetPageAsync(asOfUtc, itemIds, priceTypeIds, offset, limit, ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
 }

@@ -120,6 +120,39 @@ public sealed class AdminServicesFullCoverageTests
     }
 
     [Fact]
+    public async Task AdminService_ChartOfAccountsCursorCarriesTotalAndRejectsChangedFilters()
+    {
+        var first = Item("1000", "Cash", AccountType.Asset);
+        var second = Item("1100", "Bank", AccountType.Asset);
+        var admin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
+        admin.Setup(x => x.GetPageAsync(
+                It.Is<ChartOfAccountsAdminPageQuery>(query =>
+                    query.Offset == 0 && query.Limit == 1 && query.KnownTotal == null),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([first], 2));
+        admin.Setup(x => x.GetPageAsync(
+                It.Is<ChartOfAccountsAdminPageQuery>(query =>
+                    query.Offset == 1 && query.Limit == 1 && query.KnownTotal == 2),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([second], 2));
+        var sut = Service(coaAdmin: admin.Object);
+        var request = new ChartOfAccountsPageRequestDto(Limit: 1, AccountTypes: ["Asset"]);
+
+        var firstPage = await sut.GetChartOfAccountsPageAsync(request, default);
+        var secondPage = await sut.GetChartOfAccountsPageAsync(
+            request with { Cursor = firstPage.NextCursor },
+            default);
+
+        firstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
+        secondPage.Items.Should().ContainSingle().Which.Code.Should().Be("1100");
+        secondPage.NextCursor.Should().BeNull();
+        Func<Task> changedFilter = () => sut.GetChartOfAccountsPageAsync(
+            request with { Cursor = firstPage.NextCursor, OnlyActive = true },
+            default);
+        await changedFilter.Should().ThrowAsync<NgbArgumentInvalidException>();
+    }
+
+    [Fact]
     public async Task AdminService_CoversCreateUpdateAndAllManagementDelegations()
     {
         var id = Guid.NewGuid();

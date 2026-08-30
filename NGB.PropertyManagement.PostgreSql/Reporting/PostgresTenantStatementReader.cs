@@ -159,7 +159,18 @@ visible_rows AS (
 )
 """;
 
-    private const string PageSql = StatementCte + """
+    private static string BuildPageSql(bool knownStats) => StatementCte + (knownStats
+        ? """
+,
+stats AS (
+    SELECT
+        @known_total::int AS total_count,
+        @known_opening_balance::numeric(18,4) AS opening_balance,
+        @known_total_charges::numeric(18,4) AS total_charges,
+        @known_total_credits::numeric(18,4) AS total_credits
+),
+"""
+        : """
 ,
 stats AS (
     SELECT
@@ -171,6 +182,7 @@ stats AS (
     LEFT JOIN visible_rows visible ON TRUE
     GROUP BY opening.opening_balance
 ),
+""") + """
 paged AS (
     SELECT
         visible.occurred_on_utc,
@@ -214,6 +226,19 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
 """;
 
     public async Task<TenantStatementPage> GetPageAsync(TenantStatementQuery query, CancellationToken ct = default)
+        => await GetPageCoreAsync(query, null, false, ct);
+
+    public async Task<TenantStatementPage> GetCursorPageAsync(
+        TenantStatementQuery query,
+        TenantStatementPageCursor? cursor,
+        CancellationToken ct = default)
+        => await GetPageCoreAsync(query with { Offset = cursor?.Offset ?? 0 }, cursor, true, ct);
+
+    private async Task<TenantStatementPage> GetPageCoreAsync(
+        TenantStatementQuery query,
+        TenantStatementPageCursor? cursor,
+        bool cursorPaging,
+        CancellationToken ct)
     {
         query.EnsureInvariant();
         await uow.EnsureConnectionOpenAsync(ct);
@@ -226,11 +251,15 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
             to_utc = query.ToUtc,
             posted = (int)DocumentStatus.Posted,
             offset = PagingLimits.BoundOffset(query.Offset),
-            limit = query.Limit
+            limit = cursorPaging && query.Limit < int.MaxValue ? query.Limit + 1 : query.Limit,
+            known_total = cursor?.Total,
+            known_opening_balance = cursor?.Totals.OpeningBalance,
+            known_total_charges = cursor?.Totals.TotalCharges,
+            known_total_credits = cursor?.Totals.TotalCredits
         };
 
         var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
-            PageSql,
+            BuildPageSql(cursor is not null),
             parameters,
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -239,8 +268,10 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
         if (!stats.LeaseValid)
             throw new NgbArgumentInvalidException("leaseId", "Select a valid Lease.");
 
-        var rows = dbRows
-            .Where(static row => row.HasRow)
+        var dataRows = dbRows.Where(static row => row.HasRow).ToArray();
+        var hasMore = cursorPaging && dataRows.Length > query.Limit;
+        var rows = dataRows
+            .Take(query.Limit)
             .Select(MapRow)
             .ToArray();
 
@@ -253,7 +284,7 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
             ClosingBalance: stats.OpeningBalance + stats.TotalCharges - stats.TotalCredits);
         totals.EnsureInvariant();
 
-        var page = new TenantStatementPage(rows, stats.TotalCount, totals);
+        var page = new TenantStatementPage(rows, stats.TotalCount, totals, hasMore);
         page.EnsureInvariant();
 
         return page;

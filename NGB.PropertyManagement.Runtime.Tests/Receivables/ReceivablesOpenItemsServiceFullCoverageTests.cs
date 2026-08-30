@@ -186,6 +186,73 @@ public sealed class ReceivablesOpenItemsServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task Cursor_page_reuses_totals_and_advances_by_the_last_balance_key()
+    {
+        var fixture = new Fixture();
+        var itemDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}");
+        var chargeId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        var creditId = Guid.Parse("00000000-0000-0000-0000-000000000002");
+        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionCursorAsync(
+                fixture.RegisterId,
+                It.IsAny<DateOnly>(),
+                It.IsAny<IReadOnlyList<DimensionValue>>(),
+                itemDimensionId,
+                "amount",
+                null,
+                1,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OperationalRegisterDimensionResourceNetPage(
+                [new(chargeId, 9m, "Charge")],
+                2,
+                9m,
+                4m,
+                HasMore: true));
+        fixture.Movements.Setup(x => x.GetResourceBalancesByDimensionCursorAsync(
+                fixture.RegisterId,
+                It.IsAny<DateOnly>(),
+                It.IsAny<IReadOnlyList<DimensionValue>>(),
+                itemDimensionId,
+                "amount",
+                It.Is<OperationalRegisterDimensionResourceNetCursor>(cursor =>
+                    cursor != null
+                    && cursor.AfterPositiveGroup
+                    && cursor.AfterValueId == chargeId
+                    && cursor.NextOffset == 1
+                    && cursor.Total == 2
+                    && cursor.TotalPositive == 9m
+                    && cursor.TotalNegativeAbsolute == 4m),
+                1,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OperationalRegisterDimensionResourceNetPage(
+                [new(creditId, -4m, "Credit")],
+                2,
+                9m,
+                4m));
+
+        var first = await fixture.Sut.GetOpenItemsCursorPageAsync(
+            Guid.Empty,
+            Guid.Empty,
+            fixture.LeaseId,
+            cursor: null,
+            limit: 1);
+        var second = await fixture.Sut.GetOpenItemsCursorPageAsync(
+            Guid.Empty,
+            Guid.Empty,
+            fixture.LeaseId,
+            first.NextCursor,
+            limit: 1);
+
+        first.HasMore.Should().BeTrue();
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
+        first.Offset.Should().Be(0);
+        second.HasMore.Should().BeFalse();
+        second.NextCursor.Should().BeNull();
+        second.Offset.Should().Be(1);
+        second.Total.Should().Be(2);
+        second.Rows.Should().ContainSingle(x => !x.IsCharge && x.ItemId == creditId && x.Amount == 4m);
+    }
+
+    [Fact]
     public async Task Materialized_open_items_are_hard_bounded()
     {
         var fixture = new Fixture();

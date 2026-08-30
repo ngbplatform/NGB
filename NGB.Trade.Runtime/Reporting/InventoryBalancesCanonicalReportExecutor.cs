@@ -2,6 +2,7 @@ using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Trade.Runtime.Policy;
@@ -28,19 +29,38 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
         var itemIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "item_id");
         var warehouseIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "warehouse_id");
         var policy = await policyReader.GetRequiredAsync(ct);
-        var offset = Math.Max(0, request.Offset);
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            asOf.ToString("yyyy-MM-dd"),
+            policy.InventoryMovementsRegisterId.ToString("D"),
+            string.Join(',', itemIds.Order()),
+            string.Join(',', warehouseIds.Order()));
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<TradeInventoryBalancePageCursor>(cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
         var limit = request.DisablePaging
             ? PagingLimits.MaxMaterializedRows + 1
             : request.Limit <= 0 ? 100 : request.Limit;
-        var page = await balanceReader.GetPageAsync(
-            policy.InventoryMovementsRegisterId,
-            asOf,
-            itemIds,
-            warehouseIds,
-            TradeInventoryBalanceSort.ItemWarehouse,
-            offset,
-            limit,
-            ct);
+        var page = cursor is not null || (!request.DisablePaging && offset == 0)
+            ? await balanceReader.GetCursorPageAsync(
+                policy.InventoryMovementsRegisterId,
+                asOf,
+                itemIds,
+                warehouseIds,
+                TradeInventoryBalanceSort.ItemWarehouse,
+                cursor,
+                limit,
+                ct)
+            : await balanceReader.GetPageAsync(
+                policy.InventoryMovementsRegisterId,
+                asOf,
+                itemIds,
+                warehouseIds,
+                TradeInventoryBalanceSort.ItemWarehouse,
+                offset,
+                limit,
+                ct);
 
         var rows = page.Rows
             .Select(x => ToRow(x, currentMonth, asOf))
@@ -62,13 +82,23 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
                     ["executor"] = "canonical-trd-inventory-balances"
                 }));
 
+        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new TradeInventoryBalancePageCursor(
+                    offset + page.Rows.Count,
+                    page.Total,
+                    page.TotalQuantity))
+            : null;
+
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
             sheet: sheet,
             offset: offset,
             limit: limit,
             total: page.Total,
-            hasMore: offset + page.Rows.Count < page.Total,
-            nextCursor: null,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-trd-inventory-balances",

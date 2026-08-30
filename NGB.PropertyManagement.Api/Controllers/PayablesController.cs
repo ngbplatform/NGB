@@ -78,6 +78,7 @@ public sealed class PayablesController(INgbAccessChecker access) : ControllerBas
         [FromQuery] PayablesReconciliationMode? mode,
         [FromQuery] int? offset,
         [FromQuery] int? limit,
+        [FromQuery] string? cursor,
         CancellationToken ct)
     {
         await RequirePageAsync(PropertyManagementSecurityDefaults.PayablesReconciliationPage, ct);
@@ -87,7 +88,8 @@ public sealed class PayablesController(INgbAccessChecker access) : ControllerBas
                 toMonthInclusive,
                 mode ?? PayablesReconciliationMode.Movement,
                 offset ?? 0,
-                limit ?? 200),
+                limit ?? 200,
+                cursor),
             ct);
     }
 

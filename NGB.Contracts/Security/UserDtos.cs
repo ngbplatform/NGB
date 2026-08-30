@@ -1,6 +1,10 @@
 namespace NGB.Contracts.Security;
 
-public sealed record UserPageRequestDto(int Offset = 0, int Limit = 50, bool? IsActive = null);
+public sealed record UserPageRequestDto(
+    int Offset = 0,
+    int Limit = 50,
+    bool? IsActive = null,
+    string? Cursor = null);
 
 public sealed record UserBadgeDto(Guid UserId, string? Email, string? DisplayName, bool IsActive);
 

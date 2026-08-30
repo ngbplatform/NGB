@@ -16,7 +16,10 @@ public sealed record TradeInventoryBalanceRow(
 public sealed record TradeInventoryBalancePage(
     IReadOnlyList<TradeInventoryBalanceRow> Rows,
     int Total,
-    decimal TotalQuantity);
+    decimal TotalQuantity,
+    bool HasMore = false);
+
+public sealed record TradeInventoryBalancePageCursor(int Offset, int Total, decimal TotalQuantity);
 
 public interface ITradeInventoryBalanceReader
 {
@@ -29,4 +32,19 @@ public interface ITradeInventoryBalanceReader
         int offset,
         int limit,
         CancellationToken ct = default);
+
+    async Task<TradeInventoryBalancePage> GetCursorPageAsync(
+        Guid registerId,
+        DateOnly asOfInclusive,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        TradeInventoryBalanceSort sort,
+        TradeInventoryBalancePageCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.Offset ?? 0;
+        var page = await GetPageAsync(registerId, asOfInclusive, itemIds, warehouseIds, sort, offset, limit, ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
 }

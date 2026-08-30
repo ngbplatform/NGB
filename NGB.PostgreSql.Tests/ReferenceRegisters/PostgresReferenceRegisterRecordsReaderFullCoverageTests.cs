@@ -184,7 +184,9 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         independent.Connection.Commands.Should().Contain(x =>
             x.CommandText.Contains("WHERE @IncludeDeleted OR \"IsDeleted\" = FALSE", StringComparison.Ordinal));
         independent.Connection.Commands.Should().Contain(x =>
-            x.CommandText.Contains("numbered_rows", StringComparison.Ordinal)
+            x.CommandText.Contains("bounded_last_rows AS MATERIALIZED", StringComparison.Ordinal)
+            && x.CommandText.Contains("FROM bounded_last_rows", StringComparison.Ordinal)
+            && x.CommandText.Contains("numbered_rows", StringComparison.Ordinal)
             && x.CommandText.Contains("__VisibleCount", StringComparison.Ordinal));
 
         Func<Task> invalidScanPageSize = async () => await independent.Reader.ScanSliceLastAllForVisiblePageAsync(
@@ -261,6 +263,8 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         sut.Connection.Commands.Last().CommandText.Should()
             .Contain("s.dimension_id = @D0").And.Contain("s.dimension_id = @D1")
             .And.Contain("HAVING COUNT(*) = @DimCount")
+            .And.Contain("bounded_last_rows AS MATERIALIZED")
+            .And.Contain("FROM bounded_last_rows")
             .And.Contain("numbered_rows");
 
         var missingRegister = Fixture(

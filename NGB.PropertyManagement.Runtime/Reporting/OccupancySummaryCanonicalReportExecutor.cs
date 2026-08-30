@@ -1,7 +1,9 @@
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 
@@ -20,10 +22,21 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
         var buildingId = CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "building_id");
         var asOf = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc")
             ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var offset = Math.Max(0, request.Offset);
-        var limit = request.Limit <= 0 ? 50 : request.Limit;
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            buildingId?.ToString("D"),
+            asOf.ToString("yyyy-MM-dd"));
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<OccupancySummaryPageCursor>(cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
+        var limit = request.DisablePaging
+            ? PagingLimits.MaxMaterializedRows + 1
+            : request.Limit <= 0 ? 50 : request.Limit;
 
-        var page = await reader.GetPageAsync(buildingId, asOf, offset, limit, ct);
+        var page = cursor is not null
+            ? await reader.GetCursorPageAsync(buildingId, asOf, cursor, limit, ct)
+            : await reader.GetPageAsync(buildingId, asOf, offset, limit, ct);
         page.EnsureInvariant();
 
         var rows = page.Rows.Select(ToDetailRow).ToList();
@@ -53,13 +66,20 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
                     ["executor"] = "canonical-pm-occupancy-summary"
                 }));
 
+        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new OccupancySummaryPageCursor(offset + page.Rows.Count, page.Total, page.Totals))
+            : null;
+
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
             sheet: sheet,
             offset: offset,
             limit: limit,
             total: page.Total,
-            hasMore: offset + page.Rows.Count < page.Total,
-            nextCursor: null,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-pm-occupancy-summary"

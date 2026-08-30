@@ -335,9 +335,15 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                LIMIT @Limit
               """
             : """
+              , bounded_last_rows AS MATERIALIZED (
+                  SELECT *
+                    FROM last_rows
+                   ORDER BY "DimensionSetId", "RecorderDocumentId"
+                   LIMIT @Limit
+              )
               , numbered_rows AS (
                   SELECT
-                      last_rows.*,
+                      bounded_last_rows.*,
                       ROW_NUMBER() OVER (
                           ORDER BY "DimensionSetId", "RecorderDocumentId"
                       ) AS "__ScanPosition",
@@ -345,7 +351,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                           ORDER BY "DimensionSetId", "RecorderDocumentId"
                           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
                       ) AS "__VisibleCount"
-                  FROM last_rows
+                  FROM bounded_last_rows
               )
               SELECT *
                 FROM numbered_rows
@@ -571,9 +577,15 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                LIMIT @Limit
               """
             : """
+              , bounded_last_rows AS MATERIALIZED (
+                  SELECT *
+                    FROM last_rows
+                   ORDER BY "DimensionSetId", "RecorderDocumentId"
+                   LIMIT @Limit
+              )
               , numbered_rows AS (
                   SELECT
-                      last_rows.*,
+                      bounded_last_rows.*,
                       ROW_NUMBER() OVER (
                           ORDER BY "DimensionSetId", "RecorderDocumentId"
                       ) AS "__ScanPosition",
@@ -581,7 +593,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                           ORDER BY "DimensionSetId", "RecorderDocumentId"
                           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
                       ) AS "__VisibleCount"
-                  FROM last_rows
+                  FROM bounded_last_rows
               )
               SELECT *
                 FROM numbered_rows

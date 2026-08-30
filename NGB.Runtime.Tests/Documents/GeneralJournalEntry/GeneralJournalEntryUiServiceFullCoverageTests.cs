@@ -372,7 +372,54 @@ public sealed class GeneralJournalEntryUiServiceFullCoverageTests
         details.Header.ReversalOfDocumentDisplay.Should().Contain("REV-1");
     }
 
+    [Fact]
+    public async Task Page_cursor_reuses_total_and_is_bound_to_filters()
+    {
+        var fixture = new Fixture();
+        var firstId = Guid.CreateVersion7();
+        var secondId = Guid.CreateVersion7();
+        var from = new DateOnly(2026, 3, 1);
+        var to = new DateOnly(2026, 3, 31);
+        fixture.PageQuery.Setup(x => x.GetPageAsync(
+                0, 1, " q ", from, to, "all", fixture.Token))
+            .ReturnsAsync(new GeneralJournalEntryPageRecord([ListItem(firstId)], 0, 1, 2));
+        fixture.PageQuery.Setup(x => x.GetCursorPageAsync(
+                It.Is<GeneralJournalEntryPageCursor>(cursor => cursor.Offset == 1 && cursor.Total == 2),
+                1, " q ", from, to, "all", fixture.Token))
+            .ReturnsAsync(new GeneralJournalEntryPageRecord([ListItem(secondId)], 1, 1, 2));
+
+        var first = await fixture.Sut.GetPageAsync(0, 1, " q ", from, to, "all", fixture.Token);
+        var second = await fixture.Sut.GetCursorPageAsync(
+            first.NextCursor!, 1, " q ", from, to, "all", fixture.Token);
+
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
+        second.Items.Should().ContainSingle().Which.Id.Should().Be(secondId);
+        second.NextCursor.Should().BeNull();
+        Func<Task> changedFilter = () => fixture.Sut.GetCursorPageAsync(
+            first.NextCursor!, 1, "different", from, to, "all", fixture.Token);
+        await changedFilter.Should().ThrowAsync<NgbArgumentInvalidException>();
+    }
+
     private static ActorIdentity Actor() => new("subject", null, " Actor ");
+
+    private static GeneralJournalEntryListItemRecord ListItem(Guid id) => new(
+        id,
+        DateUtc,
+        "GJE-1",
+        "General Journal Entry GJE-1",
+        DocumentStatus.Posted,
+        false,
+        GeneralJournalEntryModels.JournalType.Standard,
+        GeneralJournalEntryModels.Source.Manual,
+        GeneralJournalEntryModels.ApprovalState.Approved,
+        null,
+        null,
+        null,
+        false,
+        null,
+        null,
+        "actor",
+        DateUtc);
 
     private static DocumentRecord Document(Guid id, string? number) => new()
     {

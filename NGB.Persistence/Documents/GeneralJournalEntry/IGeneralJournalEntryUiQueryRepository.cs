@@ -26,7 +26,10 @@ public sealed record GeneralJournalEntryPageRecord(
     IReadOnlyList<GeneralJournalEntryListItemRecord> Items,
     int Offset,
     int Limit,
-    int Total);
+    int Total,
+    bool HasMore = false);
+
+public sealed record GeneralJournalEntryPageCursor(int Offset, int Total);
 
 public interface IGeneralJournalEntryUiQueryRepository
 {
@@ -38,4 +41,17 @@ public interface IGeneralJournalEntryUiQueryRepository
         DateOnly? dateTo,
         string? trash,
         CancellationToken ct = default);
+
+    async Task<GeneralJournalEntryPageRecord> GetCursorPageAsync(
+        GeneralJournalEntryPageCursor cursor,
+        int limit,
+        string? search,
+        DateOnly? dateFrom,
+        DateOnly? dateTo,
+        string? trash,
+        CancellationToken ct = default)
+    {
+        var page = await GetPageAsync(cursor.Offset, limit, search, dateFrom, dateTo, trash, ct);
+        return page with { HasMore = cursor.Offset + page.Items.Count < page.Total };
+    }
 }

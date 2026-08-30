@@ -25,6 +25,17 @@ public sealed record ReceivablesReportPage(
     decimal TotalCredit,
     string? PartyDisplay,
     string? PropertyDisplay,
+    string? LeaseDisplay,
+    bool HasMore = false);
+
+public sealed record ReceivablesReportPageCursor(
+    int Offset,
+    int Total,
+    decimal TotalOriginal,
+    decimal TotalOutstanding,
+    decimal TotalCredit,
+    string? PartyDisplay,
+    string? PropertyDisplay,
     string? LeaseDisplay);
 
 public interface IReceivablesReportReader
@@ -36,4 +47,17 @@ public interface IReceivablesReportReader
         int offset,
         int limit,
         CancellationToken ct = default);
+
+    async Task<ReceivablesReportPage> GetCursorPageAsync(
+        Guid registerId,
+        Guid leaseId,
+        ReceivablesReportMode mode,
+        ReceivablesReportPageCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.Offset ?? 0;
+        var page = await GetPageAsync(registerId, leaseId, mode, offset, limit, ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
 }

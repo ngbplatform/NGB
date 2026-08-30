@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using NGB.PostgreSql.Internal;
 
 namespace NGB.PostgreSql.Schema;
 
@@ -6,11 +6,27 @@ namespace NGB.PostgreSql.Schema;
 /// Short-lived positive cache for verified dynamic-table shapes. Failed probes are never cached.
 /// A shape fingerprint prevents metadata changes from reusing an incompatible verification.
 /// </summary>
-public sealed class PostgresRelationShapeCache(TimeProvider timeProvider)
+public sealed class PostgresRelationShapeCache
 {
     private static readonly TimeSpan TimeToLive = TimeSpan.FromMinutes(5);
-    private readonly ConcurrentDictionary<CacheKey, DateTimeOffset> _verified = new();
-    private readonly ConcurrentDictionary<CacheKey, SemaphoreSlim> _probeGates = new();
+    private const int DefaultCapacity = 8_192;
+    private readonly TimeProvider _timeProvider;
+    private readonly BoundedExpiringCache<CacheKey, bool> _verified;
+    private readonly AsyncKeyedLock<CacheKey> _probeGates = new();
+
+    public PostgresRelationShapeCache(TimeProvider timeProvider)
+        : this(timeProvider, DefaultCapacity)
+    {
+    }
+
+    internal PostgresRelationShapeCache(TimeProvider timeProvider, int capacity)
+    {
+        _timeProvider = timeProvider;
+        _verified = new BoundedExpiringCache<CacheKey, bool>(capacity);
+    }
+
+    internal int EntryCount => _verified.Count;
+    internal int ProbeGateCount => _probeGates.Count;
 
     public async Task<bool> IsVerifiedAsync(
         string relationName,
@@ -22,10 +38,7 @@ public sealed class PostgresRelationShapeCache(TimeProvider timeProvider)
         if (IsCurrent(key))
             return true;
 
-        var gate = _probeGates.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
-
-        try
+        using (await _probeGates.AcquireAsync(key, ct))
         {
             if (IsCurrent(key))
                 return true;
@@ -33,37 +46,28 @@ public sealed class PostgresRelationShapeCache(TimeProvider timeProvider)
             if (!await probe(ct))
                 return false;
 
-            _verified[key] = timeProvider.GetUtcNow().Add(TimeToLive);
+            Remember(key);
             return true;
-        }
-        finally
-        {
-            gate.Release();
         }
     }
 
     public void MarkVerified(string relationName, string shapeFingerprint)
-        => _verified[new CacheKey(relationName, shapeFingerprint)] = timeProvider.GetUtcNow().Add(TimeToLive);
+        => Remember(new CacheKey(relationName, shapeFingerprint));
 
     public void Invalidate(string relationName)
     {
-        foreach (var key in _verified.Keys)
-        {
-            if (string.Equals(key.RelationName, relationName, StringComparison.Ordinal))
-                _verified.TryRemove(key, out _);
-        }
+        _verified.RemoveWhere(key => string.Equals(key.RelationName, relationName, StringComparison.Ordinal));
     }
 
     private bool IsCurrent(CacheKey key)
     {
-        if (!_verified.TryGetValue(key, out var expiresAtUtc))
-            return false;
+        return _verified.TryGet(key, _timeProvider.GetUtcNow(), out _);
+    }
 
-        if (expiresAtUtc > timeProvider.GetUtcNow())
-            return true;
-
-        _verified.TryRemove(new KeyValuePair<CacheKey, DateTimeOffset>(key, expiresAtUtc));
-        return false;
+    private void Remember(CacheKey key)
+    {
+        var now = _timeProvider.GetUtcNow();
+        _verified.Set(key, true, now.Add(TimeToLive), now);
     }
 
     private readonly record struct CacheKey(string RelationName, string ShapeFingerprint);

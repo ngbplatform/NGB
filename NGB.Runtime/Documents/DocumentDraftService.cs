@@ -33,7 +33,8 @@ internal sealed class DocumentDraftService(
     IDocumentNumberingPolicyResolver numberingPolicies,
     IDocumentTypeRegistry documentTypes,
     IAuditLogService audit,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IDocumentNumberBatchAllocator? numberBatchAllocator = null)
     : IDocumentDraftBatchService
 {
     private const int MaxCreateBatchSize = 1_000;
@@ -142,6 +143,42 @@ internal sealed class DocumentDraftService(
                     prepared.Select(static item => item.Id).ToArray(),
                     innerCt);
 
+                if (requiresIndividualNumbering.Length > 0 && numberBatchAllocator is not null)
+                {
+                    // Preserve the single-create contract: validators observe the requested
+                    // draft before an automatically allocated number is applied.
+                    await ValidatePreparedDraftsAsync(prepared, now, innerCt);
+
+                    var assignedNumbers = await numberBatchAllocator.AllocateAsync(
+                        requiresIndividualNumbering.Select(static item =>
+                                new DocumentNumberAllocationRequest(item.Id, item.TypeCode, item.DateUtc))
+                            .ToArray(),
+                        innerCt);
+
+                    var numberedBatch = prepared
+                        .Select(item => assignedNumbers.TryGetValue(item.Id, out var assigned)
+                            ? item with { Number = assigned }
+                            : item)
+                        .ToArray();
+
+                    if (assignedNumbers.Count != requiresIndividualNumbering.Length
+                        || numberedBatch.Any(item => individuallyNumberedIds.Contains(item.Id)
+                            && string.IsNullOrWhiteSpace(item.Number)))
+                    {
+                        throw new NgbInvariantViolationException(
+                            "Document number batch allocator did not return one number for every requested draft.");
+                    }
+
+                    await CreateBatchInCurrentTransactionAsync(
+                        numberedBatch,
+                        now,
+                        suppressAudit,
+                        innerCt,
+                        validate: false);
+
+                    return prepared.Select(static item => item.Id).ToArray();
+                }
+
                 if (batchable.Length > 0)
                 {
                     await CreateBatchInCurrentTransactionAsync(
@@ -173,28 +210,13 @@ internal sealed class DocumentDraftService(
         IReadOnlyList<PreparedDraft> prepared,
         DateTime now,
         bool suppressAudit,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool validate = true)
     {
-        var records = prepared
-            .Select(item => new DocumentRecord
-            {
-                Id = item.Id,
-                TypeCode = item.TypeCode,
-                Number = item.Number,
-                DateUtc = item.DateUtc,
-                Status = DocumentStatus.Draft,
-                CreatedAtUtc = now,
-                UpdatedAtUtc = now
-            })
-            .ToArray();
+        var records = BuildDraftRecords(prepared, now);
 
-        foreach (var record in records)
-        {
-            foreach (var validator in validators.ResolveDraftValidators(record.TypeCode))
-            {
-                await validator.ValidateCreateDraftAsync(record, ct);
-            }
-        }
+        if (validate)
+            await ValidateDraftsAsync(records, ct);
 
         if (documents is IDocumentDraftBatchRepository batchRepository)
         {
@@ -235,6 +257,36 @@ internal sealed class DocumentDraftService(
                 .ToArray(),
             ct);
     }
+
+    private async Task ValidatePreparedDraftsAsync(IReadOnlyList<PreparedDraft> prepared, DateTime now, CancellationToken ct)
+        => await ValidateDraftsAsync(BuildDraftRecords(prepared, now), ct);
+
+    private async Task ValidateDraftsAsync(IReadOnlyList<DocumentRecord> records, CancellationToken ct)
+    {
+        foreach (var record in records)
+        {
+            foreach (var validator in validators.ResolveDraftValidators(record.TypeCode))
+            {
+                await validator.ValidateCreateDraftAsync(record, ct);
+            }
+        }
+    }
+
+    private static DocumentRecord[] BuildDraftRecords(
+        IReadOnlyList<PreparedDraft> prepared,
+        DateTime now)
+        => prepared
+            .Select(item => new DocumentRecord
+            {
+                Id = item.Id,
+                TypeCode = item.TypeCode,
+                Number = item.Number,
+                DateUtc = item.DateUtc,
+                Status = DocumentStatus.Draft,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            })
+            .ToArray();
 
     public async Task<bool> UpdateDraftAsync(
         Guid documentId,

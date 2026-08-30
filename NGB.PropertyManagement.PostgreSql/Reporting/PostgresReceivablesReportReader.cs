@@ -22,6 +22,26 @@ public sealed class PostgresReceivablesReportReader(IUnitOfWork uow, Operational
         int offset,
         int limit,
         CancellationToken ct = default)
+        => await GetPageCoreAsync(registerId, leaseId, mode, offset, limit, null, false, ct);
+
+    public async Task<ReceivablesReportPage> GetCursorPageAsync(
+        Guid registerId,
+        Guid leaseId,
+        ReceivablesReportMode mode,
+        ReceivablesReportPageCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+        => await GetPageCoreAsync(registerId, leaseId, mode, cursor?.Offset ?? 0, limit, cursor, true, ct);
+
+    private async Task<ReceivablesReportPage> GetPageCoreAsync(
+        Guid registerId,
+        Guid leaseId,
+        ReceivablesReportMode mode,
+        int offset,
+        int limit,
+        ReceivablesReportPageCursor? cursor,
+        bool cursorPaging,
+        CancellationToken ct)
     {
         registerId.EnsureNonEmpty(nameof(registerId));
         leaseId.EnsureNonEmpty(nameof(leaseId));
@@ -48,6 +68,50 @@ public sealed class PostgresReceivablesReportReader(IUnitOfWork uow, Operational
         var netSourceSql = context.BalancesExist
             ? BuildSnapshotBackedNetSourceSql(context.MovementsTable, context.BalancesTable)
             : BuildMovementOnlyNetSourceSql(context.MovementsTable);
+        var statsSql = cursor is null
+            ? """
+stats AS (
+    SELECT
+        COUNT(*)::integer AS total_count,
+        COALESCE(SUM(CASE WHEN net_amount > 0 THEN original_amount ELSE 0 END), 0) AS total_original,
+        COALESCE(SUM(CASE WHEN net_amount > 0 THEN net_amount ELSE 0 END), 0) AS total_outstanding,
+        COALESCE(SUM(CASE WHEN net_amount < 0 THEN -net_amount ELSE 0 END), 0) AS total_credit
+    FROM items
+)
+"""
+            : """
+stats AS (
+    SELECT
+        @KnownTotal::integer AS total_count,
+        @KnownTotalOriginal::numeric AS total_original,
+        @KnownTotalOutstanding::numeric AS total_outstanding,
+        @KnownTotalCredit::numeric AS total_credit
+)
+""";
+        var leaseContextSql = cursor is null
+            ? """
+lease_context AS (
+    SELECT
+        party.display AS party_display,
+        property.display AS property_display,
+        lease.display AS lease_display
+    FROM doc_pm_lease lease
+    LEFT JOIN doc_pm_lease__parties lease_party
+      ON lease_party.document_id = lease.document_id
+     AND lease_party.is_primary = TRUE
+    LEFT JOIN cat_pm_party party ON party.catalog_id = lease_party.party_id
+    LEFT JOIN cat_pm_property property ON property.catalog_id = lease.property_id
+    WHERE lease.document_id = @LeaseId
+)
+"""
+            : """
+lease_context AS (
+    SELECT
+        @KnownPartyDisplay::text AS party_display,
+        @KnownPropertyDisplay::text AS property_display,
+        @KnownLeaseDisplay::text AS lease_display
+)
+""";
         var sql = $"""
 {netSourceSql},
 nets AS (
@@ -93,27 +157,8 @@ items AS (
           OR credit_memo.document_id IS NOT NULL
       )
 ),
-stats AS (
-    SELECT
-        COUNT(*)::integer AS total_count,
-        COALESCE(SUM(CASE WHEN net_amount > 0 THEN original_amount ELSE 0 END), 0) AS total_original,
-        COALESCE(SUM(CASE WHEN net_amount > 0 THEN net_amount ELSE 0 END), 0) AS total_outstanding,
-        COALESCE(SUM(CASE WHEN net_amount < 0 THEN -net_amount ELSE 0 END), 0) AS total_credit
-    FROM items
-),
-lease_context AS (
-    SELECT
-        party.display AS party_display,
-        property.display AS property_display,
-        lease.display AS lease_display
-    FROM doc_pm_lease lease
-    LEFT JOIN doc_pm_lease__parties lease_party
-      ON lease_party.document_id = lease.document_id
-     AND lease_party.is_primary = TRUE
-    LEFT JOIN cat_pm_party party ON party.catalog_id = lease_party.party_id
-    LEFT JOIN cat_pm_property property ON property.catalog_id = lease.property_id
-    WHERE lease.document_id = @LeaseId
-),
+{statsSql},
+{leaseContextSql},
 paged AS (
     SELECT item.*
     FROM items item
@@ -153,7 +198,14 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
                 LeaseId = leaseId,
                 ChargesOnly = chargesOnly,
                 Offset = PagingLimits.BoundOffset(offset),
-                Limit = limit
+                Limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
+                KnownTotal = cursor?.Total,
+                KnownTotalOriginal = cursor?.TotalOriginal,
+                KnownTotalOutstanding = cursor?.TotalOutstanding,
+                KnownTotalCredit = cursor?.TotalCredit,
+                KnownPartyDisplay = cursor?.PartyDisplay,
+                KnownPropertyDisplay = cursor?.PropertyDisplay,
+                KnownLeaseDisplay = cursor?.LeaseDisplay
             },
             uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -162,8 +214,11 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
         if (first is null)
             return new ReceivablesReportPage([], 0, 0m, 0m, 0m, null, null, null);
 
+        var dataRows = rows.Where(static row => row.HasRow).ToArray();
+        var hasMore = cursorPaging && dataRows.Length > limit;
+
         return new ReceivablesReportPage(
-            rows.Where(static row => row.HasRow).Select(static row => new ReceivablesReportRow(
+            dataRows.Take(limit).Select(static row => new ReceivablesReportRow(
                 IsCharge: row.NetAmount > 0m,
                 DocumentId: row.DocumentId!.Value,
                 DocumentType: row.DocumentType!,
@@ -179,7 +234,8 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
             first.TotalCredit,
             first.PartyDisplay,
             first.PropertyDisplay,
-            first.LeaseDisplay);
+            first.LeaseDisplay,
+            hasMore);
     }
 
     private static string BuildMovementOnlyNetSourceSql(string movementsTable) => $"""

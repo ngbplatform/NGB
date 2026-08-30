@@ -22,7 +22,8 @@ public sealed record PayablesReconciliationRequest(
     DateOnly ToMonthInclusive,
     PayablesReconciliationMode Mode = PayablesReconciliationMode.Movement,
     int Offset = 0,
-    int Limit = 200);
+    int Limit = 200,
+    string? Cursor = null);
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum PayablesReconciliationMode
@@ -54,7 +55,8 @@ public sealed record PayablesReconciliationReport(
     IReadOnlyList<PayablesReconciliationRow> Rows,
     int Offset = 0,
     int Limit = 200,
-    bool HasMore = false);
+    bool HasMore = false,
+    string? NextCursor = null);
 
 public sealed record PayablesReconciliationRow(
     Guid VendorId,

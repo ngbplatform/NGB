@@ -72,7 +72,8 @@ public sealed record OccupancySummaryTotals(
 public sealed record OccupancySummaryPage(
     IReadOnlyList<OccupancySummaryRow> Rows,
     int Total,
-    OccupancySummaryTotals Totals)
+    OccupancySummaryTotals Totals,
+    bool HasMore = false)
 {
     public void EnsureInvariant()
     {
@@ -88,3 +89,5 @@ public sealed record OccupancySummaryPage(
             row.EnsureInvariant();
     }
 }
+
+public sealed record OccupancySummaryPageCursor(int Offset, int Total, OccupancySummaryTotals Totals);

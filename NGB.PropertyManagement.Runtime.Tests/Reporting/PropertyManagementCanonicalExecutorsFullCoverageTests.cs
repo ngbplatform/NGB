@@ -252,15 +252,17 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             15m,
             4m);
         var service = new Mock<IReceivablesOpenItemsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsPageAsync(
-                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid _, Guid _, Guid _, int offset, int limit, CancellationToken _) =>
+        service.Setup(x => x.GetOpenItemsCursorPageAsync(
+                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, Guid _, string? _, int limit, CancellationToken _) =>
                 new ReceivablesOpenItemsPageResponse(
                     registerId,
-                    responseRows.Skip(offset).Take(limit).ToArray(),
+                    responseRows.Take(limit).ToArray(),
                     responseRows.Length,
                     response.TotalOutstanding,
-                    response.TotalCredit));
+                    response.TotalCredit,
+                    HasMore: limit < responseRows.Length,
+                    NextCursor: limit < responseRows.Length ? "next" : null));
         var sut = new ReceivablesOpenItemsCanonicalReportExecutor(service.Object);
         var leaseId = Guid.CreateVersion7();
         var definition = Definition(sut.ReportCode);
@@ -273,6 +275,7 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         sut.ReportCode.Should().Be(PropertyManagementSecurityDefaults.ReceivablesOpenItemsReport);
         first.Total.Should().Be(3);
         first.HasMore.Should().BeTrue();
+        first.NextCursor.Should().Be("next");
         first.PrebuiltSheet!.Rows.Should().HaveCount(2);
         first.PrebuiltSheet.Rows[0].Cells[1].Action.Should().NotBeNull();
         allWithoutTotals.PrebuiltSheet!.Rows.Should().HaveCount(3);
@@ -284,8 +287,8 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
     public async Task Receivables_open_items_omits_totals_for_empty_response()
     {
         var service = new Mock<IReceivablesOpenItemsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsPageAsync(
-                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        service.Setup(x => x.GetOpenItemsCursorPageAsync(
+                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ReceivablesOpenItemsPageResponse(Guid.CreateVersion7(), [], 0, 0m, 0m));
         var sut = new ReceivablesOpenItemsCanonicalReportExecutor(service.Object);
 

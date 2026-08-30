@@ -178,6 +178,22 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
         int limit,
         bool? isActive,
         CancellationToken ct = default)
+        => await GetPageCoreAsync(offset, limit, isActive, null, false, ct);
+
+    public async Task<PlatformUserPage> GetCursorPageAsync(
+        PlatformUserPageCursor cursor,
+        int limit,
+        bool? isActive,
+        CancellationToken ct = default)
+        => await GetPageCoreAsync(cursor.Offset, limit, isActive, cursor, true, ct);
+
+    private async Task<PlatformUserPage> GetPageCoreAsync(
+        int offset,
+        int limit,
+        bool? isActive,
+        PlatformUserPageCursor? cursor,
+        bool cursorPaging,
+        CancellationToken ct)
     {
         if (offset < 0)
             throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be non-negative.");
@@ -189,11 +205,7 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        const string sql = """
-                           SELECT COUNT(*)::bigint
-                           FROM platform_users
-                           WHERE @IsActive IS NULL OR is_active = @IsActive;
-
+        const string pageSql = """
                            SELECT
                                user_id AS UserId,
                                auth_subject AS AuthSubject,
@@ -209,17 +221,45 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
                            LIMIT @Limit;
                            """;
 
-        var cmd = new CommandDefinition(
-            sql,
-            new { Offset = offset, Limit = limit, IsActive = isActive },
-            transaction: uow.Transaction,
-            cancellationToken: ct);
+        var parameters = new
+        {
+            Offset = offset,
+            Limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
+            IsActive = isActive
+        };
+        long total;
+        List<PlatformUser> items;
+        if (cursor is null)
+        {
+            await using var grid = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                $"""
+                 SELECT COUNT(*)::bigint
+                 FROM platform_users
+                 WHERE @IsActive IS NULL OR is_active = @IsActive;
 
-        await using var grid = await uow.Connection.QueryMultipleAsync(cmd);
-        var total = await grid.ReadSingleAsync<long>();
-        var items = (await grid.ReadAsync<PlatformUser>()).AsList();
+                 {pageSql}
+                 """,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+            total = await grid.ReadSingleAsync<long>();
+            items = (await grid.ReadAsync<PlatformUser>()).AsList();
+        }
+        else
+        {
+            total = cursor.Total;
+            items = (await uow.Connection.QueryAsync<PlatformUser>(new CommandDefinition(
+                pageSql,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct))).AsList();
+        }
 
-        return new PlatformUserPage(items, total);
+        var hasMore = cursorPaging && items.Count > limit;
+        if (hasMore)
+            items.RemoveRange(limit, items.Count - limit);
+
+        return new PlatformUserPage(items, total, hasMore);
     }
 
     public async Task<IReadOnlyDictionary<Guid, PlatformUser>> GetByIdsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct = default)

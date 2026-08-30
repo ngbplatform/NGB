@@ -6,9 +6,16 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Documents.Numbering;
 
-public sealed class PostgresDocumentNumberSequenceRepository(IUnitOfWork uow) : IDocumentNumberSequenceRepository
+public sealed class PostgresDocumentNumberSequenceRepository(IUnitOfWork uow) : IDocumentNumberSequenceBatchRepository
 {
-    public async Task<long> NextAsync(string typeCode, int fiscalYear, CancellationToken ct = default)
+    public Task<long> NextAsync(string typeCode, int fiscalYear, CancellationToken ct = default)
+        => ReserveAsync(typeCode, fiscalYear, 1, ct);
+
+    public async Task<long> ReserveAsync(
+        string typeCode,
+        int fiscalYear,
+        int count,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(typeCode))
             throw new NgbArgumentRequiredException(nameof(typeCode));
@@ -16,20 +23,23 @@ public sealed class PostgresDocumentNumberSequenceRepository(IUnitOfWork uow) : 
         if (fiscalYear is < 1900 or > 3000)
             throw new NgbArgumentOutOfRangeException(nameof(fiscalYear), fiscalYear, "FiscalYear out of range.");
 
+        if (count <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(count), count, "Count must be greater than zero.");
+
         // MUST be transactional to avoid gaps on rollback.
         await uow.EnsureOpenForTransactionAsync(ct);
 
         const string sql = """
                            INSERT INTO document_number_sequences(type_code, fiscal_year, last_seq)
-                           VALUES (@TypeCode, @FiscalYear, 1)
+                           VALUES (@TypeCode, @FiscalYear, @Count)
                            ON CONFLICT (type_code, fiscal_year)
-                           DO UPDATE SET last_seq = document_number_sequences.last_seq + 1
-                           RETURNING last_seq;
+                           DO UPDATE SET last_seq = document_number_sequences.last_seq + EXCLUDED.last_seq
+                           RETURNING last_seq - @Count + 1;
                            """;
 
         var cmd = new CommandDefinition(
             sql,
-            new { TypeCode = typeCode, FiscalYear = fiscalYear },
+            new { TypeCode = typeCode, FiscalYear = fiscalYear, Count = count },
             transaction: uow.Transaction,
             cancellationToken: ct);
 

@@ -58,5 +58,13 @@ public sealed class PostgresTenantStatementReaderFullCoverageTests(PmIntegration
         page.Total.Should().Be(0);
         page.Rows.Should().BeEmpty();
         page.Totals.Should().Be(new TenantStatementTotals(DateOnly.MinValue, to, 0m, 0m, 0m, 0m));
+
+        var cursorPage = await reader.GetCursorPageAsync(
+            new TenantStatementQuery(validLeaseId, DateOnly.MinValue, to, 0, 1),
+            new TenantStatementPageCursor(0, page.Total, page.Totals),
+            CancellationToken.None);
+        cursorPage.Total.Should().Be(0);
+        cursorPage.Rows.Should().BeEmpty();
+        cursorPage.HasMore.Should().BeFalse();
     }
 }

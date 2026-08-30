@@ -112,6 +112,43 @@ public sealed class PmPayablesReconciliation_Endpoint_P0Tests : IAsyncLifetime
             balanceReport.TotalDiff.Should().Be(0m);
             balanceReport.Rows.Should().ContainSingle(x =>
                 x.RowKind == PayablesReconciliationRowKind.Matched && !x.HasDiff);
+
+            var secondVendor = await catalogs.CreateAsync(PropertyManagementCodes.Party, Payload(new
+            {
+                display = "Vendor Two",
+                is_vendor = true,
+                is_tenant = false
+            }), CancellationToken.None);
+            var secondCharge = await documents.CreateDraftAsync(PropertyManagementCodes.PayableCharge, Payload(new
+            {
+                party_id = secondVendor.Id,
+                property_id = property.Id,
+                charge_type_id = repairType.Id,
+                due_on_utc = "2026-02-08",
+                amount = "25.00",
+                vendor_invoice_no = "INV-200",
+            }), CancellationToken.None);
+            (await documents.PostAsync(PropertyManagementCodes.PayableCharge, secondCharge.Id, CancellationToken.None))
+                .Status.Should().Be(DocumentStatus.Posted);
+
+            var firstPage = await client.GetFromJsonAsync<PayablesReconciliationReport>(url + "&limit=1");
+            firstPage.Should().NotBeNull();
+            firstPage!.Rows.Should().ContainSingle();
+            firstPage.RowCount.Should().Be(2);
+            firstPage.HasMore.Should().BeTrue();
+            firstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
+
+            var nextPage = await client.GetFromJsonAsync<PayablesReconciliationReport>(
+                url + "&limit=1&cursor=" + Uri.EscapeDataString(firstPage.NextCursor!));
+            nextPage.Should().NotBeNull();
+            nextPage!.Rows.Should().ContainSingle();
+            nextPage.Rows[0].VendorId.Should().NotBe(firstPage.Rows[0].VendorId);
+            nextPage.RowCount.Should().Be(firstPage.RowCount);
+            nextPage.TotalApNet.Should().Be(firstPage.TotalApNet);
+            nextPage.TotalOpenItemsNet.Should().Be(firstPage.TotalOpenItemsNet);
+            nextPage.Offset.Should().Be(1);
+            nextPage.HasMore.Should().BeFalse();
+            nextPage.NextCursor.Should().BeNull();
         }
         finally
         {

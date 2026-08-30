@@ -1,6 +1,7 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Trade.Reporting;
@@ -23,13 +24,21 @@ public sealed class SalesByItemCanonicalReportExecutor(
         var itemIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "item_id");
         var customerIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "customer_id");
         var warehouseIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "warehouse_id");
+        var cursorKind = BuildCursorKind(fromInclusive, toInclusive, itemIds, customerIds, warehouseIds);
 
-        var offset = Math.Max(0, request.Offset);
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<TradeAnalyticsPageCursor<SalesByItemTotals>>(
+                cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
         var limit = request.DisablePaging
             ? PagingLimits.MaxMaterializedRows + 1
             : (request.Limit <= 0 ? 100 : request.Limit);
-        var page = await analytics.GetSalesByItemPageAsync(
-            fromInclusive, toInclusive, itemIds, customerIds, warehouseIds, offset, limit, ct);
+        var page = cursor is not null || (!request.DisablePaging && offset == 0)
+            ? await analytics.GetSalesByItemCursorPageAsync(
+                fromInclusive, toInclusive, itemIds, customerIds, warehouseIds, cursor, limit, ct)
+            : await analytics.GetSalesByItemPageAsync(
+                fromInclusive, toInclusive, itemIds, customerIds, warehouseIds, offset, limit, ct);
         var pageRows = page.Rows;
 
         var rows = pageRows
@@ -61,13 +70,23 @@ public sealed class SalesByItemCanonicalReportExecutor(
                     ["executor"] = "canonical-trd-sales-by-item"
                 }));
 
+        var hasMore = page.HasMore || offset + pageRows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new TradeAnalyticsPageCursor<SalesByItemTotals>(
+                    offset + pageRows.Count,
+                    page.Total,
+                    page.Totals))
+            : null;
+
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
             sheet: sheet,
             offset: offset,
             limit: limit,
             total: page.Total,
-            hasMore: offset + pageRows.Count < page.Total,
-            nextCursor: null,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-trd-sales-by-item",
@@ -75,6 +94,20 @@ public sealed class SalesByItemCanonicalReportExecutor(
                 ["to_utc"] = toInclusive.ToString("yyyy-MM-dd")
             });
     }
+
+    private string BuildCursorKind(
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyCollection<Guid> itemIds,
+        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyCollection<Guid> warehouseIds)
+        => SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            fromInclusive.ToString("yyyy-MM-dd"),
+            toInclusive.ToString("yyyy-MM-dd"),
+            string.Join(',', itemIds.Order()),
+            string.Join(',', customerIds.Order()),
+            string.Join(',', warehouseIds.Order()));
 
     private static ReportSheetRowDto ToDetailRow(SalesByItemSummaryRow row)
         => new(

@@ -38,6 +38,10 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         sut.ReportCode.Should().Be(TradeCodes.SalesByItemReport);
 
         var first = await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(Offset: -1, Limit: 1), default);
+        var cursorPage = await sut.ExecuteAsync(
+            Definition(sut.ReportCode),
+            new ReportExecutionRequestDto(Cursor: first.NextCursor, Limit: 1),
+            default);
         var second = await sut.ExecuteAsync(
             Definition(sut.ReportCode),
             new ReportExecutionRequestDto(Layout: new ReportLayoutDto(ShowGrandTotals: false), DisablePaging: true),
@@ -53,6 +57,9 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
 
         first.Total.Should().Be(2);
         first.HasMore.Should().BeTrue();
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
+        cursorPage.Offset.Should().Be(1);
+        cursorPage.Total.Should().Be(2);
         first.PrebuiltSheet!.Rows.Should().HaveCount(2);
         second.PrebuiltSheet!.Rows.Should().HaveCount(2);
     }
@@ -178,11 +185,18 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         sut.ReportCode.Should().Be(TradeCodes.InventoryBalancesReport);
 
         var first = await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(Offset: -5, Limit: 1), default);
+        var cursorPage = await sut.ExecuteAsync(
+            Definition(sut.ReportCode),
+            new ReportExecutionRequestDto(Cursor: first.NextCursor, Limit: 1),
+            default);
         var second = await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(DisablePaging: true), default);
         await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(Limit: 0), default);
 
         first.Total.Should().Be(3);
         first.HasMore.Should().BeTrue();
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
+        cursorPage.Offset.Should().Be(1);
+        cursorPage.Total.Should().Be(3);
         second.PrebuiltSheet!.Rows.Should().HaveCount(3);
     }
 

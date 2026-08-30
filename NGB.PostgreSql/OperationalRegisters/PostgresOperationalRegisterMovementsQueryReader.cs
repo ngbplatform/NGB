@@ -504,6 +504,133 @@ LIMIT @Limit;
             rows[0].TotalNegativeAbsolute);
     }
 
+    public async Task<OperationalRegisterDimensionResourceNetPage> GetResourceBalancesByDimensionCursorAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        OperationalRegisterDimensionResourceNetCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        if (registerId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(registerId));
+
+        if (groupDimensionId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(groupDimensionId));
+
+        if (string.IsNullOrWhiteSpace(resourceColumnCode))
+            throw new NgbArgumentRequiredException(nameof(resourceColumnCode));
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
+
+        asOfMonthInclusive.EnsureMonthStart(nameof(asOfMonthInclusive));
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var context = await GetRegisterQueryContextAsync(registerId, ct);
+        if (context is null)
+            return new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m);
+
+        if (!context.ResourceColumns.Contains(resourceColumnCode, StringComparer.Ordinal))
+            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column '{resourceColumnCode}'.");
+
+        var balancesTable = ResolveBalancesTableName(context.TableName);
+        var balancesExist = await TableExistsAsync(balancesTable, ct);
+        var (dimIds, dimValueIds, dimCount) = SqlDimensionFilter.Normalize(dimensions);
+        var dimensionCte = BuildDimensionFilterCte(dimCount);
+        var withClause = string.IsNullOrWhiteSpace(dimensionCte)
+            ? "WITH"
+            : $"{dimensionCte.TrimEnd()},";
+        var sourceSql = balancesExist
+            ? BuildSnapshotBackedBalanceSourceSql(context.TableName, balancesTable, resourceColumnCode, dimCount)
+            : BuildMovementOnlyBalanceSourceSql(context.TableName, resourceColumnCode, dimCount);
+        var totalsSelect = cursor is null
+            ? """
+                  COUNT(*) OVER()::integer AS TotalCount,
+                  COALESCE(SUM(CASE WHEN NetAmount > 0 THEN NetAmount ELSE 0 END) OVER(), 0) AS TotalPositive,
+                  COALESCE(SUM(CASE WHEN NetAmount < 0 THEN -NetAmount ELSE 0 END) OVER(), 0) AS TotalNegativeAbsolute
+              """
+            : """
+                  @KnownTotal::integer AS TotalCount,
+                  @KnownTotalPositive::numeric AS TotalPositive,
+                  @KnownTotalNegativeAbsolute::numeric AS TotalNegativeAbsolute
+              """;
+        var seekPredicate = cursor is null
+            ? string.Empty
+            : """
+              AND (
+                  CASE WHEN NetAmount > 0 THEN 0 ELSE 1 END,
+                  ValueId
+              ) > (@AfterGroupRank::integer, @AfterValueId::uuid)
+              """;
+        var sql = $"""
+{withClause}
+{sourceSql}
+SELECT
+    ValueId,
+    NetAmount,
+{totalsSelect}
+FROM nets
+WHERE NetAmount <> 0
+{seekPredicate}
+ORDER BY CASE WHEN NetAmount > 0 THEN 0 ELSE 1 END, ValueId
+LIMIT @LimitPlusOne;
+""";
+
+        var rows = (await uow.Connection.QueryAsync<GroupNetSqlRow>(new CommandDefinition(
+            sql,
+            new
+            {
+                AsOfMonth = asOfMonthInclusive,
+                GroupDimensionId = groupDimensionId,
+                DimCount = dimCount,
+                DimIds = dimIds,
+                DimValueIds = dimValueIds,
+                AfterGroupRank = cursor?.AfterPositiveGroup == true ? 0 : 1,
+                AfterValueId = cursor?.AfterValueId,
+                KnownTotal = cursor?.Total,
+                KnownTotalPositive = cursor?.TotalPositive,
+                KnownTotalNegativeAbsolute = cursor?.TotalNegativeAbsolute,
+                LimitPlusOne = checked(limit + 1)
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct))).AsList();
+
+        if (rows.Count == 0)
+        {
+            return cursor is null
+                ? new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m)
+                : new OperationalRegisterDimensionResourceNetPage(
+                    [],
+                    cursor.Total,
+                    cursor.TotalPositive,
+                    cursor.TotalNegativeAbsolute);
+        }
+
+        var total = rows[0].TotalCount;
+        var totalPositive = rows[0].TotalPositive;
+        var totalNegativeAbsolute = rows[0].TotalNegativeAbsolute;
+        var hasMore = rows.Count > limit;
+
+        if (hasMore)
+            rows.RemoveAt(rows.Count - 1);
+
+        var keys = rows.Select(row => new DimensionValueKey(groupDimensionId, row.ValueId)).ToArray();
+        var displays = await dimensionValueEnrichmentReader.ResolveAsync(keys, ct);
+
+        return new OperationalRegisterDimensionResourceNetPage(
+            rows.Select(row => new OperationalRegisterDimensionResourceNetRow(
+                row.ValueId,
+                row.NetAmount,
+                displays.GetValueOrDefault(new DimensionValueKey(groupDimensionId, row.ValueId)))).ToArray(),
+            total,
+            totalPositive,
+            totalNegativeAbsolute,
+            hasMore);
+    }
+
     public Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByMonthsAsync(
         Guid registerId,
         DateOnly fromInclusive,

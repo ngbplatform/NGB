@@ -157,22 +157,47 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
             FilterSearchAccountTypes = query.SearchAccountTypes.Count > 0,
             SearchAccountTypes = query.SearchAccountTypes.Select(static type => (short)type).ToArray(),
             Offset = PagingLimits.BoundOffset(query.Offset),
-            query.Limit
+            Limit = query.KnownTotal.HasValue && query.Limit < int.MaxValue
+                ? query.Limit + 1
+                : query.Limit
         };
 
-        using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
-            $"""
-             SELECT COUNT(*)::int FROM ({select}) filtered;
-             {select}
-             ORDER BY code, account_id
-             OFFSET @Offset LIMIT @Limit;
-             """,
-            parameters,
-            transaction: uow.Transaction,
-            cancellationToken: ct));
+        int total;
+        List<AccountRow> rows;
+        if (query.KnownTotal is { } knownTotal)
+        {
+            rows = (await uow.Connection.QueryAsync<AccountRow>(new CommandDefinition(
+                $"""
+                 {select}
+                 ORDER BY code, account_id
+                 OFFSET @Offset LIMIT @Limit;
+                 """,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct))).AsList();
+            total = knownTotal;
+        }
+        else
+        {
+            using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                $"""
+                 SELECT COUNT(*)::int FROM ({select}) filtered;
+                 {select}
+                 ORDER BY code, account_id
+                 OFFSET @Offset LIMIT @Limit;
+                 """,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
 
-        var total = await results.ReadSingleAsync<int>();
-        var rows = (await results.ReadAsync<AccountRow>()).AsList();
+            total = await results.ReadSingleAsync<int>();
+            rows = (await results.ReadAsync<AccountRow>()).AsList();
+        }
+
+        var hasMore = query.KnownTotal.HasValue && rows.Count > query.Limit;
+        if (hasMore)
+            rows.RemoveRange(query.Limit, rows.Count - query.Limit);
+
         var ruleMap = await LoadDimensionRulesAsync(rows.Select(static row => row.AccountId).ToArray(), ct);
         var items = rows.Select(row =>
         {
@@ -185,7 +210,7 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
             };
         }).ToArray();
 
-        return new ChartOfAccountsAdminPage(items, total);
+        return new ChartOfAccountsAdminPage(items, total, hasMore);
     }
 
     public async Task<ChartOfAccountsAdminItem?> GetAdminByIdAsync(Guid accountId, CancellationToken ct = default)

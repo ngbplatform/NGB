@@ -28,6 +28,21 @@ public interface ITradeAnalyticsReader
         int limit,
         CancellationToken ct = default);
 
+    async Task<TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>> GetSalesByItemCursorPageAsync(
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? customerIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        TradeAnalyticsPageCursor<SalesByItemTotals>? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.Offset ?? 0;
+        var page = await GetSalesByItemPageAsync(fromInclusive, toInclusive, itemIds, customerIds, warehouseIds, offset, limit, ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
+
     Task<IReadOnlyList<SalesByItemSummaryRow>> GetSalesByItemAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,
@@ -54,6 +69,21 @@ public interface ITradeAnalyticsReader
         int limit,
         CancellationToken ct = default);
 
+    async Task<TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>> GetSalesByCustomerCursorPageAsync(
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<Guid>? customerIds,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        TradeAnalyticsPageCursor<SalesByCustomerTotals>? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.Offset ?? 0;
+        var page = await GetSalesByCustomerPageAsync(fromInclusive, toInclusive, customerIds, itemIds, warehouseIds, offset, limit, ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
+
     Task<IReadOnlyList<PurchasesByVendorSummaryRow>> GetPurchasesByVendorAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,
@@ -71,6 +101,21 @@ public interface ITradeAnalyticsReader
         int offset,
         int limit,
         CancellationToken ct = default);
+
+    async Task<TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>> GetPurchasesByVendorCursorPageAsync(
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<Guid>? vendorIds,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        TradeAnalyticsPageCursor<PurchasesByVendorTotals>? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.Offset ?? 0;
+        var page = await GetPurchasesByVendorPageAsync(fromInclusive, toInclusive, vendorIds, itemIds, warehouseIds, offset, limit, ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
 
     Task<IReadOnlyList<RecentTradeDocumentSummaryRow>> GetRecentDocumentsAsync(
         DateOnly asOf,

@@ -1,8 +1,10 @@
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
 using NGB.PropertyManagement.Runtime.Policy;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 
@@ -22,16 +24,25 @@ public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(
     {
         var leaseId = CanonicalReportExecutionHelper.GetRequiredGuidFilter(definition, request, "lease_id");
 
-        var offset = Math.Max(0, request.Offset);
-        var limit = request.Limit <= 0 ? 50 : request.Limit;
         var policy = await policyReader.GetRequiredAsync(ct);
-        var page = await reader.GetPageAsync(
-            policy.ReceivablesOpenItemsOperationalRegisterId,
-            leaseId,
-            ReceivablesReportMode.OpenItemsDetails,
-            offset,
-            limit,
-            ct);
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            policy.ReceivablesOpenItemsOperationalRegisterId.ToString("D"),
+            leaseId.ToString("D"));
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<ReceivablesReportPageCursor>(cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
+        var limit = request.DisablePaging
+            ? PagingLimits.MaxMaterializedRows + 1
+            : request.Limit <= 0 ? 50 : request.Limit;
+        var page = cursor is not null
+            ? await reader.GetCursorPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId, leaseId,
+                ReceivablesReportMode.OpenItemsDetails, cursor, limit, ct)
+            : await reader.GetPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId, leaseId,
+                ReceivablesReportMode.OpenItemsDetails, offset, limit, ct);
 
         var rows = page.Rows.Select(x => ToDetailRow(new OpenItemDetailsRow(
             Kind: x.IsCharge ? "Charge" : "Credit",
@@ -69,13 +80,23 @@ public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(
                     ["executor"] = "canonical-pm-receivables-open-items-details"
                 }));
 
+        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new ReceivablesReportPageCursor(
+                    offset + page.Rows.Count, page.Total, page.TotalOriginal,
+                    page.TotalOutstanding, page.TotalCredit, page.PartyDisplay,
+                    page.PropertyDisplay, page.LeaseDisplay))
+            : null;
+
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
             sheet: sheet,
             offset: offset,
             limit: limit,
             total: page.Total,
-            hasMore: offset + page.Rows.Count < page.Total,
-            nextCursor: null,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-pm-receivables-open-items-details"

@@ -375,6 +375,59 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
     }
 
     [Fact]
+    public async Task Balance_cursor_page_uses_seek_and_carried_totals_without_repeating_windows()
+    {
+        var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var valueId = Guid.NewGuid();
+        var groupDimensionId = Guid.NewGuid();
+        var dimensionSets = new Mock<IDimensionSetReader>(MockBehavior.Strict);
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        enrichment.Setup(x => x.ResolveAsync(
+                It.IsAny<IReadOnlyCollection<DimensionValueKey>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<DimensionValueKey, string>
+            {
+                [new(groupDimensionId, valueId)] = "Resolved"
+            });
+        var connection = new RecordingDbConnection(
+            readerFactory: _ => GroupNetRows(valueId, -4m, 7, 12m, 4m),
+            scalar: _ => true);
+        var sut = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(connection),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            dimensionSets.Object,
+            enrichment.Object);
+
+        var page = await sut.GetResourceBalancesByDimensionCursorAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            dimensions: null,
+            groupDimensionId,
+            "amount",
+            new OperationalRegisterDimensionResourceNetCursor(
+                AfterPositiveGroup: true,
+                AfterValueId: Guid.NewGuid(),
+                NextOffset: 3,
+                Total: 7,
+                TotalPositive: 12m,
+                TotalNegativeAbsolute: 4m),
+            limit: 2);
+
+        page.Rows.Should().ContainSingle().Which.Display.Should().Be("Resolved");
+        page.Total.Should().Be(7);
+        page.TotalPositive.Should().Be(12m);
+        page.TotalNegativeAbsolute.Should().Be(4m);
+        var sql = connection.Commands.Last().CommandText;
+        sql.Should().Contain("@KnownTotal::integer")
+            .And.Contain("@AfterGroupRank::integer")
+            .And.NotContain(" OVER()")
+            .And.NotContain("OFFSET");
+        dimensionSets.VerifyNoOtherCalls();
+        enrichment.VerifyAll();
+    }
+
+    [Fact]
     public async Task Movements_reader_returns_empty_for_absent_table_and_maps_database_null_resource_to_zero()
     {
         var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
@@ -528,6 +581,23 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         table.Columns.Add("Name", typeof(string));
         table.Columns.Add("Ordinal", typeof(int));
         table.Rows.Add("Amount", "amount", "amount", "Amount", 1);
+        return table.CreateDataReader();
+    }
+
+    private static DataTableReader GroupNetRows(
+        Guid valueId,
+        decimal netAmount,
+        int total,
+        decimal totalPositive,
+        decimal totalNegativeAbsolute)
+    {
+        var table = new DataTable();
+        table.Columns.Add("ValueId", typeof(Guid));
+        table.Columns.Add("NetAmount", typeof(decimal));
+        table.Columns.Add("TotalCount", typeof(int));
+        table.Columns.Add("TotalPositive", typeof(decimal));
+        table.Columns.Add("TotalNegativeAbsolute", typeof(decimal));
+        table.Rows.Add(valueId, netAmount, total, totalPositive, totalNegativeAbsolute);
         return table.CreateDataReader();
     }
 

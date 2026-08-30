@@ -161,12 +161,20 @@ queue_rows AS (
 )
 """;
 
-    private static readonly string PageSql = QueueCte + """
+    private static string BuildPageSql(bool knownTotal) => QueueCte + (knownTotal
+        ? """
+,
+stats AS (
+    SELECT @known_total::int AS total_count
+),
+"""
+        : """
 ,
 stats AS (
     SELECT COUNT(*)::int AS total_count
     FROM queue_rows
 ),
+""") + """
 paged AS (
 SELECT
     *
@@ -204,11 +212,25 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
 """;
 
     public async Task<MaintenanceQueuePage> GetPageAsync(MaintenanceQueueQuery query, CancellationToken ct = default)
+        => await GetPageCoreAsync(query, null, false, ct);
+
+    public async Task<MaintenanceQueuePage> GetCursorPageAsync(
+        MaintenanceQueueQuery query,
+        MaintenanceQueuePageCursor? cursor,
+        CancellationToken ct = default)
+        => await GetPageCoreAsync(query with { Offset = cursor?.Offset ?? 0 }, cursor, true, ct);
+
+    private async Task<MaintenanceQueuePage> GetPageCoreAsync(
+        MaintenanceQueueQuery query,
+        MaintenanceQueuePageCursor? cursor,
+        bool cursorPaging,
+        CancellationToken ct)
     {
         query.EnsureInvariant();
         await uow.EnsureConnectionOpenAsync(ct);
 
-        await ValidateFiltersAsync(query, ct);
+        if (cursor is null)
+            await ValidateFiltersAsync(query, ct);
 
         var parameters = new
         {
@@ -221,18 +243,21 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
             queue_state = query.QueueState?.ToCode(),
             posted = (int)DocumentStatus.Posted,
             offset = PagingLimits.BoundOffset(query.Offset),
-            limit = query.Limit
+            limit = cursorPaging && query.Limit < int.MaxValue ? query.Limit + 1 : query.Limit,
+            known_total = cursor?.Total
         };
 
         var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
-            PageSql,
+            BuildPageSql(cursor is not null),
             parameters,
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
 
         var total = dbRows[0].TotalCount;
-        var rows = dbRows
-            .Where(row => row.HasRow)
+        var dataRows = dbRows.Where(static row => row.HasRow).ToArray();
+        var hasMore = cursorPaging && dataRows.Length > query.Limit;
+        var rows = dataRows
+            .Take(query.Limit)
             .Select(row => MapRow(new PageRow(
                 row.RequestId!.Value,
                 row.RequestDisplay!,
@@ -256,7 +281,7 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
                 row.QueueState!)))
             .ToArray();
 
-        var result = new MaintenanceQueuePage(rows, total);
+        var result = new MaintenanceQueuePage(rows, total, hasMore);
         result.EnsureInvariant();
         return result;
     }

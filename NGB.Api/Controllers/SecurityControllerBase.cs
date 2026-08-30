@@ -30,10 +30,11 @@ public abstract class SecurityControllerBase(
         [FromQuery] int offset = 0,
         [FromQuery] int limit = PagingLimits.DefaultPageSize,
         [FromQuery] bool? isActive = null,
+        [FromQuery] string? cursor = null,
         CancellationToken ct = default)
     {
         await RequireAsync(NgbSystemPermissions.UsersView, ct);
-        return await users.GetUsersAsync(new UserPageRequestDto(offset, limit, isActive), ct);
+        return await users.GetUsersAsync(new UserPageRequestDto(offset, limit, isActive, cursor), ct);
     }
 
     [HttpPost("~/api/security/users")]

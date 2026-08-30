@@ -6,6 +6,7 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Persistence.Accounts;
 using NGB.Runtime.Accounts;
+using NGB.Runtime.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -85,6 +86,22 @@ public sealed class AdminService(
                 .Where(type => type.ToString().Contains(search, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            "admin.chart-of-accounts",
+            request.IncludeDeleted.ToString(),
+            request.OnlyDeleted?.ToString(),
+            request.OnlyActive?.ToString(),
+            string.Join(',', accountTypes.Order()),
+            search,
+            string.Join(',', searchAccountTypes.Order()));
+        var cursor = string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<ChartOfAccountsPageCursor>(cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? request.Offset;
+
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(request.Offset), offset, "Offset must be 0 or greater.");
+
         var result = await coaAdmin.GetPageAsync(
             new ChartOfAccountsAdminPageQuery(
                 request.IncludeDeleted,
@@ -93,16 +110,26 @@ public sealed class AdminService(
                 accountTypes,
                 search,
                 searchAccountTypes,
-                request.Offset,
-                request.Limit),
+                offset,
+                request.Limit,
+                cursor?.Total),
             ct);
 
         var page = result.Items
             .Select(Map)
             .ToArray();
 
-        return new ChartOfAccountsPageDto(page, request.Offset, request.Limit, result.Total);
+        var hasMore = result.HasMore || offset + page.Length < result.Total;
+        var nextCursor = hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new ChartOfAccountsPageCursor(offset + page.Length, result.Total))
+            : null;
+
+        return new ChartOfAccountsPageDto(page, offset, request.Limit, result.Total, nextCursor);
     }
+
+    private sealed record ChartOfAccountsPageCursor(int Offset, int Total);
 
     public async Task<ChartOfAccountsAccountDto> GetChartOfAccountAsync(Guid accountId, CancellationToken ct)
     {

@@ -13,6 +13,15 @@ public interface IGeneralJournalEntryUiService
         string? trash,
         CancellationToken ct);
 
+    Task<GeneralJournalEntryPageDto> GetCursorPageAsync(
+        string cursor,
+        int limit,
+        string? search,
+        DateOnly? dateFrom,
+        DateOnly? dateTo,
+        string? trash,
+        CancellationToken ct);
+
     Task<GeneralJournalEntryDetailsDto> GetByIdAsync(Guid id, CancellationToken ct);
 
     Task<GeneralJournalEntryDetailsDto> CreateDraftAsync(

@@ -15,7 +15,7 @@ public sealed class PostgresTradeInventoryBalanceReader(IUnitOfWork uow, Operati
     private static readonly Guid ItemDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Item}");
     private static readonly Guid WarehouseDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Warehouse}");
 
-    public async Task<TradeInventoryBalancePage> GetPageAsync(
+    public Task<TradeInventoryBalancePage> GetPageAsync(
         Guid registerId,
         DateOnly asOfInclusive,
         IReadOnlyList<Guid>? itemIds,
@@ -24,6 +24,34 @@ public sealed class PostgresTradeInventoryBalanceReader(IUnitOfWork uow, Operati
         int offset,
         int limit,
         CancellationToken ct = default)
+        => GetPageCoreAsync(
+            registerId, asOfInclusive, itemIds, warehouseIds, sort, offset, limit,
+            cursor: null, cursorMode: false, ct);
+
+    public Task<TradeInventoryBalancePage> GetCursorPageAsync(
+        Guid registerId,
+        DateOnly asOfInclusive,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        TradeInventoryBalanceSort sort,
+        TradeInventoryBalancePageCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+        => GetPageCoreAsync(
+            registerId, asOfInclusive, itemIds, warehouseIds, sort, cursor?.Offset ?? 0, limit,
+            cursor, cursorMode: true, ct);
+
+    private async Task<TradeInventoryBalancePage> GetPageCoreAsync(
+        Guid registerId,
+        DateOnly asOfInclusive,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? warehouseIds,
+        TradeInventoryBalanceSort sort,
+        int offset,
+        int limit,
+        TradeInventoryBalancePageCursor? cursor,
+        bool cursorMode,
+        CancellationToken ct)
     {
         if (registerId == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(registerId), "RegisterId must not be empty.");
@@ -55,6 +83,9 @@ public sealed class PostgresTradeInventoryBalanceReader(IUnitOfWork uow, Operati
         var positionSourceSql = context.BalancesExist
             ? BuildSnapshotBackedPositionSourceSql(context.MovementsTable, context.BalancesTable)
             : BuildMovementOnlyPositionSourceSql(context.MovementsTable);
+        var totalsProjection = cursor is null
+            ? "COUNT(*) OVER()::integer AS TotalCount, SUM(position.quantity) OVER() AS TotalQuantity"
+            : "@KnownTotal::integer AS TotalCount, @KnownTotalQuantity::numeric AS TotalQuantity";
         var sql = $"""
 {positionSourceSql},
 positions AS (
@@ -91,12 +122,11 @@ SELECT
     position.warehouse_id AS WarehouseId,
     position.warehouse_display AS WarehouseDisplay,
     position.quantity AS Quantity,
-    COUNT(*) OVER()::integer AS TotalCount,
-    SUM(position.quantity) OVER() AS TotalQuantity
+    {totalsProjection}
 FROM enriched position
 ORDER BY {orderBy}
 OFFSET @Offset
-LIMIT @Limit;
+LIMIT @QueryLimit;
 """;
 
         var rows = (await uow.Connection.QueryAsync<InventoryBalanceSqlRow>(new CommandDefinition(
@@ -112,12 +142,17 @@ LIMIT @Limit;
                 ItemIds = itemIdArray,
                 WarehouseIds = warehouseIdArray,
                 Offset = PagingLimits.BoundOffset(offset),
-                Limit = limit
+                QueryLimit = cursorMode && limit < int.MaxValue ? limit + 1 : limit,
+                KnownTotal = cursor?.Total,
+                KnownTotalQuantity = cursor?.TotalQuantity
             },
             uow.Transaction,
             cancellationToken: ct))).AsList();
 
         var first = rows.FirstOrDefault();
+        var hasMore = cursorMode && rows.Count > limit;
+        if (hasMore)
+            rows.RemoveAt(rows.Count - 1);
 
         return new TradeInventoryBalancePage(
             rows.Select(static row => new TradeInventoryBalanceRow(
@@ -126,8 +161,9 @@ LIMIT @Limit;
                 row.WarehouseId,
                 row.WarehouseDisplay,
                 row.Quantity)).ToArray(),
-            first?.TotalCount ?? 0,
-            first?.TotalQuantity ?? 0m);
+            cursor?.Total ?? first?.TotalCount ?? 0,
+            cursor?.TotalQuantity ?? first?.TotalQuantity ?? 0m,
+            hasMore);
     }
 
     private static string BuildMovementOnlyPositionSourceSql(string movementsTable) => $"""

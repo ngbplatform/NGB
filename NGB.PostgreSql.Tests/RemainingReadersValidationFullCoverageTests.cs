@@ -20,6 +20,7 @@ using NGB.Persistence.Catalogs.Enrichment;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.Documents;
+using NGB.Persistence.Documents.GeneralJournalEntry;
 using NGB.PostgreSql.Dimensions;
 using NGB.PostgreSql.Documents.GeneralJournalEntry;
 using NGB.PostgreSql.Readers;
@@ -163,6 +164,29 @@ public sealed class RemainingReadersValidationFullCoverageTests
             .Contain("WITH search_candidates")
             .And.Contain("COUNT(*) OVER()");
         connection.Commands[1].CommandText.Should().Contain("SELECT COUNT(*)");
+    }
+
+    [Fact]
+    public async Task General_journal_cursor_page_reuses_known_total_without_window_or_fallback_count()
+    {
+        var connection = new RecordingDbConnection(readerFactory: _ => EmptyGeneralJournalPageRows());
+        var sut = new PostgresGeneralJournalEntryUiQueryRepository(
+            new RecordingUnitOfWork(connection));
+
+        var page = await sut.GetCursorPageAsync(
+            new GeneralJournalEntryPageCursor(10, 37),
+            10,
+            null,
+            null,
+            null,
+            "active");
+
+        page.Total.Should().Be(37);
+        page.Items.Should().BeEmpty();
+        connection.Commands.Should().ContainSingle();
+        connection.Commands[0].CommandText.Should()
+            .Contain("@KnownTotal::integer AS TotalCount")
+            .And.NotContain("COUNT(*) OVER()");
     }
 
     [Fact]

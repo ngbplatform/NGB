@@ -25,4 +25,7 @@ public sealed record ReceivablesOpenItemsPageResponse(
     IReadOnlyList<ReceivablesOpenItemPageRow> Rows,
     int Total,
     decimal TotalOutstanding,
-    decimal TotalCredit);
+    decimal TotalCredit,
+    int Offset = 0,
+    bool HasMore = false,
+    string? NextCursor = null);

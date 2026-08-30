@@ -82,7 +82,8 @@ public sealed record TenantStatementTotals(
 public sealed record TenantStatementPage(
     IReadOnlyList<TenantStatementRow> Rows,
     int Total,
-    TenantStatementTotals Totals)
+    TenantStatementTotals Totals,
+    bool HasMore = false)
 {
     public void EnsureInvariant()
     {
@@ -100,3 +101,5 @@ public sealed record TenantStatementPage(
         }
     }
 }
+
+public sealed record TenantStatementPageCursor(int Offset, int Total, TenantStatementTotals Totals);

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using NGB.PostgreSql.Internal;
 using NGB.ReferenceRegisters.Contracts;
 
 namespace NGB.PostgreSql.ReferenceRegisters;
@@ -7,11 +7,27 @@ namespace NGB.PostgreSql.ReferenceRegisters;
 /// Caches reference-register metadata only after records make that metadata immutable.
 /// Mutable and missing registers remain immediately visible to readers and writers.
 /// </summary>
-public sealed class ReferenceRegisterMetadataCache(TimeProvider timeProvider)
+public sealed class ReferenceRegisterMetadataCache
 {
     private static readonly TimeSpan TimeToLive = TimeSpan.FromMinutes(5);
-    private readonly ConcurrentDictionary<Guid, CacheEntry> _entries = new();
-    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _loadGates = new();
+    private const int DefaultCapacity = 4_096;
+    private readonly TimeProvider _timeProvider;
+    private readonly BoundedExpiringCache<Guid, ReferenceRegisterMetadataContext> _entries;
+    private readonly AsyncKeyedLock<Guid> _loadGates = new();
+
+    public ReferenceRegisterMetadataCache(TimeProvider timeProvider)
+        : this(timeProvider, DefaultCapacity)
+    {
+    }
+
+    internal ReferenceRegisterMetadataCache(TimeProvider timeProvider, int capacity)
+    {
+        _timeProvider = timeProvider;
+        _entries = new BoundedExpiringCache<Guid, ReferenceRegisterMetadataContext>(capacity);
+    }
+
+    internal int EntryCount => _entries.Count;
+    internal int LoadGateCount => _loadGates.Count;
 
     public async Task<ReferenceRegisterMetadataContext> GetOrCreateAsync(
         Guid registerId,
@@ -21,10 +37,7 @@ public sealed class ReferenceRegisterMetadataCache(TimeProvider timeProvider)
         if (TryGet(registerId, out var cached))
             return cached;
 
-        var gate = _loadGates.GetOrAdd(registerId, static _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
-
-        try
+        using (await _loadGates.AcquireAsync(registerId, ct))
         {
             if (TryGet(registerId, out cached))
                 return cached;
@@ -34,38 +47,23 @@ public sealed class ReferenceRegisterMetadataCache(TimeProvider timeProvider)
 
             return created;
         }
-        finally
-        {
-            gate.Release();
-        }
     }
 
     public void Remember(ReferenceRegisterMetadataContext context)
     {
         if (context.Register.HasRecords)
-            _entries[context.Register.RegisterId] = new CacheEntry(context, timeProvider.GetUtcNow().Add(TimeToLive));
+        {
+            var now = _timeProvider.GetUtcNow();
+            _entries.Set(context.Register.RegisterId, context, now.Add(TimeToLive), now);
+        }
     }
 
-    public void Invalidate(Guid registerId) => _entries.TryRemove(registerId, out _);
+    public void Invalidate(Guid registerId) => _entries.Remove(registerId);
 
     private bool TryGet(Guid registerId, out ReferenceRegisterMetadataContext context)
     {
-        if (_entries.TryGetValue(registerId, out var entry))
-        {
-            if (entry.ExpiresAtUtc > timeProvider.GetUtcNow())
-            {
-                context = entry.Context;
-                return true;
-            }
-
-            _entries.TryRemove(new KeyValuePair<Guid, CacheEntry>(registerId, entry));
-        }
-
-        context = null!;
-        return false;
+        return _entries.TryGet(registerId, _timeProvider.GetUtcNow(), out context);
     }
-
-    private sealed record CacheEntry(ReferenceRegisterMetadataContext Context, DateTimeOffset ExpiresAtUtc);
 }
 
 public sealed record ReferenceRegisterMetadataContext(

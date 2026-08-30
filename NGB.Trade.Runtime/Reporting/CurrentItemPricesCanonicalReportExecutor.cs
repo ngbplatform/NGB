@@ -2,6 +2,7 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Persistence.Documents;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Trade.Reporting;
@@ -22,17 +23,22 @@ public sealed class CurrentItemPricesCanonicalReportExecutor(
     {
         var itemIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "item_id");
         var priceTypeIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "price_type_id");
-        var offset = Math.Max(0, request.Offset);
+        var cursorKind = BuildCursorKind(itemIds, priceTypeIds);
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<TradeCurrentItemPricePageCursor>(cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
         var limit = request.DisablePaging
             ? PagingLimits.MaxMaterializedRows + 1
             : request.Limit <= 0 ? 100 : request.Limit;
-        var page = await priceReader.GetPageAsync(
-            DateTime.UtcNow,
-            itemIds,
-            priceTypeIds,
-            offset,
-            limit,
-            ct);
+        var asOfUtc = cursor?.AsOfUtc is { } cursorAsOfUtc && cursorAsOfUtc != default
+            ? cursorAsOfUtc
+            : DateTime.UtcNow;
+        var page = cursor is not null || (!request.DisablePaging && offset == 0)
+            ? await priceReader.GetCursorPageAsync(
+                asOfUtc, itemIds, priceTypeIds, cursor, limit, ct)
+            : await priceReader.GetPageAsync(
+                asOfUtc, itemIds, priceTypeIds, offset, limit, ct);
         var sourceDocumentRefs = await ResolveDocumentRefsAsync(page.Rows, ct);
 
         var rows = page.Rows
@@ -58,18 +64,31 @@ public sealed class CurrentItemPricesCanonicalReportExecutor(
                     ["executor"] = "canonical-trd-current-item-prices"
                 }));
 
+        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new TradeCurrentItemPricePageCursor(offset + page.Rows.Count, page.Total, asOfUtc))
+            : null;
+
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
             sheet: sheet,
             offset: offset,
             limit: limit,
             total: page.Total,
-            hasMore: offset + page.Rows.Count < page.Total,
-            nextCursor: null,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-trd-current-item-prices"
             });
     }
+
+    private string BuildCursorKind(IReadOnlyCollection<Guid> itemIds, IReadOnlyCollection<Guid> priceTypeIds)
+        => SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            string.Join(',', itemIds.Order()),
+            string.Join(',', priceTypeIds.Order()));
 
     private async Task<IReadOnlyDictionary<Guid, DocumentDisplayRef>> ResolveDocumentRefsAsync(
         IReadOnlyList<TradeCurrentItemPriceRow> rows,

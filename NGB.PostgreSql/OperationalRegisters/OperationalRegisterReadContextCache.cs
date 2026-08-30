@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using NGB.PostgreSql.Internal;
 
 namespace NGB.PostgreSql.OperationalRegisters;
 
@@ -6,11 +6,27 @@ namespace NGB.PostgreSql.OperationalRegisters;
 /// Caches immutable operational-register physical read metadata across request scopes.
 /// Missing physical tables are deliberately not cached so schema creation becomes visible immediately.
 /// </summary>
-public sealed class OperationalRegisterReadContextCache(TimeProvider timeProvider)
+public sealed class OperationalRegisterReadContextCache
 {
     private static readonly TimeSpan TimeToLive = TimeSpan.FromMinutes(5);
-    private readonly ConcurrentDictionary<CacheKey, CacheEntry> _entries = new();
-    private readonly ConcurrentDictionary<CacheKey, SemaphoreSlim> _loadGates = new();
+    private const int DefaultCapacity = 4_096;
+    private readonly TimeProvider _timeProvider;
+    private readonly BoundedExpiringCache<CacheKey, OperationalRegisterReadContext> _entries;
+    private readonly AsyncKeyedLock<CacheKey> _loadGates = new();
+
+    public OperationalRegisterReadContextCache(TimeProvider timeProvider)
+        : this(timeProvider, DefaultCapacity)
+    {
+    }
+
+    internal OperationalRegisterReadContextCache(TimeProvider timeProvider, int capacity)
+    {
+        _timeProvider = timeProvider;
+        _entries = new BoundedExpiringCache<CacheKey, OperationalRegisterReadContext>(capacity);
+    }
+
+    internal int EntryCount => _entries.Count;
+    internal int LoadGateCount => _loadGates.Count;
 
     public async Task<OperationalRegisterReadContext> GetOrCreateAsync(
         Guid registerId,
@@ -22,55 +38,34 @@ public sealed class OperationalRegisterReadContextCache(TimeProvider timeProvide
         if (TryGet(key, out var cached))
             return cached;
 
-        var gate = _loadGates.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await gate.WaitAsync(ct);
-
-        try
+        using (await _loadGates.AcquireAsync(key, ct))
         {
             if (TryGet(key, out cached))
                 return cached;
 
             var created = await factory(ct);
             if (created.MovementsExist && created.BalancesExist)
-                _entries[key] = new CacheEntry(created, timeProvider.GetUtcNow().Add(TimeToLive));
+            {
+                var now = _timeProvider.GetUtcNow();
+                _entries.Set(key, created, now.Add(TimeToLive), now);
+            }
 
             return created;
-        }
-        finally
-        {
-            gate.Release();
         }
     }
 
     public void Invalidate(Guid registerId)
     {
-        foreach (var key in _entries.Keys)
-        {
-            if (key.RegisterId == registerId)
-                _entries.TryRemove(key, out _);
-        }
+        _entries.RemoveWhere(key => key.RegisterId == registerId);
     }
 
     private bool TryGet(CacheKey key, out OperationalRegisterReadContext context)
     {
-        if (_entries.TryGetValue(key, out var entry))
-        {
-            if (entry.ExpiresAtUtc > timeProvider.GetUtcNow())
-            {
-                context = entry.Context;
-                return true;
-            }
-
-            _entries.TryRemove(key, out _);
-        }
-
-        context = null!;
-        return false;
+        return _entries.TryGet(key, _timeProvider.GetUtcNow(), out context);
     }
 
     private readonly record struct CacheKey(Guid RegisterId, string RequiredResourceColumn);
 
-    private sealed record CacheEntry(OperationalRegisterReadContext Context, DateTimeOffset ExpiresAtUtc);
 }
 
 public sealed record OperationalRegisterReadContext(

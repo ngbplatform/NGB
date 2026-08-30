@@ -38,11 +38,18 @@ public sealed class CurrentItemPricesCanonicalReportExecutorFullCoverageTests
             .Single(item => item.ReportCode == sut.ReportCode);
 
         var first = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(Offset: -2, Limit: 1), default);
+        var cursorPage = await sut.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(Cursor: first.NextCursor, Limit: 1),
+            default);
         var all = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(DisablePaging: true), default);
         await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(Limit: 0), default);
 
         first.Total.Should().Be(prices.Length);
         first.HasMore.Should().BeTrue();
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
+        cursorPage.Offset.Should().Be(1);
+        cursorPage.Total.Should().Be(prices.Length);
         all.PrebuiltSheet!.Rows.Should().HaveCount(prices.Length);
 
         var exact = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(

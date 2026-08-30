@@ -188,10 +188,15 @@ public sealed class SimpleReadersAndNumberingFullCoverageTests
             await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         }
 
+        Func<Task> invalidCount = async () => await sut.ReserveAsync("invoice", 2026, 0, default);
+        await invalidCount.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
         (await sut.NextAsync("invoice", 1900, default)).Should().Be(42);
         (await sut.NextAsync("invoice", 3000, default)).Should().Be(42);
-        connection.Commands.Should().HaveCount(2)
-            .And.OnlyContain(x => x.CommandText.Contains("RETURNING last_seq", StringComparison.Ordinal));
+        (await sut.ReserveAsync("invoice", 2026, 3, default)).Should().Be(42);
+        connection.Commands.Should().HaveCount(3)
+            .And.OnlyContain(x => x.CommandText.Contains("RETURNING last_seq", StringComparison.Ordinal)
+                && x.CommandText.Contains("EXCLUDED.last_seq", StringComparison.Ordinal));
 
         var inactive = new PostgresDocumentNumberSequenceRepository(
             new RecordingUnitOfWork(new RecordingDbConnection(scalar: _ => 1L)));

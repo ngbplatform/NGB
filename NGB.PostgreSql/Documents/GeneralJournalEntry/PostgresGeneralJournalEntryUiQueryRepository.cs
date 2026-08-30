@@ -20,6 +20,28 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
         DateOnly? dateTo,
         string? trash,
         CancellationToken ct = default)
+        => await GetPageCoreAsync(offset, limit, search, dateFrom, dateTo, trash, null, false, ct);
+
+    public async Task<GeneralJournalEntryPageRecord> GetCursorPageAsync(
+        GeneralJournalEntryPageCursor cursor,
+        int limit,
+        string? search,
+        DateOnly? dateFrom,
+        DateOnly? dateTo,
+        string? trash,
+        CancellationToken ct = default)
+        => await GetPageCoreAsync(cursor.Offset, limit, search, dateFrom, dateTo, trash, cursor, true, ct);
+
+    private async Task<GeneralJournalEntryPageRecord> GetPageCoreAsync(
+        int offset,
+        int limit,
+        string? search,
+        DateOnly? dateFrom,
+        DateOnly? dateTo,
+        string? trash,
+        GeneralJournalEntryPageCursor? cursor,
+        bool cursorPaging,
+        CancellationToken ct)
     {
         if (offset < 0)
             throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be 0 or greater.");
@@ -48,8 +70,9 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
                 ? DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc)
                 : (DateTime?)null,
             TrashMode = trashMode,
-            Limit = limit,
-            Offset = offset
+            Limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
+            Offset = offset,
+            KnownTotal = cursor?.Total
         };
 
         const string filtersSql = """
@@ -99,6 +122,9 @@ WHERE
 {filtersSql};
 """;
 
+        var totalProjection = cursor is null
+            ? "COUNT(*) OVER() AS TotalCount"
+            : "@KnownTotal::integer AS TotalCount";
         var pageSql = $"""
 {searchCandidatesSql}
 SELECT
@@ -119,7 +145,7 @@ SELECT
     g.reversal_of_document_id AS ReversalOfDocumentId,
     g.posted_by AS PostedBy,
     g.posted_at_utc AS PostedAtUtc,
-    COUNT(*) OVER() AS TotalCount
+    {totalProjection}
 FROM documents d
 INNER JOIN doc_general_journal_entry g ON g.document_id = d.id
 {searchJoinSql}
@@ -135,11 +161,11 @@ LIMIT @Limit OFFSET @Offset;
                 args,
                 transaction: uow.Transaction,
                 cancellationToken: ct))).AsList();
-        var total = rows.Count == 0 ? 0 : rows[0].TotalCount;
+        var total = cursor?.Total ?? (rows.Count == 0 ? 0 : rows[0].TotalCount);
 
         // A window count has no carrier row when an offset lies beyond the result.
         // Keep the exact-total contract with a count-only fallback for that rare case.
-        if (rows.Count == 0 && offset > 0)
+        if (cursor is null && rows.Count == 0 && offset > 0)
         {
             total = await uow.Connection.ExecuteScalarAsync<int>(new CommandDefinition(
                 countSql,
@@ -148,7 +174,13 @@ LIMIT @Limit OFFSET @Offset;
                 cancellationToken: ct));
         }
 
-        return new GeneralJournalEntryPageRecord(rows.Select(Map).ToArray(), offset, limit, total);
+        var hasMore = cursorPaging && rows.Count > limit;
+        return new GeneralJournalEntryPageRecord(
+            rows.Take(limit).Select(Map).ToArray(),
+            offset,
+            limit,
+            total,
+            hasMore);
     }
 
     private static string NormalizeTrashMode(string? trash)

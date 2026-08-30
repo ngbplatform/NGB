@@ -68,16 +68,23 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
         var buildingId = Guid.CreateVersion7();
         await InsertPropertyHeadsAsync(uow, Guid.CreateVersion7(), Guid.CreateVersion7(), buildingId);
 
-        var page = await reader.GetPageAsync(
+        var firstPage = await reader.GetPageAsync(
             buildingId: null,
             asOfUtc: AsOf,
-            offset: 1,
-            limit: int.MaxValue,
+            offset: 0,
+            limit: 1,
+            ct: CancellationToken.None);
+        var page = await reader.GetCursorPageAsync(
+            buildingId: null,
+            asOfUtc: AsOf,
+            cursor: new OccupancySummaryPageCursor(1, firstPage.Total, firstPage.Totals),
+            limit: 1,
             ct: CancellationToken.None);
 
         page.Total.Should().Be(1);
         page.Rows.Should().BeEmpty();
         page.Totals.Should().Be(new OccupancySummaryTotals(AsOf, 1, 0, 0));
+        page.HasMore.Should().BeFalse();
     }
 
     [Fact]
@@ -178,6 +185,22 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
 
         page.Total.Should().Be(0);
         page.Rows.Should().BeEmpty();
+
+        var cursorPage = await reader.GetCursorPageAsync(
+            new MaintenanceQueueQuery(
+                AsOf,
+                BuildingId: null,
+                PropertyId: null,
+                CategoryId: null,
+                AssignedPartyId: null,
+                Priority: null,
+                QueueState: null,
+                Offset: 0,
+                Limit: 1),
+            new MaintenanceQueuePageCursor(0, 0),
+            CancellationToken.None);
+        cursorPage.Total.Should().Be(0);
+        cursorPage.Rows.Should().BeEmpty();
     }
 
     private static async Task InsertPropertyHeadsAsync(

@@ -68,6 +68,7 @@ public sealed class PostgresReadPathCachesFullCoverageTests
 
         cache.Invalidate("public.prices");
         (await cache.ExistsAsync("public.prices", _ => Task.FromResult(true), default)).Should().BeTrue();
+        cache.GateCount.Should().Be(0);
     }
 
     [Fact]
@@ -123,6 +124,7 @@ public sealed class PostgresReadPathCachesFullCoverageTests
             missing.MovementsExist.Should().BeFalse();
         }
         missingCalls.Should().Be(2);
+        cache.LoadGateCount.Should().Be(0);
     }
 
     [Fact]
@@ -193,6 +195,7 @@ public sealed class PostgresReadPathCachesFullCoverageTests
             "record_id|value",
             _ => Task.FromResult(true),
             default)).Should().BeTrue();
+        cache.ProbeGateCount.Should().Be(0);
     }
 
     [Fact]
@@ -237,6 +240,7 @@ public sealed class PostgresReadPathCachesFullCoverageTests
         await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
         time.Advance(TimeSpan.FromMinutes(6));
         await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
+        cache.LoadGateCount.Should().Be(0);
     }
 
     [Fact]
@@ -282,6 +286,43 @@ public sealed class PostgresReadPathCachesFullCoverageTests
         await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
         time.Advance(TimeSpan.FromMinutes(6));
         await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
+        cache.LoadGateCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Read_path_caches_bound_cardinality_and_evict_old_entries()
+    {
+        var time = new AdjustableTimeProvider(new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero));
+        var operational = new OperationalRegisterMetadataCache(time, capacity: 2);
+        var reference = new ReferenceRegisterMetadataCache(time, capacity: 2);
+        var readContexts = new OperationalRegisterReadContextCache(time, capacity: 2);
+        var presence = new PostgresRelationPresenceCache(time, capacity: 2);
+        var shapes = new PostgresRelationShapeCache(time, capacity: 2);
+        var ids = Enumerable.Range(0, 3).Select(_ => Guid.NewGuid()).ToArray();
+
+        foreach (var id in ids)
+        {
+            operational.Remember(OperationalContext(id, hasMovements: true));
+            reference.Remember(ReferenceContext(id, hasRecords: true));
+            await readContexts.GetOrCreateAsync(
+                id,
+                "amount",
+                _ => Task.FromResult(new OperationalRegisterReadContext("m", "b", true, true)),
+                default);
+            await presence.ExistsAsync($"public.table_{id:N}", _ => Task.FromResult(true), default);
+            shapes.MarkVerified($"public.table_{id:N}", "id|amount");
+        }
+
+        operational.EntryCount.Should().Be(2);
+        reference.EntryCount.Should().Be(2);
+        readContexts.EntryCount.Should().Be(2);
+        presence.EntryCount.Should().Be(2);
+        shapes.EntryCount.Should().Be(2);
+        operational.LoadGateCount.Should().Be(0);
+        reference.LoadGateCount.Should().Be(0);
+        readContexts.LoadGateCount.Should().Be(0);
+        presence.GateCount.Should().Be(0);
+        shapes.ProbeGateCount.Should().Be(0);
     }
 
     private static OperationalRegisterMetadataContext OperationalContext(Guid registerId, bool hasMovements)

@@ -21,7 +21,11 @@ public sealed class ReceivablesOpenItemsCanonicalReportExecutor(IReceivablesOpen
 
         var offset = Math.Max(0, request.Offset);
         var limit = request.Limit <= 0 ? 50 : request.Limit;
-        var open = await openItems.GetOpenItemsPageAsync(Guid.Empty, Guid.Empty, leaseId, offset, limit, ct);
+        var useLegacyOffset = offset > 0 && string.IsNullOrWhiteSpace(request.Cursor);
+        var open = useLegacyOffset
+            ? await openItems.GetOpenItemsPageAsync(Guid.Empty, Guid.Empty, leaseId, offset, limit, ct)
+            : await openItems.GetOpenItemsCursorPageAsync(Guid.Empty, Guid.Empty, leaseId, request.Cursor, limit, ct);
+        offset = open.Offset;
 
         var rows = open.Rows.Select(x => ToDetailRow(new OpenItemRow(
             x.IsCharge ? "Charge" : "Credit",
@@ -56,8 +60,8 @@ public sealed class ReceivablesOpenItemsCanonicalReportExecutor(IReceivablesOpen
             offset: offset,
             limit: limit,
             total: open.Total,
-            hasMore: offset + open.Rows.Count < open.Total,
-            nextCursor: null,
+            hasMore: useLegacyOffset ? offset + open.Rows.Count < open.Total : open.HasMore,
+            nextCursor: useLegacyOffset ? null : open.NextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-pm-receivables-open-items"

@@ -1,8 +1,10 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.PropertyManagement.Reporting;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Tools.Exceptions;
@@ -34,7 +36,18 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
 
         query.EnsureInvariant();
 
-        var page = await reader.GetPageAsync(query, ct);
+        var cursorKind = BuildCursorKind(query);
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<MaintenanceQueuePageCursor>(cursorKind, request.Cursor);
+        query = query with
+        {
+            Offset = cursor?.Offset ?? query.Offset,
+            Limit = request.DisablePaging ? PagingLimits.MaxMaterializedRows + 1 : query.Limit
+        };
+        var page = cursor is not null
+            ? await reader.GetCursorPageAsync(query, cursor, ct)
+            : await reader.GetPageAsync(query, ct);
         page.EnsureInvariant();
 
         var sheet = new ReportSheetDto(
@@ -63,18 +76,36 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
                     ["executor"] = "canonical-pm-maintenance-queue"
                 }));
 
+        var hasMore = page.HasMore || query.Offset + page.Rows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new MaintenanceQueuePageCursor(query.Offset + page.Rows.Count, page.Total))
+            : null;
+
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
             sheet: sheet,
             offset: query.Offset,
             limit: query.Limit,
             total: page.Total,
-            hasMore: query.Offset + page.Rows.Count < page.Total,
-            nextCursor: null,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-pm-maintenance-queue"
             });
     }
+
+    private string BuildCursorKind(MaintenanceQueueQuery query)
+        => SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            query.AsOfUtc.ToString("yyyy-MM-dd"),
+            query.BuildingId?.ToString("D"),
+            query.PropertyId?.ToString("D"),
+            query.CategoryId?.ToString("D"),
+            query.AssignedPartyId?.ToString("D"),
+            query.Priority,
+            query.QueueState?.ToString());
 
     private static ReportSheetRowDto ToRow(MaintenanceQueueRow row)
         => new(

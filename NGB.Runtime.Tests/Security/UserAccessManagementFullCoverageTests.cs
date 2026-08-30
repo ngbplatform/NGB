@@ -137,6 +137,41 @@ public sealed class UserAccessManagementFullCoverageTests
     }
 
     [Fact]
+    public async Task GetUsers_CursorCarriesTotalAndIsBoundToActiveFilter()
+    {
+        var fixture = new Fixture();
+        var first = User(Guid.NewGuid(), "first", null, "First");
+        var second = User(Guid.NewGuid(), "second", null, "Second");
+        fixture.Users.Setup(x => x.GetPageAsync(0, 1, true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([first], 2));
+        fixture.Users.Setup(x => x.GetCursorPageAsync(
+                It.Is<PlatformUserPageCursor>(cursor => cursor.Offset == 1 && cursor.Total == 2),
+                1,
+                true,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([second], 2));
+        fixture.UserRoles.Setup(x => x.GetRolesForUsersAsync(
+                It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+        fixture.IdentityProvider.Setup(x => x.GetUsersByIdsAsync(
+                It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>());
+
+        var firstPage = await fixture.Sut.GetUsersAsync(new UserPageRequestDto(0, 1, true), default);
+        var secondPage = await fixture.Sut.GetUsersAsync(
+            new UserPageRequestDto(0, 1, true, firstPage.NextCursor),
+            default);
+
+        firstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
+        secondPage.Items.Should().ContainSingle().Which.UserId.Should().Be(second.UserId);
+        secondPage.NextCursor.Should().BeNull();
+        Func<Task> changedFilter = () => fixture.Sut.GetUsersAsync(
+            new UserPageRequestDto(0, 1, false, firstPage.NextCursor),
+            default);
+        await changedFilter.Should().ThrowAsync<NgbArgumentInvalidException>();
+    }
+
+    [Fact]
     public async Task GetUser_CoversNullIdentityFieldsVersionFallbackAndRoleMapping()
     {
         var fixture = new Fixture();

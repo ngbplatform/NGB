@@ -34,9 +34,43 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
             asOfUtc,
             PagingLimits.BoundOffset(offset),
             limit,
+            null,
+            false,
             ct);
 
-        var result = new OccupancySummaryPage(page.Rows, page.Total, page.Totals);
+        var result = new OccupancySummaryPage(page.Rows, page.Total, page.Totals, page.HasMore);
+        result.EnsureInvariant();
+        return result;
+    }
+
+    public async Task<OccupancySummaryPage> GetCursorPageAsync(
+        Guid? buildingId,
+        DateOnly asOfUtc,
+        OccupancySummaryPageCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+
+        if (buildingId == Guid.Empty)
+            throw new NgbArgumentInvalidException(nameof(buildingId), "Select a building.");
+
+        var offset = cursor?.Offset ?? 0;
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be zero or positive.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+        var page = await ReadPageAndTotalsAsync(
+            buildingId,
+            asOfUtc,
+            PagingLimits.BoundOffset(offset),
+            limit,
+            cursor,
+            true,
+            ct);
+
+        var result = new OccupancySummaryPage(page.Rows, page.Total, page.Totals, page.HasMore);
         result.EnsureInvariant();
         return result;
     }
@@ -46,9 +80,29 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
         DateOnly asOfUtc,
         int offset,
         int limit,
+        OccupancySummaryPageCursor? cursor,
+        bool cursorPaging,
         CancellationToken ct)
     {
-        const string sql = """
+        var statsSql = cursor is null
+            ? """
+stats AS (
+    SELECT
+        COUNT(*)::int AS BuildingCount,
+        COALESCE(SUM(totalunits), 0)::int AS TotalUnits,
+        COALESCE(SUM(occupiedunits), 0)::int AS OccupiedUnits
+    FROM building_rows
+)
+"""
+            : """
+stats AS (
+    SELECT
+        @known_total::int AS BuildingCount,
+        @known_total_units::int AS TotalUnits,
+        @known_occupied_units::int AS OccupiedUnits
+)
+""";
+        var sql = $"""
 WITH filter_validation AS (
     SELECT
         @building_id::uuid IS NULL OR EXISTS (
@@ -123,13 +177,7 @@ LEFT JOIN occupied o
  AND o.unit_id = u.unit_id
 GROUP BY cb.building_id, cb.building_display
 ),
-stats AS (
-    SELECT
-        COUNT(*)::int AS BuildingCount,
-        COALESCE(SUM(totalunits), 0)::int AS TotalUnits,
-        COALESCE(SUM(occupiedunits), 0)::int AS OccupiedUnits
-    FROM building_rows
-),
+{statsSql},
 paged AS (
     SELECT *
     FROM building_rows
@@ -164,7 +212,10 @@ ORDER BY paged.building_display, paged.building_id;
                 as_of = asOfUtc,
                 posted = (int)DocumentStatus.Posted,
                 offset,
-                limit
+                limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
+                known_total = cursor?.Total,
+                known_total_units = cursor?.Totals.TotalUnits,
+                known_occupied_units = cursor?.Totals.OccupiedUnits
             },
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -172,7 +223,9 @@ ORDER BY paged.building_display, paged.building_id;
         var stats = dbRows[0];
         ValidateBuildingFilter(buildingId, stats);
 
-        var rows = dbRows.Where(row => row.HasRow).Select(row =>
+        var dataRows = dbRows.Where(row => row.HasRow).ToArray();
+        var hasMore = cursorPaging && dataRows.Length > limit;
+        var rows = dataRows.Take(limit).Select(row =>
         {
             var result = new OccupancySummaryRow(
                 BuildingId: row.BuildingId!.Value,
@@ -191,7 +244,7 @@ ORDER BY paged.building_display, paged.building_id;
             OccupiedUnits: stats.AllOccupiedUnits);
         totals.EnsureInvariant();
 
-        return new PageAndTotals(rows, stats.BuildingCount, totals);
+        return new PageAndTotals(rows, stats.BuildingCount, totals, hasMore);
     }
 
     private static void ValidateBuildingFilter(Guid? buildingId, CombinedRow validation)
@@ -222,5 +275,9 @@ ORDER BY paged.building_display, paged.building_id;
         bool BuildingDeleted,
         string? BuildingKind);
 
-    private sealed record PageAndTotals(IReadOnlyList<OccupancySummaryRow> Rows, int Total, OccupancySummaryTotals Totals);
+    private sealed record PageAndTotals(
+        IReadOnlyList<OccupancySummaryRow> Rows,
+        int Total,
+        OccupancySummaryTotals Totals,
+        bool HasMore);
 }

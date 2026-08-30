@@ -3,12 +3,14 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Core.Documents.Exceptions;
+using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.Documents;
 using NGB.PropertyManagement.Runtime.Exceptions;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Runtime.Policy;
 using NGB.Runtime.OperationalRegisters;
+using NGB.Runtime.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -39,6 +41,42 @@ public sealed class ReceivablesOpenItemsService(
         int offset,
         int limit,
         CancellationToken ct = default)
+        => await GetOpenItemsPageCoreAsync(
+            partyId,
+            propertyId,
+            leaseId,
+            offset,
+            limit,
+            cursor: null,
+            useCursorPaging: false,
+            ct);
+
+    public async Task<ReceivablesOpenItemsPageResponse> GetOpenItemsCursorPageAsync(
+        Guid partyId,
+        Guid propertyId,
+        Guid leaseId,
+        string? cursor,
+        int limit,
+        CancellationToken ct = default)
+        => await GetOpenItemsPageCoreAsync(
+            partyId,
+            propertyId,
+            leaseId,
+            offset: 0,
+            limit,
+            cursor,
+            useCursorPaging: true,
+            ct);
+
+    private async Task<ReceivablesOpenItemsPageResponse> GetOpenItemsPageCoreAsync(
+        Guid partyId,
+        Guid propertyId,
+        Guid leaseId,
+        int offset,
+        int limit,
+        string? cursor,
+        bool useCursorPaging,
+        CancellationToken ct)
     {
         if (leaseId == Guid.Empty)
             throw ReceivablesRequestValidationException.LeaseRequired();
@@ -95,15 +133,48 @@ public sealed class ReceivablesOpenItemsService(
             nowMonth,
             dimensions: filter,
             ct: ct);
-        var page = await movements.GetResourceBalancesByDimensionPageAsync(
-            policy.ReceivablesOpenItemsOperationalRegisterId,
-            toMonth,
-            filter,
-            DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}"),
-            "amount",
-            offset,
-            limit,
-            ct);
+        var itemDimensionId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.ReceivableItem}");
+        OperationalRegisterDimensionResourceNetPage page;
+        var effectiveOffset = offset;
+        string? cursorKind = null;
+        OperationalRegisterDimensionResourceNetCursor? decodedCursor = null;
+
+        if (useCursorPaging)
+        {
+            cursorKind = SpecializedReportCursorCodec.BuildKind(
+                "pm.receivables.open-items",
+                policy.ReceivablesOpenItemsOperationalRegisterId.ToString("N"),
+                partyId.ToString("N"),
+                propertyId.ToString("N"),
+                leaseId.ToString("N"),
+                toMonth.ToString("yyyy-MM-dd"));
+            decodedCursor = string.IsNullOrWhiteSpace(cursor)
+                ? null
+                : SpecializedReportCursorCodec.Decode<OperationalRegisterDimensionResourceNetCursor>(cursorKind, cursor);
+            effectiveOffset = decodedCursor?.NextOffset ?? 0;
+            page = await movements.GetResourceBalancesByDimensionCursorAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                toMonth,
+                filter,
+                itemDimensionId,
+                "amount",
+                decodedCursor,
+                limit,
+                ct);
+        }
+        else
+        {
+            page = await movements.GetResourceBalancesByDimensionPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                toMonth,
+                filter,
+                itemDimensionId,
+                "amount",
+                offset,
+                limit,
+                ct);
+        }
+
         var documentRefs = page.Rows.Count == 0
             ? new Dictionary<Guid, DocumentDisplayRef>()
             : new Dictionary<Guid, DocumentDisplayRef>(
@@ -119,13 +190,27 @@ public sealed class ReceivablesOpenItemsService(
                 Amount: Math.Abs(net),
                 DocumentType: string.IsNullOrWhiteSpace(documentRef?.TypeCode) ? null : documentRef.TypeCode);
         }).ToArray();
+        var nextCursor = useCursorPaging && page.HasMore && page.Rows.Count > 0
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind!,
+                new OperationalRegisterDimensionResourceNetCursor(
+                    page.Rows[^1].NetAmount > 0m,
+                    page.Rows[^1].ValueId,
+                    effectiveOffset + page.Rows.Count,
+                    page.Total,
+                    page.TotalPositive,
+                    page.TotalNegativeAbsolute))
+            : null;
 
         return new ReceivablesOpenItemsPageResponse(
             policy.ReceivablesOpenItemsOperationalRegisterId,
             rows,
             page.Total,
             page.TotalPositive,
-            page.TotalNegativeAbsolute);
+            page.TotalNegativeAbsolute,
+            effectiveOffset,
+            page.HasMore,
+            nextCursor);
     }
 
     public async Task<ReceivablesOpenItemsResponse> GetOpenItemsAsync(

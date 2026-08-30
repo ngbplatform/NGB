@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Dapper;
 using NGB.Contracts.Common;
@@ -6,6 +7,7 @@ using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Receivables;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
+using NGB.Tools.Paging;
 
 namespace NGB.PropertyManagement.PostgreSql.Receivables;
 
@@ -37,13 +39,24 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
         if (request.Limit is <= 0 or > 500)
             throw new NgbArgumentOutOfRangeException(nameof(request.Limit), request.Limit, "Limit must be between 1 and 500.");
 
-        var boundedOffset = PagingLimits.BoundOffset(request.Offset);
+        var requestedOffset = PagingLimits.BoundOffset(request.Offset);
 
         await uow.EnsureConnectionOpenAsync(ct);
 
         var context = await ReadQueryContextAsync(ct);
         var policy = (context.ArAccountId, context.OpenItemsRegisterId);
         var tableCode = context.TableCode;
+        var cursorKind = OpaqueCursorCodec.BuildKind(
+            "pm.receivables.reconciliation",
+            request.FromMonthInclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            request.ToMonthInclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ((int)request.Mode).ToString(CultureInfo.InvariantCulture),
+            policy.ArAccountId.ToString("N"),
+            policy.OpenItemsRegisterId.ToString("N"));
+        var pageCursor = string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : OpaqueCursorCodec.Decode<ReceivablesPageCursor>(cursorKind, request.Cursor);
+        var effectiveOffset = pageCursor?.NextOffset ?? requestedOffset;
 
         var movementsTable = $"opreg_{tableCode}__movements";
         var balancesTable = $"opreg_{tableCode}__balances";
@@ -64,6 +77,26 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
                 BuildBalanceOiSourceSql(movementsTable, movementsTableExists, balancesTable, balancesTableExists)),
             _ => throw new NgbArgumentInvalidException(nameof(request.Mode), "Select a valid reconciliation mode.")
         };
+        var statsSql = pageCursor is null
+            ? """
+              SELECT
+                  COUNT(*)::integer AS total_row_count,
+                  COUNT(*) FILTER (WHERE ar_net <> open_items_net)::integer AS total_mismatch_row_count,
+                  COALESCE(SUM(ar_net), 0) AS total_ar_net,
+                  COALESCE(SUM(open_items_net), 0) AS total_open_items_net
+              FROM reconciliation
+              """
+            : """
+              SELECT
+                  @KnownRowCount::integer AS total_row_count,
+                  @KnownMismatchRowCount::integer AS total_mismatch_row_count,
+                  @KnownArNet::numeric AS total_ar_net,
+                  @KnownOpenItemsNet::numeric AS total_open_items_net
+              """;
+        var seekPredicateSql = pageCursor is null
+            ? string.Empty
+            : "WHERE (party_id, property_id, lease_id) > (@AfterPartyId::uuid, @AfterPropertyId::uuid, @AfterLeaseId::uuid)";
+        var offsetSql = pageCursor is null ? "OFFSET @Offset" : string.Empty;
 
         // IMPORTANT: movementsTable is interpolated (PostgreSQL doesn't allow binding identifiers).
         // It is safe because table_code is a generated column guarded by DB constraints (safe chars + length).
@@ -117,18 +150,14 @@ reconciliation AS (
        OR COALESCE(oi_agg.open_items_net, 0) <> 0
 ),
 stats AS (
-    SELECT
-        COUNT(*)::integer AS total_row_count,
-        COUNT(*) FILTER (WHERE ar_net <> open_items_net)::integer AS total_mismatch_row_count,
-        COALESCE(SUM(ar_net), 0) AS total_ar_net,
-        COALESCE(SUM(open_items_net), 0) AS total_open_items_net
-    FROM reconciliation
+    {statsSql}
 ),
 paged AS (
     SELECT *
     FROM reconciliation
+    {seekPredicateSql}
     ORDER BY party_id, property_id, lease_id
-    OFFSET @Offset
+    {offsetSql}
     LIMIT @LimitPlusOne
 )
 SELECT
@@ -172,8 +201,15 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
                 PartyCatalogCode = PropertyManagementCodes.Party,
                 PropertyCatalogCode = PropertyManagementCodes.Property,
                 LeaseDocumentTypeCode = PropertyManagementCodes.Lease,
-                Offset = boundedOffset,
+                Offset = requestedOffset,
                 LimitPlusOne = request.Limit + 1,
+                AfterPartyId = pageCursor?.AfterPartyId,
+                AfterPropertyId = pageCursor?.AfterPropertyId,
+                AfterLeaseId = pageCursor?.AfterLeaseId,
+                KnownRowCount = pageCursor?.TotalRowCount,
+                KnownMismatchRowCount = pageCursor?.TotalMismatchRowCount,
+                KnownArNet = pageCursor?.TotalArNet,
+                KnownOpenItemsNet = pageCursor?.TotalOpenItemsNet,
                 Guid.Empty
             },
             transaction: uow.Transaction,
@@ -186,6 +222,20 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
         var hasMore = pageRows.Count > request.Limit;
         if (hasMore)
             pageRows.RemoveAt(pageRows.Count - 1);
+
+        var nextCursor = hasMore && pageRows.Count > 0
+            ? OpaqueCursorCodec.Encode(
+                cursorKind,
+                new ReceivablesPageCursor(
+                    pageRows[^1].PartyId,
+                    pageRows[^1].PropertyId,
+                    pageRows[^1].LeaseId,
+                    effectiveOffset + pageRows.Count,
+                    stats.TotalRowCount,
+                    stats.TotalMismatchRowCount,
+                    stats.TotalArNet,
+                    stats.TotalOpenItemsNet))
+            : null;
 
         var resultRows = new List<ReceivablesReconciliationRow>(pageRows.Count);
 
@@ -220,9 +270,10 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
             RowCount: stats.TotalRowCount,
             MismatchRowCount: stats.TotalMismatchRowCount,
             Rows: resultRows,
-            Offset: boundedOffset,
+            Offset: effectiveOffset,
             Limit: request.Limit,
-            HasMore: hasMore);
+            HasMore: hasMore,
+            NextCursor: nextCursor);
     }
 
     internal async Task<IReadOnlyDictionary<Guid, string?>> ReadCatalogDisplaysAsync(
@@ -442,6 +493,16 @@ oi_source AS (
         string? PropertyDisplay,
         string? LeaseDisplay,
         bool HasRow,
+        int TotalRowCount,
+        int TotalMismatchRowCount,
+        decimal TotalArNet,
+        decimal TotalOpenItemsNet);
+
+    private sealed record ReceivablesPageCursor(
+        Guid AfterPartyId,
+        Guid AfterPropertyId,
+        Guid AfterLeaseId,
+        int NextOffset,
         int TotalRowCount,
         int TotalMismatchRowCount,
         decimal TotalArNet,

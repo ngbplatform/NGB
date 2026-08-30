@@ -162,6 +162,60 @@ public sealed class DocumentDraftServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_create_reserves_auto_numbers_once_and_writes_one_batch()
+    {
+        var fixture = new Fixture(batchRepository: true, batchAllocator: true);
+        fixture.Types.Setup(x => x.TryGet("numbered"))
+            .Returns(new DocumentTypeMetadata("numbered", []));
+        fixture.Policies.Setup(x => x.Resolve("numbered")).Returns(Policy(ensureOnCreate: true));
+        var validator = new Mock<IDocumentDraftValidator>(MockBehavior.Strict);
+        validator.Setup(x => x.ValidateCreateDraftAsync(
+                It.Is<DocumentRecord>(record => record.TypeCode != "numbered" || record.Number == null),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        fixture.Validators.Setup(x => x.ResolveDraftValidators(It.IsAny<string>()))
+            .Returns([validator.Object]);
+        fixture.NumberBatchAllocator.Setup(x => x.AllocateAsync(
+                It.IsAny<IReadOnlyList<DocumentNumberAllocationRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<DocumentNumberAllocationRequest> requests, CancellationToken _) =>
+                requests.Select((request, index) => new
+                    {
+                        request.DocumentId,
+                        Number = $"AUTO-{index + 1}"
+                    })
+                    .ToDictionary(static item => item.DocumentId, static item => item.Number));
+        IReadOnlyList<DocumentRecord>? written = null;
+        fixture.BatchDocuments!.Setup(x => x.CreateDraftsAsync(
+                It.IsAny<IReadOnlyList<DocumentRecord>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<DocumentRecord>, CancellationToken>((records, _) => written = records)
+            .Returns(Task.CompletedTask);
+
+        var ids = await fixture.Sut.CreateDraftsAsync(
+        [
+            new DocumentDraftCreateRequest("numbered", null, Date),
+            new DocumentDraftCreateRequest("doc", " MANUAL ", Date),
+            new DocumentDraftCreateRequest("numbered", null, Date.AddDays(1))
+        ], suppressAudit: true);
+
+        written.Should().NotBeNull();
+        written!.Select(static record => record.Id).Should().Equal(ids);
+        written.Select(static record => record.Number).Should().Equal("AUTO-1", "MANUAL", "AUTO-2");
+        fixture.NumberBatchAllocator.Verify(x => x.AllocateAsync(
+            It.Is<IReadOnlyList<DocumentNumberAllocationRequest>>(requests => requests.Count == 2),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Documents.Verify(x => x.CreateAsync(
+            It.IsAny<DocumentRecord>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.Documents.Verify(x => x.GetForUpdateAsync(
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.Numbering.Verify(x => x.EnsureNumberAndSyncTypedAsync(
+            It.IsAny<DocumentRecord>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+        validator.Verify(x => x.ValidateCreateDraftAsync(
+            It.IsAny<DocumentRecord>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
+    }
+
+    [Fact]
     public async Task Update_CoversInputNoopMissingMarkedFallbackAndWrongWorkflowState()
     {
         var fixture = new Fixture();
@@ -297,7 +351,7 @@ public sealed class DocumentDraftServiceFullCoverageTests
 
     private sealed class Fixture
     {
-        public Fixture(bool batchRepository = false)
+        public Fixture(bool batchRepository = false, bool batchAllocator = false)
         {
             if (batchRepository)
                 BatchDocuments = Documents.As<IDocumentDraftBatchRepository>();
@@ -331,7 +385,8 @@ public sealed class DocumentDraftServiceFullCoverageTests
                 Policies.Object,
                 Types.Object,
                 Audit.Object,
-                new FixedTimeProvider(new DateTimeOffset(Now)));
+                new FixedTimeProvider(new DateTimeOffset(Now)),
+                batchAllocator ? NumberBatchAllocator.Object : null);
         }
 
         public Mock<IUnitOfWork> Uow { get; } = new(MockBehavior.Loose);
@@ -341,6 +396,7 @@ public sealed class DocumentDraftServiceFullCoverageTests
         public Mock<IDocumentTypeStorageResolver> Storage { get; } = new(MockBehavior.Loose);
         public Mock<IDocumentValidatorResolver> Validators { get; } = new(MockBehavior.Loose);
         public Mock<IDocumentNumberingAndTypedSyncService> Numbering { get; } = new(MockBehavior.Loose);
+        public Mock<IDocumentNumberBatchAllocator> NumberBatchAllocator { get; } = new(MockBehavior.Strict);
         public Mock<IDocumentNumberingPolicyResolver> Policies { get; } = new(MockBehavior.Loose);
         public Mock<NGB.Metadata.Documents.Storage.IDocumentTypeRegistry> Types { get; } = new(MockBehavior.Loose);
         public Mock<IAuditLogService> Audit { get; } = new(MockBehavior.Loose);

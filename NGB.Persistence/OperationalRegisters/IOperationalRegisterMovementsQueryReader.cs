@@ -96,6 +96,34 @@ public interface IOperationalRegisterMovementsQueryReader
         int limit,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Seek-paged counterpart of <see cref="GetResourceBalancesByDimensionPageAsync"/>.
+    /// A cursor carries the previously computed totals so subsequent pages avoid repeating
+    /// full-result window aggregates.
+    /// </summary>
+    async Task<OperationalRegisterDimensionResourceNetPage> GetResourceBalancesByDimensionCursorAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        OperationalRegisterDimensionResourceNetCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.NextOffset ?? 0;
+        var page = await GetResourceBalancesByDimensionPageAsync(
+            registerId,
+            asOfMonthInclusive,
+            dimensions,
+            groupDimensionId,
+            resourceColumnCode,
+            offset,
+            limit,
+            ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
+
     Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByMonthsAsync(
         Guid registerId,
         DateOnly fromInclusive,

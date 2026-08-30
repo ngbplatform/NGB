@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Contracts;
 using NGB.CRM.Documents;
@@ -27,7 +28,8 @@ public sealed class CrmDemoSeedService(
     IReferenceRegisterRecordsApplier refregRecordsApplier,
     ICrmPostedDocumentReader postedDocumentReader,
     IUnitOfWork uow,
-    CrmDemoSeedOptions options)
+    CrmDemoSeedOptions options,
+    IServiceScopeFactory? scopeFactory = null)
     : ICrmDemoSeedService
 {
     private readonly CrmDemoSeedOptions _options = ValidateOptions(options);
@@ -506,6 +508,16 @@ public sealed class CrmDemoSeedService(
         var generatedAccounts = await EnsureGeneratedAccountsAsync(ct);
         var generatedContacts = await EnsureGeneratedContactsAsync(generatedAccounts, ct);
         var documentsCreated = 0;
+        const int postingBatchSize = 25;
+        var batchCapacity = Math.Min(
+            postingBatchSize,
+            _options.GeneratedOpportunityCycleCount - existingGeneratedLeads);
+        var leads = new List<Guid>(batchCapacity);
+        var qualifications = new List<Guid>(batchCapacity);
+        var conversions = new List<Guid>(batchCapacity);
+        var updates = new List<Guid>(batchCapacity);
+        var quotes = new List<Guid>(batchCapacity);
+        var activities = new List<Guid>(batchCapacity);
 
         for (var sequence = existingGeneratedLeads + 1;
              sequence <= _options.GeneratedOpportunityCycleCount;
@@ -551,7 +563,8 @@ public sealed class CrmDemoSeedService(
             var dealName = $"NGB Demo Deal {sequence:0000}";
             var email = $"lead{sequence:0000}@demo-crm.example";
 
-            var lead = await CreateAndPostAsync(
+            var lead = await CreateDraftForBatchAsync(
+                leads,
                 CrmCodes.LeadIntake,
                 Payload(new
                 {
@@ -570,7 +583,8 @@ public sealed class CrmDemoSeedService(
                 ct);
             documentsCreated++;
 
-            await CreateAndPostAsync(
+            await CreateDraftForBatchAsync(
+                qualifications,
                 CrmCodes.LeadQualification,
                 Payload(new
                 {
@@ -583,7 +597,8 @@ public sealed class CrmDemoSeedService(
                 ct);
             documentsCreated++;
 
-            var opportunity = await CreateAndPostAsync(
+            var opportunity = await CreateDraftForBatchAsync(
+                conversions,
                 CrmCodes.LeadConversion,
                 Payload(new
                 {
@@ -603,7 +618,8 @@ public sealed class CrmDemoSeedService(
                 ct);
             documentsCreated++;
 
-            await CreateAndPostAsync(
+            await CreateDraftForBatchAsync(
+                updates,
                 CrmCodes.OpportunityUpdate,
                 Payload(new
                 {
@@ -620,7 +636,8 @@ public sealed class CrmDemoSeedService(
                 ct);
             documentsCreated++;
 
-            await CreateAndPostAsync(
+            await CreateDraftForBatchAsync(
+                quotes,
                 CrmCodes.Quote,
                 Payload(
                     new
@@ -653,7 +670,8 @@ public sealed class CrmDemoSeedService(
                 ct);
             documentsCreated++;
 
-            await CreateAndPostAsync(
+            await CreateDraftForBatchAsync(
+                activities,
                 CrmCodes.ActivityLog,
                 Payload(new
                 {
@@ -671,7 +689,28 @@ public sealed class CrmDemoSeedService(
                 }),
                 ct);
             documentsCreated++;
+
+            if (activities.Count == postingBatchSize)
+            {
+                await PostGeneratedBatchAsync(
+                    leads,
+                    qualifications,
+                    conversions,
+                    updates,
+                    quotes,
+                    activities,
+                    ct);
+            }
         }
+
+        await PostGeneratedBatchAsync(
+            leads,
+            qualifications,
+            conversions,
+            updates,
+            quotes,
+            activities,
+            ct);
 
         return documentsCreated;
     }
@@ -959,6 +998,81 @@ public sealed class CrmDemoSeedService(
         await documents.UpdateDraftAsync(documentType, draft.Id, WithDisplay(payload, display), ct);
 
         return await lifecycle.PostAsync(documentType, draft.Id, ct);
+    }
+
+    private async Task<DocumentDto> CreateDraftForBatchAsync(
+        ICollection<Guid> stage,
+        string documentType,
+        RecordPayload payload,
+        CancellationToken ct)
+    {
+        var draft = await documents.CreateDraftAsync(documentType, payload, ct);
+        var display = BuildDocumentDisplay(documentType, draft.Number, payload);
+        var updated = await documents.UpdateDraftAsync(
+            documentType,
+            draft.Id,
+            WithDisplay(payload, display),
+            ct);
+        stage.Add(updated.Id);
+
+        return updated;
+    }
+
+    private async Task PostGeneratedStageAsync(
+        string documentType,
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct)
+    {
+        if (scopeFactory is null)
+        {
+            foreach (var documentId in documentIds)
+            {
+                await lifecycle.PostAsync(documentType, documentId, ct);
+            }
+
+            return;
+        }
+
+        await Parallel.ForEachAsync(
+            documentIds,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = 4,
+                CancellationToken = ct
+            },
+            async (documentId, innerCt) =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var scopedLifecycle = scope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>();
+                await scopedLifecycle.PostAsync(documentType, documentId, innerCt);
+            });
+    }
+
+    private async Task PostGeneratedBatchAsync(
+        List<Guid> leads,
+        List<Guid> qualifications,
+        List<Guid> conversions,
+        List<Guid> updates,
+        List<Guid> quotes,
+        List<Guid> activities,
+        CancellationToken ct)
+    {
+        if (leads.Count == 0)
+            return;
+
+        await PostGeneratedStageAsync(CrmCodes.LeadIntake, leads, ct);
+        await PostGeneratedStageAsync(CrmCodes.LeadQualification, qualifications, ct);
+        await PostGeneratedStageAsync(CrmCodes.LeadConversion, conversions, ct);
+        await PostGeneratedStageAsync(CrmCodes.OpportunityUpdate, updates, ct);
+        await PostGeneratedStageAsync(CrmCodes.Quote, quotes, ct);
+        await PostGeneratedStageAsync(CrmCodes.ActivityLog, activities, ct);
+
+        leads.Clear();
+        qualifications.Clear();
+        conversions.Clear();
+        updates.Clear();
+        quotes.Clear();
+        activities.Clear();
     }
 
     private static RecordPayload WithDisplay(RecordPayload payload, string display)

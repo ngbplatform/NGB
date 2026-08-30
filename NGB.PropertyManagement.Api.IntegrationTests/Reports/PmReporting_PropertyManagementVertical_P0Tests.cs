@@ -387,6 +387,40 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Credit" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[3].Display == "50");
         }
 
+        ReportExecutionResponseDto firstOpenItemsPage;
+        using (var resp = await client.PostAsJsonAsync(
+                   "/api/reports/pm.receivables.open_items/execute",
+                   new ReportExecutionRequestDto(
+                       Filters: receivablesFilters,
+                       Offset: 0,
+                       Limit: 1)))
+        {
+            resp.StatusCode.Should().Be(HttpStatusCode.OK);
+            firstOpenItemsPage = (await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json))!;
+            firstOpenItemsPage.HasMore.Should().BeTrue();
+            firstOpenItemsPage.NextCursor.Should().NotBeNullOrWhiteSpace();
+            firstOpenItemsPage.Total.Should().Be(2);
+            firstOpenItemsPage.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(1);
+        }
+
+        using (var resp = await client.PostAsJsonAsync(
+                   "/api/reports/pm.receivables.open_items/execute",
+                   new ReportExecutionRequestDto(
+                       Filters: receivablesFilters,
+                       Offset: 0,
+                       Limit: 1,
+                       Cursor: firstOpenItemsPage.NextCursor)))
+        {
+            resp.StatusCode.Should().Be(HttpStatusCode.OK);
+            var next = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
+            next.Should().NotBeNull();
+            next!.HasMore.Should().BeFalse();
+            next.NextCursor.Should().BeNull();
+            next.Total.Should().Be(2);
+            next.Offset.Should().Be(1);
+            next.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(1);
+        }
+
         using (var resp = await client.PostAsJsonAsync(
                    "/api/reports/pm.receivables.open_items.details/execute",
                    new ReportExecutionRequestDto(

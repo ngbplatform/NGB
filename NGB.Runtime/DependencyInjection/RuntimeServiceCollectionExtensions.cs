@@ -240,6 +240,7 @@ public static class RuntimeServiceCollectionExtensions
 
         // Document numbering (platform-wide)
         services.TryAddSingleton<IDocumentNumberFormatter, DefaultDocumentNumberFormatter>();
+        services.TryAddScoped<IDocumentNumberBatchAllocator, DocumentNumberBatchAllocator>();
         services.TryAddScoped<IDocumentNumberingService, DocumentNumberingService>();
         services.TryAddScoped<IDocumentNumberingAndTypedSyncService, DocumentNumberingAndTypedSyncService>();
 

@@ -137,7 +137,7 @@ public sealed record MaintenanceQueueRow(
     }
 }
 
-public sealed record MaintenanceQueuePage(IReadOnlyList<MaintenanceQueueRow> Rows, int Total)
+public sealed record MaintenanceQueuePage(IReadOnlyList<MaintenanceQueueRow> Rows, int Total, bool HasMore = false)
 {
     public void EnsureInvariant()
     {
@@ -153,3 +153,5 @@ public sealed record MaintenanceQueuePage(IReadOnlyList<MaintenanceQueueRow> Row
         }
     }
 }
+
+public sealed record MaintenanceQueuePageCursor(int Offset, int Total);

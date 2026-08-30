@@ -20,13 +20,33 @@ public sealed class PostgresTradeCurrentItemPriceReader(
     private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
         ?? new PostgresRelationPresenceCache(TimeProvider.System);
 
-    public async Task<TradeCurrentItemPricePage> GetPageAsync(
+    public Task<TradeCurrentItemPricePage> GetPageAsync(
         DateTime asOfUtc,
         IReadOnlyList<Guid>? itemIds,
         IReadOnlyList<Guid>? priceTypeIds,
         int offset,
         int limit,
         CancellationToken ct = default)
+        => GetPageCoreAsync(asOfUtc, itemIds, priceTypeIds, offset, limit, cursor: null, cursorMode: false, ct);
+
+    public Task<TradeCurrentItemPricePage> GetCursorPageAsync(
+        DateTime asOfUtc,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? priceTypeIds,
+        TradeCurrentItemPricePageCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+        => GetPageCoreAsync(asOfUtc, itemIds, priceTypeIds, cursor?.Offset ?? 0, limit, cursor, cursorMode: true, ct);
+
+    private async Task<TradeCurrentItemPricePage> GetPageCoreAsync(
+        DateTime asOfUtc,
+        IReadOnlyList<Guid>? itemIds,
+        IReadOnlyList<Guid>? priceTypeIds,
+        int offset,
+        int limit,
+        TradeCurrentItemPricePageCursor? cursor,
+        bool cursorMode,
+        CancellationToken ct)
     {
         asOfUtc.EnsureUtc(nameof(asOfUtc));
 
@@ -43,6 +63,9 @@ public sealed class PostgresTradeCurrentItemPriceReader(
 
         var itemIdArray = NormalizeIds(itemIds);
         var priceTypeIdArray = NormalizeIds(priceTypeIds);
+        var totalProjection = cursor is null
+            ? "COUNT(*) OVER()::integer AS TotalCount"
+            : "@KnownTotal::integer AS TotalCount";
         var sql = $"""
 WITH candidate_dimension_sets AS (
     SELECT
@@ -106,12 +129,12 @@ SELECT
     unit_price AS UnitPrice,
     effective_date AS EffectiveDate,
     source_document_id AS SourceDocumentId,
-    COUNT(*) OVER()::integer AS TotalCount
+    {totalProjection}
 FROM enriched
 ORDER BY LOWER(item_display), item_display, LOWER(price_type_display), price_type_display, LOWER(currency), currency,
          item_id, price_type_id
 OFFSET @Offset
-LIMIT @Limit;
+LIMIT @QueryLimit;
 """;
 
         var rows = (await uow.Connection.QueryAsync<CurrentItemPriceSqlRow>(new CommandDefinition(
@@ -126,10 +149,15 @@ LIMIT @Limit;
                 ItemIds = itemIdArray,
                 PriceTypeIds = priceTypeIdArray,
                 Offset = PagingLimits.BoundOffset(offset),
-                Limit = limit
+                QueryLimit = cursorMode && limit < int.MaxValue ? limit + 1 : limit,
+                KnownTotal = cursor?.Total
             },
             uow.Transaction,
             cancellationToken: ct))).AsList();
+
+        var hasMore = cursorMode && rows.Count > limit;
+        if (hasMore)
+            rows.RemoveAt(rows.Count - 1);
 
         return new TradeCurrentItemPricePage(
             rows.Select(static row => new TradeCurrentItemPriceRow(
@@ -141,7 +169,8 @@ LIMIT @Limit;
                 row.UnitPrice,
                 row.EffectiveDate,
                 row.SourceDocumentId)).ToArray(),
-            rows.FirstOrDefault()?.TotalCount ?? 0);
+            cursor?.Total ?? rows.FirstOrDefault()?.TotalCount ?? 0,
+            hasMore);
     }
 
     private static Guid[] NormalizeIds(IReadOnlyList<Guid>? ids)

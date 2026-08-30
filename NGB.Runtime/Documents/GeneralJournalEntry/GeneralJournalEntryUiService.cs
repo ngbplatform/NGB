@@ -1,4 +1,5 @@
 using NGB.Accounting.Accounts;
+using NGB.Accounting.Documents;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Accounting;
 using NGB.Contracts.Metadata;
@@ -54,7 +55,30 @@ public sealed class GeneralJournalEntryUiService(
         // cannot be used here without turning page reads into runtime 500s. Keep page reads on a dedicated,
         // typed read-model instead of routing through IDocumentService.GetPageAsync(...).
         var page = await pageQuery.GetPageAsync(offset, limit, search, dateFrom, dateTo, trash, ct);
+        return BuildPageDto(page, BuildCursorKind(search, dateFrom, dateTo, trash));
+    }
 
+    public async Task<GeneralJournalEntryPageDto> GetCursorPageAsync(
+        string cursor,
+        int limit,
+        string? search,
+        DateOnly? dateFrom,
+        DateOnly? dateTo,
+        string? trash,
+        CancellationToken ct)
+    {
+        var cursorKind = BuildCursorKind(search, dateFrom, dateTo, trash);
+        var decoded = Reporting.SpecializedReportCursorCodec.Decode<GeneralJournalEntryPageCursor>(
+            cursorKind,
+            cursor);
+        var page = await pageQuery.GetCursorPageAsync(
+            decoded, limit, search, dateFrom, dateTo, trash, ct);
+
+        return BuildPageDto(page, cursorKind);
+    }
+
+    private static GeneralJournalEntryPageDto BuildPageDto(GeneralJournalEntryPageRecord page, string cursorKind)
+    {
         var items = page.Items
             .Select(x => new GeneralJournalEntryListItemDto(
                 Id: x.Id,
@@ -76,8 +100,23 @@ public sealed class GeneralJournalEntryUiService(
                 PostedAtUtc: x.PostedAtUtc))
             .ToArray();
 
-        return new GeneralJournalEntryPageDto(items, page.Offset, page.Limit, page.Total);
+        var hasMore = page.HasMore || page.Offset + items.Length < page.Total;
+        var nextCursor = hasMore
+            ? Reporting.SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new GeneralJournalEntryPageCursor(page.Offset + items.Length, page.Total))
+            : null;
+
+        return new GeneralJournalEntryPageDto(items, page.Offset, page.Limit, page.Total, nextCursor);
     }
+
+    private static string BuildCursorKind(string? search, DateOnly? dateFrom, DateOnly? dateTo, string? trash)
+        => Reporting.SpecializedReportCursorCodec.BuildKind(
+            AccountingDocumentTypeCodes.GeneralJournalEntry,
+            search?.Trim(),
+            dateFrom?.ToString("yyyy-MM-dd"),
+            dateTo?.ToString("yyyy-MM-dd"),
+            string.IsNullOrWhiteSpace(trash) ? "active" : trash.Trim().ToLowerInvariant());
 
     public Task<GeneralJournalEntryDetailsDto> GetByIdAsync(Guid id, CancellationToken ct)
         => BuildDetailsAsync(id, ct);

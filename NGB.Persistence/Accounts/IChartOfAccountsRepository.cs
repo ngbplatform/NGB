@@ -94,6 +94,10 @@ public sealed record ChartOfAccountsAdminPageQuery(
     string? Search,
     IReadOnlyCollection<AccountType> SearchAccountTypes,
     int Offset,
-    int Limit);
+    int Limit,
+    int? KnownTotal = null);
 
-public sealed record ChartOfAccountsAdminPage(IReadOnlyList<ChartOfAccountsAdminItem> Items, int Total);
+public sealed record ChartOfAccountsAdminPage(
+    IReadOnlyList<ChartOfAccountsAdminItem> Items,
+    int Total,
+    bool HasMore = false);

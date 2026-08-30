@@ -7,6 +7,7 @@ using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.AuditLog;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 
@@ -30,11 +31,19 @@ public sealed class UserAccessManagementService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
-        var offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset);
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            "security.users",
+            request.IsActive?.ToString());
+        var cursor = string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<PlatformUserPageCursor>(cursorKind, request.Cursor);
+        var offset = Math.Clamp(cursor?.Offset ?? request.Offset, 0, PagingLimits.MaxOffset);
         var limit = request.Limit <= 0
             ? PagingLimits.DefaultPageSize
             : Math.Min(request.Limit, MaxUserPageSize);
-        var platformPage = await users.GetPageAsync(offset, limit, request.IsActive, ct);
+        var platformPage = cursor is null
+            ? await users.GetPageAsync(offset, limit, request.IsActive, ct)
+            : await users.GetCursorPageAsync(cursor, limit, request.IsActive, ct);
         var platformUsers = platformPage.Items;
         var userIds = platformUsers.Select(x => x.UserId).ToArray();
         var identityProviderIds = platformUsers
@@ -108,7 +117,19 @@ public sealed class UserAccessManagementService(
             .OrderBy(static x => x.DisplayName ?? x.Email ?? x.AuthSubject, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return new PageResponseDto<UserListItemDto>(items, offset, limit, checked((int)platformPage.Total));
+        var hasMore = platformPage.HasMore || offset + items.Length < platformPage.Total;
+        var nextCursor = hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new PlatformUserPageCursor(offset + items.Length, platformPage.Total))
+            : null;
+        return new PageResponseDto<UserListItemDto>(
+            items,
+            offset,
+            limit,
+            checked((int)platformPage.Total),
+            hasMore,
+            nextCursor);
     }
 
     public async Task<UserDetailsDto> GetUserAsync(Guid userId, CancellationToken ct)
