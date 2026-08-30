@@ -147,7 +147,11 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
             ? PostgresReportCursorCodec.Decode(request.Paging.Cursor, dataset.DatasetCodeNorm, cursorColumns)
             : null;
 
-        if (!request.Paging.DisablePaging)
+        if (request.Paging.DisablePaging)
+        {
+            parameters.Add("materialization_limit_plus_one", PagingLimits.MaxMaterializedRows + 1);
+        }
+        else
         {
             parameters.Add("limit_plus_one", request.Paging.Limit + 1);
             if (cursorValues is null && request.Paging.Offset > 0)
@@ -180,7 +184,7 @@ LIMIT @limit_plus_one;
         else
         {
             var pagingSql = request.Paging.DisablePaging
-                ? string.Empty
+                ? "LIMIT @materialization_limit_plus_one"
                 : request.Paging.Offset > 0
                     ? "OFFSET @offset\nLIMIT @limit_plus_one"
                     : "LIMIT @limit_plus_one";

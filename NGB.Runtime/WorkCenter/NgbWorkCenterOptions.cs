@@ -21,6 +21,12 @@ public sealed class NgbWorkCenterOptions
     public int MaintenanceBatchSize { get; init; } = 1_000;
 
     public int MaximumMaintenanceBatchesPerRun { get; init; } = 10;
+
+    /// <summary>
+    /// Maximum number of independent outbox subjects projected concurrently.
+    /// Events for the same subject always remain sequential.
+    /// </summary>
+    public int ProjectionParallelism { get; init; } = 4;
 }
 
 internal sealed class NgbWorkCenterOptionsValidator : IValidateOptions<NgbWorkCenterOptions>
@@ -36,6 +42,7 @@ internal sealed class NgbWorkCenterOptionsValidator : IValidateOptions<NgbWorkCe
         ValidateDuration(options.OutboxRetention, TimeSpan.FromDays(1), TimeSpan.FromDays(3650), nameof(options.OutboxRetention), failures);
         ValidateRange(options.MaintenanceBatchSize, 1, 10_000, nameof(options.MaintenanceBatchSize), failures);
         ValidateRange(options.MaximumMaintenanceBatchesPerRun, 1, 1_000, nameof(options.MaximumMaintenanceBatchesPerRun), failures);
+        ValidateRange(options.ProjectionParallelism, 1, 16, nameof(options.ProjectionParallelism), failures);
 
         return failures.Count == 0
             ? ValidateOptionsResult.Success

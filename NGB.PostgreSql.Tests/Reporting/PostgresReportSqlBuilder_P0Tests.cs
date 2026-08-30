@@ -76,7 +76,7 @@ public sealed class PostgresReportSqlBuilder_P0Tests
     }
 
     [Fact]
-    public void SqlBuilder_Omits_Paging_Clauses_For_Unpaged_Exports()
+    public void SqlBuilder_HardCaps_Unpaged_Exports()
     {
         var sut = new PostgresReportSqlBuilder(new PostgresReportDatasetCatalog([
             new StubDatasetSource(BuildDatasetBinding("accounting.ledger.analysis"))
@@ -103,7 +103,9 @@ public sealed class PostgresReportSqlBuilder_P0Tests
 
         statement.Sql.Should().NotContain("OFFSET @offset");
         statement.Sql.Should().NotContain("LIMIT @limit_plus_one");
-        statement.Parameters.ParameterNames.Should().NotContain(["offset", "limit_plus_one"]);
+        statement.Sql.Should().Contain("LIMIT @materialization_limit_plus_one");
+        statement.Parameters.ParameterNames.Should().NotContain(["offset", "limit_plus_one"])
+            .And.Contain("materialization_limit_plus_one");
         statement.Offset.Should().Be(0);
         statement.Limit.Should().Be(0);
     }

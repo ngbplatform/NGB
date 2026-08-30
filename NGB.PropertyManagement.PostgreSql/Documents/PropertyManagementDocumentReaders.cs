@@ -5,7 +5,8 @@ using NGB.PropertyManagement.Documents;
 
 namespace NGB.PropertyManagement.PostgreSql.Documents;
 
-public sealed class PropertyManagementDocumentReaders(IUnitOfWork uow) : IPropertyManagementDocumentReaders
+public sealed class PropertyManagementDocumentReaders(IUnitOfWork uow)
+    : IPropertyManagementDocumentReaders, IPropertyManagementPostingBatchHeadReader
 {
     public async Task<PmLeaseHead> ReadLeaseHeadAsync(Guid leaseId, CancellationToken ct = default)
     {
@@ -543,6 +544,35 @@ WHERE document_id = @document_id;
                 cancellationToken: ct));
     }
 
+    public async Task<IReadOnlyList<PmPayableApplyHead>> ReadPayableApplyHeadsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        var ids = NormalizeIds(documentIds);
+        if (ids.Length == 0)
+            return [];
+
+        uow.EnsureActiveTransaction();
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    document_id AS DocumentId,
+    credit_document_id AS CreditDocumentId,
+    charge_document_id AS ChargeDocumentId,
+    applied_on_utc AS AppliedOnUtc,
+    amount AS Amount,
+    memo AS Memo
+FROM doc_pm_payable_apply
+WHERE document_id = ANY(@document_ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync<PmPayableApplyHead>(
+            new CommandDefinition(sql, new { document_ids = ids }, uow.Transaction, cancellationToken: ct));
+
+        return rows.AsList();
+    }
+
     public async Task<PmReceivableApplyHead> ReadReceivableApplyHeadAsync(
         Guid documentId,
         CancellationToken ct = default)
@@ -569,6 +599,35 @@ WHERE document_id = @document_id;
                 }, 
                 uow.Transaction,
                 cancellationToken: ct));
+    }
+
+    public async Task<IReadOnlyList<PmReceivableApplyHead>> ReadReceivableApplyHeadsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        var ids = NormalizeIds(documentIds);
+        if (ids.Length == 0)
+            return [];
+
+        uow.EnsureActiveTransaction();
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    document_id AS DocumentId,
+    credit_document_id AS CreditDocumentId,
+    charge_document_id AS ChargeDocumentId,
+    applied_on_utc AS AppliedOnUtc,
+    amount AS Amount,
+    memo AS Memo
+FROM doc_pm_receivable_apply
+WHERE document_id = ANY(@document_ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync<PmReceivableApplyHead>(
+            new CommandDefinition(sql, new { document_ids = ids }, uow.Transaction, cancellationToken: ct));
+
+        return rows.AsList();
     }
 
     public async Task<IReadOnlyList<PmReceivableChargeHead>> ReadReceivableChargeHeadsAsync(
@@ -1299,5 +1358,12 @@ WHERE id = ANY(@ids);
             return false;
 
         return items.Count > 0;
+    }
+
+    private static Guid[] NormalizeIds(IReadOnlyCollection<Guid> documentIds)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+
+        return documentIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
     }
 }

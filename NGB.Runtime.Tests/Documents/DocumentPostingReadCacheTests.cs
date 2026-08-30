@@ -91,6 +91,29 @@ public sealed class DocumentPostingReadCacheTests
     }
 
     [Fact]
+    public async Task Primed_values_are_returned_without_factory_calls_and_are_scope_local()
+    {
+        var cache = new DocumentPostingReadCache();
+        cache.Prime("document:1", 10);
+
+        using (cache.BeginScope())
+        {
+            cache.Prime("document:1", 42);
+            cache.Prime("document:1", 99);
+            (await cache.GetOrAddAsync("document:1", _ => Task.FromResult(-1))).Should().Be(42);
+
+            var wrongType = () => cache.Prime("document:1", "forty-two");
+            wrongType.Should().Throw<NgbInvariantViolationException>()
+                .WithMessage("*different value type*");
+        }
+
+        using (cache.BeginScope())
+        {
+            (await cache.GetOrAddAsync("document:1", _ => Task.FromResult(7))).Should().Be(7);
+        }
+    }
+
+    [Fact]
     public async Task Invalid_arguments_are_rejected_and_scope_disposal_is_idempotent()
     {
         var cache = new DocumentPostingReadCache();

@@ -536,10 +536,9 @@ public sealed class KeycloakAdminClientFullCoverageTests
             new HttpClient(new RejectingHandler()),
             new KeycloakApiClientSettings("https://keycloak.example", "test", "client", "secret"),
             TimeProvider.System);
-        typeof(TokenCacheService).GetField("_cachedToken", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(service, "cached-token");
-        typeof(TokenCacheService).GetField("_tokenExpiry", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(service, DateTime.UtcNow.AddDays(1));
+        typeof(TokenCacheService).GetField("_cacheEntry", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(service, new TokenCacheService.TokenCacheEntry("cached-token", DateTime.UtcNow.AddDays(1)));
+
         return service;
     }
 

@@ -1,7 +1,10 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.IntegrationEvents;
 using NGB.Persistence.Outbox;
@@ -19,15 +22,12 @@ internal sealed class OutboxProcessor(
     IWorkCenterRealtimeNotifier realtime,
     WorkCenterPreferenceRecipientResolver recipientResolver,
     TimeProvider timeProvider,
-    ILogger<OutboxProcessor> logger)
+    ILogger<OutboxProcessor> logger,
+    IWorkCenterOutboxPartitionProcessorFactory? partitionProcessorFactory = null,
+    IOptions<NgbWorkCenterOptions>? options = null)
     : IOutboxProcessor
 {
     private const string ConsumerCode = "work-center";
-    private const int MaximumAttempts = 8;
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
-    };
     private readonly IReadOnlyList<IDocumentActionCompletedWorkCenterPolicy> _policies = policies.ToArray();
 
     public async Task<int> ProcessBatchAsync(int batchSize, CancellationToken ct)
@@ -35,16 +35,138 @@ internal sealed class OutboxProcessor(
         var items = await uow.ExecuteInUowTransactionAsync(
             innerCt => outbox.ClaimBatchAsync(
                 ConsumerCode,
-                // Keep leases bounded: policies run sequentially to preserve event ordering,
-                // so a very large claimed tail would otherwise age while waiting in memory.
+                // Keep leases bounded: each subject remains sequential, so a very large
+                // claimed partition could otherwise age while waiting in memory.
                 Math.Clamp(batchSize, 1, 25),
                 timeProvider.GetUtcNowDateTime(),
                 innerCt),
             ct);
 
-        // Recipient metadata is stable for the duration of one claimed batch and is deliberately
-        // discarded between polls. Keeping the cache across events avoids reloading the same users,
-        // roles and preferences for every projected event while preserving bounded staleness.
+        IReadOnlyCollection<Guid> changedUsers;
+        var parallelism = options?.Value.ProjectionParallelism ?? 1;
+        var partitions = items
+            .GroupBy(static item => item.Event.Subject, StringComparer.Ordinal)
+            .Select(static group => (IReadOnlyList<OutboxConsumerWorkItem>)group.ToArray())
+            .ToArray();
+
+        if (partitionProcessorFactory is not null && parallelism > 1 && partitions.Length > 1)
+        {
+            var concurrentChangedUsers = new ConcurrentDictionary<Guid, byte>();
+            await Parallel.ForEachAsync(
+                partitions,
+                new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Math.Min(parallelism, partitions.Length),
+                    CancellationToken = ct
+                },
+                async (partition, innerCt) =>
+                {
+                    var partitionChangedUsers = await partitionProcessorFactory.ProcessAsync(partition, innerCt);
+                    foreach (var userId in partitionChangedUsers)
+                        concurrentChangedUsers.TryAdd(userId, 0);
+                });
+            changedUsers = concurrentChangedUsers.Keys.ToArray();
+        }
+        else
+        {
+            changedUsers = await WorkCenterOutboxProjectionRunner.ProcessAsync(
+                items,
+                uow,
+                outbox,
+                _policies,
+                recipientResolver,
+                timeProvider,
+                logger,
+                ct);
+        }
+
+        if (changedUsers.Count > 0)
+        {
+            try
+            {
+                await realtime.NotifyUsersChangedAsync(
+                    timeProvider.GetUtcNowDateTime().Ticks,
+                    changedUsers,
+                    ct);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Work Center realtime invalidation failed after projecting {EventCount} outbox events.",
+                    items.Count);
+            }
+        }
+
+        return items.Count;
+    }
+}
+
+internal interface IWorkCenterOutboxPartitionProcessorFactory
+{
+    Task<IReadOnlyCollection<Guid>> ProcessAsync(
+        IReadOnlyList<OutboxConsumerWorkItem> items,
+        CancellationToken ct);
+}
+
+internal sealed class WorkCenterOutboxPartitionProcessorFactory(IServiceScopeFactory scopes)
+    : IWorkCenterOutboxPartitionProcessorFactory
+{
+    public async Task<IReadOnlyCollection<Guid>> ProcessAsync(
+        IReadOnlyList<OutboxConsumerWorkItem> items,
+        CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var processor = scope.ServiceProvider.GetRequiredService<WorkCenterOutboxPartitionProcessor>();
+        return await processor.ProcessAsync(items, ct);
+    }
+}
+
+internal sealed class WorkCenterOutboxPartitionProcessor(
+    IUnitOfWork uow,
+    IOutboxEventRepository outbox,
+    IEnumerable<IDocumentActionCompletedWorkCenterPolicy> policies,
+    WorkCenterPreferenceRecipientResolver recipientResolver,
+    TimeProvider timeProvider,
+    ILogger<WorkCenterOutboxPartitionProcessor> logger)
+{
+    private readonly IReadOnlyList<IDocumentActionCompletedWorkCenterPolicy> _policies = policies.ToArray();
+
+    public Task<IReadOnlyCollection<Guid>> ProcessAsync(
+        IReadOnlyList<OutboxConsumerWorkItem> items,
+        CancellationToken ct)
+        => WorkCenterOutboxProjectionRunner.ProcessAsync(
+            items,
+            uow,
+            outbox,
+            _policies,
+            recipientResolver,
+            timeProvider,
+            logger,
+            ct);
+}
+
+internal static class WorkCenterOutboxProjectionRunner
+{
+    private const string ConsumerCode = "work-center";
+    private const int MaximumAttempts = 8;
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
+
+    public static async Task<IReadOnlyCollection<Guid>> ProcessAsync(
+        IReadOnlyList<OutboxConsumerWorkItem> items,
+        IUnitOfWork uow,
+        IOutboxEventRepository outbox,
+        IReadOnlyList<IDocumentActionCompletedWorkCenterPolicy> policies,
+        WorkCenterPreferenceRecipientResolver recipientResolver,
+        TimeProvider timeProvider,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        // Recipient metadata is stable for one subject partition and is deliberately discarded
+        // before it is reused. This keeps the cache scoped, bounded and concurrency-safe.
         recipientResolver.Reset();
 
         var changedUsers = new HashSet<Guid>();
@@ -66,7 +188,7 @@ internal sealed class OutboxProcessor(
                             StringComparison.OrdinalIgnoreCase))
                     {
                         var completed = DeserializeDocumentActionCompleted(item.Event);
-                        foreach (var policy in _policies)
+                        foreach (var policy in policies)
                         {
                             var policyStarted = Stopwatch.GetTimestamp();
                             var policyChangedUsers = await policy.HandleAsync(completed, innerCt);
@@ -105,7 +227,6 @@ internal sealed class OutboxProcessor(
                     new KeyValuePair<string, object?>("event.type", item.Event.EventType));
 
                 activity?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
-
                 logger.LogError(
                     ex,
                     "Work Center outbox policy failed for event {EventId} on attempt {Attempt}.",
@@ -131,25 +252,7 @@ internal sealed class OutboxProcessor(
             }
         }
 
-        if (changedUsers.Count > 0)
-        {
-            try
-            {
-                await realtime.NotifyUsersChangedAsync(
-                    timeProvider.GetUtcNowDateTime().Ticks,
-                    changedUsers,
-                    ct);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "Work Center realtime invalidation failed after projecting {EventCount} outbox events.",
-                    items.Count);
-            }
-        }
-
-        return items.Count;
+        return changedUsers;
     }
 
     private static TimeSpan Backoff(Guid eventId, int attempt)

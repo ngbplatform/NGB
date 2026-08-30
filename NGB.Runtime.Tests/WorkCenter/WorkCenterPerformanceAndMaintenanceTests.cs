@@ -210,7 +210,8 @@ public sealed class WorkCenterPerformanceAndMaintenanceTests
             DocumentActionExecutionRetention = TimeSpan.Zero,
             TerminalTaskRetention = TimeSpan.FromDays(3651),
             MaintenanceBatchSize = 0,
-            MaximumMaintenanceBatchesPerRun = 0
+            MaximumMaintenanceBatchesPerRun = 0,
+            ProjectionParallelism = 0
         });
 
         invalid.Failed.Should().BeTrue();
@@ -218,6 +219,7 @@ public sealed class WorkCenterPerformanceAndMaintenanceTests
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.TerminalTaskRetention)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.MaintenanceBatchSize)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.MaximumMaintenanceBatchesPerRun)));
+        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.ProjectionParallelism)));
     }
 
     private static Mock<IUnitOfWork> UnitOfWork()

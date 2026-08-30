@@ -41,14 +41,7 @@ internal sealed class DocumentPostingReadCache : IDocumentPostingReadCache
             if (cached.ValueType == typeof(T))
                 return (T)cached.Value!;
 
-            throw new NgbInvariantViolationException(
-                "Document posting read cache key was reused with a different value type.",
-                new Dictionary<string, object?>
-                {
-                    ["key"] = key,
-                    ["expectedType"] = typeof(T).FullName,
-                    ["actualType"] = cached.ValueType.FullName
-                });
+            ThrowKeyTypeMismatch<T>(key, cached);
         }
 
         var value = await valueFactory(ct);
@@ -56,6 +49,35 @@ internal sealed class DocumentPostingReadCache : IDocumentPostingReadCache
 
         return value;
     }
+
+    public void Prime<T>(string key, T value)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            throw new NgbArgumentRequiredException(nameof(key));
+
+        if (_scopeDepth == 0)
+            return;
+
+        if (_values.TryGetValue(key, out var cached))
+        {
+            if (cached.ValueType == typeof(T))
+                return;
+
+            ThrowKeyTypeMismatch<T>(key, cached);
+        }
+
+        _values.Add(key, new CachedValue(typeof(T), value));
+    }
+
+    private static void ThrowKeyTypeMismatch<T>(string key, CachedValue cached)
+        => throw new NgbInvariantViolationException(
+            "Document posting read cache key was reused with a different value type.",
+            new Dictionary<string, object?>
+            {
+                ["key"] = key,
+                ["expectedType"] = typeof(T).FullName,
+                ["actualType"] = cached.ValueType.FullName
+            });
 
     private void EndScope()
     {

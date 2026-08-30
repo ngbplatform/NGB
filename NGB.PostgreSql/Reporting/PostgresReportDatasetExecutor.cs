@@ -1,4 +1,5 @@
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
 using NGB.Tools.Exceptions;
 
@@ -25,6 +26,9 @@ public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresRepor
                 statement.Parameters,
                 _uow.Transaction,
                 cancellationToken: ct))).ToList();
+
+        if (request.Paging.DisablePaging)
+            EnsureMaterializationBound(rows.Count);
 
         var hasMore = !request.Paging.DisablePaging && rows.Count > request.Paging.Limit;
         if (hasMore)
@@ -69,5 +73,16 @@ public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresRepor
             return new Dictionary<string, object?>(typed, StringComparer.OrdinalIgnoreCase);
 
         throw new NgbInvariantViolationException("PostgreSQL reporting executor expected Dapper row materialization to provide a dictionary payload.");
+    }
+
+    internal static void EnsureMaterializationBound(int rowCount)
+    {
+        if (rowCount <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new NgbArgumentOutOfRangeException(
+            "rows",
+            rowCount,
+            $"A composable report can materialize at most {PagingLimits.MaxMaterializedRows:N0} rows. Narrow the filters or use paging.");
     }
 }

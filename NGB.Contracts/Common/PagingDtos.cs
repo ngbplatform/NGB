@@ -20,7 +20,8 @@ public sealed record PageRequestDto(
     int Limit = PagingLimits.DefaultPageSize,
     string? Search = null,
     IReadOnlyDictionary<string, string>? Filters = null,
-    string? Cursor = null);
+    string? Cursor = null,
+    bool IncludeTotal = true);
 
 public sealed record PageResponseDto<T>(
     IReadOnlyList<T> Items,

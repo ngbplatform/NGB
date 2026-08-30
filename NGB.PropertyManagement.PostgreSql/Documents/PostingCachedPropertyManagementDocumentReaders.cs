@@ -133,7 +133,9 @@ internal sealed class PostingCachedPropertyManagementDocumentReaders(
         Func<Guid, CancellationToken, Task<T>> reader,
         CancellationToken ct)
         => cache.GetOrAddAsync(
-            $"property-management:{operation}:{id:D}",
+            CacheKey(id, operation),
             innerCt => reader(id, innerCt),
             ct);
+
+    internal static string CacheKey(Guid id, string operation) => $"property-management:{operation}:{id:D}";
 }

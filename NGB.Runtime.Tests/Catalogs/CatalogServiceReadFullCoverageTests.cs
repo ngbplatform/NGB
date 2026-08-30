@@ -179,6 +179,30 @@ public sealed class CatalogServiceReadFullCoverageTests
     }
 
     [Fact]
+    public async Task Page_CanSkipExactTotalWithoutUsingCombinedCountQuery()
+    {
+        var fixture = new CatalogServiceTestFixture();
+        var combined = fixture.Reader.As<ICatalogCombinedPageReader>();
+        fixture.Reader.Setup(x => x.GetPageAsync(
+                It.IsAny<CatalogHeadDescriptor>(),
+                It.IsAny<CatalogQuery>(),
+                4,
+                2,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var page = await fixture.CreateService().GetPageAsync(
+            "rich", new PageRequestDto(4, 2, IncludeTotal: false), default);
+
+        page.Total.Should().BeNull();
+        fixture.Reader.Verify(x => x.CountAsync(
+            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(), It.IsAny<CancellationToken>()), Times.Never);
+        combined.Verify(x => x.GetPageWithTotalAsync(
+            It.IsAny<CatalogHeadDescriptor>(), It.IsAny<CatalogQuery>(),
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Page_RejectsUnknownScalarAndInvalidSoftDeleteFilters()
     {
         var sut = new CatalogServiceTestFixture().CreateService();

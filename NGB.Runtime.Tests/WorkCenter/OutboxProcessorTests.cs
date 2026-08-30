@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Text.Json;
@@ -132,6 +133,57 @@ public sealed class OutboxProcessorTests
             It.IsAny<long>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
         outbox.VerifyAll();
         uow.CommitCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Independent_subjects_are_parallelized_while_each_subject_keeps_claim_order()
+    {
+        var uow = new RecordingUnitOfWork();
+        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
+        var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
+        var factoryCalls = 0;
+        var first = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/a/1");
+        var second = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/b/2");
+        var third = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/a/1");
+        var captured = new ConcurrentBag<IReadOnlyList<OutboxConsumerWorkItem>>();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bothStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = 0;
+
+        outbox.Setup(repository => repository.ClaimBatchAsync(
+                "work-center", 3, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([first, second, third]);
+        var factory = new DelegatePartitionProcessorFactory(async (partition, ct) =>
+            {
+                Interlocked.Increment(ref factoryCalls);
+                captured.Add(partition);
+                if (Interlocked.Increment(ref running) == 2)
+                    bothStarted.TrySetResult();
+
+                await release.Task.WaitAsync(ct);
+                Interlocked.Decrement(ref running);
+                return [];
+            });
+        var processor = Processor(
+            uow,
+            outbox,
+            [],
+            realtime.Object,
+            partitionProcessorFactory: factory,
+            options: new NgbWorkCenterOptions { ProjectionParallelism = 2 });
+
+        var processing = processor.ProcessBatchAsync(3, CancellationToken.None);
+        await bothStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        release.TrySetResult();
+
+        (await processing).Should().Be(3);
+        captured.Should().HaveCount(2);
+        captured.Single(partition => partition[0].Event.Subject == "document/a/1")
+            .Select(item => item.Event.EventId)
+            .Should().Equal(first.Event.EventId, third.Event.EventId);
+        factoryCalls.Should().Be(2);
+        realtime.VerifyNoOtherCalls();
+        uow.CommitCount.Should().Be(1);
     }
 
     [Fact]
@@ -467,7 +519,9 @@ public sealed class OutboxProcessorTests
         Mock<IOutboxEventRepository> outbox,
         IEnumerable<IDocumentActionCompletedWorkCenterPolicy> policies,
         IWorkCenterRealtimeNotifier realtime,
-        WorkCenterPreferenceRecipientResolver? recipientResolver = null)
+        WorkCenterPreferenceRecipientResolver? recipientResolver = null,
+        IWorkCenterOutboxPartitionProcessorFactory? partitionProcessorFactory = null,
+        NgbWorkCenterOptions? options = null)
         => new(
             uow,
             outbox.Object,
@@ -475,7 +529,9 @@ public sealed class OutboxProcessorTests
             realtime,
             recipientResolver ?? RecipientResolver(),
             new FixedTimeProvider(Now),
-            NullLogger<OutboxProcessor>.Instance);
+            NullLogger<OutboxProcessor>.Instance,
+            partitionProcessorFactory,
+            options is null ? null : Microsoft.Extensions.Options.Options.Create(options));
 
     private static async Task AssertPoisonEventIsDeadLetteredAsync(
         OutboxConsumerWorkItem item,
@@ -520,7 +576,8 @@ public sealed class OutboxProcessorTests
         string eventType,
         int attempt,
         int schemaVersion = DocumentActionCompletedV1.SchemaVersion,
-        Guid? eventId = null)
+        Guid? eventId = null,
+        string subject = "subject")
     {
         var id = eventId ?? Guid.Parse("01980000-7000-8000-8000-000000000001");
         var correlationId = Guid.Parse("01980000-7000-8000-8000-000000000002");
@@ -530,7 +587,7 @@ public sealed class OutboxProcessorTests
                     id,
                     Now.AddMinutes(-1),
                     "tests",
-                    "subject",
+                    subject,
                     null,
                     correlationId,
                     null,
@@ -553,7 +610,7 @@ public sealed class OutboxProcessorTests
                 schemaVersion,
                 Now.AddMinutes(-1),
                 "tests",
-                "subject",
+                subject,
                 null,
                 correlationId,
                 null,
@@ -595,6 +652,16 @@ public sealed class OutboxProcessorTests
     private sealed class FixedTimeProvider(DateTime now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => new(now);
+    }
+
+    private sealed class DelegatePartitionProcessorFactory(
+        Func<IReadOnlyList<OutboxConsumerWorkItem>, CancellationToken, Task<IReadOnlyCollection<Guid>>> process)
+        : IWorkCenterOutboxPartitionProcessorFactory
+    {
+        public Task<IReadOnlyCollection<Guid>> ProcessAsync(
+            IReadOnlyList<OutboxConsumerWorkItem> items,
+            CancellationToken ct)
+            => process(items, ct);
     }
 
     private sealed class ResolvingPolicy(

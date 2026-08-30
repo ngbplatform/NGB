@@ -71,12 +71,15 @@ internal sealed class DocumentPostingService(
     IAuditLogService audit,
     ILogger<DocumentPostingService> logger,
     TimeProvider timeProvider,
-    IDocumentPostingReadCache? postingReadCache = null)
+    IDocumentPostingReadCache? postingReadCache = null,
+    IEnumerable<IDocumentPostingBatchReadPrefetcher>? postingBatchReadPrefetchers = null)
     : IDocumentPostingBatchService
 {
     internal const int MaxAtomicBatchSize = 25;
 
     private readonly IDocumentPostingReadCache _postingReadCache = postingReadCache ?? new DocumentPostingReadCache();
+    private readonly IReadOnlyList<IDocumentPostingBatchReadPrefetcher> _postingBatchReadPrefetchers =
+        postingBatchReadPrefetchers?.ToArray() ?? [];
 
     /// <summary>
     /// Posts a Draft document.
@@ -127,9 +130,17 @@ internal sealed class DocumentPostingService(
                 using var postingReadScope = _postingReadCache.BeginScope();
 
                 var rows = await documents.GetForUpdateByIdsAsync(ids, innerCt);
-                foreach (var documentId in ids)
+                var orderedDocuments = ids
+                    .Select(documentId => RequireDocument(rows.GetValueOrDefault(documentId), documentId))
+                    .ToArray();
+
+                foreach (var prefetcher in _postingBatchReadPrefetchers)
                 {
-                    var doc = RequireDocument(rows.GetValueOrDefault(documentId), documentId);
+                    await prefetcher.PrefetchAsync(orderedDocuments, innerCt);
+                }
+
+                foreach (var doc in orderedDocuments)
+                {
                     if (await PostLockedAsync(doc, postingAction: null, innerCt))
                         RuntimeLog.DocumentOperationCompleted(logger, "Post");
                 }

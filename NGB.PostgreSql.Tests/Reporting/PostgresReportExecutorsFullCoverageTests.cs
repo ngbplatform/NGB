@@ -144,6 +144,19 @@ public sealed class PostgresReportExecutorsFullCoverageTests
         invalid.Should().Throw<NgbInvariantViolationException>();
     }
 
+    [Fact]
+    public void Unpaged_materialization_guard_accepts_boundary_and_rejects_one_extra_row()
+    {
+        Action boundary = () => PostgresReportDatasetExecutor.EnsureMaterializationBound(
+            Contracts.Common.PagingLimits.MaxMaterializedRows);
+        Action exceeded = () => PostgresReportDatasetExecutor.EnsureMaterializationBound(
+            Contracts.Common.PagingLimits.MaxMaterializedRows + 1);
+
+        boundary.Should().NotThrow();
+        exceeded.Should().Throw<NgbArgumentOutOfRangeException>()
+            .WithMessage("*materialize at most*");
+    }
+
     private static PostgresReportPlanExecutor CreatePlanExecutor(RecordingDbConnection connection)
     {
         var catalog = new PostgresReportDatasetCatalog([new StubSource([Dataset()])]);

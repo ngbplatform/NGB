@@ -108,6 +108,39 @@ public sealed class SsoInfrastructureFullCoverageTests
     }
 
     [Fact]
+    public async Task Token_cache_coalesces_cold_misses_and_cache_hits_do_not_wait_for_refresh_lock()
+    {
+        var now = new DateTimeOffset(2026, 8, 16, 12, 0, 0, TimeSpan.Zero);
+        var token = new JwtSecurityTokenHandler().WriteToken(
+            new JwtSecurityToken(expires: now.UtcDateTime.AddMinutes(10)));
+        var handler = new TokenEndpointHandler(token);
+        using var httpClient = new HttpClient(handler);
+        var sut = new TokenCacheService(
+            httpClient,
+            new KeycloakApiClientSettings("https://identity.example", "platform", "api", "secret"),
+            new FixedTimeProvider(now));
+
+        var coldResults = await Task.WhenAll(
+            Enumerable.Range(0, 32).Select(_ => sut.GetTokenAsync(CancellationToken.None)));
+        coldResults.Should().OnlyContain(value => value == token);
+        handler.RequestCount.Should().Be(1);
+
+        var gate = (SemaphoreSlim)typeof(TokenCacheService)
+            .GetField("_semaphore", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(sut)!;
+        await gate.WaitAsync();
+        try
+        {
+            var cached = await sut.GetTokenAsync(new CancellationToken(canceled: true));
+            cached.Should().Be(token);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    [Fact]
     public void KeycloakAdminException_and_settings_expose_safe_complete_context()
     {
         var withoutExtra = new KeycloakAdminClientException("users.get", 503);

@@ -43,6 +43,7 @@ public sealed class DocumentPostingServiceFullCoverageTests
         var missingId = Guid.NewGuid();
         var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
+        var prefetcher = new Mock<IDocumentPostingBatchReadPrefetcher>(MockBehavior.Strict);
 
         locks.Setup(x => x.LockDocumentAsync(first.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         locks.Setup(x => x.LockDocumentAsync(second.Id, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -59,11 +60,16 @@ public sealed class DocumentPostingServiceFullCoverageTests
                 It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first.Id, missingId })),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, DocumentRecord> { [first.Id] = first });
+        prefetcher.Setup(x => x.PrefetchAsync(
+                It.Is<IReadOnlyList<DocumentRecord>>(items => items.Select(item => item.Id).SequenceEqual(new[] { first.Id, second.Id })),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         var sut = CreateSut(
             uow: TransactionalUow().Object,
             advisoryLocks: locks.Object,
-            documents: documents.Object);
+            documents: documents.Object,
+            postingBatchReadPrefetchers: [prefetcher.Object]);
 
         await sut.PostManyAsync([first.Id, first.Id, second.Id], manageTransaction: true);
         await sut.PostManyAsync([], manageTransaction: true);
@@ -86,6 +92,7 @@ public sealed class DocumentPostingServiceFullCoverageTests
         documents.Verify(x => x.GetForUpdateByIdsAsync(
             It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { first.Id, second.Id })),
             It.IsAny<CancellationToken>()), Times.Once);
+        prefetcher.VerifyAll();
     }
 
     [Fact]
@@ -904,7 +911,8 @@ public sealed class DocumentPostingServiceFullCoverageTests
         IReferenceRegisterRepository? refregRepository = null,
         IDocumentNumberingAndTypedSyncService? numberingSync = null,
         IDocumentNumberingPolicyResolver? numberingPolicies = null,
-        IDocumentValidatorResolver? validators = null)
+        IDocumentValidatorResolver? validators = null,
+        IEnumerable<IDocumentPostingBatchReadPrefetcher>? postingBatchReadPrefetchers = null)
         => new(
             uow: uow ?? Mock.Of<IUnitOfWork>(),
             advisoryLocks: advisoryLocks ?? Mock.Of<IAdvisoryLockManager>(),
@@ -928,5 +936,6 @@ public sealed class DocumentPostingServiceFullCoverageTests
             numberingPolicies: numberingPolicies ?? Mock.Of<IDocumentNumberingPolicyResolver>(),
             audit: Mock.Of<IAuditLogService>(),
             logger: NullLogger<DocumentPostingService>.Instance,
-            timeProvider: TimeProvider.System);
+            timeProvider: TimeProvider.System,
+            postingBatchReadPrefetchers: postingBatchReadPrefetchers);
 }

@@ -194,6 +194,39 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
     }
 
     [Fact]
+    public async Task GetPageAsync_CanSkipExactTotalWithoutUsingCombinedCountQuery()
+    {
+        var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true)
+        ]);
+        Mock<IDocumentReader>? capturedReader = null;
+        Mock<IDocumentCombinedPageReader>? combined = null;
+        var service = CreateSut(meta, readerSetup: reader =>
+        {
+            capturedReader = reader;
+            combined = reader.As<IDocumentCombinedPageReader>();
+            reader.Setup(x => x.GetPageAsync(
+                    It.IsAny<DocumentHeadDescriptor>(),
+                    It.IsAny<DocumentQuery>(),
+                    4,
+                    2,
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync([]);
+        });
+
+        var page = await service.GetPageAsync(
+            TypeCode, new PageRequestDto(4, 2, IncludeTotal: false), default);
+
+        page.Total.Should().BeNull();
+        capturedReader!.Verify(x => x.CountAsync(
+            It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(), It.IsAny<CancellationToken>()), Times.Never);
+        combined!.Verify(x => x.GetPageWithTotalAsync(
+            It.IsAny<DocumentHeadDescriptor>(), It.IsAny<DocumentQuery>(),
+            It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task GetPageAsync_PeriodFilters_validate_required_format_order_and_date_metadata()
     {
         var withDate = BuildMetaWithHead(TypeCode, "doc_test", [

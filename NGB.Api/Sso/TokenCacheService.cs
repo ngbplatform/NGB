@@ -14,8 +14,9 @@ public class TokenCacheService
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     
-    private string? _cachedToken;
-    private DateTime _tokenExpiry;
+    private TokenCacheEntry? _cacheEntry;
+
+    internal sealed record TokenCacheEntry(string Token, DateTime ExpiresAtUtc);
 
     public TokenCacheService(IHttpClientFactory httpClientFactory, KeycloakApiClientSettings settings, TimeProvider timeProvider)
     {
@@ -67,22 +68,45 @@ public class TokenCacheService
 
     public async Task<string> GetTokenAsync(CancellationToken cancellationToken)
     {
+        if (TryGetCachedToken(out var cachedToken))
+            return cachedToken;
+
         await _semaphore.WaitAsync(cancellationToken);
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(_cachedToken) && _timeProvider.GetUtcNow() < _tokenExpiry)
-                return _cachedToken;
+            // Another waiter may have refreshed the token while this caller was queued.
+            if (TryGetCachedToken(out cachedToken))
+                return cachedToken;
 
             var tokenResponse = await GetNewTokenAsync(cancellationToken);
-            _cachedToken = tokenResponse.AccessToken;
-            _tokenExpiry = GetTokenExpiry(_cachedToken).AddSeconds(-60);
+            var refreshedToken = tokenResponse.AccessToken;
+            var refreshedExpiry = GetTokenExpiry(refreshedToken).AddSeconds(-60);
 
-            return _cachedToken;
+            // Publish token and expiry as one immutable snapshot. Separate fields can let
+            // a lock-free reader pair an expired old token with the new future expiry.
+            Volatile.Write(ref _cacheEntry, new TokenCacheEntry(refreshedToken, refreshedExpiry));
+
+            return refreshedToken;
         }
         finally
         {
             _semaphore.Release();
         }
+    }
+
+    private bool TryGetCachedToken(out string token)
+    {
+        var observed = Volatile.Read(ref _cacheEntry);
+        if (observed is not null
+            && !string.IsNullOrWhiteSpace(observed.Token)
+            && _timeProvider.GetUtcNow() < observed.ExpiresAtUtc)
+        {
+            token = observed.Token;
+            return true;
+        }
+
+        token = string.Empty;
+        return false;
     }
 }

@@ -92,7 +92,7 @@ public sealed class CatalogService(
                 cursor?.AfterDisplay,
                 cursor?.AfterId,
                 request.Limit,
-                includeTotal: cursor is null,
+                includeTotal: request.IncludeTotal && cursor is null,
                 ct);
 
             rows = page.Rows;
@@ -102,7 +102,7 @@ public sealed class CatalogService(
             if (hasMore && page.NextAfterId is { } nextId)
                 nextCursor = ListPageCursorCodec.Encode(page.NextAfterDisplay, nextId);
         }
-        else if (reader is ICatalogCombinedPageReader combinedPageReader)
+        else if (request.IncludeTotal && reader is ICatalogCombinedPageReader combinedPageReader)
         {
             var page = await combinedPageReader.GetPageWithTotalAsync(model.Head, query, request.Offset, request.Limit, ct);
             rows = page.Rows;
@@ -110,7 +110,9 @@ public sealed class CatalogService(
         }
         else
         {
-            var fallbackTotal = await reader.CountAsync(model.Head, query, ct);
+            var fallbackTotal = request.IncludeTotal
+                ? await reader.CountAsync(model.Head, query, ct)
+                : (long?)null;
             var fallbackRows = await reader.GetPageAsync(model.Head, query, request.Offset, request.Limit, ct);
             rows = fallbackRows;
             total = fallbackTotal;

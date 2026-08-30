@@ -233,6 +233,8 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IWorkCenterTaskService, WorkCenterTaskService>();
         services.TryAddScoped<INotificationService, NotificationService>();
         services.TryAddScoped<IWorkCenterQueryService, WorkCenterQueryService>();
+        services.TryAddSingleton<IWorkCenterOutboxPartitionProcessorFactory, WorkCenterOutboxPartitionProcessorFactory>();
+        services.TryAddScoped<WorkCenterOutboxPartitionProcessor>();
         services.TryAddScoped<IOutboxProcessor, OutboxProcessor>();
         services.TryAddScoped<IWorkCenterOperationalHealthReader, WorkCenterOperationalHealthReader>();
         services.TryAddScoped<IWorkCenterMaintenanceService, WorkCenterMaintenanceService>();
