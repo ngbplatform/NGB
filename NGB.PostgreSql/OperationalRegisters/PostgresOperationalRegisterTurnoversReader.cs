@@ -6,6 +6,7 @@ using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Schema;
 
 namespace NGB.PostgreSql.OperationalRegisters;
 
@@ -22,9 +23,15 @@ public sealed class PostgresOperationalRegisterTurnoversReader(
     IOperationalRegisterRepository registers,
     IOperationalRegisterResourceRepository resources,
     IDimensionSetReader dimensionSetReader,
-    IDimensionValueEnrichmentReader dimensionValueEnrichmentReader)
+    IDimensionValueEnrichmentReader dimensionValueEnrichmentReader,
+    OperationalRegisterMetadataCache? metadataCache = null,
+    PostgresRelationPresenceCache? relationPresenceCache = null)
     : IOperationalRegisterTurnoversReader
 {
+    private readonly OperationalRegisterMetadataCache _metadataCache = metadataCache
+        ?? new OperationalRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
+        ?? new PostgresRelationPresenceCache(TimeProvider.System);
     public Task<IReadOnlyList<OperationalRegisterMonthlyProjectionReadRow>> GetByMonthsAsync(
         Guid registerId,
         DateOnly fromInclusive,
@@ -40,6 +47,7 @@ public sealed class PostgresOperationalRegisterTurnoversReader(
             dimensions,
             dimensionSetId,
             ResolveTurnoversTableAndResourcesOrThrowAsync,
+            _relationPresenceCache,
             dimensionSetReader,
             dimensionValueEnrichmentReader,
             ct);
@@ -65,6 +73,7 @@ public sealed class PostgresOperationalRegisterTurnoversReader(
             afterDimensionSetId,
             limit,
             ResolveTurnoversTableAndResourcesOrThrowAsync,
+            _relationPresenceCache,
             dimensionSetReader,
             dimensionValueEnrichmentReader,
             ct);
@@ -73,16 +82,17 @@ public sealed class PostgresOperationalRegisterTurnoversReader(
         Guid registerId,
         CancellationToken ct)
     {
-        var reg = await registers.GetByIdAsync(registerId, ct);
-        if (reg is null)
-            throw new OperationalRegisterNotFoundException(registerId);
+        var context = await _metadataCache.GetOrCreateAsync(
+            registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
+            ct);
+        var reg = context.Register;
 
         var tableName = OperationalRegisterNaming.TurnoversTable(reg.TableCode);
         OperationalRegisterSqlIdentifiers.EnsureOrThrow(tableName, "opreg turnovers table name");
 
-        var cols = (await resources.GetByRegisterIdAsync(registerId, ct))
-            .OrderBy(r => r.Ordinal)
-            .Select(r => r.ColumnCode)
+        var cols = context.Resources
+            .Select(static resource => resource.ColumnCode)
             .ToArray();
 
         foreach (var c in cols)
@@ -91,5 +101,27 @@ public sealed class PostgresOperationalRegisterTurnoversReader(
         }
 
         return (tableName, cols);
+    }
+
+    private async Task<OperationalRegisterMetadataContext> LoadMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+        var movementsTable = OperationalRegisterNaming.MovementsTable(register.TableCode);
+
+        OperationalRegisterSqlIdentifiers.EnsureOrThrow(movementsTable, "opreg movements table name");
+
+        var definitions = (await resources.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(static resource => resource.Ordinal)
+            .ToArray();
+
+        foreach (var resource in definitions)
+        {
+            OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
+        }
+
+        return new OperationalRegisterMetadataContext(register, definitions, movementsTable);
     }
 }

@@ -16,6 +16,19 @@ namespace NGB.Persistence.OperationalRegisters;
 public interface IOperationalRegisterMovementsQueryReader
 {
     /// <summary>
+    /// Returns a seek-paged exact UTC-date range ordered by occurrence and MovementId.
+    /// The caller requests one extra row to determine whether another page exists.
+    /// </summary>
+    Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByOccurredAtCursorAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions = null,
+        OperationalRegisterOccurredAtCursor? cursor = null,
+        int limit = 101,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Returns an exact UTC-date range page ordered by occurrence and MovementId.
     /// Filtering, counting, sorting and paging are performed in the database.
     /// A null limit disables paging while retaining the total count.

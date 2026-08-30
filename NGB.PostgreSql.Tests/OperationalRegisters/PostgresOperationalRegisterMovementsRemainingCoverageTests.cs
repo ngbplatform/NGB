@@ -25,6 +25,14 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
             Guid.NewGuid(), new DateOnly(2026, 2, 1), jan);
         Func<Task> negativeOffset = async () => await sut.GetByOccurredAtPageAsync(Guid.NewGuid(), jan, jan, offset: -1);
         Func<Task> zeroPageLimit = async () => await sut.GetByOccurredAtPageAsync(Guid.NewGuid(), jan, jan, limit: 0);
+        Func<Task> missingCursorRegister = async () => await sut.GetByOccurredAtCursorAsync(Guid.Empty, jan, jan);
+        Func<Task> reversedCursorRange = async () => await sut.GetByOccurredAtCursorAsync(
+            Guid.NewGuid(), new DateOnly(2026, 2, 1), jan);
+        Func<Task> zeroCursorLimit = async () => await sut.GetByOccurredAtCursorAsync(Guid.NewGuid(), jan, jan, limit: 0);
+        Func<Task> nonUtcCursor = async () => await sut.GetByOccurredAtCursorAsync(
+            Guid.NewGuid(), jan, jan, cursor: new OperationalRegisterOccurredAtCursor(DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Local), 1));
+        Func<Task> invalidCursorId = async () => await sut.GetByOccurredAtCursorAsync(
+            Guid.NewGuid(), jan, jan, cursor: new OperationalRegisterOccurredAtCursor(DateTime.UtcNow, 0));
         Func<Task> missingAggregateRegister = async () => await sut.GetResourceNetsByDimensionAsync(
             Guid.Empty, jan, jan, null, Guid.NewGuid(), "amount");
         Func<Task> missingGroupDimension = async () => await sut.GetResourceNetsByDimensionAsync(
@@ -49,6 +57,11 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         await reversedPage.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await negativeOffset.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await zeroPageLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await missingCursorRegister.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await reversedCursorRange.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await zeroCursorLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await nonUtcCursor.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await invalidCursorId.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await missingAggregateRegister.Should().ThrowAsync<NgbArgumentRequiredException>();
         await missingGroupDimension.Should().ThrowAsync<NgbArgumentRequiredException>();
         await missingResource.Should().ThrowAsync<NgbArgumentRequiredException>();
@@ -189,8 +202,12 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         connection.Commands.Should().Contain(x => x.CommandText.Contains(
             "INSERT INTO opreg_", StringComparison.Ordinal) &&
             x.CommandText.Contains("is_storno)", StringComparison.Ordinal));
-        registers.Verify(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()), Times.Exactly(4));
-        resources.Verify(x => x.GetByRegisterIdAsync(registerId, It.IsAny<CancellationToken>()), Times.Exactly(4));
+        registers.Verify(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()), Times.Once);
+        resources.Verify(x => x.GetByRegisterIdAsync(registerId, It.IsAny<CancellationToken>()), Times.Once);
+        connection.Commands.Count(command => command.CommandText.Contains(
+                "UPDATE operational_registers SET has_movements = TRUE",
+                StringComparison.Ordinal))
+            .Should().Be(1);
 
         var resource = new OperationalRegisterResource("Amount", "amount", "amount", "Amount", 1);
         var resourceRegisters = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);

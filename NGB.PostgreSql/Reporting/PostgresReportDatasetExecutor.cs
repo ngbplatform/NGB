@@ -30,9 +30,21 @@ public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresRepor
         if (hasMore)
             rows.RemoveAt(rows.Count - 1);
 
-        var materialized = rows
-            .Select(MaterializeRow)
-            .Select(static x => new PostgresReportExecutionRow(x))
+        var materializedWithCursorKeys = rows.Select(MaterializeRow).ToList();
+        var nextCursor = hasMore && statement.CursorColumns.Count > 0 && materializedWithCursorKeys.Count > 0
+            ? PostgresReportCursorCodec.Encode(statement.DatasetCode, statement.CursorColumns, materializedWithCursorKeys[^1])
+            : null;
+        var hiddenAliases = statement.CursorColumns
+            .Where(x => x.IsHidden)
+            .Select(x => x.Alias)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var materialized = materializedWithCursorKeys
+            .Select(values => hiddenAliases.Count == 0
+                ? values
+                : new Dictionary<string, object?>(
+                    values.Where(x => !hiddenAliases.Contains(x.Key)),
+                    StringComparer.OrdinalIgnoreCase))
+            .Select(static values => new PostgresReportExecutionRow(values))
             .ToList();
 
         return new PostgresReportExecutionResult(
@@ -41,7 +53,7 @@ public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresRepor
             Offset: request.Paging.DisablePaging ? 0 : statement.Offset,
             Limit: request.Paging.DisablePaging ? materialized.Count : statement.Limit,
             HasMore: hasMore,
-            NextCursor: null,
+            NextCursor: nextCursor,
             Total: request.Paging.DisablePaging ? materialized.Count : null,
             Diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {

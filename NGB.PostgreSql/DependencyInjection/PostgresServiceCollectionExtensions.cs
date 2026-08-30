@@ -95,6 +95,7 @@ public static class PostgresServiceCollectionExtensions
         services.Configure(configureOptions);
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<PostgresRelationPresenceCache>();
+        services.TryAddSingleton<PostgresRelationShapeCache>();
 
         // Validate options on startup
         services.AddOptions<PostgresOptions>()
@@ -139,6 +140,7 @@ public static class PostgresServiceCollectionExtensions
         // Operational Registers (persistence contracts only; runtime/write engine comes later)
         services.TryAddScoped<IOperationalRegisterRepository, PostgresOperationalRegisterRepository>();
         services.TryAddSingleton<OperationalRegisterReadContextCache>();
+        services.TryAddSingleton<OperationalRegisterMetadataCache>();
         services.TryAddScoped<IOperationalRegisterAdminReader, PostgresOperationalRegisterAdminReader>();
         services.TryAddScoped<IOperationalRegisterPhysicalSchemaHealthReader, PostgresOperationalRegisterPhysicalSchemaHealthReader>();
         services.TryAddScoped<IOperationalRegisterDimensionRuleRepository, PostgresOperationalRegisterDimensionRuleRepository>();
@@ -158,6 +160,7 @@ public static class PostgresServiceCollectionExtensions
 
         // Reference Registers (metadata + idempotency state)
         services.TryAddScoped<IReferenceRegisterRepository, PostgresReferenceRegisterRepository>();
+        services.TryAddSingleton<ReferenceRegisterMetadataCache>();
         services.TryAddScoped<IReferenceRegisterFieldRepository, PostgresReferenceRegisterFieldRepository>();
         services.TryAddScoped<IReferenceRegisterDimensionRuleRepository, PostgresReferenceRegisterDimensionRuleRepository>();
         services.TryAddScoped<IReferenceRegisterWriteStateRepository, PostgresReferenceRegisterWriteStateRepository>();

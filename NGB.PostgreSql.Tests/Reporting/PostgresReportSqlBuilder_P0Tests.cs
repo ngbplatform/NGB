@@ -141,7 +141,7 @@ public sealed class PostgresReportSqlBuilder_P0Tests
         statement.Sql.Should().Contain("date_trunc('month', r.period_utc) AS period_utc__month");
         statement.Sql.Should().Contain("SUM(r.debit_amount) AS debit__sum");
         statement.Sql.Should().Contain("GROUP BY");
-        statement.Sql.Should().Contain("ORDER BY account_code, period_utc__month");
+        statement.Sql.Should().Contain("ORDER BY account_code ASC NULLS LAST, period_utc__month ASC NULLS LAST");
         statement.Columns.Select(x => x.SemanticRole).Should().Equal("row-group", "column-group", "measure");
     }
 

@@ -1,6 +1,10 @@
 using FluentAssertions;
+using NGB.OperationalRegisters.Contracts;
 using NGB.PostgreSql.OperationalRegisters;
+using NGB.PostgreSql.ReferenceRegisters;
 using NGB.PostgreSql.Schema;
+using NGB.ReferenceRegisters;
+using NGB.ReferenceRegisters.Contracts;
 using Xunit;
 
 namespace NGB.PostgreSql.Tests.Schema;
@@ -120,6 +124,195 @@ public sealed class PostgresReadPathCachesFullCoverageTests
         }
         missingCalls.Should().Be(2);
     }
+
+    [Fact]
+    public async Task Relation_shape_cache_coalesces_positive_probes_and_separates_fingerprints()
+    {
+        var time = new AdjustableTimeProvider(new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero));
+        var cache = new PostgresRelationShapeCache(time);
+        var calls = 0;
+
+        (await cache.IsVerifiedAsync(
+            "opreg_sales__movements",
+            "movement_id|amount",
+            _ =>
+            {
+                Interlocked.Increment(ref calls);
+                return Task.FromResult(true);
+            },
+            default)).Should().BeTrue();
+        (await cache.IsVerifiedAsync(
+            "opreg_sales__movements",
+            "movement_id|amount",
+            _ => throw new Xunit.Sdk.XunitException("Verified shape must be cached."),
+            default)).Should().BeTrue();
+
+        (await cache.IsVerifiedAsync(
+            "opreg_sales__movements",
+            "movement_id|amount|tax",
+            _ =>
+            {
+                Interlocked.Increment(ref calls);
+                return Task.FromResult(true);
+            },
+            default)).Should().BeTrue();
+        calls.Should().Be(2);
+
+        var negativeCalls = 0;
+        for (var i = 0; i < 2; i++)
+        {
+            (await cache.IsVerifiedAsync(
+                "refreg_prices__records",
+                "record_id|value",
+                _ =>
+                {
+                    Interlocked.Increment(ref negativeCalls);
+                    return Task.FromResult(false);
+                },
+                default)).Should().BeFalse();
+        }
+        negativeCalls.Should().Be(2);
+
+        cache.MarkVerified("refreg_prices__records", "record_id|value");
+        (await cache.IsVerifiedAsync(
+            "refreg_prices__records",
+            "record_id|value",
+            _ => throw new Xunit.Sdk.XunitException("Explicitly verified shape must be cached."),
+            default)).Should().BeTrue();
+
+        cache.Invalidate("opreg_sales__movements");
+        (await cache.IsVerifiedAsync(
+            "opreg_sales__movements",
+            "movement_id|amount",
+            _ => Task.FromResult(true),
+            default)).Should().BeTrue();
+
+        time.Advance(TimeSpan.FromMinutes(6));
+        (await cache.IsVerifiedAsync(
+            "refreg_prices__records",
+            "record_id|value",
+            _ => Task.FromResult(true),
+            default)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Operational_metadata_cache_only_reuses_immutable_metadata()
+    {
+        var time = new AdjustableTimeProvider(new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero));
+        var cache = new OperationalRegisterMetadataCache(time);
+        var immutableId = Guid.NewGuid();
+        var immutable = OperationalContext(immutableId, hasMovements: true);
+        var immutableCalls = 0;
+
+        for (var i = 0; i < 2; i++)
+        {
+            (await cache.GetOrCreateAsync(
+                immutableId,
+                _ =>
+                {
+                    Interlocked.Increment(ref immutableCalls);
+                    return Task.FromResult(immutable);
+                },
+                default)).Should().BeSameAs(immutable);
+        }
+        immutableCalls.Should().Be(1);
+
+        var mutableId = Guid.NewGuid();
+        var mutable = OperationalContext(mutableId, hasMovements: false);
+        var mutableCalls = 0;
+        for (var i = 0; i < 2; i++)
+        {
+            await cache.GetOrCreateAsync(
+                mutableId,
+                _ =>
+                {
+                    Interlocked.Increment(ref mutableCalls);
+                    return Task.FromResult(mutable);
+                },
+                default);
+        }
+        mutableCalls.Should().Be(2);
+
+        cache.Invalidate(immutableId);
+        await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
+        time.Advance(TimeSpan.FromMinutes(6));
+        await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
+    }
+
+    [Fact]
+    public async Task Reference_metadata_cache_only_reuses_immutable_metadata()
+    {
+        var time = new AdjustableTimeProvider(new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero));
+        var cache = new ReferenceRegisterMetadataCache(time);
+        var immutableId = Guid.NewGuid();
+        var immutable = ReferenceContext(immutableId, hasRecords: true);
+        var immutableCalls = 0;
+
+        for (var i = 0; i < 2; i++)
+        {
+            (await cache.GetOrCreateAsync(
+                immutableId,
+                _ =>
+                {
+                    Interlocked.Increment(ref immutableCalls);
+                    return Task.FromResult(immutable);
+                },
+                default)).Should().BeSameAs(immutable);
+        }
+        immutableCalls.Should().Be(1);
+
+        var mutableId = Guid.NewGuid();
+        var mutable = ReferenceContext(mutableId, hasRecords: false);
+        var mutableCalls = 0;
+        cache.Remember(mutable);
+        for (var i = 0; i < 2; i++)
+        {
+            await cache.GetOrCreateAsync(
+                mutableId,
+                _ =>
+                {
+                    Interlocked.Increment(ref mutableCalls);
+                    return Task.FromResult(mutable);
+                },
+                default);
+        }
+        mutableCalls.Should().Be(2);
+
+        cache.Invalidate(immutableId);
+        await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
+        time.Advance(TimeSpan.FromMinutes(6));
+        await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
+    }
+
+    private static OperationalRegisterMetadataContext OperationalContext(Guid registerId, bool hasMovements)
+        => new(
+            new OperationalRegisterAdminItem(
+                registerId,
+                "Sales",
+                "sales",
+                "sales",
+                "Sales",
+                hasMovements,
+                DateTime.UnixEpoch,
+                DateTime.UnixEpoch),
+            [],
+            "opreg_sales__movements");
+
+    private static ReferenceRegisterMetadataContext ReferenceContext(Guid registerId, bool hasRecords)
+        => new(
+            new ReferenceRegisterAdminItem(
+                registerId,
+                "Prices",
+                "prices",
+                "prices",
+                "Prices",
+                ReferenceRegisterPeriodicity.NonPeriodic,
+                ReferenceRegisterRecordMode.Independent,
+                hasRecords,
+                DateTime.UnixEpoch,
+                DateTime.UnixEpoch),
+            [],
+            "refreg_prices__records");
 
     private sealed class AdjustableTimeProvider(DateTimeOffset now) : TimeProvider
     {

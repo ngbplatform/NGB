@@ -237,6 +237,14 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         var all = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(
             Parameters: new Dictionary<string, string> { ["from_utc"] = "2026-04-01", ["to_utc"] = "2026-04-30" },
             DisablePaging: true), default);
+        var next = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(
+            Parameters: new Dictionary<string, string> { ["from_utc"] = "2026-04-01", ["to_utc"] = "2026-04-30" },
+            Cursor: page.NextCursor,
+            Limit: 1), default);
+        var legacy = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(
+            Parameters: new Dictionary<string, string> { ["from_utc"] = "2026-04-01", ["to_utc"] = "2026-04-30" },
+            Offset: 1,
+            Limit: 1), default);
         await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(Limit: 0), default);
         await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(
             Filters: new Dictionary<string, ReportFilterValueDto>
@@ -244,8 +252,11 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
                 ["item_id"] = new(System.Text.Json.JsonSerializer.SerializeToElement(Guid.CreateVersion7()))
             }), default);
 
-        page.Total.Should().Be(2);
+        page.Total.Should().BeNull();
         page.HasMore.Should().BeTrue();
+        page.NextCursor.Should().NotBeNullOrWhiteSpace();
+        next.HasMore.Should().BeFalse();
+        legacy.Total.Should().Be(2);
         all.PrebuiltSheet!.Rows.Should().HaveCount(2);
     }
 
@@ -282,6 +293,32 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         IReadOnlyList<OperationalRegisterMovementQueryReadRow> rows)
     {
         var reader = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetByOccurredAtCursorAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<DateOnly>(),
+                It.IsAny<DateOnly>(),
+                It.IsAny<IReadOnlyList<DimensionValue>?>(),
+                It.IsAny<OperationalRegisterOccurredAtCursor?>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((
+                Guid _,
+                DateOnly from,
+                DateOnly to,
+                IReadOnlyList<DimensionValue>? _,
+                OperationalRegisterOccurredAtCursor? cursor,
+                int limit,
+                CancellationToken _) => rows
+                    .Where(row => DateOnly.FromDateTime(row.OccurredAtUtc) >= from
+                                  && DateOnly.FromDateTime(row.OccurredAtUtc) <= to)
+                    .Where(row => cursor is null
+                                  || row.OccurredAtUtc > cursor.AfterOccurredAtUtc
+                                  || (row.OccurredAtUtc == cursor.AfterOccurredAtUtc
+                                      && row.MovementId > cursor.AfterMovementId))
+                    .OrderBy(static row => row.OccurredAtUtc)
+                    .ThenBy(static row => row.MovementId)
+                    .Take(limit)
+                    .ToArray());
         reader.Setup(x => x.GetByOccurredAtPageAsync(
                 It.IsAny<Guid>(),
                 It.IsAny<DateOnly>(),

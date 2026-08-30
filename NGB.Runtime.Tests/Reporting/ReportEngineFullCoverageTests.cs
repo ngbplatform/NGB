@@ -31,6 +31,14 @@ public sealed class ReportEngineFullCoverageTests
         ReportEngine.ShouldUseRenderedSheetPaging(standard, request, Plan(showGrandTotals: true)).Should().BeTrue();
         ReportEngine.ShouldUseRenderedSheetPaging(standard, request, Plan(showSubtotals: true)).Should().BeTrue();
         ReportEngine.ShouldUseRenderedSheetPaging(standard, request, Plan()).Should().BeFalse();
+        ReportEngine.ShouldSuppressExecutorCursor(canonical, request, Plan(rowGroups: true)).Should().BeFalse();
+        ReportEngine.ShouldSuppressExecutorCursor(standard, request, Plan(rowGroups: true)).Should().BeFalse();
+        ReportEngine.ShouldSuppressExecutorCursor(bounded, request with { DisablePaging = true }, Plan(rowGroups: true)).Should().BeFalse();
+        ReportEngine.ShouldSuppressExecutorCursor(bounded, request, Plan()).Should().BeFalse();
+        ReportEngine.ShouldSuppressExecutorCursor(bounded, request, Plan(rowGroups: true)).Should().BeTrue();
+        ReportEngine.ShouldSuppressExecutorCursor(bounded, request, Plan(columnGroups: true)).Should().BeTrue();
+        ReportEngine.ShouldSuppressExecutorCursor(bounded, request, Plan(showGrandTotals: true)).Should().BeTrue();
+        ReportEngine.ShouldSuppressExecutorCursor(bounded, request, Plan(showSubtotals: true)).Should().BeTrue();
     }
 
     [Fact]

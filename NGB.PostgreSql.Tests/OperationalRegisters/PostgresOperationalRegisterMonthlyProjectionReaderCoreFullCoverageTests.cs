@@ -50,6 +50,7 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionReaderCoreFullCo
             null,
             null,
             Resolve,
+            PresenceCache(),
             dimensionSets.Object,
             enrichment.Object,
             default);
@@ -93,6 +94,7 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionReaderCoreFullCo
             DimensionSetId,
             1,
             Resolve,
+            PresenceCache(),
             dimensionSets.Object,
             enrichment.Object,
             default);
@@ -137,6 +139,7 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionReaderCoreFullCo
                 null,
                 (_, _) => Task.FromResult<(string, IReadOnlyList<string>)>(
                     ("opreg_sales__projection", scenario.Resources)),
+                PresenceCache(),
                 dimensionSets.Object,
                 enrichment.Object,
                 default);
@@ -154,7 +157,7 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionReaderCoreFullCo
         DateOnly from,
         DateOnly to)
         => PostgresOperationalRegisterMonthlyProjectionReaderCore.GetByMonthsAsync(
-            null!, registerId, from, to, null, null, Resolve, null!, null!, default);
+            null!, registerId, from, to, null, null, Resolve, PresenceCache(), null!, null!, default);
 
     private static Task<IReadOnlyList<NGB.OperationalRegisters.Contracts.OperationalRegisterMonthlyProjectionReadRow>> GetPageAsync(
         Guid registerId,
@@ -163,7 +166,10 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionReaderCoreFullCo
         DateOnly? cursor,
         int limit)
         => PostgresOperationalRegisterMonthlyProjectionReaderCore.GetPageByMonthsAsync(
-            null!, registerId, from, to, null, null, cursor, null, limit, Resolve, null!, null!, default);
+            null!, registerId, from, to, null, null, cursor, null, limit, Resolve, PresenceCache(), null!, null!, default);
+
+    private static NGB.PostgreSql.Schema.PostgresRelationPresenceCache PresenceCache()
+        => new(TimeProvider.System);
 
     private static Task<(string TableName, IReadOnlyList<string> ResourceColumns)> Resolve(
         Guid _,

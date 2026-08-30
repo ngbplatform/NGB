@@ -43,25 +43,62 @@ public sealed class InventoryMovementsCanonicalReportExecutor(
 
         var offset = Math.Max(0, request.Offset);
         var requestedLimit = request.Limit <= 0 ? 100 : request.Limit;
-        var page = await movementsQueryReader.GetByOccurredAtPageAsync(
-            policy.InventoryMovementsRegisterId,
-            rawFrom,
-            rawTo,
-            dimensions.Count == 0 ? null : dimensions,
-            offset,
-            request.DisablePaging ? null : requestedLimit,
-            ct);
+        var useLegacyOffset = offset > 0 && string.IsNullOrWhiteSpace(request.Cursor);
+        IReadOnlyList<OperationalRegisterMovementQueryReadRow> movementRows;
+        int? total;
+        bool hasMore;
+        string? nextCursor;
 
-        if (page.Total > int.MaxValue)
-            throw new InvalidOperationException("Inventory Movements report exceeds the supported row-count range.");
+        if (useLegacyOffset)
+        {
+            var legacyPage = await movementsQueryReader.GetByOccurredAtPageAsync(
+                policy.InventoryMovementsRegisterId,
+                rawFrom,
+                rawTo,
+                dimensions.Count == 0 ? null : dimensions,
+                offset,
+                request.DisablePaging ? null : requestedLimit,
+                ct);
 
-        var total = (int)page.Total;
-        var limit = request.DisablePaging ? total : requestedLimit;
+            if (legacyPage.Total > int.MaxValue)
+                throw new InvalidOperationException("Inventory Movements report exceeds the supported row-count range.");
+
+            movementRows = legacyPage.Rows;
+            total = (int)legacyPage.Total;
+            hasMore = offset + movementRows.Count < total;
+            nextCursor = null;
+        }
+        else
+        {
+            var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+                ? null
+                : InventoryMovementCursorCodec.Decode(request.Cursor);
+            var rows = await movementsQueryReader.GetByOccurredAtCursorAsync(
+                policy.InventoryMovementsRegisterId,
+                rawFrom,
+                rawTo,
+                dimensions.Count == 0 ? null : dimensions,
+                cursor,
+                checked(requestedLimit + 1),
+                ct);
+
+            hasMore = !request.DisablePaging && rows.Count > requestedLimit;
+            movementRows = hasMore ? rows.Take(requestedLimit).ToArray() : rows;
+            total = request.DisablePaging ? movementRows.Count : null;
+            nextCursor = hasMore
+                ? InventoryMovementCursorCodec.Encode(new OperationalRegisterOccurredAtCursor(
+                    movementRows[^1].OccurredAtUtc,
+                    movementRows[^1].MovementId))
+                : null;
+            offset = 0;
+        }
+
+        var limit = request.DisablePaging ? movementRows.Count : requestedLimit;
         var documentMap = await documents.GetByIdsAsync(
-            page.Rows.Select(static row => row.DocumentId).Distinct().ToArray(),
+            movementRows.Select(static row => row.DocumentId).Distinct().ToArray(),
             ct);
 
-        var renderedRows = page.Rows
+        var renderedRows = movementRows
             .Select(row => ToRow(row, documentMap.GetValueOrDefault(row.DocumentId)))
             .ToArray();
 
@@ -91,8 +128,8 @@ public sealed class InventoryMovementsCanonicalReportExecutor(
             offset: offset,
             limit: limit,
             total: total,
-            hasMore: offset + page.Rows.Count < total,
-            nextCursor: null,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-trd-inventory-movements",

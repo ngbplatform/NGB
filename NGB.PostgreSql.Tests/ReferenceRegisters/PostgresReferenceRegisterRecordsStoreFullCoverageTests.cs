@@ -39,15 +39,13 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
         await ensureMissing.Should().ThrowAsync<ReferenceRegisterNotFoundException>();
 
         var appendMissing = Fixture(Reg(), []);
-        appendMissing.Registers.SetupSequence(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Reg())
+        appendMissing.Registers.Setup(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ReferenceRegisterAdminItem?)null);
         Func<Task> append = () => appendMissing.Store.AppendAsync(RegisterId, [Write()], default);
         await append.Should().ThrowAsync<ReferenceRegisterNotFoundException>();
 
         var tombstoneMissing = Fixture(Reg(mode: ReferenceRegisterRecordMode.SubordinateToRecorder), []);
-        tombstoneMissing.Registers.SetupSequence(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Reg(mode: ReferenceRegisterRecordMode.SubordinateToRecorder))
+        tombstoneMissing.Registers.Setup(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ReferenceRegisterAdminItem?)null);
         Func<Task> tombstone = () => tombstoneMissing.Store.AppendTombstonesForRecorderAsync(
             RegisterId, RecorderId, null, default);
@@ -169,6 +167,16 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
         fixture.Connection.Commands.Count(command =>
                 command.CommandText.StartsWith("INSERT INTO refreg_prices__records", StringComparison.Ordinal))
             .Should().Be(2);
+        fixture.Connection.Commands.Count(command => command.CommandText.Contains(
+                "UPDATE reference_registers SET has_records = TRUE",
+                StringComparison.Ordinal))
+            .Should().Be(1);
+        fixture.Registers.Verify(
+            x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()),
+            Times.Once);
+        fixture.Fields.Verify(
+            x => x.GetByRegisterIdAsync(RegisterId, It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

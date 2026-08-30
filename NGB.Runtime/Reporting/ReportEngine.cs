@@ -199,7 +199,7 @@ public sealed class ReportEngine(
                 Limit: page.Limit,
                 Total: page.Total,
                 HasMore: page.HasMore,
-                NextCursor: page.NextCursor,
+                NextCursor: ShouldSuppressExecutorCursor(runtime, effectiveRequest, plan) ? null : page.NextCursor,
                 Diagnostics: page.Diagnostics);
 
         return new ReportEngineExecutionEnvelope(runtime.ReportCodeNorm, "runtime", result);
@@ -212,6 +212,18 @@ public sealed class ReportEngine(
         => runtime.Definition.Mode == ReportExecutionMode.Composable
            && !request.DisablePaging
            && runtime.Definition.Presentation?.GroupedPagingMode != ReportGroupedPagingMode.BoundedNoCursor
+           && (plan.RowGroups.Count > 0
+               || plan.ColumnGroups.Count > 0
+               || plan.Shape.ShowGrandTotals
+               || plan.Shape.ShowSubtotals);
+
+    internal static bool ShouldSuppressExecutorCursor(
+        ReportDefinitionRuntimeModel runtime,
+        ReportExecutionRequestDto request,
+        ReportQueryPlan plan)
+        => runtime.Definition.Mode == ReportExecutionMode.Composable
+           && !request.DisablePaging
+           && runtime.Definition.Presentation?.GroupedPagingMode == ReportGroupedPagingMode.BoundedNoCursor
            && (plan.RowGroups.Count > 0
                || plan.ColumnGroups.Count > 0
                || plan.Shape.ShowGrandTotals

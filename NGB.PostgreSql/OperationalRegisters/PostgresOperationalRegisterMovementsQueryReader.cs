@@ -3,14 +3,15 @@ using Dapper;
 using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
+using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
-using NGB.PostgreSql.OperationalRegisters.Internal;
 using NGB.PostgreSql.Readers;
+using NGB.PostgreSql.Schema;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -30,13 +31,104 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
     IOperationalRegisterRepository registers,
     IOperationalRegisterResourceRepository resources,
     IDimensionSetReader dimensionSetReader,
-    IDimensionValueEnrichmentReader dimensionValueEnrichmentReader)
+    IDimensionValueEnrichmentReader dimensionValueEnrichmentReader,
+    OperationalRegisterMetadataCache? metadataCache = null,
+    PostgresRelationPresenceCache? relationPresenceCache = null)
     : IOperationalRegisterMovementsQueryReader
 {
+    private readonly OperationalRegisterMetadataCache _metadataCache = metadataCache
+        ?? new OperationalRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
+        ?? new PostgresRelationPresenceCache(TimeProvider.System);
     // IMPORTANT: identifiers are used unquoted in dynamic SQL; Postgres requires unquoted identifiers
     // to start with a letter or underscore.
     private readonly ConcurrentDictionary<Guid, RegisterQueryContext> _registerContexts = new();
     private readonly ConcurrentDictionary<string, TableReadiness> _existingTables = new(StringComparer.Ordinal);
+
+    public async Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByOccurredAtCursorAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions = null,
+        OperationalRegisterOccurredAtCursor? cursor = null,
+        int limit = 101,
+        CancellationToken ct = default)
+    {
+        if (registerId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(registerId));
+
+        if (toInclusive < fromInclusive)
+            throw new NgbArgumentOutOfRangeException(nameof(toInclusive), toInclusive, "To must be on or after From.");
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
+
+        if (cursor is not null)
+        {
+            cursor.AfterOccurredAtUtc.EnsureUtc(nameof(cursor.AfterOccurredAtUtc));
+            if (cursor.AfterMovementId <= 0)
+                throw new NgbArgumentOutOfRangeException(nameof(cursor.AfterMovementId), cursor.AfterMovementId, "Cursor movement id must be greater than zero.");
+        }
+
+        await uow.EnsureConnectionOpenAsync(ct);
+        var context = await GetRegisterQueryContextAsync(registerId, ct);
+        if (context is null)
+            return [];
+
+        var (dimIds, dimValueIds, dimCount) = SqlDimensionFilter.Normalize(dimensions);
+        var dimensionFilterSql = BuildDimensionFilterSql("t", dimCount);
+        var resourcesSelect = context.ResourceColumns.Count == 0
+            ? string.Empty
+            : ", " + string.Join(", ", context.ResourceColumns.Select(c => $"{c} AS \"{c}\""));
+        var occurredFromUtc = DateTime.SpecifyKind(fromInclusive.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var occurredToExclusiveUtc = toInclusive == DateOnly.MaxValue
+            ? DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc)
+            : DateTime.SpecifyKind(toInclusive.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+
+        var sql = $"""
+{BuildDimensionFilterCte(dimCount)}
+SELECT
+    movement_id AS "MovementId",
+    document_id AS "DocumentId",
+    occurred_at_utc AS "OccurredAtUtc",
+    period_month AS "PeriodMonth",
+    dimension_set_id AS "DimensionSetId",
+    is_storno AS "IsStorno"{resourcesSelect}
+FROM {context.TableName} t
+WHERE t.occurred_at_utc >= @OccurredFromUtc
+  AND t.occurred_at_utc < @OccurredToExclusiveUtc
+  AND (
+      @AfterOccurredAtUtc IS NULL
+      OR (t.occurred_at_utc, t.movement_id) > (@AfterOccurredAtUtc, @AfterMovementId)
+  )
+  {dimensionFilterSql}
+ORDER BY t.occurred_at_utc, t.movement_id
+LIMIT @Limit;
+""";
+
+        var rows = await uow.Connection.QueryAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                OccurredFromUtc = occurredFromUtc,
+                OccurredToExclusiveUtc = occurredToExclusiveUtc,
+                AfterOccurredAtUtc = cursor?.AfterOccurredAtUtc,
+                AfterMovementId = cursor?.AfterMovementId,
+                Limit = limit,
+                DimCount = dimCount,
+                DimIds = dimIds,
+                DimValueIds = dimValueIds
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        var result = MaterializeRows(rows, context);
+
+        await ResolveDimensionsAsync(result, ct);
+        await ResolveDimensionValueDisplaysAsync(result, ct);
+
+        return result;
+    }
 
     public async Task<OperationalRegisterMovementQueryPage> GetByOccurredAtPageAsync(
         Guid registerId,
@@ -656,11 +748,14 @@ LIMIT @Limit;
         if (_registerContexts.TryGetValue(registerId, out var cached))
             return await TableExistsAsync(cached.TableName, ct) ? cached : null;
 
-        var (tableName, resourceColumns) = await OperationalRegisterMovementsTableResolver.ResolveOrThrowAsync(
-            registers,
-            resources,
+        var metadata = await _metadataCache.GetOrCreateAsync(
             registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
             ct);
+        var tableName = metadata.MovementsTable;
+        var resourceColumns = metadata.Resources
+            .Select(static resource => resource.ColumnCode)
+            .ToArray();
 
         if (!await TableExistsAsync(tableName, ct))
             return null;
@@ -675,12 +770,33 @@ LIMIT @Limit;
         if (_existingTables.TryGetValue(tableName, out var readiness) && ReferenceEquals(readiness.Transaction, uow.Transaction))
             return true;
 
-        if (!await PostgresTableExistence.ExistsAsync(uow, tableName, ct))
+        if (!await _relationPresenceCache.ExistsAsync(
+                tableName,
+                probeCt => PostgresTableExistence.ExistsAsync(uow, tableName, probeCt),
+                ct))
             return false;
 
         _existingTables[tableName] = new TableReadiness(uow.Transaction);
 
         return true;
+    }
+
+    private async Task<OperationalRegisterMetadataContext> LoadMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new NGB.OperationalRegisters.Exceptions.OperationalRegisterNotFoundException(registerId);
+        var tableName = OperationalRegisterNaming.MovementsTable(register.TableCode);
+        OperationalRegisterSqlIdentifiers.EnsureOrThrow(tableName, "opreg movements table name");
+
+        var resourceDefinitions = (await resources.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(static resource => resource.Ordinal)
+            .ToArray();
+        foreach (var resource in resourceDefinitions)
+            OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
+
+        return new OperationalRegisterMetadataContext(register, resourceDefinitions, tableName);
     }
 
     internal static string BuildDimensionFilterCte(int dimCount)

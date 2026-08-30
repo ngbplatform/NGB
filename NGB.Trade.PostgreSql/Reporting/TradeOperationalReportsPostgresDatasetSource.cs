@@ -90,7 +90,8 @@ public sealed class TradeOperationalReportsPostgresDatasetSource : IPostgresRepo
                 measures:
                 [
                     new PostgresReportMeasureBinding("quantity_on_hand", "x.quantity_on_hand", "decimal")
-                ]),
+                ],
+                cursorKeyFieldCodes: ["dimension_set_id"]),
             new PostgresReportDatasetBinding(
                 datasetCode: TradeCodes.InventoryMovementsReport,
                 fromSql: $"""
@@ -150,7 +151,8 @@ public sealed class TradeOperationalReportsPostgresDatasetSource : IPostgresRepo
                     new PostgresReportMeasureBinding("qty_in", "x.qty_in", "decimal"),
                     new PostgresReportMeasureBinding("qty_out", "x.qty_out", "decimal"),
                     new PostgresReportMeasureBinding("qty_delta", "x.qty_delta", "decimal")
-                ])
+                ],
+                cursorKeyFieldCodes: ["movement_id"])
         ];
     }
 }

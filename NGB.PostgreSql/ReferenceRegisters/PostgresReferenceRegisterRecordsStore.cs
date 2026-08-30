@@ -6,6 +6,7 @@ using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.UnitOfWork;
 using NGB.PostgreSql.Internal;
+using NGB.PostgreSql.Schema;
 using NGB.ReferenceRegisters;
 using NGB.ReferenceRegisters.Contracts;
 using NGB.ReferenceRegisters.Exceptions;
@@ -34,10 +35,18 @@ namespace NGB.PostgreSql.ReferenceRegisters;
 public sealed class PostgresReferenceRegisterRecordsStore(
     IUnitOfWork uow,
     IReferenceRegisterRepository registers,
-    IReferenceRegisterFieldRepository fieldsRepo)
+    IReferenceRegisterFieldRepository fieldsRepo,
+    ReferenceRegisterMetadataCache? metadataCache = null,
+    PostgresRelationShapeCache? relationShapeCache = null)
     : IReferenceRegisterRecordsStore, IReferenceRegisterRecorderTombstoneWriter
 {
+    private readonly ReferenceRegisterMetadataCache _metadataCache = metadataCache
+        ?? new ReferenceRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationShapeCache _relationShapeCache = relationShapeCache
+        ?? new PostgresRelationShapeCache(TimeProvider.System);
     private readonly ConcurrentDictionary<Guid, SchemaReadiness> _schemasReadyForWrite = new();
+    private readonly ConcurrentDictionary<Guid, SchemaReadiness> _hasRecordsEnsured = new();
+    private readonly ConcurrentDictionary<Guid, ScopedMetadata> _scopedMetadata = new();
 
     public async Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default)
     {
@@ -46,11 +55,20 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
         await using var _ = await PostgresReferenceRegisterSchemaLock.AcquireAsync(uow, registerId, ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        // Schema ensure is also the synchronization point after mutable metadata changes
+        // (for example ReplaceFields before the first record). Always refresh here so a
+        // transaction-scoped pre-change snapshot cannot suppress new physical columns.
+        var context = await RefreshMetadataAsync(registerId, ct);
+        await EnsureSchemaCoreAsync(registerId, context, ct);
+    }
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
+    private async Task EnsureSchemaCoreAsync(
+        Guid registerId,
+        ReferenceRegisterMetadataContext context,
+        CancellationToken ct)
+    {
+        var reg = context.Register;
+        var table = context.RecordsTable;
 
         // Create base table.
         await EnsureRecordsTableAsync(table, ct);
@@ -59,13 +77,16 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         await EnsureBaseColumnConstraintsAsync(table, reg, ct);
 
         // Ensure field columns.
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
+        var fields = context.Fields;
         await EnsureFieldColumnsAsync(table, fields, reg.HasRecords, ct);
 
         // Ensure append-only guards + indexes.
         await PostgresAppendOnlyGuardSql.EnsureUpdateDeleteForbiddenTriggerAsync(uow, table, Trg("trg_refreg_append_only_", table), ct);
         await EnsureIndexesAsync(table, reg, ct);
         _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
+
+        if (uow.Transaction is null)
+            _relationShapeCache.MarkVerified(table, ShapeFingerprint(fields));
     }
 
     public async Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
@@ -74,23 +95,29 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         if (IsSchemaReadyInCurrentTransaction(registerId))
             return;
 
-        var register = await registers.GetByIdAsync(registerId, ct)
-            ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var register = context.Register;
 
         if (register.HasRecords)
         {
-            var table = ReferenceRegisterNaming.RecordsTable(register.TableCode);
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-            var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
+            var ready = uow.Transaction is null
+                ? await _relationShapeCache.IsVerifiedAsync(
+                    context.RecordsTable,
+                    ShapeFingerprint(context.Fields),
+                    probeCt => HasCurrentFieldShapeAsync(context.RecordsTable, context.Fields, probeCt),
+                    ct)
+                : await HasCurrentFieldShapeAsync(context.RecordsTable, context.Fields, ct);
 
-            if (await HasCurrentFieldShapeAsync(table, fields, ct))
+            if (ready)
             {
                 _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
                 return;
             }
         }
 
-        await EnsureSchemaAsync(registerId, ct);
+        await uow.EnsureConnectionOpenAsync(ct);
+        await using var schemaLock = await PostgresReferenceRegisterSchemaLock.AcquireAsync(uow, registerId, ct);
+        await EnsureSchemaCoreAsync(registerId, context, ct);
     }
 
     private async Task<bool> HasCurrentFieldShapeAsync(
@@ -122,6 +149,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         foreach (var field in fields)
         {
             ReferenceRegisterSqlIdentifiers.EnsureOrThrow(field.ColumnCode, "field column_code");
+
             if (!existing.TryGetValue(field.ColumnCode, out var column)
                 || !ColumnTypeMatches(column, field.ColumnType)
                 || string.Equals(column.IsNullable, "YES", StringComparison.OrdinalIgnoreCase) != field.IsNullable)
@@ -152,23 +180,17 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         if (!IsSchemaReadyInCurrentTransaction(registerId))
             await EnsureReadyForWriteAsync(registerId, ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
-
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
+        var table = context.RecordsTable;
+        var fields = context.Fields;
         var fieldByCodeNorm = fields.ToDictionary(x => x.CodeNorm, x => x, StringComparer.Ordinal);
 
         ValidateRecords(registerId, reg, records, fieldByCodeNorm);
 
         // Mark registry as having records (enables metadata guards).
         // Safe idempotent update.
-        {
-            const string sql = "UPDATE reference_registers SET has_records = TRUE, updated_at_utc = NOW() WHERE register_id = @Id AND has_records = FALSE;";
-            var cmd = new CommandDefinition(sql, new { Id = registerId }, transaction: uow.Transaction, cancellationToken: ct);
-            await uow.Connection.ExecuteAsync(cmd);
-        }
+        await EnsureHasRecordsFlagAsync(context, ct);
 
         var insertPrefix = BuildInsertPrefix(table, fields);
 
@@ -255,29 +277,19 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         if (!IsSchemaReadyInCurrentTransaction(registerId))
             await EnsureSchemaAsync(registerId, ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
 
         // Only SubordinateToRecorder registers support recorder tombstones.
         if (reg.RecordMode != ReferenceRegisterRecordMode.SubordinateToRecorder)
             return;
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
-        foreach (var f in fields)
-        {
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
-        }
+        var table = context.RecordsTable;
+        var fields = context.Fields;
 
         // Mark registry as having records (enables metadata guards).
         // Safe idempotent update.
-        {
-            const string sql = "UPDATE reference_registers SET has_records = TRUE, updated_at_utc = NOW() WHERE register_id = @Id AND has_records = FALSE;";
-            var cmd = new CommandDefinition(sql, new { Id = registerId }, transaction: uow.Transaction, cancellationToken: ct);
-            await uow.Connection.ExecuteAsync(cmd);
-        }
+        await EnsureHasRecordsFlagAsync(context, ct);
 
         var fieldCols = fields.Count == 0
             ? string.Empty
@@ -357,7 +369,84 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         => _schemasReadyForWrite.TryGetValue(registerId, out var readiness)
            && ReferenceEquals(readiness.Transaction, uow.Transaction);
 
+    private Task<ReferenceRegisterMetadataContext> GetMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        if (_scopedMetadata.TryGetValue(registerId, out var cached)
+            && (cached.Context.Register.HasRecords || ReferenceEquals(cached.Transaction, uow.Transaction)))
+        {
+            return Task.FromResult(cached.Context);
+        }
+
+        return LoadAndRememberMetadataAsync(registerId, ct);
+    }
+
+    private async Task<ReferenceRegisterMetadataContext> LoadAndRememberMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var context = await _metadataCache.GetOrCreateAsync(
+            registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
+            ct);
+        _scopedMetadata[registerId] = new ScopedMetadata(context, uow.Transaction);
+        return context;
+    }
+
+    private async Task<ReferenceRegisterMetadataContext> RefreshMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        var context = await LoadMetadataAsync(registerId, ct);
+        _metadataCache.Remember(context);
+        _scopedMetadata[registerId] = new ScopedMetadata(context, uow.Transaction);
+        return context;
+    }
+
+    private async Task<ReferenceRegisterMetadataContext> LoadMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var table = ReferenceRegisterNaming.RecordsTable(register.TableCode);
+
+        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
+
+        var fields = (await fieldsRepo.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(static field => field.Ordinal)
+            .ToArray();
+
+        foreach (var field in fields)
+        {
+            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(field.ColumnCode, "field column_code");
+        }
+
+        return new ReferenceRegisterMetadataContext(register, fields, table);
+    }
+
+    private async Task EnsureHasRecordsFlagAsync(ReferenceRegisterMetadataContext context, CancellationToken ct)
+    {
+        if (context.Register.HasRecords
+            || (_hasRecordsEnsured.TryGetValue(context.Register.RegisterId, out var readiness)
+                && ReferenceEquals(readiness.Transaction, uow.Transaction)))
+        {
+            return;
+        }
+
+        const string sql = "UPDATE reference_registers SET has_records = TRUE, updated_at_utc = NOW() WHERE register_id = @Id AND has_records = FALSE;";
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new { Id = context.Register.RegisterId },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+        _hasRecordsEnsured[context.Register.RegisterId] = new SchemaReadiness(uow.Transaction);
+    }
+
+    private static string ShapeFingerprint(IEnumerable<ReferenceRegisterField> fields)
+        => string.Join(
+            '|',
+            fields.Select(static field => $"{field.ColumnCode}:{field.ColumnType}:{field.IsNullable}"));
+
     private sealed record SchemaReadiness(object? Transaction);
+    private sealed record ScopedMetadata(ReferenceRegisterMetadataContext Context, object? Transaction);
 
     private static void ValidateRecords(
         Guid registerId,

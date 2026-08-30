@@ -88,10 +88,12 @@ public sealed class PostgresReportModelsFullCoverageTests
         empty.BaseWhereSql.Should().Be("f.active");
         empty.Fields.Should().BeEmpty();
         empty.Measures.Should().BeEmpty();
+        empty.CursorKeyFields.Should().BeEmpty();
 
-        var sut = new PostgresReportDatasetBinding(" Dataset ", "fact f", [field], [measure]);
+        var sut = new PostgresReportDatasetBinding(" Dataset ", "fact f", [field], [measure], cursorKeyFieldCodes: ["field"]);
         sut.GetField(" FIELD ").Should().BeSameAs(field);
         sut.GetMeasure(" AMOUNT ").Should().BeSameAs(measure);
+        sut.CursorKeyFields.Should().ContainSingle().Which.Should().BeSameAs(field);
         Action missingField = () => sut.GetField("missing");
         Action missingMeasure = () => sut.GetMeasure("missing");
         missingField.Should().Throw<NgbConfigurationViolationException>();
@@ -103,6 +105,13 @@ public sealed class PostgresReportModelsFullCoverageTests
             "dataset", "fact f", [], [measure, measure]);
         duplicateField.Should().Throw<NgbConfigurationViolationException>();
         duplicateMeasure.Should().Throw<NgbConfigurationViolationException>();
+
+        Action missingCursorKey = () => new PostgresReportDatasetBinding(
+            "dataset", "fact f", [field], [], cursorKeyFieldCodes: ["missing"]);
+        Action duplicateCursorKey = () => new PostgresReportDatasetBinding(
+            "dataset", "fact f", [field], [], cursorKeyFieldCodes: ["field", "FIELD"]);
+        missingCursorKey.Should().Throw<NgbConfigurationViolationException>();
+        duplicateCursorKey.Should().Throw<NgbConfigurationViolationException>();
     }
 
     [Fact]

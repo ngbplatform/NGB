@@ -13,7 +13,8 @@ public sealed class PostgresReportDatasetBinding
         string fromSql,
         IReadOnlyList<PostgresReportFieldBinding> fields,
         IReadOnlyList<PostgresReportMeasureBinding> measures,
-        string? baseWhereSql = null)
+        string? baseWhereSql = null,
+        IReadOnlyList<string>? cursorKeyFieldCodes = null)
     {
         if (string.IsNullOrWhiteSpace(datasetCode))
             throw new NgbArgumentRequiredException(nameof(datasetCode));
@@ -38,6 +39,21 @@ public sealed class PostgresReportDatasetBinding
             if (!_measures.TryAdd(measure.MeasureCodeNorm, measure))
                 throw new NgbConfigurationViolationException($"PostgreSQL reporting dataset '{DatasetCodeNorm}' has duplicate measure binding '{measure.MeasureCodeNorm}'.");
         }
+
+        var cursorKeys = new List<PostgresReportFieldBinding>();
+        foreach (var fieldCode in cursorKeyFieldCodes ?? [])
+        {
+            var codeNorm = CodeNormalizer.NormalizeCodeNorm(fieldCode, nameof(cursorKeyFieldCodes));
+            if (!_fields.TryGetValue(codeNorm, out var field))
+                throw new NgbConfigurationViolationException($"PostgreSQL reporting dataset '{DatasetCodeNorm}' cursor key field '{codeNorm}' is not defined.");
+
+            if (cursorKeys.Any(x => x.FieldCodeNorm.Equals(codeNorm, StringComparison.OrdinalIgnoreCase)))
+                throw new NgbConfigurationViolationException($"PostgreSQL reporting dataset '{DatasetCodeNorm}' has duplicate cursor key field '{codeNorm}'.");
+
+            cursorKeys.Add(field);
+        }
+
+        CursorKeyFields = cursorKeys;
     }
 
     public string DatasetCodeNorm { get; }
@@ -45,6 +61,7 @@ public sealed class PostgresReportDatasetBinding
     public string? BaseWhereSql { get; }
     public IReadOnlyDictionary<string, PostgresReportFieldBinding> Fields => _fields;
     public IReadOnlyDictionary<string, PostgresReportMeasureBinding> Measures => _measures;
+    public IReadOnlyList<PostgresReportFieldBinding> CursorKeyFields { get; }
 
     public PostgresReportFieldBinding GetField(string fieldCode)
     {

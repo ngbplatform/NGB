@@ -1,10 +1,12 @@
+using System.Collections.Concurrent;
 using Dapper;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
+using NGB.OperationalRegisters.Exceptions;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
-using NGB.PostgreSql.OperationalRegisters.Internal;
+using NGB.PostgreSql.Schema;
 using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.OperationalRegisters;
@@ -20,9 +22,16 @@ namespace NGB.PostgreSql.OperationalRegisters;
 public sealed class PostgresOperationalRegisterMovementsReader(
     IUnitOfWork uow,
     IOperationalRegisterRepository registers,
-    IOperationalRegisterResourceRepository resources)
+    IOperationalRegisterResourceRepository resources,
+    OperationalRegisterMetadataCache? metadataCache = null,
+    PostgresRelationPresenceCache? relationPresenceCache = null)
     : IOperationalRegisterMovementsReader
 {
+    private readonly OperationalRegisterMetadataCache _metadataCache = metadataCache
+        ?? new OperationalRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
+        ?? new PostgresRelationPresenceCache(TimeProvider.System);
+    private readonly ConcurrentDictionary<Guid, OperationalRegisterMetadataContext> _localMetadata = new();
     // IMPORTANT: identifiers are used unquoted in dynamic SQL; Postgres requires unquoted identifiers
     // to start with a letter or underscore.
 
@@ -42,15 +51,16 @@ public sealed class PostgresOperationalRegisterMovementsReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var (tableName, resourceColumns) =
-            await OperationalRegisterMovementsTableResolver.ResolveOrThrowAsync(registers, resources, registerId, ct);
+        var context = await GetMetadataAsync(registerId, ct);
+        var tableName = context.MovementsTable;
+        var resourceColumns = context.Resources.Select(static resource => resource.ColumnCode).ToArray();
         
-        if (!await PostgresTableExistence.ExistsAsync(uow, tableName, ct))
+        if (!await TableExistsAsync(tableName, ct))
             return [];
 
         periodMonth = OperationalRegisterPeriod.MonthStart(periodMonth);
 
-        var resourcesSelect = resourceColumns.Count == 0
+        var resourcesSelect = resourceColumns.Length == 0
             ? string.Empty
             : ", " + string.Join(", ", resourceColumns.Select(c => $"{c} AS \"{c}\""));
 
@@ -127,10 +137,9 @@ public sealed class PostgresOperationalRegisterMovementsReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var (tableName, _) =
-            await OperationalRegisterMovementsTableResolver.ResolveOrThrowAsync(registers, resources, registerId, ct);
+        var tableName = (await GetMetadataAsync(registerId, ct)).MovementsTable;
         
-        if (!await PostgresTableExistence.ExistsAsync(uow, tableName, ct))
+        if (!await TableExistsAsync(tableName, ct))
             return [];
 
         var sql = $"""
@@ -149,4 +158,51 @@ public sealed class PostgresOperationalRegisterMovementsReader(
         var months = await uow.Connection.QueryAsync<DateOnly>(cmd);
         return months.AsList();
     }
+
+    private Task<OperationalRegisterMetadataContext> GetMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        if (_localMetadata.TryGetValue(registerId, out var cached))
+            return Task.FromResult(cached);
+
+        return LoadAndRememberMetadataAsync(registerId, ct);
+    }
+
+    private async Task<OperationalRegisterMetadataContext> LoadAndRememberMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var context = await _metadataCache.GetOrCreateAsync(
+            registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
+            ct);
+        _localMetadata[registerId] = context;
+
+        return context;
+    }
+
+    private async Task<OperationalRegisterMetadataContext> LoadMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+        var table = OperationalRegisterNaming.MovementsTable(register.TableCode);
+
+        OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, "opreg movements table name");
+
+        var resourceDefinitions = (await resources.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(static resource => resource.Ordinal)
+            .ToArray();
+
+        foreach (var resource in resourceDefinitions)
+        {
+            OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
+        }
+
+        return new OperationalRegisterMetadataContext(register, resourceDefinitions, table);
+    }
+
+    private Task<bool> TableExistsAsync(string tableName, CancellationToken ct)
+        => _relationPresenceCache.ExistsAsync(
+            tableName,
+            probeCt => PostgresTableExistence.ExistsAsync(uow, tableName, probeCt),
+            ct);
 }

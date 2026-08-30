@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
@@ -7,6 +8,7 @@ using NGB.OperationalRegisters.Exceptions;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
+using NGB.PostgreSql.Schema;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -15,26 +17,38 @@ namespace NGB.PostgreSql.OperationalRegisters;
 public sealed class PostgresOperationalRegisterMovementsStore(
     IUnitOfWork uow,
     IOperationalRegisterRepository registersRepo,
-    IOperationalRegisterResourceRepository resourcesRepo)
+    IOperationalRegisterResourceRepository resourcesRepo,
+    OperationalRegisterMetadataCache? metadataCache = null,
+    PostgresRelationShapeCache? relationShapeCache = null)
     : IOperationalRegisterMovementsStore
 {
+    private readonly OperationalRegisterMetadataCache _metadataCache = metadataCache
+        ?? new OperationalRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationShapeCache _relationShapeCache = relationShapeCache
+        ?? new PostgresRelationShapeCache(TimeProvider.System);
+    private readonly ConcurrentDictionary<Guid, ScopedMetadata> _scopedMetadata = new();
+    private readonly ConcurrentDictionary<Guid, SchemaReadiness> _schemasReadyForWrite = new();
+    private readonly ConcurrentDictionary<Guid, SchemaReadiness> _hasMovementsEnsured = new();
+
     public async Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default)
     {
         await uow.EnsureConnectionOpenAsync(ct);
 
         await using var schemaLock = await PostgresOperationalRegisterSchemaLock.AcquireAsync(uow, registerId, ct);
 
-        var register = await registersRepo.GetByIdAsync(registerId, ct) ?? throw new OperationalRegisterNotFoundException(registerId);
-        var table = OperationalRegisterNaming.MovementsTable(register.TableCode);
+        // Explicit schema ensure follows metadata administration. Refresh even mutable
+        // transaction-scoped metadata so newly replaced resources become physical columns.
+        var context = await RefreshMetadataAsync(registerId, ct);
+        await EnsureSchemaCoreAsync(registerId, context, ct);
+    }
 
-        OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, "opreg movements table name");
-
-        // Resolve and validate all metadata before mutating the physical schema.
-        var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct)).OrderBy(r => r.Ordinal).ToArray();
-        foreach (var resource in resources)
-        {
-            OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
-        }
+    private async Task EnsureSchemaCoreAsync(
+        Guid registerId,
+        OperationalRegisterMetadataContext context,
+        CancellationToken ct)
+    {
+        var table = context.MovementsTable;
+        var resources = context.Resources;
 
         // Execute the complete idempotent schema contract in one roundtrip while
         // the per-register advisory lock is held.
@@ -91,38 +105,51 @@ CREATE TABLE IF NOT EXISTS {table}(
             ddl.ToString(),
             transaction: uow.Transaction,
             cancellationToken: ct));
+
+        MarkSchemaReady(registerId, table, resources);
     }
 
     public async Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
     {
-        var register = await registersRepo.GetByIdAsync(registerId, ct)
-            ?? throw new OperationalRegisterNotFoundException(registerId);
+        if (IsReadyInCurrentTransaction(registerId))
+            return;
+
+        var context = await GetMetadataAsync(registerId, ct);
+        var register = context.Register;
 
         if (register.HasMovements)
         {
-            var table = OperationalRegisterNaming.MovementsTable(register.TableCode);
-
-            OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, "opreg movements table name");
-
-            var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct))
-                .OrderBy(resource => resource.Ordinal)
-                .ToArray();
-
-            foreach (var resource in resources)
-            {
-                OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
-            }
-
-            var requiredColumns = resources
+            var requiredColumns = context.Resources
                 .Select(resource => resource.ColumnCode)
                 .Prepend("movement_id")
                 .ToArray();
 
-            if (await PostgresTableColumnReadiness.HasRequiredColumnsAsync(uow, table, requiredColumns, ct))
+            var ready = uow.Transaction is null
+                ? await _relationShapeCache.IsVerifiedAsync(
+                    context.MovementsTable,
+                    ShapeFingerprint(context.Resources),
+                    probeCt => PostgresTableColumnReadiness.HasRequiredColumnsAsync(
+                        uow,
+                        context.MovementsTable,
+                        requiredColumns,
+                        probeCt),
+                    ct)
+                : await PostgresTableColumnReadiness.HasRequiredColumnsAsync(
+                    uow,
+                    context.MovementsTable,
+                    requiredColumns,
+                    ct);
+
+            if (ready)
+            {
+                _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
                 return;
+            }
         }
 
-        await EnsureSchemaAsync(registerId, ct);
+        await uow.EnsureConnectionOpenAsync(ct);
+        await using var schemaLock = await PostgresOperationalRegisterSchemaLock.AcquireAsync(uow, registerId, ct);
+        await EnsureSchemaCoreAsync(registerId, context, ct);
     }
 
     public async Task AppendAsync(Guid registerId, IReadOnlyList<OperationalRegisterMovement> movements, CancellationToken ct = default)
@@ -133,41 +160,28 @@ CREATE TABLE IF NOT EXISTS {table}(
         if (movements.Count == 0)
             return;
 
+        // Reject invalid batches before opening a connection or loading dynamic metadata.
+        for (var i = 0; i < movements.Count; i++)
+        {
+            var movement = movements[i];
+            if (movement.DocumentId == Guid.Empty)
+                throw new NgbArgumentInvalidException($"movements[{i}].DocumentId", "DocumentId must be non-empty.");
+
+            movement.OccurredAtUtc.EnsureUtc(nameof(movement.OccurredAtUtc));
+        }
+
         await uow.EnsureConnectionOpenAsync(ct);
         uow.EnsureActiveTransaction();
 
-        var register = await registersRepo.GetByIdAsync(registerId, ct) ?? throw new OperationalRegisterNotFoundException(registerId);
-        var table = OperationalRegisterNaming.MovementsTable(register.TableCode);
-
-        OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, "opreg movements table name");
-
-        var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct)).OrderBy(r => r.Ordinal).ToArray();
-        foreach (var r in resources)
-        {
-            OperationalRegisterSqlIdentifiers.EnsureOrThrow(r.ColumnCode, "opreg resource column_code");
-        }
+        var context = await GetMetadataAsync(registerId, ct);
+        var table = context.MovementsTable;
+        var resources = context.Resources;
 
         ValidateResourceKeys(registerId, resources, movements);
 
         // Flip has_movements inside the same transaction as the append.
         // This is used by DB-level guards (e.g. resources immutability) and must be rollback-safe.
-        await uow.Connection.ExecuteAsync(new CommandDefinition(
-            "UPDATE operational_registers SET has_movements = TRUE, updated_at_utc = NOW() WHERE register_id = @RegisterId AND has_movements = FALSE;",
-            new { RegisterId = registerId },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
-
-        // Defensive: per-register tables compute period_month from occurred_at_utc (UTC).
-        // Enforce UTC timestamps at the boundary to prevent subtle drift when callers pass Local/Unspecified DateTime.
-        for (var i = 0; i < movements.Count; i++)
-        {
-            var m = movements[i];
-
-            if (m.DocumentId == Guid.Empty)
-                throw new NgbArgumentInvalidException($"movements[{i}].DocumentId", "DocumentId must be non-empty.");
-
-            m.OccurredAtUtc.EnsureUtc(nameof(m.OccurredAtUtc));
-        }
+        await EnsureHasMovementsFlagAsync(context, ct);
 
         var docIds = movements.Select(m => m.DocumentId).ToArray();
         var occurred = movements.Select(m => m.OccurredAtUtc).ToArray();
@@ -214,16 +228,9 @@ FROM UNNEST({string.Join(", ", unnestArgs)}) AS x({string.Join(", ", unnestCols)
         await uow.EnsureConnectionOpenAsync(ct);
         uow.EnsureActiveTransaction();
 
-        var register = await registersRepo.GetByIdAsync(registerId, ct) ?? throw new OperationalRegisterNotFoundException(registerId);
-        var table = OperationalRegisterNaming.MovementsTable(register.TableCode);
-
-        OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, "opreg movements table name");
-
-        var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct)).OrderBy(r => r.Ordinal).ToArray();
-        foreach (var r in resources)
-        {
-            OperationalRegisterSqlIdentifiers.EnsureOrThrow(r.ColumnCode, "opreg resource column_code");
-        }
+        var context = await GetMetadataAsync(registerId, ct);
+        var table = context.MovementsTable;
+        var resources = context.Resources;
 
         var resourceCols = resources.Length == 0
             ? string.Empty
@@ -242,11 +249,7 @@ WHERE document_id = @DocumentId;
 """;
 
         // Storno append also counts as a movement (if someone somehow calls it first).
-        await uow.Connection.ExecuteAsync(new CommandDefinition(
-            "UPDATE operational_registers SET has_movements = TRUE, updated_at_utc = NOW() WHERE register_id = @RegisterId AND has_movements = FALSE;",
-            new { RegisterId = registerId },
-            transaction: uow.Transaction,
-            cancellationToken: ct));
+        await EnsureHasMovementsFlagAsync(context, ct);
 
         await uow.Connection.ExecuteAsync(new CommandDefinition(
             sql,
@@ -254,6 +257,94 @@ WHERE document_id = @DocumentId;
             transaction: uow.Transaction,
             cancellationToken: ct));
     }
+
+    private Task<OperationalRegisterMetadataContext> GetMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        if (_scopedMetadata.TryGetValue(registerId, out var cached)
+            && (cached.Context.Register.HasMovements || ReferenceEquals(cached.Transaction, uow.Transaction)))
+        {
+            return Task.FromResult(cached.Context);
+        }
+
+        return LoadAndRememberMetadataAsync(registerId, ct);
+    }
+
+    private async Task<OperationalRegisterMetadataContext> LoadAndRememberMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var context = await _metadataCache.GetOrCreateAsync(
+            registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
+            ct);
+        _scopedMetadata[registerId] = new ScopedMetadata(context, uow.Transaction);
+        return context;
+    }
+
+    private async Task<OperationalRegisterMetadataContext> RefreshMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var context = await LoadMetadataAsync(registerId, ct);
+        _metadataCache.Remember(context);
+        _scopedMetadata[registerId] = new ScopedMetadata(context, uow.Transaction);
+        return context;
+    }
+
+    private async Task<OperationalRegisterMetadataContext> LoadMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        var register = await registersRepo.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+        var table = OperationalRegisterNaming.MovementsTable(register.TableCode);
+
+        OperationalRegisterSqlIdentifiers.EnsureOrThrow(table, "opreg movements table name");
+
+        var resources = (await resourcesRepo.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(resource => resource.Ordinal)
+            .ToArray();
+
+        foreach (var resource in resources)
+        {
+            OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
+        }
+
+        return new OperationalRegisterMetadataContext(register, resources, table);
+    }
+
+    private async Task EnsureHasMovementsFlagAsync(OperationalRegisterMetadataContext context, CancellationToken ct)
+    {
+        if (context.Register.HasMovements || IsCurrent(_hasMovementsEnsured, context.Register.RegisterId))
+            return;
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            "UPDATE operational_registers SET has_movements = TRUE, updated_at_utc = NOW() WHERE register_id = @RegisterId AND has_movements = FALSE;",
+            new { RegisterId = context.Register.RegisterId },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        _hasMovementsEnsured[context.Register.RegisterId] = new SchemaReadiness(uow.Transaction);
+    }
+
+    private void MarkSchemaReady(Guid registerId, string table, OperationalRegisterResource[] resources)
+    {
+        _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
+        if (uow.Transaction is null)
+            _relationShapeCache.MarkVerified(table, ShapeFingerprint(resources));
+    }
+
+    private bool IsReadyInCurrentTransaction(Guid registerId) => IsCurrent(_schemasReadyForWrite, registerId);
+
+    private bool IsCurrent(
+        ConcurrentDictionary<Guid, SchemaReadiness> readinessByRegister,
+        Guid registerId)
+        => readinessByRegister.TryGetValue(registerId, out var readiness)
+           && ReferenceEquals(readiness.Transaction, uow.Transaction);
+
+    private static string ShapeFingerprint(IEnumerable<OperationalRegisterResource> resources)
+        => string.Join('|', resources.Select(static resource => resource.ColumnCode));
+
+    private sealed record SchemaReadiness(object? Transaction);
+    private sealed record ScopedMetadata(OperationalRegisterMetadataContext Context, object? Transaction);
 
     internal static List<(string ParamName, decimal[] Values)> BuildResourceArrays(
         OperationalRegisterResource[] resources,

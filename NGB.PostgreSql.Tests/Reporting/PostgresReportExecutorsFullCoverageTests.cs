@@ -80,7 +80,7 @@ public sealed class PostgresReportExecutorsFullCoverageTests
         page.Limit.Should().Be(1);
         page.Total.Should().BeNull();
         page.HasMore.Should().BeTrue();
-        page.NextCursor.Should().BeNull();
+        page.NextCursor.Should().NotBeNullOrWhiteSpace();
         page.Diagnostics.Should().Contain("executor", "postgres-foundation")
             .And.Contain("aggregated", "True")
             .And.Contain("rowCount", "1");

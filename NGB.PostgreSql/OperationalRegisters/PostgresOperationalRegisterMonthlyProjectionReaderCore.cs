@@ -7,6 +7,7 @@ using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
 using NGB.PostgreSql.Readers;
+using NGB.PostgreSql.Schema;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -26,6 +27,7 @@ internal static class PostgresOperationalRegisterMonthlyProjectionReaderCore
         IReadOnlyList<DimensionValue>? effectiveDimensions,
         Guid? dimensionSetId,
         Func<Guid, CancellationToken, Task<(string TableName, IReadOnlyList<string> ResourceColumns)>> resolveTableAndResourcesOrThrowAsync,
+        PostgresRelationPresenceCache relationPresenceCache,
         IDimensionSetReader dimensionSetReader,
         IDimensionValueEnrichmentReader dimensionValueEnrichmentReader,
         CancellationToken ct)
@@ -40,6 +42,7 @@ internal static class PostgresOperationalRegisterMonthlyProjectionReaderCore
             afterDimensionSetId: null,
             limit: null,
             resolveTableAndResourcesOrThrowAsync,
+            relationPresenceCache,
             dimensionSetReader,
             dimensionValueEnrichmentReader,
             ct);
@@ -55,6 +58,7 @@ internal static class PostgresOperationalRegisterMonthlyProjectionReaderCore
         Guid? afterDimensionSetId,
         int limit,
         Func<Guid, CancellationToken, Task<(string TableName, IReadOnlyList<string> ResourceColumns)>> resolveTableAndResourcesOrThrowAsync,
+        PostgresRelationPresenceCache relationPresenceCache,
         IDimensionSetReader dimensionSetReader,
         IDimensionValueEnrichmentReader dimensionValueEnrichmentReader,
         CancellationToken ct)
@@ -69,6 +73,7 @@ internal static class PostgresOperationalRegisterMonthlyProjectionReaderCore
             afterDimensionSetId,
             limit,
             resolveTableAndResourcesOrThrowAsync,
+            relationPresenceCache,
             dimensionSetReader,
             dimensionValueEnrichmentReader,
             ct);
@@ -84,6 +89,7 @@ internal static class PostgresOperationalRegisterMonthlyProjectionReaderCore
         Guid? afterDimensionSetId,
         int? limit,
         Func<Guid, CancellationToken, Task<(string TableName, IReadOnlyList<string> ResourceColumns)>> resolveTableAndResourcesOrThrowAsync,
+        PostgresRelationPresenceCache relationPresenceCache,
         IDimensionSetReader dimensionSetReader,
         IDimensionValueEnrichmentReader dimensionValueEnrichmentReader,
         CancellationToken ct)
@@ -105,8 +111,13 @@ internal static class PostgresOperationalRegisterMonthlyProjectionReaderCore
         await uow.EnsureConnectionOpenAsync(ct);
 
         var (tableName, resourceColumns) = await resolveTableAndResourcesOrThrowAsync(registerId, ct);
-        if (!await PostgresTableExistence.ExistsAsync(uow, tableName, ct))
+        if (!await relationPresenceCache.ExistsAsync(
+                tableName,
+                probeCt => PostgresTableExistence.ExistsAsync(uow, tableName, probeCt),
+                ct))
+        {
             return [];
+        }
 
         var (dimIds, dimValueIds, dimCount) = SqlDimensionFilter.Normalize(effectiveDimensions);
 

@@ -1,8 +1,10 @@
+using System.Collections.Concurrent;
 using Dapper;
 using NGB.Core.Dimensions;
 using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
+using NGB.PostgreSql.Schema;
 using NGB.ReferenceRegisters;
 using NGB.ReferenceRegisters.Contracts;
 using NGB.ReferenceRegisters.Exceptions;
@@ -19,9 +21,17 @@ namespace NGB.PostgreSql.ReferenceRegisters;
 public sealed class PostgresReferenceRegisterRecordsReader(
     IUnitOfWork uow,
     IReferenceRegisterRepository registers,
-    IReferenceRegisterFieldRepository fieldsRepo)
+    IReferenceRegisterFieldRepository fieldsRepo,
+    ReferenceRegisterMetadataCache? metadataCache = null,
+    PostgresRelationPresenceCache? relationPresenceCache = null)
     : IReferenceRegisterRecordsReader
 {
+    private readonly ReferenceRegisterMetadataCache _metadataCache = metadataCache
+        ?? new ReferenceRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
+        ?? new PostgresRelationPresenceCache(TimeProvider.System);
+    private readonly ConcurrentDictionary<Guid, ReferenceRegisterMetadataContext> _localMetadata = new();
+
     public async Task<ReferenceRegisterRecordRead?> SliceLastAsync(
         Guid registerId,
         Guid dimensionSetId,
@@ -40,8 +50,8 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
 
         if (reg.RecordMode == ReferenceRegisterRecordMode.SubordinateToRecorder)
         {
@@ -54,19 +64,11 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                 throw new ReferenceRegisterRecordsValidationException(registerId, reason: "recorder_forbidden", details: new { recordMode = reg.RecordMode });
         }
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-
-        if (!await PostgresTableExistence.ExistsAsync(uow, table, ct))
+        var table = context.RecordsTable;
+        if (!await TableExistsAsync(table, ct))
             return null;
 
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
-
-        // Field columns are used unquoted; validate again.
-        foreach (var f in fields)
-        {
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
-        }
+        var fields = context.Fields;
 
         var fieldsSelect = fields.Count == 0
             ? string.Empty
@@ -133,8 +135,8 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
 
         if (reg.RecordMode == ReferenceRegisterRecordMode.SubordinateToRecorder)
         {
@@ -153,18 +155,11 @@ public sealed class PostgresReferenceRegisterRecordsReader(
             return await SliceLastAsync(registerId, dimensionSetId, recordedAsOfUtc, recorderDocumentId, ct);
         }
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-
-        if (!await PostgresTableExistence.ExistsAsync(uow, table, ct))
+        var table = context.RecordsTable;
+        if (!await TableExistsAsync(table, ct))
             return null;
 
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
-
-        foreach (var f in fields)
-        {
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
-        }
+        var fields = context.Fields;
 
         var fieldsSelect = fields.Count == 0
             ? string.Empty
@@ -295,8 +290,8 @@ public sealed class PostgresReferenceRegisterRecordsReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
 
         if (reg.RecordMode == ReferenceRegisterRecordMode.SubordinateToRecorder)
         {
@@ -309,17 +304,11 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                 throw new ReferenceRegisterRecordsValidationException(registerId, reason: "recorder_forbidden", details: new { recordMode = reg.RecordMode });
         }
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-
-        if (!await PostgresTableExistence.ExistsAsync(uow, table, ct))
+        var table = context.RecordsTable;
+        if (!await TableExistsAsync(table, ct))
             return [];
 
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
-        foreach (var f in fields)
-        {
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
-        }
+        var fields = context.Fields;
 
         var fieldsSelect = fields.Count == 0
             ? string.Empty
@@ -517,8 +506,8 @@ public sealed class PostgresReferenceRegisterRecordsReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
 
         if (reg.RecordMode == ReferenceRegisterRecordMode.SubordinateToRecorder)
         {
@@ -531,17 +520,11 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                 throw new ReferenceRegisterRecordsValidationException(registerId, reason: "recorder_forbidden", details: new { recordMode = reg.RecordMode });
         }
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-
-        if (!await PostgresTableExistence.ExistsAsync(uow, table, ct))
+        var table = context.RecordsTable;
+        if (!await TableExistsAsync(table, ct))
             return [];
 
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
-        foreach (var f in fields)
-        {
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
-        }
+        var fields = context.Fields;
 
         var fieldsSelect = fields.Count == 0
             ? string.Empty
@@ -683,23 +666,17 @@ public sealed class PostgresReferenceRegisterRecordsReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
 
         if (reg.RecordMode != ReferenceRegisterRecordMode.SubordinateToRecorder)
             return [];
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-
-        if (!await PostgresTableExistence.ExistsAsync(uow, table, ct))
+        var table = context.RecordsTable;
+        if (!await TableExistsAsync(table, ct))
             return [];
 
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
-        foreach (var f in fields)
-        {
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
-        }
+        var fields = context.Fields;
 
         var fieldsSelect = fields.Count == 0
             ? string.Empty
@@ -772,8 +749,8 @@ public sealed class PostgresReferenceRegisterRecordsReader(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
 
         if (reg.RecordMode == ReferenceRegisterRecordMode.SubordinateToRecorder)
         {
@@ -797,17 +774,11 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                 throw new ReferenceRegisterRecordsValidationException(registerId, reason: "period_required_for_periodic", details: new { periodicity = reg.Periodicity, periodUtc });
         }
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-
-        if (!await PostgresTableExistence.ExistsAsync(uow, table, ct))
+        var table = context.RecordsTable;
+        if (!await TableExistsAsync(table, ct))
             return [];
 
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
-        foreach (var f in fields)
-        {
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
-        }
+        var fields = context.Fields;
 
         var fieldsSelect = fields.Count == 0
             ? string.Empty
@@ -867,6 +838,46 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         var rows = await uow.Connection.QueryAsync(cmd);
         return MapRows(rows, fields);
     }
+
+    private async Task<ReferenceRegisterMetadataContext> GetMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        if (_localMetadata.TryGetValue(registerId, out var cached))
+            return cached;
+
+        var context = await _metadataCache.GetOrCreateAsync(
+            registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
+            ct);
+        _localMetadata[registerId] = context;
+
+        return context;
+    }
+
+    private async Task<ReferenceRegisterMetadataContext> LoadMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var table = ReferenceRegisterNaming.RecordsTable(register.TableCode);
+
+        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
+
+        var fields = (await fieldsRepo.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(static field => field.Ordinal)
+            .ToArray();
+
+        foreach (var field in fields)
+        {
+            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(field.ColumnCode, "field column_code");
+        }
+
+        return new ReferenceRegisterMetadataContext(register, fields, table);
+    }
+
+    private Task<bool> TableExistsAsync(string tableName, CancellationToken ct)
+        => _relationPresenceCache.ExistsAsync(
+            tableName,
+            probeCt => PostgresTableExistence.ExistsAsync(uow, tableName, probeCt),
+            ct);
 
     private static int GetRawScanLimit(int pageSize, int maxScanPages)
     {

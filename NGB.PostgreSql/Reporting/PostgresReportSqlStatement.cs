@@ -8,4 +8,6 @@ public sealed record PostgresReportSqlStatement(
     IReadOnlyList<PostgresReportOutputColumn> Columns,
     bool IsAggregated,
     int Offset,
-    int Limit);
+    int Limit,
+    string DatasetCode,
+    IReadOnlyList<PostgresReportCursorColumn> CursorColumns);
