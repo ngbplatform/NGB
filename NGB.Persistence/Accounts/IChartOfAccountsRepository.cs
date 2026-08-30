@@ -95,9 +95,13 @@ public sealed record ChartOfAccountsAdminPageQuery(
     IReadOnlyCollection<AccountType> SearchAccountTypes,
     int Offset,
     int Limit,
-    int? KnownTotal = null);
+    int? KnownTotal = null,
+    string? AfterCode = null,
+    Guid? AfterAccountId = null);
 
 public sealed record ChartOfAccountsAdminPage(
     IReadOnlyList<ChartOfAccountsAdminItem> Items,
     int Total,
-    bool HasMore = false);
+    bool HasMore = false,
+    string? NextAfterCode = null,
+    Guid? NextAfterAccountId = null);

@@ -66,6 +66,29 @@ public sealed class PostgresTradeCurrentItemPriceReader(
         var totalProjection = cursor is null
             ? "COUNT(*) OVER()::integer AS TotalCount"
             : "@KnownTotal::integer AS TotalCount";
+        var useSeek = cursor is
+        {
+            AfterItemDisplay: not null,
+            AfterPriceTypeDisplay: not null,
+            AfterCurrency: not null,
+            AfterItemId: not null,
+            AfterPriceTypeId: not null
+        };
+        var seekSql = useSeek
+            ? """
+              WHERE (
+                  LOWER(item_display), item_display,
+                  LOWER(price_type_display), price_type_display,
+                  LOWER(currency), currency,
+                  item_id, price_type_id)
+                > (
+                  LOWER(@AfterItemDisplay::text), @AfterItemDisplay::text,
+                  LOWER(@AfterPriceTypeDisplay::text), @AfterPriceTypeDisplay::text,
+                  LOWER(@AfterCurrency::text), @AfterCurrency::text,
+                  @AfterItemId::uuid, @AfterPriceTypeId::uuid)
+              """
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @Offset";
         var sql = $"""
 WITH candidate_dimension_sets AS (
     SELECT
@@ -131,9 +154,10 @@ SELECT
     source_document_id AS SourceDocumentId,
     {totalProjection}
 FROM enriched
+{seekSql}
 ORDER BY LOWER(item_display), item_display, LOWER(price_type_display), price_type_display, LOWER(currency), currency,
          item_id, price_type_id
-OFFSET @Offset
+{offsetSql}
 LIMIT @QueryLimit;
 """;
 
@@ -150,7 +174,12 @@ LIMIT @QueryLimit;
                 PriceTypeIds = priceTypeIdArray,
                 Offset = PagingLimits.BoundOffset(offset),
                 QueryLimit = cursorMode && limit < int.MaxValue ? limit + 1 : limit,
-                KnownTotal = cursor?.Total
+                KnownTotal = cursor?.Total,
+                AfterItemDisplay = cursor?.AfterItemDisplay,
+                AfterPriceTypeDisplay = cursor?.AfterPriceTypeDisplay,
+                AfterCurrency = cursor?.AfterCurrency,
+                AfterItemId = cursor?.AfterItemId,
+                AfterPriceTypeId = cursor?.AfterPriceTypeId
             },
             uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -158,6 +187,8 @@ LIMIT @QueryLimit;
         var hasMore = cursorMode && rows.Count > limit;
         if (hasMore)
             rows.RemoveAt(rows.Count - 1);
+
+        var last = rows.LastOrDefault();
 
         return new TradeCurrentItemPricePage(
             rows.Select(static row => new TradeCurrentItemPriceRow(
@@ -170,7 +201,12 @@ LIMIT @QueryLimit;
                 row.EffectiveDate,
                 row.SourceDocumentId)).ToArray(),
             cursor?.Total ?? rows.FirstOrDefault()?.TotalCount ?? 0,
-            hasMore);
+            hasMore,
+            last?.ItemDisplay,
+            last?.PriceTypeDisplay,
+            last?.Currency,
+            last?.ItemId,
+            last?.PriceTypeId);
     }
 
     private static Guid[] NormalizeIds(IReadOnlyList<Guid>? ids)

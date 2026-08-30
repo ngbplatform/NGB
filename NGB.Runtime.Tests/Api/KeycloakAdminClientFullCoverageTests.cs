@@ -342,6 +342,32 @@ public sealed class KeycloakAdminClientFullCoverageTests
     }
 
     [Fact]
+    public void Cached_page_snapshot_never_calls_Keycloak_and_normalizes_lookup_keys()
+    {
+        var settings = Settings();
+        var cache = new KeycloakUserLookupCache(settings, TimeProvider.System);
+        var cached = new IdentityProviderUserDto(
+            "cached-id", "Cached@Example.com", null, null, "Cached", false);
+        cache.Remember(cached);
+        var handler = new RecordingHandler(_ =>
+            throw new Xunit.Sdk.XunitException("A cached page snapshot must not issue HTTP requests."));
+        var sut = new KeycloakAdminClient(
+            new HttpClient(handler), CachedTokenService(), cache, settings);
+
+        var snapshot = sut.GetCachedUsers(
+            [" cached-id ", "cached-id", "missing", " "],
+            [" cached@example.com ", "CACHED@example.com", "missing@example.com"]);
+
+        snapshot.ById.Should().ContainSingle("cached-id");
+        snapshot.ById["cached-id"].Should().BeSameAs(cached);
+        snapshot.ByEmail.Should().ContainSingle("cached@example.com");
+        snapshot.ByEmail["cached@example.com"].Should().BeSameAs(cached);
+        handler.Requests.Should().BeEmpty();
+        ((Action)(() => sut.GetCachedUsers(null!, []))).Should().Throw<ArgumentNullException>();
+        ((Action)(() => sut.GetCachedUsers([], null!))).Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
     public async Task FindUser_covers_email_match_username_fallback_null_arrays_and_no_match()
     {
         var direct = Client(_ => Json(HttpStatusCode.OK,

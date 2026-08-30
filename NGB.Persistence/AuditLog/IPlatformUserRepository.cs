@@ -48,6 +48,15 @@ public interface IPlatformUserRepository
     Task SetActiveAsync(Guid userId, bool isActive, CancellationToken ct = default);
 }
 
-public sealed record PlatformUserPage(IReadOnlyList<PlatformUser> Items, long Total, bool HasMore = false);
+public sealed record PlatformUserPage(
+    IReadOnlyList<PlatformUser> Items,
+    long Total,
+    bool HasMore = false,
+    string? NextAfterSortKey = null,
+    Guid? NextAfterUserId = null);
 
-public sealed record PlatformUserPageCursor(int Offset, long Total);
+public sealed record PlatformUserPageCursor(
+    int Offset,
+    long Total,
+    string? AfterSortKey = null,
+    Guid? AfterUserId = null);

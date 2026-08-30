@@ -159,7 +159,9 @@ visible_rows AS (
 )
 """;
 
-    private static string BuildPageSql(bool knownStats) => StatementCte + (knownStats
+    private static string BuildPageSql(bool knownStats, bool useSeek)
+    {
+        var statsSql = knownStats
         ? """
 ,
 stats AS (
@@ -182,7 +184,23 @@ stats AS (
     LEFT JOIN visible_rows visible ON TRUE
     GROUP BY opening.opening_balance
 ),
-""") + """
+""";
+        var seekRowsSql = useSeek
+            ? """
+seek_rows AS (
+    SELECT *
+    FROM visible_rows
+    WHERE (occurred_on_utc, sort_order, document_id)
+        > (@after_occurred_on_utc::date, @after_sort_order::int, @after_document_id::uuid)
+),
+"""
+            : string.Empty;
+        var pageSource = useSeek ? "seek_rows" : "visible_rows";
+        var balanceBase = useSeek ? "@known_running_balance::numeric(18,4)" : "opening.opening_balance";
+        var openingJoin = useSeek ? string.Empty : "CROSS JOIN opening_balance opening";
+        var offsetSql = useSeek ? string.Empty : "OFFSET @offset";
+
+        return StatementCte + statsSql + seekRowsSql + $"""
 paged AS (
     SELECT
         visible.occurred_on_utc,
@@ -194,13 +212,13 @@ paged AS (
         visible.sort_order,
         visible.charge_amount,
         visible.credit_amount,
-        (opening.opening_balance
+        ({balanceBase}
           + SUM(visible.delta_amount) OVER (
               ORDER BY visible.occurred_on_utc, visible.sort_order, visible.document_id))::numeric(18,4) AS running_balance
-    FROM visible_rows visible
-    CROSS JOIN opening_balance opening
+    FROM {pageSource} visible
+    {openingJoin}
     ORDER BY visible.occurred_on_utc, visible.sort_order, visible.document_id
-    OFFSET @offset
+    {offsetSql}
     LIMIT @limit
 )
 SELECT
@@ -210,6 +228,7 @@ SELECT
     paged.document_display AS DocumentDisplay,
     paged.entry_type_display AS EntryTypeDisplay,
     paged.description AS Description,
+    paged.sort_order AS SortOrder,
     COALESCE(paged.charge_amount, 0) AS ChargeAmount,
     COALESCE(paged.credit_amount, 0) AS CreditAmount,
     COALESCE(paged.running_balance, stats.opening_balance) AS RunningBalance,
@@ -224,6 +243,7 @@ CROSS JOIN lease_validation
 LEFT JOIN paged ON TRUE
 ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
 """;
+    }
 
     public async Task<TenantStatementPage> GetPageAsync(TenantStatementQuery query, CancellationToken ct = default)
         => await GetPageCoreAsync(query, null, false, ct);
@@ -243,6 +263,14 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
         query.EnsureInvariant();
         await uow.EnsureConnectionOpenAsync(ct);
 
+        var useSeek = cursor is
+        {
+            AfterOccurredOnUtc: not null,
+            AfterSortOrder: not null,
+            AfterDocumentId: not null,
+            RunningBalance: not null
+        };
+
         var parameters = new
         {
             lease_id = query.LeaseId,
@@ -255,11 +283,15 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
             known_total = cursor?.Total,
             known_opening_balance = cursor?.Totals.OpeningBalance,
             known_total_charges = cursor?.Totals.TotalCharges,
-            known_total_credits = cursor?.Totals.TotalCredits
+            known_total_credits = cursor?.Totals.TotalCredits,
+            after_occurred_on_utc = cursor?.AfterOccurredOnUtc,
+            after_sort_order = cursor?.AfterSortOrder,
+            after_document_id = cursor?.AfterDocumentId,
+            known_running_balance = cursor?.RunningBalance
         };
 
         var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
-            BuildPageSql(cursor is not null),
+            BuildPageSql(cursor is not null, useSeek),
             parameters,
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -270,8 +302,8 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
 
         var dataRows = dbRows.Where(static row => row.HasRow).ToArray();
         var hasMore = cursorPaging && dataRows.Length > query.Limit;
-        var rows = dataRows
-            .Take(query.Limit)
+        var visibleRows = dataRows.Take(query.Limit).ToArray();
+        var rows = visibleRows
             .Select(MapRow)
             .ToArray();
 
@@ -284,7 +316,16 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
             ClosingBalance: stats.OpeningBalance + stats.TotalCharges - stats.TotalCredits);
         totals.EnsureInvariant();
 
-        var page = new TenantStatementPage(rows, stats.TotalCount, totals, hasMore);
+        var last = visibleRows.LastOrDefault();
+        var page = new TenantStatementPage(
+            rows,
+            stats.TotalCount,
+            totals,
+            hasMore,
+            last?.OccurredOnUtc,
+            last?.SortOrder,
+            last?.DocumentId,
+            last?.RunningBalance);
         page.EnsureInvariant();
 
         return page;
@@ -313,6 +354,7 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
         string? DocumentDisplay,
         string? EntryTypeDisplay,
         string? Description,
+        int? SortOrder,
         decimal ChargeAmount,
         decimal CreditAmount,
         decimal RunningBalance,

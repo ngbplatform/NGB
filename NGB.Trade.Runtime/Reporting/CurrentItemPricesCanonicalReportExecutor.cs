@@ -68,7 +68,15 @@ public sealed class CurrentItemPricesCanonicalReportExecutor(
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
-                new TradeCurrentItemPricePageCursor(offset + page.Rows.Count, page.Total, asOfUtc))
+                new TradeCurrentItemPricePageCursor(
+                    offset + page.Rows.Count,
+                    page.Total,
+                    asOfUtc,
+                    page.NextAfterItemDisplay,
+                    page.NextAfterPriceTypeDisplay,
+                    page.NextAfterCurrency,
+                    page.NextAfterItemId,
+                    page.NextAfterPriceTypeId))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

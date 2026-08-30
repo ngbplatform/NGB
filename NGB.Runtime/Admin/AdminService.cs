@@ -112,7 +112,9 @@ public sealed class AdminService(
                 searchAccountTypes,
                 offset,
                 request.Limit,
-                cursor?.Total),
+                cursor?.Total,
+                cursor?.AfterCode,
+                cursor?.AfterAccountId),
             ct);
 
         var page = result.Items
@@ -123,13 +125,21 @@ public sealed class AdminService(
         var nextCursor = hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
-                new ChartOfAccountsPageCursor(offset + page.Length, result.Total))
+                new ChartOfAccountsPageCursor(
+                    offset + page.Length,
+                    result.Total,
+                    result.NextAfterCode,
+                    result.NextAfterAccountId))
             : null;
 
         return new ChartOfAccountsPageDto(page, offset, request.Limit, result.Total, nextCursor);
     }
 
-    private sealed record ChartOfAccountsPageCursor(int Offset, int Total);
+    private sealed record ChartOfAccountsPageCursor(
+        int Offset,
+        int Total,
+        string? AfterCode = null,
+        Guid? AfterAccountId = null);
 
     public async Task<ChartOfAccountsAccountDto> GetChartOfAccountAsync(Guid accountId, CancellationToken ct)
     {

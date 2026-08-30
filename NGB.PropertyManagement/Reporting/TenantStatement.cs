@@ -83,7 +83,11 @@ public sealed record TenantStatementPage(
     IReadOnlyList<TenantStatementRow> Rows,
     int Total,
     TenantStatementTotals Totals,
-    bool HasMore = false)
+    bool HasMore = false,
+    DateOnly? NextAfterOccurredOnUtc = null,
+    int? NextAfterSortOrder = null,
+    Guid? NextAfterDocumentId = null,
+    decimal? NextRunningBalance = null)
 {
     public void EnsureInvariant()
     {
@@ -102,4 +106,11 @@ public sealed record TenantStatementPage(
     }
 }
 
-public sealed record TenantStatementPageCursor(int Offset, int Total, TenantStatementTotals Totals);
+public sealed record TenantStatementPageCursor(
+    int Offset,
+    int Total,
+    TenantStatementTotals Totals,
+    DateOnly? AfterOccurredOnUtc = null,
+    int? AfterSortOrder = null,
+    Guid? AfterDocumentId = null,
+    decimal? RunningBalance = null);

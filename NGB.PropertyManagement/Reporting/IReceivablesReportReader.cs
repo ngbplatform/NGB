@@ -26,7 +26,10 @@ public sealed record ReceivablesReportPage(
     string? PartyDisplay,
     string? PropertyDisplay,
     string? LeaseDisplay,
-    bool HasMore = false);
+    bool HasMore = false,
+    int? NextAfterKindOrder = null,
+    DateOnly? NextAfterSortDate = null,
+    Guid? NextAfterDocumentId = null);
 
 public sealed record ReceivablesReportPageCursor(
     int Offset,
@@ -36,7 +39,10 @@ public sealed record ReceivablesReportPageCursor(
     decimal TotalCredit,
     string? PartyDisplay,
     string? PropertyDisplay,
-    string? LeaseDisplay);
+    string? LeaseDisplay,
+    int? AfterKindOrder = null,
+    DateOnly? AfterSortDate = null,
+    Guid? AfterDocumentId = null);
 
 public interface IReceivablesReportReader
 {

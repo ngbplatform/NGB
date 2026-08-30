@@ -80,7 +80,12 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
-                new MaintenanceQueuePageCursor(query.Offset + page.Rows.Count, page.Total))
+                new MaintenanceQueuePageCursor(
+                    query.Offset + page.Rows.Count,
+                    page.Total,
+                    page.NextAfterRequestedAtUtc,
+                    page.NextAfterRequestId,
+                    page.NextAfterWorkOrderId))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

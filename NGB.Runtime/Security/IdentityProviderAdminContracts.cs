@@ -40,6 +40,15 @@ public interface IIdentityProviderBulkUserReader
         CancellationToken ct);
 }
 
+/// <summary>
+/// Non-blocking page enrichment boundary. Implementations must only read an in-process projection or cache;
+/// a list request must never turn into one remote identity-provider call per row.
+/// </summary>
+public interface IIdentityProviderUserPageSnapshotReader
+{
+    IdentityProviderUserBatch GetCachedUsers(IReadOnlyList<string> identityProviderUserIds, IReadOnlyList<string> emails);
+}
+
 public interface IIdentityProviderUserAdminClient
 {
     Task<IdentityProviderUserDto> CreateUserAsync(CreateIdentityProviderUserRequest request, CancellationToken ct);

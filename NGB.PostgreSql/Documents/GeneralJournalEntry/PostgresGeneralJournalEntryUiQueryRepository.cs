@@ -58,6 +58,12 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
         var trimmed = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
         var hasSearch = trimmed is not null;
         var like = hasSearch ? $"%{trimmed}%" : string.Empty;
+        var useSeek = cursor is
+        {
+            AfterDateUtc: not null,
+            AfterCreatedAtUtc: not null,
+            AfterId: not null
+        };
 
         var args = new
         {
@@ -72,7 +78,10 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
             TrashMode = trashMode,
             Limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
             Offset = offset,
-            KnownTotal = cursor?.Total
+            KnownTotal = cursor?.Total,
+            AfterDateUtc = cursor?.AfterDateUtc,
+            AfterCreatedAtUtc = cursor?.AfterCreatedAtUtc,
+            AfterId = cursor?.AfterId
         };
 
         const string filtersSql = """
@@ -125,11 +134,16 @@ WHERE
         var totalProjection = cursor is null
             ? "COUNT(*) OVER() AS TotalCount"
             : "@KnownTotal::integer AS TotalCount";
+        var seekSql = useSeek
+            ? "AND (d.date_utc, d.created_at_utc, d.id) < (@AfterDateUtc::timestamptz, @AfterCreatedAtUtc::timestamptz, @AfterId::uuid)"
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @Offset";
         var pageSql = $"""
 {searchCandidatesSql}
 SELECT
     d.id AS Id,
     d.date_utc AS DateUtc,
+    d.created_at_utc AS CreatedAtUtc,
     d.number AS Number,
     CONCAT('General Journal Entry', CASE WHEN NULLIF(d.number, '') IS NOT NULL THEN ' ' || d.number ELSE '' END, ' ', TO_CHAR((d.date_utc AT TIME ZONE 'UTC')::date, 'FMMM/FMDD/YYYY')) AS Display,
     d.status AS DocumentStatus,
@@ -151,8 +165,9 @@ INNER JOIN doc_general_journal_entry g ON g.document_id = d.id
 {searchJoinSql}
 WHERE
 {filtersSql}
+{seekSql}
 ORDER BY d.date_utc DESC, d.created_at_utc DESC, d.id DESC
-LIMIT @Limit OFFSET @Offset;
+LIMIT @Limit {offsetSql};
 """;
 
         var rows = (await uow.Connection.QueryAsync<Row>(
@@ -175,12 +190,18 @@ LIMIT @Limit OFFSET @Offset;
         }
 
         var hasMore = cursorPaging && rows.Count > limit;
+        var visibleRows = rows.Take(limit).ToArray();
+        var last = visibleRows.LastOrDefault();
+
         return new GeneralJournalEntryPageRecord(
-            rows.Take(limit).Select(Map).ToArray(),
+            visibleRows.Select(Map).ToArray(),
             offset,
             limit,
             total,
-            hasMore);
+            hasMore,
+            last?.DateUtc,
+            last?.CreatedAtUtc,
+            last?.Id);
     }
 
     private static string NormalizeTrashMode(string? trash)
@@ -223,6 +244,7 @@ LIMIT @Limit OFFSET @Offset;
     {
         public Guid Id { get; init; }
         public DateTime DateUtc { get; init; }
+        public DateTime CreatedAtUtc { get; init; }
         public string? Number { get; init; }
         public string? Display { get; init; }
         public short DocumentStatus { get; init; }

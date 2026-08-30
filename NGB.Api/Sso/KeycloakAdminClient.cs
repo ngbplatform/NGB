@@ -16,7 +16,7 @@ public sealed class KeycloakAdminClient(
     TokenCacheService tokenCache,
     KeycloakUserLookupCache lookupCache,
     KeycloakAdminClientSettings settings)
-    : IIdentityProviderUserAdminClient, IIdentityProviderBulkUserReader
+    : IIdentityProviderUserAdminClient, IIdentityProviderBulkUserReader, IIdentityProviderUserPageSnapshotReader
 {
     private const int MinAdminBatchConcurrency = 1;
     private const int MaxAdminBatchConcurrency = 32;
@@ -244,6 +244,36 @@ public sealed class KeycloakAdminClient(
             {
                 byEmail[email] = user;
             }
+        }
+
+        return new IdentityProviderUserBatch(byId, byEmail);
+    }
+
+    public IdentityProviderUserBatch GetCachedUsers(
+        IReadOnlyList<string> identityProviderUserIds,
+        IReadOnlyList<string> emails)
+    {
+        ArgumentNullException.ThrowIfNull(identityProviderUserIds);
+        ArgumentNullException.ThrowIfNull(emails);
+
+        var byId = new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
+        foreach (var id in identityProviderUserIds
+                     .Where(static value => !string.IsNullOrWhiteSpace(value))
+                     .Select(static value => value.Trim())
+                     .Distinct(StringComparer.Ordinal))
+        {
+            if (lookupCache.TryGetById(id, out var user) && user is not null)
+                byId[id] = user;
+        }
+
+        var byEmail = new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var email in emails
+                     .Where(static value => !string.IsNullOrWhiteSpace(value))
+                     .Select(static value => value.Trim())
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (lookupCache.TryGetByEmail(email, out var user) && user is not null)
+                byEmail[email] = user;
         }
 
         return new IdentityProviderUserBatch(byId, byEmail);

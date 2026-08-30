@@ -161,7 +161,9 @@ queue_rows AS (
 )
 """;
 
-    private static string BuildPageSql(bool knownTotal) => QueueCte + (knownTotal
+    private static string BuildPageSql(bool knownTotal, bool useSeek)
+    {
+        var statsSql = knownTotal
         ? """
 ,
 stats AS (
@@ -174,13 +176,31 @@ stats AS (
     SELECT COUNT(*)::int AS total_count
     FROM queue_rows
 ),
-""") + """
+""";
+        var sourceSql = useSeek
+            ? """
+seek_rows AS (
+    SELECT *
+    FROM queue_rows
+    WHERE requested_at_utc < @after_requested_at_utc::date
+       OR (requested_at_utc = @after_requested_at_utc::date AND request_id < @after_request_id::uuid)
+       OR (requested_at_utc = @after_requested_at_utc::date AND request_id = @after_request_id::uuid AND (
+            (@after_work_order_id::uuid IS NULL AND work_order_id IS NOT NULL)
+            OR (@after_work_order_id::uuid IS NOT NULL AND work_order_id IS NOT NULL AND work_order_id > @after_work_order_id::uuid)
+       ))
+),
+"""
+            : string.Empty;
+        var sourceName = useSeek ? "seek_rows" : "queue_rows";
+        var offsetSql = useSeek ? string.Empty : "OFFSET @offset";
+
+        return QueueCte + statsSql + sourceSql + $"""
 paged AS (
 SELECT
     *
-FROM queue_rows
+FROM {sourceName}
 ORDER BY requested_at_utc DESC, request_id DESC, work_order_id NULLS FIRST
-OFFSET @offset
+{offsetSql}
 LIMIT @limit
 )
 SELECT
@@ -210,6 +230,7 @@ FROM stats
 LEFT JOIN paged ON TRUE
 ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id NULLS FIRST;
 """;
+    }
 
     public async Task<MaintenanceQueuePage> GetPageAsync(MaintenanceQueueQuery query, CancellationToken ct = default)
         => await GetPageCoreAsync(query, null, false, ct);
@@ -232,6 +253,8 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
         if (cursor is null)
             await ValidateFiltersAsync(query, ct);
 
+        var useSeek = cursor is { AfterRequestedAtUtc: not null, AfterRequestId: not null };
+
         var parameters = new
         {
             as_of = query.AsOfUtc,
@@ -244,11 +267,14 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
             posted = (int)DocumentStatus.Posted,
             offset = PagingLimits.BoundOffset(query.Offset),
             limit = cursorPaging && query.Limit < int.MaxValue ? query.Limit + 1 : query.Limit,
-            known_total = cursor?.Total
+            known_total = cursor?.Total,
+            after_requested_at_utc = cursor?.AfterRequestedAtUtc,
+            after_request_id = cursor?.AfterRequestId,
+            after_work_order_id = cursor?.AfterWorkOrderId
         };
 
         var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
-            BuildPageSql(cursor is not null),
+            BuildPageSql(cursor is not null, useSeek),
             parameters,
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -256,8 +282,8 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
         var total = dbRows[0].TotalCount;
         var dataRows = dbRows.Where(static row => row.HasRow).ToArray();
         var hasMore = cursorPaging && dataRows.Length > query.Limit;
-        var rows = dataRows
-            .Take(query.Limit)
+        var visibleRows = dataRows.Take(query.Limit).ToArray();
+        var rows = visibleRows
             .Select(row => MapRow(new PageRow(
                 row.RequestId!.Value,
                 row.RequestDisplay!,
@@ -281,7 +307,14 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
                 row.QueueState!)))
             .ToArray();
 
-        var result = new MaintenanceQueuePage(rows, total, hasMore);
+        var last = visibleRows.LastOrDefault();
+        var result = new MaintenanceQueuePage(
+            rows,
+            total,
+            hasMore,
+            last?.RequestedAtUtc,
+            last?.RequestId,
+            last?.WorkOrderId);
         result.EnsureInvariant();
         return result;
     }

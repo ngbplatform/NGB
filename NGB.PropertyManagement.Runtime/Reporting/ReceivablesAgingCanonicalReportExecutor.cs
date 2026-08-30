@@ -85,7 +85,8 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(
                 new ReceivablesReportPageCursor(
                     offset + page.Rows.Count, page.Total, page.TotalOriginal,
                     page.TotalOutstanding, page.TotalCredit, page.PartyDisplay,
-                    page.PropertyDisplay, page.LeaseDisplay))
+                    page.PropertyDisplay, page.LeaseDisplay,
+                    page.NextAfterKindOrder, page.NextAfterSortDate, page.NextAfterDocumentId))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

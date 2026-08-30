@@ -69,7 +69,8 @@ internal static class TradeSeedDemoCli
                 seedScope.ServiceProvider.GetRequiredService<IChartOfAccountsManagementService>(),
                 seedScope.ServiceProvider.GetRequiredService<IPeriodClosingService>(),
                 seedScope.ServiceProvider.GetRequiredService<IClosedPeriodReader>(),
-                effectiveTimeProvider);
+                effectiveTimeProvider,
+                provider.GetRequiredService<IServiceScopeFactory>());
 
             var summary = await seeder.RunAsync();
             PrintSummary(summary);
@@ -250,8 +251,10 @@ internal sealed class TradeDemoSeeder(
     IChartOfAccountsManagementService chartOfAccountsManagement,
     IPeriodClosingService periodClosing,
     IClosedPeriodReader closedPeriodReader,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IServiceScopeFactory? scopeFactory = null)
 {
+    private const int SeedCatalogConcurrency = 4;
     private readonly Random _random = new(options.Seed);
     private readonly Dictionary<(Guid WarehouseId, Guid ItemId), SortedDictionary<DateOnly, decimal>> _inventory = [];
     private readonly Dictionary<Guid, decimal> _currentRetailPrices = [];
@@ -519,7 +522,7 @@ internal sealed class TradeDemoSeeder(
 
     internal async Task<List<WarehouseSeedResult>> SeedWarehousesAsync(CancellationToken ct)
     {
-        var results = new List<WarehouseSeedResult>(options.Warehouses);
+        var plans = new List<(string Display, string Code, string Address, RecordPayload Payload)>(options.Warehouses);
 
         for (var i = 0; i < options.Warehouses; i++)
         {
@@ -531,22 +534,21 @@ internal sealed class TradeDemoSeeder(
                 ? template.Code
                 : $"{template.Code}{i / WarehouseTemplates.Length + 1}";
 
-            var created = await catalogs.CreateAsync(
-                TradeCodes.Warehouse,
-                Payload(new
+            plans.Add((display, code, template.Address, Payload(new
                 {
                     display,
                     warehouse_code = code,
                     name = display,
                     address = template.Address,
                     is_active = true
-                }),
-                ct);
-
-            results.Add(new WarehouseSeedResult(created.Id, display, code, template.Address));
+                })));
         }
 
-        return results;
+        var created = await CreateCatalogsAsync(TradeCodes.Warehouse, plans.Select(x => x.Payload).ToArray(), ct);
+
+        return plans
+            .Select((plan, index) => new WarehouseSeedResult(created[index].Id, plan.Display, plan.Code, plan.Address))
+            .ToList();
     }
 
     private async Task<List<PartySeedResult>> SeedPartiesAsync(
@@ -559,7 +561,7 @@ internal sealed class TradeDemoSeeder(
     {
         var prefixes = isCustomer ? CustomerPrefixes : VendorPrefixes;
         var suffixes = isCustomer ? CustomerSuffixes : VendorSuffixes;
-        var results = new List<PartySeedResult>(count);
+        var plans = new List<(string Display, RecordPayload Payload)>(count);
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < count; i++)
@@ -574,9 +576,7 @@ internal sealed class TradeDemoSeeder(
             var address = $"{streetNo} {streetName} Ave, {city.City}, {city.State}";
             var phone = $"+1-{200 + (i % 500):000}-555-{1000 + (i % 9000):0000}";
 
-            var created = await catalogs.CreateAsync(
-                TradeCodes.Party,
-                Payload(new
+            plans.Add((display, Payload(new
                 {
                     display,
                     party_number = $"{numberPrefix}-{1000 + i}",
@@ -590,13 +590,14 @@ internal sealed class TradeDemoSeeder(
                     is_customer = isCustomer,
                     is_vendor = isVendor,
                     is_active = true
-                }),
-                ct);
-
-            results.Add(new PartySeedResult(created.Id, display));
+                })));
         }
 
-        return results;
+        var created = await CreateCatalogsAsync(TradeCodes.Party, plans.Select(x => x.Payload).ToArray(), ct);
+
+        return plans
+            .Select((plan, index) => new PartySeedResult(created[index].Id, plan.Display))
+            .ToList();
     }
 
     internal async Task<List<ItemSeedResult>> SeedItemsAsync(
@@ -604,7 +605,7 @@ internal sealed class TradeDemoSeeder(
         Guid retailPriceTypeId,
         CancellationToken ct)
     {
-        var results = new List<ItemSeedResult>(options.Items);
+        var plans = new List<(decimal BaseCost, decimal InitialPrice, RecordPayload Payload)>(options.Items);
 
         for (var i = 0; i < options.Items; i++)
         {
@@ -616,9 +617,7 @@ internal sealed class TradeDemoSeeder(
             var sku = $"{template.SkuPrefix}-{1000 + i}";
             var baseCost = RoundMoney(template.BaseCost + (series * 1.75m));
 
-            var created = await catalogs.CreateAsync(
-                TradeCodes.Item,
-                Payload(new
+            plans.Add((baseCost, RoundMoney(baseCost * template.Markup), Payload(new
                 {
                     display,
                     name = display,
@@ -628,11 +627,46 @@ internal sealed class TradeDemoSeeder(
                     is_inventory_item = true,
                     default_sales_price_type_id = retailPriceTypeId,
                     is_active = true
-                }),
-                ct);
-
-            results.Add(new ItemSeedResult(created.Id, baseCost, RoundMoney(baseCost * template.Markup)));
+                })));
         }
+
+        var created = await CreateCatalogsAsync(TradeCodes.Item, plans.Select(x => x.Payload).ToArray(), ct);
+
+        return plans
+            .Select((plan, index) => new ItemSeedResult(created[index].Id, plan.BaseCost, plan.InitialPrice))
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<CatalogItemDto>> CreateCatalogsAsync(
+        string catalogType,
+        IReadOnlyList<RecordPayload> payloads,
+        CancellationToken ct)
+    {
+        if (scopeFactory is null || payloads.Count <= 1)
+        {
+            var sequential = new CatalogItemDto[payloads.Count];
+            for (var i = 0; i < payloads.Count; i++)
+            {
+                sequential[i] = await catalogs.CreateAsync(catalogType, payloads[i], ct);
+            }
+
+            return sequential;
+        }
+
+        var results = new CatalogItemDto[payloads.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, payloads.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = SeedCatalogConcurrency,
+                CancellationToken = ct
+            },
+            async (index, token) =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var catalogService = scope.ServiceProvider.GetRequiredService<ICatalogService>();
+                results[index] = await catalogService.CreateAsync(catalogType, payloads[index], token);
+            });
 
         return results;
     }

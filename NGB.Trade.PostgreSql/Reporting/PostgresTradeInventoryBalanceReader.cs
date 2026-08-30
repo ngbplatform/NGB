@@ -79,6 +79,30 @@ public sealed class PostgresTradeInventoryBalanceReader(IUnitOfWork uow, Operati
         var orderBy = sort == TradeInventoryBalanceSort.AbsoluteQuantityDescending
             ? "ABS(position.quantity) DESC, item_display ASC, warehouse_display ASC, position.item_id, position.warehouse_id"
             : "item_display ASC, warehouse_display ASC, position.item_id, position.warehouse_id";
+        var hasCommonSeekKey = cursor is
+        {
+            AfterItemDisplay: not null,
+            AfterWarehouseDisplay: not null,
+            AfterItemId: not null,
+            AfterWarehouseId: not null
+        };
+        var useSeek = hasCommonSeekKey
+                      && (sort != TradeInventoryBalanceSort.AbsoluteQuantityDescending
+                          || cursor?.AfterAbsoluteQuantity is not null);
+        var seekSql = !useSeek
+            ? string.Empty
+            : sort == TradeInventoryBalanceSort.AbsoluteQuantityDescending
+                ? """
+                  WHERE ABS(position.quantity) < @AfterAbsoluteQuantity::numeric
+                     OR (ABS(position.quantity) = @AfterAbsoluteQuantity::numeric
+                         AND (position.item_display, position.warehouse_display, position.item_id, position.warehouse_id)
+                           > (@AfterItemDisplay::text, @AfterWarehouseDisplay::text, @AfterItemId::uuid, @AfterWarehouseId::uuid))
+                  """
+                : """
+                  WHERE (position.item_display, position.warehouse_display, position.item_id, position.warehouse_id)
+                      > (@AfterItemDisplay::text, @AfterWarehouseDisplay::text, @AfterItemId::uuid, @AfterWarehouseId::uuid)
+                  """;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @Offset";
 
         var positionSourceSql = context.BalancesExist
             ? BuildSnapshotBackedPositionSourceSql(context.MovementsTable, context.BalancesTable)
@@ -124,8 +148,9 @@ SELECT
     position.quantity AS Quantity,
     {totalsProjection}
 FROM enriched position
+{seekSql}
 ORDER BY {orderBy}
-OFFSET @Offset
+{offsetSql}
 LIMIT @QueryLimit;
 """;
 
@@ -144,7 +169,12 @@ LIMIT @QueryLimit;
                 Offset = PagingLimits.BoundOffset(offset),
                 QueryLimit = cursorMode && limit < int.MaxValue ? limit + 1 : limit,
                 KnownTotal = cursor?.Total,
-                KnownTotalQuantity = cursor?.TotalQuantity
+                KnownTotalQuantity = cursor?.TotalQuantity,
+                AfterAbsoluteQuantity = cursor?.AfterAbsoluteQuantity,
+                AfterItemDisplay = cursor?.AfterItemDisplay,
+                AfterWarehouseDisplay = cursor?.AfterWarehouseDisplay,
+                AfterItemId = cursor?.AfterItemId,
+                AfterWarehouseId = cursor?.AfterWarehouseId
             },
             uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -153,6 +183,8 @@ LIMIT @QueryLimit;
         var hasMore = cursorMode && rows.Count > limit;
         if (hasMore)
             rows.RemoveAt(rows.Count - 1);
+
+        var last = rows.LastOrDefault();
 
         return new TradeInventoryBalancePage(
             rows.Select(static row => new TradeInventoryBalanceRow(
@@ -163,7 +195,12 @@ LIMIT @QueryLimit;
                 row.Quantity)).ToArray(),
             cursor?.Total ?? first?.TotalCount ?? 0,
             cursor?.TotalQuantity ?? first?.TotalQuantity ?? 0m,
-            hasMore);
+            hasMore,
+            last is null ? null : Math.Abs(last.Quantity),
+            last?.ItemDisplay,
+            last?.WarehouseDisplay,
+            last?.ItemId,
+            last?.WarehouseId);
     }
 
     private static string BuildMovementOnlyPositionSourceSql(string movementsTable) => $"""

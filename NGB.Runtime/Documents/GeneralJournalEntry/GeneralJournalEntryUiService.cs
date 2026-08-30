@@ -104,7 +104,12 @@ public sealed class GeneralJournalEntryUiService(
         var nextCursor = hasMore
             ? Reporting.SpecializedReportCursorCodec.Encode(
                 cursorKind,
-                new GeneralJournalEntryPageCursor(page.Offset + items.Length, page.Total))
+                new GeneralJournalEntryPageCursor(
+                    page.Offset + items.Length,
+                    page.Total,
+                    page.NextAfterDateUtc,
+                    page.NextAfterCreatedAtUtc,
+                    page.NextAfterId))
             : null;
 
         return new GeneralJournalEntryPageDto(items, page.Offset, page.Limit, page.Total, nextCursor);

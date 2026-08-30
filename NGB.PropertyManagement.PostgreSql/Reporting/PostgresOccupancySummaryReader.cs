@@ -38,7 +38,13 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
             false,
             ct);
 
-        var result = new OccupancySummaryPage(page.Rows, page.Total, page.Totals, page.HasMore);
+        var result = new OccupancySummaryPage(
+            page.Rows,
+            page.Total,
+            page.Totals,
+            page.HasMore,
+            page.NextAfterBuildingDisplay,
+            page.NextAfterBuildingId);
         result.EnsureInvariant();
         return result;
     }
@@ -70,8 +76,15 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
             true,
             ct);
 
-        var result = new OccupancySummaryPage(page.Rows, page.Total, page.Totals, page.HasMore);
+        var result = new OccupancySummaryPage(
+            page.Rows,
+            page.Total,
+            page.Totals,
+            page.HasMore,
+            page.NextAfterBuildingDisplay,
+            page.NextAfterBuildingId);
         result.EnsureInvariant();
+
         return result;
     }
 
@@ -102,6 +115,11 @@ stats AS (
         @known_occupied_units::int AS OccupiedUnits
 )
 """;
+        var useSeek = cursor is { AfterBuildingDisplay: not null, AfterBuildingId: not null };
+        var seekSql = useSeek
+            ? "WHERE (building_display, building_id) > (@after_building_display::text, @after_building_id::uuid)"
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @offset";
         var sql = $"""
 WITH filter_validation AS (
     SELECT
@@ -181,8 +199,9 @@ GROUP BY cb.building_id, cb.building_display
 paged AS (
     SELECT *
     FROM building_rows
+    {seekSql}
     ORDER BY building_display, building_id
-    OFFSET @offset
+    {offsetSql}
     LIMIT @limit
 )
 SELECT
@@ -215,7 +234,9 @@ ORDER BY paged.building_display, paged.building_id;
                 limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
                 known_total = cursor?.Total,
                 known_total_units = cursor?.Totals.TotalUnits,
-                known_occupied_units = cursor?.Totals.OccupiedUnits
+                known_occupied_units = cursor?.Totals.OccupiedUnits,
+                after_building_display = cursor?.AfterBuildingDisplay,
+                after_building_id = cursor?.AfterBuildingId
             },
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -225,7 +246,8 @@ ORDER BY paged.building_display, paged.building_id;
 
         var dataRows = dbRows.Where(row => row.HasRow).ToArray();
         var hasMore = cursorPaging && dataRows.Length > limit;
-        var rows = dataRows.Take(limit).Select(row =>
+        var visibleRows = dataRows.Take(limit).ToArray();
+        var rows = visibleRows.Select(row =>
         {
             var result = new OccupancySummaryRow(
                 BuildingId: row.BuildingId!.Value,
@@ -244,7 +266,14 @@ ORDER BY paged.building_display, paged.building_id;
             OccupiedUnits: stats.AllOccupiedUnits);
         totals.EnsureInvariant();
 
-        return new PageAndTotals(rows, stats.BuildingCount, totals, hasMore);
+        var last = visibleRows.LastOrDefault();
+        return new PageAndTotals(
+            rows,
+            stats.BuildingCount,
+            totals,
+            hasMore,
+            last?.BuildingDisplay,
+            last?.BuildingId);
     }
 
     private static void ValidateBuildingFilter(Guid? buildingId, CombinedRow validation)
@@ -279,5 +308,7 @@ ORDER BY paged.building_display, paged.building_id;
         IReadOnlyList<OccupancySummaryRow> Rows,
         int Total,
         OccupancySummaryTotals Totals,
-        bool HasMore);
+        bool HasMore,
+        string? NextAfterBuildingDisplay,
+        Guid? NextAfterBuildingId);
 }

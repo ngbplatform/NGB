@@ -121,7 +121,12 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
         ArgumentNullException.ThrowIfNull(query);
         await uow.EnsureConnectionOpenAsync(ct);
 
-        const string select = """
+        var useSeek = query.AfterCode is not null && query.AfterAccountId.HasValue;
+        var seekSql = useSeek
+            ? "AND (code, account_id) > (@AfterCode::text, @AfterAccountId::uuid)"
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @Offset";
+        var select = $"""
                               SELECT
                                   account_id             AS "AccountId",
                                   code                   AS "Code",
@@ -145,6 +150,7 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
                                     OR name ILIKE @Search ESCAPE '\'
                                     OR (@FilterSearchAccountTypes AND account_type = ANY(@SearchAccountTypes))
                                 )
+                                {seekSql}
                               """;
         var parameters = new
         {
@@ -157,6 +163,8 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
             FilterSearchAccountTypes = query.SearchAccountTypes.Count > 0,
             SearchAccountTypes = query.SearchAccountTypes.Select(static type => (short)type).ToArray(),
             Offset = PagingLimits.BoundOffset(query.Offset),
+            query.AfterCode,
+            query.AfterAccountId,
             Limit = query.KnownTotal.HasValue && query.Limit < int.MaxValue
                 ? query.Limit + 1
                 : query.Limit
@@ -170,7 +178,8 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
                 $"""
                  {select}
                  ORDER BY code, account_id
-                 OFFSET @Offset LIMIT @Limit;
+                 {offsetSql}
+                 LIMIT @Limit;
                  """,
                 parameters,
                 transaction: uow.Transaction,
@@ -184,7 +193,8 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
                  SELECT COUNT(*)::int FROM ({select}) filtered;
                  {select}
                  ORDER BY code, account_id
-                 OFFSET @Offset LIMIT @Limit;
+                 {offsetSql}
+                 LIMIT @Limit;
                  """,
                 parameters,
                 transaction: uow.Transaction,
@@ -210,7 +220,13 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
             };
         }).ToArray();
 
-        return new ChartOfAccountsAdminPage(items, total, hasMore);
+        var last = rows.LastOrDefault();
+        return new ChartOfAccountsAdminPage(
+            items,
+            total,
+            hasMore,
+            last?.Code,
+            last?.AccountId);
     }
 
     public async Task<ChartOfAccountsAdminItem?> GetAdminByIdAsync(Guid accountId, CancellationToken ct = default)

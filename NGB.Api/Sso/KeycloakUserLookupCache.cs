@@ -38,6 +38,10 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
         CancellationToken ct)
         => GetOrCreateAsync(EmailKey(email), factory, ct);
 
+    public bool TryGetById(string userId, out IdentityProviderUserDto? user) => TryGet(IdKey(userId), out user);
+
+    public bool TryGetByEmail(string email, out IdentityProviderUserDto? user) => TryGet(EmailKey(email), out user);
+
     public void Remember(IdentityProviderUserDto user)
     {
         Store(IdKey(user.UserId), user);

@@ -30,19 +30,26 @@ public sealed class PostgresStatementOfChangesInEquitySnapshotReaderFullCoverage
     [Fact]
     public async Task Without_closed_periods_loads_inception_to_date_and_reports_zero_roll_forward_counts()
     {
-        var fixture = Fixture(null, null);
+        var fixture = Fixture(
+            null,
+            null,
+            endpointRows:
+            [
+                EndpointState(FirstAccountId, "100", "Equity", StatementSection.Equity, 12m, 19m)
+            ]);
 
         var snapshot = await fixture.Reader.GetAsync(new DateOnly(2026, 8, 1), new DateOnly(2026, 9, 1));
 
-        snapshot.Rows.Should().BeEmpty();
+        snapshot.Rows.Should().ContainSingle();
+        snapshot.Rows[0].OpeningBalance.Should().Be(12m);
+        snapshot.Rows[0].ClosingBalance.Should().Be(19m);
         snapshot.OpeningLatestClosedPeriod.Should().BeNull();
         snapshot.ClosingLatestClosedPeriod.Should().BeNull();
         snapshot.OpeningRollForwardPeriods.Should().Be(0);
         snapshot.ClosingRollForwardPeriods.Should().Be(0);
-        fixture.Connection.Commands.Should().HaveCount(3);
-        fixture.Connection.Commands.Skip(1).Should().OnlyContain(
-            command => command.CommandText.Contains("FROM accounting_turnovers t", StringComparison.Ordinal)
-                       && !command.CommandText.Contains("snapshot_rows", StringComparison.Ordinal));
+        fixture.Connection.Commands.Should().HaveCount(2);
+        fixture.Connection.Commands[1].CommandText.Should().Contain("OpeningAsOfPeriod");
+        fixture.Connection.Commands[1].CommandText.Should().NotContain("snapshot_rows");
     }
 
     [Fact]
@@ -81,8 +88,9 @@ public sealed class PostgresStatementOfChangesInEquitySnapshotReaderFullCoverage
         DateOnly? openingLatestClosed,
         DateOnly? closingLatestClosed,
         IReadOnlyList<IReadOnlyDictionary<string, object?>>? snapshotRows = null,
-        IReadOnlyList<IReadOnlyDictionary<string, object?>>? deltaRows = null)
-        => new(openingLatestClosed, closingLatestClosed, snapshotRows ?? [], deltaRows ?? []);
+        IReadOnlyList<IReadOnlyDictionary<string, object?>>? deltaRows = null,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>>? endpointRows = null)
+        => new(openingLatestClosed, closingLatestClosed, snapshotRows ?? [], deltaRows ?? [], endpointRows ?? []);
 
     private static IReadOnlyDictionary<string, object?> State(
         Guid accountId,
@@ -99,11 +107,29 @@ public sealed class PostgresStatementOfChangesInEquitySnapshotReaderFullCoverage
             ["ClosingBalance"] = closingBalance
         };
 
+    private static IReadOnlyDictionary<string, object?> EndpointState(
+        Guid accountId,
+        string code,
+        string name,
+        StatementSection section,
+        decimal openingBalance,
+        decimal closingBalance)
+        => new Dictionary<string, object?>
+        {
+            ["AccountId"] = accountId,
+            ["AccountCode"] = code,
+            ["AccountName"] = name,
+            ["StatementSection"] = (short)section,
+            ["OpeningBalance"] = openingBalance,
+            ["ClosingBalance"] = closingBalance
+        };
+
     private sealed class FixtureState(
         DateOnly? openingLatestClosed,
         DateOnly? closingLatestClosed,
         IReadOnlyList<IReadOnlyDictionary<string, object?>> snapshotRows,
-        IReadOnlyList<IReadOnlyDictionary<string, object?>> deltaRows)
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> deltaRows,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> endpointRows)
     {
         public RecordingDbConnection Connection { get; } = new(
             readerFactory: sql => sql.Contains("FROM accounting_closed_periods", StringComparison.Ordinal)
@@ -119,7 +145,9 @@ public sealed class PostgresStatementOfChangesInEquitySnapshotReaderFullCoverage
                     ? Rows(deltaRows)
                     : sql.Contains("FROM accounting_balances b", StringComparison.Ordinal)
                         ? Rows(snapshotRows)
-                        : Rows([]));
+                        : sql.Contains("OpeningAsOfPeriod", StringComparison.Ordinal)
+                            ? Rows(endpointRows)
+                            : Rows([]));
 
         public PostgresStatementOfChangesInEquitySnapshotReader Reader => new(
             new RecordingUnitOfWork(Connection));

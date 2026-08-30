@@ -50,30 +50,55 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         var latestClosed = await GetLatestClosedPeriodsAsync(beginningAsOfDate, toInclusive, ct);
         var lineDefinitions = await LoadLineDefinitionsAsync(ct);
 
-        var openingRows = await LoadBalanceStateRowsAsync(beginningAsOfDate, latestClosed.BeginningLatestClosedPeriod, ct);
-        var closingRows = await LoadBalanceStateRowsAsync(toInclusive, latestClosed.EndingLatestClosedPeriod, ct);
-
         var combined = new Dictionary<Guid, MutableBalanceRow>();
-        foreach (var row in openingRows)
+        if (latestClosed.BeginningLatestClosedPeriod is null && latestClosed.EndingLatestClosedPeriod is null)
         {
-            if (!combined.TryGetValue(row.AccountId, out var current))
+            var endpointRows = await LoadBalanceStateInceptionEndpointsAsync(beginningAsOfDate, toInclusive, ct);
+            foreach (var row in endpointRows)
             {
-                current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.CashFlowRole, row.CashFlowLineCode);
-                combined[row.AccountId] = current;
+                combined[row.AccountId] = new MutableBalanceRow(
+                    row.AccountId,
+                    row.AccountCode,
+                    row.CashFlowRole,
+                    row.CashFlowLineCode)
+                {
+                    OpeningBalance = row.OpeningBalance,
+                    ClosingBalance = row.ClosingBalance
+                };
             }
-
-            current.OpeningBalance += row.ClosingBalance;
         }
-
-        foreach (var row in closingRows)
+        else
         {
-            if (!combined.TryGetValue(row.AccountId, out var current))
+            var openingRows = await LoadBalanceStateRowsAsync(
+                beginningAsOfDate,
+                latestClosed.BeginningLatestClosedPeriod,
+                ct);
+            var closingRows = await LoadBalanceStateRowsAsync(
+                toInclusive,
+                latestClosed.EndingLatestClosedPeriod,
+                ct);
+
+            foreach (var row in openingRows)
             {
-                current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.CashFlowRole, row.CashFlowLineCode);
-                combined[row.AccountId] = current;
+                if (!combined.TryGetValue(row.AccountId, out var current))
+                {
+                    current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.CashFlowRole, row.CashFlowLineCode);
+                    combined[row.AccountId] = current;
+                }
+
+                current.OpeningBalance += row.ClosingBalance;
             }
 
-            current.ClosingBalance += row.ClosingBalance;
+            foreach (var row in closingRows)
+            {
+                if (!combined.TryGetValue(row.AccountId, out var current))
+                {
+                    current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.CashFlowRole, row.CashFlowLineCode);
+                    combined[row.AccountId] = current;
+                }
+
+                current.ClosingBalance += row.ClosingBalance;
+            }
         }
 
         var beginningCash = 0m;
@@ -244,6 +269,71 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
             new
             {
                 ToExclusiveUtc = ToExclusiveUtc(asOfDate),
+                RelevantRoles = BalanceRoles
+            },
+            ct);
+    }
+
+    private async Task<IReadOnlyList<BalanceStateRow>> LoadBalanceStateInceptionEndpointsAsync(
+        DateOnly openingAsOfDate,
+        DateOnly closingAsOfDate,
+        CancellationToken ct)
+    {
+        const string sql = """
+                           WITH endpoint_ledger_rows AS (
+                               SELECT
+                                   r.debit_account_id AS AccountId,
+                                   SUM(CASE
+                                       WHEN r.period < @OpeningToExclusiveUtc THEN r.amount
+                                       ELSE 0::numeric
+                                   END) AS OpeningBalance,
+                                   SUM(r.amount) AS ClosingBalance
+                               FROM accounting_register_main r
+                               WHERE r.period < @ClosingToExclusiveUtc
+                               GROUP BY r.debit_account_id
+
+                               UNION ALL
+
+                               SELECT
+                                   r.credit_account_id AS AccountId,
+                                   SUM(CASE
+                                       WHEN r.period < @OpeningToExclusiveUtc THEN -r.amount
+                                       ELSE 0::numeric
+                                   END) AS OpeningBalance,
+                                   SUM(-r.amount) AS ClosingBalance
+                               FROM accounting_register_main r
+                               WHERE r.period < @ClosingToExclusiveUtc
+                               GROUP BY r.credit_account_id
+                           ),
+                           final_rows AS (
+                               SELECT
+                                   AccountId,
+                                   SUM(OpeningBalance) AS OpeningBalance,
+                                   SUM(ClosingBalance) AS ClosingBalance
+                               FROM endpoint_ledger_rows
+                               GROUP BY AccountId
+                           )
+                           SELECT
+                               fr.AccountId,
+                               a.code AS AccountCode,
+                               a.cash_flow_role AS CashFlowRole,
+                               a.cash_flow_line_code AS CashFlowLineCode,
+                               fr.OpeningBalance,
+                               fr.ClosingBalance
+                           FROM final_rows fr
+                           JOIN accounting_accounts a
+                             ON a.account_id = fr.AccountId
+                            AND a.is_deleted = FALSE
+                           WHERE a.cash_flow_role = ANY(@RelevantRoles::smallint[])
+                           ORDER BY a.code;
+                           """;
+
+        return await QueryRowsAsync<BalanceStateRow>(
+            sql,
+            new
+            {
+                OpeningToExclusiveUtc = ToExclusiveUtc(openingAsOfDate),
+                ClosingToExclusiveUtc = ToExclusiveUtc(closingAsOfDate),
                 RelevantRoles = BalanceRoles
             },
             ct);
@@ -685,6 +775,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         public string AccountCode { get; init; } = string.Empty;
         public CashFlowRole CashFlowRole { get; init; }
         public string? CashFlowLineCode { get; init; }
+        public decimal OpeningBalance { get; init; }
         public decimal ClosingBalance { get; init; }
     }
 

@@ -27,9 +27,17 @@ public sealed record GeneralJournalEntryPageRecord(
     int Offset,
     int Limit,
     int Total,
-    bool HasMore = false);
+    bool HasMore = false,
+    DateTime? NextAfterDateUtc = null,
+    DateTime? NextAfterCreatedAtUtc = null,
+    Guid? NextAfterId = null);
 
-public sealed record GeneralJournalEntryPageCursor(int Offset, int Total);
+public sealed record GeneralJournalEntryPageCursor(
+    int Offset,
+    int Total,
+    DateTime? AfterDateUtc = null,
+    DateTime? AfterCreatedAtUtc = null,
+    Guid? AfterId = null);
 
 public interface IGeneralJournalEntryUiQueryRepository
 {

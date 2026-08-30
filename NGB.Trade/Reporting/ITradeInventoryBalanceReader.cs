@@ -17,9 +17,22 @@ public sealed record TradeInventoryBalancePage(
     IReadOnlyList<TradeInventoryBalanceRow> Rows,
     int Total,
     decimal TotalQuantity,
-    bool HasMore = false);
+    bool HasMore = false,
+    decimal? NextAfterAbsoluteQuantity = null,
+    string? NextAfterItemDisplay = null,
+    string? NextAfterWarehouseDisplay = null,
+    Guid? NextAfterItemId = null,
+    Guid? NextAfterWarehouseId = null);
 
-public sealed record TradeInventoryBalancePageCursor(int Offset, int Total, decimal TotalQuantity);
+public sealed record TradeInventoryBalancePageCursor(
+    int Offset,
+    int Total,
+    decimal TotalQuantity,
+    decimal? AfterAbsoluteQuantity = null,
+    string? AfterItemDisplay = null,
+    string? AfterWarehouseDisplay = null,
+    Guid? AfterItemId = null,
+    Guid? AfterWarehouseId = null);
 
 public interface ITradeInventoryBalanceReader
 {

@@ -89,7 +89,12 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
                 new TradeInventoryBalancePageCursor(
                     offset + page.Rows.Count,
                     page.Total,
-                    page.TotalQuantity))
+                    page.TotalQuantity,
+                    page.NextAfterAbsoluteQuantity,
+                    page.NextAfterItemDisplay,
+                    page.NextAfterWarehouseDisplay,
+                    page.NextAfterItemId,
+                    page.NextAfterWarehouseId))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

@@ -77,7 +77,10 @@ public sealed class SalesByItemCanonicalReportExecutor(
                 new TradeAnalyticsPageCursor<SalesByItemTotals>(
                     offset + pageRows.Count,
                     page.Total,
-                    page.Totals))
+                    page.Totals,
+                    page.NextAfterAmount,
+                    page.NextAfterDisplay,
+                    page.NextAfterId))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

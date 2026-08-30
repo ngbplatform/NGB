@@ -30,21 +30,12 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
         var scenario = new CashFlowScenario(
             latestClosed: LatestClosed(null, null),
             lineDefinitions: LineDefinitions(),
-            inceptionRows:
-            [
-                BalanceRows(
-                    (cash, "1000", CashFlowRole.CashEquivalent, null, 100m),
-                    (cash, "1000", CashFlowRole.CashEquivalent, null, 2m),
-                    (working, "1100", CashFlowRole.WorkingCapital, "wc", 50m),
-                    (openingOnly, "1200", CashFlowRole.WorkingCapital, "wc", 10m),
-                    (other, "9999", CashFlowRole.None, null, 20m)),
-                BalanceRows(
-                    (cash, "1000", CashFlowRole.CashEquivalent, null, 130m),
-                    (cash, "1000", CashFlowRole.CashEquivalent, null, 5m),
-                    (working, "1100", CashFlowRole.WorkingCapital, "wc", 40m),
-                    (closingOnly, "1300", CashFlowRole.WorkingCapital, "wc", 10m),
-                    (other, "9999", CashFlowRole.None, null, 25m))
-            ],
+            endpointRows: EndpointBalanceRows(
+                (cash, "1000", CashFlowRole.CashEquivalent, null, 102m, 135m),
+                (working, "1100", CashFlowRole.WorkingCapital, "wc", 50m, 40m),
+                (openingOnly, "1200", CashFlowRole.WorkingCapital, "wc", 10m, 0m),
+                (closingOnly, "1300", CashFlowRole.WorkingCapital, "wc", 0m, 10m),
+                (other, "9999", CashFlowRole.None, null, 20m, 25m)),
             pnlRows: ProfitAndLossRows(
                 ("4000", CashFlowRole.None, null, 20m),
                 ("5000", CashFlowRole.NonCashOperatingAdjustment, "nc", 5m),
@@ -73,8 +64,8 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
         result.InvestingLines.Should().ContainSingle().Which.LineCode.Should().Be("inv");
         result.FinancingLines.Should().ContainSingle().Which.LineCode.Should().Be("fin");
         result.UnclassifiedCashRows.Should().ContainSingle().Which.AccountCode.Should().Be("1999");
-        scenario.Commands.Should().HaveCount(7);
-        scenario.Commands.Should().Contain(x => x.CommandText.Contains("WITH ledger_rows", StringComparison.Ordinal));
+        scenario.Commands.Should().HaveCount(6);
+        scenario.Commands.Should().ContainSingle(x => x.CommandText.Contains("WITH endpoint_ledger_rows", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -129,11 +120,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
         var scenario = new CashFlowScenario(
             LatestClosed(null, null),
             LineDefinitions(),
-            inceptionRows:
-            [
-                BalanceRows((Guid.NewGuid(), "1100", CashFlowRole.WorkingCapital, lineCode, 10m)),
-                BalanceRows()
-            ]);
+            endpointRows: EndpointBalanceRows((Guid.NewGuid(), "1100", CashFlowRole.WorkingCapital, lineCode, 10m, 0m)));
         var sut = new PostgresCashFlowIndirectSnapshotReader(scenario.UnitOfWork);
 
         Func<Task> act = async () => await sut.GetAsync(
@@ -145,6 +132,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
     private sealed class CashFlowScenario
     {
         private readonly Queue<DataTable> _inceptionRows;
+        private readonly DataTable _endpointRows;
         private readonly Queue<DataTable> _snapshotRows;
         private readonly Queue<DataTable> _deltaRows;
         private readonly DataTable _latestClosed;
@@ -156,6 +144,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
         public CashFlowScenario(
             DataTable latestClosed,
             DataTable lineDefinitions,
+            DataTable? endpointRows = null,
             IEnumerable<DataTable>? inceptionRows = null,
             IEnumerable<DataTable>? snapshotRows = null,
             IEnumerable<DataTable>? deltaRows = null,
@@ -165,6 +154,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
         {
             _latestClosed = latestClosed;
             _lineDefinitions = lineDefinitions;
+            _endpointRows = endpointRows ?? EndpointBalanceRows();
             _inceptionRows = new Queue<DataTable>(inceptionRows ?? []);
             _snapshotRows = new Queue<DataTable>(snapshotRows ?? []);
             _deltaRows = new Queue<DataTable>(deltaRows ?? []);
@@ -186,6 +176,8 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
             if (sql.Contains("FROM accounting_cash_flow_lines", StringComparison.Ordinal)
                 && !sql.Contains("JOIN accounting_cash_flow_lines", StringComparison.Ordinal))
                 return _lineDefinitions;
+            if (sql.Contains("WITH endpoint_ledger_rows", StringComparison.Ordinal))
+                return _endpointRows;
             if (sql.Contains("WITH ledger_rows", StringComparison.Ordinal))
                 return _inceptionRows.Dequeue();
             if (sql.Contains("WITH snapshot_rows", StringComparison.Ordinal))
@@ -226,6 +218,28 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
             ("ClosingBalance", typeof(decimal)));
         foreach (var row in rows)
             table.Rows.Add(row.Id, row.Code, (short)row.Role, row.LineCode ?? (object)DBNull.Value, row.Balance);
+        return table;
+    }
+
+    private static DataTable EndpointBalanceRows(
+        params (Guid Id, string Code, CashFlowRole Role, string? LineCode, decimal Opening, decimal Closing)[] rows)
+    {
+        var table = CreateTable(
+            ("AccountId", typeof(Guid)), ("AccountCode", typeof(string)),
+            ("CashFlowRole", typeof(short)), ("CashFlowLineCode", typeof(string)),
+            ("OpeningBalance", typeof(decimal)), ("ClosingBalance", typeof(decimal)));
+
+        foreach (var row in rows)
+        {
+            table.Rows.Add(
+                row.Id,
+                row.Code,
+                (short)row.Role,
+                row.LineCode ?? (object)DBNull.Value,
+                row.Opening,
+                row.Closing);
+        }
+
         return table;
     }
 

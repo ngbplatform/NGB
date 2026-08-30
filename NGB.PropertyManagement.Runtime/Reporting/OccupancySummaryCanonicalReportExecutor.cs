@@ -70,7 +70,12 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
-                new OccupancySummaryPageCursor(offset + page.Rows.Count, page.Total, page.Totals))
+                new OccupancySummaryPageCursor(
+                    offset + page.Rows.Count,
+                    page.Total,
+                    page.Totals,
+                    page.NextAfterBuildingDisplay,
+                    page.NextAfterBuildingId))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

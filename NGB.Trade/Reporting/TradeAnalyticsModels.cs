@@ -45,9 +45,18 @@ public sealed record TradeAnalyticsPage<TRow, TTotals>(
     IReadOnlyList<TRow> Rows,
     int Total,
     TTotals Totals,
-    bool HasMore = false);
+    bool HasMore = false,
+    decimal? NextAfterAmount = null,
+    string? NextAfterDisplay = null,
+    Guid? NextAfterId = null);
 
-public sealed record TradeAnalyticsPageCursor<TTotals>(int Offset, int Total, TTotals Totals);
+public sealed record TradeAnalyticsPageCursor<TTotals>(
+    int Offset,
+    int Total,
+    TTotals Totals,
+    decimal? AfterAmount = null,
+    string? AfterDisplay = null,
+    Guid? AfterId = null);
 
 public sealed record TradeDashboardAnalyticsSnapshot(
     TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals> SalesByItem,

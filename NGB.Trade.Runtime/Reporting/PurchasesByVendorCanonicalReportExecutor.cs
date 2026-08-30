@@ -74,7 +74,10 @@ public sealed class PurchasesByVendorCanonicalReportExecutor(
                 new TradeAnalyticsPageCursor<PurchasesByVendorTotals>(
                     offset + pageRows.Count,
                     page.Total,
-                    page.Totals))
+                    page.Totals,
+                    page.NextAfterAmount,
+                    page.NextAfterDisplay,
+                    page.NextAfterId))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

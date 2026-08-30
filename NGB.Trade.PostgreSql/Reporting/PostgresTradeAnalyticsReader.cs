@@ -361,6 +361,18 @@ LIMIT @recent_document_limit;
               @KnownNetSales::numeric AS TotalNetSales,
               @KnownNetCogs::numeric AS TotalNetCogs
               """;
+        var useSeek = cursor is { AfterAmount: not null, AfterDisplay: not null, AfterId: not null };
+        var seekSql = useSeek
+            ? """
+              AND (
+                  COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) < @AfterAmount::numeric
+                  OR (COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) = @AfterAmount::numeric
+                      AND (COALESCE(i.display, k.item_id::text), k.item_id)
+                        > (@AfterDisplay::text, @AfterId::uuid))
+              )
+              """
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @offset";
         var sql = $"""
 WITH sales AS (
     SELECT
@@ -424,13 +436,14 @@ LEFT JOIN sales s
     ON s.item_id = k.item_id
 LEFT JOIN returns r
     ON r.item_id = k.item_id
-WHERE COALESCE(s.sold_quantity, 0) <> 0
-   OR COALESCE(r.returned_quantity, 0) <> 0
+WHERE (COALESCE(s.sold_quantity, 0) <> 0
+   OR COALESCE(r.returned_quantity, 0) <> 0)
+{seekSql}
 ORDER BY
     COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) DESC,
     COALESCE(i.display, k.item_id::text) ASC,
     k.item_id ASC
-OFFSET @offset
+{offsetSql}
 LIMIT @query_limit;
 """;
 
@@ -461,7 +474,10 @@ LIMIT @query_limit;
                 KnownReturnedQuantity = cursor?.Totals.ReturnedQuantity,
                 KnownReturnedAmount = cursor?.Totals.ReturnedAmount,
                 KnownNetSales = cursor?.Totals.NetSales,
-                KnownNetCogs = cursor?.Totals.NetCogs
+                KnownNetCogs = cursor?.Totals.NetCogs,
+                AfterAmount = cursor?.AfterAmount,
+                AfterDisplay = cursor?.AfterDisplay,
+                AfterId = cursor?.AfterId
             },
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -479,6 +495,7 @@ LIMIT @query_limit;
                 first.TotalReturnedAmount,
                 first.TotalNetSales,
                 first.TotalNetCogs));
+        var last = rows.LastOrDefault();
 
         return new TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>(
             rows.Select(static row => new SalesByItemSummaryRow(
@@ -492,7 +509,10 @@ LIMIT @query_limit;
                 row.NetCogs)).ToArray(),
             cursor?.Total ?? first?.TotalCount ?? 0,
             totals,
-            hasMore);
+            hasMore,
+            last?.NetSales,
+            last?.ItemDisplay,
+            last?.ItemId);
     }
 
     public async Task<IReadOnlyList<SalesByItemSummaryRow>> GetSalesByItemAsync(
@@ -579,6 +599,18 @@ LIMIT @query_limit;
               @KnownNetSales::numeric AS TotalNetSales,
               @KnownNetCogs::numeric AS TotalNetCogs
               """;
+        var useSeek = cursor is { AfterAmount: not null, AfterDisplay: not null, AfterId: not null };
+        var seekSql = useSeek
+            ? """
+              AND (
+                  COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) < @AfterAmount::numeric
+                  OR (COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) = @AfterAmount::numeric
+                      AND (COALESCE(p.display, k.customer_id::text), k.customer_id)
+                        > (@AfterDisplay::text, @AfterId::uuid))
+              )
+              """
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @offset";
         var sql = $"""
 WITH sales AS (
     SELECT
@@ -642,13 +674,14 @@ LEFT JOIN sales s
     ON s.customer_id = k.customer_id
 LEFT JOIN returns r
     ON r.customer_id = k.customer_id
-WHERE COALESCE(s.sales_document_count, 0) <> 0
-   OR COALESCE(r.return_document_count, 0) <> 0
+WHERE (COALESCE(s.sales_document_count, 0) <> 0
+   OR COALESCE(r.return_document_count, 0) <> 0)
+{seekSql}
 ORDER BY
     COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) DESC,
     COALESCE(p.display, k.customer_id::text) ASC,
     k.customer_id ASC
-OFFSET @offset
+{offsetSql}
 LIMIT @query_limit;
 """;
 
@@ -679,7 +712,10 @@ LIMIT @query_limit;
                 KnownGrossSales = cursor?.Totals.GrossSales,
                 KnownReturnedAmount = cursor?.Totals.ReturnedAmount,
                 KnownNetSales = cursor?.Totals.NetSales,
-                KnownNetCogs = cursor?.Totals.NetCogs
+                KnownNetCogs = cursor?.Totals.NetCogs,
+                AfterAmount = cursor?.AfterAmount,
+                AfterDisplay = cursor?.AfterDisplay,
+                AfterId = cursor?.AfterId
             },
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -697,6 +733,7 @@ LIMIT @query_limit;
                 first.TotalReturnedAmount,
                 first.TotalNetSales,
                 first.TotalNetCogs));
+        var last = rows.LastOrDefault();
 
         return new TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>(
             rows.Select(static row => new SalesByCustomerSummaryRow(
@@ -710,7 +747,10 @@ LIMIT @query_limit;
                 row.NetCogs)).ToArray(),
             cursor?.Total ?? first?.TotalCount ?? 0,
             totals,
-            hasMore);
+            hasMore,
+            last?.NetSales,
+            last?.CustomerDisplay,
+            last?.CustomerId);
     }
 
     public async Task<IReadOnlyList<SalesByCustomerSummaryRow>> GetSalesByCustomerAsync(
@@ -795,6 +835,18 @@ LIMIT @query_limit;
               @KnownReturnedAmount::numeric AS TotalReturnedAmount,
               @KnownNetPurchases::numeric AS TotalNetPurchases
               """;
+        var useSeek = cursor is { AfterAmount: not null, AfterDisplay: not null, AfterId: not null };
+        var seekSql = useSeek
+            ? """
+              AND (
+                  COALESCE(pr.gross_purchases, 0) - COALESCE(vr.returned_amount, 0) < @AfterAmount::numeric
+                  OR (COALESCE(pr.gross_purchases, 0) - COALESCE(vr.returned_amount, 0) = @AfterAmount::numeric
+                      AND (COALESCE(p.display, k.vendor_id::text), k.vendor_id)
+                        > (@AfterDisplay::text, @AfterId::uuid))
+              )
+              """
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @offset";
         var sql = $"""
 WITH purchases AS (
     SELECT
@@ -855,13 +907,14 @@ LEFT JOIN purchases pr
     ON pr.vendor_id = k.vendor_id
 LEFT JOIN returns vr
     ON vr.vendor_id = k.vendor_id
-WHERE COALESCE(pr.purchase_document_count, 0) <> 0
-   OR COALESCE(vr.return_document_count, 0) <> 0
+WHERE (COALESCE(pr.purchase_document_count, 0) <> 0
+   OR COALESCE(vr.return_document_count, 0) <> 0)
+{seekSql}
 ORDER BY
     COALESCE(pr.gross_purchases, 0) - COALESCE(vr.returned_amount, 0) DESC,
     COALESCE(p.display, k.vendor_id::text) ASC,
     k.vendor_id ASC
-OFFSET @offset
+{offsetSql}
 LIMIT @query_limit;
 """;
 
@@ -891,7 +944,10 @@ LIMIT @query_limit;
                 KnownReturnDocumentCount = cursor?.Totals.ReturnDocumentCount,
                 KnownGrossPurchases = cursor?.Totals.GrossPurchases,
                 KnownReturnedAmount = cursor?.Totals.ReturnedAmount,
-                KnownNetPurchases = cursor?.Totals.NetPurchases
+                KnownNetPurchases = cursor?.Totals.NetPurchases,
+                AfterAmount = cursor?.AfterAmount,
+                AfterDisplay = cursor?.AfterDisplay,
+                AfterId = cursor?.AfterId
             },
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -910,6 +966,7 @@ LIMIT @query_limit;
                 first.TotalGrossPurchases,
                 first.TotalReturnedAmount,
                 first.TotalNetPurchases));
+        var last = rows.LastOrDefault();
 
         return new TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>(
             rows.Select(static row => new PurchasesByVendorSummaryRow(
@@ -922,7 +979,10 @@ LIMIT @query_limit;
                 row.NetPurchases)).ToArray(),
             cursor?.Total ?? first?.TotalCount ?? 0,
             totals,
-            hasMore);
+            hasMore,
+            last?.NetPurchases,
+            last?.VendorDisplay,
+            last?.VendorId);
     }
 
     public async Task<IReadOnlyList<PurchasesByVendorSummaryRow>> GetPurchasesByVendorAsync(

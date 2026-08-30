@@ -73,7 +73,9 @@ public sealed record OccupancySummaryPage(
     IReadOnlyList<OccupancySummaryRow> Rows,
     int Total,
     OccupancySummaryTotals Totals,
-    bool HasMore = false)
+    bool HasMore = false,
+    string? NextAfterBuildingDisplay = null,
+    Guid? NextAfterBuildingId = null)
 {
     public void EnsureInvariant()
     {
@@ -90,4 +92,9 @@ public sealed record OccupancySummaryPage(
     }
 }
 
-public sealed record OccupancySummaryPageCursor(int Offset, int Total, OccupancySummaryTotals Totals);
+public sealed record OccupancySummaryPageCursor(
+    int Offset,
+    int Total,
+    OccupancySummaryTotals Totals,
+    string? AfterBuildingDisplay = null,
+    Guid? AfterBuildingId = null);

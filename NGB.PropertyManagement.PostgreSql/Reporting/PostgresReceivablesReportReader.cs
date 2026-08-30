@@ -62,9 +62,23 @@ public sealed class PostgresReceivablesReportReader(IUnitOfWork uow, Operational
             return new ReceivablesReportPage([], 0, 0m, 0m, 0m, null, null, null);
 
         var chargesOnly = mode == ReceivablesReportMode.Aging;
-        var orderBy = chargesOnly
-            ? "item.due_on_utc, item.document_id"
-            : "CASE WHEN item.net_amount > 0 THEN 0 ELSE 1 END, COALESCE(item.due_on_utc, item.received_on_utc), item.document_id";
+        // A bare integer in ORDER BY is parsed by PostgreSQL as a select-list ordinal.
+        // Keep the constant as a typed expression so Aging can share the same seek tuple.
+        var kindOrderSql = chargesOnly ? "0::int" : "CASE WHEN item.net_amount > 0 THEN 0 ELSE 1 END";
+        var sortDateSql = chargesOnly
+            ? "COALESCE(item.due_on_utc, DATE '9999-12-31')"
+            : "COALESCE(item.due_on_utc, item.received_on_utc, DATE '9999-12-31')";
+        var orderBy = $"{kindOrderSql}, {sortDateSql}, item.document_id";
+        var useSeek = cursor is
+        {
+            AfterKindOrder: not null,
+            AfterSortDate: not null,
+            AfterDocumentId: not null
+        };
+        var seekSql = useSeek
+            ? $"WHERE ({kindOrderSql}, {sortDateSql}, item.document_id) > (@AfterKindOrder::int, @AfterSortDate::date, @AfterDocumentId::uuid)"
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @Offset";
         var netSourceSql = context.BalancesExist
             ? BuildSnapshotBackedNetSourceSql(context.MovementsTable, context.BalancesTable)
             : BuildMovementOnlyNetSourceSql(context.MovementsTable);
@@ -162,8 +176,9 @@ items AS (
 paged AS (
     SELECT item.*
     FROM items item
+    {seekSql}
     ORDER BY {orderBy}
-    OFFSET @Offset
+    {offsetSql}
     LIMIT @Limit
 )
 SELECT
@@ -205,7 +220,10 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
                 KnownTotalCredit = cursor?.TotalCredit,
                 KnownPartyDisplay = cursor?.PartyDisplay,
                 KnownPropertyDisplay = cursor?.PropertyDisplay,
-                KnownLeaseDisplay = cursor?.LeaseDisplay
+                KnownLeaseDisplay = cursor?.LeaseDisplay,
+                AfterKindOrder = cursor?.AfterKindOrder,
+                AfterSortDate = cursor?.AfterSortDate,
+                AfterDocumentId = cursor?.AfterDocumentId
             },
             uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -216,9 +234,11 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
 
         var dataRows = rows.Where(static row => row.HasRow).ToArray();
         var hasMore = cursorPaging && dataRows.Length > limit;
+        var visibleRows = dataRows.Take(limit).ToArray();
+        var last = visibleRows.LastOrDefault();
 
         return new ReceivablesReportPage(
-            dataRows.Take(limit).Select(static row => new ReceivablesReportRow(
+            visibleRows.Select(static row => new ReceivablesReportRow(
                 IsCharge: row.NetAmount > 0m,
                 DocumentId: row.DocumentId!.Value,
                 DocumentType: row.DocumentType!,
@@ -235,7 +255,10 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
             first.PartyDisplay,
             first.PropertyDisplay,
             first.LeaseDisplay,
-            hasMore);
+            hasMore,
+            last is null ? null : chargesOnly || last.NetAmount > 0m ? 0 : 1,
+            last is null ? null : last.DueOnUtc ?? last.ReceivedOnUtc ?? DateOnly.MaxValue,
+            last?.DocumentId);
     }
 
     private static string BuildMovementOnlyNetSourceSql(string movementsTable) => $"""

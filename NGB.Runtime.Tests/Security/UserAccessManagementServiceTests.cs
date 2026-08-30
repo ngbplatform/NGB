@@ -466,6 +466,51 @@ public sealed class UserAccessManagementServiceTests
     }
 
     [Fact]
+    public async Task GetUsersAsync_UsesNonBlockingSnapshotAndFallsBackToLocalStatusOnCacheMiss()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var platformUsers = new[]
+        {
+            new PlatformUser(firstId, "cached", "cached@example.com", "Cached", true, now, now),
+            new PlatformUser(secondId, "cold", "cold@example.com", "Cold", true, now, now)
+        };
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        users.Setup(x => x.GetPageAsync(0, 50, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage(platformUsers, platformUsers.Length));
+        var roles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        roles.Setup(x => x.GetRolesForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { firstId, secondId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+        var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
+        identityProvider.As<IIdentityProviderUserPageSnapshotReader>()
+            .Setup(x => x.GetCachedUsers(
+                It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "cached", "cold" })),
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "cached@example.com", "cold@example.com" }))))
+            .Returns(new IdentityProviderUserBatch(
+                new Dictionary<string, IdentityProviderUserDto>
+                {
+                    ["cached"] = new("cached", "cached@example.com", null, null, "Cached", false)
+                },
+                new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)));
+        var service = CreateService(
+            users.Object,
+            roles.Object,
+            new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
+            identityProvider.Object);
+
+        var result = await service.GetUsersAsync(new UserPageRequestDto(), default);
+
+        result.Items.Single(item => item.UserId == firstId).KeycloakEnabled.Should().BeFalse();
+        result.Items.Single(item => item.UserId == secondId).KeycloakEnabled.Should().BeTrue();
+        users.VerifyAll();
+        roles.VerifyAll();
+        identityProvider.VerifyAll();
+    }
+
+    [Fact]
     public async Task GetUserAsync_WhenIdentityProviderDisplayNameIsEmail_ReturnsStoredApplicationDisplayName()
     {
         var userId = Guid.NewGuid();

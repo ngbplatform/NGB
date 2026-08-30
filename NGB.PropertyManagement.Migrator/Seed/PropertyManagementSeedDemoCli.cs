@@ -84,7 +84,8 @@ internal static class PropertyManagementSeedDemoCli
                 seedScope.ServiceProvider.GetRequiredService<IChartOfAccountsManagementService>(),
                 seedScope.ServiceProvider.GetRequiredService<IPeriodClosingService>(),
                 seedScope.ServiceProvider.GetRequiredService<IClosedPeriodReader>(),
-                effectiveTimeProvider);
+                effectiveTimeProvider,
+                provider.GetRequiredService<IServiceScopeFactory>());
 
             var summary = await seeder.RunAsync();
             PrintSummary(summary);
@@ -273,8 +274,10 @@ internal sealed class PropertyManagementDemoSeeder(
     IChartOfAccountsManagementService chartOfAccountsManagement,
     IPeriodClosingService periodClosing,
     IClosedPeriodReader closedPeriodReader,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IServiceScopeFactory? scopeFactory = null)
 {
+    private const int SeedCatalogConcurrency = 4;
     private readonly Random _random = new(options.Seed);
     private readonly HashSet<string> _usedPartyDisplays = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedPartyEmails = new(StringComparer.OrdinalIgnoreCase);
@@ -600,7 +603,7 @@ internal sealed class PropertyManagementDemoSeeder(
 
     private async Task<List<BuildingSeedResult>> SeedBuildingsAndUnitsAsync(CancellationToken ct)
     {
-        var results = new List<BuildingSeedResult>(options.Buildings);
+        var plans = new List<(int UnitCount, RecordPayload Payload)>(options.Buildings);
 
         for (var i = 0; i < options.Buildings; i++)
         {
@@ -609,7 +612,7 @@ internal sealed class PropertyManagementDemoSeeder(
             var streetNo = 100 + i * 17;
             var streetName = StreetNames[i % StreetNames.Length];
 
-            var building = await catalogs.CreateAsync(PropertyManagementCodes.Property, Payload(new
+            plans.Add((unitCount, Payload(new
             {
                 kind = "Building",
                 address_line1 = $"{streetNo} {streetName} Ave",
@@ -617,66 +620,151 @@ internal sealed class PropertyManagementDemoSeeder(
                 city = city.City,
                 state = city.State,
                 zip = city.Zip
-            }), ct);
-
-            var bulk = await bulkUnits.BulkCreateUnitsAsync(new PropertyBulkCreateUnitsRequest
-            {
-                BuildingId = building.Id,
-                FromInclusive = 101,
-                ToInclusive = 100 + unitCount,
-                Step = 1,
-                UnitNoFormat = "{0:000}",
-                FloorSize = 100
-            }, ct);
-
-            results.Add(new BuildingSeedResult(building.Id, bulk.CreatedIds.ToList()));
+            })));
         }
 
-        return results;
+        var created = await CreateBuildingsAsync(plans, ct);
+
+        return created
+            .Select(x => new BuildingSeedResult(x.BuildingId, x.UnitIds))
+            .ToList();
     }
 
     private async Task<List<PartySeedResult>> SeedTenantsAsync(CancellationToken ct)
     {
         var identities = AllocatePartyIdentities(BuildTenantBaseDisplays(), options.Tenants, "tenant");
-        var list = new List<PartySeedResult>(options.Tenants);
+        var payloads = new RecordPayload[identities.Count];
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            var party = await catalogs.CreateAsync(PropertyManagementCodes.Party, Payload(new
+            payloads[i] = Payload(new
             {
                 display = identity.Display,
                 email = identity.Email,
                 phone = DemoPhone(i),
                 is_tenant = true,
                 is_vendor = false
-            }), ct);
-
-            list.Add(new PartySeedResult(party.Id, identity.Display));
+            });
         }
 
-        return list;
+        var created = await CreateCatalogsAsync(PropertyManagementCodes.Party, payloads, ct);
+
+        return identities
+            .Select((identity, index) => new PartySeedResult(created[index].Id, identity.Display))
+            .ToList();
     }
 
     private async Task<List<PartySeedResult>> SeedVendorsAsync(CancellationToken ct)
     {
         var identities = AllocatePartyIdentities(BuildVendorBaseDisplays(), options.Vendors, "vendor");
-        var list = new List<PartySeedResult>(options.Vendors);
+        var payloads = new RecordPayload[identities.Count];
+
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            var party = await catalogs.CreateAsync(PropertyManagementCodes.Party, Payload(new
+            payloads[i] = Payload(new
             {
                 display = identity.Display,
                 email = identity.Email,
                 phone = DemoPhone(i + 10_000),
                 is_tenant = false,
                 is_vendor = true
-            }), ct);
-
-            list.Add(new PartySeedResult(party.Id, identity.Display));
+            });
         }
 
-        return list;
+        var created = await CreateCatalogsAsync(PropertyManagementCodes.Party, payloads, ct);
+
+        return identities
+            .Select((identity, index) => new PartySeedResult(created[index].Id, identity.Display))
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<BuildingCreationResult>> CreateBuildingsAsync(
+        IReadOnlyList<(int UnitCount, RecordPayload Payload)> plans,
+        CancellationToken ct)
+    {
+        if (scopeFactory is null || plans.Count <= 1)
+        {
+            var sequential = new BuildingCreationResult[plans.Count];
+            for (var i = 0; i < plans.Count; i++)
+                sequential[i] = await CreateBuildingAsync(catalogs, bulkUnits, plans[i], ct);
+
+            return sequential;
+        }
+
+        var results = new BuildingCreationResult[plans.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, plans.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = SeedCatalogConcurrency,
+                CancellationToken = ct
+            },
+            async (index, token) =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                results[index] = await CreateBuildingAsync(
+                    scope.ServiceProvider.GetRequiredService<ICatalogService>(),
+                    scope.ServiceProvider.GetRequiredService<IPropertyBulkCreateUnitsService>(),
+                    plans[index],
+                    token);
+            });
+
+        return results;
+    }
+
+    private static async Task<BuildingCreationResult> CreateBuildingAsync(
+        ICatalogService catalogService,
+        IPropertyBulkCreateUnitsService bulkCreateUnits,
+        (int UnitCount, RecordPayload Payload) plan,
+        CancellationToken ct)
+    {
+        var building = await catalogService.CreateAsync(PropertyManagementCodes.Property, plan.Payload, ct);
+        var bulk = await bulkCreateUnits.BulkCreateUnitsAsync(new PropertyBulkCreateUnitsRequest
+        {
+            BuildingId = building.Id,
+            FromInclusive = 101,
+            ToInclusive = 100 + plan.UnitCount,
+            Step = 1,
+            UnitNoFormat = "{0:000}",
+            FloorSize = 100
+        }, ct);
+
+        return new BuildingCreationResult(building.Id, bulk.CreatedIds.ToList());
+    }
+
+    private async Task<IReadOnlyList<CatalogItemDto>> CreateCatalogsAsync(
+        string catalogType,
+        IReadOnlyList<RecordPayload> payloads,
+        CancellationToken ct)
+    {
+        if (scopeFactory is null || payloads.Count <= 1)
+        {
+            var sequential = new CatalogItemDto[payloads.Count];
+            for (var i = 0; i < payloads.Count; i++)
+            {
+                sequential[i] = await catalogs.CreateAsync(catalogType, payloads[i], ct);
+            }
+
+            return sequential;
+        }
+
+        var results = new CatalogItemDto[payloads.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, payloads.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = SeedCatalogConcurrency,
+                CancellationToken = ct
+            },
+            async (index, token) =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var catalogService = scope.ServiceProvider.GetRequiredService<ICatalogService>();
+                results[index] = await catalogService.CreateAsync(catalogType, payloads[index], token);
+            });
+
+        return results;
     }
 
     internal List<LeasePlan> BuildLeasePlans(IReadOnlyList<Guid> unitIds, IReadOnlyList<Guid> tenantIds)
@@ -1649,6 +1737,8 @@ internal sealed class PropertyManagementDemoSeeder(
     internal sealed record PartySeedResult(Guid Id, string Display);
 
     internal sealed record BuildingSeedResult(Guid BuildingId, IReadOnlyList<Guid> UnitIds);
+
+    private sealed record BuildingCreationResult(Guid BuildingId, IReadOnlyList<Guid> UnitIds);
     
     internal sealed record LeasePlan(
         Guid UnitId,

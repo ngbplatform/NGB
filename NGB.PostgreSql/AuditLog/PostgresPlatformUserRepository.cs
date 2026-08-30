@@ -205,7 +205,12 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        const string pageSql = """
+        var useSeek = cursor is { AfterSortKey: not null, AfterUserId: not null };
+        var seekSql = useSeek
+            ? "AND (lower(coalesce(display_name, email, auth_subject)), user_id) > (@AfterSortKey::text, @AfterUserId::uuid)"
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @Offset";
+        var pageSql = $"""
                            SELECT
                                user_id AS UserId,
                                auth_subject AS AuthSubject,
@@ -213,11 +218,13 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
                                display_name AS DisplayName,
                                is_active AS IsActive,
                                created_at_utc AS CreatedAtUtc,
-                               updated_at_utc AS UpdatedAtUtc
+                               updated_at_utc AS UpdatedAtUtc,
+                               lower(coalesce(display_name, email, auth_subject)) AS SortKey
                            FROM platform_users
                            WHERE @IsActive IS NULL OR is_active = @IsActive
+                           {seekSql}
                            ORDER BY lower(coalesce(display_name, email, auth_subject)), user_id
-                           OFFSET @Offset
+                           {offsetSql}
                            LIMIT @Limit;
                            """;
 
@@ -225,10 +232,12 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
         {
             Offset = offset,
             Limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
-            IsActive = isActive
+            IsActive = isActive,
+            AfterSortKey = cursor?.AfterSortKey,
+            AfterUserId = cursor?.AfterUserId
         };
         long total;
-        List<PlatformUser> items;
+        List<PlatformUserPageRow> rows;
         if (cursor is null)
         {
             await using var grid = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
@@ -243,23 +252,44 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
                 transaction: uow.Transaction,
                 cancellationToken: ct));
             total = await grid.ReadSingleAsync<long>();
-            items = (await grid.ReadAsync<PlatformUser>()).AsList();
+            rows = (await grid.ReadAsync<PlatformUserPageRow>()).AsList();
         }
         else
         {
             total = cursor.Total;
-            items = (await uow.Connection.QueryAsync<PlatformUser>(new CommandDefinition(
+            rows = (await uow.Connection.QueryAsync<PlatformUserPageRow>(new CommandDefinition(
                 pageSql,
                 parameters,
                 transaction: uow.Transaction,
                 cancellationToken: ct))).AsList();
         }
 
-        var hasMore = cursorPaging && items.Count > limit;
+        var hasMore = cursorPaging && rows.Count > limit;
         if (hasMore)
-            items.RemoveRange(limit, items.Count - limit);
+            rows.RemoveRange(limit, rows.Count - limit);
 
-        return new PlatformUserPage(items, total, hasMore);
+        var last = rows.LastOrDefault();
+        return new PlatformUserPage(
+            rows.Select(static row => row.ToPlatformUser()).ToArray(),
+            total,
+            hasMore,
+            last?.SortKey,
+            last?.UserId);
+    }
+
+    private sealed class PlatformUserPageRow
+    {
+        public Guid UserId { get; init; }
+        public string AuthSubject { get; init; } = string.Empty;
+        public string? Email { get; init; }
+        public string? DisplayName { get; init; }
+        public bool IsActive { get; init; }
+        public DateTime CreatedAtUtc { get; init; }
+        public DateTime UpdatedAtUtc { get; init; }
+        public string SortKey { get; init; } = string.Empty;
+
+        public PlatformUser ToPlatformUser()
+            => new(UserId, AuthSubject, Email, DisplayName, IsActive, CreatedAtUtc, UpdatedAtUtc);
     }
 
     public async Task<IReadOnlyDictionary<Guid, PlatformUser>> GetByIdsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct = default)

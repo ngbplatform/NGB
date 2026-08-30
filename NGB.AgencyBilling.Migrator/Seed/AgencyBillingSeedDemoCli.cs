@@ -67,7 +67,8 @@ internal static class AgencyBillingSeedDemoCli
                 seedScope.ServiceProvider.GetRequiredService<ICatalogService>(),
                 seedScope.ServiceProvider.GetRequiredService<IDocumentService>(),
                 seedScope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>(),
-                seedScope.ServiceProvider.GetRequiredService<IDocumentDraftService>());
+                seedScope.ServiceProvider.GetRequiredService<IDocumentDraftService>(),
+                provider.GetRequiredService<IServiceScopeFactory>());
 
             var summary = await seeder.RunAsync();
             PrintSummary(summary);
@@ -214,8 +215,12 @@ internal sealed class AgencyBillingDemoSeeder(
     ICatalogService catalogs,
     IDocumentService documents,
     IDocumentSystemLifecycleService lifecycle,
-    IDocumentDraftService drafts)
+    IDocumentDraftService drafts,
+    IServiceScopeFactory? scopeFactory = null)
 {
+    private const int SeedDocumentConcurrency = 4;
+    private readonly Dictionary<string, Dictionary<string, List<CatalogItemDto>>> _catalogsByDisplay = new(StringComparer.OrdinalIgnoreCase);
+
     private static readonly string[] AgencyDocumentTypes =
     [
         AgencyBillingCodes.ClientContract,
@@ -541,18 +546,15 @@ internal sealed class AgencyBillingDemoSeeder(
         bool postDocuments,
         CancellationToken ct)
     {
-        var result = new List<ContractSeed>(projects.Count);
-
-        foreach (var project in projects.OrderBy(x => x.StartDate))
-        {
-            var effectiveFrom = project.StartDate;
-            var contractId = (await CreateSeededDocumentAsync(
+        var orderedProjects = projects.OrderBy(x => x.StartDate).ToArray();
+        var requests = orderedProjects.Select(project =>
+            new SeedDocumentRequest(
                 AgencyBillingCodes.ClientContract,
-                effectiveFrom,
+                project.StartDate,
                 Payload(
                     new
                     {
-                        effective_from = effectiveFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        effective_from = project.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                         client_id = project.Client.Id,
                         project_id = project.Id,
                         currency_code = AgencyBillingCodes.DefaultCurrency,
@@ -571,16 +573,16 @@ internal sealed class AgencyBillingDemoSeeder(
                         service_title = assignment.ServiceItem.Display,
                         billing_rate = assignment.BillingRate,
                         cost_rate = assignment.CostRate,
-                        active_from = effectiveFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        active_from = project.StartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                         notes = (string?)null
                     })),
-                postDocuments,
-                ct)).Id;
+                postDocuments))
+            .ToArray();
+        var seeded = await CreateSeededDocumentsAsync(requests, ct);
 
-            result.Add(new ContractSeed(contractId, project, effectiveFrom));
-        }
-
-        return result;
+        return orderedProjects
+            .Select((project, index) => new ContractSeed(seeded[index].Id, project, project.StartDate))
+            .ToArray();
     }
 
     private async Task<IReadOnlyList<TimesheetSeed>> SeedTimesheetsAsync(
@@ -603,10 +605,12 @@ internal sealed class AgencyBillingDemoSeeder(
             plans.Add(new TimesheetPlan(contract, assignment, workDate, hours, amount, costAmount, description));
         }
 
-        var result = new List<TimesheetSeed>(plans.Count);
-        foreach (var plan in plans.OrderBy(x => x.WorkDate).ThenBy(x => x.Contract.Project.Display, StringComparer.OrdinalIgnoreCase))
-        {
-            var seeded = await CreateSeededDocumentAsync(
+        var orderedPlans = plans
+            .OrderBy(x => x.WorkDate)
+            .ThenBy(x => x.Contract.Project.Display, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var requests = orderedPlans.Select(plan =>
+            new SeedDocumentRequest(
                 AgencyBillingCodes.Timesheet,
                 plan.WorkDate,
                 Payload(
@@ -637,20 +641,20 @@ internal sealed class AgencyBillingDemoSeeder(
                             line_cost_amount = plan.CostAmount
                         }
                     ]),
-                postDocuments,
-                ct);
+                postDocuments))
+            .ToArray();
+        var seeded = await CreateSeededDocumentsAsync(requests, ct);
 
-            result.Add(new TimesheetSeed(
-                seeded.Id,
+        return orderedPlans
+            .Select((plan, index) => new TimesheetSeed(
+                seeded[index].Id,
                 plan.Contract,
                 plan.Assignment,
                 plan.WorkDate,
                 plan.Hours,
                 plan.Amount,
-                plan.Description));
-        }
-
-        return result;
+                plan.Description))
+            .ToArray();
     }
 
     private async Task<IReadOnlyList<SalesInvoiceSeed>> SeedSalesInvoicesAsync(
@@ -668,26 +672,30 @@ internal sealed class AgencyBillingDemoSeeder(
             .ThenBy(x => x.Contract.Project.Display, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var result = new List<SalesInvoiceSeed>(selectedTimesheets.Length);
+        var plans = new List<SalesInvoicePlan>(selectedTimesheets.Length);
         foreach (var (timesheet, index) in selectedTimesheets.Select((value, idx) => (value, idx)))
         {
             var invoiceDate = RandomBusinessDate(timesheet.WorkDate, MaxDate(timesheet.WorkDate, options.ToDate));
             var dueDate = invoiceDate.AddDays(timesheet.Contract.Project.Client.PaymentTerms.DueDays);
             var description = $"{timesheet.Assignment.ServiceItem.Display} services delivered on {timesheet.WorkDate:yyyy-MM-dd}";
-            var seeded = await CreateSeededDocumentAsync(
+            plans.Add(new SalesInvoicePlan(timesheet, invoiceDate, dueDate, description, index));
+        }
+
+        var requests = plans.Select(plan =>
+            new SeedDocumentRequest(
                 AgencyBillingCodes.SalesInvoice,
-                invoiceDate,
+                plan.InvoiceDate,
                 Payload(
                     new
                     {
-                        document_date_utc = invoiceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                        due_date = dueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                        client_id = timesheet.Contract.Project.Client.Id,
-                        project_id = timesheet.Contract.Project.Id,
-                        contract_id = timesheet.Contract.Id,
+                        document_date_utc = plan.InvoiceDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        due_date = plan.DueDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        client_id = plan.Timesheet.Contract.Project.Client.Id,
+                        project_id = plan.Timesheet.Contract.Project.Id,
+                        contract_id = plan.Timesheet.Contract.Id,
                         currency_code = AgencyBillingCodes.DefaultCurrency,
-                        memo = $"Seeded invoice {index + 1} for {timesheet.Contract.Project.Display}",
-                        amount = timesheet.Amount,
+                        memo = $"Seeded invoice {plan.Index + 1} for {plan.Timesheet.Contract.Project.Display}",
+                        amount = plan.Timesheet.Amount,
                         notes = (string?)null
                     },
                     "lines",
@@ -695,26 +703,26 @@ internal sealed class AgencyBillingDemoSeeder(
                         new
                         {
                             ordinal = 1,
-                            service_item_id = timesheet.Assignment.ServiceItem.Id,
-                            source_timesheet_id = timesheet.Id,
-                            description,
-                            quantity_hours = timesheet.Hours,
-                            rate = timesheet.Assignment.BillingRate,
-                            line_amount = timesheet.Amount
+                            service_item_id = plan.Timesheet.Assignment.ServiceItem.Id,
+                            source_timesheet_id = plan.Timesheet.Id,
+                            description = plan.Description,
+                            quantity_hours = plan.Timesheet.Hours,
+                            rate = plan.Timesheet.Assignment.BillingRate,
+                            line_amount = plan.Timesheet.Amount
                         }
                     ]),
-                postDocuments,
-                ct);
+                postDocuments))
+            .ToArray();
+        var seeded = await CreateSeededDocumentsAsync(requests, ct);
 
-            result.Add(new SalesInvoiceSeed(
-                seeded.Id,
-                timesheet.Contract,
-                invoiceDate,
-                dueDate,
-                timesheet.Amount));
-        }
-
-        return result;
+        return plans
+            .Select((plan, index) => new SalesInvoiceSeed(
+                seeded[index].Id,
+                plan.Timesheet.Contract,
+                plan.InvoiceDate,
+                plan.DueDate,
+                plan.Timesheet.Amount))
+            .ToArray();
     }
 
     private async Task<IReadOnlyList<CustomerPaymentSeed>> SeedCustomerPaymentsAsync(
@@ -732,7 +740,7 @@ internal sealed class AgencyBillingDemoSeeder(
             .ThenBy(x => x.Contract.Project.Client.Display, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var result = new List<CustomerPaymentSeed>(selectedInvoices.Length);
+        var plans = new List<CustomerPaymentPlan>(selectedInvoices.Length);
         foreach (var (invoice, index) in selectedInvoices.Select((value, idx) => (value, idx)))
         {
             var maxPaymentDate = MinDate(invoice.DueDate, options.ToDate);
@@ -745,18 +753,21 @@ internal sealed class AgencyBillingDemoSeeder(
                 _ => 0.60m
             };
             var appliedAmount = CalculatePaymentAmount(invoice.Amount, factor);
+            plans.Add(new CustomerPaymentPlan(invoice, paymentDate, appliedAmount, index));
+        }
 
-            var seeded = await CreateSeededDocumentAsync(
+        var requests = plans.Select(plan =>
+            new SeedDocumentRequest(
                 AgencyBillingCodes.CustomerPayment,
-                paymentDate,
+                plan.PaymentDate,
                 Payload(
                     new
                     {
-                        document_date_utc = paymentDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                        client_id = invoice.Contract.Project.Client.Id,
+                        document_date_utc = plan.PaymentDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        client_id = plan.Invoice.Contract.Project.Client.Id,
                         cash_account_id = setup.CashAccountId,
-                        reference_number = $"ACH-{52000 + index}",
-                        amount = appliedAmount,
+                        reference_number = $"ACH-{52000 + plan.Index}",
+                        amount = plan.AppliedAmount,
                         notes = (string?)null
                     },
                     "applies",
@@ -764,17 +775,15 @@ internal sealed class AgencyBillingDemoSeeder(
                         new
                         {
                             ordinal = 1,
-                            sales_invoice_id = invoice.Id,
-                            applied_amount = appliedAmount
+                            sales_invoice_id = plan.Invoice.Id,
+                            applied_amount = plan.AppliedAmount
                         }
                     ]),
-                postDocuments,
-                ct);
+                postDocuments))
+            .ToArray();
+        var seeded = await CreateSeededDocumentsAsync(requests, ct);
 
-            result.Add(new CustomerPaymentSeed(seeded.Id));
-        }
-
-        return result;
+        return seeded.Select(x => new CustomerPaymentSeed(x.Id)).ToArray();
     }
 
     internal async Task<Guid> UpsertCatalogByDisplayAsync(
@@ -785,9 +794,15 @@ internal sealed class AgencyBillingDemoSeeder(
     {
         var existing = await FindCatalogByDisplayAsync(catalogType, display, ct);
         if (existing is null)
-            return (await catalogs.CreateAsync(catalogType, payload, ct)).Id;
+        {
+            var created = await catalogs.CreateAsync(catalogType, payload, ct);
+            IndexCatalogItem(catalogType, display, created);
+            return created.Id;
+        }
 
-        return (await catalogs.UpdateAsync(catalogType, existing.Id, payload, ct)).Id;
+        var updated = await catalogs.UpdateAsync(catalogType, existing.Id, payload, ct);
+        IndexCatalogItem(catalogType, display, updated);
+        return updated.Id;
     }
 
     internal async Task<CatalogItemDto?> FindCatalogByDisplayAsync(
@@ -795,12 +810,10 @@ internal sealed class AgencyBillingDemoSeeder(
         string display,
         CancellationToken ct)
     {
-        var page = await catalogs.GetPageAsync(catalogType, new PageRequestDto(Offset: 0, Limit: 50, Search: display), ct);
-        var matches = page.Items
-            .Where(x => string.Equals(x.Display, display, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        var byDisplay = await LoadCatalogByDisplayAsync(catalogType, ct);
+        var matches = byDisplay.GetValueOrDefault(display) ?? [];
 
-        return matches.Length switch
+        return matches.Count switch
         {
             0 => null,
             1 => matches[0],
@@ -821,28 +834,69 @@ internal sealed class AgencyBillingDemoSeeder(
         CancellationToken ct)
     {
         var requested = displays.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var page = await catalogs.GetPageAsync(
-            catalogType,
-            new PageRequestDto(Offset: 0, Limit: PagingLimits.MaxPageSize, Search: null),
-            ct);
-        var grouped = page.Items
-            .Where(item => item.Display is not null && requested.Contains(item.Display))
-            .GroupBy(item => item.Display!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        var grouped = await LoadCatalogByDisplayAsync(catalogType, ct);
         var result = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var display in requested)
         {
-            if (!grouped.TryGetValue(display, out var matches) || matches.Length == 0)
+            if (!grouped.TryGetValue(display, out var matches) || matches.Count == 0)
                 throw new NgbConfigurationViolationException($"Default '{catalogType}' record '{display}' was not found.");
 
-            if (matches.Length > 1)
+            if (matches.Count > 1)
                 throw new NgbConfigurationViolationException($"Multiple '{catalogType}' records exist for display '{display}'.");
 
             result[display] = matches[0].Id;
         }
 
         return result;
+    }
+
+    private async Task<Dictionary<string, List<CatalogItemDto>>> LoadCatalogByDisplayAsync(
+        string catalogType,
+        CancellationToken ct)
+    {
+        if (_catalogsByDisplay.TryGetValue(catalogType, out var cached))
+            return cached;
+
+        var result = new Dictionary<string, List<CatalogItemDto>>(StringComparer.OrdinalIgnoreCase);
+        var offset = 0;
+
+        while (true)
+        {
+            var page = await catalogs.GetPageAsync(
+                catalogType,
+                new PageRequestDto(offset, PagingLimits.MaxPageSize, Search: null),
+                ct);
+
+            foreach (var item in page.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.Display))
+                    continue;
+
+                if (!result.TryGetValue(item.Display, out var matches))
+                {
+                    matches = [];
+                    result[item.Display] = matches;
+                }
+
+                matches.Add(item);
+            }
+
+            offset += page.Items.Count;
+            if (page.Items.Count < PagingLimits.MaxPageSize || page.Total is { } total && offset >= total)
+                break;
+        }
+
+        _catalogsByDisplay[catalogType] = result;
+        return result;
+    }
+
+    private void IndexCatalogItem(string catalogType, string display, CatalogItemDto item)
+    {
+        if (!_catalogsByDisplay.TryGetValue(catalogType, out var byDisplay))
+            return;
+
+        byDisplay[display] = [item];
     }
 
     internal bool CanPostAgencyDocuments()
@@ -864,19 +918,77 @@ internal sealed class AgencyBillingDemoSeeder(
         RecordPayload payload,
         bool postDocuments,
         CancellationToken ct)
+        => await CreateSeededDocumentAsync(
+            documents,
+            lifecycle,
+            drafts,
+            new SeedDocumentRequest(typeCode, businessDate, payload, postDocuments),
+            ct);
+
+    private async Task<IReadOnlyList<DocumentDto>> CreateSeededDocumentsAsync(
+        IReadOnlyList<SeedDocumentRequest> requests,
+        CancellationToken ct)
     {
-        var created = await documents.CreateDraftAsync(typeCode, payload, ct);
-        await drafts.UpdateDraftAsync(
+        if (requests.Count == 0)
+            return [];
+
+        if (scopeFactory is null || requests.Count == 1)
+        {
+            var sequential = new DocumentDto[requests.Count];
+            for (var i = 0; i < requests.Count; i++)
+            {
+                sequential[i] = await CreateSeededDocumentAsync(
+                    documents,
+                    lifecycle,
+                    drafts,
+                    requests[i],
+                    ct);
+            }
+
+            return sequential;
+        }
+
+        var results = new DocumentDto[requests.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, requests.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = SeedDocumentConcurrency,
+                CancellationToken = ct
+            },
+            async (index, token) =>
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                results[index] = await CreateSeededDocumentAsync(
+                    scope.ServiceProvider.GetRequiredService<IDocumentService>(),
+                    scope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>(),
+                    scope.ServiceProvider.GetRequiredService<IDocumentDraftService>(),
+                    requests[index],
+                    token);
+            });
+
+        return results;
+    }
+
+    private static async Task<DocumentDto> CreateSeededDocumentAsync(
+        IDocumentService documentService,
+        IDocumentSystemLifecycleService lifecycleService,
+        IDocumentDraftService draftService,
+        SeedDocumentRequest request,
+        CancellationToken ct)
+    {
+        var created = await documentService.CreateDraftAsync(request.TypeCode, request.Payload, ct);
+        await draftService.UpdateDraftAsync(
             created.Id,
             number: null,
-            dateUtc: ToDateTimeUtc(businessDate),
+            dateUtc: ToDateTimeUtc(request.BusinessDate),
             manageTransaction: true,
             ct: ct);
 
-        if (postDocuments)
-            return await lifecycle.PostAsync(typeCode, created.Id, ct);
+        if (request.PostDocuments)
+            return await lifecycleService.PostAsync(request.TypeCode, created.Id, ct);
 
-        return await documents.GetByIdAsync(typeCode, created.Id, ct);
+        return await documentService.GetByIdAsync(request.TypeCode, created.Id, ct);
     }
 
     internal static RecordPayload Payload(object head, string? partName = null, IEnumerable<object>? partRows = null)
@@ -999,6 +1111,12 @@ internal sealed class AgencyBillingDemoSeeder(
         string Name,
         AgencyBillingServiceItemUnitOfMeasure UnitOfMeasure);
 
+    private sealed record SeedDocumentRequest(
+        string TypeCode,
+        DateOnly BusinessDate,
+        RecordPayload Payload,
+        bool PostDocuments);
+
     private sealed record PaymentTermSeed(string Display, Guid Id, int DueDays);
 
     private sealed record ClientSeed(Guid Id, string Display, string ClientCode, PaymentTermSeed PaymentTerms);
@@ -1047,12 +1165,25 @@ internal sealed class AgencyBillingDemoSeeder(
         decimal Amount,
         string Description);
 
+    private sealed record SalesInvoicePlan(
+        TimesheetSeed Timesheet,
+        DateOnly InvoiceDate,
+        DateOnly DueDate,
+        string Description,
+        int Index);
+
     private sealed record SalesInvoiceSeed(
         Guid Id,
         ContractSeed Contract,
         DateOnly InvoiceDate,
         DateOnly DueDate,
         decimal Amount);
+
+    private sealed record CustomerPaymentPlan(
+        SalesInvoiceSeed Invoice,
+        DateOnly PaymentDate,
+        decimal AppliedAmount,
+        int Index);
 
     private sealed record CustomerPaymentSeed(Guid Id);
 }

@@ -59,8 +59,17 @@ public sealed class UserAccessManagementService(
         var rolesByUserTask = userRoles.GetRolesForUsersAsync(userIds, ct);
         IReadOnlyDictionary<string, IdentityProviderUserDto> identityProviderUsersById;
         IReadOnlyDictionary<string, IdentityProviderUserDto> identityProviderUsersByEmail;
+        var useLocalStatusWhenSnapshotMisses = false;
 
-        if (identityProvider is IIdentityProviderBulkUserReader bulkReader)
+        if (identityProvider is IIdentityProviderUserPageSnapshotReader snapshotReader)
+        {
+            var snapshot = snapshotReader.GetCachedUsers(identityProviderIds, platformEmails);
+            identityProviderUsersById = snapshot.ById;
+            identityProviderUsersByEmail = snapshot.ByEmail;
+            useLocalStatusWhenSnapshotMisses = true;
+            await rolesByUserTask;
+        }
+        else if (identityProvider is IIdentityProviderBulkUserReader bulkReader)
         {
             var batchTask = bulkReader.GetUsersAsync(identityProviderIds, platformEmails, ct);
 
@@ -97,7 +106,8 @@ public sealed class UserAccessManagementService(
                 var keycloakEnabled = ResolveIdentityProviderEnabled(
                     user,
                     identityProviderUsersById,
-                    identityProviderUsersByEmail);
+                    identityProviderUsersByEmail,
+                    useLocalStatusWhenSnapshotMisses && user.IsActive);
 
                 var roles = (assignedRoles ?? [])
                     .OrderBy(static role => role.Name, StringComparer.OrdinalIgnoreCase)
@@ -121,7 +131,11 @@ public sealed class UserAccessManagementService(
         var nextCursor = hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
-                new PlatformUserPageCursor(offset + items.Length, platformPage.Total))
+                new PlatformUserPageCursor(
+                    offset + items.Length,
+                    platformPage.Total,
+                    platformPage.NextAfterSortKey,
+                    platformPage.NextAfterUserId))
             : null;
         return new PageResponseDto<UserListItemDto>(
             items,
@@ -606,7 +620,8 @@ public sealed class UserAccessManagementService(
     private static bool? ResolveIdentityProviderEnabled(
         PlatformUser user,
         IReadOnlyDictionary<string, IdentityProviderUserDto> usersById,
-        IReadOnlyDictionary<string, IdentityProviderUserDto> usersByEmail)
+        IReadOnlyDictionary<string, IdentityProviderUserDto> usersByEmail,
+        bool fallback)
     {
         var identityProviderId = NormalizeIdentityProviderId(user.AuthSubject);
         if (identityProviderId is not null && usersById.TryGetValue(identityProviderId, out var byId))
@@ -616,7 +631,7 @@ public sealed class UserAccessManagementService(
         if (email is not null && usersByEmail.TryGetValue(email, out var byEmail))
             return byEmail.Enabled;
 
-        return false;
+        return fallback;
     }
 
     private static string? NormalizeIdentityProviderId(string? identityProviderUserId)

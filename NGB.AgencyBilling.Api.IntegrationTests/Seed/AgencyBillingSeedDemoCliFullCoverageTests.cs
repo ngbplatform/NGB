@@ -177,24 +177,20 @@ public sealed class AgencyBillingSeedDemoCliFullCoverageTests
         var createdCatalogId = Guid.NewGuid();
         var existingCatalogId = Guid.NewGuid();
         var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
-        catalogs.SetupSequence(x => x.GetPageAsync(
+        catalogs.Setup(x => x.GetPageAsync(
                 "catalog",
                 It.IsAny<PageRequestDto>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 50, 0))
             .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
-                [Catalog(existingCatalogId, "Existing")], 0, 50, 1))
-            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
-                [Catalog(Guid.NewGuid(), "Duplicate"), Catalog(Guid.NewGuid(), "duplicate")], 0, 50, 2))
-            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
-                [Catalog(existingCatalogId, "Existing")], 0, 50, 1))
-            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 50, 0))
-            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
-                [Catalog(existingCatalogId, "Existing"), new CatalogItemDto(Guid.NewGuid(), null, new RecordPayload(), false, false)],
-                0, 50, 2))
-            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([], 0, 50, 0))
-            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
-                [Catalog(Guid.NewGuid(), "Duplicate"), Catalog(Guid.NewGuid(), "duplicate")], 0, 50, 2));
+                [
+                    Catalog(existingCatalogId, "Existing"),
+                    Catalog(Guid.NewGuid(), "Duplicate"),
+                    Catalog(Guid.NewGuid(), "duplicate"),
+                    new CatalogItemDto(Guid.NewGuid(), null, new RecordPayload(), false, false)
+                ],
+                0,
+                PagingLimits.MaxPageSize,
+                4));
         catalogs.Setup(x => x.CreateAsync("catalog", It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Catalog(createdCatalogId, "Created"));
         catalogs.Setup(x => x.UpdateAsync(

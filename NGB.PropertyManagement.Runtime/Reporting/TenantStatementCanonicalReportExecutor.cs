@@ -98,7 +98,13 @@ public sealed class TenantStatementCanonicalReportExecutor(
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
                 new TenantStatementPageCursor(
-                    query.Offset + page.Rows.Count, page.Total, page.Totals))
+                    query.Offset + page.Rows.Count,
+                    page.Total,
+                    page.Totals,
+                    page.NextAfterOccurredOnUtc,
+                    page.NextAfterSortOrder,
+                    page.NextAfterDocumentId,
+                    page.NextRunningBalance))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

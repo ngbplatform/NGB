@@ -10,9 +10,25 @@ public sealed record TradeCurrentItemPriceRow(
     DateOnly? EffectiveDate,
     Guid? SourceDocumentId);
 
-public sealed record TradeCurrentItemPricePage(IReadOnlyList<TradeCurrentItemPriceRow> Rows, int Total, bool HasMore = false);
+public sealed record TradeCurrentItemPricePage(
+    IReadOnlyList<TradeCurrentItemPriceRow> Rows,
+    int Total,
+    bool HasMore = false,
+    string? NextAfterItemDisplay = null,
+    string? NextAfterPriceTypeDisplay = null,
+    string? NextAfterCurrency = null,
+    Guid? NextAfterItemId = null,
+    Guid? NextAfterPriceTypeId = null);
 
-public sealed record TradeCurrentItemPricePageCursor(int Offset, int Total, DateTime AsOfUtc = default);
+public sealed record TradeCurrentItemPricePageCursor(
+    int Offset,
+    int Total,
+    DateTime AsOfUtc = default,
+    string? AfterItemDisplay = null,
+    string? AfterPriceTypeDisplay = null,
+    string? AfterCurrency = null,
+    Guid? AfterItemId = null,
+    Guid? AfterPriceTypeId = null);
 
 public interface ITradeCurrentItemPriceReader
 {
