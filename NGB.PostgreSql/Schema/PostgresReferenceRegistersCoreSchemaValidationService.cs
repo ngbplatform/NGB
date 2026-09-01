@@ -122,17 +122,17 @@ public sealed class PostgresReferenceRegistersCoreSchemaValidationService(
         await uow.EnsureConnectionOpenAsync(ct);
 
         // 6.1) Append-only guard function must exist (used by per-register __records tables)
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_forbid_mutation_of_append_only_table", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_forbid_mutation_of_append_only_table", errors, ct);
 
         // 6.2) Immutability guards after has_records
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_refreg_forbid_register_mutation_when_has_records", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_refreg_registers_immutable_when_has_records", "reference_registers", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_refreg_forbid_register_mutation_when_has_records", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_refreg_registers_immutable_when_has_records", "reference_registers", errors, ct);
 
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_refreg_forbid_field_mutation_when_has_records", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_refreg_fields_immutable_when_has_records", "reference_register_fields", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_refreg_forbid_field_mutation_when_has_records", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_refreg_fields_immutable_when_has_records", "reference_register_fields", errors, ct);
 
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_refreg_forbid_dim_rule_mutation_when_has_records", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_refreg_dim_rules_immutable_when_has_records", "reference_register_dimension_rules", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_refreg_forbid_dim_rule_mutation_when_has_records", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_refreg_dim_rules_immutable_when_has_records", "reference_register_dimension_rules", errors, ct);
 
         // 7) Per-register physical tables for registers that already have records.
         await ValidatePerRegisterPhysicalTablesAsync(snapshot, errors, ct);

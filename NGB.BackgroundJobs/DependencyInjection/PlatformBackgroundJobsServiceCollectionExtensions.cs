@@ -36,6 +36,7 @@ public static class PlatformBackgroundJobsServiceCollectionExtensions
 
         if (string.IsNullOrWhiteSpace(opts.ConnectionString))
             throw new NgbConfigurationViolationException("Hangfire ConnectionString must be provided.");
+        PostgresRecurringJobHashBatchReader.ValidateSchemaName(opts.SchemaName);
 
         // Expose options via IOptions for downstream services.
         services.TryAddSingleton(Options.Create(opts));
@@ -57,14 +58,17 @@ public static class PlatformBackgroundJobsServiceCollectionExtensions
         services.TryAddScoped<IJobRunMetrics, JobRunMetrics>();
 
         // Health reporter: desired schedules vs actual Hangfire recurring job state.
-        services.TryAddSingleton<IRecurringJobStateReader, HangfireRecurringJobStateReader>();
+        services.TryAddSingleton<IRecurringJobHashBatchReader, PostgresRecurringJobHashBatchReader>();
+        services.TryAddSingleton<IRecurringJobStateReader>(sp => new HangfireRecurringJobStateReader(
+            sp.GetRequiredService<JobStorage>(), sp.GetRequiredService<IRecurringJobHashBatchReader>()));
         services.TryAddSingleton<IBackgroundJobsHealthReporter, BackgroundJobsHealthReporter>();
 
         services.TryAddSingleton<JobStorage>(_ =>
         {
             var storageOptions = new PostgreSqlStorageOptions
             {
-                PrepareSchemaIfNecessary = opts.PrepareSchemaIfNecessary
+                PrepareSchemaIfNecessary = opts.PrepareSchemaIfNecessary,
+                SchemaName = opts.SchemaName
             };
 
             return new PostgreSqlStorage(

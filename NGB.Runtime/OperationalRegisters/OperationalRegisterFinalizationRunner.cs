@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NGB.Core.Locks;
 using NGB.OperationalRegisters.Exceptions;
@@ -23,24 +24,69 @@ namespace NGB.Runtime.OperationalRegisters;
 /// - <c>BlockedNoProjector</c> is kept only as a defensive fallback for misconfigured hosts that do not register
 ///   the default projector.
 /// </summary>
-public sealed class OperationalRegisterFinalizationRunner(
-    IUnitOfWork uow,
-    IAdvisoryLockManager locks,
-    IOperationalRegisterRepository registers,
-    IOperationalRegisterFinalizationRepository finalizations,
-    IOperationalRegisterMovementsReader movements,
-    IEnumerable<IOperationalRegisterMonthProjector> projectors,
-    IEnumerable<IOperationalRegisterDefaultMonthProjector> defaultProjectors,
-    IEnumerable<IOperationalRegisterMonthFinalizer> legacyFinalizers,
-    TimeProvider timeProvider,
-    ILogger<OperationalRegisterFinalizationRunner> logger)
-    : IOperationalRegisterFinalizationRunner
+public sealed class OperationalRegisterFinalizationRunner : IOperationalRegisterFinalizationRunner
 {
-    private readonly IReadOnlyDictionary<string, IOperationalRegisterMonthProjector> _projectorsByCodeNorm
-        = BuildProjectorMap(projectors, legacyFinalizers);
+    private readonly IUnitOfWork _uow;
+    private readonly IAdvisoryLockManager _locks;
+    private readonly IOperationalRegisterRepository _registers;
+    private readonly IOperationalRegisterFinalizationRepository _finalizations;
+    private readonly IOperationalRegisterMovementsReader _movements;
+    private readonly TimeProvider _timeProvider;
+    private readonly ILogger<OperationalRegisterFinalizationRunner> _logger;
+    private readonly IOperationalRegisterFinalizationPartitionProcessorFactory? _partitionProcessorFactory;
+    private readonly IReadOnlyDictionary<string, IOperationalRegisterMonthProjector> _projectorsByCodeNorm;
+    private readonly IOperationalRegisterDefaultMonthProjector? _defaultProjector;
 
-    private readonly IOperationalRegisterDefaultMonthProjector? _defaultProjector
-        = ResolveDefaultProjector(defaultProjectors);
+    public OperationalRegisterFinalizationRunner(
+        IUnitOfWork uow,
+        IAdvisoryLockManager locks,
+        IOperationalRegisterRepository registers,
+        IOperationalRegisterFinalizationRepository finalizations,
+        IOperationalRegisterMovementsReader movements,
+        IEnumerable<IOperationalRegisterMonthProjector> projectors,
+        IEnumerable<IOperationalRegisterDefaultMonthProjector> defaultProjectors,
+        IEnumerable<IOperationalRegisterMonthFinalizer> legacyFinalizers,
+        TimeProvider timeProvider,
+        ILogger<OperationalRegisterFinalizationRunner> logger)
+        : this(
+            uow,
+            locks,
+            registers,
+            finalizations,
+            movements,
+            projectors,
+            defaultProjectors,
+            legacyFinalizers,
+            timeProvider,
+            logger,
+            partitionProcessorFactory: null)
+    {
+    }
+
+    internal OperationalRegisterFinalizationRunner(
+        IUnitOfWork uow,
+        IAdvisoryLockManager locks,
+        IOperationalRegisterRepository registers,
+        IOperationalRegisterFinalizationRepository finalizations,
+        IOperationalRegisterMovementsReader movements,
+        IEnumerable<IOperationalRegisterMonthProjector> projectors,
+        IEnumerable<IOperationalRegisterDefaultMonthProjector> defaultProjectors,
+        IEnumerable<IOperationalRegisterMonthFinalizer> legacyFinalizers,
+        TimeProvider timeProvider,
+        ILogger<OperationalRegisterFinalizationRunner> logger,
+        IOperationalRegisterFinalizationPartitionProcessorFactory? partitionProcessorFactory)
+    {
+        _uow = uow;
+        _locks = locks;
+        _registers = registers;
+        _finalizations = finalizations;
+        _movements = movements;
+        _timeProvider = timeProvider;
+        _logger = logger;
+        _partitionProcessorFactory = partitionProcessorFactory;
+        _projectorsByCodeNorm = BuildProjectorMap(projectors, legacyFinalizers);
+        _defaultProjector = ResolveDefaultProjector(defaultProjectors);
+    }
 
     public async Task<int> FinalizeDirtyAsync(
         int maxItems = 50,
@@ -50,24 +96,50 @@ public sealed class OperationalRegisterFinalizationRunner(
         if (maxItems <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(maxItems), maxItems, "MaxItems must be positive.");
 
-        var dirty = await finalizations.GetDirtyAcrossAllAsync(maxItems, ct);
+        var dirty = await _finalizations.GetDirtyAcrossAllAsync(maxItems, ct);
         if (dirty.Count == 0)
             return 0;
 
-        var registerRows = await registers.GetByIdsAsync(
+        var registerRows = await _registers.GetByIdsAsync(
             dirty.Select(static item => item.RegisterId).Distinct().ToArray(),
             ct);
         var registersById = registerRows.ToDictionary(static item => item.RegisterId);
-        var finalizedCount = 0;
+        var partitions = dirty
+            .GroupBy(static item => item.RegisterId)
+            .Select(group => new FinalizationPartition(
+                registersById.GetValueOrDefault(group.Key),
+                group.OrderBy(static item => item.Period).ToArray()))
+            .ToArray();
 
-        foreach (var item in dirty)
+        if (manageTransaction && _partitionProcessorFactory is not null && partitions.Length > 1)
         {
-            registersById.TryGetValue(item.RegisterId, out var register);
-            if (await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct))
-                finalizedCount++;
+            var finalizedCount = 0;
+            await Parallel.ForEachAsync(
+                partitions,
+                new ParallelOptions
+                {
+                    CancellationToken = ct,
+                    MaxDegreeOfParallelism = Math.Min(4, partitions.Length)
+                },
+                async (partition, innerCt) =>
+                {
+                    var count = await _partitionProcessorFactory.ProcessAsync(
+                        partition.Register,
+                        partition.Items,
+                        innerCt);
+                    Interlocked.Add(ref finalizedCount, count);
+                });
+
+            return finalizedCount;
         }
 
-        return finalizedCount;
+        var sequentialCount = 0;
+        foreach (var partition in partitions)
+        {
+            sequentialCount += await FinalizeSelectedAsync(partition.Register, partition.Items, manageTransaction, ct);
+        }
+
+        return sequentialCount;
     }
 
     public async Task<int> FinalizeRegisterDirtyAsync(
@@ -82,13 +154,30 @@ public sealed class OperationalRegisterFinalizationRunner(
         if (maxPeriods <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(maxPeriods), maxPeriods, "MaxPeriods must be positive.");
 
-        var dirty = await finalizations.GetDirtyAsync(registerId, maxPeriods, ct);
+        var dirty = await _finalizations.GetDirtyAsync(registerId, maxPeriods, ct);
         if (dirty.Count == 0)
             return 0;
 
-        var register = await registers.GetByIdAsync(registerId, ct);
+        var register = await _registers.GetByIdAsync(registerId, ct);
         var finalizedCount = 0;
+
         foreach (var item in dirty)
+        {
+            if (await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct))
+                finalizedCount++;
+        }
+
+        return finalizedCount;
+    }
+
+    internal async Task<int> FinalizeSelectedAsync(
+        OperationalRegisterAdminItem? register,
+        IReadOnlyList<OperationalRegisterFinalization> items,
+        bool manageTransaction,
+        CancellationToken ct)
+    {
+        var finalizedCount = 0;
+        foreach (var item in items)
         {
             if (await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct))
                 finalizedCount++;
@@ -105,25 +194,25 @@ public sealed class OperationalRegisterFinalizationRunner(
         CancellationToken ct)
     {
         if (manageTransaction)
-            await uow.BeginTransactionAsync(ct);
+            await _uow.BeginTransactionAsync(ct);
         else
-            uow.EnsureActiveTransaction();
+            _uow.EnsureActiveTransaction();
 
         try
         {
-            await locks.LockOperationalRegisterAsync(registerId, ct);
+            await _locks.LockOperationalRegisterAsync(registerId, ct);
 
             // Month lock prevents concurrent finalization and movement writes to the same month.
             // Namespace this lock to Operational Registers so accounting posting/closing can proceed concurrently.
-            await locks.LockPeriodAsync(periodMonth, AdvisoryLockPeriodScope.OperationalRegister, ct);
+            await _locks.LockPeriodAsync(periodMonth, AdvisoryLockPeriodScope.OperationalRegister, ct);
 
             // Under concurrency, the dirty list may contain stale items.
             // Re-check the current status under the month lock/transaction to ensure idempotency.
-            var current = await finalizations.GetAsync(registerId, periodMonth, ct);
+            var current = await _finalizations.GetAsync(registerId, periodMonth, ct);
             if (current is null || current.Status != OperationalRegisterFinalizationStatus.Dirty)
             {
                 if (manageTransaction)
-                    await uow.CommitAsync(ct);
+                    await _uow.CommitAsync(ct);
 
                 return false;
             }
@@ -132,15 +221,15 @@ public sealed class OperationalRegisterFinalizationRunner(
                 throw new OperationalRegisterNotFoundException(registerId);
 
             var codeNorm = NormalizeCodeNorm(register.Code);
-            var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+            var nowUtc = _timeProvider.GetUtcNow().UtcDateTime;
             var ctx = new OperationalRegisterMonthProjectionContext(
                 RegisterId: registerId,
                 RegisterCode: register.Code,
                 RegisterCodeNorm: codeNorm,
                 PeriodMonth: periodMonth,
                 NowUtc: nowUtc,
-                Movements: movements,
-                UnitOfWork: uow);
+                Movements: _movements,
+                UnitOfWork: _uow);
 
             if (_projectorsByCodeNorm.TryGetValue(codeNorm, out var projector))
             {
@@ -152,7 +241,7 @@ public sealed class OperationalRegisterFinalizationRunner(
             }
             else
             {
-                await finalizations.MarkBlockedNoProjectorAsync(
+                await _finalizations.MarkBlockedNoProjectorAsync(
                     registerId,
                     periodMonth,
                     blockedSinceUtc: nowUtc,
@@ -160,28 +249,29 @@ public sealed class OperationalRegisterFinalizationRunner(
                     nowUtc: nowUtc,
                     ct: ct);
 
-                logger.LogWarning(
+                _logger.LogWarning(
                     "No operational register projector registered for '{RegisterCode}' (code_norm='{CodeNorm}') and no default projector is available. Month marked BlockedNoProjector to avoid repeated retries. Mark it Dirty again after a projector is installed.",
                     register.Code,
                     codeNorm);
 
                 if (manageTransaction)
-                    await uow.CommitAsync(ct);
+                    await _uow.CommitAsync(ct);
 
                 return false;
             }
 
-            await finalizations.MarkFinalizedAsync(registerId, periodMonth, nowUtc, nowUtc, ct);
+            await _finalizations.MarkFinalizedAsync(registerId, periodMonth, nowUtc, nowUtc, ct);
 
             if (manageTransaction)
-                await uow.CommitAsync(ct);
+                await _uow.CommitAsync(ct);
 
             return true;
         }
         catch
         {
-            if (manageTransaction && uow.HasActiveTransaction)
-                await uow.RollbackAsync(ct);
+            if (manageTransaction && _uow.HasActiveTransaction)
+                await _uow.RollbackAsync(ct);
+
             throw;
         }
     }
@@ -196,8 +286,7 @@ public sealed class OperationalRegisterFinalizationRunner(
         foreach (var p in projectors)
         {
             if (string.IsNullOrWhiteSpace(p.RegisterCodeNorm))
-                throw new NgbConfigurationViolationException(
-                    $"{nameof(IOperationalRegisterMonthProjector)} has empty {nameof(IOperationalRegisterMonthProjector.RegisterCodeNorm)}.");
+                throw new NgbConfigurationViolationException($"{nameof(IOperationalRegisterMonthProjector)} has empty {nameof(IOperationalRegisterMonthProjector.RegisterCodeNorm)}.");
 
             var key = NormalizeCodeNorm(p.RegisterCodeNorm);
             if (!map.TryAdd(key, p))
@@ -208,8 +297,7 @@ public sealed class OperationalRegisterFinalizationRunner(
         foreach (var f in legacyFinalizers)
         {
             if (string.IsNullOrWhiteSpace(f.RegisterCodeNorm))
-                throw new NgbConfigurationViolationException(
-                    $"{nameof(IOperationalRegisterMonthFinalizer)} has empty {nameof(IOperationalRegisterMonthFinalizer.RegisterCodeNorm)}.");
+                throw new NgbConfigurationViolationException($"{nameof(IOperationalRegisterMonthFinalizer)} has empty {nameof(IOperationalRegisterMonthFinalizer.RegisterCodeNorm)}.");
 
             var key = NormalizeCodeNorm(f.RegisterCodeNorm);
             if (!map.TryAdd(key, new LegacyFinalizerProjectorAdapter(f)))
@@ -223,6 +311,7 @@ public sealed class OperationalRegisterFinalizationRunner(
         IEnumerable<IOperationalRegisterDefaultMonthProjector> defaultProjectors)
     {
         var materialized = defaultProjectors.Take(2).ToArray();
+
         return materialized.Length switch
         {
             0 => null,
@@ -231,6 +320,31 @@ public sealed class OperationalRegisterFinalizationRunner(
         };
     }
 
-    private static string NormalizeCodeNorm(string code)
-        => code.Trim().ToLowerInvariant();
+    private static string NormalizeCodeNorm(string code) => code.Trim().ToLowerInvariant();
+
+    private sealed record FinalizationPartition(
+        OperationalRegisterAdminItem? Register,
+        IReadOnlyList<OperationalRegisterFinalization> Items);
+}
+
+internal interface IOperationalRegisterFinalizationPartitionProcessorFactory
+{
+    Task<int> ProcessAsync(
+        OperationalRegisterAdminItem? register,
+        IReadOnlyList<OperationalRegisterFinalization> items,
+        CancellationToken ct);
+}
+
+internal sealed class OperationalRegisterFinalizationPartitionProcessorFactory(IServiceScopeFactory scopes)
+    : IOperationalRegisterFinalizationPartitionProcessorFactory
+{
+    public async Task<int> ProcessAsync(
+        OperationalRegisterAdminItem? register,
+        IReadOnlyList<OperationalRegisterFinalization> items,
+        CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var runner = scope.ServiceProvider.GetRequiredService<OperationalRegisterFinalizationRunner>();
+        return await runner.FinalizeSelectedAsync(register, items, manageTransaction: true, ct);
+    }
 }

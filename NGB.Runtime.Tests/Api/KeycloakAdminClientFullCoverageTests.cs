@@ -137,6 +137,24 @@ public sealed class KeycloakAdminClientFullCoverageTests
     }
 
     [Fact]
+    public void User_lookup_cache_reassigns_reverse_alias_when_an_email_is_reused()
+    {
+        var cache = new KeycloakUserLookupCache(Settings(), TimeProvider.System);
+        var previous = new IdentityProviderUserDto("previous", "shared@example.com", null, null, null, true);
+        var current = new IdentityProviderUserDto("current", "shared@example.com", null, null, null, true);
+
+        cache.Remember(previous);
+        cache.Remember(current);
+        cache.InvalidateUser(previous.UserId);
+
+        cache.TryGetByEmail(current.Email!, out var cached).Should().BeTrue();
+        cached.Should().BeSameAs(current);
+
+        cache.InvalidateUser(current.UserId);
+        cache.TryGetByEmail(current.Email!, out _).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task CreateUser_validates_request_sends_normalized_payload_and_loads_location_user()
     {
         var (sut, handler) = Client(request =>

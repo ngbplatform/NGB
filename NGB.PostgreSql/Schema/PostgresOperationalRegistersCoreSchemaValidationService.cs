@@ -109,6 +109,8 @@ public sealed class PostgresOperationalRegistersCoreSchemaValidationService(
 
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_resources", "ix_opreg_resources_register_ordinal", errors);
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_write_state", "ix_opreg_write_log_document", errors);
+        PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_finalizations", "ix_opreg_finalizations_dirty_queue", errors);
+        PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_finalizations", "ix_opreg_finalizations_blocked_queue", errors);
 
         // 4) Critical unique constraints (surfaced as indexes)
         PostgresSchemaValidationChecks.RequireIndex(snapshot, "operational_register_resources", "ux_operational_register_resources__register_code_norm", errors);
@@ -127,19 +129,19 @@ public sealed class PostgresOperationalRegistersCoreSchemaValidationService(
         await uow.EnsureConnectionOpenAsync(ct);
 
         // 6.1) Append-only guard function must exist (used by per-register movements tables)
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_forbid_mutation_of_append_only_table", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_forbid_mutation_of_append_only_table", errors, ct);
 
         // 6.2) Resource immutability after movements exist (defense in depth)
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_opreg_forbid_resource_mutation_when_has_movements", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_opreg_resources_immutable_when_has_movements", "operational_register_resources", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_opreg_forbid_resource_mutation_when_has_movements", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_opreg_resources_immutable_when_has_movements", "operational_register_resources", errors, ct);
 
         // 6.3) Register immutability after movements exist (code/table identity safety)
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_opreg_forbid_register_mutation_when_has_movements", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_opreg_registers_immutable_when_has_movements", "operational_registers", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_opreg_forbid_register_mutation_when_has_movements", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_opreg_registers_immutable_when_has_movements", "operational_registers", errors, ct);
 
         // 6.4) Dimension rules guards after movements exist (prevent destructive mutation)
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_opreg_forbid_dim_rule_mutation_when_has_movements", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_opreg_dim_rules_immutable_when_has_movements", "operational_register_dimension_rules", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_opreg_forbid_dim_rule_mutation_when_has_movements", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_opreg_dim_rules_immutable_when_has_movements", "operational_register_dimension_rules", errors, ct);
 
         if (errors.Count > 0)
         {

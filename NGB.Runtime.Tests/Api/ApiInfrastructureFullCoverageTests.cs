@@ -98,7 +98,7 @@ public sealed class ApiInfrastructureFullCoverageTests
         }));
         invalid.Offset.Should().Be(0);
         invalid.Limit.Should().Be(50);
-        invalid.IncludeTotal.Should().BeTrue();
+        invalid.IncludeTotal.Should().BeFalse();
         invalid.Search.Should().Be("case-insensitive-lookup");
         invalid.Filters.Should().ContainSingle().Which.Should().Be(new KeyValuePair<string, string>("state", "active"));
 
@@ -115,6 +115,11 @@ public sealed class ApiInfrastructureFullCoverageTests
         parsed.Search.Should().Be("tenant");
         parsed.IncludeTotal.Should().BeFalse();
         parsed.Filters.Should().Contain("status", "open");
+
+        QueryParsing.ToPageRequest(Query(new Dictionary<string, string?>
+        {
+            ["includeTotal"] = "true"
+        })).IncludeTotal.Should().BeTrue();
 
         var bounded = QueryParsing.ToPageRequest(Query(new Dictionary<string, string?>
         {

@@ -22,7 +22,8 @@ public sealed class PlatformSchemaValidateJob(
     IDocumentSchemaValidationService documents,
     ILogger<PlatformSchemaValidateJob> logger,
     IJobRunMetrics metrics,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IDbSchemaSnapshotScopeFactory? snapshotScopeFactory = null)
     : IPlatformBackgroundJob
 {
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
@@ -39,6 +40,10 @@ public sealed class PlatformSchemaValidateJob(
         metrics.Set("schemas_validated", 0);
         metrics.Set("validations_total", totalValidations);
         metrics.Set("validations", 0);
+
+        await using var snapshotScope = snapshotScopeFactory is null
+            ? null
+            : await snapshotScopeFactory.BeginSnapshotScopeAsync(cancellationToken);
 
         var validated = 0;
 

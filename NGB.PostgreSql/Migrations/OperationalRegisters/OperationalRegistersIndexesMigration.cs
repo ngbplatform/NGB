@@ -29,5 +29,15 @@ public sealed class OperationalRegistersIndexesMigration : IDdlObject
                                 -- write log
                                 CREATE INDEX IF NOT EXISTS ix_opreg_write_log_document
                                     ON operational_register_write_state(document_id);
+
+                                -- finalization work queues. Partial indexes keep polling proportional to the
+                                -- outstanding work instead of the complete finalization history.
+                                CREATE INDEX IF NOT EXISTS ix_opreg_finalizations_dirty_queue
+                                    ON operational_register_finalizations(dirty_since_utc, register_id, period)
+                                    WHERE status = 2;
+
+                                CREATE INDEX IF NOT EXISTS ix_opreg_finalizations_blocked_queue
+                                    ON operational_register_finalizations(blocked_since_utc, register_id, period)
+                                    WHERE status = 3;
                                 """;
 }

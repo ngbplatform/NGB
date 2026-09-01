@@ -98,6 +98,48 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
         result.DocumentLabels.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ResolveAsync_WithTypedDocumentBatch_GeneratesOnlyRequestedTypeBranches()
+    {
+        var documentId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        var rows = Rows(
+            (4, null, documentId, "doc.invoice", "INV-2", null, 1),
+            (4, null, documentId, "doc.invoice", null, "Invoice display", 0));
+        var connection = new RecordingDbConnection(_ => rows.CreateDataReader());
+        var documents = new DocumentTypeRegistry([
+            DocumentMetadata("doc.invoice", "doc_invoice"),
+            DocumentMetadata("doc.unrelated", "doc_unrelated")
+        ]);
+        var sut = new PostgresReferencePayloadBatchEnrichmentReader(
+            new RecordingUnitOfWork(connection),
+            new CatalogTypeRegistry(),
+            documents);
+
+        var result = await sut.ResolveAsync(
+            [],
+            [],
+            new Dictionary<string, IReadOnlyCollection<Guid>>(),
+            new Dictionary<string, IReadOnlyCollection<Guid>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["doc.invoice"] = [documentId]
+            });
+
+        connection.Commands.Should().ContainSingle();
+        connection.Commands[0].CommandText.Should()
+            .Contain("JOIN \"doc_invoice\"")
+            .And.NotContain("doc_unrelated");
+        result.DocumentLabels.Should().Contain(documentId, "Invoice display");
+    }
+
+    private static DocumentTypeMetadata DocumentMetadata(string typeCode, string tableName)
+        => new(
+            typeCode,
+            [new DocumentTableMetadata(
+                tableName,
+                TableKind.Head,
+                [new DocumentColumnMetadata("display", ColumnType.String)])],
+            new DocumentPresentationMetadata(typeCode));
+
     private static DataTable Rows(params (short Kind, string? SourceCode, Guid Id, string? TypeCode, string? Number, string? Display, int Priority)[] values)
     {
         var table = new DataTable();

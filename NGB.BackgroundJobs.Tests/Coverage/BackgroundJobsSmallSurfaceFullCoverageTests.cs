@@ -173,15 +173,16 @@ public sealed class BackgroundJobsSmallSurfaceFullCoverageTests
         {
             ConnectionString = "connection",
             PrepareSchemaIfNecessary = false,
+            SchemaName = "background_jobs",
             WorkerCount = 2,
             Queues = ["critical"],
             DistributedLockTimeoutSeconds = 9,
             ServerName = "server"
         };
 
-        (options.ConnectionString, options.PrepareSchemaIfNecessary, options.WorkerCount, options.Queues[0],
+        (options.ConnectionString, options.PrepareSchemaIfNecessary, options.SchemaName, options.WorkerCount, options.Queues[0],
             options.DistributedLockTimeoutSeconds, options.ServerName)
-            .Should().Be(("connection", false, 2, "critical", 9, "server"));
+            .Should().Be(("connection", false, "background_jobs", 2, "critical", 9, "server"));
     }
 
     [Fact]

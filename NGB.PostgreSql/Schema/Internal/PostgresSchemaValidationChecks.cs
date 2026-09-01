@@ -77,10 +77,19 @@ internal static class PostgresSchemaValidationChecks
 
     public static async Task RequireFunctionAsync(
         IUnitOfWork uow,
+        DbSchemaSnapshot snapshot,
         string functionName,
         List<string> errors,
         CancellationToken ct)
     {
+        if (snapshot.DatabaseObjects is { } objects)
+        {
+            if (!objects.FunctionNames.Contains(functionName))
+                errors.Add($"Missing function '{functionName}'.");
+
+            return;
+        }
+
         var exists = await uow.Connection.ExecuteScalarAsync<int>(
             new CommandDefinition(
                 """
@@ -100,11 +109,24 @@ internal static class PostgresSchemaValidationChecks
 
     public static async Task RequireTriggerAsync(
         IUnitOfWork uow,
+        DbSchemaSnapshot snapshot,
         string triggerName,
         string tableName,
         List<string> errors,
         CancellationToken ct)
     {
+        if (snapshot.DatabaseObjects is { } objects)
+        {
+            var existsInSnapshot = objects.Triggers.Any(trigger =>
+                trigger.TriggerName.Equals(triggerName, StringComparison.OrdinalIgnoreCase) &&
+                trigger.TableName.Equals(tableName, StringComparison.OrdinalIgnoreCase));
+
+            if (!existsInSnapshot)
+                errors.Add($"Missing trigger '{triggerName}' on '{tableName}'.");
+
+            return;
+        }
+
         var exists = await uow.Connection.ExecuteScalarAsync<int>(
             new CommandDefinition(
                 """
@@ -127,11 +149,24 @@ internal static class PostgresSchemaValidationChecks
 
     public static async Task RequireConstraintAsync(
         IUnitOfWork uow,
+        DbSchemaSnapshot snapshot,
         string constraintName,
         string tableName,
         List<string> errors,
         CancellationToken ct)
     {
+        if (snapshot.DatabaseObjects is { } objects)
+        {
+            var existsInSnapshot = objects.Constraints.Any(constraint =>
+                constraint.ConstraintName.Equals(constraintName, StringComparison.OrdinalIgnoreCase) &&
+                constraint.TableName.Equals(tableName, StringComparison.OrdinalIgnoreCase));
+
+            if (!existsInSnapshot)
+                errors.Add($"Missing constraint '{constraintName}' on '{tableName}'.");
+
+            return;
+        }
+
         var exists = await uow.Connection.ExecuteScalarAsync<int>(
             new CommandDefinition(
                 """

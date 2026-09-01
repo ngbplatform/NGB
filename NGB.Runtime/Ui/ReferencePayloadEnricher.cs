@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Metadata.Base;
@@ -56,7 +57,8 @@ public sealed class ReferencePayloadEnricher(
     IDocumentDisplayReader documentDisplayReader,
     IAccountLookupReader accountLookupReader,
     IOperationalRegisterRepository opregRepo,
-    IReferencePayloadBatchEnrichmentReader? batchEnrichmentReader = null)
+    IReferencePayloadBatchEnrichmentReader? batchEnrichmentReader = null,
+    IMemoryCache? planCache = null)
     : IReferencePayloadEnricher
 {
     private sealed record RefSource(RefKind Kind, IReadOnlyList<string>? TypeCodes);
@@ -79,6 +81,8 @@ public sealed class ReferencePayloadEnricher(
         ChartOfAccounts = 3,
         OperationalRegister = 4
     }
+
+    private sealed record PlanCacheKey(string OwnerKind, string OwnerTypeCode);
 
     public async Task<IReadOnlyList<CatalogItemDto>> EnrichCatalogItemsAsync(
         CatalogHeadDescriptor ownerHead,
@@ -117,6 +121,22 @@ public sealed class ReferencePayloadEnricher(
     private PayloadEnrichmentPlan BuildCatalogPlan(CatalogHeadDescriptor ownerHead, string ownerTypeCode)
     {
         catalogTypes.TryGet(ownerTypeCode, out var catalogMeta);
+        if (catalogMeta is not null && planCache is not null)
+        {
+            return planCache.GetOrCreate(
+                new PlanCacheKey("catalog", catalogMeta.CatalogCode),
+                entry =>
+                {
+                    entry.Priority = CacheItemPriority.NeverRemove;
+                    return BuildCatalogPlanCore(ownerHead, catalogMeta);
+                })!;
+        }
+
+        return BuildCatalogPlanCore(ownerHead, catalogMeta);
+    }
+
+    private PayloadEnrichmentPlan BuildCatalogPlanCore(CatalogHeadDescriptor ownerHead, CatalogTypeMetadata? catalogMeta)
+    {
         var headColumns = BuildCatalogHeadColumns(ownerHead, catalogMeta);
         var partColumns = catalogMeta is null
             ? new Dictionary<string, IReadOnlyList<EnrichmentColumn>>(StringComparer.OrdinalIgnoreCase)
@@ -128,6 +148,24 @@ public sealed class ReferencePayloadEnricher(
     private PayloadEnrichmentPlan BuildDocumentPlan(DocumentHeadDescriptor ownerHead, string ownerTypeCode)
     {
         var documentMeta = documentTypes.TryGet(ownerTypeCode);
+        if (documentMeta is not null && planCache is not null)
+        {
+            return planCache.GetOrCreate(
+                new PlanCacheKey("document", documentMeta.TypeCode),
+                entry =>
+                {
+                    entry.Priority = CacheItemPriority.NeverRemove;
+                    return BuildDocumentPlanCore(ownerHead, documentMeta);
+                })!;
+        }
+
+        return BuildDocumentPlanCore(ownerHead, documentMeta);
+    }
+
+    private PayloadEnrichmentPlan BuildDocumentPlanCore(
+        DocumentHeadDescriptor ownerHead,
+        DocumentTypeMetadata? documentMeta)
+    {
         var headColumns = BuildDocumentHeadColumns(ownerHead, documentMeta);
         var partColumns = documentMeta is null
             ? new Dictionary<string, IReadOnlyList<EnrichmentColumn>>(StringComparer.OrdinalIgnoreCase)
@@ -264,11 +302,11 @@ public sealed class ReferencePayloadEnricher(
         var coaIds = new HashSet<Guid>();
         var opregIds = new HashSet<Guid>();
         var catalogTypeToIds = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
-        var documentIds = new HashSet<Guid>();
+        var documentTypeToIds = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var payload in payloads)
         {
-            CollectIds(payload.Fields, plan.HeadFields, coaIds, opregIds, catalogTypeToIds, documentIds);
+            CollectIds(payload.Fields, plan.HeadFields, coaIds, opregIds, catalogTypeToIds, documentTypeToIds);
 
             if (payload.Parts is null || payload.Parts.Count == 0 || plan.PartFields.Count == 0)
                 continue;
@@ -280,7 +318,7 @@ public sealed class ReferencePayloadEnricher(
 
                 foreach (var row in part.Rows)
                 {
-                    CollectIds(row, fields, coaIds, opregIds, catalogTypeToIds, documentIds);
+                    CollectIds(row, fields, coaIds, opregIds, catalogTypeToIds, documentTypeToIds);
                 }
             }
         }
@@ -294,8 +332,29 @@ public sealed class ReferencePayloadEnricher(
             x => x.Key,
             x => (IReadOnlyCollection<Guid>)x.Value,
             StringComparer.OrdinalIgnoreCase);
+        var documentBatch = documentTypeToIds.ToDictionary(
+            x => x.Key,
+            x => (IReadOnlyCollection<Guid>)x.Value,
+            StringComparer.OrdinalIgnoreCase);
+        var documentIds = documentTypeToIds.Values
+            .SelectMany(static ids => ids)
+            .Distinct()
+            .ToArray();
 
-        if (batchEnrichmentReader is not null)
+        if (batchEnrichmentReader is IReferencePayloadTypedBatchEnrichmentReader typedBatchEnrichmentReader)
+        {
+            var batch = await typedBatchEnrichmentReader.ResolveAsync(
+                coaIds,
+                opregIds,
+                catalogBatch,
+                documentBatch,
+                ct);
+            coaLabels = batch.AccountLabels;
+            opregLabels = batch.OperationalRegisterLabels;
+            catalogLabelsByType = batch.CatalogLabelsByType;
+            documentLabels = batch.DocumentLabels;
+        }
+        else if (batchEnrichmentReader is not null)
         {
             var batch = await batchEnrichmentReader.ResolveAsync(
                 coaIds,
@@ -396,7 +455,7 @@ public sealed class ReferencePayloadEnricher(
         HashSet<Guid> coaIds,
         HashSet<Guid> opregIds,
         IDictionary<string, HashSet<Guid>> catalogTypeToIds,
-        ISet<Guid> documentIds)
+        IDictionary<string, HashSet<Guid>> documentTypeToIds)
     {
         if (values is null || values.Count == 0 || fields.Count == 0)
             return;
@@ -428,7 +487,13 @@ public sealed class ReferencePayloadEnricher(
 
                     break;
                 case RefKind.Document:
-                    documentIds.Add(id);
+                    foreach (var typeCode in field.Source.TypeCodes!)
+                    {
+                        if (!documentTypeToIds.TryGetValue(typeCode, out var set))
+                            documentTypeToIds[typeCode] = set = [];
+
+                        set.Add(id);
+                    }
                     break;
             }
         }

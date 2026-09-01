@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Balances;
@@ -16,6 +17,10 @@ using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.Documents.Storage;
 using NGB.Persistence.Documents;
+using NGB.Persistence.Documents.GeneralJournalEntry;
+using NGB.Persistence.Locks;
+using NGB.Persistence.OperationalRegisters;
+using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.Admin;
 using NGB.Runtime.AuditLog;
@@ -250,7 +255,14 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IGeneralJournalEntryDocumentService, GeneralJournalEntryDocumentService>();
         services.TryAddScoped<IGeneralJournalEntryFacade, GeneralJournalEntryFacade>();
         services.TryAddScoped<IGeneralJournalEntryUiService, GeneralJournalEntryUiService>();
-        services.TryAddScoped<IGeneralJournalEntrySystemReversalRunner, GeneralJournalEntrySystemReversalRunner>();
+        services.TryAddSingleton<IGeneralJournalEntrySystemReversalBatchProcessor, GeneralJournalEntrySystemReversalBatchProcessor>();
+        services.TryAddScoped<GeneralJournalEntrySystemReversalRunner>(sp => new GeneralJournalEntrySystemReversalRunner(
+            sp.GetRequiredService<IGeneralJournalEntryRepository>(),
+            sp.GetRequiredService<IGeneralJournalEntryDocumentService>(),
+            sp.GetRequiredService<ILogger<GeneralJournalEntrySystemReversalRunner>>(),
+            sp.GetRequiredService<IGeneralJournalEntrySystemReversalBatchProcessor>()));
+        services.TryAddScoped<IGeneralJournalEntrySystemReversalRunner>(sp =>
+            sp.GetRequiredService<GeneralJournalEntrySystemReversalRunner>());
 
         // Periods
         services.TryAddScoped<IPeriodClosingService, PeriodClosingService>();
@@ -265,7 +277,21 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IOperationalRegisterFinalizationService, OperationalRegisterFinalizationService>();
         services.TryAddScoped<IOperationalRegisterMovementsApplier, OperationalRegisterMovementsApplier>();
         services.TryAddScoped<IOperationalRegisterDefaultMonthProjector, DefaultOperationalRegisterMonthProjector>();
-        services.TryAddScoped<IOperationalRegisterFinalizationRunner, OperationalRegisterFinalizationRunner>();
+        services.TryAddSingleton<IOperationalRegisterFinalizationPartitionProcessorFactory, OperationalRegisterFinalizationPartitionProcessorFactory>();
+        services.TryAddScoped<OperationalRegisterFinalizationRunner>(sp => new OperationalRegisterFinalizationRunner(
+            sp.GetRequiredService<IUnitOfWork>(),
+            sp.GetRequiredService<IAdvisoryLockManager>(),
+            sp.GetRequiredService<IOperationalRegisterRepository>(),
+            sp.GetRequiredService<IOperationalRegisterFinalizationRepository>(),
+            sp.GetRequiredService<IOperationalRegisterMovementsReader>(),
+            sp.GetServices<IOperationalRegisterMonthProjector>(),
+            sp.GetServices<IOperationalRegisterDefaultMonthProjector>(),
+            sp.GetServices<IOperationalRegisterMonthFinalizer>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<OperationalRegisterFinalizationRunner>>(),
+            sp.GetRequiredService<IOperationalRegisterFinalizationPartitionProcessorFactory>()));
+        services.TryAddScoped<IOperationalRegisterFinalizationRunner>(sp =>
+            sp.GetRequiredService<OperationalRegisterFinalizationRunner>());
         
         // Operational Registers read-side (UI/report facade)
         services.TryAddScoped<IOperationalRegisterReadService, OperationalRegisterReadService>();

@@ -15,6 +15,11 @@ public sealed class PlatformHangfireOptions
     /// </summary>
     public bool PrepareSchemaIfNecessary { get; set; } = true;
 
+    /// <summary>
+    /// PostgreSQL schema used by Hangfire storage and batched health inspection.
+    /// </summary>
+    public string SchemaName { get; set; } = "hangfire";
+
     public int WorkerCount { get; set; } = Math.Max(1, Environment.ProcessorCount);
 
     public string[] Queues { get; set; } = ["default"];

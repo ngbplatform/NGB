@@ -14,7 +14,11 @@ internal static class QueryParsing
             : Math.Min(requestedLimit, PagingLimits.MaxPageSize);
         var search = query.TryGetValue("search", out var s) ? s.ToString() : null;
         var cursor = query.TryGetValue("cursor", out var c) ? c.ToString() : null;
-        var includeTotal = TryGetBool(query, "includeTotal") ?? true;
+        // Exact totals often require a second COUNT query (or a full window scan).
+        // HTTP clients must opt in when they actually render the total; cursor/infinite
+        // scrolling remains count-free by default. Programmatic PageRequestDto callers
+        // retain their existing default for backward compatibility.
+        var includeTotal = TryGetBool(query, "includeTotal") ?? false;
 
         var filters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var kv in query)

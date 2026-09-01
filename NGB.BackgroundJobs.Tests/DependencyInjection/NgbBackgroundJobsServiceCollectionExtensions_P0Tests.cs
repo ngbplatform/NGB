@@ -43,6 +43,21 @@ public sealed class NgbBackgroundJobsServiceCollectionExtensions_P0Tests
     }
 
     [Fact]
+    public void AddNgbBackgroundJobsHangfire_WhenSchemaNameIsUnsafe_ThrowsConfigurationViolation()
+    {
+        var services = new ServiceCollection();
+
+        var act = () => services.AddPlatformBackgroundJobsHangfire(o =>
+        {
+            o.ConnectionString = "Host=unused";
+            o.SchemaName = "hangfire;drop schema public";
+        });
+
+        act.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*SchemaName must be a valid SQL identifier*");
+    }
+
+    [Fact]
     public void AddNgbBackgroundJobsHangfire_Registers_Defaults_And_AllPlatformJobs()
     {
         var services = new ServiceCollection();

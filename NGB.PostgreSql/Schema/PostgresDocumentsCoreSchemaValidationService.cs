@@ -68,11 +68,11 @@ public sealed class PostgresDocumentsCoreSchemaValidationService(
         // Guards and constraint names (defense in depth)
         await uow.EnsureConnectionOpenAsync(ct);
 
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_enforce_document_relationships_draft_from_document", errors, ct);
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_compute_document_relationship_id", errors, ct);
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_sync_mirrored_document_relationship", errors, ct);
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_install_mirrored_document_relationship_trigger", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_document_relationships_draft_guard", "document_relationships", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_enforce_document_relationships_draft_from_document", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_compute_document_relationship_id", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_sync_mirrored_document_relationship", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_install_mirrored_document_relationship_trigger", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_document_relationships_draft_guard", "document_relationships", errors, ct);
 
         var expectedMirroredBindings = PostgresMirroredDocumentRelationshipBindings.EnumerateExpected(documentTypes);
         var existingMirroredBindings = await PostgresMirroredDocumentRelationshipBindings.LoadExistingBindingsAsync(
@@ -90,15 +90,15 @@ public sealed class PostgresDocumentsCoreSchemaValidationService(
         }
 
         // Check constraints (names are part of the contract)
-        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, "ck_document_relationships_code_trimmed", "document_relationships", errors, ct);
-        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, "ck_document_relationships_code_nonempty", "document_relationships", errors, ct);
-        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, "ck_document_relationships_code_len", "document_relationships", errors, ct);
-        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, "ck_document_relationships_not_self", "document_relationships", errors, ct);
+        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, snapshot, "ck_document_relationships_code_trimmed", "document_relationships", errors, ct);
+        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, snapshot, "ck_document_relationships_code_nonempty", "document_relationships", errors, ct);
+        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, snapshot, "ck_document_relationships_code_len", "document_relationships", errors, ct);
+        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, snapshot, "ck_document_relationships_not_self", "document_relationships", errors, ct);
 
         // Uniqueness + FK constraint names (helps detect drift where a differently named constraint exists)
-        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, "ux_document_relationships_triplet", "document_relationships", errors, ct);
-        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, "fk_document_relationships_from_document", "document_relationships", errors, ct);
-        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, "fk_document_relationships_to_document", "document_relationships", errors, ct);
+        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, snapshot, "ux_document_relationships_triplet", "document_relationships", errors, ct);
+        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, snapshot, "fk_document_relationships_from_document", "document_relationships", errors, ct);
+        await PostgresSchemaValidationChecks.RequireConstraintAsync(uow, snapshot, "fk_document_relationships_to_document", "document_relationships", errors, ct);
 
         if (errors.Count > 0)
         {

@@ -17,7 +17,7 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     : IntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task Bootstrapper_RemovesLegacyRedundantFinalizationsIndex_AndSchemaRemainsValid()
+    public async Task Bootstrapper_ReplacesLegacyFinalizationsIndex_WithQueueIndexes_AndSchemaRemainsValid()
     {
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
@@ -27,6 +27,8 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
 
         await MigrationSet.ApplyPlatformMigrationsAsync(Fixture.ConnectionString);
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_opreg_finalizations_register_period")).Should().BeFalse();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_opreg_finalizations_dirty_queue")).Should().BeTrue();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_opreg_finalizations_blocked_queue")).Should().BeTrue();
 
         await using (var scope = host.Services.CreateAsyncScope())
         {

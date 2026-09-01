@@ -15,6 +15,7 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
     private readonly Lock _orderSync = new();
     private readonly LinkedList<string> _insertionOrder = [];
     private readonly Dictionary<string, LinkedListNode<string>> _orderNodes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _keysByUserId = new(StringComparer.Ordinal);
     private long _nextVersion;
 
     internal int InsertionMetadataCount
@@ -52,14 +53,22 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
 
     public void InvalidateUser(string userId, string? email = null)
     {
-        Remove(IdKey(userId));
-        if (!string.IsNullOrWhiteSpace(email))
-            Remove(EmailKey(email));
-
-        foreach (var (key, entry) in _entries)
+        var normalizedUserId = NormalizeUserId(userId);
+        lock (_orderSync)
         {
-            if (entry.User is { } user && string.Equals(user.UserId, userId, StringComparison.Ordinal))
-                Remove(key, entry.Version);
+            var keys = _keysByUserId.TryGetValue(normalizedUserId, out var aliases)
+                ? aliases.ToArray()
+                : [];
+
+            foreach (var key in keys)
+            {
+                RemoveLocked(key);
+            }
+
+            // Negative id/email entries are not present in the reverse alias index.
+            RemoveLocked(IdKey(normalizedUserId));
+            if (!string.IsNullOrWhiteSpace(email))
+                RemoveLocked(EmailKey(email));
         }
     }
 
@@ -135,7 +144,11 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
 
         lock (_orderSync)
         {
+            if (_entries.TryGetValue(key, out var previous))
+                UnlinkUserAlias(key, previous.User);
+
             _entries[key] = entry;
+            LinkUserAlias(key, user);
 
             if (_orderNodes.Remove(key, out var existingNode))
                 _insertionOrder.Remove(existingNode);
@@ -148,7 +161,9 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
                 var oldestKey = oldestNode.Value;
                 _insertionOrder.RemoveFirst();
                 _orderNodes.Remove(oldestKey);
-                _entries.TryRemove(oldestKey, out _);
+
+                if (_entries.TryRemove(oldestKey, out var removed))
+                    UnlinkUserAlias(oldestKey, removed.User);
             }
         }
     }
@@ -160,13 +175,54 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
             if (!_entries.TryGetValue(key, out var entry) || (expectedVersion.HasValue && entry.Version != expectedVersion.Value))
                 return;
 
-            _entries.TryRemove(new KeyValuePair<string, CacheEntry>(key, entry));
-            if (_orderNodes.Remove(key, out var node))
-                _insertionOrder.Remove(node);
+            RemoveLocked(key, entry);
         }
     }
 
+    private void RemoveLocked(string key, CacheEntry? knownEntry = null)
+    {
+        var entry = knownEntry;
+        if (entry is null && !_entries.TryGetValue(key, out entry))
+            return;
+
+        if (!_entries.TryRemove(new KeyValuePair<string, CacheEntry>(key, entry)))
+            return;
+
+        if (_orderNodes.Remove(key, out var node))
+            _insertionOrder.Remove(node);
+
+        UnlinkUserAlias(key, entry.User);
+    }
+
+    private void LinkUserAlias(string key, IdentityProviderUserDto? user)
+    {
+        if (user is null)
+            return;
+
+        var userId = NormalizeUserId(user.UserId);
+        if (!_keysByUserId.TryGetValue(userId, out var aliases))
+            _keysByUserId[userId] = aliases = new HashSet<string>(StringComparer.Ordinal);
+
+        aliases.Add(key);
+    }
+
+    private void UnlinkUserAlias(string key, IdentityProviderUserDto? user)
+    {
+        if (user is null)
+            return;
+
+        var userId = NormalizeUserId(user.UserId);
+        if (!_keysByUserId.TryGetValue(userId, out var aliases))
+            return;
+
+        aliases.Remove(key);
+        if (aliases.Count == 0)
+            _keysByUserId.Remove(userId);
+    }
+
     private static string IdKey(string userId) => $"id:{userId.Trim()}";
+
+    private static string NormalizeUserId(string userId) => userId.Trim();
 
     private static string EmailKey(string email) => $"email:{email.Trim().ToLowerInvariant()}";
 

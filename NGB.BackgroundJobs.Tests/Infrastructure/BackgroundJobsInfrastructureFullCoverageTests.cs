@@ -6,11 +6,14 @@ using Hangfire.Storage;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 using NGB.BackgroundJobs.Catalog;
 using NGB.BackgroundJobs.Contracts;
+using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.Infrastructure;
 using NGB.BackgroundJobs.Observability;
+using NGB.Tools.Exceptions;
 
 namespace NGB.BackgroundJobs.Tests.Infrastructure;
 
@@ -65,6 +68,32 @@ public sealed class BackgroundJobsInfrastructureFullCoverageTests
         invalid.LastExecutionUtc.Should().BeNull();
         invalid.NextExecutionUtc.Should().BeNull();
         connection.Verify(x => x.Dispose(), Times.Once);
+    }
+
+    [Fact]
+    public async Task RecurringStateReader_UsesSingleBatchReaderAndPostgresReaderValidatesSchema()
+    {
+        var hashes = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal)
+        {
+            ["job"] = new Dictionary<string, string> { ["Cron"] = "0 1 * * *" }
+        };
+        var batch = new StubHashBatchReader(hashes);
+        var storage = new Mock<JobStorage>(MockBehavior.Strict);
+        var sut = new HangfireRecurringJobStateReader(storage.Object, batch);
+
+        var states = await sut.GetManyAsync(["missing", "job", "job"], default);
+
+        states.Should().ContainSingle().Which.Value.Cron.Should().Be("0 1 * * *");
+        batch.Calls.Should().ContainSingle().Which.Should().Equal("missing", "job");
+
+        var invalid = new PostgresRecurringJobHashBatchReader(Options.Create(new PlatformHangfireOptions
+        {
+            ConnectionString = "Host=unused",
+            SchemaName = "not-valid!"
+        }));
+        (await invalid.GetManyAsync([], default)).Should().BeEmpty();
+        var invalidSchema = () => invalid.GetManyAsync(["job"], default);
+        await invalidSchema.Should().ThrowAsync<NgbConfigurationViolationException>();
     }
 
     [Fact]
@@ -129,6 +158,21 @@ public sealed class BackgroundJobsInfrastructureFullCoverageTests
                 states
                     .Where(pair => pair.Value is not null && jobIds.Contains(pair.Key, StringComparer.Ordinal))
                     .ToDictionary(pair => pair.Key, pair => pair.Value!, StringComparer.Ordinal));
+        }
+    }
+
+    private sealed class StubHashBatchReader(IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> hashes)
+        : IRecurringJobHashBatchReader
+    {
+        public List<IReadOnlyCollection<string>> Calls { get; } = [];
+
+        public Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> GetManyAsync(
+            IReadOnlyCollection<string> jobIds,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            Calls.Add(jobIds.ToArray());
+            return Task.FromResult(hashes);
         }
     }
 }

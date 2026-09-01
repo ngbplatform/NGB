@@ -262,7 +262,9 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IReportVariantRepository, PostgresReportVariantRepository>();
         
         // Schema
-        services.TryAddScoped<IDbSchemaInspector, PostgresSchemaInspector>();
+        services.TryAddScoped<PostgresSchemaInspector>();
+        services.TryAddScoped<IDbSchemaInspector>(sp => sp.GetRequiredService<PostgresSchemaInspector>());
+        services.TryAddScoped<IDbSchemaSnapshotScopeFactory>(sp => sp.GetRequiredService<PostgresSchemaInspector>());
         services.TryAddScoped<IDbTypeMapper, PostgresDbTypeMapper>();
         services.TryAddScoped<IAccountingCoreSchemaValidationService, PostgresAccountingCoreSchemaValidationService>();
         services.TryAddScoped<IOperationalRegistersCoreSchemaValidationService, PostgresOperationalRegistersCoreSchemaValidationService>();

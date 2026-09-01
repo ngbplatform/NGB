@@ -166,6 +166,42 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
     }
 
     [Fact]
+    public async Task Runner_FinalizeDirty_ProcessesRegistersInIndependentOrderedPartitions()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var january = new DateOnly(2026, 1, 1);
+        var february = january.AddMonths(1);
+        var finalizations = new Mock<IOperationalRegisterFinalizationRepository>(MockBehavior.Strict);
+        finalizations.Setup(x => x.GetDirtyAcrossAllAsync(4, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                Finalization(firstId, february, OperationalRegisterFinalizationStatus.Dirty),
+                Finalization(secondId, january, OperationalRegisterFinalizationStatus.Dirty),
+                Finalization(firstId, january, OperationalRegisterFinalizationStatus.Dirty)
+            ]);
+        var registers = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
+        registers.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2 && ids.Contains(firstId) && ids.Contains(secondId)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Register(firstId, "first"), Register(secondId, "second")]);
+        var factory = new RecordingPartitionProcessorFactory();
+
+        var sut = Runner(
+            registers: registers,
+            finalizations: finalizations,
+            partitionProcessorFactory: factory);
+
+        (await sut.FinalizeDirtyAsync(4)).Should().Be(3);
+        factory.Calls.Should().HaveCount(2);
+        factory.Calls.Any(call =>
+            call.Register is not null && call.Register.RegisterId == firstId &&
+            call.Items.Select(item => item.Period).SequenceEqual(new[] { january, february })).Should().BeTrue();
+        factory.Calls.Any(call =>
+            call.Register is not null && call.Register.RegisterId == secondId &&
+            call.Items.Select(item => item.Period).SequenceEqual(new[] { january })).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Runner_NullStaleRowDefaultProjectorAndExternalTransactionCoverAlternatePaths()
     {
         var registerId = Guid.NewGuid();
@@ -280,7 +316,8 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
         IOperationalRegisterMovementsReader? movements = null,
         IReadOnlyList<IOperationalRegisterMonthProjector>? projectors = null,
         IReadOnlyList<IOperationalRegisterDefaultMonthProjector>? defaults = null,
-        IReadOnlyList<IOperationalRegisterMonthFinalizer>? legacy = null)
+        IReadOnlyList<IOperationalRegisterMonthFinalizer>? legacy = null,
+        IOperationalRegisterFinalizationPartitionProcessorFactory? partitionProcessorFactory = null)
         => new(
             (uow ?? new Mock<IUnitOfWork>(MockBehavior.Loose)).Object,
             (locks ?? new Mock<IAdvisoryLockManager>(MockBehavior.Loose)).Object,
@@ -288,7 +325,8 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
             (finalizations ?? new Mock<IOperationalRegisterFinalizationRepository>(MockBehavior.Loose)).Object,
             movements ?? new Mock<IOperationalRegisterMovementsReader>(MockBehavior.Loose).Object,
             projectors ?? [], defaults ?? [], legacy ?? [],
-            new FixedTimeProvider(Now), NullLogger<OperationalRegisterFinalizationRunner>.Instance);
+            new FixedTimeProvider(Now), NullLogger<OperationalRegisterFinalizationRunner>.Instance,
+            partitionProcessorFactory);
 
     private static Mock<IOperationalRegisterMonthProjector> Projector(string code)
     {
@@ -305,6 +343,24 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
         var mock = new Mock<IOperationalRegisterMonthFinalizer>(MockBehavior.Loose);
         mock.SetupGet(x => x.RegisterCodeNorm).Returns(code);
         return mock;
+    }
+
+    private sealed class RecordingPartitionProcessorFactory
+        : IOperationalRegisterFinalizationPartitionProcessorFactory
+    {
+        public System.Collections.Concurrent.ConcurrentBag<(
+            OperationalRegisterAdminItem? Register,
+            IReadOnlyList<OperationalRegisterFinalization> Items)> Calls { get; } = [];
+
+        public Task<int> ProcessAsync(
+            OperationalRegisterAdminItem? register,
+            IReadOnlyList<OperationalRegisterFinalization> items,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            Calls.Add((register, items));
+            return Task.FromResult(items.Count);
+        }
     }
 
     private static Mock<IOperationalRegisterFinalizationRepository> DirtyRepository(Guid registerId, DateOnly period)

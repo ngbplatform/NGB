@@ -10,9 +10,32 @@ namespace NGB.PostgreSql.Schema;
 /// Loads the schema in bulk (few round-trips) and returns an in-memory snapshot.
 /// Requires an open connection (transaction is optional).
 /// </summary>
-public sealed class PostgresSchemaInspector(IUnitOfWork uow) : IDbSchemaInspector
+public sealed class PostgresSchemaInspector(IUnitOfWork uow) : IDbSchemaInspector, IDbSchemaSnapshotScopeFactory
 {
-    public async Task<DbSchemaSnapshot> GetSnapshotAsync(CancellationToken ct = default)
+    private readonly SemaphoreSlim _snapshotScopeGate = new(1, 1);
+    private DbSchemaSnapshot? _scopedSnapshot;
+
+    public Task<DbSchemaSnapshot> GetSnapshotAsync(CancellationToken ct = default)
+        => Volatile.Read(ref _scopedSnapshot) is { } snapshot
+            ? Task.FromResult(snapshot)
+            : LoadSnapshotAsync(ct);
+
+    public async ValueTask<IAsyncDisposable> BeginSnapshotScopeAsync(CancellationToken ct = default)
+    {
+        await _snapshotScopeGate.WaitAsync(ct);
+        try
+        {
+            _scopedSnapshot = await LoadSnapshotAsync(ct);
+            return new SnapshotScope(this);
+        }
+        catch
+        {
+            _snapshotScopeGate.Release();
+            throw;
+        }
+    }
+
+    private async Task<DbSchemaSnapshot> LoadSnapshotAsync(CancellationToken ct)
     {
         await uow.EnsureConnectionOpenAsync(ct);
         
@@ -69,9 +92,35 @@ public sealed class PostgresSchemaInspector(IUnitOfWork uow) : IDbSchemaInspecto
                               GROUP BY t.relname, i.relname, ix.indisunique;
                               """;
 
+        const string functionsSql = """
+                                    SELECT DISTINCT p.proname
+                                    FROM pg_proc p
+                                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                                    WHERE n.nspname = 'public';
+                                    """;
+
+        const string triggersSql = """
+                                   SELECT t.tgname AS "TriggerName",
+                                          cl.relname AS "TableName"
+                                   FROM pg_trigger t
+                                   JOIN pg_class cl ON cl.oid = t.tgrelid
+                                   JOIN pg_namespace ns ON ns.oid = cl.relnamespace
+                                   WHERE ns.nspname = 'public'
+                                     AND NOT t.tgisinternal;
+                                   """;
+
+        const string constraintsSql = """
+                                      SELECT c.conname AS "ConstraintName",
+                                             t.relname AS "TableName"
+                                      FROM pg_constraint c
+                                      JOIN pg_class t ON t.oid = c.conrelid
+                                      JOIN pg_namespace n ON n.oid = t.relnamespace
+                                      WHERE n.nspname = 'public';
+                                      """;
+
         // All catalog reads describe one logical snapshot. Sending them as one command avoids
         // four network round-trips and keeps the inspector cheap enough for startup/health paths.
-        var snapshotSql = $"{tablesSql}\n{colsSql}\n{fksSql}\n{idxSql}";
+        var snapshotSql = $"{tablesSql}\n{colsSql}\n{fksSql}\n{idxSql}\n{functionsSql}\n{triggersSql}\n{constraintsSql}";
         await using var grid = await uow.Connection.QueryMultipleAsync(
             new CommandDefinition(
                 snapshotSql,
@@ -82,6 +131,9 @@ public sealed class PostgresSchemaInspector(IUnitOfWork uow) : IDbSchemaInspecto
         var cols = (await grid.ReadAsync<DbColumnSchema>()).ToList();
         var fks = (await grid.ReadAsync<DbForeignKeySchema>()).ToList();
         var idxRaw = await grid.ReadAsync<dynamic>();
+        var functions = (await grid.ReadAsync<string>()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var triggers = (await grid.ReadAsync<DbTriggerSchema>()).ToList();
+        var constraints = (await grid.ReadAsync<DbConstraintSchema>()).ToList();
 
         var idx = new List<DbIndexSchema>();
         foreach (var row in idxRaw)
@@ -109,6 +161,26 @@ public sealed class PostgresSchemaInspector(IUnitOfWork uow) : IDbSchemaInspecto
             Tables: tables,
             ColumnsByTable: colsByTable,
             ForeignKeysByTable: fksByTable,
-            IndexesByTable: idxByTable);
+            IndexesByTable: idxByTable)
+        {
+            DatabaseObjects = new DbSchemaObjectSnapshot(functions, triggers, constraints)
+        };
+    }
+
+    private void EndSnapshotScope()
+    {
+        Volatile.Write(ref _scopedSnapshot, null);
+        _snapshotScopeGate.Release();
+    }
+
+    private sealed class SnapshotScope(PostgresSchemaInspector owner) : IAsyncDisposable
+    {
+        private PostgresSchemaInspector? _currentOwner = owner;
+
+        public ValueTask DisposeAsync()
+        {
+            Interlocked.Exchange(ref _currentOwner, null)?.EndSnapshotScope();
+            return ValueTask.CompletedTask;
+        }
     }
 }

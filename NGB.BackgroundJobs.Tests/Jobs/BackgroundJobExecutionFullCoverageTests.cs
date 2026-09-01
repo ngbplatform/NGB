@@ -165,16 +165,24 @@ public sealed class BackgroundJobExecutionFullCoverageTests
         documents.Setup(x => x.ValidateAllAsync(It.IsAny<CancellationToken>()))
             .Callback(() => calls.Add("documents"))
             .Returns(Task.CompletedTask);
+        var snapshotScope = new Mock<IAsyncDisposable>(MockBehavior.Strict);
+        snapshotScope.Setup(x => x.DisposeAsync()).Returns(ValueTask.CompletedTask);
+        var snapshotScopeFactory = new Mock<IDbSchemaSnapshotScopeFactory>(MockBehavior.Strict);
+        snapshotScopeFactory.Setup(x => x.BeginSnapshotScopeAsync(It.IsAny<CancellationToken>()))
+            .Returns(new ValueTask<IAsyncDisposable>(snapshotScope.Object));
         var metrics = new JobRunMetrics();
         var sut = new PlatformSchemaValidateJob(
             documentsCore.Object, accountingCore.Object, operationalCore.Object, referenceCore.Object,
-            catalogs.Object, documents.Object, NullLogger<PlatformSchemaValidateJob>.Instance, metrics, Clock);
+            catalogs.Object, documents.Object, NullLogger<PlatformSchemaValidateJob>.Instance, metrics, Clock,
+            snapshotScopeFactory.Object);
 
         await sut.RunAsync(default);
 
         sut.JobId.Should().Be("platform.schema.validate");
         calls.Should().Equal("documents-core", "accounting-core", "operational-core", "reference-core", "catalogs", "documents");
         metrics.Snapshot()["validations"].Should().Be(6);
+        snapshotScopeFactory.VerifyAll();
+        snapshotScope.VerifyAll();
     }
 
     [Theory]

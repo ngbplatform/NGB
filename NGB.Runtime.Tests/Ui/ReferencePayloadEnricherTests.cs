@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Caching.Memory;
 using Moq;
 using NGB.Accounting.Accounts;
 using NGB.Contracts.Common;
@@ -63,14 +64,15 @@ public sealed class ReferencePayloadEnricherTests
                 new DocumentPresentationMetadata("Sale"))
         ]);
 
-        var batchReader = new Mock<IReferencePayloadBatchEnrichmentReader>(MockBehavior.Strict);
+        var batchReader = new Mock<IReferencePayloadTypedBatchEnrichmentReader>(MockBehavior.Strict);
         batchReader
             .Setup(x => x.ResolveAsync(
                 It.Is<IReadOnlyCollection<Guid>>(ids => SameIds(ids, accountId)),
                 It.Is<IReadOnlyCollection<Guid>>(ids => SameIds(ids, registerId)),
                 It.Is<IReadOnlyDictionary<string, IReadOnlyCollection<Guid>>>(batch =>
                     HasCatalogBatch(batch, PartyCatalogCode, partyId)),
-                It.Is<IReadOnlyCollection<Guid>>(ids => SameIds(ids, leaseId)),
+                It.Is<IReadOnlyDictionary<string, IReadOnlyCollection<Guid>>>(batch =>
+                    HasDocumentBatch(batch, LeaseDocumentType, leaseId)),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ReferencePayloadBatchEnrichment(
                 new Dictionary<Guid, string> { [accountId] = "1010 — Cash" },
@@ -543,13 +545,16 @@ public sealed class ReferencePayloadEnricherTests
                 ],
                 new DocumentPresentationMetadata("Filtered"))
         ]);
+        using var planCache = new MemoryCache(new MemoryCacheOptions());
         var sut = new ReferencePayloadEnricher(
             catalogTypes,
             documentTypes,
             Mock.Of<ICatalogEnrichmentReader>(),
             Mock.Of<IDocumentDisplayReader>(),
             Mock.Of<IAccountLookupReader>(),
-            Mock.Of<IOperationalRegisterRepository>());
+            Mock.Of<IOperationalRegisterRepository>(),
+            batchEnrichmentReader: null,
+            planCache: planCache);
         IReadOnlyList<CatalogItemDto> catalogs = [CatalogItem(new RecordPayload())];
         IReadOnlyList<DocumentDto> documents = [DocumentItem(new RecordPayload())];
 
@@ -564,8 +569,21 @@ public sealed class ReferencePayloadEnricherTests
             documents,
             CancellationToken.None);
 
+        var cachedCatalogResult = await sut.EnrichCatalogItemsAsync(
+            new CatalogHeadDescriptor(catalogCode, "cat_filtered", "name", [new("unmapped", ColumnType.String)]),
+            catalogCode,
+            catalogs,
+            CancellationToken.None);
+        var cachedDocumentResult = await sut.EnrichDocumentItemsAsync(
+            new DocumentHeadDescriptor(documentCode, "doc_filtered", "display", [new("unmapped", ColumnType.String)]),
+            documentCode,
+            documents,
+            CancellationToken.None);
+
         catalogResult.Should().BeSameAs(catalogs);
         documentResult.Should().BeSameAs(documents);
+        cachedCatalogResult.Should().BeSameAs(catalogs);
+        cachedDocumentResult.Should().BeSameAs(documents);
     }
 
     [Fact]
@@ -1067,6 +1085,14 @@ public sealed class ReferencePayloadEnricherTests
         params Guid[] expectedIds)
         => batch.Count == 1
            && batch.TryGetValue(catalogCode, out var ids)
+           && SameIds(ids, expectedIds);
+
+    private static bool HasDocumentBatch(
+        IReadOnlyDictionary<string, IReadOnlyCollection<Guid>> batch,
+        string documentType,
+        params Guid[] expectedIds)
+        => batch.Count == 1
+           && batch.TryGetValue(documentType, out var ids)
            && SameIds(ids, expectedIds);
 
     private static bool HasCatalogPairBatch(

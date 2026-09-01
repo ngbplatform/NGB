@@ -18,19 +18,52 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReader(
     IUnitOfWork uow,
     ICatalogTypeRegistry catalogTypes,
     IDocumentTypeRegistry documentTypes)
-    : IReferencePayloadBatchEnrichmentReader
+    : IReferencePayloadTypedBatchEnrichmentReader
 {
     private const short AccountKind = 1;
     private const short OperationalRegisterKind = 2;
     private const short CatalogKind = 3;
     private const short DocumentKind = 4;
 
-    public async Task<ReferencePayloadBatchEnrichment> ResolveAsync(
+    public Task<ReferencePayloadBatchEnrichment> ResolveAsync(
         IReadOnlyCollection<Guid> accountIds,
         IReadOnlyCollection<Guid> operationalRegisterIds,
         IReadOnlyDictionary<string, IReadOnlyCollection<Guid>> catalogIdsByType,
         IReadOnlyCollection<Guid> documentIds,
         CancellationToken ct = default)
+        => ResolveCoreAsync(
+            accountIds,
+            operationalRegisterIds,
+            catalogIdsByType,
+            documentIds,
+            allowedDocumentTypes: null,
+            ct);
+
+    public Task<ReferencePayloadBatchEnrichment> ResolveAsync(
+        IReadOnlyCollection<Guid> accountIds,
+        IReadOnlyCollection<Guid> operationalRegisterIds,
+        IReadOnlyDictionary<string, IReadOnlyCollection<Guid>> catalogIdsByType,
+        IReadOnlyDictionary<string, IReadOnlyCollection<Guid>> documentIdsByType,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIdsByType);
+
+        return ResolveCoreAsync(
+            accountIds,
+            operationalRegisterIds,
+            catalogIdsByType,
+            documentIdsByType.Values.SelectMany(static ids => ids).ToArray(),
+            documentIdsByType.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            ct);
+    }
+
+    private async Task<ReferencePayloadBatchEnrichment> ResolveCoreAsync(
+        IReadOnlyCollection<Guid> accountIds,
+        IReadOnlyCollection<Guid> operationalRegisterIds,
+        IReadOnlyDictionary<string, IReadOnlyCollection<Guid>> catalogIdsByType,
+        IReadOnlyCollection<Guid> documentIds,
+        IReadOnlySet<string>? allowedDocumentTypes,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(accountIds);
         ArgumentNullException.ThrowIfNull(operationalRegisterIds);
@@ -136,6 +169,9 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReader(
             var typedIndex = 0;
             foreach (var metadata in documentTypes.GetAll())
             {
+                if (allowedDocumentTypes is not null && !allowedDocumentTypes.Contains(metadata.TypeCode))
+                    continue;
+
                 var head = metadata.Tables.FirstOrDefault(table => table.Kind == TableKind.Head);
                 var displayColumn = head?.Columns
                     .FirstOrDefault(column => string.Equals(column.ColumnName, "display", StringComparison.OrdinalIgnoreCase))
