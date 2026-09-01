@@ -52,4 +52,39 @@ public sealed class AsyncCachePrimitivesTests
         cache.Remove("fourth");
         cache.Count.Should().Be(0);
     }
+
+    [Fact]
+    public void Bounded_cache_purges_out_of_order_expirations_and_ignores_stale_replacement_tokens()
+    {
+        var now = new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero);
+        var cache = new BoundedExpiringCache<string, int>(3, StringComparer.OrdinalIgnoreCase);
+
+        cache.Set("long", 1, now.AddMinutes(10), now);
+        cache.Set("short", 2, now.AddMinutes(1), now);
+        cache.Set("replaced", 3, now.AddMinutes(1), now);
+        cache.Set("REPLACED", 4, now.AddMinutes(10), now);
+
+        cache.Set("trigger", 5, now.AddMinutes(10), now.AddMinutes(2));
+
+        cache.TryGet("short", now.AddMinutes(2), out _).Should().BeFalse();
+        cache.TryGet("replaced", now.AddMinutes(2), out var replacement).Should().BeTrue();
+        replacement.Should().Be(4);
+        cache.Count.Should().Be(3);
+
+        ((Action)(() => cache.RemoveWhere(null!))).Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void Bounded_cache_compacts_stale_expiration_metadata_without_changing_the_latest_value()
+    {
+        var now = new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero);
+        var cache = new BoundedExpiringCache<string, int>(2);
+
+        for (var value = 0; value < 100; value++)
+            cache.Set("same", value, now.AddMinutes(value + 1), now);
+
+        cache.TryGet("same", now, out var latest).Should().BeTrue();
+        latest.Should().Be(99);
+        cache.Count.Should().Be(1);
+    }
 }

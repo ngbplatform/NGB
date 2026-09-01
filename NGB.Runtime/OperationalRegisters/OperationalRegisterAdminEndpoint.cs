@@ -1,5 +1,6 @@
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
+using NGB.OperationalRegisters.Contracts;
 
 namespace NGB.Runtime.OperationalRegisters;
 
@@ -87,12 +88,11 @@ public sealed class OperationalRegisterAdminEndpoint(
 
     public async Task<IReadOnlyList<OperationalRegisterAdminEndpointContracts.FinalizationDto>> GetDirtyFinalizationsByIdAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
     {
         registerId.EnsureRequired(nameof(registerId));
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        EnsureReadLimit(limit);
 
         var list = await readService.GetDirtyFinalizationsAsync(registerId, limit, ct);
         if (list.Count == 0)
@@ -103,12 +103,11 @@ public sealed class OperationalRegisterAdminEndpoint(
 
     public async Task<IReadOnlyList<OperationalRegisterAdminEndpointContracts.FinalizationDto>> GetBlockedFinalizationsByIdAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
     {
         registerId.EnsureRequired(nameof(registerId));
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        EnsureReadLimit(limit);
 
         var list = await readService.GetBlockedFinalizationsAsync(registerId, limit, ct);
         if (list.Count == 0)
@@ -118,11 +117,10 @@ public sealed class OperationalRegisterAdminEndpoint(
     }
 
     public async Task<IReadOnlyList<OperationalRegisterAdminEndpointContracts.FinalizationDto>> GetDirtyFinalizationsAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
     {
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        EnsureReadLimit(limit);
 
         var list = await readService.GetDirtyFinalizationsAcrossAllAsync(limit, ct);
         if (list.Count == 0)
@@ -132,11 +130,10 @@ public sealed class OperationalRegisterAdminEndpoint(
     }
 
     public async Task<IReadOnlyList<OperationalRegisterAdminEndpointContracts.FinalizationDto>> GetBlockedFinalizationsAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
     {
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        EnsureReadLimit(limit);
 
         var list = await readService.GetBlockedFinalizationsAcrossAllAsync(limit, ct);
         if (list.Count == 0)
@@ -153,20 +150,45 @@ public sealed class OperationalRegisterAdminEndpoint(
         await maintenanceService.MarkFinalizationDirtyAsync(registerId, periodMonth, ct);
     }
 
-    public Task<int> FinalizeDirtyAsync(int maxItems = 50, CancellationToken ct = default)
+    public Task<int> FinalizeDirtyAsync(
+        int maxItems = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default)
     {
-        if (maxItems <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(maxItems), maxItems, "MaxItems must be positive.");
+        EnsureProcessingBatchSize(maxItems, nameof(maxItems));
 
         return maintenanceService.FinalizeDirtyAsync(maxItems, ct);
     }
 
-    public Task<int> FinalizeRegisterDirtyAsync(Guid registerId, int maxPeriods = 50, CancellationToken ct = default)
+    public Task<int> FinalizeRegisterDirtyAsync(
+        Guid registerId,
+        int maxPeriods = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default)
     {
         registerId.EnsureRequired(nameof(registerId));
-        if (maxPeriods <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(maxPeriods), maxPeriods, "MaxPeriods must be positive.");
+        EnsureProcessingBatchSize(maxPeriods, nameof(maxPeriods));
 
         return maintenanceService.FinalizeRegisterDirtyAsync(registerId, maxPeriods, ct);
+    }
+
+    private static void EnsureReadLimit(int limit)
+    {
+        if (limit is < 1 or > OperationalRegisterFinalizationLimits.MaxReadPageSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(limit),
+                limit,
+                $"Limit must be between 1 and {OperationalRegisterFinalizationLimits.MaxReadPageSize}.");
+        }
+    }
+
+    private static void EnsureProcessingBatchSize(int value, string paramName)
+    {
+        if (value is < 1 or > OperationalRegisterFinalizationLimits.MaxProcessingBatchSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                paramName,
+                value,
+                $"Value must be between 1 and {OperationalRegisterFinalizationLimits.MaxProcessingBatchSize}.");
+        }
     }
 }

@@ -1,3 +1,5 @@
+using NGB.OperationalRegisters.Contracts;
+
 namespace NGB.Runtime.OperationalRegisters;
 
 /// <summary>
@@ -10,7 +12,7 @@ public interface IOperationalRegisterFinalizationRunner
     /// Returns the number of months finalized.
     /// </summary>
     Task<int> FinalizeDirtyAsync(
-        int maxItems = 50,
+        int maxItems = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
         bool manageTransaction = true,
         CancellationToken ct = default);
 
@@ -20,7 +22,7 @@ public interface IOperationalRegisterFinalizationRunner
     /// </summary>
     Task<int> FinalizeRegisterDirtyAsync(
         Guid registerId,
-        int maxPeriods = 50,
+        int maxPeriods = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
         bool manageTransaction = true,
         CancellationToken ct = default);
 }

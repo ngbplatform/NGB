@@ -111,10 +111,16 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
 
         await ((Func<Task>)(() => sut.FinalizeDirtyAsync(0)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => sut.FinalizeDirtyAsync(OperationalRegisterFinalizationLimits.MaxProcessingBatchSize + 1)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         (await sut.FinalizeDirtyAsync()).Should().Be(0);
         await ((Func<Task>)(() => sut.FinalizeRegisterDirtyAsync(Guid.Empty)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => sut.FinalizeRegisterDirtyAsync(Guid.NewGuid(), -1)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => sut.FinalizeRegisterDirtyAsync(
+                Guid.NewGuid(),
+                OperationalRegisterFinalizationLimits.MaxProcessingBatchSize + 1)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         (await sut.FinalizeRegisterDirtyAsync(Guid.NewGuid())).Should().Be(0);
     }

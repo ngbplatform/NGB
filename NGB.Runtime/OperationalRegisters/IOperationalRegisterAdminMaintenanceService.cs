@@ -35,13 +35,18 @@ public interface IOperationalRegisterAdminMaintenanceService
     /// Runs the Operational Register finalization runner on up to <paramref name="maxItems"/> dirty months.
     /// Returns the number of months finalized.
     /// </summary>
-    Task<int> FinalizeDirtyAsync(int maxItems = 50, CancellationToken ct = default);
+    Task<int> FinalizeDirtyAsync(
+        int maxItems = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Runs the Operational Register finalization runner on up to <paramref name="maxPeriods"/> dirty months for a register.
     /// Returns the number of months finalized.
     /// </summary>
-    Task<int> FinalizeRegisterDirtyAsync(Guid registerId, int maxPeriods = 50, CancellationToken ct = default);
+    Task<int> FinalizeRegisterDirtyAsync(
+        Guid registerId,
+        int maxPeriods = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default);
 }
 
 /// <summary>

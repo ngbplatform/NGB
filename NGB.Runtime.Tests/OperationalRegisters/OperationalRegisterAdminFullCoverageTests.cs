@@ -61,15 +61,21 @@ public sealed class OperationalRegisterAdminFullCoverageTests
         await ((Func<Task>)(() => f.Sut.GetFinalizationAsync(id, month.AddDays(1)))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.GetDirtyFinalizationsByIdAsync(Guid.Empty))).Should().ThrowAsync<NgbArgumentRequiredException>();
         await ((Func<Task>)(() => f.Sut.GetDirtyFinalizationsByIdAsync(id, 0))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => f.Sut.GetDirtyFinalizationsByIdAsync(id, OperationalRegisterFinalizationLimits.MaxReadPageSize + 1))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.GetBlockedFinalizationsByIdAsync(Guid.Empty))).Should().ThrowAsync<NgbArgumentRequiredException>();
         await ((Func<Task>)(() => f.Sut.GetBlockedFinalizationsByIdAsync(id, -1))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => f.Sut.GetBlockedFinalizationsByIdAsync(id, OperationalRegisterFinalizationLimits.MaxReadPageSize + 1))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.GetDirtyFinalizationsAcrossAllAsync(0))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => f.Sut.GetDirtyFinalizationsAcrossAllAsync(OperationalRegisterFinalizationLimits.MaxReadPageSize + 1))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.GetBlockedFinalizationsAcrossAllAsync(-1))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => f.Sut.GetBlockedFinalizationsAcrossAllAsync(OperationalRegisterFinalizationLimits.MaxReadPageSize + 1))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.MarkFinalizationDirtyAsync(Guid.Empty, month))).Should().ThrowAsync<NgbArgumentRequiredException>();
         await ((Func<Task>)(() => f.Sut.MarkFinalizationDirtyAsync(id, month.AddDays(1)))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.FinalizeDirtyAsync(0))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => f.Sut.FinalizeDirtyAsync(OperationalRegisterFinalizationLimits.MaxProcessingBatchSize + 1))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => f.Sut.FinalizeRegisterDirtyAsync(Guid.Empty))).Should().ThrowAsync<NgbArgumentRequiredException>();
         await ((Func<Task>)(() => f.Sut.FinalizeRegisterDirtyAsync(id, 0))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => f.Sut.FinalizeRegisterDirtyAsync(id, OperationalRegisterFinalizationLimits.MaxProcessingBatchSize + 1))).Should().ThrowAsync<NgbArgumentOutOfRangeException>();
     }
 
     [Fact]

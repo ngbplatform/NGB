@@ -63,6 +63,26 @@ public sealed class PostgresReportSqlBuilderFullCoverageTests
     }
 
     [Fact]
+    public void Build_keeps_a_shallow_legacy_offset_only_for_datasets_without_stable_cursor_keys()
+    {
+        var sut = Builder();
+        var request = Request(details:
+        [
+            new PostgresReportFieldSelection("name", "name", "Name", "string")
+        ]) with
+        {
+            Paging = new PostgresReportPaging(10, 20)
+        };
+
+        var statement = sut.Build(request);
+
+        statement.Sql.Should().Contain("OFFSET @offset");
+        statement.Parameters.Get<int>("offset").Should().Be(10);
+        statement.Offset.Should().Be(10);
+        statement.CursorColumns.Should().BeEmpty();
+    }
+
+    [Fact]
     public void Build_rejects_unsupported_cursor_and_allows_unpaged_export_to_ignore_interactive_paging()
     {
         var sut = Builder();

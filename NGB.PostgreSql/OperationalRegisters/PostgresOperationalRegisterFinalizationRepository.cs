@@ -259,14 +259,13 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
 
     public async Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
     {
         if (registerId == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(registerId), "RegisterId must not be empty.");
 
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        EnsureReadLimit(limit);
 
         await uow.EnsureConnectionOpenAsync(ct);
 
@@ -305,14 +304,13 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
 
     public async Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
     {
         if (registerId == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(registerId), "RegisterId must not be empty.");
 
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        EnsureReadLimit(limit);
 
         await uow.EnsureConnectionOpenAsync(ct);
 
@@ -350,11 +348,10 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
     }
 
     public async Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
     {
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        EnsureReadLimit(limit);
 
         await uow.EnsureConnectionOpenAsync(ct);
 
@@ -390,11 +387,10 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
     }
 
     public async Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
     {
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        EnsureReadLimit(limit);
 
         await uow.EnsureConnectionOpenAsync(ct);
 
@@ -505,6 +501,17 @@ public sealed class PostgresOperationalRegisterFinalizationRepository(IUnitOfWor
         // The DB has a hard invariant; validate early to avoid hard-to-read Postgres exception.
         if (period.Day != 1)
             throw new NgbArgumentInvalidException(nameof(period), "Period must be a month start (day=1).");
+    }
+
+    private static void EnsureReadLimit(int limit)
+    {
+        if (limit is < 1 or > OperationalRegisterFinalizationLimits.MaxReadPageSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(limit),
+                limit,
+                $"Limit must be between 1 and {OperationalRegisterFinalizationLimits.MaxReadPageSize}.");
+        }
     }
 
     private sealed class Row

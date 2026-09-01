@@ -122,9 +122,14 @@ public sealed class OperationalRegisterAdminMaintenanceService(
         await finalizations.MarkDirtyAsync(registerId, periodMonth, manageTransaction: true, ct);
     }
 
-    public Task<int> FinalizeDirtyAsync(int maxItems = 50, CancellationToken ct = default)
+    public Task<int> FinalizeDirtyAsync(
+        int maxItems = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default)
         => finalizationRunner.FinalizeDirtyAsync(maxItems, manageTransaction: true, ct);
 
-    public Task<int> FinalizeRegisterDirtyAsync(Guid registerId, int maxPeriods = 50, CancellationToken ct = default)
+    public Task<int> FinalizeRegisterDirtyAsync(
+        Guid registerId,
+        int maxPeriods = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default)
         => finalizationRunner.FinalizeRegisterDirtyAsync(registerId, maxPeriods, manageTransaction: true, ct);
 }

@@ -130,6 +130,10 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
             ClientId = string.Empty,
             ClientSecret = string.Empty,
             AdminBatchConcurrency = 8,
+            MaxConcurrentAdminRequests = 16,
+            MaxQueuedAdminRequests = 256,
+            MaxPendingUserLookups = 128,
+            MaxResponseContentBytes = 1_048_576,
             TotalRequestTimeout = TimeSpan.FromSeconds(30),
             AttemptTimeout = TimeSpan.FromSeconds(10),
             UserLookupCacheTtl = TimeSpan.FromMinutes(2),
@@ -138,6 +142,62 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
         });
         provider.GetRequiredService<KeycloakApiClientSettings>().Should().Be(
             new KeycloakApiClientSettings(string.Empty, string.Empty, string.Empty, string.Empty));
+        provider.GetRequiredService<KeycloakAdminRequestGate>().Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData("AdminBatchConcurrency", "0", "batch concurrency")]
+    [InlineData("AdminBatchConcurrency", "33", "batch concurrency")]
+    [InlineData("MaxConcurrentAdminRequests", "0", "concurrent admin requests")]
+    [InlineData("MaxConcurrentAdminRequests", "257", "concurrent admin requests")]
+    [InlineData("MaxQueuedAdminRequests", "-1", "queued admin requests")]
+    [InlineData("MaxQueuedAdminRequests", "10001", "queued admin requests")]
+    [InlineData("MaxPendingUserLookups", "0", "pending user lookups")]
+    [InlineData("MaxPendingUserLookups", "10001", "pending user lookups")]
+    [InlineData("MaxResponseContentBytes", "1023", "response content size")]
+    [InlineData("MaxResponseContentBytes", "16777217", "response content size")]
+    public void Keycloak_admin_client_registration_rejects_unsafe_resource_limits(
+        string setting,
+        string value,
+        string expectedMessage)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"KeycloakAdminClientSettings:{setting}"] = value
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        Action act = () => services.AddKeycloakAdminClient(configuration);
+
+        act.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage($"*{expectedMessage}*");
+    }
+
+    [Theory]
+    [InlineData("AdminBatchConcurrency", "17", "MaxConcurrentAdminRequests", "16", "batch concurrency")]
+    [InlineData("MaxPendingUserLookups", "273", "MaxQueuedAdminRequests", "256", "bulkhead capacity")]
+    public void Keycloak_admin_client_registration_rejects_inconsistent_resource_limits(
+        string firstSetting,
+        string firstValue,
+        string secondSetting,
+        string secondValue,
+        string expectedMessage)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"KeycloakAdminClientSettings:{firstSetting}"] = firstValue,
+                [$"KeycloakAdminClientSettings:{secondSetting}"] = secondValue
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        Action act = () => services.AddKeycloakAdminClient(configuration);
+
+        act.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage($"*{expectedMessage}*");
     }
 
     [Fact]

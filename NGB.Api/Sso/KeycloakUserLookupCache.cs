@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using NGB.Runtime.Security;
 
 namespace NGB.Api.Sso;
@@ -11,7 +12,8 @@ namespace NGB.Api.Sso;
 public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings, TimeProvider timeProvider)
 {
     private readonly ConcurrentDictionary<string, CacheEntry> _entries = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, Task<IdentityProviderUserDto?>> _pending = new(StringComparer.Ordinal);
+    private readonly Lock _pendingSync = new();
+    private readonly Dictionary<string, PendingPopulation> _pending = new(StringComparer.Ordinal);
     private readonly Lock _orderSync = new();
     private readonly LinkedList<string> _insertionOrder = [];
     private readonly Dictionary<string, LinkedListNode<string>> _orderNodes = new(StringComparer.Ordinal);
@@ -24,6 +26,15 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
         {
             lock (_orderSync)
                 return _insertionOrder.Count;
+        }
+    }
+
+    internal int PendingPopulationCount
+    {
+        get
+        {
+            lock (_pendingSync)
+                return _pending.Count;
         }
     }
 
@@ -84,18 +95,51 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
         if (TryGet(key, out var cached))
             return cached;
 
-        var population = _pending.GetOrAdd(key, _ => PopulateAsync(key, factory));
-
-        _ = population.ContinueWith(
-            static (_, state) =>
+        PendingPopulation pending;
+        var ownsPopulation = false;
+        lock (_pendingSync)
+        {
+            if (!_pending.TryGetValue(key, out pending!))
             {
-                var cleanup = ((KeycloakUserLookupCache Cache, string Key, Task<IdentityProviderUserDto?> Task))state!;
-                cleanup.Cache._pending.TryRemove(new KeyValuePair<string, Task<IdentityProviderUserDto?>>(cleanup.Key, cleanup.Task));
-            },
-            (this, key, population),
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
+                if (_pending.Count >= settings.MaxPendingUserLookups)
+                {
+                    throw new KeycloakAdminClientException(
+                        operation: "keycloak.users.lookup",
+                        statusCode: (int)HttpStatusCode.ServiceUnavailable,
+                        context: new Dictionary<string, object?>(StringComparer.Ordinal)
+                        {
+                            ["reason"] = "pending_lookup_capacity_exceeded",
+                            ["maxPendingUserLookups"] = settings.MaxPendingUserLookups
+                        });
+                }
+
+                pending = new PendingPopulation(() => PopulateAsync(key, factory));
+                _pending.Add(key, pending);
+                ownsPopulation = true;
+            }
+        }
+
+        var population = pending.Task.Value;
+        if (ownsPopulation)
+        {
+            _ = population.ContinueWith(
+                static (_, state) =>
+                {
+                    var cleanup = ((KeycloakUserLookupCache Cache, string Key, PendingPopulation Pending))state!;
+                    lock (cleanup.Cache._pendingSync)
+                    {
+                        if (cleanup.Cache._pending.TryGetValue(cleanup.Key, out var current)
+                            && ReferenceEquals(current, cleanup.Pending))
+                        {
+                            cleanup.Cache._pending.Remove(cleanup.Key);
+                        }
+                    }
+                },
+                (this, key, pending),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
 
         return await population.WaitAsync(ct);
     }
@@ -227,4 +271,11 @@ public sealed class KeycloakUserLookupCache(KeycloakAdminClientSettings settings
     private static string EmailKey(string email) => $"email:{email.Trim().ToLowerInvariant()}";
 
     private sealed record CacheEntry(IdentityProviderUserDto? User, DateTimeOffset ExpiresAtUtc, long Version);
+
+    private sealed class PendingPopulation(Func<Task<IdentityProviderUserDto?>> factory)
+    {
+        public Lazy<Task<IdentityProviderUserDto?>> Task { get; } = new(
+            factory,
+            LazyThreadSafetyMode.ExecutionAndPublication);
+    }
 }

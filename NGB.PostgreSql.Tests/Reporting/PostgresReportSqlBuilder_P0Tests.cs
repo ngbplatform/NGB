@@ -57,7 +57,7 @@ public sealed class PostgresReportSqlBuilder_P0Tests
                 ["from_utc"] = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
                 ["to_utc_exclusive"] = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc)
             },
-            Paging: new PostgresReportPaging(10, 25));
+            Paging: new PostgresReportPaging(0, 25));
 
         var statement = sut.Build(request);
 
@@ -68,11 +68,13 @@ public sealed class PostgresReportSqlBuilder_P0Tests
         statement.Sql.Should().Contain("WHERE r.property_id = @p_0");
         statement.Sql.Should().Contain("GROUP BY");
         statement.Sql.Should().Contain("ORDER BY period_utc__month DESC");
-        statement.Sql.Should().Contain("OFFSET @offset");
+        statement.Sql.Should().NotContain("OFFSET @offset");
         statement.Sql.Should().Contain("LIMIT @limit_plus_one");
-        statement.Parameters.ParameterNames.Should().Contain(["p_0", "offset", "limit_plus_one"]);
+        statement.Parameters.ParameterNames.Should().Contain(["p_0", "limit_plus_one"])
+            .And.NotContain("offset");
         statement.Columns.Should().HaveCount(3);
         statement.IsAggregated.Should().BeTrue();
+        statement.CursorColumns.Should().NotBeEmpty();
     }
 
     [Fact]

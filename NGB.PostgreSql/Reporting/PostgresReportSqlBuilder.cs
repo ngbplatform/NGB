@@ -22,8 +22,6 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
-        ValidateCursorlessOffset(request.Paging);
-
         var dataset = _datasets.GetDataset(request.DatasetCodeNorm);
         var selectSql = new List<string>();
         var groupBySql = new List<string>();
@@ -136,6 +134,8 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
             usedAliases,
             orderColumns);
 
+        ValidateCursorlessOffset(request.Paging, cursorColumns.Count > 0);
+
         if (!request.Paging.DisablePaging && !string.IsNullOrWhiteSpace(request.Paging.Cursor) && cursorColumns.Count == 0)
         {
             throw new NgbArgumentInvalidException(
@@ -206,17 +206,27 @@ ORDER BY {orderBySql}
             CursorColumns: cursorColumns);
     }
 
-    private static void ValidateCursorlessOffset(PostgresReportPaging paging)
+    private static void ValidateCursorlessOffset(PostgresReportPaging paging, bool hasStableCursor)
     {
         if (paging.DisablePaging)
             return;
 
-        if (string.IsNullOrWhiteSpace(paging.Cursor) && paging.Offset > MaxCursorlessOffset)
+        if (!string.IsNullOrWhiteSpace(paging.Cursor) || paging.Offset <= 0)
+            return;
+
+        if (hasStableCursor)
+        {
+            throw new NgbArgumentInvalidException(
+                "offset",
+                "This composable dataset uses keyset paging. Request the first page with offset 0 and use nextCursor for subsequent pages.");
+        }
+
+        if (paging.Offset > MaxCursorlessOffset)
         {
             throw new NgbArgumentOutOfRangeException(
                 "offset",
                 paging.Offset,
-                $"Composable report offset must be between 0 and {MaxCursorlessOffset}. Narrow the filters or use a canonical cursor-enabled report for deeper navigation.");
+                $"A dataset without stable cursor keys supports offsets only between 0 and {MaxCursorlessOffset}. Narrow the filters or configure stable cursor key fields.");
         }
     }
 

@@ -76,15 +76,24 @@ public static class DependencyInjection
         ValidateKeycloakClientSettings(settings);
 
         services
-            .AddHttpClient(KeycloakHttpClientNames.Token, static client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .AddHttpClient(KeycloakHttpClientNames.Token, client =>
+            {
+                client.Timeout = Timeout.InfiniteTimeSpan;
+                client.MaxResponseContentBufferSize = settings.MaxResponseContentBytes;
+            })
             .AddStandardResilienceHandler(options => ConfigureKeycloakResilience(options, settings, retryUnsafeMethods: true));
 
         services.TryAddSingleton<TokenCacheService>();
         services.TryAddSingleton<KeycloakUserLookupCache>();
+        services.TryAddSingleton<KeycloakAdminRequestGate>();
 
         services
             .AddHttpClient<IIdentityProviderUserAdminClient, KeycloakAdminClient>(
-                static client => client.Timeout = Timeout.InfiniteTimeSpan)
+                client =>
+                {
+                    client.Timeout = Timeout.InfiniteTimeSpan;
+                    client.MaxResponseContentBufferSize = settings.MaxResponseContentBytes;
+                })
             .AddStandardResilienceHandler(options => ConfigureKeycloakResilience(options, settings, retryUnsafeMethods: false));
 
         return services;
@@ -116,6 +125,27 @@ public static class DependencyInjection
 
         if (settings.MaxCachedUserLookups is < 100 or > 200_000)
             throw new NgbConfigurationViolationException("Keycloak user lookup cache size must be between 100 and 200000.");
+
+        if (settings.AdminBatchConcurrency is < 1 or > 32)
+            throw new NgbConfigurationViolationException("Keycloak admin batch concurrency must be between 1 and 32.");
+
+        if (settings.MaxConcurrentAdminRequests is < 1 or > 256)
+            throw new NgbConfigurationViolationException("Keycloak maximum concurrent admin requests must be between 1 and 256.");
+
+        if (settings.MaxQueuedAdminRequests is < 0 or > 10_000)
+            throw new NgbConfigurationViolationException("Keycloak maximum queued admin requests must be between 0 and 10000.");
+
+        if (settings.MaxPendingUserLookups is < 1 or > 10_000)
+            throw new NgbConfigurationViolationException("Keycloak maximum pending user lookups must be between 1 and 10000.");
+
+        if (settings.MaxResponseContentBytes is < 1_024 or > 16_777_216)
+            throw new NgbConfigurationViolationException("Keycloak maximum response content size must be between 1024 and 16777216 bytes.");
+
+        if (settings.AdminBatchConcurrency > settings.MaxConcurrentAdminRequests)
+            throw new NgbConfigurationViolationException("Keycloak admin batch concurrency must not exceed the process-wide concurrent admin request limit.");
+
+        if (settings.MaxPendingUserLookups > settings.MaxConcurrentAdminRequests + settings.MaxQueuedAdminRequests)
+            throw new NgbConfigurationViolationException("Keycloak maximum pending user lookups must not exceed total Admin API bulkhead capacity.");
     }
 
     public static IServiceCollection AddExternalLinks(this IServiceCollection services, IConfiguration configuration)

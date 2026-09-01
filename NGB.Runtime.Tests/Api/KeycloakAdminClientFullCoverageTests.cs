@@ -53,6 +53,97 @@ public sealed class KeycloakAdminClientFullCoverageTests
     }
 
     [Fact]
+    public async Task User_lookup_cache_bounds_unique_pending_populations_but_still_coalesces_the_same_key()
+    {
+        var settings = Settings() with { MaxPendingUserLookups = 1 };
+        var cache = new KeycloakUserLookupCache(settings, TimeProvider.System);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<IdentityProviderUserDto?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        async Task<IdentityProviderUserDto?> Load(CancellationToken _)
+        {
+            started.TrySetResult();
+            return await release.Task;
+        }
+
+        var first = cache.GetByIdAsync("user-1", Load, default);
+        await started.Task;
+        var coalesced = cache.GetByIdAsync("user-1", Load, default);
+        cache.PendingPopulationCount.Should().Be(1);
+
+        var rejected = await ((Func<Task>)(async () =>
+                await cache.GetByIdAsync("user-2", Load, default)))
+            .Should().ThrowAsync<KeycloakAdminClientException>();
+        rejected.Which.Context.Should()
+            .Contain("reason", "pending_lookup_capacity_exceeded")
+            .And.Contain("maxPendingUserLookups", 1);
+
+        release.SetResult(null);
+        (await first).Should().BeNull();
+        (await coalesced).Should().BeNull();
+        cache.PendingPopulationCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Admin_request_gate_enforces_process_wide_concurrency_bounded_fifo_queue_and_cancellation()
+    {
+        var settings = Settings() with
+        {
+            MaxConcurrentAdminRequests = 1,
+            MaxQueuedAdminRequests = 1
+        };
+        await using var gate = new KeycloakAdminRequestGate(settings);
+
+        using var active = await gate.AcquireAsync(default);
+        active.IsAcquired.Should().BeTrue();
+
+        var queued = gate.AcquireAsync(default).AsTask();
+        queued.IsCompleted.Should().BeFalse();
+
+        using var rejected = await gate.AcquireAsync(default);
+        rejected.IsAcquired.Should().BeFalse();
+
+        active.Dispose();
+        using var promoted = await queued;
+        promoted.IsAcquired.Should().BeTrue();
+
+        using var cancellation = new CancellationTokenSource();
+        var canceled = gate.AcquireAsync(cancellation.Token).AsTask();
+        cancellation.Cancel();
+        await ((Func<Task>)(async () => await canceled)).Should().ThrowAsync<OperationCanceledException>();
+
+        ((Action)(() => new KeycloakAdminRequestGate(null!)))
+            .Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task Admin_client_rejects_when_the_shared_request_queue_is_full()
+    {
+        var settings = Settings() with
+        {
+            MaxConcurrentAdminRequests = 1,
+            MaxQueuedAdminRequests = 0
+        };
+        await using var gate = new KeycloakAdminRequestGate(settings);
+        using var active = await gate.AcquireAsync(default);
+        var cache = new KeycloakUserLookupCache(settings, TimeProvider.System);
+        var sut = new KeycloakAdminClient(
+            new HttpClient(new RejectingHandler()),
+            CachedTokenService(),
+            cache,
+            settings,
+            gate);
+
+        var error = await ((Func<Task>)(async () => await sut.GetUserByIdAsync("user-1", default)))
+            .Should().ThrowAsync<KeycloakAdminClientException>();
+
+        error.Which.Context.Should()
+            .Contain("reason", "admin_request_queue_full")
+            .And.Contain("maxConcurrentAdminRequests", 1)
+            .And.Contain("maxQueuedAdminRequests", 0);
+    }
+
+    [Fact]
     public async Task User_lookup_cache_negative_entries_invalidation_and_bound_are_deterministic()
     {
         var settings = Settings() with { MaxCachedUserLookups = 100 };
@@ -370,7 +461,7 @@ public sealed class KeycloakAdminClientFullCoverageTests
         var handler = new RecordingHandler(_ =>
             throw new Xunit.Sdk.XunitException("A cached page snapshot must not issue HTTP requests."));
         var sut = new KeycloakAdminClient(
-            new HttpClient(handler), CachedTokenService(), cache, settings);
+            new HttpClient(handler), CachedTokenService(), cache, settings, new KeycloakAdminRequestGate(settings));
 
         var snapshot = sut.GetCachedUsers(
             [" cached-id ", "cached-id", "missing", " "],
@@ -545,7 +636,14 @@ public sealed class KeycloakAdminClientFullCoverageTests
         var effectiveSettings = settings ?? Settings();
         var cache = new KeycloakUserLookupCache(effectiveSettings, TimeProvider.System);
 
-        return new ClientFixture(new KeycloakAdminClient(client, CachedTokenService(), cache, effectiveSettings), handler);
+        return new ClientFixture(
+            new KeycloakAdminClient(
+                client,
+                CachedTokenService(),
+                cache,
+                effectiveSettings,
+                new KeycloakAdminRequestGate(effectiveSettings)),
+            handler);
     }
 
     private static TokenCacheService CachedTokenService()

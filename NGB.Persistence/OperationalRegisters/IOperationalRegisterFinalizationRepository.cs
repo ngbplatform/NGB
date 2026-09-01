@@ -70,7 +70,7 @@ public interface IOperationalRegisterFinalizationRepository
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
@@ -79,7 +79,7 @@ public interface IOperationalRegisterFinalizationRepository
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
@@ -87,7 +87,7 @@ public interface IOperationalRegisterFinalizationRepository
     /// Does not require an active transaction.
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
@@ -95,7 +95,7 @@ public interface IOperationalRegisterFinalizationRepository
     /// Does not require an active transaction.
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>

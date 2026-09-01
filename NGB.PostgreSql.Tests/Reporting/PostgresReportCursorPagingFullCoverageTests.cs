@@ -112,6 +112,17 @@ public sealed class PostgresReportCursorPagingFullCoverageTests
         act.Should().Throw<NgbArgumentInvalidException>().WithMessage("*stable keyset cursor*");
     }
 
+    [Fact]
+    public void Positive_offset_is_rejected_when_the_dataset_supports_keyset_paging()
+    {
+        var sut = Builder(CursorDataset());
+
+        Action act = () => sut.Build(Request(offset: 1));
+
+        act.Should().Throw<NgbArgumentInvalidException>()
+            .WithMessage("*offset 0*nextCursor*");
+    }
+
     private static PostgresReportCursorColumn Column(string alias)
         => new(alias, "test", ReportSortDirection.Asc, IsHidden: false);
 

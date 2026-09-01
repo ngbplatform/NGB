@@ -90,12 +90,26 @@ public sealed class PostgresOperationalRegisterFinalizationRepositoryFullCoverag
         Func<Task> blockedLimit = () => sut.GetBlockedAsync(RegisterId, -1);
         Func<Task> dirtyAllLimit = () => sut.GetDirtyAcrossAllAsync(0);
         Func<Task> blockedAllLimit = () => sut.GetBlockedAcrossAllAsync(0);
+        Func<Task> dirtyHighLimit = () => sut.GetDirtyAsync(
+            RegisterId,
+            OperationalRegisterFinalizationLimits.MaxReadPageSize + 1);
+        Func<Task> blockedHighLimit = () => sut.GetBlockedAsync(
+            RegisterId,
+            OperationalRegisterFinalizationLimits.MaxReadPageSize + 1);
+        Func<Task> dirtyAllHighLimit = () => sut.GetDirtyAcrossAllAsync(
+            OperationalRegisterFinalizationLimits.MaxReadPageSize + 1);
+        Func<Task> blockedAllHighLimit = () => sut.GetBlockedAcrossAllAsync(
+            OperationalRegisterFinalizationLimits.MaxReadPageSize + 1);
         await dirtyEmptyId.Should().ThrowAsync<NgbArgumentInvalidException>();
         await dirtyLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await blockedEmptyId.Should().ThrowAsync<NgbArgumentInvalidException>();
         await blockedLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await dirtyAllLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await blockedAllLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await dirtyHighLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await blockedHighLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await dirtyAllHighLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await blockedAllHighLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
         var expected = Finalization();
         var fixture = Fixture(finalizations: [expected]);

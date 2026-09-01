@@ -89,12 +89,11 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
     }
 
     public async Task<int> FinalizeDirtyAsync(
-        int maxItems = 50,
+        int maxItems = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
         bool manageTransaction = true,
         CancellationToken ct = default)
     {
-        if (maxItems <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(maxItems), maxItems, "MaxItems must be positive.");
+        EnsureProcessingBatchSize(maxItems, nameof(maxItems));
 
         var dirty = await _finalizations.GetDirtyAcrossAllAsync(maxItems, ct);
         if (dirty.Count == 0)
@@ -144,15 +143,14 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
 
     public async Task<int> FinalizeRegisterDirtyAsync(
         Guid registerId,
-        int maxPeriods = 50,
+        int maxPeriods = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
         bool manageTransaction = true,
         CancellationToken ct = default)
     {
         if (registerId == Guid.Empty)
             throw new NgbArgumentOutOfRangeException(nameof(registerId), registerId, "RegisterId must not be empty.");
 
-        if (maxPeriods <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(maxPeriods), maxPeriods, "MaxPeriods must be positive.");
+        EnsureProcessingBatchSize(maxPeriods, nameof(maxPeriods));
 
         var dirty = await _finalizations.GetDirtyAsync(registerId, maxPeriods, ct);
         if (dirty.Count == 0)
@@ -168,6 +166,17 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
         }
 
         return finalizedCount;
+    }
+
+    private static void EnsureProcessingBatchSize(int value, string paramName)
+    {
+        if (value is < 1 or > OperationalRegisterFinalizationLimits.MaxProcessingBatchSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                paramName,
+                value,
+                $"Value must be between 1 and {OperationalRegisterFinalizationLimits.MaxProcessingBatchSize}.");
+        }
     }
 
     internal async Task<int> FinalizeSelectedAsync(

@@ -15,7 +15,8 @@ public sealed class KeycloakAdminClient(
     HttpClient httpClient,
     TokenCacheService tokenCache,
     KeycloakUserLookupCache lookupCache,
-    KeycloakAdminClientSettings settings)
+    KeycloakAdminClientSettings settings,
+    KeycloakAdminRequestGate requestGate)
     : IIdentityProviderUserAdminClient, IIdentityProviderBulkUserReader, IIdentityProviderUserPageSnapshotReader
 {
     private const int MinAdminBatchConcurrency = 1;
@@ -413,13 +414,27 @@ public sealed class KeycloakAdminClient(
         ValidateSettings();
 
         var token = await tokenCache.GetTokenAsync(ct);
+        using var lease = await requestGate.AcquireAsync(ct);
+        if (!lease.IsAcquired)
+        {
+            throw new KeycloakAdminClientException(
+                operation,
+                (int)HttpStatusCode.ServiceUnavailable,
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["reason"] = "admin_request_queue_full",
+                    ["maxConcurrentAdminRequests"] = settings.MaxConcurrentAdminRequests,
+                    ["maxQueuedAdminRequests"] = settings.MaxQueuedAdminRequests
+                });
+        }
+
         using var request = new HttpRequestMessage(method, BuildUri(pathOrUri));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         if (body is not null)
             request.Content = JsonContent.Create(body, options: Json);
 
-        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, ct);
     }
 
     private async Task EnsureSuccessAsync(HttpResponseMessage response, string operation, CancellationToken ct)
