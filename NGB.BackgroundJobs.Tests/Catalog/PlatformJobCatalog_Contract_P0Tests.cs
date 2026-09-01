@@ -10,16 +10,47 @@ namespace NGB.BackgroundJobs.Tests.Catalog;
 public sealed class PlatformJobCatalog_Contract_P0Tests
 {
     [Fact]
+    public void BackgroundJobsAssembly_DoesNotReferenceDatabaseClientOrMicroOrm()
+    {
+        var forbiddenReferences = new[] { "Dapper", "Dapper.AOT", "Npgsql" };
+        var references = typeof(IPlatformBackgroundJob).Assembly
+            .GetReferencedAssemblies()
+            .Select(reference => reference.Name)
+            .Where(name => forbiddenReferences.Contains(name, StringComparer.Ordinal))
+            .ToArray();
+
+        references.Should().BeEmpty(
+            "provider clients and SQL execution belong in persistence adapter assemblies");
+    }
+
+    [Fact]
+    public void PlatformJobs_DependOnlyOnProviderNeutralBoundaries()
+    {
+        var forbiddenNamespacePrefixes = new[]
+        {
+            "Dapper",
+            "Npgsql",
+            "NGB.PostgreSql"
+        };
+
+        var providerSpecificParameters = GetPlatformJobTypes()
+            .SelectMany(type => type.GetConstructors())
+            .SelectMany(constructor => constructor.GetParameters())
+            .Where(parameter => forbiddenNamespacePrefixes.Any(prefix =>
+                parameter.ParameterType.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true))
+            .Select(parameter => $"{parameter.Member.DeclaringType?.FullName}: {parameter.ParameterType.FullName}")
+            .ToArray();
+
+        providerSpecificParameters.Should().BeEmpty(
+            "job orchestration must depend on provider-neutral contracts; SQL belongs in persistence adapters");
+    }
+
+    [Fact]
     public void PlatformJobCatalog_All_MustHaveExactlyOne_JobImplementation_WithMatchingJobId()
     {
         var expected = PlatformJobCatalog.All.ToHashSet(StringComparer.Ordinal);
 
-        var jobTypes = typeof(IPlatformBackgroundJob).Assembly
-            .GetTypes()
-            .Where(t => t is { IsAbstract: false, IsInterface: false } &&
-                        typeof(IPlatformBackgroundJob).IsAssignableFrom(t) &&
-                        string.Equals(t.Namespace, "NGB.BackgroundJobs.Jobs", StringComparison.Ordinal))
-            .ToArray();
+        var jobTypes = GetPlatformJobTypes();
 
         jobTypes.Length.Should().BeGreaterThan(0);
 
@@ -42,6 +73,13 @@ public sealed class PlatformJobCatalog_Contract_P0Tests
 
         byId.Keys.Should().BeEquivalentTo(expected);
     }
+
+    private static Type[] GetPlatformJobTypes() => typeof(IPlatformBackgroundJob).Assembly
+        .GetTypes()
+        .Where(t => t is { IsAbstract: false, IsInterface: false } &&
+                    typeof(IPlatformBackgroundJob).IsAssignableFrom(t) &&
+                    string.Equals(t.Namespace, "NGB.BackgroundJobs.Jobs", StringComparison.Ordinal))
+        .ToArray();
 
     private static object CreateInstanceWithMocks(Type type)
     {

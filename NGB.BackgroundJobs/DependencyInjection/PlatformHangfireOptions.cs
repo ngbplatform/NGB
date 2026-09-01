@@ -7,18 +7,16 @@ namespace NGB.BackgroundJobs.DependencyInjection;
 /// </summary>
 public sealed class PlatformHangfireOptions
 {
+    /// <summary>
+    /// Provider connection string used by an optional batched storage inspector.
+    /// Job execution itself uses the <c>JobStorage</c> supplied by composition.
+    /// </summary>
     public string ConnectionString { get; set; } = string.Empty;
 
     /// <summary>
-    /// Allows Hangfire.PostgreSql to install/upgrade its schema at runtime.
-    /// Defaults to true for developer convenience.
+    /// Provider storage namespace used by an optional batched storage inspector.
     /// </summary>
-    public bool PrepareSchemaIfNecessary { get; set; } = true;
-
-    /// <summary>
-    /// PostgreSQL schema used by Hangfire storage and batched health inspection.
-    /// </summary>
-    public string SchemaName { get; set; } = "hangfire";
+    public string StorageNamespace { get; set; } = "hangfire";
 
     public int WorkerCount { get; set; } = Math.Max(1, Environment.ProcessorCount);
 

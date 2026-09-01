@@ -17,6 +17,7 @@ using NGB.Persistence.Documents.Storage;
 using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
+using NGB.Persistence.Databases;
 using NGB.Persistence.Locks;
 using NGB.Persistence.Migrations;
 using NGB.Persistence.OperationalRegisters;
@@ -46,6 +47,7 @@ using NGB.PostgreSql.Documents.Actions;
 using NGB.PostgreSql.Documents.Numbering;
 using NGB.PostgreSql.Documents.GeneralJournalEntry;
 using NGB.PostgreSql.AuditLog;
+using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Dimensions;
 using NGB.PostgreSql.Locks;
 using NGB.PostgreSql.OperationalRegisters;
@@ -96,6 +98,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<PostgresRelationPresenceCache>();
         services.TryAddSingleton<PostgresRelationShapeCache>();
+        services.TryAddSingleton<IDatabaseProvisioner, PostgresDatabaseProvisioner>();
 
         // Validate options on startup
         services.AddOptions<PostgresOptions>()
@@ -124,6 +127,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IPlatformUserRepository, PostgresPlatformUserRepository>();
         services.TryAddScoped<IAuditEventWriter, PostgresAuditEventWriter>();
         services.TryAddScoped<IAuditEventReader, PostgresAuditEventReader>();
+        services.TryAddScoped<IAuditHealthReader, PostgresAuditHealthReader>();
 
         // Security / access management (NGB-owned application authorization)
         services.TryAddScoped<IPlatformRoleRepository, PostgresPlatformRoleRepository>();

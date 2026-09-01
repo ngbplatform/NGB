@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using NGB.Api;
 using NGB.BackgroundJobs.Hosting;
+using NGB.Persistence.AuditLog;
 using NGB.Persistence.Checkers;
 using NGB.Persistence.Readers.PostingState;
 using NGB.Persistence.Schema;
@@ -20,6 +22,8 @@ namespace NGB.BackgroundJobs.Tests.Hosting;
 
 public sealed class BackgroundJobsHostingExtensionsFullCoverageTests
 {
+    private static readonly BackgroundJobStorageFactory StorageFactory = (_, _, _) => Mock.Of<JobStorage>();
+
     private const string ApplicationConnection =
         "Host=localhost;Port=5432;Database=app;Username=ngb;Password=ngb";
     private const string HangfireConnection =
@@ -28,11 +32,18 @@ public sealed class BackgroundJobsHostingExtensionsFullCoverageTests
     [Fact]
     public void Add_RejectsNullBuilderAndMissingApplicationConnection()
     {
-        Action nullBuilder = () => BackgroundJobsHostingExtensions.AddNgbBackgroundJobs(null!);
+        Action nullBuilder = () => BackgroundJobsHostingExtensions.AddNgbBackgroundJobs(null!, StorageFactory);
+        Action nullFactory = () => Builder(true, null).AddNgbBackgroundJobs(null!);
+        Action nullStorage = () => Builder(true, null).AddNgbBackgroundJobs((_, _, _) => null!);
+        Action blankHealthConnection = () => new ServiceCollection().AddHealthChecks()
+            .AddNgbPostgresHealthCheck(" ");
         nullBuilder.Should().Throw<NgbArgumentRequiredException>();
+        nullFactory.Should().Throw<NgbArgumentRequiredException>();
+        nullStorage.Should().Throw<NgbConfigurationViolationException>();
+        blankHealthConnection.Should().Throw<NgbArgumentRequiredException>();
 
         var builder = Builder(includeApplicationConnection: false, hangfireConnection: null);
-        Action missingConnection = () => builder.AddNgbBackgroundJobs();
+        Action missingConnection = () => builder.AddNgbBackgroundJobs(StorageFactory);
         missingConnection.Should().Throw<NgbConfigurationViolationException>()
             .WithMessage("*ConnectionStrings:DefaultConnection*");
     }
@@ -41,7 +52,7 @@ public sealed class BackgroundJobsHostingExtensionsFullCoverageTests
     public async Task AddUseAndMap_CoverConfiguredConnectionsAuthorizationAndAccountEndpoints()
     {
         var builder = Builder(includeApplicationConnection: true, hangfireConnection: $" {HangfireConnection} ");
-        var bootstrap = builder.AddNgbBackgroundJobs(options =>
+        var bootstrap = builder.AddNgbBackgroundJobs(StorageFactory, options =>
         {
             options.DashboardStylesheetPaths.Clear();
             options.AdminConsoleCallbackPath = "/custom-callback";
@@ -75,7 +86,7 @@ public sealed class BackgroundJobsHostingExtensionsFullCoverageTests
     public async Task AddUseAndMap_CoverFallbackConnectionAndPublicDashboardWithoutAccounts()
     {
         var builder = Builder(includeApplicationConnection: true, hangfireConnection: " ");
-        var bootstrap = builder.AddNgbBackgroundJobs(options =>
+        var bootstrap = builder.AddNgbBackgroundJobs(StorageFactory, options =>
         {
             options.DashboardStylesheetPaths.Clear();
             options.RequireDashboardAuthorization = false;
@@ -99,7 +110,7 @@ public sealed class BackgroundJobsHostingExtensionsFullCoverageTests
     public void Add_CoversNullConfigureAndUseMapRejectNullApplication()
     {
         var builder = Builder(includeApplicationConnection: true, hangfireConnection: null);
-        var bootstrap = builder.AddNgbBackgroundJobs();
+        var bootstrap = builder.AddNgbBackgroundJobs(StorageFactory);
         bootstrap.HangfireConnectionString.Should().Be(ApplicationConnection);
 
         Action useNull = () => BackgroundJobsHostingExtensions.UseNgbBackgroundJobs(null!);
@@ -130,6 +141,7 @@ public sealed class BackgroundJobsHostingExtensionsFullCoverageTests
 
     private static void RegisterPlatformJobDependencyFakes(IServiceCollection services)
     {
+        services.AddScoped(_ => Mock.Of<IAuditHealthReader>());
         services.AddScoped(_ => Mock.Of<IDocumentsCoreSchemaValidationService>());
         services.AddScoped(_ => Mock.Of<IAccountingCoreSchemaValidationService>());
         services.AddScoped(_ => Mock.Of<IOperationalRegistersCoreSchemaValidationService>());

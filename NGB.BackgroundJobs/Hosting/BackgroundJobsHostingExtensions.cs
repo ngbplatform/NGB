@@ -18,11 +18,16 @@ namespace NGB.BackgroundJobs.Hosting;
 
 public static class BackgroundJobsHostingExtensions
 {
-    public static BackgroundJobsHostingBootstrap AddNgbBackgroundJobs(this WebApplicationBuilder builder,
+    public static BackgroundJobsHostingBootstrap AddNgbBackgroundJobs(
+        this WebApplicationBuilder builder,
+        BackgroundJobStorageFactory jobStorageFactory,
         Action<BackgroundJobsHostingOptions>? configure = null)
     {
         if (builder is null)
             throw new NgbArgumentRequiredException(nameof(builder));
+
+        if (jobStorageFactory is null)
+            throw new NgbArgumentRequiredException(nameof(jobStorageFactory));
 
         var options = new BackgroundJobsHostingOptions();
         configure?.Invoke(options);
@@ -36,6 +41,11 @@ public static class BackgroundJobsHostingExtensions
             builder.Configuration,
             options,
             applicationConnectionString);
+        var jobStorage = jobStorageFactory(
+            hangfireConnectionString,
+            options.HangfireStorageNamespace,
+            options.PrepareHangfireSchemaIfNecessary)
+            ?? throw new NgbConfigurationViolationException("The background-job storage factory returned null.");
 
         builder.Host.AddSerilog();
 
@@ -53,7 +63,7 @@ public static class BackgroundJobsHostingExtensions
         });
 
         builder.Services.AddHealthChecks()
-            .AddNpgSql(applicationConnectionString, name: options.PostgresHealthCheckName)
+            .AddNgbPostgresHealthCheck(applicationConnectionString, name: options.PostgresHealthCheckName)
             .AddKeycloak()
             .AddHangfire(
                 setup => setup.MaximumJobsFailed = options.HangfireHealthCheckMaximumFailedJobs,
@@ -63,10 +73,10 @@ public static class BackgroundJobsHostingExtensions
             builder.Configuration,
             options.BackgroundJobsSectionName);
 
-        builder.Services.AddPlatformBackgroundJobsHangfire(hangfireOptions =>
+        builder.Services.AddPlatformBackgroundJobsHangfire(jobStorage, hangfireOptions =>
         {
             hangfireOptions.ConnectionString = hangfireConnectionString;
-            hangfireOptions.PrepareSchemaIfNecessary = options.PrepareHangfireSchemaIfNecessary;
+            hangfireOptions.StorageNamespace = options.HangfireStorageNamespace;
             hangfireOptions.WorkerCount = options.WorkerCount;
             hangfireOptions.DistributedLockTimeoutSeconds = options.DistributedLockTimeoutSeconds;
             hangfireOptions.ServerName = options.ServerName;

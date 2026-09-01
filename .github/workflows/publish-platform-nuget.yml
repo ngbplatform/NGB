@@ -66,6 +66,7 @@ jobs:
             NGB.Platform.Runtime
             NGB.Platform.Api
             NGB.Platform.BackgroundJobs
+            NGB.Platform.BackgroundJobs.PostgreSql
             NGB.Platform.Migrator.Core
             NGB.Platform.Watchdog
           )

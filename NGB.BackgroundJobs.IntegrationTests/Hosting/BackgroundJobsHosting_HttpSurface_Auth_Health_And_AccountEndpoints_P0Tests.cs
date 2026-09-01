@@ -15,7 +15,9 @@ using Microsoft.Extensions.Options;
 using NGB.Accounting.PostingState.Readers;
 using NGB.BackgroundJobs.Hosting;
 using NGB.BackgroundJobs.IntegrationTests.Infrastructure;
+using NGB.BackgroundJobs.PostgreSql;
 using NGB.OperationalRegisters.Contracts;
+using NGB.Persistence.AuditLog;
 using NGB.Persistence.Checkers;
 using NGB.Persistence.Readers.PostingState;
 using NGB.Persistence.Schema;
@@ -239,7 +241,7 @@ public sealed class BackgroundJobsHosting_HttpSurface_Auth_Health_And_AccountEnd
             ["BackgroundJobs:Enabled"] = bool.FalseString,
         });
 
-        var bootstrap = builder.AddNgbBackgroundJobs(configure);
+        var bootstrap = builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create, configure);
 
         RegisterPlatformJobDependencyFakes(builder.Services, applicationConnectionString);
 
@@ -261,7 +263,7 @@ public sealed class BackgroundJobsHosting_HttpSurface_Auth_Health_And_AccountEnd
                 .AddScheme<AuthenticationSchemeOptions, TestAdminAuthHandler>(TestAuthScheme, _ => { });
         }
 
-        await bootstrap.EnsureInfrastructureAsync();
+        await bootstrap.EnsureInfrastructureAsync(new PostgresDatabaseProvisioner());
 
         var app = builder.Build();
         app.UseNgbBackgroundJobs();
@@ -279,6 +281,7 @@ public sealed class BackgroundJobsHosting_HttpSurface_Auth_Health_And_AccountEnd
 
     private static void RegisterPlatformJobDependencyFakes(IServiceCollection services, string applicationConnectionString)
     {
+        services.AddSingleton<IAuditHealthReader, HealthyAuditHealthReader>();
         services.AddSingleton<NoOpSchemaValidationService>();
         services.AddSingleton<IDocumentsCoreSchemaValidationService>(sp => sp.GetRequiredService<NoOpSchemaValidationService>());
         services.AddSingleton<IAccountingCoreSchemaValidationService>(sp => sp.GetRequiredService<NoOpSchemaValidationService>());
@@ -401,6 +404,17 @@ public sealed class BackgroundJobsHosting_HttpSurface_Auth_Health_And_AccountEnd
 
         public Task<PostingStatePage> GetPageAsync(PostingStatePageRequest request, CancellationToken ct = default)
             => Task.FromResult(EmptyPage);
+    }
+
+    private sealed class HealthyAuditHealthReader : IAuditHealthReader
+    {
+        private static readonly AuditHealthSnapshot HealthySnapshot = new()
+        {
+            EventsTrigger = 1,
+            ChangesTrigger = 1
+        };
+
+        public Task<AuditHealthSnapshot> ReadAsync(CancellationToken ct = default) => Task.FromResult(HealthySnapshot);
     }
 
     private sealed class TestUnitOfWork : IUnitOfWork

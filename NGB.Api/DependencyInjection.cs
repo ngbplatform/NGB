@@ -297,5 +297,16 @@ public static class DependencyInjection
         return builder.AddNpgSql(connectionString, name: name);
     }
 
+    public static IHealthChecksBuilder AddNgbPostgresHealthCheck(
+        this IHealthChecksBuilder builder,
+        string connectionString,
+        string name = "PostgreSQL Server")
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new NgbArgumentRequiredException(nameof(connectionString));
+
+        return builder.AddNpgSql(connectionString, name: name);
+    }
+
     #endregion
 }

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.BackgroundJobs.PostgreSql</PackageId>
+        <Description>PostgreSQL Hangfire storage adapter and batched recurring-job inspection for NGB Platform BackgroundJobs.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+        <PackageReference Include="Npgsql" Version="10.0.3" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj" />
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
+    </ItemGroup>
+
+</Project>

@@ -53,7 +53,9 @@ public sealed class CrmWorkCenter_EndToEnd_P0Tests(CrmPostgresFixture fixture) :
             CrmWorkCenterCodes.SalesRepresentativeRole,
             CancellationToken.None);
         salesRole.Should().NotBeNull();
-        var adminUser = (await users.GetAllAsync(CancellationToken.None))
+        var adminUser = (await users.GetByEmailsAsync(
+                ["alex.carter@demo.ngbplatform.com"],
+                CancellationToken.None))
             .Single(static user => user.Email == "alex.carter@demo.ngbplatform.com");
         var salesUserId = await uow.ExecuteInUowTransactionAsync(async ct =>
         {

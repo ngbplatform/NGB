@@ -1,7 +1,3 @@
-using System.Collections;
-using System.Data;
-using System.Data.Common;
-using System.Diagnostics.CodeAnalysis;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -9,10 +5,10 @@ using NGB.Accounting.PostingState;
 using NGB.Accounting.PostingState.Readers;
 using NGB.BackgroundJobs.Jobs;
 using NGB.BackgroundJobs.Observability;
+using NGB.Persistence.AuditLog;
 using NGB.Persistence.Checkers;
 using NGB.Persistence.Readers.PostingState;
 using NGB.Persistence.Schema;
-using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Catalogs;
 using NGB.Runtime.Documents;
 using NGB.Runtime.OperationalRegisters;
@@ -39,7 +35,7 @@ public sealed class BackgroundJobExecutionFullCoverageTests
             Mock.Of<IPostingStateReader>(), NullLogger<AccountingOperationsStuckMonitorJob>.Instance, metrics)
             .Should().NotBeNull();
         new AuditHealthJob(
-            Mock.Of<IUnitOfWork>(), NullLogger<AuditHealthJob>.Instance, metrics)
+            Mock.Of<IAuditHealthReader>(), NullLogger<AuditHealthJob>.Instance, metrics)
             .Should().NotBeNull();
         new OperationalRegistersFinalizeDirtyMonthsJob(
             Mock.Of<IOperationalRegisterAdminMaintenanceService>(),
@@ -195,14 +191,19 @@ public sealed class BackgroundJobExecutionFullCoverageTests
         long changesTrigger,
         long orphans)
     {
-        var connection = new FakeDbConnection(
-            [eventsTrigger, changesTrigger, orphans],
-            eventsCount: 12,
-            min: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-            max: new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc));
-        var uow = new FakeUnitOfWork(connection);
+        var reader = new Mock<IAuditHealthReader>(MockBehavior.Strict);
+        reader.Setup(x => x.ReadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AuditHealthSnapshot
+            {
+                EventsTrigger = eventsTrigger,
+                ChangesTrigger = changesTrigger,
+                OrphanChanges = orphans,
+                EventsCount = 12,
+                MinOccurredAtUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                MaxOccurredAtUtc = new DateTime(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc)
+            });
         var metrics = new JobRunMetrics();
-        var sut = new AuditHealthJob(uow, NullLogger<AuditHealthJob>.Instance, metrics, Clock);
+        var sut = new AuditHealthJob(reader.Object, NullLogger<AuditHealthJob>.Instance, metrics, Clock);
         var act = () => sut.RunAsync(default);
 
         if (eventsTrigger == 0 || changesTrigger == 0 || orphans > 0)
@@ -213,6 +214,7 @@ public sealed class BackgroundJobExecutionFullCoverageTests
         sut.JobId.Should().Be("audit.health");
         metrics.Snapshot()["audit.events_count"].Should().Be(12);
         metrics.Snapshot()["health_ok"].Should().Be(eventsTrigger > 0 && changesTrigger > 0 && orphans == 0 ? 1 : 0);
+        reader.VerifyAll();
     }
 
     private static Mock<T> Validation<T>(
@@ -228,123 +230,5 @@ public sealed class BackgroundJobExecutionFullCoverageTests
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
-    }
-
-    private sealed class FakeUnitOfWork(FakeDbConnection connection) : IUnitOfWork
-    {
-        public DbConnection Connection => connection;
-        public DbTransaction? Transaction => null;
-        public bool HasActiveTransaction => false;
-        public Task EnsureConnectionOpenAsync(CancellationToken ct = default)
-        {
-            connection.Open();
-            return Task.CompletedTask;
-        }
-        public Task BeginTransactionAsync(CancellationToken ct = default) => Task.CompletedTask;
-        public Task CommitAsync(CancellationToken ct = default) => Task.CompletedTask;
-        public Task RollbackAsync(CancellationToken ct = default) => Task.CompletedTask;
-        public void EnsureActiveTransaction() { }
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
-
-    private sealed class FakeDbConnection(
-        IEnumerable<long> scalars,
-        long eventsCount,
-        DateTime? min,
-        DateTime? max) : DbConnection
-    {
-        private readonly Queue<long> _scalars = new(scalars);
-        private ConnectionState _state;
-        [AllowNull]
-        public override string ConnectionString { get; set; } = "fake";
-        public override string Database => "fake";
-        public override string DataSource => "fake";
-        public override string ServerVersion => "1";
-        public override ConnectionState State => _state;
-        public override void ChangeDatabase(string databaseName) { }
-        public override void Close() => _state = ConnectionState.Closed;
-        public override void Open() => _state = ConnectionState.Open;
-        protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => throw new NotSupportedException();
-        protected override DbCommand CreateDbCommand() => new FakeDbCommand(this, _scalars, eventsCount, min, max);
-    }
-
-    private sealed class FakeDbCommand(
-        DbConnection connection,
-        Queue<long> scalars,
-        long eventsCount,
-        DateTime? min,
-        DateTime? max) : DbCommand
-    {
-        private readonly FakeDbParameterCollection _parameters = new();
-        [AllowNull]
-        public override string CommandText { get; set; } = string.Empty;
-        public override int CommandTimeout { get; set; }
-        public override CommandType CommandType { get; set; }
-        public override bool DesignTimeVisible { get; set; }
-        public override UpdateRowSource UpdatedRowSource { get; set; }
-        protected override DbConnection? DbConnection { get; set; } = connection;
-        protected override DbParameterCollection DbParameterCollection => _parameters;
-        protected override DbTransaction? DbTransaction { get; set; }
-        public override void Cancel() { }
-        public override int ExecuteNonQuery() => 0;
-        public override object ExecuteScalar() => scalars.Dequeue();
-        public override void Prepare() { }
-        protected override DbParameter CreateDbParameter() => new FakeDbParameter();
-        protected override DbDataReader ExecuteDbDataReader(CommandBehavior behavior)
-        {
-            var health = scalars.ToArray();
-            var table = new DataTable();
-            table.Columns.Add("EventsTrigger", typeof(long));
-            table.Columns.Add("ChangesTrigger", typeof(long));
-            table.Columns.Add("OrphanChanges", typeof(long));
-            table.Columns.Add("EventsCount", typeof(long));
-            table.Columns.Add("MinOccurredAtUtc", typeof(DateTime));
-            table.Columns.Add("MaxOccurredAtUtc", typeof(DateTime));
-            table.Rows.Add(health[0], health[1], health[2], eventsCount, min ?? (object)DBNull.Value, max ?? (object)DBNull.Value);
-            return table.CreateDataReader();
-        }
-    }
-
-    private sealed class FakeDbParameter : DbParameter
-    {
-        public override DbType DbType { get; set; }
-        public override ParameterDirection Direction { get; set; } = ParameterDirection.Input;
-        public override bool IsNullable { get; set; }
-        [AllowNull]
-        public override string ParameterName { get; set; } = string.Empty;
-        [AllowNull]
-        public override string SourceColumn { get; set; } = string.Empty;
-        public override object? Value { get; set; }
-        public override bool SourceColumnNullMapping { get; set; }
-        public override int Size { get; set; }
-        public override void ResetDbType() { }
-    }
-
-    private sealed class FakeDbParameterCollection : DbParameterCollection
-    {
-        private readonly List<DbParameter> _items = [];
-        public override int Count => _items.Count;
-        public override object SyncRoot => ((ICollection)_items).SyncRoot;
-        public override int Add(object value) { _items.Add((DbParameter)value); return _items.Count - 1; }
-        public override void AddRange(Array values) { foreach (var value in values) Add(value!); }
-        public override void Clear() => _items.Clear();
-        public override bool Contains(object value) => _items.Contains((DbParameter)value);
-        public override bool Contains(string value) => IndexOf(value) >= 0;
-        public override void CopyTo(Array array, int index) => ((ICollection)_items).CopyTo(array, index);
-        public override IEnumerator GetEnumerator() => _items.GetEnumerator();
-        public override int IndexOf(object value) => _items.IndexOf((DbParameter)value);
-        public override int IndexOf(string parameterName) => _items.FindIndex(x => x.ParameterName == parameterName);
-        public override void Insert(int index, object value) => _items.Insert(index, (DbParameter)value);
-        public override void Remove(object value) => _items.Remove((DbParameter)value);
-        public override void RemoveAt(int index) => _items.RemoveAt(index);
-        public override void RemoveAt(string parameterName) => _items.RemoveAt(IndexOf(parameterName));
-        protected override DbParameter GetParameter(int index) => _items[index];
-        protected override DbParameter GetParameter(string parameterName) => _items[IndexOf(parameterName)];
-        protected override void SetParameter(int index, DbParameter value) => _items[index] = value;
-        protected override void SetParameter(string parameterName, DbParameter value)
-        {
-            var index = IndexOf(parameterName);
-            if (index < 0) _items.Add(value); else _items[index] = value;
-        }
     }
 }

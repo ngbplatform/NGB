@@ -1,21 +1,29 @@
 using System.Globalization;
-using Dapper;
 using Hangfire;
 using Microsoft.Extensions.Options;
 using NGB.BackgroundJobs.DependencyInjection;
-using NGB.Tools.Exceptions;
-using Npgsql;
+using NGB.Persistence.BackgroundJobs;
 
 namespace NGB.BackgroundJobs.Observability;
 
 internal sealed class HangfireRecurringJobStateReader : IRecurringJobStateReader
 {
     private readonly JobStorage _jobStorage;
+    private readonly PlatformHangfireOptions? _options;
     private readonly IRecurringJobHashBatchReader? _batchReader;
 
-    internal HangfireRecurringJobStateReader(JobStorage jobStorage, IRecurringJobHashBatchReader? batchReader = null)
+    internal HangfireRecurringJobStateReader(JobStorage jobStorage)
     {
         _jobStorage = jobStorage;
+    }
+
+    internal HangfireRecurringJobStateReader(
+        JobStorage jobStorage,
+        IOptions<PlatformHangfireOptions> options,
+        IRecurringJobHashBatchReader? batchReader)
+    {
+        _jobStorage = jobStorage;
+        _options = options.Value;
         _batchReader = batchReader;
     }
 
@@ -26,9 +34,14 @@ internal sealed class HangfireRecurringJobStateReader : IRecurringJobStateReader
         cancellationToken.ThrowIfCancellationRequested();
 
         var distinctJobIds = jobIds.Distinct(StringComparer.Ordinal).ToArray();
-        if (_batchReader is not null)
+        if (_batchReader is not null && _options is not null)
         {
-            var hashes = await _batchReader.GetManyAsync(distinctJobIds, cancellationToken);
+            var hashes = await _batchReader.GetManyAsync(
+                new RecurringJobHashBatchRequest(
+                    _options.ConnectionString,
+                    _options.StorageNamespace,
+                    distinctJobIds),
+                cancellationToken);
             return BuildStates(distinctJobIds, hashes, cancellationToken);
         }
 
@@ -98,69 +111,4 @@ internal sealed class HangfireRecurringJobStateReader : IRecurringJobStateReader
 
         return null;
     }
-}
-
-internal interface IRecurringJobHashBatchReader
-{
-    Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> GetManyAsync(
-        IReadOnlyCollection<string> jobIds,
-        CancellationToken ct);
-}
-
-internal sealed class PostgresRecurringJobHashBatchReader(IOptions<PlatformHangfireOptions> options)
-    : IRecurringJobHashBatchReader
-{
-    private const string RecurringJobPrefix = "recurring-job:";
-
-    public async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> GetManyAsync(
-        IReadOnlyCollection<string> jobIds,
-        CancellationToken ct)
-    {
-        if (jobIds.Count == 0)
-            return new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal);
-
-        var settings = options.Value;
-        var schema = QuoteIdentifier(settings.SchemaName);
-        var keys = jobIds.Select(static id => RecurringJobPrefix + id).ToArray();
-        var sql = $"""
-                   SELECT key AS "Key", field AS "Field", value AS "Value"
-                   FROM {schema}."hash"
-                   WHERE key = ANY(@Keys);
-                   """;
-
-        await using var connection = new NpgsqlConnection(settings.ConnectionString);
-        var rows = await connection.QueryAsync<HashRow>(new CommandDefinition(
-            sql,
-            new { Keys = keys },
-            cancellationToken: ct));
-
-        return rows
-            .Where(static row => row.Key.StartsWith(RecurringJobPrefix, StringComparison.Ordinal))
-            .GroupBy(static row => row.Key[RecurringJobPrefix.Length..], StringComparer.Ordinal)
-            .ToDictionary(
-                static group => group.Key,
-                static group => (IReadOnlyDictionary<string, string>)group.ToDictionary(
-                    static row => row.Field,
-                    static row => row.Value,
-                    StringComparer.Ordinal),
-                StringComparer.Ordinal);
-    }
-
-    private static string QuoteIdentifier(string identifier)
-    {
-        ValidateSchemaName(identifier);
-        return $"\"{identifier}\"";
-    }
-
-    internal static void ValidateSchemaName(string identifier)
-    {
-        if (string.IsNullOrWhiteSpace(identifier)
-            || !(char.IsLetter(identifier[0]) || identifier[0] == '_')
-            || identifier.Any(static c => !(char.IsLetterOrDigit(c) || c == '_')))
-        {
-            throw new NgbConfigurationViolationException("Hangfire PostgreSQL SchemaName must be a valid SQL identifier.");
-        }
-    }
-
-    private sealed record HashRow(string Key, string Field, string Value);
 }

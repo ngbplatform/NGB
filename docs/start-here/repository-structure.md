@@ -23,6 +23,7 @@ NGB.sln
 │  ├─ NGB.ReferenceRegisters
 │  ├─ NGB.Api
 │  ├─ NGB.BackgroundJobs
+│  ├─ NGB.BackgroundJobs.PostgreSql
 │  ├─ NGB.Watchdog
 │  ├─ NGB.PostgreSql
 │  ├─ NGB.Persistence
@@ -92,6 +93,7 @@ These projects compose or persist the platform:
 - `NGB.Persistence`
 - `NGB.Api`
 - `NGB.BackgroundJobs`
+- `NGB.BackgroundJobs.PostgreSql`
 - `NGB.Watchdog`
 - `NGB.Migrator.Core`
 

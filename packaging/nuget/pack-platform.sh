@@ -5,6 +5,7 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 output_directory="${repository_root}/artifacts/nuget-release"
 local_feed_directory="${repository_root}/artifacts/nuget"
+local_package_cache="${repository_root}/artifacts/nuget-cache"
 project_list="${repository_root}/packaging/nuget/projects.txt"
 project_version="$(dotnet msbuild "${repository_root}/NGB.Tools/NGB.Tools.csproj" -nologo -getProperty:PackageVersion)"
 version="${1:-${project_version}}"
@@ -46,5 +47,21 @@ find "${local_feed_directory}" -maxdepth 1 -type f \( -name '*.nupkg' -o -name '
 cp "${output_directory}"/*.nupkg "${local_feed_directory}/"
 cp "${output_directory}"/*.snupkg "${local_feed_directory}/"
 
+while IFS= read -r project; do
+  [[ -z "${project}" ]] && continue
+
+  package_id="$(dotnet msbuild "${repository_root}/${project}" -nologo -getProperty:PackageId)"
+  package_id_lower="$(printf '%s' "${package_id}" | tr '[:upper:]' '[:lower:]')"
+  cache_version_directory="${local_package_cache}/${package_id_lower}/${version}"
+
+  if [[ "${cache_version_directory}" != "${local_package_cache}/"* ]]; then
+    echo "Refusing to invalidate an unexpected package cache path: ${cache_version_directory}" >&2
+    exit 1
+  fi
+
+  rm -rf "${cache_version_directory}"
+done < "${project_list}"
+
 echo "Packed ${package_count} NGB.Platform packages and ${symbol_count} symbol packages for version ${version}."
 echo "Refreshed local NuGet feed in ${local_feed_directory}."
+echo "Invalidated replaced NGB.Platform packages in ${local_package_cache}."

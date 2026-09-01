@@ -1,6 +1,4 @@
 using Hangfire;
-using Hangfire.PostgreSql;
-using Hangfire.PostgreSql.Factories;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +8,7 @@ using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.Infrastructure;
 using NGB.BackgroundJobs.Jobs;
 using NGB.BackgroundJobs.Observability;
+using NGB.Persistence.BackgroundJobs;
 using NGB.Tools.Exceptions;
 
 namespace NGB.BackgroundJobs.DependencyInjection;
@@ -24,23 +23,25 @@ public static class PlatformBackgroundJobsServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPlatformBackgroundJobsHangfire(
         this IServiceCollection services,
+        JobStorage jobStorage,
         Action<PlatformHangfireOptions> configure)
     {
         if (services is null)
             throw new NgbArgumentRequiredException(nameof(services));
+
+        if (jobStorage is null)
+            throw new NgbArgumentRequiredException(nameof(jobStorage));
+
         if (configure is null)
             throw new NgbArgumentRequiredException(nameof(configure));
 
         var opts = new PlatformHangfireOptions();
         configure(opts);
 
-        if (string.IsNullOrWhiteSpace(opts.ConnectionString))
-            throw new NgbConfigurationViolationException("Hangfire ConnectionString must be provided.");
-        PostgresRecurringJobHashBatchReader.ValidateSchemaName(opts.SchemaName);
-
         // Expose options via IOptions for downstream services.
         services.TryAddSingleton(Options.Create(opts));
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton(jobStorage);
 
         // Default (no scheduling) provider; the app can override by registering its own.
         services.TryAddSingleton<IJobScheduleProvider, NullJobScheduleProvider>();
@@ -58,23 +59,11 @@ public static class PlatformBackgroundJobsServiceCollectionExtensions
         services.TryAddScoped<IJobRunMetrics, JobRunMetrics>();
 
         // Health reporter: desired schedules vs actual Hangfire recurring job state.
-        services.TryAddSingleton<IRecurringJobHashBatchReader, PostgresRecurringJobHashBatchReader>();
         services.TryAddSingleton<IRecurringJobStateReader>(sp => new HangfireRecurringJobStateReader(
-            sp.GetRequiredService<JobStorage>(), sp.GetRequiredService<IRecurringJobHashBatchReader>()));
+            sp.GetRequiredService<JobStorage>(),
+            sp.GetRequiredService<IOptions<PlatformHangfireOptions>>(),
+            sp.GetService<IRecurringJobHashBatchReader>()));
         services.TryAddSingleton<IBackgroundJobsHealthReporter, BackgroundJobsHealthReporter>();
-
-        services.TryAddSingleton<JobStorage>(_ =>
-        {
-            var storageOptions = new PostgreSqlStorageOptions
-            {
-                PrepareSchemaIfNecessary = opts.PrepareSchemaIfNecessary,
-                SchemaName = opts.SchemaName
-            };
-
-            return new PostgreSqlStorage(
-                new NpgsqlConnectionFactory(opts.ConnectionString, storageOptions, connectionSetup: null!),
-                storageOptions);
-        });
 
         // Default platform job implementations (catalog).
         services.TryAddEnumerable(ServiceDescriptor.Transient<IPlatformBackgroundJob, PlatformSchemaValidateJob>());

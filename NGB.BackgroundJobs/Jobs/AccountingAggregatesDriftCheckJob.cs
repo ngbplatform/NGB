@@ -55,11 +55,7 @@ public sealed class AccountingAggregatesDriftCheckJob(
             prevPeriod);
 
         if (diffNow > 0 || diffPrev > 0)
-        {
-            throw new NgbInvariantViolationException(
-                $"Accounting aggregates drift detected. diff(current)={diffNow}, diff(previous)={diffPrev}."
-            );
-        }
+            throw new NgbInvariantViolationException($"Accounting aggregates drift detected. diff(current)={diffNow}, diff(previous)={diffPrev}.");
 
         var finishedAt = _timeProvider.GetUtcNowDateTime();
         logger.LogInformation(

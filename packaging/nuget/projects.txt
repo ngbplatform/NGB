@@ -2,6 +2,7 @@ NGB.Accounting/NGB.Accounting.csproj
 NGB.Api/NGB.Api.csproj
 NGB.Application.Abstractions/NGB.Application.Abstractions.csproj
 NGB.BackgroundJobs/NGB.BackgroundJobs.csproj
+NGB.BackgroundJobs.PostgreSql/NGB.BackgroundJobs.PostgreSql.csproj
 NGB.Contracts/NGB.Contracts.csproj
 NGB.Core/NGB.Core.csproj
 NGB.Definitions/NGB.Definitions.csproj

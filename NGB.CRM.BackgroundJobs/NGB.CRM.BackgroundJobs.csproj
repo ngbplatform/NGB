@@ -16,6 +16,7 @@
 
     <ItemGroup>
         <PackageReference Include="NGB.Platform.BackgroundJobs" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.BackgroundJobs.PostgreSql" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.PostgreSql" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Runtime" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />

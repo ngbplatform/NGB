@@ -179,7 +179,9 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
         var users = scope.ServiceProvider.GetRequiredService<NGB.Persistence.AuditLog.IPlatformUserRepository>();
         var userRoles = scope.ServiceProvider.GetRequiredService<NGB.Persistence.Security.IPlatformUserRoleRepository>();
 
-        var user = (await users.GetAllAsync(CancellationToken.None))
+        var user = (await users.GetByEmailsAsync(
+                ["alex.carter@demo.ngbplatform.com"],
+                CancellationToken.None))
             .Should()
             .ContainSingle(x =>
                 x.Email == "alex.carter@demo.ngbplatform.com"

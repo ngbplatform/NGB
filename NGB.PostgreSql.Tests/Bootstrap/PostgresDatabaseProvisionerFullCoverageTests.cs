@@ -3,91 +3,67 @@ using System.Data;
 using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using FluentAssertions;
-using NGB.BackgroundJobs.Hosting;
-using NGB.BackgroundJobs.Infrastructure;
+using NGB.PostgreSql.Bootstrap;
 using NGB.Tools.Exceptions;
+using Xunit;
 
-namespace NGB.BackgroundJobs.Tests.Infrastructure;
+namespace NGB.PostgreSql.Tests.Bootstrap;
 
-public sealed class HangfireToolsAndHostingBootstrapFullCoverageTests
+public sealed class PostgresDatabaseProvisionerFullCoverageTests
 {
-    private const string ConnectionString =
-        "Host=localhost;Port=5432;Database=ngb-jobs;Username=ngb;Password=ngb";
+    private const string ConnectionString = "Host=localhost;Port=5432;Database=ngb-jobs;Username=ngb;Password=ngb";
 
     [Fact]
-    public async Task HangfireTools_WhenDatabaseExists_OnlyChecksUsingPostgresDatabase()
+    public async Task EnsureDatabaseExistsAsync_WhenDatabaseExists_OnlyChecksMaintenanceDatabase()
     {
         var connection = new RecordingDbConnection(databaseExists: true);
+        var sut = new PostgresDatabaseProvisioner(new RecordingProviderFactory(connection));
 
-        await HangfireTools.EnsureDatabaseExistsAsync(ConnectionString, new RecordingProviderFactory(connection));
+        await sut.EnsureDatabaseExistsAsync(ConnectionString);
 
         new DbConnectionStringBuilder { ConnectionString = connection.ConnectionString }
             .ContainsKey("Database").Should().BeTrue();
         connection.ConnectionString.Should().Contain("Database=postgres");
-        connection.Commands.Should().ContainSingle().Which.Should().Contain("WHERE datname = @DbName");
+        connection.Commands.Should().Contain(x => x.Contains("pg_advisory_lock", StringComparison.Ordinal));
+        connection.Commands.Should().Contain(x => x.Contains("pg_advisory_unlock", StringComparison.Ordinal));
+        connection.Commands.Should().Contain(x => x.Contains("WHERE datname = @DatabaseName", StringComparison.Ordinal));
         connection.Commands.Should().NotContain(x => x.StartsWith("CREATE DATABASE", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task HangfireTools_WhenDatabaseIsMissing_CreatesQuotedDatabase()
+    public async Task EnsureDatabaseExistsAsync_WhenDatabaseIsMissing_CreatesQuotedDatabase()
     {
         var connection = new RecordingDbConnection(databaseExists: false);
+        var sut = new PostgresDatabaseProvisioner(new RecordingProviderFactory(connection));
 
-        await HangfireTools.EnsureDatabaseExistsAsync(ConnectionString, new RecordingProviderFactory(connection));
+        await sut.EnsureDatabaseExistsAsync(ConnectionString);
 
         connection.Commands.Should().Contain("CREATE DATABASE \"ngb-jobs\"");
     }
 
     [Fact]
-    public async Task HangfireTools_CoversInvalidDatabaseFactoryAndPublicEntryPoint()
+    public async Task EnsureDatabaseExistsAsync_ValidatesInputsFactoryAndCancellation()
     {
-        var noDatabase = () => HangfireTools.EnsureDatabaseExistsAsync("Host=localhost");
+        var sut = new PostgresDatabaseProvisioner();
+        var blank = () => sut.EnsureDatabaseExistsAsync(" ");
+        var noDatabase = () => sut.EnsureDatabaseExistsAsync("Host=localhost");
+        await blank.Should().ThrowAsync<NgbArgumentRequiredException>();
         await noDatabase.Should().ThrowAsync<NgbConfigurationViolationException>()
             .WithMessage("*must specify a database*");
 
-        var nullFactory = () => HangfireTools.EnsureDatabaseExistsAsync(ConnectionString, null!);
-        await nullFactory.Should().ThrowAsync<ArgumentNullException>();
+        Action nullFactory = () => _ = new PostgresDatabaseProvisioner(null!);
+        nullFactory.Should().Throw<ArgumentNullException>();
 
-        var nullConnection = () => HangfireTools.EnsureDatabaseExistsAsync(
-            ConnectionString, new RecordingProviderFactory(null));
-        await nullConnection.Should().ThrowAsync<NgbConfigurationViolationException>()
+        var nullConnection = new PostgresDatabaseProvisioner(new RecordingProviderFactory(null));
+        var missingConnection = () => nullConnection.EnsureDatabaseExistsAsync(ConnectionString);
+        await missingConnection.Should().ThrowAsync<NgbConfigurationViolationException>()
             .WithMessage("*did not create a connection*");
-    }
 
-    [Fact]
-    public async Task HostingBootstrap_NormalizesValuesAndDelegatesInfrastructureCreation()
-    {
-        string? received = null;
-        var options = new BackgroundJobsHostingOptions();
-        var bootstrap = new BackgroundJobsHostingBootstrap(
-            options, " app ", " jobs ", value =>
-            {
-                received = value;
-                return Task.CompletedTask;
-            });
-
-        bootstrap.Options.Should().BeSameAs(options);
-        bootstrap.ApplicationConnectionString.Should().Be("app");
-        bootstrap.HangfireConnectionString.Should().Be("jobs");
-        await bootstrap.EnsureInfrastructureAsync();
-        received.Should().Be("jobs");
-
-        var publicBootstrap = new BackgroundJobsHostingBootstrap(options, "app", "jobs");
-        publicBootstrap.HangfireConnectionString.Should().Be("jobs");
-    }
-
-    [Fact]
-    public void HostingBootstrap_RejectsEveryMissingDependency()
-    {
-        Action missingOptions = () => new BackgroundJobsHostingBootstrap(null!, "app", "jobs", _ => Task.CompletedTask);
-        Action missingApplication = () => new BackgroundJobsHostingBootstrap(new(), " ", "jobs", _ => Task.CompletedTask);
-        Action missingHangfire = () => new BackgroundJobsHostingBootstrap(new(), "app", " ", _ => Task.CompletedTask);
-        Action missingEnsure = () => new BackgroundJobsHostingBootstrap(new(), "app", "jobs", null!);
-
-        missingOptions.Should().Throw<NgbArgumentRequiredException>();
-        missingApplication.Should().Throw<NgbArgumentRequiredException>();
-        missingHangfire.Should().Throw<NgbArgumentRequiredException>();
-        missingEnsure.Should().Throw<NgbArgumentRequiredException>();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var cancelled = () => new PostgresDatabaseProvisioner(new RecordingProviderFactory(null))
+            .EnsureDatabaseExistsAsync(ConnectionString, cancellation.Token);
+        await cancelled.Should().ThrowAsync<OperationCanceledException>();
     }
 
     private sealed class RecordingProviderFactory(RecordingDbConnection? connection) : DbProviderFactory

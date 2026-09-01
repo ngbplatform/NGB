@@ -1,4 +1,7 @@
 using NGB.BackgroundJobs.Hosting;
+using NGB.BackgroundJobs.PostgreSql;
+using NGB.BackgroundJobs.PostgreSql.DependencyInjection;
+using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
 using NGB.Trade.DependencyInjection;
@@ -7,16 +10,17 @@ using NGB.Trade.Runtime.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var bootstrap = builder.AddNgbBackgroundJobs(options =>
+var bootstrap = builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create, options =>
 {
     options.DashboardTitle = "NGB: Trade - Background Jobs";
 });
 
-await bootstrap.EnsureInfrastructureAsync();
+await bootstrap.EnsureInfrastructureAsync(new PostgresDatabaseProvisioner());
 
 builder.Services
     .AddNgbRuntime()
     .AddNgbPostgres(bootstrap.ApplicationConnectionString)
+    .AddNgbPostgresBackgroundJobsAdapter()
     .AddTradeModule()
     .AddTradeRuntimeModule()
     .AddTradePostgresModule();

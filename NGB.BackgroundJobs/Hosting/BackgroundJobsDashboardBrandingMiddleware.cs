@@ -9,6 +9,5 @@ internal sealed class BackgroundJobsDashboardBrandingMiddleware(
     string faviconHref)
 {
     public Task InvokeAsync(HttpContext context) =>
-        BackgroundJobsDashboardBranding.InterceptHtmlAsync(
-            context, next, options, inlineStyles, faviconHref);
+        BackgroundJobsDashboardBranding.InterceptHtmlAsync(context, next, options, inlineStyles, faviconHref);
 }

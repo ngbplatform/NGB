@@ -128,6 +128,7 @@ public sealed class BackgroundJobsSmallSurfaceFullCoverageTests
             BackgroundJobsSectionName = " Jobs ",
             ApplicationConnectionStringName = " App ",
             HangfireConnectionStringName = " Hangfire ",
+            HangfireStorageNamespace = " JobsSchema ",
             PostgresHealthCheckName = " DB ",
             HangfireHealthCheckName = " Jobs health ",
             AdminConsoleCallbackPath = " ",
@@ -149,11 +150,13 @@ public sealed class BackgroundJobsSmallSurfaceFullCoverageTests
         options.AdminConsoleCallbackPath.Should().BeNull();
         options.AdminConsolePublicOrigin.Should().BeNull();
         options.ServerName.Should().Be("server");
+        options.HangfireStorageNamespace.Should().Be("JobsSchema");
 
         Action blankStylesheet = () => options.AddCustomStylesheet(" ");
         blankStylesheet.Should().Throw<NgbArgumentRequiredException>();
         InvalidOptions(x => x.HealthPath = " ").Should().Throw<NgbArgumentRequiredException>();
         InvalidOptions(x => x.DashboardTitle = " ").Should().Throw<NgbArgumentRequiredException>();
+        InvalidOptions(x => x.HangfireStorageNamespace = " ").Should().Throw<NgbArgumentRequiredException>();
         InvalidOptions(x => x.WorkerCount = 0).Should().Throw<NgbArgumentOutOfRangeException>();
         InvalidOptions(x => x.DistributedLockTimeoutSeconds = 0).Should().Throw<NgbArgumentOutOfRangeException>();
         InvalidOptions(x => x.AdminConsolePublicOrigin = "ftp://invalid.test").Should().Throw<NgbConfigurationViolationException>();
@@ -172,17 +175,16 @@ public sealed class BackgroundJobsSmallSurfaceFullCoverageTests
         var options = new PlatformHangfireOptions
         {
             ConnectionString = "connection",
-            PrepareSchemaIfNecessary = false,
-            SchemaName = "background_jobs",
+            StorageNamespace = "background_jobs",
             WorkerCount = 2,
             Queues = ["critical"],
             DistributedLockTimeoutSeconds = 9,
             ServerName = "server"
         };
 
-        (options.ConnectionString, options.PrepareSchemaIfNecessary, options.SchemaName, options.WorkerCount, options.Queues[0],
+        (options.ConnectionString, options.StorageNamespace, options.WorkerCount, options.Queues[0],
             options.DistributedLockTimeoutSeconds, options.ServerName)
-            .Should().Be(("connection", false, "background_jobs", 2, "critical", 9, "server"));
+            .Should().Be(("connection", "background_jobs", 2, "critical", 9, "server"));
     }
 
     [Fact]

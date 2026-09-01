@@ -13,7 +13,7 @@ using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.Infrastructure;
 using NGB.BackgroundJobs.Observability;
-using NGB.Tools.Exceptions;
+using NGB.Persistence.BackgroundJobs;
 
 namespace NGB.BackgroundJobs.Tests.Infrastructure;
 
@@ -71,7 +71,7 @@ public sealed class BackgroundJobsInfrastructureFullCoverageTests
     }
 
     [Fact]
-    public async Task RecurringStateReader_UsesSingleBatchReaderAndPostgresReaderValidatesSchema()
+    public async Task RecurringStateReader_UsesSingleConfiguredBatchReader()
     {
         var hashes = new Dictionary<string, IReadOnlyDictionary<string, string>>(StringComparer.Ordinal)
         {
@@ -79,21 +79,20 @@ public sealed class BackgroundJobsInfrastructureFullCoverageTests
         };
         var batch = new StubHashBatchReader(hashes);
         var storage = new Mock<JobStorage>(MockBehavior.Strict);
-        var sut = new HangfireRecurringJobStateReader(storage.Object, batch);
+        var options = Options.Create(new PlatformHangfireOptions
+        {
+            ConnectionString = "Host=jobs",
+            StorageNamespace = "jobs_schema"
+        });
+        var sut = new HangfireRecurringJobStateReader(storage.Object, options, batch);
 
         var states = await sut.GetManyAsync(["missing", "job", "job"], default);
 
         states.Should().ContainSingle().Which.Value.Cron.Should().Be("0 1 * * *");
-        batch.Calls.Should().ContainSingle().Which.Should().Equal("missing", "job");
-
-        var invalid = new PostgresRecurringJobHashBatchReader(Options.Create(new PlatformHangfireOptions
-        {
-            ConnectionString = "Host=unused",
-            SchemaName = "not-valid!"
-        }));
-        (await invalid.GetManyAsync([], default)).Should().BeEmpty();
-        var invalidSchema = () => invalid.GetManyAsync(["job"], default);
-        await invalidSchema.Should().ThrowAsync<NgbConfigurationViolationException>();
+        var request = batch.Calls.Should().ContainSingle().Subject;
+        request.ConnectionString.Should().Be("Host=jobs");
+        request.StorageNamespace.Should().Be("jobs_schema");
+        request.JobIds.Should().Equal("missing", "job");
     }
 
     [Fact]
@@ -164,14 +163,14 @@ public sealed class BackgroundJobsInfrastructureFullCoverageTests
     private sealed class StubHashBatchReader(IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> hashes)
         : IRecurringJobHashBatchReader
     {
-        public List<IReadOnlyCollection<string>> Calls { get; } = [];
+        public List<RecurringJobHashBatchRequest> Calls { get; } = [];
 
         public Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>> GetManyAsync(
-            IReadOnlyCollection<string> jobIds,
+            RecurringJobHashBatchRequest request,
             CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            Calls.Add(jobIds.ToArray());
+            Calls.Add(request);
             return Task.FromResult(hashes);
         }
     }

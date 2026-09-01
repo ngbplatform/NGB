@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using NGB.Persistence.AuditLog;
+using NGB.Persistence.Databases;
 using NGB.Persistence.Migrations;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.DependencyInjection;
@@ -46,9 +48,11 @@ public sealed class PostgresDependencyInjectionFullCoverageTests
 
         provider.GetRequiredService<TimeProvider>().Should().BeSameAs(TimeProvider.System);
         provider.GetRequiredService<IMigrationRunner>().Should().NotBeNull();
+        provider.GetRequiredService<IDatabaseProvisioner>().Should().NotBeNull();
         await using var scope = provider.CreateAsyncScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         uow.Should().BeOfType<PostgresUnitOfWork>();
+        scope.ServiceProvider.GetRequiredService<IAuditHealthReader>().Should().NotBeNull();
     }
 
     [Fact]
