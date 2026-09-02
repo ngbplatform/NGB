@@ -1,20 +1,11 @@
 import {
+  buildDocumentFullPageUrl,
   buildReportPageUrl,
-  dashboardReportCellByCode,
-  dashboardReportCellDisplay,
-  dashboardReportCellNumber,
-  dashboardReportColumnIndexMap,
-  executeReport,
   formatDashboardMonthLabel,
-  isDashboardReportRowKind,
-  ReportRowKind,
-  resolveReportCellActionUrl,
-  startOfDashboardUtcMonth,
+  httpGet,
+  parseDashboardUtcDateOnly,
   toDashboardUtcDateOnly,
   toDashboardUtcMonthKey,
-  type ReportExecutionRequestDto,
-  type ReportExecutionResponseDto,
-  type ReportSheetRowDto,
 } from '@ngbplatform/ui'
 
 export type CrmHomePipelineItem = {
@@ -49,6 +40,26 @@ export type CrmHomeDashboardData = {
   }
 }
 
+type CrmDashboardResponse = {
+  asOfUtc: string
+  pipelineAmount: number
+  weightedPipelineAmount: number
+  leadCount: number
+  qualifiedLeadCount: number
+  convertedLeadCount: number
+  quoteAmount: number
+  quoteCount: number
+  activityCount: number
+  openOpportunities: {
+    opportunityId: string
+    opportunity: string
+    account: string
+    stage: string
+    amount: number
+    weightedAmount: number
+  }[]
+}
+
 const REPORTS = {
   pipeline: 'crm.sales_pipeline',
   funnel: 'crm.lead_conversion_funnel',
@@ -56,184 +67,36 @@ const REPORTS = {
   quotes: 'crm.quote_register',
 } as const
 
-const DASHBOARD_REPORT_LIMIT = 2000
+export async function loadHomeDashboard(asOf: string, signal?: AbortSignal): Promise<CrmHomeDashboardData> {
+  const asOfDate = parseDashboardUtcDateOnly(asOf)
+  if (!asOfDate) throw new Error('Select a valid as-of date.')
 
-const DETAIL_REPORT_LAYOUTS: Record<string, ReportExecutionRequestDto> = {
-  [REPORTS.pipeline]: {
-    offset: 0,
-    limit: DASHBOARD_REPORT_LIMIT,
-    layout: {
-      rowGroups: [],
-      detailFields: [
-        'opportunity_display',
-        'customer_display',
-        'stage_display',
-        'status',
-        'expected_close_date',
-      ],
-      measures: [
-        { measureCode: 'amount' },
-        { measureCode: 'weighted_amount' },
-      ],
-      showDetails: true,
-      showGrandTotals: true,
-    },
-  },
-  [REPORTS.funnel]: {
-    offset: 0,
-    limit: DASHBOARD_REPORT_LIMIT,
-    layout: {
-      rowGroups: [{ fieldCode: 'funnel_step' }],
-      detailFields: [],
-      measures: [{ measureCode: 'lead_count' }],
-      sorts: [{ fieldCode: 'funnel_step' }],
-      showDetails: false,
-      showGrandTotals: true,
-    },
-  },
-  [REPORTS.activities]: {
-    offset: 0,
-    limit: DASHBOARD_REPORT_LIMIT,
-    layout: {
-      rowGroups: [],
-      detailFields: [
-        'activity_date',
-        'activity_type',
-        'customer_display',
-        'contact_display',
-        'outcome',
-      ],
-      measures: [{ measureCode: 'activity_count' }],
-      showDetails: true,
-      showGrandTotals: true,
-    },
-  },
-  [REPORTS.quotes]: {
-    offset: 0,
-    limit: DASHBOARD_REPORT_LIMIT,
-    layout: {
-      rowGroups: [],
-      detailFields: [
-        'quote_date',
-        'quote_status',
-        'customer_display',
-        'contact_display',
-        'currency',
-      ],
-      measures: [
-        { measureCode: 'amount' },
-        { measureCode: 'quote_count' },
-      ],
-      showDetails: true,
-      showGrandTotals: true,
-    },
-  },
-}
-
-function detailRows(response: ReportExecutionResponseDto): ReportSheetRowDto[] {
-  return (response.sheet.rows ?? []).filter((row) => isDashboardReportRowKind(row, ReportRowKind.Detail))
-}
-
-function groupRows(response: ReportExecutionResponseDto): ReportSheetRowDto[] {
-  return (response.sheet.rows ?? []).filter((row) => isDashboardReportRowKind(row, ReportRowKind.Group))
-}
-
-function rowLabelDisplay(row: ReportSheetRowDto, columns: Map<string, number>, columnKey: string): string {
-  return dashboardReportCellDisplay(row, columns, columnKey)
-    || dashboardReportCellDisplay(row, columns, '__row_hierarchy')
-    || String(row.cells?.[0]?.display ?? '').trim()
-}
-
-async function safeExecuteReport(
-  reportCode: string,
-  warnings: string[],
-  request: ReportExecutionRequestDto = { offset: 0, limit: DASHBOARD_REPORT_LIMIT },
-): Promise<ReportExecutionResponseDto | null> {
-  try {
-    return await executeReport(reportCode, request)
-  } catch (error) {
-    warnings.push(`${reportCode}: ${error instanceof Error ? error.message : 'Unable to load report data.'}`)
-    return null
-  }
-}
-
-function sumColumn(response: ReportExecutionResponseDto | null, columnKey: string): number {
-  if (!response) return 0
-  const columns = dashboardReportColumnIndexMap(response)
-  return detailRows(response).reduce((sum, row) => sum + measureCellNumber(row, columns, columnKey), 0)
-}
-
-function funnelCount(response: ReportExecutionResponseDto | null, stepPrefix: string): number {
-  if (!response) return 0
-  const columns = dashboardReportColumnIndexMap(response)
-  const rows = detailRows(response)
-  const sourceRows = rows.length > 0 ? rows : groupRows(response)
-
-  return sourceRows
-    .filter((row) => rowLabelDisplay(row, columns, 'funnel_step').startsWith(stepPrefix))
-    .reduce((sum, row) => sum + measureCellNumber(row, columns, 'lead_count'), 0)
-}
-
-function measureCellNumber(row: ReportSheetRowDto, columns: Map<string, number>, measureCode: string): number {
-  const direct = dashboardReportCellNumber(row, columns, measureCode)
-  return direct || dashboardReportCellNumber(row, columns, `${measureCode}__sum`)
-}
-
-function topPipelineItems(response: ReportExecutionResponseDto | null): CrmHomePipelineItem[] {
-  if (!response) return []
-  const columns = dashboardReportColumnIndexMap(response)
-
-  return detailRows(response)
-    .map((row) => {
-      const opportunity = dashboardReportCellDisplay(row, columns, 'opportunity_display')
-      const account = dashboardReportCellDisplay(row, columns, 'customer_display')
-      const stage = dashboardReportCellDisplay(row, columns, 'stage_display')
-      const amount = measureCellNumber(row, columns, 'amount')
-      const weightedAmount = measureCellNumber(row, columns, 'weighted_amount')
-      const opportunityRoute = resolveReportCellActionUrl(dashboardReportCellByCode(row, columns, 'opportunity_display')?.action)
-
-      return {
-        opportunity: opportunity || 'Opportunity',
-        account: account || 'Account',
-        stage: stage || 'Stage',
-        amount,
-        weightedAmount,
-        route: opportunityRoute,
-      }
-    })
-    .filter((item) => item.amount > 0 || item.weightedAmount > 0)
-    .sort((left, right) => right.weightedAmount - left.weightedAmount)
-    .slice(0, 6)
-}
-
-export async function loadHomeDashboard(asOf: string): Promise<CrmHomeDashboardData> {
-  const warnings: string[] = []
-  const asOfDate = new Date(`${asOf}T00:00:00.000Z`)
-  const start = startOfDashboardUtcMonth(asOfDate)
-  const monthKey = toDashboardUtcMonthKey(start)
-  const monthLabel = formatDashboardMonthLabel(monthKey)
-
-  const [pipeline, funnel, activities, quotes] = await Promise.all([
-    safeExecuteReport(REPORTS.pipeline, warnings, DETAIL_REPORT_LAYOUTS[REPORTS.pipeline]),
-    safeExecuteReport(REPORTS.funnel, warnings, DETAIL_REPORT_LAYOUTS[REPORTS.funnel]),
-    safeExecuteReport(REPORTS.activities, warnings, DETAIL_REPORT_LAYOUTS[REPORTS.activities]),
-    safeExecuteReport(REPORTS.quotes, warnings, DETAIL_REPORT_LAYOUTS[REPORTS.quotes]),
-  ])
+  const response = signal
+    ? await httpGet<CrmDashboardResponse>('/api/dashboard', { asOfUtc: asOf }, { signal })
+    : await httpGet<CrmDashboardResponse>('/api/dashboard', { asOfUtc: asOf })
+  const monthKey = toDashboardUtcMonthKey(asOfDate)
 
   return {
-    warnings,
+    warnings: [],
     asOf: toDashboardUtcDateOnly(asOfDate),
     monthKey,
-    monthLabel,
-    pipelineAmount: sumColumn(pipeline, 'amount'),
-    weightedPipelineAmount: sumColumn(pipeline, 'weighted_amount'),
-    leadCount: funnelCount(funnel, '01'),
-    qualifiedLeadCount: funnelCount(funnel, '02'),
-    convertedLeadCount: funnelCount(funnel, '03'),
-    quoteAmount: sumColumn(quotes, 'amount'),
-    quoteCount: sumColumn(quotes, 'quote_count'),
-    activityCount: sumColumn(activities, 'activity_count'),
-    openOpportunities: topPipelineItems(pipeline),
+    monthLabel: formatDashboardMonthLabel(monthKey),
+    pipelineAmount: response.pipelineAmount,
+    weightedPipelineAmount: response.weightedPipelineAmount,
+    leadCount: response.leadCount,
+    qualifiedLeadCount: response.qualifiedLeadCount,
+    convertedLeadCount: response.convertedLeadCount,
+    quoteAmount: response.quoteAmount,
+    quoteCount: response.quoteCount,
+    activityCount: response.activityCount,
+    openOpportunities: (response.openOpportunities ?? []).map((item) => ({
+      opportunity: item.opportunity,
+      account: item.account,
+      stage: item.stage,
+      amount: item.amount,
+      weightedAmount: item.weightedAmount,
+      route: buildDocumentFullPageUrl('crm.lead_conversion', item.opportunityId),
+    })),
     routes: {
       leads: '/documents/crm.lead_intake',
       pipeline: buildReportPageUrl(REPORTS.pipeline),

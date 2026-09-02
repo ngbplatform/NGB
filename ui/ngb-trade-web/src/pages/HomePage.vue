@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   formatDashboardCount,
@@ -10,13 +10,15 @@ import {
   NgbDashboardStatusBanner,
   NgbIcon,
   NgbPageHeader,
-  NgbTrendChart,
   useDashboardPageState,
 } from '@ngbplatform/ui'
+import { loadNgbTrendChart } from '@ngbplatform/ui/lazy'
 
 import { loadHomeDashboard, type TradeHomeDashboardData } from '../home/homeData'
 
 type Tone = 'neutral' | 'success' | 'warn' | 'danger'
+
+const NgbTrendChart = defineAsyncComponent(loadNgbTrendChart)
 
 const router = useRouter()
 

@@ -405,17 +405,27 @@ test('searches and selects accounts and dimensions, loads account context, and o
   })
 
   await queryLookup(0, 'cash')
-  expect(linesEditorMocks.lookupStore.searchCoa).toHaveBeenCalledWith('cash')
+  expect(linesEditorMocks.lookupStore.searchCoa).toHaveBeenCalledWith(
+    'cash',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
   clickLookupAction(0, 'select-first')
   await flushUi()
 
-  expect(linesEditorMocks.getAccountContext).toHaveBeenCalledWith('cash-id')
+  expect(linesEditorMocks.getAccountContext).toHaveBeenCalledWith(
+    'cash-id',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
   await expect.element(view.getByText('Property Id')).toBeVisible()
   await expect.element(view.getByText('Required')).toBeVisible()
   expect(view.getByTestId('rows-state').element().textContent ?? '').toContain('cash-id')
 
   await queryLookup(1, 'tower')
-  expect(linesEditorMocks.lookupStore.searchCatalog).toHaveBeenCalledWith('pm.property', 'tower')
+  expect(linesEditorMocks.lookupStore.searchCatalog).toHaveBeenCalledWith(
+    'pm.property',
+    'tower',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
   clickLookupAction(1, 'select-first')
   await flushUi()
   expect(view.getByTestId('rows-state').element().textContent ?? '').toContain('property_id:property-1')
@@ -502,7 +512,10 @@ test('uses cached contexts, handles dimensions without lookups, queries CoA dime
 
   await queryLookup(1, 'ignored')
   await queryLookup(2, 'department')
-  expect(linesEditorMocks.lookupStore.searchCoa).toHaveBeenCalledWith('department')
+  expect(linesEditorMocks.lookupStore.searchCoa).toHaveBeenCalledWith(
+    'department',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 
   clickLookupAction(2, 'select-first')
   await flushUi()
@@ -576,6 +589,7 @@ test('resolves multi-document dimension targets through the first matching docum
   expect(linesEditorMocks.lookupStore.searchDocuments).toHaveBeenCalledWith(
     ['pm.invoice', 'pm.credit_note'],
     'credit',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
   clickLookupAction(1, 'select-first')
   await flushUi()
@@ -638,7 +652,10 @@ test('keeps the editor usable after account-context failures and allows a later 
   clickLookupAction(0, 'select-first')
   await flushUi()
 
-  expect(linesEditorMocks.getAccountContext).toHaveBeenCalledWith('cash-id')
+  expect(linesEditorMocks.getAccountContext).toHaveBeenCalledWith(
+    'cash-id',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
   expect(document.body.textContent).not.toContain('Loading dimension rules…')
   expect(document.body.textContent).not.toContain('Property Id')
   expect(document.body.textContent).not.toContain('Department Id')
@@ -647,7 +664,10 @@ test('keeps the editor usable after account-context failures and allows a later 
   clickLookupAction(0, 'select-first')
   await flushUi()
 
-  expect(linesEditorMocks.getAccountContext).toHaveBeenCalledWith('rent-id')
+  expect(linesEditorMocks.getAccountContext).toHaveBeenCalledWith(
+    'rent-id',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
   await expect.element(view.getByText('Department Id')).toBeVisible()
 })
 

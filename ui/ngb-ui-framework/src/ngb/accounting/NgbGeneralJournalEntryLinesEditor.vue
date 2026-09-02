@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NgbBadge from '../primitives/NgbBadge.vue'
@@ -47,6 +47,12 @@ const dimensionItemsByCell = ref<Record<string, LookupItem[]>>({})
 const accountContextsByRow = ref<Record<string, GeneralJournalEntryAccountContextDto | null>>({})
 const accountContextCache = ref<Record<string, GeneralJournalEntryAccountContextDto | null>>({})
 const loadingContexts = ref<Record<string, string>>({})
+const accountLookupControllers = new Map<string, AbortController>()
+const dimensionLookupControllers = new Map<string, AbortController>()
+const accountContextRequests = new Map<
+  string,
+  { controller: AbortController; promise: Promise<GeneralJournalEntryAccountContextDto | null> }
+>()
 
 const rows = computed(() => props.modelValue)
 const canEdit = computed(() => !props.readonly)
@@ -78,7 +84,7 @@ function emitRows(next: GeneralJournalEntryEditorLineModel[]) {
 
 function updateRow(rowIndex: number, patch: Partial<GeneralJournalEntryEditorLineModel>) {
   const next = rows.value.map((row, index) => {
-    if (index !== rowIndex) return { ...row, dimensions: { ...row.dimensions } }
+    if (index !== rowIndex) return row
     return {
       ...row,
       ...patch,
@@ -91,7 +97,7 @@ function updateRow(rowIndex: number, patch: Partial<GeneralJournalEntryEditorLin
 function addRow() {
   if (!canEdit.value) return
   emitRows([
-    ...rows.value.map((row) => ({ ...row, dimensions: { ...row.dimensions } })),
+    ...rows.value,
     createGeneralJournalEntryLine(),
   ])
 }
@@ -100,7 +106,6 @@ function removeRow(rowIndex: number) {
   if (!canEdit.value) return
   const next = rows.value
     .filter((_, index) => index !== rowIndex)
-    .map((row) => ({ ...row, dimensions: { ...row.dimensions } }))
   emitRows(next.length > 0 ? next : [createGeneralJournalEntryLine()])
 }
 
@@ -164,13 +169,29 @@ async function ensureAccountContext(row: GeneralJournalEntryEditorLineModel) {
 
   loadingContexts.value = { ...loadingContexts.value, [row.clientKey]: requestKey }
   try {
-    const context = await getGeneralJournalEntryAccountContext(accountId)
+    let request = accountContextRequests.get(accountId)
+    if (!request) {
+      const controller = new AbortController()
+      const promise = getGeneralJournalEntryAccountContext(accountId, { signal: controller.signal })
+        .then((context) => {
+          accountContextCache.value = { ...accountContextCache.value, [accountId]: context }
+          return context
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return null
+          throw error
+        })
+        .finally(() => accountContextRequests.delete(accountId))
+      request = { controller, promise }
+      accountContextRequests.set(accountId, request)
+    }
+
+    const context = await request.promise
     if (loadingContexts.value[row.clientKey] !== requestKey) return
 
     const latestRow = rowByClientKey(row.clientKey)
     if (latestRow?.account?.id !== accountId) return
 
-    accountContextCache.value = { ...accountContextCache.value, [accountId]: context }
     accountContextsByRow.value = { ...accountContextsByRow.value, [row.clientKey]: context }
   } catch {
     if (loadingContexts.value[row.clientKey] !== requestKey) return
@@ -183,9 +204,7 @@ async function ensureAccountContext(row: GeneralJournalEntryEditorLineModel) {
 watch(
   () => rows.value.map((row) => `${row.clientKey}:${row.account?.id ?? ''}`).join('|'),
   async () => {
-    for (const row of rows.value) {
-      await ensureAccountContext(row)
-    }
+    await Promise.all(rows.value.map((row) => ensureAccountContext(row)))
   },
   { immediate: true },
 )
@@ -200,13 +219,23 @@ function selectedDimensionItem(row: GeneralJournalEntryEditorLineModel, rule: Ge
 
 async function onAccountQuery(row: GeneralJournalEntryEditorLineModel, query: string) {
   const q = query.trim()
+  accountLookupControllers.get(row.clientKey)?.abort()
   if (!q) {
     accountItemsByRow.value = { ...accountItemsByRow.value, [row.clientKey]: [] }
     return
   }
 
-  const items = await lookupStore.searchCoa(q)
-  accountItemsByRow.value = { ...accountItemsByRow.value, [row.clientKey]: items }
+  const controller = new AbortController()
+  accountLookupControllers.set(row.clientKey, controller)
+  try {
+    const items = await lookupStore.searchCoa(q, { signal: controller.signal })
+    if (controller.signal.aborted || accountLookupControllers.get(row.clientKey) !== controller) return
+    accountItemsByRow.value = { ...accountItemsByRow.value, [row.clientKey]: items }
+  } catch (error) {
+    if (!controller.signal.aborted) throw error
+  } finally {
+    if (accountLookupControllers.get(row.clientKey) === controller) accountLookupControllers.delete(row.clientKey)
+  }
 }
 
 function onAccountSelect(rowIndex: number, item: GeneralJournalEntryEditorLineModel['account']) {
@@ -239,19 +268,42 @@ async function onDimensionQuery(
   const q = query.trim()
   const lookup = rule.lookup
   const key = cellKey(row.clientKey, rule.dimensionId)
+  dimensionLookupControllers.get(key)?.abort()
 
   if (!q || !lookup) {
     dimensionItemsByCell.value = { ...dimensionItemsByCell.value, [key]: [] }
     return
   }
 
+  const controller = new AbortController()
+  dimensionLookupControllers.set(key, controller)
   let items: LookupItem[] = []
-  if (lookup.kind === 'catalog') items = await lookupStore.searchCatalog(lookup.catalogType, q)
-  else if (lookup.kind === 'coa') items = await lookupStore.searchCoa(q)
-  else items = await lookupStore.searchDocuments(lookup.documentTypes, q)
+  try {
+    if (lookup.kind === 'catalog') {
+      items = await lookupStore.searchCatalog(lookup.catalogType, q, { signal: controller.signal })
+    } else if (lookup.kind === 'coa') {
+      items = await lookupStore.searchCoa(q, { signal: controller.signal })
+    } else {
+      items = await lookupStore.searchDocuments(lookup.documentTypes, q, { signal: controller.signal })
+    }
 
-  dimensionItemsByCell.value = { ...dimensionItemsByCell.value, [key]: items }
+    if (controller.signal.aborted || dimensionLookupControllers.get(key) !== controller) return
+    dimensionItemsByCell.value = { ...dimensionItemsByCell.value, [key]: items }
+  } catch (error) {
+    if (!controller.signal.aborted) throw error
+  } finally {
+    if (dimensionLookupControllers.get(key) === controller) dimensionLookupControllers.delete(key)
+  }
 }
+
+onBeforeUnmount(() => {
+  for (const controller of accountLookupControllers.values()) controller.abort()
+  for (const controller of dimensionLookupControllers.values()) controller.abort()
+  for (const request of accountContextRequests.values()) request.controller.abort()
+  accountLookupControllers.clear()
+  dimensionLookupControllers.clear()
+  accountContextRequests.clear()
+})
 
 function onDimensionSelect(
   rowIndex: number,
@@ -337,7 +389,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
 
       <tbody>
         <template v-for="(row, rowIndex) in rows" :key="row.clientKey">
-          <tr class="border-t border-ngb-border align-top transition-colors hover:bg-ngb-bg">
+          <tr class="border-t border-ngb-border align-top transition-colors [content-visibility:auto] [contain-intrinsic-block-size:42px] hover:bg-ngb-bg">
             <td class="border-r border-dotted border-ngb-border px-2 py-1 align-top text-right text-ngb-muted">
               <div class="flex h-8 items-center justify-end">{{ rowIndex + 1 }}</div>
             </td>

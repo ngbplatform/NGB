@@ -35,6 +35,7 @@ type MenuGroup = {
 type MenuStore = {
   groups: MenuGroup[] | null
   load: ReturnType<typeof vi.fn>
+  reset: ReturnType<typeof vi.fn>
 }
 
 type PaletteStore = {
@@ -163,6 +164,7 @@ beforeEach(() => {
   mocks.menuStore = {
     groups: [],
     load: vi.fn(async () => undefined),
+    reset: vi.fn(),
   }
   mocks.paletteStore = {
     hydrate: vi.fn(async () => undefined),

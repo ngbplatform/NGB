@@ -931,7 +931,11 @@ test('opens catalog lookup targets through the default reporting config and pres
   lookupInput().dispatchEvent(new Event('input', { bubbles: true }))
   await flushUi()
 
-  expect(lookupStore.searchCatalog).toHaveBeenCalledWith('pm.property', 'river', undefined)
+  expect(lookupStore.searchCatalog).toHaveBeenCalledWith(
+    'pm.property',
+    'river',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 
   lookupAction('select-first').click()
   await flushUi()
@@ -973,7 +977,10 @@ test('opens coa lookup targets through the default reporting config and preserve
   lookupInput().dispatchEvent(new Event('input', { bubbles: true }))
   await flushUi()
 
-  expect(lookupStore.searchCoa).toHaveBeenCalledWith('cash')
+  expect(lookupStore.searchCoa).toHaveBeenCalledWith(
+    'cash',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 
   lookupAction('select-first').click()
   await flushUi()
@@ -1026,7 +1033,11 @@ test('opens document lookup targets through the default reporting config after r
   lookupInput().dispatchEvent(new Event('input', { bubbles: true }))
   await flushUi()
 
-  expect(lookupStore.searchDocuments).toHaveBeenCalledWith(['pm.invoice', 'pm.credit_note'], 'credit')
+  expect(lookupStore.searchDocuments).toHaveBeenCalledWith(
+    ['pm.invoice', 'pm.credit_note'],
+    'credit',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  )
 
   lookupAction('select-first').click()
   await flushUi()

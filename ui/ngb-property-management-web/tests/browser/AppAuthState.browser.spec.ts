@@ -107,6 +107,7 @@ type AccessStore = {
 type MenuStore = {
   groups: unknown[]
   load: ReturnType<typeof vi.fn>
+  reset: ReturnType<typeof vi.fn>
 }
 
 type SiteNodeStub = {
@@ -181,6 +182,7 @@ beforeEach(() => {
   mocks.menuStore = {
     groups: [],
     load: vi.fn(async () => undefined),
+    reset: vi.fn(),
   }
   mocks.accessStore = createAccessStore()
   mocks.paletteStore = {
@@ -319,6 +321,7 @@ test('renders Posting Log from the permission-filtered backend menu without hidd
       },
     ],
     load: vi.fn(async () => undefined),
+    reset: vi.fn(),
   }
 
   const view = await renderApp()
@@ -361,6 +364,7 @@ test('renders and selects Journal Entries as a document-backed menu item', async
       },
     ],
     load: vi.fn(async () => undefined),
+    reset: vi.fn(),
   }
 
   const view = await renderApp()
@@ -435,6 +439,7 @@ test('builds a root menu leaf, falls back to a stable group id, and marks descen
       },
     ],
     load: vi.fn(async () => undefined),
+    reset: vi.fn(),
   }
 
   const view = await renderApp()
@@ -456,6 +461,7 @@ test('renders an empty shell navigation when the menu response has no groups', a
   mocks.menuStore = {
     groups: null as unknown as unknown[],
     load: vi.fn(async () => undefined),
+    reset: vi.fn(),
   }
 
   const view = await renderApp()

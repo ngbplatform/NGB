@@ -1,23 +1,8 @@
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h } from 'vue'
 
-import { StubVChart } from './stubs'
-
-vi.mock('vue-echarts', () => ({
-  default: StubVChart,
-}))
-
 import NgbTrendChart from '../../../../src/ngb/site/NgbTrendChart.vue'
-
-function readJson(locator: { element(): Element }): Record<string, unknown> {
-  return JSON.parse(locator.element().textContent ?? '{}') as Record<string, unknown>
-}
-
-async function flushUi() {
-  await Promise.resolve()
-  await Promise.resolve()
-}
 
 const TrendLineHarness = defineComponent({
   setup() {
@@ -41,7 +26,7 @@ const TrendBarHarness = defineComponent({
         labels: ['Jan', 'Feb'],
         mode: 'bar',
         series: [
-          { label: 'Vacancy', color: '#2563eb', values: [4, 2] },
+          { label: 'Vacancy', color: '#2563eb', values: [4, -2] },
         ],
       }),
     ])
@@ -61,77 +46,49 @@ const EmptyTrendHarness = defineComponent({
 
 beforeEach(() => {
   document.documentElement.style.setProperty('--accent-color', '#0f766e')
-  document.documentElement.style.setProperty('--ngb-text', '#102a43')
   document.documentElement.style.setProperty('--ngb-muted', '#486581')
-  document.documentElement.style.setProperty('--ngb-border', '#d9e2ec')
-  document.documentElement.style.setProperty('--ngb-card', '#ffffff')
-  document.documentElement.style.setProperty('--ngb-bg', '#f8fafc')
 })
 
 afterEach(() => {
   document.documentElement.removeAttribute('style')
-  document.documentElement.classList.remove('dark')
 })
 
-test('normalizes series data and resolves CSS variable colors for line charts', async () => {
+test('normalizes line data, resolves CSS variables, and exposes accessible point values', async () => {
   const view = await render(TrendLineHarness)
 
-  await expect.element(view.getByTestId('stub-vchart')).toBeVisible()
-
-  const option = readJson(view.getByTestId('stub-vchart-option'))
-  const colors = option.color as string[]
-  const series = option.series as Array<Record<string, unknown>>
-  const legend = option.legend as Record<string, unknown>
-
-  expect(colors).toEqual(['#0f766e', '#f97316', 'var(--missing-color)'])
-  expect(legend.show).toBe(true)
-  expect(series[0]?.type).toBe('line')
-  expect(series[0]?.data).toEqual([1200, 0, 0])
-  expect(series[1]?.data).toEqual([300, 450, 500])
-  expect(series[2]?.data).toEqual([0, 0, 0])
-  expect(readJson(view.getByTestId('stub-vchart-axis-samples'))).toEqual([
-    '0', '1.5M', '-1.5M', '1.5K', '-1.5K', '100', '12.3', '12',
-  ])
-  expect(view.getByTestId('stub-vchart-tooltip-samples').element().textContent).toContain('Revenue')
-  expect(readJson(view.getByTestId('stub-vchart-init-options'))).toEqual({ renderer: 'canvas' })
-  await expect.element(view.getByTestId('stub-vchart-autoresize')).toHaveTextContent('true')
+  await expect.element(view.getByRole('img', { name: 'Line chart: Revenue, Expenses, Fallback' })).toBeVisible()
+  const series = view.container.querySelectorAll('[data-testid="ngb-trend-series"]')
+  expect(series).toHaveLength(3)
+  expect(series[0]?.getAttribute('data-series-values')).toBe('[1200,0,0]')
+  expect(series[1]?.getAttribute('data-series-values')).toBe('[300,450,500]')
+  expect(series[2]?.getAttribute('data-series-values')).toBe('[0,0,0]')
+  expect(series[0]?.getAttribute('data-series-color')).toBe('var(--accent-color, #2563eb)')
+  expect(series[2]?.getAttribute('data-series-color')).toBe('var(--missing-color, #2563eb)')
+  expect(view.container.querySelectorAll('polyline')).toHaveLength(3)
+  expect(view.container.querySelectorAll('circle')).toHaveLength(9)
+  expect(view.container.querySelector('title')?.textContent).toContain('Jan — Revenue: 1.2K')
 })
 
-test('switches to bar semantics and refreshes palette when theme variables change', async () => {
+test('renders grouped bars across positive and negative values and follows theme variables', async () => {
   const view = await render(TrendBarHarness)
 
-  await expect.element(view.getByTestId('stub-vchart')).toBeVisible()
+  await expect.element(view.getByRole('img', { name: 'Bar chart: Vacancy' })).toBeVisible()
+  const bars = view.container.querySelectorAll('rect')
+  expect(bars).toHaveLength(2)
+  expect(Number(bars[0]?.getAttribute('height'))).toBeGreaterThan(0)
+  expect(Number(bars[1]?.getAttribute('height'))).toBeGreaterThan(0)
+  expect(bars[1]?.querySelector('title')?.textContent).toContain('Feb — Vacancy: -2')
 
-  let option = readJson(view.getByTestId('stub-vchart-option'))
-  let tooltip = option.tooltip as Record<string, unknown>
-  let axisPointer = tooltip.axisPointer as Record<string, unknown>
-  let xAxis = option.xAxis as Record<string, unknown>
-  let series = option.series as Array<Record<string, unknown>>
-  let legend = option.legend as Record<string, unknown>
-  let textStyle = legend.textStyle as Record<string, unknown>
-
-  expect(axisPointer.type).toBe('shadow')
-  expect(xAxis.boundaryGap).toBe(true)
-  expect(series[0]?.type).toBe('bar')
-  expect(textStyle.color).toBe('#102a43')
-
-  document.documentElement.style.setProperty('--ngb-text', '#f8fafc')
-  document.documentElement.classList.add('dark')
-  await flushUi()
-
-  option = readJson(view.getByTestId('stub-vchart-option'))
-  const nextLegend = option.legend as Record<string, unknown>
-  const nextTextStyle = nextLegend.textStyle as Record<string, unknown>
-  expect(nextTextStyle.color).toBe('#f8fafc')
+  const axisLabel = view.container.querySelector('text')
+  expect(getComputedStyle(axisLabel!).fill).toBe('rgb(72, 101, 129)')
+  document.documentElement.style.setProperty('--ngb-muted', '#f8fafc')
+  expect(getComputedStyle(axisLabel!).fill).toBe('rgb(248, 250, 252)')
 })
 
-test('keeps an empty chart renderable with a single normalized point', async () => {
+test('keeps an empty chart renderable and accessible without series nodes', async () => {
   const view = await render(EmptyTrendHarness)
 
-  const option = readJson(view.getByTestId('stub-vchart-option'))
-  expect(option.color).toEqual([])
-  expect(option.series).toEqual([])
-  expect((option.legend as Record<string, unknown>).show).toBe(false)
-  expect((option.grid as Record<string, unknown>).top).toBe(20)
-  view.unmount()
+  await expect.element(view.getByRole('img', { name: 'Line chart: no data' })).toBeVisible()
+  expect(view.container.querySelectorAll('[data-testid="ngb-trend-series"]')).toHaveLength(0)
+  expect(view.container.querySelectorAll('text').length).toBeGreaterThan(0)
 })

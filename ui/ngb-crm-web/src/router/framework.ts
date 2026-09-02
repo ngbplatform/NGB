@@ -1,10 +1,6 @@
-import { markRaw } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
+import { defineAsyncComponent } from 'vue'
 import {
-  NgbMetadataCatalogEditPage,
-  NgbMetadataCatalogListPage,
-  NgbMetadataDocumentEditPage,
-  NgbMetadataDocumentListPage,
   getCatalogPage,
   getDocumentPage,
   type MetadataCatalogListPageLoadArgs,
@@ -13,9 +9,9 @@ import {
   type MetadataDocumentEditPageProps,
   type MetadataDocumentListPageProps,
 } from '@ngbplatform/ui'
+import { loadNgbMetadataCatalogEditPage, loadNgbMetadataCatalogListPage, loadNgbMetadataDocumentEditPage, loadNgbMetadataDocumentListPage } from '@ngbplatform/ui/lazy'
 
 import { getCRMLookupHint } from '../lookup/hints'
-import CRMEntityEditor from '../editor/CRMEntityEditor.vue'
 import { catalogCollectionTitle, documentCollectionTitle } from '../utils/entityCollectionTitles'
 
 export type CRMRouteFrameworkConfig = {
@@ -23,7 +19,9 @@ export type CRMRouteFrameworkConfig = {
   documentRoutes: RouteRecordRaw[]
 }
 
-const crmEntityEditorComponent = markRaw(CRMEntityEditor)
+const crmEntityEditorComponent = defineAsyncComponent(
+  () => import('../editor/CRMEntityEditor.vue'),
+)
 
 function loadCRMCatalogPage(args: MetadataCatalogListPageLoadArgs) {
   return getCatalogPage(args.catalogType, {
@@ -94,14 +92,14 @@ const crmDocumentEditPageProps = {
 export function createCRMRouteFrameworkConfig(): CRMRouteFrameworkConfig {
   return {
     catalogRoutes: [
-      { path: '/catalogs/:catalogType', component: NgbMetadataCatalogListPage, props: crmCatalogListPageProps },
-      { path: '/catalogs/:catalogType/new', name: 'CatalogCreate', component: NgbMetadataCatalogEditPage, props: crmCatalogEditPageProps },
-      { path: '/catalogs/:catalogType/:id', component: NgbMetadataCatalogEditPage, props: crmCatalogEditPageProps },
+      { path: '/catalogs/:catalogType', component: loadNgbMetadataCatalogListPage, props: crmCatalogListPageProps },
+      { path: '/catalogs/:catalogType/new', name: 'CatalogCreate', component: loadNgbMetadataCatalogEditPage, props: crmCatalogEditPageProps },
+      { path: '/catalogs/:catalogType/:id', component: loadNgbMetadataCatalogEditPage, props: crmCatalogEditPageProps },
     ],
     documentRoutes: [
-      { path: '/documents/:documentType', component: NgbMetadataDocumentListPage, props: crmDocumentListPageProps },
-      { path: '/documents/:documentType/new', name: 'DocumentCreate', component: NgbMetadataDocumentEditPage, props: crmDocumentEditPageProps },
-      { path: '/documents/:documentType/:id', component: NgbMetadataDocumentEditPage, props: crmDocumentEditPageProps },
+      { path: '/documents/:documentType', component: loadNgbMetadataDocumentListPage, props: crmDocumentListPageProps },
+      { path: '/documents/:documentType/new', name: 'DocumentCreate', component: loadNgbMetadataDocumentEditPage, props: crmDocumentEditPageProps },
+      { path: '/documents/:documentType/:id', component: loadNgbMetadataDocumentEditPage, props: crmDocumentEditPageProps },
     ],
   }
 }

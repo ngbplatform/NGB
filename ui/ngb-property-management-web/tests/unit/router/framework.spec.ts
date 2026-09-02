@@ -8,7 +8,10 @@ const mocks = vi.hoisted(() => ({
   documentTitle: vi.fn((type: string, display: string) => `document:${type}:${display}`),
 }))
 
-vi.mock('vue', () => ({ markRaw: (value: unknown) => value }))
+vi.mock('vue', () => ({
+  defineAsyncComponent: (loader: unknown) => loader,
+  markRaw: (value: unknown) => value,
+}))
 vi.mock('@ngbplatform/ui', () => ({
   NgbMetadataCatalogEditPage: { name: 'CatalogEdit' },
   NgbMetadataCatalogListPage: { name: 'CatalogList' },

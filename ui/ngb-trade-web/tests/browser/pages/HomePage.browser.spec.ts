@@ -133,6 +133,28 @@ vi.mock('@ngbplatform/ui', async () => {
   }
 })
 
+vi.mock('@ngbplatform/ui/lazy', async () => {
+  const { defineComponent, h } = await import('vue')
+  const TrendChart = defineComponent({
+    props: {
+      labels: { type: Array, default: () => [] },
+      series: { type: Array, default: () => [] },
+      mode: { type: String, default: 'line' },
+    },
+    setup(props) {
+      return () => h('pre', { 'data-testid': 'trend-chart' }, JSON.stringify({
+        labels: props.labels,
+        series: props.series,
+        mode: props.mode,
+      }))
+    },
+  })
+
+  return {
+    loadNgbTrendChart: async () => TrendChart,
+  }
+})
+
 import HomePage from '../../../src/pages/HomePage.vue'
 
 function createDashboard(overrides: Record<string, unknown> = {}) {

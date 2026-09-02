@@ -32,6 +32,8 @@ interface WorkCenterFeedSession {
   refresh: () => Promise<void>
 }
 
+const MAX_RETAINED_FEED_ITEMS = 2_000
+
 export type NgbWorkCenterRuntime = {
   readonly summary: Ref<WorkCenterSummary | null>
   readonly config: NgbWorkCenterConfig
@@ -301,11 +303,11 @@ export function useWorkCenter(options: {
         items.value = [
           ...items.value,
           ...page.items.filter((item) => !existing.has(`${item.kind}:${item.id}`)),
-        ]
+        ].slice(0, MAX_RETAINED_FEED_ITEMS)
       } else {
-        items.value = page.items
+        items.value = page.items.slice(0, MAX_RETAINED_FEED_ITEMS)
       }
-      nextCursor.value = page.nextCursor ?? null
+      nextCursor.value = items.value.length < MAX_RETAINED_FEED_ITEMS ? page.nextCursor ?? null : null
       if (!append) await runtime.refreshSummary()
     } catch (cause) {
       if (controller.signal.aborted || disposed) return

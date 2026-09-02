@@ -166,3 +166,12 @@ public sealed record MaintenanceQueuePageCursor(
     DateOnly? AfterRequestedAtUtc = null,
     Guid? AfterRequestId = null,
     Guid? AfterWorkOrderId = null);
+
+public sealed record MaintenanceQueueDashboard(
+    int Total,
+    int Overdue,
+    int Days0To3,
+    int Days4To7,
+    int Days8To14,
+    int Days15Plus,
+    IReadOnlyList<MaintenanceQueueRow> Rows);

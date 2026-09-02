@@ -64,6 +64,8 @@ const scrollHost = ref<HTMLDivElement | null>(null)
 const loadMoreSentinel = ref<HTMLDivElement | null>(null)
 let loadMoreObserver: IntersectionObserver | null = null
 let loadMoreRequestPending = false
+let scrollFrame: number | null = null
+let pendingScrollTop = 0
 
 function drilldownRoute(cell: ReportCellDto): string | null {
   return resolveReportCellActionUrl(cell.action, {
@@ -297,7 +299,13 @@ function syncLoadMoreObserver() {
 }
 
 function onScroll(event: Event) {
-  emit('scroll-top-change', (event.currentTarget as HTMLDivElement).scrollTop)
+  pendingScrollTop = (event.currentTarget as HTMLDivElement).scrollTop
+  if (scrollFrame != null) return
+
+  scrollFrame = window.requestAnimationFrame(() => {
+    scrollFrame = null
+    emit('scroll-top-change', pendingScrollTop)
+  })
 }
 
 function restoreScrollTop(value: number) {
@@ -325,6 +333,9 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (scrollFrame != null) window.cancelAnimationFrame(scrollFrame)
+  scrollFrame = null
+  emit('scroll-top-change', pendingScrollTop || scrollHost.value?.scrollTop || 0)
   loadMoreRequestPending = false
   disconnectLoadMoreObserver()
 })
@@ -398,6 +409,7 @@ onBeforeUnmount(() => {
             v-for="(row, rowIndex) in rows"
             :key="rowRenderKey(row, rowIndex)"
             :class="[rowClass(row), bodyRowHoverClass()]"
+            style="content-visibility: auto; contain-intrinsic-block-size: 49px"
           >
             <td
               v-for="(cell, cellIndex) in row.cells"

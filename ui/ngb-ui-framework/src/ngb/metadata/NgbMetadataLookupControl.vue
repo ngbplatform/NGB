@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NgbLookup from '../primitives/NgbLookup.vue'
 import { resolveNgbMetadataFormBehavior } from './config'
@@ -39,19 +39,29 @@ const selectedItem = computed((): LookupItem | null => {
 })
 
 const canClearLookup = computed(() => !props.readonly && !props.disabled && !!selectedItem.value)
+let queryController: AbortController | null = null
 
 async function onLookupQuery(queryText: string) {
+  queryController?.abort()
   const query = queryText.trim()
   if (!query || !behavior.value.searchLookup) {
     lookupItems.value = []
     return
   }
 
-  lookupItems.value = await behavior.value.searchLookup({
-    hint: props.hint,
-    query,
-  })
+  const controller = new AbortController()
+  queryController = controller
+  try {
+    const items = await behavior.value.searchLookup({ hint: props.hint, query, signal: controller.signal })
+    if (queryController === controller && !controller.signal.aborted) lookupItems.value = items
+  } catch (error) {
+    if (!controller.signal.aborted) throw error
+  } finally {
+    if (queryController === controller) queryController = null
+  }
 }
+
+onBeforeUnmount(() => queryController?.abort())
 
 function onLookupSelect(value: LookupItem | null) {
   if (!value) {

@@ -118,6 +118,7 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
         services.AddScoped<IMaintenanceQueueReader, PostgresMaintenanceQueueReader>();
         services.AddScoped<ITenantStatementReader, PostgresTenantStatementReader>();
         services.AddScoped<IReceivablesReportReader, PostgresReceivablesReportReader>();
+        services.AddScoped<IPropertyManagementDashboardReader, PostgresPropertyManagementDashboardReader>();
 
         // PM-specific reporting dataset bindings.
         services.AddSingleton<IPostgresReportDatasetSource, PmAccountingLedgerAnalysisPostgresDatasetSource>();

@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  clonePlainData,
   dataTypeKind,
   isReferenceValue,
   type EntityFormModel,
@@ -93,6 +92,7 @@ const route = useRoute()
 const router = useRouter()
 const lookupItemsByCell = ref<Record<string, LookupItem[]>>({})
 const dragState = ref<{ partCode: string; rowIndex: number } | null>(null)
+const lookupControllers = new Map<string, AbortController>()
 const autoManagedValuesByRow = ref<Record<string, Partial<Record<string, string>>>>({})
 const pendingForcedRowKeys = ref<Set<string>>(new Set())
 const defaultsAbortController = ref<AbortController | null>(null)
@@ -130,38 +130,12 @@ watch(
   { immediate: true },
 )
 
-function cloneParts(): RecordParts {
-  return clonePlainData(props.modelValue ?? {}) as RecordParts
-}
-
-function cloneNormalizedParts(): RecordParts {
-  const next = cloneParts()
-
-  for (const part of props.parts) {
-    next[part.partCode] = {
-      rows: partRows(part.partCode).map((row) => ({ ...row })),
-    }
-  }
-
-  return next
-}
-
-function emitParts(parts: RecordParts): void {
-  const next: RecordParts = {}
-  for (const part of props.parts) {
-    next[part.partCode] = {
-      rows: normalizeTradeDocumentPartRows(parts[part.partCode]?.rows),
-    }
-  }
-  emit('update:modelValue', next)
-}
-
 function emitRows(partCode: string, rows: RecordPartRow[]): void {
-  const next = cloneNormalizedParts()
+  const next: RecordParts = { ...(props.modelValue ?? {}) }
   next[partCode] = {
     rows: normalizeTradeDocumentPartRows(rows),
   }
-  emitParts(next)
+  emit('update:modelValue', next)
 }
 
 function createEmptyRow(partCode: string): RecordPartRow {
@@ -422,15 +396,16 @@ function applyResolvedDefaults(results: readonly TradeDocumentLineDefaultsRowRes
   if (results.length === 0) return
 
   const resultByRowKey = new Map(results.map((row) => [row.rowKey, row] as const))
-  const next = cloneNormalizedParts()
+  const next: RecordParts = { ...(props.modelValue ?? {}) }
   let changed = false
 
   for (const part of props.parts) {
-    const rows = normalizeTradeDocumentPartRows(next[part.partCode]?.rows).map((row) => ({ ...row }))
+    const sourceRows = props.modelValue?.[part.partCode]?.rows ?? []
+    let rows: RecordPartRow[] | null = null
     let partChanged = false
 
-    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-      const row = rows[rowIndex]
+    for (let rowIndex = 0; rowIndex < sourceRows.length; rowIndex += 1) {
+      const row = sourceRows[rowIndex]!
       const rowKey = ensureTradeDocumentPartRowKey(row)
       const resolved = resultByRowKey.get(rowKey)
       if (!resolved) continue
@@ -458,9 +433,11 @@ function applyResolvedDefaults(results: readonly TradeDocumentLineDefaultsRowRes
 
       const nextRow = recomputeDerivedFields(props.entityTypeCode, {
         ...row,
+        __row_key: rowKey,
         ...Object.fromEntries(Object.entries(patch).map(([key, value]) => [key, normalizeJsonValue(value)])),
       })
 
+      rows ??= Array.from(sourceRows)
       rows[rowIndex] = nextRow
       partChanged = true
 
@@ -471,11 +448,11 @@ function applyResolvedDefaults(results: readonly TradeDocumentLineDefaultsRowRes
 
     if (!partChanged) continue
 
-    next[part.partCode] = { rows }
+    next[part.partCode] = { rows: rows! }
     changed = true
   }
 
-  if (changed) emitParts(next)
+  if (changed) emit('update:modelValue', next)
 }
 
 async function refreshLineDefaults(): Promise<void> {
@@ -514,6 +491,7 @@ watch(
 
 async function onLookupQuery(partCode: string, rowIndex: number, field: FieldMetadata, row: RecordPartRow, query: string): Promise<void> {
   const key = lookupCellKey(partCode, rowIndex, field.key)
+  lookupControllers.get(key)?.abort()
   const search = props.behavior?.searchLookup
   const hint = resolveFieldState(field, row).hint
   const normalizedQuery = String(query ?? '').trim()
@@ -523,9 +501,20 @@ async function onLookupQuery(partCode: string, rowIndex: number, field: FieldMet
     return
   }
 
-  const items = await Promise.resolve(search({ hint, query: normalizedQuery }))
-  lookupItemsByCell.value = { ...lookupItemsByCell.value, [key]: items }
+  const controller = new AbortController()
+  lookupControllers.set(key, controller)
+  try {
+    const items = await Promise.resolve(search({ hint, query: normalizedQuery, signal: controller.signal }))
+    if (lookupControllers.get(key) === controller && !controller.signal.aborted)
+      lookupItemsByCell.value = { ...lookupItemsByCell.value, [key]: items }
+  } catch (error) {
+    if (!controller.signal.aborted) throw error
+  } finally {
+    if (lookupControllers.get(key) === controller) lookupControllers.delete(key)
+  }
 }
+
+onBeforeUnmount(() => lookupControllers.forEach((controller) => controller.abort()))
 
 function onLookupSelect(partCode: string, rowIndex: number, fieldKey: string, item: LookupItem | null): void {
   const row = partRows(partCode)[rowIndex]
@@ -668,6 +657,7 @@ function formatAmount(value: number | null): string {
       <tbody>
         <tr
           v-for="(row, rowIndex) in partRows(part.partCode)"
+          style="content-visibility: auto; contain-intrinsic-block-size: 54px"
           :key="`${part.partCode}:${String(row.__row_key)}`"
           class="border-t border-ngb-border align-top transition-colors hover:bg-ngb-bg"
           :class="rowHasErrors(part.partCode, rowIndex) ? 'bg-red-50/40 dark:bg-red-950/10' : ''"

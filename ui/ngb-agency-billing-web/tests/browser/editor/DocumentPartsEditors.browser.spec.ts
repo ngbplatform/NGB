@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { defineComponent, h, nextTick } from 'vue'
+import { defineComponent, h, nextTick, toRaw } from 'vue'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { FieldMetadata, MetadataFormBehavior, PartMetadata, RecordParts } from '@ngbplatform/ui'
 
@@ -226,11 +226,10 @@ async function exerciseEditor(): Promise<void> {
   }
   expect(state.partRows('lines')).toHaveLength(2)
   expect(state.partRows('missing')).toEqual([])
-  expect(state.cloneParts()).toMatchObject(modelValue)
-  expect(state.cloneNormalizedParts().lines.rows).toHaveLength(2)
-
-  state.emitParts(modelValue)
   state.emitRows('lines', state.partRows('lines'))
+  const structurallyShared = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as RecordParts
+  expect(toRaw(structurallyShared.empty)).toBe(modelValue.empty)
+  expect(structurallyShared.lines).not.toBe(modelValue.lines)
   const emptyRow = state.createEmptyRow('lines')
   expect(emptyRow.enabled).toBe(false)
   expect(emptyRow.ordinal).toBe(3)
@@ -340,7 +339,7 @@ async function exerciseEditor(): Promise<void> {
   const withoutModel = mount(component, {
     props: { entityTypeCode, parts: [makePartWithoutAmount('blank')] },
   })
-  expect(stateOf(withoutModel).cloneParts()).toEqual({})
+  expect(stateOf(withoutModel).partRows('blank')).toEqual([])
   withoutModel.unmount()
 }
 

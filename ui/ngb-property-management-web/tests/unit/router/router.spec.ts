@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   routerOptions: null as Record<string, unknown> | null,
   guards: [] as Array<(to: Record<string, unknown>) => unknown>,
   auth: { authenticated: false },
-  menu: { groups: [] as unknown[], isLoading: false, load: vi.fn().mockResolvedValue(undefined) },
+  menu: { groups: [] as unknown[], hasLoaded: false, isLoading: false, load: vi.fn().mockResolvedValue(undefined) },
   resolvePermissionAwareLanding: vi.fn(() => null as string | null),
   authGuard: vi.fn(),
 }))
@@ -67,6 +67,7 @@ describe('property-management router', () => {
   beforeEach(() => {
     mocks.auth.authenticated = false
     mocks.menu.groups = []
+    mocks.menu.hasLoaded = false
     mocks.menu.isLoading = false
     mocks.menu.load.mockClear()
     mocks.resolvePermissionAwareLanding.mockReset().mockReturnValue(null)
@@ -103,8 +104,10 @@ describe('property-management router', () => {
     expect(mocks.menu.load).toHaveBeenCalledOnce()
     mocks.menu.load.mockClear()
     mocks.menu.groups = [{}]
+    mocks.menu.hasLoaded = true
     expect(await guard({ path: '/allowed' })).toBe(true)
     mocks.menu.groups = []
+    mocks.menu.hasLoaded = false
     mocks.menu.isLoading = true
     expect(await guard({ path: '/allowed' })).toBe(true)
     expect(mocks.menu.load).not.toHaveBeenCalled()

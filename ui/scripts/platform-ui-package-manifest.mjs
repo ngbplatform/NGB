@@ -41,6 +41,11 @@ export function createPlatformUiPackageManifest(sourceManifest, version = source
         import: './src/layout.ts',
         default: './src/layout.ts',
       },
+      './lazy': {
+        types: './src/lazy.ts',
+        import: './src/lazy.ts',
+        default: './src/lazy.ts',
+      },
       './navigation': {
         types: './src/navigation.ts',
         import: './src/navigation.ts',
@@ -62,8 +67,6 @@ export function createPlatformUiPackageManifest(sourceManifest, version = source
     dependencies: {
       '@headlessui/vue': sourceManifest.dependencies['@headlessui/vue'],
       '@microsoft/signalr': sourceManifest.dependencies['@microsoft/signalr'],
-      echarts: sourceManifest.dependencies.echarts,
-      'vue-echarts': sourceManifest.dependencies['vue-echarts'],
     },
     peerDependencies: {
       'keycloak-js': sourceManifest.dependencies['keycloak-js'],

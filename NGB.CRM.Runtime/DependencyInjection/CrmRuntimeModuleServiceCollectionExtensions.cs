@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.DependencyInjection;
 using NGB.CRM.Runtime.DocumentActions;
+using NGB.CRM.Contracts.Dashboard;
+using NGB.CRM.Runtime.Dashboard;
 using NGB.CRM.Runtime.Documents.Validation;
 using NGB.CRM.Runtime.Posting;
 using NGB.CRM.Runtime.Reporting;
@@ -24,6 +26,7 @@ public static class CrmRuntimeModuleServiceCollectionExtensions
         services.TryAddSingleton(new CrmDemoSeedOptions());
         services.TryAddScoped<ICrmSetupService, CrmSetupService>();
         services.TryAddScoped<ICrmDemoSeedService, CrmDemoSeedService>();
+        services.TryAddScoped<ICrmDashboardService, CrmDashboardService>();
 
         services.AddDefinitionBoundScoped<IDocumentPostValidator, LeadIntakePostValidator>();
         services.AddDefinitionBoundScoped<IDocumentPostValidator, LeadQualificationPostValidator>();

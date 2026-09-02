@@ -17,8 +17,9 @@ export async function searchReportLookupItems(
   lookupStore: ReportLookupStoreApi,
   lookup: NonNullable<NonNullable<ReportDefinitionDto['filters']>[number]['lookup']>,
   query: string,
+  options?: { signal?: AbortSignal },
 ): Promise<ReportComposerLookupItem[]> {
-  return await searchResolvedLookupItems(lookupStore, lookup, query)
+  return await searchResolvedLookupItems(lookupStore, lookup, query, options)
 }
 
 export async function hydrateReportLookupItemsFromFilters(

@@ -1,5 +1,5 @@
 import { normalizeDocumentStatusValue } from '../documents/documentStatus'
-import { httpDelete, httpGet, httpPost, httpPut } from './http'
+import { httpDelete, httpGet, httpPost, httpPut, type HttpRequestOptions } from './http'
 import type {
   DocumentEditorStateDto,
   ExecuteDocumentActionRequestDto,
@@ -58,11 +58,13 @@ export async function getDocumentTypeMetadata(documentType: string): Promise<Doc
 export async function getDocumentPage(
   documentType: string,
   req: PageRequest,
+  options?: HttpRequestOptions,
 ): Promise<PageResponseDto<DocumentDto>> {
-  const page = await httpGet<PageResponseDto<DocumentDto>>(
-    `/api/documents/${encodeURIComponent(documentType)}`,
-    toPageQuery(req),
-  )
+  const url = `/api/documents/${encodeURIComponent(documentType)}`
+  const query = toPageQuery(req)
+  const page = options
+    ? await httpGet<PageResponseDto<DocumentDto>>(url, query, options)
+    : await httpGet<PageResponseDto<DocumentDto>>(url, query)
   return normalizeDocumentPage(page)
 }
 
@@ -118,8 +120,12 @@ export async function executeDocumentAction(
 
 export async function lookupDocumentsAcrossTypes(
   request: DocumentLookupAcrossTypesRequestDto,
+  options?: HttpRequestOptions,
 ): Promise<DocumentLookupDto[]> {
-  return (await httpPost<DocumentLookupDto[]>('/api/documents/lookup', request)).map(normalizeDocumentLookup)
+  const result = options
+    ? await httpPost<DocumentLookupDto[]>('/api/documents/lookup', request, options)
+    : await httpPost<DocumentLookupDto[]>('/api/documents/lookup', request)
+  return result.map(normalizeDocumentLookup)
 }
 
 export async function getDocumentLookupByIds(

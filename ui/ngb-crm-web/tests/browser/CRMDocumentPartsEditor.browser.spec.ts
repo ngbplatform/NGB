@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { defineComponent, h, nextTick } from 'vue'
+import { defineComponent, h, nextTick, toRaw } from 'vue'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { FieldMetadata, MetadataFormBehavior, PartMetadata, RecordParts } from '@ngbplatform/ui'
 
@@ -146,12 +146,13 @@ describe('CRMDocumentPartsEditor coverage', () => {
     ]
     const documentModel = { amount: 0 }
     const formBehavior = behavior()
+    const partsModel = model()
     const wrapper = mount(CRMDocumentPartsEditor, {
       attachTo: document.body,
       props: {
         entityTypeCode: 'crm.quote',
         parts,
-        modelValue: model(),
+        modelValue: partsModel,
         documentModel,
         behavior: formBehavior,
         errors: { lines: { 0: { memo: 'Required', status: '' }, 1: { memo: null as never, status: ' ' } } },
@@ -180,10 +181,10 @@ describe('CRMDocumentPartsEditor coverage', () => {
 
     expect(state.partRows('lines')).toHaveLength(2)
     expect(state.partRows('missing')).toEqual([])
-    expect(state.cloneParts()).toMatchObject(model())
-    expect(state.cloneNormalizedParts().lines.rows).toHaveLength(2)
-    state.emitParts(model())
     state.emitRows('lines', state.partRows('lines'))
+    const structurallyShared = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as RecordParts
+    expect(toRaw(structurallyShared.empty)).toBe(partsModel.empty)
+    expect(structurallyShared.lines).not.toBe(partsModel.lines)
     expect(state.createEmptyRow('lines')).toMatchObject({ enabled: false, ordinal: 3, line_amount: null })
     expect(state.createEmptyRow('missing')).toMatchObject({ ordinal: 1 })
     expect(state.canManageRows('lines')).toBe(true)
@@ -288,7 +289,7 @@ describe('CRMDocumentPartsEditor coverage', () => {
     readonly.unmount()
 
     const blank = mount(CRMDocumentPartsEditor, { props: { entityTypeCode: 'crm.activity', parts: [part()] } })
-    expect(setupState(blank).cloneParts()).toEqual({})
+    expect(setupState(blank).partRows('lines')).toEqual([])
     blank.unmount()
   })
 

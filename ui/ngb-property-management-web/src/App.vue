@@ -27,6 +27,7 @@ watch(
   async (authenticated) => {
     if (!authenticated) {
       access.reset()
+      menu.reset()
       return
     }
 

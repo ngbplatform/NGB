@@ -49,6 +49,36 @@ vi.mock('@ngbplatform/ui', async () => {
   }
 })
 
+vi.mock('@ngbplatform/ui/lazy', async () => {
+  const { defineComponent } = await import('vue')
+  const load = (name: string) => async () => defineComponent({
+    props: {
+      backTarget: {
+        type: String,
+        default: '',
+      },
+    },
+    template: `<div data-testid="${name}">{{ backTarget }}</div>`,
+  })
+
+  return {
+    loadNgbAccountingPeriodClosingPage: load('period-closing-page'),
+    loadNgbChartOfAccountsPage: load('chart-of-accounts-page'),
+    loadNgbDocumentEffectsPage: load('document-effects-page'),
+    loadNgbDocumentFlowPage: load('document-flow-page'),
+    loadNgbDocumentPrintPage: load('document-print-page'),
+    loadNgbGeneralJournalEntryEditPage: load('general-journal-edit-page'),
+    loadNgbGeneralJournalEntryListPage: load('general-journal-list-page'),
+    loadNgbMetadataCatalogEditPage: load('catalog-edit-page'),
+    loadNgbMetadataCatalogListPage: load('catalog-list-page'),
+    loadNgbMetadataDocumentEditPage: load('document-edit-page'),
+    loadNgbMetadataDocumentListPage: load('document-list-page'),
+    loadNgbNotificationPreferencesPage: load('notification-preferences-page'),
+    loadNgbReportPage: load('report-page'),
+    loadNgbWorkCenterPage: load('work-center-page'),
+  }
+})
+
 vi.mock('../../../src/pages/HomePage.vue', async () => {
   const { defineComponent } = await import('vue')
   return {

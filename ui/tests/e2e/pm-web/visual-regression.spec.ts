@@ -18,6 +18,7 @@ test.describe('pm-web visual regression', () => {
     await mockHomeDashboardApis(page)
     await rejectUnhandledApiRequests(page, [
       '/api/main-menu',
+      '/api/dashboard',
       '/api/reports/pm.occupancy.summary/execute',
       '/api/reports/pm.maintenance.queue/execute',
       '/api/documents/pm.lease',
@@ -43,6 +44,7 @@ test.describe('pm-web visual regression', () => {
     await mockCommandPaletteApis(page)
     await rejectUnhandledApiRequests(page, [
       '/api/main-menu',
+      '/api/dashboard',
       '/api/report-definitions',
       '/api/reports/pm.occupancy.summary/execute',
       '/api/reports/pm.maintenance.queue/execute',

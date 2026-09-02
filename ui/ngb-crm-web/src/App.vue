@@ -23,7 +23,10 @@ useCommandPaletteHotkeys()
 watch(
   () => auth.authenticated,
   async (authenticated) => {
-    if (!authenticated) return
+    if (!authenticated) {
+      menu.reset()
+      return
+    }
 
     await Promise.all([
       menu.load(),

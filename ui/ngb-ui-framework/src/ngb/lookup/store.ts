@@ -10,6 +10,17 @@ import {
 } from './config'
 
 export type UiLookupItem = LookupItem
+const MAX_LABELS_PER_ENTITY_TYPE = 1_000
+const MAX_COA_LABELS = 2_000
+
+function boundLabels(labels: Record<string, string>, limit: number): Record<string, string> {
+  const keys = Object.keys(labels)
+  if (keys.length <= limit) return labels
+
+  const next = { ...labels }
+  for (const key of keys.slice(0, keys.length - limit)) delete next[key]
+  return next
+}
 
 function normalizeDocumentTypes(documentTypes: string[]): string[] {
   return Array.from(new Set(documentTypes.map((entry) => String(entry ?? '').trim()).filter((entry) => entry.length > 0)))
@@ -31,8 +42,11 @@ async function searchResolvedDocumentItems(
   config: LookupFrameworkConfig,
   documentTypes: string[],
   query: string,
+  options?: { signal?: AbortSignal },
 ): Promise<ResolvedDocumentLookupItem[]> {
-  return await config.searchDocumentsAcrossTypes(documentTypes, query)
+  return options
+    ? await config.searchDocumentsAcrossTypes(documentTypes, query, options)
+    : await config.searchDocumentsAcrossTypes(documentTypes, query)
 }
 
 export const useLookupStore = defineStore('lookup', () => {
@@ -41,6 +55,7 @@ export const useLookupStore = defineStore('lookup', () => {
   const documentLabels = ref<Record<string, Record<string, string>>>({})
 
   function mergeCatalogItems(catalogType: string, items: readonly LookupItem[]) {
+    if (items.length === 0) return
     const existing = catalogLabels.value[catalogType] ?? {}
     const next = { ...existing }
 
@@ -51,10 +66,11 @@ export const useLookupStore = defineStore('lookup', () => {
       next[id] = label
     }
 
-    catalogLabels.value = { ...catalogLabels.value, [catalogType]: next }
+    catalogLabels.value = { ...catalogLabels.value, [catalogType]: boundLabels(next, MAX_LABELS_PER_ENTITY_TYPE) }
   }
 
   function mergeDocumentItems(documentType: string, items: readonly LookupItem[]) {
+    if (items.length === 0) return
     const existing = documentLabels.value[documentType] ?? {}
     const next = { ...existing }
 
@@ -65,13 +81,31 @@ export const useLookupStore = defineStore('lookup', () => {
       next[id] = label
     }
 
-    documentLabels.value = { ...documentLabels.value, [documentType]: next }
+    documentLabels.value = { ...documentLabels.value, [documentType]: boundLabels(next, MAX_LABELS_PER_ENTITY_TYPE) }
   }
 
   function mergeResolvedDocumentItems(items: readonly ResolvedDocumentLookupItem[]) {
+    const byType = new Map<string, LookupItem[]>()
     for (const item of items) {
-      mergeDocumentItems(item.documentType, [item])
+      const documentType = String(item.documentType ?? '').trim()
+      if (!documentType) continue
+      const group = byType.get(documentType) ?? []
+      group.push(item)
+      byType.set(documentType, group)
     }
+
+    if (byType.size === 0) return
+    const nextLabels = { ...documentLabels.value }
+    for (const [documentType, group] of byType) {
+      const next = { ...(nextLabels[documentType] ?? {}) }
+      for (const item of group) {
+        const id = String(item.id ?? '').trim()
+        const label = String(item.label ?? '').trim()
+        if (id && label) next[id] = label
+      }
+      nextLabels[documentType] = boundLabels(next, MAX_LABELS_PER_ENTITY_TYPE)
+    }
+    documentLabels.value = nextLabels
   }
 
   async function ensureCatalogLabels(catalogType: string, ids: string[]) {
@@ -127,7 +161,7 @@ export const useLookupStore = defineStore('lookup', () => {
       }
     }
 
-    coaLabels.value = next
+    coaLabels.value = boundLabels(next, MAX_COA_LABELS)
   }
 
   function labelForCoa(id: unknown): string {
@@ -135,9 +169,9 @@ export const useLookupStore = defineStore('lookup', () => {
     return coaLabels.value[id] ?? shortGuid(id)
   }
 
-  async function searchCoa(query: string): Promise<UiLookupItem[]> {
+  async function searchCoa(query: string, options?: { signal?: AbortSignal }): Promise<UiLookupItem[]> {
     const config = getConfiguredNgbLookup()
-    const items = await config.searchCoa(query)
+    const items = options ? await config.searchCoa(query, options) : await config.searchCoa(query)
     const next = { ...coaLabels.value }
 
     for (const item of items) {
@@ -147,7 +181,7 @@ export const useLookupStore = defineStore('lookup', () => {
       next[id] = label
     }
 
-    coaLabels.value = next
+    coaLabels.value = boundLabels(next, MAX_COA_LABELS)
     return items.map((item) => ({ ...item }))
   }
 
@@ -166,11 +200,10 @@ export const useLookupStore = defineStore('lookup', () => {
     const resolvedIds = new Set(items.map((item) => item.id))
     const fallbackType = types[0]!
 
-    for (const id of missing) {
-      if (!resolvedIds.has(id)) {
-        mergeDocumentItems(fallbackType, [{ id, label: shortGuid(id) }])
-      }
-    }
+    mergeDocumentItems(
+      fallbackType,
+      missing.filter((id) => !resolvedIds.has(id)).map((id) => ({ id, label: shortGuid(id) })),
+    )
   }
 
   async function ensureDocumentLabels(documentType: string, ids: string[]) {
@@ -186,11 +219,10 @@ export const useLookupStore = defineStore('lookup', () => {
     mergeResolvedDocumentItems(items)
 
     const resolvedIds = new Set(items.map((item) => item.id))
-    for (const id of missing) {
-      if (!resolvedIds.has(id)) {
-        mergeDocumentItems(documentType, [{ id, label: shortGuid(id) }])
-      }
-    }
+    mergeDocumentItems(
+      documentType,
+      missing.filter((id) => !resolvedIds.has(id)).map((id) => ({ id, label: shortGuid(id) })),
+    )
   }
 
   function labelForAnyDocument(documentTypes: string[], id: unknown): string {
@@ -209,12 +241,12 @@ export const useLookupStore = defineStore('lookup', () => {
     return documentLabels.value[documentType]?.[id] ?? shortGuid(id)
   }
 
-  async function searchDocuments(documentTypes: string[], query: string): Promise<UiLookupItem[]> {
+  async function searchDocuments(documentTypes: string[], query: string, options?: { signal?: AbortSignal }): Promise<UiLookupItem[]> {
     const types = normalizeDocumentTypes(documentTypes)
     if (types.length === 0) return []
 
     const config = getConfiguredNgbLookup()
-    const items = await searchResolvedDocumentItems(config, types, query)
+    const items = await searchResolvedDocumentItems(config, types, query, options)
     mergeResolvedDocumentItems(items)
 
     const seen = new Set<string>()
@@ -234,9 +266,11 @@ export const useLookupStore = defineStore('lookup', () => {
     return merged
   }
 
-  async function searchDocument(documentType: string, query: string): Promise<UiLookupItem[]> {
+  async function searchDocument(documentType: string, query: string, options?: { signal?: AbortSignal }): Promise<UiLookupItem[]> {
     const config = getConfiguredNgbLookup()
-    const items = await config.searchDocument(documentType, query)
+    const items = options
+      ? await config.searchDocument(documentType, query, options)
+      : await config.searchDocument(documentType, query)
     mergeDocumentItems(documentType, items)
     return items.map((item) => ({ ...item }))
   }

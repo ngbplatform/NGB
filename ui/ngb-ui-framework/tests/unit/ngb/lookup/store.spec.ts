@@ -228,4 +228,35 @@ describe('lookup store', () => {
     expect(singleType).toHaveLength(3)
     expect(store.labelForDocument('pm.invoice', invoiceId)).toBe('Invoice INV-003')
   })
+
+  it('bounds long-lived label caches while retaining the newest entries', async () => {
+    const id = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+    const catalogItems = Array.from({ length: 1_001 }, (_, index) => ({
+      id: id(index),
+      label: `Property ${index}`,
+    }))
+    const documentItems = catalogItems.map((item) => ({
+      ...item,
+      documentType: 'pm.invoice',
+    }))
+    const coaItems = Array.from({ length: 2_001 }, (_, index) => ({
+      id: id(index),
+      label: `Account ${index}`,
+    }))
+    lookupConfigMocks.searchCatalog.mockResolvedValueOnce(catalogItems)
+    lookupConfigMocks.searchDocumentsAcrossTypes.mockResolvedValueOnce(documentItems)
+    lookupConfigMocks.searchCoa.mockResolvedValueOnce(coaItems)
+    const store = useLookupStore()
+
+    await store.searchCatalog('pm.property', '')
+    await store.searchDocuments(['pm.invoice'], '')
+    await store.searchCoa('')
+
+    expect(store.labelForCatalog('pm.property', id(0))).toBe(shortGuid(id(0)))
+    expect(store.labelForCatalog('pm.property', id(1_000))).toBe('Property 1000')
+    expect(store.labelForDocument('pm.invoice', id(0))).toBe(shortGuid(id(0)))
+    expect(store.labelForDocument('pm.invoice', id(1_000))).toBe('Property 1000')
+    expect(store.labelForCoa(id(0))).toBe(shortGuid(id(0)))
+    expect(store.labelForCoa(id(2_000))).toBe('Account 2000')
+  })
 })

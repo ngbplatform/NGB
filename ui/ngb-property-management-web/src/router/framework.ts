@@ -1,10 +1,6 @@
-import { markRaw } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
+import { defineAsyncComponent } from 'vue'
 import {
-  NgbMetadataCatalogEditPage,
-  NgbMetadataCatalogListPage,
-  NgbMetadataDocumentEditPage,
-  NgbMetadataDocumentListPage,
   getCatalogPage,
   getDocumentPage,
   type MetadataCatalogListPageLoadArgs,
@@ -14,8 +10,8 @@ import {
   type MetadataDocumentListPageProps,
   type EntityHeaderIconAction,
 } from '@ngbplatform/ui'
+import { loadNgbMetadataCatalogEditPage, loadNgbMetadataCatalogListPage, loadNgbMetadataDocumentEditPage, loadNgbMetadataDocumentListPage } from '@ngbplatform/ui/lazy'
 
-import PmEntityEditor from '../editor/pm/PmEntityEditor.vue'
 import { getLookupHint } from '../lookup/hints'
 import { buildPmOpenItemsPath } from './pmRoutePaths'
 import { catalogCollectionTitle, documentCollectionTitle } from '../utils/entityCollectionTitles'
@@ -26,7 +22,9 @@ export type PmRouteFrameworkConfig = {
   documentRoutes: RouteRecordRaw[]
 }
 
-const pmEntityEditorComponent = markRaw(PmEntityEditor)
+const pmEntityEditorComponent = defineAsyncComponent(
+  () => import('../editor/pm/PmEntityEditor.vue'),
+)
 
 function loadPmCatalogPage(args: MetadataCatalogListPageLoadArgs) {
   return getCatalogPage(args.catalogType, {
@@ -149,17 +147,17 @@ const pmDocumentEditPageProps = {
 export function createPmRouteFrameworkConfig(): PmRouteFrameworkConfig {
   return {
     catalogRoutes: [
-      { path: '/catalogs/:catalogType', component: NgbMetadataCatalogListPage, props: pmCatalogListPageProps },
-      { path: '/catalogs/:catalogType/new', name: 'CatalogCreate', component: NgbMetadataCatalogEditPage, props: pmCatalogEditPageProps },
-      { path: '/catalogs/:catalogType/:id', component: NgbMetadataCatalogEditPage, props: pmCatalogEditPageProps },
+      { path: '/catalogs/:catalogType', component: loadNgbMetadataCatalogListPage, props: pmCatalogListPageProps },
+      { path: '/catalogs/:catalogType/new', name: 'CatalogCreate', component: loadNgbMetadataCatalogEditPage, props: pmCatalogEditPageProps },
+      { path: '/catalogs/:catalogType/:id', component: loadNgbMetadataCatalogEditPage, props: pmCatalogEditPageProps },
     ],
     documentRoutes: [
-      { path: '/documents/:documentType', component: NgbMetadataDocumentListPage, props: pmDocumentListPageProps },
+      { path: '/documents/:documentType', component: loadNgbMetadataDocumentListPage, props: pmDocumentListPageProps },
       // pm.receivable_apply and pm.payable_apply are created from open-items flows, not from a blank editor.
       { path: '/documents/pm.receivable_apply/new', redirect: '/receivables/open-items' },
       { path: '/documents/pm.payable_apply/new', redirect: '/payables/open-items' },
-      { path: '/documents/:documentType/new', name: 'DocumentCreate', component: NgbMetadataDocumentEditPage, props: pmDocumentEditPageProps },
-      { path: '/documents/:documentType/:id', component: NgbMetadataDocumentEditPage, props: pmDocumentEditPageProps },
+      { path: '/documents/:documentType/new', name: 'DocumentCreate', component: loadNgbMetadataDocumentEditPage, props: pmDocumentEditPageProps },
+      { path: '/documents/:documentType/:id', component: loadNgbMetadataDocumentEditPage, props: pmDocumentEditPageProps },
     ],
   }
 }

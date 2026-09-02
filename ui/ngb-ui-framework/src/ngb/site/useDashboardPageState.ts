@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, getCurrentInstance, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter, type RouteLocationNormalizedLoaded, type Router } from 'vue-router'
 
 import { normalizeDateOnlyQueryValue, replaceCleanRouteQuery } from '../router/queryParams'
@@ -10,7 +10,7 @@ export type DashboardWarningResolver<TDashboard> = (
 ) => readonly string[] | null | undefined
 
 export type UseDashboardPageStateArgs<TDashboard> = {
-  load: (asOf: string) => Promise<TDashboard>
+  load: (asOf: string, signal?: AbortSignal) => Promise<TDashboard>
   queryKey?: string
   route?: RouteLocationNormalizedLoaded
   router?: Router
@@ -34,6 +34,7 @@ export function useDashboardPageState<TDashboard>(
   const queryKey = String(args.queryKey ?? 'asOf').trim() || 'asOf'
   const resolveAsOf = args.fallbackAsOf ?? (() => toDateOnlyValue(new Date()))
   const resolveWarnings = args.resolveWarnings ?? defaultResolveWarnings
+  const ownsComponentLifecycle = getCurrentInstance() != null
 
   const dashboard = ref<TDashboard | null>(null)
   const loading = ref(false)
@@ -41,6 +42,7 @@ export function useDashboardPageState<TDashboard>(
   const refreshTick = ref(0)
 
   let loadSequence = 0
+  let activeController: AbortController | null = null
 
   const asOf = computed<string>({
     get: () => normalizeDateOnlyQueryValue(route.query[queryKey]) ?? resolveAsOf(),
@@ -58,19 +60,28 @@ export function useDashboardPageState<TDashboard>(
 
   async function reload(): Promise<void> {
     const seq = ++loadSequence
+    activeController?.abort()
+    const controller = ownsComponentLifecycle ? new AbortController() : null
+    activeController = controller
     loading.value = true
     error.value = null
 
     try {
-      const next = await args.load(asOf.value)
+      const next = controller
+        ? await args.load(asOf.value, controller.signal)
+        : await args.load(asOf.value)
       if (seq !== loadSequence) return
       dashboard.value = next
     } catch (err: unknown) {
       if (seq !== loadSequence) return
+      if (controller?.signal.aborted) return
       dashboard.value = null
       error.value = toErrorMessage(err, 'Request failed.')
     } finally {
-      if (seq === loadSequence) loading.value = false
+      if (seq === loadSequence) {
+        loading.value = false
+        activeController = null
+      }
     }
   }
 
@@ -85,6 +96,14 @@ export function useDashboardPageState<TDashboard>(
     },
     { immediate: true },
   )
+
+  if (ownsComponentLifecycle) {
+    onBeforeUnmount(() => {
+      loadSequence += 1
+      activeController?.abort()
+      activeController = null
+    })
+  }
 
   return {
     asOf,

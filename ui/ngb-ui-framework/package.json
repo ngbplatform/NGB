@@ -11,6 +11,7 @@
     "./contracts": "./src/contracts.ts",
     "./editor": "./src/editor.ts",
     "./layout": "./src/layout.ts",
+    "./lazy": "./src/lazy.ts",
     "./navigation": "./src/navigation.ts",
     "./work-center": "./src/work-center.ts",
     "./styles": "./src/styles/tailwind.css",
@@ -19,11 +20,9 @@
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
     "@microsoft/signalr": "^10.0.0",
-    "echarts": "^6.0.0",
     "keycloak-js": "^26.2.3",
     "pinia": "^3.0.3",
     "vue": "^3.5.0",
-    "vue-echarts": "^8.0.1",
     "vue-router": "^4.5.0"
   }
 }

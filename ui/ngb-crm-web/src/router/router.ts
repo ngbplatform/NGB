@@ -2,24 +2,15 @@ import { createRouter, createWebHistory } from 'vue-router'
 import {
   createAuthGuard,
   ngbRouteAliasRedirectRoutes,
-  NgbDocumentEffectsPage,
-  NgbDocumentFlowPage,
-  NgbDocumentPrintPage,
-  NgbNotificationPreferencesPage,
-  NgbReportPage,
-  NgbRoleEditorPage,
-  NgbRolesPage,
-  NgbUserEditorPage,
-  NgbUsersPage,
-  NgbWorkCenterPage,
   useAuthStore,
   useMainMenuStore,
 } from '@ngbplatform/ui'
+import { loadNgbDocumentEffectsPage, loadNgbDocumentFlowPage, loadNgbDocumentPrintPage, loadNgbNotificationPreferencesPage, loadNgbReportPage, loadNgbRoleEditorPage, loadNgbRolesPage, loadNgbUserEditorPage, loadNgbUsersPage, loadNgbWorkCenterPage } from '@ngbplatform/ui/lazy'
 
 import { createCRMRouteFrameworkConfig } from './framework'
 import { resolvePermissionAwareLanding } from './permissionAwareLanding'
 
-import HomePage from '../pages/HomePage.vue'
+const loadHomePage = () => import('../pages/HomePage.vue').then((module) => module.default)
 
 const { catalogRoutes, documentRoutes } = createCRMRouteFrameworkConfig()
 
@@ -27,22 +18,22 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/home' },
-    { path: '/home', component: HomePage },
-    { path: '/work-center', component: NgbWorkCenterPage, props: { vertical: 'crm' } },
-    { path: '/settings/notifications', component: NgbNotificationPreferencesPage },
+    { path: '/home', component: loadHomePage },
+    { path: '/work-center', component: loadNgbWorkCenterPage, props: { vertical: 'crm' } },
+    { path: '/settings/notifications', component: loadNgbNotificationPreferencesPage },
 
     ...catalogRoutes,
     ...ngbRouteAliasRedirectRoutes,
     ...documentRoutes,
-    { path: '/documents/:documentType/:id/effects', component: NgbDocumentEffectsPage },
-    { path: '/documents/:documentType/:id/flow', component: NgbDocumentFlowPage },
-    { path: '/documents/:documentType/:id/print', component: NgbDocumentPrintPage, meta: { bare: true } },
+    { path: '/documents/:documentType/:id/effects', component: loadNgbDocumentEffectsPage },
+    { path: '/documents/:documentType/:id/flow', component: loadNgbDocumentFlowPage },
+    { path: '/documents/:documentType/:id/print', component: loadNgbDocumentPrintPage, meta: { bare: true } },
 
-    { path: '/reports/:reportCode', component: NgbReportPage },
-    { path: '/admin/security/users', component: NgbUsersPage },
-    { path: '/admin/security/users/:userId', component: NgbUserEditorPage },
-    { path: '/admin/security/roles', component: NgbRolesPage },
-    { path: '/admin/security/roles/:roleId', component: NgbRoleEditorPage },
+    { path: '/reports/:reportCode', component: loadNgbReportPage },
+    { path: '/admin/security/users', component: loadNgbUsersPage },
+    { path: '/admin/security/users/:userId', component: loadNgbUserEditorPage },
+    { path: '/admin/security/roles', component: loadNgbRolesPage },
+    { path: '/admin/security/roles/:roleId', component: loadNgbRoleEditorPage },
   ],
 })
 
@@ -55,7 +46,7 @@ router.beforeEach(async (to) => {
   if (!auth.authenticated) return true
 
   const menu = useMainMenuStore()
-  if (menu.groups.length === 0 && !menu.isLoading) {
+  if (!menu.hasLoaded && !menu.isLoading) {
     await menu.load()
   }
 

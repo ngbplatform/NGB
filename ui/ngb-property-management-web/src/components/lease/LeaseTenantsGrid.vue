@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { NgbIcon, NgbLookup, NgbSelect, buildLookupFieldTargetUrl, isReferenceValue, type ReferenceValue, useLookupStore, useValidationFocus } from '@ngbplatform/ui'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -116,21 +116,33 @@ defineExpose({
 
 // Per-row lookup cache (items shown in the dropdown)
 const lookupItemsByRow = ref<Record<number, LookupItem[]>>({})
+const lookupControllers = new Map<number, AbortController>()
 
 async function onPartyQuery(rowIndex: number, q: string) {
+  lookupControllers.get(rowIndex)?.abort()
   const query = (q ?? '').trim()
   if (query.length === 0) {
     lookupItemsByRow.value[rowIndex] = []
     return
   }
 
-  const items = await lookupStore.searchCatalog('pm.party', query, { filters: { is_tenant: 'true' } })
-  lookupItemsByRow.value[rowIndex] = (items ?? []).map((x) => ({
-    id: x.id,
-    label: x.label,
-    meta: x.meta ?? undefined,
-  }))
+  const controller = new AbortController()
+  lookupControllers.set(rowIndex, controller)
+  try {
+    const items = await lookupStore.searchCatalog('pm.party', query, {
+      filters: { is_tenant: 'true' },
+      signal: controller.signal,
+    })
+    if (lookupControllers.get(rowIndex) !== controller || controller.signal.aborted) return
+    lookupItemsByRow.value[rowIndex] = (items ?? []).map((x) => ({ id: x.id, label: x.label, meta: x.meta ?? undefined }))
+  } catch (error) {
+    if (!controller.signal.aborted) throw error
+  } finally {
+    if (lookupControllers.get(rowIndex) === controller) lookupControllers.delete(rowIndex)
+  }
 }
+
+onBeforeUnmount(() => lookupControllers.forEach((controller) => controller.abort()))
 
 function toLookupValue(v: LeasePartyRow['party_id'] | null): LookupItem | null {
   if (!v) return null

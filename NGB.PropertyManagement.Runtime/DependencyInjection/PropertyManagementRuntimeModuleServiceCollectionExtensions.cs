@@ -11,6 +11,8 @@ using NGB.PropertyManagement.DependencyInjection;
 using NGB.PropertyManagement.Runtime.Catalogs;
 using NGB.PropertyManagement.Runtime.Catalogs.Validation;
 using NGB.PropertyManagement.Runtime.Documents.Validation;
+using NGB.PropertyManagement.Contracts.Dashboard;
+using NGB.PropertyManagement.Runtime.Dashboard;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.Runtime.Policy;
 using NGB.PropertyManagement.Runtime.Posting;
@@ -30,6 +32,7 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
     public static IServiceCollection AddPropertyManagementRuntimeModule(this IServiceCollection services)
     {
         services.TryAddScoped<IPropertyManagementSetupService, PropertyManagementSetupService>();
+        services.TryAddScoped<IPropertyManagementDashboardService, PropertyManagementDashboardService>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, PropertyManagementPermissionDefinitionSource>());
 
         services.TryAddScoped<IPropertyManagementAccountingPolicyReader, PropertyManagementAccountingPolicyReader>();

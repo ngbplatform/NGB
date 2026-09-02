@@ -241,6 +241,126 @@ ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id
         CancellationToken ct = default)
         => await GetPageCoreAsync(query with { Offset = cursor?.Offset ?? 0 }, cursor, true, ct);
 
+    public async Task<MaintenanceQueueDashboard> GetDashboardAsync(
+        DateOnly asOfUtc,
+        int itemLimit,
+        CancellationToken ct = default)
+    {
+        if (itemLimit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(itemLimit), itemLimit, "Item limit must be positive.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var sql = QueueCte + """
+,
+stats AS (
+    SELECT
+        COUNT(*)::integer AS total_count,
+        COUNT(*) FILTER (WHERE queue_state = 'Overdue')::integer AS overdue_count,
+        COUNT(*) FILTER (WHERE aging_days <= 3)::integer AS days_0_to_3,
+        COUNT(*) FILTER (WHERE aging_days BETWEEN 4 AND 7)::integer AS days_4_to_7,
+        COUNT(*) FILTER (WHERE aging_days BETWEEN 8 AND 14)::integer AS days_8_to_14,
+        COUNT(*) FILTER (WHERE aging_days >= 15)::integer AS days_15_plus
+    FROM queue_rows
+),
+ranked AS (
+    SELECT
+        queue_rows.*,
+        ROW_NUMBER() OVER (
+            ORDER BY
+                CASE queue_state WHEN 'Overdue' THEN 0 WHEN 'WorkOrdered' THEN 1 ELSE 2 END,
+                aging_days DESC,
+                requested_at_utc DESC,
+                request_id DESC,
+                work_order_id NULLS FIRST) AS row_number
+    FROM queue_rows
+)
+SELECT
+    ranked.request_id AS RequestId,
+    ranked.request_display AS RequestDisplay,
+    ranked.subject AS Subject,
+    ranked.requested_at_utc AS RequestedAtUtc,
+    ranked.aging_days AS AgingDays,
+    ranked.building_id AS BuildingId,
+    ranked.building_display AS BuildingDisplay,
+    ranked.property_id AS PropertyId,
+    ranked.property_display AS PropertyDisplay,
+    ranked.category_id AS CategoryId,
+    ranked.category_display AS CategoryDisplay,
+    ranked.priority AS Priority,
+    ranked.requested_by_party_id AS RequestedByPartyId,
+    ranked.requested_by_display AS RequestedByDisplay,
+    ranked.work_order_id AS WorkOrderId,
+    ranked.work_order_display AS WorkOrderDisplay,
+    ranked.assigned_party_id AS AssignedPartyId,
+    ranked.assigned_party_display AS AssignedPartyDisplay,
+    ranked.due_by_utc AS DueByUtc,
+    ranked.queue_state AS QueueState,
+    (ranked.request_id IS NOT NULL) AS HasRow,
+    stats.total_count AS TotalCount,
+    stats.overdue_count AS OverdueCount,
+    stats.days_0_to_3 AS Days0To3,
+    stats.days_4_to_7 AS Days4To7,
+    stats.days_8_to_14 AS Days8To14,
+    stats.days_15_plus AS Days15Plus
+FROM stats
+LEFT JOIN ranked ON ranked.row_number <= @item_limit
+ORDER BY ranked.row_number;
+""";
+
+        var dbRows = (await uow.Connection.QueryAsync<DashboardCombinedRow>(new CommandDefinition(
+            sql,
+            new
+            {
+                as_of = asOfUtc,
+                building_id = (Guid?)null,
+                property_id = (Guid?)null,
+                category_id = (Guid?)null,
+                assigned_party_id = (Guid?)null,
+                priority = (string?)null,
+                queue_state = (string?)null,
+                posted = (int)DocumentStatus.Posted,
+                item_limit = itemLimit
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct))).AsList();
+
+        var stats = dbRows[0];
+        var rows = dbRows
+            .Where(static row => row.HasRow)
+            .Select(row => MapRow(new PageRow(
+                row.RequestId!.Value,
+                row.RequestDisplay!,
+                row.Subject!,
+                row.RequestedAtUtc!.Value,
+                row.AgingDays!.Value,
+                row.BuildingId!.Value,
+                row.BuildingDisplay!,
+                row.PropertyId!.Value,
+                row.PropertyDisplay!,
+                row.CategoryId!.Value,
+                row.CategoryDisplay!,
+                row.Priority!,
+                row.RequestedByPartyId!.Value,
+                row.RequestedByDisplay!,
+                row.WorkOrderId,
+                row.WorkOrderDisplay,
+                row.AssignedPartyId,
+                row.AssignedPartyDisplay,
+                row.DueByUtc,
+                row.QueueState!)))
+            .ToArray();
+
+        return new MaintenanceQueueDashboard(
+            stats.TotalCount,
+            stats.OverdueCount,
+            stats.Days0To3,
+            stats.Days4To7,
+            stats.Days8To14,
+            stats.Days15Plus,
+            rows);
+    }
+
     private async Task<MaintenanceQueuePage> GetPageCoreAsync(
         MaintenanceQueueQuery query,
         MaintenanceQueuePageCursor? cursor,
@@ -596,4 +716,33 @@ WHERE c.catalog_code = @code
         string? QueueState,
         bool HasRow,
         int TotalCount);
+
+    private sealed record DashboardCombinedRow(
+        Guid? RequestId,
+        string? RequestDisplay,
+        string? Subject,
+        DateOnly? RequestedAtUtc,
+        int? AgingDays,
+        Guid? BuildingId,
+        string? BuildingDisplay,
+        Guid? PropertyId,
+        string? PropertyDisplay,
+        Guid? CategoryId,
+        string? CategoryDisplay,
+        string? Priority,
+        Guid? RequestedByPartyId,
+        string? RequestedByDisplay,
+        Guid? WorkOrderId,
+        string? WorkOrderDisplay,
+        Guid? AssignedPartyId,
+        string? AssignedPartyDisplay,
+        DateOnly? DueByUtc,
+        string? QueueState,
+        bool HasRow,
+        int TotalCount,
+        int OverdueCount,
+        int Days0To3,
+        int Days4To7,
+        int Days8To14,
+        int Days15Plus);
 }

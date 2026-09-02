@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NgbBadge from '../primitives/NgbBadge.vue'
 import NgbDatePicker from '../primitives/NgbDatePicker.vue'
@@ -117,6 +117,8 @@ const pendingScrollRestore = ref(0)
 
 let loadSeq = 0
 let runSeq = 0
+let executionController: AbortController | null = null
+const filterLookupControllers = new Map<string, AbortController>()
 
 const reportCode = computed(() => decodeURIComponent(String(route.params.reportCode).trim()))
 const routeBootstrapKey = computed(() => stableStringify({
@@ -404,10 +406,21 @@ async function onFilterQuery(payload: { fieldCode: string; query: string }) {
   const field = definition.value?.filters?.find((entry) => entry.fieldCode === payload.fieldCode)
   if (!field?.lookup) return
 
-  const items = await searchReportLookupItems(lookupStore, field.lookup, payload.query)
-  lookupItemsByFilterCode.value = {
-    ...lookupItemsByFilterCode.value,
-    [payload.fieldCode]: items,
+  filterLookupControllers.get(payload.fieldCode)?.abort()
+  const controller = new AbortController()
+  filterLookupControllers.set(payload.fieldCode, controller)
+  try {
+    const items = await searchReportLookupItems(lookupStore, field.lookup, payload.query, { signal: controller.signal })
+    if (filterLookupControllers.get(payload.fieldCode) !== controller || controller.signal.aborted) return
+    lookupItemsByFilterCode.value = {
+      ...lookupItemsByFilterCode.value,
+      [payload.fieldCode]: items,
+    }
+  } catch (err) {
+    if (!controller.signal.aborted) throw err
+  } finally {
+    if (filterLookupControllers.get(payload.fieldCode) === controller)
+      filterLookupControllers.delete(payload.fieldCode)
   }
 }
 
@@ -483,12 +496,15 @@ async function syncRouteStateWithCurrentReportContext() {
 
 async function runReport() {
   const seq = ++runSeq
+  executionController?.abort()
+  const controller = new AbortController()
+  executionController = controller
   running.value = true
   loadingMore.value = false
   error.value = null
 
   try {
-    const result = await executeReport(reportCode.value, buildPageExecutionRequest())
+    const result = await executeReport(reportCode.value, buildPageExecutionRequest(), { signal: controller.signal })
     if (seq !== runSeq) return
 
     response.value = result
@@ -499,9 +515,13 @@ async function runReport() {
     saveReportPageScrollTop(reportPageStateKey.value, 0)
   } catch (err) {
     if (seq !== runSeq) return
+    if (controller.signal.aborted) return
     error.value = toErrorMessage(err, 'Failed to execute the report.')
   } finally {
-    if (seq === runSeq) running.value = false
+    if (seq === runSeq) {
+      running.value = false
+      if (executionController === controller) executionController = null
+    }
   }
 }
 
@@ -511,11 +531,14 @@ async function appendReportPage() {
   if (consumedAppendCursors.value.includes(nextCursor)) return
 
   const seq = runSeq
+  executionController?.abort()
+  const controller = new AbortController()
+  executionController = controller
   loadingMore.value = true
   error.value = null
 
   try {
-    const page = await executeReport(reportCode.value, buildAppendRequest(buildPageExecutionRequest(), nextCursor))
+    const page = await executeReport(reportCode.value, buildAppendRequest(buildPageExecutionRequest(), nextCursor), { signal: controller.signal })
     if (seq !== runSeq) return
 
     response.value = mergePagedReportResponses(response.value!, page)
@@ -523,9 +546,13 @@ async function appendReportPage() {
     persistReportExecutionSnapshot()
   } catch (err) {
     if (seq !== runSeq) return
+    if (controller.signal.aborted) return
     error.value = toErrorMessage(err, 'Failed to load more rows.')
   } finally {
-    if (seq === runSeq) loadingMore.value = false
+    if (seq === runSeq) {
+      loadingMore.value = false
+      if (executionController === controller) executionController = null
+    }
   }
 }
 
@@ -742,6 +769,10 @@ async function loadDefinitionAndRun() {
   if (!code) return
 
   runSeq += 1
+  executionController?.abort()
+  executionController = null
+  filterLookupControllers.forEach((controller) => controller.abort())
+  filterLookupControllers.clear()
   const seq = ++loadSeq
   loadingDefinition.value = true
   running.value = false
@@ -895,6 +926,13 @@ watch(routeBootstrapKey, (nextKey) => {
 
   void loadDefinitionAndRun()
 }, { immediate: true })
+
+onBeforeUnmount(() => {
+  loadSeq += 1
+  runSeq += 1
+  executionController?.abort()
+  filterLookupControllers.forEach((controller) => controller.abort())
+})
 </script>
 
 <template>

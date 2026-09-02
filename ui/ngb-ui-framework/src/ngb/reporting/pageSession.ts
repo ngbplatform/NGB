@@ -10,6 +10,7 @@ import type { ReportExecutionResponseDto } from './types'
 
 const EXECUTION_PREFIX = 'ngb.report.page.execution:'
 const SCROLL_PREFIX = 'ngb.report.page.scroll:'
+const MAX_PERSISTED_REPORT_ROWS = 500
 
 export type ReportPageExecutionSnapshot = {
   response: ReportExecutionResponseDto
@@ -38,6 +39,14 @@ export function saveReportPageExecutionSnapshot(
 ) {
   const storageKey = executionStorageKey(routeStateKey)
   if (!storageKey) return
+
+  // Large report pages are intentionally not mirrored into synchronous browser
+  // storage. Re-running on navigation is cheaper and safer than repeatedly
+  // serializing multi-megabyte sheets on the UI thread.
+  if ((response.sheet.rows?.length ?? 0) > MAX_PERSISTED_REPORT_ROWS) {
+    removeStorageItem('session', storageKey)
+    return
+  }
 
   void writeStorageJson('session', storageKey, {
     response,

@@ -55,9 +55,11 @@ export const agencyBillingMetadataFormBehavior: MetadataFormBehavior = {
   isFieldHidden,
   isFieldReadonly,
   resolveLookupHint: ({ entityTypeCode, field }) => getAgencyBillingLookupHint(entityTypeCode, field.key, field.lookup),
-  searchLookup: async ({ hint, query }) => {
+  searchLookup: async ({ hint, query, signal }) => {
     const lookupStore = useLookupStore()
-    return await searchResolvedLookupItems(lookupStore, hint, query)
+    return signal
+      ? await searchResolvedLookupItems(lookupStore, hint, query, { signal })
+      : await searchResolvedLookupItems(lookupStore, hint, query)
   },
   buildLookupTargetUrl: async ({ hint, value, routeFullPath }) =>
     await buildLookupFieldTargetUrl({

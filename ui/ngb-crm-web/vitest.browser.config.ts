@@ -19,11 +19,6 @@ export default defineConfig({
     include: [
       '@headlessui/vue',
       '@ngbplatform/ui',
-      'echarts/core',
-      'echarts/charts',
-      'echarts/components',
-      'echarts/renderers',
-      'vue-echarts',
       'pinia',
       'vue-router',
       'keycloak-js',

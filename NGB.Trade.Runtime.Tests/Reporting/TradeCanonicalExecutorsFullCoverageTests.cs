@@ -137,6 +137,10 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
                 new(Guid.CreateVersion7(), "Return only", 0m, 0m, 1m, 2m, -2m, -1m),
                 new(Guid.CreateVersion7(), "Empty", 0m, 0m, 0m, 0m, 0m, 0m)
             ],
+            SalesByCustomer =
+            [
+                new(Guid.CreateVersion7(), "Customer", 1, 0, 20m, 0m, 20m, 8m)
+            ],
             PurchasesByVendor = [new(Guid.CreateVersion7(), "Vendor", 1, 0, 10m, 0m, 10m)],
             RecentDocuments =
             [
@@ -165,7 +169,7 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
             Definition(empty.ReportCode),
             new ReportExecutionRequestDto(Parameters: new Dictionary<string, string> { ["as_of_utc"] = "2026-04-18" }),
             default);
-        emptyPage.PrebuiltSheet!.Rows.Count(row => row.SemanticRole == "section_header").Should().Be(4);
+        emptyPage.PrebuiltSheet!.Rows.Count(row => row.SemanticRole == "section_header").Should().Be(6);
     }
 
     [Fact]

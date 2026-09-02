@@ -61,7 +61,9 @@ public sealed record TradeAnalyticsPageCursor<TTotals>(
 public sealed record TradeDashboardAnalyticsSnapshot(
     TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals> SalesByItem,
     decimal NetPurchases,
-    IReadOnlyList<RecentTradeDocumentSummaryRow> RecentDocuments);
+    IReadOnlyList<RecentTradeDocumentSummaryRow> RecentDocuments,
+    TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>? SalesByCustomer = null,
+    TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>? PurchasesByVendor = null);
 
 public sealed record SalesByItemTotals(
     decimal SoldQuantity,

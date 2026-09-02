@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPost, httpPostFile, httpPut } from '../api/http'
+import { httpDelete, httpGet, httpPost, httpPostFile, httpPut, type HttpRequestOptions } from '../api/http'
 import type { ReportDefinitionDto, ReportExecutionRequestDto, ReportExecutionResponseDto, ReportExportRequestDto, ReportVariantDto } from './types'
 
 export async function getReportDefinitions(): Promise<ReportDefinitionDto[]> {
@@ -9,8 +9,15 @@ export async function getReportDefinition(reportCode: string): Promise<ReportDef
   return await httpGet<ReportDefinitionDto>(`/api/report-definitions/${encodeURIComponent(reportCode)}`)
 }
 
-export async function executeReport(reportCode: string, request: ReportExecutionRequestDto): Promise<ReportExecutionResponseDto> {
-  return await httpPost<ReportExecutionResponseDto>(`/api/reports/${encodeURIComponent(reportCode)}/execute`, request)
+export async function executeReport(
+  reportCode: string,
+  request: ReportExecutionRequestDto,
+  options?: HttpRequestOptions,
+): Promise<ReportExecutionResponseDto> {
+  const url = `/api/reports/${encodeURIComponent(reportCode)}/execute`
+  return options
+    ? await httpPost<ReportExecutionResponseDto>(url, request, options)
+    : await httpPost<ReportExecutionResponseDto>(url, request)
 }
 
 export async function exportReportXlsx(reportCode: string, request: ReportExportRequestDto): Promise<{ blob: Blob; fileName: string | null }> {

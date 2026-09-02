@@ -55,6 +55,7 @@ import {
   propertyUnitsFixture,
 } from '../fixtures/pmProperties'
 import {
+  homeDashboardFixture,
   homeLateFeeChargeDocumentsFixture,
   homeLeaseDocumentsFixture,
   homeMaintenanceQueueFixture,
@@ -741,6 +742,10 @@ export async function mockCommandPaletteApis(page: Page): Promise<void> {
 
 export async function mockHomeDashboardApis(page: Page): Promise<void> {
   await mockCommonPmApis(page)
+
+  await page.route('**/api/dashboard**', async (route) => {
+    await fulfillJson(route, homeDashboardFixture)
+  })
 
   await page.route('**/api/reports/pm.occupancy.summary/execute', async (route) => {
     await fulfillJson(route, homeOccupancySummaryFixture)

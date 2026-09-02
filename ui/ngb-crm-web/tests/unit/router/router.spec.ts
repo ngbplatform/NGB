@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   routerOptions: null as Record<string, unknown> | null,
   guards: [] as Array<(to: Record<string, unknown>) => unknown>,
   auth: { authenticated: false },
-  menu: { groups: [] as unknown[], isLoading: false, load: vi.fn().mockResolvedValue(undefined) },
+  menu: { groups: [] as unknown[], hasLoaded: false, isLoading: false, load: vi.fn().mockResolvedValue(undefined) },
   resolvePermissionAwareLanding: vi.fn(() => null as string | null),
   authGuard: vi.fn(),
 }))
@@ -61,6 +61,7 @@ describe('CRM router', () => {
   beforeEach(() => {
     mocks.auth.authenticated = false
     mocks.menu.groups = []
+    mocks.menu.hasLoaded = false
     mocks.menu.isLoading = false
     mocks.menu.load.mockClear()
     mocks.resolvePermissionAwareLanding.mockReset().mockReturnValue(null)
@@ -101,8 +102,10 @@ describe('CRM router', () => {
   it('returns true for an allowed route and skips menu loading when loaded or loading', async () => {
     mocks.auth.authenticated = true
     mocks.menu.groups = [{}]
+    mocks.menu.hasLoaded = true
     expect(await mocks.guards[1]!({ path: '/allowed' })).toBe(true)
     mocks.menu.groups = []
+    mocks.menu.hasLoaded = false
     mocks.menu.isLoading = true
     expect(await mocks.guards[1]!({ path: '/allowed' })).toBe(true)
     expect(mocks.menu.load).not.toHaveBeenCalled()

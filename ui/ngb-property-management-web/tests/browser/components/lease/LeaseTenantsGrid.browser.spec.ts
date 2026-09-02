@@ -173,7 +173,14 @@ describe('LeaseTenantsGrid', () => {
     expect(lookups[0]!.attributes('data-item-count')).toBe('0')
     lookups[0]!.vm.$emit('query', ' tenant ')
     await flushPromises()
-    expect(mocks.searchCatalog).toHaveBeenCalledWith('pm.party', 'tenant', { filters: { is_tenant: 'true' } })
+    expect(mocks.searchCatalog).toHaveBeenCalledWith(
+      'pm.party',
+      'tenant',
+      expect.objectContaining({
+        filters: { is_tenant: 'true' },
+        signal: expect.any(AbortSignal),
+      }),
+    )
     expect(lookups[0]!.attributes('data-item-count')).toBe('0')
     lookups[1]!.vm.$emit('query', 'second')
     await flushPromises()

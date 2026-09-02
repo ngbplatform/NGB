@@ -248,6 +248,92 @@ ORDER BY candidate.updated_at_utc DESC,
          candidate.document_display,
          candidate.document_id DESC
 LIMIT @recent_document_limit;
+
+WITH sales AS (
+    SELECT h.customer_id,
+           COUNT(DISTINCT h.document_id)::integer AS sales_document_count,
+           SUM(l.line_amount) AS gross_sales,
+           SUM(l.quantity * l.unit_cost) AS sold_cogs
+    FROM doc_trd_sales_invoice h
+    JOIN documents d ON d.id = h.document_id AND d.status = @posted_status
+    JOIN doc_trd_sales_invoice__lines l ON l.document_id = h.document_id
+    WHERE h.document_date_utc >= @from_utc AND h.document_date_utc <= @as_of_utc
+    GROUP BY h.customer_id
+), customer_returns AS (
+    SELECT h.customer_id,
+           COUNT(DISTINCT h.document_id)::integer AS return_document_count,
+           SUM(l.line_amount) AS returned_amount,
+           SUM(l.quantity * l.unit_cost) AS returned_cogs
+    FROM doc_trd_customer_return h
+    JOIN documents d ON d.id = h.document_id AND d.status = @posted_status
+    JOIN doc_trd_customer_return__lines l ON l.document_id = h.document_id
+    WHERE h.document_date_utc >= @from_utc AND h.document_date_utc <= @as_of_utc
+    GROUP BY h.customer_id
+), customer_keys AS (
+    SELECT customer_id FROM sales UNION SELECT customer_id FROM customer_returns
+)
+SELECT k.customer_id AS CustomerId,
+       COALESCE(p.display, k.customer_id::text) AS CustomerDisplay,
+       COALESCE(s.sales_document_count, 0) AS SalesDocumentCount,
+       COALESCE(r.return_document_count, 0) AS ReturnDocumentCount,
+       COALESCE(s.gross_sales, 0) AS GrossSales,
+       COALESCE(r.returned_amount, 0) AS ReturnedAmount,
+       COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0) AS NetSales,
+       COALESCE(s.sold_cogs, 0) - COALESCE(r.returned_cogs, 0) AS NetCogs,
+       COUNT(*) OVER()::integer AS TotalCount,
+       SUM(COALESCE(s.sales_document_count, 0)) OVER()::integer AS TotalSalesDocumentCount,
+       SUM(COALESCE(r.return_document_count, 0)) OVER()::integer AS TotalReturnDocumentCount,
+       SUM(COALESCE(s.gross_sales, 0)) OVER() AS TotalGrossSales,
+       SUM(COALESCE(r.returned_amount, 0)) OVER() AS TotalReturnedAmount,
+       SUM(COALESCE(s.gross_sales, 0) - COALESCE(r.returned_amount, 0)) OVER() AS TotalNetSales,
+       SUM(COALESCE(s.sold_cogs, 0) - COALESCE(r.returned_cogs, 0)) OVER() AS TotalNetCogs
+FROM customer_keys k
+LEFT JOIN cat_trd_party p ON p.catalog_id = k.customer_id
+LEFT JOIN sales s ON s.customer_id = k.customer_id
+LEFT JOIN customer_returns r ON r.customer_id = k.customer_id
+ORDER BY NetSales DESC, CustomerDisplay, CustomerId
+LIMIT @top_partner_limit;
+
+WITH purchases_by_vendor AS (
+    SELECT h.vendor_id,
+           COUNT(DISTINCT h.document_id)::integer AS purchase_document_count,
+           SUM(l.line_amount) AS gross_purchases
+    FROM doc_trd_purchase_receipt h
+    JOIN documents d ON d.id = h.document_id AND d.status = @posted_status
+    JOIN doc_trd_purchase_receipt__lines l ON l.document_id = h.document_id
+    WHERE h.document_date_utc >= @from_utc AND h.document_date_utc <= @as_of_utc
+    GROUP BY h.vendor_id
+), vendor_returns_by_vendor AS (
+    SELECT h.vendor_id,
+           COUNT(DISTINCT h.document_id)::integer AS return_document_count,
+           SUM(l.line_amount) AS returned_amount
+    FROM doc_trd_vendor_return h
+    JOIN documents d ON d.id = h.document_id AND d.status = @posted_status
+    JOIN doc_trd_vendor_return__lines l ON l.document_id = h.document_id
+    WHERE h.document_date_utc >= @from_utc AND h.document_date_utc <= @as_of_utc
+    GROUP BY h.vendor_id
+), vendor_keys AS (
+    SELECT vendor_id FROM purchases_by_vendor UNION SELECT vendor_id FROM vendor_returns_by_vendor
+)
+SELECT k.vendor_id AS VendorId,
+       COALESCE(p.display, k.vendor_id::text) AS VendorDisplay,
+       COALESCE(pr.purchase_document_count, 0) AS PurchaseDocumentCount,
+       COALESCE(vr.return_document_count, 0) AS ReturnDocumentCount,
+       COALESCE(pr.gross_purchases, 0) AS GrossPurchases,
+       COALESCE(vr.returned_amount, 0) AS ReturnedAmount,
+       COALESCE(pr.gross_purchases, 0) - COALESCE(vr.returned_amount, 0) AS NetPurchases,
+       COUNT(*) OVER()::integer AS TotalCount,
+       SUM(COALESCE(pr.purchase_document_count, 0)) OVER()::integer AS TotalPurchaseDocumentCount,
+       SUM(COALESCE(vr.return_document_count, 0)) OVER()::integer AS TotalReturnDocumentCount,
+       SUM(COALESCE(pr.gross_purchases, 0)) OVER() AS TotalGrossPurchases,
+       SUM(COALESCE(vr.returned_amount, 0)) OVER() AS TotalReturnedAmount,
+       SUM(COALESCE(pr.gross_purchases, 0) - COALESCE(vr.returned_amount, 0)) OVER() AS TotalNetPurchases
+FROM vendor_keys k
+LEFT JOIN cat_trd_party p ON p.catalog_id = k.vendor_id
+LEFT JOIN purchases_by_vendor pr ON pr.vendor_id = k.vendor_id
+LEFT JOIN vendor_returns_by_vendor vr ON vr.vendor_id = k.vendor_id
+ORDER BY NetPurchases DESC, VendorDisplay, VendorId
+LIMIT @top_partner_limit;
 """;
 
         var command = new CommandDefinition(
@@ -259,6 +345,7 @@ LIMIT @recent_document_limit;
                 from_utc = fromInclusive,
                 as_of_utc = asOfInclusive,
                 top_item_limit = topItemLimit,
+                top_partner_limit = 5,
                 recent_document_limit = recentDocumentLimit,
                 purchase_receipt_type = TradeCodes.PurchaseReceipt,
                 sales_invoice_type = TradeCodes.SalesInvoice,
@@ -274,6 +361,8 @@ LIMIT @recent_document_limit;
         var salesRows = (await grid.ReadAsync<SalesByItemPageSqlRow>()).AsList();
         var purchases = await grid.ReadSingleAsync<DashboardPurchasesSqlRow>();
         var recentDocuments = (await grid.ReadAsync<RecentTradeDocumentSummaryRow>()).AsList();
+        var customerRows = (await grid.ReadAsync<SalesByCustomerPageSqlRow>()).AsList();
+        var vendorRows = (await grid.ReadAsync<PurchasesByVendorPageSqlRow>()).AsList();
         var first = salesRows.FirstOrDefault();
         var salesPage = new TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>(
             salesRows.Select(static row => new SalesByItemSummaryRow(
@@ -296,7 +385,32 @@ LIMIT @recent_document_limit;
                     first.TotalNetSales,
                     first.TotalNetCogs));
 
-        return new TradeDashboardAnalyticsSnapshot(salesPage, purchases.NetPurchases, recentDocuments);
+        var firstCustomer = customerRows.FirstOrDefault();
+        var customers = new TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>(
+            customerRows.Select(static row => new SalesByCustomerSummaryRow(
+                row.CustomerId, row.CustomerDisplay, row.SalesDocumentCount, row.ReturnDocumentCount,
+                row.GrossSales, row.ReturnedAmount, row.NetSales, row.NetCogs)).ToArray(),
+            firstCustomer?.TotalCount ?? 0,
+            firstCustomer is null
+                ? new SalesByCustomerTotals(0, 0, 0m, 0m, 0m, 0m)
+                : new SalesByCustomerTotals(
+                    firstCustomer.TotalSalesDocumentCount, firstCustomer.TotalReturnDocumentCount,
+                    firstCustomer.TotalGrossSales, firstCustomer.TotalReturnedAmount,
+                    firstCustomer.TotalNetSales, firstCustomer.TotalNetCogs));
+        var firstVendor = vendorRows.FirstOrDefault();
+        var vendors = new TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>(
+            vendorRows.Select(static row => new PurchasesByVendorSummaryRow(
+                row.VendorId, row.VendorDisplay, row.PurchaseDocumentCount, row.ReturnDocumentCount,
+                row.GrossPurchases, row.ReturnedAmount, row.NetPurchases)).ToArray(),
+            firstVendor?.TotalCount ?? 0,
+            firstVendor is null
+                ? new PurchasesByVendorTotals(0, 0, 0m, 0m, 0m)
+                : new PurchasesByVendorTotals(
+                    firstVendor.TotalPurchaseDocumentCount, firstVendor.TotalReturnDocumentCount,
+                    firstVendor.TotalGrossPurchases, firstVendor.TotalReturnedAmount,
+                    firstVendor.TotalNetPurchases));
+
+        return new TradeDashboardAnalyticsSnapshot(salesPage, purchases.NetPurchases, recentDocuments, customers, vendors);
     }
 
     public Task<TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>> GetSalesByItemPageAsync(

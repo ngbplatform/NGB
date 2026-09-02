@@ -1,10 +1,6 @@
-import { markRaw } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
+import { defineAsyncComponent } from 'vue'
 import {
-  NgbMetadataCatalogEditPage,
-  NgbMetadataCatalogListPage,
-  NgbMetadataDocumentEditPage,
-  NgbMetadataDocumentListPage,
   getCatalogPage,
   getDocumentPage,
   type MetadataCatalogListPageLoadArgs,
@@ -13,9 +9,9 @@ import {
   type MetadataDocumentEditPageProps,
   type MetadataDocumentListPageProps,
 } from '@ngbplatform/ui'
+import { loadNgbMetadataCatalogEditPage, loadNgbMetadataCatalogListPage, loadNgbMetadataDocumentEditPage, loadNgbMetadataDocumentListPage } from '@ngbplatform/ui/lazy'
 
 import { getTradeLookupHint } from '../lookup/hints'
-import TradeEntityEditor from '../editor/TradeEntityEditor.vue'
 import { catalogCollectionTitle, documentCollectionTitle } from '../utils/entityCollectionTitles'
 
 export type TradeRouteFrameworkConfig = {
@@ -23,7 +19,9 @@ export type TradeRouteFrameworkConfig = {
   documentRoutes: RouteRecordRaw[]
 }
 
-const tradeEntityEditorComponent = markRaw(TradeEntityEditor)
+const tradeEntityEditorComponent = defineAsyncComponent(
+  () => import('../editor/TradeEntityEditor.vue'),
+)
 
 function loadTradeCatalogPage(args: MetadataCatalogListPageLoadArgs) {
   return getCatalogPage(args.catalogType, {
@@ -94,14 +92,14 @@ const tradeDocumentEditPageProps = {
 export function createTradeRouteFrameworkConfig(): TradeRouteFrameworkConfig {
   return {
     catalogRoutes: [
-      { path: '/catalogs/:catalogType', component: NgbMetadataCatalogListPage, props: tradeCatalogListPageProps },
-      { path: '/catalogs/:catalogType/new', name: 'CatalogCreate', component: NgbMetadataCatalogEditPage, props: tradeCatalogEditPageProps },
-      { path: '/catalogs/:catalogType/:id', component: NgbMetadataCatalogEditPage, props: tradeCatalogEditPageProps },
+      { path: '/catalogs/:catalogType', component: loadNgbMetadataCatalogListPage, props: tradeCatalogListPageProps },
+      { path: '/catalogs/:catalogType/new', name: 'CatalogCreate', component: loadNgbMetadataCatalogEditPage, props: tradeCatalogEditPageProps },
+      { path: '/catalogs/:catalogType/:id', component: loadNgbMetadataCatalogEditPage, props: tradeCatalogEditPageProps },
     ],
     documentRoutes: [
-      { path: '/documents/:documentType', component: NgbMetadataDocumentListPage, props: tradeDocumentListPageProps },
-      { path: '/documents/:documentType/new', name: 'DocumentCreate', component: NgbMetadataDocumentEditPage, props: tradeDocumentEditPageProps },
-      { path: '/documents/:documentType/:id', component: NgbMetadataDocumentEditPage, props: tradeDocumentEditPageProps },
+      { path: '/documents/:documentType', component: loadNgbMetadataDocumentListPage, props: tradeDocumentListPageProps },
+      { path: '/documents/:documentType/new', name: 'DocumentCreate', component: loadNgbMetadataDocumentEditPage, props: tradeDocumentEditPageProps },
+      { path: '/documents/:documentType/:id', component: loadNgbMetadataDocumentEditPage, props: tradeDocumentEditPageProps },
     ],
   }
 }

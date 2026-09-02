@@ -1,6 +1,5 @@
 import {
   buildReportPageUrl,
-  captureDashboardValue,
   dashboardReportCellByCode,
   dashboardReportCellDisplay,
   dashboardReportCellNumber,
@@ -119,24 +118,15 @@ type OverviewSnapshot = {
   inventoryOnHand: number
   grossMargin: number
   inventoryPositionCount: number
+  activeSalesItemCount: number
+  activeCustomerCount: number
+  activeVendorCount: number
+  topItems: TradeHomeTopItem[]
+  topCustomers: TradeHomeTopCustomer[]
+  topVendors: TradeHomeTopVendor[]
   inventoryPositions: TradeHomeInventoryPosition[]
   recentDocuments: TradeHomeRecentDocument[]
   routes: Pick<TradeHomeRoutes, 'sales' | 'purchases' | 'inventory' | 'grossMargin'>
-}
-
-type ItemSnapshot = {
-  totalCount: number
-  items: TradeHomeTopItem[]
-}
-
-type CustomerSnapshot = {
-  totalCount: number
-  customers: TradeHomeTopCustomer[]
-}
-
-type VendorSnapshot = {
-  totalCount: number
-  vendors: TradeHomeTopVendor[]
 }
 
 const REPORTS = {
@@ -223,25 +213,6 @@ function reportDetailRows(response: ReportExecutionResponseDto): ReportSheetRowD
   return (response.sheet.rows ?? []).filter((row) => isDashboardReportRowKind(row, ReportRowKind.Detail))
 }
 
-function compareDescending(left: number, right: number): number {
-  return right - left
-}
-
-function buildMonthRequest(fromInclusive: string, toInclusive: string): ReportExecutionRequestDto {
-  return {
-    parameters: {
-      from_utc: fromInclusive,
-      to_utc: toInclusive,
-    },
-    layout: null,
-    filters: null,
-    variantCode: null,
-    offset: 0,
-    limit: 500,
-    cursor: null,
-  }
-}
-
 function buildAsOfRequest(asOf: string): ReportExecutionRequestDto {
   return {
     parameters: {
@@ -259,8 +230,11 @@ function buildAsOfRequest(asOf: string): ReportExecutionRequestDto {
 async function loadOverviewSnapshot(
   asOf: string,
   defaultRoutes: TradeHomeRoutes,
+  signal?: AbortSignal,
 ): Promise<OverviewSnapshot> {
-  const response = await executeReport(REPORTS.dashboardOverview, buildAsOfRequest(asOf))
+  const response = signal
+    ? await executeReport(REPORTS.dashboardOverview, buildAsOfRequest(asOf), { signal })
+    : await executeReport(REPORTS.dashboardOverview, buildAsOfRequest(asOf))
   const columns = dashboardReportColumnIndexMap(response)
   const rows = reportDetailRows(response)
 
@@ -276,6 +250,9 @@ async function loadOverviewSnapshot(
 
   const inventoryPositions: TradeHomeInventoryPosition[] = []
   const recentDocuments: TradeHomeRecentDocument[] = []
+  const topItems: TradeHomeTopItem[] = []
+  const topCustomers: TradeHomeTopCustomer[] = []
+  const topVendors: TradeHomeTopVendor[] = []
   const rawInventoryPositionCount = Number(response.diagnostics?.inventory_position_count ?? 0)
   const inventoryPositionCount = Number.isFinite(rawInventoryPositionCount) && rawInventoryPositionCount >= 0
     ? rawInventoryPositionCount
@@ -326,6 +303,53 @@ async function loadOverviewSnapshot(
       continue
     }
 
+    if (category === 'Top Item') {
+      const notes = dashboardReportCellDisplay(row, columns, 'notes')
+      const margin = /Gross Margin\s+(-?[\d.]+)\s+\((-?[\d.]+)%\)/i.exec(notes)
+      topItems.push({
+        item: subject || 'Item',
+        soldQuantity: dashboardReportCellNumber(row, columns, 'secondary'),
+        netSales: dashboardReportCellNumber(row, columns, 'value'),
+        grossMargin: Number(margin?.[1] ?? 0),
+        marginPercent: Number(margin?.[2] ?? 0),
+        route: resolveReportCellActionUrl(subjectCell?.action ?? null),
+      })
+      continue
+    }
+
+    if (category === 'Top Customer') {
+      const counts = /(\d+) sales\s*\/\s*(\d+) returns/i.exec(
+        dashboardReportCellDisplay(row, columns, 'secondary'),
+      )
+      const margin = /Gross Margin\s+(-?[\d.]+)\s+\((-?[\d.]+)%\)/i.exec(
+        dashboardReportCellDisplay(row, columns, 'notes'),
+      )
+      topCustomers.push({
+        customer: subject || 'Customer',
+        salesDocumentCount: Number(counts?.[1] ?? 0),
+        returnDocumentCount: Number(counts?.[2] ?? 0),
+        netSales: dashboardReportCellNumber(row, columns, 'value'),
+        grossMargin: Number(margin?.[1] ?? 0),
+        marginPercent: Number(margin?.[2] ?? 0),
+        route: resolveReportCellActionUrl(valueCell?.action ?? subjectCell?.action ?? null),
+      })
+      continue
+    }
+
+    if (category === 'Top Vendor') {
+      const counts = /(\d+) purchases\s*\/\s*(\d+) returns/i.exec(
+        dashboardReportCellDisplay(row, columns, 'secondary'),
+      )
+      topVendors.push({
+        vendor: subject || 'Vendor',
+        purchaseDocumentCount: Number(counts?.[1] ?? 0),
+        returnDocumentCount: Number(counts?.[2] ?? 0),
+        netPurchases: dashboardReportCellNumber(row, columns, 'value'),
+        route: resolveReportCellActionUrl(valueCell?.action ?? subjectCell?.action ?? null),
+      })
+      continue
+    }
+
     if (category === 'Recent Document') {
       recentDocuments.push({
         title: subject || 'Trade document',
@@ -343,6 +367,12 @@ async function loadOverviewSnapshot(
     inventoryOnHand,
     grossMargin,
     inventoryPositionCount: inventoryPositionCount || inventoryPositions.length,
+    activeSalesItemCount: Number(response.diagnostics?.active_sales_item_count ?? topItems.length),
+    activeCustomerCount: Number(response.diagnostics?.active_customer_count ?? topCustomers.length),
+    activeVendorCount: Number(response.diagnostics?.active_vendor_count ?? topVendors.length),
+    topItems: topItems.slice(0, 5),
+    topCustomers: topCustomers.slice(0, 5),
+    topVendors: topVendors.slice(0, 5),
     inventoryPositions: inventoryPositions.slice(0, 8),
     recentDocuments: recentDocuments.slice(0, 8),
     routes: {
@@ -354,96 +384,7 @@ async function loadOverviewSnapshot(
   }
 }
 
-async function loadTopItemsSnapshot(
-  fromInclusive: string,
-  toInclusive: string,
-): Promise<ItemSnapshot> {
-  const response = await executeReport(REPORTS.salesByItem, buildMonthRequest(fromInclusive, toInclusive))
-  const columns = dashboardReportColumnIndexMap(response)
-  const items = reportDetailRows(response)
-    .map((row) => {
-      const itemCell = dashboardReportCellByCode(row, columns, 'item')
-      return {
-        item: dashboardReportCellDisplay(row, columns, 'item') || 'Item',
-        soldQuantity: dashboardReportCellNumber(row, columns, 'sold_quantity'),
-        netSales: dashboardReportCellNumber(row, columns, 'net_sales'),
-        grossMargin: dashboardReportCellNumber(row, columns, 'gross_margin'),
-        marginPercent: dashboardReportCellNumber(row, columns, 'margin_percent'),
-        route: resolveReportCellActionUrl(itemCell?.action ?? null),
-      }
-    })
-    .sort((left, right) =>
-      compareDescending(left.netSales, right.netSales)
-      || compareDescending(left.grossMargin, right.grossMargin)
-      || left.item.localeCompare(right.item))
-
-  return {
-    totalCount: typeof response.total === 'number' ? response.total : items.length,
-    items: items.slice(0, 5),
-  }
-}
-
-async function loadTopCustomersSnapshot(
-  fromInclusive: string,
-  toInclusive: string,
-): Promise<CustomerSnapshot> {
-  const response = await executeReport(REPORTS.salesByCustomer, buildMonthRequest(fromInclusive, toInclusive))
-  const columns = dashboardReportColumnIndexMap(response)
-  const customers = reportDetailRows(response)
-    .map((row) => {
-      const customerCell = dashboardReportCellByCode(row, columns, 'customer')
-      const netSalesCell = dashboardReportCellByCode(row, columns, 'net_sales')
-
-      return {
-        customer: dashboardReportCellDisplay(row, columns, 'customer') || 'Customer',
-        salesDocumentCount: dashboardReportCellNumber(row, columns, 'sales_document_count'),
-        returnDocumentCount: dashboardReportCellNumber(row, columns, 'return_document_count'),
-        netSales: dashboardReportCellNumber(row, columns, 'net_sales'),
-        grossMargin: dashboardReportCellNumber(row, columns, 'gross_margin'),
-        marginPercent: dashboardReportCellNumber(row, columns, 'margin_percent'),
-        route: resolveReportCellActionUrl(netSalesCell?.action ?? customerCell?.action ?? null),
-      }
-    })
-    .sort((left, right) =>
-      compareDescending(left.netSales, right.netSales)
-      || compareDescending(left.grossMargin, right.grossMargin)
-      || left.customer.localeCompare(right.customer))
-
-  return {
-    totalCount: typeof response.total === 'number' ? response.total : customers.length,
-    customers: customers.slice(0, 5),
-  }
-}
-
-async function loadTopVendorsSnapshot(
-  fromInclusive: string,
-  toInclusive: string,
-): Promise<VendorSnapshot> {
-  const response = await executeReport(REPORTS.purchasesByVendor, buildMonthRequest(fromInclusive, toInclusive))
-  const columns = dashboardReportColumnIndexMap(response)
-  const vendors = reportDetailRows(response)
-    .map((row) => {
-      const vendorCell = dashboardReportCellByCode(row, columns, 'vendor')
-
-      return {
-        vendor: dashboardReportCellDisplay(row, columns, 'vendor') || 'Vendor',
-        purchaseDocumentCount: dashboardReportCellNumber(row, columns, 'purchase_document_count'),
-        returnDocumentCount: dashboardReportCellNumber(row, columns, 'return_document_count'),
-        netPurchases: dashboardReportCellNumber(row, columns, 'net_purchases'),
-        route: resolveReportCellActionUrl(vendorCell?.action ?? null),
-      }
-    })
-    .sort((left, right) =>
-      compareDescending(left.netPurchases, right.netPurchases)
-      || left.vendor.localeCompare(right.vendor))
-
-  return {
-    totalCount: typeof response.total === 'number' ? response.total : vendors.length,
-    vendors: vendors.slice(0, 5),
-  }
-}
-
-export async function loadHomeDashboard(asOf: string): Promise<TradeHomeDashboardData> {
+export async function loadHomeDashboard(asOf: string, signal?: AbortSignal): Promise<TradeHomeDashboardData> {
   const asOfDate = parseDashboardUtcDateOnly(asOf)
   if (!asOfDate) throw new Error('Select a valid as-of date.')
 
@@ -455,22 +396,18 @@ export async function loadHomeDashboard(asOf: string): Promise<TradeHomeDashboar
   const warnings: string[] = []
   const defaultRoutes = buildDefaultRoutes(fromInclusive, toInclusive, asOf)
 
-  const [
-    overviewResult,
-    topItemsResult,
-    topCustomersResult,
-    topVendorsResult,
-  ] = await Promise.all([
-    captureDashboardValue('Overview analytics are unavailable', () => loadOverviewSnapshot(asOf, defaultRoutes)),
-    captureDashboardValue('Sales by item analytics are unavailable', () => loadTopItemsSnapshot(fromInclusive, toInclusive)),
-    captureDashboardValue('Sales by customer analytics are unavailable', () => loadTopCustomersSnapshot(fromInclusive, toInclusive)),
-    captureDashboardValue('Purchases by vendor analytics are unavailable', () => loadTopVendorsSnapshot(fromInclusive, toInclusive)),
-  ])
+  let overviewResult: { value: OverviewSnapshot | null; warning: string | null }
+  try {
+    overviewResult = { value: await loadOverviewSnapshot(asOf, defaultRoutes, signal), warning: null }
+  } catch (error) {
+    if (signal?.aborted) throw error
+    overviewResult = {
+      value: null,
+      warning: `Overview analytics are unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  }
 
   if (overviewResult.warning) warnings.push(overviewResult.warning)
-  if (topItemsResult.warning) warnings.push(topItemsResult.warning)
-  if (topCustomersResult.warning) warnings.push(topCustomersResult.warning)
-  if (topVendorsResult.warning) warnings.push(topVendorsResult.warning)
 
   const overview = overviewResult.value ?? {
     salesThisMonth: 0,
@@ -478,6 +415,12 @@ export async function loadHomeDashboard(asOf: string): Promise<TradeHomeDashboar
     inventoryOnHand: 0,
     grossMargin: 0,
     inventoryPositionCount: 0,
+    activeSalesItemCount: 0,
+    activeCustomerCount: 0,
+    activeVendorCount: 0,
+    topItems: [],
+    topCustomers: [],
+    topVendors: [],
     inventoryPositions: [],
     recentDocuments: [],
     routes: {
@@ -487,10 +430,6 @@ export async function loadHomeDashboard(asOf: string): Promise<TradeHomeDashboar
       grossMargin: defaultRoutes.grossMargin,
     },
   }
-  const topItems = topItemsResult.value ?? { totalCount: 0, items: [] }
-  const topCustomers = topCustomersResult.value ?? { totalCount: 0, customers: [] }
-  const topVendors = topVendorsResult.value ?? { totalCount: 0, vendors: [] }
-
   return {
     warnings,
     asOf,
@@ -500,23 +439,23 @@ export async function loadHomeDashboard(asOf: string): Promise<TradeHomeDashboar
     purchasesThisMonth: overview.purchasesThisMonth,
     inventoryOnHand: overview.inventoryOnHand,
     grossMargin: overview.grossMargin,
-    activeSalesItemCount: topItems.totalCount,
-    activeCustomerCount: topCustomers.totalCount,
-    activeVendorCount: topVendors.totalCount,
+    activeSalesItemCount: overview.activeSalesItemCount,
+    activeCustomerCount: overview.activeCustomerCount,
+    activeVendorCount: overview.activeVendorCount,
     inventoryPositionCount: overview.inventoryPositionCount,
-    topItems: topItems.items,
-    topCustomers: topCustomers.customers,
-    topVendors: topVendors.vendors,
+    topItems: overview.topItems,
+    topCustomers: overview.topCustomers,
+    topVendors: overview.topVendors,
     inventoryPositions: overview.inventoryPositions,
     recentDocuments: overview.recentDocuments,
     charts: {
       salesMix: {
         title: 'Sales mix by item',
         subtitle: 'Net sales and gross margin for the top-selling items this month',
-        labels: topItems.items.map((item) => item.item),
+        labels: overview.topItems.map((item) => item.item),
         series: [
-          { label: 'Net sales', color: 'var(--ngb-blue)', values: topItems.items.map((item) => item.netSales) },
-          { label: 'Gross margin', color: 'var(--ngb-accent-1)', values: topItems.items.map((item) => item.grossMargin) },
+          { label: 'Net sales', color: 'var(--ngb-blue)', values: overview.topItems.map((item) => item.netSales) },
+          { label: 'Gross margin', color: 'var(--ngb-accent-1)', values: overview.topItems.map((item) => item.grossMargin) },
         ],
         route: defaultRoutes.salesByItem,
       },

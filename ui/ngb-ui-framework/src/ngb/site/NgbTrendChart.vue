@@ -1,12 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import VChart from 'vue-echarts'
-import { use } from 'echarts/core'
-import { BarChart, LineChart } from 'echarts/charts'
-import { CanvasRenderer } from 'echarts/renderers'
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
-
-use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent])
+import { computed } from 'vue'
 
 export type NgbTrendChartSeries = {
   label: string
@@ -22,17 +15,29 @@ const props = withDefaults(defineProps<{
   mode: 'line',
 })
 
-const themeVersion = ref(0)
-let themeObserver: MutationObserver | null = null
+const viewWidth = 1_000
+const viewHeight = 320
+const left = 72
+const right = 24
+const bottom = 42
+
+const top = computed(() => props.series.length > 1 ? 50 : 20)
+const plotWidth = viewWidth - left - right
+const plotHeight = computed(() => viewHeight - top.value - bottom)
 
 const pointCount = computed(() => {
   const seriesMax = Math.max(0, ...props.series.map((entry) => entry.values.length))
   return Math.max(props.labels.length, seriesMax, 1)
 })
 
+const labels = computed(() =>
+  Array.from({ length: pointCount.value }, (_, index) => String(props.labels[index] ?? '')),
+)
+
 const normalizedSeries = computed(() =>
   props.series.map((entry) => ({
     ...entry,
+    color: normalizeColor(entry.color),
     values: Array.from({ length: pointCount.value }, (_, index) => {
       const raw = Number(entry.values[index] ?? 0)
       return Number.isFinite(raw) ? raw : 0
@@ -40,15 +45,41 @@ const normalizedSeries = computed(() =>
   })),
 )
 
-function readCssVar(name: string, fallback: string): string {
-  themeVersion.value
-  const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-  return value.length > 0 ? value : fallback
-}
+const extent = computed(() => {
+  const values = normalizedSeries.value.flatMap((entry) => entry.values)
+  const minimum = Math.min(0, ...values)
+  const maximum = Math.max(0, ...values)
+  if (minimum === maximum) return { minimum, maximum: minimum + 1 }
+  return { minimum, maximum }
+})
 
-function resolveColor(value: string): string {
-  const match = value.trim().match(/^var\((--[^)]+)\)$/)
-  return match ? readCssVar(match[1], value) : value
+const ticks = computed(() => Array.from({ length: 5 }, (_, index) => {
+  const ratio = index / 4
+  const value = extent.value.maximum - ((extent.value.maximum - extent.value.minimum) * ratio)
+  return { value, y: top.value + (plotHeight.value * ratio) }
+}))
+
+const visibleLabelIndexes = computed(() => {
+  const count = pointCount.value
+  if (count <= 10) return Array.from({ length: count }, (_, index) => index)
+  const step = Math.ceil(count / 8)
+  const indexes = Array.from({ length: count }, (_, index) => index)
+    .filter((index) => index % step === 0)
+  if (indexes.at(-1) !== count - 1) indexes.push(count - 1)
+  return indexes
+})
+
+const ariaLabel = computed(() => {
+  const kind = props.mode === 'bar' ? 'Bar chart' : 'Line chart'
+  const names = normalizedSeries.value.map((entry) => entry.label).filter(Boolean).join(', ')
+  return names ? `${kind}: ${names}` : `${kind}: no data`
+})
+
+function normalizeColor(value: string): string {
+  const normalized = String(value ?? '').trim()
+  const variable = normalized.match(/^var\((--[^,)]+)\)$/)
+  if (variable) return `var(${variable[1]}, #2563eb)`
+  return normalized || '#2563eb'
 }
 
 function formatCompactNumber(value: number): string {
@@ -62,161 +93,146 @@ function formatCompactNumber(value: number): string {
   return `${Math.round(numeric)}`
 }
 
-const palette = computed(() => ({
-  text: readCssVar('--ngb-text', '#1F2933'),
-  muted: readCssVar('--ngb-muted', '#4B5563'),
-  border: readCssVar('--ngb-border', '#CBD5E1'),
-  card: readCssVar('--ngb-card', '#FFFFFF'),
-  background: readCssVar('--ngb-bg', '#F5F7FA'),
-}))
+function xFor(index: number): number {
+  if (pointCount.value <= 1) return left + (plotWidth / 2)
+  return left + ((plotWidth * index) / (pointCount.value - 1))
+}
 
-const chartOptions = computed(() => ({
-  animationDuration: 420,
-  animationDurationUpdate: 260,
-  color: normalizedSeries.value.map((entry) => resolveColor(entry.color)),
-  legend: {
-    show: normalizedSeries.value.length > 1,
-    top: 0,
-    right: 0,
-    icon: 'roundRect',
-    itemWidth: 14,
-    itemHeight: 8,
-    textStyle: {
-      color: palette.value.text,
-      fontSize: 12,
-      fontWeight: 600,
-    },
-  },
-  tooltip: {
-    trigger: 'axis',
-    confine: true,
-    backgroundColor: palette.value.card,
-    borderColor: palette.value.border,
-    borderWidth: 1,
-    textStyle: {
-      color: palette.value.text,
-      fontSize: 12,
-    },
-    axisPointer: props.mode === 'bar'
-      ? {
-          type: 'shadow',
-          shadowStyle: {
-            color: 'rgba(148, 163, 184, 0.12)',
-          },
-        }
-      : {
-          type: 'line',
-          lineStyle: {
-            color: 'rgba(148, 163, 184, 0.42)',
-            width: 1,
-          },
-    },
-    formatter: (params: Array<{ axisValueLabel?: string; seriesName?: string; value?: number; color?: string }>) => {
-      const title = params[0]?.axisValueLabel ?? ''
-      const body = params.map((row) => {
-        const color = String(row.color ?? palette.value.border)
-        const label = String(row.seriesName ?? '').trim()
-        const value = formatCompactNumber(Number(row.value ?? 0))
-        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:160px;"><span style="display:inline-flex;align-items:center;gap:8px;color:${palette.value.text};"><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${color};"></span>${label}</span><strong style="color:${palette.value.text};font-weight:700;">${value}</strong></div>`
-      }).join('')
-      return `<div style="display:grid;gap:8px;"><div style="font-weight:700;color:${palette.value.text};">${title}</div>${body}</div>`
-    },
-  },
-  grid: {
-    top: normalizedSeries.value.length > 1 ? 48 : 20,
-    right: 10,
-    bottom: 10,
-    left: 6,
-    containLabel: true,
-  },
-  xAxis: {
-    type: 'category',
-    boundaryGap: props.mode === 'bar',
-    data: props.labels,
-    axisTick: { show: false },
-    axisLine: {
-      lineStyle: {
-        color: palette.value.border,
-      },
-    },
-    axisLabel: {
-      color: palette.value.muted,
-      fontSize: 11,
-      margin: 12,
-    },
-  },
-  yAxis: {
-    type: 'value',
-    axisLine: { show: false },
-    axisTick: { show: false },
-    splitLine: {
-      lineStyle: {
-        color: palette.value.border,
-        opacity: 0.55,
-        type: 'dashed',
-      },
-    },
-    axisLabel: {
-      color: palette.value.muted,
-      fontSize: 11,
-      formatter: (value: number) => formatCompactNumber(value),
-    },
-  },
-  series: normalizedSeries.value.map((entry, index) => props.mode === 'bar'
-    ? {
-        name: entry.label,
-        type: 'bar',
-        data: entry.values,
-        barMaxWidth: 38,
-        itemStyle: {
-          borderRadius: 0,
-        },
-        emphasis: {
-          focus: 'series',
-        },
-      }
-    : {
-        name: entry.label,
-        type: 'line',
-        data: entry.values,
-        smooth: 0.32,
-        showSymbol: false,
-        symbol: 'circle',
-        symbolSize: 7,
-        lineStyle: {
-          width: 3,
-        },
-        areaStyle: {
-          opacity: index === 0 ? 0.16 : 0.1,
-        },
-        emphasis: {
-          focus: 'series',
-        },
-      }),
-}))
+function yFor(value: number): number {
+  const range = extent.value.maximum - extent.value.minimum
+  return top.value + (((extent.value.maximum - value) / range) * plotHeight.value)
+}
 
-onMounted(() => {
-  themeObserver = new MutationObserver(() => {
-    themeVersion.value += 1
-  })
+function linePoints(values: number[]): string {
+  return values.map((value, index) => `${xFor(index)},${yFor(value)}`).join(' ')
+}
 
-  themeObserver.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ['class', 'style'],
-  })
-})
+function areaPoints(values: number[]): string {
+  const baseline = yFor(0)
+  return `${left},${baseline} ${linePoints(values)} ${xFor(pointCount.value - 1)},${baseline}`
+}
 
-onBeforeUnmount(() => {
-  themeObserver!.disconnect()
-  themeObserver = null
-})
+function barMetrics(seriesIndex: number, valueIndex: number, value: number) {
+  const slot = plotWidth / pointCount.value
+  const groupWidth = Math.min(slot * 0.72, 72)
+  const width = Math.max(2, groupWidth / Math.max(normalizedSeries.value.length, 1))
+  const groupLeft = left + (slot * valueIndex) + ((slot - groupWidth) / 2)
+  const zeroY = yFor(0)
+  const valueY = yFor(value)
+  return {
+    x: groupLeft + (seriesIndex * width),
+    y: Math.min(zeroY, valueY),
+    width: Math.max(width - 2, 1),
+    height: Math.max(Math.abs(zeroY - valueY), 1),
+  }
+}
 </script>
 
 <template>
-  <VChart
-    class="h-full w-full"
-    :option="chartOptions"
-    :init-options="{ renderer: 'canvas' }"
-    autoresize
-  />
+  <div class="relative h-full min-h-[12rem] w-full" data-testid="ngb-trend-chart">
+    <div
+      v-if="normalizedSeries.length > 1"
+      class="pointer-events-none absolute right-2 top-0 z-[1] flex max-w-[80%] flex-wrap justify-end gap-x-4 gap-y-1 text-xs font-semibold text-ngb-text"
+      aria-hidden="true"
+    >
+      <span v-for="entry in normalizedSeries" :key="entry.label" class="inline-flex items-center gap-1.5">
+        <span class="h-2 w-3 rounded-sm" :style="{ backgroundColor: entry.color }" />
+        {{ entry.label }}
+      </span>
+    </div>
+
+    <svg
+      class="h-full w-full overflow-visible"
+      :viewBox="`0 0 ${viewWidth} ${viewHeight}`"
+      preserveAspectRatio="none"
+      role="img"
+      :aria-label="ariaLabel"
+    >
+      <g aria-hidden="true">
+        <g v-for="tick in ticks" :key="tick.y">
+          <line
+            :x1="left"
+            :x2="viewWidth - right"
+            :y1="tick.y"
+            :y2="tick.y"
+            stroke="var(--ngb-border, #cbd5e1)"
+            stroke-dasharray="5 5"
+            stroke-opacity="0.65"
+          />
+          <text
+            :x="left - 12"
+            :y="tick.y + 4"
+            text-anchor="end"
+            font-size="12"
+            fill="var(--ngb-muted, #4b5563)"
+          >{{ formatCompactNumber(tick.value) }}</text>
+        </g>
+
+        <line
+          :x1="left"
+          :x2="viewWidth - right"
+          :y1="yFor(0)"
+          :y2="yFor(0)"
+          stroke="var(--ngb-border, #cbd5e1)"
+        />
+
+        <text
+          v-for="index in visibleLabelIndexes"
+          :key="index"
+          :x="xFor(index)"
+          :y="viewHeight - 12"
+          text-anchor="middle"
+          font-size="12"
+          fill="var(--ngb-muted, #4b5563)"
+        >{{ labels[index] }}</text>
+      </g>
+
+      <g
+        v-for="(entry, seriesIndex) in normalizedSeries"
+        :key="entry.label"
+        data-testid="ngb-trend-series"
+        :data-series-label="entry.label"
+        :data-series-values="JSON.stringify(entry.values)"
+        :data-series-color="entry.color"
+      >
+        <template v-if="mode === 'line'">
+          <polygon
+            :points="areaPoints(entry.values)"
+            :fill="entry.color"
+            :fill-opacity="seriesIndex === 0 ? 0.14 : 0.08"
+            aria-hidden="true"
+          />
+          <polyline
+            :points="linePoints(entry.values)"
+            fill="none"
+            :stroke="entry.color"
+            stroke-width="3"
+            vector-effect="non-scaling-stroke"
+            aria-hidden="true"
+          />
+          <circle
+            v-for="(value, valueIndex) in entry.values"
+            :key="valueIndex"
+            :cx="xFor(valueIndex)"
+            :cy="yFor(value)"
+            r="7"
+            :fill="entry.color"
+            stroke="var(--ngb-card, #fff)"
+            stroke-width="2"
+            vector-effect="non-scaling-stroke"
+          >
+            <title>{{ labels[valueIndex] }} — {{ entry.label }}: {{ formatCompactNumber(value) }}</title>
+          </circle>
+        </template>
+        <rect
+          v-for="(value, valueIndex) in mode === 'bar' ? entry.values : []"
+          :key="valueIndex"
+          v-bind="barMetrics(seriesIndex, valueIndex, value)"
+          :fill="entry.color"
+        >
+          <title>{{ labels[valueIndex] }} — {{ entry.label }}: {{ formatCompactNumber(value) }}</title>
+        </rect>
+      </g>
+    </svg>
+  </div>
 </template>

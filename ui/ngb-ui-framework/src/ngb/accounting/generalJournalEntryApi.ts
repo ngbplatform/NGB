@@ -1,4 +1,5 @@
 import { httpGet, httpPost, httpPut } from '../api/http';
+import type { HttpRequestOptions } from '../api/http';
 import type {
   CreateGeneralJournalEntryDraftRequestDto,
   GeneralJournalEntryAccountContextDto,
@@ -98,8 +99,15 @@ export async function reverseGeneralJournalEntry(
 
 export async function getGeneralJournalEntryAccountContext(
   accountId: string,
+  options?: HttpRequestOptions,
 ): Promise<GeneralJournalEntryAccountContextDto> {
-  return await httpGet<GeneralJournalEntryAccountContextDto>(`${base}/accounts/${encodeURIComponent(accountId)}`);
+  const url = `${base}/accounts/${encodeURIComponent(accountId)}`;
+  if (!options) return await httpGet<GeneralJournalEntryAccountContextDto>(url);
+  return await httpGet<GeneralJournalEntryAccountContextDto>(
+    url,
+    undefined,
+    options,
+  );
 }
 
 export async function markGeneralJournalEntryForDeletion(id: string): Promise<GeneralJournalEntryDetailsDto> {

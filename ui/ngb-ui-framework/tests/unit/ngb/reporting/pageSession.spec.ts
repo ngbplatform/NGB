@@ -73,6 +73,20 @@ describe('reporting page session helpers', () => {
     })
   })
 
+  it('does not synchronously persist oversized report sheets', () => {
+    const response = buildResponse()
+    response.sheet.rows = Array.from({ length: 501 }, (_, index) => ({
+      rowKind: ReportRowKind.Detail,
+      cells: [{ display: `Row ${index}`, value: index, valueType: 'number' }],
+    }))
+    storageState.session.set('ngb.report.page.execution:report:large', 'stale')
+
+    saveReportPageExecutionSnapshot('report:large', response, ['cursor-1'])
+
+    expect(loadReportPageExecutionSnapshot('report:large')).toBeNull()
+    expect(storageState.session.has('ngb.report.page.execution:report:large')).toBe(false)
+  })
+
   it('ignores malformed snapshots and blank keys', () => {
     storageState.session.set('ngb.report.page.execution:broken', JSON.stringify({
       response: {

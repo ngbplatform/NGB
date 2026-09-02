@@ -1,4 +1,4 @@
-import { httpGet, httpPost, httpPut } from '../api/http';
+import { httpGet, httpPost, httpPut, type HttpRequestOptions } from '../api/http';
 import type { ByIdsRequestDto, LookupItemDto } from '../api/contracts';
 import type {
   ChartOfAccountsAccountDto,
@@ -18,6 +18,7 @@ export type GetChartOfAccountsPageArgs = {
 
 export async function getChartOfAccountsPage(
   args: GetChartOfAccountsPageArgs,
+  options?: HttpRequestOptions,
 ): Promise<ChartOfAccountsPageDto> {
   const q = new URLSearchParams();
   q.set('offset', String(args.offset ?? 0));
@@ -28,7 +29,10 @@ export async function getChartOfAccountsPage(
   if (args.onlyActive != null) q.set('onlyActive', String(args.onlyActive));
   if (args.onlyDeleted != null) q.set('onlyDeleted', String(args.onlyDeleted));
 
-  return await httpGet<ChartOfAccountsPageDto>(`/api/chart-of-accounts?${q.toString()}`);
+  const url = `/api/chart-of-accounts?${q.toString()}`;
+  return options
+    ? await httpGet<ChartOfAccountsPageDto>(url, null, options)
+    : await httpGet<ChartOfAccountsPageDto>(url);
 }
 
 export async function getChartOfAccountsMetadata(): Promise<ChartOfAccountsMetadataDto> {

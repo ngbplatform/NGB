@@ -64,12 +64,17 @@ export function createDefaultNgbLookupConfig(): LookupFrameworkConfig {
     loadCatalogItemsByIds: async (catalogType, ids) => (await getCatalogLookupByIds(catalogType, ids)).map(mapLookupItemDto),
     searchCatalog: async (catalogType, query, options) => {
       const filters = options?.filters ?? null
+      const requestOptions = options?.signal ? { signal: options.signal } : undefined
 
       if (!filters || Object.keys(filters).length === 0) {
-        return (await lookupCatalog(catalogType, query, 25)).map(mapLookupItemDto)
+        const items = requestOptions
+          ? await lookupCatalog(catalogType, query, 25, requestOptions)
+          : await lookupCatalog(catalogType, query, 25)
+
+        return items.map(mapLookupItemDto)
       }
 
-      const page = await getCatalogPage(catalogType, {
+      const request = {
         offset: 0,
         limit: 25,
         search: query,
@@ -77,7 +82,10 @@ export function createDefaultNgbLookupConfig(): LookupFrameworkConfig {
           deleted: 'active',
           ...filters,
         },
-      })
+      }
+      const page = requestOptions
+        ? await getCatalogPage(catalogType, request, requestOptions)
+        : await getCatalogPage(catalogType, request)
 
       return (page.items ?? []).map((item) =>
         asLookupItem({
@@ -93,8 +101,12 @@ export function createDefaultNgbLookupConfig(): LookupFrameworkConfig {
         label: `${account.code} — ${account.name}`,
       })
     },
-    searchCoa: async (query) => {
-      const page = await getChartOfAccountsPage({ search: query, limit: 25, onlyActive: true, includeDeleted: false })
+    searchCoa: async (query, options) => {
+      const request = { search: query, limit: 25, onlyActive: true, includeDeleted: false }
+      const page = options
+        ? await getChartOfAccountsPage(request, options)
+        : await getChartOfAccountsPage(request)
+
       return (page.items ?? []).map((account) =>
         asLookupItem({
           id: account.accountId,
@@ -105,14 +117,18 @@ export function createDefaultNgbLookupConfig(): LookupFrameworkConfig {
       if (documentTypes.length === 0 || ids.length === 0) return []
       return (await getDocumentLookupByIds({ documentTypes, ids })).map(asResolvedDocumentLookupItem)
     },
-    searchDocumentsAcrossTypes: async (documentTypes, query) => {
+    searchDocumentsAcrossTypes: async (documentTypes, query, options) => {
       if (documentTypes.length === 0) return []
-      return (await lookupDocumentsAcrossTypes({
+      const request = {
         documentTypes,
         query,
         perTypeLimit: 25,
         activeOnly: true,
-      })).map(asResolvedDocumentLookupItem)
+      }
+      const items = options
+        ? await lookupDocumentsAcrossTypes(request, options)
+        : await lookupDocumentsAcrossTypes(request)
+      return items.map(asResolvedDocumentLookupItem)
     },
     loadDocumentItem: async (documentType, id) => {
       const document = await getDocumentById(documentType, id)
@@ -121,8 +137,11 @@ export function createDefaultNgbLookupConfig(): LookupFrameworkConfig {
         label: document.display ?? shortGuid(document.id),
       })
     },
-    searchDocument: async (documentType, query) => {
-      const page = await getDocumentPage(documentType, { offset: 0, limit: 25, search: query })
+    searchDocument: async (documentType, query, options) => {
+      const request = { offset: 0, limit: 25, search: query }
+      const page = options
+        ? await getDocumentPage(documentType, request, options)
+        : await getDocumentPage(documentType, request)
       return (page.items ?? []).map((document) =>
         asLookupItem({
           id: document.id,
