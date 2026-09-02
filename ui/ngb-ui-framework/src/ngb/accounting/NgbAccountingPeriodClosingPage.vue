@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiError } from '../api/http'
@@ -156,6 +156,11 @@ const retainedEarnings = ref<LookupItem | null>(null)
 const retainedEarningsItems = ref<LookupItem[]>([])
 const retainedEarningsLoading = ref(false)
 const retainedEarningsSearchSeq = ref(0)
+let retainedEarningsController: AbortController | null = null
+let calendarLoadSequence = 0
+let calendarController: AbortController | null = null
+let fiscalLoadSequence = 0
+let fiscalController: AbortController | null = null
 
 const reopenReasonTrimmed = computed(() => reopenReason.value.trim())
 const fiscalReopenReasonTrimmed = computed(() => fiscalReopenReason.value.trim())
@@ -347,10 +352,16 @@ function maybePickDefaultRetainedEarnings(items: LookupItem[]) {
 async function loadRetainedEarningsOptions(query = ''): Promise<void> {
   const seq = retainedEarningsSearchSeq.value + 1
   retainedEarningsSearchSeq.value = seq
+  retainedEarningsController?.abort()
+  const controller = new AbortController()
+  retainedEarningsController = controller
   retainedEarningsLoading.value = true
 
   try {
-    const items = (await searchRetainedEarningsAccounts({ query, limit: 20 })).map(mapRetainedEarningsItem)
+    const items = (await searchRetainedEarningsAccounts(
+      { query, limit: 20 },
+      { signal: controller.signal },
+    )).map(mapRetainedEarningsItem)
     if (retainedEarningsSearchSeq.value !== seq) return
     retainedEarningsItems.value = items
     if (fiscalStatus.value?.closedRetainedEarningsAccount) {
@@ -360,39 +371,59 @@ async function loadRetainedEarningsOptions(query = ''): Promise<void> {
     }
   } catch (error) {
     if (retainedEarningsSearchSeq.value !== seq) return
+    if (controller.signal.aborted) return
     retainedEarningsItems.value = []
     fiscalErrorMessages.value = extractErrorMessages(error)
   } finally {
     if (retainedEarningsSearchSeq.value === seq) retainedEarningsLoading.value = false
+    if (retainedEarningsController === controller) retainedEarningsController = null
   }
 }
 
 async function loadCalendar(): Promise<void> {
+  const seq = ++calendarLoadSequence
+  calendarController?.abort()
+  const controller = new AbortController()
+  calendarController = controller
+  const requestedYear = selectedYear.value
   calendarLoading.value = true
   calendarErrorMessages.value = []
 
   try {
-    calendar.value = await getPeriodClosingCalendar(selectedYear.value)
+    const nextCalendar = await getPeriodClosingCalendar(requestedYear, { signal: controller.signal })
+    if (seq !== calendarLoadSequence) return
+    calendar.value = nextCalendar
   } catch (error) {
+    if (seq !== calendarLoadSequence || controller.signal.aborted) return
     calendar.value = null
     calendarErrorMessages.value = extractErrorMessages(error)
   } finally {
-    calendarLoading.value = false
+    if (seq === calendarLoadSequence) calendarLoading.value = false
+    if (calendarController === controller) calendarController = null
   }
 }
 
 async function loadFiscalStatus(): Promise<void> {
+  const seq = ++fiscalLoadSequence
+  fiscalController?.abort()
+  const controller = new AbortController()
+  fiscalController = controller
+  const requestedPeriod = selectedFiscalYearEndPeriod.value
   fiscalLoading.value = true
   fiscalErrorMessages.value = []
 
   try {
-    fiscalStatus.value = await getFiscalYearCloseStatus(selectedFiscalYearEndPeriod.value)
+    const nextStatus = await getFiscalYearCloseStatus(requestedPeriod, { signal: controller.signal })
+    if (seq !== fiscalLoadSequence) return
+    fiscalStatus.value = nextStatus
     syncRetainedEarningsSelectionWithStatus()
   } catch (error) {
+    if (seq !== fiscalLoadSequence || controller.signal.aborted) return
     fiscalStatus.value = null
     fiscalErrorMessages.value = extractErrorMessages(error)
   } finally {
-    fiscalLoading.value = false
+    if (seq === fiscalLoadSequence) fiscalLoading.value = false
+    if (fiscalController === controller) fiscalController = null
   }
 }
 
@@ -405,6 +436,15 @@ watch(
   () => { void loadCalendar() },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  calendarLoadSequence += 1
+  fiscalLoadSequence += 1
+  retainedEarningsSearchSeq.value += 1
+  calendarController?.abort()
+  fiscalController?.abort()
+  retainedEarningsController?.abort()
+})
 
 watch(
   () => selectedFiscalYearEndMonth.value,

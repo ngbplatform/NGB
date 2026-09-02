@@ -24,12 +24,15 @@ const tradeEntityEditorComponent = defineAsyncComponent(
 )
 
 function loadTradeCatalogPage(args: MetadataCatalogListPageLoadArgs) {
-  return getCatalogPage(args.catalogType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
     filters: { deleted: args.trashMode },
-  })
+  }
+  return args.signal
+    ? getCatalogPage(args.catalogType, request, { signal: args.signal })
+    : getCatalogPage(args.catalogType, request)
 }
 
 function resolveTradeCatalogTitle(catalogType: string, displayName: string): string {
@@ -52,7 +55,7 @@ const tradeCatalogEditPageProps = {
 } satisfies MetadataCatalogEditPageProps
 
 function loadTradeDocumentPage(args: Parameters<MetadataDocumentListPageProps['loadPage']>[0]) {
-  return getDocumentPage(args.documentType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
@@ -62,7 +65,10 @@ function loadTradeDocumentPage(args: Parameters<MetadataDocumentListPageProps['l
       ...(args.periodTo ? { periodTo: args.periodTo } : {}),
       ...args.listFilters,
     },
-  })
+  }
+  return args.signal
+    ? getDocumentPage(args.documentType, request, { signal: args.signal })
+    : getDocumentPage(args.documentType, request)
 }
 
 function resolveTradeDocumentTitle(documentType: string, displayName: string): string {

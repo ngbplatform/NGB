@@ -320,14 +320,23 @@ async function load(): Promise<void> {
   }
 
   const seq = ++loadSequence;
+  const requestedDocumentType = documentType.value;
+  const requestedDocumentId = documentId.value;
   loading.value = true;
   error.value = null;
   try {
     const [meta, doc, effectsSnapshot] = await Promise.all([
-      metadataStore.ensureDocumentType(documentType.value),
-      editorConfig.loadDocumentById(documentType.value, documentId.value),
-      editorConfig.loadDocumentEffects(documentType.value, documentId.value),
+      metadataStore.ensureDocumentType(requestedDocumentType),
+      editorConfig.loadDocumentById(requestedDocumentType, requestedDocumentId),
+      editorConfig.loadDocumentEffects(requestedDocumentType, requestedDocumentId),
     ]);
+
+    if (seq !== loadSequence) return;
+
+    metadata.value = meta;
+    document.value = doc;
+    effects.value = effectsSnapshot;
+    loading.value = false;
 
     const behavior = resolveNgbEditorEffectsBehavior();
     const ancillaryTasks: Promise<unknown>[] = [
@@ -337,8 +346,8 @@ async function load(): Promise<void> {
     if (behavior.prefetchRelatedLabels) {
       ancillaryTasks.push(
         Promise.resolve().then(() => behavior.prefetchRelatedLabels!({
-          documentType: documentType.value,
-          documentId: documentId.value,
+          documentType: requestedDocumentType,
+          documentId: requestedDocumentId,
           effects: effectsSnapshot,
           lookupStore,
         })),
@@ -346,12 +355,6 @@ async function load(): Promise<void> {
     }
 
     await Promise.allSettled(ancillaryTasks);
-
-    if (seq !== loadSequence) return;
-
-    metadata.value = meta;
-    document.value = doc;
-    effects.value = effectsSnapshot;
   } catch (cause) {
     if (seq !== loadSequence) return;
     error.value = toErrorMessage(cause, 'Could not load document effects.');

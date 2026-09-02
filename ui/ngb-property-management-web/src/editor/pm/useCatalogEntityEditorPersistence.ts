@@ -18,22 +18,35 @@ import type { PmEntityEditorPersistenceContext } from './pmEntityEditorPersisten
 
 export function useCatalogEntityEditorPersistence(args: PmEntityEditorPersistenceContext): CatalogEntityPersistenceAdapter {
   async function load() {
+    const typeCode = args.typeCode.value
+    const id = args.currentId.value
+    const isNew = args.isNew.value
+    const isCurrent = () => args.typeCode.value === typeCode
+      && args.currentId.value === id
+      && args.isNew.value === isNew
+
     args.docMeta.value = null
     args.doc.value = null
     args.docEffects.value = null
-    args.catalogMeta.value = await args.ensureCatalogMetadata(args.typeCode.value)
+    const metadataPromise = args.ensureCatalogMetadata(typeCode)
 
-    if (args.isNew.value) {
-      args.catalogItem.value = null
-      args.model.value = {}
-      ensureModelKeys(args.catalogMeta.value.form, args.model.value)
-      applyInitialFieldValues(args.model.value, args.initialFields.value)
+    if (isNew) {
+      const metadata = await metadataPromise
+      if (!isCurrent()) return
+      const nextModel: typeof args.model.value = {}
+      ensureModelKeys(metadata.form, nextModel)
+      applyInitialFieldValues(nextModel, args.initialFields.value)
       await hydrateEntityReferenceFieldsForEditing({
-        entityTypeCode: args.typeCode.value,
-        form: args.catalogMeta.value.form,
-        model: args.model.value,
+        entityTypeCode: typeCode,
+        form: metadata.form,
+        model: nextModel,
         lookupStore: args.lookupStore,
       })
+      if (!isCurrent()) return
+
+      args.catalogMeta.value = metadata
+      args.catalogItem.value = null
+      args.model.value = nextModel
       sanitizeNgbEditorModelForEditing(args.currentEditorContext(), args.model.value)
       syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value)
       args.leaseEditor.applyInitialParts(null)
@@ -41,16 +54,23 @@ export function useCatalogEntityEditorPersistence(args: PmEntityEditorPersistenc
       return
     }
 
-    const item = await getCatalogById(args.typeCode.value, args.currentId.value!)
-    args.catalogItem.value = item
-    setModelFromFields(args.model, item.payload?.fields)
-    ensureModelKeys(args.catalogMeta.value.form, args.model.value)
+    const [metadata, item] = await Promise.all([
+      metadataPromise,
+      getCatalogById(typeCode, id!),
+    ])
+    const nextModel: typeof args.model.value = { ...(item.payload?.fields ?? {}) }
+    ensureModelKeys(metadata.form, nextModel)
     await hydrateEntityReferenceFieldsForEditing({
-      entityTypeCode: args.typeCode.value,
-      form: args.catalogMeta.value.form,
-      model: args.model.value,
+      entityTypeCode: typeCode,
+      form: metadata.form,
+      model: nextModel,
       lookupStore: args.lookupStore,
     })
+    if (!isCurrent()) return
+
+    args.catalogMeta.value = metadata
+    args.catalogItem.value = item
+    args.model.value = nextModel
     syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value)
     args.leaseEditor.applyPersistedParts(null)
     args.resetInitialSnapshot()

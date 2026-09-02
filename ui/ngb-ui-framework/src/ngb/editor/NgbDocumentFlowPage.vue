@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import NgbBadge from '../primitives/NgbBadge.vue';
@@ -38,6 +38,7 @@ const toasts = useToasts();
 const loading = ref(false);
 const error = ref<string | null>(null);
 const graph = ref<RelationshipGraph | null>(null);
+let loadSequence = 0;
 
 const documentType = computed(() => String(route.params.documentType ?? '').trim());
 const documentId = computed(() => String(route.params.id ?? '').trim());
@@ -255,26 +256,39 @@ async function refreshPage(): Promise<void> {
 
 async function load(): Promise<void> {
   if (!documentType.value || !documentId.value) {
+    loadSequence += 1;
     error.value = 'Document type or id is missing.';
+    graph.value = null;
+    loading.value = false;
     return;
   }
 
+  const seq = ++loadSequence;
+  const requestedDocumentType = documentType.value;
+  const requestedDocumentId = documentId.value;
   loading.value = true;
   error.value = null;
   try {
-    graph.value = await getConfiguredNgbEditor().loadDocumentGraph(
-      documentType.value,
-      documentId.value,
+    const nextGraph = await getConfiguredNgbEditor().loadDocumentGraph(
+      requestedDocumentType,
+      requestedDocumentId,
       DEFAULT_DEPTH,
       DEFAULT_MAX_NODES,
     );
+    if (seq !== loadSequence) return;
+    graph.value = nextGraph;
   } catch (cause) {
+    if (seq !== loadSequence) return;
     error.value = toErrorMessage(cause, 'Could not load document flow.');
     graph.value = null;
   } finally {
-    loading.value = false;
+    if (seq === loadSequence) loading.value = false;
   }
 }
+
+onBeforeUnmount(() => {
+  loadSequence += 1;
+});
 
 watch(
   () => [documentType.value, documentId.value],

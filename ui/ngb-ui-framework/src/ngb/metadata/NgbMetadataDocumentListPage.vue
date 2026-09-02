@@ -85,7 +85,7 @@ const {
   entityTypeCode: documentType,
   reloadKey: routeReloadKey,
   loadMetadata: (entityTypeCode) => metaStore.ensureDocumentType(entityTypeCode),
-  loadPage: async ({ entityTypeCode, metadata }) => {
+  loadPage: async ({ entityTypeCode, metadata, signal }) => {
     const listFilterParams = Object.fromEntries(
       (metadata.list?.filters ?? [])
         .map((field) => [field.key, normalizeSingleQueryValue(route.query[field.key])] as const)
@@ -102,6 +102,7 @@ const {
       periodFrom: monthValueToDateOnlyStart(periodFromMonth.value) ?? null,
       periodTo: monthValueToDateOnlyEnd(periodToMonth.value) ?? null,
       listFilters: listFilterParams,
+      signal,
     })
   },
   lookupStore,

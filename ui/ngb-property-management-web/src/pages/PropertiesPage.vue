@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   buildCatalogFullPageUrl,
@@ -102,6 +102,12 @@ const selectedBuildingDisplay = ref<string | null>(null)
 const buildingSummaryLoading = ref(false)
 const buildingSummaryError = ref<string | null>(null)
 const buildingSummary = ref<PmBuildingSummaryDto | null>(null)
+let buildingsLoadSequence = 0
+let unitsLoadSequence = 0
+let summaryLoadSequence = 0
+let buildingsController: AbortController | null = null
+let unitsController: AbortController | null = null
+let summaryController: AbortController | null = null
 
 /* ---------------- Bulk create units (Buildings panel action) ---------------- */
 
@@ -159,17 +165,23 @@ const unitRows = computed(() => {
 })
 
 async function loadBuildings() {
+  const sequence = ++buildingsLoadSequence
+  buildingsController?.abort()
+  const controller = new AbortController()
+  buildingsController = controller
   buildingsLoading.value = true
   error.value = null
   try {
-    buildingsPage.value = await getCatalogPage('pm.property', {
+    const nextPage = await getCatalogPage('pm.property', {
       offset: bOffset.value,
       limit: bLimit.value,
       filters: {
         deleted: buildingsTrashMode.value,
         kind: 'Building',
       },
-    })
+    }, { signal: controller.signal })
+    if (sequence !== buildingsLoadSequence) return
+    buildingsPage.value = nextPage
 
     // Refresh selected building display when it is present on the current page.
     if (selectedBuildingId.value) {
@@ -177,9 +189,11 @@ async function loadBuildings() {
       if (hit) selectedBuildingDisplay.value = resolveDisplay(hit.display ?? hit.payload?.fields?.display)
     }
   } catch (cause) {
+    if (controller.signal.aborted || sequence !== buildingsLoadSequence) return
     error.value = toErrorMessage(cause, 'Failed to load buildings.')
   } finally {
-    buildingsLoading.value = false
+    if (sequence === buildingsLoadSequence) buildingsLoading.value = false
+    if (buildingsController === controller) buildingsController = null
   }
 }
 
@@ -188,15 +202,20 @@ async function refreshBuildingsPanel() {
 }
 
 async function loadUnits() {
+  const sequence = ++unitsLoadSequence
+  unitsController?.abort()
+  const controller = new AbortController()
+  unitsController = controller
   if (!selectedBuildingId.value) {
     unitsPage.value = { items: [], offset: 0, limit: uLimit.value, total: 0 }
+    unitsController = null
     return
   }
 
   unitsLoading.value = true
   error.value = null
   try {
-    unitsPage.value = await getCatalogPage('pm.property', {
+    const nextPage = await getCatalogPage('pm.property', {
       offset: uOffset.value,
       limit: uLimit.value,
       filters: {
@@ -204,11 +223,15 @@ async function loadUnits() {
         kind: 'Unit',
         parent_property_id: selectedBuildingId.value,
       },
-    })
+    }, { signal: controller.signal })
+    if (sequence !== unitsLoadSequence) return
+    unitsPage.value = nextPage
   } catch (cause) {
+    if (controller.signal.aborted || sequence !== unitsLoadSequence) return
     error.value = toErrorMessage(cause, 'Failed to load units.')
   } finally {
-    unitsLoading.value = false
+    if (sequence === unitsLoadSequence) unitsLoading.value = false
+    if (unitsController === controller) unitsController = null
   }
 }
 
@@ -224,9 +247,14 @@ function formatPercent(v: number): string {
 }
 
 async function loadBuildingSummary() {
+  const sequence = ++summaryLoadSequence
+  summaryController?.abort()
+  const controller = new AbortController()
+  summaryController = controller
   if (!selectedBuildingId.value) {
     buildingSummary.value = null
     buildingSummaryError.value = null
+    summaryController = null
     return
   }
 
@@ -234,17 +262,26 @@ async function loadBuildingSummary() {
   buildingSummaryError.value = null
 
   try {
-    const s = await getPmBuildingSummary(selectedBuildingId.value)
+    const s = await getPmBuildingSummary(selectedBuildingId.value, { signal: controller.signal })
+    if (sequence !== summaryLoadSequence) return
     buildingSummary.value = s
     // Prefer report display (server-side computed) when available.
     if (s.buildingDisplay) selectedBuildingDisplay.value = s.buildingDisplay
   } catch (cause) {
+    if (controller.signal.aborted || sequence !== summaryLoadSequence) return
     buildingSummary.value = null
     buildingSummaryError.value = toErrorMessage(cause, 'Failed to load the building summary.')
   } finally {
-    buildingSummaryLoading.value = false
+    if (sequence === summaryLoadSequence) buildingSummaryLoading.value = false
+    if (summaryController === controller) summaryController = null
   }
 }
+
+onBeforeUnmount(() => {
+  buildingsController?.abort()
+  unitsController?.abort()
+  summaryController?.abort()
+})
 
 watch(
   () => [buildingsTrashMode.value, bOffset.value, bLimit.value],

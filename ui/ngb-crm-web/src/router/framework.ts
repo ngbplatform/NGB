@@ -24,12 +24,15 @@ const crmEntityEditorComponent = defineAsyncComponent(
 )
 
 function loadCRMCatalogPage(args: MetadataCatalogListPageLoadArgs) {
-  return getCatalogPage(args.catalogType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
     filters: { deleted: args.trashMode },
-  })
+  }
+  return args.signal
+    ? getCatalogPage(args.catalogType, request, { signal: args.signal })
+    : getCatalogPage(args.catalogType, request)
 }
 
 function resolveCRMCatalogTitle(catalogType: string, displayName: string): string {
@@ -52,7 +55,7 @@ const crmCatalogEditPageProps = {
 } satisfies MetadataCatalogEditPageProps
 
 function loadCRMDocumentPage(args: Parameters<MetadataDocumentListPageProps['loadPage']>[0]) {
-  return getDocumentPage(args.documentType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
@@ -62,7 +65,10 @@ function loadCRMDocumentPage(args: Parameters<MetadataDocumentListPageProps['loa
       ...(args.periodTo ? { periodTo: args.periodTo } : {}),
       ...args.listFilters,
     },
-  })
+  }
+  return args.signal
+    ? getDocumentPage(args.documentType, request, { signal: args.signal })
+    : getDocumentPage(args.documentType, request)
 }
 
 function resolveCRMDocumentTitle(documentType: string, displayName: string): string {

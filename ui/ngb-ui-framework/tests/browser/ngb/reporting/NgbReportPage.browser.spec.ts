@@ -1855,6 +1855,7 @@ test('wires sheet, drawer, composer, and dialog boundary events without bypassin
   const { view } = await renderReportPage()
 
   await view.getByRole('button', { name: 'Report sheet scroll' }).click()
+  await new Promise((resolve) => window.setTimeout(resolve, 250))
   expect(Object.keys(sessionStorage).some((key) =>
     key.startsWith('ngb.report.page.scroll:') && sessionStorage.getItem(key) === '120',
   )).toBe(true)

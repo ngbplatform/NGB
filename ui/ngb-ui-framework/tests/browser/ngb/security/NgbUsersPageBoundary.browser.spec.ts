@@ -146,9 +146,15 @@ test('covers user formatting, every status filter, refresh, and navigation actio
   await view.getByText('Back stub').click()
   await view.getByText('Open user stub').click()
   await view.getByText('Next stub').click()
-  expect(state.getUsers).toHaveBeenLastCalledWith({ offset: 100, limit: 100, isActive: null })
+  expect(state.getUsers).toHaveBeenLastCalledWith(
+    { offset: 100, limit: 100, isActive: null },
+    { signal: expect.any(AbortSignal) },
+  )
   await view.getByText('Previous stub').click()
-  expect(state.getUsers).toHaveBeenLastCalledWith({ offset: 0, limit: 100, isActive: null })
+  expect(state.getUsers).toHaveBeenLastCalledWith(
+    { offset: 0, limit: 100, isActive: null },
+    { signal: expect.any(AbortSignal) },
+  )
   expect(state.routerPush).toHaveBeenCalledWith('/admin/security/users/new')
   expect(state.routerPush).toHaveBeenCalledWith('/home')
   expect(state.routerPush).toHaveBeenCalledWith('/admin/security/users/user%20%2F%20special')

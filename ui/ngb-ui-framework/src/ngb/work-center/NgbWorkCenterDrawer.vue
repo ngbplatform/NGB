@@ -1,5 +1,5 @@
 <template>
-  <div class="flex min-h-full min-w-0 w-full max-w-full flex-col overflow-x-hidden">
+  <div ref="workCenterScrollHost" class="flex h-full min-h-0 min-w-0 w-full max-w-full flex-col overflow-x-hidden overflow-y-auto">
     <div class="flex min-w-0 items-center gap-2 border-b border-ngb-border pb-3">
       <div
         class="flex min-w-0 flex-1 overflow-x-auto rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -39,10 +39,13 @@
       <div class="mt-3 text-base font-semibold text-ngb-text">You’re all caught up</div>
       <div class="mt-1 text-sm text-ngb-muted">There are no tasks or notifications requiring your attention.</div>
     </div>
-    <div v-else class="divide-y divide-ngb-border">
+    <div v-else ref="workCenterList" class="divide-y divide-ngb-border">
+      <div v-if="topSpacerHeight > 0" :style="{ height: `${topSpacerHeight}px` }" aria-hidden="true" />
       <article
-        v-for="item in workCenter.items.value"
-        :key="`${item.kind}:${item.id}`"
+        v-for="{ item, key } in virtualEntries"
+        :key="key"
+        :ref="(element) => setItemElement(key, element)"
+        data-testid="work-center-feed-item"
         class="py-4"
         :class="item.isRead ? 'opacity-75' : ''"
       >
@@ -81,6 +84,7 @@
             @click="dismiss(item)">Dismiss</button>
         </div>
       </article>
+      <div v-if="bottomSpacerHeight > 0" :style="{ height: `${bottomSpacerHeight}px` }" aria-hidden="true" />
     </div>
     <div
       ref="infiniteScrollSentinel"
@@ -124,11 +128,26 @@ import {
 import type { WorkCenterItem } from './types'
 import { useWorkCenter } from './useWorkCenter'
 import { useWorkCenterInfiniteScroll } from './useWorkCenterInfiniteScroll'
+import { useVirtualWorkCenterFeed } from './useVirtualWorkCenterFeed'
 
 const emit = defineEmits<{ (event: 'close'): void }>()
 const props = withDefaults(defineProps<{ vertical?: string }>(), { vertical: '' })
 const router = useRouter()
 const workCenter = useWorkCenter({ vertical: props.vertical })
+const workCenterScrollHost = ref<HTMLElement | null>(null)
+const workCenterList = ref<HTMLElement | null>(null)
+const {
+  virtualEntries,
+  topSpacerHeight,
+  bottomSpacerHeight,
+  setItemElement,
+} = useVirtualWorkCenterFeed({
+  items: workCenter.items,
+  scrollHost: workCenterScrollHost,
+  listElement: workCenterList,
+  getKey: (item) => `${item.kind}:${item.id}`,
+  estimatedItemHeight: 112,
+})
 const tab = ref<WorkCenterTab>('attention')
 const tabs = workCenterTabs
 const { sentinel: infiniteScrollSentinel } = useWorkCenterInfiniteScroll({

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NgbBadge, NgbDocumentPeriodFilter as DocumentPeriodFilter, NgbIcon, NgbPageHeader, monthValueToDateOnly, relativeMonthValue } from '@ngbplatform/ui'
 
@@ -33,6 +33,7 @@ useReconciliationLegacyQueryCompat(route, router)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<ReconciliationReport | null>(null)
+let loadSequence = 0
 
 function updateQuery(patch: QueryPatch) {
   void replaceCleanRouteQuery(route, router, patch)
@@ -228,27 +229,39 @@ async function openRow(row: ReconciliationRow) {
 }
 
 async function load() {
+  const seq = ++loadSequence
   if (hasInvalidRange.value) {
     error.value = 'From month must be earlier than or equal to To month.'
     data.value = null
+    loading.value = false
     return
   }
 
+  const requestedFromMonth = fromMonth.value
+  const requestedToMonth = toMonth.value
+  const requestedMode = mode.value
   loading.value = true
   error.value = null
   try {
-    data.value = await props.definition.load({
-        fromMonthInclusive: monthValueToDateOnly(fromMonth.value) ?? `${fromMonth.value}-01`,
-        toMonthInclusive: monthValueToDateOnly(toMonth.value) ?? `${toMonth.value}-01`,
-      mode: mode.value,
+    const nextData = await props.definition.load({
+      fromMonthInclusive: monthValueToDateOnly(requestedFromMonth) ?? `${requestedFromMonth}-01`,
+      toMonthInclusive: monthValueToDateOnly(requestedToMonth) ?? `${requestedToMonth}-01`,
+      mode: requestedMode,
     })
+    if (seq !== loadSequence) return
+    data.value = nextData
   } catch (e: unknown) {
+    if (seq !== loadSequence) return
     error.value = e instanceof Error ? e.message : String(e)
     data.value = null
   } finally {
-    loading.value = false
+    if (seq === loadSequence) loading.value = false
   }
 }
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+})
 
 watch(() => [fromMonth.value, toMonth.value, mode.value], () => void load(), { immediate: true })
 </script>

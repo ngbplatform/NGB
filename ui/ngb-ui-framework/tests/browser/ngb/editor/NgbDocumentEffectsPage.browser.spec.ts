@@ -289,6 +289,23 @@ describe('NgbDocumentEffectsPage', () => {
     expect(prefetchRelatedLabels).toHaveBeenCalledTimes(1)
   })
 
+  it('renders core effects without waiting for ancillary label prefetch', async () => {
+    const labels = createDeferred<void>()
+    const prefetchRelatedLabels = vi.fn(() => labels.promise)
+    mocks.effectsBehavior = {
+      prefetchRelatedLabels,
+    }
+
+    const view = await render(NgbDocumentEffectsPage)
+
+    await expect.element(view.getByText('Invoice INV-001')).toBeVisible()
+    await expect.element(view.getByTestId('register-row-entry-1:debit')).toBeVisible()
+    expect(prefetchRelatedLabels).toHaveBeenCalledTimes(1)
+
+    labels.resolve()
+    await flushUi()
+  })
+
   it('returns to the source document route with its outer report back trail intact', async () => {
     await page.viewport(1280, 900)
 

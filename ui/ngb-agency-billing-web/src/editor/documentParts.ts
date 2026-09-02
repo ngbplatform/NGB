@@ -26,6 +26,11 @@ const AGENCY_BILLING_DOCUMENT_AMOUNT_FIELD_KEYS = ['line_amount', 'applied_amoun
 const AGENCY_BILLING_DOCUMENT_COST_FIELD_KEYS = ['line_cost_amount', 'cost_amount'] as const
 
 export type AgencyBillingDocumentPartErrors = Record<string, Record<number, Record<string, string>>>
+export type AgencyBillingDocumentComputedFields = {
+  amount: number | null
+  totalHours: number | null
+  costAmount: number | null
+}
 
 const localRowKeys = new WeakMap<RecordPartRow, string>()
 
@@ -142,84 +147,12 @@ export function calculateAgencyBillingDocumentPartAmount(
   if (!amountField) return null
 
   let total = 0
-  for (const row of normalizeAgencyBillingDocumentPartRows(rows)) {
+  for (const row of rows ?? []) {
     const amount = parseDecimal(row[amountField])
     if (amount != null) total += amount
   }
 
   return roundTo4(total)
-}
-
-function calculateAgencyBillingDocumentPartCost(
-  part: PartMetadata,
-  rows: readonly RecordPartRow[] | null | undefined,
-): number | null {
-  const amountField = resolveAgencyBillingDocumentCostSourceField(part)
-  if (!amountField) return null
-
-  let total = 0
-  for (const row of normalizeAgencyBillingDocumentPartRows(rows)) {
-    const amount = parseDecimal(row[amountField])
-    if (amount != null) total += amount
-  }
-
-  return roundTo4(total)
-}
-
-function calculateHoursTotal(partsModel: RecordParts | null | undefined): number | null {
-  if (!partsModel) return null
-
-  let total = 0
-  let hasHours = false
-
-  for (const part of Object.values(partsModel)) {
-    for (const row of normalizeAgencyBillingDocumentPartRows(part?.rows)) {
-      const hours = parseDecimal(row.hours)
-      if (hours == null) continue
-      total += hours
-      hasHours = true
-    }
-  }
-
-  return hasHours ? roundTo4(total) : null
-}
-
-function calculateAgencyBillingDocumentAmount(
-  partsMeta: readonly PartMetadata[] | null | undefined,
-  partsModel: RecordParts | null | undefined,
-): number | null {
-  if (!(partsMeta?.length)) return null
-
-  let total = 0
-  let hasAmountPart = false
-
-  for (const part of partsMeta) {
-    const partAmount = calculateAgencyBillingDocumentPartAmount(part, partsModel?.[part.partCode]?.rows)
-    if (partAmount == null) continue
-    total += partAmount
-    hasAmountPart = true
-  }
-
-  return hasAmountPart ? roundTo4(total) : null
-}
-
-function calculateAgencyBillingDocumentCost(
-  partsMeta: readonly PartMetadata[] | null | undefined,
-  partsModel: RecordParts | null | undefined,
-): number | null {
-  if (!(partsMeta?.length)) return null
-
-  let total = 0
-  let hasAmountPart = false
-
-  for (const part of partsMeta) {
-    const partAmount = calculateAgencyBillingDocumentPartCost(part, partsModel?.[part.partCode]?.rows)
-    if (partAmount == null) continue
-    total += partAmount
-    hasAmountPart = true
-  }
-
-  return hasAmountPart ? roundTo4(total) : null
 }
 
 export function recomputeAgencyBillingDocumentPartRow(documentType: string, row: RecordPartRow): RecordPartRow {
@@ -256,22 +189,77 @@ export function syncAgencyBillingDocumentComputedFields(args: {
   partsMeta: readonly PartMetadata[] | null | undefined
   partsModel: RecordParts | null | undefined
   model: EntityFormModel | null | undefined
-}): void {
+}, calculated?: AgencyBillingDocumentComputedFields): void {
   if (!args.model) return
 
+  const fields = calculated ?? calculateAgencyBillingDocumentComputedFields(
+    args.documentType,
+    args.partsMeta,
+    args.partsModel,
+  )
+
   if (Object.prototype.hasOwnProperty.call(args.model, 'amount')) {
-    const amount = calculateAgencyBillingDocumentAmount(args.partsMeta, args.partsModel)
-    if (amount != null) args.model.amount = amount
+    if (fields.amount != null) args.model.amount = fields.amount
   }
 
   if (args.documentType === 'ab.timesheet' && Object.prototype.hasOwnProperty.call(args.model, 'total_hours')) {
-    const totalHours = calculateHoursTotal(args.partsModel)
-    if (totalHours != null) args.model.total_hours = totalHours
+    if (fields.totalHours != null) args.model.total_hours = fields.totalHours
   }
 
   if (args.documentType === 'ab.timesheet' && Object.prototype.hasOwnProperty.call(args.model, 'cost_amount')) {
-    const costAmount = calculateAgencyBillingDocumentCost(args.partsMeta, args.partsModel)
-    if (costAmount != null) args.model.cost_amount = costAmount
+    if (fields.costAmount != null) args.model.cost_amount = fields.costAmount
+  }
+}
+
+export function calculateAgencyBillingDocumentComputedFields(
+  documentType: string,
+  partsMeta: readonly PartMetadata[] | null | undefined,
+  partsModel: RecordParts | null | undefined,
+): AgencyBillingDocumentComputedFields {
+  if (!(partsMeta?.length)) {
+    return { amount: null, totalHours: null, costAmount: null }
+  }
+
+  const fieldsByPart = new Map<string, { amount: string | null; cost: string | null }>()
+  let hasAmountPart = false
+  let hasCostPart = false
+  for (const part of partsMeta) {
+    const amount = resolveAgencyBillingDocumentAmountSourceField(part)
+    const cost = resolveAgencyBillingDocumentCostSourceField(part)
+    fieldsByPart.set(part.partCode, { amount, cost })
+    hasAmountPart ||= amount != null
+    hasCostPart ||= cost != null
+  }
+
+  let amountTotal = 0
+  let costTotal = 0
+  let hoursTotal = 0
+  let hasHours = false
+  for (const [partCode, modelPart] of Object.entries(partsModel ?? {})) {
+    const fields = fieldsByPart.get(partCode)
+    for (const row of modelPart?.rows ?? []) {
+      if (fields?.amount) {
+        const amount = parseDecimal(row[fields.amount])
+        if (amount != null) amountTotal += amount
+      }
+      if (documentType === 'ab.timesheet' && fields?.cost) {
+        const cost = parseDecimal(row[fields.cost])
+        if (cost != null) costTotal += cost
+      }
+      if (documentType === 'ab.timesheet') {
+        const hours = parseDecimal(row.hours)
+        if (hours != null) {
+          hoursTotal += hours
+          hasHours = true
+        }
+      }
+    }
+  }
+
+  return {
+    amount: hasAmountPart ? roundTo4(amountTotal) : null,
+    totalHours: documentType === 'ab.timesheet' && hasHours ? roundTo4(hoursTotal) : null,
+    costAmount: documentType === 'ab.timesheet' && hasCostPart ? roundTo4(costTotal) : null,
   }
 }
 

@@ -299,6 +299,23 @@ const ReportSheetStressHarness = defineComponent({
   },
 })
 
+const ReportSheetVirtualizedHarness = defineComponent({
+  setup() {
+    return () => h(
+      'div',
+      {
+        style: 'width: 680px; max-width: 680px; height: 720px; display: flex; min-width: 0; min-height: 0; overflow: hidden;',
+      },
+      [h(NgbReportSheet, {
+        sheet: makeStressSheet(600, 12),
+        loadedCount: 600,
+        totalCount: 600,
+        rowNoun: 'property',
+      })],
+    )
+  },
+})
+
 function mockIntersectionObserver() {
   const previous = globalThis.IntersectionObserver
   const state = {
@@ -458,6 +475,21 @@ test('handles wide appendable report datasets without leaking page overflow', as
   expect(document.querySelectorAll('tbody tr').length).toBe(120)
   expect(document.body.textContent).toContain('Stress Property 120')
   expect(document.documentElement.scrollWidth <= window.innerWidth + 1).toBe(true)
+})
+
+test('virtualizes large report sheets while preserving full scroll height', async () => {
+  await page.viewport(680, 900)
+  const view = await renderWithRouter(ReportSheetVirtualizedHarness)
+  const scrollHost = view.getByTestId('report-sheet-scroll').element() as HTMLElement
+
+  await expect.element(view.getByText('Stress Property 1', { exact: true })).toBeVisible()
+  expect(document.querySelectorAll('tbody tr').length).toBeLessThan(600)
+  expect(scrollHost.scrollHeight).toBeGreaterThan(scrollHost.clientHeight * 10)
+
+  scrollHost.scrollTop = scrollHost.scrollHeight
+  scrollHost.dispatchEvent(new Event('scroll'))
+  await expect.poll(() => document.body.textContent ?? '').toContain('Stress Property 600')
+  expect(document.querySelectorAll('tbody tr').length).toBeLessThan(600)
 })
 
 test('suppresses duplicate observer load-more signals until the sheet changes and keeps scroll restoration working after replacement', async () => {

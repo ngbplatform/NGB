@@ -118,7 +118,10 @@ const pendingScrollRestore = ref(0)
 let loadSeq = 0
 let runSeq = 0
 let executionController: AbortController | null = null
+let scrollPersistenceTimer: ReturnType<typeof setTimeout> | null = null
+let pendingScrollPersistence: { key: string; scrollTop: number } | null = null
 const filterLookupControllers = new Map<string, AbortController>()
+const SCROLL_PERSIST_DELAY_MS = 200
 
 const reportCode = computed(() => decodeURIComponent(String(route.params.reportCode).trim()))
 const routeBootstrapKey = computed(() => stableStringify({
@@ -333,7 +336,25 @@ function persistReportExecutionSnapshot() {
 }
 
 function onReportScrollTopChange(scrollTop: number) {
-  saveReportPageScrollTop(reportPageStateKey.value, scrollTop)
+  pendingScrollPersistence = { key: reportPageStateKey.value, scrollTop }
+  if (scrollPersistenceTimer != null) clearTimeout(scrollPersistenceTimer)
+  scrollPersistenceTimer = setTimeout(flushReportScrollPosition, SCROLL_PERSIST_DELAY_MS)
+}
+
+function flushReportScrollPosition() {
+  if (scrollPersistenceTimer != null) {
+    clearTimeout(scrollPersistenceTimer)
+    scrollPersistenceTimer = null
+  }
+  const pending = pendingScrollPersistence
+  pendingScrollPersistence = null
+  if (pending) saveReportPageScrollTop(pending.key, pending.scrollTop)
+}
+
+function clearPendingReportScrollPosition() {
+  if (scrollPersistenceTimer != null) clearTimeout(scrollPersistenceTimer)
+  scrollPersistenceTimer = null
+  pendingScrollPersistence = null
 }
 
 async function restorePendingScrollPosition() {
@@ -512,6 +533,7 @@ async function runReport() {
     pendingScrollRestore.value = 0
     await syncRouteStateWithCurrentReportContext()
     persistReportExecutionSnapshot()
+    clearPendingReportScrollPosition()
     saveReportPageScrollTop(reportPageStateKey.value, 0)
   } catch (err) {
     if (seq !== runSeq) return
@@ -910,6 +932,7 @@ useCommandPalettePageContext(() => ({
 
 watch(reportPageStateKey, (nextKey, prevKey) => {
   if (nextKey === prevKey || !response.value) return
+  flushReportScrollPosition()
   persistReportExecutionSnapshot()
 }, { flush: 'post' })
 
@@ -928,6 +951,7 @@ watch(routeBootstrapKey, (nextKey) => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
+  flushReportScrollPosition()
   loadSeq += 1
   runSeq += 1
   executionController?.abort()

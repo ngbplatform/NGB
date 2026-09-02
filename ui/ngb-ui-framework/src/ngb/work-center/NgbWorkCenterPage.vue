@@ -55,7 +55,7 @@
       </template>
     </NgbPageHeader>
 
-    <div class="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+    <div ref="workCenterScrollHost" class="min-h-0 flex-1 overflow-auto p-4 md:p-6">
       <section aria-label="Work Center feed">
         <div
           class="flex min-w-0 w-full overflow-x-auto rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -92,10 +92,13 @@
             <div class="text-base font-semibold text-ngb-text">You’re all caught up</div>
             <div class="mt-1 text-sm text-ngb-muted">There are no tasks or notifications matching this view.</div>
           </div>
-          <div v-else class="divide-y divide-ngb-border">
+          <div v-else ref="workCenterList" class="divide-y divide-ngb-border">
+            <div v-if="topSpacerHeight > 0" :style="{ height: `${topSpacerHeight}px` }" aria-hidden="true" />
             <article
-              v-for="item in workCenter.items.value"
-              :key="`${item.kind}:${item.id}`"
+              v-for="{ item, key } in virtualEntries"
+              :key="key"
+              :ref="(element) => setItemElement(key, element)"
+              data-testid="work-center-feed-item"
               class="grid items-center gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_10rem_2rem]"
             >
               <button type="button" class="min-w-0 text-left ngb-focus" @click="openItem(item)">
@@ -188,6 +191,7 @@
                 </MenuItems>
               </Menu>
             </article>
+            <div v-if="bottomSpacerHeight > 0" :style="{ height: `${bottomSpacerHeight}px` }" aria-hidden="true" />
           </div>
           <div
             ref="infiniteScrollSentinel"
@@ -242,6 +246,7 @@ import type {
 } from './types'
 import { useWorkCenter } from './useWorkCenter'
 import { useWorkCenterInfiniteScroll } from './useWorkCenterInfiniteScroll'
+import { useVirtualWorkCenterFeed } from './useVirtualWorkCenterFeed'
 
 const props = withDefaults(defineProps<{
   vertical?: string
@@ -252,6 +257,20 @@ const props = withDefaults(defineProps<{
 const route = useRoute()
 const router = useRouter()
 const workCenter = useWorkCenter({ vertical: props.vertical })
+const workCenterScrollHost = ref<HTMLElement | null>(null)
+const workCenterList = ref<HTMLElement | null>(null)
+const {
+  virtualEntries,
+  topSpacerHeight,
+  bottomSpacerHeight,
+  setItemElement,
+} = useVirtualWorkCenterFeed({
+  items: workCenter.items,
+  scrollHost: workCenterScrollHost,
+  listElement: workCenterList,
+  getKey: (item) => `${item.kind}:${item.id}`,
+  estimatedItemHeight: 92,
+})
 const { sentinel: infiniteScrollSentinel } = useWorkCenterInfiniteScroll({
   nextCursor: workCenter.nextCursor,
   loading: workCenter.loading,

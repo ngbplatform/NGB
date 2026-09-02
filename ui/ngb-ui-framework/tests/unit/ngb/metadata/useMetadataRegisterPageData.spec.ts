@@ -152,10 +152,13 @@ describe('metadata register page data', () => {
 
     await flushAsync()
 
-    expect(loadMetadata).toHaveBeenCalledWith('pm.invoice')
+    expect(loadMetadata).toHaveBeenCalledWith('pm.invoice', {
+      signal: expect.any(AbortSignal),
+    })
     expect(loadPage).toHaveBeenCalledWith({
       entityTypeCode: 'pm.invoice',
       metadata: createMetadata(),
+      signal: expect.any(AbortSignal),
     })
     expect(register.metadata.value?.displayName).toBe('Invoices')
     expect(register.hasListFilters.value).toBe(true)

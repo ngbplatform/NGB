@@ -62,10 +62,76 @@ const integerFormatter = new Intl.NumberFormat(undefined, {
 })
 const scrollHost = ref<HTMLDivElement | null>(null)
 const loadMoreSentinel = ref<HTMLDivElement | null>(null)
+const scrollTop = ref(0)
+const viewportHeight = ref(600)
+const measuredHeightVersion = ref(0)
+const measuredRowHeights = new WeakMap<ReportSheetRowDto, number>()
+const rowByElement = new WeakMap<Element, ReportSheetRowDto>()
+const elementByRow = new WeakMap<ReportSheetRowDto, Element>()
 let loadMoreObserver: IntersectionObserver | null = null
+let viewportResizeObserver: ResizeObserver | null = null
+let rowResizeObserver: ResizeObserver | null = null
 let loadMoreRequestPending = false
 let scrollFrame: number | null = null
 let pendingScrollTop = 0
+
+const REPORT_VIRTUALIZATION_THRESHOLD = 200
+const ESTIMATED_REPORT_ROW_HEIGHT = 49
+const REPORT_VIRTUAL_OVERSCAN_PX = 600
+
+const virtualLayout = computed(() => {
+  void measuredHeightVersion.value
+  const source = rows.value
+  const offsets = new Array<number>(source.length + 1)
+  offsets[0] = 0
+  for (let index = 0; index < source.length; index += 1) {
+    offsets[index + 1] = offsets[index]! + (measuredRowHeights.get(source[index]!) ?? ESTIMATED_REPORT_ROW_HEIGHT)
+  }
+  return offsets
+})
+
+function firstRowEndingAfter(offsets: readonly number[], target: number): number {
+  let low = 0
+  let high = Math.max(0, offsets.length - 1)
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (offsets[middle + 1]! <= target) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+const virtualWindow = computed(() => {
+  const source = rows.value
+  if (source.length <= REPORT_VIRTUALIZATION_THRESHOLD) {
+    return {
+      top: 0,
+      bottom: 0,
+      entries: source.map((row, index) => ({ row, index })),
+    }
+  }
+
+  const offsets = virtualLayout.value
+  const startTarget = Math.max(0, scrollTop.value - REPORT_VIRTUAL_OVERSCAN_PX)
+  const endTarget = scrollTop.value + Math.max(1, viewportHeight.value) + REPORT_VIRTUAL_OVERSCAN_PX
+  const start = Math.min(source.length, firstRowEndingAfter(offsets, startTarget))
+  const end = Math.min(source.length, firstRowEndingAfter(offsets, endTarget) + 1)
+
+  return {
+    top: offsets[start] ?? 0,
+    bottom: Math.max(0, (offsets[source.length] ?? 0) - (offsets[end] ?? 0)),
+    entries: source.slice(start, end).map((row, index) => ({ row, index: start + index })),
+  }
+})
+
+function observeVirtualRow(element: unknown, row: ReportSheetRowDto) {
+  const previous = elementByRow.get(row)
+  if (previous) rowResizeObserver?.unobserve(previous)
+  if (!(element instanceof Element) || rows.value.length <= REPORT_VIRTUALIZATION_THRESHOLD) return
+  elementByRow.set(row, element)
+  rowByElement.set(element, row)
+  rowResizeObserver?.observe(element)
+}
 
 function drilldownRoute(cell: ReportCellDto): string | null {
   return resolveReportCellActionUrl(cell.action, {
@@ -300,6 +366,7 @@ function syncLoadMoreObserver() {
 
 function onScroll(event: Event) {
   pendingScrollTop = (event.currentTarget as HTMLDivElement).scrollTop
+  scrollTop.value = pendingScrollTop
   if (scrollFrame != null) return
 
   scrollFrame = window.requestAnimationFrame(() => {
@@ -310,7 +377,10 @@ function onScroll(event: Event) {
 
 function restoreScrollTop(value: number) {
   if (!scrollHost.value) return
-  scrollHost.value.scrollTop = Math.max(0, Math.floor(value))
+  const normalized = Math.max(0, Math.floor(value))
+  scrollHost.value.scrollTop = normalized
+  pendingScrollTop = scrollHost.value.scrollTop
+  scrollTop.value = scrollHost.value.scrollTop
 }
 
 defineExpose({
@@ -327,6 +397,34 @@ watch(
 )
 
 onMounted(() => {
+  viewportHeight.value = scrollHost.value?.clientHeight || viewportHeight.value
+  scrollTop.value = scrollHost.value?.scrollTop ?? 0
+
+  if (typeof ResizeObserver !== 'undefined') {
+    if (scrollHost.value) {
+      viewportResizeObserver = new ResizeObserver(() => {
+        viewportHeight.value = scrollHost.value?.clientHeight || viewportHeight.value
+      })
+      viewportResizeObserver.observe(scrollHost.value)
+    }
+
+    rowResizeObserver = new ResizeObserver((entries) => {
+      let changed = false
+      for (const entry of entries) {
+        const row = rowByElement.get(entry.target)
+        if (!row) continue
+        const height = Math.max(1, entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height)
+        if (Math.abs((measuredRowHeights.get(row) ?? 0) - height) < 0.5) continue
+        measuredRowHeights.set(row, height)
+        changed = true
+      }
+      if (changed) measuredHeightVersion.value += 1
+    })
+    for (const element of scrollHost.value?.querySelectorAll('tbody tr') ?? []) {
+      if (rowByElement.has(element)) rowResizeObserver.observe(element)
+    }
+  }
+
   loadMoreRequestPending = false
   syncLoadMoreObserver()
   emit('scroll-top-change', scrollHost.value?.scrollTop ?? 0)
@@ -338,6 +436,10 @@ onBeforeUnmount(() => {
   emit('scroll-top-change', pendingScrollTop || scrollHost.value?.scrollTop || 0)
   loadMoreRequestPending = false
   disconnectLoadMoreObserver()
+  viewportResizeObserver?.disconnect()
+  viewportResizeObserver = null
+  rowResizeObserver?.disconnect()
+  rowResizeObserver = null
 })
 </script>
 
@@ -405,36 +507,43 @@ onBeforeUnmount(() => {
         </thead>
 
         <tbody>
+          <tr v-if="virtualWindow.top > 0" aria-hidden="true">
+            <td :colspan="Math.max(1, columns.length)" class="border-0 p-0" :style="{ height: `${virtualWindow.top}px` }" />
+          </tr>
           <tr
-            v-for="(row, rowIndex) in rows"
-            :key="rowRenderKey(row, rowIndex)"
-            :class="[rowClass(row), bodyRowHoverClass()]"
+            v-for="entry in virtualWindow.entries"
+            :ref="(element) => observeVirtualRow(element, entry.row)"
+            :key="rowRenderKey(entry.row, entry.index)"
+            :class="[rowClass(entry.row), bodyRowHoverClass()]"
             style="content-visibility: auto; contain-intrinsic-block-size: 49px"
           >
             <td
-              v-for="(cell, cellIndex) in row.cells"
-              :key="`${rowRenderKey(row, rowIndex)}:${cellIndex}`"
-              :class="bodyCellClass(row, cellIndex)"
+              v-for="(cell, cellIndex) in entry.row.cells"
+              :key="`${rowRenderKey(entry.row, entry.index)}:${cellIndex}`"
+              :class="bodyCellClass(entry.row, cellIndex)"
               :colspan="cell.colSpan ?? 1"
               :rowspan="cell.rowSpan ?? 1"
             >
               <div
                 :class="bodyContentClass(cellIndex)"
-                :style="cellIndex === 0 ? { paddingLeft: `${(row.outlineLevel ?? 0) * 16}px` } : undefined"
+                :style="cellIndex === 0 ? { paddingLeft: `${(entry.row.outlineLevel ?? 0) * 16}px` } : undefined"
               >
-                <NgbBadge v-if="cellIndex === 0 && rowKindLabel(row)" tone="neutral">{{ rowKindLabel(row) }}</NgbBadge>
+                <NgbBadge v-if="cellIndex === 0 && rowKindLabel(entry.row)" tone="neutral">{{ rowKindLabel(entry.row) }}</NgbBadge>
                 <button
                   v-if="drilldownRoute(cell)"
                   type="button"
                   class="cursor-pointer whitespace-pre-wrap break-words text-left hover:underline"
-                  :class="isSubtotalOrTotal(row) ? 'font-semibold' : undefined"
+                  :class="isSubtotalOrTotal(entry.row) ? 'font-semibold' : undefined"
                   @click="onCellActivate(cell)"
                 >
                   {{ cellText(cell) }}
                 </button>
-                <span v-else class="whitespace-pre-wrap break-words" :class="isSubtotalOrTotal(row) ? 'font-semibold' : undefined">{{ cellText(cell) }}</span>
+                <span v-else class="whitespace-pre-wrap break-words" :class="isSubtotalOrTotal(entry.row) ? 'font-semibold' : undefined">{{ cellText(cell) }}</span>
               </div>
             </td>
+          </tr>
+          <tr v-if="virtualWindow.bottom > 0" aria-hidden="true">
+            <td :colspan="Math.max(1, columns.length)" class="border-0 p-0" :style="{ height: `${virtualWindow.bottom}px` }" />
           </tr>
         </tbody>
       </table>

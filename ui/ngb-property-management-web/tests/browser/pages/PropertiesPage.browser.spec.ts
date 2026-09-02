@@ -356,8 +356,14 @@ test('loads both panels, maps rows, formats columns, selects a building, and pag
   await view.getByRole('button', { name: 'Select Buildings' }).click()
   await flushUi()
   expect(mocks.route.query.buildingId).toBe('building-1')
-  expect(mocks.catalogPage).toHaveBeenCalledWith('pm.property', expect.objectContaining({ filters: expect.objectContaining({ kind: 'Unit', parent_property_id: 'building-1' }) }))
-  expect(mocks.buildingSummary).toHaveBeenCalledWith('building-1')
+  expect(mocks.catalogPage).toHaveBeenCalledWith(
+    'pm.property',
+    expect.objectContaining({ filters: expect.objectContaining({ kind: 'Unit', parent_property_id: 'building-1' }) }),
+    { signal: expect.any(AbortSignal) },
+  )
+  expect(mocks.buildingSummary).toHaveBeenCalledWith('building-1', {
+    signal: expect.any(AbortSignal),
+  })
   await expect.element(view.getByText('subtitle:Summary Building', { exact: true })).toBeVisible()
   expect(view.getByText('30%', { exact: true }).element()).toHaveTextContent('30%')
 

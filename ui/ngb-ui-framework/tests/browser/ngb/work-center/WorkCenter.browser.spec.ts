@@ -384,6 +384,21 @@ test('drawer renders loading, error, empty and actionable feed states', async ()
   expect(state.loadMore).toHaveBeenCalled()
 })
 
+test('large Work Center feeds render only the visible virtual window', async () => {
+  state.items.value = Array.from({ length: 250 }, (_, index) => task({
+    id: `task-${index}`,
+    title: `Task ${index}`,
+  }))
+
+  const view = await render(NgbWorkCenterPage)
+  await vi.waitFor(() => {
+    const rendered = document.querySelectorAll('[data-testid="work-center-feed-item"]').length
+    expect(rendered).toBeGreaterThan(0)
+    expect(rendered).toBeLessThan(state.items.value.length)
+  })
+  await expect.element(view.getByText('Task 0')).toBeVisible()
+})
+
 test('drawer keeps count-free tabs, includes Completed, and loads the next page on intersection', async () => {
   state.summary.value = baseSummary
   state.items.value = [task({ taskStatus: 'Completed' })]

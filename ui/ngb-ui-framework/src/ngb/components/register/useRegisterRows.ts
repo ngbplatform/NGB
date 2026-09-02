@@ -30,10 +30,24 @@ function groupKeyPart(row: RegisterDataRow, key: string) {
   return value == null || value === '' ? '—' : String(value);
 }
 
-function collectGroupIds(rows: RegisterDataRow[], keys: string[], path: string[] = []): string[] {
-  if (keys.length === 0) return [];
+type RegisterGroupNode = {
+  groupId: string;
+  label: string;
+  count: number;
+  totalDebit: number;
+  totalCredit: number;
+  children: RegisterGroupNode[];
+  rows: RegisterDataRow[];
+};
 
-  const key = keys[0];
+function buildGroupTree(
+  rows: RegisterDataRow[],
+  keys: string[],
+  keyIndex = 0,
+  path: string[] = [],
+): RegisterGroupNode[] {
+  const key = keys[keyIndex];
+  if (!key) return [];
   const buckets = new Map<string, RegisterDataRow[]>();
   for (const row of rows) {
     const label = groupKeyPart(row, key);
@@ -42,57 +56,54 @@ function collectGroupIds(rows: RegisterDataRow[], keys: string[], path: string[]
     else buckets.set(label, [row]);
   }
 
-  const ids: string[] = [];
+  const output: RegisterGroupNode[] = [];
   for (const [label, bucket] of buckets.entries()) {
     const groupId = [...path, `${key}:${label}`].join('|');
-    ids.push(groupId);
-    ids.push(...collectGroupIds(bucket, keys.slice(1), [...path, `${key}:${label}`]));
-  }
-
-  return ids;
-}
-
-function buildGroups(rows: RegisterDataRow[], keys: string[], expandedGroups: Set<string>, path: string[] = []): DisplayRow[] {
-  if (keys.length === 0) {
-    return rows.map((row) => ({ ...row, type: 'row', __index: 0 }));
-  }
-
-  const key = keys[0];
-  const buckets = new Map<string, RegisterDataRow[]>();
-  for (const row of rows) {
-    const label = groupKeyPart(row, key);
-    const bucket = buckets.get(label);
-    if (bucket) bucket.push(row);
-    else buckets.set(label, [row]);
-  }
-
-  const output: DisplayRow[] = [];
-  for (const [label, bucket] of buckets.entries()) {
-    const groupId = [...path, `${key}:${label}`].join('|');
-    const totals = bucket.reduce(
-      (accumulator, row) => {
-        accumulator.debit += Number(row.debit ?? 0);
-        accumulator.credit += Number(row.credit ?? 0);
-        return accumulator;
-      },
-      { debit: 0, credit: 0 },
-    );
-
+    let totalDebit = 0;
+    let totalCredit = 0;
+    for (const row of bucket) {
+      totalDebit += Number(row.debit ?? 0);
+      totalCredit += Number(row.credit ?? 0);
+    }
     output.push({
-      type: 'group',
-      key: `g:${groupId}`,
       groupId,
       label,
       count: bucket.length,
-      totalDebit: totals.debit,
-      totalCredit: totals.credit,
+      totalDebit,
+      totalCredit,
+      children: keyIndex + 1 < keys.length
+        ? buildGroupTree(bucket, keys, keyIndex + 1, [...path, `${key}:${label}`])
+        : [],
+      rows: keyIndex + 1 < keys.length ? [] : bucket,
     });
-
-    if (expandedGroups.has(groupId)) {
-      output.push(...buildGroups(bucket, keys.slice(1), expandedGroups, [...path, `${key}:${label}`]));
-    }
   }
 
+  return output;
+}
+
+function collectGroupIds(nodes: RegisterGroupNode[], output: string[] = []): string[] {
+  for (const node of nodes) {
+    output.push(node.groupId);
+    collectGroupIds(node.children, output);
+  }
+  return output;
+}
+
+function flattenGroups(nodes: RegisterGroupNode[], expandedGroups: Set<string>, output: DisplayRow[] = []): DisplayRow[] {
+  for (const node of nodes) {
+    output.push({
+      type: 'group',
+      key: `g:${node.groupId}`,
+      groupId: node.groupId,
+      label: node.label,
+      count: node.count,
+      totalDebit: node.totalDebit,
+      totalCredit: node.totalCredit,
+    });
+    if (!expandedGroups.has(node.groupId)) continue;
+    if (node.children.length > 0) flattenGroups(node.children, expandedGroups, output);
+    else output.push(...node.rows.map((row) => ({ ...row, type: 'row' as const, __index: 0 })));
+  }
   return output;
 }
 
@@ -124,9 +135,14 @@ export function useRegisterRows(args: UseRegisterRowsArgs) {
     return rows.sort((left, right) => compareRows(left, right, args.sortBy.value));
   });
 
+  const groupTree = computed(() => {
+    if (!hasGroups.value) return [];
+    return buildGroupTree(sortedRows.value, args.groupBy.value);
+  });
+
   const allGroupIds = computed(() => {
     if (!hasGroups.value) return [];
-    return Array.from(new Set(collectGroupIds(sortedRows.value, args.groupBy.value)));
+    return collectGroupIds(groupTree.value);
   });
 
   const allGroupsExpanded = computed(() => {
@@ -172,7 +188,7 @@ export function useRegisterRows(args: UseRegisterRowsArgs) {
       return sortedRows.value.map((row, index) => ({ ...row, type: 'row', __index: index }));
     }
 
-    const grouped = buildGroups(sortedRows.value, args.groupBy.value, expandedGroups.value);
+    const grouped = flattenGroups(groupTree.value, expandedGroups.value);
     let index = 0;
 
     return grouped.map((row) => {

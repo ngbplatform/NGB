@@ -378,8 +378,12 @@ test('syncs route query across year and month controls, and wires share/back act
 
   const { router, view } = await renderPage('/admin/accounting/period-closing?year=2026&month=2026-03&fy=2026-12')
 
-  expect(periodMocks.getPeriodClosingCalendar).toHaveBeenCalledWith(2026)
-  expect(periodMocks.getFiscalYearCloseStatus).toHaveBeenCalledWith('2026-12-01')
+  expect(periodMocks.getPeriodClosingCalendar).toHaveBeenCalledWith(2026, {
+    signal: expect.any(AbortSignal),
+  })
+  expect(periodMocks.getFiscalYearCloseStatus).toHaveBeenCalledWith('2026-12-01', {
+    signal: expect.any(AbortSignal),
+  })
   await expect.element(view.getByText('Year: 2026')).toBeVisible()
 
   clickButtonByTitle('Previous year')
@@ -388,7 +392,9 @@ test('syncs route query across year and month controls, and wires share/back act
   expect(router.currentRoute.value.query.year).toBe('2025')
   expect(router.currentRoute.value.query.month).toBe('2025-03')
   expect(router.currentRoute.value.query.fy).toBe('2025-12')
-  expect(periodMocks.getPeriodClosingCalendar).toHaveBeenLastCalledWith(2025)
+  expect(periodMocks.getPeriodClosingCalendar).toHaveBeenLastCalledWith(2025, {
+    signal: expect.any(AbortSignal),
+  })
 
   clickButtonByTitle('Next year')
   await flushUi()
@@ -411,7 +417,9 @@ test('syncs route query across year and month controls, and wires share/back act
   expect(router.currentRoute.value.query.year).toBe('2026')
   expect(router.currentRoute.value.query.month).toBe('2026-04')
   expect(router.currentRoute.value.query.fy).toBe('2026-01')
-  expect(periodMocks.getFiscalYearCloseStatus).toHaveBeenLastCalledWith('2026-01-01')
+  expect(periodMocks.getFiscalYearCloseStatus).toHaveBeenLastCalledWith('2026-01-01', {
+    signal: expect.any(AbortSignal),
+  })
 
   clickButtonByTitle('Share link')
   expect(periodMocks.copyAppLink).toHaveBeenCalledWith(

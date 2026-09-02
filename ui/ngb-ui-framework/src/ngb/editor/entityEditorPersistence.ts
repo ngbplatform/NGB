@@ -160,39 +160,59 @@ export function createConfiguredCatalogEntityEditorPersistence(
   args: ConfiguredEntityEditorPersistenceContext,
 ): CatalogEntityPersistenceAdapter {
   async function load() {
+    const typeCode = args.typeCode.value;
+    const id = args.currentId.value;
+    const isNew = args.isNew.value;
+    const isCurrent = () => args.typeCode.value === typeCode
+      && args.currentId.value === id
+      && args.isNew.value === isNew;
+
     args.docMeta.value = null;
     args.doc.value = null;
     args.docEffects.value = null;
     args.partsModel.value = null;
-    args.catalogMeta.value = await args.ensureCatalogMetadata(args.typeCode.value);
+    const metadataPromise = args.ensureCatalogMetadata(typeCode);
 
-    if (args.isNew.value) {
-      args.catalogItem.value = null;
-      args.model.value = {};
-      ensureModelKeys(args.catalogMeta.value.form, args.model.value);
-      applyInitialFieldValues(args.model.value, args.initialFields.value ?? null);
+    if (isNew) {
+      const metadata = await metadataPromise;
+      if (!isCurrent()) return;
+      const nextModel: EntityFormModel = {};
+      ensureModelKeys(metadata.form, nextModel);
+      applyInitialFieldValues(nextModel, args.initialFields.value ?? null);
       await hydrateEntityReferenceFieldsForEditing({
-        entityTypeCode: args.typeCode.value,
-        form: args.catalogMeta.value.form,
-        model: args.model.value,
+        entityTypeCode: typeCode,
+        form: metadata.form,
+        model: nextModel,
         lookupStore: args.lookupStore,
       });
+      if (!isCurrent()) return;
+
+      args.catalogMeta.value = metadata;
+      args.catalogItem.value = null;
+      args.model.value = nextModel;
       sanitizeNgbEditorModelForEditing(args.currentEditorContext(), args.model.value);
       syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value);
       args.resetInitialSnapshot();
       return;
     }
 
-    const item = await getCatalogById(args.typeCode.value, args.currentId.value!);
-    args.catalogItem.value = item;
-    setModelFromFields(args.model, item.payload?.fields);
-    ensureModelKeys(args.catalogMeta.value.form, args.model.value);
+    const [metadata, item] = await Promise.all([
+      metadataPromise,
+      getCatalogById(typeCode, id!),
+    ]);
+    const nextModel: EntityFormModel = { ...((item.payload?.fields ?? {}) as EntityFormModel) };
+    ensureModelKeys(metadata.form, nextModel);
     await hydrateEntityReferenceFieldsForEditing({
-      entityTypeCode: args.typeCode.value,
-      form: args.catalogMeta.value.form,
-      model: args.model.value,
+      entityTypeCode: typeCode,
+      form: metadata.form,
+      model: nextModel,
       lookupStore: args.lookupStore,
     });
+    if (!isCurrent()) return;
+
+    args.catalogMeta.value = metadata;
+    args.catalogItem.value = item;
+    args.model.value = nextModel;
     sanitizeNgbEditorModelForEditing(args.currentEditorContext(), args.model.value);
     syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value);
     args.resetInitialSnapshot();
@@ -273,43 +293,90 @@ export function createConfiguredDocumentEntityEditorPersistence(
   }
 
   async function load() {
+    const typeCode = args.typeCode.value;
+    const id = args.currentId.value;
+    const isNew = args.isNew.value;
+    const isCurrent = () => args.typeCode.value === typeCode
+      && args.currentId.value === id
+      && args.isNew.value === isNew;
+
     args.catalogMeta.value = null;
     args.catalogItem.value = null;
-    args.docMeta.value = await args.ensureDocumentMetadata(args.typeCode.value);
+    const metadataPromise = args.ensureDocumentMetadata(typeCode);
 
-    if (args.isNew.value) {
+    if (isNew) {
+      const metadata = await metadataPromise;
+      if (!isCurrent()) return;
+      const nextModel: EntityFormModel = {};
+      const nextParts = clonePlainData(args.initialParts.value ?? null);
+      ensureModelKeys(metadata.form, nextModel);
+      applyInitialFieldValues(nextModel, args.initialFields.value ?? null);
+      await Promise.all([
+        hydrateEntityReferenceFieldsForEditing({
+          entityTypeCode: typeCode,
+          form: metadata.form,
+          model: nextModel,
+          lookupStore: args.lookupStore,
+        }),
+        strategy.hydrate({
+          entityTypeCode: typeCode,
+          partsMeta: metadata.parts,
+          partsModel: nextParts,
+          lookupStore: args.lookupStore,
+        }),
+      ]);
+      if (!isCurrent()) return;
+
+      strategy.synchronize({
+        documentType: typeCode,
+        partsMeta: metadata.parts,
+        partsModel: nextParts,
+        model: nextModel,
+      });
+      args.docMeta.value = metadata;
       args.doc.value = null;
       args.docEffects.value = null;
-      args.model.value = {};
-      args.partsModel.value = clonePlainData(args.initialParts.value ?? null);
-      ensureModelKeys(args.docMeta.value.form, args.model.value);
-      applyInitialFieldValues(args.model.value, args.initialFields.value ?? null);
-      await hydrateEntityReferenceFieldsForEditing({
-        entityTypeCode: args.typeCode.value,
-        form: args.docMeta.value.form,
-        model: args.model.value,
-        lookupStore: args.lookupStore,
-      });
-      await hydrateParts(args.docMeta.value.parts);
-      synchronize(args.docMeta.value.parts);
+      args.model.value = nextModel;
+      args.partsModel.value = nextParts;
       syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value);
       args.resetInitialSnapshot();
       return;
     }
 
-    const { document } = await getDocumentEditorState(args.typeCode.value, args.currentId.value!);
-    args.doc.value = document;
-    args.partsModel.value = clonePlainData(document.payload?.parts ?? null);
-    setModelFromFields(args.model, document.payload?.fields);
-    ensureModelKeys(args.docMeta.value.form, args.model.value);
-    await hydrateEntityReferenceFieldsForEditing({
-      entityTypeCode: args.typeCode.value,
-      form: args.docMeta.value.form,
-      model: args.model.value,
-      lookupStore: args.lookupStore,
+    const [metadata, editorState] = await Promise.all([
+      metadataPromise,
+      getDocumentEditorState(typeCode, id!),
+    ]);
+    const { document } = editorState;
+    const nextParts = clonePlainData(document.payload?.parts ?? null);
+    const nextModel: EntityFormModel = { ...((document.payload?.fields ?? {}) as EntityFormModel) };
+    ensureModelKeys(metadata.form, nextModel);
+    await Promise.all([
+      hydrateEntityReferenceFieldsForEditing({
+        entityTypeCode: typeCode,
+        form: metadata.form,
+        model: nextModel,
+        lookupStore: args.lookupStore,
+      }),
+      strategy.hydrate({
+        entityTypeCode: typeCode,
+        partsMeta: metadata.parts,
+        partsModel: nextParts,
+        lookupStore: args.lookupStore,
+      }),
+    ]);
+    if (!isCurrent()) return;
+
+    strategy.synchronize({
+      documentType: typeCode,
+      partsMeta: metadata.parts,
+      partsModel: nextParts,
+      model: nextModel,
     });
-    await hydrateParts(args.docMeta.value.parts);
-    synchronize(args.docMeta.value.parts);
+    args.docMeta.value = metadata;
+    args.doc.value = document;
+    args.partsModel.value = nextParts;
+    args.model.value = nextModel;
     syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value);
     args.resetInitialSnapshot();
   }
@@ -358,9 +425,12 @@ export function createConfiguredDocumentEntityEditorPersistence(
 export function useEntityEditorPersistence<
   TMetadata extends EntityEditorMetadataWithForm = EntityEditorMetadataWithForm,
 >(args: UseEntityEditorPersistenceArgs<TMetadata>) {
+  let loadSequence = 0;
+
   async function load() {
     if (!args.typeCode.value) return;
 
+    const sequence = ++loadSequence;
     args.loading.value = true;
     args.setEditorError(null);
 
@@ -372,9 +442,10 @@ export function useEntityEditorPersistence<
 
       await args.adapters.document.load();
     } catch (cause) {
+      if (sequence !== loadSequence) return;
       args.setEditorError(args.normalizeEditorError(cause));
     } finally {
-      args.loading.value = false;
+      if (sequence === loadSequence) args.loading.value = false;
     }
   }
 

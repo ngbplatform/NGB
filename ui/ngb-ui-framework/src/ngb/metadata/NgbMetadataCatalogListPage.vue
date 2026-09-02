@@ -70,13 +70,14 @@ const {
   entityTypeCode: catalogType,
   reloadKey: routeReloadKey,
   loadMetadata: (entityTypeCode) => metaStore.ensureCatalogType(entityTypeCode),
-  loadPage: ({ entityTypeCode }) =>
+  loadPage: ({ entityTypeCode, signal }) =>
     props.loadPage({
       catalogType: entityTypeCode,
       offset: offset.value,
       limit: limit.value,
       search: String(route.query.search ?? '') || undefined,
       trashMode: trashMode.value,
+      signal,
     }),
 })
 

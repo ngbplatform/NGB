@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/http'
 import NgbDrawer from '../components/NgbDrawer.vue'
@@ -32,6 +32,9 @@ type RoleForm = {
   name: string
   description: string
 }
+
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const AUDIT_ENTITY_KIND_SECURITY_ROLE = 9
 
@@ -92,6 +95,12 @@ function applyRole(next: RoleDetailsDto): void {
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
+  const targetRoleId = roleId.value
+  const creating = isNew.value
   loading.value = true
   error.value = null
   accessDenied.value = false
@@ -99,20 +108,31 @@ async function load(): Promise<void> {
 
   try {
     await access.load()
-    if (isNew.value && !access.canManageRoles) {
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (creating && !access.canManageRoles) {
       accessDenied.value = true
       return
     }
 
-    definitions.value = await getPermissionDefinitions()
-    if (!isNew.value) {
-      applyRole(await getRole(roleId.value))
+    if (creating) {
+      definitions.value = await getPermissionDefinitions({ signal: controller.signal })
+    } else {
+      const [nextDefinitions, nextRole] = await Promise.all([
+        getPermissionDefinitions({ signal: controller.signal }),
+        getRole(targetRoleId, { signal: controller.signal }),
+      ])
+      if (sequence !== loadSequence || controller.signal.aborted) return
+      definitions.value = nextDefinitions
+      applyRole(nextRole)
     }
   } catch (cause) {
-    accessDenied.value = cause instanceof ApiError && cause.status === 403
+    if (controller.signal.aborted || sequence !== loadSequence) return
+    accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
+      && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load role')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -185,6 +205,11 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+})
 </script>
 
 <template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '../api/http'
 import type { RegisterColumn, RegisterDataRow } from '../components/register/registerTypes'
@@ -20,6 +20,8 @@ const error = ref<string | null>(null)
 const accessDenied = ref(false)
 const roles = ref<RoleListItemDto[]>([])
 const status = ref<QueryTrashMode>('active')
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const columns: RegisterColumn[] = [
   {
@@ -63,19 +65,30 @@ const rows = computed<RegisterDataRow[]>(() => filteredRoles.value.map((role) =>
 })))
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   accessDenied.value = false
 
   try {
-    await access.load()
-    roles.value = await getRoles()
+    const [, nextRoles] = await Promise.all([
+      access.load(),
+      getRoles({ signal: controller.signal }),
+    ])
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    roles.value = nextRoles
   } catch (cause) {
+    if (controller.signal.aborted || sequence !== loadSequence) return
     roles.value = []
-    accessDenied.value = cause instanceof ApiError && cause.status === 403
+    accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
+      && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load roles')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -93,6 +106,11 @@ function goBack(): void {
 
 onMounted(() => {
   void load()
+})
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
 })
 </script>
 

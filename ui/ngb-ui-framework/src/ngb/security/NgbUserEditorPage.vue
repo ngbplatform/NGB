@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/http'
 import NgbDrawer from '../components/NgbDrawer.vue'
@@ -37,6 +37,10 @@ type UserForm = {
   confirmPassword: string
   requirePasswordUpdate: boolean
 }
+
+let loadSequence = 0
+let loadController: AbortController | null = null
+let effectiveController: AbortController | null = null
 
 type UserFieldErrors = Partial<Record<keyof Omit<UserForm, 'requirePasswordUpdate'>, string>>
 
@@ -148,20 +152,38 @@ function applyUser(next: UserDetailsDto): void {
 async function loadEffectiveAccess(): Promise<void> {
   if (isNew.value || !user.value) return
 
+  effectiveController?.abort()
+  const controller = new AbortController()
+  effectiveController = controller
+  const targetUserId = user.value.userId
+
   effectiveLoading.value = true
   effectiveError.value = null
 
   try {
-    effectiveAccess.value = await getUserEffectiveAccess(user.value.userId)
+    const nextAccess = await getUserEffectiveAccess(targetUserId, { signal: controller.signal })
+    if (controller.signal.aborted || user.value?.userId !== targetUserId) return
+    effectiveAccess.value = nextAccess
   } catch (cause) {
+    if (controller.signal.aborted) return
     effectiveAccess.value = null
     effectiveError.value = toErrorMessage(cause, 'Failed to load effective access')
   } finally {
-    effectiveLoading.value = false
+    if (effectiveController === controller) {
+      effectiveLoading.value = false
+      effectiveController = null
+    }
   }
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
+  effectiveController?.abort()
+  const controller = new AbortController()
+  loadController = controller
+  const targetUserId = userId.value
+  const creating = isNew.value
   loading.value = true
   error.value = null
   accessDenied.value = false
@@ -169,22 +191,40 @@ async function load(): Promise<void> {
 
   try {
     await access.load()
-    if (isNew.value && !access.canManageUsers) {
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (creating && !access.canManageUsers) {
       accessDenied.value = true
       return
     }
 
-    roles.value = await getRoles()
-    if (!isNew.value) {
-      const nextUser = await getUser(userId.value)
+    if (creating) {
+      roles.value = await getRoles({ signal: controller.signal })
+    } else {
+      effectiveLoading.value = true
+      const [nextRoles, nextUser, effectiveResult] = await Promise.all([
+        getRoles({ signal: controller.signal }),
+        getUser(targetUserId, { signal: controller.signal }),
+        Promise.resolve(getUserEffectiveAccess(targetUserId, { signal: controller.signal }))
+          .then((value) => ({ value, error: null as unknown }))
+          .catch((cause: unknown) => ({ value: null, error: cause })),
+      ])
+      if (sequence !== loadSequence || controller.signal.aborted) return
+      roles.value = nextRoles
       applyUser(nextUser)
-      await loadEffectiveAccess()
+      effectiveAccess.value = effectiveResult.value
+      effectiveError.value = effectiveResult.error
+        ? toErrorMessage(effectiveResult.error, 'Failed to load effective access')
+        : null
+      effectiveLoading.value = false
     }
   } catch (cause) {
-    accessDenied.value = cause instanceof ApiError && cause.status === 403
+    if (controller.signal.aborted || sequence !== loadSequence) return
+    accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
+      && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load user')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -380,6 +420,12 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  effectiveController?.abort()
+})
 </script>
 
 <template>

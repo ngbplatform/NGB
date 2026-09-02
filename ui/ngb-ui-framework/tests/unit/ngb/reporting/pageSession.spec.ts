@@ -5,6 +5,7 @@ const storageState = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../../src/ngb/utils/storage', () => ({
+  listStorageKeys: vi.fn((scope: 'session' | 'local') => Array.from(storageState[scope].keys())),
   readStorageJsonOrNull: vi.fn((scope: 'session' | 'local', key: string) => {
     const raw = storageState[scope].get(key)
     return raw ? JSON.parse(raw) : null
@@ -85,6 +86,27 @@ describe('reporting page session helpers', () => {
 
     expect(loadReportPageExecutionSnapshot('report:large')).toBeNull()
     expect(storageState.session.has('ngb.report.page.execution:report:large')).toBe(false)
+  })
+
+  it('bounds wide snapshots by bytes and evicts the oldest execution snapshots', () => {
+    const wide = buildResponse()
+    wide.sheet.rows[0]!.cells[0]!.display = 'x'.repeat(300_000)
+    saveReportPageExecutionSnapshot('report:wide', wide, [])
+    expect(loadReportPageExecutionSnapshot('report:wide')).toBeNull()
+
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-08T12:00:00Z'))
+    for (let index = 0; index < 10; index += 1) {
+      saveReportPageExecutionSnapshot(`report:${index}`, buildResponse(), [])
+      vi.advanceTimersByTime(1)
+    }
+
+    const executionKeys = Array.from(storageState.session.keys())
+      .filter((key) => key.startsWith('ngb.report.page.execution:'))
+    expect(executionKeys).toHaveLength(8)
+    expect(loadReportPageExecutionSnapshot('report:0')).toBeNull()
+    expect(loadReportPageExecutionSnapshot('report:9')).not.toBeNull()
+    vi.useRealTimers()
   })
 
   it('ignores malformed snapshots and blank keys', () => {

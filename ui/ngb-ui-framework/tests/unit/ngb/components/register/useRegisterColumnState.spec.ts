@@ -1,5 +1,5 @@
 import { computed, nextTick, ref } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const loadJsonMock = vi.hoisted(() => vi.fn())
 const saveJsonMock = vi.hoisted(() => vi.fn())
@@ -55,8 +55,14 @@ function createHarness(options?: {
 
 describe('register column state', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     vi.clearAllMocks()
     loadJsonMock.mockReturnValue(null)
+  })
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
   })
 
   it('hydrates persisted order and widths, computes sticky layout, and persists later edits', async () => {
@@ -119,6 +125,7 @@ describe('register column state', () => {
       amount: 260,
     }
     await flushAsync()
+    vi.advanceTimersByTime(150)
 
     expect(saveJsonMock).toHaveBeenLastCalledWith('register:test', {
       order: ['amount', 'name'],

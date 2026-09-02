@@ -154,6 +154,34 @@ describe('document copy draft storage', () => {
     expect(Array.from(memoryStore().keys())).toHaveLength(1)
   })
 
+  it('bounds retained snapshot count and rejects oversized drafts', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-08T12:00:00Z'))
+    const tokens: string[] = []
+
+    for (let index = 0; index < 20; index += 1) {
+      const token = saveDocumentCopyDraft({
+        documentType: 'pm.invoice',
+        fields: { index },
+        parts: null,
+      })
+      expect(token).not.toBeNull()
+      tokens.push(token!)
+      vi.advanceTimersByTime(1_000)
+    }
+
+    expect(Array.from(memoryStore().keys())).toHaveLength(16)
+    expect(readDocumentCopyDraft(tokens[0], 'pm.invoice')).toBeNull()
+    expect(readDocumentCopyDraft(tokens.at(-1), 'pm.invoice')).toMatchObject({
+      fields: { index: 19 },
+    })
+    expect(saveDocumentCopyDraft({
+      documentType: 'pm.invoice',
+      fields: { payload: 'x'.repeat(600_000) },
+      parts: null,
+    })).toBeNull()
+  })
+
   it('rejects every invalid snapshot shape and empty tokens', () => {
     const createdAtUtc = new Date().toISOString()
     const invalidPayloads = [

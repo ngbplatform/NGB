@@ -24,12 +24,15 @@ const agencyBillingEntityEditorComponent = defineAsyncComponent(
 )
 
 function loadAgencyBillingCatalogPage(args: MetadataCatalogListPageLoadArgs) {
-  return getCatalogPage(args.catalogType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
     filters: { deleted: args.trashMode },
-  })
+  }
+  return args.signal
+    ? getCatalogPage(args.catalogType, request, { signal: args.signal })
+    : getCatalogPage(args.catalogType, request)
 }
 
 function resolveAgencyBillingCatalogTitle(catalogType: string, displayName: string): string {
@@ -52,7 +55,7 @@ const agencyBillingCatalogEditPageProps = {
 } satisfies MetadataCatalogEditPageProps
 
 function loadAgencyBillingDocumentPage(args: Parameters<MetadataDocumentListPageProps['loadPage']>[0]) {
-  return getDocumentPage(args.documentType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
@@ -62,7 +65,10 @@ function loadAgencyBillingDocumentPage(args: Parameters<MetadataDocumentListPage
       ...(args.periodTo ? { periodTo: args.periodTo } : {}),
       ...args.listFilters,
     },
-  })
+  }
+  return args.signal
+    ? getDocumentPage(args.documentType, request, { signal: args.signal })
+    : getDocumentPage(args.documentType, request)
 }
 
 function resolveAgencyBillingDocumentTitle(documentType: string, displayName: string): string {

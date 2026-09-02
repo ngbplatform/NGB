@@ -12,6 +12,7 @@ export type MetadataCatalogListPageLoadArgs = {
   limit: number
   search?: string
   trashMode: QueryTrashMode
+  signal?: AbortSignal
 }
 
 export type MetadataCatalogDrawerActionArgs = {
@@ -46,6 +47,7 @@ export type MetadataDocumentListPageLoadArgs<TMeta extends MetadataRegisterPageM
   periodFrom?: string | null
   periodTo?: string | null
   listFilters: Record<string, string>
+  signal?: AbortSignal
 }
 
 export type MetadataRouteLocationLike = Pick<RouteLocationNormalizedLoaded, 'fullPath' | 'params' | 'query'>

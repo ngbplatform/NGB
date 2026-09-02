@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '../api/http'
 import type { PageResponseDto } from '../api/contracts'
@@ -23,6 +23,8 @@ const page = ref<PageResponseDto<UserListItemDto> | null>(null)
 const status = ref<QueryTrashMode>('active')
 const offset = ref(0)
 const limit = 100
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const users = computed(() => page.value?.items ?? [])
 
@@ -60,23 +62,36 @@ function roleSummary(user: UserListItemDto): string {
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   accessDenied.value = false
 
   try {
-    await access.load()
-    page.value = await getUsers({
-      offset: offset.value,
+    const requestedOffset = offset.value
+    const requestedStatus = status.value
+    const [, nextPage] = await Promise.all([
+      access.load(),
+      getUsers({
+      offset: requestedOffset,
       limit,
-      isActive: status.value === 'active' ? true : status.value === 'deleted' ? false : null,
-    })
+      isActive: requestedStatus === 'active' ? true : requestedStatus === 'deleted' ? false : null,
+      }, { signal: controller.signal }),
+    ])
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    page.value = nextPage
   } catch (cause) {
+    if (controller.signal.aborted || sequence !== loadSequence) return
     page.value = null
-    accessDenied.value = cause instanceof ApiError && cause.status === 403
+    accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
+      && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load users')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -109,6 +124,11 @@ watch(status, () => {
 
 onMounted(() => {
   void load()
+})
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
 })
 </script>
 

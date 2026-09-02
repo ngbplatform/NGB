@@ -24,6 +24,7 @@ import {
 } from '@ngbplatform/ui'
 
 import {
+  calculateAgencyBillingDocumentComputedFields,
   calculateAgencyBillingDocumentPartAmount,
   ensureAgencyBillingDocumentPartRowKey,
   listAgencyBillingDocumentPartFields,
@@ -87,17 +88,23 @@ const partColumns = computed(() =>
   ),
 )
 
+const computedDocumentFields = computed(() => calculateAgencyBillingDocumentComputedFields(
+  props.entityTypeCode,
+  props.parts,
+  props.modelValue,
+))
+
 watch(
-  () => props.modelValue,
-  () => {
+  [computedDocumentFields, () => props.documentModel],
+  ([calculated]) => {
     syncAgencyBillingDocumentComputedFields({
       documentType: props.entityTypeCode,
       partsMeta: props.parts,
       partsModel: props.modelValue,
       model: props.documentModel,
-    })
+    }, calculated)
   },
-  { deep: true, immediate: true },
+  { immediate: true },
 )
 
 function partRows(partCode: string): RecordPartRow[] {

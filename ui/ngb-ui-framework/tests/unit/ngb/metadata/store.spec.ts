@@ -2,6 +2,40 @@ import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 
 describe('metadata store', () => {
+  it('shares one in-flight metadata request across concurrent callers', async () => {
+    vi.resetModules()
+    const config = await import('../../../../src/ngb/metadata/config')
+    const { useMetadataStore } = await import('../../../../src/ngb/metadata/store')
+    let resolveRequest!: (value: Record<string, unknown>) => void
+    const pending = new Promise<Record<string, unknown>>((resolve) => {
+      resolveRequest = resolve
+    })
+    const loadCatalogTypeMetadata = vi.fn().mockReturnValue(pending)
+
+    config.configureNgbMetadata({
+      loadCatalogTypeMetadata,
+      loadDocumentTypeMetadata: vi.fn(),
+    })
+    setActivePinia(createPinia())
+    const store = useMetadataStore()
+
+    const first = store.ensureCatalogType('pm.property')
+    const second = store.ensureCatalogType('pm.property')
+    expect(loadCatalogTypeMetadata).toHaveBeenCalledTimes(1)
+
+    resolveRequest({
+      catalogType: 'pm.property',
+      displayName: 'Properties',
+      kind: 1,
+      list: null,
+      form: null,
+      parts: null,
+    })
+
+    expect(await second).toBe(await first)
+    expect(store.catalogs['pm.property']).toBe(await first)
+  })
+
   it('loads catalog and document metadata once, normalizes them, and caches the results', async () => {
     vi.resetModules()
     const config = await import('../../../../src/ngb/metadata/config')

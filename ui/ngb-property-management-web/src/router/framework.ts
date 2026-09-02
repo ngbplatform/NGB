@@ -27,12 +27,15 @@ const pmEntityEditorComponent = defineAsyncComponent(
 )
 
 function loadPmCatalogPage(args: MetadataCatalogListPageLoadArgs) {
-  return getCatalogPage(args.catalogType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
     filters: { deleted: args.trashMode },
-  })
+  }
+  return args.signal
+    ? getCatalogPage(args.catalogType, request, { signal: args.signal })
+    : getCatalogPage(args.catalogType, request)
 }
 
 function resolvePmCatalogTitle(catalogType: string, displayName: string): string {
@@ -72,7 +75,7 @@ const pmCatalogEditPageProps = {
 } satisfies MetadataCatalogEditPageProps
 
 function loadPmDocumentPage(args: Parameters<MetadataDocumentListPageProps['loadPage']>[0]) {
-  return getDocumentPage(args.documentType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
@@ -82,7 +85,10 @@ function loadPmDocumentPage(args: Parameters<MetadataDocumentListPageProps['load
       ...(args.periodTo ? { periodTo: args.periodTo } : {}),
       ...args.listFilters,
     },
-  })
+  }
+  return args.signal
+    ? getDocumentPage(args.documentType, request, { signal: args.signal })
+    : getDocumentPage(args.documentType, request)
 }
 
 function resolvePmDocumentTitle(documentType: string, displayName: string): string {

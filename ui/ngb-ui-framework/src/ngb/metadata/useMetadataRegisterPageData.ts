@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef } from 'vue';
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type ComputedRef } from 'vue';
 import type { RouteLocationNormalizedLoaded } from 'vue-router';
 
 import { prefetchLookupsForPage } from '../lookup/prefetch';
@@ -64,10 +64,11 @@ export type UseMetadataRegisterPageDataArgs<
   route: RouteLocationNormalizedLoaded;
   entityTypeCode: ComputedRef<string>;
   reloadKey: ComputedRef<string>;
-  loadMetadata: (entityTypeCode: string) => Promise<TMeta>;
+  loadMetadata: (entityTypeCode: string, options?: { signal?: AbortSignal }) => Promise<TMeta>;
   loadPage: (args: {
     entityTypeCode: string;
     metadata: TMeta;
+    signal?: AbortSignal;
   }) => Promise<TPage>;
   lookupStore?: LookupStoreApi;
   resolveLookupHint?: (args: {
@@ -109,6 +110,7 @@ export function useMetadataRegisterPageData<
   const metadata = ref<TMeta | null>(null);
   const page = ref<TPage | null>(null);
   const loadSeq = ref(0);
+  let loadController: AbortController | null = null;
 
   const listFilters = computed<readonly TField[]>(() => metadata.value?.list?.filters ?? []);
   const hasListFilters = computed(() => listFilters.value.length > 0);
@@ -183,6 +185,9 @@ export function useMetadataRegisterPageData<
   async function load(): Promise<boolean> {
     const entityTypeCode = args.entityTypeCode.value.trim();
     const seq = ++loadSeq.value;
+    loadController?.abort();
+    const controller = new AbortController();
+    loadController = controller;
 
     if (!entityTypeCode) {
       loading.value = false;
@@ -196,24 +201,35 @@ export function useMetadataRegisterPageData<
     error.value = null;
 
     try {
-      const nextMetadata = await args.loadMetadata(entityTypeCode);
+      const nextMetadata = await args.loadMetadata(entityTypeCode, { signal: controller.signal });
       if (seq !== loadSeq.value) return false;
       metadata.value = nextMetadata;
 
       const nextPage = await args.loadPage({
         entityTypeCode,
         metadata: nextMetadata,
+        signal: controller.signal,
       });
       if (seq !== loadSeq.value) return false;
       page.value = nextPage;
       return true;
     } catch (cause) {
       if (seq !== loadSeq.value) return false;
+      if (controller.signal.aborted) return false;
       error.value = args.formatError?.(cause) ?? defaultErrorMessage(cause);
       return false;
     } finally {
       if (seq === loadSeq.value) loading.value = false;
+      if (loadController === controller) loadController = null;
     }
+  }
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      loadSeq.value += 1;
+      loadController?.abort();
+      loadController = null;
+    });
   }
 
   watch(args.reloadKey, () => {
@@ -225,7 +241,7 @@ export function useMetadataRegisterPageData<
     () => {
       void prefetchReferenceLabels();
     },
-    { immediate: true, deep: true },
+    { immediate: true },
   );
 
   return {

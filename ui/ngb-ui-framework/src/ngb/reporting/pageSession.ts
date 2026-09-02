@@ -1,4 +1,5 @@
 import {
+  listStorageKeys,
   readStorageJsonOrNull,
   readStorageString,
   removeStorageItem,
@@ -11,10 +12,26 @@ import type { ReportExecutionResponseDto } from './types'
 const EXECUTION_PREFIX = 'ngb.report.page.execution:'
 const SCROLL_PREFIX = 'ngb.report.page.scroll:'
 const MAX_PERSISTED_REPORT_ROWS = 500
+const MAX_PERSISTED_REPORT_BYTES = 512 * 1024
+const MAX_PERSISTED_REPORT_SNAPSHOTS = 8
 
 export type ReportPageExecutionSnapshot = {
   response: ReportExecutionResponseDto
   consumedCursors: string[]
+  savedAtMs?: number
+}
+
+function removeOldestExecutionSnapshots(currentStorageKey: string) {
+  const candidates = listStorageKeys('session')
+    .filter((key) => key.startsWith(EXECUTION_PREFIX) && key !== currentStorageKey)
+    .map((key) => ({
+      key,
+      savedAtMs: readStorageJsonOrNull<ReportPageExecutionSnapshot>('session', key)?.savedAtMs ?? 0,
+    }))
+    .sort((left, right) => left.savedAtMs - right.savedAtMs)
+
+  const excess = Math.max(0, candidates.length - (MAX_PERSISTED_REPORT_SNAPSHOTS - 1))
+  for (const candidate of candidates.slice(0, excess)) removeStorageItem('session', candidate.key)
 }
 
 function normalizeKey(key: string | null | undefined): string | null {
@@ -48,10 +65,21 @@ export function saveReportPageExecutionSnapshot(
     return
   }
 
-  void writeStorageJson('session', storageKey, {
+  const snapshot = {
     response,
     consumedCursors: Array.from(new Set(consumedCursors.map((entry) => entry.trim()).filter((entry) => entry.length > 0))),
-  } satisfies ReportPageExecutionSnapshot)
+    savedAtMs: Date.now(),
+  } satisfies ReportPageExecutionSnapshot
+
+  // Row count alone does not protect wide pivot reports. Keep synchronous
+  // sessionStorage payloads bounded by their serialized size as well.
+  if (JSON.stringify(snapshot).length * 2 > MAX_PERSISTED_REPORT_BYTES) {
+    removeStorageItem('session', storageKey)
+    return
+  }
+
+  removeOldestExecutionSnapshots(storageKey)
+  void writeStorageJson('session', storageKey, snapshot)
 }
 
 export function loadReportPageExecutionSnapshot(routeStateKey: string | null | undefined): ReportPageExecutionSnapshot | null {
