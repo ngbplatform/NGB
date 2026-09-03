@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import { NgbBadge, NgbButton, NgbIcon, NgbLookup, NgbPageHeader, NgbRegisterGrid, NgbTabs } from '@ngbplatform/ui'
 
 import { applyDocumentLabel, docLabel, fmtDateOnly, fmtMoney, type OpenItemsApplyResultLine, type OpenItemsLookupItem } from './shared'
@@ -52,8 +53,32 @@ const emit = defineEmits<{
   (e: 'update:activeTab', value: OpenItemsTabKey): void
 }>()
 
+const APPLIED_ROW_PAGE_SIZE = 100
+const appliedPage = ref(0)
+const highlightedApplyIdSet = computed(() => new Set(props.highlightedApplyIds))
+const appliedPageCount = computed(() => Math.max(1, Math.ceil(props.appliedRows.length / APPLIED_ROW_PAGE_SIZE)))
+const currentAppliedPage = computed(() => Math.min(appliedPage.value, appliedPageCount.value - 1))
+const pagedAppliedRows = computed(() => {
+  const start = currentAppliedPage.value * APPLIED_ROW_PAGE_SIZE
+  return props.appliedRows.slice(start, start + APPLIED_ROW_PAGE_SIZE)
+})
+const appliedRowRange = computed(() => {
+  const total = props.appliedRows.length
+  if (total === 0) return '0 rows'
+  const start = currentAppliedPage.value * APPLIED_ROW_PAGE_SIZE
+  return `Rows ${start + 1}\u2013${Math.min(total, start + APPLIED_ROW_PAGE_SIZE)} of ${total}`
+})
+
+function setAppliedPage(page: number): void {
+  appliedPage.value = Math.max(0, Math.min(page, appliedPageCount.value - 1))
+}
+
+watch(() => props.appliedRows, () => {
+  appliedPage.value = 0
+})
+
 function isHighlightedApplyId(applyId: string): boolean {
-  return props.highlightedApplyIds.includes(applyId)
+  return highlightedApplyIdSet.value.has(applyId)
 }
 
 function updateActiveTab(value: string): void {
@@ -279,7 +304,7 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
                     </div>
 
                     <div
-                      v-for="allocation in appliedRows"
+                      v-for="allocation in pagedAppliedRows"
                       :key="allocation.applyId"
                       class="grid grid-cols-[120px_1.3fr_1.3fr_120px_120px_220px] border-b border-ngb-border text-sm"
                       :class="allocationTone(allocation)"
@@ -315,6 +340,31 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
                         </div>
                       </div>
                     </div>
+                  </div>
+                </div>
+                <div
+                  v-if="appliedPageCount > 1"
+                  class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted"
+                >
+                  <span>{{ appliedRowRange }}</span>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="currentAppliedPage === 0"
+                      @click="setAppliedPage(currentAppliedPage - 1)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ currentAppliedPage + 1 }} of {{ appliedPageCount }}</span>
+                    <button
+                      type="button"
+                      class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="currentAppliedPage + 1 >= appliedPageCount"
+                      @click="setAppliedPage(currentAppliedPage + 1)"
+                    >
+                      Next
+                    </button>
                   </div>
                 </div>
               </div>

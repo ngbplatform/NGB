@@ -1,4 +1,4 @@
-import { computed, ref, watch, type WatchSource } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type WatchSource } from 'vue'
 import type { RouteLocationNormalizedLoaded, RouteLocationRaw, Router } from 'vue-router'
 
 import type { UiLookupItem } from '../lookup/store'
@@ -61,8 +61,8 @@ export type UseRouteLookupSelectionArgs<TItem extends UiLookupItem = UiLookupIte
   route: RouteLocationNormalizedLoaded
   router: Router
   queryKey: string
-  lookupById: (id: string) => Promise<string | null | undefined>
-  search: (query: string) => Promise<TItem[]>
+  lookupById: (id: string, options?: { signal?: AbortSignal }) => Promise<string | null | undefined>
+  search: (query: string, options?: { signal?: AbortSignal }) => Promise<TItem[]>
   openTarget: (value: TItem | null) => Promise<RouteLocationRaw | null>
 }
 
@@ -72,30 +72,53 @@ export function useRouteLookupSelection<TItem extends UiLookupItem = UiLookupIte
   const selected = ref<TItem | null>(null)
   const items = ref<TItem[]>([])
   const routeId = useGuidQueryParam(args.route, args.queryKey)
+  let hydrateSequence = 0
+  let hydrateController: AbortController | null = null
+  let searchSequence = 0
+  let searchController: AbortController | null = null
 
   async function hydrateSelected(): Promise<void> {
+    const sequence = ++hydrateSequence
+    hydrateController?.abort()
     const id = routeId.value
     if (!id) {
       selected.value = null
       return
     }
 
+    const controller = new AbortController()
+    hydrateController = controller
     try {
-      const label = await args.lookupById(id)
+      const label = await args.lookupById(id, { signal: controller.signal })
+      if (sequence !== hydrateSequence || controller.signal.aborted) return
       selected.value = { id, label: label ?? id } as TItem
     } catch {
+      if (sequence !== hydrateSequence || controller.signal.aborted) return
       selected.value = { id, label: id } as TItem
+    } finally {
+      if (hydrateController === controller) hydrateController = null
     }
   }
 
   async function onQuery(queryText: string): Promise<void> {
+    const sequence = ++searchSequence
+    searchController?.abort()
     const query = queryText.trim()
     if (!query) {
       items.value = []
       return
     }
 
-    items.value = await args.search(query)
+    const controller = new AbortController()
+    searchController = controller
+    try {
+      const nextItems = await args.search(query, { signal: controller.signal })
+      if (sequence === searchSequence && !controller.signal.aborted) items.value = nextItems
+    } catch (cause) {
+      if (!controller.signal.aborted && sequence === searchSequence) throw cause
+    } finally {
+      if (searchController === controller) searchController = null
+    }
   }
 
   function onSelect(value: TItem | null): void {
@@ -107,6 +130,17 @@ export function useRouteLookupSelection<TItem extends UiLookupItem = UiLookupIte
     const target = await args.openTarget(selected.value)
     if (!target) return
     await args.router.push(target)
+  }
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      hydrateSequence += 1
+      searchSequence += 1
+      hydrateController?.abort()
+      searchController?.abort()
+      hydrateController = null
+      searchController = null
+    })
   }
 
   return {

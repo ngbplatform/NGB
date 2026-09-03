@@ -95,7 +95,7 @@ function createHarness() {
   const summaryValue = ref({ totalOutstanding: 100, totalCredit: 80 })
   const activeTab = ref<OpenItemsTabKey>('charges')
   const toasts = { push: vi.fn() }
-  const suggestFactory = vi.fn<() => Promise<SuggestResponse>>(async () => ({
+  const suggestFactory = vi.fn<(options?: { signal?: AbortSignal }) => Promise<SuggestResponse>>(async () => ({
     suggestedApplies: [],
     totalApplied: 0,
     remainingOutstanding: 100,
@@ -229,6 +229,26 @@ describe('open items workflow', () => {
     await workflow.suggest()
     expect(workflow.suggestError.value).toBe('offline')
     expect(workflow.suggestLoading.value).toBe(false)
+  })
+
+  it('aborts and ignores a stale suggestion when a newer request starts', async () => {
+    const harness = createHarness()
+    let resolveFirst!: (value: SuggestResponse) => void
+    harness.suggestFactory
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ suggestedApplies: [], totalApplied: 12, remainingOutstanding: 88 })
+
+    const first = harness.workflow.suggest()
+    await vi.waitFor(() => expect(harness.suggestFactory).toHaveBeenCalledOnce())
+    const firstSignal = harness.suggestFactory.mock.calls[0]?.[0]?.signal
+    const second = harness.workflow.suggest()
+    await second
+
+    expect(firstSignal?.aborted).toBe(true)
+    resolveFirst({ suggestedApplies: [], totalApplied: 99, remainingOutstanding: 1 })
+    await first
+    expect(harness.workflow.suggestData.value?.totalApplied).toBe(12)
+    expect(harness.workflow.suggestLoading.value).toBe(false)
   })
 
   it('builds canonical and fallback result lines with titles and subtitles', () => {

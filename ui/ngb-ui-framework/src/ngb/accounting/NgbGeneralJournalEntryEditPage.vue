@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { useAuthStore } from '../auth'
@@ -74,6 +74,8 @@ const errorMessages = ref<string[]>([])
 const activeTab = ref('lines')
 const auditOpen = ref(false)
 const suppressRouteLoad = ref(false)
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const draftDate = ref<string | null>(todayDateOnly())
 const journalType = ref(1)
@@ -220,23 +222,38 @@ async function applyDetails(dto: GeneralJournalEntryDetailsDto) {
 }
 
 async function load() {
+  const sequence = ++loadSequence
+  loadController?.abort()
   errorMessages.value = []
 
   if (!currentId.value) {
     resetForNew()
+    loading.value = false
     return
   }
 
+  const requestedId = currentId.value
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   try {
-    const dto = await getGeneralJournalEntry(currentId.value)
+    const dto = await getGeneralJournalEntry(requestedId, { signal: controller.signal })
+    if (sequence !== loadSequence || controller.signal.aborted) return
     await applyDetails(dto)
   } catch (cause) {
+    if (sequence !== loadSequence || controller.signal.aborted) return
     errorMessages.value = extractErrorMessages(cause)
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
+})
 
 function dateOnlyFromIso(value: string | null | undefined): string | null {
   return normalizeDateOnly(value)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NgbRegisterGrid from '../components/register/NgbRegisterGrid.vue'
@@ -41,6 +41,7 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const page = ref<GeneralJournalEntryPageDto | null>(null)
 let loadSequence = 0
+let loadController: AbortController | null = null
 
 const {
   offset,
@@ -68,6 +69,9 @@ function fmtDate(value: string | null | undefined): string {
 
 async function load() {
   const seq = ++loadSequence
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   try {
@@ -77,14 +81,15 @@ async function load() {
       dateFrom: monthValueToDateOnlyStart(periodFromMonth.value) ?? null,
       dateTo: monthValueToDateOnlyEnd(periodToMonth.value) ?? null,
       trash: trashMode.value,
-    })
-    if (seq !== loadSequence) return
+    }, { signal: controller.signal })
+    if (seq !== loadSequence || controller.signal.aborted) return
     page.value = nextPage
   } catch (cause) {
-    if (seq !== loadSequence) return
+    if (seq !== loadSequence || controller.signal.aborted) return
     error.value = toErrorMessage(cause, 'Failed to load journal entries.')
   } finally {
     if (seq === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -95,6 +100,12 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
+})
 
 const columns = [
   { key: 'display', title: 'Display', width: 320, pinned: 'left' as const },

@@ -183,7 +183,7 @@ test('loads journal entries from route filters, formats row labels, and opens en
     dateFrom: '2026-03-01',
     dateTo: '2026-04-30',
     trash: 'deleted',
-  })
+  }, { signal: expect.any(AbortSignal) })
 
   await expect.element(view.getByText('title:Journal Entries')).toBeVisible()
   await expect.element(view.getByText('from:2026-03')).toBeVisible()
@@ -228,7 +228,7 @@ test('updates month and trash filters, pages through results, refreshes, and bac
     dateFrom: '2026-03-01',
     dateTo: '2026-04-30',
     trash: 'deleted',
-  })
+  }, { signal: expect.any(AbortSignal) })
 
   await view.getByRole('button', { name: 'Header next' }).click()
   await flushUi()
@@ -239,7 +239,7 @@ test('updates month and trash filters, pages through results, refreshes, and bac
     dateFrom: '2026-03-01',
     dateTo: '2026-04-30',
     trash: 'deleted',
-  })
+  }, { signal: expect.any(AbortSignal) })
 
   await view.getByRole('button', { name: 'Header prev' }).click()
   await view.getByRole('button', { name: 'Header refresh' }).click()

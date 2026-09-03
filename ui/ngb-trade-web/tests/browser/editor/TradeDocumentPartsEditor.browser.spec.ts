@@ -425,4 +425,70 @@ describe('TradeDocumentPartsEditor coverage', () => {
     expect(setupState(noItems).buildLineDefaultsRequest()).toBeNull()
     noItems.unmount()
   })
+
+  test('renders large parts in bounded DOM pages', async () => {
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      __row_key: `row-${index + 1}`,
+      memo: `Memo ${index + 1}`,
+    }))
+    const simplePart = {
+      partCode: 'lines',
+      title: 'Lines',
+      allowAddRemoveRows: false,
+      list: { columns: [{ key: 'memo', label: 'Memo', dataType: 'String' }] },
+    } as PartMetadata
+    const wrapper = mount(TradeDocumentPartsEditor, {
+      props: {
+        entityTypeCode: 'trd.sales_invoice',
+        parts: [simplePart],
+        modelValue: { lines: { rows } },
+        readonly: true,
+      },
+    })
+    await flush()
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(100)
+    expect(wrapper.text()).toContain('Rows 1–100 of 101')
+    expect(wrapper.findAll('tbody tr').at(-1)?.text()).toContain('100')
+
+    const next = wrapper.findAll('button').find((button) => button.text() === 'Next')
+    expect(next).toBeDefined()
+    await next!.trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Rows 101–101 of 101')
+    expect(wrapper.find('tbody tr').text()).toContain('101')
+    wrapper.unmount()
+  })
+
+  test('releases per-row caches and in-flight lookups when the row structure changes', async () => {
+    const wrapper = mount(TradeDocumentPartsEditor, {
+      props: {
+        entityTypeCode: 'trd.sales_invoice',
+        parts: [part()],
+        modelValue: model(),
+      },
+    })
+    await flush()
+    const state = setupState(wrapper)
+    const lookupController = new AbortController()
+    state.autoManagedValuesByRow = {
+      'row-1': { unit_price: '10' },
+      removed: { unit_price: '20' },
+    }
+    state.pendingForcedRowKeys = new Set(['row-1', 'removed'])
+    state.lookupItemsByCell = { 'lines:0:item_id': [{ id: ITEM_1, label: 'Item One' }] }
+    state.lookupControllers.set('lines:0:item_id', lookupController)
+
+    const nextModel = model()
+    nextModel.lines!.rows = [nextModel.lines!.rows[0]!]
+    await wrapper.setProps({ modelValue: nextModel })
+    await flush()
+
+    expect(state.autoManagedValuesByRow).toEqual({ 'row-1': { unit_price: '10' } })
+    expect(state.pendingForcedRowKeys.has('removed')).toBe(false)
+    expect(state.lookupItemsByCell).toEqual({})
+    expect(state.lookupControllers.size).toBe(0)
+    expect(lookupController.signal.aborted).toBe(true)
+    wrapper.unmount()
+  })
 })

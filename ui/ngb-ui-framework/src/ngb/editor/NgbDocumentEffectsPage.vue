@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import NgbBadge from '../primitives/NgbBadge.vue';
@@ -50,6 +50,7 @@ const document = ref<DocumentRecord | null>(null);
 const effects = ref<DocumentEffects | null>(null);
 const activeTab = ref<'accounting' | 'or' | 'rr'>('accounting');
 let loadSequence = 0;
+let loadController: AbortController | null = null;
 
 const documentType = computed(() => String(route.params.documentType ?? '').trim());
 const documentId = computed(() => String(route.params.id ?? '').trim());
@@ -309,6 +310,7 @@ async function prefetchDefaultAccountLabels(snapshot: DocumentEffects): Promise<
 }
 
 async function load(): Promise<void> {
+  loadController?.abort();
   if (!documentType.value || !documentId.value) {
     loadSequence += 1;
     error.value = 'Document type or id is missing.';
@@ -322,16 +324,18 @@ async function load(): Promise<void> {
   const seq = ++loadSequence;
   const requestedDocumentType = documentType.value;
   const requestedDocumentId = documentId.value;
+  const controller = new AbortController();
+  loadController = controller;
   loading.value = true;
   error.value = null;
   try {
     const [meta, doc, effectsSnapshot] = await Promise.all([
       metadataStore.ensureDocumentType(requestedDocumentType),
-      editorConfig.loadDocumentById(requestedDocumentType, requestedDocumentId),
-      editorConfig.loadDocumentEffects(requestedDocumentType, requestedDocumentId),
+      editorConfig.loadDocumentById(requestedDocumentType, requestedDocumentId, { signal: controller.signal }),
+      editorConfig.loadDocumentEffects(requestedDocumentType, requestedDocumentId, undefined, { signal: controller.signal }),
     ]);
 
-    if (seq !== loadSequence) return;
+    if (seq !== loadSequence || controller.signal.aborted) return;
 
     metadata.value = meta;
     document.value = doc;
@@ -356,15 +360,22 @@ async function load(): Promise<void> {
 
     await Promise.allSettled(ancillaryTasks);
   } catch (cause) {
-    if (seq !== loadSequence) return;
+    if (seq !== loadSequence || controller.signal.aborted) return;
     error.value = toErrorMessage(cause, 'Could not load document effects.');
     metadata.value = null;
     document.value = null;
     effects.value = null;
   } finally {
     if (seq === loadSequence) loading.value = false;
+    if (loadController === controller) loadController = null;
   }
 }
+
+onBeforeUnmount(() => {
+  loadSequence += 1;
+  loadController?.abort();
+  loadController = null;
+});
 
 watch(
   () => [documentType.value, documentId.value],

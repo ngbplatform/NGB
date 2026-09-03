@@ -60,6 +60,8 @@ const metadata = ref<DocumentTypeMetadata | null>(null);
 const documentRecord = ref<DocumentRecord | null>(null);
 const autoPrintTriggered = ref(false);
 const printedAt = ref(new Date());
+let loadSequence = 0;
+let loadController: AbortController | null = null;
 
 const documentType = computed(() => String(route.params.documentType ?? '').trim());
 const documentId = computed(() => String(route.params.id ?? '').trim());
@@ -183,6 +185,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  loadSequence += 1;
+  loadController?.abort();
+  loadController = null;
   window.removeEventListener('beforeprint', handleBeforePrint);
   window.removeEventListener('afterprint', handleAfterPrint);
   handleAfterPrint();
@@ -211,27 +216,37 @@ watch(
 );
 
 async function load() {
+  const sequence = ++loadSequence;
+  loadController?.abort();
   if (!documentType.value || !documentId.value) {
     error.value = 'Document type or id is missing.';
+    loading.value = false;
     return;
   }
 
+  const requestedDocumentType = documentType.value;
+  const requestedDocumentId = documentId.value;
+  const controller = new AbortController();
+  loadController = controller;
   loading.value = true;
   error.value = null;
 
   try {
     const [nextMetadata, nextDocument] = await Promise.all([
-      metadataStore.ensureDocumentType(documentType.value),
-      editorConfig.loadDocumentById(documentType.value, documentId.value),
+      metadataStore.ensureDocumentType(requestedDocumentType),
+      editorConfig.loadDocumentById(requestedDocumentType, requestedDocumentId, { signal: controller.signal }),
     ]);
 
+    if (sequence !== loadSequence || controller.signal.aborted) return;
     metadata.value = nextMetadata;
     documentRecord.value = nextDocument;
     await prefetchLookupLabels(nextMetadata, nextDocument);
   } catch (cause) {
+    if (sequence !== loadSequence || controller.signal.aborted) return;
     error.value = toErrorMessage(cause, 'Failed to load the print preview.');
   } finally {
-    loading.value = false;
+    if (sequence === loadSequence) loading.value = false;
+    if (loadController === controller) loadController = null;
   }
 }
 

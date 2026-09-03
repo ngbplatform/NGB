@@ -236,7 +236,7 @@ test('loads, formats, sorts, labels, and opens a complete reconciliation report'
     fromMonthInclusive: '2026-01-01',
     toMonthInclusive: '2026-03-01',
     mode: 'Balance',
-  })
+  }, { signal: expect.any(AbortSignal) })
   await expect.element(view.getByText('440.13')).toBeVisible()
   await expect.element(view.getByText('40.12')).toBeVisible()
   const table = view.getByTestId('reconciliation-table-wrap')
@@ -266,7 +266,10 @@ test('updates mode and every status filter through clean route query state', asy
   await view.getByRole('button', { name: 'Movement' }).click()
   await flushUi()
   expect(router.currentRoute.value.query.mode).toBe('Movement')
-  expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'Movement' }))
+  expect(mocks.load).toHaveBeenLastCalledWith(
+    expect.objectContaining({ mode: 'Movement' }),
+    { signal: expect.any(AbortSignal) },
+  )
   await expect.element(view.getByText('Movement note')).toBeVisible()
   await expect.element(view.getByText('Operational register movement')).toBeVisible()
 
@@ -336,7 +339,7 @@ test('uses relative month and date fallbacks and renders an empty two-column def
     fromMonthInclusive: '2026-07-01',
     toMonthInclusive: '2026-08-01',
     mode: 'Balance',
-  })
+  }, { signal: expect.any(AbortSignal) })
   await expect.element(view.getByText('No reconciliation rows.')).toBeVisible()
   await expect.element(view.getByText('Balance note')).toBeVisible()
   await expect.element(view.getByText('Largest visible diff')).toBeVisible()
@@ -352,4 +355,25 @@ test('navigates back through the page header', async () => {
   const backSpy = vi.spyOn(router, 'back').mockImplementation(() => {})
   await view.getByRole('button', { name: 'Header back' }).click()
   expect(backSpy).toHaveBeenCalledOnce()
+})
+
+test('bounds large reconciliation results to one DOM page', async () => {
+  const rows = Array.from({ length: 101 }, (_, index) => row({
+    key: `row-${index + 1}`,
+    primaryLabel: `Party ${String(index + 1).padStart(3, '0')}`,
+  }))
+  mocks.load.mockResolvedValue(report(rows))
+
+  const { view } = await renderPage('/reconciliation')
+
+  await expect.element(view.getByText('Rows 1–100 of 101')).toBeVisible()
+  expect(document.querySelectorAll('[data-testid="reconciliation-table-wrap"] tbody tr')).toHaveLength(100)
+  expect(document.body.textContent).toContain('Party 001')
+  expect(document.body.textContent).not.toContain('Party 101')
+
+  await view.getByRole('button', { name: 'Next' }).click()
+  await expect.element(view.getByText('Rows 101–101 of 101')).toBeVisible()
+  expect(document.querySelectorAll('[data-testid="reconciliation-table-wrap"] tbody tr')).toHaveLength(1)
+  expect(document.body.textContent).toContain('Party 101')
+  expect(document.body.textContent).not.toContain('Party 001')
 })

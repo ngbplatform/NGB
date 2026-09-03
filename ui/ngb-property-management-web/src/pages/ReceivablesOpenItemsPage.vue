@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
@@ -51,6 +51,8 @@ const error = ref<string | null>(null)
 const data = ref<ReceivablesOpenItemsDetailsResponseDto | null>(null)
 const activeTab = ref<OpenItemsTabKey>('charges')
 const wizardSelectedKeys = ref<string[]>([])
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const RECEIVABLE_CHARGE_SOURCE_TYPES = [
   'pm.receivable_charge',
@@ -87,9 +89,14 @@ const {
   route,
   router,
   queryKey: 'leaseId',
-  lookupById: async (leaseId) => (await getDocumentById('pm.lease', leaseId)).display ?? leaseId,
-  search: async (query) => {
-    const response = await getDocumentPage('pm.lease', { search: query, offset: 0, limit: 20 })
+  lookupById: async (leaseId, options) => (
+    await (options ? getDocumentById('pm.lease', leaseId, options) : getDocumentById('pm.lease', leaseId))
+  ).display ?? leaseId,
+  search: async (query, options) => {
+    const request = { search: query, offset: 0, limit: 20 }
+    const response = options
+      ? await getDocumentPage('pm.lease', request, options)
+      : await getDocumentPage('pm.lease', request)
     return (response.items ?? []).map((item) => ({ id: item.id, label: item.display ?? item.id }))
   },
   openTarget: async (value) => buildLookupFieldTargetUrl({
@@ -239,22 +246,31 @@ async function openDocument(documentType: string, id: string): Promise<void> {
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
   const leaseId = leaseIdFromRoute.value
   if (!leaseId) {
     data.value = null
     error.value = null
+    loading.value = false
     return
   }
 
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   try {
-    data.value = await getReceivablesOpenItemsDetails({ leaseId })
+    const nextData = await getReceivablesOpenItemsDetails({ leaseId }, { signal: controller.signal })
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    data.value = nextData
   } catch (cause) {
+    if (sequence !== loadSequence || controller.signal.aborted) return
     error.value = cause instanceof Error ? cause.message : String(cause)
     data.value = null
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -317,14 +333,17 @@ const {
   summary,
   activeTab,
   toasts,
-  suggestFactory: async () => {
+  suggestFactory: async (options) => {
     const leaseId = leaseIdFromRoute.value
     if (!leaseId) throw new Error('Select a lease first.')
-    return suggestLeaseFifoApply({
+    const request = {
       leaseId,
       createDrafts: false,
       limit: 500,
-    })
+    }
+    return options
+      ? suggestLeaseFifoApply(request, options)
+      : suggestLeaseFifoApply(request)
   },
   executeFactory: (suggestion) =>
     applyReceivablesBatch({
@@ -452,6 +471,17 @@ useOpenItemsRouteContext({
   syncAfterContextLoad,
   autoOpenApply: (current) => current[1],
   clearAutoOpenApplyInRoute: () => clearAutoOpenApplyInRoute(),
+  shouldSkip: (current, previous) => {
+    const [leaseId, shouldOpenApply] = current
+    const [previousLeaseId, previousShouldOpenApply] = previous ?? [null, false]
+    return leaseId === previousLeaseId && !shouldOpenApply && previousShouldOpenApply === true
+  },
+})
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
 })
 
 watch(

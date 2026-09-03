@@ -74,6 +74,8 @@ const router = useRouter()
 const lookupItemsByCell = ref<Record<string, LookupItem[]>>({})
 const dragState = ref<{ partCode: string; rowIndex: number } | null>(null)
 const lookupControllers = new Map<string, AbortController>()
+const PART_ROW_PAGE_SIZE = 100
+const partPageByCode = ref<Record<string, number>>({})
 
 const partFields = computed(() =>
   new Map(props.parts.map((part) => [part.partCode, listCRMDocumentPartFields(part)] as const)),
@@ -88,10 +90,49 @@ const partColumns = computed(() =>
   ),
 )
 
+const normalizedRowsByPart = computed(() =>
+  new Map(
+    props.parts.map((part) => [
+      part.partCode,
+      normalizeCRMDocumentPartRows(props.modelValue?.[part.partCode]?.rows),
+    ] as const),
+  ),
+)
+
 const documentAmount = computed(() => calculateCRMDocumentAmount(props.parts, props.modelValue))
 
 function partRows(partCode: string): RecordPartRow[] {
-  return normalizeCRMDocumentPartRows(props.modelValue?.[partCode]?.rows)
+  return normalizedRowsByPart.value.get(partCode) ?? []
+}
+
+function partPageCount(partCode: string): number {
+  return Math.max(1, Math.ceil(partRows(partCode).length / PART_ROW_PAGE_SIZE))
+}
+
+function partPage(partCode: string): number {
+  return Math.min(partPageByCode.value[partCode] ?? 0, partPageCount(partCode) - 1)
+}
+
+function visiblePartRows(partCode: string): Array<{ row: RecordPartRow; rowIndex: number }> {
+  const rows = partRows(partCode)
+  const start = partPage(partCode) * PART_ROW_PAGE_SIZE
+  return rows.slice(start, start + PART_ROW_PAGE_SIZE)
+    .map((row, index) => ({ row, rowIndex: start + index }))
+}
+
+function setPartPage(partCode: string, page: number): void {
+  partPageByCode.value = {
+    ...partPageByCode.value,
+    [partCode]: Math.max(0, Math.min(page, partPageCount(partCode) - 1)),
+  }
+}
+
+function partRowRange(partCode: string): string {
+  const total = partRows(partCode).length
+  if (total === 0) return '0 rows'
+  const start = partPage(partCode) * PART_ROW_PAGE_SIZE
+  const end = Math.min(total, start + PART_ROW_PAGE_SIZE)
+  return `Rows ${start + 1}\u2013${end} of ${total}`
 }
 
 watch(
@@ -134,7 +175,12 @@ function canManageRows(partCode: string): boolean {
 
 function addRow(partCode: string): void {
   if (!canManageRows(partCode)) return
-  emitRows(partCode, [...partRows(partCode), createEmptyRow(partCode)])
+  const rows = partRows(partCode)
+  partPageByCode.value = {
+    ...partPageByCode.value,
+    [partCode]: Math.floor(rows.length / PART_ROW_PAGE_SIZE),
+  }
+  emitRows(partCode, [...rows, createEmptyRow(partCode)])
 }
 
 function removeRow(partCode: string, rowIndex: number): void {
@@ -415,7 +461,7 @@ function formatAmount(value: number | null): string {
 
       <tbody>
         <tr
-          v-for="(row, rowIndex) in partRows(part.partCode)"
+          v-for="{ row, rowIndex } in visiblePartRows(part.partCode)"
           style="content-visibility: auto; contain-intrinsic-block-size: 54px"
           :key="`${part.partCode}:${String(row.__row_key)}`"
           class="border-t border-ngb-border align-top transition-colors hover:bg-ngb-bg"
@@ -522,6 +568,32 @@ function formatAmount(value: number | null): string {
         </tr>
       </tbody>
     </table>
+
+    <div
+      v-if="partPageCount(part.partCode) > 1"
+      class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted"
+    >
+      <span>{{ partRowRange(part.partCode) }}</span>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="partPage(part.partCode) === 0"
+          @click="setPartPage(part.partCode, partPage(part.partCode) - 1)"
+        >
+          Previous
+        </button>
+        <span>Page {{ partPage(part.partCode) + 1 }} of {{ partPageCount(part.partCode) }}</span>
+        <button
+          type="button"
+          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="partPage(part.partCode) + 1 >= partPageCount(part.partCode)"
+          @click="setPartPage(part.partCode, partPage(part.partCode) + 1)"
+        >
+          Next
+        </button>
+      </div>
+    </div>
 
     <div v-else class="px-4 py-6 text-sm text-ngb-muted">
       No rows yet.

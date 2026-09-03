@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
@@ -49,6 +49,8 @@ const error = ref<string | null>(null)
 
 const data = ref<PayablesOpenItemsDetailsResponseDto | null>(null)
 const activeTab = ref<OpenItemsTabKey>('charges')
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const PAYABLE_CHARGE_SOURCE_TYPES = ['pm.payable_charge'] as const
 const PAYABLE_CREDIT_SOURCE_TYPES = ['pm.payable_payment', 'pm.payable_credit_memo'] as const
@@ -74,9 +76,11 @@ const {
   route,
   router,
   queryKey: 'partyId',
-  lookupById: async (partyId) => (await getCatalogById('pm.party', partyId)).display ?? partyId,
-  search: async (query) => {
-    const response = await getCatalogPage('pm.party', {
+  lookupById: async (partyId, options) => (
+    await (options ? getCatalogById('pm.party', partyId, options) : getCatalogById('pm.party', partyId))
+  ).display ?? partyId,
+  search: async (query, options) => {
+    const request = {
       offset: 0,
       limit: 20,
       search: query,
@@ -84,7 +88,10 @@ const {
         deleted: 'active',
         is_vendor: 'true',
       },
-    })
+    }
+    const response = options
+      ? await getCatalogPage('pm.party', request, options)
+      : await getCatalogPage('pm.party', request)
     return (response.items ?? []).map((item) => ({ id: item.id, label: item.display ?? item.id }))
   },
   openTarget: async (value) => buildLookupFieldTargetUrl({
@@ -106,16 +113,21 @@ const {
   route,
   router,
   queryKey: 'propertyId',
-  lookupById: async (propertyId) => (await getCatalogById('pm.property', propertyId)).display ?? propertyId,
-  search: async (query) => {
-    const response = await getCatalogPage('pm.property', {
+  lookupById: async (propertyId, options) => (
+    await (options ? getCatalogById('pm.property', propertyId, options) : getCatalogById('pm.property', propertyId))
+  ).display ?? propertyId,
+  search: async (query, options) => {
+    const request = {
       offset: 0,
       limit: 20,
       search: query,
       filters: {
         deleted: 'active',
       },
-    })
+    }
+    const response = options
+      ? await getCatalogPage('pm.property', request, options)
+      : await getCatalogPage('pm.property', request)
     return (response.items ?? []).map((item) => ({ id: item.id, label: item.display ?? item.id }))
   },
   openTarget: async (value) => buildLookupFieldTargetUrl({
@@ -288,23 +300,32 @@ function creditDocumentTypeLabel(documentType: string | null | undefined): strin
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
   const partyId = partyIdFromRoute.value
   const propId = propertyIdFromRoute.value
   if (!partyId || !propId) {
     data.value = null
     error.value = null
+    loading.value = false
     return
   }
 
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   try {
-    data.value = await getPayablesOpenItemsDetails({ partyId, propertyId: propId })
+    const nextData = await getPayablesOpenItemsDetails({ partyId, propertyId: propId }, { signal: controller.signal })
+    if (sequence !== loadSequence || controller.signal.aborted) return
+    data.value = nextData
   } catch (cause) {
+    if (sequence !== loadSequence || controller.signal.aborted) return
     error.value = cause instanceof Error ? cause.message : String(cause)
     data.value = null
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -366,17 +387,20 @@ const {
   summary,
   activeTab,
   toasts,
-  suggestFactory: async (): Promise<PayablesSuggestFifoApplyResponseDto> => {
+  suggestFactory: async (options): Promise<PayablesSuggestFifoApplyResponseDto> => {
     const partyId = partyIdFromRoute.value
     const propId = propertyIdFromRoute.value
     if (!partyId || !propId) throw new Error('Select a vendor and property first.')
 
-    return suggestPayablesFifoApply({
+    const request = {
       partyId,
       propertyId: propId,
       createDrafts: false,
       limit: 500,
-    })
+    }
+    return options
+      ? suggestPayablesFifoApply(request, options)
+      : suggestPayablesFifoApply(request)
   },
   executeFactory: (suggestion): Promise<PayablesApplyBatchResponseDto> =>
     applyPayablesBatch({
@@ -492,6 +516,12 @@ useOpenItemsRouteContext({
   afterSync: async (current) => {
     if (current[3] && !current[2]) clearRefreshFlagInRoute()
   },
+})
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
 })
 
 watch(

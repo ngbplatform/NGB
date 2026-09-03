@@ -271,7 +271,7 @@ test('migrates legacy accountId query, loads metadata once, and wires drawer act
     onlyActive: null,
     includeDeleted: false,
     onlyDeleted: null,
-  })
+  }, { signal: expect.any(AbortSignal) })
 
   expect(router.currentRoute.value.query.id).toBe('legacy-1')
   expect(router.currentRoute.value.query.accountId).toBeUndefined()
@@ -320,7 +320,7 @@ test('updates paging and trash filters, opens create and edit drawers, and refre
     onlyActive: null,
     includeDeleted: true,
     onlyDeleted: true,
-  })
+  }, { signal: expect.any(AbortSignal) })
 
   await view.getByRole('button', { name: 'Layout prev' }).click()
   await flushUi()
@@ -337,7 +337,7 @@ test('updates paging and trash filters, opens create and edit drawers, and refre
     onlyActive: null,
     includeDeleted: true,
     onlyDeleted: true,
-  })
+  }, { signal: expect.any(AbortSignal) })
 
   await view.getByRole('button', { name: 'Layout create' }).click()
   await flushUi()
@@ -540,7 +540,10 @@ test('covers explicit route/storage props, current-id legacy cleanup, row status
 
   expect(router.currentRoute.value.query.id).toBe('current-id')
   expect(router.currentRoute.value.query.accountId).toBeUndefined()
-  expect(chartMocks.getPage).toHaveBeenCalledWith(expect.objectContaining({ offset: 40, limit: 50 }))
+  expect(chartMocks.getPage).toHaveBeenCalledWith(
+    expect.objectContaining({ offset: 40, limit: 50 }),
+    { signal: expect.any(AbortSignal) },
+  )
   expect(document.body.textContent).toContain('storage:custom-storage')
   expect(document.body.textContent).toContain('cashFlowRole=')
   expect(document.body.textContent).toContain('isActive=No')

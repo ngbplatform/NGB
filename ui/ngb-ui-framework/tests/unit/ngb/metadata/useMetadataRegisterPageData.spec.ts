@@ -214,6 +214,7 @@ describe('metadata register page data', () => {
 
     expect(register.loading.value).toBe(false)
     expect(register.error.value).toBe('Service unavailable')
+    expect(register.metadata.value?.displayName).toBe('Invoices')
     expect(register.page.value).toBeNull()
     expect(register.rows.value).toEqual([])
   })
@@ -327,5 +328,37 @@ describe('metadata register page data', () => {
     await expect(staleLoad).resolves.toBe(false)
     expect(register.error.value).toBeNull()
     expect(register.loading.value).toBe(false)
+  })
+
+  it('publishes metadata with an empty page so lookup prefetch never combines generations', async () => {
+    const nextPage = createDeferred<ReturnType<typeof createPage>>()
+    const oldMetadata = createMetadata()
+    const newMetadata = { ...createMetadata(), displayName: 'Updated invoices' }
+    const oldPage = createPage()
+    const updatedPage = createPage()
+    updatedPage.items[0]!.id = 'updated-doc'
+    const loadMetadata = vi.fn()
+      .mockResolvedValueOnce(oldMetadata)
+      .mockResolvedValueOnce(newMetadata)
+    const loadPage = vi.fn()
+      .mockResolvedValueOnce(oldPage)
+      .mockReturnValueOnce(nextPage.promise)
+    const { register } = createHarness({ loadMetadata, loadPage })
+
+    await vi.waitFor(() => expect(register.page.value?.items[0]?.id).toBe('doc-1'))
+    prefetchLookupsForPageMock.mockClear()
+    const reload = register.load()
+    await vi.waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
+
+    expect(register.metadata.value?.displayName).toBe(newMetadata.displayName)
+    expect(register.page.value).toBeNull()
+    expect(prefetchLookupsForPageMock).not.toHaveBeenCalled()
+
+    nextPage.resolve(updatedPage)
+    await expect(reload).resolves.toBe(true)
+    await flushAsync()
+    expect(register.metadata.value?.displayName).toBe(newMetadata.displayName)
+    expect(register.page.value?.items[0]?.id).toBe(updatedPage.items[0]?.id)
+    expect(prefetchLookupsForPageMock).toHaveBeenCalledTimes(1)
   })
 })

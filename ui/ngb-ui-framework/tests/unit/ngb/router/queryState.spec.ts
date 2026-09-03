@@ -100,11 +100,11 @@ describe('query state helpers', () => {
 
     await selection.hydrateSelected()
     expect(selection.routeId.value).toBe(EXISTING_ID)
-    expect(lookupById).toHaveBeenCalledWith(EXISTING_ID)
+    expect(lookupById).toHaveBeenCalledWith(EXISTING_ID, { signal: expect.any(AbortSignal) })
     expect(selection.selected.value).toEqual({ id: EXISTING_ID, label: 'Cash' })
 
     await selection.onQuery('  revenue  ')
-    expect(search).toHaveBeenCalledWith('revenue')
+    expect(search).toHaveBeenCalledWith('revenue', { signal: expect.any(AbortSignal) })
     expect(selection.items.value).toEqual([{ id: SELECTED_ID, label: 'Revenue' }])
 
     selection.onSelect({ id: SELECTED_ID, label: 'Revenue' })
@@ -180,5 +180,42 @@ describe('query state helpers', () => {
 
     await selection.hydrateSelected()
     expect(selection.selected.value).toEqual({ id: EXISTING_ID, label: EXISTING_ID })
+  })
+
+  it('aborts and ignores stale route hydration and search responses', async () => {
+    const route = createRoute({ propertyId: EXISTING_ID })
+    let resolveHydration!: (value: string) => void
+    let resolveSearch!: (value: Array<{ id: string; label: string }>) => void
+    const lookupById = vi.fn()
+      .mockImplementationOnce(() => new Promise<string>((resolve) => { resolveHydration = resolve }))
+      .mockResolvedValueOnce('Selected property')
+    const search = vi.fn()
+      .mockImplementationOnce(() => new Promise<Array<{ id: string; label: string }>>((resolve) => { resolveSearch = resolve }))
+      .mockResolvedValueOnce([{ id: SELECTED_ID, label: 'Fresh result' }])
+    const selection = useRouteLookupSelection({
+      route,
+      router: createRouter(),
+      queryKey: 'propertyId',
+      lookupById,
+      search,
+      openTarget: vi.fn(),
+    })
+
+    const staleHydration = selection.hydrateSelected()
+    route.query.propertyId = SELECTED_ID
+    const freshHydration = selection.hydrateSelected()
+    await freshHydration
+    expect(lookupById.mock.calls[0]?.[1]?.signal.aborted).toBe(true)
+    resolveHydration('Stale property')
+    await staleHydration
+    expect(selection.selected.value).toEqual({ id: SELECTED_ID, label: 'Selected property' })
+
+    const staleSearch = selection.onQuery('stale')
+    const freshSearch = selection.onQuery('fresh')
+    await freshSearch
+    expect(search.mock.calls[0]?.[1]?.signal.aborted).toBe(true)
+    resolveSearch([{ id: EXISTING_ID, label: 'Stale result' }])
+    await staleSearch
+    expect(selection.items.value).toEqual([{ id: SELECTED_ID, label: 'Fresh result' }])
   })
 })

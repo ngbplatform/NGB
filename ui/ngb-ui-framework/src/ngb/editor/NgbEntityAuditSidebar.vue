@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import { toErrorMessage } from '../utils/errorMessage';
 import { stableStringify } from '../utils/stableValue';
@@ -26,6 +26,7 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const items = ref<AuditEvent[]>([]);
 let loadSequence = 0;
+let loadController: AbortController | null = null;
 
 const canLoad = computed(() => !!props.entityId);
 const title = computed(() => props.entityTitle?.trim() || 'Audit Log');
@@ -201,17 +202,24 @@ function getString(value: unknown): string | null {
 
 async function load() {
   const seq = ++loadSequence;
+  loadController?.abort();
+  const controller = new AbortController();
+  loadController = controller;
   loading.value = true;
   error.value = null;
   try {
-    const page = await getConfiguredNgbEditor().loadEntityAuditLog(props.entityKind, props.entityId!, { limit: 100 });
-    if (seq !== loadSequence) return;
+    const page = await getConfiguredNgbEditor().loadEntityAuditLog(props.entityKind, props.entityId!, {
+      limit: 100,
+      signal: controller.signal,
+    });
+    if (seq !== loadSequence || controller.signal.aborted) return;
     items.value = page.items;
   } catch (cause) {
-    if (seq !== loadSequence) return;
+    if (seq !== loadSequence || controller.signal.aborted) return;
     error.value = toErrorMessage(cause, 'Failed to load the audit log.');
   } finally {
     if (seq === loadSequence) loading.value = false;
+    if (loadController === controller) loadController = null;
   }
 }
 
@@ -219,6 +227,8 @@ watch(
   () => [props.open, props.entityKind, props.entityId],
   () => {
     loadSequence += 1;
+    loadController?.abort();
+    loadController = null;
     items.value = [];
     error.value = null;
     loading.value = false;
@@ -226,6 +236,12 @@ watch(
   },
   { immediate: true },
 );
+
+onBeforeUnmount(() => {
+  loadSequence += 1;
+  loadController?.abort();
+  loadController = null;
+});
 </script>
 
 <template>

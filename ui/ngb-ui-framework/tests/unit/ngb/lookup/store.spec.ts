@@ -229,6 +229,46 @@ describe('lookup store', () => {
     expect(store.labelForDocument('pm.invoice', invoiceId)).toBe('Invoice INV-003')
   })
 
+  it('coalesces concurrent label resolution for catalog, coa, and document ids', async () => {
+    let resolveCatalog!: (items: Array<{ id: string; label: string }>) => void
+    let resolveCoa!: (items: Array<{ id: string; label: string }>) => void
+    let resolveDocuments!: (items: Array<{ id: string; label: string; documentType: string }>) => void
+    lookupConfigMocks.loadCatalogItemsByIds.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveCatalog = resolve
+    }))
+    lookupConfigMocks.loadCoaItemsByIds.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveCoa = resolve
+    }))
+    lookupConfigMocks.loadDocumentItemsByIds.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveDocuments = resolve
+    }))
+    const store = useLookupStore()
+
+    const catalogRequests = [
+      store.ensureCatalogLabels('pm.property', [propertyId]),
+      store.ensureCatalogLabels('pm.property', [propertyId]),
+    ]
+    const coaRequests = [store.ensureCoaLabels([coaId]), store.ensureCoaLabels([coaId])]
+    const documentRequests = [
+      store.ensureDocumentLabels('pm.invoice', [invoiceId]),
+      store.ensureAnyDocumentLabels(['pm.invoice'], [invoiceId]),
+    ]
+
+    await vi.waitFor(() => {
+      expect(lookupConfigMocks.loadCatalogItemsByIds).toHaveBeenCalledTimes(1)
+      expect(lookupConfigMocks.loadCoaItemsByIds).toHaveBeenCalledTimes(1)
+      expect(lookupConfigMocks.loadDocumentItemsByIds).toHaveBeenCalledTimes(1)
+    })
+    resolveCatalog([{ id: propertyId, label: 'Riverfront Tower' }])
+    resolveCoa([{ id: coaId, label: '1010 — Cash' }])
+    resolveDocuments([{ id: invoiceId, label: 'Invoice INV-004', documentType: 'pm.invoice' }])
+    await Promise.all([...catalogRequests, ...coaRequests, ...documentRequests])
+
+    expect(store.labelForCatalog('pm.property', propertyId)).toBe('Riverfront Tower')
+    expect(store.labelForCoa(coaId)).toBe('1010 — Cash')
+    expect(store.labelForDocument('pm.invoice', invoiceId)).toBe('Invoice INV-004')
+  })
+
   it('bounds long-lived label caches while retaining the newest entries', async () => {
     const id = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
     const catalogItems = Array.from({ length: 1_001 }, (_, index) => ({

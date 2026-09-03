@@ -292,7 +292,10 @@ test('loads lease context, projects rows, labels all document types, and resolve
   await router.push('/receivables/open-items')
   await mocks.routeContextArgs.load()
   await flushUi()
-  expect(mocks.details).toHaveBeenCalledWith({ leaseId: 'lease-1' })
+  expect(mocks.details).toHaveBeenCalledWith(
+    { leaseId: 'lease-1' },
+    { signal: expect.any(AbortSignal) },
+  )
   await expect.element(view.getByText('badges:Tenant: Tenant One|Property: Property One|Lease: Lease 101')).toBeVisible()
   expect(mocks.shellProps.chargeGrid.rows[1]).toMatchObject({ chargeType: '—', memo: '' })
   expect(mocks.shellProps.creditGrid.rows[1]).toMatchObject({ creditType: 'Credit Memo', memo: '' })

@@ -30,6 +30,7 @@ export async function hydrateReportLookupItemsFromFilters(
 ): Promise<void> {
   if (!filters) return
 
+  const tasks: Array<Promise<{ state: ReportComposerDraft['filters'][string]; items: ReportComposerLookupItem[] }>> = []
   for (const field of definition.filters ?? []) {
     const state = draft.filters[field.fieldCode]
     const filterValue = filters[field.fieldCode]
@@ -38,7 +39,15 @@ export async function hydrateReportLookupItemsFromFilters(
     const ids = extractLookupIds(filterValue.value)
     if (ids.length === 0) continue
 
-    state.items = await hydrateResolvedLookupItems(lookupStore, field.lookup, ids)
+    tasks.push(
+      hydrateResolvedLookupItems(lookupStore, field.lookup, ids)
+        .then((items) => ({ state, items })),
+    )
+  }
+
+  const hydrated = await Promise.all(tasks)
+  for (const { state, items } of hydrated) {
+    state.items = items
     state.raw = ''
   }
 }

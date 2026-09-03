@@ -1,4 +1,4 @@
-import { httpGet, httpPost } from '@ngbplatform/ui'
+import { httpGet, httpPost, type HttpRequestOptions } from '@ngbplatform/ui'
 import type {
   PayablesApplyBatchRequestDto,
   PayablesApplyBatchResponseDto,
@@ -14,19 +14,25 @@ export async function getPayablesOpenItemsDetails(args: {
   propertyId: string
   asOfMonth?: string | null // DateOnly: YYYY-MM-DD
   toMonth?: string | null   // DateOnly: YYYY-MM-DD
-}): Promise<PayablesOpenItemsDetailsResponseDto> {
-  return await httpGet<PayablesOpenItemsDetailsResponseDto>('/api/payables/open-items/details', {
+}, options?: HttpRequestOptions): Promise<PayablesOpenItemsDetailsResponseDto> {
+  const query = {
     partyId: args.partyId,
     propertyId: args.propertyId,
     asOfMonth: args.asOfMonth,
     toMonth: args.toMonth,
-  })
+  }
+  return options
+    ? await httpGet<PayablesOpenItemsDetailsResponseDto>('/api/payables/open-items/details', query, options)
+    : await httpGet<PayablesOpenItemsDetailsResponseDto>('/api/payables/open-items/details', query)
 }
 
 export async function suggestPayablesFifoApply(
   request: PayablesSuggestFifoApplyRequestDto,
+  options?: HttpRequestOptions,
 ): Promise<PayablesSuggestFifoApplyResponseDto> {
-  return await httpPost<PayablesSuggestFifoApplyResponseDto>('/api/payables/apply/fifo/suggest', request)
+  return options
+    ? await httpPost<PayablesSuggestFifoApplyResponseDto>('/api/payables/apply/fifo/suggest', request, options)
+    : await httpPost<PayablesSuggestFifoApplyResponseDto>('/api/payables/apply/fifo/suggest', request)
 }
 
 export async function applyPayablesBatch(
@@ -43,10 +49,13 @@ export async function getPayablesReconciliation(args: {
   fromMonthInclusive: string // YYYY-MM-DD
   toMonthInclusive: string   // YYYY-MM-DD
   mode?: PayablesReconciliationModeDto | null
-}): Promise<PayablesReconciliationReportDto> {
-  return await httpGet<PayablesReconciliationReportDto>('/api/payables/reconciliation', {
+}, options?: HttpRequestOptions): Promise<PayablesReconciliationReportDto> {
+  const query = {
     fromMonthInclusive: args.fromMonthInclusive,
     toMonthInclusive: args.toMonthInclusive,
     mode: args.mode,
-  })
+  }
+  return options
+    ? await httpGet<PayablesReconciliationReportDto>('/api/payables/reconciliation', query, options)
+    : await httpGet<PayablesReconciliationReportDto>('/api/payables/reconciliation', query)
 }

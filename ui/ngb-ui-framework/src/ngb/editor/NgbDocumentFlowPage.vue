@@ -39,6 +39,7 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 const graph = ref<RelationshipGraph | null>(null);
 let loadSequence = 0;
+let loadController: AbortController | null = null;
 
 const documentType = computed(() => String(route.params.documentType ?? '').trim());
 const documentId = computed(() => String(route.params.id ?? '').trim());
@@ -255,6 +256,7 @@ async function refreshPage(): Promise<void> {
 }
 
 async function load(): Promise<void> {
+  loadController?.abort();
   if (!documentType.value || !documentId.value) {
     loadSequence += 1;
     error.value = 'Document type or id is missing.';
@@ -266,6 +268,8 @@ async function load(): Promise<void> {
   const seq = ++loadSequence;
   const requestedDocumentType = documentType.value;
   const requestedDocumentId = documentId.value;
+  const controller = new AbortController();
+  loadController = controller;
   loading.value = true;
   error.value = null;
   try {
@@ -274,20 +278,24 @@ async function load(): Promise<void> {
       requestedDocumentId,
       DEFAULT_DEPTH,
       DEFAULT_MAX_NODES,
+      { signal: controller.signal },
     );
-    if (seq !== loadSequence) return;
+    if (seq !== loadSequence || controller.signal.aborted) return;
     graph.value = nextGraph;
   } catch (cause) {
-    if (seq !== loadSequence) return;
+    if (seq !== loadSequence || controller.signal.aborted) return;
     error.value = toErrorMessage(cause, 'Could not load document flow.');
     graph.value = null;
   } finally {
     if (seq === loadSequence) loading.value = false;
+    if (loadController === controller) loadController = null;
   }
 }
 
 onBeforeUnmount(() => {
   loadSequence += 1;
+  loadController?.abort();
+  loadController = null;
 });
 
 watch(

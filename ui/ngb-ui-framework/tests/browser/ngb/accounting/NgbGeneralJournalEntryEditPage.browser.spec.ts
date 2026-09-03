@@ -556,7 +556,7 @@ test('loads an existing entry, hydrates lookup labels, and wires share, audit, b
   const { router, view } = await renderPage('/accounting/general-journal-entries/gje-10')
 
   expect(gjeEditMocks.getEntry).toHaveBeenCalledTimes(1)
-  expect(gjeEditMocks.getEntry).toHaveBeenCalledWith('gje-10')
+  expect(gjeEditMocks.getEntry).toHaveBeenCalledWith('gje-10', { signal: expect.any(AbortSignal) })
   expect(gjeEditMocks.lookupStore.ensureCoaLabels).not.toHaveBeenCalled()
   expect(gjeEditMocks.lookupStore.ensureDocumentLabels).not.toHaveBeenCalled()
   expect(gjeEditMocks.getAccountContext).not.toHaveBeenCalled()

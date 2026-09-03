@@ -60,6 +60,7 @@ export function useMetadataListFilters<
   const lookupSearchSeqByFilterKey = ref<Record<string, number>>({});
   const filterDraftSyncToken = ref(0);
   const filterCommitTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const lookupSearchControllers = new Map<string, AbortController>();
   const commitDelayMs = args.commitDelayMs ?? 280;
 
   function listFilterStateFor(key: string): FilterFieldState<TItem> {
@@ -92,10 +93,14 @@ export function useMetadataListFilters<
     });
   }
 
-  async function searchListFilterLookupItems(field: TField, query: string): Promise<TItem[]> {
+  async function searchListFilterLookupItems(
+    field: TField,
+    query: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<TItem[]> {
     const hint = resolveListFilterLookupHint(field);
     if (!hint) return [];
-    return await searchResolvedLookupItems(args.lookupStore, hint, query);
+    return await searchResolvedLookupItems(args.lookupStore, hint, query, options);
   }
 
   async function syncFilterDraftFromRoute() {
@@ -110,20 +115,22 @@ export function useMetadataListFilters<
 
     filterDraft.value = next;
 
-    for (const field of filters) {
-      if (!field.lookup) continue;
+    const hydrationTasks = filters.map(async (field) => {
+      if (!field.lookup) return undefined;
 
       const raw = normalizeSingleQueryValue(args.route.query[field.key]);
       const ids = (field.isMulti ? splitFilterValues(raw) : [raw]).filter(isGuidString);
-      if (ids.length === 0) continue;
+      if (ids.length === 0) return undefined;
 
       const hint = resolveListFilterLookupHint(field);
-      next[field.key] = {
-        raw,
-        items: hint ? await hydrateResolvedLookupItems(args.lookupStore, hint, ids) : [],
-      };
+      const items = hint ? await hydrateResolvedLookupItems(args.lookupStore, hint, ids) : [];
+      return { key: field.key, raw, items };
+    });
 
-      if (token !== filterDraftSyncToken.value) return;
+    const hydrated = await Promise.all(hydrationTasks);
+    if (token !== filterDraftSyncToken.value) return;
+    for (const result of hydrated) {
+      if (result) next[result.key] = { raw: result.raw, items: result.items };
     }
 
     filterDraft.value = next;
@@ -166,11 +173,30 @@ export function useMetadataListFilters<
       [payload.key]: nextSeq,
     };
 
-    const items = payload.query.trim()
-      ? await searchListFilterLookupItems(field, payload.query)
-      : [];
+    lookupSearchControllers.get(payload.key)?.abort();
+    const query = payload.query.trim();
+    if (!query) {
+      lookupSearchControllers.delete(payload.key);
+      lookupItemsByFilterKey.value = {
+        ...lookupItemsByFilterKey.value,
+        [payload.key]: [],
+      };
+      return;
+    }
 
-    if (lookupSearchSeqByFilterKey.value[payload.key] !== nextSeq) return;
+    const controller = new AbortController();
+    lookupSearchControllers.set(payload.key, controller);
+    let items: TItem[];
+    try {
+      items = await searchListFilterLookupItems(field, query, { signal: controller.signal });
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      throw cause;
+    } finally {
+      if (lookupSearchControllers.get(payload.key) === controller) lookupSearchControllers.delete(payload.key);
+    }
+
+    if (controller.signal.aborted || lookupSearchSeqByFilterKey.value[payload.key] !== nextSeq) return;
 
     lookupItemsByFilterKey.value = {
       ...lookupItemsByFilterKey.value,
@@ -280,12 +306,16 @@ export function useMetadataListFilters<
       filterDraft.value = {};
       lookupItemsByFilterKey.value = {};
       lookupSearchSeqByFilterKey.value = {};
+      lookupSearchControllers.forEach((controller) => controller.abort());
+      lookupSearchControllers.clear();
       clearAllPendingFilterCommits();
     },
   );
 
   onBeforeUnmount(() => {
     clearAllPendingFilterCommits();
+    lookupSearchControllers.forEach((controller) => controller.abort());
+    lookupSearchControllers.clear();
   });
 
   return {

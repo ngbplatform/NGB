@@ -36,7 +36,7 @@ type CreateReconciliationPageDefinitionArgs<TRow, TReport> = {
   glOnlyExplanation: string
   openItemsOnlyExplanation: string
   toRow: (row: TRow) => ReconciliationRow
-  loadReport: (request: ReconciliationLoadRequest) => Promise<TReport>
+  loadReport: (request: ReconciliationLoadRequest, options?: { signal?: AbortSignal }) => Promise<TReport>
   getRows: (report: TReport) => TRow[]
   getTotalLedgerNet: (report: TReport) => number
   getTotalOpenItemsNet: (report: TReport) => number
@@ -79,8 +79,8 @@ export function createReconciliationPageDefinition<TRow, TReport>(
           return 'Investigate the row.'
       }
     },
-    load: async (request): Promise<ReconciliationReport> => {
-      const report = await args.loadReport(request)
+    load: async (request, options): Promise<ReconciliationReport> => {
+      const report = await args.loadReport(request, options)
       return {
         totalLedgerNet: args.getTotalLedgerNet(report),
         totalOpenItemsNet: args.getTotalOpenItemsNet(report),

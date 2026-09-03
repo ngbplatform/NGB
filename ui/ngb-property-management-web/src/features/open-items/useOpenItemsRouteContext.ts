@@ -35,11 +35,17 @@ function didContextChange(current: readonly unknown[], previous: readonly unknow
 export function useOpenItemsRouteContext<TTuple extends readonly unknown[]>(args: UseOpenItemsRouteContextArgs<TTuple>) {
   watch(
     args.source,
-    async (current, previous) => {
+    async (current, previous, onCleanup) => {
       if (args.shouldSkip?.(current, previous)) return
+      let active = true
+      onCleanup?.(() => {
+        active = false
+      })
 
       await args.hydrateContext()
+      if (!active) return
       await args.load()
+      if (!active) return
       await args.syncAfterContextLoad({
         contextChanged: didContextChange(current, previous, args.contextKeyCount),
         preferredTab: args.preferredTab.value,
@@ -47,6 +53,7 @@ export function useOpenItemsRouteContext<TTuple extends readonly unknown[]>(args
         clearAutoOpenApplyInRoute: () => args.clearAutoOpenApplyInRoute(current, previous),
         currentError: args.currentError.value,
       })
+      if (!active) return
       await args.afterSync?.(current, previous)
     },
     { immediate: true },

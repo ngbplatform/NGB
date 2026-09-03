@@ -26,6 +26,46 @@ function normalizeDocumentTypes(documentTypes: string[]): string[] {
   return Array.from(new Set(documentTypes.map((entry) => String(entry ?? '').trim()).filter((entry) => entry.length > 0)))
 }
 
+type PendingLabelRequests = Map<string, Map<string, Promise<void>>>
+
+async function coalesceLabelRequests(
+  requests: PendingLabelRequests,
+  scope: string,
+  ids: readonly string[],
+  load: (ids: string[]) => Promise<void>,
+): Promise<void> {
+  let pendingById = requests.get(scope)
+  if (!pendingById) {
+    pendingById = new Map<string, Promise<void>>()
+    requests.set(scope, pendingById)
+  }
+
+  const waitFor = new Set<Promise<void>>()
+  const freshIds: string[] = []
+  for (const id of ids) {
+    const pending = pendingById.get(id)
+    if (pending) waitFor.add(pending)
+    else freshIds.push(id)
+  }
+
+  if (freshIds.length > 0) {
+    let request!: Promise<void>
+    request = Promise.resolve()
+      .then(() => load(freshIds))
+      .finally(() => {
+        for (const id of freshIds) {
+          if (pendingById?.get(id) === request) pendingById.delete(id)
+        }
+        if (pendingById?.size === 0) requests.delete(scope)
+      })
+
+    for (const id of freshIds) pendingById.set(id, request)
+    waitFor.add(request)
+  }
+
+  await Promise.all(waitFor)
+}
+
 async function loadCoaItems(config: LookupFrameworkConfig, ids: string[]): Promise<LookupItem[]> {
   return await config.loadCoaItemsByIds(ids)
 }
@@ -53,6 +93,9 @@ export const useLookupStore = defineStore('lookup', () => {
   const catalogLabels = ref<Record<string, Record<string, string>>>({})
   const coaLabels = ref<Record<string, string>>({})
   const documentLabels = ref<Record<string, Record<string, string>>>({})
+  const pendingCatalogLabels: PendingLabelRequests = new Map()
+  const pendingCoaLabels: PendingLabelRequests = new Map()
+  const pendingDocumentLabels: PendingLabelRequests = new Map()
 
   function mergeCatalogItems(catalogType: string, items: readonly LookupItem[]) {
     if (items.length === 0) return
@@ -116,9 +159,11 @@ export const useLookupStore = defineStore('lookup', () => {
     const missing = uniq.filter((id) => !existing[id])
     if (missing.length === 0) return
 
-    const config = getConfiguredNgbLookup()
-    const items = await config.loadCatalogItemsByIds(catalogType, missing)
-    mergeCatalogItems(catalogType, items)
+    await coalesceLabelRequests(pendingCatalogLabels, catalogType, missing, async (freshIds) => {
+      const config = getConfiguredNgbLookup()
+      const items = await config.loadCatalogItemsByIds(catalogType, freshIds)
+      mergeCatalogItems(catalogType, items)
+    })
   }
 
   function labelForCatalog(catalogType: string, id: unknown): string {
@@ -144,24 +189,24 @@ export const useLookupStore = defineStore('lookup', () => {
     const missing = uniq.filter((id) => !coaLabels.value[id])
     if (missing.length === 0) return
 
-    const config = getConfiguredNgbLookup()
-    const items = await loadCoaItems(config, missing).catch(() => [])
-    const next = { ...coaLabels.value }
+    await coalesceLabelRequests(pendingCoaLabels, 'coa', missing, async (freshIds) => {
+      const config = getConfiguredNgbLookup()
+      const items = await loadCoaItems(config, freshIds).catch(() => [])
+      const next = { ...coaLabels.value }
 
-    for (const item of items) {
-      const id = String(item.id ?? '').trim()
-      const label = String(item.label ?? '').trim()
-      if (!id || !label) continue
-      next[id] = label
-    }
-
-    for (const id of missing) {
-      if (!next[id]) {
-        next[id] = shortGuid(id)
+      for (const item of items) {
+        const id = String(item.id ?? '').trim()
+        const label = String(item.label ?? '').trim()
+        if (!id || !label) continue
+        next[id] = label
       }
-    }
 
-    coaLabels.value = boundLabels(next, MAX_COA_LABELS)
+      for (const id of freshIds) {
+        if (!next[id]) next[id] = shortGuid(id)
+      }
+
+      coaLabels.value = boundLabels(next, MAX_COA_LABELS)
+    })
   }
 
   function labelForCoa(id: unknown): string {
@@ -193,17 +238,18 @@ export const useLookupStore = defineStore('lookup', () => {
     const missing = uniq.filter((id) => !types.some((documentType) => !!documentLabels.value[documentType]?.[id]))
     if (missing.length === 0) return
 
-    const config = getConfiguredNgbLookup()
-    const items = await loadResolvedDocumentItems(config, types, missing).catch(() => [])
-    mergeResolvedDocumentItems(items)
+    const requestScope = JSON.stringify(types)
+    await coalesceLabelRequests(pendingDocumentLabels, requestScope, missing, async (freshIds) => {
+      const config = getConfiguredNgbLookup()
+      const items = await loadResolvedDocumentItems(config, types, freshIds).catch(() => [])
+      mergeResolvedDocumentItems(items)
 
-    const resolvedIds = new Set(items.map((item) => item.id))
-    const fallbackType = types[0]!
-
-    mergeDocumentItems(
-      fallbackType,
-      missing.filter((id) => !resolvedIds.has(id)).map((id) => ({ id, label: shortGuid(id) })),
-    )
+      const resolvedIds = new Set(items.map((item) => item.id))
+      mergeDocumentItems(
+        types[0]!,
+        freshIds.filter((id) => !resolvedIds.has(id)).map((id) => ({ id, label: shortGuid(id) })),
+      )
+    })
   }
 
   async function ensureDocumentLabels(documentType: string, ids: string[]) {
@@ -214,15 +260,18 @@ export const useLookupStore = defineStore('lookup', () => {
     const missing = uniq.filter((id) => !existing[id])
     if (missing.length === 0) return
 
-    const config = getConfiguredNgbLookup()
-    const items = await loadResolvedDocumentItems(config, [documentType], missing).catch(() => [])
-    mergeResolvedDocumentItems(items)
+    const types = [documentType]
+    await coalesceLabelRequests(pendingDocumentLabels, JSON.stringify(types), missing, async (freshIds) => {
+      const config = getConfiguredNgbLookup()
+      const items = await loadResolvedDocumentItems(config, types, freshIds).catch(() => [])
+      mergeResolvedDocumentItems(items)
 
-    const resolvedIds = new Set(items.map((item) => item.id))
-    mergeDocumentItems(
-      documentType,
-      missing.filter((id) => !resolvedIds.has(id)).map((id) => ({ id, label: shortGuid(id) })),
-    )
+      const resolvedIds = new Set(items.map((item) => item.id))
+      mergeDocumentItems(
+        documentType,
+        freshIds.filter((id) => !resolvedIds.has(id)).map((id) => ({ id, label: shortGuid(id) })),
+      )
+    })
   }
 
   function labelForAnyDocument(documentTypes: string[], id: unknown): string {

@@ -53,5 +53,5 @@ export type ReconciliationPageDefinition = {
   movementNotes: string[]
   describeMode: (args: ReconciliationModeDescriptionArgs) => string
   explainRow: (row: ReconciliationRow) => string
-  load: (request: ReconciliationLoadRequest) => Promise<ReconciliationReport>
+  load: (request: ReconciliationLoadRequest, options?: { signal?: AbortSignal }) => Promise<ReconciliationReport>
 }

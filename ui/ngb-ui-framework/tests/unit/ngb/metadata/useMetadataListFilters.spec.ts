@@ -134,6 +134,7 @@ describe('metadata list filters', () => {
     })
 
     await flushAsync()
+    await vi.waitFor(() => expect(listFilters.filterDraft.value.property_id?.items).toHaveLength(2))
 
     expect(lookupStore.ensureCatalogLabels).toHaveBeenCalledWith('pm.property', [
       '11111111-1111-1111-1111-111111111111',
@@ -270,6 +271,7 @@ describe('metadata list filters', () => {
     await Promise.resolve()
     const second = harness.listFilters.handleLookupQuery({ key: 'property_id', query: 'second' })
     await second
+    expect(harness.lookupStore.searchCatalog.mock.calls[0]?.[2]?.signal.aborted).toBe(true)
     resolveFirst([{ id: 'first', label: 'First result' }])
     await first
 
@@ -284,6 +286,7 @@ describe('metadata list filters', () => {
       property_id: '11111111-1111-1111-1111-111111111111',
     }, { filters: singleLookupFilters })
     await flushAsync()
+    await vi.waitFor(() => expect(singleLookup.listFilters.filterDraft.value.property_id?.items).toHaveLength(1))
     expect(singleLookup.listFilters.filterDraft.value.property_id?.items).toHaveLength(1)
   })
 

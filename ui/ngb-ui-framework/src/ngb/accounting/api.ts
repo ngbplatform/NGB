@@ -35,12 +35,17 @@ export async function getChartOfAccountsPage(
     : await httpGet<ChartOfAccountsPageDto>(url);
 }
 
-export async function getChartOfAccountsMetadata(): Promise<ChartOfAccountsMetadataDto> {
-  return await httpGet<ChartOfAccountsMetadataDto>('/api/chart-of-accounts/metadata');
+export async function getChartOfAccountsMetadata(options?: HttpRequestOptions): Promise<ChartOfAccountsMetadataDto> {
+  return options
+    ? await httpGet<ChartOfAccountsMetadataDto>('/api/chart-of-accounts/metadata', undefined, options)
+    : await httpGet<ChartOfAccountsMetadataDto>('/api/chart-of-accounts/metadata');
 }
 
-export async function getChartOfAccountById(accountId: string): Promise<ChartOfAccountsAccountDto> {
-  return await httpGet<ChartOfAccountsAccountDto>(`/api/chart-of-accounts/${encodeURIComponent(accountId)}`);
+export async function getChartOfAccountById(accountId: string, options?: HttpRequestOptions): Promise<ChartOfAccountsAccountDto> {
+  const url = `/api/chart-of-accounts/${encodeURIComponent(accountId)}`;
+  return options
+    ? await httpGet<ChartOfAccountsAccountDto>(url, undefined, options)
+    : await httpGet<ChartOfAccountsAccountDto>(url);
 }
 
 export async function getChartOfAccountsByIds(ids: string[]): Promise<LookupItemDto[]> {

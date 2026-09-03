@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NgbConfirmDialog from '../components/NgbConfirmDialog.vue'
@@ -296,9 +296,12 @@ watch(
 )
 
 let loadSeq = 0
+let loadController: AbortController | null = null
 
 function initializeCreateMode() {
   loadSeq += 1
+  loadController?.abort()
+  loadController = null
   loading.value = false
   error.value = null
   current.value = null
@@ -309,22 +312,26 @@ function initializeCreateMode() {
 
 async function loadAccount(accountId: string) {
   const seq = ++loadSeq
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   current.value = null
   auditOpen.value = false
 
   try {
-    const account = await getChartOfAccountById(accountId)
-    if (seq !== loadSeq) return
+    const account = await getChartOfAccountById(accountId, { signal: controller.signal })
+    if (seq !== loadSeq || controller.signal.aborted) return
     current.value = account
     applyAccount(account)
     initialSnapshot.value = currentSnapshot.value
   } catch (cause) {
-    if (seq !== loadSeq) return
+    if (seq !== loadSeq || controller.signal.aborted) return
     error.value = toErrorMessage(cause, 'Failed to load the account.')
   } finally {
     if (seq === loadSeq) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -340,6 +347,12 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadSeq += 1
+  loadController?.abort()
+  loadController = null
+})
 
 function buildAccountShareTarget(accountId: string) {
   return buildChartOfAccountsPath({

@@ -1,4 +1,4 @@
-import { httpGet, httpPost } from '@ngbplatform/ui'
+import { httpGet, httpPost, type HttpRequestOptions } from '@ngbplatform/ui'
 import type {
   ReceivablesApplyBatchRequestDto,
   ReceivablesApplyBatchResponseDto,
@@ -15,20 +15,26 @@ export async function getReceivablesOpenItemsDetails(args: {
   propertyId?: string | null
   asOfMonth?: string | null // DateOnly: YYYY-MM-DD
   toMonth?: string | null   // DateOnly: YYYY-MM-DD
-}): Promise<ReceivablesOpenItemsDetailsResponseDto> {
-  return await httpGet<ReceivablesOpenItemsDetailsResponseDto>('/api/receivables/open-items/details', {
+}, options?: HttpRequestOptions): Promise<ReceivablesOpenItemsDetailsResponseDto> {
+  const query = {
     leaseId: args.leaseId,
     partyId: args.partyId,
     propertyId: args.propertyId,
     asOfMonth: args.asOfMonth,
     toMonth: args.toMonth,
-  })
+  }
+  return options
+    ? await httpGet<ReceivablesOpenItemsDetailsResponseDto>('/api/receivables/open-items/details', query, options)
+    : await httpGet<ReceivablesOpenItemsDetailsResponseDto>('/api/receivables/open-items/details', query)
 }
 
 export async function suggestLeaseFifoApply(
   request: ReceivablesSuggestFifoApplyRequestDto,
+  options?: HttpRequestOptions,
 ): Promise<ReceivablesSuggestFifoApplyResponseDto> {
-  return await httpPost<ReceivablesSuggestFifoApplyResponseDto>('/api/receivables/apply/fifo/suggest/lease', request)
+  return options
+    ? await httpPost<ReceivablesSuggestFifoApplyResponseDto>('/api/receivables/apply/fifo/suggest/lease', request, options)
+    : await httpPost<ReceivablesSuggestFifoApplyResponseDto>('/api/receivables/apply/fifo/suggest/lease', request)
 }
 
 export async function applyReceivablesBatch(
@@ -45,10 +51,13 @@ export async function getReceivablesReconciliation(args: {
   fromMonthInclusive: string // YYYY-MM-DD
   toMonthInclusive: string   // YYYY-MM-DD
   mode?: ReceivablesReconciliationModeDto | null
-}): Promise<ReceivablesReconciliationReportDto> {
-  return await httpGet<ReceivablesReconciliationReportDto>('/api/receivables/reconciliation', {
+}, options?: HttpRequestOptions): Promise<ReceivablesReconciliationReportDto> {
+  const query = {
     fromMonthInclusive: args.fromMonthInclusive,
     toMonthInclusive: args.toMonthInclusive,
     mode: args.mode,
-  })
+  }
+  return options
+    ? await httpGet<ReceivablesReconciliationReportDto>('/api/receivables/reconciliation', query, options)
+    : await httpGet<ReceivablesReconciliationReportDto>('/api/receivables/reconciliation', query)
 }

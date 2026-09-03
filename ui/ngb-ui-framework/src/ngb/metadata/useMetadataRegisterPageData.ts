@@ -111,6 +111,7 @@ export function useMetadataRegisterPageData<
   const page = ref<TPage | null>(null);
   const loadSeq = ref(0);
   let loadController: AbortController | null = null;
+  let committedEntityTypeCode = '';
 
   const listFilters = computed<readonly TField[]>(() => metadata.value?.list?.filters ?? []);
   const hasListFilters = computed(() => listFilters.value.length > 0);
@@ -194,6 +195,8 @@ export function useMetadataRegisterPageData<
       error.value = null;
       metadata.value = null;
       page.value = null;
+      committedEntityTypeCode = '';
+      if (loadController === controller) loadController = null;
       return false;
     }
 
@@ -202,20 +205,29 @@ export function useMetadataRegisterPageData<
 
     try {
       const nextMetadata = await args.loadMetadata(entityTypeCode, { signal: controller.signal });
-      if (seq !== loadSeq.value) return false;
+      if (seq !== loadSeq.value || controller.signal.aborted) return false;
+
+      // Publish the new schema together with an empty page. This keeps error-state
+      // headings available without ever rendering rows from the previous schema.
       metadata.value = nextMetadata;
+      page.value = null;
+      committedEntityTypeCode = entityTypeCode;
 
       const nextPage = await args.loadPage({
         entityTypeCode,
         metadata: nextMetadata,
         signal: controller.signal,
       });
-      if (seq !== loadSeq.value) return false;
+      if (seq !== loadSeq.value || controller.signal.aborted) return false;
       page.value = nextPage;
       return true;
     } catch (cause) {
       if (seq !== loadSeq.value) return false;
       if (controller.signal.aborted) return false;
+      if (committedEntityTypeCode !== entityTypeCode) {
+        metadata.value = null;
+        page.value = null;
+      }
       error.value = args.formatError?.(cause) ?? defaultErrorMessage(cause);
       return false;
     } finally {

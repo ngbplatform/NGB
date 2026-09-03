@@ -30,8 +30,9 @@ export async function getCatalogPage(
   )
 }
 
-export async function getCatalogById(catalogType: string, id: string): Promise<CatalogItemDto> {
-  return await httpGet<CatalogItemDto>(`/api/catalogs/${encodeURIComponent(catalogType)}/${encodeURIComponent(id)}`)
+export async function getCatalogById(catalogType: string, id: string, options?: HttpRequestOptions): Promise<CatalogItemDto> {
+  const url = `/api/catalogs/${encodeURIComponent(catalogType)}/${encodeURIComponent(id)}`
+  return options ? await httpGet<CatalogItemDto>(url, undefined, options) : await httpGet<CatalogItemDto>(url)
 }
 
 export async function createCatalog(catalogType: string, payload: RecordPayload): Promise<CatalogItemDto> {

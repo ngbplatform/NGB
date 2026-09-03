@@ -82,4 +82,24 @@ describe('lookup prefetch', () => {
 
     expect(filteringMocks.ensureResolvedLookupLabels).not.toHaveBeenCalled()
   })
+
+  it('aggregates columns that use the same lookup source and de-duplicates their ids', async () => {
+    const firstId = '11111111-1111-1111-1111-111111111111'
+    const secondId = '22222222-2222-2222-2222-222222222222'
+    const hint = { kind: 'catalog' as const, catalogType: 'pm.property' }
+
+    await prefetchLookupsForPage({
+      entityTypeCode: 'pm.invoice',
+      columns: [{ key: 'propertyId' }, { key: 'parentPropertyId' }],
+      items: [
+        { payload: { fields: { propertyId: firstId, parentPropertyId: firstId } } },
+        { payload: { fields: { propertyId: secondId, parentPropertyId: secondId } } },
+      ],
+      lookupStore: {} as never,
+      resolveLookupHint: () => hint,
+    })
+
+    expect(filteringMocks.ensureResolvedLookupLabels).toHaveBeenCalledTimes(1)
+    expect(filteringMocks.ensureResolvedLookupLabels).toHaveBeenCalledWith({}, hint, [firstId, secondId])
+  })
 })

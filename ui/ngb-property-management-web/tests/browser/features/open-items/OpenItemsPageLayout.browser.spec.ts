@@ -377,3 +377,33 @@ test('renders an empty applied tab and a hidden, consistent page result without 
   expect(document.body.textContent).not.toContain('Recent:')
   expect(document.body.textContent).not.toContain('Hidden result')
 })
+
+test('bounds large applied-allocation lists to one DOM page', async () => {
+  const allocations = Array.from({ length: 101 }, (_, index) => ({
+    applyId: `apply-${index + 1}`,
+    applyNumber: `APP-${index + 1}`,
+    creditDocumentId: `credit-${index + 1}`,
+    creditDocumentType: 'Payment',
+    creditDocumentNumber: `PAY-${index + 1}`,
+    chargeDocumentId: `charge-${index + 1}`,
+    chargeDocumentType: 'Invoice',
+    chargeNumber: `INV-${index + 1}`,
+    appliedOnUtc: '2026-08-20',
+    amount: index + 1,
+    isPosted: true,
+  }))
+  const view = await render(OpenItemsPageLayout, {
+    props: requiredProps({ activeTab: 'applied', appliedRows: allocations }) as never,
+  })
+
+  await expect.element(view.getByText('Rows 1–100 of 101')).toBeVisible()
+  expect(document.querySelectorAll('[data-testid="open-items-applied-panel"] button[title="Open Apply"]')).toHaveLength(100)
+  expect(document.body.textContent).toContain('APP-1')
+  expect(document.body.textContent).not.toContain('APP-101')
+
+  await view.getByRole('button', { name: 'Next' }).click()
+  await expect.element(view.getByText('Rows 101–101 of 101')).toBeVisible()
+  expect(document.querySelectorAll('[data-testid="open-items-applied-panel"] button[title="Open Apply"]')).toHaveLength(1)
+  expect(document.body.textContent).toContain('APP-101')
+  expect(document.body.textContent).not.toContain('APP-1Payment')
+})

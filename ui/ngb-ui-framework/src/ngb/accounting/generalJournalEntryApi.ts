@@ -27,6 +27,7 @@ export type GetGeneralJournalEntryPageArgs = {
 
 export async function getGeneralJournalEntryPage(
   args: GetGeneralJournalEntryPageArgs,
+  options?: HttpRequestOptions,
 ): Promise<GeneralJournalEntryPageDto> {
   const q = new URLSearchParams();
   q.set('offset', String(args.offset ?? 0));
@@ -35,11 +36,17 @@ export async function getGeneralJournalEntryPage(
   if (args.dateFrom) q.set('dateFrom', args.dateFrom);
   if (args.dateTo) q.set('dateTo', args.dateTo);
   if (args.trash) q.set('trash', args.trash);
-  return await httpGet<GeneralJournalEntryPageDto>(`${base}?${q.toString()}`);
+  const url = `${base}?${q.toString()}`;
+  return options
+    ? await httpGet<GeneralJournalEntryPageDto>(url, undefined, options)
+    : await httpGet<GeneralJournalEntryPageDto>(url);
 }
 
-export async function getGeneralJournalEntry(id: string): Promise<GeneralJournalEntryDetailsDto> {
-  return await httpGet<GeneralJournalEntryDetailsDto>(`${base}/${encodeURIComponent(id)}`);
+export async function getGeneralJournalEntry(id: string, options?: HttpRequestOptions): Promise<GeneralJournalEntryDetailsDto> {
+  const url = `${base}/${encodeURIComponent(id)}`;
+  return options
+    ? await httpGet<GeneralJournalEntryDetailsDto>(url, undefined, options)
+    : await httpGet<GeneralJournalEntryDetailsDto>(url);
 }
 
 export async function createGeneralJournalEntryDraft(

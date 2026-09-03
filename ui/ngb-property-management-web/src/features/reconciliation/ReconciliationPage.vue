@@ -34,6 +34,9 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<ReconciliationReport | null>(null)
 let loadSequence = 0
+let loadController: AbortController | null = null
+const ROW_PAGE_SIZE = 100
+const rowPage = ref(0)
 
 function updateQuery(patch: QueryPatch) {
   void replaceCleanRouteQuery(route, router, patch)
@@ -181,6 +184,23 @@ const visibleRows = computed(() => {
   })
 })
 
+const rowPageCount = computed(() => Math.max(1, Math.ceil(visibleRows.value.length / ROW_PAGE_SIZE)))
+const currentRowPage = computed(() => Math.min(rowPage.value, rowPageCount.value - 1))
+const pagedRows = computed(() => {
+  const start = currentRowPage.value * ROW_PAGE_SIZE
+  return visibleRows.value.slice(start, start + ROW_PAGE_SIZE)
+})
+const visibleRowRange = computed(() => {
+  const total = visibleRows.value.length
+  if (total === 0) return '0 rows'
+  const start = currentRowPage.value * ROW_PAGE_SIZE
+  return `Rows ${start + 1}\u2013${Math.min(total, start + ROW_PAGE_SIZE)} of ${total}`
+})
+
+function setRowPage(page: number): void {
+  rowPage.value = Math.max(0, Math.min(page, rowPageCount.value - 1))
+}
+
 const visibleRowCount = computed(() => visibleRows.value.length)
 const mismatchCount = computed(() => data.value?.mismatchRowCount ?? 0)
 const allRowCount = computed(() => data.value?.rowCount ?? 0)
@@ -230,6 +250,7 @@ async function openRow(row: ReconciliationRow) {
 
 async function load() {
   const seq = ++loadSequence
+  loadController?.abort()
   if (hasInvalidRange.value) {
     error.value = 'From month must be earlier than or equal to To month.'
     data.value = null
@@ -240,6 +261,8 @@ async function load() {
   const requestedFromMonth = fromMonth.value
   const requestedToMonth = toMonth.value
   const requestedMode = mode.value
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   try {
@@ -247,23 +270,29 @@ async function load() {
       fromMonthInclusive: monthValueToDateOnly(requestedFromMonth) ?? `${requestedFromMonth}-01`,
       toMonthInclusive: monthValueToDateOnly(requestedToMonth) ?? `${requestedToMonth}-01`,
       mode: requestedMode,
-    })
-    if (seq !== loadSequence) return
+    }, { signal: controller.signal })
+    if (seq !== loadSequence || controller.signal.aborted) return
     data.value = nextData
   } catch (e: unknown) {
-    if (seq !== loadSequence) return
+    if (seq !== loadSequence || controller.signal.aborted) return
     error.value = e instanceof Error ? e.message : String(e)
     data.value = null
   } finally {
     if (seq === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
 onBeforeUnmount(() => {
   loadSequence += 1
+  loadController?.abort()
+  loadController = null
 })
 
 watch(() => [fromMonth.value, toMonth.value, mode.value], () => void load(), { immediate: true })
+watch(() => [statusFilter.value, data.value], () => {
+  rowPage.value = 0
+})
 </script>
 
 <template>
@@ -429,7 +458,7 @@ watch(() => [fromMonth.value, toMonth.value, mode.value], () => void load(), { i
             </thead>
             <tbody>
               <tr
-                v-for="row in visibleRows"
+                v-for="row in pagedRows"
                 :key="row.key"
                 class="border-b border-ngb-border last:border-b-0"
               >
@@ -459,6 +488,31 @@ watch(() => [fromMonth.value, toMonth.value, mode.value], () => void load(), { i
               </tr>
             </tbody>
           </table>
+        </div>
+        <div
+          v-if="!loading && rowPageCount > 1"
+          class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted"
+        >
+          <span>{{ visibleRowRange }}</span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="currentRowPage === 0"
+              @click="setRowPage(currentRowPage - 1)"
+            >
+              Previous
+            </button>
+            <span>Page {{ currentRowPage + 1 }} of {{ rowPageCount }}</span>
+            <button
+              type="button"
+              class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="currentRowPage + 1 >= rowPageCount"
+              @click="setRowPage(currentRowPage + 1)"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

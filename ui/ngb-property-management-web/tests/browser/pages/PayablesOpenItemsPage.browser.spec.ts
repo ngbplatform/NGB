@@ -343,7 +343,10 @@ test('loads context, projects lookup/grid rows, resolves document types, and nav
   await mocks.routeContextArgs.load()
   await flushUi()
 
-  expect(mocks.details).toHaveBeenCalledWith({ partyId: 'vendor-1', propertyId: 'property-1' })
+  expect(mocks.details).toHaveBeenCalledWith(
+    { partyId: 'vendor-1', propertyId: 'property-1' },
+    { signal: expect.any(AbortSignal) },
+  )
   await expect.element(view.getByText('badges:Vendor: Vendor One|Property: Property One')).toBeVisible()
   expect(mocks.shellProps.chargeGrid.rows).toHaveLength(2)
   expect(mocks.shellProps.chargeGrid.rows[1]).toMatchObject({ chargeType: '—', vendorInvoiceNo: '—', memo: '' })

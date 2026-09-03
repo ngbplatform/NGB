@@ -68,10 +68,11 @@ export async function getDocumentPage(
   return normalizeDocumentPage(page)
 }
 
-export async function getDocumentById(documentType: string, id: string): Promise<DocumentDto> {
-  const document = await httpGet<DocumentDto>(
-    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}`,
-  )
+export async function getDocumentById(documentType: string, id: string, options?: HttpRequestOptions): Promise<DocumentDto> {
+  const url = `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}`
+  const document = options
+    ? await httpGet<DocumentDto>(url, undefined, options)
+    : await httpGet<DocumentDto>(url)
   return normalizeDocumentDto(document)
 }
 
@@ -151,11 +152,16 @@ export async function deleteDraft(documentType: string, id: string): Promise<voi
   await httpDelete<void>(`/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}`)
 }
 
-export async function getDocumentEffects(documentType: string, id: string, limit = 500): Promise<DocumentEffectsDto> {
-  return await httpGet<DocumentEffectsDto>(
-    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/effects`,
-    { limit },
-  )
+export async function getDocumentEffects(
+  documentType: string,
+  id: string,
+  limit = 500,
+  options?: HttpRequestOptions,
+): Promise<DocumentEffectsDto> {
+  const url = `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/effects`
+  return options
+    ? await httpGet<DocumentEffectsDto>(url, { limit }, options)
+    : await httpGet<DocumentEffectsDto>(url, { limit })
 }
 
 export async function getDocumentGraph(
@@ -163,9 +169,10 @@ export async function getDocumentGraph(
   id: string,
   depth = 5,
   maxNodes = 100,
+  options?: HttpRequestOptions,
 ): Promise<RelationshipGraphDto> {
-  return await httpGet<RelationshipGraphDto>(
-    `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/graph`,
-    { depth, maxNodes },
-  )
+  const url = `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(id)}/graph`
+  return options
+    ? await httpGet<RelationshipGraphDto>(url, { depth, maxNodes }, options)
+    : await httpGet<RelationshipGraphDto>(url, { depth, maxNodes })
 }

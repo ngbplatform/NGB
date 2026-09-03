@@ -351,4 +351,31 @@ describe('document parts editors', () => {
   test('covers the Agency Billing grid contract', async () => {
     await exerciseEditor()
   })
+
+  test('renders large parts in bounded DOM pages', async () => {
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      __row_key: `row-${index + 1}`,
+      memo: `Memo ${index + 1}`,
+    }))
+    const wrapper = mount(AgencyBillingDocumentPartsEditor, {
+      props: {
+        entityTypeCode: 'ab.sales_invoice',
+        parts: [makePartWithoutAmount('lines', false)],
+        modelValue: { lines: { rows } },
+        readonly: true,
+      },
+    })
+
+    expect(wrapper.findAll('tbody tr')).toHaveLength(100)
+    expect(wrapper.text()).toContain('Rows 1–100 of 101')
+    expect(wrapper.findAll('tbody tr').at(-1)?.text()).toContain('100')
+
+    const next = wrapper.findAll('button').find((button) => button.text() === 'Next')
+    expect(next).toBeDefined()
+    await next!.trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Rows 101–101 of 101')
+    expect(wrapper.find('tbody tr').text()).toContain('101')
+    wrapper.unmount()
+  })
 })
