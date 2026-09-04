@@ -18,14 +18,17 @@ NGB.sln
 │  ├─ NGB.Contracts
 │  ├─ NGB.Application.Abstractions
 │  ├─ NGB.Runtime
+│  ├─ NGB.Runtime.Hosting
 │  ├─ NGB.Accounting
 │  ├─ NGB.OperationalRegisters
 │  ├─ NGB.ReferenceRegisters
+│  ├─ NGB.Hosting.AspNetCore
 │  ├─ NGB.Api
 │  ├─ NGB.BackgroundJobs
 │  ├─ NGB.BackgroundJobs.PostgreSql
 │  ├─ NGB.Watchdog
 │  ├─ NGB.PostgreSql
+│  ├─ NGB.PostgreSql.AspNetCore
 │  ├─ NGB.Persistence
 │  ├─ NGB.Tools
 │  └─ NGB.Migrator.Core
@@ -90,7 +93,10 @@ If you want to understand how catalogs, documents, posting, registers, report ex
 These projects compose or persist the platform:
 
 - `NGB.PostgreSql`
+- `NGB.PostgreSql.AspNetCore`
 - `NGB.Persistence`
+- `NGB.Hosting.AspNetCore`
+- `NGB.Runtime.Hosting`
 - `NGB.Api`
 - `NGB.BackgroundJobs`
 - `NGB.BackgroundJobs.PostgreSql`

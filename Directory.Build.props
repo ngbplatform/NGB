@@ -1,8 +1,8 @@
 <Project>
   <PropertyGroup>
     <!-- Product / release version -->
-    <Version>2.0.0</Version>
-    <NgbPlatformAssemblyVersion>2.0.0.0</NgbPlatformAssemblyVersion>
+    <Version>3.0.0</Version>
+    <NgbPlatformAssemblyVersion>3.0.0.0</NgbPlatformAssemblyVersion>
     <AssemblyVersion>$(NgbPlatformAssemblyVersion)</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
@@ -10,7 +10,7 @@
     <!-- NuGet packages -->
     <NgbPlatformPackageVersion>$(Version)</NgbPlatformPackageVersion>
     <PackageVersion>$(NgbPlatformPackageVersion)</PackageVersion>
-    <NgbPlatformApiCompatibilityBaselineVersion>2.0.0</NgbPlatformApiCompatibilityBaselineVersion>
+    <NgbPlatformApiCompatibilityBaselineVersion>3.0.0</NgbPlatformApiCompatibilityBaselineVersion>
     <EnablePackageValidation>true</EnablePackageValidation>
     <PackageValidationBaselineVersion
       Condition="'$(Version)' != '$(NgbPlatformApiCompatibilityBaselineVersion)'">$(NgbPlatformApiCompatibilityBaselineVersion)</PackageValidationBaselineVersion>
@@ -27,7 +27,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>NGB;NGB Platform;.NET;PostgreSQL;business applications</PackageTags>
-    <PackageReleaseNotes>Major release: replace legacy document UI effects and derivation APIs with metadata-driven Document Actions, and add the NGB Work Center.</PackageReleaseNotes>
+    <PackageReleaseNotes>Major release: introduce explicit hosting and PostgreSQL ASP.NET Core adapters, enforce clean composition-root boundaries, and align backend and frontend packages on 3.0.0.</PackageReleaseNotes>
     <Copyright>Copyright (c) NGB Platform 2026</Copyright>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

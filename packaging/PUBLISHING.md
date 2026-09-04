@@ -24,23 +24,23 @@ The CRM lockfile is resolved from npmjs.com and is not regenerated while validat
 platform package. Update it only when CRM intentionally moves to another published package version:
 
 ```bash
-npm --prefix ui/ngb-crm-web install --save-exact @ngbplatform/ui@2.0.0
+npm --prefix ui/ngb-crm-web install --save-exact @ngbplatform/ui@3.0.0
 ```
 
 ## SemVer and API compatibility
 
 `Directory.Build.props` is the canonical version for all `NGB.Platform.*` packages. The
 `NgbPlatformApiCompatibilityBaselineVersion` property identifies the first stable package in the
-current major line. For 2.x it is `2.0.0`.
+current major line. For 3.x it is `3.0.0`.
 
-Every `dotnet pack` enables the .NET SDK package-validation and ApiCompat rules. Packing `2.0.0`
-validates the package itself; packing a later `2.x` release also downloads the published `2.0.0`
+Every `dotnet pack` enables the .NET SDK package-validation and ApiCompat rules. Packing `3.0.0`
+validates the package itself; packing a later `3.x` release also downloads the published `3.0.0`
 package with the same ID and rejects binary/source contract breaks. Do not add ApiCompat
 suppressions for a minor or patch release. An intentional incompatible change requires a new major
 version, an updated compatibility baseline, changelog breaking-change entries, and a migration
 guide.
 
-`NgbPlatformAssemblyVersion` remains `2.0.0.0` for the complete 2.x line so minor and patch package
+`NgbPlatformAssemblyVersion` remains `3.0.0.0` for the complete 3.x line so minor and patch package
 updates preserve assembly identity. `FileVersion` and `InformationalVersion` continue to identify
 the exact build. Change the assembly version only with the next major release.
 
@@ -97,7 +97,7 @@ Create the GitHub environment `nuget` before the first run. Recommended environm
 - Secrets: none required for NuGet publishing.
 
 Run `.github/workflows/publish-platform-nuget.yml` with the exact version after the release commit is
-on `main`. The workflow packs the platform projects, verifies all 16 packages and symbol packages,
+on `main`. The workflow packs the platform projects, verifies all 20 packages and symbol packages,
 then publishes in dependency order with `--skip-duplicate` so a partially completed run can be retried.
 
 ## Release Order
@@ -105,7 +105,7 @@ then publishes in dependency order with `--skip-duplicate` so a partially comple
 1. Run `platform-packages` and review both package artifacts.
 2. Publish `NGB.Platform.*`.
 3. Publish `@ngbplatform/ui`.
-4. Run the CRM image jobs in `container-images` after NuGet and npm expose version `2.0.0`.
+4. Run the CRM image jobs in `container-images` after NuGet and npm expose version `3.0.0`.
 
 The CRM release workflow restores with `NuGet.Registry.Config` and its own npm lockfile, so local package
 outputs cannot leak into production images.

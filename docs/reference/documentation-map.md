@@ -49,6 +49,7 @@ This page is the complete navigation hub for the NGB Platform documentation site
 | I need to trace reporting execution | [Reporting Execution Map](/platform/reporting-execution-map) |
 | I need the curated deep-dive set | [Topic Chapters Index](/platform/topic-chapters-index) |
 | I need to implement Document Actions or Work Center | [Document Actions and Work Center](/guides/document-actions-and-work-center) |
+| I am upgrading an existing 2.x solution to 3.0.0 | [Migration 2.0.0 → 3.0.0](/guides/migrating-to-3.0) |
 | I am upgrading an existing solution to 2.0.0 | [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0) |
 | I need the Document Actions or Work Center HTTP contract | [Document Actions and Work Center API](/reference/document-actions-work-center-api) |
 | I need implementation guidance | [Developer Workflows](/guides/developer-workflows) |
@@ -202,6 +203,7 @@ Use Platform when you need responsibility boundaries, verified anchors, executio
 - [Add a Canonical Report](/guides/add-canonical-report-workflow)
 - [Add a Composable Report](/guides/add-composable-report-workflow)
 - [Document Actions and Work Center](/guides/document-actions-and-work-center)
+- [Migration 2.0.0 → 3.0.0](/guides/migrating-to-3.0)
 - [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0)
 
 ### Scenario guides

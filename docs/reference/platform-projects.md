@@ -33,8 +33,11 @@ This page is the project catalog for the reusable platform.
 ## Providers and hosts
 
 - `NGB.PostgreSql` — PostgreSQL provider implementations and migration assets.
-- `NGB.Api` — reusable ASP.NET Core host layer.
-- `NGB.BackgroundJobs` — reusable background jobs hosting support.
+- `NGB.PostgreSql.AspNetCore` — PostgreSQL-specific ASP.NET Core exception mapping and health checks.
+- `NGB.Hosting.AspNetCore` — provider-neutral ASP.NET Core authentication, branding, health, CORS, and error handling.
+- `NGB.Runtime.Hosting` — explicit generic-host lifecycle adapters for Runtime, including fail-fast startup validation.
+- `NGB.Api` — reusable API controllers, endpoints, and application-facing HTTP composition.
+- `NGB.BackgroundJobs` — provider-neutral background-jobs scheduling and hosting support.
 - `NGB.BackgroundJobs.PostgreSql` — PostgreSQL-specific Hangfire storage adapter; keeps scheduler dependencies out of the generic PostgreSQL provider.
 - `NGB.Watchdog` — reusable watchdog hosting support.
 - `NGB.Migrator.Core` — reusable migrator CLI core.

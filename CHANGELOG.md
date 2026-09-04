@@ -25,6 +25,46 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Security
 - N/A
 
+## [3.0.0] - 2026-09-04
+
+### Breaking changes
+- Split provider-neutral ASP.NET Core hosting from `NGB.Platform.Api` into
+  `NGB.Platform.Hosting.AspNetCore`; hosts that use shared authentication, health responses,
+  branding, CORS, or canonical HTTP error handling must reference the new package.
+- Moved fail-fast runtime definition validation into the explicit
+  `NGB.Platform.Runtime.Hosting` adapter. Hosts must opt in with
+  `AddNgbRuntimeStartupValidation()` after registering `AddNgbRuntime()`.
+- Moved PostgreSQL HTTP exception mapping and health checks into
+  `NGB.Platform.PostgreSql.AspNetCore`. PostgreSQL-backed web hosts must explicitly register
+  `AddNgbPostgresExceptionMapping()` and `AddNgbPostgresHealthCheck(...)`.
+- Split PostgreSQL Hangfire storage and recurring-job inspection from the provider-neutral
+  background-jobs package into `NGB.Platform.BackgroundJobs.PostgreSql`; database provisioning is
+  exposed by `NGB.Platform.PostgreSql`.
+- Requires coordinated deployment of all `NGB.Platform.*` packages and `@ngbplatform/ui` at
+  `3.0.0`; mixed 2.x/3.x platform graphs are unsupported.
+
+### Added
+- Dedicated hosting and provider-adapter packages with architecture tests that enforce dependency
+  direction and prevent SQL, concrete storage providers, and ASP.NET Core concerns from leaking
+  into provider-neutral layers.
+- Complete backend and frontend coverage gates with per-file completeness validation.
+
+### Changed
+- Batched high-volume read and write paths across catalogs, documents, reporting, registers,
+  background processing, and vertical services to remove N+1 queries and reduce allocations.
+- Aligned .NET package, assembly, telemetry, npm package, web-application, lockfile, and publishing
+  versions on the 3.0 release line.
+
+### Fixed
+- Hardened integration-test isolation, shared PostgreSQL fixture startup, schema migration
+  concurrency, and deterministic paging behavior.
+- Removed framework-specific package dependencies from reusable provider-neutral projects and
+  moved them to their owning adapters.
+
+### Migration
+- Follow [Migrating from 2.0.0 to 3.0.0](docs/guides/migrating-to-3.0.md) before updating platform
+  packages.
+
 ## [2.0.0] - 2026-08-15
 
 ### Breaking changes
@@ -138,7 +178,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Notes
 - This release establishes the first public baseline of the NGB Platform repository.
 
-[Unreleased]: https://github.com/ngbplatform/ngb/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/ngbplatform/ngb/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/ngbplatform/ngb/compare/v1.3.1...v2.0.0
 [1.3.1]: https://github.com/ngbplatform/ngb/compare/v1.2.0...v1.3.1
 [1.2.0]: https://github.com/ngbplatform/ngb/compare/v1.1.1...v1.2.0

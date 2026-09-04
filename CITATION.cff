@@ -1,6 +1,8 @@
 cff-version: 1.2.0
 message: "If you use NGB in your work, please cite it using the metadata below."
 title: "NGB"
+version: "3.0.0"
+date-released: "2026-09-04"
 authors:
   - name: "NGB Platform"
 repository-code: "https://github.com/ngbplatform/NGB"

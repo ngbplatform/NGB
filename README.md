@@ -24,6 +24,11 @@
 </p>
 
 <p align="center">
+  Current release: <strong>3.0.0</strong> ·
+  <a href="docs/guides/migrating-to-3.0.md">Migration guide from 2.0.0</a>
+</p>
+
+<p align="center">
   <a href="https://ngbplatform.com">Website</a>
   ·
   <a href="https://docs.ngbplatform.com">Docs</a>
@@ -219,13 +224,22 @@ The repository currently contains the platform core and source code for the demo
 
 NGB follows a **layered platform architecture** built around reusable platform hosts, shared contracts and metadata, a central execution core, specialized business engines, and PostgreSQL-based persistence.
 
-At the top level, NGB provides dedicated platform hosts for API delivery, background processing, health and operability, and schema deployment. These hosts do not implement business behavior themselves. Instead, they compose and expose the platform through shared contracts, abstractions, and runtime orchestration.
+At the top level, vertical application hosts compose reusable API, background-processing, health,
+and migration capabilities. Provider-neutral hosting behavior lives in dedicated hosting adapters;
+PostgreSQL-specific web and Hangfire integration lives in provider adapters. These layers do not
+implement business behavior themselves. They expose the platform through shared contracts,
+abstractions, and runtime orchestration.
 
 At the center of the platform is **NGB.Runtime**. It acts as the execution core that coordinates catalogs, documents, posting, reporting, validation, and workflow behavior. Rather than scattering business logic across hosts, NGB concentrates orchestration in the runtime layer and delegates specialized responsibilities to dedicated platform engines.
 
 Those engines include **NGB.Accounting**, **NGB.OperationalRegisters**, **NGB.ReferenceRegisters**, and the business audit log. Together they provide the core business mechanics of the platform: ledger semantics, register-based state handling, reference-state projection, and append-only auditability.
 
-Persistence and database interaction are handled through **NGB.PostgreSql**, which serves as the platform’s infrastructure bridge for readers, writers, and migration support. Platform data is stored in **PostgreSQL**, while authentication is integrated with **Keycloak**.
+Persistence and database interaction are handled through **NGB.PostgreSql**, which serves as the
+platform’s infrastructure bridge for readers, writers, and migrations. **NGB.Hosting.AspNetCore**
+and **NGB.Runtime.Hosting** own provider-neutral host integration, while
+**NGB.PostgreSql.AspNetCore** and **NGB.BackgroundJobs.PostgreSql** own PostgreSQL-specific host
+adapters. Platform data is stored in **PostgreSQL**, while authentication is integrated with
+**Keycloak**.
 
 ### High-level architecture
 
@@ -238,11 +252,13 @@ flowchart TB
     classDef infra fill:#f7f7f7,stroke:#6b7280,stroke-width:1.5px,color:#111827;
     classDef external fill:#ffffff,stroke:#9ca3af,stroke-width:1.2px,color:#111827;
 
-    subgraph HOSTS["Platform Hosts"]
-        API["NGB.Api<br/>HTTP / API host"]
-        BG["NGB.BackgroundJobs<br/>Scheduled job host"]
-        WD["NGB.Watchdog<br/>Health / operability host"]
-        MIG["NGB.Migrator<br/>Schema deployment host"]
+    subgraph HOSTS["Host Composition"]
+        API["NGB.Api<br/>API controllers and endpoints"]
+        HOSTING["NGB.Hosting.AspNetCore<br/>Provider-neutral web hosting"]
+        RTHOST["NGB.Runtime.Hosting<br/>Runtime host lifecycle"]
+        BG["NGB.BackgroundJobs<br/>Provider-neutral scheduling"]
+        WD["NGB.Watchdog<br/>Health / operability hosting"]
+        MIG["NGB.Migrator.Core<br/>Schema deployment"]
     end
 
     subgraph SURFACE["Contracts, Metadata, and Platform Surface"]
@@ -266,6 +282,8 @@ flowchart TB
 
     subgraph INFRA["Persistence and Integration"]
         PG["NGB.PostgreSql<br/>Persistence, readers, writers, migrations support"]
+        PGWEB["NGB.PostgreSql.AspNetCore<br/>PostgreSQL HTTP and health adapters"]
+        BGPG["NGB.BackgroundJobs.PostgreSql<br/>PostgreSQL Hangfire adapter"]
     end
 
     subgraph EXTERNAL["External Systems"]
@@ -275,9 +293,15 @@ flowchart TB
 
     API --> CONTRACTS
     API --> APPABS
-    BG --> APPABS
-    WD --> APPABS
+    API --> HOSTING
+    RTHOST --> RUNTIME
+    BG --> HOSTING
+    BG --> RUNTIME
+    BGPG -. selected by application host .-> BG
+    WD --> HOSTING
     MIG --> PG
+    PGWEB --> PG
+    PGWEB --> HOSTING
 
     CONTRACTS --> RUNTIME
     APPABS --> RUNTIME
@@ -296,24 +320,23 @@ flowchart TB
     RR --> PG
     AUDIT --> PG
 
-    API -. authentication .-> KC
-    BG -. authentication .-> KC
-    WD -. authentication .-> KC
+    HOSTING -. authentication .-> KC
 
     PG --> DB
 
-    class API,BG,WD,MIG host;
+    class API,HOSTING,RTHOST,BG,WD,MIG host;
     class CONTRACTS,APPABS,DEFINITIONS,METADATA,CORE surface;
     class RUNTIME runtime;
     class ACCOUNTING,OR,RR,AUDIT engine;
-    class PG infra;
+    class PG,PGWEB,BGPG infra;
     class DB,KC external;
 ```
 
 ### Architectural layers
 
-1. **Platform Hosts**  
-   Entry-point hosts for HTTP APIs, background jobs, health monitoring, and schema deployment.
+1. **Host Composition**
+   Reusable API, background-jobs, health, migration, generic-host, and ASP.NET Core adapters composed
+   by vertical entry points.
 
 2. **Contracts, Metadata, and Platform Surface**  
    Shared DTOs, application abstractions, metadata, definitions, and common primitives that define how the platform is described and consumed.
@@ -325,7 +348,8 @@ flowchart TB
    Specialized engines for accounting, operational registers, reference registers, and append-only audit logging.
 
 5. **Persistence and Integration**  
-   PostgreSQL-based infrastructure through **NGB.PostgreSql**, plus integration with external systems such as PostgreSQL and Keycloak.
+   PostgreSQL-based infrastructure and explicit provider adapters, plus integration with external
+   systems such as PostgreSQL and Keycloak.
 
 ---
 
@@ -383,13 +407,17 @@ NGB.sln
 │  ├─ NGB.Contracts
 │  ├─ NGB.Application.Abstractions
 │  ├─ NGB.Runtime
+│  ├─ NGB.Runtime.Hosting
 │  ├─ NGB.Accounting
 │  ├─ NGB.OperationalRegisters
 │  ├─ NGB.ReferenceRegisters
+│  ├─ NGB.Hosting.AspNetCore
 │  ├─ NGB.Api
 │  ├─ NGB.BackgroundJobs
+│  ├─ NGB.BackgroundJobs.PostgreSql
 │  ├─ NGB.Watchdog
 │  ├─ NGB.PostgreSql
+│  ├─ NGB.PostgreSql.AspNetCore
 │  ├─ NGB.Persistence
 │  ├─ NGB.Tools
 │  └─ NGB.Migrator.Core

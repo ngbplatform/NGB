@@ -173,6 +173,7 @@ export default defineConfig({
           page('Add a Composable Report', '/guides/add-composable-report-workflow')
         ]),
         section('Upgrade and Migration', [
+          page('Migrate 2.0.0 to 3.0.0', '/guides/migrating-to-3.0'),
           page('Migrate 1.3.1 to 2.0.0', '/guides/migrating-to-2.0')
         ]),
         section('Scenario Guides', [

@@ -46,18 +46,18 @@ public sealed class CrmPackageReferenceGuard_P0Tests
         var releaseVersion = buildProps.Descendants("Version").Single().Value;
         var platformVersion = buildProps.Descendants("NgbPlatformPackageVersion").Single().Value;
 
-        releaseVersion.Should().Be("2.0.0");
+        releaseVersion.Should().Be("3.0.0");
         platformVersion.Should().Be("$(Version)");
         buildProps.Descendants("NgbPlatformApiCompatibilityBaselineVersion")
             .Single()
             .Value
             .Should()
-            .Be("2.0.0");
+            .Be("3.0.0");
         buildProps.Descendants("NgbPlatformAssemblyVersion")
             .Single()
             .Value
             .Should()
-            .Be("2.0.0.0");
+            .Be("3.0.0.0");
 
         var crmProjects = Directory.EnumerateDirectories(root, "NGB.CRM*", SearchOption.TopDirectoryOnly)
             .SelectMany(directory => Directory.EnumerateFiles(directory, "*.csproj"))
