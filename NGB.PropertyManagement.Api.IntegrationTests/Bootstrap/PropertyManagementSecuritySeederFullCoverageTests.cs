@@ -5,18 +5,12 @@ using NGB.Core.Security;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.Runtime.Security;
+using NGB.PropertyManagement.Security;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Bootstrap;
 
-[CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class PropertyManagementSecuritySeederEnvironmentCollection
-{
-    public const string Name = "Property Management security seeder environment";
-}
-
-[Collection(PropertyManagementSecuritySeederEnvironmentCollection.Name)]
 public sealed class PropertyManagementSecuritySeederFullCoverageTests
 {
     private const string AdministratorRoleCode = "pm-administrator";
@@ -24,7 +18,11 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
     [Fact]
     public async Task EnsureSeededAsync_WithSubjectAndMatchingEmail_UpsertsUserAndAssignsMissingRole()
     {
-        var fixture = new SeederFixture();
+        var fixture = new SeederFixture(new PropertyManagementDemoAdministratorOptions(
+            " keycloak-admin ",
+            " admin@example.com ",
+            " Admin ",
+            " User "));
         var administratorRole = Role(AdministratorRoleCode);
         var existingRole = Role("pm-accountant");
         var upsertedUserId = Guid.CreateVersion7();
@@ -55,15 +53,7 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
         fixture.Versions.Setup(x => x.GetAsync(emailMatchedUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformUserAccessVersion?)null);
 
-        using var environment = new EnvironmentVariableScope(new Dictionary<string, string?>
-        {
-            ["KEYCLOAK_DEMO_ADMIN_EMAIL"] = " admin@example.com ",
-            ["KEYCLOAK_DEMO_ADMIN_ID"] = " keycloak-admin ",
-            ["KEYCLOAK_DEMO_ADMIN_FIRST_NAME"] = " Admin ",
-            ["KEYCLOAK_DEMO_ADMIN_LAST_NAME"] = " User "
-        });
-
-        await fixture.Sut.EnsureSeededAsync();
+        await fixture.Sut.EnsureDefaultsAsync();
 
         fixture.UserRoles.Verify(x => x.ReplaceUserRolesAsync(
             emailMatchedUserId,
@@ -79,7 +69,11 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
     [Fact]
     public async Task EnsureSeededAsync_WithBlankDisplayName_UsesEmailAndIncrementsExistingAccessVersion()
     {
-        var fixture = new SeederFixture();
+        var fixture = new SeederFixture(new PropertyManagementDemoAdministratorOptions(
+            "keycloak-admin",
+            "admin@example.com",
+            " ",
+            null));
         var administratorRole = Role(AdministratorRoleCode);
         var userId = Guid.CreateVersion7();
 
@@ -101,15 +95,7 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
         fixture.Versions.Setup(x => x.GetAsync(userId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new PlatformUserAccessVersion(userId, 7, DateTime.UtcNow));
 
-        using var environment = new EnvironmentVariableScope(new Dictionary<string, string?>
-        {
-            ["KEYCLOAK_DEMO_ADMIN_EMAIL"] = "admin@example.com",
-            ["KEYCLOAK_DEMO_ADMIN_ID"] = "keycloak-admin",
-            ["KEYCLOAK_DEMO_ADMIN_FIRST_NAME"] = " ",
-            ["KEYCLOAK_DEMO_ADMIN_LAST_NAME"] = null
-        });
-
-        await fixture.Sut.EnsureSeededAsync();
+        await fixture.Sut.EnsureDefaultsAsync();
 
         fixture.Versions.Verify(x => x.IncrementAsync(userId, It.IsAny<CancellationToken>()), Times.Once);
         fixture.UserRoles.Verify(x => x.ReplaceUserRolesAsync(
@@ -126,7 +112,7 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
         fixture.Roles.Setup(x => x.GetByCodeAsync(AdministratorRoleCode, It.IsAny<CancellationToken>()))
             .ReturnsAsync((PlatformRole?)null);
 
-        await fixture.Sut.EnsureSeededAsync();
+        await fixture.Sut.EnsureDefaultsAsync();
 
         fixture.Users.Verify(x => x.UpsertAsync(
             It.IsAny<string>(),
@@ -144,15 +130,7 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
         var fixture = new SeederFixture();
         fixture.Roles.Setup(x => x.GetByCodeAsync(AdministratorRoleCode, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Role(AdministratorRoleCode));
-        using var environment = new EnvironmentVariableScope(new Dictionary<string, string?>
-        {
-            ["KEYCLOAK_DEMO_ADMIN_EMAIL"] = null,
-            ["KEYCLOAK_DEMO_ADMIN_ID"] = null,
-            ["KEYCLOAK_DEMO_ADMIN_FIRST_NAME"] = null,
-            ["KEYCLOAK_DEMO_ADMIN_LAST_NAME"] = null
-        });
-
-        await fixture.Sut.EnsureSeededAsync();
+        await fixture.Sut.EnsureDefaultsAsync();
 
         fixture.Uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
         fixture.UserRoles.Verify(x => x.GetRolesForUserAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -161,7 +139,8 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
     [Fact]
     public async Task EnsureSeededAsync_WhenRoleUpsertFails_RollsBackAndRethrows()
     {
-        var fixture = new SeederFixture();
+        var fixture = new SeederFixture(new PropertyManagementDemoAdministratorOptions(
+            authSubject: "keycloak-admin"));
         fixture.Roles.Setup(x => x.UpsertAsync(
                 It.IsAny<Guid>(),
                 It.IsAny<string>(),
@@ -172,7 +151,7 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("role failure"));
 
-        var act = () => fixture.Sut.EnsureSeededAsync();
+        var act = () => fixture.Sut.EnsureDefaultsAsync();
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("role failure");
         fixture.Uow.Verify(x => x.RollbackAsync(CancellationToken.None), Times.Once);
@@ -182,7 +161,8 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
     [Fact]
     public async Task EnsureSeededAsync_WhenDemoUserUpsertFails_RollsBackAndRethrows()
     {
-        var fixture = new SeederFixture();
+        var fixture = new SeederFixture(new PropertyManagementDemoAdministratorOptions(
+            authSubject: "keycloak-admin"));
         fixture.Roles.Setup(x => x.GetByCodeAsync(AdministratorRoleCode, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Role(AdministratorRoleCode));
         fixture.Users.Setup(x => x.UpsertAsync(
@@ -192,15 +172,7 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
                 true,
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("user failure"));
-        using var environment = new EnvironmentVariableScope(new Dictionary<string, string?>
-        {
-            ["KEYCLOAK_DEMO_ADMIN_EMAIL"] = null,
-            ["KEYCLOAK_DEMO_ADMIN_ID"] = "keycloak-admin",
-            ["KEYCLOAK_DEMO_ADMIN_FIRST_NAME"] = null,
-            ["KEYCLOAK_DEMO_ADMIN_LAST_NAME"] = null
-        });
-
-        var act = () => fixture.Sut.EnsureSeededAsync();
+        var act = () => fixture.Sut.EnsureDefaultsAsync();
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("user failure");
         fixture.Uow.Verify(x => x.RollbackAsync(CancellationToken.None), Times.Once);
@@ -210,7 +182,8 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
     [Fact]
     public async Task EnsureSeededAsync_WhenRoleAssignmentFails_RollsBackAndRethrows()
     {
-        var fixture = new SeederFixture();
+        var fixture = new SeederFixture(new PropertyManagementDemoAdministratorOptions(
+            authSubject: "keycloak-admin"));
         var administratorRole = Role(AdministratorRoleCode);
         var userId = Guid.CreateVersion7();
         fixture.Roles.Setup(x => x.GetByCodeAsync(AdministratorRoleCode, It.IsAny<CancellationToken>()))
@@ -230,15 +203,7 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
                 null,
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("assignment failure"));
-        using var environment = new EnvironmentVariableScope(new Dictionary<string, string?>
-        {
-            ["KEYCLOAK_DEMO_ADMIN_EMAIL"] = null,
-            ["KEYCLOAK_DEMO_ADMIN_ID"] = "keycloak-admin",
-            ["KEYCLOAK_DEMO_ADMIN_FIRST_NAME"] = null,
-            ["KEYCLOAK_DEMO_ADMIN_LAST_NAME"] = null
-        });
-
-        var act = () => fixture.Sut.EnsureSeededAsync();
+        var act = () => fixture.Sut.EnsureDefaultsAsync();
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("assignment failure");
         fixture.Uow.Verify(x => x.RollbackAsync(CancellationToken.None), Times.Once);
@@ -273,9 +238,9 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
         public Mock<IUserAccessVersionRepository> Versions { get; } = new(MockBehavior.Loose);
         public Mock<IPermissionSnapshotRepository> Permissions { get; } = new(MockBehavior.Loose);
 
-        public PropertyManagementSecuritySeeder Sut { get; }
+        public PropertyManagementSecuritySetupService Sut { get; }
 
-        public SeederFixture()
+        public SeederFixture(PropertyManagementDemoAdministratorOptions? demoAdministrator = null)
         {
             Uow.Setup(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
             Uow.Setup(x => x.CommitAsync(It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
@@ -311,33 +276,14 @@ public sealed class PropertyManagementSecuritySeederFullCoverageTests
                 .ReturnsAsync((Guid userId, CancellationToken _) =>
                     new PlatformUserAccessVersion(userId, 2, DateTime.UtcNow));
 
-            Sut = new PropertyManagementSecuritySeeder(
+            Sut = new PropertyManagementSecuritySetupService(
                 Uow.Object,
                 Users.Object,
                 Roles.Object,
                 UserRoles.Object,
                 Versions.Object,
-                Permissions.Object);
-        }
-    }
-
-    private sealed class EnvironmentVariableScope : IDisposable
-    {
-        private readonly Dictionary<string, string?> _previousValues = new(StringComparer.Ordinal);
-
-        public EnvironmentVariableScope(IReadOnlyDictionary<string, string?> values)
-        {
-            foreach (var pair in values)
-            {
-                _previousValues[pair.Key] = Environment.GetEnvironmentVariable(pair.Key);
-                Environment.SetEnvironmentVariable(pair.Key, pair.Value);
-            }
-        }
-
-        public void Dispose()
-        {
-            foreach (var pair in _previousValues)
-                Environment.SetEnvironmentVariable(pair.Key, pair.Value);
+                Permissions.Object,
+                demoAdministrator ?? new PropertyManagementDemoAdministratorOptions());
         }
     }
 }

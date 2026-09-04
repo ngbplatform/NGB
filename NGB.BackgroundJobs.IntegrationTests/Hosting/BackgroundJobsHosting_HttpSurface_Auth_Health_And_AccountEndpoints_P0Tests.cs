@@ -22,6 +22,7 @@ using NGB.Persistence.Checkers;
 using NGB.Persistence.Readers.PostingState;
 using NGB.Persistence.Schema;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.Bootstrap;
 using NGB.ReferenceRegisters.Contracts;
 using NGB.Runtime.Catalogs;
@@ -242,6 +243,11 @@ public sealed class BackgroundJobsHosting_HttpSurface_Auth_Health_And_AccountEnd
         });
 
         var bootstrap = builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create, configure);
+
+        builder.Services.AddHealthChecks()
+            .AddNgbPostgresHealthCheck(
+                bootstrap.ApplicationConnectionString,
+                bootstrap.Options.PostgresHealthCheckName);
 
         RegisterPlatformJobDependencyFakes(builder.Services, applicationConnectionString);
 

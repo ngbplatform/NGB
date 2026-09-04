@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NGB.Api\NGB.Api.csproj" />
+        <ProjectReference Include="..\NGB.Hosting.AspNetCore\NGB.Hosting.AspNetCore.csproj" />
         <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj" />
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj" />
     </ItemGroup>

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Contracts;
 using NGB.CRM.Documents;
+using NGB.CRM.Seeding;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Core.Documents;
@@ -27,6 +28,7 @@ public sealed class CrmDemoSeedService(
     IDocumentReferenceRegisterPostingActionResolver refregPostingActionResolver,
     IReferenceRegisterRecordsApplier refregRecordsApplier,
     ICrmPostedDocumentReader postedDocumentReader,
+    ICrmDemoSeedStateReader seedStateReader,
     IUnitOfWork uow,
     CrmDemoSeedOptions options,
     IServiceScopeFactory? scopeFactory = null)
@@ -502,7 +504,10 @@ public sealed class CrmDemoSeedService(
         Guid implementationPackageId,
         CancellationToken ct)
     {
-        var existingGeneratedLeads = await CountGeneratedDemoLeadIntakesAsync(ct);
+        var existingGeneratedLeads = await seedStateReader.CountLeadIntakesByNamePrefixAsync(
+            GeneratedLeadSearch,
+            ct);
+
         if (existingGeneratedLeads >= _options.GeneratedOpportunityCycleCount)
             return 0;
 
@@ -966,27 +971,6 @@ public sealed class CrmDemoSeedService(
 
         index[matchValue] = [saved];
         return saved;
-    }
-
-    private async Task<int> CountGeneratedDemoLeadIntakesAsync(CancellationToken ct)
-    {
-        await uow.EnsureConnectionOpenAsync(ct);
-
-        await using var command = uow.Connection.CreateCommand();
-        command.Transaction = uow.Transaction;
-        command.CommandText = """
-                              SELECT COUNT(*)::int
-                              FROM doc_crm_lead_intake
-                              WHERE lead_name LIKE @prefix;
-                              """;
-
-        var prefix = command.CreateParameter();
-        prefix.ParameterName = "prefix";
-        prefix.Value = GeneratedLeadSearch + "%";
-        command.Parameters.Add(prefix);
-
-        var value = await command.ExecuteScalarAsync(ct);
-        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
     }
 
     private async Task<CatalogItemDto> EnsureCatalogAsync(

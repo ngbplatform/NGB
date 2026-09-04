@@ -262,6 +262,5 @@ public sealed class OperationalRegisterReadAndProjectionFullCoverageTests
     private static OperationalRegisterMonthProjectionContext Context(
         Guid id, DateOnly month, IOperationalRegisterMovementsReader? movements = null)
         => new(id, "stock", "stock", month, Now,
-            movements ?? new Mock<IOperationalRegisterMovementsReader>().Object,
-            new Mock<IUnitOfWork>().Object);
+            movements ?? new Mock<IOperationalRegisterMovementsReader>().Object);
 }

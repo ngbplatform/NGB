@@ -4,9 +4,11 @@ using NGB.AgencyBilling.Runtime.DependencyInjection;
 using NGB.BackgroundJobs.Hosting;
 using NGB.BackgroundJobs.PostgreSql;
 using NGB.BackgroundJobs.PostgreSql.DependencyInjection;
+using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,10 +17,15 @@ var bootstrap = builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.C
     options.DashboardTitle = "NGB: Agency Billing - Background Jobs";
 });
 
+builder.Services.AddNgbPostgresExceptionMapping();
+builder.Services.AddHealthChecks()
+    .AddNgbPostgresHealthCheck(bootstrap.ApplicationConnectionString, bootstrap.Options.PostgresHealthCheckName);
+
 await bootstrap.EnsureInfrastructureAsync(new PostgresDatabaseProvisioner());
 
 builder.Services
     .AddNgbRuntime()
+    .AddNgbRuntimeStartupValidation()
     .AddNgbPostgres(bootstrap.ApplicationConnectionString)
     .AddNgbPostgresBackgroundJobsAdapter()
     .AddAgencyBillingModule()

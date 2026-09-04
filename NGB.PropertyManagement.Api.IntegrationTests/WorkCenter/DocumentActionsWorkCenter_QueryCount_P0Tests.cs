@@ -20,7 +20,7 @@ using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.Security;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.UnitOfWork;
@@ -142,8 +142,8 @@ public sealed class DocumentActionsWorkCenter_QueryCount_P0Tests : IAsyncLifetim
         var subject = new JwtSecurityTokenHandler().ReadJwtToken(token).Subject;
         await using var scope = factory.Services.CreateAsyncScope();
         await scope.ServiceProvider
-            .GetRequiredService<PropertyManagementSecuritySeeder>()
-            .EnsureSeededAsync(CancellationToken.None);
+            .GetRequiredService<IPropertyManagementSecuritySetupService>()
+            .EnsureDefaultsAsync(CancellationToken.None);
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var users = scope.ServiceProvider.GetRequiredService<IPlatformUserRepository>();
         var userRoles = scope.ServiceProvider.GetRequiredService<IPlatformUserRoleRepository>();

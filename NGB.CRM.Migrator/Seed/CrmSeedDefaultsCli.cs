@@ -4,6 +4,7 @@ using NGB.CRM.DependencyInjection;
 using NGB.CRM.PostgreSql.DependencyInjection;
 using NGB.CRM.Runtime;
 using NGB.CRM.Runtime.DependencyInjection;
+using NGB.CRM.Security;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
 
@@ -53,6 +54,11 @@ public static class CrmSeedDefaultsCli
         var services = new ServiceCollection();
         services.AddLogging();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton(new CrmDemoAdministratorOptions(
+            Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_ID"),
+            Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_EMAIL"),
+            Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_FIRST_NAME"),
+            Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_LAST_NAME")));
 
         services
             .AddNgbRuntime()

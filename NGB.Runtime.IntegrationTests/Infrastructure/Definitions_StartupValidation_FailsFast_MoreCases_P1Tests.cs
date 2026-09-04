@@ -12,6 +12,7 @@ using NGB.Metadata.Documents.Hybrid;
 using NGB.Persistence.Documents.Storage;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
@@ -140,7 +141,7 @@ public sealed class Definitions_StartupValidation_FailsFast_MoreCases_P1Tests(Po
             })
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(connectionString);
                 services.AddScoped<IAccountingPostingValidator, BasicAccountingPostingValidator>();
 

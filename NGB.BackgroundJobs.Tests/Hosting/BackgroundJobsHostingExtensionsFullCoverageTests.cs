@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using NGB.Api;
 using NGB.BackgroundJobs.Hosting;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Checkers;
@@ -35,12 +34,9 @@ public sealed class BackgroundJobsHostingExtensionsFullCoverageTests
         Action nullBuilder = () => BackgroundJobsHostingExtensions.AddNgbBackgroundJobs(null!, StorageFactory);
         Action nullFactory = () => Builder(true, null).AddNgbBackgroundJobs(null!);
         Action nullStorage = () => Builder(true, null).AddNgbBackgroundJobs((_, _, _) => null!);
-        Action blankHealthConnection = () => new ServiceCollection().AddHealthChecks()
-            .AddNgbPostgresHealthCheck(" ");
         nullBuilder.Should().Throw<NgbArgumentRequiredException>();
         nullFactory.Should().Throw<NgbArgumentRequiredException>();
         nullStorage.Should().Throw<NgbConfigurationViolationException>();
-        blankHealthConnection.Should().Throw<NgbArgumentRequiredException>();
 
         var builder = Builder(includeApplicationConnection: false, hangfireConnection: null);
         Action missingConnection = () => builder.AddNgbBackgroundJobs(StorageFactory);

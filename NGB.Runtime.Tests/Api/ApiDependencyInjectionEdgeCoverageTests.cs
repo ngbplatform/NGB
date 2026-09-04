@@ -17,6 +17,7 @@ using NGB.Api;
 using NGB.Api.CurrentUser;
 using NGB.Api.Models;
 using NGB.Api.Sso;
+using NGB.Hosting.AspNetCore;
 using NGB.Runtime.CurrentActor;
 using NGB.Tools.Exceptions;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -77,8 +78,7 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
         services.AddExternalLinks(configuration);
         services.AddHealthCheckHttpClient();
         services.AddHealthChecks()
-            .AddWebApplication()
-            .AddPostgres(configuration);
+            .AddWebApplication();
 
         using var provider = services.BuildServiceProvider();
 

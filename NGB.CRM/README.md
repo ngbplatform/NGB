@@ -9,6 +9,7 @@ The module intentionally consumes NGB Platform through NuGet packages:
 - `NGB.Platform.Metadata`
 - `NGB.Platform.Runtime`
 - `NGB.Platform.PostgreSql`
+- `NGB.Platform.PostgreSql.AspNetCore`
 - `NGB.Platform.Api`
 - `NGB.Platform.Migrator.Core`
 

@@ -3,8 +3,8 @@ using NGB.PropertyManagement.DependencyInjection;
 using NGB.PropertyManagement.Runtime;
 using NGB.PropertyManagement.Runtime.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.PostgreSql.DependencyInjection;
+using NGB.PropertyManagement.Security;
 using NGB.Runtime.CurrentActor;
 using NGB.Runtime.DependencyInjection;
 
@@ -34,6 +34,11 @@ internal static class PropertyManagementSeedDefaultsCli
         {
             var services = new ServiceCollection();
             services.AddLogging();
+            services.AddSingleton(new PropertyManagementDemoAdministratorOptions(
+                Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_ID"),
+                Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_EMAIL"),
+                Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_FIRST_NAME"),
+                Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_LAST_NAME")));
 
             services
                 .AddNgbRuntime()
@@ -52,7 +57,7 @@ internal static class PropertyManagementSeedDefaultsCli
             var setupService = scope.ServiceProvider.GetRequiredService<IPropertyManagementSetupService>();
 
             var result = await setupService.EnsureDefaultsAsync();
-            await scope.ServiceProvider.GetRequiredService<PropertyManagementSecuritySeeder>().EnsureSeededAsync();
+            await scope.ServiceProvider.GetRequiredService<IPropertyManagementSecuritySetupService>().EnsureDefaultsAsync();
             PrintSummary(result);
         }
         catch (Exception ex)

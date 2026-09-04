@@ -6,7 +6,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
-using NGB.Api.Models;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Tools.Exceptions;
 using Xunit;
 
@@ -193,8 +193,8 @@ public sealed class SsoDependencyInjectionHelperCoverageTests
         => Method(methodName).Invoke(null, arguments);
 
     private static MethodInfo Method(string methodName)
-        => typeof(NGB.Api.Sso.DependencyInjection).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
-           ?? throw new MissingMethodException(typeof(NGB.Api.Sso.DependencyInjection).FullName, methodName);
+        => typeof(NGB.Hosting.AspNetCore.Identity.DependencyInjection).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static)
+           ?? throw new MissingMethodException(typeof(NGB.Hosting.AspNetCore.Identity.DependencyInjection).FullName, methodName);
 
     private sealed class UnknownSecurityToken : SecurityToken
     {

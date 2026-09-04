@@ -237,8 +237,7 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
                 RegisterCodeNorm: codeNorm,
                 PeriodMonth: periodMonth,
                 NowUtc: nowUtc,
-                Movements: _movements,
-                UnitOfWork: _uow);
+                Movements: _movements);
 
             if (_projectorsByCodeNorm.TryGetValue(codeNorm, out var projector))
             {

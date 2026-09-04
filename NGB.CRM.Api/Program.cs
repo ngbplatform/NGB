@@ -1,19 +1,23 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.Api;
-using NGB.Api.GlobalErrorHandling;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.ErrorHandling;
 using NGB.Api.Reporting;
-using NGB.Api.Sso;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Api.Services;
 using NGB.CRM.DependencyInjection;
 using NGB.CRM.PostgreSql.DependencyInjection;
 using NGB.CRM.Runtime.DependencyInjection;
+using NGB.CRM.Security;
 using NGB.Runtime.Reporting.Datasets;
 using NGB.Runtime.Reporting.Definitions;
+using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 using Serilog;
@@ -28,9 +32,16 @@ var cs = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(cs))
     throw new NgbConfigurationViolationException("Please provide PostgreSQL connection string in 'ConnectionStrings:DefaultConnection'.");
 
+builder.Services.AddSingleton(new CrmDemoAdministratorOptions(
+    builder.Configuration["KEYCLOAK_DEMO_ADMIN_ID"],
+    builder.Configuration["KEYCLOAK_DEMO_ADMIN_EMAIL"],
+    builder.Configuration["KEYCLOAK_DEMO_ADMIN_FIRST_NAME"],
+    builder.Configuration["KEYCLOAK_DEMO_ADMIN_LAST_NAME"]));
+
+builder.Services.AddNgbPostgresExceptionMapping();
 builder.Services.AddHealthChecks()
     .AddWebApplication()
-    .AddPostgres(builder.Configuration)
+    .AddNgbPostgresHealthCheck(cs)
     .AddKeycloak()
     .AddNgbWorkCenterHealth();
 
@@ -38,6 +49,7 @@ builder.Services.AddInfrastructure(builder.Configuration, projectName);
 
 builder.Services
     .AddNgbRuntime()
+    .AddNgbRuntimeStartupValidation()
     .AddNgbRuntimeAuthorization()
     .AddNgbPostgres(cs)
     .AddCrmModule()

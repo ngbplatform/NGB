@@ -7,6 +7,7 @@ using NGB.Metadata.Documents.Hybrid;
 using NGB.Persistence.Documents.Storage;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
@@ -25,7 +26,7 @@ public sealed class Definitions_StartupValidation_FailsFast_P1Tests(PostgresTest
             })
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(fixture.ConnectionString);
                 services.AddScoped<IAccountingPostingValidator, BasicAccountingPostingValidator>();
             })
@@ -47,7 +48,7 @@ public sealed class Definitions_StartupValidation_FailsFast_P1Tests(PostgresTest
             })
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(fixture.ConnectionString);
                 services.AddScoped<IAccountingPostingValidator, BasicAccountingPostingValidator>();
 
@@ -72,7 +73,7 @@ public sealed class Definitions_StartupValidation_FailsFast_P1Tests(PostgresTest
             })
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(fixture.ConnectionString);
                 services.AddScoped<IAccountingPostingValidator, BasicAccountingPostingValidator>();
 
@@ -98,7 +99,7 @@ public sealed class Definitions_StartupValidation_FailsFast_P1Tests(PostgresTest
             })
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(fixture.ConnectionString);
                 services.AddScoped<IAccountingPostingValidator, BasicAccountingPostingValidator>();
 

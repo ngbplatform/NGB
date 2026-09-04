@@ -2,9 +2,8 @@ using System.Reflection;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
-using NGB.Api.GlobalErrorHandling;
+using NGB.Hosting.AspNetCore.ErrorHandling;
 using NGB.Tools.Exceptions;
-using Npgsql;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Api;
@@ -151,47 +150,14 @@ public sealed class ApiErrorHandlingFullCoverageTests
         AssertProblem(new InvalidOperationException("secret"), 500, "ngb.unexpected", noDetailLeak: true);
     }
 
-    [Theory]
-    [InlineData("23505", 409, "ngb.conflict.unique_violation")]
-    [InlineData("23503", 409, "ngb.conflict.foreign_key_violation")]
-    [InlineData("40001", 409, "ngb.conflict.serialization_failure")]
-    [InlineData("40P01", 409, "ngb.conflict.deadlock_detected")]
-    [InlineData("53300", 503, "ngb.db.too_many_connections")]
-    [InlineData("53400", 503, "ngb.db.configuration_limit_exceeded")]
-    [InlineData("57P03", 503, "ngb.db.cannot_connect_now")]
-    [InlineData("XX000", 500, "ngb.db.error")]
-    public void ExceptionMapping_covers_postgres_states(string sqlState, int status, string code)
-        => AssertProblem(new PostgresException("secret database detail", "ERROR", "ERROR", sqlState),
-            status, code, noDetailLeak: true);
-
     [Fact]
-    public void ExceptionMapping_includes_safe_postgres_identifiers_when_present()
-    {
-        var exception = new PostgresException(
-            "secret", "ERROR", "ERROR", "23505", "detail", "hint", 1, 2,
-            "query", "where", "schema", "table_name", "column_name", "type", "constraint_name",
-            "file", "line", "routine");
-
-        var error = Error(exception.ToProblemDetails());
-        var context = error.Context.Should().BeAssignableTo<IReadOnlyDictionary<string, object?>>().Subject;
-        context.Should().Contain("sqlState", "23505")
-            .And.Contain("constraint", "constraint_name")
-            .And.Contain("table", "table_name")
-            .And.Contain("column", "column_name");
-    }
-
-    [Fact]
-    public void ExceptionMapping_distinguishes_pool_timeouts_from_other_npgsql_failures()
-    {
-        AssertProblem(new NpgsqlException("outer", new TimeoutException("timeout")), 503,
-            "ngb.db.connection_pool_exhausted", noDetailLeak: true);
-        AssertProblem(new NpgsqlException("connection pool timeout"), 503,
-            "ngb.db.connection_pool_exhausted", noDetailLeak: true);
-        AssertProblem(new NpgsqlException("outer", new Exception("pool timeout")), 503,
-            "ngb.db.connection_pool_exhausted", noDetailLeak: true);
-        AssertProblem(new NpgsqlException("offline", new Exception("network")), 503,
-            "ngb.db.unavailable", noDetailLeak: true);
-    }
+    public void ExceptionMapping_uses_registered_provider_mapper_without_provider_dependency()
+        => AssertProblem(
+            new ExternalInfrastructureException(),
+            503,
+            "external.unavailable",
+            noDetailLeak: true,
+            exceptionMappers: [new ExternalInfrastructureExceptionMapper()]);
 
     private static void AssertProblem(
         Exception exception,
@@ -199,9 +165,10 @@ public sealed class ApiErrorHandlingFullCoverageTests
         string code,
         string? detail = null,
         string? errorPath = null,
-        bool noDetailLeak = false)
+        bool noDetailLeak = false,
+        IEnumerable<INgbExceptionHttpMapper>? exceptionMappers = null)
     {
-        var problem = exception.ToProblemDetails();
+        var problem = exception.ToProblemDetails(exceptionMappers);
         problem.Status.Should().Be(status);
         var error = Error(problem);
         error.Code.Should().Be(code);
@@ -242,4 +209,18 @@ public sealed class ApiErrorHandlingFullCoverageTests
 
     private sealed class EmptyContextNgbException()
         : NgbException("empty context", "empty.context", NgbErrorKind.Infrastructure);
+
+    private sealed class ExternalInfrastructureException : Exception;
+
+    private sealed class ExternalInfrastructureExceptionMapper : INgbExceptionHttpMapper
+    {
+        public NgbExceptionHttpMapping? TryMap(Exception exception)
+            => exception is ExternalInfrastructureException
+                ? new NgbExceptionHttpMapping(
+                    503,
+                    "external.unavailable",
+                    NgbErrorKind.Infrastructure,
+                    new Dictionary<string, object?> { ["provider"] = "external" })
+                : null;
+    }
 }

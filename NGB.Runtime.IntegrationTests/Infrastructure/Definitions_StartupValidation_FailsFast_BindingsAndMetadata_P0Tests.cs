@@ -14,6 +14,7 @@ using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.Documents.Storage;
 using NGB.Runtime.Definitions.Validation;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using NGB.PostgreSql.DependencyInjection;
 using Xunit;
 
@@ -67,7 +68,7 @@ public sealed class Definitions_StartupValidation_FailsFast_BindingsAndMetadata_
             })
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(fixture.ConnectionString);
                 services.AddScoped<IAccountingPostingValidator, BasicAccountingPostingValidator>();
 

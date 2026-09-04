@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using NGB.Api.Controllers;
 using NGB.Core.Security;
 using NGB.PropertyManagement.Contracts;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.Runtime;
+using NGB.PropertyManagement.Security;
 using NGB.Runtime.Admin;
 using NGB.Runtime.Security;
 
@@ -22,12 +22,17 @@ public sealed class AdminController(PermissionAwareAdminService service, INgbAcc
     [HttpPost("~/api/admin/setup/apply-defaults")]
     public async Task<PropertyManagementSetupResult> ApplyDefaults(
         [FromServices] IPropertyManagementSetupService setupService,
-        [FromServices] PropertyManagementSecuritySeeder securitySeeder,
+        [FromServices] IPropertyManagementSecuritySetupService securitySetup,
         CancellationToken ct)
     {
-        await access.RequireAsync(NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.Manage, ct);
+        await access.RequireAsync(
+            NgbResourceKinds.Admin,
+            NgbPermissionResources.ChartOfAccounts,
+            NgbPermissionActions.Manage,
+            ct);
+
         var result = await setupService.EnsureDefaultsAsync(ct);
-        await securitySeeder.EnsureSeededAsync(ct);
+        await securitySetup.EnsureDefaultsAsync(ct);
         return result;
     }
 }

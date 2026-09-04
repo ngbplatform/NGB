@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NGB.Definitions;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using NGB.Accounting.Posting.Validators;
 using NGB.PostgreSql.DependencyInjection;
 
@@ -31,7 +32,7 @@ internal static class IntegrationHostFactory
             .ConfigureServices(services =>
             {
                 // Act
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(connectionString);
 
                 // NGB.Runtime composes multiple submodules (catalogs/documents/etc.).

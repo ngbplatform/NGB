@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
-using NGB.Api.GlobalErrorHandling;
+using NGB.Hosting.AspNetCore.ErrorHandling;
 using NGB.Tools.Exceptions;
 using Xunit;
 
@@ -91,7 +91,7 @@ public sealed class GlobalErrorHandlingPipelineFullCoverageTests
     public async Task GlobalExceptionHandler_writes_safe_problem_json_and_uses_error_or_warning_log_levels()
     {
         var logger = new Mock<ILogger<GlobalExceptionHandler>>();
-        var handler = new GlobalExceptionHandler(logger.Object);
+        var handler = new GlobalExceptionHandler(logger.Object, []);
 
         var serverError = HttpContext();
         (await handler.TryHandleAsync(serverError, new InvalidOperationException("secret"), default)).Should().BeTrue();

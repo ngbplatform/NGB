@@ -6,6 +6,7 @@ using NGB.Persistence.Dimensions;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Catalogs.Schema;
 using NGB.Runtime.Definitions.Validation;
+using NGB.Runtime.Hosting;
 using NGB.Runtime.Dimensions;
 using NGB.Runtime.Documents.GeneralJournalEntry.Exceptions;
 using NGB.Runtime.Internal;

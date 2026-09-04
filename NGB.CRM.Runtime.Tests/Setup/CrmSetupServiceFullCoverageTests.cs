@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Moq;
 using NGB.Application.Abstractions.Services;
+using NGB.CRM.Security;
 using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 using NGB.Contracts.Services;
@@ -17,13 +18,11 @@ using NGB.Tools.Extensions;
 
 namespace NGB.CRM.Runtime.Tests.Setup;
 
-[Collection(CrmEnvironmentCollection.Name)]
 public sealed class CrmSetupServiceFullCoverageTests
 {
     [Fact]
     public async Task EnsureDefaultsAsync_FirstRunCreatesAllRegistersCatalogsRolesAndAdministrator()
     {
-        using var environment = DemoEnvironment.Cleared();
         var state = new SetupState();
         var sut = CreateService(state);
 
@@ -112,17 +111,20 @@ public sealed class CrmSetupServiceFullCoverageTests
     [Fact]
     public async Task EnsureDefaultsAsync_UsesConfiguredIdentityAndEmailWhenNamesAreBlank()
     {
-        using var environment = DemoEnvironment.Configured(
-            "custom-subject", "admin@example.test", " ", "\t");
         var state = new SetupState();
 
-        await CreateService(state).EnsureDefaultsAsync();
+        await CreateService(
+            state,
+            new CrmDemoAdministratorOptions("custom-subject", "admin@example.test", " ", "\t"))
+            .EnsureDefaultsAsync();
 
         state.UserUpserts.Should().ContainSingle().Which.Should().Be((
             "custom-subject", "admin@example.test", "admin@example.test"));
     }
 
-    private static CrmSetupService CreateService(SetupState state)
+    private static CrmSetupService CreateService(
+        SetupState state,
+        CrmDemoAdministratorOptions? demoAdministrator = null)
     {
         var registers = new Mock<IReferenceRegisterManagementService>(MockBehavior.Strict);
         registers.Setup(x => x.UpsertAsync(
@@ -217,7 +219,8 @@ public sealed class CrmSetupServiceFullCoverageTests
 
         return new CrmSetupService(
             registers.Object, maintenance.Object, catalogs.Object, roles.Object, uow.Object,
-            users.Object, userRoles.Object, versions.Object);
+            users.Object, userRoles.Object, versions.Object,
+            demoAdministrator ?? new CrmDemoAdministratorOptions());
     }
 
     private static CatalogItemDto Catalog(string display, RecordPayload payload) =>
@@ -273,41 +276,4 @@ public sealed class CrmSetupServiceFullCoverageTests
                 CatalogPages.Enqueue([Catalog(Display(create.Payload)!, create.Payload)]);
         }
     }
-
-    private sealed class DemoEnvironment : IDisposable
-    {
-        private static readonly string[] Keys =
-        [
-            "KEYCLOAK_DEMO_ADMIN_ID",
-            "KEYCLOAK_DEMO_ADMIN_EMAIL",
-            "KEYCLOAK_DEMO_ADMIN_FIRST_NAME",
-            "KEYCLOAK_DEMO_ADMIN_LAST_NAME"
-        ];
-
-        private readonly string?[] _original;
-
-        private DemoEnvironment(string?[] values)
-        {
-            _original = Keys.Select(Environment.GetEnvironmentVariable).ToArray();
-            for (var index = 0; index < Keys.Length; index++)
-                Environment.SetEnvironmentVariable(Keys[index], values[index]);
-        }
-
-        public static DemoEnvironment Cleared() => new([null, null, null, null]);
-
-        public static DemoEnvironment Configured(string subject, string email, string firstName, string lastName) =>
-            new([subject, email, firstName, lastName]);
-
-        public void Dispose()
-        {
-            for (var index = 0; index < Keys.Length; index++)
-                Environment.SetEnvironmentVariable(Keys[index], _original[index]);
-        }
-    }
-}
-
-[CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class CrmEnvironmentCollection
-{
-    public const string Name = "CRM environment variables";
 }

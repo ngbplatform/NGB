@@ -7,6 +7,7 @@ using FluentAssertions;
 using Moq;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Documents;
+using NGB.CRM.Seeding;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Core.Documents;
@@ -299,6 +300,11 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
             .ReturnsAsync((string type, Guid _, Guid? _, Guid? afterId, int limit, CancellationToken _) =>
                 state.GetBackfillPage(type, afterId, limit));
 
+        var seedStateReader = new Mock<ICrmDemoSeedStateReader>(MockBehavior.Strict);
+        seedStateReader.Setup(x => x.CountLeadIntakesByNamePrefixAsync(
+                It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(state.GeneratedLeadCount);
+
         return new CrmDemoSeedService(
             setup.Object,
             catalogs.Object,
@@ -308,12 +314,13 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
             resolver.Object,
             applier.Object,
             postedDocumentReader.Object,
+            seedStateReader.Object,
             state.UnitOfWork,
             new CrmDemoSeedOptions());
     }
 
     private static CrmDemoSeedService CreateServiceWithOptions(CrmDemoSeedOptions options) =>
-        new(null!, null!, null!, null!, null!, null!, null!, null!, null!, options);
+        new(null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, options);
 
     private static DocumentDto Document(ContractDocumentStatus status, Guid? id = null) =>
         new(id ?? Guid.CreateVersion7(), null, new RecordPayload(), status, false);

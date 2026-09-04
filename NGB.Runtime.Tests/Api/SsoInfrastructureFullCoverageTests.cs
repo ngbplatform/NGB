@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using NGB.Api.Models;
 using NGB.Api.Sso;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Tools.Exceptions;
 using Xunit;
 

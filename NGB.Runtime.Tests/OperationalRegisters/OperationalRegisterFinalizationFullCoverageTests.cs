@@ -165,7 +165,6 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
         observed.PeriodMonth.Should().Be(period);
         observed.NowUtc.Should().Be(Now);
         observed.Movements.Should().BeSameAs(movements);
-        observed.UnitOfWork.Should().BeSameAs(uow.Object);
         finalizations.Verify(x => x.MarkFinalizedAsync(firstId, period, Now, Now, It.IsAny<CancellationToken>()), Times.Once);
         registers.Verify(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
         uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));

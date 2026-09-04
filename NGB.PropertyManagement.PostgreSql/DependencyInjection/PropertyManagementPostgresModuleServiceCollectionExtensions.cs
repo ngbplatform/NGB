@@ -9,7 +9,6 @@ using NGB.PropertyManagement.BackgroundJobs;
 using NGB.PostgreSql.Documents;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.PostgreSql.BackgroundJobs;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.PostgreSql.Catalogs;
 using NGB.PropertyManagement.PostgreSql.Documents;
 using NGB.PropertyManagement.PostgreSql.Payables;
@@ -27,7 +26,6 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
     public static IServiceCollection AddPropertyManagementPostgresModule(this IServiceCollection services)
     {
         // IMPORTANT: do NOT use TryAddEnumerable with factory-based registrations; it can't deduplicate them.
-        services.AddScoped<PropertyManagementSecuritySeeder>();
         services.AddScoped<IPropertyUnitNumberReader, PostgresPropertyUnitNumberReader>();
 
         // Most PM catalogs are simple head-only tables => use the generic PostgresHeadCatalogTypeStorage.

@@ -1,17 +1,21 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Serilog;
 using NGB.Api;
-using NGB.Api.GlobalErrorHandling;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.ErrorHandling;
 using NGB.Api.Reporting;
-using NGB.Api.Sso;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
+using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.PropertyManagement.Api.Services;
 using NGB.PropertyManagement.DependencyInjection;
 using NGB.PropertyManagement.PostgreSql.DependencyInjection;
 using NGB.PropertyManagement.Runtime.DependencyInjection;
+using NGB.PropertyManagement.Security;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using NGB.Tools.Exceptions;
 
 const string projectName = "NGB: Property Management - API";
@@ -24,9 +28,16 @@ var cs = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrWhiteSpace(cs))
     throw new NgbConfigurationViolationException("Please provide PostgreSQL connection string in 'ConnectionStrings:DefaultConnection'.");
 
+builder.Services.AddSingleton(new PropertyManagementDemoAdministratorOptions(
+    builder.Configuration["KEYCLOAK_DEMO_ADMIN_ID"],
+    builder.Configuration["KEYCLOAK_DEMO_ADMIN_EMAIL"],
+    builder.Configuration["KEYCLOAK_DEMO_ADMIN_FIRST_NAME"],
+    builder.Configuration["KEYCLOAK_DEMO_ADMIN_LAST_NAME"]));
+
+builder.Services.AddNgbPostgresExceptionMapping();
 builder.Services.AddHealthChecks()
     .AddWebApplication()
-    .AddPostgres(builder.Configuration)
+    .AddNgbPostgresHealthCheck(cs)
     .AddKeycloak()
     .AddNgbWorkCenterHealth();
 
@@ -34,6 +45,7 @@ builder.Services.AddInfrastructure(builder.Configuration, projectName);
 
 builder.Services
     .AddNgbRuntime()
+    .AddNgbRuntimeStartupValidation()
     .AddNgbRuntimeAuthorization()
     .AddNgbPostgres(cs)
     .AddPropertyManagementModule()

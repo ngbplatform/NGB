@@ -9,6 +9,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj"/>
+        <ProjectReference Include="..\NGB.Runtime.Hosting\NGB.Runtime.Hosting.csproj"/>
         <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj"/>
         <ProjectReference Include="..\NGB.BackgroundJobs\NGB.BackgroundJobs.csproj"/>
     </ItemGroup>

@@ -10,6 +10,7 @@ using NGB.CRM.Runtime.Posting;
 using NGB.CRM.Runtime.Reporting;
 using NGB.CRM.Runtime.Reporting.Datasets;
 using NGB.CRM.Runtime.WorkCenter;
+using NGB.CRM.Security;
 using NGB.CRM.WorkCenter;
 using NGB.Definitions.WorkCenter;
 using NGB.Definitions;
@@ -24,6 +25,7 @@ public static class CrmRuntimeModuleServiceCollectionExtensions
     public static IServiceCollection AddCrmRuntimeModule(this IServiceCollection services)
     {
         services.TryAddSingleton(new CrmDemoSeedOptions());
+        services.TryAddSingleton(new CrmDemoAdministratorOptions());
         services.TryAddScoped<ICrmSetupService, CrmSetupService>();
         services.TryAddScoped<ICrmDemoSeedService, CrmDemoSeedService>();
         services.TryAddScoped<ICrmDashboardService, CrmDashboardService>();

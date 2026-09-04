@@ -20,6 +20,7 @@ using NGB.PropertyManagement.Runtime.Payables;
 using NGB.PropertyManagement.Runtime.Receivables;
 using NGB.PropertyManagement.Runtime.Reporting;
 using NGB.PropertyManagement.Runtime.Security;
+using NGB.PropertyManagement.Security;
 using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.Documents.Validation;
@@ -31,7 +32,9 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
 {
     public static IServiceCollection AddPropertyManagementRuntimeModule(this IServiceCollection services)
     {
+        services.TryAddSingleton(new PropertyManagementDemoAdministratorOptions());
         services.TryAddScoped<IPropertyManagementSetupService, PropertyManagementSetupService>();
+        services.TryAddScoped<IPropertyManagementSecuritySetupService, PropertyManagementSecuritySetupService>();
         services.TryAddScoped<IPropertyManagementDashboardService, PropertyManagementDashboardService>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, PropertyManagementPermissionDefinitionSource>());
 

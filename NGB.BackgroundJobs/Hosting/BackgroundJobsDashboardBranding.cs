@@ -1,6 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Http;
-using NGB.Api.Branding;
+using NGB.Hosting.AspNetCore.Branding;
 using NGB.Tools.Exceptions;
 
 namespace NGB.BackgroundJobs.Hosting;

@@ -1,6 +1,8 @@
 NGB.Accounting/NGB.Accounting.csproj
-NGB.Api/NGB.Api.csproj
 NGB.Application.Abstractions/NGB.Application.Abstractions.csproj
+NGB.Runtime.Hosting/NGB.Runtime.Hosting.csproj
+NGB.Hosting.AspNetCore/NGB.Hosting.AspNetCore.csproj
+NGB.Api/NGB.Api.csproj
 NGB.BackgroundJobs/NGB.BackgroundJobs.csproj
 NGB.BackgroundJobs.PostgreSql/NGB.BackgroundJobs.PostgreSql.csproj
 NGB.Contracts/NGB.Contracts.csproj
@@ -11,6 +13,7 @@ NGB.Migrator.Core/NGB.Migrator.Core.csproj
 NGB.OperationalRegisters/NGB.OperationalRegisters.csproj
 NGB.Persistence/NGB.Persistence.csproj
 NGB.PostgreSql/NGB.PostgreSql.csproj
+NGB.PostgreSql.AspNetCore/NGB.PostgreSql.AspNetCore.csproj
 NGB.ReferenceRegisters/NGB.ReferenceRegisters.csproj
 NGB.Runtime/NGB.Runtime.csproj
 NGB.Tools/NGB.Tools.csproj

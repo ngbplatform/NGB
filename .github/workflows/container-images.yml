@@ -146,7 +146,10 @@ jobs:
             NGB.Platform.Persistence
             NGB.Platform.Definitions
             NGB.Platform.PostgreSql
+            NGB.Platform.PostgreSql.AspNetCore
             NGB.Platform.Runtime
+            NGB.Platform.Runtime.Hosting
+            NGB.Platform.Hosting.AspNetCore
             NGB.Platform.Api
             NGB.Platform.BackgroundJobs
             NGB.Platform.BackgroundJobs.PostgreSql

@@ -1,15 +1,15 @@
 using Hangfire;
-using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Serilog;
-using NGB.Api;
-using NGB.Api.Branding;
-using NGB.Api.GlobalErrorHandling;
-using NGB.Api.Sso;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.Branding;
+using NGB.Hosting.AspNetCore.ErrorHandling;
+using NGB.Hosting.AspNetCore.Health;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.Infrastructure;
 using NGB.Tools.Exceptions;
@@ -63,7 +63,6 @@ public static class BackgroundJobsHostingExtensions
         });
 
         builder.Services.AddHealthChecks()
-            .AddNgbPostgresHealthCheck(applicationConnectionString, name: options.PostgresHealthCheckName)
             .AddKeycloak()
             .AddHangfire(
                 setup => setup.MaximumJobsFailed = options.HangfireHealthCheckMaximumFailedJobs,
@@ -115,7 +114,7 @@ public static class BackgroundJobsHostingExtensions
 
         app.MapHealthChecks(options.HealthPath, new HealthCheckOptions
         {
-            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+            ResponseWriter = NgbHealthCheckResponseWriter.WriteAsync
         });
 
         var dashboard = app.MapHangfireDashboard(options.DashboardPath, new DashboardOptions

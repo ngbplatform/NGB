@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -12,11 +11,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.OpenApi;
-using Serilog;
 using Swashbuckle.AspNetCore.SwaggerUI;
 using NGB.Api.CurrentUser;
 using NGB.Api.Models;
 using NGB.Api.Sso;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.Health;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 
@@ -24,14 +25,6 @@ namespace NGB.Api;
 
 public static class DependencyInjection
 {
-    private const string CompletelyAllowedCorsPolicyName = "CompletelyAllowedCorsPolicy";
-
-    public static void AddSerilog(this ConfigureHostBuilder host)
-    {
-        host.UseSerilog((ctx, cfg)
-            => cfg.ReadFrom.Configuration(ctx.Configuration));
-    }
-
     #region IServiceCollection
 
     public static IServiceCollection AddInfrastructure(this IServiceCollection services,
@@ -168,18 +161,6 @@ public static class DependencyInjection
         return services;
     }
 
-    public static IServiceCollection AddCompletelyAllowedCorsPolicy(this IServiceCollection services)
-    {
-        services.AddCors(o => o.AddPolicy(CompletelyAllowedCorsPolicyName, b =>
-        {
-            b.AllowAnyOrigin()
-                .AllowAnyMethod()
-                .AllowAnyHeader();
-        }));
-
-        return services;
-    }
-
     /// <summary>
     /// Add Swagger
     /// </summary>
@@ -259,11 +240,6 @@ public static class DependencyInjection
 
     #region IApplicationBuilder
 
-    public static IApplicationBuilder UseCompletelyAllowedCorsPolicy(this IApplicationBuilder app)
-    {
-        return app.UseCors(CompletelyAllowedCorsPolicyName);
-    }
-
     public static IApplicationBuilder UseSwagger(this IApplicationBuilder app, string projectName)
     {
         app.UseSwagger();
@@ -288,26 +264,12 @@ public static class DependencyInjection
 
     #region HealthHeckers
 
-    public static IServiceCollection AddHealthCheckHttpClient(this IServiceCollection services)
-    {
-        services
-            .AddHttpClient("HealthCheckHttpClient")
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-            {
-#if DEBUG // Disable SSL Validation (Development Only)
-                ServerCertificateCustomValidationCallback = (_, _, _, _) => true
-#endif
-            });
-
-        return services;
-    }
-
     public static IApplicationBuilder UseHealthChecks(this IApplicationBuilder app, string path = "/health")
     {
         return app.UseHealthChecks(path, new HealthCheckOptions
         {
             Predicate = IncludeEveryHealthCheck,
-            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+            ResponseWriter = NgbHealthCheckResponseWriter.WriteAsync
         });
     }
 
@@ -317,25 +279,6 @@ public static class DependencyInjection
         string name = "Web Application")
     {
         return builder.AddCheck(name, () => HealthCheckResult.Healthy());
-    }
-
-    public static IHealthChecksBuilder AddPostgres(this IHealthChecksBuilder builder,
-        IConfiguration configuration,
-        string name = "PostgreSQL Server")
-    {
-        var connectionString = configuration.GetConnectionString("DefaultConnection")!;
-        return builder.AddNpgSql(connectionString, name: name);
-    }
-
-    public static IHealthChecksBuilder AddNgbPostgresHealthCheck(
-        this IHealthChecksBuilder builder,
-        string connectionString,
-        string name = "PostgreSQL Server")
-    {
-        if (string.IsNullOrWhiteSpace(connectionString))
-            throw new NgbArgumentRequiredException(nameof(connectionString));
-
-        return builder.AddNpgSql(connectionString, name: name);
     }
 
     #endregion

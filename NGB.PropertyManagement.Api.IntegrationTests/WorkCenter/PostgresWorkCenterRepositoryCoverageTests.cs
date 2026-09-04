@@ -11,7 +11,7 @@ using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.WorkCenter;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.Security;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -199,8 +199,8 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
             .Should().ThrowAsync<NgbArgumentInvalidException>();
 
         await scope.ServiceProvider
-            .GetRequiredService<PropertyManagementSecuritySeeder>()
-            .EnsureSeededAsync(CancellationToken.None);
+            .GetRequiredService<IPropertyManagementSecuritySetupService>()
+            .EnsureDefaultsAsync(CancellationToken.None);
         var role = await scope.ServiceProvider
             .GetRequiredService<IPlatformRoleRepository>()
             .GetByCodeAsync("pm-ar-clerk", CancellationToken.None);

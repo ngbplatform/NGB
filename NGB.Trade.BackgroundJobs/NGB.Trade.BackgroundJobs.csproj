@@ -11,7 +11,9 @@
         <ProjectReference Include="..\NGB.BackgroundJobs\NGB.BackgroundJobs.csproj"/>
         <ProjectReference Include="..\NGB.BackgroundJobs.PostgreSql\NGB.BackgroundJobs.PostgreSql.csproj"/>
         <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj"/>
+        <ProjectReference Include="..\NGB.PostgreSql.AspNetCore\NGB.PostgreSql.AspNetCore.csproj"/>
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj"/>
+        <ProjectReference Include="..\NGB.Runtime.Hosting\NGB.Runtime.Hosting.csproj"/>
         <ProjectReference Include="..\NGB.Trade\NGB.Trade.csproj"/>
         <ProjectReference Include="..\NGB.Trade.Runtime\NGB.Trade.Runtime.csproj"/>
         <ProjectReference Include="..\NGB.Trade.PostgreSql\NGB.Trade.PostgreSql.csproj"/>
@@ -21,6 +23,7 @@
         <PackageReference Include="Serilog.AspNetCore" Version="10.0.0"/>
         <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
         <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1"/>
+        <PackageReference Include="Serilog.Sinks.Seq" Version="9.1.0"/>
     </ItemGroup>
 
     <ItemGroup>

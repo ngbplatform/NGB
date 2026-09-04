@@ -6,6 +6,7 @@ using NGB.Metadata.Catalogs.Storage;
 using NGB.Metadata.Documents.Storage;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
@@ -29,7 +30,7 @@ public sealed class DependencyInjection_ValidateOnBuild_ProductionShape_P1Tests(
             .ConfigureServices(services =>
             {
                 // Platform core
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(fixture.ConnectionString);
 
                 // Runtime expects a validator for PostingEngine.
@@ -57,7 +58,7 @@ public sealed class DependencyInjection_ValidateOnBuild_ProductionShape_P1Tests(
             })
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
 
                 // Intentionally invalid: empty connection string should be rejected by options validation.
                 services.AddPostgres(o => o.ConnectionString = "");

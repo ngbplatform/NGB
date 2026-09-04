@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NGB.Accounting.Accounts;
@@ -76,9 +75,9 @@ public static class RuntimeServiceCollectionExtensions
         // Platform relationship type definitions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDefinitionsContributor, DocumentRelationshipsDefinitionsContributor>());
 
-        // Definitions startup validation (fail-fast)
+        // Validation logic is Runtime-owned; a host opts into fail-fast startup execution
+        // through NGB.Platform.Runtime.Hosting.
         services.TryAddSingleton<IDefinitionsValidationService, DefinitionsValidationService>();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, DefinitionsStartupValidatorHostedService>());
 
         // Metadata registries (schema validation). Built from Definitions.
         // NOTE: use TryAdd to allow tests/hosts to override with custom registries.
