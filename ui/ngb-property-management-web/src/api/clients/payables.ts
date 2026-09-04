@@ -14,16 +14,24 @@ export async function getPayablesOpenItemsDetails(args: {
   propertyId: string
   asOfMonth?: string | null // DateOnly: YYYY-MM-DD
   toMonth?: string | null   // DateOnly: YYYY-MM-DD
+  chargeOffset?: number | null
+  creditOffset?: number | null
+  allocationOffset?: number | null
+  limit?: number | null
 }, options?: HttpRequestOptions): Promise<PayablesOpenItemsDetailsResponseDto> {
   const query = {
     partyId: args.partyId,
     propertyId: args.propertyId,
     asOfMonth: args.asOfMonth,
     toMonth: args.toMonth,
+    chargeOffset: args.chargeOffset,
+    creditOffset: args.creditOffset,
+    allocationOffset: args.allocationOffset,
+    limit: args.limit,
   }
   return options
-    ? await httpGet<PayablesOpenItemsDetailsResponseDto>('/api/payables/open-items/details', query, options)
-    : await httpGet<PayablesOpenItemsDetailsResponseDto>('/api/payables/open-items/details', query)
+    ? await httpGet<PayablesOpenItemsDetailsResponseDto>('/api/payables/open-items/details/page', query, options)
+    : await httpGet<PayablesOpenItemsDetailsResponseDto>('/api/payables/open-items/details/page', query)
 }
 
 export async function suggestPayablesFifoApply(
@@ -49,11 +57,19 @@ export async function getPayablesReconciliation(args: {
   fromMonthInclusive: string // YYYY-MM-DD
   toMonthInclusive: string   // YYYY-MM-DD
   mode?: PayablesReconciliationModeDto | null
+  status?: 'All' | 'Matched' | 'Mismatch' | 'GlOnly' | 'OpenItemsOnly' | null
+  offset?: number | null
+  limit?: number | null
+  cursor?: string | null
 }, options?: HttpRequestOptions): Promise<PayablesReconciliationReportDto> {
   const query = {
     fromMonthInclusive: args.fromMonthInclusive,
     toMonthInclusive: args.toMonthInclusive,
     mode: args.mode,
+    status: args.status,
+    offset: args.offset,
+    limit: args.limit,
+    cursor: args.cursor,
   }
   return options
     ? await httpGet<PayablesReconciliationReportDto>('/api/payables/reconciliation', query, options)

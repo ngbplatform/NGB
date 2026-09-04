@@ -8,6 +8,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Contracts.Payables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Runtime.Payables;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.PropertyManagement.Runtime.Tests.Payables;
@@ -59,6 +60,56 @@ public sealed class PayablesOpenItemsDetailsServiceFullCoverageTests
         result.VendorDisplay.Should().BeNull();
         result.PropertyDisplay.Should().BeNull();
         result.Allocations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Paged_details_reports_totals_and_returns_newest_allocations_first()
+    {
+        var fixture = new Fixture();
+        var early = Guid.Parse("00000000-0000-0000-0000-000000000010");
+        var late = Guid.Parse("00000000-0000-0000-0000-000000000020");
+        fixture.Readers.Setup(x => x.ReadActivePayableAllocationsAsync(
+                fixture.PartyId, fixture.PropertyId, fixture.From, fixture.To, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                Allocation(early, new DateOnly(2026, 1, 1), 1m, true),
+                Allocation(late, new DateOnly(2026, 2, 1), 2m, true)
+            ]);
+
+        var result = await fixture.Sut.GetOpenItemsDetailsPageAsync(
+            fixture.PartyId, fixture.PropertyId, fixture.From, fixture.To,
+            chargeOffset: 0, creditOffset: 0, allocationOffset: 0, limit: 1);
+
+        result.Charges.Should().ContainSingle();
+        result.Credits.Should().ContainSingle();
+        result.Allocations.Should().ContainSingle(x => x.ApplyId == late);
+        result.ChargeCount.Should().Be(1);
+        result.CreditCount.Should().Be(1);
+        result.AllocationCount.Should().Be(2);
+        result.AllocationsHaveMore.Should().BeTrue();
+        result.ChargesHaveMore.Should().BeFalse();
+        result.CreditsHaveMore.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Paged_details_rejects_each_invalid_page_argument_before_loading_data()
+    {
+        var fixture = new Fixture();
+        foreach (var args in new[]
+                 {
+                     (-1, 0, 0, 1),
+                     (0, NGB.Contracts.Common.PagingLimits.MaxOffset + 1, 0, 1),
+                     (0, 0, -1, 1),
+                     (0, 0, 0, 0),
+                     (0, 0, 0, NGB.Contracts.Common.PagingLimits.MaxPageSize + 1),
+                 })
+        {
+            Func<Task> act = () => fixture.Sut.GetOpenItemsDetailsPageAsync(
+                fixture.PartyId, fixture.PropertyId, fixture.From, fixture.To,
+                args.Item1, args.Item2, args.Item3, args.Item4);
+            await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        }
+
+        fixture.Catalogs.VerifyNoOtherCalls();
     }
 
     private static PmPayableAllocationRead Allocation(Guid id, DateOnly date, decimal amount, bool posted)

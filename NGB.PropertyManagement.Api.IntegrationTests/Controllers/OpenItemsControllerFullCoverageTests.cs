@@ -133,6 +133,73 @@ public sealed class OpenItemsControllerFullCoverageTests
         service.VerifyAll();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Receivables_paged_details_forwards_explicit_values_and_applies_safe_defaults(bool explicitPaging)
+    {
+        var leaseId = Guid.NewGuid();
+        var partyId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var expected = new ReceivablesOpenItemsDetailsResponse(
+            Guid.NewGuid(), partyId, null, propertyId, null, leaseId, null, [], [], [], 0m, 0m);
+        var access = GrantedAccess(NgbResourceKinds.Page, PropertyManagementSecurityDefaults.ReceivablesOpenItemsPage, NgbPermissionActions.View);
+        var service = new Mock<IReceivablesOpenItemsDetailsService>(MockBehavior.Strict);
+        service.Setup(x => x.GetOpenItemsDetailsPageAsync(
+                partyId, propertyId, leaseId, DateOnly.MinValue, DateOnly.MaxValue,
+                explicitPaging ? 10 : 0,
+                explicitPaging ? 20 : 0,
+                explicitPaging ? 30 : 0,
+                explicitPaging ? 40 : 100,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var actual = await new ReceivablesController(access.Object).GetOpenItemsDetailsPage(
+            service.Object, leaseId, partyId, propertyId, DateOnly.MinValue, DateOnly.MaxValue,
+            explicitPaging ? 10 : null,
+            explicitPaging ? 20 : null,
+            explicitPaging ? 30 : null,
+            explicitPaging ? 40 : null,
+            CancellationToken.None);
+
+        actual.Should().BeSameAs(expected);
+        access.VerifyAll();
+        service.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Payables_paged_details_forwards_explicit_values_and_applies_safe_defaults(bool explicitPaging)
+    {
+        var partyId = Guid.NewGuid();
+        var propertyId = Guid.NewGuid();
+        var expected = new PayablesOpenItemsDetailsResponse(
+            Guid.NewGuid(), partyId, null, propertyId, null, [], [], [], 0m, 0m);
+        var access = GrantedAccess(NgbResourceKinds.Page, PropertyManagementSecurityDefaults.PayablesOpenItemsPage, NgbPermissionActions.View);
+        var service = new Mock<IPayablesOpenItemsDetailsService>(MockBehavior.Strict);
+        service.Setup(x => x.GetOpenItemsDetailsPageAsync(
+                partyId, propertyId, DateOnly.MinValue, DateOnly.MaxValue,
+                explicitPaging ? 10 : 0,
+                explicitPaging ? 20 : 0,
+                explicitPaging ? 30 : 0,
+                explicitPaging ? 40 : 100,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var actual = await new PayablesController(access.Object).GetOpenItemsDetailsPage(
+            service.Object, partyId, propertyId, DateOnly.MinValue, DateOnly.MaxValue,
+            explicitPaging ? 10 : null,
+            explicitPaging ? 20 : null,
+            explicitPaging ? 30 : null,
+            explicitPaging ? 40 : null,
+            CancellationToken.None);
+
+        actual.Should().BeSameAs(expected);
+        access.VerifyAll();
+        service.VerifyAll();
+    }
+
     [Fact]
     public async Task Access_failure_stops_receivables_summary_before_service_execution()
     {

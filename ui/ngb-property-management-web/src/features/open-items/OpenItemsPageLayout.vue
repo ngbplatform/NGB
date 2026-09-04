@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { NgbBadge, NgbButton, NgbIcon, NgbLookup, NgbPageHeader, NgbRegisterGrid, NgbTabs } from '@ngbplatform/ui'
 
 import { applyDocumentLabel, docLabel, fmtDateOnly, fmtMoney, type OpenItemsApplyResultLine, type OpenItemsLookupItem } from './shared'
-import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsTabKey } from './presentation'
+import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsPageState, OpenItemsTabKey } from './presentation'
 
 type LookupControl = {
   key: string
@@ -31,6 +31,9 @@ const props = defineProps<{
   tabs: Array<{ key: OpenItemsTabKey; label: string }>
   chargeGrid: OpenItemsGridDefinition
   creditGrid: OpenItemsGridDefinition
+  chargePage?: OpenItemsPageState
+  creditPage?: OpenItemsPageState
+  appliedPage?: OpenItemsPageState
   appliedRows: OpenItemsAppliedAllocationView[]
   appliedSubtitle: string
   appliedEmptyMessage: string
@@ -51,31 +54,27 @@ const emit = defineEmits<{
   (e: 'apply'): void
   (e: 'dismissPageResult'): void
   (e: 'update:activeTab', value: OpenItemsTabKey): void
+  (e: 'page', value: { tab: OpenItemsTabKey; offset: number }): void
 }>()
 
-const APPLIED_ROW_PAGE_SIZE = 100
-const appliedPage = ref(0)
 const highlightedApplyIdSet = computed(() => new Set(props.highlightedApplyIds))
-const appliedPageCount = computed(() => Math.max(1, Math.ceil(props.appliedRows.length / APPLIED_ROW_PAGE_SIZE)))
-const currentAppliedPage = computed(() => Math.min(appliedPage.value, appliedPageCount.value - 1))
-const pagedAppliedRows = computed(() => {
-  const start = currentAppliedPage.value * APPLIED_ROW_PAGE_SIZE
-  return props.appliedRows.slice(start, start + APPLIED_ROW_PAGE_SIZE)
-})
-const appliedRowRange = computed(() => {
-  const total = props.appliedRows.length
-  if (total === 0) return '0 rows'
-  const start = currentAppliedPage.value * APPLIED_ROW_PAGE_SIZE
-  return `Rows ${start + 1}\u2013${Math.min(total, start + APPLIED_ROW_PAGE_SIZE)} of ${total}`
-})
 
-function setAppliedPage(page: number): void {
-  appliedPage.value = Math.max(0, Math.min(page, appliedPageCount.value - 1))
+function rowRange(page: OpenItemsPageState): string {
+  return `Rows ${page.offset + 1}\u2013${Math.min(page.total, page.offset + page.limit)} of ${page.total}`
 }
 
-watch(() => props.appliedRows, () => {
-  appliedPage.value = 0
-})
+function pageNumber(page: OpenItemsPageState): number {
+  return Math.floor(page.offset / page.limit) + 1
+}
+
+function pageCount(page: OpenItemsPageState): number {
+  return Math.max(1, Math.ceil(page.total / page.limit))
+}
+
+function requestPage(tab: OpenItemsTabKey, page: OpenItemsPageState, direction: -1 | 1): void {
+  const offset = Math.max(0, page.offset + direction * page.limit)
+  emit('page', { tab, offset })
+}
 
 function isHighlightedApplyId(applyId: string): boolean {
   return highlightedApplyIdSet.value.has(applyId)
@@ -246,31 +245,49 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
         >
           <template #default="{ active }">
             <div class="flex h-full min-h-0 min-w-0 flex-col">
-              <NgbRegisterGrid
-                v-if="active === 'charges'"
-                class="flex-1 min-h-0"
-                fill-height
-                :show-panel="false"
-                :show-totals="false"
-                :columns="chargeGrid.columns"
-                :rows="chargeGrid.rows"
-                :storage-key="chargeGrid.storageKey"
-                activate-on-row-click
-                @rowActivate="(id) => void chargeGrid.onActivate(String(id))"
-              />
+              <div v-if="active === 'charges'" class="flex flex-1 min-h-0 flex-col">
+                <NgbRegisterGrid
+                  class="flex-1 min-h-0"
+                  fill-height
+                  :show-panel="false"
+                  :show-totals="false"
+                  :columns="chargeGrid.columns"
+                  :rows="chargeGrid.rows"
+                  :storage-key="chargeGrid.storageKey"
+                  activate-on-row-click
+                  @rowActivate="(id) => void chargeGrid.onActivate(String(id))"
+                />
+                <div v-if="chargePage && chargePage.total > chargePage.limit" class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted">
+                  <span>{{ rowRange(chargePage) }}</span>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50" :disabled="loading || chargePage.offset === 0" @click="requestPage('charges', chargePage, -1)">Previous</button>
+                    <span>Page {{ pageNumber(chargePage) }} of {{ pageCount(chargePage) }}</span>
+                    <button type="button" class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50" :disabled="loading || !chargePage.hasMore" @click="requestPage('charges', chargePage, 1)">Next</button>
+                  </div>
+                </div>
+              </div>
 
-              <NgbRegisterGrid
-                v-else-if="active === 'credits'"
-                class="flex-1 min-h-0"
-                fill-height
-                :show-panel="false"
-                :show-totals="false"
-                :columns="creditGrid.columns"
-                :rows="creditGrid.rows"
-                :storage-key="creditGrid.storageKey"
-                activate-on-row-click
-                @rowActivate="(id) => void creditGrid.onActivate(String(id))"
-              />
+              <div v-else-if="active === 'credits'" class="flex flex-1 min-h-0 flex-col">
+                <NgbRegisterGrid
+                  class="flex-1 min-h-0"
+                  fill-height
+                  :show-panel="false"
+                  :show-totals="false"
+                  :columns="creditGrid.columns"
+                  :rows="creditGrid.rows"
+                  :storage-key="creditGrid.storageKey"
+                  activate-on-row-click
+                  @rowActivate="(id) => void creditGrid.onActivate(String(id))"
+                />
+                <div v-if="creditPage && creditPage.total > creditPage.limit" class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted">
+                  <span>{{ rowRange(creditPage) }}</span>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50" :disabled="loading || creditPage.offset === 0" @click="requestPage('credits', creditPage, -1)">Previous</button>
+                    <span>Page {{ pageNumber(creditPage) }} of {{ pageCount(creditPage) }}</span>
+                    <button type="button" class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50" :disabled="loading || !creditPage.hasMore" @click="requestPage('credits', creditPage, 1)">Next</button>
+                  </div>
+                </div>
+              </div>
 
               <div
                 v-else
@@ -304,7 +321,7 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
                     </div>
 
                     <div
-                      v-for="allocation in pagedAppliedRows"
+                      v-for="allocation in appliedRows"
                       :key="allocation.applyId"
                       class="grid grid-cols-[120px_1.3fr_1.3fr_120px_120px_220px] border-b border-ngb-border text-sm"
                       :class="allocationTone(allocation)"
@@ -343,25 +360,25 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
                   </div>
                 </div>
                 <div
-                  v-if="appliedPageCount > 1"
+                  v-if="appliedPage && appliedPage.total > appliedPage.limit"
                   class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted"
                 >
-                  <span>{{ appliedRowRange }}</span>
+                  <span>{{ rowRange(appliedPage) }}</span>
                   <div class="flex items-center gap-2">
                     <button
                       type="button"
                       class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
-                      :disabled="currentAppliedPage === 0"
-                      @click="setAppliedPage(currentAppliedPage - 1)"
+                      :disabled="loading || appliedPage.offset === 0"
+                      @click="requestPage('applied', appliedPage, -1)"
                     >
                       Previous
                     </button>
-                    <span>Page {{ currentAppliedPage + 1 }} of {{ appliedPageCount }}</span>
+                    <span>Page {{ pageNumber(appliedPage) }} of {{ pageCount(appliedPage) }}</span>
                     <button
                       type="button"
                       class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
-                      :disabled="currentAppliedPage + 1 >= appliedPageCount"
-                      @click="setAppliedPage(currentAppliedPage + 1)"
+                      :disabled="loading || !appliedPage.hasMore"
+                      @click="requestPage('applied', appliedPage, 1)"
                     >
                       Next
                     </button>

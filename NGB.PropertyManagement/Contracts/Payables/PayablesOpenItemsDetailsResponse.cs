@@ -10,7 +10,17 @@ public sealed record PayablesOpenItemsDetailsResponse(
     IReadOnlyList<PayablesOpenCreditItemDetailsDto> Credits,
     IReadOnlyList<PayablesAllocationDetailsDto> Allocations,
     decimal TotalOutstanding,
-    decimal TotalCredit);
+    decimal TotalCredit,
+    int? ChargeCount = null,
+    int? CreditCount = null,
+    int? AllocationCount = null,
+    int? ChargeOffset = null,
+    int? CreditOffset = null,
+    int? AllocationOffset = null,
+    int? Limit = null,
+    bool? ChargesHaveMore = null,
+    bool? CreditsHaveMore = null,
+    bool? AllocationsHaveMore = null);
 
 public sealed record PayablesOpenChargeItemDetailsDto(
     Guid ChargeDocumentId,

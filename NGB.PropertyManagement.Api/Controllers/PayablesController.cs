@@ -40,6 +40,32 @@ public sealed class PayablesController(INgbAccessChecker access) : ControllerBas
         return await service.GetOpenItemsDetailsAsync(partyId, propertyId, asOfMonth, toMonth, ct);
     }
 
+    [HttpGet("open-items/details/page")]
+    public async Task<PayablesOpenItemsDetailsResponse> GetOpenItemsDetailsPage(
+        [FromServices] IPayablesOpenItemsDetailsService service,
+        [FromQuery] Guid partyId,
+        [FromQuery] Guid propertyId,
+        [FromQuery] DateOnly? asOfMonth,
+        [FromQuery] DateOnly? toMonth,
+        [FromQuery] int? chargeOffset,
+        [FromQuery] int? creditOffset,
+        [FromQuery] int? allocationOffset,
+        [FromQuery] int? limit,
+        CancellationToken ct)
+    {
+        await RequirePageAsync(PropertyManagementSecurityDefaults.PayablesOpenItemsPage, ct);
+        return await service.GetOpenItemsDetailsPageAsync(
+            partyId,
+            propertyId,
+            asOfMonth,
+            toMonth,
+            chargeOffset ?? 0,
+            creditOffset ?? 0,
+            allocationOffset ?? 0,
+            limit ?? 100,
+            ct);
+    }
+
     [HttpPost("apply/fifo/suggest")]
     public async Task<PayablesSuggestFifoApplyResponse> SuggestFifoApply(
         [FromServices] IPayablesFifoApplySuggestService service,
@@ -79,6 +105,7 @@ public sealed class PayablesController(INgbAccessChecker access) : ControllerBas
         [FromQuery] int? offset,
         [FromQuery] int? limit,
         [FromQuery] string? cursor,
+        [FromQuery] PayablesReconciliationStatusFilter? status,
         CancellationToken ct)
     {
         await RequirePageAsync(PropertyManagementSecurityDefaults.PayablesReconciliationPage, ct);
@@ -89,7 +116,8 @@ public sealed class PayablesController(INgbAccessChecker access) : ControllerBas
                 mode ?? PayablesReconciliationMode.Movement,
                 offset ?? 0,
                 limit ?? 200,
-                cursor),
+                cursor,
+                status ?? PayablesReconciliationStatusFilter.All),
             ct);
     }
 

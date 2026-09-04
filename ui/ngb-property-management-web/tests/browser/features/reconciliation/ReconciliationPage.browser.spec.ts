@@ -107,7 +107,14 @@ function report(rows: ReconciliationRow[] = []): ReconciliationReport {
     totalDiff: 40.122,
     rowCount: rows.length,
     mismatchRowCount: rows.filter((entry) => entry.rowKind !== 'Matched').length,
+    filteredRowCount: rows.length,
+    glOnlyRowCount: rows.filter((entry) => entry.rowKind === 'GlOnly').length,
+    openItemsOnlyRowCount: rows.filter((entry) => entry.rowKind === 'OpenItemsOnly').length,
     rows,
+    offset: 0,
+    limit: 100,
+    hasMore: false,
+    nextCursor: null,
   }
 }
 
@@ -236,6 +243,10 @@ test('loads, formats, sorts, labels, and opens a complete reconciliation report'
     fromMonthInclusive: '2026-01-01',
     toMonthInclusive: '2026-03-01',
     mode: 'Balance',
+    status: 'All',
+    offset: 0,
+    limit: 100,
+    cursor: null,
   }, { signal: expect.any(AbortSignal) })
   await expect.element(view.getByText('440.13')).toBeVisible()
   await expect.element(view.getByText('40.12')).toBeVisible()
@@ -260,7 +271,27 @@ test('updates mode and every status filter through clean route query state', asy
     row({ key: 'gl', rowKind: 'GlOnly', hasDiff: true, diff: 3 }),
     row({ key: 'open', rowKind: 'OpenItemsOnly', hasDiff: true, diff: 2 }),
   ]
-  mocks.load.mockResolvedValue(report(rows))
+  mocks.load.mockImplementation(async (request) => {
+    const filtered = request.status === 'Matched'
+      ? rows.filter((entry) => entry.rowKind === 'Matched')
+      : request.status === 'Mismatch'
+        ? rows.filter((entry) => entry.rowKind !== 'Matched')
+        : request.status === 'GlOnly'
+          ? rows.filter((entry) => entry.rowKind === 'GlOnly')
+          : request.status === 'OpenItemsOnly'
+            ? rows.filter((entry) => entry.rowKind === 'OpenItemsOnly')
+            : rows
+    return {
+      ...report(filtered),
+      rowCount: rows.length,
+      mismatchRowCount: 3,
+      filteredRowCount: filtered.length,
+      glOnlyRowCount: 1,
+      openItemsOnlyRowCount: 1,
+      offset: request.offset,
+      limit: request.limit,
+    }
+  })
   const { router, view } = await renderPage('/reconciliation?fromMonth=2026-01&toMonth=2026-03&mode=Balance')
 
   await view.getByRole('button', { name: 'Movement' }).click()
@@ -339,6 +370,10 @@ test('uses relative month and date fallbacks and renders an empty two-column def
     fromMonthInclusive: '2026-07-01',
     toMonthInclusive: '2026-08-01',
     mode: 'Balance',
+    status: 'All',
+    offset: 0,
+    limit: 100,
+    cursor: null,
   }, { signal: expect.any(AbortSignal) })
   await expect.element(view.getByText('No reconciliation rows.')).toBeVisible()
   await expect.element(view.getByText('Balance note')).toBeVisible()
@@ -362,7 +397,18 @@ test('bounds large reconciliation results to one DOM page', async () => {
     key: `row-${index + 1}`,
     primaryLabel: `Party ${String(index + 1).padStart(3, '0')}`,
   }))
-  mocks.load.mockResolvedValue(report(rows))
+  mocks.load.mockImplementation(async (request) => {
+    const pageRows = rows.slice(request.offset, request.offset + request.limit)
+    return {
+      ...report(pageRows),
+      rowCount: rows.length,
+      filteredRowCount: rows.length,
+      offset: request.offset,
+      limit: request.limit,
+      hasMore: request.offset + request.limit < rows.length,
+      nextCursor: request.offset === 0 ? 'page-2' : null,
+    }
+  })
 
   const { view } = await renderPage('/reconciliation')
 
@@ -376,4 +422,7 @@ test('bounds large reconciliation results to one DOM page', async () => {
   expect(document.querySelectorAll('[data-testid="reconciliation-table-wrap"] tbody tr')).toHaveLength(1)
   expect(document.body.textContent).toContain('Party 101')
   expect(document.body.textContent).not.toContain('Party 001')
+
+  await view.getByRole('button', { name: 'Previous' }).click()
+  await expect.element(view.getByText('Rows 1–100 of 101')).toBeVisible()
 })

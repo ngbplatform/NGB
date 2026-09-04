@@ -143,6 +143,9 @@ vi.mock('../../../src/features/open-items/OpenItemsWorkflowShell.vue', () => ({
       activeTab: { type: String, required: true },
       chargeGrid: { type: Object, required: true },
       creditGrid: { type: Object, required: true },
+      chargePage: { type: Object, default: null },
+      creditPage: { type: Object, default: null },
+      appliedPage: { type: Object, default: null },
       appliedRows: { type: Array as PropType<any[]>, default: () => [] },
       applyWizardOpen: { type: Boolean, default: false },
       applyWizardSubtitle: { type: String, default: '' },
@@ -156,7 +159,7 @@ vi.mock('../../../src/features/open-items/OpenItemsWorkflowShell.vue', () => ({
     },
     emits: [
       'back', 'refresh', 'apply', 'dismissPageResult', 'update:activeTab', 'update:applyWizardOpen',
-      'applyWizardAction', 'update:unapplyConfirmOpen', 'confirmUnapply',
+      'page', 'applyWizardAction', 'update:unapplyConfirmOpen', 'confirmUnapply',
     ],
     setup(props, { attrs, emit, slots }) {
       mocks.shellProps = props
@@ -175,6 +178,7 @@ vi.mock('../../../src/features/open-items/OpenItemsWorkflowShell.vue', () => ({
         h('button', { type: 'button', onClick: () => emit('apply') }, 'Shell apply'),
         h('button', { type: 'button', onClick: () => emit('dismissPageResult') }, 'Dismiss result'),
         h('button', { type: 'button', onClick: () => emit('update:activeTab', 'credits') }, 'Select credits'),
+        h('button', { type: 'button', onClick: () => emit('page', { tab: 'charges', offset: 100 }) }, 'Next charge page'),
         h('button', { type: 'button', onClick: () => emit('update:applyWizardOpen', true) }, 'Open wizard'),
         h('button', { type: 'button', onClick: () => emit('applyWizardAction') }, 'Wizard action'),
         h('button', { type: 'button', onClick: () => emit('update:unapplyConfirmOpen', false) }, 'Close unapply'),
@@ -344,7 +348,14 @@ test('loads context, projects lookup/grid rows, resolves document types, and nav
   await flushUi()
 
   expect(mocks.details).toHaveBeenCalledWith(
-    { partyId: 'vendor-1', propertyId: 'property-1' },
+    {
+      partyId: 'vendor-1',
+      propertyId: 'property-1',
+      chargeOffset: 0,
+      creditOffset: 0,
+      allocationOffset: 0,
+      limit: 100,
+    },
     { signal: expect.any(AbortSignal) },
   )
   await expect.element(view.getByText('badges:Vendor: Vendor One|Property: Property One')).toBeVisible()
@@ -495,6 +506,8 @@ test('executes workflow factories, route synchronization callbacks, and shell ev
   await view.getByRole('button', { name: 'Shell apply' }).click()
   await view.getByRole('button', { name: 'Dismiss result' }).click()
   await view.getByRole('button', { name: 'Select credits' }).click()
+  await view.getByRole('button', { name: 'Next charge page' }).click()
+  await flushUi()
   await view.getByRole('button', { name: 'Open wizard' }).click()
   await view.getByRole('button', { name: 'Wizard action' }).click()
   await view.getByRole('button', { name: 'Close unapply' }).click()
@@ -507,6 +520,10 @@ test('executes workflow factories, route synchronization callbacks, and shell ev
   expect(mocks.workflow.suggest).toHaveBeenCalledOnce()
   expect(mocks.workflow.onUnapplyConfirmOpenChanged).toHaveBeenCalledWith(false)
   expect(mocks.workflow.confirmUnapply).toHaveBeenCalledOnce()
+  expect(mocks.details).toHaveBeenLastCalledWith(
+    { partyId: 'vendor-1', propertyId: 'property-1', chargeOffset: 100, creditOffset: 0, allocationOffset: 0, limit: 100 },
+    { signal: expect.any(AbortSignal) },
+  )
 })
 
 test('renders every wizard warning, summary cardinality, result branch, and apply document action', async () => {

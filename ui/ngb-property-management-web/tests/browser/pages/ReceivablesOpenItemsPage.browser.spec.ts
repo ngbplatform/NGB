@@ -143,6 +143,9 @@ vi.mock('../../../src/features/open-items/OpenItemsWorkflowShell.vue', () => ({
       activeTab: { type: String, required: true },
       chargeGrid: { type: Object, required: true },
       creditGrid: { type: Object, required: true },
+      chargePage: { type: Object, default: null },
+      creditPage: { type: Object, default: null },
+      appliedPage: { type: Object, default: null },
       resolveChargeTypeLabel: { type: Function as PropType<(value: string) => string>, required: true },
       resolveCreditTypeLabel: { type: Function as PropType<(value: string | null) => string>, required: true },
       isContextAllocation: { type: Function as PropType<(value: any) => boolean>, required: true },
@@ -155,7 +158,7 @@ vi.mock('../../../src/features/open-items/OpenItemsWorkflowShell.vue', () => ({
     },
     emits: [
       'back', 'refresh', 'apply', 'dismissPageResult', 'update:activeTab', 'update:applyWizardOpen',
-      'applyWizardAction', 'update:unapplyConfirmOpen', 'confirmUnapply',
+      'page', 'applyWizardAction', 'update:unapplyConfirmOpen', 'confirmUnapply',
     ],
     setup(props, { emit, slots }) {
       mocks.shellProps = props
@@ -174,6 +177,7 @@ vi.mock('../../../src/features/open-items/OpenItemsWorkflowShell.vue', () => ({
         h('button', { type: 'button', onClick: () => emit('apply') }, 'Shell apply'),
         h('button', { type: 'button', onClick: () => emit('dismissPageResult') }, 'Dismiss result'),
         h('button', { type: 'button', onClick: () => emit('update:activeTab', 'credits') }, 'Select credits'),
+        h('button', { type: 'button', onClick: () => emit('page', { tab: 'charges', offset: 100 }) }, 'Next charge page'),
         h('button', { type: 'button', onClick: () => emit('update:applyWizardOpen', true) }, 'Open wizard'),
         h('button', { type: 'button', onClick: () => emit('applyWizardAction') }, 'Wizard action'),
         h('button', { type: 'button', onClick: () => emit('update:unapplyConfirmOpen', false) }, 'Close unapply'),
@@ -293,7 +297,7 @@ test('loads lease context, projects rows, labels all document types, and resolve
   await mocks.routeContextArgs.load()
   await flushUi()
   expect(mocks.details).toHaveBeenCalledWith(
-    { leaseId: 'lease-1' },
+    { leaseId: 'lease-1', chargeOffset: 0, creditOffset: 0, allocationOffset: 0, limit: 100 },
     { signal: expect.any(AbortSignal) },
   )
   await expect.element(view.getByText('badges:Tenant: Tenant One|Property: Property One|Lease: Lease 101')).toBeVisible()
@@ -405,6 +409,8 @@ test('synchronizes route callbacks, watchers, and every shell event', async () =
   await view.getByRole('button', { name: 'Shell apply' }).click()
   await view.getByRole('button', { name: 'Dismiss result' }).click()
   await view.getByRole('button', { name: 'Select credits' }).click()
+  await view.getByRole('button', { name: 'Next charge page' }).click()
+  await flushUi()
   await view.getByRole('button', { name: 'Open wizard' }).click()
   await flushUi()
   expect(mocks.workflow.handleWizardOpenChanged).toHaveBeenCalledWith(true)
@@ -417,6 +423,10 @@ test('synchronizes route callbacks, watchers, and every shell event', async () =
   expect(mocks.workflow.suggest).toHaveBeenCalledOnce()
   expect(mocks.workflow.onUnapplyConfirmOpenChanged).toHaveBeenCalledWith(false)
   expect(mocks.workflow.confirmUnapply).toHaveBeenCalledOnce()
+  expect(mocks.details).toHaveBeenLastCalledWith(
+    { leaseId: 'lease-1', chargeOffset: 100, creditOffset: 0, allocationOffset: 0, limit: 100 },
+    { signal: expect.any(AbortSignal) },
+  )
   mocks.focusItemId.value = 'focus'
   mocks.sourceType.value = 'pm.receivable_payment'
   await flushUi()

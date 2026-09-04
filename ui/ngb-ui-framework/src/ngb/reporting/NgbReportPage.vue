@@ -53,7 +53,14 @@ import {
   tryResolveOptionLabel,
   type ReportPageBadge,
 } from './pageHelpers'
-import { buildAppendRequest, canAppendReportResponse, countLoadedReportRows, mergePagedReportResponses } from './paging'
+import {
+  MAX_RETAINED_REPORT_ROWS,
+  buildAppendRequest,
+  canAppendReportResponse,
+  countLoadedReportRows,
+  hasReachedReportRowLimit,
+  mergePagedReportResponses,
+} from './paging'
 import {
   clearReportPageExecutionSnapshot,
   clearReportPageScrollTop,
@@ -292,7 +299,12 @@ const currentBackTarget = computed(() => {
   })
 })
 
-const canLoadMore = computed(() => canAppendReportResponse(response.value) && !loadingDefinition.value && !running.value && !loadingMore.value)
+const reportRowLimitReached = computed(() => hasReachedReportRowLimit(response.value?.sheet))
+const canLoadMore = computed(() => canAppendReportResponse(response.value)
+  && !reportRowLimitReached.value
+  && !loadingDefinition.value
+  && !running.value
+  && !loadingMore.value)
 const reportPresentation = computed(() => definition.value?.presentation ?? null)
 const emptyReportMessage = computed(() => {
   const configured = String(reportPresentation.value?.emptyStateMessage ?? '').trim()
@@ -300,7 +312,12 @@ const emptyReportMessage = computed(() => {
   return 'Open the Composer, adjust filters, rows, measures, or sorting, and run again.'
 })
 const hasPagedExecutionState = computed(() => !!response.value && (response.value.hasMore || consumedAppendCursors.value.length > 0))
-const showEndOfList = computed(() => hasPagedExecutionState.value && !canLoadMore.value && !loadingMore.value && !running.value && response.value!.sheet.rows.length > 0)
+const showEndOfList = computed(() => hasPagedExecutionState.value
+  && !reportRowLimitReached.value
+  && !canLoadMore.value
+  && !loadingMore.value
+  && !running.value
+  && response.value!.sheet.rows.length > 0)
 const loadedRowCount = computed(() => countLoadedReportRows(response.value?.sheet))
 const totalRowCount = computed(() => {
   const total = response.value?.total
@@ -314,7 +331,7 @@ const reportRowNoun = computed(() => {
 function resolveDefinitionInitialPageLimit() {
   const configured = reportPresentation.value?.initialPageSize
   return typeof configured === 'number' && Number.isFinite(configured) && configured > 0
-    ? Math.max(1, Math.floor(configured))
+    ? Math.min(MAX_RETAINED_REPORT_ROWS, Math.max(1, Math.floor(configured)))
     : 500
 }
 
@@ -560,7 +577,11 @@ async function appendReportPage() {
   error.value = null
 
   try {
-    const page = await executeReport(reportCode.value, buildAppendRequest(buildPageExecutionRequest(), nextCursor), { signal: controller.signal })
+    const remainingCapacity = MAX_RETAINED_REPORT_ROWS - countLoadedReportRows(response.value?.sheet)
+    const page = await executeReport(reportCode.value, buildAppendRequest({
+      ...buildPageExecutionRequest(),
+      limit: Math.min(resolveDefinitionInitialPageLimit(), remainingCapacity),
+    }, nextCursor), { signal: controller.signal })
     if (seq !== runSeq) return
 
     response.value = mergePagedReportResponses(response.value!, page)
@@ -1069,6 +1090,7 @@ onBeforeUnmount(() => {
           :source-trail="sourceTrail"
           :back-target="currentBackTarget"
           :show-end-of-list="showEndOfList"
+          :row-limit-reached="reportRowLimitReached"
           :loaded-count="loadedRowCount"
           :total-count="totalRowCount"
           :row-noun="reportRowNoun"

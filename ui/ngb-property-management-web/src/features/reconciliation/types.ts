@@ -23,13 +23,24 @@ export type ReconciliationReport = {
   totalDiff: number
   rowCount: number
   mismatchRowCount: number
+  filteredRowCount: number
+  glOnlyRowCount: number
+  openItemsOnlyRowCount: number
   rows: ReconciliationRow[]
+  offset: number
+  limit: number
+  hasMore: boolean
+  nextCursor: string | null
 }
 
 export type ReconciliationLoadRequest = {
   fromMonthInclusive: string
   toMonthInclusive: string
   mode: ReconciliationMode
+  status: 'All' | 'Matched' | 'Mismatch' | 'GlOnly' | 'OpenItemsOnly'
+  offset: number
+  limit: number
+  cursor?: string | null
 }
 
 export type ReconciliationModeDescriptionArgs = {

@@ -16,6 +16,7 @@ import {
 } from './queryState'
 import type {
   ReconciliationMode,
+  ReconciliationLoadRequest,
   ReconciliationPageDefinition,
   ReconciliationReport,
   ReconciliationRow,
@@ -37,6 +38,7 @@ let loadSequence = 0
 let loadController: AbortController | null = null
 const ROW_PAGE_SIZE = 100
 const rowPage = ref(0)
+const cursorByPage = ref<Array<string | null>>([null])
 
 function updateQuery(patch: QueryPatch) {
   void replaceCleanRouteQuery(route, router, patch)
@@ -109,19 +111,12 @@ function rowKindLabel(row: ReconciliationRow): string {
   }
 }
 
-function matchesStatusFilter(row: ReconciliationRow, filter: ReconciliationStatusFilter): boolean {
-  switch (filter) {
-    case 'matched':
-      return row.rowKind === 'Matched'
-    case 'mismatch':
-      return row.rowKind === 'Mismatch' || row.rowKind === 'GlOnly' || row.rowKind === 'OpenItemsOnly'
-    case 'glOnly':
-      return row.rowKind === 'GlOnly'
-    case 'openItemsOnly':
-      return row.rowKind === 'OpenItemsOnly'
-    default:
-      return true
-  }
+function statusRequestValue(filter: ReconciliationStatusFilter): ReconciliationLoadRequest['status'] {
+  if (filter === 'matched') return 'Matched'
+  if (filter === 'mismatch') return 'Mismatch'
+  if (filter === 'glOnly') return 'GlOnly'
+  if (filter === 'openItemsOnly') return 'OpenItemsOnly'
+  return 'All'
 }
 
 const modeDescription = computed(() => props.definition.describeMode({
@@ -137,71 +132,48 @@ const calculationNotes = computed(() => {
 const allRows = computed(() => data.value?.rows ?? [])
 
 const counts = computed(() => {
-  const summary = {
-    all: allRows.value.length,
-    matched: 0,
-    mismatch: 0,
-    glOnly: 0,
-    openItemsOnly: 0,
+  const all = data.value?.rowCount ?? 0
+  const mismatch = data.value?.mismatchRowCount ?? 0
+  return {
+    all,
+    matched: Math.max(0, all - mismatch),
+    mismatch,
+    glOnly: data.value?.glOnlyRowCount ?? 0,
+    openItemsOnly: data.value?.openItemsOnlyRowCount ?? 0,
   }
-
-  for (const row of allRows.value) {
-    switch (row.rowKind) {
-      case 'Matched':
-        summary.matched += 1
-        break
-      case 'Mismatch':
-        summary.mismatch += 1
-        break
-      case 'GlOnly':
-        summary.glOnly += 1
-        break
-      case 'OpenItemsOnly':
-        summary.openItemsOnly += 1
-        break
-    }
-  }
-
-  return summary
 })
 
-const filteredRows = computed(() => allRows.value.filter((row) => matchesStatusFilter(row, statusFilter.value)))
-
-const visibleRows = computed(() => {
-  return [...filteredRows.value].sort((a, b) => {
-    if (a.hasDiff !== b.hasDiff) return a.hasDiff ? -1 : 1
-
-    const diffCompare = absMoney(b.diff) - absMoney(a.diff)
-    if (diffCompare !== 0) return diffCompare
-
-    const primaryCompare = a.primaryLabel.localeCompare(b.primaryLabel)
-    if (primaryCompare !== 0) return primaryCompare
-
-    const secondaryCompare = a.secondaryLabel.localeCompare(b.secondaryLabel)
-    if (secondaryCompare !== 0) return secondaryCompare
-
-    return String(a.tertiaryLabel ?? '').localeCompare(String(b.tertiaryLabel ?? ''))
-  })
-})
-
-const rowPageCount = computed(() => Math.max(1, Math.ceil(visibleRows.value.length / ROW_PAGE_SIZE)))
+const visibleRows = computed(() => [...allRows.value].sort((a, b) => {
+  if (a.hasDiff !== b.hasDiff) return a.hasDiff ? -1 : 1
+  const diffCompare = absMoney(b.diff) - absMoney(a.diff)
+  if (diffCompare !== 0) return diffCompare
+  const primaryCompare = a.primaryLabel.localeCompare(b.primaryLabel)
+  if (primaryCompare !== 0) return primaryCompare
+  const secondaryCompare = a.secondaryLabel.localeCompare(b.secondaryLabel)
+  if (secondaryCompare !== 0) return secondaryCompare
+  return String(a.tertiaryLabel ?? '').localeCompare(String(b.tertiaryLabel ?? ''))
+}))
+const filteredRowCount = computed(() => data.value?.filteredRowCount ?? visibleRows.value.length)
+const rowPageCount = computed(() => Math.max(1, Math.ceil(filteredRowCount.value / ROW_PAGE_SIZE)))
 const currentRowPage = computed(() => Math.min(rowPage.value, rowPageCount.value - 1))
-const pagedRows = computed(() => {
-  const start = currentRowPage.value * ROW_PAGE_SIZE
-  return visibleRows.value.slice(start, start + ROW_PAGE_SIZE)
-})
+const hasNextRowPage = computed(() => !!data.value?.hasMore && !!data.value.nextCursor?.trim())
+const pagedRows = visibleRows
 const visibleRowRange = computed(() => {
-  const total = visibleRows.value.length
-  if (total === 0) return '0 rows'
-  const start = currentRowPage.value * ROW_PAGE_SIZE
-  return `Rows ${start + 1}\u2013${Math.min(total, start + ROW_PAGE_SIZE)} of ${total}`
+  const total = filteredRowCount.value
+  const start = data.value?.offset ?? currentRowPage.value * ROW_PAGE_SIZE
+  return `Rows ${start + 1}\u2013${Math.min(total, start + visibleRows.value.length)} of ${total}`
 })
 
-function setRowPage(page: number): void {
-  rowPage.value = Math.max(0, Math.min(page, rowPageCount.value - 1))
+async function setRowPage(page: number): Promise<void> {
+  const target = Math.max(0, Math.min(page, rowPageCount.value - 1))
+  if (target === currentRowPage.value + 1) {
+    cursorByPage.value[target] = data.value!.nextCursor!.trim()
+  }
+  const cursor = cursorByPage.value[target]
+  await loadPage(target, cursor ?? null)
 }
 
-const visibleRowCount = computed(() => visibleRows.value.length)
+const visibleRowCount = filteredRowCount
 const mismatchCount = computed(() => data.value?.mismatchRowCount ?? 0)
 const allRowCount = computed(() => data.value?.rowCount ?? 0)
 const visibleDiffCount = computed(() => visibleRows.value.filter((row) => row.hasDiff).length)
@@ -248,7 +220,7 @@ async function openRow(row: ReconciliationRow) {
   await router.push(row.openTarget!)
 }
 
-async function load() {
+async function loadPage(page: number, cursor: string | null) {
   const seq = ++loadSequence
   loadController?.abort()
   if (hasInvalidRange.value) {
@@ -270,9 +242,14 @@ async function load() {
       fromMonthInclusive: monthValueToDateOnly(requestedFromMonth) ?? `${requestedFromMonth}-01`,
       toMonthInclusive: monthValueToDateOnly(requestedToMonth) ?? `${requestedToMonth}-01`,
       mode: requestedMode,
+      status: statusRequestValue(statusFilter.value),
+      offset: page * ROW_PAGE_SIZE,
+      limit: ROW_PAGE_SIZE,
+      cursor,
     }, { signal: controller.signal })
     if (seq !== loadSequence || controller.signal.aborted) return
     data.value = nextData
+    rowPage.value = page
   } catch (e: unknown) {
     if (seq !== loadSequence || controller.signal.aborted) return
     error.value = e instanceof Error ? e.message : String(e)
@@ -283,16 +260,19 @@ async function load() {
   }
 }
 
+async function load() {
+  cursorByPage.value = [null]
+  rowPage.value = 0
+  await loadPage(0, null)
+}
+
 onBeforeUnmount(() => {
   loadSequence += 1
   loadController?.abort()
   loadController = null
 })
 
-watch(() => [fromMonth.value, toMonth.value, mode.value], () => void load(), { immediate: true })
-watch(() => [statusFilter.value, data.value], () => {
-  rowPage.value = 0
-})
+watch(() => [fromMonth.value, toMonth.value, mode.value, statusFilter.value], () => void load(), { immediate: true })
 </script>
 
 <template>
@@ -499,7 +479,7 @@ watch(() => [statusFilter.value, data.value], () => {
               type="button"
               class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="currentRowPage === 0"
-              @click="setRowPage(currentRowPage - 1)"
+              @click="void setRowPage(currentRowPage - 1)"
             >
               Previous
             </button>
@@ -507,8 +487,8 @@ watch(() => [statusFilter.value, data.value], () => {
             <button
               type="button"
               class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
-              :disabled="currentRowPage + 1 >= rowPageCount"
-              @click="setRowPage(currentRowPage + 1)"
+              :disabled="!hasNextRowPage"
+              @click="void setRowPage(currentRowPage + 1)"
             >
               Next
             </button>

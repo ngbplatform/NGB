@@ -56,6 +56,18 @@ const accountContextRequests = new Map<
 
 const rows = computed(() => props.modelValue)
 const canEdit = computed(() => !props.readonly)
+const ROW_PAGE_SIZE = 100
+const rowPage = ref(0)
+const rowPageCount = computed(() => Math.max(1, Math.ceil(rows.value.length / ROW_PAGE_SIZE)))
+const currentRowPage = computed(() => Math.min(rowPage.value, rowPageCount.value - 1))
+const pagedRows = computed(() => {
+  const start = currentRowPage.value * ROW_PAGE_SIZE
+  return rows.value.slice(start, start + ROW_PAGE_SIZE).map((row, index) => ({ row, rowIndex: start + index }))
+})
+const rowRange = computed(() => {
+  const start = currentRowPage.value * ROW_PAGE_SIZE
+  return `Lines ${start + 1}\u2013${Math.min(rows.value.length, start + ROW_PAGE_SIZE)} of ${rows.value.length}`
+})
 
 const sideOptions = [
   { value: 1, label: 'Debit' },
@@ -83,19 +95,20 @@ function emitRows(next: GeneralJournalEntryEditorLineModel[]) {
 }
 
 function updateRow(rowIndex: number, patch: Partial<GeneralJournalEntryEditorLineModel>) {
-  const next = rows.value.map((row, index) => {
-    if (index !== rowIndex) return row
-    return {
-      ...row,
-      ...patch,
-      dimensions: { ...(patch.dimensions ?? row.dimensions) },
-    }
-  })
+  const row = rows.value[rowIndex]
+  if (!row) return
+  const next = rows.value.slice()
+  next[rowIndex] = {
+    ...row,
+    ...patch,
+    dimensions: { ...(patch.dimensions ?? row.dimensions) },
+  }
   emitRows(next)
 }
 
 function addRow() {
   if (!canEdit.value) return
+  rowPage.value = Math.floor(rows.value.length / ROW_PAGE_SIZE)
   emitRows([
     ...rows.value,
     createGeneralJournalEntryLine(),
@@ -106,7 +119,13 @@ function removeRow(rowIndex: number) {
   if (!canEdit.value) return
   const next = rows.value
     .filter((_, index) => index !== rowIndex)
-  emitRows(next.length > 0 ? next : [createGeneralJournalEntryLine()])
+  const normalized = next.length > 0 ? next : [createGeneralJournalEntryLine()]
+  rowPage.value = Math.min(currentRowPage.value, Math.max(0, Math.ceil(normalized.length / ROW_PAGE_SIZE) - 1))
+  emitRows(normalized)
+}
+
+function setRowPage(page: number): void {
+  rowPage.value = Math.max(0, Math.min(page, rowPageCount.value - 1))
 }
 
 function humanizeDimensionLabel(code: string): string {
@@ -140,16 +159,14 @@ function rowByClientKey(clientKey: string): GeneralJournalEntryEditorLineModel |
 
 function clearLoadingContext(rowKey: string) {
   if (!loadingContexts.value[rowKey]) return
-  const next = { ...loadingContexts.value }
-  delete next[rowKey]
-  loadingContexts.value = next
+  delete loadingContexts.value[rowKey]
 }
 
 async function ensureAccountContext(row: GeneralJournalEntryEditorLineModel) {
   const accountId = row.account?.id
   if (!accountId) {
     clearLoadingContext(row.clientKey)
-    accountContextsByRow.value = { ...accountContextsByRow.value, [row.clientKey]: null }
+    accountContextsByRow.value[row.clientKey] = null
     return
   }
 
@@ -157,24 +174,21 @@ async function ensureAccountContext(row: GeneralJournalEntryEditorLineModel) {
   if (existing?.accountId === accountId) return
 
   if (hasCachedAccountContext(accountId)) {
-    accountContextsByRow.value = {
-      ...accountContextsByRow.value,
-      [row.clientKey]: accountContextCache.value[accountId]!,
-    }
+    accountContextsByRow.value[row.clientKey] = accountContextCache.value[accountId]!
     return
   }
 
   const requestKey = `${row.clientKey}:${accountId}`
   if (loadingContexts.value[row.clientKey] === requestKey) return
 
-  loadingContexts.value = { ...loadingContexts.value, [row.clientKey]: requestKey }
+  loadingContexts.value[row.clientKey] = requestKey
   try {
     let request = accountContextRequests.get(accountId)
     if (!request) {
       const controller = new AbortController()
       const promise = getGeneralJournalEntryAccountContext(accountId, { signal: controller.signal })
         .then((context) => {
-          accountContextCache.value = { ...accountContextCache.value, [accountId]: context }
+          accountContextCache.value[accountId] = context
           return context
         })
         .catch((error: unknown) => {
@@ -192,19 +206,19 @@ async function ensureAccountContext(row: GeneralJournalEntryEditorLineModel) {
     const latestRow = rowByClientKey(row.clientKey)
     if (latestRow?.account?.id !== accountId) return
 
-    accountContextsByRow.value = { ...accountContextsByRow.value, [row.clientKey]: context }
+    accountContextsByRow.value[row.clientKey] = context
   } catch {
     if (loadingContexts.value[row.clientKey] !== requestKey) return
-    accountContextsByRow.value = { ...accountContextsByRow.value, [row.clientKey]: null }
+    accountContextsByRow.value[row.clientKey] = null
   } finally {
     if (loadingContexts.value[row.clientKey] === requestKey) clearLoadingContext(row.clientKey)
   }
 }
 
 watch(
-  () => rows.value.map((row) => `${row.clientKey}:${row.account?.id ?? ''}`).join('|'),
+  () => pagedRows.value.map(({ row }) => `${row.clientKey}:${row.account?.id ?? ''}`).join('|'),
   async () => {
-    await Promise.all(rows.value.map((row) => ensureAccountContext(row)))
+    await Promise.all(pagedRows.value.map(({ row }) => ensureAccountContext(row)))
   },
   { immediate: true },
 )
@@ -221,7 +235,7 @@ async function onAccountQuery(row: GeneralJournalEntryEditorLineModel, query: st
   const q = query.trim()
   accountLookupControllers.get(row.clientKey)?.abort()
   if (!q) {
-    accountItemsByRow.value = { ...accountItemsByRow.value, [row.clientKey]: [] }
+    accountItemsByRow.value[row.clientKey] = []
     return
   }
 
@@ -230,7 +244,7 @@ async function onAccountQuery(row: GeneralJournalEntryEditorLineModel, query: st
   try {
     const items = await lookupStore.searchCoa(q, { signal: controller.signal })
     if (controller.signal.aborted || accountLookupControllers.get(row.clientKey) !== controller) return
-    accountItemsByRow.value = { ...accountItemsByRow.value, [row.clientKey]: items }
+    accountItemsByRow.value[row.clientKey] = items
   } catch (error) {
     if (!controller.signal.aborted) throw error
   } finally {
@@ -245,19 +259,16 @@ function onAccountSelect(rowIndex: number, item: GeneralJournalEntryEditorLineMo
   updateRow(rowIndex, { account: item, dimensions: {} })
 
   if (!item) {
-    accountContextsByRow.value = { ...accountContextsByRow.value, [key]: null }
+    accountContextsByRow.value[key] = null
     return
   }
 
   if (hasCachedAccountContext(item.id)) {
-    accountContextsByRow.value = {
-      ...accountContextsByRow.value,
-      [key]: accountContextCache.value[item.id]!,
-    }
+    accountContextsByRow.value[key] = accountContextCache.value[item.id]!
     return
   }
 
-  accountContextsByRow.value = { ...accountContextsByRow.value, [key]: null }
+  accountContextsByRow.value[key] = null
 }
 
 async function onDimensionQuery(
@@ -271,7 +282,7 @@ async function onDimensionQuery(
   dimensionLookupControllers.get(key)?.abort()
 
   if (!q || !lookup) {
-    dimensionItemsByCell.value = { ...dimensionItemsByCell.value, [key]: [] }
+    dimensionItemsByCell.value[key] = []
     return
   }
 
@@ -288,7 +299,7 @@ async function onDimensionQuery(
     }
 
     if (controller.signal.aborted || dimensionLookupControllers.get(key) !== controller) return
-    dimensionItemsByCell.value = { ...dimensionItemsByCell.value, [key]: items }
+    dimensionItemsByCell.value[key] = items
   } catch (error) {
     if (!controller.signal.aborted) throw error
   } finally {
@@ -388,7 +399,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
       </thead>
 
       <tbody>
-        <template v-for="(row, rowIndex) in rows" :key="row.clientKey">
+        <template v-for="{ row, rowIndex } in pagedRows" :key="row.clientKey">
           <tr class="border-t border-ngb-border align-top transition-colors [content-visibility:auto] [contain-intrinsic-block-size:42px] hover:bg-ngb-bg">
             <td class="border-r border-dotted border-ngb-border px-2 py-1 align-top text-right text-ngb-muted">
               <div class="flex h-8 items-center justify-end">{{ rowIndex + 1 }}</div>
@@ -490,8 +501,28 @@ function badgeToneForDiff(): 'success' | 'warn' {
       </tbody>
     </table>
 
-    <div class="flex items-center justify-between gap-3 border-t border-ngb-border px-3 py-2">
-      <div class="text-sm text-ngb-muted">{{ rows.length }} line(s)</div>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-ngb-border px-3 py-2">
+      <div class="text-sm text-ngb-muted">{{ rowPageCount > 1 ? rowRange : `${rows.length} line(s)` }}</div>
+
+      <div v-if="rowPageCount > 1" class="flex items-center gap-2 text-xs text-ngb-muted">
+        <button
+          type="button"
+          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="currentRowPage === 0"
+          @click="setRowPage(currentRowPage - 1)"
+        >
+          Previous
+        </button>
+        <span>Page {{ currentRowPage + 1 }} of {{ rowPageCount }}</span>
+        <button
+          type="button"
+          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="currentRowPage + 1 >= rowPageCount"
+          @click="setRowPage(currentRowPage + 1)"
+        >
+          Next
+        </button>
+      </div>
 
       <button
         type="button"

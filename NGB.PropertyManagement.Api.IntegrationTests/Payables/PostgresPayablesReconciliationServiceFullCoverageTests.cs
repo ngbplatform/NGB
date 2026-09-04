@@ -34,6 +34,10 @@ public sealed class PostgresPayablesReconciliationServiceFullCoverageTests
             new DateOnly(2026, 2, 1),
             new DateOnly(2026, 2, 1),
             Limit: 501));
+        Func<Task> invalidStatus = async () => await withoutDatabase.GetAsync(new PayablesReconciliationRequest(
+            new DateOnly(2026, 2, 1),
+            new DateOnly(2026, 2, 1),
+            Status: (PayablesReconciliationStatusFilter)999));
 
         await invalidFrom.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await invalidTo.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
@@ -41,6 +45,7 @@ public sealed class PostgresPayablesReconciliationServiceFullCoverageTests
         await negativeOffset.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await zeroLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await excessiveLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await invalidStatus.Should().ThrowAsync<NgbArgumentInvalidException>();
     }
 
     [Fact]
@@ -71,6 +76,13 @@ public sealed class PostgresPayablesReconciliationServiceFullCoverageTests
             .Be(PayablesReconciliationRowKind.Mismatch);
         PostgresPayablesReconciliationService.ResolveRowKind(10m, 10m, false).Should()
             .Be(PayablesReconciliationRowKind.Matched);
+        PostgresPayablesReconciliationService.ResolveFilteredRowCount(PayablesReconciliationStatusFilter.All, 10, 4, 2, 1).Should().Be(10);
+        PostgresPayablesReconciliationService.ResolveFilteredRowCount(PayablesReconciliationStatusFilter.Matched, 10, 4, 2, 1).Should().Be(6);
+        PostgresPayablesReconciliationService.ResolveFilteredRowCount(PayablesReconciliationStatusFilter.Mismatch, 10, 4, 2, 1).Should().Be(4);
+        PostgresPayablesReconciliationService.ResolveFilteredRowCount(PayablesReconciliationStatusFilter.GlOnly, 10, 4, 2, 1).Should().Be(2);
+        PostgresPayablesReconciliationService.ResolveFilteredRowCount(PayablesReconciliationStatusFilter.OpenItemsOnly, 10, 4, 2, 1).Should().Be(1);
+        ((Func<int>)(() => PostgresPayablesReconciliationService.ResolveFilteredRowCount((PayablesReconciliationStatusFilter)999, 10, 4, 2, 1)))
+            .Should().Throw<NgbArgumentInvalidException>();
 
         var knownId = Guid.NewGuid();
         var unknownId = Guid.NewGuid();

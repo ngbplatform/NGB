@@ -11,8 +11,11 @@ vi.mock('../../../../src/features/open-items/OpenItemsPageLayout.vue', () => ({
       focusedContextBadge: { type: String, default: null },
       pageResult: { type: Object, default: null },
       isContextAllocation: { type: Function, default: undefined },
+      chargePage: { type: Object, default: null },
+      creditPage: { type: Object, default: null },
+      appliedPage: { type: Object, default: null },
     },
-    emits: ['back', 'refresh', 'apply', 'dismissPageResult', 'update:activeTab'],
+    emits: ['back', 'refresh', 'apply', 'dismissPageResult', 'update:activeTab', 'page'],
     setup(props, { emit }) {
       return () => h('section', { 'data-testid': 'open-items-layout' }, [
         h('span', { 'data-testid': 'layout-title' }, props.title),
@@ -20,11 +23,13 @@ vi.mock('../../../../src/features/open-items/OpenItemsPageLayout.vue', () => ({
         h('span', { 'data-testid': 'layout-focused-badge' }, props.focusedContextBadge ?? ''),
         h('span', { 'data-testid': 'layout-page-result' }, props.pageResult ? 'page-result' : ''),
         h('span', { 'data-testid': 'layout-context-resolver' }, props.isContextAllocation ? 'resolver' : ''),
+        h('span', { 'data-testid': 'layout-page-states' }, [props.chargePage, props.creditPage, props.appliedPage].filter(Boolean).length),
         h('button', { type: 'button', onClick: () => emit('back') }, 'Layout back'),
         h('button', { type: 'button', onClick: () => emit('refresh') }, 'Layout refresh'),
         h('button', { type: 'button', onClick: () => emit('apply') }, 'Layout apply'),
         h('button', { type: 'button', onClick: () => emit('dismissPageResult') }, 'Dismiss result'),
         h('button', { type: 'button', onClick: () => emit('update:activeTab', 'applied') }, 'Select applied'),
+        h('button', { type: 'button', onClick: () => emit('page', { tab: 'credits', offset: 100 }) }, 'Layout next page'),
       ])
     },
   }),
@@ -90,6 +95,7 @@ const listeners = {
   apply: vi.fn(),
   dismiss: vi.fn(),
   activeTab: vi.fn(),
+  page: vi.fn(),
   wizardOpen: vi.fn(),
   wizardAction: vi.fn(),
   confirmOpen: vi.fn(),
@@ -109,6 +115,9 @@ function requiredProps() {
     tabs: [{ key: 'charges', label: 'Charges' }],
     chargeGrid: { columns: [], rows: [] },
     creditGrid: { columns: [], rows: [] },
+    chargePage: { offset: 0, limit: 100, total: 101, hasMore: true },
+    creditPage: { offset: 0, limit: 100, total: 0, hasMore: false },
+    appliedPage: { offset: 0, limit: 100, total: 0, hasMore: false },
     appliedRows: [],
     appliedSubtitle: 'Applied allocations',
     appliedEmptyMessage: 'No allocations',
@@ -135,6 +144,7 @@ function requiredProps() {
     onApply: listeners.apply,
     onDismissPageResult: listeners.dismiss,
     'onUpdate:activeTab': listeners.activeTab,
+    onPage: listeners.page,
     'onUpdate:applyWizardOpen': listeners.wizardOpen,
     onApplyWizardAction: listeners.wizardAction,
     'onUpdate:unapplyConfirmOpen': listeners.confirmOpen,
@@ -168,6 +178,7 @@ test('forwards page, drawer, and confirmation actions with default optional prop
   await view.getByRole('button', { name: 'Layout apply' }).click()
   await view.getByRole('button', { name: 'Dismiss result' }).click()
   await view.getByRole('button', { name: 'Select applied' }).click()
+  await view.getByRole('button', { name: 'Layout next page' }).click()
   await view.getByRole('button', { name: 'Close drawer' }).click()
   await view.getByTitle('Refresh candidates').click()
   await view.getByRole('button', { name: 'Close confirmation' }).click()
@@ -178,6 +189,8 @@ test('forwards page, drawer, and confirmation actions with default optional prop
   expect(listeners.apply).toHaveBeenCalledOnce()
   expect(listeners.dismiss).toHaveBeenCalledOnce()
   expect(listeners.activeTab).toHaveBeenCalledWith('applied')
+  expect(listeners.page).toHaveBeenCalledWith({ tab: 'credits', offset: 100 })
+  await expect.element(view.getByTestId('layout-page-states')).toHaveTextContent('3')
   expect(listeners.wizardOpen).toHaveBeenCalledWith(false)
   expect(listeners.wizardAction).toHaveBeenCalledOnce()
   expect(listeners.confirmOpen).toHaveBeenCalledWith(false)

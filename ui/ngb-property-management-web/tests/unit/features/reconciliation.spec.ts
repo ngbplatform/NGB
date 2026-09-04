@@ -96,7 +96,9 @@ describe('reconciliation helpers', () => {
     expect(definition.explainRow({ rowKind: 'future' } as never)).toBe('Investigate the row.')
     await expect(definition.load({ mode: 'Balance' } as never)).resolves.toEqual({
       totalLedgerNet: 10, totalOpenItemsNet: 8, totalDiff: 2, rowCount: 1, mismatchRowCount: 1,
+      filteredRowCount: 1, glOnlyRowCount: 0, openItemsOnlyRowCount: 0,
       rows: [{ id: '1', rowKind: 'Matched', diff: 0 }],
+      offset: 0, limit: 100, hasMore: false, nextCursor: null,
     })
 
     const explicitTertiary = createReconciliationPageDefinition({

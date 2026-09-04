@@ -1,6 +1,10 @@
 import { ReportRowKind, type ReportExecutionRequestDto, type ReportExecutionResponseDto, type ReportSheetDto, type ReportSheetRowDto } from './types'
 import { stableEquals } from '../utils/stableValue'
 
+// Keep interactive report browsing bounded. The export endpoint remains the
+// path for retrieving complete, potentially very large datasets.
+export const MAX_RETAINED_REPORT_ROWS = 2_000
+
 function normalizeCursor(value: string | null | undefined): string | null {
   const normalized = String(value ?? '').trim()
   return normalized.length > 0 ? normalized : null
@@ -33,6 +37,10 @@ function areSheetsAppendCompatible(left: ReportSheetDto, right: ReportSheetDto):
 
 export function canAppendReportResponse(response: ReportExecutionResponseDto | null | undefined): boolean {
   return !!response?.hasMore && !!normalizeCursor(response.nextCursor)
+}
+
+export function hasReachedReportRowLimit(sheet: ReportSheetDto | null | undefined): boolean {
+  return countLoadedReportRows(sheet) >= MAX_RETAINED_REPORT_ROWS
 }
 
 export function buildAppendRequest(baseRequest: ReportExecutionRequestDto, nextCursor: string): ReportExecutionRequestDto {

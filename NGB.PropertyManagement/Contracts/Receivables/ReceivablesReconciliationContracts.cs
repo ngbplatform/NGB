@@ -23,7 +23,8 @@ public sealed record ReceivablesReconciliationRequest(
     ReceivablesReconciliationMode Mode = ReceivablesReconciliationMode.Movement,
     int Offset = 0,
     int Limit = 200,
-    string? Cursor = null);
+    string? Cursor = null,
+    ReceivablesReconciliationStatusFilter Status = ReceivablesReconciliationStatusFilter.All);
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ReceivablesReconciliationMode
@@ -35,6 +36,16 @@ public enum ReceivablesReconciliationMode
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum ReceivablesReconciliationRowKind
 {
+    Matched = 1,
+    Mismatch = 2,
+    GlOnly = 3,
+    OpenItemsOnly = 4,
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ReceivablesReconciliationStatusFilter
+{
+    All = 0,
     Matched = 1,
     Mismatch = 2,
     GlOnly = 3,
@@ -56,7 +67,10 @@ public sealed record ReceivablesReconciliationReport(
     int Offset = 0,
     int Limit = 200,
     bool HasMore = false,
-    string? NextCursor = null);
+    string? NextCursor = null,
+    int FilteredRowCount = 0,
+    int GlOnlyRowCount = 0,
+    int OpenItemsOnlyRowCount = 0);
 
 public sealed record ReceivablesReconciliationRow(
     Guid PartyId,

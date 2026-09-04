@@ -137,6 +137,54 @@ public sealed class ReceivablesOpenItemsDetailsServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task Paged_details_bounds_every_collection_reports_totals_and_returns_newest_allocations_first()
+    {
+        var fixture = new Fixture();
+        var rich = fixture.ConfigureRichData();
+
+        var result = await fixture.Sut.GetOpenItemsDetailsPageAsync(
+            Guid.Empty, Guid.Empty, fixture.LeaseId, null, null,
+            chargeOffset: 1, creditOffset: 1, allocationOffset: 0, limit: 1);
+
+        result.Charges.Should().ContainSingle();
+        result.Credits.Should().ContainSingle();
+        result.Allocations.Should().ContainSingle(x => x.ApplyId == rich.ApplyHigh);
+        result.ChargeCount.Should().Be(4);
+        result.CreditCount.Should().Be(3);
+        result.AllocationCount.Should().Be(3);
+        result.ChargeOffset.Should().Be(1);
+        result.CreditOffset.Should().Be(1);
+        result.AllocationOffset.Should().Be(0);
+        result.Limit.Should().Be(1);
+        result.ChargesHaveMore.Should().BeTrue();
+        result.CreditsHaveMore.Should().BeTrue();
+        result.AllocationsHaveMore.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Paged_details_rejects_invalid_offsets_and_limits_before_loading_data()
+    {
+        var fixture = new Fixture();
+
+        foreach (var args in new[]
+                 {
+                     (-1, 0, 0, 1),
+                     (0, NGB.Contracts.Common.PagingLimits.MaxOffset + 1, 0, 1),
+                     (0, 0, -1, 1),
+                     (0, 0, 0, 0),
+                     (0, 0, 0, NGB.Contracts.Common.PagingLimits.MaxPageSize + 1),
+                 })
+        {
+            Func<Task> act = () => fixture.Sut.GetOpenItemsDetailsPageAsync(
+                Guid.Empty, Guid.Empty, fixture.LeaseId, null, null,
+                args.Item1, args.Item2, args.Item3, args.Item4);
+            await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        }
+
+        fixture.Documents.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public void Payload_helpers_cover_scalar_reference_missing_malformed_and_primary_party_boundaries()
     {
         var readGuid = PrivateStatic("ReadGuidRequired");

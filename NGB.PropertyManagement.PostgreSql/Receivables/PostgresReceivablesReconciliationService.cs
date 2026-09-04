@@ -39,6 +39,9 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
         if (request.Limit is <= 0 or > 500)
             throw new NgbArgumentOutOfRangeException(nameof(request.Limit), request.Limit, "Limit must be between 1 and 500.");
 
+        if (!Enum.IsDefined(request.Status))
+            throw new NgbArgumentInvalidException(nameof(request.Status), "Select a valid reconciliation status filter.");
+
         var requestedOffset = PagingLimits.BoundOffset(request.Offset);
 
         await uow.EnsureConnectionOpenAsync(ct);
@@ -51,6 +54,7 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
             request.FromMonthInclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             request.ToMonthInclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ((int)request.Mode).ToString(CultureInfo.InvariantCulture),
+            ((int)request.Status).ToString(CultureInfo.InvariantCulture),
             policy.ArAccountId.ToString("N"),
             policy.OpenItemsRegisterId.ToString("N"));
         var pageCursor = string.IsNullOrWhiteSpace(request.Cursor)
@@ -82,6 +86,8 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
               SELECT
                   COUNT(*)::integer AS total_row_count,
                   COUNT(*) FILTER (WHERE ar_net <> open_items_net)::integer AS total_mismatch_row_count,
+                  COUNT(*) FILTER (WHERE ar_net <> 0 AND open_items_net = 0)::integer AS total_gl_only_row_count,
+                  COUNT(*) FILTER (WHERE ar_net = 0 AND open_items_net <> 0)::integer AS total_open_items_only_row_count,
                   COALESCE(SUM(ar_net), 0) AS total_ar_net,
                   COALESCE(SUM(open_items_net), 0) AS total_open_items_net
               FROM reconciliation
@@ -90,6 +96,8 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
               SELECT
                   @KnownRowCount::integer AS total_row_count,
                   @KnownMismatchRowCount::integer AS total_mismatch_row_count,
+                  @KnownGlOnlyRowCount::integer AS total_gl_only_row_count,
+                  @KnownOpenItemsOnlyRowCount::integer AS total_open_items_only_row_count,
                   @KnownArNet::numeric AS total_ar_net,
                   @KnownOpenItemsNet::numeric AS total_open_items_net
               """;
@@ -149,12 +157,21 @@ reconciliation AS (
     WHERE COALESCE(gl_agg.ar_net, 0) <> 0
        OR COALESCE(oi_agg.open_items_net, 0) <> 0
 ),
+filtered_reconciliation AS (
+    SELECT *
+    FROM reconciliation
+    WHERE @Status = 0
+       OR (@Status = 1 AND ar_net = open_items_net)
+       OR (@Status = 2 AND ar_net <> open_items_net)
+       OR (@Status = 3 AND ar_net <> 0 AND open_items_net = 0)
+       OR (@Status = 4 AND ar_net = 0 AND open_items_net <> 0)
+),
 stats AS (
     {statsSql}
 ),
 paged AS (
     SELECT *
-    FROM reconciliation
+    FROM filtered_reconciliation
     {seekPredicateSql}
     ORDER BY party_id, property_id, lease_id
     {offsetSql}
@@ -172,6 +189,8 @@ SELECT
     (paged.party_id IS NOT NULL) AS HasRow,
     stats.total_row_count AS TotalRowCount,
     stats.total_mismatch_row_count AS TotalMismatchRowCount,
+    stats.total_gl_only_row_count AS TotalGlOnlyRowCount,
+    stats.total_open_items_only_row_count AS TotalOpenItemsOnlyRowCount,
     stats.total_ar_net AS TotalArNet,
     stats.total_open_items_net AS TotalOpenItemsNet
 FROM stats
@@ -202,12 +221,15 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
                 PropertyCatalogCode = PropertyManagementCodes.Property,
                 LeaseDocumentTypeCode = PropertyManagementCodes.Lease,
                 Offset = requestedOffset,
+                Status = (int)request.Status,
                 LimitPlusOne = request.Limit + 1,
                 AfterPartyId = pageCursor?.AfterPartyId,
                 AfterPropertyId = pageCursor?.AfterPropertyId,
                 AfterLeaseId = pageCursor?.AfterLeaseId,
                 KnownRowCount = pageCursor?.TotalRowCount,
                 KnownMismatchRowCount = pageCursor?.TotalMismatchRowCount,
+                KnownGlOnlyRowCount = pageCursor?.TotalGlOnlyRowCount,
+                KnownOpenItemsOnlyRowCount = pageCursor?.TotalOpenItemsOnlyRowCount,
                 KnownArNet = pageCursor?.TotalArNet,
                 KnownOpenItemsNet = pageCursor?.TotalOpenItemsNet,
                 Guid.Empty
@@ -218,6 +240,12 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
         var rows = (await uow.Connection.QueryAsync<RawRow>(cmd)).AsList();
 
         var stats = rows[0];
+        var filteredRowCount = ResolveFilteredRowCount(
+            request.Status,
+            stats.TotalRowCount,
+            stats.TotalMismatchRowCount,
+            stats.TotalGlOnlyRowCount,
+            stats.TotalOpenItemsOnlyRowCount);
         var pageRows = rows.Where(static row => row.HasRow).ToList();
         var hasMore = pageRows.Count > request.Limit;
         if (hasMore)
@@ -233,6 +261,8 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
                     effectiveOffset + pageRows.Count,
                     stats.TotalRowCount,
                     stats.TotalMismatchRowCount,
+                    stats.TotalGlOnlyRowCount,
+                    stats.TotalOpenItemsOnlyRowCount,
                     stats.TotalArNet,
                     stats.TotalOpenItemsNet))
             : null;
@@ -273,7 +303,10 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
             Offset: effectiveOffset,
             Limit: request.Limit,
             HasMore: hasMore,
-            NextCursor: nextCursor);
+            NextCursor: nextCursor,
+            FilteredRowCount: filteredRowCount,
+            GlOnlyRowCount: stats.TotalGlOnlyRowCount,
+            OpenItemsOnlyRowCount: stats.TotalOpenItemsOnlyRowCount);
     }
 
     internal async Task<IReadOnlyDictionary<Guid, string?>> ReadCatalogDisplaysAsync(
@@ -495,6 +528,8 @@ oi_source AS (
         bool HasRow,
         int TotalRowCount,
         int TotalMismatchRowCount,
+        int TotalGlOnlyRowCount,
+        int TotalOpenItemsOnlyRowCount,
         decimal TotalArNet,
         decimal TotalOpenItemsNet);
 
@@ -505,6 +540,8 @@ oi_source AS (
         int NextOffset,
         int TotalRowCount,
         int TotalMismatchRowCount,
+        int TotalGlOnlyRowCount,
+        int TotalOpenItemsOnlyRowCount,
         decimal TotalArNet,
         decimal TotalOpenItemsNet);
 
@@ -520,6 +557,22 @@ oi_source AS (
             ? ReceivablesReconciliationRowKind.Mismatch
             : ReceivablesReconciliationRowKind.Matched;
     }
+
+    internal static int ResolveFilteredRowCount(
+        ReceivablesReconciliationStatusFilter status,
+        int rowCount,
+        int mismatchRowCount,
+        int glOnlyRowCount,
+        int openItemsOnlyRowCount)
+        => status switch
+        {
+            ReceivablesReconciliationStatusFilter.All => rowCount,
+            ReceivablesReconciliationStatusFilter.Matched => rowCount - mismatchRowCount,
+            ReceivablesReconciliationStatusFilter.Mismatch => mismatchRowCount,
+            ReceivablesReconciliationStatusFilter.GlOnly => glOnlyRowCount,
+            ReceivablesReconciliationStatusFilter.OpenItemsOnly => openItemsOnlyRowCount,
+            _ => throw new NgbArgumentInvalidException(nameof(status), "Select a valid reconciliation status filter.")
+        };
 
     private static void EnsureMonthStart(DateOnly month, string paramName, string label)
     {

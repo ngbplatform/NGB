@@ -13,6 +13,7 @@ const props = defineProps<{
   loadingMore?: boolean
   canLoadMore?: boolean
   showEndOfList?: boolean
+  rowLimitReached?: boolean
   loadedCount?: number | null
   totalCount?: number | null
   rowNoun?: string | null
@@ -223,6 +224,9 @@ const footerStatusText = computed(() => {
   const totalCount = normalizeCount(props.totalCount)
 
   if (props.loadingMore) return `Loading more ${pluralizeRowNoun(Math.max(loadedCount, 2), normalizeRowNoun(props.rowNoun))}…`
+  if (props.rowLimitReached) {
+    return `Loaded ${formatCountWithRowNoun(loadedCount)}. Interactive limit reached; export to retrieve the full dataset.`
+  }
   if (props.canLoadMore) return `Loaded ${formatCountWithRowNoun(loadedCount)}. Scroll to continue loading.`
   if (totalCount != null && totalCount >= loadedCount) {
     return `Loaded ${formatCountWithRowNoun(totalCount)}. End of list.`
@@ -551,7 +555,7 @@ onBeforeUnmount(() => {
       <div ref="loadMoreSentinel" class="h-px w-full" aria-hidden="true" />
 
       <div
-        v-if="canLoadMore || loadingMore || showEndOfList"
+        v-if="canLoadMore || loadingMore || showEndOfList || rowLimitReached"
         class="sticky bottom-0 flex items-center justify-between gap-3 border-t border-ngb-border bg-ngb-card/95 px-4 py-3 backdrop-blur"
       >
         <div class="text-sm text-ngb-muted">{{ footerStatusText }}</div>

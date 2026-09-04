@@ -982,3 +982,30 @@ test('uses preloaded account contexts and keeps controls disabled in readonly mo
   await flushUi()
   await expect.element(view.getByText('rows:1')).toBeVisible()
 })
+
+test('bounds large journals to one DOM page while retaining every line in the editor model', async () => {
+  await page.viewport(1280, 900)
+  const rows = Array.from({ length: 101 }, (_, index) => ({
+    clientKey: `row-${index + 1}`,
+    side: index % 2 === 0 ? 1 : 2,
+    account: null,
+    amount: String(index + 1),
+    memo: `Memo ${index + 1}`,
+    dimensions: {},
+  }))
+
+  const { view } = await renderHarness({ rows })
+
+  await expect.element(view.getByText('Lines 1–100 of 101')).toBeVisible()
+  expect(document.querySelectorAll('tbody tr')).toHaveLength(100)
+  await expect.element(view.getByText('rows:101')).toBeVisible()
+  expect(document.querySelector('tbody tr:first-child td:first-child')?.textContent).toBe('1')
+
+  await view.getByRole('button', { name: 'Next' }).click()
+  await expect.element(view.getByText('Lines 101–101 of 101')).toBeVisible()
+  expect(document.querySelectorAll('tbody tr')).toHaveLength(1)
+  expect(document.querySelector('tbody tr:first-child td:first-child')?.textContent).toBe('101')
+
+  await view.getByRole('button', { name: 'Previous' }).click()
+  await expect.element(view.getByText('Lines 1–100 of 101')).toBeVisible()
+})

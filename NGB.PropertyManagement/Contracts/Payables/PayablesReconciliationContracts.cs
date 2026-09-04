@@ -23,7 +23,8 @@ public sealed record PayablesReconciliationRequest(
     PayablesReconciliationMode Mode = PayablesReconciliationMode.Movement,
     int Offset = 0,
     int Limit = 200,
-    string? Cursor = null);
+    string? Cursor = null,
+    PayablesReconciliationStatusFilter Status = PayablesReconciliationStatusFilter.All);
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum PayablesReconciliationMode
@@ -35,6 +36,16 @@ public enum PayablesReconciliationMode
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum PayablesReconciliationRowKind
 {
+    Matched = 1,
+    Mismatch = 2,
+    GlOnly = 3,
+    OpenItemsOnly = 4,
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum PayablesReconciliationStatusFilter
+{
+    All = 0,
     Matched = 1,
     Mismatch = 2,
     GlOnly = 3,
@@ -56,7 +67,10 @@ public sealed record PayablesReconciliationReport(
     int Offset = 0,
     int Limit = 200,
     bool HasMore = false,
-    string? NextCursor = null);
+    string? NextCursor = null,
+    int FilteredRowCount = 0,
+    int GlOnlyRowCount = 0,
+    int OpenItemsOnlyRowCount = 0);
 
 public sealed record PayablesReconciliationRow(
     Guid VendorId,

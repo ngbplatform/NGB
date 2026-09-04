@@ -51,6 +51,8 @@ const error = ref<string | null>(null)
 const data = ref<ReceivablesOpenItemsDetailsResponseDto | null>(null)
 const activeTab = ref<OpenItemsTabKey>('charges')
 const wizardSelectedKeys = ref<string[]>([])
+const OPEN_ITEMS_PAGE_SIZE = 100
+const pageOffsets = ref<Record<OpenItemsTabKey, number>>({ charges: 0, credits: 0, applied: 0 })
 let loadSequence = 0
 let loadController: AbortController | null = null
 
@@ -241,11 +243,32 @@ const creditGrid = computed(() => ({
   onActivate: (id: string) => openDocument(resolveCreditDocumentType(id), id),
 }))
 
+const chargePage = computed(() => ({
+  offset: data.value?.chargeOffset ?? pageOffsets.value.charges,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.chargeCount ?? data.value?.charges.length ?? 0,
+  hasMore: data.value?.chargesHaveMore ?? false,
+}))
+
+const creditPage = computed(() => ({
+  offset: data.value?.creditOffset ?? pageOffsets.value.credits,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.creditCount ?? data.value?.credits.length ?? 0,
+  hasMore: data.value?.creditsHaveMore ?? false,
+}))
+
+const appliedPage = computed(() => ({
+  offset: data.value?.allocationOffset ?? pageOffsets.value.applied,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.allocationCount ?? data.value?.allocations.length ?? 0,
+  hasMore: data.value?.allocationsHaveMore ?? false,
+}))
+
 async function openDocument(documentType: string, id: string): Promise<void> {
   await router.push(`/documents/${documentType}/${id}`)
 }
 
-async function load(): Promise<void> {
+async function loadCurrentPage(): Promise<void> {
   const sequence = ++loadSequence
   loadController?.abort()
   const leaseId = leaseIdFromRoute.value
@@ -261,7 +284,13 @@ async function load(): Promise<void> {
   loading.value = true
   error.value = null
   try {
-    const nextData = await getReceivablesOpenItemsDetails({ leaseId }, { signal: controller.signal })
+    const nextData = await getReceivablesOpenItemsDetails({
+      leaseId,
+      chargeOffset: pageOffsets.value.charges,
+      creditOffset: pageOffsets.value.credits,
+      allocationOffset: pageOffsets.value.applied,
+      limit: OPEN_ITEMS_PAGE_SIZE,
+    }, { signal: controller.signal })
     if (sequence !== loadSequence || controller.signal.aborted) return
     data.value = nextData
   } catch (cause) {
@@ -272,6 +301,16 @@ async function load(): Promise<void> {
     if (sequence === loadSequence) loading.value = false
     if (loadController === controller) loadController = null
   }
+}
+
+async function load(): Promise<void> {
+  pageOffsets.value = { charges: 0, credits: 0, applied: 0 }
+  await loadCurrentPage()
+}
+
+async function changePage(request: { tab: OpenItemsTabKey; offset: number }): Promise<void> {
+  pageOffsets.value = { ...pageOffsets.value, [request.tab]: request.offset }
+  await loadCurrentPage()
 }
 
 async function refresh() {
@@ -526,6 +565,9 @@ const tabs = computed(() => buildOpenItemsTabs(summary.value))
     :active-tab="activeTab"
     :charge-grid="chargeGrid"
     :credit-grid="creditGrid"
+    :charge-page="chargePage"
+    :credit-page="creditPage"
+    :applied-page="appliedPage"
     :applied-rows="appliedAllocations"
     applied-subtitle="Current active allocations for this lease. Reversed applies are hidden."
     applied-empty-message="No applied allocations yet for this lease. Once a credit source is applied to a charge, it will appear here."
@@ -553,6 +595,7 @@ const tabs = computed(() => buildOpenItemsTabs(summary.value))
     @apply="openApplyWizard"
     @dismissPageResult="dismissPageApplyResult"
     @update:activeTab="activeTab = $event"
+    @page="changePage"
     @update:applyWizardOpen="applyWizardOpen = $event"
     @applyWizardAction="applyWizardView === 'result' ? showApplyPlanAgain() : suggest()"
     @update:unapplyConfirmOpen="onUnapplyConfirmOpenChanged"

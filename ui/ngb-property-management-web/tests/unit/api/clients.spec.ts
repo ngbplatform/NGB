@@ -55,11 +55,23 @@ describe('property-management API clients', () => {
     await unapplyPayablesApply('apply/1')
     await expect(getPayablesReconciliation(reconciliation)).resolves.toEqual({ kind: 'get' })
 
-    expect(http.get).toHaveBeenNthCalledWith(1, '/api/payables/open-items/details', details)
+    expect(http.get).toHaveBeenNthCalledWith(1, '/api/payables/open-items/details/page', {
+      ...details,
+      chargeOffset: undefined,
+      creditOffset: undefined,
+      allocationOffset: undefined,
+      limit: undefined,
+    })
     expect(http.post).toHaveBeenNthCalledWith(1, '/api/payables/apply/fifo/suggest', request)
     expect(http.post).toHaveBeenNthCalledWith(2, '/api/payables/apply/batch', request)
     expect(http.post).toHaveBeenNthCalledWith(3, '/api/payables/apply/apply%2F1/unapply', {})
-    expect(http.get).toHaveBeenNthCalledWith(2, '/api/payables/reconciliation', reconciliation)
+    expect(http.get).toHaveBeenNthCalledWith(2, '/api/payables/reconciliation', {
+      ...reconciliation,
+      status: undefined,
+      offset: undefined,
+      limit: undefined,
+      cursor: undefined,
+    })
   })
 
   it('forwards receivables queries and commands and propagates transport failures', async () => {
@@ -86,11 +98,23 @@ describe('property-management API clients', () => {
     await unapplyReceivablesApply('apply/1')
     await expect(getReceivablesReconciliation(reconciliation)).resolves.toEqual({ kind: 'get' })
 
-    expect(http.get).toHaveBeenNthCalledWith(1, '/api/receivables/open-items/details', details)
+    expect(http.get).toHaveBeenNthCalledWith(1, '/api/receivables/open-items/details/page', {
+      ...details,
+      chargeOffset: undefined,
+      creditOffset: undefined,
+      allocationOffset: undefined,
+      limit: undefined,
+    })
     expect(http.post).toHaveBeenNthCalledWith(1, '/api/receivables/apply/fifo/suggest/lease', request)
     expect(http.post).toHaveBeenNthCalledWith(2, '/api/receivables/apply/batch', request)
     expect(http.post).toHaveBeenNthCalledWith(3, '/api/receivables/apply/apply%2F1/unapply', {})
-    expect(http.get).toHaveBeenNthCalledWith(2, '/api/receivables/reconciliation', reconciliation)
+    expect(http.get).toHaveBeenNthCalledWith(2, '/api/receivables/reconciliation', {
+      ...reconciliation,
+      status: undefined,
+      offset: undefined,
+      limit: undefined,
+      cursor: undefined,
+    })
 
     const failure = new Error('transport failed')
     http.get.mockRejectedValueOnce(failure)

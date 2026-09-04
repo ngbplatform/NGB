@@ -145,6 +145,20 @@ const ReportSheetLoadMoreHarness = defineComponent({
   },
 })
 
+const ReportSheetLimitHarness = defineComponent({
+  setup() {
+    return () => h('div', { style: 'width: 480px; height: 680px; display: flex;' }, [
+      h(NgbReportSheet, {
+        sheet: makeSheet(6),
+        loadedCount: 2_000,
+        totalCount: 5_000,
+        rowNoun: 'property',
+        rowLimitReached: true,
+      }),
+    ])
+  },
+})
+
 const ReportSheetObserverHarness = defineComponent({
   setup() {
     const reportSheetRef = ref<InstanceType<typeof NgbReportSheet> | null>(null)
@@ -424,6 +438,15 @@ test('shows a load-more footer without breaking the report shell contract', asyn
   await expect.element(view.getByText('Loaded 6 properties. Scroll to continue loading.', { exact: true })).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Load more' })).toBeVisible()
   expect(document.documentElement.scrollWidth <= window.innerWidth + 1).toBe(true)
+})
+
+test('explains the bounded interactive limit and directs complete datasets to export', async () => {
+  const view = await renderWithRouter(ReportSheetLimitHarness)
+  await expect.element(view.getByText(
+    'Loaded 2,000 properties. Interactive limit reached; export to retrieve the full dataset.',
+    { exact: true },
+  )).toBeVisible()
+  expect(document.body.textContent).not.toContain('Load more')
 })
 
 test('emits scroll state, restores scroll position, and requests more rows through the observer contract', async () => {

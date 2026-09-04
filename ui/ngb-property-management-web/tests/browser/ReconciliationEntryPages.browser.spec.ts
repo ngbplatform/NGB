@@ -48,6 +48,9 @@ test('payables entry page maps the complete report contract into the shared reco
     totalDiff: 20,
     rowCount: 1,
     mismatchRowCount: 1,
+    filteredRowCount: 1,
+    glOnlyRowCount: 0,
+    openItemsOnlyRowCount: 0,
     rows: [{
       vendorId: 'vendor-1',
       vendorDisplay: 'Acme Supplies',
@@ -77,6 +80,9 @@ test('payables entry page maps the complete report contract into the shared reco
     totalDiff: 20,
     rowCount: 1,
     mismatchRowCount: 1,
+    filteredRowCount: 1,
+    glOnlyRowCount: 0,
+    openItemsOnlyRowCount: 0,
     rows: [{
       key: 'vendor-1:property-1',
       rowKind: 'Mismatch',
@@ -92,6 +98,10 @@ test('payables entry page maps the complete report contract into the shared reco
         query: { partyId: 'vendor-1', propertyId: 'property-1' },
       },
     }],
+    offset: 0,
+    limit: 100,
+    hasMore: false,
+    nextCursor: null,
   })
 })
 

@@ -89,6 +89,7 @@ const actions = {
   apply: vi.fn(),
   dismiss: vi.fn(),
   activeTab: vi.fn(),
+  page: vi.fn(),
   query: vi.fn(),
   select: vi.fn(),
   openLookup: vi.fn(),
@@ -146,6 +147,7 @@ function requiredProps(overrides: Record<string, unknown> = {}) {
     onApply: actions.apply,
     onDismissPageResult: actions.dismiss,
     'onUpdate:activeTab': actions.activeTab,
+    onPage: actions.page,
     ...overrides,
   }
 }
@@ -260,11 +262,18 @@ test('renders result details, a selected lookup, and guards invalid tab values',
 
 test('renders the credits grid and disabled toolbar combinations', async () => {
   const loading = await render(OpenItemsPageLayout, {
-    props: requiredProps({ activeTab: 'credits', loading: true, canRefresh: true, canApply: true }) as never,
+    props: requiredProps({
+      activeTab: 'credits',
+      loading: true,
+      canRefresh: true,
+      canApply: true,
+      creditPage: { offset: 0, limit: 100, total: 101, hasMore: true },
+    }) as never,
   })
 
   await expect.element(loading.getByTitle('Refresh')).toBeDisabled()
   await expect.element(loading.getByTitle('Apply')).toBeDisabled()
+  await expect.element(loading.getByRole('button', { name: 'Next' })).toBeDisabled()
   await loading.getByRole('button', { name: 'Activate credits-grid' }).click()
   expect(actions.activateCredit).toHaveBeenCalledWith('42')
   loading.unmount()
@@ -274,6 +283,38 @@ test('renders the credits grid and disabled toolbar combinations', async () => {
   })
   await expect.element(forbidden.getByTitle('Refresh')).toBeDisabled()
   await expect.element(forbidden.getByTitle('Apply')).toBeDisabled()
+})
+
+test('pages charge and credit grids using bounded server offsets', async () => {
+  const props = requiredProps({
+    activeTab: 'charges',
+    chargePage: { offset: 0, limit: 100, total: 201, hasMore: true },
+    creditPage: { offset: 100, limit: 100, total: 201, hasMore: true },
+  })
+  const view = await render(OpenItemsPageLayout, { props: props as never })
+
+  await expect.element(view.getByText('Rows 1–100 of 201')).toBeVisible()
+  await expect.element(view.getByText('Page 1 of 3')).toBeVisible()
+  await view.getByRole('button', { name: 'Next' }).click()
+
+  await view.rerender({
+    ...props,
+    chargePage: { offset: 100, limit: 100, total: 201, hasMore: true },
+  } as never)
+  await view.getByRole('button', { name: 'Previous' }).click()
+
+  await view.rerender({ ...props, activeTab: 'credits' } as never)
+  await expect.element(view.getByText('Rows 101–200 of 201')).toBeVisible()
+  await expect.element(view.getByText('Page 2 of 3')).toBeVisible()
+  await view.getByRole('button', { name: 'Previous' }).click()
+  await view.getByRole('button', { name: 'Next' }).click()
+
+  expect(actions.page.mock.calls).toEqual([
+    [{ tab: 'charges', offset: 100 }],
+    [{ tab: 'charges', offset: 0 }],
+    [{ tab: 'credits', offset: 0 }],
+    [{ tab: 'credits', offset: 200 }],
+  ])
 })
 
 test('renders highlighted, contextual, and neutral allocations and forwards all document actions', async () => {
@@ -392,8 +433,13 @@ test('bounds large applied-allocation lists to one DOM page', async () => {
     amount: index + 1,
     isPosted: true,
   }))
+  const firstPageProps = requiredProps({
+    activeTab: 'applied',
+    appliedRows: allocations.slice(0, 100),
+    appliedPage: { offset: 0, limit: 100, total: 101, hasMore: true },
+  })
   const view = await render(OpenItemsPageLayout, {
-    props: requiredProps({ activeTab: 'applied', appliedRows: allocations }) as never,
+    props: firstPageProps as never,
   })
 
   await expect.element(view.getByText('Rows 1–100 of 101')).toBeVisible()
@@ -402,8 +448,16 @@ test('bounds large applied-allocation lists to one DOM page', async () => {
   expect(document.body.textContent).not.toContain('APP-101')
 
   await view.getByRole('button', { name: 'Next' }).click()
+  expect(actions.page).toHaveBeenCalledWith({ tab: 'applied', offset: 100 })
+  await view.rerender({
+    ...firstPageProps,
+    appliedRows: allocations.slice(100),
+    appliedPage: { offset: 100, limit: 100, total: 101, hasMore: false },
+  } as never)
   await expect.element(view.getByText('Rows 101–101 of 101')).toBeVisible()
   expect(document.querySelectorAll('[data-testid="open-items-applied-panel"] button[title="Open Apply"]')).toHaveLength(1)
   expect(document.body.textContent).toContain('APP-101')
   expect(document.body.textContent).not.toContain('APP-1Payment')
+  await view.getByRole('button', { name: 'Previous' }).click()
+  expect(actions.page).toHaveBeenLastCalledWith({ tab: 'applied', offset: 0 })
 })
