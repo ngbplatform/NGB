@@ -9,6 +9,7 @@ using NGB.Contracts.Services;
 using NGB.Core.Dimensions;
 using NGB.Core.Documents;
 using NGB.OperationalRegisters.Contracts;
+using NGB.Persistence.Documents;
 using NGB.Persistence.OperationalRegisters;
 using NGB.ReferenceRegisters;
 using NGB.ReferenceRegisters.Contracts;
@@ -22,6 +23,36 @@ namespace NGB.Trade.Runtime.Tests.Posting;
 
 public sealed class TradePostingAndPolicyFullCoverageTests
 {
+    [Fact]
+    public async Task AccountingPolicyReader_UsesPostingReadCacheWhenAvailable()
+    {
+        var ids = Enumerable.Range(0, 9).Select(_ => Guid.CreateVersion7()).ToArray();
+        var item = Catalog(new RecordPayload(new Dictionary<string, JsonElement>
+        {
+            ["cash_account_id"] = JsonSerializer.SerializeToElement(ids[0]),
+            ["ar_account_id"] = JsonSerializer.SerializeToElement(ids[1]),
+            ["inventory_account_id"] = JsonSerializer.SerializeToElement(ids[2]),
+            ["ap_account_id"] = JsonSerializer.SerializeToElement(ids[3]),
+            ["sales_revenue_account_id"] = JsonSerializer.SerializeToElement(ids[4]),
+            ["cogs_account_id"] = JsonSerializer.SerializeToElement(ids[5]),
+            ["inventory_adjustment_account_id"] = JsonSerializer.SerializeToElement(ids[6]),
+            ["inventory_movements_register_id"] = JsonSerializer.SerializeToElement(ids[7]),
+            ["item_prices_register_id"] = JsonSerializer.SerializeToElement(ids[8])
+        }));
+        var cache = new Mock<IDocumentPostingReadCache>(MockBehavior.Strict);
+        cache.Setup(x => x.GetOrAddAsync<TradeAccountingPolicy>(
+                "policy:trade",
+                It.IsAny<Func<CancellationToken, Task<TradeAccountingPolicy>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<TradeAccountingPolicy>> factory, CancellationToken ct) => factory(ct));
+        var sut = new TradeAccountingPolicyReader(CatalogPage([item]), cache.Object);
+
+        var result = await sut.GetRequiredAsync();
+
+        result.CashAccountId.Should().Be(ids[0]);
+        cache.VerifyAll();
+    }
+
     [Fact]
     public async Task AccountingPolicyReader_MapsACompletePolicy()
     {

@@ -375,6 +375,276 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
     }
 
     [Fact]
+    public async Task Occurred_at_cursor_query_covers_seek_dimensions_resources_and_max_date_boundary()
+    {
+        var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var dimensionSets = new Mock<IDimensionSetReader>(MockBehavior.Strict);
+        dimensionSets.Setup(x => x.GetBagsByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DimensionBag>());
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        var documentId = Guid.CreateVersion7();
+        var occurredAt = new DateTime(2026, 8, 22, 12, 0, 0, DateTimeKind.Utc);
+        var connection = new RecordingDbConnection(
+            readerFactory: _ => MovementQueryRows(documentId, occurredAt, 12.5m),
+            scalar: _ => true);
+        var sut = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(connection),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            dimensionSets.Object,
+            enrichment.Object);
+        var filter = new DimensionValue(Guid.CreateVersion7(), Guid.CreateVersion7());
+
+        var rows = await sut.GetByOccurredAtCursorAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            DateOnly.MaxValue,
+            [filter],
+            new OperationalRegisterOccurredAtCursor(occurredAt.AddTicks(-1), 6),
+            limit: 2);
+
+        rows.Should().ContainSingle().Which.Values.Should().Contain("amount", 12.5m);
+        var command = connection.Commands.Last();
+        command.CommandText.Should().Contain("matching_dimension_sets")
+            .And.Contain("@AfterOccurredAtUtc")
+            .And.Contain("amount AS \"amount\"");
+        command.ParametersSnapshot.Should().Contain(parameter =>
+            parameter.ParameterName == "OccurredToExclusiveUtc"
+            && Equals(parameter.Value, DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc)));
+    }
+
+    [Fact]
+    public async Task Occurred_at_offset_page_maps_total_and_recovers_total_beyond_last_row()
+    {
+        var dependencies = RegisterDependencies([]);
+        var dimensionSets = new Mock<IDimensionSetReader>(MockBehavior.Strict);
+        dimensionSets.Setup(x => x.GetBagsByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DimensionBag>());
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        var documentId = Guid.CreateVersion7();
+        var occurredAt = new DateTime(2026, 8, 22, 12, 0, 0, DateTimeKind.Utc);
+        var populatedConnection = new RecordingDbConnection(
+            readerFactory: _ => MovementPageRows(documentId, occurredAt, total: 3),
+            scalar: _ => true);
+        var populated = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(populatedConnection),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            dimensionSets.Object,
+            enrichment.Object);
+
+        var page = await populated.GetByOccurredAtPageAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            new DateOnly(2026, 8, 31),
+            offset: 0,
+            limit: 2);
+
+        page.Rows.Should().ContainSingle();
+        page.Total.Should().Be(3);
+
+        var emptyDependencies = RegisterDependencies([]);
+        var emptyConnection = new RecordingDbConnection(
+            readerFactory: _ => EmptyMovementPageRows(),
+            scalar: sql => sql.Contains("to_regclass", StringComparison.Ordinal) ? true : 3L);
+        var beyondLast = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(emptyConnection),
+            emptyDependencies.Registers.Object,
+            emptyDependencies.Resources.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            Mock.Of<IDimensionValueEnrichmentReader>(MockBehavior.Strict));
+
+        var emptyPage = await beyondLast.GetByOccurredAtPageAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            new DateOnly(2026, 8, 31),
+            offset: 999,
+            limit: 2);
+
+        emptyPage.Rows.Should().BeEmpty();
+        emptyPage.Total.Should().Be(3);
+        emptyConnection.Commands.Should().Contain(command =>
+            command.CommandText.Contains("SELECT COUNT(*)", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Resource_net_page_covers_dimension_filter_totals_display_and_legacy_wrapper()
+    {
+        var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var groupDimensionId = Guid.CreateVersion7();
+        var valueId = Guid.CreateVersion7();
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        enrichment.Setup(x => x.ResolveAsync(
+                It.Is<IReadOnlyCollection<DimensionValueKey>>(keys =>
+                    keys.Count == 1 && keys.Single() == new DimensionValueKey(groupDimensionId, valueId)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<DimensionValueKey, string>
+            {
+                [new(groupDimensionId, valueId)] = "Customer"
+            });
+        var connection = new RecordingDbConnection(
+            readerFactory: _ => GroupNetRows(valueId, -4m, 7, 12m, 4m),
+            scalar: _ => true);
+        var sut = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(connection),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            enrichment.Object);
+        var filter = new DimensionValue(Guid.CreateVersion7(), Guid.CreateVersion7());
+
+        var page = await sut.GetResourceNetsByDimensionPageAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            new DateOnly(2026, 8, 1),
+            [filter],
+            groupDimensionId,
+            "amount",
+            offset: 2,
+            limit: 3);
+
+        page.Rows.Should().ContainSingle().Which.Should().Be(
+            new OperationalRegisterDimensionResourceNetRow(valueId, -4m, "Customer"));
+        page.Total.Should().Be(7);
+        page.TotalPositive.Should().Be(12m);
+        page.TotalNegativeAbsolute.Should().Be(4m);
+        connection.Commands.Last().CommandText.Should().Contain("matching_dimension_sets")
+            .And.Contain("OFFSET @Offset");
+
+        (await sut.GetResourceNetsByDimensionAsync(
+                RegisterId,
+                new DateOnly(2026, 8, 1),
+                new DateOnly(2026, 8, 1),
+                null,
+                groupDimensionId,
+                "amount"))
+            .Should().ContainSingle();
+
+        await ((Func<Task>)(() => sut.GetResourceNetsByDimensionPageAsync(
+                RegisterId,
+                new DateOnly(2026, 8, 1),
+                new DateOnly(2026, 8, 1),
+                null,
+                groupDimensionId,
+                "quantity",
+                0,
+                10)))
+            .Should().ThrowAsync<NgbConfigurationViolationException>();
+    }
+
+    [Fact]
+    public async Task Resource_net_page_returns_zero_totals_without_display_lookup_for_empty_query()
+    {
+        var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        var sut = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(
+                readerFactory: _ => GroupNetRowsEmpty(),
+                scalar: _ => true)),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            enrichment.Object);
+
+        var page = await sut.GetResourceNetsByDimensionPageAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            new DateOnly(2026, 8, 1),
+            null,
+            Guid.CreateVersion7(),
+            "amount",
+            0,
+            10);
+
+        page.Rows.Should().BeEmpty();
+        page.Total.Should().Be(0);
+        page.TotalPositive.Should().Be(0m);
+        page.TotalNegativeAbsolute.Should().Be(0m);
+        enrichment.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Legacy_unpaged_net_and_balance_queries_reject_results_above_materialization_budget()
+    {
+        var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var valueId = Guid.CreateVersion7();
+        var total = NGB.Contracts.Common.PagingLimits.MaxMaterializedRows + 1;
+        var connection = new RecordingDbConnection(
+            readerFactory: _ => GroupNetRows(valueId, 1m, total, 1m, 0m),
+            scalar: _ => true);
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        enrichment.Setup(x => x.ResolveAsync(
+                It.IsAny<IReadOnlyCollection<DimensionValueKey>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<DimensionValueKey, string>());
+        var sut = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(connection),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            enrichment.Object);
+        var dimensionId = Guid.CreateVersion7();
+
+        await ((Func<Task>)(() => sut.GetResourceNetsByDimensionAsync(
+                RegisterId,
+                new DateOnly(2026, 8, 1),
+                new DateOnly(2026, 8, 1),
+                null,
+                dimensionId,
+                "amount")))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>()
+            .WithMessage("*Use the paged API*");
+
+        await ((Func<Task>)(() => sut.GetResourceBalancesByDimensionAsync(
+                RegisterId,
+                new DateOnly(2026, 8, 1),
+                null,
+                dimensionId,
+                "amount")))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>()
+            .WithMessage("*Use the paged API*");
+    }
+
+    [Fact]
+    public async Task Balance_page_falls_back_to_movement_aggregation_when_snapshot_table_is_absent()
+    {
+        var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var valueId = Guid.CreateVersion7();
+        var groupDimensionId = Guid.CreateVersion7();
+        var probeCount = 0;
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        enrichment.Setup(x => x.ResolveAsync(
+                It.IsAny<IReadOnlyCollection<DimensionValueKey>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<DimensionValueKey, string>());
+        var connection = new RecordingDbConnection(
+            readerFactory: _ => GroupNetRows(valueId, 2m, 1, 2m, 0m),
+            scalar: _ => Interlocked.Increment(ref probeCount) == 1);
+        var sut = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(connection),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            enrichment.Object);
+
+        var page = await sut.GetResourceBalancesByDimensionPageAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            [new DimensionValue(Guid.CreateVersion7(), Guid.CreateVersion7())],
+            groupDimensionId,
+            "amount",
+            0,
+            10);
+
+        page.Rows.Should().ContainSingle().Which.NetAmount.Should().Be(2m);
+        var sql = connection.Commands.Last().CommandText;
+        sql.Should().Contain("FROM opreg_sales__movements movement")
+            .And.NotContain("latest_snapshot")
+            .And.Contain("matching_dimension_sets");
+        probeCount.Should().Be(2);
+    }
+
+    [Fact]
     public async Task Balance_cursor_page_uses_seek_and_carried_totals_without_repeating_windows()
     {
         var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
@@ -425,6 +695,14 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             .And.NotContain("OFFSET");
         dimensionSets.VerifyNoOtherCalls();
         enrichment.VerifyAll();
+
+        var legacyRows = await sut.GetResourceBalancesByDimensionAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            dimensions: null,
+            groupDimensionId,
+            "amount");
+        legacyRows.Should().ContainSingle().Which.Display.Should().Be("Resolved");
     }
 
     [Fact]
@@ -601,6 +879,17 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         return table.CreateDataReader();
     }
 
+    private static DataTableReader GroupNetRowsEmpty()
+    {
+        var table = new DataTable();
+        table.Columns.Add("ValueId", typeof(Guid));
+        table.Columns.Add("NetAmount", typeof(decimal));
+        table.Columns.Add("TotalCount", typeof(int));
+        table.Columns.Add("TotalPositive", typeof(decimal));
+        table.Columns.Add("TotalNegativeAbsolute", typeof(decimal));
+        return table.CreateDataReader();
+    }
+
     private static DataTableReader EmptyRuleRows()
     {
         var table = new DataTable();
@@ -649,6 +938,33 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             table.Rows.Add(7L, documentId, occurredAt, new DateOnly(2026, 8, 1), DimensionSetId, true);
         else
             table.Rows.Add(7L, documentId, occurredAt, new DateOnly(2026, 8, 1), DimensionSetId, true, amount);
+        return table.CreateDataReader();
+    }
+
+    private static DataTableReader MovementPageRows(Guid documentId, DateTime occurredAt, int total)
+    {
+        var table = new DataTable();
+        table.Columns.Add("MovementId", typeof(long));
+        table.Columns.Add("DocumentId", typeof(Guid));
+        table.Columns.Add("OccurredAtUtc", typeof(DateTime));
+        table.Columns.Add("PeriodMonth", typeof(DateOnly));
+        table.Columns.Add("DimensionSetId", typeof(Guid));
+        table.Columns.Add("IsStorno", typeof(bool));
+        table.Columns.Add("TotalCount", typeof(long));
+        table.Rows.Add(7L, documentId, occurredAt, new DateOnly(2026, 8, 1), DimensionSetId, false, (long)total);
+        return table.CreateDataReader();
+    }
+
+    private static DataTableReader EmptyMovementPageRows()
+    {
+        var table = new DataTable();
+        table.Columns.Add("MovementId", typeof(long));
+        table.Columns.Add("DocumentId", typeof(Guid));
+        table.Columns.Add("OccurredAtUtc", typeof(DateTime));
+        table.Columns.Add("PeriodMonth", typeof(DateOnly));
+        table.Columns.Add("DimensionSetId", typeof(Guid));
+        table.Columns.Add("IsStorno", typeof(bool));
+        table.Columns.Add("TotalCount", typeof(long));
         return table.CreateDataReader();
     }
 

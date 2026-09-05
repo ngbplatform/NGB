@@ -396,8 +396,10 @@ public static class AgencyBillingTestData
         public AgencyBillingClientContractHead ClientContractHead { get; init; } = ValidClientContractHead();
         public IReadOnlyList<AgencyBillingClientContractLine> ClientContractLines { get; init; } = [ValidClientContractLine()];
         public AgencyBillingTimesheetHead TimesheetHead { get; init; } = ValidTimesheetHead();
+        public bool OmitBatchTimesheetHeads { get; init; }
         public IReadOnlyList<AgencyBillingTimesheetLine> TimesheetLines { get; init; } = [ValidTimesheetLine()];
         public AgencyBillingSalesInvoiceHead SalesInvoiceHead { get; init; } = ValidSalesInvoiceHead();
+        public bool OmitBatchSalesInvoiceHeads { get; init; }
         public IReadOnlyList<AgencyBillingSalesInvoiceLine> SalesInvoiceLines { get; init; } = [ValidSalesInvoiceLine()];
         public AgencyBillingCustomerPaymentHead CustomerPaymentHead { get; init; } = ValidCustomerPaymentHead();
         public IReadOnlyList<AgencyBillingCustomerPaymentApply> CustomerPaymentApplies { get; init; } = [ValidCustomerPaymentApply()];
@@ -415,7 +417,7 @@ public static class AgencyBillingTestData
             IReadOnlyCollection<Guid> documentIds,
             CancellationToken ct = default)
             => Task.FromResult<IReadOnlyDictionary<Guid, AgencyBillingTimesheetHead>>(
-                documentIds.Distinct().ToDictionary(
+                (OmitBatchTimesheetHeads ? [] : documentIds).Distinct().ToDictionary(
                     static id => id,
                     id => TimesheetHead with { DocumentId = id }));
 
@@ -439,7 +441,7 @@ public static class AgencyBillingTestData
             IReadOnlyCollection<Guid> documentIds,
             CancellationToken ct = default)
             => Task.FromResult<IReadOnlyDictionary<Guid, AgencyBillingSalesInvoiceHead>>(
-                documentIds.Distinct().ToDictionary(
+                (OmitBatchSalesInvoiceHeads ? [] : documentIds).Distinct().ToDictionary(
                     static id => id,
                     id => SalesInvoiceHead with { DocumentId = id }));
 

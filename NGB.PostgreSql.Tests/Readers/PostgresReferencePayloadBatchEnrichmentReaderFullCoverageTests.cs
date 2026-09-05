@@ -131,6 +131,83 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
         result.DocumentLabels.Should().Contain(documentId, "Invoice display");
     }
 
+    [Fact]
+    public async Task ResolveAsync_CoversMissingLabelsUntypedDocumentsAndMetadataWithoutDisplayHeads()
+    {
+        var accountId = Guid.NewGuid();
+        var registerId = Guid.NewGuid();
+        var catalogId = Guid.NewGuid();
+        var numberedDocumentId = Guid.NewGuid();
+        var unnumberedDocumentId = Guid.NewGuid();
+        var orphanTypedRowId = Guid.NewGuid();
+        var rows = Rows(
+            (1, null, accountId, null, null, null, 0),
+            (3, "cat.party", catalogId, null, null, null, 0),
+            (3, null, Guid.NewGuid(), null, null, "ignored", 0),
+            (4, null, numberedDocumentId, "doc.invoice", "INV-3", null, 1),
+            (4, null, unnumberedDocumentId, "doc.unknown", null, null, 1),
+            (4, null, orphanTypedRowId, "doc.invoice", null, "orphan", 0));
+        var connection = new RecordingDbConnection(_ => rows.CreateDataReader());
+        var catalogs = new CatalogTypeRegistry();
+        catalogs.Register(new CatalogTypeMetadata(
+            "cat.party",
+            "Party",
+            [new CatalogTableMetadata("cat_party", TableKind.Head, [], [])],
+            new CatalogPresentationMetadata("cat_party", "display"),
+            new CatalogMetadataVersion(1, "tests")));
+        var documents = new DocumentTypeRegistry([
+            DocumentMetadata("doc.invoice", "doc_invoice"),
+            new DocumentTypeMetadata(
+                "doc.no-head",
+                [new DocumentTableMetadata("doc_no_head", TableKind.Part, [])],
+                new DocumentPresentationMetadata("No head")),
+            new DocumentTypeMetadata(
+                "doc.no-display",
+                [new DocumentTableMetadata("doc_no_display", TableKind.Head, [])],
+                new DocumentPresentationMetadata("No display"))
+        ]);
+        var sut = new PostgresReferencePayloadBatchEnrichmentReader(
+            new RecordingUnitOfWork(connection), catalogs, documents);
+
+        var result = await sut.ResolveAsync(
+            [accountId],
+            [registerId],
+            new Dictionary<string, IReadOnlyCollection<Guid>> { ["cat.party"] = [catalogId] },
+            [numberedDocumentId, unnumberedDocumentId, orphanTypedRowId]);
+
+        result.AccountLabels[accountId].Should().Be(accountId.ToString());
+        result.OperationalRegisterLabels[registerId].Should().Be(registerId.ToString());
+        result.CatalogLabelsByType["cat.party"][catalogId].Should().BeEmpty();
+        result.DocumentLabels[numberedDocumentId].Should().Be("doc.invoice INV-3");
+        result.DocumentLabels[unnumberedDocumentId].Should()
+            .Be($"doc.unknown {unnumberedDocumentId.ToString("N")[..8]}");
+        result.DocumentLabels.Should().NotContainKey(orphanTypedRowId);
+        connection.Commands[0].CommandText.Should()
+            .NotContain("doc_no_head")
+            .And.NotContain("doc_no_display");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_RejectsEveryNullCollection()
+    {
+        var sut = new PostgresReferencePayloadBatchEnrichmentReader(
+            new RecordingUnitOfWork(new RecordingDbConnection()),
+            new CatalogTypeRegistry(),
+            new DocumentTypeRegistry());
+
+        await FluentActions.Invoking(() => sut.ResolveAsync(null!, [], EmptyCatalogs(), Array.Empty<Guid>()))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await FluentActions.Invoking(() => sut.ResolveAsync([], null!, EmptyCatalogs(), Array.Empty<Guid>()))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await FluentActions.Invoking(() => sut.ResolveAsync([], [], null!, Array.Empty<Guid>()))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await FluentActions.Invoking(() => sut.ResolveAsync([], [], EmptyCatalogs(), (IReadOnlyCollection<Guid>)null!))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await FluentActions.Invoking(() => sut.ResolveAsync([], [], EmptyCatalogs(),
+                (IReadOnlyDictionary<string, IReadOnlyCollection<Guid>>)null!))
+            .Should().ThrowAsync<ArgumentNullException>();
+    }
+
     private static DocumentTypeMetadata DocumentMetadata(string typeCode, string tableName)
         => new(
             typeCode,
@@ -139,6 +216,8 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
                 TableKind.Head,
                 [new DocumentColumnMetadata("display", ColumnType.String)])],
             new DocumentPresentationMetadata(typeCode));
+
+    private static Dictionary<string, IReadOnlyCollection<Guid>> EmptyCatalogs() => [];
 
     private static DataTable Rows(params (short Kind, string? SourceCode, Guid Id, string? TypeCode, string? Number, string? Display, int Priority)[] values)
     {

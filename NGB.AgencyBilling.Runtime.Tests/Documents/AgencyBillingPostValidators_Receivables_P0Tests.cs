@@ -941,6 +941,30 @@ public sealed class CustomerPaymentPostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_When_Posted_Invoice_Has_No_AgencyBilling_Head_Throws()
+    {
+        var payment = AgencyBillingTestData.ValidCustomerPaymentHead();
+        var invoiceId = Guid.NewGuid();
+        var apply = AgencyBillingTestData.ValidCustomerPaymentApply(
+            documentId: payment.DocumentId,
+            salesInvoiceId: invoiceId);
+        var harness = CreateCustomerPaymentHarness(
+            payment: payment,
+            applies: [apply],
+            refs: ValidPaymentReferences(payment.ClientId),
+            documentsById: Map((invoiceId, AgencyBillingTestData.CreateDocument(
+                AgencyBillingCodes.SalesInvoice, DocumentStatus.Posted, id: invoiceId))),
+            invoicesById: new Dictionary<Guid, AgencyBillingSalesInvoiceHead>(),
+            omitUnconfiguredInvoiceHeads: true);
+
+        var act = () => harness.Sut.ValidateBeforePostAsync(
+            AgencyBillingTestData.CreateDocument(AgencyBillingCodes.CustomerPayment), default);
+
+        await act.Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*missing its Agency Billing head row*");
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_When_Applied_Invoice_Client_Differs_Throws()
     {
         var payment = AgencyBillingTestData.ValidCustomerPaymentHead();
@@ -1133,7 +1157,8 @@ public sealed class CustomerPaymentPostValidator_P0Tests
         ChartOfAccounts? chart = null,
         AgencyBillingAccountingPolicy? policy = null,
         OperationalRegisterAdminItem? register = null,
-        bool registerExists = true)
+        bool registerExists = true,
+        bool omitUnconfiguredInvoiceHeads = false)
     {
         payment ??= AgencyBillingTestData.ValidCustomerPaymentHead();
         applies ??= [AgencyBillingTestData.ValidCustomerPaymentApply(documentId: payment.DocumentId)];
@@ -1157,7 +1182,8 @@ public sealed class CustomerPaymentPostValidator_P0Tests
             });
         readers.Setup(x => x.ReadSalesInvoiceHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
-                ids.Distinct().ToDictionary(
+                ids.Where(id => !omitUnconfiguredInvoiceHeads || (invoicesById?.ContainsKey(id) ?? false))
+                    .Distinct().ToDictionary(
                     static id => id,
                     id => invoicesById is not null && invoicesById.TryGetValue(id, out var invoice)
                         ? invoice

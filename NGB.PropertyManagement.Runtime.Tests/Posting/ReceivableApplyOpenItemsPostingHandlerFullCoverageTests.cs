@@ -122,6 +122,22 @@ public sealed class ReceivableApplyOpenItemsPostingHandlerFullCoverageTests
     }
 
     [Fact]
+    public async Task Unexpected_dimension_set_count_is_rejected_before_balance_read()
+    {
+        var fixture = new Fixture();
+        fixture.DimensionSets.Setup(x => x.GetOrCreateIdsAsync(
+                It.IsAny<IReadOnlyList<DimensionBag>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([fixture.ChargeDimensionSetId]);
+
+        var act = () => fixture.Sut.BuildMovementsAsync(
+            fixture.Document(DocumentStatus.Draft), fixture.Builder.Object, default);
+
+        await act.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("*unexpected number of ids*");
+        fixture.Net.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task Charge_and_credit_boundaries_reject_over_application()
     {
         var charge = new Fixture { ChargeNet = 4m, CreditNet = -10m };

@@ -26,8 +26,10 @@ public sealed class HeadTypeStorageFullCoverageTests
 
         var inactiveStorage = new PostgresHeadDocumentTypeStorage(inactive, "type", "doc_type", []);
         Func<Task> inactiveCreate = () => inactiveStorage.CreateDraftAsync(Guid.NewGuid(), default);
+        Func<Task> inactiveBatchCreate = () => inactiveStorage.CreateDraftsAsync([], default);
         Func<Task> inactiveDelete = () => inactiveStorage.DeleteDraftAsync(Guid.NewGuid(), default);
         await inactiveCreate.Should().ThrowAsync<InvalidOperationException>();
+        await inactiveBatchCreate.Should().ThrowAsync<InvalidOperationException>();
         await inactiveDelete.Should().ThrowAsync<InvalidOperationException>();
 
         var connection = new RecordingDbConnection();
@@ -56,6 +58,24 @@ public sealed class HeadTypeStorageFullCoverageTests
             "INSERT INTO doc_type(document_id, display) VALUES (@documentId, @display) ON CONFLICT (document_id) DO NOTHING;");
         connection.Commands[2].ParametersSnapshot.Should().Contain(x =>
             x.ParameterName == "display" && Equals(x.Value, $"draft/{id:D}"));
+
+        Func<Task> nullBatch = () => populated.CreateDraftsAsync(null!, default);
+        await nullBatch.Should().ThrowAsync<ArgumentNullException>();
+        await populated.CreateDraftsAsync([], default);
+        connection.Commands.Should().HaveCount(3);
+
+        var batchIds = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        await populated.CreateDraftsAsync(batchIds, default);
+        connection.Commands[3].CommandText.Should().Be(
+            "INSERT INTO doc_type(document_id, display) VALUES (@documentId_0, @display_0), (@documentId_1, @display_1) ON CONFLICT (document_id) DO NOTHING;");
+        connection.Commands[3].ParametersSnapshot.Should().Contain(x =>
+            x.ParameterName == "display_0" && Equals(x.Value, $"draft/{batchIds[0]:D}"));
+        connection.Commands[3].ParametersSnapshot.Should().Contain(x =>
+            x.ParameterName == "display_1" && Equals(x.Value, $"draft/{batchIds[1]:D}"));
+
+        await empty.CreateDraftsAsync(batchIds, default);
+        connection.Commands[4].CommandText.Should().Be(
+            "INSERT INTO doc_empty(document_id) VALUES (@documentId_0), (@documentId_1) ON CONFLICT (document_id) DO NOTHING;");
     }
 
     [Fact]

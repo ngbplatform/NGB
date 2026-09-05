@@ -9,6 +9,8 @@ using NGB.Contracts.Search;
 using NGB.CRM.Api.Controllers;
 using NGB.CRM.Api.Services;
 using NGB.CRM.Contracts;
+using NGB.CRM.Contracts.Dashboard;
+using NGB.Core.Security;
 using NGB.CRM.Runtime;
 using NGB.Runtime.Admin;
 using NGB.Runtime.Catalogs;
@@ -39,6 +41,7 @@ public sealed class CrmControllersFullCoverageTests : IDisposable
             documents,
             Mock.Of<IDocumentActionQueryService>(),
             Mock.Of<IDocumentActionDispatcher>()).Should().NotBeNull();
+        new DashboardController(Mock.Of<ICrmDashboardService>(), access).Should().NotBeNull();
         new ReportController(
             Mock.Of<IReportDefinitionProvider>(),
             Mock.Of<IReportEngine>(),
@@ -92,6 +95,30 @@ public sealed class CrmControllersFullCoverageTests : IDisposable
 
         result.Groups.Should().BeEmpty();
         documents.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Dashboard_RequiresViewPermissionAndDelegatesRequest()
+    {
+        var asOf = new DateOnly(2026, 8, 21);
+        using var cancellation = new CancellationTokenSource();
+        var expected = new CrmDashboardResponse(asOf, 10m, 5m, 4, 3, 2, 9m, 1, 6, []);
+        var access = new Mock<INgbAccessChecker>(MockBehavior.Strict);
+        access.Setup(x => x.RequireAsync(
+                NgbResourceKinds.Page,
+                CrmCodes.Dashboard,
+                NgbPermissionActions.View,
+                cancellation.Token))
+            .Returns(Task.CompletedTask);
+        var service = new Mock<ICrmDashboardService>(MockBehavior.Strict);
+        service.Setup(x => x.GetAsync(asOf, cancellation.Token)).ReturnsAsync(expected);
+        var sut = new DashboardController(service.Object, access.Object);
+
+        var result = await sut.Get(asOf, cancellation.Token);
+
+        result.Should().BeSameAs(expected);
+        access.VerifyAll();
+        service.VerifyAll();
     }
 
     public void Dispose() => _cache.Dispose();

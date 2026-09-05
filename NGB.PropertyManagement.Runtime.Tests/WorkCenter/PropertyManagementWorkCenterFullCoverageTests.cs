@@ -181,6 +181,22 @@ public sealed class PropertyManagementWorkCenterFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_completion_with_no_exhausted_payments_does_not_touch_tasks()
+    {
+        var fixture = new SynchronizerFixture();
+        fixture.Availability.Setup(x => x.GetExhaustedPaymentIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HashSet<Guid>());
+
+        var result = await fixture.Sut.CompleteIfExhaustedAsync([Guid.CreateVersion7()], default);
+
+        result.Should().BeEmpty();
+        fixture.Tasks.Verify(x => x.CompleteByDeduplicationKeysAsync(
+            It.IsAny<string>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Cancel_uses_stable_deduplication_key()
     {
         var fixture = new SynchronizerFixture();

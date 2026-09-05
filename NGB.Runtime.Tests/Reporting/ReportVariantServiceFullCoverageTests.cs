@@ -78,6 +78,17 @@ public sealed class ReportVariantServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task SaveAsync_RejectsBlankVariantCode()
+    {
+        var fixture = new Fixture();
+
+        var act = async () => await fixture.Sut.SaveAsync(Variant(variantCode: " \t "), default);
+
+        var error = await act.Should().ThrowAsync<NgbArgumentRequiredException>();
+        error.Which.ParamName.Should().Be("VariantCode");
+    }
+
+    [Fact]
     public async Task VariantQueriesAndWrites_EnforceOperationalBudgets()
     {
         var fixture = new Fixture();

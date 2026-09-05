@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Moq;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Contracts;
 using NGB.PropertyManagement.Contracts.Payables;
 using NGB.PropertyManagement.Payables;
 using NGB.PropertyManagement.Runtime.Exceptions;
@@ -23,6 +24,7 @@ public sealed class PayablesFifoApplySuggestServiceFullCoverageTests
         await AssertInvalid(() => fixture.QueryAsync(asOf: new DateOnly(2026, 2, 1), to: new DateOnly(2026, 1, 1)));
         await AssertInvalid(() => fixture.QueryAsync(limit: 0));
         await AssertInvalid(() => fixture.QueryAsync(limit: -1));
+        await AssertInvalid(() => fixture.QueryAsync(limit: FifoApplyLimits.MaxApplications + 1));
     }
 
     [Fact]

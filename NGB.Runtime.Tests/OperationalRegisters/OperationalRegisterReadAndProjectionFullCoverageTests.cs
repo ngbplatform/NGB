@@ -192,6 +192,38 @@ public sealed class OperationalRegisterReadAndProjectionFullCoverageTests
     }
 
     [Fact]
+    public async Task DefaultProjector_DelegatesToOptimizedRebuilderAfterSchemaPreparation()
+    {
+        var id = Guid.CreateVersion7();
+        var period = new DateOnly(2026, 4, 1);
+        var previous = new DateOnly(2026, 3, 1);
+        var aggregator = new Mock<IOperationalRegisterMonthlyProjectionAggregator>(MockBehavior.Strict);
+        var finalizations = new Mock<IOperationalRegisterFinalizationRepository>(MockBehavior.Strict);
+        var turnovers = new Mock<IOperationalRegisterTurnoversStore>(MockBehavior.Strict);
+        var balances = new Mock<IOperationalRegisterBalancesStore>(MockBehavior.Strict);
+        var optimized = new Mock<IOperationalRegisterDefaultProjectionRebuilder>(MockBehavior.Strict);
+        turnovers.Setup(x => x.EnsureReadyForWriteAsync(id, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        balances.Setup(x => x.EnsureReadyForWriteAsync(id, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        finalizations.Setup(x => x.GetLatestFinalizedPeriodBeforeAsync(id, period, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(previous);
+        optimized.Setup(x => x.RebuildMonthAsync(id, period, previous, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var sut = new DefaultOperationalRegisterMonthProjector(
+            aggregator.Object,
+            finalizations.Object,
+            turnovers.Object,
+            balances.Object,
+            optimized.Object);
+
+        await sut.RebuildMonthAsync(Context(id, period));
+
+        optimized.VerifyAll();
+        aggregator.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task MovementsCountProjector_ValidatesConstructorContextPagesAndNetCounts()
     {
         var turnovers = new Mock<IOperationalRegisterTurnoversStore>(MockBehavior.Loose);

@@ -9,10 +9,19 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class RenderedReportSnapshotStoreFullCoverageTests
 {
     [Fact]
+    public void MemoryStore_RejectsNullExternalCache()
+    {
+        var act = () => new MemoryCacheRenderedReportSnapshotStore(null!);
+
+        act.Should().Throw<ArgumentNullException>()
+            .Which.ParamName.Should().Be("cache");
+    }
+
+    [Fact]
     public async Task MemoryStore_SetGetRemove_RoundTripsSnapshot()
     {
         using var cache = new MemoryCache(new MemoryCacheOptions());
-        var store = new MemoryCacheRenderedReportSnapshotStore(cache);
+        using var store = new MemoryCacheRenderedReportSnapshotStore(cache);
         var snapshot = Snapshot();
 
         (await store.GetAsync(snapshot.SnapshotId, default)).Should().BeNull();

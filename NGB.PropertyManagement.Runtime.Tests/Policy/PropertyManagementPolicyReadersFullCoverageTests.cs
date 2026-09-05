@@ -5,6 +5,7 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Core.Catalogs.Exceptions;
+using NGB.Persistence.Documents;
 using NGB.PropertyManagement.Runtime.Policy;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -13,6 +14,25 @@ namespace NGB.PropertyManagement.Runtime.Tests.Policy;
 
 public sealed class PropertyManagementPolicyReadersFullCoverageTests
 {
+    [Fact]
+    public async Task Accounting_policy_reader_uses_posting_read_cache_when_available()
+    {
+        var cache = new Mock<IDocumentPostingReadCache>(MockBehavior.Strict);
+        cache.Setup(x => x.GetOrAddAsync<PropertyManagementAccountingPolicy>(
+                "policy:property-management",
+                It.IsAny<Func<CancellationToken, Task<PropertyManagementAccountingPolicy>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<PropertyManagementAccountingPolicy>> factory, CancellationToken ct) => factory(ct));
+        var sut = new PropertyManagementAccountingPolicyReader(
+            CatalogPage(Page([PolicyItem(Guid.CreateVersion7())])),
+            cache.Object);
+
+        var result = await sut.GetRequiredAsync();
+
+        result.Should().NotBeNull();
+        cache.VerifyAll();
+    }
+
     [Fact]
     public async Task Party_reader_maps_boolean_literals_and_strings_and_handles_not_found()
     {
@@ -31,6 +51,18 @@ public sealed class PropertyManagementPolicyReadersFullCoverageTests
         text.Should().Be(new PropertyManagementParty(id, "Item", false, true, false));
 
         (await reader.TryGetAsync(id)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Party_reader_batch_returns_empty_without_query_for_only_empty_ids()
+    {
+        var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
+        var reader = new PropertyManagementPartyReader(catalogs.Object);
+
+        var result = await reader.GetByIdsAsync([Guid.Empty, Guid.Empty]);
+
+        result.Should().BeEmpty();
+        catalogs.VerifyNoOtherCalls();
     }
 
     [Fact]

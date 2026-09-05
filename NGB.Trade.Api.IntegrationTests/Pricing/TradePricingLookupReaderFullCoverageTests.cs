@@ -4,6 +4,7 @@ using Moq;
 using NGB.Persistence.UnitOfWork;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.PostgreSql.Pricing;
+using NGB.Trade.PostgreSql.References;
 using NGB.Trade.Pricing;
 using Xunit;
 
@@ -23,6 +24,10 @@ public sealed class TradePricingLookupReaderFullCoverageTests(TradePostgresFixtu
         (await dependencyFree.GetItemSalesProfilesAsync([], CancellationToken.None)).Should().BeEmpty();
         (await dependencyFree.GetLatestItemPricesAsync([], DateOnly.MinValue, CancellationToken.None)).Should().BeEmpty();
         (await dependencyFree.GetLatestUnitCostsAsync([], DateOnly.MaxValue, CancellationToken.None)).Should().BeEmpty();
+
+        var validationReader = new TradeCatalogValidationReader(Mock.Of<IUnitOfWork>(MockBehavior.Strict));
+        (await validationReader.GetInventoryItemsAsync([Guid.Empty, Guid.Empty], CancellationToken.None))
+            .Should().BeEmpty();
 
         using var host = TradeHostFactory.Create(fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();

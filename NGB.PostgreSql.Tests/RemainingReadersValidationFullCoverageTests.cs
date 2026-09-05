@@ -233,6 +233,7 @@ public sealed class RemainingReadersValidationFullCoverageTests
         await writer.WriteAsync([]);
 
         var balanceWriter = new PostgresAccountingBalanceWriter(new RecordingUnitOfWork(connection));
+        await balanceWriter.SaveAsync([]);
         await balanceWriter.WriteAsync(Enumerable.Empty<AccountingBalance>().Where(_ => true));
         await balanceWriter.WriteAsync([]);
 

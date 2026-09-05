@@ -10,7 +10,9 @@ using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.Api.IntegrationTests.Support;
+using NGB.PropertyManagement.Reporting;
 using NGB.PropertyManagement.Runtime;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Reports;
@@ -27,12 +29,58 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task PropertyManagementDashboardReader_OnEmptyDatabase_ReturnsTwelveMonthZeroSnapshot()
+    {
+        using var factory = new PmApiFactory(_fixture);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var reader = scope.ServiceProvider.GetRequiredService<IPropertyManagementDashboardReader>();
+        var asOf = new DateOnly(2026, 8, 21);
+
+        var snapshot = await reader.GetAsync(asOf, CancellationToken.None);
+
+        snapshot.Portfolio.Should().Be(new PropertyManagementDashboardPortfolioSnapshot(0, 0, 0, 0));
+        snapshot.Leases.Expiring30Count.Should().Be(0);
+        snapshot.Leases.UpcomingMoveInCount.Should().Be(0);
+        snapshot.Leases.UpcomingMoveOutCount.Should().Be(0);
+        snapshot.Leases.Events.Should().BeEmpty();
+        snapshot.OccupancyTrend.Should().BeEmpty();
+        snapshot.CollectionsTrend.Should().HaveCount(12)
+            .And.OnlyContain(static row => row.Billed == 0m && row.Collected == 0m);
+        snapshot.CollectionsTrend.Select(static row => row.Month).Should().BeInAscendingOrder();
+    }
+
+    [Fact]
     public async Task PropertyManagement_Definitions_And_Execute_Work_EndToEnd()
     {
         using var factory = new PmApiFactory(_fixture);
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
 
         var seeded = await SeedScenarioAsync(factory);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var maintenanceQueue = scope.ServiceProvider.GetRequiredService<IMaintenanceQueueReader>();
+            var dashboard = await maintenanceQueue.GetDashboardAsync(
+                new DateOnly(2026, 2, 15),
+                itemLimit: 10,
+                CancellationToken.None);
+
+            dashboard.Total.Should().Be(3);
+            dashboard.Overdue.Should().Be(1);
+            dashboard.Days0To3.Should().Be(1);
+            dashboard.Days4To7.Should().Be(2);
+            dashboard.Days8To14.Should().Be(0);
+            dashboard.Days15Plus.Should().Be(0);
+            dashboard.Rows.Should().HaveCount(3);
+            dashboard.Rows.Select(static item => item.QueueState)
+                .Should().Contain([MaintenanceQueueState.Overdue, MaintenanceQueueState.WorkOrdered, MaintenanceQueueState.Requested]);
+
+            var invalidLimit = () => maintenanceQueue.GetDashboardAsync(
+                new DateOnly(2026, 2, 15),
+                itemLimit: 0,
+                CancellationToken.None);
+            await invalidLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        }
 
         using (var resp = await client.GetAsync("/api/report-definitions"))
         {

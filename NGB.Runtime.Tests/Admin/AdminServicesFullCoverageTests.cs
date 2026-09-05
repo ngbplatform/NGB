@@ -11,6 +11,7 @@ using NGB.Core.Security;
 using NGB.Persistence.Accounts;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.Admin;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -47,6 +48,27 @@ public sealed class AdminServicesFullCoverageTests
             .Should().ThrowAsync<NgbArgumentInvalidException>();
         await ((Func<Task>)(() => sut.CreateChartOfAccountAsync(Upsert(cashFlowRole: "unknown"), default)))
             .Should().ThrowAsync<NgbArgumentInvalidException>();
+
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            "admin.chart-of-accounts",
+            false.ToString(),
+            null,
+            null,
+            string.Empty,
+            null,
+            string.Empty);
+        var negativeOffsetCursor = SpecializedReportCursorCodec.Encode(
+            cursorKind,
+            new
+            {
+                Offset = -1,
+                Total = 0,
+                AfterCode = (string?)null,
+                AfterAccountId = (Guid?)null
+            });
+        await ((Func<Task>)(() => sut.GetChartOfAccountsPageAsync(
+                new ChartOfAccountsPageRequestDto(Cursor: negativeOffsetCursor), default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
     }
 
     [Fact]

@@ -24,6 +24,8 @@ public sealed class AgencyBillingReferenceReaders_P0Tests(AgencyBillingPostgresF
         await uow.BeginTransactionAsync();
         var sut = new AgencyBillingReferenceReaders(uow);
 
+        (await sut.ReadTeamMembersAsync([Guid.Empty, Guid.Empty])).Should().BeEmpty();
+        (await sut.ReadServiceItemsAsync([Guid.Empty, Guid.Empty])).Should().BeEmpty();
         (await sut.ReadClientAsync(Guid.NewGuid())).Should().BeNull();
         (await sut.ReadProjectAsync(Guid.NewGuid())).Should().BeNull();
         (await sut.ReadTeamMemberAsync(Guid.NewGuid())).Should().BeNull();

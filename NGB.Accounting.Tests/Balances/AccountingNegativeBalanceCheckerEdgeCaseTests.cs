@@ -56,6 +56,27 @@ public sealed class AccountingNegativeBalanceCheckerEdgeCaseTests
         result.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task CheckAsync_AllowPolicy_IgnoresOtherwiseNegativeBalance()
+    {
+        var account = new Account(
+            Guid.CreateVersion7(),
+            "1010",
+            "Cash",
+            AccountType.Asset,
+            negativeBalancePolicy: NegativeBalancePolicy.Allow);
+        var chart = new ChartOfAccounts();
+        chart.Add(account);
+        var provider = new Mock<IChartOfAccountsProvider>(MockBehavior.Strict);
+        provider.Setup(x => x.GetAsync(It.IsAny<CancellationToken>())).ReturnsAsync(chart);
+
+        var result = await new AccountingNegativeBalanceChecker(provider.Object).CheckAsync(
+            [CreateBalance(account.Id, closingBalance: -1m)],
+            CancellationToken.None);
+
+        result.Should().BeEmpty();
+    }
+
     private static Mock<IChartOfAccountsProvider> CreateEmptyChartProvider()
     {
         var provider = new Mock<IChartOfAccountsProvider>(MockBehavior.Strict);

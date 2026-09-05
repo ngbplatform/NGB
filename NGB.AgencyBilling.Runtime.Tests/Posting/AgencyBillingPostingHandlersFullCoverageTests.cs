@@ -50,6 +50,48 @@ public sealed class AgencyBillingPostingHandlersFullCoverageTests
     }
 
     [Fact]
+    public async Task Posting_handlers_reject_missing_batch_head_rows()
+    {
+        var paymentDocument = AgencyBillingTestData.CreateDocument(AgencyBillingCodes.CustomerPayment);
+        var invoiceId = Guid.CreateVersion7();
+        var paymentReaders = new AgencyBillingTestData.DocumentReadersStub
+        {
+            CustomerPaymentHead = AgencyBillingTestData.ValidCustomerPaymentHead(paymentDocument.Id),
+            CustomerPaymentApplies = [AgencyBillingTestData.ValidCustomerPaymentApply(paymentDocument.Id, 1, invoiceId, 1m)],
+            OmitBatchSalesInvoiceHeads = true
+        };
+        var policy = Policy();
+        var chart = AgencyBillingTestData.CreateChart(
+            AgencyBillingTestData.CreateAccount(policy.CashAccountId),
+            AgencyBillingTestData.CreateAccount(policy.AccountsReceivableAccountId));
+        var (postingContext, _) = PostingContext(chart);
+
+        await ((Func<Task>)(() => new CustomerPaymentPostingHandler(paymentReaders, PolicyReader(policy))
+                .BuildEntriesAsync(paymentDocument, postingContext.Object, default)))
+            .Should().ThrowAsync<NgbInvariantViolationException>();
+
+        var registers = AllOperationalRegisters(policy);
+        await ((Func<Task>)(() => new CustomerPaymentOperationalRegisterPostingHandler(
+                    paymentReaders, PolicyReader(policy), RegisterRepository(registers).Object, DimensionSets().Object)
+                .BuildMovementsAsync(paymentDocument, Mock.Of<IOperationalRegisterMovementsBuilder>(), default)))
+            .Should().ThrowAsync<NgbInvariantViolationException>();
+
+        var invoiceDocument = AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice);
+        var timesheetId = Guid.CreateVersion7();
+        var invoiceReaders = new AgencyBillingTestData.DocumentReadersStub
+        {
+            SalesInvoiceHead = AgencyBillingTestData.ValidSalesInvoiceHead(invoiceDocument.Id),
+            SalesInvoiceLines = [AgencyBillingTestData.ValidSalesInvoiceLine(
+                invoiceDocument.Id, sourceTimesheetId: timesheetId, lineAmount: 1m)],
+            OmitBatchTimesheetHeads = true
+        };
+        await ((Func<Task>)(() => new SalesInvoiceOperationalRegisterPostingHandler(
+                    invoiceReaders, PolicyReader(policy), RegisterRepository(registers).Object, DimensionSets().Object)
+                .BuildMovementsAsync(invoiceDocument, Mock.Of<IOperationalRegisterMovementsBuilder>(), default)))
+            .Should().ThrowAsync<NgbInvariantViolationException>();
+    }
+
+    [Fact]
     public async Task SalesInvoiceAccounting_CoversHeadLinesAndNonPositiveBoundary()
     {
         var document = AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice);

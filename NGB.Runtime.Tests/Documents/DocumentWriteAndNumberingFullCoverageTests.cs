@@ -59,6 +59,32 @@ public sealed class DocumentWriteAndNumberingFullCoverageTests
     }
 
     [Fact]
+    public async Task WriteEngine_CreateManyCoversEmptyMissingBatchAndPerDocumentFallbacks()
+    {
+        var fixture = new WriteFixture();
+        var ids = new[] { Guid.NewGuid(), Guid.NewGuid() };
+        var batch = new BatchStorage("batch");
+        var basic = new BasicStorage("basic");
+        fixture.Resolver.Setup(x => x.TryResolve("missing")).Returns((IDocumentTypeStorage?)null);
+        fixture.Resolver.Setup(x => x.TryResolve("batch")).Returns(batch);
+        fixture.Resolver.Setup(x => x.TryResolve("basic")).Returns(basic);
+
+        await ((Func<Task>)(() => fixture.Sut.EnsureDraftStorageCreatedManyAsync(null!, "batch", false)))
+            .Should().ThrowAsync<ArgumentNullException>();
+        await fixture.Sut.EnsureDraftStorageCreatedManyAsync([], "batch", false);
+        await fixture.Sut.EnsureDraftStorageCreatedManyAsync(ids, "missing", false);
+        await fixture.Sut.EnsureDraftStorageCreatedManyAsync(ids, "batch", true);
+        await fixture.Sut.EnsureDraftStorageCreatedManyAsync(ids, "basic", false);
+
+        batch.Batch.Should().Equal(ids);
+        batch.Created.Should().Be(0);
+        basic.Created.Should().Be(2);
+        fixture.Locks.Verify(x => x.LockDocumentAsync(ids[0], It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Locks.Verify(x => x.LockDocumentAsync(ids[1], It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Uow.Verify(x => x.EnsureActiveTransaction(), Times.Exactly(5));
+    }
+
+    [Fact]
     public async Task NumberingSync_RejectsNullAndSkipsSyncForExistingNumberOrBlankAssignment()
     {
         var numbering = new Mock<IDocumentNumberingService>(MockBehavior.Strict);
@@ -154,6 +180,17 @@ public sealed class DocumentWriteAndNumberingFullCoverageTests
         public Task UpdateDraftAsync(DocumentRecord updatedDraft, CancellationToken ct = default)
         {
             Updated = updatedDraft;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class BatchStorage(string typeCode) : BasicStorage(typeCode), IDocumentTypeDraftBatchStorage
+    {
+        public IReadOnlyList<Guid> Batch { get; private set; } = [];
+
+        public Task CreateDraftsAsync(IReadOnlyList<Guid> documentIds, CancellationToken ct = default)
+        {
+            Batch = documentIds;
             return Task.CompletedTask;
         }
     }

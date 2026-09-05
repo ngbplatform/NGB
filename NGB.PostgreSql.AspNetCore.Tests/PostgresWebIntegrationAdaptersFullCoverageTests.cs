@@ -14,6 +14,15 @@ namespace NGB.PostgreSql.AspNetCore.Tests;
 
 public sealed class PostgresWebIntegrationAdaptersFullCoverageTests
 {
+    [Fact]
+    public void Health_check_rejects_null_probe()
+    {
+        var act = () => new PostgresHealthCheck((Func<CancellationToken, Task>)null!);
+
+        act.Should().Throw<ArgumentNullException>()
+            .Which.ParamName.Should().Be("probe");
+    }
+
     [Theory]
     [InlineData("23505", 409, "ngb.conflict.unique_violation", NgbErrorKind.Conflict)]
     [InlineData("23503", 409, "ngb.conflict.foreign_key_violation", NgbErrorKind.Conflict)]

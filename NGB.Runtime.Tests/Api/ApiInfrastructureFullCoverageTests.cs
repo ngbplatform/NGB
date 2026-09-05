@@ -108,12 +108,14 @@ public sealed class ApiInfrastructureFullCoverageTests
             ["offset"] = "-3",
             ["limit"] = "9999",
             ["search"] = "tenant",
+            ["cursor"] = "opaque-cursor",
             ["includeTotal"] = "false",
             ["status"] = "open"
         }));
         parsed.Offset.Should().Be(0);
         parsed.Limit.Should().Be(PagingLimits.MaxPageSize);
         parsed.Search.Should().Be("tenant");
+        parsed.Cursor.Should().Be("opaque-cursor");
         parsed.IncludeTotal.Should().BeFalse();
         parsed.Filters.Should().Contain("status", "open");
 
@@ -121,6 +123,11 @@ public sealed class ApiInfrastructureFullCoverageTests
         {
             ["includeTotal"] = "true"
         })).IncludeTotal.Should().BeTrue();
+
+        QueryParsing.ToPageRequest(Query(new Dictionary<string, string?>
+        {
+            ["includeTotal"] = "not-a-boolean"
+        })).IncludeTotal.Should().BeFalse();
 
         var bounded = QueryParsing.ToPageRequest(Query(new Dictionary<string, string?>
         {

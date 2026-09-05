@@ -142,6 +142,29 @@ public sealed class SsoInfrastructureFullCoverageTests
     }
 
     [Fact]
+    public async Task Token_cache_waiter_rechecks_cache_after_the_active_refresh_completes()
+    {
+        var now = new DateTimeOffset(2026, 8, 16, 12, 0, 0, TimeSpan.Zero);
+        var token = new JwtSecurityTokenHandler().WriteToken(
+            new JwtSecurityToken(expires: now.UtcDateTime.AddMinutes(10)));
+        var handler = new BlockingTokenEndpointHandler(token);
+        using var httpClient = new HttpClient(handler);
+        var sut = new TokenCacheService(
+            httpClient,
+            new KeycloakApiClientSettings("https://identity.example", "platform", "api", "secret"),
+            new FixedTimeProvider(now));
+
+        var first = sut.GetTokenAsync(CancellationToken.None);
+        await handler.Started.Task;
+        var waiting = sut.GetTokenAsync(CancellationToken.None);
+        handler.Release.SetResult();
+
+        (await first).Should().Be(token);
+        (await waiting).Should().Be(token);
+        handler.RequestCount.Should().Be(1);
+    }
+
+    [Fact]
     public void KeycloakAdminException_and_settings_expose_safe_complete_context()
     {
         var withoutExtra = new KeycloakAdminClientException("users.get", 503);
@@ -210,6 +233,29 @@ public sealed class SsoInfrastructureFullCoverageTests
             RequestBody = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    $$"""{"access_token":"{{token}}","token_type":"Bearer","expires_in":600}""",
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        }
+    }
+
+    private sealed class BlockingTokenEndpointHandler(string token) : HttpMessageHandler
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int RequestCount { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(

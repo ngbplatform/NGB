@@ -199,6 +199,33 @@ public sealed class PostgresReadPathCachesFullCoverageTests
     }
 
     [Fact]
+    public async Task Relation_shape_cache_concurrent_call_reuses_result_created_while_waiting()
+    {
+        var time = new AdjustableTimeProvider(new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero));
+        var cache = new PostgresRelationShapeCache(time);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+
+        async Task<bool> Probe(CancellationToken _)
+        {
+            Interlocked.Increment(ref calls);
+            started.TrySetResult();
+            return await release.Task;
+        }
+
+        var first = cache.IsVerifiedAsync("public.concurrent_shape", "id|amount", Probe, default);
+        await started.Task;
+        var second = cache.IsVerifiedAsync("public.concurrent_shape", "id|amount", Probe, default);
+        release.SetResult(true);
+
+        (await first).Should().BeTrue();
+        (await second).Should().BeTrue();
+        calls.Should().Be(1);
+        cache.ProbeGateCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Operational_metadata_cache_only_reuses_immutable_metadata()
     {
         var time = new AdjustableTimeProvider(new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero));
@@ -240,6 +267,35 @@ public sealed class PostgresReadPathCachesFullCoverageTests
         await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
         time.Advance(TimeSpan.FromMinutes(6));
         await cache.GetOrCreateAsync(immutableId, _ => Task.FromResult(immutable), default);
+        cache.LoadGateCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Operational_metadata_cache_concurrent_call_reuses_result_created_while_waiting()
+    {
+        var time = new AdjustableTimeProvider(new DateTimeOffset(2026, 8, 29, 12, 0, 0, TimeSpan.Zero));
+        var cache = new OperationalRegisterMetadataCache(time);
+        var registerId = Guid.NewGuid();
+        var expected = OperationalContext(registerId, hasMovements: true);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<OperationalRegisterMetadataContext>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+
+        async Task<OperationalRegisterMetadataContext> Load(CancellationToken _)
+        {
+            Interlocked.Increment(ref calls);
+            started.TrySetResult();
+            return await release.Task;
+        }
+
+        var first = cache.GetOrCreateAsync(registerId, Load, default);
+        await started.Task;
+        var second = cache.GetOrCreateAsync(registerId, Load, default);
+        release.SetResult(expected);
+
+        (await first).Should().BeSameAs(expected);
+        (await second).Should().BeSameAs(expected);
+        calls.Should().Be(1);
         cache.LoadGateCount.Should().Be(0);
     }
 

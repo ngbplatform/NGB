@@ -10,6 +10,7 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.OperationalRegisters.Contracts;
+using NGB.Persistence.Documents;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Runtime.Accounts;
 using NGB.Tools.Exceptions;
@@ -694,6 +695,25 @@ public sealed class AccountingPolicyCatalogUpsertValidator_P0Tests
 
 public sealed class AgencyBillingAccountingPolicyReader_P0Tests
 {
+    [Fact]
+    public async Task GetRequiredAsync_UsesPostingReadCacheWhenAvailable()
+    {
+        var cache = new Mock<IDocumentPostingReadCache>(MockBehavior.Strict);
+        cache.Setup(x => x.GetOrAddAsync<AgencyBillingAccountingPolicy>(
+                "policy:agency-billing",
+                It.IsAny<Func<CancellationToken, Task<AgencyBillingAccountingPolicy>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<AgencyBillingAccountingPolicy>> factory, CancellationToken ct) => factory(ct));
+        var sut = new AgencyBillingAccountingPolicyReader(
+            CreateCatalogService(ValidPolicyJsonFields()),
+            cache.Object);
+
+        var result = await sut.GetRequiredAsync();
+
+        result.Should().NotBeNull();
+        cache.VerifyAll();
+    }
+
     [Fact]
     public async Task GetRequiredAsync_When_PayloadFields_AreNull_ThrowsMissingField()
     {

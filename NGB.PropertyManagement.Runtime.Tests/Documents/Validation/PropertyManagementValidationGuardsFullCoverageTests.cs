@@ -173,6 +173,39 @@ public sealed class PropertyManagementValidationGuardsFullCoverageTests
     }
 
     [Fact]
+    public void Synchronous_tenant_guard_rejects_missing_deleted_and_wrong_role_and_accepts_tenant()
+    {
+        var id = Guid.CreateVersion7();
+
+        var missing = () => PartyRoleValidationGuards.EnsureTenantParty(
+            "doc", "party_id", id, new Dictionary<Guid, PropertyManagementParty>());
+        missing.Should().Throw<DocumentPartyValidationException>();
+
+        var deleted = () => PartyRoleValidationGuards.EnsureTenantParty(
+            "doc", "party_id", id,
+            new Dictionary<Guid, PropertyManagementParty>
+            {
+                [id] = new(id, "Party", true, false, true)
+            });
+        deleted.Should().Throw<DocumentPartyValidationException>();
+
+        var wrongRole = () => PartyRoleValidationGuards.EnsureTenantParty(
+            "doc", "party_id", id,
+            new Dictionary<Guid, PropertyManagementParty>
+            {
+                [id] = new(id, "Party", false, true, false)
+            });
+        wrongRole.Should().Throw<DocumentPartyValidationException>();
+
+        PartyRoleValidationGuards.EnsureTenantParty(
+            "doc", "party_id", id,
+            new Dictionary<Guid, PropertyManagementParty>
+            {
+                [id] = new(id, "Party", true, false, false)
+            });
+    }
+
+    [Fact]
     public async Task Work_order_request_guard_covers_missing_wrong_type_wrong_status_and_posted()
     {
         var id = Guid.CreateVersion7();

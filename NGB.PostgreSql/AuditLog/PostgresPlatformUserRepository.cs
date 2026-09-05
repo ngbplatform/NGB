@@ -221,7 +221,7 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
                                updated_at_utc AS UpdatedAtUtc,
                                lower(coalesce(display_name, email, auth_subject)) AS SortKey
                            FROM platform_users
-                           WHERE @IsActive IS NULL OR is_active = @IsActive
+                           WHERE (@IsActive IS NULL OR is_active = @IsActive)
                            {seekSql}
                            ORDER BY lower(coalesce(display_name, email, auth_subject)), user_id
                            {offsetSql}

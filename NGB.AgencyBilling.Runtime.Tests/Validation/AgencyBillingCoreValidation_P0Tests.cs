@@ -236,6 +236,53 @@ public sealed class AgencyBillingValidationValueReaders_P0Tests
 
 public sealed class AgencyBillingCatalogValidationGuards_P0Tests
 {
+    [Fact]
+    public void Batch_reference_guards_reject_empty_deleted_and_inactive_items()
+    {
+        var teamId = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+
+        Action emptyTeam = () => AgencyBillingCatalogValidationGuards.EnsureTeamMember(
+            Guid.Empty, "team_member_id", new Dictionary<Guid, AgencyBillingTeamMemberReference>());
+        Action deletedTeam = () => AgencyBillingCatalogValidationGuards.EnsureTeamMember(
+            teamId,
+            "team_member_id",
+            new Dictionary<Guid, AgencyBillingTeamMemberReference>
+            {
+                [teamId] = AgencyBillingTestData.TeamMemberReference(teamId, isMarkedForDeletion: true)
+            });
+        Action inactiveTeam = () => AgencyBillingCatalogValidationGuards.EnsureTeamMember(
+            teamId,
+            "team_member_id",
+            new Dictionary<Guid, AgencyBillingTeamMemberReference>
+            {
+                [teamId] = AgencyBillingTestData.TeamMemberReference(teamId, isActive: false)
+            });
+        Action emptyService = () => AgencyBillingCatalogValidationGuards.EnsureServiceItem(
+            Guid.Empty, "service_item_id", new Dictionary<Guid, AgencyBillingServiceItemReference>());
+        Action deletedService = () => AgencyBillingCatalogValidationGuards.EnsureServiceItem(
+            serviceId,
+            "service_item_id",
+            new Dictionary<Guid, AgencyBillingServiceItemReference>
+            {
+                [serviceId] = AgencyBillingTestData.ServiceItemReference(serviceId, isMarkedForDeletion: true)
+            });
+        Action inactiveService = () => AgencyBillingCatalogValidationGuards.EnsureServiceItem(
+            serviceId,
+            "service_item_id",
+            new Dictionary<Guid, AgencyBillingServiceItemReference>
+            {
+                [serviceId] = AgencyBillingTestData.ServiceItemReference(serviceId, isActive: false)
+            });
+
+        emptyTeam.Should().Throw<NgbArgumentInvalidException>().WithMessage("*required*");
+        deletedTeam.Should().Throw<NgbArgumentInvalidException>().WithMessage("*not available*");
+        inactiveTeam.Should().Throw<NgbArgumentInvalidException>().WithMessage("*inactive*");
+        emptyService.Should().Throw<NgbArgumentInvalidException>().WithMessage("*required*");
+        deletedService.Should().Throw<NgbArgumentInvalidException>().WithMessage("*not available*");
+        inactiveService.Should().Throw<NgbArgumentInvalidException>().WithMessage("*inactive*");
+    }
+
     public static IEnumerable<object[]> EmptyIdGuardCases()
     {
         yield return [new Func<AgencyBillingTestData.ReferenceReadersStub, Task>(refs =>

@@ -146,6 +146,13 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
     }
 
     [Theory]
+    [InlineData("TotalRequestTimeout", "00:00:00", "total request timeout")]
+    [InlineData("AttemptTimeout", "00:00:00", "attempt timeout")]
+    [InlineData("AttemptTimeout", "00:00:31", "attempt timeout")]
+    [InlineData("UserLookupCacheTtl", "00:00:00", "cache TTL")]
+    [InlineData("MissingUserCacheTtl", "00:00:00", "cache TTL")]
+    [InlineData("MaxCachedUserLookups", "99", "cache size")]
+    [InlineData("MaxCachedUserLookups", "200001", "cache size")]
     [InlineData("AdminBatchConcurrency", "0", "batch concurrency")]
     [InlineData("AdminBatchConcurrency", "33", "batch concurrency")]
     [InlineData("MaxConcurrentAdminRequests", "0", "concurrent admin requests")]
