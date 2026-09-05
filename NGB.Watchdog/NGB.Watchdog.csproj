@@ -21,6 +21,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\NGB.Hosting.AspNetCore\NGB.Hosting.AspNetCore.csproj"/>
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj"/>
     </ItemGroup>
 
     <ItemGroup>

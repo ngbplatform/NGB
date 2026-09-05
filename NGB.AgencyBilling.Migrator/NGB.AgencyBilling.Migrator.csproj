@@ -12,9 +12,13 @@
         <ProjectReference Include="..\NGB.AgencyBilling\NGB.AgencyBilling.csproj" />
         <ProjectReference Include="..\NGB.AgencyBilling.PostgreSql\NGB.AgencyBilling.PostgreSql.csproj" />
         <ProjectReference Include="..\NGB.AgencyBilling.Runtime\NGB.AgencyBilling.Runtime.csproj" />
+        <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj" />
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj" />
+        <ProjectReference Include="..\NGB.Definitions\NGB.Definitions.csproj" />
         <ProjectReference Include="..\NGB.Migrator.Core\NGB.Migrator.Core.csproj" />
         <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj" />
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj" />
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
     </ItemGroup>
 
     <ItemGroup>

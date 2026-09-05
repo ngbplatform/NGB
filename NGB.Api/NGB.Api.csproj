@@ -21,6 +21,7 @@
     </ItemGroup>
     
     <ItemGroup>
+        <ProjectReference Include="..\NGB.Accounting\NGB.Accounting.csproj"/>
         <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
         <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj"/>
         <ProjectReference Include="..\NGB.Core\NGB.Core.csproj" />

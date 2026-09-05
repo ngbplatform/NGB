@@ -139,19 +139,38 @@ public sealed class BackendLayeringArchitectureTests
     }
 
     [Fact]
-    public void Application_services_do_not_own_sql_or_process_environment_configuration()
+    public void Application_and_migrator_layers_do_not_own_provider_sql_or_process_environment_configuration()
     {
         var root = FindRepositoryRoot();
 
-        foreach (var relativeDirectory in new[]
+        var runtimeDirectories = new[]
                  {
                      "NGB.CRM.Runtime",
-                     "NGB.PropertyManagement.Runtime"
-                 })
+                     "NGB.PropertyManagement.Runtime",
+                     "NGB.AgencyBilling.Runtime",
+                     "NGB.Trade.Runtime"
+                 };
+        var migratorDirectories = new[]
+                 {
+                     "NGB.CRM.Migrator",
+                     "NGB.PropertyManagement.Migrator",
+                     "NGB.AgencyBilling.Migrator",
+                     "NGB.Trade.Migrator"
+                 };
+
+        foreach (var relativeDirectory in runtimeDirectories.Concat(migratorDirectories))
         {
             var sources = ReadSources(root, relativeDirectory);
             sources.Should().NotContain(source => source.Contains("Dapper", StringComparison.Ordinal));
             sources.Should().NotContain(source => source.Contains("Npgsql", StringComparison.Ordinal));
+            sources.Should().NotContain(source => source.Contains("DbConnection", StringComparison.Ordinal));
+            sources.Should().NotContain(source => source.Contains("DbCommand", StringComparison.Ordinal));
+            sources.Should().NotContain(source => source.Contains("CommandDefinition", StringComparison.Ordinal));
+        }
+
+        foreach (var relativeDirectory in runtimeDirectories)
+        {
+            var sources = ReadSources(root, relativeDirectory);
             sources.Should().NotContain(source => source.Contains("GetEnvironmentVariable", StringComparison.Ordinal));
         }
 
@@ -159,6 +178,75 @@ public sealed class BackendLayeringArchitectureTests
                 root,
                 "NGB.PropertyManagement.PostgreSql/Bootstrap/PropertyManagementSecuritySeeder.cs"))
             .Should().BeFalse();
+    }
+
+    [Fact]
+    public void Definitions_do_not_depend_on_persistence_implementations()
+    {
+        var root = FindRepositoryRoot();
+
+        ReadReferences(root, "NGB.Definitions/NGB.Definitions.csproj")
+            .Should().NotContain(reference =>
+                reference.Contains("NGB.Persistence", StringComparison.OrdinalIgnoreCase));
+        ReadSources(root, "NGB.Definitions").Should().NotContain(source =>
+            source.Contains("NGB.Persistence", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Production_projects_require_explicit_direct_project_dependencies()
+    {
+        var root = FindRepositoryRoot();
+        var props = XDocument.Load(Path.Combine(root, "Directory.Build.props"));
+
+        props.Descendants()
+            .Where(element => element.Name.LocalName == "DisableTransitiveProjectReferences")
+            .Should().ContainSingle()
+            .Which.Value.Trim()
+            .Should().Be("true");
+    }
+
+    [Fact]
+    public void Platform_and_vertical_project_graph_has_no_layer_leaks()
+    {
+        var root = FindRepositoryRoot();
+        var projectFiles = Directory.EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories)
+            .Where(path => !IsBuildOutput(path))
+            .Where(path => !Path.GetFileNameWithoutExtension(path).EndsWith("Tests", StringComparison.Ordinal))
+            .ToArray();
+
+        foreach (var projectFile in projectFiles)
+        {
+            var projectName = Path.GetFileNameWithoutExtension(projectFile);
+            var owner = GetVerticalOwner(projectName);
+            var projectDirectory = Path.GetDirectoryName(projectFile)!;
+            var references = XDocument.Load(projectFile).Descendants()
+                .Where(element => element.Name.LocalName is "ProjectReference" or "PackageReference")
+                .Select(element => element.Attribute("Include")?.Value)
+                .Where(reference => !string.IsNullOrWhiteSpace(reference))
+                .Select(reference => reference!)
+                .ToArray();
+
+            foreach (var reference in references)
+            {
+                var referencedName = reference.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetFileNameWithoutExtension(Path.GetFullPath(Path.Combine(projectDirectory, reference)))
+                    : reference;
+                var referencedOwner = GetVerticalOwner(referencedName);
+
+                if (owner is null)
+                {
+                    referencedOwner.Should().BeNull(
+                        $"platform project {projectName} must not depend on vertical {referencedOwner}");
+                    continue;
+                }
+
+                if (referencedOwner is not null)
+                {
+                    referencedOwner.Should().Be(owner,
+                        $"vertical project {projectName} must not depend on another vertical");
+                }
+            }
+        }
     }
 
     [Fact]
@@ -234,8 +322,24 @@ public sealed class BackendLayeringArchitectureTests
                 Path.Combine(root, relativeDirectory),
                 "*.cs",
                 SearchOption.AllDirectories)
+            .Where(path => !IsBuildOutput(path))
             .Select(File.ReadAllText)
             .ToArray();
+
+    private static bool IsBuildOutput(string path)
+        => path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Any(segment => segment is "bin" or "obj");
+
+    private static string? GetVerticalOwner(string projectOrPackageName)
+    {
+        foreach (var vertical in new[] { "AgencyBilling", "CRM", "PropertyManagement", "Trade" })
+        {
+            if (projectOrPackageName.StartsWith($"NGB.{vertical}", StringComparison.OrdinalIgnoreCase))
+                return vertical;
+        }
+
+        return null;
+    }
 
     private static string FindRepositoryRoot()
     {

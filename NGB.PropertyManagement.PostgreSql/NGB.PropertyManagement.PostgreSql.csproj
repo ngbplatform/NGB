@@ -8,6 +8,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj"/>
+        <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj"/>
         <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj"/>
         <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj"/>
         <ProjectReference Include="..\NGB.PropertyManagement\NGB.PropertyManagement.csproj"/>

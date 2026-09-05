@@ -33,6 +33,9 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <DebugType>portable</DebugType>
     <Deterministic>true</Deterministic>
+    <!-- Production projects must declare every project dependency they compile against. -->
+    <DisableTransitiveProjectReferences
+      Condition="!$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('Tests'))">true</DisableTransitiveProjectReferences>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>

@@ -12,6 +12,7 @@
     <ItemGroup>
         <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj"/>
         <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj"/>
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj"/>
     </ItemGroup>
 
 </Project>

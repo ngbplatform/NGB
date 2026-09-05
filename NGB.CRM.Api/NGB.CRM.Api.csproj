@@ -18,6 +18,9 @@
         <PackageReference Include="NGB.Platform.Api" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Application.Abstractions" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Contracts" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Core" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Hosting.AspNetCore" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Metadata" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.PostgreSql" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.PostgreSql.AspNetCore" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Runtime" Version="$(NgbPlatformPackageVersion)" />

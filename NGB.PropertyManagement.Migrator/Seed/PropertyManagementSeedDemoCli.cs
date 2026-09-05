@@ -2,8 +2,6 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Dapper;
-using Npgsql;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.CashFlow;
 using NGB.Application.Abstractions.Services;
@@ -17,6 +15,7 @@ using NGB.PropertyManagement.PostgreSql.DependencyInjection;
 using NGB.PropertyManagement.Runtime;
 using NGB.PropertyManagement.Runtime.Catalogs;
 using NGB.PropertyManagement.Runtime.DependencyInjection;
+using NGB.PropertyManagement.Seeding;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.CurrentActor;
 using NGB.Runtime.Periods;
@@ -84,6 +83,7 @@ internal static class PropertyManagementSeedDemoCli
                 seedScope.ServiceProvider.GetRequiredService<IChartOfAccountsManagementService>(),
                 seedScope.ServiceProvider.GetRequiredService<IPeriodClosingService>(),
                 seedScope.ServiceProvider.GetRequiredService<IClosedPeriodReader>(),
+                seedScope.ServiceProvider.GetRequiredService<IPropertyManagementDemoSeedReadStore>(),
                 effectiveTimeProvider,
                 provider.GetRequiredService<IServiceScopeFactory>());
 
@@ -274,6 +274,7 @@ internal sealed class PropertyManagementDemoSeeder(
     IChartOfAccountsManagementService chartOfAccountsManagement,
     IPeriodClosingService periodClosing,
     IClosedPeriodReader closedPeriodReader,
+    IPropertyManagementDemoSeedReadStore seedReadStore,
     TimeProvider timeProvider,
     IServiceScopeFactory? scopeFactory = null)
 {
@@ -348,16 +349,15 @@ internal sealed class PropertyManagementDemoSeeder(
 
     public async Task<PropertyManagementDemoSeedSummary> RunAsync(CancellationToken ct = default)
     {
-        await EnsureDatasetDoesNotExistAsync(ct);
+        if (await seedReadStore.DatasetExistsAsync(DatasetMarker(), ct))
+            throw new PropertyManagementDemoDatasetAlreadyExistsException(options.DatasetCode);
+
         var retainedEarningsAccountId = await EnsureRetainedEarningsAccountAsync(ct);
 
-        await using var conn = new NpgsqlConnection(options.ConnectionString);
-        await conn.OpenAsync(ct);
-        await conn.ExecuteAsync(new CommandDefinition("SET TIME ZONE 'UTC';", cancellationToken: ct));
-
         await EnsureDemoBankAccountsAsync(ct);
-        var lookup = await LoadLookupsAsync(conn, ct);
-        await PrimeExistingPartyIdentitiesAsync(conn, ct);
+        var lookup = CreateLookup(await seedReadStore.LoadLookupsAsync(ct));
+        var existingParties = await seedReadStore.LoadPartyIdentitiesAsync(ct);
+        PrimeExistingPartyIdentities(existingParties.Select(x => (x.Display, x.Email)));
         var buildings = await SeedBuildingsAndUnitsAsync(ct);
         var tenants = await SeedTenantsAsync(ct);
         var vendors = await SeedVendorsAsync(ct);
@@ -398,59 +398,16 @@ internal sealed class PropertyManagementDemoSeeder(
             maintenance.CompletionsPosted);
     }
 
-    private async Task EnsureDatasetDoesNotExistAsync(CancellationToken ct)
+    internal static DemoLookup CreateLookup(PropertyManagementDemoSeedLookupSnapshot snapshot)
     {
-        await using var conn = new NpgsqlConnection(options.ConnectionString);
-        await conn.OpenAsync(ct);
-
-        var exists = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
-            """
-            select exists (
-                select 1
-                  from cat_pm_property
-                 where kind = 'Building'
-                   and address_line2 = @Marker
-            );
-            """,
-            new { Marker = DatasetMarker() },
-            cancellationToken: ct));
-
-        if (exists)
-            throw new PropertyManagementDemoDatasetAlreadyExistsException(options.DatasetCode);
-    }
-
-    private async Task<DemoLookup> LoadLookupsAsync(NpgsqlConnection conn, CancellationToken ct)
-    {
-        var bankAccounts = (await conn.QueryAsync<LookupRow>(new CommandDefinition(
-            "select catalog_id as Id, display as Name from cat_pm_bank_account order by is_default desc, display;",
-            cancellationToken: ct))).ToList();
-
-        var defaultBankAccountId = await conn.ExecuteScalarAsync<Guid?>(new CommandDefinition(
-            "select catalog_id from cat_pm_bank_account where is_default = true order by catalog_id limit 1;",
-            cancellationToken: ct));
-
-        var requiredDefaultBankAccountId = RequireDefaultBankAccountId(defaultBankAccountId);
-
-        var receivableChargeTypes = (await conn.QueryAsync<LookupRow>(new CommandDefinition(
-            "select catalog_id as Id, display as Name from cat_pm_receivable_charge_type order by display;",
-            cancellationToken: ct))).ToList();
-
-        var payableChargeTypes = (await conn.QueryAsync<LookupRow>(new CommandDefinition(
-            "select catalog_id as Id, display as Name from cat_pm_payable_charge_type order by display;",
-            cancellationToken: ct))).ToList();
-
-        var maintenanceCategories = (await conn.QueryAsync<LookupRow>(new CommandDefinition(
-            "select catalog_id as Id, display as Name from cat_pm_maintenance_category order by display;",
-            cancellationToken: ct))).ToList();
-
         return new DemoLookup(
-            requiredDefaultBankAccountId,
-            bankAccounts,
-            receivableChargeTypes.Single(x => string.Equals(x.Name, "Utility", StringComparison.OrdinalIgnoreCase)).Id,
-            receivableChargeTypes.Single(x => string.Equals(x.Name, "Parking", StringComparison.OrdinalIgnoreCase)).Id,
-            payableChargeTypes.Single(x => string.Equals(x.Name, "Repair", StringComparison.OrdinalIgnoreCase)).Id,
-            payableChargeTypes.Single(x => string.Equals(x.Name, "Utility", StringComparison.OrdinalIgnoreCase)).Id,
-            maintenanceCategories);
+            RequireDefaultBankAccountId(snapshot.DefaultBankAccountId),
+            snapshot.BankAccounts.Select(x => new LookupRow(x.Id, x.Name)).ToList(),
+            snapshot.ReceivableChargeTypes.Single(x => string.Equals(x.Name, "Utility", StringComparison.OrdinalIgnoreCase)).Id,
+            snapshot.ReceivableChargeTypes.Single(x => string.Equals(x.Name, "Parking", StringComparison.OrdinalIgnoreCase)).Id,
+            snapshot.PayableChargeTypes.Single(x => string.Equals(x.Name, "Repair", StringComparison.OrdinalIgnoreCase)).Id,
+            snapshot.PayableChargeTypes.Single(x => string.Equals(x.Name, "Utility", StringComparison.OrdinalIgnoreCase)).Id,
+            snapshot.MaintenanceCategories.Select(x => new LookupRow(x.Id, x.Name)).ToList());
     }
 
     internal static Guid RequireDefaultBankAccountId(Guid? defaultBankAccountId)
@@ -499,20 +456,6 @@ internal sealed class PropertyManagementDemoSeeder(
             var created = await catalogs.CreateAsync(PropertyManagementCodes.BankAccount, payload, ct);
             existingByDisplay[seed.Display] = created;
         }
-    }
-
-    private async Task PrimeExistingPartyIdentitiesAsync(NpgsqlConnection conn, CancellationToken ct)
-    {
-        var rows = await conn.QueryAsync<(string? Display, string? Email)>(new CommandDefinition(
-            """
-            select display as Display,
-                   email as Email
-              from cat_pm_party
-             order by display nulls last, email nulls last;
-            """,
-            cancellationToken: ct));
-
-        PrimeExistingPartyIdentities(rows);
     }
 
     internal void PrimeExistingPartyIdentities(IEnumerable<(string? Display, string? Email)> rows)

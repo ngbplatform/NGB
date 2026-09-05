@@ -26,6 +26,7 @@
         <ProjectReference Include="..\NGB.ReferenceRegisters\NGB.ReferenceRegisters.csproj"/>
         <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj"/>
         <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj"/>
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
         <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj"/>
     </ItemGroup>
 

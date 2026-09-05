@@ -17,6 +17,7 @@
     <ItemGroup>
         <PackageReference Include="NGB.Platform.BackgroundJobs" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.BackgroundJobs.PostgreSql" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Persistence" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.PostgreSql" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.PostgreSql.AspNetCore" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Runtime" Version="$(NgbPlatformPackageVersion)" />

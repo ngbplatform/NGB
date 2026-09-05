@@ -14,10 +14,12 @@ using NGB.PropertyManagement.PostgreSql.Documents;
 using NGB.PropertyManagement.PostgreSql.Payables;
 using NGB.PropertyManagement.PostgreSql.Receivables;
 using NGB.PropertyManagement.PostgreSql.Reporting;
+using NGB.PropertyManagement.PostgreSql.Seeding;
 using NGB.PropertyManagement.Payables;
 using NGB.PropertyManagement.Receivables;
 using NGB.PropertyManagement.Reporting;
 using NGB.PropertyManagement.Catalogs;
+using NGB.PropertyManagement.Seeding;
 
 namespace NGB.PropertyManagement.PostgreSql.DependencyInjection;
 
@@ -103,6 +105,7 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
         });
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentPostingBatchReadPrefetcher, PropertyManagementPostingBatchReadPrefetcher>());
         services.AddScoped<IPropertyManagementRentChargeGenerationReader, PropertyManagementRentChargeGenerationReader>();
+        services.AddScoped<IPropertyManagementDemoSeedReadStore, PostgresPropertyManagementDemoSeedReadStore>();
 
         // Receivables read/report services (PostgreSQL).
         services.AddScoped<IReceivablesReconciliationService, PostgresReceivablesReconciliationService>();

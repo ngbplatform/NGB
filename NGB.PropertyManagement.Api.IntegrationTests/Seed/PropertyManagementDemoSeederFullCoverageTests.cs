@@ -9,6 +9,7 @@ using NGB.Contracts.Metadata;
 using NGB.Contracts.Services;
 using NGB.Persistence.Readers.Periods;
 using NGB.PropertyManagement.Runtime.Catalogs;
+using NGB.PropertyManagement.Seeding;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Periods;
@@ -33,6 +34,32 @@ public sealed class PropertyManagementDemoSeederFullCoverageTests
             .Should().Throw<NgbConfigurationViolationException>();
         ((Action)(() => PropertyManagementDemoSeeder.RequireDefaultBankAccountId(Guid.Empty)))
             .Should().Throw<NgbConfigurationViolationException>();
+
+        var utilityReceivableId = Guid.NewGuid();
+        var parkingReceivableId = Guid.NewGuid();
+        var repairPayableId = Guid.NewGuid();
+        var utilityPayableId = Guid.NewGuid();
+        var maintenanceCategoryId = Guid.NewGuid();
+        PropertyManagementDemoSeeder.CreateLookup(new PropertyManagementDemoSeedLookupSnapshot(
+                validBankAccountId,
+                [new PropertyManagementDemoSeedLookupRow(validBankAccountId, "Bank")],
+                [
+                    new PropertyManagementDemoSeedLookupRow(utilityReceivableId, "utility"),
+                    new PropertyManagementDemoSeedLookupRow(parkingReceivableId, "PARKING")
+                ],
+                [
+                    new PropertyManagementDemoSeedLookupRow(repairPayableId, "repair"),
+                    new PropertyManagementDemoSeedLookupRow(utilityPayableId, "UTILITY")
+                ],
+                [new PropertyManagementDemoSeedLookupRow(maintenanceCategoryId, "Maintenance")]))
+            .Should().BeEquivalentTo(new PropertyManagementDemoSeeder.DemoLookup(
+                validBankAccountId,
+                [new PropertyManagementDemoSeeder.LookupRow(validBankAccountId, "Bank")],
+                utilityReceivableId,
+                parkingReceivableId,
+                repairPayableId,
+                utilityPayableId,
+                [new PropertyManagementDemoSeeder.LookupRow(maintenanceCategoryId, "Maintenance")]));
 
         PropertyManagementDemoSeeder.BuildEmailToken(" Demo-42! ").Should().Be("demo42");
         PropertyManagementDemoSeeder.BuildEmailToken("---").Should().Be("dataset");
@@ -440,6 +467,7 @@ public sealed class PropertyManagementDemoSeederFullCoverageTests
             chartManagement ?? Mock.Of<IChartOfAccountsManagementService>(),
             periodClosing ?? Mock.Of<IPeriodClosingService>(),
             closedPeriodReader ?? Mock.Of<IClosedPeriodReader>(),
+            Mock.Of<IPropertyManagementDemoSeedReadStore>(),
             timeProvider ?? TimeProvider.System);
 
     private static PropertyManagementDemoSeeder.DemoLookup Lookup()

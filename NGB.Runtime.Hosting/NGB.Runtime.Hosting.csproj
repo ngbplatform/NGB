@@ -16,6 +16,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj" />
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
     </ItemGroup>
 
 </Project>
