@@ -259,7 +259,7 @@ public sealed class PmPayablesReconciliation_Endpoint_P0Tests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Reconciliation_configuration_validation_covers_missing_invalid_null_duplicate_and_unknown_dependencies()
+    public async Task Reconciliation_configuration_validation_covers_missing_invalid_null_and_duplicate_dependencies()
     {
         var factory = new PmApiFactory(_fixture);
         try
@@ -288,7 +288,7 @@ public sealed class PmPayablesReconciliation_Endpoint_P0Tests : IAsyncLifetime
                 defaults.AccountingPolicyCatalogId,
                 Payload(new { ap_vendors_account_id = (Guid?)null }),
                 CancellationToken.None);
-            Func<Task> missingApAccount = async () => await reconciliation.ReadRequiredPolicyAsync(default);
+            Func<Task> missingApAccount = async () => await reconciliation.GetAsync(request);
             await missingApAccount.Should().ThrowAsync<NgbConfigurationViolationException>()
                 .WithMessage("*no ap_vendors_account_id*");
 
@@ -301,7 +301,7 @@ public sealed class PmPayablesReconciliation_Endpoint_P0Tests : IAsyncLifetime
                     payables_open_items_register_id = (Guid?)null
                 }),
                 CancellationToken.None);
-            Func<Task> missingOpenItemsRegister = async () => await reconciliation.ReadRequiredPolicyAsync(default);
+            Func<Task> missingOpenItemsRegister = async () => await reconciliation.GetAsync(request);
             await missingOpenItemsRegister.Should().ThrowAsync<NgbConfigurationViolationException>()
                 .WithMessage("*no payables_open_items_register_id*");
 
@@ -315,11 +315,6 @@ public sealed class PmPayablesReconciliation_Endpoint_P0Tests : IAsyncLifetime
                 }),
                 CancellationToken.None);
 
-            Func<Task> unknownRegister = async () => await reconciliation
-                .ReadOperationalRegisterTableCodeOrThrowAsync(Guid.NewGuid(), default);
-            await unknownRegister.Should().ThrowAsync<NgbConfigurationViolationException>()
-                .WithMessage("*does not exist*");
-
             await catalogs.CreateAsync(
                 PropertyManagementCodes.AccountingPolicy,
                 Payload(new
@@ -329,7 +324,7 @@ public sealed class PmPayablesReconciliation_Endpoint_P0Tests : IAsyncLifetime
                     payables_open_items_register_id = defaults.PayablesOpenItemsOperationalRegisterId
                 }),
                 CancellationToken.None);
-            Func<Task> duplicatePolicy = async () => await reconciliation.ReadRequiredPolicyAsync(default);
+            Func<Task> duplicatePolicy = async () => await reconciliation.GetAsync(request);
             await duplicatePolicy.Should().ThrowAsync<NgbConfigurationViolationException>()
                 .WithMessage("*Multiple pm.accounting_policy records*");
         }

@@ -216,6 +216,25 @@ public sealed class CatalogServiceReadFullCoverageTests
     }
 
     [Fact]
+    public async Task Page_rejects_invalid_paging_combinations_before_reading()
+    {
+        var fixture = new CatalogServiceTestFixture();
+        var sut = fixture.CreateService();
+
+        await ((Func<Task>)(() => sut.GetPageAsync("rich", null!, default)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => sut.GetPageAsync("rich", new PageRequestDto(Offset: -1), default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => sut.GetPageAsync("rich", new PageRequestDto(Limit: 0), default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => sut.GetPageAsync(
+                "rich", new PageRequestDto(Offset: 1, Cursor: " cursor "), default)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+
+        fixture.Reader.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task GetById_CoversEmptyMissingNoPartsAndEveryPartRowShape()
     {
         var fixture = new CatalogServiceTestFixture();
@@ -295,8 +314,9 @@ public sealed class CatalogServiceReadFullCoverageTests
         fixture.Reader.Setup(x => x.LookupAsync(It.IsAny<CatalogHeadDescriptor>(), "q", 3,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([new CatalogLookupRow(id, "label")]);
-        fixture.Reader.Setup(x => x.GetByIdsAsync(It.IsAny<CatalogHeadDescriptor>(),
+        fixture.Reader.SetupSequence(x => x.GetByIdsAsync(It.IsAny<CatalogHeadDescriptor>(),
                 It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([])
             .ReturnsAsync([new CatalogLookupRow(id, "by-id")]);
         var sut = fixture.CreateService();
 
@@ -316,9 +336,70 @@ public sealed class CatalogServiceReadFullCoverageTests
         (await sut.LookupAsync("rich", null, 0, default)).Should().BeEmpty();
         (await sut.LookupAsync("rich", "q", 3, default)).Should().ContainSingle()
             .Which.Should().Be(new NGB.Contracts.Services.LookupItemDto(id, "label"));
+        await ((Func<Task>)(() => sut.GetByIdsAsync("rich", null!, default)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
         (await sut.GetByIdsAsync("rich", [], default)).Should().BeEmpty();
-        (await sut.GetByIdsAsync("rich", [id], default)).Should().ContainSingle()
-            .Which.Should().Be(new NGB.Contracts.Services.LookupItemDto(id, "by-id"));
+        (await sut.GetByIdsAsync("rich", [Guid.Empty, Guid.Empty], default)).Should().BeEmpty();
+        (await sut.GetByIdsAsync("rich", [Guid.NewGuid()], default)).Should().BeEmpty();
+        (await sut.GetByIdsAsync("rich", [id, Guid.Empty, id], default)).Should().Equal(
+            new NGB.Contracts.Services.LookupItemDto(id, "by-id"),
+            new NGB.Contracts.Services.LookupItemDto(id, "by-id"));
+
+        var tooManyIds = Enumerable.Range(0, PagingLimits.MaxLookupIds + 1)
+            .Select(_ => Guid.NewGuid())
+            .ToArray();
+        await ((Func<Task>)(() => sut.GetByIdsAsync("rich", tooManyIds, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task Head_item_batch_lookup_validates_bounds_and_enriches_nonempty_results()
+    {
+        var fixture = new CatalogServiceTestFixture();
+        var id = Guid.NewGuid();
+        fixture.Reader.SetupSequence(x => x.GetByIdsWithFieldsAsync(
+                It.IsAny<CatalogHeadDescriptor>(),
+                It.IsAny<IReadOnlyList<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([])
+            .ReturnsAsync([CatalogServiceTestFixture.Row(id)]);
+        var sut = fixture.CreateService();
+
+        await ((Func<Task>)(() => sut.GetHeadItemsByIdsAsync("rich", null!, default)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        (await sut.GetHeadItemsByIdsAsync("rich", [], default)).Should().BeEmpty();
+        (await sut.GetHeadItemsByIdsAsync("rich", [Guid.Empty, Guid.Empty], default)).Should().BeEmpty();
+        (await sut.GetHeadItemsByIdsAsync("rich", [Guid.NewGuid()], default)).Should().BeEmpty();
+        (await sut.GetHeadItemsByIdsAsync("rich", [id, id], default))
+            .Should().ContainSingle().Which.Id.Should().Be(id);
+
+        var tooManyIds = Enumerable.Range(0, PagingLimits.MaxLookupIds + 1)
+            .Select(_ => Guid.NewGuid())
+            .ToArray();
+        await ((Func<Task>)(() => sut.GetHeadItemsByIdsAsync("rich", tooManyIds, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        fixture.Enricher.Verify(x => x.EnrichCatalogItemsAsync(
+            It.IsAny<CatalogHeadDescriptor>(), "rich",
+            It.Is<IReadOnlyList<NGB.Contracts.Services.CatalogItemDto>>(items => items.Count == 1),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Lookup_across_types_rejects_more_than_the_supported_distinct_type_count()
+    {
+        var fixture = new CatalogServiceTestFixture();
+        var codes = Enumerable.Range(0, PagingLimits.MaxLookupTypes + 1)
+            .Select(index => $"type-{index}")
+            .ToArray();
+        foreach (var code in codes)
+            fixture.AddMetadata(CatalogServiceTestFixture.RichMetadata(code));
+
+        var act = () => fixture.CreateService().LookupAcrossTypesAsync(codes, null, 1, false, default);
+
+        await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        fixture.Reader.Verify(x => x.LookupAcrossTypesAsync(
+            It.IsAny<IReadOnlyList<CatalogHeadDescriptor>>(), It.IsAny<string?>(),
+            It.IsAny<int>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private sealed record UnsupportedLookup : LookupSourceMetadata;

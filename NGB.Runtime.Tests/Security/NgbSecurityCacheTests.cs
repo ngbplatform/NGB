@@ -250,6 +250,49 @@ public sealed class NgbSecurityCacheTests
         retried.Should().Be(17);
     }
 
+    [Fact]
+    public async Task Removing_a_live_entry_removes_its_tracking_metadata()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+
+        await cache.GetOrCreateMainMenuAsync(snapshot, _ => Task.FromResult(42), CancellationToken.None);
+        cache.TrackedEntryCount.Should().Be(1);
+
+        memoryCache.Remove($"ngb:security:main-menu:{snapshot.AccessCacheKey}");
+        await WaitUntilAsync(() => cache.TrackedEntryCount == 0);
+
+        cache.EvictionMetadataCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Pending_population_covers_abandon_completed_and_dispose_races()
+    {
+        var abandoned = new NgbSecurityCache.PendingPopulation(_ => Task.FromResult<object?>(1));
+        abandoned.TryAddWaiter().Should().BeTrue();
+        abandoned.ReleaseWaiterAndAbandonIfLast().Should().BeTrue();
+        abandoned.TryAddWaiter().Should().BeFalse();
+        abandoned.Cancel();
+        abandoned.Dispose();
+        abandoned.Cancel();
+
+        using var completed = new NgbSecurityCache.PendingPopulation(_ => Task.FromResult<object?>(2));
+        completed.TryAddWaiter().Should().BeTrue();
+        (await completed.Task).Should().Be(2);
+        completed.ReleaseWaiterAndAbandonIfLast().Should().BeFalse();
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        for (var attempt = 0; attempt < 100 && !predicate(); attempt++)
+            await Task.Delay(10);
+
+        predicate().Should().BeTrue();
+    }
+
     private static PermissionSnapshot CreateSnapshot(Guid userId, long accessVersion)
         => new(
             userId,

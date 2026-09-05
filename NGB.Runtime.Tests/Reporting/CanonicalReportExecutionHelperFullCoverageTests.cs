@@ -141,6 +141,21 @@ public sealed class CanonicalReportExecutionHelperFullCoverageTests
         var invalidKind = () => CanonicalReportExecutionHelper.GetOptionalGuidFilter(
             definition, FilterRequest("single_id", JsonValue(42)), "single_id");
         invalidKind.Should().Throw<ReportLayoutValidationException>().WithMessage("Select a valid Single.");
+
+        var excessiveIds = Enumerable.Range(0, ReportLayoutLimits.MaxValuesPerFilter + 1)
+            .Select(_ => Guid.NewGuid())
+            .ToArray();
+        var excessive = () => CanonicalReportExecutionHelper.GetOptionalGuidFilters(
+            definition, FilterRequest("multi_id", JsonValue(excessiveIds)), "multi_id");
+        excessive.Should().Throw<ReportLayoutValidationException>()
+            .WithMessage($"Select up to {ReportLayoutLimits.MaxValuesPerFilter} Multiple values.");
+
+        CanonicalReportExecutionHelper.GetOptionalGuidFilter(
+                definition, FilterRequest(" single_id ", JsonValue(first)), "single_id")
+            .Should().Be(first);
+        CanonicalReportExecutionHelper.GetOptionalGuidFilter(
+                definition, FilterRequest("other", JsonValue(first)), "single_id")
+            .Should().BeNull();
     }
 
     [Fact]

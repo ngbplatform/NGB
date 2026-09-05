@@ -218,6 +218,15 @@ public sealed class ReportLayoutValidatorFullCoverageTests
             new ReportExecutionRequestDto(Filters: duplicatedNormalizedCode),
             "filters.filterable");
 
+        var tooManyTotalValues = Enumerable.Range(0, 5).ToDictionary(
+            index => $"filter_{index}",
+            _ => new ReportFilterValueDto(JsonSerializer.SerializeToElement(
+                Enumerable.Range(0, ReportLayoutLimits.MaxValuesPerFilter).ToArray())));
+        AssertInvalid(
+            definition,
+            new ReportExecutionRequestDto(Filters: tooManyTotalValues),
+            "filters");
+
         AssertInvalid(
             definition,
             new ReportExecutionRequestDto(Parameters: new Dictionary<string, string>

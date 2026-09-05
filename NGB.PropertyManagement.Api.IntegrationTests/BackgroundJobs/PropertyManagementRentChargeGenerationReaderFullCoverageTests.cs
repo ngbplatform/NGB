@@ -25,6 +25,22 @@ public sealed class PropertyManagementRentChargeGenerationReaderFullCoverageTest
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var reader = scope.ServiceProvider.GetRequiredService<IPropertyManagementRentChargeGenerationReader>();
 
+        await ((Func<Task>)(() => reader.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                new DateOnly(2026, 2, 1), new DateOnly(2026, 1, 1), null, 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => reader.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                new DateOnly(2026, 2, 1), null, Guid.NewGuid(), 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => reader.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                new DateOnly(2026, 2, 1), new DateOnly(2026, 1, 1), Guid.Empty, 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => reader.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                new DateOnly(2026, 2, 1), null, null, 0)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => reader.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
+                new DateOnly(2026, 2, 1), null, null, 1_001)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+
         (await reader.ReadExistingRentChargePeriodsAsync([], CancellationToken.None)).Should().BeEmpty();
 
         var includedLeaseId = Guid.CreateVersion7();

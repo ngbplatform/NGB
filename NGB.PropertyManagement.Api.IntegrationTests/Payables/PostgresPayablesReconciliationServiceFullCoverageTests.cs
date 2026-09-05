@@ -49,7 +49,7 @@ public sealed class PostgresPayablesReconciliationServiceFullCoverageTests
     }
 
     [Fact]
-    public async Task Sql_sources_empty_catalog_lookup_display_resolution_and_row_kinds_cover_all_boundaries()
+    public void Sql_sources_and_row_kinds_cover_all_boundaries()
     {
         PostgresPayablesReconciliationService.BuildBalanceGlSourceSql().Should()
             .Contain("latest_closed AS").And
@@ -83,21 +83,6 @@ public sealed class PostgresPayablesReconciliationServiceFullCoverageTests
         PostgresPayablesReconciliationService.ResolveFilteredRowCount(PayablesReconciliationStatusFilter.OpenItemsOnly, 10, 4, 2, 1).Should().Be(1);
         ((Func<int>)(() => PostgresPayablesReconciliationService.ResolveFilteredRowCount((PayablesReconciliationStatusFilter)999, 10, 4, 2, 1)))
             .Should().Throw<NgbArgumentInvalidException>();
-
-        var knownId = Guid.NewGuid();
-        var unknownId = Guid.NewGuid();
-        var displays = new Dictionary<Guid, string?> { [knownId] = "Known" };
-        PostgresPayablesReconciliationService.ResolveDisplay(displays, Guid.Empty).Should().BeNull();
-        PostgresPayablesReconciliationService.ResolveDisplay(displays, knownId).Should().Be("Known");
-        PostgresPayablesReconciliationService.ResolveDisplay(displays, unknownId).Should().BeNull();
-
-        var withoutDatabase = new PostgresPayablesReconciliationService(null!);
-        var emptyDisplays = await withoutDatabase.ReadCatalogDisplaysAsync(
-            "pm.party",
-            "cat_pm_party",
-            [Guid.Empty, Guid.Empty],
-            default);
-        emptyDisplays.Should().BeEmpty();
 
         var registerId = Guid.NewGuid();
         Action nullTableCode = () => PostgresPayablesReconciliationService.EnsureSafeTableCode(null, registerId);

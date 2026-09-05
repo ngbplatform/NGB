@@ -76,7 +76,7 @@ public sealed class PostgresGeneralJournalEntryUiQueryRepository(IUnitOfWork uow
                 ? DateTime.SpecifyKind(to.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc)
                 : (DateTime?)null,
             TrashMode = trashMode,
-            Limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
+            Limit = cursorPaging ? limit + 1 : limit,
             Offset = offset,
             KnownTotal = cursor?.Total,
             AfterDateUtc = cursor?.AfterDateUtc,

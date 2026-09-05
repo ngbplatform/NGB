@@ -227,7 +227,7 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
 
     private readonly record struct TrackingResult(long Version, IReadOnlyList<string> EvictedKeys);
 
-    private sealed class PendingPopulation : IDisposable
+    internal sealed class PendingPopulation : IDisposable
     {
         private readonly Lock _sync = new();
         private readonly CancellationTokenSource _cts = new();

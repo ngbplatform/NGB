@@ -9,6 +9,7 @@ using NGB.Accounting.Turnovers;
 using NGB.Accounting.Reports.GeneralJournal;
 using NGB.Accounting.Reports.GeneralLedgerAggregated;
 using NGB.Accounting.PostingState.Readers;
+using NGB.Core.Documents;
 using NGB.Core.Documents.Relationships.Graph;
 using NGB.Core.Documents.GeneralJournalEntry;
 using NGB.Core.Dimensions.Enrichment;
@@ -187,6 +188,56 @@ public sealed class RemainingReadersValidationFullCoverageTests
         connection.Commands[0].CommandText.Should()
             .Contain("@KnownTotal::integer AS TotalCount")
             .And.NotContain("COUNT(*) OVER()");
+    }
+
+    [Fact]
+    public async Task General_journal_ui_query_covers_partial_and_complete_seek_cursors_and_date_boundaries()
+    {
+        var id = Guid.CreateVersion7();
+        var dateUtc = new DateTime(2026, 8, 23, 0, 0, 0, DateTimeKind.Utc);
+        var createdAtUtc = dateUtc.AddMinutes(1);
+        var connection = new RecordingDbConnection(readerFactory: _ => GeneralJournalPageRows(
+            id,
+            dateUtc,
+            createdAtUtc));
+        var sut = new PostgresGeneralJournalEntryUiQueryRepository(new RecordingUnitOfWork(connection));
+
+        var offsetPage = await sut.GetPageAsync(
+            0,
+            10,
+            " entry ",
+            DateOnly.FromDateTime(dateUtc),
+            DateOnly.MaxValue,
+            "all");
+        offsetPage.Total.Should().Be(1);
+        offsetPage.Items.Should().ContainSingle().Which.Id.Should().Be(id);
+        offsetPage.NextAfterDateUtc.Should().Be(dateUtc);
+        offsetPage.NextAfterCreatedAtUtc.Should().Be(createdAtUtc);
+        offsetPage.NextAfterId.Should().Be(id);
+
+        var partialCursors = new[]
+        {
+            new GeneralJournalEntryPageCursor(0, 1, dateUtc),
+            new GeneralJournalEntryPageCursor(0, 1, dateUtc, createdAtUtc),
+            new GeneralJournalEntryPageCursor(0, 1, dateUtc, createdAtUtc, null)
+        };
+        foreach (var cursor in partialCursors)
+        {
+            var page = await sut.GetCursorPageAsync(cursor, 10, null, null, null, "active");
+            page.Total.Should().Be(1);
+        }
+
+        var seekPage = await sut.GetCursorPageAsync(
+            new GeneralJournalEntryPageCursor(0, 1, dateUtc, createdAtUtc, id),
+            10,
+            null,
+            null,
+            dateTo: new DateOnly(2026, 8, 23),
+            "active");
+        seekPage.Total.Should().Be(1);
+        connection.Commands.Last().CommandText.Should()
+            .Contain("(d.date_utc, d.created_at_utc, d.id) <")
+            .And.NotContain("OFFSET @Offset");
     }
 
     [Fact]
@@ -745,6 +796,51 @@ public sealed class RemainingReadersValidationFullCoverageTests
         page.Columns.Add("PostedBy", typeof(string));
         page.Columns.Add("PostedAtUtc", typeof(DateTime));
         page.Columns.Add("TotalCount", typeof(int));
+        return page.CreateDataReader();
+    }
+
+    private static DataTableReader GeneralJournalPageRows(Guid id, DateTime dateUtc, DateTime createdAtUtc)
+    {
+        var page = new DataTable();
+        page.Columns.Add("Id", typeof(Guid));
+        page.Columns.Add("DateUtc", typeof(DateTime));
+        page.Columns.Add("CreatedAtUtc", typeof(DateTime));
+        page.Columns.Add("Number", typeof(string));
+        page.Columns.Add("Display", typeof(string));
+        page.Columns.Add("DocumentStatus", typeof(short));
+        page.Columns.Add("IsMarkedForDeletion", typeof(bool));
+        page.Columns.Add("JournalType", typeof(short));
+        page.Columns.Add("Source", typeof(short));
+        page.Columns.Add("ApprovalState", typeof(short));
+        page.Columns.Add("ReasonCode", typeof(string));
+        page.Columns.Add("Memo", typeof(string));
+        page.Columns.Add("ExternalReference", typeof(string));
+        page.Columns.Add("AutoReverse", typeof(bool));
+        page.Columns.Add("AutoReverseOnUtc", typeof(DateOnly));
+        page.Columns.Add("ReversalOfDocumentId", typeof(Guid));
+        page.Columns.Add("PostedBy", typeof(string));
+        page.Columns.Add("PostedAtUtc", typeof(DateTime));
+        page.Columns.Add("TotalCount", typeof(int));
+        page.Rows.Add(
+            id,
+            dateUtc,
+            createdAtUtc,
+            "GJE-1",
+            "General Journal Entry GJE-1",
+            (short)DocumentStatus.Draft,
+            false,
+            (short)GeneralJournalEntryModels.JournalType.Standard,
+            (short)GeneralJournalEntryModels.Source.Manual,
+            (short)GeneralJournalEntryModels.ApprovalState.Draft,
+            "reason",
+            "memo",
+            "external",
+            false,
+            DBNull.Value,
+            DBNull.Value,
+            DBNull.Value,
+            DBNull.Value,
+            1);
         return page.CreateDataReader();
     }
 

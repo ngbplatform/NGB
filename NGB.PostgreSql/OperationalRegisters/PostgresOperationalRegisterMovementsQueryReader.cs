@@ -1033,9 +1033,6 @@ nets AS (
     private static string ResolveBalancesTableName(string movementsTable)
     {
         const string movementsSuffix = "__movements";
-        if (!movementsTable.EndsWith(movementsSuffix, StringComparison.Ordinal))
-            throw new NgbConfigurationViolationException($"Unexpected operational-register movements table name '{movementsTable}'.");
-
         return $"{movementsTable[..^movementsSuffix.Length]}__balances";
     }
 

@@ -323,15 +323,41 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
         IReadOnlyList<IOperationalRegisterDefaultMonthProjector>? defaults = null,
         IReadOnlyList<IOperationalRegisterMonthFinalizer>? legacy = null,
         IOperationalRegisterFinalizationPartitionProcessorFactory? partitionProcessorFactory = null)
-        => new(
-            (uow ?? new Mock<IUnitOfWork>(MockBehavior.Loose)).Object,
-            (locks ?? new Mock<IAdvisoryLockManager>(MockBehavior.Loose)).Object,
-            (registers ?? new Mock<IOperationalRegisterRepository>(MockBehavior.Loose)).Object,
-            (finalizations ?? new Mock<IOperationalRegisterFinalizationRepository>(MockBehavior.Loose)).Object,
-            movements ?? new Mock<IOperationalRegisterMovementsReader>(MockBehavior.Loose).Object,
-            projectors ?? [], defaults ?? [], legacy ?? [],
-            new FixedTimeProvider(Now), NullLogger<OperationalRegisterFinalizationRunner>.Instance,
-            partitionProcessorFactory);
+    {
+        var unitOfWork = (uow ?? new Mock<IUnitOfWork>(MockBehavior.Loose)).Object;
+        var lockManager = (locks ?? new Mock<IAdvisoryLockManager>(MockBehavior.Loose)).Object;
+        var registerRepository = (registers ?? new Mock<IOperationalRegisterRepository>(MockBehavior.Loose)).Object;
+        var finalizationRepository = (finalizations ?? new Mock<IOperationalRegisterFinalizationRepository>(MockBehavior.Loose)).Object;
+        var movementReader = movements ?? new Mock<IOperationalRegisterMovementsReader>(MockBehavior.Loose).Object;
+        var registeredProjectors = projectors ?? [];
+        var registeredDefaults = defaults ?? [];
+        var registeredLegacy = legacy ?? [];
+
+        return partitionProcessorFactory is null
+            ? new OperationalRegisterFinalizationRunner(
+                unitOfWork,
+                lockManager,
+                registerRepository,
+                finalizationRepository,
+                movementReader,
+                registeredProjectors,
+                registeredDefaults,
+                registeredLegacy,
+                new FixedTimeProvider(Now),
+                NullLogger<OperationalRegisterFinalizationRunner>.Instance)
+            : new OperationalRegisterFinalizationRunner(
+                unitOfWork,
+                lockManager,
+                registerRepository,
+                finalizationRepository,
+                movementReader,
+                registeredProjectors,
+                registeredDefaults,
+                registeredLegacy,
+                new FixedTimeProvider(Now),
+                NullLogger<OperationalRegisterFinalizationRunner>.Instance,
+                partitionProcessorFactory);
+    }
 
     private static Mock<IOperationalRegisterMonthProjector> Projector(string code)
     {

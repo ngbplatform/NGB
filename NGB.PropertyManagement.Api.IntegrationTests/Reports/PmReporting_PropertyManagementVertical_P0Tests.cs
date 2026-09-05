@@ -12,6 +12,7 @@ using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Reporting;
 using NGB.PropertyManagement.Runtime;
+using NGB.PropertyManagement.Runtime.Policy;
 using NGB.Tools.Exceptions;
 using Xunit;
 
@@ -80,6 +81,65 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
                 itemLimit: 0,
                 CancellationToken.None);
             await invalidLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
+            var receivablesReader = scope.ServiceProvider.GetRequiredService<IReceivablesReportReader>();
+            var policy = await scope.ServiceProvider
+                .GetRequiredService<IPropertyManagementAccountingPolicyReader>()
+                .GetRequiredAsync(CancellationToken.None);
+
+            await ((Func<Task>)(() => receivablesReader.GetPageAsync(
+                    policy.ReceivablesOpenItemsOperationalRegisterId,
+                    seeded.LeaseId,
+                    (ReceivablesReportMode)int.MaxValue,
+                    0,
+                    1)))
+                .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+            await ((Func<Task>)(() => receivablesReader.GetPageAsync(
+                    policy.ReceivablesOpenItemsOperationalRegisterId,
+                    seeded.LeaseId,
+                    ReceivablesReportMode.OpenItemsDetails,
+                    -1,
+                    1)))
+                .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+            await ((Func<Task>)(() => receivablesReader.GetPageAsync(
+                    policy.ReceivablesOpenItemsOperationalRegisterId,
+                    seeded.LeaseId,
+                    ReceivablesReportMode.OpenItemsDetails,
+                    0,
+                    0)))
+                .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
+            var firstReceivablesPage = await receivablesReader.GetCursorPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                seeded.LeaseId,
+                ReceivablesReportMode.OpenItemsDetails,
+                cursor: null,
+                limit: 1);
+            firstReceivablesPage.Total.Should().Be(2);
+            firstReceivablesPage.HasMore.Should().BeTrue();
+            firstReceivablesPage.Rows.Should().ContainSingle();
+
+            var cursor = new ReceivablesReportPageCursor(
+                Offset: firstReceivablesPage.Rows.Count,
+                Total: firstReceivablesPage.Total,
+                TotalOriginal: firstReceivablesPage.TotalOriginal,
+                TotalOutstanding: firstReceivablesPage.TotalOutstanding,
+                TotalCredit: firstReceivablesPage.TotalCredit,
+                PartyDisplay: firstReceivablesPage.PartyDisplay,
+                PropertyDisplay: firstReceivablesPage.PropertyDisplay,
+                LeaseDisplay: firstReceivablesPage.LeaseDisplay,
+                AfterKindOrder: firstReceivablesPage.NextAfterKindOrder,
+                AfterSortDate: firstReceivablesPage.NextAfterSortDate,
+                AfterDocumentId: firstReceivablesPage.NextAfterDocumentId);
+            var finalReceivablesPage = await receivablesReader.GetCursorPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                seeded.LeaseId,
+                ReceivablesReportMode.OpenItemsDetails,
+                cursor,
+                limit: 1);
+            finalReceivablesPage.Total.Should().Be(2);
+            finalReceivablesPage.HasMore.Should().BeFalse();
+            finalReceivablesPage.Rows.Should().ContainSingle();
         }
 
         using (var resp = await client.GetAsync("/api/report-definitions"))

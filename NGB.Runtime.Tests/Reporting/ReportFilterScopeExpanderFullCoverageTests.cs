@@ -73,7 +73,8 @@ public sealed class ReportFilterScopeExpanderFullCoverageTests
                 Field("empty_array", ReportFieldKind.Dimension, catalog),
                 Field("empty_guid", ReportFieldKind.Dimension, catalog),
                 Field("empty_guid_array", ReportFieldKind.Dimension, catalog),
-                Field("invalid_array_item", ReportFieldKind.Dimension, catalog)
+                Field("invalid_array_item", ReportFieldKind.Dimension, catalog),
+                Field("excessive_array", ReportFieldKind.Dimension, catalog)
             ],
             filters:
             [
@@ -95,7 +96,9 @@ public sealed class ReportFilterScopeExpanderFullCoverageTests
             ("empty_array", JsonSerializer.SerializeToElement(Array.Empty<Guid>()), true),
             ("empty_guid", GuidValue(Guid.Empty), true),
             ("empty_guid_array", JsonSerializer.SerializeToElement(new[] { Guid.Empty }), true),
-            ("invalid_array_item", JsonSerializer.SerializeToElement(new object[] { Guid.CreateVersion7(), 42 }), true));
+            ("invalid_array_item", JsonSerializer.SerializeToElement(new object[] { Guid.CreateVersion7(), 42 }), true),
+            ("excessive_array", JsonSerializer.SerializeToElement(
+                Enumerable.Range(0, ReportLayoutLimits.MaxValuesPerFilter + 1).Select(_ => Guid.NewGuid())), true));
 
         var result = await CreateStrictSut().ExpandAsync(runtime, request, default);
 
@@ -107,6 +110,41 @@ public sealed class ReportFilterScopeExpanderFullCoverageTests
 
         result.Should().BeSameAs(request);
         resultWithoutDefinitionFilters.Should().BeSameAs(requestWithoutDefinitionFilters);
+    }
+
+    [Fact]
+    public async Task Expand_rejects_a_scope_expansion_above_the_global_value_limit()
+    {
+        var dimensionId = Guid.CreateVersion7();
+        var selected = Guid.CreateVersion7();
+        var request = Request(("catalog_id", GuidValue(selected), true));
+        var definitions = Definitions(("test.catalog", dimensionId));
+        var expansion = new Mock<IDimensionScopeExpansionService>(MockBehavior.Strict);
+        expansion.Setup(x => x.ExpandAsync(
+                "test.report",
+                It.IsAny<DimensionScopeBag>(),
+                default))
+            .ReturnsAsync(new DimensionScopeBag(
+            [
+                new DimensionScope(
+                    dimensionId,
+                    Enumerable.Range(0, ReportLayoutLimits.MaxExpandedDimensionValues + 1)
+                        .Select(_ => Guid.NewGuid())
+                        .ToArray())
+            ]));
+        var sut = new ReportFilterScopeExpander(expansion.Object, definitions.Object);
+
+        var act = () => sut.ExpandAsync(
+            Runtime(fields:
+            [
+                Field("catalog_id", ReportFieldKind.Dimension, new CatalogLookupSourceDto("test.catalog"))
+            ]),
+            request,
+            default);
+
+        await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        definitions.VerifyAll();
+        expansion.VerifyAll();
     }
 
     [Fact]

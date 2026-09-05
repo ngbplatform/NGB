@@ -22,6 +22,8 @@ public sealed class UserAccessManagementFullCoverageTests
         var fixture = new Fixture();
         var id = Guid.NewGuid();
 
+        await ((Func<Task>)(() => fixture.Sut.GetUsersAsync(null!, default)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
         await ((Func<Task>)(() => fixture.Sut.GetUserAsync(id, default)))
             .Should().ThrowAsync<SecurityUserNotFoundException>();
         await ((Func<Task>)(() => fixture.Sut.CreateUserAsync(null!, default)))
@@ -35,6 +37,8 @@ public sealed class UserAccessManagementFullCoverageTests
         await ((Func<Task>)(() => fixture.Sut.UpdateUserAsync(id, Update(), default)))
             .Should().ThrowAsync<SecurityUserNotFoundException>();
         await ((Func<Task>)(() => fixture.Sut.ReplaceUserRolesAsync(id, null!, default)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => fixture.Sut.ReplaceUserRolesAsync(id, new(null!), default)))
             .Should().ThrowAsync<NgbArgumentRequiredException>();
         await ((Func<Task>)(() => fixture.Sut.ReplaceUserRolesAsync(id, new([]), default)))
             .Should().ThrowAsync<SecurityUserNotFoundException>();
@@ -285,6 +289,22 @@ public sealed class UserAccessManagementFullCoverageTests
             .ReturnsAsync(Idp("direct", "direct@example.com", enabled: false));
         await direct.Sut.ReactivateUserAsync(id, default);
         direct.Users.Verify(x => x.SetActiveAsync(id, true, It.IsAny<CancellationToken>()), Times.Once);
+
+        var caseInsensitive = new Fixture();
+        var caseInsensitiveUser = User(id, "case-id", "user@example.com", "User", active: false);
+        caseInsensitive.Users.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(caseInsensitiveUser);
+        caseInsensitive.IdentityProvider.Setup(x => x.GetUserByIdAsync("case-id", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IdentityProviderUserDto?)null);
+        caseInsensitive.IdentityProvider.Setup(x => x.FindUsersByEmailsAsync(
+                It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal)
+            {
+                ["USER@EXAMPLE.COM"] = Idp("case-id", "user@example.com", enabled: false)
+            });
+        await caseInsensitive.Sut.ReactivateUserAsync(id, default);
+        caseInsensitive.Users.Verify(
+            x => x.SetActiveAsync(id, true, It.IsAny<CancellationToken>()), Times.Once);
 
         var mismatch = new Fixture();
         var stale = User(id, "stale", "user@example.com", "User");

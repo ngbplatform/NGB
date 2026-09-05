@@ -309,76 +309,6 @@ ORDER BY paged.party_id, paged.property_id, paged.lease_id;
             OpenItemsOnlyRowCount: stats.TotalOpenItemsOnlyRowCount);
     }
 
-    internal async Task<IReadOnlyDictionary<Guid, string?>> ReadCatalogDisplaysAsync(
-        string expectedCatalogCode,
-        string typedHeadTable,
-        IEnumerable<Guid> ids,
-        CancellationToken ct)
-    {
-        var materialized = ids.Where(x => x != Guid.Empty).Distinct().ToArray();
-        if (materialized.Length == 0)
-            return new Dictionary<Guid, string?>();
-
-        var sql = $"""
-SELECT
-    c.id      AS Id,
-    h.display AS Display
-FROM catalogs c
-JOIN {typedHeadTable} h
-  ON h.catalog_id = c.id
-WHERE c.catalog_code = @CatalogCode
-  AND c.id = ANY(@Ids);
-""";
-
-        var cmd = new CommandDefinition(
-            sql,
-            new { CatalogCode = expectedCatalogCode, Ids = materialized },
-            transaction: uow.Transaction,
-            cancellationToken: ct);
-
-        var rows = await uow.Connection.QueryAsync<DisplayRow>(cmd);
-        return rows.ToDictionary(x => x.Id, x => x.Display);
-    }
-
-    internal async Task<IReadOnlyDictionary<Guid, string?>> ReadDocumentDisplaysAsync(
-        string expectedTypeCode,
-        string typedHeadTable,
-        IEnumerable<Guid> ids,
-        CancellationToken ct)
-    {
-        var materialized = ids.Where(x => x != Guid.Empty).Distinct().ToArray();
-        if (materialized.Length == 0)
-            return new Dictionary<Guid, string?>();
-
-        var sql = $"""
-SELECT
-    d.id      AS Id,
-    h.display AS Display
-FROM documents d
-JOIN {typedHeadTable} h
-  ON h.document_id = d.id
-WHERE d.type_code = @TypeCode
-  AND d.id = ANY(@Ids);
-""";
-
-        var cmd = new CommandDefinition(
-            sql,
-            new { TypeCode = expectedTypeCode, Ids = materialized },
-            transaction: uow.Transaction,
-            cancellationToken: ct);
-
-        var rows = await uow.Connection.QueryAsync<DisplayRow>(cmd);
-        return rows.ToDictionary(x => x.Id, x => x.Display);
-    }
-
-    internal static string? ResolveDisplay(IReadOnlyDictionary<Guid, string?> displays, Guid id)
-    {
-        if (id == Guid.Empty)
-            return null;
-
-        return displays.GetValueOrDefault(id);
-    }
-
     private static string BuildMovementGlSourceSql() =>
         """
 gl_source AS (
@@ -514,8 +444,6 @@ oi_source AS (
 )
 """;
 
-    private sealed record DisplayRow(Guid Id, string? Display);
-
     private sealed record RawRow(
         Guid PartyId,
         Guid PropertyId,
@@ -580,45 +508,6 @@ oi_source AS (
             throw new NgbArgumentOutOfRangeException(paramName, month, $"{label} must be the first day of a month.");
     }
 
-    internal async Task<(Guid ArAccountId, Guid OpenItemsRegisterId)> ReadRequiredPolicyAsync(CancellationToken ct)
-    {
-        const string sql = """
-SELECT
-    ar_tenants_account_id AS ArAccountId,
-    receivables_open_items_register_id AS OpenItemsRegisterId
-FROM cat_pm_accounting_policy
-LIMIT 2;
-""";
-
-        var rows = (await uow.Connection.QueryAsync<PolicyRow>(
-            new CommandDefinition(sql, transaction: uow.Transaction, cancellationToken: ct))).AsList();
-
-        if (rows.Count == 0)
-        {
-            throw new NgbConfigurationViolationException(
-                "PM accounting policy is missing.",
-                new Dictionary<string, object?>
-                {
-                    ["catalogCode"] = PropertyManagementCodes.AccountingPolicy,
-                    ["headTable"] = "cat_pm_accounting_policy"
-                });
-        }
-
-        if (rows.Count > 1)
-        {
-            throw new NgbConfigurationViolationException(
-                "Multiple pm.accounting_policy records exist. Expected a single record.",
-                new Dictionary<string, object?>
-                {
-                    ["catalogCode"] = PropertyManagementCodes.AccountingPolicy,
-                    ["headTable"] = "cat_pm_accounting_policy",
-                    ["actualCount"] = rows.Count
-                });
-        }
-
-        return EnsureRequiredPolicyValues(rows[0].ArAccountId, rows[0].OpenItemsRegisterId);
-    }
-
     internal static (Guid ArAccountId, Guid OpenItemsRegisterId) EnsureRequiredPolicyValues(
         Guid? arAccountId,
         Guid? openItemsRegisterId)
@@ -651,8 +540,6 @@ LIMIT 2;
 
         return (requiredArAccountId, requiredOpenItemsRegisterId);
     }
-
-    private sealed record PolicyRow(Guid? ArAccountId, Guid? OpenItemsRegisterId);
 
     private async Task<QueryContext> ReadQueryContextAsync(CancellationToken ct)
     {
@@ -735,26 +622,6 @@ LEFT JOIN operational_registers registers
         bool MovementsTableExists,
         bool BalancesTableExists);
 
-    internal async Task<string> ReadOperationalRegisterTableCodeOrThrowAsync(Guid registerId, CancellationToken ct)
-    {
-        const string sql = """
-SELECT table_code AS TableCode
-FROM operational_registers
-WHERE register_id = @RegisterId::uuid
-LIMIT 2;
-""";
-
-        var row = await uow.Connection.QuerySingleOrDefaultAsync<TableCodeRow>(
-            new CommandDefinition(sql, new { RegisterId = registerId }, transaction: uow.Transaction, cancellationToken: ct));
-
-        if (row is null)
-            throw new NgbConfigurationViolationException(
-                "Receivables open-items operational register does not exist.",
-                new Dictionary<string, object?> { ["registerId"] = registerId });
-
-        return EnsureSafeTableCode(row.TableCode, registerId);
-    }
-
     internal static string EnsureSafeTableCode(string? rawTableCode, Guid registerId)
     {
         var tableCode = rawTableCode?.Trim();
@@ -774,28 +641,4 @@ LIMIT 2;
 
         return tableCode;
     }
-
-    private sealed record TableCodeRow(string? TableCode);
-
-    private async Task<(bool MovementsExist, bool BalancesExist)> ReadTablePresenceAsync(
-        string movementsTable,
-        string balancesTable,
-        CancellationToken ct)
-    {
-        const string sql = """
-SELECT
-    to_regclass(@MovementsTable) IS NOT NULL AS "MovementsExist",
-    to_regclass(@BalancesTable) IS NOT NULL AS "BalancesExist";
-""";
-
-        var row = await uow.Connection.QuerySingleAsync<TablePresenceRow>(
-            new CommandDefinition(
-                sql,
-                new { MovementsTable = movementsTable, BalancesTable = balancesTable },
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-        return (row.MovementsExist, row.BalancesExist);
-    }
-
-    private sealed record TablePresenceRow(bool MovementsExist, bool BalancesExist);
 }

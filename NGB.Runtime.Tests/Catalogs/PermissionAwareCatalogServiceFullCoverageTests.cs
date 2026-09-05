@@ -86,6 +86,11 @@ public sealed class PermissionAwareCatalogServiceFullCoverageTests
         fixture.Reader.Setup(x => x.GetByIdsAsync(It.IsAny<CatalogHeadDescriptor>(), It.IsAny<IReadOnlyList<Guid>>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([new CatalogLookupRow(id, "By id")]);
+        fixture.Reader.Setup(x => x.GetByIdsWithFieldsAsync(
+                It.IsAny<CatalogHeadDescriptor>(),
+                It.IsAny<IReadOnlyList<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([CatalogServiceTestFixture.Row(id)]);
         fixture.Reader.Setup(x => x.LookupAcrossTypesAsync(It.IsAny<IReadOnlyList<CatalogHeadDescriptor>>(),
                 "q", 3, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync([new CatalogLookupSearchRow(id, "rich", "Across", false)]);
@@ -105,6 +110,7 @@ public sealed class PermissionAwareCatalogServiceFullCoverageTests
 
         (await sut.GetPageAsync("rich", new PageRequestDto(), default)).Items.Should().BeEmpty();
         (await sut.GetByIdAsync("rich", id, default)).Id.Should().Be(id);
+        (await sut.GetHeadItemsByIdsAsync("rich", [id], default)).Should().ContainSingle();
         (await sut.CreateAsync("rich", new RecordPayload(new Dictionary<string, System.Text.Json.JsonElement>
             { ["display"] = CatalogServiceTestFixture.Json("Created") }), default)).Id.Should().Be(createdId);
         (await sut.UpdateAsync("rich", id, new RecordPayload(), default)).Id.Should().Be(id);

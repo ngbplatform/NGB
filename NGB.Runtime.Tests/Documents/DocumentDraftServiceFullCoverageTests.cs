@@ -216,6 +216,77 @@ public sealed class DocumentDraftServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_create_validates_empty_size_items_dates_and_registered_types()
+    {
+        var fixture = new Fixture();
+
+        (await fixture.Sut.CreateDraftsAsync([])).Should().BeEmpty();
+
+        var oversized = Enumerable.Repeat(
+            new DocumentDraftCreateRequest("doc", null, Date),
+            1_001).ToArray();
+        await ((Func<Task>)(() => fixture.Sut.CreateDraftsAsync(oversized)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => fixture.Sut.CreateDraftsAsync([null!])))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => fixture.Sut.CreateDraftsAsync(
+                [new DocumentDraftCreateRequest(" ", null, Date)])))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => fixture.Sut.CreateDraftsAsync(
+                [new DocumentDraftCreateRequest("doc", null, DateTime.SpecifyKind(Date, DateTimeKind.Local))])))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+
+        fixture.Types.Setup(x => x.TryGet("missing")).Returns((DocumentTypeMetadata?)null);
+        await ((Func<Task>)(() => fixture.Sut.CreateDraftsAsync(
+                [new DocumentDraftCreateRequest("missing", null, Date)])))
+            .Should().ThrowAsync<DocumentTypeNotFoundException>();
+        fixture.Documents.Verify(
+            x => x.CreateAsync(It.IsAny<DocumentRecord>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Batch_create_falls_back_to_individual_repository_writes()
+    {
+        var fixture = new Fixture();
+        var created = new List<DocumentRecord>();
+        fixture.Documents.Setup(x => x.CreateAsync(It.IsAny<DocumentRecord>(), It.IsAny<CancellationToken>()))
+            .Callback<DocumentRecord, CancellationToken>((record, _) => created.Add(record))
+            .Returns(Task.CompletedTask);
+
+        var ids = await fixture.Sut.CreateDraftsAsync(
+        [
+            new DocumentDraftCreateRequest("doc", " A ", Date),
+            new DocumentDraftCreateRequest("doc", null, Date.AddDays(1))
+        ], suppressAudit: true);
+
+        created.Select(static record => record.Id).Should().Equal(ids);
+        created.Select(static record => record.Number).Should().Equal("A", null);
+    }
+
+    [Fact]
+    public async Task Batch_number_allocator_must_return_every_requested_number()
+    {
+        var fixture = new Fixture(batchRepository: true, batchAllocator: true);
+        fixture.Types.Setup(x => x.TryGet("numbered"))
+            .Returns(new DocumentTypeMetadata("numbered", []));
+        fixture.Policies.Setup(x => x.Resolve("numbered")).Returns(Policy(ensureOnCreate: true));
+        fixture.NumberBatchAllocator.Setup(x => x.AllocateAsync(
+                It.IsAny<IReadOnlyList<DocumentNumberAllocationRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, string>());
+
+        var act = () => fixture.Sut.CreateDraftsAsync(
+            [new DocumentDraftCreateRequest("numbered", null, Date)],
+            suppressAudit: true);
+
+        await act.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("*did not return one number for every requested draft*");
+        fixture.BatchDocuments!.Verify(x => x.CreateDraftsAsync(
+            It.IsAny<IReadOnlyList<DocumentRecord>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Update_CoversInputNoopMissingMarkedFallbackAndWrongWorkflowState()
     {
         var fixture = new Fixture();

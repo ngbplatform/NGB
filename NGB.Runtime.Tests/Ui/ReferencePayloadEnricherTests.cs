@@ -131,6 +131,58 @@ public sealed class ReferencePayloadEnricherTests
     }
 
     [Fact]
+    public async Task EnrichDocumentItemsAsync_UsesLegacyBatchCapabilityInOneRoundtrip()
+    {
+        var accountId = Guid.Parse("11111111-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var documentTypes = new DocumentTypeRegistry([
+            new DocumentTypeMetadata(
+                OwnerDocumentType,
+                [new DocumentTableMetadata(
+                    "doc_sale",
+                    TableKind.Head,
+                    [new DocumentColumnMetadata("counter_account_id", ColumnType.Guid)])],
+                new DocumentPresentationMetadata("Sale"))
+        ]);
+        var batchReader = new Mock<IReferencePayloadBatchEnrichmentReader>(MockBehavior.Strict);
+        batchReader.Setup(x => x.ResolveAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => SameIds(ids, accountId)),
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 0),
+                It.Is<IReadOnlyDictionary<string, IReadOnlyCollection<Guid>>>(ids => ids.Count == 0),
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 0),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReferencePayloadBatchEnrichment(
+                new Dictionary<Guid, string> { [accountId] = "1010 — Cash" },
+                new Dictionary<Guid, string>(),
+                new Dictionary<string, IReadOnlyDictionary<Guid, string>>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<Guid, string>()));
+        var sut = new ReferencePayloadEnricher(
+            new CatalogTypeRegistry(),
+            documentTypes,
+            Mock.Of<ICatalogEnrichmentReader>(),
+            Mock.Of<IDocumentDisplayReader>(),
+            Mock.Of<IAccountLookupReader>(),
+            Mock.Of<IOperationalRegisterRepository>(),
+            batchReader.Object);
+        var payload = new RecordPayload(new Dictionary<string, JsonElement>
+        {
+            ["counter_account_id"] = JsonSerializer.SerializeToElement(accountId)
+        });
+
+        var result = await sut.EnrichDocumentItemsAsync(
+            new DocumentHeadDescriptor(
+                OwnerDocumentType,
+                "doc_sale",
+                "display",
+                [new("counter_account_id", ColumnType.Guid)]),
+            OwnerDocumentType,
+            [DocumentItem(payload)],
+            CancellationToken.None);
+
+        ReadRef(result[0].Payload.Fields!, "counter_account_id").Display.Should().Be("1010 — Cash");
+        batchReader.VerifyAll();
+    }
+
+    [Fact]
     public async Task EnrichCatalogItemsAsync_ResolvesSharedCatalogRefsOnceAcrossHeadAndParts()
     {
         var partyA = Guid.Parse("11111111-1111-1111-1111-111111111111");

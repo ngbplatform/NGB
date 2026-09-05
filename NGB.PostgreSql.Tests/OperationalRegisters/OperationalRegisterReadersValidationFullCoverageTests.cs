@@ -45,6 +45,14 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         Func<Task> emptyRegister = () => sut.GetNetByDimensionSetAsync(Guid.Empty, DimensionSetId, "amount");
         Func<Task> emptySet = () => sut.GetNetByDimensionSetAsync(RegisterId, Guid.Empty, "amount");
         Func<Task> blankSetResource = () => sut.GetNetByDimensionSetAsync(RegisterId, DimensionSetId, " ");
+        Func<Task> emptySetBatchRegister = () => sut.GetNetByDimensionSetsAsync(
+            Guid.Empty, [DimensionSetId], "amount");
+        Func<Task> nullSetBatch = () => sut.GetNetByDimensionSetsAsync(
+            RegisterId, null!, "amount");
+        Func<Task> setBatchWithEmptyId = () => sut.GetNetByDimensionSetsAsync(
+            RegisterId, [DimensionSetId, Guid.Empty], "amount");
+        Func<Task> blankSetBatchResource = () => sut.GetNetByDimensionSetsAsync(
+            RegisterId, [DimensionSetId], " ");
         Func<Task> emptyDimensionsRegister = () => sut.GetNetByDimensionsAsync(Guid.Empty, [], "amount");
         Func<Task> nullDimensions = () => sut.GetNetByDimensionsAsync(RegisterId, null!, "amount");
         Func<Task> emptyDimensions = () => sut.GetNetByDimensionsAsync(RegisterId, [], "amount");
@@ -65,6 +73,11 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         await emptyRegister.Should().ThrowAsync<NgbArgumentInvalidException>();
         await emptySet.Should().ThrowAsync<NgbArgumentInvalidException>();
         await blankSetResource.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await emptySetBatchRegister.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await nullSetBatch.Should().ThrowAsync<ArgumentNullException>();
+        await setBatchWithEmptyId.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await blankSetBatchResource.Should().ThrowAsync<NgbArgumentRequiredException>();
+        (await sut.GetNetByDimensionSetsAsync(RegisterId, [], "amount")).Should().BeEmpty();
         await emptyDimensionsRegister.Should().ThrowAsync<NgbArgumentInvalidException>();
         await nullDimensions.Should().ThrowAsync<ArgumentNullException>();
         await emptyDimensions.Should().ThrowAsync<NgbArgumentInvalidException>();
@@ -91,6 +104,8 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             resources.Object);
 
         Func<Task> bySet = () => sut.GetNetByDimensionSetAsync(RegisterId, DimensionSetId, "amount");
+        Func<Task> bySetBatch = () => sut.GetNetByDimensionSetsAsync(
+            RegisterId, [DimensionSetId], "amount");
         Func<Task> byDimensions = () => sut.GetNetByDimensionsAsync(
             RegisterId, [new DimensionValue(Guid.NewGuid(), Guid.NewGuid())], "amount");
         Func<Task> byDimensionBatch = () => sut.GetNetsByDimensionsAsync(
@@ -100,6 +115,7 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             DateOnly.MaxValue);
 
         await bySet.Should().ThrowAsync<NgbConfigurationViolationException>();
+        await bySetBatch.Should().ThrowAsync<NgbConfigurationViolationException>();
         await byDimensions.Should().ThrowAsync<NgbConfigurationViolationException>();
         await byDimensionBatch.Should().ThrowAsync<NgbConfigurationViolationException>();
         registers.VerifyAll();
@@ -118,6 +134,8 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             dependencies.Resources.Object);
 
         (await sut.GetNetByDimensionSetAsync(RegisterId, DimensionSetId, "amount")).Should().Be(0m);
+        (await sut.GetNetByDimensionSetsAsync(RegisterId, [DimensionSetId], "amount"))
+            .Should().Contain(DimensionSetId, 0m);
         (await sut.GetNetByDimensionsAsync(
             RegisterId,
             [new DimensionValue(Guid.NewGuid(), Guid.NewGuid())],
@@ -139,8 +157,9 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
     public async Task Resource_net_reader_returns_database_net_when_the_physical_table_exists()
     {
         var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
-        var connection = new RecordingDbConnection(scalar: sql =>
-            sql.Contains("to_regclass", StringComparison.Ordinal) ? true : 12.5m);
+        var connection = new RecordingDbConnection(
+            readerFactory: _ => ResourceNetBySetRows((DimensionSetId, 12.5m)),
+            scalar: sql => sql.Contains("to_regclass", StringComparison.Ordinal) ? true : 12.5m);
         var sut = new PostgresOperationalRegisterResourceNetReader(
             new RecordingUnitOfWork(connection, hasActiveTransaction: true),
             dependencies.Registers.Object,
@@ -151,6 +170,9 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             RegisterId,
             [new DimensionValue(Guid.NewGuid(), Guid.NewGuid())],
             "amount")).Should().Be(12.5m);
+        (await sut.GetNetByDimensionSetsAsync(
+                RegisterId, [DimensionSetId, DimensionSetId], "amount"))
+            .Should().Contain(DimensionSetId, 12.5m).And.HaveCount(1);
     }
 
     [Fact]
@@ -184,6 +206,37 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             .And.Contain("movement.occurred_at_utc < @OccurredToExclusiveUtc");
         query.ParametersSnapshot.Should().Contain(parameter =>
             parameter.ParameterName.TrimStart('@').StartsWith("RequestIndexes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Resource_net_reader_batch_uses_movement_only_query_when_balances_table_is_absent()
+    {
+        var dependencies = RegisterDependencies([new("Quantity", "quantity", "quantity", "Quantity", 1)]);
+        var probeCount = 0;
+        var connection = new RecordingDbConnection(
+            readerFactory: sql => sql.Contains("request_numbers", StringComparison.Ordinal)
+                ? ResourceNetRequestRows()
+                : new DataTable().CreateDataReader(),
+            scalar: _ => Interlocked.Increment(ref probeCount) == 1);
+        var sut = new PostgresOperationalRegisterResourceNetReader(
+            new RecordingUnitOfWork(connection, hasActiveTransaction: true),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object);
+
+        var result = await sut.GetNetsByDimensionsAsync(
+            RegisterId,
+            [
+                [new DimensionValue(Guid.NewGuid(), Guid.NewGuid())],
+                [new DimensionValue(Guid.NewGuid(), Guid.NewGuid())]
+            ],
+            "quantity",
+            new DateOnly(2026, 8, 1));
+
+        result.Should().Equal(5m, -2m);
+        probeCount.Should().Be(2);
+        connection.Commands.Last().CommandText.Should()
+            .Contain("LEFT JOIN opreg_sales__movements movement")
+            .And.NotContain("latest_snapshot");
     }
 
     [Fact]
@@ -1009,6 +1062,16 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         table.Columns.Add("NetAmount", typeof(decimal));
         table.Rows.Add(0, 5m);
         table.Rows.Add(1, -2m);
+        return table.CreateDataReader();
+    }
+
+    private static DataTableReader ResourceNetBySetRows(params (Guid Id, decimal Net)[] rows)
+    {
+        var table = new DataTable();
+        table.Columns.Add("DimensionSetId", typeof(Guid));
+        table.Columns.Add("NetAmount", typeof(decimal));
+        foreach (var row in rows)
+            table.Rows.Add(row.Id, row.Net);
         return table.CreateDataReader();
     }
 }

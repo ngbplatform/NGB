@@ -43,6 +43,28 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
             Guid.NewGuid(), new DateOnly(2026, 2, 1), jan, null, Guid.NewGuid(), "amount");
         Func<Task> aggregateNonMonth = async () => await sut.GetResourceNetsByDimensionAsync(
             Guid.NewGuid(), new DateOnly(2026, 1, 2), new DateOnly(2026, 2, 1), null, Guid.NewGuid(), "amount");
+        Func<Task> negativeAggregateOffset = async () => await sut.GetResourceNetsByDimensionPageAsync(
+            Guid.NewGuid(), jan, jan, null, Guid.NewGuid(), "amount", -1, 1);
+        Func<Task> zeroAggregateLimit = async () => await sut.GetResourceNetsByDimensionPageAsync(
+            Guid.NewGuid(), jan, jan, null, Guid.NewGuid(), "amount", 0, 0);
+        Func<Task> missingBalanceRegister = async () => await sut.GetResourceBalancesByDimensionPageAsync(
+            Guid.Empty, jan, null, Guid.NewGuid(), "amount", 0, 1);
+        Func<Task> missingBalanceDimension = async () => await sut.GetResourceBalancesByDimensionPageAsync(
+            Guid.NewGuid(), jan, null, Guid.Empty, "amount", 0, 1);
+        Func<Task> missingBalanceResource = async () => await sut.GetResourceBalancesByDimensionPageAsync(
+            Guid.NewGuid(), jan, null, Guid.NewGuid(), " ", 0, 1);
+        Func<Task> negativeBalanceOffset = async () => await sut.GetResourceBalancesByDimensionPageAsync(
+            Guid.NewGuid(), jan, null, Guid.NewGuid(), "amount", -1, 1);
+        Func<Task> zeroBalanceLimit = async () => await sut.GetResourceBalancesByDimensionPageAsync(
+            Guid.NewGuid(), jan, null, Guid.NewGuid(), "amount", 0, 0);
+        Func<Task> missingBalanceCursorRegister = async () => await sut.GetResourceBalancesByDimensionCursorAsync(
+            Guid.Empty, jan, null, Guid.NewGuid(), "amount", null, 1);
+        Func<Task> missingBalanceCursorDimension = async () => await sut.GetResourceBalancesByDimensionCursorAsync(
+            Guid.NewGuid(), jan, null, Guid.Empty, "amount", null, 1);
+        Func<Task> missingBalanceCursorResource = async () => await sut.GetResourceBalancesByDimensionCursorAsync(
+            Guid.NewGuid(), jan, null, Guid.NewGuid(), " ", null, 1);
+        Func<Task> zeroBalanceCursorLimit = async () => await sut.GetResourceBalancesByDimensionCursorAsync(
+            Guid.NewGuid(), jan, null, Guid.NewGuid(), "amount", null, 0);
         Func<Task> zeroLimit = async () => await sut.GetByMonthsAsync(Guid.NewGuid(), jan, jan, limit: 0);
         Func<Task> reversed = async () => await sut.GetByMonthsAsync(
             Guid.NewGuid(), new DateOnly(2026, 2, 1), jan);
@@ -67,10 +89,91 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         await missingResource.Should().ThrowAsync<NgbArgumentRequiredException>();
         await reversedAggregate.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await aggregateNonMonth.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await negativeAggregateOffset.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await zeroAggregateLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await missingBalanceRegister.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await missingBalanceDimension.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await missingBalanceResource.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await negativeBalanceOffset.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await zeroBalanceLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await missingBalanceCursorRegister.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await missingBalanceCursorDimension.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await missingBalanceCursorResource.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await zeroBalanceCursorLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await zeroLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await reversed.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await invalidFrom.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await invalidTo.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task Query_reader_returns_empty_for_absent_tables_and_preserves_cursor_totals_for_empty_tail()
+    {
+        var registerId = Guid.NewGuid();
+        var groupDimensionId = Guid.NewGuid();
+        var registers = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
+        registers.Setup(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Register(registerId));
+        var resources = new Mock<IOperationalRegisterResourceRepository>(MockBehavior.Strict);
+        resources.Setup(x => x.GetByRegisterIdAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new OperationalRegisterResource("Other", "other", "other", "Other", 2),
+                new OperationalRegisterResource("Amount", "amount", "amount", "Amount", 1)
+            ]);
+        var absent = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(scalar: _ => false)),
+            registers.Object,
+            resources.Object,
+            Mock.Of<NGB.Persistence.Dimensions.IDimensionSetReader>(MockBehavior.Strict),
+            Mock.Of<NGB.Persistence.Dimensions.Enrichment.IDimensionValueEnrichmentReader>(MockBehavior.Strict));
+        var month = new DateOnly(2026, 8, 1);
+
+        (await absent.GetByOccurredAtCursorAsync(registerId, month, month)).Should().BeEmpty();
+        (await absent.GetByOccurredAtPageAsync(registerId, month, month))
+            .Should().Be(new OperationalRegisterMovementQueryPage([], 0));
+        (await absent.GetResourceBalancesByDimensionPageAsync(
+                registerId, month, null, groupDimensionId, "amount", 0, 1))
+            .Should().Be(new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m));
+        (await absent.GetResourceBalancesByDimensionCursorAsync(
+                registerId, month, null, groupDimensionId, "amount", null, 1))
+            .Should().Be(new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m));
+
+        var presentRegisters = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
+        presentRegisters.Setup(x => x.GetByIdAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Register(registerId));
+        var presentResources = new Mock<IOperationalRegisterResourceRepository>(MockBehavior.Strict);
+        presentResources.Setup(x => x.GetByRegisterIdAsync(registerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OperationalRegisterResource("Amount", "amount", "amount", "Amount", 1)]);
+        var present = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(scalar: _ => true)),
+            presentRegisters.Object,
+            presentResources.Object,
+            Mock.Of<NGB.Persistence.Dimensions.IDimensionSetReader>(MockBehavior.Strict),
+            Mock.Of<NGB.Persistence.Dimensions.Enrichment.IDimensionValueEnrichmentReader>(MockBehavior.Strict));
+
+        await ((Func<Task>)(() => present.GetResourceBalancesByDimensionPageAsync(
+                registerId, month, null, groupDimensionId, "missing", 0, 1)))
+            .Should().ThrowAsync<NgbConfigurationViolationException>();
+        await ((Func<Task>)(() => present.GetResourceBalancesByDimensionCursorAsync(
+                registerId, month, null, groupDimensionId, "missing", null, 1)))
+            .Should().ThrowAsync<NgbConfigurationViolationException>();
+
+        var carriedCursor = new OperationalRegisterDimensionResourceNetCursor(
+            AfterPositiveGroup: false,
+            AfterValueId: Guid.NewGuid(),
+            NextOffset: 5,
+            Total: 9,
+            TotalPositive: 12m,
+            TotalNegativeAbsolute: 3m);
+        var emptyTail = await present.GetResourceBalancesByDimensionCursorAsync(
+            registerId,
+            month,
+            null,
+            groupDimensionId,
+            "amount",
+            carriedCursor,
+            1);
+        emptyTail.Should().Be(new OperationalRegisterDimensionResourceNetPage([], 9, 12m, 3m));
     }
 
     [Fact]

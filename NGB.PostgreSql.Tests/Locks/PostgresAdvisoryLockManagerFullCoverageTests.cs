@@ -138,6 +138,29 @@ public sealed class PostgresAdvisoryLockManagerFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_locks_validate_timeout_and_report_contention_context()
+    {
+        var invalid = ActiveManager(new RecordingDbConnection(scalar: _ => true), timeoutSeconds: 0);
+        Func<Task> invalidTimeout = () => invalid.Manager.LockDocumentsAsync([Guid.NewGuid()]);
+        var configurationError = await invalidTimeout.Should().ThrowAsync<NgbConfigurationViolationException>();
+        configurationError.Which.Context["value"].Should().Be(0);
+
+        var contended = ActiveManager(
+            new RecordingDbConnection(scalar: _ => false),
+            timeoutSeconds: 1,
+            timeProvider: new AdvancingTimeProvider(TimeSpan.FromSeconds(1)));
+        Func<Task> timeout = () => contended.Manager.LockPeriodsAsync(
+            [new DateOnly(2026, 8, 1), new DateOnly(2026, 9, 1)],
+            AdvisoryLockPeriodScope.Accounting);
+
+        var timeoutError = await timeout.Should().ThrowAsync<NgbTimeoutException>();
+        timeoutError.Which.Context.Should().ContainKey("key1");
+        timeoutError.Which.Context["keyCount"].Should().Be(2);
+        timeoutError.Which.Context["timeoutSeconds"].Should().Be(1);
+        timeoutError.Which.Context["attempt"].Should().Be(0);
+    }
+
+    [Fact]
     public async Task Contended_lock_retries_with_backoff_then_succeeds()
     {
         var attempts = 0;

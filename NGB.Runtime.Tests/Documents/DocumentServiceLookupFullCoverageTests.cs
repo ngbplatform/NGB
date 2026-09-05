@@ -36,12 +36,41 @@ public sealed class DocumentServiceLookupFullCoverageTests
         await nullReadTypes.Should().ThrowAsync<NgbArgumentRequiredException>();
         await nullIds.Should().ThrowAsync<NgbArgumentRequiredException>();
 
+        await ((Func<Task>)(() => sut.GetPageAsync(TypeCode, null!, default)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => sut.GetPageAsync(
+                TypeCode, new NGB.Contracts.Common.PageRequestDto(Offset: 1, Cursor: " cursor "), default)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+
         (await sut.LookupAcrossTypesAsync([TypeCode], null, 0, false, default)).Should().BeEmpty();
         (await sut.LookupAcrossTypesAsync([], null, 1, false, default)).Should().BeEmpty();
         (await sut.LookupAcrossTypesAsync([" ", "\t"], null, 1, false, default)).Should().BeEmpty();
         (await sut.GetByIdsAcrossTypesAsync([], [id], default)).Should().BeEmpty();
         (await sut.GetByIdsAcrossTypesAsync([TypeCode], [], default)).Should().BeEmpty();
         (await sut.GetByIdsAcrossTypesAsync([" ", "\t"], [id], default)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Lookup_apis_reject_excessive_distinct_ids_and_types()
+    {
+        var metadata = Enumerable.Range(0, NGB.Contracts.Common.PagingLimits.MaxLookupTypes + 1)
+            .Select(index => Metadata($"test.lookup.{index}"))
+            .ToArray();
+        var sut = CreateSut(new DocumentTypeRegistry(metadata), Mock.Of<IDocumentReader>());
+
+        (await sut.GetByIdsAcrossTypesAsync(
+            [metadata[0].TypeCode], [Guid.Empty, Guid.Empty], default)).Should().BeEmpty();
+
+        var tooManyIds = Enumerable.Range(0, NGB.Contracts.Common.PagingLimits.MaxLookupIds + 1)
+            .Select(_ => Guid.NewGuid())
+            .ToArray();
+        await ((Func<Task>)(() => sut.GetByIdsAcrossTypesAsync(
+                [metadata[0].TypeCode], tooManyIds, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
+        await ((Func<Task>)(() => sut.LookupAcrossTypesAsync(
+                metadata.Select(static item => item.TypeCode).ToArray(), null, 1, false, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
     }
 
     [Fact]
@@ -126,4 +155,17 @@ public sealed class DocumentServiceLookupFullCoverageTests
             Mock.Of<IDocumentRelationshipGraphReadService>(),
             NoOpReferencePayloadEnricher.Instance,
             []);
+
+    private static DocumentTypeMetadata Metadata(string typeCode)
+        => new(
+            typeCode,
+            [new DocumentTableMetadata(
+                $"doc_{typeCode.Replace(".", "_", StringComparison.Ordinal)}",
+                TableKind.Head,
+                [
+                    new DocumentColumnMetadata("document_id", ColumnType.Guid, Required: true),
+                    new DocumentColumnMetadata("display", ColumnType.String, Required: true)
+                ])],
+            new DocumentPresentationMetadata(typeCode),
+            new DocumentMetadataVersion(1, "tests"));
 }

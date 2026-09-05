@@ -33,6 +33,7 @@ public sealed class ReportEngineFullCoverageTests
         ReportEngine.ShouldUseRenderedSheetPaging(standard, request, Plan()).Should().BeFalse();
         ReportEngine.ShouldSuppressExecutorCursor(canonical, request, Plan(rowGroups: true)).Should().BeFalse();
         ReportEngine.ShouldSuppressExecutorCursor(standard, request, Plan(rowGroups: true)).Should().BeFalse();
+        ReportEngine.ShouldSuppressExecutorCursor(withoutPresentation, request, Plan(rowGroups: true)).Should().BeFalse();
         ReportEngine.ShouldSuppressExecutorCursor(bounded, request with { DisablePaging = true }, Plan(rowGroups: true)).Should().BeFalse();
         ReportEngine.ShouldSuppressExecutorCursor(bounded, request, Plan()).Should().BeFalse();
         ReportEngine.ShouldSuppressExecutorCursor(bounded, request, Plan(rowGroups: true)).Should().BeTrue();
@@ -133,6 +134,37 @@ public sealed class ReportEngineFullCoverageTests
         await action.Should().ThrowAsync<NGB.Core.Reporting.Exceptions.ReportLayoutValidationException>()
             .WithMessage("*more than 10000 source rows*");
         fixture.Executor.Paging.Should().Be(new ReportPlanPaging(0, 10_001));
+    }
+
+    [Theory]
+    [InlineData("detail", "layout.rowGroups")]
+    [InlineData("column", "layout.columnGroups")]
+    [InlineData("measure", "layout.measures")]
+    public async Task Execute_RenderedAndHardCaps_ReportTheRelevantLayoutPath(
+        string shape,
+        string expectedFieldPath)
+    {
+        var definition = Definition() with { DefaultLayout = LayoutForCap(shape) };
+
+        var renderedFixture = new EngineFixture(definition);
+        renderedFixture.Executor.Page = DataPage(Row("A", 10m)) with { HasMore = true };
+        var rendered = () => renderedFixture.Sut.ExecuteAsync(
+            definition.ReportCode,
+            new ReportExecutionRequestDto(),
+            default);
+        var renderedError = await rendered.Should()
+            .ThrowAsync<NGB.Core.Reporting.Exceptions.ReportLayoutValidationException>();
+        renderedError.Which.Context["fieldPath"].Should().Be(expectedFieldPath);
+
+        var hardFixture = new EngineFixture(definition);
+        hardFixture.Executor.Page = DataPage(Row("A", 10m)) with { HasMore = true };
+        var hard = () => hardFixture.Sut.ExecuteAsync(
+            definition.ReportCode,
+            new ReportExecutionRequestDto(DisablePaging: true),
+            default);
+        var hardError = await hard.Should()
+            .ThrowAsync<NGB.Core.Reporting.Exceptions.ReportLayoutValidationException>();
+        hardError.Which.Context["fieldPath"].Should().Be(expectedFieldPath);
     }
 
     [Fact]
@@ -511,6 +543,22 @@ public sealed class ReportEngineFullCoverageTests
                 showGrandTotals,
                 columnGroups),
             new NGB.Runtime.Reporting.Planning.ReportPlanPaging(0, 10, null));
+
+    private static ReportLayoutDto LayoutForCap(string shape)
+        => shape switch
+        {
+            "detail" => new ReportLayoutDto(
+                DetailFields: ["document_display"],
+                Measures: [new ReportMeasureSelectionDto("amount")],
+                ShowDetails: true,
+                ShowGrandTotals: true),
+            "column" => new ReportLayoutDto(
+                ColumnGroups: [new ReportGroupingDto("group")],
+                Measures: [new ReportMeasureSelectionDto("amount")]),
+            _ => new ReportLayoutDto(
+                Measures: [new ReportMeasureSelectionDto("amount")],
+                ShowGrandTotals: true)
+        };
 
     private static ReportDataRow Row(string group, decimal amount)
         => new(new Dictionary<string, object?> { ["group"] = group, ["amount__sum"] = amount });

@@ -6,6 +6,7 @@ using NGB.Core.Documents;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
 using NGB.Metadata.Base;
+using NGB.Persistence.Documents;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
 using NGB.PostgreSql.Accounts;
@@ -109,6 +110,29 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
     }
 
     [Fact]
+    public async Task Materialized_accounting_readers_reject_results_above_the_safety_cap()
+    {
+        var jan = new DateOnly(2026, 1, 1);
+        var accountCard = new PostgresAccountCardReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(_ => RowsAboveCap("EntryId", typeof(long)))),
+            Mock.Of<IDimensionSetReader>(),
+            Mock.Of<IDimensionValueEnrichmentReader>());
+        var consistency = new PostgresAccountingConsistencySnapshotReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(_ => RowsAboveCap("AccountId", typeof(Guid)))));
+        var trialBalance = new PostgresTrialBalanceSnapshotReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(
+                _ => RowsAboveCap("AccountId", typeof(Guid)),
+                scalar: _ => null)));
+
+        await ((Func<Task>)(() => accountCard.GetAsync(Guid.NewGuid(), jan, jan)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => consistency.GetAsync(jan)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => trialBalance.GetAsync(jan, jan, null)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public async Task Accounting_integrity_checker_rejects_a_negative_register_sum_with_structured_context()
     {
         var period = new DateOnly(2026, 8, 1);
@@ -200,6 +224,17 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         await invalidBatchSource.Should().ThrowAsync<NgbArgumentInvalidException>();
         (await sut.TryCreateManyAsync([])).Should().BeEmpty();
         (await sut.FindTargetsWithPathToAsync(id, [], "derived", 1)).Should().BeEmpty();
+
+        await ((Func<Task>)(() => sut.FindCycleCreatingRequestIndexesAsync([], 0)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        (await sut.FindCycleCreatingRequestIndexesAsync([], 1)).Should().BeEmpty();
+        await ((Func<Task>)(() => sut.FindCycleCreatingRequestIndexesAsync(
+                [new DocumentRelationshipCycleCheck(Guid.Empty, id, "derived")], 1)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+        (await sut.GetCardinalityConflictsAsync([])).Should().BeEmpty();
+        await ((Func<Task>)(() => sut.GetCardinalityConflictsAsync(
+                [new DocumentRelationshipCardinalityCheck(id, Guid.NewGuid(), "derived", false, false)])))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
 
         var relationship = new DocumentRelationshipRecord
         {
@@ -334,6 +369,17 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         var positivePermissions = new PostgresPermissionSnapshotRepository(positiveUow, TimeProvider.System);
         (await positivePermissions.GetUserAccessStateByAuthSubjectAsync("auth-subject")).Should().BeNull();
         await positivePermissions.ReplaceRolePermissionsAsync(roleId, []);
+    }
+
+    private static System.Data.DataTableReader RowsAboveCap(string columnName, Type columnType)
+    {
+        var table = new System.Data.DataTable();
+        table.Columns.Add(columnName, columnType);
+        var value = columnType == typeof(Guid) ? (object)Guid.NewGuid() : 1L;
+        for (var index = 0; index <= 10_000; index++)
+            table.Rows.Add(value);
+
+        return table.CreateDataReader();
     }
 
     private static AccountCardLinePageRequest Page(Guid accountId, DateOnly from, DateOnly to) => new()

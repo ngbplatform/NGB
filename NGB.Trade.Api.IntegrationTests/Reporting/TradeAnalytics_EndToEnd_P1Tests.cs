@@ -4,8 +4,11 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
+using NGB.OperationalRegisters;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.Api.IntegrationTests.Support;
+using NGB.Trade.PostgreSql.Reporting;
+using NGB.Trade.Reporting;
 using NGB.Trade.Runtime;
 using Xunit;
 
@@ -362,6 +365,159 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
         groupedBalancesSecondPage.Sheet.Rows[0].Cells[0].Display.Should().Be("Bravo Gadget");
         groupedBalancesSecondPage.Sheet.Rows[1].RowKind.Should().Be(ReportRowKind.Total);
         groupedBalancesSecondPage.Sheet.Rows[1].Cells[1].Display.Should().Be("20");
+
+        var analytics = scope.ServiceProvider.GetRequiredService<ITradeAnalyticsReader>();
+        var from = new DateOnly(2026, 4, 1);
+        var to = new DateOnly(2026, 4, 30);
+
+        var directItems = await analytics.GetSalesByItemAsync(
+            from, to,
+            [Guid.Empty, alphaItem.Id, alphaItem.Id, bravoItem.Id],
+            [Guid.Empty, customer.Id, customer.Id],
+            [Guid.Empty, warehouse.Id, warehouse.Id]);
+        directItems.Should().HaveCount(2);
+
+        var itemOffsetPage = await analytics.GetSalesByItemPageAsync(
+            from, to, null, null, null, offset: 0, limit: 1);
+        itemOffsetPage.Rows.Should().ContainSingle();
+        var itemCursorPage = await analytics.GetSalesByItemCursorPageAsync(
+            from, to, null, null, null, cursor: null, limit: 1);
+        itemCursorPage.HasMore.Should().BeTrue();
+        var itemCursorTail = await analytics.GetSalesByItemCursorPageAsync(
+            from, to, null, null, null,
+            new TradeAnalyticsPageCursor<SalesByItemTotals>(
+                1,
+                itemCursorPage.Total,
+                itemCursorPage.Totals,
+                itemCursorPage.NextAfterAmount,
+                itemCursorPage.NextAfterDisplay,
+                itemCursorPage.NextAfterId),
+            limit: 1);
+        itemCursorTail.Rows.Should().ContainSingle();
+        itemCursorTail.HasMore.Should().BeFalse();
+
+        var directCustomers = await analytics.GetSalesByCustomerAsync(
+            from, to, [customer.Id], [alphaItem.Id, bravoItem.Id], [warehouse.Id]);
+        directCustomers.Should().ContainSingle();
+        var customerOffsetPage = await analytics.GetSalesByCustomerPageAsync(
+            from, to, null, null, null, offset: 0, limit: 1);
+        customerOffsetPage.Rows.Should().ContainSingle();
+        var customerCursorPage = await analytics.GetSalesByCustomerCursorPageAsync(
+            from, to, null, null, null, cursor: null, limit: 1);
+        var customerCursorTail = await analytics.GetSalesByCustomerCursorPageAsync(
+            from, to, null, null, null,
+            new TradeAnalyticsPageCursor<SalesByCustomerTotals>(
+                1,
+                customerCursorPage.Total,
+                customerCursorPage.Totals,
+                customerCursorPage.NextAfterAmount,
+                customerCursorPage.NextAfterDisplay,
+                customerCursorPage.NextAfterId),
+            limit: 1);
+        customerCursorTail.Rows.Should().BeEmpty();
+        customerCursorTail.Total.Should().Be(customerCursorPage.Total);
+
+        var directVendors = await analytics.GetPurchasesByVendorAsync(
+            from, to, [vendor.Id], [alphaItem.Id, bravoItem.Id], [warehouse.Id]);
+        directVendors.Should().ContainSingle();
+        var vendorOffsetPage = await analytics.GetPurchasesByVendorPageAsync(
+            from, to, null, null, null, offset: 0, limit: 1);
+        vendorOffsetPage.Rows.Should().ContainSingle();
+        var vendorCursorPage = await analytics.GetPurchasesByVendorCursorPageAsync(
+            from, to, null, null, null, cursor: null, limit: 1);
+        var vendorCursorTail = await analytics.GetPurchasesByVendorCursorPageAsync(
+            from, to, null, null, null,
+            new TradeAnalyticsPageCursor<PurchasesByVendorTotals>(
+                1,
+                vendorCursorPage.Total,
+                vendorCursorPage.Totals,
+                vendorCursorPage.NextAfterAmount,
+                vendorCursorPage.NextAfterDisplay,
+                vendorCursorPage.NextAfterId),
+            limit: 1);
+        vendorCursorTail.Rows.Should().BeEmpty();
+        vendorCursorTail.Total.Should().Be(vendorCursorPage.Total);
+
+        (await analytics.GetRecentDocumentsAsync(to, limit: 0)).Should().ContainSingle();
+
+        await ((Func<Task>)(() => analytics.GetDashboardOverviewAsync(from, to, 0, 1)))
+            .Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => analytics.GetDashboardOverviewAsync(from, to, 1, 0)))
+            .Should().ThrowAsync<ArgumentOutOfRangeException>();
+
+        var inventoryBalances = scope.ServiceProvider.GetRequiredService<ITradeInventoryBalanceReader>();
+        var inventoryRegisterId = OperationalRegisterId.FromCode(TradeCodes.InventoryMovementsRegisterCode);
+        var inventoryFirst = await inventoryBalances.GetCursorPageAsync(
+            inventoryRegisterId,
+            to,
+            [Guid.Empty, alphaItem.Id, alphaItem.Id, bravoItem.Id],
+            [Guid.Empty, warehouse.Id, warehouse.Id],
+            TradeInventoryBalanceSort.ItemWarehouse,
+            cursor: null,
+            limit: 1);
+        inventoryFirst.Rows.Should().ContainSingle();
+        inventoryFirst.HasMore.Should().BeTrue();
+        var inventoryTail = await inventoryBalances.GetCursorPageAsync(
+            inventoryRegisterId,
+            to,
+            null,
+            null,
+            TradeInventoryBalanceSort.ItemWarehouse,
+            new TradeInventoryBalancePageCursor(
+                1,
+                inventoryFirst.Total,
+                inventoryFirst.TotalQuantity,
+                inventoryFirst.NextAfterAbsoluteQuantity,
+                inventoryFirst.NextAfterItemDisplay,
+                inventoryFirst.NextAfterWarehouseDisplay,
+                inventoryFirst.NextAfterItemId,
+                inventoryFirst.NextAfterWarehouseId),
+            limit: 1);
+        inventoryTail.Rows.Should().ContainSingle();
+        inventoryTail.HasMore.Should().BeFalse();
+
+        var absoluteFirst = await inventoryBalances.GetCursorPageAsync(
+            inventoryRegisterId,
+            DateOnly.MaxValue,
+            null,
+            null,
+            TradeInventoryBalanceSort.AbsoluteQuantityDescending,
+            cursor: null,
+            limit: 1);
+        var absoluteTail = await inventoryBalances.GetCursorPageAsync(
+            inventoryRegisterId,
+            DateOnly.MaxValue,
+            null,
+            null,
+            TradeInventoryBalanceSort.AbsoluteQuantityDescending,
+            new TradeInventoryBalancePageCursor(
+                1,
+                absoluteFirst.Total,
+                absoluteFirst.TotalQuantity,
+                absoluteFirst.NextAfterAbsoluteQuantity,
+                absoluteFirst.NextAfterItemDisplay,
+                absoluteFirst.NextAfterWarehouseDisplay,
+                absoluteFirst.NextAfterItemId,
+                absoluteFirst.NextAfterWarehouseId),
+            limit: int.MaxValue);
+        absoluteTail.Total.Should().Be(absoluteFirst.Total);
+
+        var invalidInventoryReader = new PostgresTradeInventoryBalanceReader(null!, null!);
+        await ((Func<Task>)(() => invalidInventoryReader.GetPageAsync(
+                Guid.Empty, to, null, null, TradeInventoryBalanceSort.ItemWarehouse, 0, 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => invalidInventoryReader.GetPageAsync(
+                inventoryRegisterId, to, null, null, (TradeInventoryBalanceSort)999, 0, 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => invalidInventoryReader.GetPageAsync(
+                inventoryRegisterId, to, null, null, TradeInventoryBalanceSort.ItemWarehouse, -1, 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => invalidInventoryReader.GetPageAsync(
+                inventoryRegisterId, to, null, null, TradeInventoryBalanceSort.ItemWarehouse, 0, 0)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => inventoryBalances.GetPageAsync(
+                Guid.NewGuid(), to, null, null, TradeInventoryBalanceSort.ItemWarehouse, 0, 1)))
+            .Should().ThrowAsync<NGB.OperationalRegisters.Exceptions.OperationalRegisterNotFoundException>();
     }
 
     private static Dictionary<string, string> BuildPeriod(string fromUtc, string toUtc)

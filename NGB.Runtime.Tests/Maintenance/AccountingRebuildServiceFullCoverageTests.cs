@@ -218,6 +218,52 @@ public sealed class AccountingRebuildServiceFullCoverageTests
             Times.Never);
     }
 
+    [Fact]
+    public async Task Database_projection_path_returns_rows_and_logs_warning_samples()
+    {
+        var warning = Violation(NegativeBalancePolicy.Warn, "2010", 9m);
+        var fixture = new Fixture(new AccountingBalanceProjectionResult(3, 0, 1, [warning]));
+
+        var rows = await fixture.Sut.RebuildBalancesAsync(March, fixture.Token);
+
+        rows.Should().Be(3);
+        fixture.BalanceProjection.Verify(
+            x => x.ProjectAsync(March, true, fixture.Token),
+            Times.Once);
+        fixture.Logger.Invocations.Count(IsLogLevel(LogLevel.Warning)).Should().Be(1);
+        fixture.BalanceReader.Verify(
+            x => x.GetForPeriodAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Database_projection_path_rejects_forbidden_samples_and_rolls_back()
+    {
+        var forbidden = Violation(NegativeBalancePolicy.Forbid, "1010", -11m);
+        var fixture = new Fixture(new AccountingBalanceProjectionResult(0, 1, 0, [forbidden]));
+
+        var act = () => fixture.Sut.RebuildMonthAsync(March, ct: fixture.Token);
+
+        var error = await act.Should().ThrowAsync<AccountingNegativeBalanceForbiddenException>();
+        error.Which.Message.Should().ContainAll("1010", "Account 1010", "-11", "2026-03-01");
+        fixture.Uow.Verify(x => x.RollbackAsync(fixture.Token), Times.Once);
+    }
+
+    private static NegativeBalanceViolation Violation(
+        NegativeBalancePolicy policy,
+        string accountCode,
+        decimal closingBalance)
+        => new()
+        {
+            Period = March,
+            AccountId = Guid.CreateVersion7(),
+            AccountCode = accountCode,
+            AccountName = $"Account {accountCode}",
+            AccountType = AccountType.Asset,
+            Policy = policy,
+            ClosingBalance = closingBalance
+        };
+
     private static Func<Moq.IInvocation, bool> IsLogLevel(LogLevel level)
         => invocation => invocation.Arguments.Count > 0 && Equals(invocation.Arguments[0], level);
 
@@ -225,7 +271,7 @@ public sealed class AccountingRebuildServiceFullCoverageTests
     {
         private readonly ChartOfAccounts _chartOfAccounts = new();
 
-        public Fixture()
+        public Fixture(AccountingBalanceProjectionResult? projectionResult = null)
         {
             Uow.SetupGet(x => x.HasActiveTransaction).Returns(false);
             Uow.Setup(x => x.BeginTransactionAsync(Token)).Returns(Task.CompletedTask);
@@ -266,6 +312,13 @@ public sealed class AccountingRebuildServiceFullCoverageTests
                 .Setup(x => x.GetAsync(Token))
                 .ReturnsAsync(_chartOfAccounts);
 
+            if (projectionResult is not null)
+            {
+                BalanceProjection
+                    .Setup(x => x.ProjectAsync(It.IsAny<DateOnly>(), true, Token))
+                    .ReturnsAsync(projectionResult);
+            }
+
             var negativeBalanceChecker = new AccountingNegativeBalanceChecker(ChartOfAccountsProvider.Object);
             Sut = new AccountingRebuildService(
                 Uow.Object,
@@ -279,7 +332,8 @@ public sealed class AccountingRebuildServiceFullCoverageTests
                 new AccountingBalanceCalculator(),
                 negativeBalanceChecker,
                 ConsistencyReport.Object,
-                Logger.Object);
+                Logger.Object,
+                projectionResult is null ? null : BalanceProjection.Object);
         }
 
         public CancellationToken Token { get; } = new CancellationTokenSource().Token;
@@ -292,6 +346,7 @@ public sealed class AccountingRebuildServiceFullCoverageTests
         public Mock<IAccountingBalanceReader> BalanceReader { get; } = new();
         public Mock<IAccountingTurnoverWriter> TurnoverWriter { get; } = new();
         public Mock<IAccountingBalanceWriter> BalanceWriter { get; } = new();
+        public Mock<IAccountingBalanceProjectionWriter> BalanceProjection { get; } = new();
         public Mock<IAccountingConsistencyReportReader> ConsistencyReport { get; } = new();
         public Mock<IChartOfAccountsProvider> ChartOfAccountsProvider { get; } = new();
         public Mock<ILogger<AccountingRebuildService>> Logger { get; } = new();

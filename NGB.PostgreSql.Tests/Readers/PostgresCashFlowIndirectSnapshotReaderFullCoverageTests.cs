@@ -1,6 +1,7 @@
 using System.Data;
 using FluentAssertions;
 using NGB.Accounting.CashFlow;
+using NGB.Persistence.Readers.Reports;
 using NGB.PostgreSql.Readers;
 using NGB.PostgreSql.Tests.TestDoubles;
 using NGB.Tools.Exceptions;
@@ -110,6 +111,43 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
         result.EndingRollForwardPeriods.Should().Be(2);
         scenario.Commands.Count(x => x.CommandText.Contains("WITH snapshot_rows", StringComparison.Ordinal))
             .Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Get_combines_inception_opening_with_snapshot_closing_and_merges_repeated_accounts()
+    {
+        var working = Guid.NewGuid();
+        var cash = Guid.NewGuid();
+        var scenario = new CashFlowScenario(
+            LatestClosed(null, new DateOnly(2026, 9, 1)),
+            LineDefinitions(),
+            inceptionRows:
+            [
+                BalanceRows(
+                    (working, "1100", CashFlowRole.WorkingCapital, "wc", 10m),
+                    (working, "1100", CashFlowRole.WorkingCapital, "wc", 5m))
+            ],
+            snapshotRows:
+            [
+                BalanceRows(
+                    (working, "1100", CashFlowRole.WorkingCapital, "wc", 12m),
+                    (cash, "1000", CashFlowRole.CashEquivalent, null, 20m))
+            ]);
+        var sut = new PostgresCashFlowIndirectSnapshotReader(scenario.UnitOfWork);
+
+        var result = await sut.GetAsync(
+            new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30), default);
+
+        result.BeginningCash.Should().Be(0m);
+        result.EndingCash.Should().Be(20m);
+        result.OperatingLines.Should().ContainSingle().Which.Should().Be(
+            new CashFlowIndirectSnapshotLine(CashFlowSection.Operating, "wc", "Working capital", 2, 3m));
+        result.BeginningLatestClosedPeriod.Should().BeNull();
+        result.EndingLatestClosedPeriod.Should().Be(new DateOnly(2026, 9, 1));
+        scenario.Commands.Should().ContainSingle(command =>
+            command.CommandText.Contains("WITH ledger_rows", StringComparison.Ordinal));
+        scenario.Commands.Should().ContainSingle(command =>
+            command.CommandText.Contains("FROM accounting_balances b", StringComparison.Ordinal));
     }
 
     [Theory]

@@ -142,6 +142,7 @@ public sealed class OutboxProcessorTests
         var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
         var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
         var factoryCalls = 0;
+        var changedUserId = Guid.NewGuid();
         var first = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/a/1");
         var second = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/b/2");
         var third = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/a/1");
@@ -162,8 +163,13 @@ public sealed class OutboxProcessorTests
 
                 await release.Task.WaitAsync(ct);
                 Interlocked.Decrement(ref running);
-                return [];
+                return [changedUserId];
             });
+        realtime.Setup(notifier => notifier.NotifyUsersChangedAsync(
+                Now.Ticks,
+                It.Is<IReadOnlyCollection<Guid>>(users => users.SequenceEqual(new[] { changedUserId })),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         var processor = Processor(
             uow,
             outbox,
@@ -182,7 +188,7 @@ public sealed class OutboxProcessorTests
             .Select(item => item.Event.EventId)
             .Should().Equal(first.Event.EventId, third.Event.EventId);
         factoryCalls.Should().Be(2);
-        realtime.VerifyNoOtherCalls();
+        realtime.VerifyAll();
         uow.CommitCount.Should().Be(1);
     }
 

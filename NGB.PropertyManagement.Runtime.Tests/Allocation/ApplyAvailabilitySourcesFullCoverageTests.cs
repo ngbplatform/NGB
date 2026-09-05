@@ -10,6 +10,7 @@ using NGB.PropertyManagement.Runtime.Exceptions;
 using NGB.PropertyManagement.Runtime.Payables;
 using NGB.PropertyManagement.Runtime.Policy;
 using NGB.PropertyManagement.Runtime.Receivables;
+using NGB.Tools.Exceptions;
 using Xunit;
 using ActionDocumentStatus = NGB.Contracts.Metadata.DocumentStatus;
 using StoredDocumentStatus = NGB.Core.Documents.DocumentStatus;
@@ -78,6 +79,64 @@ public sealed class ApplyAvailabilitySourcesFullCoverageTests
             "amount",
             DateOnly.MaxValue,
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Receivables_batch_availability_rejects_missing_wrong_type_and_missing_typed_heads()
+    {
+        var missingId = Guid.CreateVersion7();
+        var missing = new ReceivablesFixture();
+        missing.Documents.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>());
+        await ((Func<Task>)(() => missing.Sut.GetExhaustedPaymentIdsAsync([missingId], default)))
+            .Should().ThrowAsync<NGB.Core.Documents.Exceptions.DocumentNotFoundException>();
+
+        var wrongType = new ReceivablesFixture();
+        wrongType.Documents.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [wrongType.DocumentId] = Document(wrongType.DocumentId, PropertyManagementCodes.PayablePayment)
+            });
+        await ((Func<Task>)(() => wrongType.Sut.GetExhaustedPaymentIdsAsync([wrongType.DocumentId], default)))
+            .Should().ThrowAsync<NGB.Core.Documents.Exceptions.DocumentTypeMismatchException>();
+
+        var drafts = new ReceivablesFixture();
+        drafts.Documents.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [drafts.DocumentId] = new DocumentRecord
+                {
+                    Id = drafts.DocumentId,
+                    TypeCode = PropertyManagementCodes.ReceivablePayment,
+                    DateUtc = DateTime.UnixEpoch,
+                    Status = StoredDocumentStatus.Draft
+                }
+            });
+        (await drafts.Sut.GetExhaustedPaymentIdsAsync([drafts.DocumentId], default))
+            .Should().Equal(drafts.DocumentId);
+        drafts.Readers.VerifyNoOtherCalls();
+
+        var missingHead = new ReceivablesFixture();
+        missingHead.Documents.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [missingHead.DocumentId] = Document(
+                    missingHead.DocumentId, PropertyManagementCodes.ReceivablePayment)
+            });
+        missingHead.Readers.Setup(x => x.ReadReceivablePaymentHeadsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        await ((Func<Task>)(() => missingHead.Sut.GetExhaustedPaymentIdsAsync(
+                [missingHead.DocumentId], default)))
+            .Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*has no typed head row*");
+        missingHead.Policy.Verify(
+            x => x.GetRequiredAsync(It.IsAny<CancellationToken>()), Times.Once);
+        missingHead.Net.VerifyNoOtherCalls();
     }
 
     [Fact]

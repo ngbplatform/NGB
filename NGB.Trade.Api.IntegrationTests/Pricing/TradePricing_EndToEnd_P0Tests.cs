@@ -7,6 +7,8 @@ using NGB.Contracts.Reporting;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.Api.IntegrationTests.Support;
 using NGB.Trade.Runtime;
+using NGB.Trade.Reporting;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Trade.Api.IntegrationTests.Pricing;
@@ -130,8 +132,64 @@ public sealed class TradePricing_EndToEnd_P0Tests(TradePostgresFixture fixture) 
         action!.DocumentType.Should().Be(TradeCodes.ItemPriceUpdate);
         action.DocumentId.Should().Be(posted.Id);
 
+        var wholesalePriceTypeId = await GetCatalogIdByDisplayAsync(catalogs, TradeCodes.PriceType, "Wholesale");
+        var secondDraft = await documents.CreateDraftAsync(
+            TradeCodes.ItemPriceUpdate,
+            TradePayloads.Payload(
+                new
+                {
+                    effective_date = "2026-04-16",
+                    notes = "Wholesale pricing"
+                },
+                TradePayloads.ItemPriceUpdateLines(
+                    new TradePayloads.ItemPriceUpdateLineRow(
+                        Ordinal: 1,
+                        ItemId: item.Id,
+                        PriceTypeId: wholesalePriceTypeId,
+                        Currency: "eur",
+                        UnitPrice: 15m))),
+            CancellationToken.None);
+        var secondPosted = await documents.PostAsync(TradeCodes.ItemPriceUpdate, secondDraft.Id, CancellationToken.None);
+
+        var priceReader = scope.ServiceProvider.GetRequiredService<ITradeCurrentItemPriceReader>();
+        var asOfUtc = new DateTime(2030, 4, 30, 0, 0, 0, DateTimeKind.Utc);
+        var firstPricePage = await priceReader.GetCursorPageAsync(
+            asOfUtc,
+            [Guid.Empty, item.Id, item.Id],
+            [Guid.Empty, retailPriceTypeId, wholesalePriceTypeId, retailPriceTypeId],
+            cursor: null,
+            limit: 1);
+        firstPricePage.Total.Should().Be(2);
+        firstPricePage.HasMore.Should().BeTrue();
+        firstPricePage.Rows.Should().ContainSingle();
+
+        var priceCursor = new TradeCurrentItemPricePageCursor(
+            Offset: firstPricePage.Rows.Count,
+            Total: firstPricePage.Total,
+            AsOfUtc: asOfUtc,
+            AfterItemDisplay: firstPricePage.NextAfterItemDisplay,
+            AfterPriceTypeDisplay: firstPricePage.NextAfterPriceTypeDisplay,
+            AfterCurrency: firstPricePage.NextAfterCurrency,
+            AfterItemId: firstPricePage.NextAfterItemId,
+            AfterPriceTypeId: firstPricePage.NextAfterPriceTypeId);
+        var finalPricePage = await priceReader.GetCursorPageAsync(
+            asOfUtc,
+            [item.Id],
+            [retailPriceTypeId, wholesalePriceTypeId],
+            priceCursor,
+            limit: 1);
+        finalPricePage.Total.Should().Be(2);
+        finalPricePage.HasMore.Should().BeFalse();
+        finalPricePage.Rows.Should().ContainSingle();
+
+        await ((Func<Task>)(() => priceReader.GetPageAsync(asOfUtc, null, null, -1, 1)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => priceReader.GetPageAsync(asOfUtc, null, null, 0, 0)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+
         var afterUnpost = await documents.UnpostAsync(TradeCodes.ItemPriceUpdate, posted.Id, CancellationToken.None);
         afterUnpost.Status.Should().Be(DocumentStatus.Draft);
+        await documents.UnpostAsync(TradeCodes.ItemPriceUpdate, secondPosted.Id, CancellationToken.None);
 
         var afterUnpostResponse = await reports.ExecuteAsync(
             TradeCodes.CurrentItemPricesReport,

@@ -103,6 +103,15 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
         var deletedCategoryId = Guid.CreateVersion7();
         var deletedPartyId = Guid.CreateVersion7();
 
+        await AssertInvalid(() => reader.GetPageAsync(
+            Query(buildingId: Guid.Empty), CancellationToken.None));
+        await AssertInvalid(() => reader.GetPageAsync(
+            Query(propertyId: Guid.Empty), CancellationToken.None));
+        await AssertInvalid(() => reader.GetPageAsync(
+            Query(categoryId: Guid.Empty), CancellationToken.None));
+        await AssertInvalid(() => reader.GetPageAsync(
+            Query(assignedPartyId: Guid.Empty), CancellationToken.None));
+
         await uow.ExecuteInUowTransactionAsync(async ct =>
         {
             await uow.Connection.ExecuteAsync(new CommandDefinition(
@@ -161,6 +170,11 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
         await AssertInvalid(() => reader.ValidateCategoryFilterAsync(deletedCategoryId, CancellationToken.None));
         await AssertInvalid(() => reader.ValidateAssignedPartyFilterAsync(Guid.CreateVersion7(), CancellationToken.None));
         await AssertInvalid(() => reader.ValidateAssignedPartyFilterAsync(deletedPartyId, CancellationToken.None));
+
+        await AssertInvalid(() => reader.GetPageAsync(
+            Query(categoryId: Guid.CreateVersion7()), CancellationToken.None));
+        await AssertInvalid(() => reader.GetPageAsync(
+            Query(assignedPartyId: Guid.CreateVersion7()), CancellationToken.None));
     }
 
     [Fact]
@@ -237,6 +251,22 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
                 cancellationToken: ct));
         }, CancellationToken.None);
     }
+
+    private static MaintenanceQueueQuery Query(
+        Guid? buildingId = null,
+        Guid? propertyId = null,
+        Guid? categoryId = null,
+        Guid? assignedPartyId = null)
+        => new(
+            AsOf,
+            buildingId,
+            propertyId,
+            categoryId,
+            assignedPartyId,
+            Priority: null,
+            QueueState: null,
+            Offset: 0,
+            Limit: 1);
 
     private static async Task AssertInvalid(Func<Task> action)
         => await action.Should().ThrowAsync<NgbArgumentInvalidException>();

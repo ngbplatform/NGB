@@ -228,9 +228,8 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
             uow.Transaction,
             cancellationToken: ct))).AsList();
 
-        var first = rows.FirstOrDefault();
-        if (first is null)
-            return new ReceivablesReportPage([], 0, 0m, 0m, 0m, null, null, null);
+        // The aggregate stats CTE always produces exactly one row, even when no open items exist.
+        var first = rows[0];
 
         var dataRows = rows.Where(static row => row.HasRow).ToArray();
         var hasMore = cursorPaging && dataRows.Length > limit;

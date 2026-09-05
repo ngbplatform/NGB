@@ -97,6 +97,30 @@ public sealed class RepositoriesFullCoverageTests
     }
 
     [Fact]
+    public async Task Document_batch_create_validates_empty_and_every_draft_invariant()
+    {
+        var connection = new RecordingDbConnection();
+        var sut = DocumentRepository(connection);
+
+        await sut.CreateDraftsAsync([]);
+        connection.Commands.Should().BeEmpty();
+
+        Func<Task> blankType = () => sut.CreateDraftsAsync([Document(" ")]);
+        Func<Task> posted = () => sut.CreateDraftsAsync([Document("invoice", status: DocumentStatus.Posted)]);
+        Func<Task> postedAt = () => sut.CreateDraftsAsync([Document("invoice", postedAtUtc: Now)]);
+        Func<Task> deletedAt = () => sut.CreateDraftsAsync([Document("invoice", markedForDeletionAtUtc: Now)]);
+
+        await blankType.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await posted.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await postedAt.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await deletedAt.Should().ThrowAsync<NgbArgumentInvalidException>();
+
+        await sut.CreateDraftsAsync([Document("invoice"), Document("credit_note")]);
+        connection.Commands.Should().ContainSingle();
+        connection.Commands[0].CommandText.Should().Contain("FROM UNNEST");
+    }
+
+    [Fact]
     public async Task Document_writes_reject_impossible_multi_row_results()
     {
         var connection = new RecordingDbConnection(nonQuery: _ => 2);
@@ -242,12 +266,19 @@ public sealed class RepositoriesFullCoverageTests
         UpdatedAtUtc = Now
     };
 
-    private static DocumentRecord Document(string typeCode) => new()
+    private static DocumentRecord Document(
+        string typeCode,
+        DocumentStatus status = DocumentStatus.Draft,
+        DateTime? postedAtUtc = null,
+        DateTime? markedForDeletionAtUtc = null) => new()
     {
         Id = Guid.NewGuid(),
         TypeCode = typeCode,
+        Number = "TEST-1",
         DateUtc = Now,
-        Status = DocumentStatus.Draft,
+        Status = status,
+        PostedAtUtc = postedAtUtc,
+        MarkedForDeletionAtUtc = markedForDeletionAtUtc,
         CreatedAtUtc = Now,
         UpdatedAtUtc = Now
     };

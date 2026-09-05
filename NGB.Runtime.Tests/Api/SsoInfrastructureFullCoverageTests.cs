@@ -35,6 +35,10 @@ public sealed class SsoInfrastructureFullCoverageTests
         (await sut.RetrieveAsync(key)).Should().BeNull();
         (await sut.RetrieveAsync("missing")).Should().BeNull();
 
+        var expiredKey = await sut.StoreAsync(Ticket("expired", DateTimeOffset.UtcNow.AddMinutes(-1)));
+        (await sut.RetrieveAsync(expiredKey)).Should().BeNull();
+        sut.TrackedSessionCount.Should().Be(0);
+
         Action invalidCapacity = () => new MemoryCacheTicketStore(0);
         invalidCapacity.Should().Throw<ArgumentOutOfRangeException>();
 
