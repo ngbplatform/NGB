@@ -36,6 +36,68 @@ public sealed class TradeReportingHelperEdgeCoverageTests
         TradeReportingHelpers.GetDisplay(DimensionBag.Empty, new Dictionary<Guid, string>(), TradeCodes.Item)
             .Should().BeEmpty();
         TradeReportingHelpers.TryGetValueId(DimensionBag.Empty, TradeCodes.Item).Should().BeNull();
+
+        var itemId = Guid.CreateVersion7();
+        var bag = new DimensionBag([new DimensionValue(ItemDimensionId, itemId)]);
+        TradeReportingHelpers.GetDisplay(
+                bag,
+                new Dictionary<Guid, string> { [ItemDimensionId] = "Inventory item" },
+                TradeCodes.Item)
+            .Should().Be("Inventory item");
+        TradeReportingHelpers.GetDisplay(bag, new Dictionary<Guid, string>(), TradeCodes.Item)
+            .Should().Be(itemId.ToString("D"));
+        TradeReportingHelpers.TryGetValueId(bag, TradeCodes.Item).Should().Be(itemId);
+    }
+
+    [Fact]
+    public async Task ReadInventoryBalances_WithoutProjections_scans_history_and_reverses_storno()
+    {
+        var registerId = Guid.CreateVersion7();
+        var dimensionSetId = Guid.CreateVersion7();
+        var item = Guid.CreateVersion7();
+        var warehouse = Guid.CreateVersion7();
+        var read = new Mock<IOperationalRegisterReadService>(MockBehavior.Strict);
+        read.Setup(x => x.GetBalancesPageAsync(
+                It.IsAny<OperationalRegisterMonthlyProjectionPageRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OperationalRegisterMonthlyProjectionPageRequest request, CancellationToken _) =>
+                new OperationalRegisterMonthlyProjectionPage(
+                    request.RegisterId, request.FromInclusive, request.ToInclusive, [], false, null));
+        var movements = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
+        movements.Setup(x => x.GetByMonthsAsync(
+                registerId,
+                new DateOnly(2000, 1, 1),
+                new DateOnly(2026, 4, 1),
+                null, null, null, null, null, 1000,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new OperationalRegisterMovementQueryReadRow
+                {
+                    MovementId = 1,
+                    DocumentId = Guid.CreateVersion7(),
+                    OccurredAtUtc = new DateTime(2026, 4, 10, 0, 0, 0, DateTimeKind.Utc),
+                    PeriodMonth = new DateOnly(2026, 4, 1),
+                    DimensionSetId = dimensionSetId,
+                    IsStorno = true,
+                    Dimensions = Bag(item, warehouse),
+                    Values = new Dictionary<string, decimal> { ["qty_delta"] = 3m }
+                },
+                new OperationalRegisterMovementQueryReadRow
+                {
+                    MovementId = 2,
+                    DocumentId = Guid.CreateVersion7(),
+                    OccurredAtUtc = new DateTime(2026, 4, 20, 0, 0, 0, DateTimeKind.Utc),
+                    PeriodMonth = new DateOnly(2026, 4, 1),
+                    DimensionSetId = dimensionSetId,
+                    Dimensions = Bag(item, warehouse),
+                    Values = new Dictionary<string, decimal> { ["qty_delta"] = 100m }
+                }
+            ]);
+
+        var result = await TradeReportingHelpers.ReadInventoryBalancesAsync(
+            read.Object, movements.Object, registerId, new DateOnly(2026, 4, 18), null, default);
+
+        result.Should().ContainSingle().Which.Quantity.Should().Be(-3m);
     }
 
     [Fact]

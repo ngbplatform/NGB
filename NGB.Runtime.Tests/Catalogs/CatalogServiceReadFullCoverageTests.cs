@@ -203,6 +203,69 @@ public sealed class CatalogServiceReadFullCoverageTests
     }
 
     [Fact]
+    public async Task Page_UsesSeekCapability_NormalizesBounds_AndHandlesEveryContinuationShape()
+    {
+        var fixture = new CatalogServiceTestFixture();
+        var seek = fixture.Reader.As<ICatalogSeekPageReader>();
+        var firstId = Guid.NewGuid();
+        var calls = new List<(string? AfterDisplay, Guid? AfterId, int Limit, bool IncludeTotal)>();
+        var responses = new Queue<CatalogHeadSeekPage>(
+        [
+            new CatalogHeadSeekPage(
+                [CatalogServiceTestFixture.Row(firstId)],
+                Total: 1,
+                HasMore: true,
+                NextAfterDisplay: "Zulu",
+                NextAfterId: firstId),
+            new CatalogHeadSeekPage([], null, HasMore: false, null, null),
+            new CatalogHeadSeekPage([], null, HasMore: true, null, null),
+            new CatalogHeadSeekPage([], null, HasMore: false, null, null)
+        ]);
+        seek.Setup(x => x.GetSeekPageAsync(
+                It.IsAny<CatalogHeadDescriptor>(),
+                It.IsAny<CatalogQuery>(),
+                It.IsAny<string?>(),
+                It.IsAny<Guid?>(),
+                It.IsAny<int>(),
+                It.IsAny<bool>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<CatalogHeadDescriptor, CatalogQuery, string?, Guid?, int, bool, CancellationToken>(
+                (_, _, afterDisplay, afterId, limit, includeTotal, _) =>
+                    calls.Add((afterDisplay, afterId, limit, includeTotal)))
+            .ReturnsAsync(() => responses.Dequeue());
+        var sut = fixture.CreateService();
+
+        var first = await sut.GetPageAsync(
+            "rich",
+            new PageRequestDto(Limit: PagingLimits.MaxPageSize + 1, Search: "   "),
+            default);
+        var second = await sut.GetPageAsync(
+            "rich",
+            new PageRequestDto(Limit: 2, Cursor: $"  {first.NextCursor}  "),
+            default);
+        var missingContinuationKey = await sut.GetPageAsync(
+            "rich",
+            new PageRequestDto(Limit: 2, Cursor: first.NextCursor),
+            default);
+        var withoutTotal = await sut.GetPageAsync(
+            "rich",
+            new PageRequestDto(Limit: 2, IncludeTotal: false),
+            default);
+
+        first.Limit.Should().Be(PagingLimits.MaxPageSize);
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
+        second.NextCursor.Should().BeNull();
+        missingContinuationKey.HasMore.Should().BeTrue();
+        missingContinuationKey.NextCursor.Should().BeNull();
+        withoutTotal.Total.Should().BeNull();
+        calls.Should().Equal(
+            (null, null, PagingLimits.MaxPageSize, true),
+            ("Zulu", firstId, 2, false),
+            ("Zulu", firstId, 2, false),
+            (null, null, 2, false));
+    }
+
+    [Fact]
     public async Task Page_RejectsUnknownScalarAndInvalidSoftDeleteFilters()
     {
         var sut = new CatalogServiceTestFixture().CreateService();

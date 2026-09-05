@@ -13,7 +13,7 @@ internal sealed class RecordingUnitOfWork(
     : IUnitOfWork
 {
     public DbConnection Connection => connection;
-    public DbTransaction? Transaction => transaction;
+    public DbTransaction? Transaction { get; set; } = transaction;
     public bool HasActiveTransaction { get; set; } = hasActiveTransaction;
 
     public Task EnsureConnectionOpenAsync(CancellationToken ct = default)

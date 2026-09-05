@@ -209,6 +209,11 @@ public sealed class GeneralJournalEntryDocumentServiceFullCoverageTests
         await f.Sut.ApproveAsync(f.DocumentId, "approver", Ct);
         f.Header.ApprovalState.Should().Be(GeneralJournalEntryModels.ApprovalState.Approved);
 
+        f.ResetDocument(number: null);
+        f.Header = f.Header with { ApprovalState = GeneralJournalEntryModels.ApprovalState.Submitted };
+        await f.Sut.ApproveAsync(f.DocumentId, "approver", Ct);
+        f.Header.ApprovalState.Should().Be(GeneralJournalEntryModels.ApprovalState.Approved);
+
         f.Header = f.Header with { Source = GeneralJournalEntryModels.Source.System, ApprovalState = GeneralJournalEntryModels.ApprovalState.Submitted };
         await ((Func<Task>)(() => f.Sut.RejectAsync(f.DocumentId, "rejector", "reason", Ct)))
             .Should().ThrowAsync<GeneralJournalEntrySystemDocumentOperationForbiddenException>();

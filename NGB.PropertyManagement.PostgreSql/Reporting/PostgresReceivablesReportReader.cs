@@ -255,10 +255,16 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
             first.PropertyDisplay,
             first.LeaseDisplay,
             hasMore,
-            last is null ? null : chargesOnly || last.NetAmount > 0m ? 0 : 1,
-            last is null ? null : last.DueOnUtc ?? last.ReceivedOnUtc ?? DateOnly.MaxValue,
+            last is null ? null : GetNextKindOrder(chargesOnly, last.NetAmount),
+            last is null ? null : GetNextSortDate(last.DueOnUtc, last.ReceivedOnUtc),
             last?.DocumentId);
     }
+
+    internal static int GetNextKindOrder(bool chargesOnly, decimal netAmount)
+        => chargesOnly || netAmount > 0m ? 0 : 1;
+
+    internal static DateOnly GetNextSortDate(DateOnly? dueOnUtc, DateOnly? receivedOnUtc)
+        => dueOnUtc ?? receivedOnUtc ?? DateOnly.MaxValue;
 
     private static string BuildMovementOnlyNetSourceSql(string movementsTable) => $"""
 WITH lease_dimension_sets AS (

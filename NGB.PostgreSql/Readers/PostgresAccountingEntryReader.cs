@@ -25,8 +25,14 @@ public sealed class PostgresAccountingEntryReader(IUnitOfWork uow, IDimensionSet
     public async Task<IReadOnlyList<AccountingEntry>> GetByDocumentAsync(Guid documentId, CancellationToken ct = default)
     {
         var rows = await GetByDocumentAsync(documentId, PagingLimits.MaxMaterializedRows + 1, ct);
-        if (rows.Count <= PagingLimits.MaxMaterializedRows)
-            return rows;
+        EnsureMaterializationBound(documentId, rows.Count);
+        return rows;
+    }
+
+    internal static void EnsureMaterializationBound(Guid documentId, int rowCount)
+    {
+        if (rowCount <= PagingLimits.MaxMaterializedRows)
+            return;
 
         throw new NgbInvariantViolationException($"Document '{documentId}' has more than {PagingLimits.MaxMaterializedRows:N0} accounting entries and cannot be materialized safely.");
     }

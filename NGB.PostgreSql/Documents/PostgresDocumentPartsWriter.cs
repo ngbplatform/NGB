@@ -104,9 +104,6 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
 
         async Task FlushAsync()
         {
-            if (pendingSql.Count == 0)
-                return;
-
             await uow.Connection.ExecuteAsync(new CommandDefinition(
                 string.Join(Environment.NewLine, pendingSql),
                 pendingParameters,

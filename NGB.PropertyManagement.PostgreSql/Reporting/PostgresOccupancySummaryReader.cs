@@ -62,7 +62,7 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
         if (buildingId == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(buildingId), "Select a building.");
 
-        var offset = cursor?.Offset ?? 0;
+        var offset = ResolveCursorOffset(cursor);
         if (offset < 0)
             throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be zero or positive.");
 
@@ -87,6 +87,8 @@ public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancy
 
         return result;
     }
+
+    internal static int ResolveCursorOffset(OccupancySummaryPageCursor? cursor) => cursor?.Offset ?? 0;
 
     private async Task<PageAndTotals> ReadPageAndTotalsAsync(
         Guid? buildingId,

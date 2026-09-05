@@ -80,6 +80,14 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         sut.ReportCode.Should().Be(TradeCodes.SalesByCustomerReport);
 
         var first = await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(Limit: 0), default);
+        var cursorFirst = await sut.ExecuteAsync(
+            Definition(sut.ReportCode),
+            new ReportExecutionRequestDto(Limit: 1),
+            default);
+        var cursorSecond = await sut.ExecuteAsync(
+            Definition(sut.ReportCode),
+            new ReportExecutionRequestDto(Cursor: cursorFirst.NextCursor, Limit: 1),
+            default);
         var second = await sut.ExecuteAsync(
             Definition(sut.ReportCode),
             new ReportExecutionRequestDto(Layout: new ReportLayoutDto(ShowGrandTotals: false), DisablePaging: true),
@@ -94,6 +102,8 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
             .ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(), default);
 
         first.PrebuiltSheet!.Rows.Should().HaveCount(3);
+        cursorFirst.NextCursor.Should().NotBeNullOrWhiteSpace();
+        cursorSecond.Offset.Should().Be(1);
         second.PrebuiltSheet!.Rows.Should().HaveCount(2);
     }
 
@@ -113,6 +123,14 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         sut.ReportCode.Should().Be(TradeCodes.PurchasesByVendorReport);
 
         var first = await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(Limit: 0), default);
+        var cursorFirst = await sut.ExecuteAsync(
+            Definition(sut.ReportCode),
+            new ReportExecutionRequestDto(Limit: 1),
+            default);
+        var cursorSecond = await sut.ExecuteAsync(
+            Definition(sut.ReportCode),
+            new ReportExecutionRequestDto(Cursor: cursorFirst.NextCursor, Limit: 1),
+            default);
         var second = await sut.ExecuteAsync(
             Definition(sut.ReportCode),
             new ReportExecutionRequestDto(Layout: new ReportLayoutDto(ShowGrandTotals: false), DisablePaging: true),
@@ -120,6 +138,8 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         await sut.ExecuteAsync(Definition(sut.ReportCode), new ReportExecutionRequestDto(Limit: 1), default);
 
         first.PrebuiltSheet!.Rows.Should().HaveCount(3);
+        cursorFirst.NextCursor.Should().NotBeNullOrWhiteSpace();
+        cursorSecond.Offset.Should().Be(1);
         second.PrebuiltSheet!.Rows.Should().HaveCount(2);
     }
 
@@ -135,6 +155,8 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
             [
                 new(item, "Top", 2m, 20m, 0m, 0m, 20m, 8m),
                 new(Guid.CreateVersion7(), "Return only", 0m, 0m, 1m, 2m, -2m, -1m),
+                new(Guid.CreateVersion7(), "Sold quantity only", 1m, 0m, 0m, 0m, 0m, 0m),
+                new(Guid.CreateVersion7(), "Returned quantity only", 0m, 0m, 1m, 0m, 0m, 0m),
                 new(Guid.CreateVersion7(), "Empty", 0m, 0m, 0m, 0m, 0m, 0m)
             ],
             SalesByCustomer =
@@ -170,6 +192,27 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
             new ReportExecutionRequestDto(Parameters: new Dictionary<string, string> { ["as_of_utc"] = "2026-04-18" }),
             default);
         emptyPage.PrebuiltSheet!.Rows.Count(row => row.SemanticRole == "section_header").Should().Be(6);
+
+        var analyticsWithoutBreakdowns = new Mock<ITradeAnalyticsReader>(MockBehavior.Strict);
+        analyticsWithoutBreakdowns.Setup(x => x.GetDashboardOverviewAsync(
+                It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), 5, 8, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TradeDashboardAnalyticsSnapshot(
+                new TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>(
+                    [], 0, new SalesByItemTotals(0m, 0m, 0m, 0m, 0m, 0m)),
+                0m,
+                [],
+                SalesByCustomer: null,
+                PurchasesByVendor: null));
+        var withoutBreakdowns = new TradeDashboardOverviewCanonicalReportExecutor(
+            analyticsWithoutBreakdowns.Object, PolicyReader(policy), new InventoryBalanceStub([]), Clock);
+
+        var withoutBreakdownsPage = await withoutBreakdowns.ExecuteAsync(
+            Definition(withoutBreakdowns.ReportCode),
+            new ReportExecutionRequestDto(),
+            default);
+
+        withoutBreakdownsPage.Diagnostics!["active_customer_count"].Should().Be("0");
+        withoutBreakdownsPage.Diagnostics["active_vendor_count"].Should().Be("0");
     }
 
     [Fact]
@@ -263,6 +306,15 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
             Parameters: new Dictionary<string, string> { ["from_utc"] = "2026-04-01", ["to_utc"] = "2026-04-30" },
             Offset: 1,
             Limit: 1), default);
+        var legacyUnboundedWithDimensions = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(
+            Parameters: new Dictionary<string, string> { ["from_utc"] = "2026-04-01", ["to_utc"] = "2026-04-30" },
+            Filters: new Dictionary<string, ReportFilterValueDto>
+            {
+                ["item_id"] = new(System.Text.Json.JsonSerializer.SerializeToElement(Guid.CreateVersion7()))
+            },
+            Offset: 1,
+            Limit: 1,
+            DisablePaging: true), default);
         await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(Limit: 0), default);
         await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(
             Filters: new Dictionary<string, ReportFilterValueDto>
@@ -275,7 +327,33 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         page.NextCursor.Should().NotBeNullOrWhiteSpace();
         next.HasMore.Should().BeFalse();
         legacy.Total.Should().Be(2);
+        legacyUnboundedWithDimensions.Limit.Should().Be(1);
         all.PrebuiltSheet!.Rows.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task InventoryMovements_Rejects_legacy_total_outside_supported_integer_range()
+    {
+        var policy = Policy();
+        var movements = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
+        movements.Setup(x => x.GetByOccurredAtPageAsync(
+                policy.InventoryMovementsRegisterId,
+                It.IsAny<DateOnly>(), It.IsAny<DateOnly>(),
+                It.IsAny<IReadOnlyList<DimensionValue>?>(),
+                1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OperationalRegisterMovementQueryPage([], (long)int.MaxValue + 1));
+        var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
+        var sut = new InventoryMovementsCanonicalReportExecutor(
+            PolicyReader(policy), movements.Object, documents.Object, Clock);
+
+        var action = () => sut.ExecuteAsync(
+            Definition(sut.ReportCode),
+            new ReportExecutionRequestDto(Offset: 1, Limit: 1),
+            default);
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*supported row-count range*");
+        documents.VerifyNoOtherCalls();
     }
 
     private static ReportDefinitionDto Definition(string code) =>

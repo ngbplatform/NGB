@@ -203,6 +203,37 @@ public sealed class ChartOfAccountsAdminService_EndToEnd_P1Tests(PostgresTestFix
             secondSeekPage.Total.Should().Be(2);
             secondSeekPage.HasMore.Should().BeFalse();
             secondSeekPage.Items.Should().ContainSingle().Which.Account.Code.Should().Be("P2-002");
+
+            var emptyUnboundedPage = await admin.GetPageAsync(new ChartOfAccountsAdminPageQuery(
+                IncludeDeleted: false,
+                OnlyDeleted: false,
+                OnlyActive: null,
+                AccountTypes: [],
+                Search: $"missing-{Guid.NewGuid():N}",
+                SearchAccountTypes: [],
+                Offset: 0,
+                Limit: int.MaxValue,
+                KnownTotal: 0), default);
+
+            emptyUnboundedPage.Items.Should().BeEmpty();
+            emptyUnboundedPage.Total.Should().Be(0);
+            emptyUnboundedPage.HasMore.Should().BeFalse();
+            emptyUnboundedPage.NextAfterCode.Should().BeNull();
+            emptyUnboundedPage.NextAfterAccountId.Should().BeNull();
+
+            var unfilteredKnownTotalPage = await admin.GetPageAsync(new ChartOfAccountsAdminPageQuery(
+                IncludeDeleted: false,
+                OnlyDeleted: false,
+                OnlyActive: null,
+                AccountTypes: [],
+                Search: null,
+                SearchAccountTypes: [],
+                Offset: 0,
+                Limit: 1,
+                KnownTotal: 3), default);
+
+            unfilteredKnownTotalPage.Total.Should().Be(3);
+            unfilteredKnownTotalPage.Items.Should().ContainSingle();
         }
     }
 }

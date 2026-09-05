@@ -400,6 +400,28 @@ public sealed class GeneralJournalEntryUiServiceFullCoverageTests
         await changedFilter.Should().ThrowAsync<NgbArgumentInvalidException>();
     }
 
+    [Fact]
+    public async Task Page_UsesRepositoryHasMore_WhenKnownTotalEqualsReturnedCount()
+    {
+        var fixture = new Fixture();
+        var id = Guid.CreateVersion7();
+        fixture.PageQuery.Setup(x => x.GetPageAsync(
+                0, 1, null, null, null, null, fixture.Token))
+            .ReturnsAsync(new GeneralJournalEntryPageRecord(
+                [ListItem(id)],
+                Offset: 0,
+                Limit: 1,
+                Total: 1,
+                HasMore: true,
+                NextAfterDateUtc: DateUtc,
+                NextAfterCreatedAtUtc: DateUtc,
+                NextAfterId: id));
+
+        var result = await fixture.Sut.GetPageAsync(0, 1, null, null, null, null, fixture.Token);
+
+        result.NextCursor.Should().NotBeNullOrWhiteSpace();
+    }
+
     private static ActorIdentity Actor() => new("subject", null, " Actor ");
 
     private static GeneralJournalEntryListItemRecord ListItem(Guid id) => new(

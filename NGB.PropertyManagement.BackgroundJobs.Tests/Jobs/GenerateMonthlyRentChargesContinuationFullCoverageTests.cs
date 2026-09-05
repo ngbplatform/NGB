@@ -148,6 +148,55 @@ public sealed class GenerateMonthlyRentChargesContinuationFullCoverageTests
 
         results.Should().HaveCount(2).And.OnlyContain(result => result.Created && result.Error == null);
         results.Select(result => result.Candidate).Should().Equal(candidates);
+
+        var failingDocuments = new Mock<IDocumentService>(MockBehavior.Strict);
+        using var failingCancellation = new CancellationTokenSource();
+        failingDocuments.Setup(x => x.CreateDraftAsync(
+                PropertyManagementCodes.RentCharge, It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
+            .Returns((string _, RecordPayload _, CancellationToken token) =>
+            {
+                failingCancellation.Cancel();
+                return Task.FromException<DocumentDto>(new OperationCanceledException(token));
+            });
+        var failingServices = new ServiceCollection();
+        failingServices.AddTransient(_ => new RentChargeCandidateWorker(
+            failingDocuments.Object, lifecycle.Object, drafts.Object, NullLogger<RentChargeCandidateWorker>.Instance));
+        await using var failingProvider = failingServices.BuildServiceProvider();
+        var failingExecutor = new ScopedRentChargeCandidateBatchExecutor(
+            failingProvider.GetRequiredService<IServiceScopeFactory>());
+
+        var failingAction = () => failingExecutor.ExecuteAsync([candidates[0]], failingCancellation.Token);
+
+        await failingAction.Should().ThrowAsync<OperationCanceledException>();
+
+        var asyncScopeProvider = new Mock<IServiceProvider>(MockBehavior.Strict);
+        asyncScopeProvider.Setup(x => x.GetService(typeof(RentChargeCandidateWorker)))
+            .Returns(new RentChargeCandidateWorker(
+                documents.Object, lifecycle.Object, drafts.Object, NullLogger<RentChargeCandidateWorker>.Instance));
+        var asyncScope = new DelayedAsyncScope(asyncScopeProvider.Object);
+        var asyncScopeFactory = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
+        asyncScopeFactory.Setup(x => x.CreateScope()).Returns(asyncScope);
+        var asyncDisposalExecutor = new ScopedRentChargeCandidateBatchExecutor(asyncScopeFactory.Object);
+
+        var asyncDisposalResult = await asyncDisposalExecutor.ExecuteAsync(
+            [Candidate(Guid.NewGuid(), new DateOnly(2026, 9, 1))],
+            CancellationToken.None);
+
+        asyncDisposalResult.Should().ContainSingle(result => result.Created);
+        asyncScope.Disposed.Should().BeTrue();
+
+        var failingDisposalScope = new DelayedAsyncScope(asyncScopeProvider.Object, failOnDispose: true);
+        var failingDisposalFactory = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
+        failingDisposalFactory.Setup(x => x.CreateScope()).Returns(failingDisposalScope);
+        var failingDisposalExecutor = new ScopedRentChargeCandidateBatchExecutor(failingDisposalFactory.Object);
+
+        var failingDisposalAction = () => failingDisposalExecutor.ExecuteAsync(
+            [Candidate(Guid.NewGuid(), new DateOnly(2026, 10, 1))],
+            CancellationToken.None);
+
+        await failingDisposalAction.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("scope disposal failed");
+        failingDisposalScope.Disposed.Should().BeTrue();
     }
 
     [Fact]
@@ -232,6 +281,32 @@ public sealed class GenerateMonthlyRentChargesContinuationFullCoverageTests
         result.Continuation.Should().Be(new RentChargeGenerationCursor(asOf, leases[^1].LeaseId));
         reader.Verify(x => x.ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
             asOf, It.IsAny<DateOnly?>(), It.IsAny<Guid?>(), 256, It.IsAny<CancellationToken>()), Times.Exactly(4));
+    }
+
+    [Fact]
+    public async Task Service_StopsAtCandidateBudgetReachedExactlyAtEndOfFullLeasePage()
+    {
+        var asOf = new DateOnly(2026, 1, 31);
+        var billableLeases = Enumerable.Range(0, 250)
+            .Select(_ => new PmRentChargeGenerationLease(
+                Guid.NewGuid(), new DateOnly(2026, 1, 1), null, 1m, 1));
+        var nonBillableLeases = Enumerable.Range(0, 6)
+            .Select(_ => new PmRentChargeGenerationLease(
+                Guid.NewGuid(), asOf, null, 0m, 1));
+        var leases = billableLeases.Concat(nonBillableLeases).ToArray();
+        var reader = Reader(asOf, leases, []);
+        var executor = new ResultExecutor(static candidate =>
+            new RentChargeCandidateExecutionResult(candidate, true, false, null));
+        var service = Service(reader, executor);
+
+        var result = await service.ExecuteChunkAsync(asOf, null, CancellationToken.None);
+
+        result.LeaseCount.Should().Be(256);
+        result.CandidateCount.Should().Be(250);
+        result.CreatedCount.Should().Be(250);
+        result.Continuation.Should().Be(new RentChargeGenerationCursor(
+            leases[^1].StartOnUtc,
+            leases[^1].LeaseId));
     }
 
     [Fact]
@@ -338,6 +413,24 @@ public sealed class GenerateMonthlyRentChargesContinuationFullCoverageTests
             LastCandidates = candidates.ToArray();
             return Task.FromResult<IReadOnlyList<RentChargeCandidateExecutionResult>>(
                 candidates.Select(resultFactory).ToArray());
+        }
+    }
+
+    private sealed class DelayedAsyncScope(IServiceProvider serviceProvider, bool failOnDispose = false)
+        : IServiceScope, IAsyncDisposable
+    {
+        public IServiceProvider ServiceProvider { get; } = serviceProvider;
+
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+
+        public async ValueTask DisposeAsync()
+        {
+            await Task.Yield();
+            Disposed = true;
+            if (failOnDispose)
+                throw new InvalidOperationException("scope disposal failed");
         }
     }
 

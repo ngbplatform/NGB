@@ -893,10 +893,8 @@ internal sealed class AgencyBillingDemoSeeder(
 
     private void IndexCatalogItem(string catalogType, string display, CatalogItemDto item)
     {
-        if (!_catalogsByDisplay.TryGetValue(catalogType, out var byDisplay))
-            return;
-
-        byDisplay[display] = [item];
+        // UpsertCatalogByDisplayAsync always loads this index before creating or updating.
+        _catalogsByDisplay[catalogType][display] = [item];
     }
 
     internal bool CanPostAgencyDocuments()
@@ -929,9 +927,6 @@ internal sealed class AgencyBillingDemoSeeder(
         IReadOnlyList<SeedDocumentRequest> requests,
         CancellationToken ct)
     {
-        if (requests.Count == 0)
-            return [];
-
         if (scopeFactory is null || requests.Count == 1)
         {
             var sequential = new DocumentDto[requests.Count];
@@ -958,13 +953,21 @@ internal sealed class AgencyBillingDemoSeeder(
             },
             async (index, token) =>
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                results[index] = await CreateSeededDocumentAsync(
-                    scope.ServiceProvider.GetRequiredService<IDocumentService>(),
-                    scope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>(),
-                    scope.ServiceProvider.GetRequiredService<IDocumentDraftService>(),
-                    requests[index],
-                    token);
+                var scope = scopeFactory.CreateAsyncScope();
+                try
+                {
+                    var created = await CreateSeededDocumentAsync(
+                        scope.ServiceProvider.GetRequiredService<IDocumentService>(),
+                        scope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>(),
+                        scope.ServiceProvider.GetRequiredService<IDocumentDraftService>(),
+                        requests[index],
+                        token);
+                    results[index] = created;
+                }
+                finally
+                {
+                    await scope.DisposeAsync();
+                }
             });
 
         return results;

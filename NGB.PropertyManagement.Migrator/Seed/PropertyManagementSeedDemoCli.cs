@@ -645,11 +645,13 @@ internal sealed class PropertyManagementDemoSeeder(
             },
             async (index, token) =>
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                results[index] = await CreateBuildingAsync(
-                    scope.ServiceProvider.GetRequiredService<ICatalogService>(),
-                    scope.ServiceProvider.GetRequiredService<IPropertyBulkCreateUnitsService>(),
-                    plans[index],
+                results[index] = await ExecuteInNewScopeAsync(
+                    scopeFactory,
+                    (services, innerToken) => CreateBuildingAsync(
+                        services.GetRequiredService<ICatalogService>(),
+                        services.GetRequiredService<IPropertyBulkCreateUnitsService>(),
+                        plans[index],
+                        innerToken),
                     token);
             });
 
@@ -702,13 +704,33 @@ internal sealed class PropertyManagementDemoSeeder(
             },
             async (index, token) =>
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var catalogService = scope.ServiceProvider.GetRequiredService<ICatalogService>();
-                results[index] = await catalogService.CreateAsync(catalogType, payloads[index], token);
+                results[index] = await ExecuteInNewScopeAsync(
+                    scopeFactory,
+                    (services, innerToken) => services.GetRequiredService<ICatalogService>()
+                        .CreateAsync(catalogType, payloads[index], innerToken),
+                    token);
             });
 
         return results;
     }
+
+    internal static async Task<T> ExecuteInNewScopeAsync<T>(
+        IServiceScopeFactory scopeFactory,
+        Func<IServiceProvider, CancellationToken, Task<T>> action,
+        CancellationToken ct)
+    {
+        var scope = scopeFactory.CreateAsyncScope();
+        try
+        {
+            return await action(scope.ServiceProvider, ct);
+        }
+        finally
+        {
+            await DisposeScopeAsync(scope);
+        }
+    }
+
+    private static Task DisposeScopeAsync(AsyncServiceScope scope) => scope.DisposeAsync().AsTask();
 
     internal List<LeasePlan> BuildLeasePlans(IReadOnlyList<Guid> unitIds, IReadOnlyList<Guid> tenantIds)
     {

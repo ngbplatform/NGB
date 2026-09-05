@@ -48,7 +48,7 @@ public sealed class PostgresReportCursorPagingFullCoverageTests
         {
             Column("null"), Column("string"), Column("guid"), Column("datetime"),
             Column("datetimeoffset"), Column("date"), Column("bool"), Column("byte"),
-            Column("int"), Column("uint"), Column("long"), Column("decimal"),
+            Column("bool_true"), Column("int"), Column("uint"), Column("long"), Column("decimal"),
             Column("float"), Column("double")
         };
         var guid = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
@@ -62,8 +62,9 @@ public sealed class PostgresReportCursorPagingFullCoverageTests
             ["datetime"] = utc,
             ["datetimeoffset"] = dto,
             ["date"] = new DateOnly(2026, 8, 30),
-            ["bool"] = true,
+            ["bool"] = false,
             ["byte"] = (byte)7,
+            ["bool_true"] = true,
             ["int"] = 8,
             ["uint"] = (uint)9,
             ["long"] = 10L,
@@ -77,8 +78,8 @@ public sealed class PostgresReportCursorPagingFullCoverageTests
 
         values.Should().Equal(new object?[]
         {
-            null, "text", guid, utc, dto, new DateOnly(2026, 8, 30), true,
-            7L, 8L, 9L, 10L, 11.25m, 12.5d, 13.75d
+            null, "text", guid, utc, dto, new DateOnly(2026, 8, 30), false,
+            7L, true, 8L, 9L, 10L, 11.25m, 12.5d, 13.75d
         });
 
         Action blank = () => PostgresReportCursorCodec.Decode(" ", "dataset", columns);

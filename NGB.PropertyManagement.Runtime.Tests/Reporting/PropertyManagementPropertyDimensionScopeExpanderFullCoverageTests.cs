@@ -158,6 +158,14 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, CatalogRecord> { [deletedId] = Catalog(deletedId, isDeleted: true) });
         await AssertInvalidAsync(deleted.Sut, deletedId);
+
+        var deletedHead = new Fixture();
+        var deletedHeadId = Guid.CreateVersion7();
+        deletedHead.Reader.Setup(x => x.GetByIdsWithFieldsAsync(
+                It.IsAny<CatalogHeadDescriptor>(), It.IsAny<IReadOnlyList<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Row(deletedHeadId, new Dictionary<string, object?>(), isMarkedForDeletion: true)]);
+        await AssertInvalidAsync(deletedHead.Sut, deletedHeadId);
     }
 
     [Fact]
@@ -226,8 +234,11 @@ public sealed class PropertyManagementPropertyDimensionScopeExpanderFullCoverage
     private static DimensionScopeBag Bag(Guid propertyId)
         => new([new DimensionScope(PropertyDimensionId, [propertyId], includeDescendants: true)]);
 
-    private static CatalogHeadRow Row(Guid id, IReadOnlyDictionary<string, object?> fields)
-        => new(id, IsMarkedForDeletion: false, Display: id.ToString(), fields);
+    private static CatalogHeadRow Row(
+        Guid id,
+        IReadOnlyDictionary<string, object?> fields,
+        bool isMarkedForDeletion = false)
+        => new(id, isMarkedForDeletion, Display: id.ToString(), fields);
 
     private static CatalogRecord Catalog(Guid id, string code = PropertyManagementCodes.Property, bool isDeleted = false)
         => new()

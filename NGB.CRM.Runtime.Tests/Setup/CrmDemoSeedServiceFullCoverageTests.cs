@@ -4,6 +4,7 @@ using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Documents;
@@ -117,6 +118,196 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task EnsureDemoAsync_ScopedExecutionCreatesAndPostsMultipleMissingCyclesInParallel()
+    {
+        var state = new SeedState { GeneratedLeadCount = 518, OperationalTotal = 1 };
+
+        var result = await CreateService(state, useScopes: true).EnsureDemoAsync();
+
+        result.DocumentsCreated.Should().Be(12);
+        state.DocumentCreates.Should().HaveCount(12);
+        state.DocumentUpdates.Should().HaveCount(12);
+        state.Posts.Should().HaveCount(12);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task EnsureDemoAsync_ScopedExecutionPropagatesCreateAndPostFailures(bool failDuringCreate)
+    {
+        var state = new SeedState
+        {
+            GeneratedLeadCount = 518,
+            OperationalTotal = 1,
+            FailDocumentCreate = failDuringCreate,
+            FailDocumentPost = !failDuringCreate
+        };
+
+        var action = () => CreateService(state, useScopes: true).EnsureDemoAsync();
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage(failDuringCreate ? "document create failed" : "document post failed");
+    }
+
+    [Fact]
+    public async Task EnsureDemoAsync_ScopedExecutionPropagatesDelayedDraftUpdateFailure()
+    {
+        var state = new SeedState
+        {
+            GeneratedLeadCount = 518,
+            OperationalTotal = 1,
+            FailDocumentUpdate = true
+        };
+
+        var action = () => CreateService(state, useScopes: true).EnsureDemoAsync();
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("document update failed");
+    }
+
+    [Fact]
+    public async Task EnsureDemoAsync_ScopedExecutionDisposesScopeWhenDocumentResolutionFailsSynchronously()
+    {
+        var state = new SeedState
+        {
+            GeneratedLeadCount = 518,
+            OperationalTotal = 1,
+            FailScopeDocumentResolution = true
+        };
+
+        var action = () => CreateService(state, useScopes: true).EnsureDemoAsync();
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("scoped document resolution failed");
+    }
+
+    [Fact]
+    public async Task EnsureDemoAsync_ScopedExecutionPropagatesAsyncScopeDisposalFailure()
+    {
+        var state = new SeedState
+        {
+            GeneratedLeadCount = 518,
+            OperationalTotal = 1,
+            FailScopeDispose = true
+        };
+
+        var action = () => CreateService(state, useScopes: true).EnsureDemoAsync();
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("scope disposal failed");
+    }
+
+    [Fact]
+    public async Task EnsureDemoAsync_ScopedExecutionAwaitsSuccessfulAsyncScopeDisposal()
+    {
+        var state = new SeedState
+        {
+            GeneratedLeadCount = 518,
+            OperationalTotal = 1,
+            DelayScopeDispose = true
+        };
+
+        var operation = CreateService(state, useScopes: true).EnsureDemoAsync();
+        await state.ScopeDisposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        operation.IsCompleted.Should().BeFalse();
+        state.ReleaseScopeDispose.TrySetResult();
+        var result = await operation;
+
+        result.DocumentsCreated.Should().Be(12);
+        state.Posts.Should().HaveCount(12);
+    }
+
+    [Fact]
+    public async Task EnsureDemoAsync_ScopedExecutionPropagatesCancellationDuringDraftCreation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var state = new SeedState
+        {
+            GeneratedLeadCount = 518,
+            OperationalTotal = 1,
+            CancelDuringDocumentCreate = cancellation
+        };
+
+        var action = () => CreateService(state, useScopes: true).EnsureDemoAsync(cancellation.Token);
+
+        await action.Should().ThrowAsync<OperationCanceledException>();
+        cancellation.IsCancellationRequested.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task EnsureDemoAsync_UpdatesExistingGeneratedCatalogs_AndCompletesAFullScanPage()
+    {
+        var state = new SeedState { GeneratedLeadCount = 519, OperationalTotal = 1 };
+        EnqueueBaseCatalogMisses(state);
+        var account = Catalog("Existing generated account", Payload(("account_number", "CRM-D001")));
+        var accountScan = new List<CatalogItemDto> { account };
+        accountScan.AddRange(Enumerable.Range(1, 499)
+            .Select(index => Catalog($"Ignored {index}", new RecordPayload())));
+        state.CatalogEnsurePages.Enqueue(accountScan);
+        state.CatalogEnsurePages.Enqueue([]);
+        var contact = Catalog("Existing generated contact", Payload(("email", "contact001@demo-crm.example")));
+        state.CatalogEnsurePages.Enqueue([contact]);
+        foreach (var total in Enumerable.Repeat(0, 6))
+            state.CatalogEnsureTotals.Enqueue(total);
+        state.CatalogEnsureTotals.Enqueue(501);
+        state.CatalogEnsureTotals.Enqueue(501);
+        state.CatalogEnsureTotals.Enqueue(1);
+
+        var result = await CreateService(state).EnsureDemoAsync();
+
+        result.DocumentsCreated.Should().Be(6);
+        state.CatalogUpdates.Should().Contain(update => update.Id == account.Id);
+        state.CatalogUpdates.Should().Contain(update => update.Id == contact.Id);
+    }
+
+    [Fact]
+    public async Task EmptyGeneratedDraftAndPostingBatchesReturnWithoutResolvingScopedServices()
+    {
+        var sut = CreateService(new SeedState(), useScopes: true);
+        var createDraftGroup = typeof(CrmDemoSeedService)
+            .GetMethod("CreateDraftGroupAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var requestType = createDraftGroup.GetParameters()[0].ParameterType.GenericTypeArguments[0];
+        var emptyRequests = Array.CreateInstance(requestType, 0);
+
+        var createTask = (Task)createDraftGroup.Invoke(sut, [emptyRequests, CancellationToken.None])!;
+        await createTask;
+
+        var postBatch = typeof(CrmDemoSeedService)
+            .GetMethod("PostGeneratedBatchAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var emptyStages = Enumerable.Range(0, 6).Select(_ => new List<Guid>()).ToArray();
+        var postTask = (Task)postBatch.Invoke(sut,
+        [
+            emptyStages[0], emptyStages[1], emptyStages[2],
+            emptyStages[3], emptyStages[4], emptyStages[5],
+            CancellationToken.None
+        ])!;
+
+        await postTask;
+    }
+
+    [Fact]
+    public async Task EnsureDemoAsync_RejectsDuplicateGeneratedCatalogKeys()
+    {
+        var state = new SeedState { GeneratedLeadCount = 519, OperationalTotal = 1 };
+        EnqueueBaseCatalogMisses(state);
+        var first = Catalog("Generated duplicate one", Payload(("account_number", "CRM-D001")));
+        var second = Catalog("Generated duplicate two", Payload(("account_number", "CRM-D001")));
+        state.CatalogEnsurePages.Enqueue([first, second]);
+
+        var act = () => CreateService(state).EnsureDemoAsync();
+
+        await act.Should().ThrowAsync<NgbConfigurationViolationException>().WithMessage("*Multiple*CRM-D001*");
+    }
+
+    [Fact]
+    public void Backfill_register_resolution_rejects_unknown_document_types()
+    {
+        var act = () => CrmDemoSeedService.ResolveBackfillRegisters("crm.unknown");
+
+        act.Should().Throw<NgbConfigurationViolationException>().WithMessage("*crm.unknown*");
+    }
+
+    [Fact]
     public async Task EnsureDemoAsync_BackfillsPostedDocumentsAcrossFullAndPartialPages()
     {
         var state = new SeedState { GeneratedLeadCount = 520, OperationalTotal = 1 };
@@ -207,7 +398,7 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         state.CatalogCreates.Should().BeEmpty();
     }
 
-    private static CrmDemoSeedService CreateService(SeedState state)
+    private static CrmDemoSeedService CreateService(SeedState state, bool useScopes = false)
     {
         var setup = new Mock<ICrmSetupService>(MockBehavior.Strict);
         setup.Setup(x => x.EnsureDefaultsAsync(It.IsAny<CancellationToken>()))
@@ -231,7 +422,10 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
                     items = state.CatalogEnsurePages.TryDequeue(out var configured) ? configured : [];
                 }
 
-                return new PageResponseDto<CatalogItemDto>(items, request.Offset, request.Limit, items.Count);
+                var total = request.Search is null && state.CatalogEnsureTotals.TryDequeue(out var configuredTotal)
+                    ? configuredTotal
+                    : items.Count;
+                return new PageResponseDto<CatalogItemDto>(items, request.Offset, request.Limit, total);
             });
         catalogs.Setup(x => x.CreateAsync(It.IsAny<string>(), It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
             .Callback<string, RecordPayload, CancellationToken>((type, payload, _) => state.CatalogCreates.Add((type, payload)))
@@ -258,25 +452,54 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
             });
         documents.Setup(x => x.CreateDraftAsync(
                 It.IsAny<string>(), It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string type, RecordPayload payload, CancellationToken _) =>
+            .Returns((string type, RecordPayload payload, CancellationToken token) =>
             {
-                var id = Guid.CreateVersion7();
-                var number = state.DocumentCreates.Count % 2 == 0 ? $"CRM-{state.DocumentCreates.Count + 1:0000}" : null;
-                state.DocumentCreates.Add((type, id, payload));
-                return new DocumentDto(id, null, payload, ContractDocumentStatus.Draft, false, number);
+                if (state.CancelDuringDocumentCreate is { } cancellation)
+                    return CancelDocumentCreateAsync(cancellation, token);
+
+                if (state.FailDocumentCreate)
+                    return Task.FromException<DocumentDto>(
+                        new InvalidOperationException("document create failed"));
+
+                lock (state.DocumentCreates)
+                {
+                    var id = Guid.CreateVersion7();
+                    var number = state.DocumentCreates.Count % 2 == 0
+                        ? $"CRM-{state.DocumentCreates.Count + 1:0000}"
+                        : null;
+                    state.DocumentCreates.Add((type, id, payload));
+                    return Task.FromResult(new DocumentDto(
+                        id, null, payload, ContractDocumentStatus.Draft, false, number));
+                }
             });
         documents.Setup(x => x.UpdateDraftAsync(
                 It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
             .Callback<string, Guid, RecordPayload, CancellationToken>(
-                (type, id, payload, _) => state.DocumentUpdates.Add((type, id, payload)))
-            .ReturnsAsync((string _, Guid id, RecordPayload payload, CancellationToken _) =>
-                new DocumentDto(id, Display(payload), payload, ContractDocumentStatus.Draft, false));
+                (type, id, payload, _) =>
+                {
+                    lock (state.DocumentUpdates)
+                        state.DocumentUpdates.Add((type, id, payload));
+                })
+            .Returns((string _, Guid id, RecordPayload payload, CancellationToken _) =>
+                state.FailDocumentUpdate
+                    ? FailDocumentUpdateAsync()
+                    : Task.FromResult(new DocumentDto(
+                        id, Display(payload), payload, ContractDocumentStatus.Draft, false)));
 
         var lifecycle = new Mock<IDocumentSystemLifecycleService>(MockBehavior.Strict);
         lifecycle.Setup(x => x.PostAsync(It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .Callback<string, Guid, CancellationToken>((type, id, _) => state.Posts.Add((type, id)))
+            .Callback<string, Guid, CancellationToken>((type, id, _) =>
+            {
+                lock (state.Posts)
+                    state.Posts.Add((type, id));
+            })
             .ReturnsAsync((string _, Guid id, CancellationToken _) =>
-                new DocumentDto(id, null, new RecordPayload(), ContractDocumentStatus.Posted, false));
+            {
+                if (state.FailDocumentPost)
+                    throw new InvalidOperationException("document post failed");
+
+                return new DocumentDto(id, null, new RecordPayload(), ContractDocumentStatus.Posted, false);
+            });
 
         var resolver = new Mock<IDocumentReferenceRegisterPostingActionResolver>(MockBehavior.Strict);
         resolver.Setup(x => x.TryResolve(It.IsAny<DocumentRecord>()))
@@ -305,6 +528,26 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
                 It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(state.GeneratedLeadCount);
 
+        IServiceScopeFactory? scopeFactory = null;
+        if (useScopes)
+        {
+            var scopedServices = new Mock<IServiceProvider>(MockBehavior.Strict);
+            if (state.FailScopeDocumentResolution)
+            {
+                scopedServices.Setup(x => x.GetService(typeof(IDocumentService)))
+                    .Throws(new InvalidOperationException("scoped document resolution failed"));
+            }
+            else
+            {
+                scopedServices.Setup(x => x.GetService(typeof(IDocumentService))).Returns(documents.Object);
+            }
+            scopedServices.Setup(x => x.GetService(typeof(IDocumentSystemLifecycleService))).Returns(lifecycle.Object);
+            var factory = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
+            factory.Setup(x => x.CreateScope())
+                .Returns(() => new SeedScope(scopedServices.Object, state));
+            scopeFactory = factory.Object;
+        }
+
         return new CrmDemoSeedService(
             setup.Object,
             catalogs.Object,
@@ -316,7 +559,14 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
             postedDocumentReader.Object,
             seedStateReader.Object,
             state.UnitOfWork,
-            new CrmDemoSeedOptions());
+            new CrmDemoSeedOptions(),
+            scopeFactory);
+    }
+
+    private static void EnqueueBaseCatalogMisses(SeedState state)
+    {
+        for (var i = 0; i < 6; i++)
+            state.CatalogEnsurePages.Enqueue([]);
     }
 
     private static CrmDemoSeedService CreateServiceWithOptions(CrmDemoSeedOptions options) =>
@@ -342,6 +592,21 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
             ? value.GetString()
             : null;
 
+    private static async Task<DocumentDto> FailDocumentUpdateAsync()
+    {
+        await Task.Yield();
+        throw new InvalidOperationException("document update failed");
+    }
+
+    private static async Task<DocumentDto> CancelDocumentCreateAsync(
+        CancellationTokenSource cancellation,
+        CancellationToken operationToken)
+    {
+        await Task.Yield();
+        cancellation.Cancel();
+        throw new OperationCanceledException(operationToken);
+    }
+
     private sealed class SeedState
     {
         public SeedState()
@@ -360,9 +625,21 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
         public int OperationalTotal { get; init; }
         public int SetupCalls { get; set; }
         public int OperationalExistenceReads { get; set; }
+        public bool FailDocumentCreate { get; init; }
+        public CancellationTokenSource? CancelDuringDocumentCreate { get; init; }
+        public bool FailDocumentUpdate { get; init; }
+        public bool FailDocumentPost { get; init; }
+        public bool FailScopeDocumentResolution { get; init; }
+        public bool DelayScopeDispose { get; init; }
+        public bool FailScopeDispose { get; init; }
+        public TaskCompletionSource ScopeDisposeStarted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseScopeDispose { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Dictionary<string, CatalogItemDto> DefaultCatalogs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, IReadOnlyList<CatalogItemDto>> LookupOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Queue<IReadOnlyList<CatalogItemDto>> CatalogEnsurePages { get; } = new();
+        public Queue<int> CatalogEnsureTotals { get; } = new();
         public List<(string Type, RecordPayload Payload)> CatalogCreates { get; } = [];
         public List<(string Type, Guid Id, RecordPayload Payload)> CatalogUpdates { get; } = [];
         public List<(string Type, Guid Id, RecordPayload Payload)> DocumentCreates { get; } = [];
@@ -407,6 +684,36 @@ public sealed class CrmDemoSeedServiceFullCoverageTests
     private sealed class FixedTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    private sealed class SeedScope(IServiceProvider serviceProvider, SeedState state)
+        : IServiceScope, IAsyncDisposable
+    {
+        public IServiceProvider ServiceProvider { get; } = serviceProvider;
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            if (state.FailScopeDispose)
+                return FailDisposeAsync();
+
+            return state.DelayScopeDispose ? CompleteDisposeAsync(state) : ValueTask.CompletedTask;
+        }
+
+        private static async ValueTask CompleteDisposeAsync(SeedState state)
+        {
+            state.ScopeDisposeStarted.TrySetResult();
+            await state.ReleaseScopeDispose.Task;
+        }
+
+        private static async ValueTask FailDisposeAsync()
+        {
+            await Task.Yield();
+            throw new InvalidOperationException("scope disposal failed");
+        }
     }
 
     private sealed class FakeUnitOfWork(Func<int> scalar) : IUnitOfWork

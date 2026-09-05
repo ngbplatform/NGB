@@ -246,6 +246,110 @@ public sealed class KeycloakAdminClientFullCoverageTests
     }
 
     [Fact]
+    public async Task User_lookup_cache_expires_entries_skips_disabled_ttls_and_tolerates_stale_metadata()
+    {
+        var clock = new MutableTimeProvider(new DateTimeOffset(2026, 9, 5, 12, 0, 0, TimeSpan.Zero));
+        var expiring = new KeycloakUserLookupCache(
+            Settings() with
+            {
+                UserLookupCacheTtl = TimeSpan.FromSeconds(1),
+                MissingUserCacheTtl = TimeSpan.FromSeconds(1)
+            },
+            clock);
+        var user = new IdentityProviderUserDto("expiring", "expiring@example.com", null, null, "Initial", true);
+        (await expiring.GetByIdAsync("expiring", _ => Task.FromResult<IdentityProviderUserDto?>(user), default))
+            .Should().BeSameAs(user);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        expiring.TryGetById("expiring", out _).Should().BeFalse();
+
+        var disabled = new KeycloakUserLookupCache(
+            Settings() with
+            {
+                UserLookupCacheTtl = TimeSpan.Zero,
+                MissingUserCacheTtl = TimeSpan.Zero
+            },
+            clock);
+        var loads = 0;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            await disabled.GetByIdAsync("uncached", _ =>
+            {
+                loads++;
+                return Task.FromResult<IdentityProviderUserDto?>(user);
+            }, default);
+        }
+        loads.Should().Be(2);
+
+        var resilient = new KeycloakUserLookupCache(Settings(), clock);
+        var original = new IdentityProviderUserDto("stale", "stale@example.com", null, null, "Original", true);
+        resilient.Remember(original);
+        var entries = typeof(KeycloakUserLookupCache)
+            .GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(resilient)!;
+        var entryIndexer = entries.GetType().GetProperty("Item")!;
+        var staleEntry = entryIndexer.GetValue(entries, ["id:stale"]);
+        var current = original with { DisplayName = "Current" };
+        resilient.Remember(current);
+        Invoke<object?>(resilient, "RemoveLocked", "id:stale", staleEntry);
+        resilient.TryGetById("stale", out var retained).Should().BeTrue();
+        retained.Should().BeSameAs(current);
+
+        var orderNodes = typeof(KeycloakUserLookupCache)
+            .GetField("_orderNodes", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(resilient)!;
+        orderNodes.GetType().GetMethod("Remove", [typeof(string)])!
+            .Invoke(orderNodes, ["id:stale"]);
+        resilient.InvalidateUser("stale");
+
+        var orphan = new IdentityProviderUserDto("orphan", "orphan@example.com", null, null, null, true);
+        resilient.Remember(orphan);
+        var reverseAliases = typeof(KeycloakUserLookupCache)
+            .GetField("_keysByUserId", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(resilient)!;
+        reverseAliases.GetType().GetMethod("Remove", [typeof(string)])!
+            .Invoke(reverseAliases, ["orphan"]);
+        resilient.InvalidateEmail("orphan@example.com");
+        resilient.TryGetByEmail("orphan@example.com", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task User_lookup_cache_does_not_remove_a_newer_pending_population_during_stale_cleanup()
+    {
+        var cache = new KeycloakUserLookupCache(Settings(), TimeProvider.System);
+        var release = new TaskCompletionSource<IdentityProviderUserDto?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var original = cache.GetByIdAsync("user-1", _ => release.Task, default);
+        var pendingField = typeof(KeycloakUserLookupCache)
+            .GetField("_pending", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var pending = (System.Collections.IDictionary)pendingField.GetValue(cache)!;
+        var pendingType = pendingField.FieldType.GenericTypeArguments[1];
+        var replacementFactory = (Func<Task<IdentityProviderUserDto?>>)(() =>
+            Task.FromResult<IdentityProviderUserDto?>(null));
+        var replacement = pendingType
+            .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Single()
+            .Invoke([replacementFactory]);
+
+        pending["id:user-1"] = replacement;
+        release.SetResult(new IdentityProviderUserDto(
+            "user-1", "user-1@example.com", null, null, "User 1", true));
+
+        (await original).Should().NotBeNull();
+        cache.PendingPopulationCount.Should().Be(1);
+        pending.Remove("id:user-1");
+        cache.PendingPopulationCount.Should().Be(0);
+
+        var secondRelease = new TaskCompletionSource<IdentityProviderUserDto?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var removedBeforeCleanup = cache.GetByIdAsync("user-2", _ => secondRelease.Task, default);
+        pending.Remove("id:user-2");
+        secondRelease.SetResult(null);
+
+        (await removedBeforeCleanup).Should().BeNull();
+        cache.PendingPopulationCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task CreateUser_validates_request_sends_normalized_payload_and_loads_location_user()
     {
         var (sut, handler) = Client(request =>
@@ -424,6 +528,12 @@ public sealed class KeycloakAdminClientFullCoverageTests
             if (request.Uri.Contains("/users/missing-id", StringComparison.Ordinal))
                 return Response(HttpStatusCode.NotFound);
 
+            if (request.Uri.Contains("/users/unrequested-email", StringComparison.Ordinal))
+                return Json(HttpStatusCode.OK, UserJson("unrequested-email", email: "other@example.com"));
+
+            if (request.Uri.Contains("/users/no-email", StringComparison.Ordinal))
+                return Json(HttpStatusCode.OK, UserJson("no-email", email: null));
+
             if (request.Uri.Contains("email=lookup", StringComparison.Ordinal))
                 return Json(HttpStatusCode.OK, $"[{UserJson("lookup-id", email: "lookup@example.com") }]");
 
@@ -435,17 +545,22 @@ public sealed class KeycloakAdminClientFullCoverageTests
         await ((Func<Task>)(() => sut.GetUsersAsync([], null!, default)))
             .Should().ThrowAsync<NgbArgumentRequiredException>();
         (await sut.GetUsersAsync([" "], [""], default)).ById.Should().BeEmpty();
+        var emailOnly = await sut.GetUsersAsync([], [" lookup@example.com "], default);
 
         var result = await sut.GetUsersAsync(
-            [" target-id ", "target-id", "missing-id"],
+            [" target-id ", "target-id", "missing-id", "unrequested-email", "no-email"],
             [" target@example.com ", "TARGET@example.com", "lookup@example.com"],
             default);
 
-        result.ById.Should().ContainSingle("target-id");
+        emailOnly.ByEmail.Should().ContainSingle("lookup@example.com");
+        result.ById.Should().ContainKeys("target-id", "unrequested-email", "no-email")
+            .And.HaveCount(3);
         result.ByEmail.Should().ContainKeys("target@example.com", "lookup@example.com");
-        handler.Requests.Should().HaveCount(3);
+        handler.Requests.Should().HaveCount(5);
         handler.Requests.Should().Contain(request => request.Uri.Contains("/users/target-id", StringComparison.Ordinal));
         handler.Requests.Should().Contain(request => request.Uri.Contains("/users/missing-id", StringComparison.Ordinal));
+        handler.Requests.Should().Contain(request => request.Uri.Contains("/users/unrequested-email", StringComparison.Ordinal));
+        handler.Requests.Should().Contain(request => request.Uri.Contains("/users/no-email", StringComparison.Ordinal));
         handler.Requests.Should().Contain(request => request.Uri.Contains("email=lookup", StringComparison.Ordinal));
         handler.Requests.Should().OnlyContain(request => !request.Uri.Contains("first=", StringComparison.Ordinal));
     }
@@ -699,6 +814,15 @@ public sealed class KeycloakAdminClientFullCoverageTests
             HttpRequestMessage request,
             CancellationToken cancellationToken)
             => throw new Xunit.Sdk.XunitException("Token endpoint should not be called while token is cached.");
+    }
+
+    private sealed class MutableTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset _utcNow = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan elapsed) => _utcNow += elapsed;
     }
 
 }

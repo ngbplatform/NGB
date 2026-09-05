@@ -84,9 +84,16 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         var totals = new OccupancySummaryTotals(Today, 1, 4, 3);
         var reader = new Mock<IOccupancySummaryReader>(MockBehavior.Strict);
         reader.Setup(x => x.GetPageAsync(null, Today, 0, 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OccupancySummaryPage([row], 2, totals));
+            .ReturnsAsync(new OccupancySummaryPage([row], 2, totals, HasMore: true));
+        reader.Setup(x => x.GetCursorPageAsync(
+                null, Today, It.Is<OccupancySummaryPageCursor>(cursor => cursor.Offset == 1), 1,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OccupancySummaryPage([row], 2, totals, HasMore: false));
         reader.Setup(x => x.GetPageAsync(buildingId, Today, 2, 50, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OccupancySummaryPage([row], 3, totals));
+        reader.Setup(x => x.GetPageAsync(
+                null, Today, 0, It.Is<int>(limit => limit > 200), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OccupancySummaryPage([], 0, new OccupancySummaryTotals(Today, 0, 0, 0)));
         reader.Setup(x => x.GetPageAsync(null, It.IsAny<DateOnly>(), 0, 200, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OccupancySummaryPage([], 0, new OccupancySummaryTotals(Today, 0, 0, 0)));
         var sut = new OccupancySummaryCanonicalReportExecutor(reader.Object);
@@ -102,6 +109,13 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             layout: new ReportLayoutDto(ShowGrandTotals: false),
             offset: 2,
             limit: 0), default);
+        var cursorPage = await sut.ExecuteAsync(definition, Request(
+            parameters: new Dictionary<string, string> { ["as_of_utc"] = Today.ToString("yyyy-MM-dd") },
+            limit: 1,
+            cursor: portfolio.NextCursor), default);
+        var unpaged = await sut.ExecuteAsync(definition, Request(
+            parameters: new Dictionary<string, string> { ["as_of_utc"] = Today.ToString("yyyy-MM-dd") },
+            disablePaging: true), default);
         var empty = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(), default);
 
         sut.ReportCode.Should().Be(PropertyManagementSecurityDefaults.OccupancySummaryReport);
@@ -115,6 +129,10 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         var buildingSheet = building.PrebuiltSheet!;
         buildingSheet.Rows.Should().ContainSingle();
         buildingSheet.Meta!.Subtitle!.Should().StartWith("Occupancy");
+        cursorPage.Offset.Should().Be(1);
+        cursorPage.HasMore.Should().BeFalse();
+        unpaged.Limit.Should().BeGreaterThan(200);
+        unpaged.NextCursor.Should().BeNull();
         empty.PrebuiltSheet!.Rows.Should().BeEmpty();
     }
 
@@ -134,7 +152,15 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         var reader = new Mock<IMaintenanceQueueReader>(MockBehavior.Strict);
         reader.Setup(x => x.GetPageAsync(It.IsAny<MaintenanceQueueQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((MaintenanceQueueQuery query, CancellationToken _) =>
-                new MaintenanceQueuePage([requested, assigned], query.Offset == 0 ? 3 : 2));
+                new MaintenanceQueuePage(
+                    [requested, assigned],
+                    query.Offset == 0 ? 3 : 2,
+                    HasMore: query.Offset == 0));
+        reader.Setup(x => x.GetCursorPageAsync(
+                It.Is<MaintenanceQueueQuery>(query => query.Offset == 2),
+                It.Is<MaintenanceQueuePageCursor>(cursor => cursor.Offset == 2),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MaintenanceQueuePage([], 2));
         var sut = new MaintenanceQueueCanonicalReportExecutor(reader.Object);
         var definition = Definition(sut.ReportCode);
         var buildingId = Guid.CreateVersion7();
@@ -154,6 +180,17 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             offset: -1,
             limit: 0), default);
         var noFilters = await sut.ExecuteAsync(definition, new ReportExecutionRequestDto(Offset: 1, Limit: 5), default);
+        var cursorPage = await sut.ExecuteAsync(definition, Request(
+            filters: Filters(
+                ("building_id", Json(buildingId)),
+                ("property_id", Json(propertyId)),
+                ("category_id", Json(categoryId)),
+                ("assigned_party_id", Json(partyId)),
+                ("priority", Json(" emergency ")),
+                ("queue_state", Json(" work ordered "))),
+            parameters: new Dictionary<string, string> { ["as_of_utc"] = Today.ToString("yyyy-MM-dd") },
+            cursor: page.NextCursor), default);
+        var unpaged = await sut.ExecuteAsync(definition, Request(disablePaging: true), default);
 
         sut.ReportCode.Should().Be(PropertyManagementCodes.MaintenanceQueue);
         page.Offset.Should().Be(0);
@@ -165,6 +202,10 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         page.PrebuiltSheet.Rows[0].Cells[11].Action.Should().BeNull();
         page.PrebuiltSheet.Rows[1].Cells[11].Action.Should().NotBeNull();
         noFilters.HasMore.Should().BeFalse();
+        cursorPage.Offset.Should().Be(2);
+        cursorPage.HasMore.Should().BeFalse();
+        unpaged.Limit.Should().BeGreaterThan(200);
+        unpaged.NextCursor.Should().BeNull();
 
         reader.Verify(x => x.GetPageAsync(It.Is<MaintenanceQueueQuery>(q =>
             q.BuildingId == buildingId && q.PropertyId == propertyId && q.CategoryId == categoryId &&
@@ -263,6 +304,15 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
                     response.TotalCredit,
                     HasMore: limit < responseRows.Length,
                     NextCursor: limit < responseRows.Length ? "next" : null));
+        service.Setup(x => x.GetOpenItemsPageAsync(
+                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), 1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReceivablesOpenItemsPageResponse(
+                registerId,
+                responseRows.Skip(1).Take(1).ToArray(),
+                responseRows.Length,
+                response.TotalOutstanding,
+                response.TotalCredit,
+                Offset: 1));
         var sut = new ReceivablesOpenItemsCanonicalReportExecutor(service.Object);
         var leaseId = Guid.CreateVersion7();
         var definition = Definition(sut.ReportCode);
@@ -271,6 +321,8 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             filters: LeaseFilter(leaseId), offset: -1, limit: 1), default);
         var allWithoutTotals = await sut.ExecuteAsync(definition, Request(
             filters: LeaseFilter(leaseId), layout: new ReportLayoutDto(ShowGrandTotals: false), limit: 0), default);
+        var legacyOffset = await sut.ExecuteAsync(definition, Request(
+            filters: LeaseFilter(leaseId), offset: 1, limit: 1), default);
 
         sut.ReportCode.Should().Be(PropertyManagementSecurityDefaults.ReceivablesOpenItemsReport);
         first.Total.Should().Be(3);
@@ -281,6 +333,9 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         allWithoutTotals.PrebuiltSheet!.Rows.Should().HaveCount(3);
         allWithoutTotals.PrebuiltSheet.Rows[1].Cells[1].Display.Should().BeEmpty();
         allWithoutTotals.PrebuiltSheet.Rows[1].Cells[1].Action.Should().BeNull();
+        legacyOffset.Offset.Should().Be(1);
+        legacyOffset.HasMore.Should().BeTrue();
+        legacyOffset.NextCursor.Should().BeNull();
     }
 
     [Fact]
@@ -316,7 +371,11 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         var definition = Definition(sut.ReportCode);
 
         var first = await sut.ExecuteAsync(definition, Request(filters: LeaseFilter(leaseId), offset: -2, limit: 1), default);
+        var cursorPage = await sut.ExecuteAsync(definition, Request(
+            filters: LeaseFilter(leaseId), limit: 1, cursor: first.NextCursor), default);
         var all = await sut.ExecuteAsync(definition, Request(filters: LeaseFilter(leaseId), limit: 0), default);
+        var unpaged = await sut.ExecuteAsync(definition, Request(
+            filters: LeaseFilter(leaseId), disablePaging: true), default);
         var withoutTotals = await sut.ExecuteAsync(definition, Request(
             filters: LeaseFilter(leaseId), layout: new ReportLayoutDto(ShowGrandTotals: false)), default);
 
@@ -327,6 +386,9 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         all.PrebuiltSheet.Rows[1].Cells[1].Display.Should().BeEmpty();
         all.PrebuiltSheet.Rows[1].Cells[1].Action.Should().BeNull();
         withoutTotals.PrebuiltSheet!.Rows.Should().HaveCount(3);
+        cursorPage.Offset.Should().Be(1);
+        unpaged.Limit.Should().BeGreaterThan(200);
+        unpaged.NextCursor.Should().BeNull();
     }
 
     [Fact]
@@ -366,7 +428,11 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
 
         var first = await sut.ExecuteAsync(definition, Request(
             filters: LeaseFilter(leaseId), parameters: parameters, offset: -1, limit: 1), default);
+        var cursorPage = await sut.ExecuteAsync(definition, Request(
+            filters: LeaseFilter(leaseId), parameters: parameters, limit: 1, cursor: first.NextCursor), default);
         var all = await sut.ExecuteAsync(definition, Request(filters: LeaseFilter(leaseId), parameters: parameters, limit: 0), default);
+        var unpaged = await sut.ExecuteAsync(definition, Request(
+            filters: LeaseFilter(leaseId), parameters: parameters, disablePaging: true), default);
         var withoutTotals = await sut.ExecuteAsync(definition, Request(
             filters: LeaseFilter(leaseId), parameters: parameters,
             layout: new ReportLayoutDto(ShowGrandTotals: false)), default);
@@ -383,6 +449,9 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         allSheet.Rows[1].Cells[1].Action.Should().BeNull();
         allSheet.Meta!.Subtitle!.Should().Be($"Lease · {asOf:yyyy-MM-dd}");
         withoutTotals.PrebuiltSheet!.Rows.Should().HaveCount(8);
+        cursorPage.Offset.Should().Be(1);
+        unpaged.Limit.Should().BeGreaterThan(200);
+        unpaged.NextCursor.Should().BeNull();
     }
 
     [Fact]
@@ -407,7 +476,12 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         fixture.Reader.Setup(x => x.GetPageAsync(It.Is<TenantStatementQuery>(q =>
                 q.LeaseId == fixture.LeaseId && q.FromUtc == Today.AddDays(-10) && q.ToUtc == Today &&
                 q.Offset == 0 && q.Limit == 1), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(fixture.Page(total: 3));
+            .ReturnsAsync(fixture.Page(total: 3) with { HasMore = true });
+        fixture.Reader.Setup(x => x.GetCursorPageAsync(
+                It.Is<TenantStatementQuery>(q => q.Offset == 2 && q.Limit == 1),
+                It.Is<TenantStatementPageCursor>(cursor => cursor.Offset == 2),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(fixture.Page(total: 2));
         fixture.SetupValidLease();
         var sut = fixture.Sut;
 
@@ -420,6 +494,15 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             },
             offset: -2,
             limit: 1), default);
+        var cursorPage = await sut.ExecuteAsync(Definition(sut.ReportCode), Request(
+            filters: LeaseFilter(fixture.LeaseId),
+            parameters: new Dictionary<string, string>
+            {
+                ["from_utc"] = Today.AddDays(-10).ToString("yyyy-MM-dd"),
+                ["to_utc"] = Today.ToString("yyyy-MM-dd")
+            },
+            limit: 1,
+            cursor: page.NextCursor), default);
 
         sut.ReportCode.Should().Be(PropertyManagementSecurityDefaults.TenantStatementReport);
         page.HasMore.Should().BeTrue();
@@ -434,6 +517,8 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         sheet.Rows[2].Cells[4].Display.Should().BeNull();
         sheet.Rows[2].Cells[5].Display.Should().Be("4");
         sheet.Meta!.Subtitle.Should().Be($"Tenant · Unit 1 · Lease 1 · {Today.AddDays(-10):yyyy-MM-dd} – {Today:yyyy-MM-dd}");
+        cursorPage.Offset.Should().Be(2);
+        cursorPage.HasMore.Should().BeFalse();
     }
 
     [Fact]
@@ -469,7 +554,7 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
     {
         var fixture = new TenantStatementFixture();
         fixture.Reader.Setup(x => x.GetPageAsync(It.Is<TenantStatementQuery>(q =>
-                q.FromUtc == null && q.Offset == 0 && q.Limit == 200), It.IsAny<CancellationToken>()))
+                q.FromUtc == null && q.Offset == 0 && q.Limit > 200), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TenantStatementPage([], 0,
                 new TenantStatementTotals(null, Today, 0m, 0m, 0m, 0m)));
         fixture.Documents.Setup(x => x.GetByIdAsync(PropertyManagementCodes.Lease, fixture.LeaseId,
@@ -478,9 +563,10 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         var sut = fixture.Sut;
 
         var page = await sut.ExecuteAsync(Definition(sut.ReportCode), Request(
-            filters: LeaseFilter(fixture.LeaseId)), default);
+            filters: LeaseFilter(fixture.LeaseId), disablePaging: true), default);
 
         page.HasMore.Should().BeFalse();
+        page.NextCursor.Should().BeNull();
         page.PrebuiltSheet!.Rows.Should().ContainSingle(x => x.SemanticRole == "grand_total");
         page.PrebuiltSheet.Meta!.Subtitle.Should().StartWith("Through ");
         fixture.Catalogs.VerifyNoOtherCalls();
@@ -554,8 +640,17 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         IReadOnlyDictionary<string, string>? parameters = null,
         ReportLayoutDto? layout = null,
         int offset = 0,
-        int limit = 200)
-        => new(Layout: layout, Filters: filters, Parameters: parameters, Offset: offset, Limit: limit);
+        int limit = 200,
+        string? cursor = null,
+        bool disablePaging = false)
+        => new(
+            Layout: layout,
+            Filters: filters,
+            Parameters: parameters,
+            Offset: offset,
+            Limit: limit,
+            Cursor: cursor,
+            DisablePaging: disablePaging);
 
     private static IReadOnlyDictionary<string, ReportFilterValueDto> LeaseFilter(Guid leaseId)
         => Filters(("lease_id", Json(leaseId)));
@@ -635,6 +730,30 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
                     : rows;
                 return new ReceivablesReportPage(
                     filtered.Skip(offset).Take(limit).ToArray(),
+                    filtered.Length,
+                    filtered.Where(static row => row.IsCharge).Sum(static row => row.OriginalAmount),
+                    filtered.Where(static row => row.IsCharge).Sum(static row => row.OpenAmount),
+                    filtered.Where(static row => !row.IsCharge).Sum(static row => row.OpenAmount),
+                    response.PartyDisplay,
+                    response.PropertyDisplay,
+                    response.LeaseDisplay,
+                    HasMore: offset == 0 && limit == 1 && filtered.Length > 1);
+            });
+        reader.Setup(x => x.GetCursorPageAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<ReceivablesReportMode>(),
+                It.IsAny<ReceivablesReportPageCursor>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, ReceivablesReportMode mode, ReceivablesReportPageCursor cursor,
+                int limit, CancellationToken _) =>
+            {
+                var filtered = mode == ReceivablesReportMode.Aging
+                    ? rows.Where(static row => row.IsCharge).ToArray()
+                    : rows;
+                return new ReceivablesReportPage(
+                    filtered.Skip(cursor.Offset).Take(limit).ToArray(),
                     filtered.Length,
                     filtered.Where(static row => row.IsCharge).Sum(static row => row.OriginalAmount),
                     filtered.Where(static row => row.IsCharge).Sum(static row => row.OpenAmount),

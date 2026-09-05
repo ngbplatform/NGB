@@ -5,6 +5,7 @@ using NGB.Core.Dimensions;
 using NGB.Metadata.Base;
 using NGB.Persistence.ReferenceRegisters;
 using NGB.PostgreSql.ReferenceRegisters;
+using NGB.PostgreSql.Schema;
 using NGB.PostgreSql.Tests.TestDoubles;
 using NGB.ReferenceRegisters;
 using NGB.ReferenceRegisters.Contracts;
@@ -24,6 +25,13 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
     [Fact]
     public async Task Slice_last_validates_arguments_modes_metadata_and_absent_data()
     {
+        _ = new PostgresReferenceRegisterRecordsReader(
+            new RecordingUnitOfWork(new RecordingDbConnection()),
+            Mock.Of<IReferenceRegisterRepository>(),
+            Mock.Of<IReferenceRegisterFieldRepository>(),
+            new ReferenceRegisterMetadataCache(TimeProvider.System),
+            new PostgresRelationPresenceCache(TimeProvider.System));
+
         var independent = Fixture(ReferenceRegisterPeriodicity.NonPeriodic, ReferenceRegisterRecordMode.Independent);
         Func<Task> emptyRegister = () => independent.Reader.SliceLastAsync(Guid.Empty, DimensionSetId, AsOf, null, default);
         Func<Task> localAsOf = () => independent.Reader.SliceLastAsync(
@@ -65,6 +73,7 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
         var noRows = Fixture(
             ReferenceRegisterPeriodicity.NonPeriodic,
             ReferenceRegisterRecordMode.Independent,
+            fields: [Field("z_col", "z"), Field("a_col", "a")],
             rows: RecordRows());
         (await noRows.Reader.SliceLastAsync(RegisterId, DimensionSetId, AsOf, null, default)).Should().BeNull();
     }

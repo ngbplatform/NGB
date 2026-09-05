@@ -1,7 +1,10 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NGB.Persistence.Documents;
+using NGB.Persistence.UnitOfWork;
 using NGB.Trade.Documents;
+using NGB.Trade.PostgreSql.DependencyInjection;
 using NGB.Trade.PostgreSql.Documents;
 using Xunit;
 
@@ -9,6 +12,28 @@ namespace NGB.Trade.Api.IntegrationTests.Documents;
 
 public sealed class PostingCachedTradeDocumentReadersTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Module_applies_posting_cache_decorator_only_when_cache_is_registered(bool withCache)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IUnitOfWork>());
+        if (withCache)
+            services.AddSingleton<IDocumentPostingReadCache>(new RecordingCache());
+        services.AddTradePostgresModule();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var inner = scope.ServiceProvider.GetRequiredService<TradeDocumentReaders>();
+        var resolved = scope.ServiceProvider.GetRequiredService<ITradeDocumentReaders>();
+
+        if (withCache)
+            resolved.Should().BeOfType<PostingCachedTradeDocumentReaders>().And.NotBeSameAs(inner);
+        else
+            resolved.Should().BeSameAs(inner);
+    }
+
     [Fact]
     public async Task Every_single_document_read_uses_an_operation_specific_cache_key()
     {

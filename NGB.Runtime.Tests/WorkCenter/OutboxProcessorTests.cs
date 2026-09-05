@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NGB.Application.Abstractions.Services;
@@ -189,6 +190,39 @@ public sealed class OutboxProcessorTests
             .Should().Equal(first.Event.EventId, third.Event.EventId);
         factoryCalls.Should().Be(2);
         realtime.VerifyAll();
+        uow.CommitCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Scoped_partition_factory_resolves_and_executes_the_concrete_partition_processor()
+    {
+        var uow = new RecordingUnitOfWork();
+        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
+        var item = WorkItem("test.no_policy", attempt: 3);
+        outbox.Setup(repository => repository.MarkCompletedAsync(
+                item.Event.EventId,
+                "work-center",
+                3,
+                Now,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var services = new ServiceCollection();
+        services.AddScoped(_ => new WorkCenterOutboxPartitionProcessor(
+            uow,
+            outbox.Object,
+            [],
+            RecipientResolver(),
+            new FixedTimeProvider(Now),
+            NullLogger<WorkCenterOutboxPartitionProcessor>.Instance));
+        await using var provider = services.BuildServiceProvider();
+        var factory = new WorkCenterOutboxPartitionProcessorFactory(
+            provider.GetRequiredService<IServiceScopeFactory>());
+
+        var changedUsers = await factory.ProcessAsync([item], CancellationToken.None);
+
+        changedUsers.Should().BeEmpty();
+        outbox.VerifyAll();
         uow.CommitCount.Should().Be(1);
     }
 

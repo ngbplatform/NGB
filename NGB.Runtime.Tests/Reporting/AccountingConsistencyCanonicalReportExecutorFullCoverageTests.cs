@@ -147,6 +147,38 @@ public sealed class AccountingConsistencyCanonicalReportExecutorFullCoverageTest
         page.PrebuiltSheet!.Rows.Should().HaveCount(5);
     }
 
+    [Fact]
+    public async Task Execute_RejectsReportsThatExceedTheMaterializationBound()
+    {
+        var report = new AccountingConsistencyReport
+        {
+            Issues = Enumerable.Range(0, NGB.Contracts.Common.PagingLimits.MaxMaterializedRows + 1)
+                .Select(index => Issue(
+                    AccountingConsistencyIssueKind.MissingKey,
+                    dimensionSetId: null,
+                    accountCode: index.ToString(),
+                    previousPeriod: null))
+                .ToList()
+        };
+        var reader = new Mock<IAccountingConsistencyReportReader>();
+        reader.Setup(service => service.RunForPeriodAsync(It.IsAny<DateOnly>(), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(report);
+        var sut = new AccountingConsistencyCanonicalReportExecutor(
+            reader.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            Mock.Of<IDimensionValueEnrichmentReader>(MockBehavior.Strict));
+
+        var act = () => sut.ExecuteAsync(
+            Definition(),
+            new ReportExecutionRequestDto(
+                Parameters: new Dictionary<string, string> { ["period_utc"] = "2026-08-01" },
+                Layout: new ReportLayoutDto(ShowGrandTotals: false)),
+            default);
+
+        (await act.Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>())
+            .Which.ParamName.Should().Be("filters");
+    }
+
     private static AccountingConsistencyIssue Issue(
         AccountingConsistencyIssueKind kind,
         Guid? dimensionSetId,

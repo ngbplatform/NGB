@@ -340,13 +340,7 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                 transaction: uow.Transaction,
                 cancellationToken: ct))).AsList();
 
-        if (rows.Count > PagingLimits.MaxMaterializedRows)
-        {
-            throw new NgbArgumentOutOfRangeException(
-                "filters",
-                rows.Count,
-                $"Trial balance can materialize up to {PagingLimits.MaxMaterializedRows} account/dimension rows. Narrow the filters and try again.");
-        }
+        EnsureMaterializationBound(rows.Count);
 
         return rows
             .Select(x => new TrialBalanceSnapshotRow(
@@ -357,6 +351,17 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                 x.DebitAmount,
                 x.CreditAmount))
             .ToList();
+    }
+
+    internal static void EnsureMaterializationBound(int rowCount)
+    {
+        if (rowCount <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new NgbArgumentOutOfRangeException(
+            "filters",
+            rowCount,
+            $"Trial balance can materialize up to {PagingLimits.MaxMaterializedRows} account/dimension rows. Narrow the filters and try again.");
     }
 
     private static string BuildScopeCtes()

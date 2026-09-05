@@ -42,14 +42,20 @@ public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresRepor
             .Where(x => x.IsHidden)
             .Select(x => x.Alias)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var materialized = materializedWithCursorKeys
-            .Select(values => hiddenAliases.Count == 0
-                ? values
-                : new Dictionary<string, object?>(
+
+        var materialized = new List<PostgresReportExecutionRow>(materializedWithCursorKeys.Count);
+        foreach (var values in materializedWithCursorKeys)
+        {
+            IReadOnlyDictionary<string, object?> visibleValues = values;
+            if (hiddenAliases.Count > 0)
+            {
+                visibleValues = new Dictionary<string, object?>(
                     values.Where(x => !hiddenAliases.Contains(x.Key)),
-                    StringComparer.OrdinalIgnoreCase))
-            .Select(static values => new PostgresReportExecutionRow(values))
-            .ToList();
+                    StringComparer.OrdinalIgnoreCase);
+            }
+
+            materialized.Add(new PostgresReportExecutionRow(visibleValues));
+        }
 
         return new PostgresReportExecutionResult(
             Columns: statement.Columns,

@@ -467,6 +467,7 @@ public sealed class KeycloakAdminClient(
     {
         const int maxChars = 512;
         var buffer = ArrayPool<char>.Shared.Rent(maxChars + 1);
+        string result;
 
         try
         {
@@ -488,12 +489,14 @@ public sealed class KeycloakAdminClient(
                 total += read;
             }
 
-            return new string(buffer, 0, total);
+            result = new string(buffer, 0, total);
         }
         finally
         {
             ArrayPool<char>.Shared.Return(buffer);
         }
+
+        return result;
     }
 
     private string BuildUri(string pathOrUri)

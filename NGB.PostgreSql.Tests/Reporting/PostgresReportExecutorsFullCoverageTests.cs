@@ -134,6 +134,41 @@ public sealed class PostgresReportExecutorsFullCoverageTests
     }
 
     [Fact]
+    public async Task Dataset_executor_removes_hidden_cursor_columns_from_materialized_rows()
+    {
+        var data = new DataTable();
+        data.Columns.Add("name_out", typeof(string));
+        data.Columns.Add("__cursor_key_0", typeof(long));
+        data.Rows.Add("Visible", 42L);
+        var connection = new RecordingDbConnection(_ => data.CreateDataReader());
+        var dataset = new PostgresReportDatasetBinding(
+            "dataset",
+            "reporting_rows r",
+            [new("id", "r.id", "int64"), new("name", "r.name", "string")],
+            [],
+            cursorKeyFieldCodes: ["id"]);
+        var executor = new PostgresReportDatasetExecutor(
+            new RecordingUnitOfWork(connection),
+            new PostgresReportSqlBuilder(new PostgresReportDatasetCatalog([new StubSource([dataset])])));
+        var request = new PostgresReportExecutionRequest(
+            "dataset",
+            [],
+            [],
+            [new("name", "name_out", "Name", "string")],
+            [],
+            [new("name", null, ReportSortDirection.Asc)],
+            [],
+            new Dictionary<string, object?>(),
+            new PostgresReportPaging(0, 10));
+
+        var result = await executor.ExecuteAsync(request, default);
+
+        result.Rows.Should().ContainSingle();
+        result.Rows[0].Values.Should().Contain("name_out", "Visible")
+            .And.NotContainKey("__cursor_key_0");
+    }
+
+    [Fact]
     public void Row_materialization_is_case_insensitive_and_rejects_non_dictionary_payloads()
     {
         var values = PostgresReportDatasetExecutor.MaterializeRow(

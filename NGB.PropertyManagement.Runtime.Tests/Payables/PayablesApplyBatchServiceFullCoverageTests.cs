@@ -135,6 +135,46 @@ public sealed class PayablesApplyBatchServiceFullCoverageTests
         fixture.Uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task Batch_uses_bulk_capabilities_and_one_posting_read_scope()
+    {
+        var fixture = new Fixture(useBatchCapabilities: true, usePostingReadCache: true);
+        var apply1 = Guid.CreateVersion7();
+        var apply2 = Guid.CreateVersion7();
+        fixture.BatchDrafts!.Setup(x => x.CreateDraftsAsync(
+                It.Is<IReadOnlyList<DocumentDraftCreateRequest>>(requests =>
+                    requests.Count == 2 && requests.All(request =>
+                        request.TypeCode == PropertyManagementCodes.PayableApply)),
+                false,
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([apply1, apply2]);
+
+        var response = await fixture.Sut.ExecuteAsync(new PayablesApplyBatchRequest([
+            fixture.Item(fixture.Payload(amount: 2m)),
+            fixture.Item(fixture.Payload(charge: Guid.CreateVersion7(), amount: 3m))
+        ]));
+
+        response.ExecutedApplies.Select(item => item.ApplyId).Should().Equal(apply1, apply2);
+        response.ExecutedApplies.Should().OnlyContain(item => item.CreatedDraft);
+        fixture.BatchHeads!.Verify(x => x.UpsertManyAsync(
+            It.Is<IReadOnlyList<PayableApplyHeadWrite>>(items => items.Count == 2),
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.BatchPosting!.Verify(x => x.PostManyAsync(
+            It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { apply1, apply2 })),
+            false,
+            It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Drafts.Verify(x => x.CreateDraftAsync(
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<DateTime>(),
+            It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.Heads.Verify(x => x.UpsertAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(),
+            It.IsAny<decimal>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.Posting.Verify(x => x.PostAsync(
+            It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.PostingReadCache!.Verify(x => x.BeginScope(), Times.Once);
+    }
+
     private static readonly Guid FixedId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     private static MethodInfo PrivateStatic(string name) => typeof(PayablesApplyBatchService)
@@ -168,7 +208,7 @@ public sealed class PayablesApplyBatchServiceFullCoverageTests
 
     private sealed class Fixture
     {
-        public Fixture()
+        public Fixture(bool useBatchCapabilities = false, bool usePostingReadCache = false)
         {
             Policy.Setup(x => x.GetRequiredAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new PropertyManagementAccountingPolicy(
@@ -180,9 +220,22 @@ public sealed class PayablesApplyBatchServiceFullCoverageTests
             Documents.Setup(x => x.GetForUpdateByIdsAsync(
                     It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new Dictionary<Guid, DocumentRecord>());
+            if (useBatchCapabilities)
+            {
+                BatchDrafts = Drafts.As<IDocumentDraftBatchService>();
+                BatchHeads = Heads.As<IPayableApplyHeadBatchWriter>();
+                BatchPosting = Posting.As<IDocumentPostingBatchService>();
+            }
+
+            if (usePostingReadCache)
+            {
+                PostingReadCache = new Mock<IDocumentPostingReadCache>(MockBehavior.Strict);
+                PostingReadCache.Setup(x => x.BeginScope()).Returns(Mock.Of<IDisposable>());
+            }
+
             Sut = new PayablesApplyBatchService(
                 Drafts.Object, Posting.Object, Policy.Object, Heads.Object,
-                Documents.Object, Locks.Object, Uow.Object);
+                Documents.Object, Locks.Object, Uow.Object, PostingReadCache?.Object);
         }
 
         public Guid RegisterId { get; } = Guid.CreateVersion7();
@@ -195,6 +248,10 @@ public sealed class PayablesApplyBatchServiceFullCoverageTests
         public Mock<IDocumentRepository> Documents { get; } = new();
         public Mock<IAdvisoryLockManager> Locks { get; } = new();
         public Mock<IUnitOfWork> Uow { get; } = new();
+        public Mock<IDocumentDraftBatchService>? BatchDrafts { get; }
+        public Mock<IPayableApplyHeadBatchWriter>? BatchHeads { get; }
+        public Mock<IDocumentPostingBatchService>? BatchPosting { get; }
+        public Mock<IDocumentPostingReadCache>? PostingReadCache { get; }
         public PayablesApplyBatchService Sut { get; }
 
         public PayablesApplyBatchItem Item(RecordPayload? payload = null, Guid? applyId = null)

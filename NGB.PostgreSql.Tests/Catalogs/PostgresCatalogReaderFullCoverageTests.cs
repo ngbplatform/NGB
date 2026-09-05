@@ -224,6 +224,34 @@ public sealed class PostgresCatalogReaderFullCoverageTests
     }
 
     [Fact]
+    public async Task Seek_page_and_field_batch_reject_invalid_arguments_and_short_circuit_empty_input()
+    {
+        var connection = Connection();
+        var sut = Reader(connection);
+
+        await ((Func<Task>)(() => sut.GetSeekPageAsync(
+                Head(), Query(), null, null, 0, includeTotal: false, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => sut.GetSeekPageAsync(
+                Head(), Query(), null, Guid.Empty, 1, includeTotal: false, default)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+
+        (await sut.GetByIdsWithFieldsAsync(Head(), [], default)).Should().BeEmpty();
+        connection.Commands.Should().BeEmpty();
+
+        var seekConnection = Connection();
+        var seekReader = Reader(seekConnection);
+        (await seekReader.GetSeekPageAsync(
+            Head(), Query(), null, null, 1, includeTotal: false, default)).Rows.Should().BeEmpty();
+        (await seekReader.GetSeekPageAsync(
+            Head(), Query(), "Acme", FirstId, 1, includeTotal: false, default)).Rows.Should().BeEmpty();
+
+        var batchConnection = Connection(reader: _ => HeadRows((FirstId, false, "Acme", "open", 1)));
+        (await Reader(batchConnection).GetByIdsWithFieldsAsync(Head(), [FirstId], default))
+            .Should().ContainSingle().Which.Id.Should().Be(FirstId);
+    }
+
+    [Fact]
     public async Task Hierarchy_queries_validate_inputs_short_circuit_and_use_bounded_recursive_ctes()
     {
         var emptyConnection = Connection();
@@ -298,11 +326,15 @@ public sealed class PostgresCatalogReaderFullCoverageTests
             true,
             default);
         var browsed = await sut.LookupAcrossTypesAsync([customers], null, 2, false, default);
+        var exactId = await sut.LookupAcrossTypesAsync([customers], FirstId.ToString(), 2, false, default);
+        var idPrefix = await sut.LookupAcrossTypesAsync([customers], "11111111", 2, false, default);
 
         searched.Should().HaveCount(2);
         searched[1].Should().BeEquivalentTo(new CatalogLookupSearchRow(SecondId, "vendors", null, true));
         browsed.Should().HaveCount(2);
-        connection.Commands.Should().HaveCount(2);
+        exactId.Should().HaveCount(2);
+        idPrefix.Should().HaveCount(2);
+        connection.Commands.Should().HaveCount(4);
         connection.Commands[0].CommandText.Should()
             .Contain("UNION ALL")
             .And.Contain("LEFT JOIN")
@@ -313,6 +345,14 @@ public sealed class PostgresCatalogReaderFullCoverageTests
             .And.Contain("\"cat_\"\"vendors\"");
         connection.Commands[1].CommandText.Should().Contain("JOIN catalogs").And.NotContain("ILIKE");
         Parameter(connection.Commands[0], "q").Should().Be("inc");
+        Parameter(connection.Commands[2], "queryId").Should().Be(FirstId);
+        Parameter(connection.Commands[2], "hasQueryIdPrefix").Should().Be(false);
+        Parameter(connection.Commands[3], "queryId").Should().Be(DBNull.Value);
+        Parameter(connection.Commands[3], "hasQueryIdPrefix").Should().Be(true);
+        Parameter(connection.Commands[3], "queryIdPrefixLower").Should().Be(
+            Guid.Parse("11111111-0000-0000-0000-000000000000"));
+        Parameter(connection.Commands[3], "queryIdPrefixUpper").Should().Be(
+            Guid.Parse("11111111-ffff-ffff-ffff-ffffffffffff"));
     }
 
     [Theory]

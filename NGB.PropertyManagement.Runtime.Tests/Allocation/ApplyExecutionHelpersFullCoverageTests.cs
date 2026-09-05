@@ -202,4 +202,56 @@ public sealed class ApplyExecutionHelpersFullCoverageTests
         relationships.Verify(x => x.CreateAsync(
             applyId, It.IsAny<Guid>(), "based_on", false, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
+
+    [Fact]
+    public async Task Receivables_helpers_use_all_batch_capabilities_and_accept_empty_batches()
+    {
+        var applyId = Guid.CreateVersion7();
+        var credit = Guid.CreateVersion7();
+        var charge = Guid.CreateVersion7();
+        var dateUtc = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+        var drafts = new Mock<IDocumentDraftBatchService>(MockBehavior.Strict);
+        var heads = new Mock<IReceivableApplyHeadBatchWriter>(MockBehavior.Strict);
+        var relationships = new Mock<IDocumentRelationshipBatchService>(MockBehavior.Strict);
+        drafts.Setup(x => x.CreateDraftsAsync(
+                It.Is<IReadOnlyList<DocumentDraftCreateRequest>>(requests =>
+                    requests.Count == 1 && requests[0].TypeCode == PropertyManagementCodes.ReceivableApply),
+                false,
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([applyId]);
+        heads.Setup(x => x.UpsertManyAsync(
+                It.Is<IReadOnlyList<ReceivableApplyHeadWrite>>(writes =>
+                    writes.Count == 1 && writes[0].DocumentId == applyId),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        relationships.Setup(x => x.CreateManyAsync(
+                It.Is<IReadOnlyCollection<DocumentRelationshipCreateRequest>>(requests =>
+                    requests.Count == 2 && requests.All(request => request.RelationshipCode == "based_on")),
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(2);
+        var requests = new[]
+        {
+            new ReceivablesApplyExecutionHelpers.ApplyDraftRequest(
+                PropertyManagementCodes.ReceivableApply,
+                dateUtc,
+                credit,
+                charge,
+                new DateOnly(2026, 3, 1),
+                15m,
+                "batch")
+        };
+
+        var empty = await ReceivablesApplyExecutionHelpers.CreateApplyDraftsAndUpsertHeadsAsync(
+            drafts.Object, relationships.Object, heads.Object, [], default);
+        var result = await ReceivablesApplyExecutionHelpers.CreateApplyDraftsAndUpsertHeadsAsync(
+            drafts.Object, relationships.Object, heads.Object, requests, default);
+
+        empty.Should().BeEmpty();
+        result.Should().Equal(applyId);
+        drafts.VerifyAll();
+        heads.VerifyAll();
+        relationships.VerifyAll();
+    }
 }

@@ -24,6 +24,7 @@ using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.Writers;
 using NGB.Runtime.AuditLog;
+using NGB.Runtime.Accounting;
 using NGB.Runtime.Dimensions;
 using NGB.Runtime.Periods;
 using NGB.Runtime.Posting;
@@ -64,6 +65,53 @@ public sealed class PeriodClosingServiceFullCoverageTests
             It.IsAny<Guid?>(),
             Ct), Times.Once);
         f.Uow.Verify(x => x.CommitAsync(Ct), Times.Once);
+    }
+
+    [Fact]
+    public async Task CloseMonthProjection_ReportsOmittedForbiddenBalanceCount()
+    {
+        var forbidden = ProjectionViolation(NegativeBalancePolicy.Forbid, "1010", -10m);
+        var f = new Fixture(new AccountingBalanceProjectionResult(0, 2, 0, [forbidden]));
+
+        var act = () => f.Sut.CloseMonthAsync(January, "closer", Ct);
+
+        (await act.Should().ThrowAsync<AccountingNegativeBalanceForbiddenException>())
+            .Which.Message.Should().Contain("and 1 more forbidden balances");
+    }
+
+    [Fact]
+    public async Task CloseMonthProjection_LogsAggregateWarningWhenSamplesAreTruncated()
+    {
+        var warning = ProjectionViolation(NegativeBalancePolicy.Warn, "2010", -5m);
+        var f = new Fixture(new AccountingBalanceProjectionResult(1, 0, 2, [warning]));
+
+        await f.Sut.CloseMonthAsync(January, "closer", Ct);
+
+        f.BalanceProjection!.Verify(
+            writer => writer.ProjectAsync(January, false, Ct),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task CloseMonthProjection_DoesNotReportOmissions_WhenEveryViolationIsSampled()
+    {
+        var forbidden = ProjectionViolation(NegativeBalancePolicy.Forbid, "1010", -10m);
+        var forbiddenFixture = new Fixture(new AccountingBalanceProjectionResult(0, 1, 0, [forbidden]));
+
+        var exception = await ((Func<Task>)(() =>
+                forbiddenFixture.Sut.CloseMonthAsync(January, "closer", Ct)))
+            .Should().ThrowAsync<AccountingNegativeBalanceForbiddenException>();
+
+        exception.Which.Message.Should().NotContain("more forbidden balances");
+
+        var warning = ProjectionViolation(NegativeBalancePolicy.Warn, "2010", -5m);
+        var warningFixture = new Fixture(new AccountingBalanceProjectionResult(1, 0, 1, [warning]));
+
+        await warningFixture.Sut.CloseMonthAsync(January, "closer", Ct);
+
+        warningFixture.ClosedPeriods.Verify(
+            x => x.MarkClosedAsync(January, "closer", Fixture.Now, Ct),
+            Times.Once);
     }
 
     [Fact]
@@ -521,6 +569,21 @@ public sealed class PeriodClosingServiceFullCoverageTests
             [new AuditFieldChange("retained_earnings_account_id", null,
                 System.Text.Json.JsonSerializer.Serialize(retainedEarningsAccountId))]);
 
+    private static NegativeBalanceViolation ProjectionViolation(
+        NegativeBalancePolicy policy,
+        string accountCode,
+        decimal closingBalance)
+        => new()
+        {
+            Period = January,
+            AccountId = Guid.CreateVersion7(),
+            AccountCode = accountCode,
+            AccountName = $"Account {accountCode}",
+            AccountType = AccountType.Asset,
+            Policy = policy,
+            ClosingBalance = closingBalance
+        };
+
     private sealed class Fixture
     {
         public static readonly DateTime Now = new(2026, 2, 3, 4, 5, 6, DateTimeKind.Utc);
@@ -545,6 +608,7 @@ public sealed class PeriodClosingServiceFullCoverageTests
         public Mock<IAuditEventReader> AuditReader { get; } = new();
         public Mock<IAccountByIdResolver> AccountResolver { get; } = new();
         public Mock<IAccountingEntryWriter> EntryWriter { get; } = new();
+        public Mock<IAccountingBalanceProjectionWriter>? BalanceProjection { get; }
         public ChartOfAccounts Chart { get; } = new();
 
         public bool IsClosed { get; set; }
@@ -566,7 +630,7 @@ public sealed class PeriodClosingServiceFullCoverageTests
 
         public PeriodClosingService Sut { get; }
 
-        public Fixture()
+        public Fixture(AccountingBalanceProjectionResult? projection = null)
         {
             var activeTransaction = false;
             Uow.SetupGet(x => x.HasActiveTransaction).Returns(() => activeTransaction);
@@ -646,6 +710,14 @@ public sealed class PeriodClosingServiceFullCoverageTests
             EntryWriter.Setup(x => x.WriteAsync(It.IsAny<IReadOnlyList<AccountingEntry>>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
 
+            if (projection is not null)
+            {
+                BalanceProjection = new Mock<IAccountingBalanceProjectionWriter>();
+                BalanceProjection.Setup(x => x.ProjectAsync(
+                        It.IsAny<DateOnly>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(projection);
+            }
+
             var contextFactory = new Mock<IAccountingPostingContextFactory>();
             contextFactory.Setup(x => x.CreateAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => new AccountingPostingContext(Chart));
@@ -671,7 +743,8 @@ public sealed class PeriodClosingServiceFullCoverageTests
                 TrialBalance.Object, engine, new AccountingBalanceCalculator(), Integrity.Object,
                 PostingState.Object, PostingReader.Object, AuditReader.Object,
                 new AccountingNegativeBalanceChecker(ChartProvider.Object), AccountResolver.Object,
-                new Mock<ILogger<PeriodClosingService>>().Object, new FixedTimeProvider(Now));
+                new Mock<ILogger<PeriodClosingService>>().Object, new FixedTimeProvider(Now),
+                BalanceProjection?.Object);
         }
     }
 

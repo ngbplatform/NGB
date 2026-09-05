@@ -123,6 +123,26 @@ public sealed class TradeReportingHelpers_P0Tests
         afterMovementIds.Should().Equal(null, 1000L);
     }
 
+    [Fact]
+    public async Task ReadAllMovementsAsync_StopsImmediatelyOnEmptyPage()
+    {
+        var reader = new Mock<IOperationalRegisterMovementsQueryReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetByMonthsAsync(
+                It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), null,
+                null, null, null, null, 1000, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var rows = await TradeReportingHelpers.ReadAllMovementsAsync(
+            reader.Object,
+            Guid.CreateVersion7(),
+            new DateOnly(2026, 4, 1),
+            new DateOnly(2026, 4, 30),
+            null,
+            default);
+
+        rows.Should().BeEmpty();
+    }
+
     private static OperationalRegisterMovementQueryReadRow CreateMovementRow(long movementId, Guid warehouseId, Guid itemId)
         => new()
         {

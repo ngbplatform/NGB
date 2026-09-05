@@ -45,9 +45,16 @@ internal sealed class ScopedRentChargeCandidateBatchExecutor(IServiceScopeFactor
             },
             async (index, innerCt) =>
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var worker = scope.ServiceProvider.GetRequiredService<RentChargeCandidateWorker>();
-                results[index] = await worker.ExecuteAsync(candidates[index], innerCt);
+                var scope = scopeFactory.CreateAsyncScope();
+                try
+                {
+                    var worker = scope.ServiceProvider.GetRequiredService<RentChargeCandidateWorker>();
+                    results[index] = await worker.ExecuteAsync(candidates[index], innerCt);
+                }
+                finally
+                {
+                    await scope.DisposeAsync();
+                }
             });
 
         return results;

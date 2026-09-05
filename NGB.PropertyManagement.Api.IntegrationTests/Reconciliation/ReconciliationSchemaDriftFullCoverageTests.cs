@@ -186,6 +186,26 @@ public sealed class ReconciliationSchemaDriftFullCoverageTests(PmSchemaIntegrati
         }
     }
 
+    [Fact]
+    public void Receivables_report_cursor_keys_cover_charge_credit_and_missing_date_boundaries()
+    {
+        PostgresReceivablesReportReader.GetNextKindOrder(chargesOnly: true, netAmount: -1m)
+            .Should().Be(0);
+        PostgresReceivablesReportReader.GetNextKindOrder(chargesOnly: false, netAmount: 1m)
+            .Should().Be(0);
+        PostgresReceivablesReportReader.GetNextKindOrder(chargesOnly: false, netAmount: 0m)
+            .Should().Be(1);
+
+        var dueOnUtc = new DateOnly(2026, 8, 1);
+        var receivedOnUtc = new DateOnly(2026, 8, 2);
+        PostgresReceivablesReportReader.GetNextSortDate(dueOnUtc, receivedOnUtc)
+            .Should().Be(dueOnUtc);
+        PostgresReceivablesReportReader.GetNextSortDate(null, receivedOnUtc)
+            .Should().Be(receivedOnUtc);
+        PostgresReceivablesReportReader.GetNextSortDate(null, null)
+            .Should().Be(DateOnly.MaxValue);
+    }
+
     private static string QuoteIdentifier(string identifier)
         => $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 }

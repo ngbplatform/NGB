@@ -483,7 +483,7 @@ LEFT JOIN movement_amounts movement
 ORDER BY request.request_index;
 """;
 
-    private static string ResolveBalancesTableName(string movementsTable)
+    internal static string ResolveBalancesTableName(string movementsTable)
     {
         const string movementsSuffix = "__movements";
         if (!movementsTable.EndsWith(movementsSuffix, StringComparison.Ordinal))

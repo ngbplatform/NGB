@@ -273,8 +273,7 @@ ORDER BY {orderBySql}
                 throw new NgbInvariantViolationException($"PostgreSQL reporting duplicate cursor alias '{hiddenAlias}'.");
 
             selectSql.Add($"{keyField.ResolveExpression(null)} AS {hiddenAlias}");
-            if (orderColumns.All(x => !x.Alias.Equals(hiddenAlias, StringComparison.OrdinalIgnoreCase)))
-                orderColumns.Add(new PostgresReportCursorColumn(hiddenAlias, keyField.DataType, ReportSortDirection.Asc, IsHidden: true));
+            orderColumns.Add(new PostgresReportCursorColumn(hiddenAlias, keyField.DataType, ReportSortDirection.Asc, IsHidden: true));
         }
 
         return orderColumns;

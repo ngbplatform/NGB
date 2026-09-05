@@ -235,6 +235,31 @@ public sealed class TrialBalanceReportService_P0Tests
         page.Rows.Select(x => x.RowKind).Should().Equal(TrialBalanceReportRowKind.Group, TrialBalanceReportRowKind.Detail);
     }
 
+    [Fact]
+    public async Task GetPageAsync_RejectsTheFirstRowBeyondTheMaterializationBound()
+    {
+        var snapshot = new TrialBalanceSnapshot(
+            Enumerable.Range(0, NGB.Contracts.Common.PagingLimits.MaxMaterializedRows)
+                .Select(index => new TrialBalanceSnapshotRow(
+                    Guid.CreateVersion7(),
+                    index.ToString("D5"),
+                    Guid.CreateVersion7(),
+                    0m,
+                    0m,
+                    0m))
+                .ToArray());
+        var service = new TrialBalanceReportService(
+            new StubTrialBalanceSnapshotReader(snapshot),
+            new StubAccountByIdResolver());
+
+        var act = () => service.GetPageAsync(
+            new TrialBalanceReportPageRequest { ShowSubtotals = false },
+            default);
+
+        (await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>())
+            .Which.ParamName.Should().Be("request");
+    }
+
     private sealed class StubTrialBalanceSnapshotReader(TrialBalanceSnapshot snapshot) : ITrialBalanceSnapshotReader
     {
         public Task<TrialBalanceSnapshot> GetAsync(

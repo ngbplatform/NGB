@@ -600,16 +600,39 @@ LIMIT @query_limit;
         var hasMore = cursorMode && rows.Count > limit;
         if (hasMore)
             rows.RemoveAt(rows.Count - 1);
-        var totals = cursor?.Totals ?? (first is null
-            ? new SalesByItemTotals(0m, 0m, 0m, 0m, 0m, 0m)
-            : new SalesByItemTotals(
+        
+        SalesByItemTotals totals;
+        if (cursor is not null)
+        {
+            totals = cursor.Totals;
+        }
+        else if (first is null)
+        {
+            totals = new SalesByItemTotals(0m, 0m, 0m, 0m, 0m, 0m);
+        }
+        else
+        {
+            totals = new SalesByItemTotals(
                 first.TotalSoldQuantity,
                 first.TotalGrossSales,
                 first.TotalReturnedQuantity,
                 first.TotalReturnedAmount,
                 first.TotalNetSales,
-                first.TotalNetCogs));
+                first.TotalNetCogs);
+        }
+
         var last = rows.LastOrDefault();
+        var total = cursor?.Total ?? (first?.TotalCount ?? 0);
+        decimal? nextAfterAmount = null;
+        string? nextAfterDisplay = null;
+        Guid? nextAfterId = null;
+
+        if (last is not null)
+        {
+            nextAfterAmount = last.NetSales;
+            nextAfterDisplay = last.ItemDisplay;
+            nextAfterId = last.ItemId;
+        }
 
         return new TradeAnalyticsPage<SalesByItemSummaryRow, SalesByItemTotals>(
             rows.Select(static row => new SalesByItemSummaryRow(
@@ -621,12 +644,12 @@ LIMIT @query_limit;
                 row.ReturnedAmount,
                 row.NetSales,
                 row.NetCogs)).ToArray(),
-            cursor?.Total ?? first?.TotalCount ?? 0,
+            total,
             totals,
             hasMore,
-            last?.NetSales,
-            last?.ItemDisplay,
-            last?.ItemId);
+            nextAfterAmount,
+            nextAfterDisplay,
+            nextAfterId);
     }
 
     public async Task<IReadOnlyList<SalesByItemSummaryRow>> GetSalesByItemAsync(
@@ -838,16 +861,39 @@ LIMIT @query_limit;
         var hasMore = cursorMode && rows.Count > limit;
         if (hasMore)
             rows.RemoveAt(rows.Count - 1);
-        var totals = cursor?.Totals ?? (first is null
-            ? new SalesByCustomerTotals(0, 0, 0m, 0m, 0m, 0m)
-            : new SalesByCustomerTotals(
+
+        SalesByCustomerTotals totals;
+        if (cursor is not null)
+        {
+            totals = cursor.Totals;
+        }
+        else if (first is null)
+        {
+            totals = new SalesByCustomerTotals(0, 0, 0m, 0m, 0m, 0m);
+        }
+        else
+        {
+            totals = new SalesByCustomerTotals(
                 first.TotalSalesDocumentCount,
                 first.TotalReturnDocumentCount,
                 first.TotalGrossSales,
                 first.TotalReturnedAmount,
                 first.TotalNetSales,
-                first.TotalNetCogs));
+                first.TotalNetCogs);
+        }
+
         var last = rows.LastOrDefault();
+        var total = cursor?.Total ?? (first?.TotalCount ?? 0);
+        decimal? nextAfterAmount = null;
+        string? nextAfterDisplay = null;
+        Guid? nextAfterId = null;
+
+        if (last is not null)
+        {
+            nextAfterAmount = last.NetSales;
+            nextAfterDisplay = last.CustomerDisplay;
+            nextAfterId = last.CustomerId;
+        }
 
         return new TradeAnalyticsPage<SalesByCustomerSummaryRow, SalesByCustomerTotals>(
             rows.Select(static row => new SalesByCustomerSummaryRow(
@@ -859,12 +905,12 @@ LIMIT @query_limit;
                 row.ReturnedAmount,
                 row.NetSales,
                 row.NetCogs)).ToArray(),
-            cursor?.Total ?? first?.TotalCount ?? 0,
+            total,
             totals,
             hasMore,
-            last?.NetSales,
-            last?.CustomerDisplay,
-            last?.CustomerId);
+            nextAfterAmount,
+            nextAfterDisplay,
+            nextAfterId);
     }
 
     public async Task<IReadOnlyList<SalesByCustomerSummaryRow>> GetSalesByCustomerAsync(
@@ -1072,15 +1118,37 @@ LIMIT @query_limit;
         if (hasMore)
             rows.RemoveAt(rows.Count - 1);
 
-        var totals = cursor?.Totals ?? (first is null
-            ? new PurchasesByVendorTotals(0, 0, 0m, 0m, 0m)
-            : new PurchasesByVendorTotals(
+        PurchasesByVendorTotals totals;
+        if (cursor is not null)
+        {
+            totals = cursor.Totals;
+        }
+        else if (first is null)
+        {
+            totals = new PurchasesByVendorTotals(0, 0, 0m, 0m, 0m);
+        }
+        else
+        {
+            totals = new PurchasesByVendorTotals(
                 first.TotalPurchaseDocumentCount,
                 first.TotalReturnDocumentCount,
                 first.TotalGrossPurchases,
                 first.TotalReturnedAmount,
-                first.TotalNetPurchases));
+                first.TotalNetPurchases);
+        }
+
         var last = rows.LastOrDefault();
+        var total = cursor?.Total ?? (first?.TotalCount ?? 0);
+        decimal? nextAfterAmount = null;
+        string? nextAfterDisplay = null;
+        Guid? nextAfterId = null;
+
+        if (last is not null)
+        {
+            nextAfterAmount = last.NetPurchases;
+            nextAfterDisplay = last.VendorDisplay;
+            nextAfterId = last.VendorId;
+        }
 
         return new TradeAnalyticsPage<PurchasesByVendorSummaryRow, PurchasesByVendorTotals>(
             rows.Select(static row => new PurchasesByVendorSummaryRow(
@@ -1091,12 +1159,12 @@ LIMIT @query_limit;
                 row.GrossPurchases,
                 row.ReturnedAmount,
                 row.NetPurchases)).ToArray(),
-            cursor?.Total ?? first?.TotalCount ?? 0,
+            total,
             totals,
             hasMore,
-            last?.NetPurchases,
-            last?.VendorDisplay,
-            last?.VendorId);
+            nextAfterAmount,
+            nextAfterDisplay,
+            nextAfterId);
     }
 
     public async Task<IReadOnlyList<PurchasesByVendorSummaryRow>> GetPurchasesByVendorAsync(
@@ -1121,7 +1189,7 @@ LIMIT @query_limit;
         return page.Rows;
     }
 
-    private static void EnsureLegacyMaterializationBound(int total)
+    internal static void EnsureLegacyMaterializationBound(int total)
     {
         if (total <= PagingLimits.MaxMaterializedRows)
             return;

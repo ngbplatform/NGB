@@ -405,6 +405,33 @@ public sealed class SalesInvoicePostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_When_Posted_Source_Timesheet_Has_No_AgencyBilling_Head_Throws()
+    {
+        var timesheetId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null);
+        var serviceItemId = Guid.NewGuid();
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(
+            documentId: head.DocumentId,
+            serviceItemId: serviceItemId,
+            sourceTimesheetId: timesheetId);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (timesheetId, AgencyBillingTestData.CreateDocument(
+                    AgencyBillingCodes.Timesheet, DocumentStatus.Posted, id: timesheetId))),
+            timesheetHeadsById: new Dictionary<Guid, AgencyBillingTimesheetHead>(),
+            omitUnconfiguredTimesheetHeads: true);
+
+        await ((Func<Task>)(() => harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice),
+                CancellationToken.None)))
+            .Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*missing its Agency Billing head row*");
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_When_Source_Timesheet_Does_Not_Match_Client_And_Project_Throws()
     {
         var timesheetId = Guid.NewGuid();
@@ -523,6 +550,38 @@ public sealed class SalesInvoicePostValidator_P0Tests
 
         ex.ParamName.Should().Be("lines");
         ex.Reason.Should().Contain("remaining billable hours");
+    }
+
+    [Fact]
+    public async Task ValidateBeforePostAsync_When_Batched_Source_Details_Are_Missing_Uses_Zero_Defaults()
+    {
+        var timesheetId = Guid.NewGuid();
+        var serviceItemId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null, amount: 160m);
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(
+            documentId: head.DocumentId,
+            serviceItemId: serviceItemId,
+            sourceTimesheetId: timesheetId,
+            quantityHours: 1m,
+            rate: 160m,
+            lineAmount: 160m);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (timesheetId, AgencyBillingTestData.CreateDocument(
+                    AgencyBillingCodes.Timesheet, DocumentStatus.Posted, id: timesheetId))),
+            timesheetHeadsById: Map((timesheetId, AgencyBillingTestData.ValidTimesheetHead(
+                timesheetId, clientId: head.ClientId, projectId: head.ProjectId))),
+            omitUnconfiguredTimesheetLines: true,
+            omitUnconfiguredUsage: true);
+
+        var error = await ((Func<Task>)(() => harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice),
+                CancellationToken.None)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+        error.Which.Reason.Should().Contain("remaining billable hours");
     }
 
     [Fact]
@@ -669,7 +728,10 @@ public sealed class SalesInvoicePostValidator_P0Tests
         IReadOnlyDictionary<Guid, AgencyBillingClientContractHead>? contractsById = null,
         IReadOnlyDictionary<Guid, AgencyBillingTimesheetHead>? timesheetHeadsById = null,
         IReadOnlyDictionary<Guid, IReadOnlyList<AgencyBillingTimesheetLine>>? timesheetLinesById = null,
-        IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>? usageByTimesheetId = null)
+        IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>? usageByTimesheetId = null,
+        bool omitUnconfiguredTimesheetHeads = false,
+        bool omitUnconfiguredTimesheetLines = false,
+        bool omitUnconfiguredUsage = false)
     {
         head ??= AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null);
         lines ??= [AgencyBillingTestData.ValidSalesInvoiceLine(documentId: head.DocumentId)];
@@ -705,7 +767,10 @@ public sealed class SalesInvoicePostValidator_P0Tests
             });
         readers.Setup(x => x.ReadTimesheetHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
-                ids.Distinct().ToDictionary(
+                ids.Distinct()
+                    .Where(id => !omitUnconfiguredTimesheetHeads
+                                 || timesheetHeadsById is not null && timesheetHeadsById.ContainsKey(id))
+                    .ToDictionary(
                     static id => id,
                     id => timesheetHeadsById is not null && timesheetHeadsById.TryGetValue(id, out var timesheetHead)
                         ? timesheetHead
@@ -726,7 +791,10 @@ public sealed class SalesInvoicePostValidator_P0Tests
             });
         readers.Setup(x => x.ReadTimesheetLinesAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
-                ids.Distinct().ToDictionary(
+                ids.Distinct()
+                    .Where(id => !omitUnconfiguredTimesheetLines
+                                 || timesheetLinesById is not null && timesheetLinesById.ContainsKey(id))
+                    .ToDictionary(
                     static id => id,
                     id => timesheetLinesById is not null && timesheetLinesById.TryGetValue(id, out var timesheetLines)
                         ? timesheetLines
@@ -749,7 +817,10 @@ public sealed class SalesInvoicePostValidator_P0Tests
                 It.IsAny<Guid?>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((IReadOnlyCollection<Guid> ids, Guid? _, CancellationToken _) =>
-                (IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>)ids.Distinct().ToDictionary(
+                (IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>)ids.Distinct()
+                    .Where(id => !omitUnconfiguredUsage
+                                 || usageByTimesheetId is not null && usageByTimesheetId.ContainsKey(id))
+                    .ToDictionary(
                     static id => id,
                     id => usageByTimesheetId is not null && usageByTimesheetId.TryGetValue(id, out var usage)
                         ? usage

@@ -11,8 +11,8 @@ public sealed class OperationalRegisterReadContextCache
     private static readonly TimeSpan TimeToLive = TimeSpan.FromMinutes(5);
     private const int DefaultCapacity = 4_096;
     private readonly TimeProvider _timeProvider;
-    private readonly BoundedExpiringCache<CacheKey, OperationalRegisterReadContext> _entries;
-    private readonly AsyncKeyedLock<CacheKey> _loadGates = new();
+    private readonly BoundedExpiringCache<(Guid RegisterId, string RequiredResourceColumn), OperationalRegisterReadContext> _entries;
+    private readonly AsyncKeyedLock<(Guid RegisterId, string RequiredResourceColumn)> _loadGates = new();
 
     public OperationalRegisterReadContextCache(TimeProvider timeProvider)
         : this(timeProvider, DefaultCapacity)
@@ -22,7 +22,7 @@ public sealed class OperationalRegisterReadContextCache
     internal OperationalRegisterReadContextCache(TimeProvider timeProvider, int capacity)
     {
         _timeProvider = timeProvider;
-        _entries = new BoundedExpiringCache<CacheKey, OperationalRegisterReadContext>(capacity);
+        _entries = new BoundedExpiringCache<(Guid RegisterId, string RequiredResourceColumn), OperationalRegisterReadContext>(capacity);
     }
 
     internal int EntryCount => _entries.Count;
@@ -34,7 +34,7 @@ public sealed class OperationalRegisterReadContextCache
         Func<CancellationToken, Task<OperationalRegisterReadContext>> factory,
         CancellationToken ct)
     {
-        var key = new CacheKey(registerId, requiredResourceColumn);
+        var key = (registerId, requiredResourceColumn);
         if (TryGet(key, out var cached))
             return cached;
 
@@ -59,12 +59,12 @@ public sealed class OperationalRegisterReadContextCache
         _entries.RemoveWhere(key => key.RegisterId == registerId);
     }
 
-    private bool TryGet(CacheKey key, out OperationalRegisterReadContext context)
+    private bool TryGet(
+        (Guid RegisterId, string RequiredResourceColumn) key,
+        out OperationalRegisterReadContext context)
     {
         return _entries.TryGet(key, _timeProvider.GetUtcNow(), out context);
     }
-
-    private readonly record struct CacheKey(Guid RegisterId, string RequiredResourceColumn);
 
 }
 

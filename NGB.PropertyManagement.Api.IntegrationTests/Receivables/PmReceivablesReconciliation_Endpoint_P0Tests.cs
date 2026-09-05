@@ -115,6 +115,47 @@ public sealed class PmReceivablesReconciliation_Endpoint_P0Tests : IAsyncLifetim
                 r.Diff == 0m &&
                 r.RowKind == ReceivablesReconciliationRowKind.Matched &&
                 r.HasDiff == false);
+
+            var secondParty = await catalogs.CreateAsync(
+                PropertyManagementCodes.Party,
+                Payload(new { display = "Tenant Two" }),
+                CancellationToken.None);
+            var secondLease = await documents.CreateDraftAsync(PropertyManagementCodes.Lease, Payload(new
+            {
+                display = "Second lease",
+                property_id = property.Id,
+                start_on_utc = "2026-02-01",
+                rent_amount = "500.00"
+            }, LeaseParts.PrimaryTenant(secondParty.Id)), CancellationToken.None);
+            var secondCharge = await documents.CreateDraftAsync(PropertyManagementCodes.ReceivableCharge, Payload(new
+            {
+                display = "RC-2",
+                lease_id = secondLease.Id,
+                charge_type_id = rentType.Id,
+                due_on_utc = "2026-02-08",
+                amount = "25.00"
+            }), CancellationToken.None);
+            (await documents.PostAsync(PropertyManagementCodes.ReceivableCharge, secondCharge.Id, CancellationToken.None))
+                .Status.Should().Be(DocumentStatus.Posted);
+
+            var firstPage = await client.GetFromJsonAsync<ReceivablesReconciliationReport>(url + "&limit=1");
+            firstPage.Should().NotBeNull();
+            firstPage!.Rows.Should().ContainSingle();
+            firstPage.RowCount.Should().Be(2);
+            firstPage.HasMore.Should().BeTrue();
+            firstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
+
+            var nextPage = await client.GetFromJsonAsync<ReceivablesReconciliationReport>(
+                url + "&limit=1&cursor=" + Uri.EscapeDataString(firstPage.NextCursor!));
+            nextPage.Should().NotBeNull();
+            nextPage!.Rows.Should().ContainSingle();
+            nextPage.Rows[0].PartyId.Should().NotBe(firstPage.Rows[0].PartyId);
+            nextPage.RowCount.Should().Be(firstPage.RowCount);
+            nextPage.TotalArNet.Should().Be(firstPage.TotalArNet);
+            nextPage.TotalOpenItemsNet.Should().Be(firstPage.TotalOpenItemsNet);
+            nextPage.Offset.Should().Be(1);
+            nextPage.HasMore.Should().BeFalse();
+            nextPage.NextCursor.Should().BeNull();
         }
         finally
         {

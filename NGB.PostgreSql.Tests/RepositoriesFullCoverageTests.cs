@@ -88,9 +88,13 @@ public sealed class RepositoriesFullCoverageTests
             .Where(x => Equals(x.Context["paramName"], "doc"));
         await blankNumber.Should().ThrowAsync<NgbArgumentRequiredException>()
             .Where(x => Equals(x.Context["paramName"], "number"));
+        await ((Func<Task>)(() => invalid.GetByIdsAsync(null!)))
+            .Should().ThrowAsync<ArgumentNullException>();
+        (await invalid.GetByIdsAsync([Guid.Empty, Guid.Empty])).Should().BeEmpty();
 
         var missing = DocumentRepository(new RecordingDbConnection(readerFactory: _ => EmptyDocumentRows()));
         var id = Guid.NewGuid();
+        (await missing.GetByIdsAsync([Guid.Empty, id, id])).Should().BeEmpty();
         Func<Task> increment = () => missing.IncrementVersionAsync(id, Now);
         await increment.Should().ThrowAsync<DocumentNotFoundException>()
             .Where(x => x.DocumentId == id);

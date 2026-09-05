@@ -32,6 +32,14 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
         await AssertOutOfRange(() => occupancyReader.GetPageAsync(null, AsOf, 0, 0, CancellationToken.None));
         await AssertOutOfRange(() => occupancyReader.GetPageAsync(null, AsOf, -1, 1, CancellationToken.None));
         await AssertInvalid(() => occupancyReader.GetPageAsync(Guid.Empty, AsOf, 0, 1, CancellationToken.None));
+        await AssertOutOfRange(() => occupancyReader.GetCursorPageAsync(null, AsOf, null, 0, CancellationToken.None));
+        await AssertInvalid(() => occupancyReader.GetCursorPageAsync(Guid.Empty, AsOf, null, 1, CancellationToken.None));
+        await AssertOutOfRange(() => occupancyReader.GetCursorPageAsync(
+            null,
+            AsOf,
+            new OccupancySummaryPageCursor(-1, 0, new OccupancySummaryTotals(AsOf, 0, 0, 0)),
+            1,
+            CancellationToken.None));
 
         var missingId = Guid.CreateVersion7();
         await AssertInvalid(() => buildingReader.GetSummaryAsync(missingId, AsOf, CancellationToken.None));
@@ -61,6 +69,11 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
     [Fact]
     public async Task Occupancy_page_beyond_total_returns_empty_rows_and_preserves_totals()
     {
+        PostgresOccupancySummaryReader.ResolveCursorOffset(null).Should().Be(0);
+        PostgresOccupancySummaryReader.ResolveCursorOffset(
+                new OccupancySummaryPageCursor(7, 10, new OccupancySummaryTotals(AsOf, 0, 0, 0)))
+            .Should().Be(7);
+
         await using var factory = new PmApiFactory(fixture);
         await using var scope = factory.Services.CreateAsyncScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -85,6 +98,22 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
         page.Rows.Should().BeEmpty();
         page.Totals.Should().Be(new OccupancySummaryTotals(AsOf, 1, 0, 0));
         page.HasMore.Should().BeFalse();
+
+        var seekPage = await reader.GetCursorPageAsync(
+            buildingId: null,
+            asOfUtc: AsOf,
+            cursor: new OccupancySummaryPageCursor(
+                Offset: 999,
+                Total: firstPage.Total,
+                Totals: firstPage.Totals,
+                AfterBuildingDisplay: string.Empty,
+                AfterBuildingId: Guid.Empty),
+            limit: 1,
+            ct: CancellationToken.None);
+
+        seekPage.Rows.Should().ContainSingle().Which.BuildingId.Should().Be(buildingId);
+        seekPage.Total.Should().Be(1);
+        seekPage.HasMore.Should().BeFalse();
     }
 
     [Fact]
@@ -183,38 +212,49 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
         await using var factory = new PmApiFactory(fixture);
         await using var scope = factory.Services.CreateAsyncScope();
         var reader = scope.ServiceProvider.GetRequiredService<IMaintenanceQueueReader>();
+        var query = new MaintenanceQueueQuery(
+            AsOf,
+            BuildingId: null,
+            PropertyId: null,
+            CategoryId: null,
+            AssignedPartyId: null,
+            Priority: null,
+            QueueState: null,
+            Offset: 0,
+            Limit: 1);
 
         var page = await reader.GetPageAsync(
-            new MaintenanceQueueQuery(
-                AsOf,
-                BuildingId: null,
-                PropertyId: null,
-                CategoryId: null,
-                AssignedPartyId: null,
-                Priority: null,
-                QueueState: null,
-                Offset: 1,
-                Limit: 1),
+            query with { Offset = 1 },
             CancellationToken.None);
 
         page.Total.Should().Be(0);
         page.Rows.Should().BeEmpty();
 
         var cursorPage = await reader.GetCursorPageAsync(
-            new MaintenanceQueueQuery(
-                AsOf,
-                BuildingId: null,
-                PropertyId: null,
-                CategoryId: null,
-                AssignedPartyId: null,
-                Priority: null,
-                QueueState: null,
-                Offset: 0,
-                Limit: 1),
+            query,
             new MaintenanceQueuePageCursor(0, 0),
             CancellationToken.None);
         cursorPage.Total.Should().Be(0);
         cursorPage.Rows.Should().BeEmpty();
+
+        var nullCursorPage = await reader.GetCursorPageAsync(
+            query,
+            cursor: null,
+            CancellationToken.None);
+        nullCursorPage.Total.Should().Be(0);
+        nullCursorPage.Rows.Should().BeEmpty();
+
+        var seekPage = await reader.GetCursorPageAsync(
+            query,
+            new MaintenanceQueuePageCursor(
+                Offset: 0,
+                Total: 0,
+                AfterRequestedAtUtc: AsOf,
+                AfterRequestId: Guid.CreateVersion7(),
+                AfterWorkOrderId: null),
+            CancellationToken.None);
+        seekPage.Total.Should().Be(0);
+        seekPage.Rows.Should().BeEmpty();
     }
 
     private static async Task InsertPropertyHeadsAsync(

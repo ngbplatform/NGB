@@ -50,12 +50,6 @@ internal static class ReceivablesFifoAllocator
 
                 var ch = orderedCharges[chargeIndex];
                 var chLeft = outstanding[ch.ChargeDocumentId];
-                if (chLeft <= 0m)
-                {
-                    chargeIndex++;
-                    continue;
-                }
-
                 var amount = Math.Min(chLeft, creditLeft);
                 var creditBefore = creditLeft;
                 var chargeBefore = chLeft;

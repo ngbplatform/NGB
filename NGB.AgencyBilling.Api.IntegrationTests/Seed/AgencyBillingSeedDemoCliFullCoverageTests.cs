@@ -1,4 +1,6 @@
+using System.Reflection;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NGB.AgencyBilling.Contracts;
 using NGB.AgencyBilling.Migrator.Seed;
@@ -282,12 +284,96 @@ public sealed class AgencyBillingSeedDemoCliFullCoverageTests
             .Should().Be(DocumentStatus.Posted);
     }
 
+    [Fact]
+    public async Task Catalog_index_loading_honors_exact_total_and_open_ended_page_boundaries()
+    {
+        var fullPage = Enumerable.Range(0, PagingLimits.MaxPageSize)
+            .Select(index => Catalog(Guid.NewGuid(), $"Item {index}"))
+            .ToArray();
+        var exactTotalCatalogs = new Mock<ICatalogService>(MockBehavior.Strict);
+        exactTotalCatalogs.Setup(x => x.GetPageAsync(
+                "catalog",
+                It.Is<PageRequestDto>(request => request.Offset == 0),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
+                fullPage, 0, PagingLimits.MaxPageSize, PagingLimits.MaxPageSize));
+
+        var exactTotal = CreateSeeder(catalogs: exactTotalCatalogs.Object);
+        (await exactTotal.FindCatalogByDisplayAsync("catalog", "Item 499", CancellationToken.None))
+            .Should().NotBeNull();
+        exactTotalCatalogs.VerifyAll();
+
+        var openEndedCatalogs = new Mock<ICatalogService>(MockBehavior.Strict);
+        openEndedCatalogs.SetupSequence(x => x.GetPageAsync(
+                "catalog",
+                It.IsAny<PageRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
+                fullPage, 0, PagingLimits.MaxPageSize, Total: null))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>(
+                [Catalog(Guid.NewGuid(), "Tail")], PagingLimits.MaxPageSize, PagingLimits.MaxPageSize, Total: null));
+
+        var openEnded = CreateSeeder(catalogs: openEndedCatalogs.Object);
+        (await openEnded.FindCatalogByDisplayAsync("catalog", "Tail", CancellationToken.None))
+            .Should().NotBeNull();
+        openEndedCatalogs.Verify(x => x.GetPageAsync(
+            "catalog",
+            It.Is<PageRequestDto>(request => request.Offset == PagingLimits.MaxPageSize),
+            It.IsAny<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Scoped_document_batches_cover_single_item_and_failure_disposal_paths()
+    {
+        await InvokeDocumentBatchAsync(CreateSeeder(), requestCount: 0);
+
+        var draftId = Guid.NewGuid();
+        var rootDocuments = new Mock<IDocumentService>(MockBehavior.Strict);
+        rootDocuments.Setup(x => x.CreateDraftAsync(
+                "document", It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Document(draftId, DocumentStatus.Draft));
+        rootDocuments.Setup(x => x.GetByIdAsync(
+                "document", draftId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Document(draftId, DocumentStatus.Draft));
+        var rootDrafts = new Mock<IDocumentDraftService>(MockBehavior.Strict);
+        rootDrafts.Setup(x => x.UpdateDraftAsync(
+                draftId, null, It.IsAny<DateTime?>(), true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await using var successfulProvider = new ServiceCollection().BuildServiceProvider();
+        var successfulSeeder = CreateSeeder(
+            documents: rootDocuments.Object,
+            drafts: rootDrafts.Object,
+            scopeFactory: successfulProvider.GetRequiredService<IServiceScopeFactory>());
+        await InvokeDocumentBatchAsync(successfulSeeder, requestCount: 1);
+        rootDocuments.VerifyAll();
+        rootDrafts.VerifyAll();
+
+        var failingDocuments = new Mock<IDocumentService>(MockBehavior.Strict);
+        failingDocuments.Setup(x => x.CreateDraftAsync(
+                "document", It.IsAny<RecordPayload>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => throw new InvalidOperationException("document create failed"));
+        await using var failingProvider = new ServiceCollection()
+            .AddSingleton(failingDocuments.Object)
+            .AddSingleton(Mock.Of<IDocumentSystemLifecycleService>())
+            .AddSingleton(Mock.Of<IDocumentDraftService>())
+            .BuildServiceProvider();
+        var failingSeeder = CreateSeeder(
+            scopeFactory: failingProvider.GetRequiredService<IServiceScopeFactory>());
+
+        var action = () => InvokeDocumentBatchAsync(failingSeeder, requestCount: 2);
+
+        await action.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("document create failed");
+    }
+
     private static AgencyBillingDemoSeeder CreateSeeder(
         ICatalogService? catalogs = null,
         IDocumentService? documents = null,
         IDocumentSystemLifecycleService? lifecycle = null,
         IDocumentDraftService? drafts = null,
-        DefinitionsRegistry? definitions = null)
+        DefinitionsRegistry? definitions = null,
+        IServiceScopeFactory? scopeFactory = null)
         => new(
             new AgencyBillingDemoSeedOptions(
                 "test", 7, Today, Today, 1, 2, 1, 1, 0, 0, false),
@@ -299,7 +385,30 @@ public sealed class AgencyBillingSeedDemoCliFullCoverageTests
             catalogs ?? Mock.Of<ICatalogService>(),
             documents ?? Mock.Of<IDocumentService>(),
             lifecycle ?? Mock.Of<IDocumentSystemLifecycleService>(),
-            drafts ?? Mock.Of<IDocumentDraftService>());
+            drafts ?? Mock.Of<IDocumentDraftService>(),
+            scopeFactory);
+
+    private static async Task InvokeDocumentBatchAsync(AgencyBillingDemoSeeder seeder, int requestCount)
+    {
+        var method = typeof(AgencyBillingDemoSeeder).GetMethod(
+            "CreateSeededDocumentsAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var requestType = method.GetParameters()[0].ParameterType.GenericTypeArguments[0];
+        var requests = Array.CreateInstance(requestType, requestCount);
+        for (var index = 0; index < requestCount; index++)
+        {
+            var request = Activator.CreateInstance(
+                requestType,
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                binder: null,
+                args: ["document", Today, new RecordPayload(), false],
+                culture: null)!;
+            requests.SetValue(request, index);
+        }
+
+        var task = (Task)method.Invoke(seeder, [requests, CancellationToken.None])!;
+        await task;
+    }
 
     private static CatalogItemDto Catalog(Guid id, string display)
         => new(id, display, new RecordPayload(), IsMarkedForDeletion: false, IsDeleted: false);

@@ -176,6 +176,55 @@ public sealed class UserAccessManagementFullCoverageTests
     }
 
     [Fact]
+    public async Task GetUsers_ClampsOversizedLimit_AndUsesRepositoryHasMore()
+    {
+        var fixture = new Fixture();
+        var user = User(Guid.NewGuid(), "first", null, "First");
+        fixture.Users.Setup(x => x.GetPageAsync(
+                0, UserAccessManagementService.MaxUserPageSize, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage(
+                [user],
+                Total: 1,
+                HasMore: true,
+                NextAfterSortKey: "first",
+                NextAfterUserId: user.UserId));
+        fixture.UserRoles.Setup(x => x.GetRolesForUsersAsync(
+                It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+        fixture.IdentityProvider.Setup(x => x.GetUsersByIdsAsync(
+                It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>());
+
+        var result = await fixture.Sut.GetUsersAsync(
+            new UserPageRequestDto(Limit: UserAccessManagementService.MaxUserPageSize + 1),
+            default);
+
+        result.Limit.Should().Be(UserAccessManagementService.MaxUserPageSize);
+        result.HasMore.Should().BeTrue();
+        result.NextCursor.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task GetUsers_UsesDefaultLimit_WhenRequestedLimitIsNonPositive()
+    {
+        var fixture = new Fixture();
+        fixture.Users.Setup(x => x.GetPageAsync(
+                0, PagingLimits.DefaultPageSize, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([], Total: 0));
+        fixture.UserRoles.Setup(x => x.GetRolesForUsersAsync(
+                It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+        fixture.IdentityProvider.Setup(x => x.GetUsersByIdsAsync(
+                It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>());
+
+        var result = await fixture.Sut.GetUsersAsync(new UserPageRequestDto(Limit: 0), default);
+
+        result.Limit.Should().Be(PagingLimits.DefaultPageSize);
+        result.Items.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GetUser_CoversNullIdentityFieldsVersionFallbackAndRoleMapping()
     {
         var fixture = new Fixture();

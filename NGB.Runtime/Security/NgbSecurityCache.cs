@@ -116,34 +116,36 @@ public sealed class NgbSecurityCache(IMemoryCache cache, IOptionsMonitor<NgbSecu
 
         while (true)
         {
-            var population = pendingPopulations.GetOrAdd(
-                key,
-                _ => new PendingPopulation(async populationCt =>
+            var candidate = new PendingPopulation(async populationCt =>
+            {
+                var created = await factory(populationCt);
+                var tracking = TrackAndTrim(key, options.CurrentValue.MaxEntries);
+
+                foreach (var evictedKey in tracking.EvictedKeys)
                 {
-                    var created = await factory(populationCt);
-                    var tracking = TrackAndTrim(key, options.CurrentValue.MaxEntries);
+                    cache.Remove(evictedKey);
+                }
 
-                    foreach (var evictedKey in tracking.EvictedKeys)
+                cache.Set(
+                    key,
+                    created,
+                    new MemoryCacheEntryOptions
                     {
-                        cache.Remove(evictedKey);
-                    }
-
-                    cache.Set(
-                        key,
-                        created,
-                        new MemoryCacheEntryOptions
+                        AbsoluteExpirationRelativeToNow = ttl,
+                        Size = 1
+                    }.RegisterPostEvictionCallback(static (_, _, _, state) =>
                         {
-                            AbsoluteExpirationRelativeToNow = ttl,
-                            Size = 1
-                        }.RegisterPostEvictionCallback(static (_, _, _, state) =>
-                            {
-                                var eviction = (EvictionState)state!;
-                                eviction.Cache.TryRemoveTracked(eviction.Key, eviction.Version);
-                            },
-                            new EvictionState(this, key, tracking.Version)));
+                            var eviction = (EvictionState)state!;
+                            eviction.Cache.TryRemoveTracked(eviction.Key, eviction.Version);
+                        },
+                        new EvictionState(this, key, tracking.Version)));
 
-                    return created;
-                }));
+                return created;
+            });
+
+            var population = pendingPopulations.GetOrAdd(key, candidate);
+            if (!ReferenceEquals(population, candidate))
+                candidate.Dispose();
 
             if (!population.TryAddWaiter())
             {

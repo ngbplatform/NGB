@@ -3,6 +3,8 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using NGB.Core.Security;
 using NGB.Runtime.Security;
+using System.Collections.Concurrent;
+using System.Reflection;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Security;
@@ -283,6 +285,65 @@ public sealed class NgbSecurityCacheTests
         completed.TryAddWaiter().Should().BeTrue();
         (await completed.Task).Should().Be(2);
         completed.ReleaseWaiterAndAbandonIfLast().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Abandoned_population_left_by_a_racing_waiter_is_removed_and_retried()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var key = $"ngb:security:main-menu:{snapshot.AccessCacheKey}";
+        var pending = typeof(NgbSecurityCache)
+            .GetField("pendingPopulations", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(cache)
+            .Should().BeOfType<ConcurrentDictionary<string, NgbSecurityCache.PendingPopulation>>()
+            .Subject;
+        using var abandoned = new NgbSecurityCache.PendingPopulation(_ => Task.FromResult<object?>(-1));
+        abandoned.TryAddWaiter().Should().BeTrue();
+        abandoned.ReleaseWaiterAndAbandonIfLast().Should().BeTrue();
+        pending.TryAdd(key, abandoned).Should().BeTrue();
+
+        var value = await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            _ => Task.FromResult(42),
+            CancellationToken.None);
+
+        value.Should().Be(42);
+        pending.Should().NotContainKey(key);
+    }
+
+    [Fact]
+    public async Task Existing_live_population_is_joined_without_creating_a_replacement()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.CreateVersion7(), accessVersion: 1);
+        var key = $"ngb:security:main-menu:{snapshot.AccessCacheKey}";
+        var pending = typeof(NgbSecurityCache)
+            .GetField("pendingPopulations", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(cache)
+            .Should().BeOfType<ConcurrentDictionary<string, NgbSecurityCache.PendingPopulation>>()
+            .Subject;
+        using var live = new NgbSecurityCache.PendingPopulation(_ => Task.FromResult<object?>(88));
+        pending.TryAdd(key, live).Should().BeTrue();
+        var replacementCalls = 0;
+
+        var result = await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            _ =>
+            {
+                replacementCalls++;
+                return Task.FromResult(99);
+            },
+            CancellationToken.None);
+
+        result.Should().Be(88);
+        replacementCalls.Should().Be(0);
     }
 
     private static async Task WaitUntilAsync(Func<bool> predicate)

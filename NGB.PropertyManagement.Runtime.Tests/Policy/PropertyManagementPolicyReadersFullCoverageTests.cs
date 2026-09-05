@@ -66,6 +66,25 @@ public sealed class PropertyManagementPolicyReadersFullCoverageTests
     }
 
     [Fact]
+    public async Task Party_reader_batch_normalizes_ids_and_maps_returned_items()
+    {
+        var id = Guid.CreateVersion7();
+        var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
+        catalogs.Setup(x => x.GetHeadItemsByIdsAsync(
+                PropertyManagementCodes.Party,
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { id })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([Item(id, Fields(("is_tenant", true), ("is_vendor", "false")))]);
+        var reader = new PropertyManagementPartyReader(catalogs.Object);
+
+        var result = await reader.GetByIdsAsync([Guid.Empty, id, id]);
+
+        result.Should().ContainSingle()
+            .Which.Value.Should().Be(new PropertyManagementParty(id, "Item", true, false, false));
+        catalogs.VerifyAll();
+    }
+
+    [Fact]
     public async Task Party_reader_rejects_missing_and_malformed_role_fields()
     {
         var id = Guid.CreateVersion7();

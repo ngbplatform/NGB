@@ -41,7 +41,7 @@ internal sealed class DocumentPostingReadCache : IDocumentPostingReadCache
             if (cached.ValueType == typeof(T))
                 return (T)cached.Value!;
 
-            ThrowKeyTypeMismatch<T>(key, cached);
+            throw CreateKeyTypeMismatch<T>(key, cached);
         }
 
         var value = await valueFactory(ct);
@@ -63,14 +63,14 @@ internal sealed class DocumentPostingReadCache : IDocumentPostingReadCache
             if (cached.ValueType == typeof(T))
                 return;
 
-            ThrowKeyTypeMismatch<T>(key, cached);
+            throw CreateKeyTypeMismatch<T>(key, cached);
         }
 
         _values.Add(key, new CachedValue(typeof(T), value));
     }
 
-    private static void ThrowKeyTypeMismatch<T>(string key, CachedValue cached)
-        => throw new NgbInvariantViolationException(
+    private static NgbInvariantViolationException CreateKeyTypeMismatch<T>(string key, CachedValue cached)
+        => new(
             "Document posting read cache key was reused with a different value type.",
             new Dictionary<string, object?>
             {

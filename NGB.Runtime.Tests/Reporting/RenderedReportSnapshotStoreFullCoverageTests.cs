@@ -94,6 +94,20 @@ public sealed class RenderedReportSnapshotStoreFullCoverageTests
     }
 
     [Fact]
+    public async Task BoundedMemoryStore_AllowsTemplateWithoutHeaderRows()
+    {
+        using var store = new MemoryCacheRenderedReportSnapshotStore();
+        var template = new ReportSheetDto(
+            [new ReportSheetColumnDto("code", "Code", "string")],
+            [],
+            HeaderRows: null);
+        var snapshot = Snapshot() with { TemplateSheet = template };
+
+        (await store.SetAsync(snapshot, default)).Should().BeTrue();
+        (await store.GetAsync(snapshot.SnapshotId, default)).Should().BeSameAs(snapshot);
+    }
+
+    [Fact]
     public async Task NullStore_AlwaysMissesRejectsSetAndAcceptsRemove()
     {
         var store = NullRenderedReportSnapshotStore.Instance;

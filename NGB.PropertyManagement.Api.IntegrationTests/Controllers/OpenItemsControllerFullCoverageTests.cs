@@ -139,28 +139,39 @@ public sealed class OpenItemsControllerFullCoverageTests
     public async Task Receivables_paged_details_forwards_explicit_values_and_applies_safe_defaults(bool explicitPaging)
     {
         var leaseId = Guid.NewGuid();
-        var partyId = Guid.NewGuid();
-        var propertyId = Guid.NewGuid();
+        var partyId = explicitPaging ? Guid.NewGuid() : (Guid?)null;
+        var propertyId = explicitPaging ? Guid.NewGuid() : (Guid?)null;
         var expected = new ReceivablesOpenItemsDetailsResponse(
-            Guid.NewGuid(), partyId, null, propertyId, null, leaseId, null, [], [], [], 0m, 0m);
+            Guid.NewGuid(), partyId ?? Guid.Empty, null, propertyId ?? Guid.Empty, null, leaseId, null, [], [], [], 0m, 0m);
+        var delayedResult = explicitPaging
+            ? new TaskCompletionSource<ReceivablesOpenItemsDetailsResponse>(
+                TaskCreationOptions.RunContinuationsAsynchronously)
+            : null;
         var access = GrantedAccess(NgbResourceKinds.Page, PropertyManagementSecurityDefaults.ReceivablesOpenItemsPage, NgbPermissionActions.View);
         var service = new Mock<IReceivablesOpenItemsDetailsService>(MockBehavior.Strict);
         service.Setup(x => x.GetOpenItemsDetailsPageAsync(
-                partyId, propertyId, leaseId, DateOnly.MinValue, DateOnly.MaxValue,
+                partyId ?? Guid.Empty, propertyId ?? Guid.Empty, leaseId, DateOnly.MinValue, DateOnly.MaxValue,
                 explicitPaging ? 10 : 0,
                 explicitPaging ? 20 : 0,
                 explicitPaging ? 30 : 0,
                 explicitPaging ? 40 : 100,
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(expected);
+            .Returns(() => delayedResult?.Task ?? Task.FromResult(expected));
 
-        var actual = await new ReceivablesController(access.Object).GetOpenItemsDetailsPage(
+        var operation = new ReceivablesController(access.Object).GetOpenItemsDetailsPage(
             service.Object, leaseId, partyId, propertyId, DateOnly.MinValue, DateOnly.MaxValue,
             explicitPaging ? 10 : null,
             explicitPaging ? 20 : null,
             explicitPaging ? 30 : null,
             explicitPaging ? 40 : null,
             CancellationToken.None);
+        if (delayedResult is not null)
+        {
+            operation.IsCompleted.Should().BeFalse();
+            delayedResult.SetResult(expected);
+        }
+
+        var actual = await operation;
 
         actual.Should().BeSameAs(expected);
         access.VerifyAll();

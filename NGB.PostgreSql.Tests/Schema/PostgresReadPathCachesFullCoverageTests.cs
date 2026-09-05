@@ -97,6 +97,16 @@ public sealed class PostgresReadPathCachesFullCoverageTests
         (await first).Should().BeSameAs(expected);
         (await second).Should().BeSameAs(expected);
         calls.Should().Be(1);
+        var cached = await cache.GetOrCreateAsync(
+            registerId,
+            "amount",
+            _ => throw new Xunit.Sdk.XunitException("A live read context must be returned from cache."),
+            default);
+        cached.MovementsTable.Should().Be("movements");
+        cached.BalancesTable.Should().Be("balances");
+        cached.MovementsExist.Should().BeTrue();
+        cached.BalancesExist.Should().BeTrue();
+        calls.Should().Be(1);
 
         time.Advance(TimeSpan.FromMinutes(6));
         var refreshed = new OperationalRegisterReadContext("movements-v2", "balances-v2", true, false);

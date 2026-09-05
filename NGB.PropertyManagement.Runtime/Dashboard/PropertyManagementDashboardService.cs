@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Accounting;
 using NGB.PropertyManagement.Contracts.Dashboard;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Receivables;
@@ -58,6 +59,9 @@ public sealed class PropertyManagementDashboardService(
         var futureOccupiedUnits = portfolio?.FutureOccupiedUnits ?? 0;
         var collectionTrend = overview?.CollectionsTrend ?? [];
         var currentCollection = collectionTrend.LastOrDefault();
+        var pendingCloseCount = calendar is null
+            ? 0
+            : calendar.Months.Count(IsPendingClose);
 
         return new PropertyManagementDashboardResponse(
             asOfUtc,
@@ -122,8 +126,8 @@ public sealed class PropertyManagementDashboardService(
                     maintenance?.Days8To14 ?? 0,
                     maintenance?.Days15Plus ?? 0)),
             new PropertyManagementDashboardPeriods(
-                calendar?.Months.Count(static item => item.HasActivity && !item.IsClosed) ?? 0,
-                calendar?.LatestContiguousClosedPeriod ?? calendar?.LatestClosedPeriod,
+                pendingCloseCount,
+                ResolveLatestClosedPeriod(calendar),
                 calendar?.NextClosablePeriod,
                 calendar?.FirstGapPeriod),
             overview?.OccupancyTrend.Select(static item =>
@@ -163,4 +167,9 @@ public sealed class PropertyManagementDashboardService(
 
     private static decimal Percent(int value, int total)
         => total > 0 ? decimal.Round(value * 100m / total, 2) : 0m;
+
+    internal static bool IsPendingClose(PeriodCloseStatusDto item) => item is { HasActivity: true, IsClosed: false };
+
+    internal static DateOnly? ResolveLatestClosedPeriod(PeriodClosingCalendarDto? calendar)
+        => calendar?.LatestContiguousClosedPeriod ?? calendar?.LatestClosedPeriod;
 }

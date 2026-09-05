@@ -152,9 +152,73 @@ public sealed class DocumentDerivationServiceFullCoverageTests
         fixture.Uow.Verify(x => x.RollbackAsync(fixture.Token), Times.Once);
     }
 
+    [Fact]
+    public async Task CreateDraftAsync_UsesBatchLocksAndRelationships_ForNormalizedSourceSet()
+    {
+        var fixture = new Fixture(
+            handlerType: null,
+            handlers: [],
+            useBatchCapabilities: true,
+            includeReferenceRelationship: true);
+        var additionalSourceId = Guid.CreateVersion7();
+
+        var result = await fixture.Sut.CreateDraftAsync(
+            "derive",
+            fixture.SourceId,
+            [Guid.Empty, additionalSourceId, fixture.SourceId, additionalSourceId],
+            ct: fixture.Token);
+
+        result.Should().Be(fixture.TargetId);
+        fixture.Locks.As<IAdvisoryLockBatchManager>().Verify(x => x.LockDocumentsAsync(
+            It.Is<IReadOnlyCollection<Guid>>(ids =>
+                ids.SequenceEqual(new[] { fixture.SourceId, additionalSourceId }.OrderBy(x => x))),
+            fixture.Token), Times.Once);
+        fixture.Locks.Verify(x => x.LockDocumentAsync(
+            It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+        fixture.Relationships.As<IDocumentRelationshipBatchService>().Verify(x => x.CreateManyAsync(
+            It.Is<IReadOnlyCollection<DocumentRelationshipCreateRequest>>(requests =>
+                requests.Count == 3
+                && requests.Count(r => r.RelationshipCode == "based_on") == 2
+                && requests.Count(r => r.RelationshipCode == "references"
+                    && r.ToDocumentId == fixture.SourceId) == 1),
+            false,
+            fixture.Token), Times.Once);
+        fixture.Relationships.Verify(x => x.CreateAsync(
+            It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(),
+            It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_RejectsBlankUnknownAndMismatchedSourceType()
+    {
+        var fixture = new Fixture(handlerType: null, handlers: []);
+
+        await ((Func<Task>)(() => fixture.Sut.CreateDraftAsync(" ", fixture.SourceId, ct: fixture.Token)))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
+        await ((Func<Task>)(() => fixture.Sut.CreateDraftAsync("missing", fixture.SourceId, ct: fixture.Token)))
+            .Should().ThrowAsync<DocumentDerivationNotFoundException>();
+
+        fixture.Documents.Setup(x => x.GetForUpdateAsync(fixture.SourceId, fixture.Token))
+            .ReturnsAsync(new DocumentRecord
+            {
+                Id = fixture.SourceId,
+                TypeCode = "different",
+                DateUtc = fixture.Source.DateUtc,
+                Status = DocumentStatus.Posted
+            });
+        var mismatch = await ((Func<Task>)(() => fixture.CreateDraftAsync()))
+            .Should().ThrowAsync<DocumentDerivationSourceTypeMismatchException>();
+        mismatch.Which.Context.Should().Contain("actualFromTypeCode", "different");
+        fixture.Uow.Verify(x => x.RollbackAsync(fixture.Token), Times.Once);
+    }
+
     private sealed class Fixture
     {
-        public Fixture(Type? handlerType, IReadOnlyList<IDocumentDerivationHandler> handlers)
+        public Fixture(
+            Type? handlerType,
+            IReadOnlyList<IDocumentDerivationHandler> handlers,
+            bool useBatchCapabilities = false,
+            bool includeReferenceRelationship = false)
         {
             var builder = new DefinitionsBuilder();
             builder.AddDocumentDerivation("derive", definition =>
@@ -164,6 +228,8 @@ public sealed class DocumentDerivationServiceFullCoverageTests
                     .From("source")
                     .To("target")
                     .Relationship("based_on");
+                if (includeReferenceRelationship)
+                    definition.Relationship("references");
                 if (handlerType is not null)
                     definition.Handler(handlerType);
             });
@@ -183,6 +249,17 @@ public sealed class DocumentDerivationServiceFullCoverageTests
             Relationships
                 .Setup(x => x.CreateAsync(TargetId, SourceId, "based_on", false, Token))
                 .ReturnsAsync(true);
+            if (useBatchCapabilities)
+            {
+                Locks.As<IAdvisoryLockBatchManager>()
+                    .Setup(x => x.LockDocumentsAsync(
+                        It.IsAny<IReadOnlyCollection<Guid>>(), Token))
+                    .Returns(Task.CompletedTask);
+                Relationships.As<IDocumentRelationshipBatchService>()
+                    .Setup(x => x.CreateManyAsync(
+                        It.IsAny<IReadOnlyCollection<DocumentRelationshipCreateRequest>>(), false, Token))
+                    .ReturnsAsync(0);
+            }
 
             Sut = new DocumentDerivationService(
                 builder.Build(),

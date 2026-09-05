@@ -234,6 +234,28 @@ public sealed class ReportLayoutValidatorFullCoverageTests
                 ["value"] = new string('x', ReportLayoutLimits.MaxParameterValueLength + 1)
             }),
             "parameters.value");
+
+        var duplicatedParameters = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["value"] = "first",
+            [" VALUE "] = "second"
+        };
+        AssertInvalid(
+            definition,
+            new ReportExecutionRequestDto(Parameters: duplicatedParameters),
+            "parameters.value");
+
+        var nullableParameterDefinition = definition with
+        {
+            Parameters = [new ReportParameterMetadataDto("value", "string", false)]
+        };
+        _sut.Invoking(validator => validator.Validate(
+                nullableParameterDefinition,
+                new ReportExecutionRequestDto(Parameters: new Dictionary<string, string>
+                {
+                    ["value"] = null!
+                })))
+            .Should().NotThrow();
     }
 
     [Fact]

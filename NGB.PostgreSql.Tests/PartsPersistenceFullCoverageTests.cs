@@ -200,7 +200,7 @@ public sealed class PartsPersistenceFullCoverageTests
         var id = Guid.NewGuid();
         var part = CatalogTable("catalog_part", TableKind.Part, CatalogColumn("value"));
 
-        await sut.ReplacePartsAsync([CatalogTable("head", TableKind.Head, CatalogColumn("value"))], id, EmptyRows());
+        await sut.ReplacePartsAsync([null!, CatalogTable("head", TableKind.Head, CatalogColumn("value"))], id, EmptyRows());
         connection.Commands.Should().BeEmpty();
         await AssertInvalid(() => sut.ReplacePartsAsync(
             [CatalogTable(" ", TableKind.Part, CatalogColumn("value"))], id, EmptyRows()));
@@ -252,7 +252,7 @@ public sealed class PartsPersistenceFullCoverageTests
         var id = Guid.NewGuid();
         var part = DocumentTable("document_part", TableKind.Part, DocumentColumn("value"));
 
-        await sut.ReplacePartsAsync([DocumentTable("head", TableKind.Head, DocumentColumn("value"))], id, EmptyRows());
+        await sut.ReplacePartsAsync([null!, DocumentTable("head", TableKind.Head, DocumentColumn("value"))], id, EmptyRows());
         connection.Commands.Should().BeEmpty();
         await AssertInvalid(() => sut.ReplacePartsAsync(
             [DocumentTable(" ", TableKind.Part, DocumentColumn("value"))], id, EmptyRows()));
@@ -339,6 +339,53 @@ public sealed class PartsPersistenceFullCoverageTests
         documentConnection.Commands.Should().ContainSingle();
         documentConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"document_part_a\"")
             .And.Contain("DELETE FROM \"document_part_b\"");
+    }
+
+    [Fact]
+    public async Task Writers_flush_before_exceeding_the_postgresql_parameter_budget()
+    {
+        var catalogColumns = Enumerable.Range(0, 61)
+            .Select(index => CatalogColumn($"value_{index}"))
+            .ToArray();
+        var documentColumns = Enumerable.Range(0, 61)
+            .Select(index => DocumentColumn($"value_{index}"))
+            .ToArray();
+        var row = Row(Enumerable.Range(0, 61)
+            .Select(index => ($"value_{index}", (object?)index))
+            .ToArray());
+        var manyRows = Enumerable.Repeat(row, 500).ToArray();
+
+        var catalogConnection = new RecordingDbConnection();
+        var catalog = new PostgresCatalogPartsWriter(
+            new RecordingUnitOfWork(catalogConnection, hasActiveTransaction: true));
+        await catalog.ReplacePartsAsync(
+            [
+                CatalogTable("catalog_part_a", TableKind.Part, catalogColumns),
+                CatalogTable("catalog_part_b", TableKind.Part, catalogColumns)
+            ],
+            Guid.NewGuid(),
+            Rows(("catalog_part_a", manyRows), ("catalog_part_b", manyRows)));
+        catalogConnection.Commands.Should().HaveCount(32);
+        catalogConnection.Commands.Should().OnlyContain(command => command.Parameters.Count <= 2001);
+        catalogConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"catalog_part_a\"")
+            .And.Contain("DELETE FROM \"catalog_part_b\"");
+        catalogConnection.Commands.Skip(1).Should().OnlyContain(command => !command.CommandText.Contains("DELETE FROM", StringComparison.Ordinal));
+
+        var documentConnection = new RecordingDbConnection();
+        var document = new PostgresDocumentPartsWriter(
+            new RecordingUnitOfWork(documentConnection, hasActiveTransaction: true));
+        await document.ReplacePartsAsync(
+            [
+                DocumentTable("document_part_a", TableKind.Part, documentColumns),
+                DocumentTable("document_part_b", TableKind.Part, documentColumns)
+            ],
+            Guid.NewGuid(),
+            Rows(("document_part_a", manyRows), ("document_part_b", manyRows)));
+        documentConnection.Commands.Should().HaveCount(32);
+        documentConnection.Commands.Should().OnlyContain(command => command.Parameters.Count <= 2001);
+        documentConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"document_part_a\"")
+            .And.Contain("DELETE FROM \"document_part_b\"");
+        documentConnection.Commands.Skip(1).Should().OnlyContain(command => !command.CommandText.Contains("DELETE FROM", StringComparison.Ordinal));
     }
 
     private static CatalogTableMetadata CatalogTable(

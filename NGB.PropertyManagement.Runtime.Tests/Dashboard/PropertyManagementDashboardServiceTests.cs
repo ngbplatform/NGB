@@ -14,6 +14,30 @@ namespace NGB.PropertyManagement.Runtime.Tests.Dashboard;
 public sealed class PropertyManagementDashboardServiceTests
 {
     [Fact]
+    public void Pending_close_predicate_covers_activity_and_closed_state_boundaries()
+    {
+        PropertyManagementDashboardService.IsPendingClose(Status(hasActivity: false, isClosed: false))
+            .Should().BeFalse();
+        PropertyManagementDashboardService.IsPendingClose(Status(hasActivity: true, isClosed: true))
+            .Should().BeFalse();
+        PropertyManagementDashboardService.IsPendingClose(Status(hasActivity: true, isClosed: false))
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public void Latest_closed_period_prefers_contiguous_and_falls_back_to_any_closed_period()
+    {
+        var contiguous = new DateOnly(2026, 6, 1);
+        var latest = new DateOnly(2026, 8, 1);
+
+        PropertyManagementDashboardService.ResolveLatestClosedPeriod(null).Should().BeNull();
+        PropertyManagementDashboardService.ResolveLatestClosedPeriod(Calendar(contiguous, latest))
+            .Should().Be(contiguous);
+        PropertyManagementDashboardService.ResolveLatestClosedPeriod(Calendar(null, latest))
+            .Should().Be(latest);
+    }
+
+    [Fact]
     public async Task GetAsync_MapsEveryBoundedDashboardSection()
     {
         var asOf = new DateOnly(2026, 8, 23);
@@ -95,6 +119,18 @@ public sealed class PropertyManagementDashboardServiceTests
                     100m,
                     20m,
                     ReceivablesReconciliationRowKind.Mismatch,
+                    true),
+                 new ReceivablesReconciliationRow(
+                    Guid.CreateVersion7(),
+                    null,
+                    Guid.CreateVersion7(),
+                    null,
+                    Guid.CreateVersion7(),
+                    null,
+                    10m,
+                    0m,
+                    10m,
+                    ReceivablesReconciliationRowKind.GlOnly,
                     true)]));
         var periods = new Mock<IPeriodClosingUiService>(MockBehavior.Strict);
         periods.Setup(x => x.GetCalendarAsync(2026, It.IsAny<CancellationToken>()))
@@ -109,9 +145,14 @@ public sealed class PropertyManagementDashboardServiceTests
                 true,
                 false,
                 null,
-                [new PeriodCloseStatusDto(
-                    new DateOnly(2026, 7, 1), "Open", false, true, null, null,
-                    true, false, null, null)]));
+                [
+                    new PeriodCloseStatusDto(
+                        new DateOnly(2026, 7, 1), "Open", false, true, null, null,
+                        true, false, null, null),
+                    new PeriodCloseStatusDto(
+                        new DateOnly(2026, 6, 1), "Closed", true, true, "tester", null,
+                        false, true, null, null)
+                ]));
 
         var result = await Create(dashboard, maintenance, reconciliation, periods).GetAsync(asOf);
 
@@ -127,7 +168,10 @@ public sealed class PropertyManagementDashboardServiceTests
             FutureOccupancyPercent = 80m
         });
         result.Leases.Events.Should().ContainSingle().Which.LeaseId.Should().Be(leaseId);
-        result.Receivables.Mismatches.Should().ContainSingle().Which.Diff.Should().Be(20m);
+        result.Receivables.Mismatches.Should().HaveCount(2);
+        result.Receivables.Mismatches[0].Diff.Should().Be(20m);
+        result.Receivables.Mismatches[1].LeaseDisplay.Should().Be(
+            result.Receivables.Mismatches[1].LeaseId.ToString());
         result.Receivables.CurrentMonthBilled.Should().Be(300m);
         result.Maintenance.Items.Should().ContainSingle().Which.RequestId.Should().Be(requestId);
         result.Periods.PendingCloseCount.Should().Be(1);
@@ -192,4 +236,31 @@ public sealed class PropertyManagementDashboardServiceTests
             reconciliation.Object,
             periods.Object,
             NullLogger<PropertyManagementDashboardService>.Instance);
+
+    private static PeriodCloseStatusDto Status(bool hasActivity, bool isClosed)
+        => new(
+            new DateOnly(2026, 8, 1),
+            isClosed ? "Closed" : "Open",
+            isClosed,
+            hasActivity,
+            null,
+            null,
+            false,
+            false,
+            null,
+            null);
+
+    private static PeriodClosingCalendarDto Calendar(DateOnly? contiguous, DateOnly? latest)
+        => new(
+            2026,
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 12, 1),
+            null,
+            contiguous,
+            latest,
+            null,
+            false,
+            false,
+            null,
+            []);
 }

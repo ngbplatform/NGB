@@ -39,7 +39,9 @@ public sealed class PostgresBackgroundJobsAdapterFullCoverageTests
 
     [Theory]
     [InlineData("")]
+    [InlineData(" ")]
     [InlineData("1hangfire")]
+    [InlineData("-hangfire")]
     [InlineData("not-valid!")]
     public async Task GetManyAsync_WhenStorageNamespaceIsInvalid_RejectsItBeforeOpeningConnection(
         string storageNamespace)
@@ -51,6 +53,22 @@ public sealed class PostgresBackgroundJobsAdapterFullCoverageTests
 
         await act.Should().ThrowAsync<NgbConfigurationViolationException>()
             .WithMessage("*storage namespace*");
+    }
+
+    [Fact]
+    public void StorageNamespace_AllowsLeadingAndEmbeddedUnderscores()
+    {
+        var underscoreOnly = () => PostgresRecurringJobHashBatchReader.ValidateStorageNamespace("_");
+        var letterOnly = () => PostgresRecurringJobHashBatchReader.ValidateStorageNamespace("h");
+        var leadingUnderscore = () => PostgresRecurringJobHashBatchReader.ValidateStorageNamespace("_hangfire_jobs");
+        var leadingLetter = () => PostgresRecurringJobHashBatchReader.ValidateStorageNamespace("hangfire_jobs");
+        var embeddedDigit = () => PostgresRecurringJobHashBatchReader.ValidateStorageNamespace("hangfire2_jobs");
+
+        underscoreOnly.Should().NotThrow();
+        letterOnly.Should().NotThrow();
+        leadingUnderscore.Should().NotThrow();
+        leadingLetter.Should().NotThrow();
+        embeddedDigit.Should().NotThrow();
     }
 
     [Fact]

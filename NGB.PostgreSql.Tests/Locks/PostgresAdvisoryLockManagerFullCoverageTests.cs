@@ -107,6 +107,7 @@ public sealed class PostgresAdvisoryLockManagerFullCoverageTests
         var first = Guid.Parse("00000000-0000-0000-0000-000000000010");
         var second = Guid.Parse("00000000-0000-0000-0000-000000000020");
 
+        await fixture.Manager.LockDocumentsAsync([]);
         await fixture.Manager.LockDocumentsAsync([second, Guid.Empty, first, second]);
         await fixture.Manager.LockDocumentAsync(first);
 
@@ -158,6 +159,20 @@ public sealed class PostgresAdvisoryLockManagerFullCoverageTests
         timeoutError.Which.Context["keyCount"].Should().Be(2);
         timeoutError.Which.Context["timeoutSeconds"].Should().Be(1);
         timeoutError.Which.Context["attempt"].Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Batch_lock_retries_after_contention_and_then_succeeds()
+    {
+        var attempts = 0;
+        var fixture = ActiveManager(
+            new RecordingDbConnection(scalar: _ => ++attempts >= 2),
+            timeProvider: new FixedTimeProvider());
+
+        await fixture.Manager.LockDocumentsAsync([Guid.CreateVersion7()]);
+
+        attempts.Should().Be(2);
+        fixture.Connection.Commands.Should().HaveCount(2);
     }
 
     [Fact]

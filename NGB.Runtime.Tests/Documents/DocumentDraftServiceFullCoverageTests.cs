@@ -265,6 +265,35 @@ public sealed class DocumentDraftServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_create_writes_one_audit_batch_with_optional_number_changes()
+    {
+        var fixture = new Fixture(batchRepository: true);
+        fixture.BatchDocuments!.Setup(x => x.CreateDraftsAsync(
+                It.IsAny<IReadOnlyList<DocumentRecord>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        fixture.Audit.Setup(x => x.WriteBatchAsync(
+                It.IsAny<IReadOnlyList<AuditLogWriteRequest>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var ids = await fixture.Sut.CreateDraftsAsync(
+        [
+            new DocumentDraftCreateRequest("doc", " B-1 ", Date),
+            new DocumentDraftCreateRequest("doc", null, Date.AddDays(1))
+        ]);
+
+        fixture.Audit.Verify(x => x.WriteBatchAsync(
+            It.Is<IReadOnlyList<AuditLogWriteRequest>>(requests =>
+                requests.Count == 2
+                && requests[0].EntityId == ids[0]
+                && requests[0].Changes!.Any(change => change.FieldPath == "number")
+                && requests[1].EntityId == ids[1]
+                && requests[1].Changes!.All(change => change.FieldPath != "number")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Batch_number_allocator_must_return_every_requested_number()
     {
         var fixture = new Fixture(batchRepository: true, batchAllocator: true);

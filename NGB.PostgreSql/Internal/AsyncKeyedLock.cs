@@ -51,29 +51,34 @@ internal sealed class AsyncKeyedLock<TKey>(IEqualityComparer<TKey>? comparer = n
 
     private sealed class Entry
     {
+        private readonly Lock _sync = new();
         private int _rentCount;
 
         public SemaphoreSlim Semaphore { get; } = new(1, 1);
 
         public bool TryRent()
         {
-            while (true)
+            lock (_sync)
             {
-                var observed = Volatile.Read(ref _rentCount);
-                if (observed < 0)
+                if (_rentCount < 0)
                     return false;
 
-                if (Interlocked.CompareExchange(ref _rentCount, observed + 1, observed) == observed)
-                    return true;
+                _rentCount++;
+                return true;
             }
         }
 
         public bool ReturnAndTryRetire()
         {
-            if (Interlocked.Decrement(ref _rentCount) != 0)
-                return false;
+            lock (_sync)
+            {
+                _rentCount--;
+                if (_rentCount != 0)
+                    return false;
 
-            return Interlocked.CompareExchange(ref _rentCount, -1, 0) == 0;
+                _rentCount = -1;
+                return true;
+            }
         }
     }
 

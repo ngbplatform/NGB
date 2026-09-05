@@ -219,6 +219,49 @@ public sealed class PostgresReportSqlBuilderFullCoverageTests
             .Should().BeEmpty();
     }
 
+    [Fact]
+    public void Cursor_helpers_cover_non_raw_groupings_missing_order_alias_and_descending_seek()
+    {
+        var groupedByPeriod = Request(rows:
+        [
+            new PostgresReportGroupingSelection(
+                "period", "period_month", "Period", "date", ReportTimeGrain.Month)
+        ]);
+        var groupedByAnotherRawField = Request(rows: [Group("name")]);
+
+        Invoke<string?>(
+                "ResolveSelectedRawFieldAlias",
+                groupedByPeriod,
+                Array.Empty<PostgresReportOutputColumn>(),
+                "period")
+            .Should().BeNull();
+        Invoke<string?>(
+                "ResolveSelectedRawFieldAlias",
+                groupedByAnotherRawField,
+                Array.Empty<PostgresReportOutputColumn>(),
+                "state")
+            .Should().BeNull();
+
+        AssertInvocationThrows<NgbInvariantViolationException>(
+            "AddOrderColumn",
+            new List<PostgresReportCursorColumn>(),
+            Array.Empty<PostgresReportOutputColumn>(),
+            "missing",
+            ReportSortDirection.Asc);
+
+        var parameters = new DynamicParameters();
+        Invoke<string>(
+                "BuildCursorPredicate",
+                (IReadOnlyList<PostgresReportCursorColumn>)
+                [
+                    new PostgresReportCursorColumn(
+                        "descending_value", "int64", ReportSortDirection.Desc, IsHidden: false)
+                ],
+                (IReadOnlyList<object?>)[42L],
+                parameters)
+            .Should().Contain("descending_value < @cursor_0");
+    }
+
     private static PostgresReportSqlBuilder Builder(
         string? baseWhereSql = null,
         IReadOnlyList<PostgresReportFieldBinding>? fields = null)

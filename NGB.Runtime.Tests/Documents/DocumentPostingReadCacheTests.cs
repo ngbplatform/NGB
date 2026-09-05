@@ -121,9 +121,11 @@ public sealed class DocumentPostingReadCacheTests
 
         var missingKey = () => cache.GetOrAddAsync(" ", _ => Task.FromResult(1));
         var missingFactory = () => cache.GetOrAddAsync<int>("key", null!);
+        var missingPrimeKey = () => cache.Prime("\t", 1);
 
         await missingKey.Should().ThrowAsync<NgbArgumentRequiredException>();
         await missingFactory.Should().ThrowAsync<ArgumentNullException>();
+        missingPrimeKey.Should().Throw<NgbArgumentRequiredException>();
         scope.Dispose();
         scope.Dispose();
     }

@@ -770,7 +770,7 @@ public sealed class CrmDemoSeedService(
         return recordsApplied;
     }
 
-    private static (Guid PrimaryRegisterId, Guid? CreateOpportunityRegisterId) ResolveBackfillRegisters(
+    internal static (Guid PrimaryRegisterId, Guid? CreateOpportunityRegisterId) ResolveBackfillRegisters(
         string documentType)
         => documentType switch
         {
@@ -1092,15 +1092,25 @@ public sealed class CrmDemoSeedService(
             },
             async (index, innerCt) =>
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var scopedDocuments = scope.ServiceProvider.GetRequiredService<IDocumentService>();
-                var request = requests[index];
-                result[index] = await CreateGeneratedDraftAsync(
-                    scopedDocuments, request.DocumentType, request.Payload, innerCt);
+                var scope = scopeFactory.CreateAsyncScope();
+                try
+                {
+                    var scopedDocuments = scope.ServiceProvider.GetRequiredService<IDocumentService>();
+                    var request = requests[index];
+                    var created = await CreateGeneratedDraftAsync(
+                        scopedDocuments, request.DocumentType, request.Payload, innerCt);
+                    result[index] = created;
+                }
+                finally
+                {
+                    await DisposeScopeAsync(scope);
+                }
             });
 
         return result;
     }
+
+    private static Task DisposeScopeAsync(AsyncServiceScope scope) => scope.DisposeAsync().AsTask();
 
     private static async Task<DocumentDto> CreateGeneratedDraftAsync(
         IDocumentService documentService,
@@ -1142,9 +1152,16 @@ public sealed class CrmDemoSeedService(
             },
             async (documentId, innerCt) =>
             {
-                await using var scope = scopeFactory.CreateAsyncScope();
-                var scopedLifecycle = scope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>();
-                await scopedLifecycle.PostAsync(documentType, documentId, innerCt);
+                var scope = scopeFactory.CreateAsyncScope();
+                try
+                {
+                    var scopedLifecycle = scope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>();
+                    await scopedLifecycle.PostAsync(documentType, documentId, innerCt);
+                }
+                finally
+                {
+                    await scope.DisposeAsync();
+                }
             });
     }
 

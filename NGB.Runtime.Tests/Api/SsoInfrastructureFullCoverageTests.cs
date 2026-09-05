@@ -65,6 +65,78 @@ public sealed class SsoInfrastructureFullCoverageTests
         frequentlyRenewed.TrackedSessionCount.Should().Be(1);
         frequentlyRenewed.RecencyMetadataCount.Should().BeLessThanOrEqualTo(128);
         (await frequentlyRenewed.RetrieveAsync(renewedKey)).Should().NotBeNull();
+
+        using var contended = new MemoryCacheTicketStore(maximumSessionCount: 4);
+        var contendedKey = await contended.StoreAsync(Ticket("contended", null));
+        using var start = new Barrier(9);
+        var contendingReaders = Enumerable.Range(0, 8)
+            .Select(_ => Task.Run(async () =>
+            {
+                start.SignalAndWait();
+                for (var attempt = 0; attempt < 2_000; attempt++)
+                    (await contended.RetrieveAsync(contendedKey)).Should().NotBeNull();
+            }))
+            .ToArray();
+        start.SignalAndWait();
+
+        await Task.WhenAll(contendingReaders);
+        contended.TrackedSessionCount.Should().Be(1);
+        contended.RecencyMetadataCount.Should().BeLessThanOrEqualTo(128);
+    }
+
+    [Fact]
+    public async Task MemoryCacheTicketStore_recovers_when_recency_metadata_is_missing()
+    {
+        using var empty = new MemoryCacheTicketStore(maximumSessionCount: 1);
+        InvokePrivate(empty, "RemoveLeastRecentlyUsedLocked");
+        InvokePrivate(empty, "Touch", "missing");
+
+        using var populated = new MemoryCacheTicketStore(maximumSessionCount: 1);
+        var key = await populated.StoreAsync(Ticket("fallback", null));
+        var queueField = typeof(MemoryCacheTicketStore)
+            .GetField("_recency", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        queueField.SetValue(populated, Activator.CreateInstance(queueField.FieldType));
+        typeof(MemoryCacheTicketStore)
+            .GetField("_recencyStampCount", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(populated, 0);
+
+        InvokePrivate(populated, "RemoveLeastRecentlyUsedLocked");
+
+        populated.TrackedSessionCount.Should().Be(0);
+        (await populated.RetrieveAsync(key)).Should().BeNull();
+
+        using var staleGeneration = new MemoryCacheTicketStore(maximumSessionCount: 1);
+        var renewedKey = await staleGeneration.StoreAsync(Ticket("first-generation", null));
+        await staleGeneration.RenewAsync(renewedKey, Ticket("second-generation", null));
+        var replacementKey = await staleGeneration.StoreAsync(Ticket("replacement", null));
+
+        (await staleGeneration.RetrieveAsync(renewedKey)).Should().BeNull();
+        (await staleGeneration.RetrieveAsync(replacementKey)).Should().NotBeNull();
+    }
+
+    [Fact]
+    public void MemoryCacheTicketStore_fallback_selection_covers_empty_raced_and_removed_candidates()
+    {
+        var candidate = new KeyValuePair<string, long>("session", 1);
+        var removedKeys = new List<string>();
+
+        MemoryCacheTicketStore.TryRemoveFallback(
+                [],
+                _ => throw new InvalidOperationException("must not remove an absent candidate"),
+                removedKeys.Add)
+            .Should().BeFalse();
+        MemoryCacheTicketStore.TryRemoveFallback(
+                [candidate],
+                _ => false,
+                removedKeys.Add)
+            .Should().BeFalse();
+        MemoryCacheTicketStore.TryRemoveFallback(
+                [candidate],
+                _ => true,
+                removedKeys.Add)
+            .Should().BeTrue();
+
+        removedKeys.Should().Equal("session");
     }
 
     [Fact]
@@ -110,6 +182,26 @@ public sealed class SsoInfrastructureFullCoverageTests
         handler.RequestBody.Should().Contain("grant_type=client_credentials")
             .And.Contain("client_id=api")
             .And.Contain("client_secret=secret");
+    }
+
+    [Fact]
+    public async Task Token_cache_resolves_the_named_client_from_factory()
+    {
+        var now = new DateTimeOffset(2026, 8, 16, 12, 0, 0, TimeSpan.Zero);
+        var token = new JwtSecurityTokenHandler().WriteToken(
+            new JwtSecurityToken(expires: now.UtcDateTime.AddMinutes(10)));
+        var handler = new TokenEndpointHandler(token);
+        using var httpClient = new HttpClient(handler);
+        var factory = new RecordingHttpClientFactory(httpClient);
+        var sut = new TokenCacheService(
+            factory,
+            new KeycloakApiClientSettings("https://identity.example", "platform", "api", "secret"),
+            new FixedTimeProvider(now));
+
+        (await sut.GetTokenAsync(CancellationToken.None)).Should().Be(token);
+
+        factory.RequestedNames.Should().Equal(KeycloakHttpClientNames.Token);
+        handler.RequestCount.Should().Be(1);
     }
 
     [Fact]
@@ -222,6 +314,11 @@ public sealed class SsoInfrastructureFullCoverageTests
             .GetMethod("GetTokenExpiry", BindingFlags.NonPublic | BindingFlags.Static)!
             .Invoke(null, [token])!);
 
+    private static void InvokePrivate(object target, string methodName, params object?[] arguments)
+        => target.GetType()
+            .GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(target, arguments);
+
     private sealed class TokenEndpointHandler(string token) : HttpMessageHandler
     {
         public int RequestCount { get; private set; }
@@ -244,6 +341,17 @@ public sealed class SsoInfrastructureFullCoverageTests
                     Encoding.UTF8,
                     "application/json")
             };
+        }
+    }
+
+    private sealed class RecordingHttpClientFactory(HttpClient client) : IHttpClientFactory
+    {
+        public List<string> RequestedNames { get; } = [];
+
+        public HttpClient CreateClient(string name)
+        {
+            RequestedNames.Add(name);
+            return client;
         }
     }
 

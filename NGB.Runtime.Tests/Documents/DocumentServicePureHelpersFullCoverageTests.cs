@@ -17,6 +17,36 @@ namespace NGB.Runtime.Tests.Documents;
 public sealed class DocumentServicePureHelpersFullCoverageTests
 {
     [Fact]
+    public void Page_request_normalization_covers_default_explicit_and_cursor_boundaries()
+    {
+        var defaulted = DocumentService.NormalizePageRequest(new PageRequestDto(Offset: -1, Limit: 0));
+        defaulted.Offset.Should().Be(0);
+        defaulted.Limit.Should().Be(PagingLimits.DefaultPageSize);
+
+        var explicitRequest = DocumentService.NormalizePageRequest(new PageRequestDto(
+            Offset: PagingLimits.MaxOffset + 1,
+            Limit: PagingLimits.MaxPageSize + 1,
+            Search: " value "));
+        explicitRequest.Offset.Should().Be(PagingLimits.MaxOffset);
+        explicitRequest.Limit.Should().Be(PagingLimits.MaxPageSize);
+        explicitRequest.Search.Should().Be("value");
+
+        var cursorRequest = DocumentService.NormalizePageRequest(new PageRequestDto(
+            Offset: 0,
+            Limit: 1,
+            Cursor: " cursor "));
+        cursorRequest.Cursor.Should().Be("cursor");
+
+        ((Action)(() => DocumentService.NormalizePageRequest(null!)))
+            .Should().Throw<NgbArgumentRequiredException>();
+        ((Action)(() => DocumentService.NormalizePageRequest(new PageRequestDto(
+                Offset: 1,
+                Limit: 1,
+                Cursor: "cursor"))))
+            .Should().Throw<NgbArgumentInvalidException>();
+    }
+
+    [Fact]
     public void Decimal_conversion_covers_numeric_string_json_convertible_and_invalid_boundaries()
     {
         AssertDecimal(null, expectedSuccess: false, 0m);

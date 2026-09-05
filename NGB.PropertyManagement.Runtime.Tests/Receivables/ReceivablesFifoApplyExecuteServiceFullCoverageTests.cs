@@ -34,7 +34,7 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
     [Fact]
     public async Task Empty_plan_returns_without_transaction_or_notification()
     {
-        var fixture = new Fixture();
+        var fixture = new Fixture(withPostingReadCache: true);
         fixture.SetPlan(available: 7m, []);
 
         var result = await fixture.ExecuteAsync();
@@ -48,6 +48,7 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
             It.Is<ReceivablesFifoApplySuggestRequest>(request =>
                 request.MaxApplications == FifoApplyLimits.DefaultMaxAtomicApplications),
             It.IsAny<CancellationToken>()), Times.Once);
+        fixture.PostingReadCache!.BeginScopeCount.Should().Be(1);
     }
 
     [Theory]
@@ -100,6 +101,34 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
         fixture.Uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Fact]
+    public async Task Positive_plan_uses_batch_posting_when_the_capability_is_available()
+    {
+        var fixture = new Fixture(withBatchPosting: true);
+        var charge = Guid.CreateVersion7();
+        var apply = Guid.CreateVersion7();
+        fixture.SetPlan(5m, [Suggested(charge, 2m)]);
+        fixture.Drafts.Setup(x => x.CreateDraftAsync(
+                PropertyManagementCodes.ReceivableApply, null, It.IsAny<DateTime>(), false, false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(apply);
+        fixture.BatchPosting!.Setup(x => x.PostManyAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { apply })),
+                false,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        fixture.WorkCenter.Setup(x => x.CompleteIfExhaustedAsync(
+                fixture.CreditId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var result = await fixture.ExecuteAsync();
+
+        result.ExecutedApplies.Should().ContainSingle().Which.ApplyId.Should().Be(apply);
+        fixture.BatchPosting.VerifyAll();
+        fixture.Posting.Verify(x => x.PostAsync(
+            It.IsAny<Guid>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static ReceivablesSuggestedApplyDto Suggested(Guid chargeId, decimal amount)
         => new(chargeId, 10m, new DateOnly(2026, 1, 1), amount, new RecordPayload());
 
@@ -108,8 +137,11 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
 
     private sealed class Fixture
     {
-        public Fixture()
+        public Fixture(bool withPostingReadCache = false, bool withBatchPosting = false)
         {
+            if (withBatchPosting)
+                BatchPosting = Posting.As<IDocumentPostingBatchService>();
+
             Documents.Setup(x => x.GetAsync(CreditId, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new DocumentRecord
                 {
@@ -129,9 +161,11 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
             Relationships.Setup(x => x.CreateAsync(
                     It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), false, It.IsAny<CancellationToken>()))
                 .ReturnsAsync(true);
+            PostingReadCache = withPostingReadCache ? new RecordingPostingReadCache() : null;
             Sut = new ReceivablesFifoApplyExecuteService(
                 Suggest.Object, Drafts.Object, Posting.Object, Relationships.Object, Heads.Object,
-                Readers.Object, Documents.Object, Locks.Object, Uow.Object, WorkCenter.Object);
+                Readers.Object, Documents.Object, Locks.Object, Uow.Object, WorkCenter.Object,
+                PostingReadCache);
         }
 
         public Guid CreditId { get; } = Guid.CreateVersion7();
@@ -139,6 +173,7 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
         public Mock<IReceivablesFifoApplySuggestService> Suggest { get; } = new();
         public Mock<IDocumentDraftService> Drafts { get; } = new();
         public Mock<IDocumentPostingService> Posting { get; } = new();
+        public Mock<IDocumentPostingBatchService>? BatchPosting { get; }
         public Mock<IDocumentRelationshipService> Relationships { get; } = new();
         public Mock<IReceivableApplyHeadWriter> Heads { get; } = new();
         public Mock<IPropertyManagementDocumentReaders> Readers { get; } = new();
@@ -146,6 +181,7 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
         public Mock<IAdvisoryLockManager> Locks { get; } = new();
         public Mock<IUnitOfWork> Uow { get; } = new();
         public Mock<IReceivablePaymentWorkCenterSynchronizer> WorkCenter { get; } = new();
+        public RecordingPostingReadCache? PostingReadCache { get; }
         public ReceivablesFifoApplyExecuteService Sut { get; }
 
         public void SetPlan(decimal available, IReadOnlyList<ReceivablesSuggestedApplyDto> suggested)
@@ -156,5 +192,22 @@ public sealed class ReceivablesFifoApplyExecuteServiceFullCoverageTests
 
         public Task<ReceivablesFifoApplyExecuteResponse> ExecuteAsync()
             => Sut.ExecuteAsync(new ReceivablesFifoApplyExecuteRequest(CreditId, null));
+    }
+
+    private sealed class RecordingPostingReadCache : IDocumentPostingReadCache
+    {
+        public int BeginScopeCount { get; private set; }
+
+        public IDisposable BeginScope()
+        {
+            BeginScopeCount++;
+            return Mock.Of<IDisposable>();
+        }
+
+        public Task<T> GetOrAddAsync<T>(
+            string key,
+            Func<CancellationToken, Task<T>> valueFactory,
+            CancellationToken ct = default)
+            => valueFactory(ct);
     }
 }

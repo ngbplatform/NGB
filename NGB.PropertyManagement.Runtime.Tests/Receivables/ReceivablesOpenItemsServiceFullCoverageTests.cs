@@ -27,6 +27,12 @@ public sealed class ReceivablesOpenItemsServiceFullCoverageTests
         var fixture = new Fixture();
         await ((Func<Task>)(() => fixture.Sut.GetOpenItemsAsync(Guid.Empty, Guid.Empty, Guid.Empty)))
             .Should().ThrowAsync<ReceivablesRequestValidationException>();
+        await ((Func<Task>)(() => fixture.Sut.GetOpenItemsPageAsync(
+                Guid.Empty, Guid.Empty, fixture.LeaseId, -1, 1)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => fixture.Sut.GetOpenItemsCursorPageAsync(
+                Guid.Empty, Guid.Empty, fixture.LeaseId, null, 0)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
         fixture.Documents.Setup(x => x.GetByIdAsync(PropertyManagementCodes.Lease, fixture.LeaseId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new DocumentNotFoundException(fixture.LeaseId));

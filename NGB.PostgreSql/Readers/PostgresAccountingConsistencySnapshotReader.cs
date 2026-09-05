@@ -127,13 +127,7 @@ public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow)
                 transaction: uow.Transaction,
                 cancellationToken: ct))).AsList();
 
-        if (rows.Count > PagingLimits.MaxMaterializedRows)
-        {
-            throw new NgbArgumentOutOfRangeException(
-                "period",
-                rows.Count,
-                $"Accounting consistency can materialize up to {PagingLimits.MaxMaterializedRows} account/dimension rows.");
-        }
+        EnsureMaterializationBound(rows.Count);
 
         return new AccountingConsistencySnapshot(
             rows.Select(x => new AccountingConsistencySnapshotRow(
@@ -149,5 +143,16 @@ public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow)
                     x.HasTurnoverRow,
                     x.HasPreviousBalanceRow))
                 .ToList());
+    }
+
+    internal static void EnsureMaterializationBound(int rowCount)
+    {
+        if (rowCount <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new NgbArgumentOutOfRangeException(
+            "period",
+            rowCount,
+            $"Accounting consistency can materialize up to {PagingLimits.MaxMaterializedRows} account/dimension rows.");
     }
 }

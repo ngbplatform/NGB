@@ -35,6 +35,12 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
             [new CatalogTableMetadata("cat_party", TableKind.Head, [], [])],
             new CatalogPresentationMetadata("cat_party", "display"),
             new CatalogMetadataVersion(1, "tests")));
+        catalogs.Register(new CatalogTypeMetadata(
+            "cat.empty",
+            "Empty",
+            [new CatalogTableMetadata("cat_empty", TableKind.Head, [], [])],
+            new CatalogPresentationMetadata("cat_empty", "display"),
+            new CatalogMetadataVersion(1, "tests")));
         var documents = new DocumentTypeRegistry([
             new DocumentTypeMetadata(
                 "doc.invoice",
@@ -54,7 +60,8 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
             [registerId],
             new Dictionary<string, IReadOnlyCollection<Guid>>(StringComparer.OrdinalIgnoreCase)
             {
-                ["cat.party"] = [catalogId]
+                ["cat.party"] = [catalogId],
+                ["cat.empty"] = [Guid.NewGuid()]
             },
             [documentId]);
 
@@ -69,6 +76,7 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
         result.AccountLabels.Should().Contain(missingAccountId, missingAccountId.ToString());
         result.OperationalRegisterLabels.Should().Contain(registerId, "STOCK — Stock");
         result.CatalogLabelsByType["cat.party"].Should().Contain(catalogId, "Party");
+        result.CatalogLabelsByType["cat.empty"].Should().BeEmpty();
         result.DocumentLabels.Should().Contain(documentId, "Invoice display");
     }
 
@@ -139,6 +147,8 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
         var catalogId = Guid.NewGuid();
         var numberedDocumentId = Guid.NewGuid();
         var unnumberedDocumentId = Guid.NewGuid();
+        var noPresentationDocumentId = Guid.NewGuid();
+        var nullTypeDocumentId = Guid.NewGuid();
         var orphanTypedRowId = Guid.NewGuid();
         var rows = Rows(
             (1, null, accountId, null, null, null, 0),
@@ -146,6 +156,8 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
             (3, null, Guid.NewGuid(), null, null, "ignored", 0),
             (4, null, numberedDocumentId, "doc.invoice", "INV-3", null, 1),
             (4, null, unnumberedDocumentId, "doc.unknown", null, null, 1),
+            (4, null, noPresentationDocumentId, "doc.no-presentation", "DOC-4", null, 1),
+            (4, null, nullTypeDocumentId, null, "NULL-TYPE", null, 1),
             (4, null, orphanTypedRowId, "doc.invoice", null, "orphan", 0));
         var connection = new RecordingDbConnection(_ => rows.CreateDataReader());
         var catalogs = new CatalogTypeRegistry();
@@ -164,7 +176,13 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
             new DocumentTypeMetadata(
                 "doc.no-display",
                 [new DocumentTableMetadata("doc_no_display", TableKind.Head, [])],
-                new DocumentPresentationMetadata("No display"))
+                new DocumentPresentationMetadata("No display")),
+            new DocumentTypeMetadata(
+                "doc.no-presentation",
+                [new DocumentTableMetadata(
+                    "doc_no_presentation",
+                    TableKind.Head,
+                    [new DocumentColumnMetadata("display", ColumnType.String)])])
         ]);
         var sut = new PostgresReferencePayloadBatchEnrichmentReader(
             new RecordingUnitOfWork(connection), catalogs, documents);
@@ -173,7 +191,13 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
             [accountId],
             [registerId],
             new Dictionary<string, IReadOnlyCollection<Guid>> { ["cat.party"] = [catalogId] },
-            [numberedDocumentId, unnumberedDocumentId, orphanTypedRowId]);
+            [
+                numberedDocumentId,
+                unnumberedDocumentId,
+                noPresentationDocumentId,
+                nullTypeDocumentId,
+                orphanTypedRowId
+            ]);
 
         result.AccountLabels[accountId].Should().Be(accountId.ToString());
         result.OperationalRegisterLabels[registerId].Should().Be(registerId.ToString());
@@ -181,6 +205,8 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReaderFullCoverageTes
         result.DocumentLabels[numberedDocumentId].Should().Be("doc.invoice INV-3");
         result.DocumentLabels[unnumberedDocumentId].Should()
             .Be($"doc.unknown {unnumberedDocumentId.ToString("N")[..8]}");
+        result.DocumentLabels[noPresentationDocumentId].Should().Be("doc.no-presentation DOC-4");
+        result.DocumentLabels[nullTypeDocumentId].Should().Be("Document NULL-TYPE");
         result.DocumentLabels.Should().NotContainKey(orphanTypedRowId);
         connection.Commands[0].CommandText.Should()
             .NotContain("doc_no_head")

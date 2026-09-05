@@ -6,8 +6,10 @@ using NGB.Core.Dimensions.Enrichment;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
 using NGB.OperationalRegisters.Contracts;
+using NGB.OperationalRegisters.Exceptions;
 using NGB.Persistence.OperationalRegisters;
 using NGB.PostgreSql.OperationalRegisters;
+using NGB.PostgreSql.Schema;
 using NGB.PostgreSql.Tests.TestDoubles;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -64,6 +66,8 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             RegisterId, null!, "amount", DateOnly.MaxValue);
         Func<Task> emptyBatchGroup = () => sut.GetNetsByDimensionsAsync(
             RegisterId, [[]], "amount", DateOnly.MaxValue);
+        Func<Task> nullBatchGroup = () => sut.GetNetsByDimensionsAsync(
+            RegisterId, [null!], "amount", DateOnly.MaxValue);
         Func<Task> blankBatchResource = () => sut.GetNetsByDimensionsAsync(
             RegisterId,
             [[new DimensionValue(Guid.NewGuid(), Guid.NewGuid())]],
@@ -85,6 +89,7 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         await emptyBatchRegister.Should().ThrowAsync<NgbArgumentInvalidException>();
         await nullBatch.Should().ThrowAsync<ArgumentNullException>();
         await emptyBatchGroup.Should().ThrowAsync<NgbArgumentInvalidException>();
+        await nullBatchGroup.Should().ThrowAsync<NgbArgumentInvalidException>();
         await blankBatchResource.Should().ThrowAsync<NgbArgumentRequiredException>();
         (await sut.GetNetsByDimensionsAsync(RegisterId, [], "amount", DateOnly.MaxValue)).Should().BeEmpty();
     }
@@ -237,6 +242,47 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         connection.Commands.Last().CommandText.Should()
             .Contain("LEFT JOIN opreg_sales__movements movement")
             .And.NotContain("latest_snapshot");
+    }
+
+    [Fact]
+    public async Task Resource_net_reader_point_queries_use_movement_only_sql_without_balance_snapshots()
+    {
+        static PostgresOperationalRegisterResourceNetReader Create(out RecordingDbConnection connection)
+        {
+            var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+            var probeCount = 0;
+            connection = new RecordingDbConnection(
+                readerFactory: _ => ResourceNetBySetRows((DimensionSetId, 2m)),
+                scalar: sql => sql.Contains("to_regclass", StringComparison.Ordinal)
+                    ? Interlocked.Increment(ref probeCount) == 1
+                    : 2m);
+            return new PostgresOperationalRegisterResourceNetReader(
+                new RecordingUnitOfWork(connection, hasActiveTransaction: true),
+                dependencies.Registers.Object,
+                dependencies.Resources.Object);
+        }
+
+        var bySet = Create(out var bySetConnection);
+        (await bySet.GetNetByDimensionSetAsync(RegisterId, DimensionSetId, "amount")).Should().Be(2m);
+        bySetConnection.Commands.Last().CommandText.Should().NotContain("latest_snapshot");
+
+        var bySets = Create(out var bySetsConnection);
+        (await bySets.GetNetByDimensionSetsAsync(RegisterId, [DimensionSetId], "amount"))
+            .Should().Contain(DimensionSetId, 2m);
+        bySetsConnection.Commands.Last().CommandText.Should().NotContain("latest_snapshot");
+
+        var byDimensions = Create(out var byDimensionsConnection);
+        (await byDimensions.GetNetByDimensionsAsync(
+            RegisterId,
+            [new DimensionValue(Guid.NewGuid(), Guid.NewGuid())],
+            "amount")).Should().Be(2m);
+        byDimensionsConnection.Commands.Last().CommandText.Should().NotContain("latest_snapshot");
+
+        Action invalidSuffix = () => PostgresOperationalRegisterResourceNetReader
+            .ResolveBalancesTableName("opreg_sales");
+        invalidSuffix.Should().Throw<NgbConfigurationViolationException>();
+        PostgresOperationalRegisterResourceNetReader.ResolveBalancesTableName("opreg_sales__movements")
+            .Should().Be("opreg_sales__balances");
     }
 
     [Fact]
@@ -430,7 +476,11 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
     [Fact]
     public async Task Occurred_at_cursor_query_covers_seek_dimensions_resources_and_max_date_boundary()
     {
-        var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var dependencies = RegisterDependencies(
+        [
+            new("Quantity", "quantity", "quantity", "Quantity", 2),
+            new("Amount", "amount", "amount", "Amount", 1)
+        ]);
         var dimensionSets = new Mock<IDimensionSetReader>(MockBehavior.Strict);
         dimensionSets.Setup(x => x.GetBagsByIdsAsync(
                 It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -446,7 +496,9 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             dependencies.Registers.Object,
             dependencies.Resources.Object,
             dimensionSets.Object,
-            enrichment.Object);
+            enrichment.Object,
+            new OperationalRegisterMetadataCache(TimeProvider.System),
+            new PostgresRelationPresenceCache(TimeProvider.System));
         var filter = new DimensionValue(Guid.CreateVersion7(), Guid.CreateVersion7());
 
         var rows = await sut.GetByOccurredAtCursorAsync(
@@ -465,12 +517,44 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         command.ParametersSnapshot.Should().Contain(parameter =>
             parameter.ParameterName == "OccurredToExclusiveUtc"
             && Equals(parameter.Value, DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc)));
+
+        var noResourceDependencies = RegisterDependencies([]);
+        var noResourceReader = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(
+                readerFactory: _ => MovementQueryRows(documentId, occurredAt),
+                scalar: _ => true)),
+            noResourceDependencies.Registers.Object,
+            noResourceDependencies.Resources.Object,
+            dimensionSets.Object,
+            enrichment.Object);
+        (await noResourceReader.GetByOccurredAtCursorAsync(
+                RegisterId,
+                new DateOnly(2026, 8, 1),
+                new DateOnly(2026, 8, 31),
+                cursor: null,
+                limit: 2))
+            .Should().ContainSingle().Which.Values.Should().BeEmpty();
+
+        var dbNullReader = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(
+                readerFactory: _ => MovementQueryRows(documentId, occurredAt, DBNull.Value),
+                scalar: _ => true)),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            dimensionSets.Object,
+            enrichment.Object);
+        (await dbNullReader.GetByOccurredAtCursorAsync(
+                RegisterId,
+                new DateOnly(2026, 8, 1),
+                new DateOnly(2026, 8, 31),
+                limit: 2))
+            .Should().ContainSingle().Which.Values.Should().Contain("amount", 0m);
     }
 
     [Fact]
     public async Task Occurred_at_offset_page_maps_total_and_recovers_total_beyond_last_row()
     {
-        var dependencies = RegisterDependencies([]);
+        var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
         var dimensionSets = new Mock<IDimensionSetReader>(MockBehavior.Strict);
         dimensionSets.Setup(x => x.GetBagsByIdsAsync(
                 It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -491,7 +575,7 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         var page = await populated.GetByOccurredAtPageAsync(
             RegisterId,
             new DateOnly(2026, 8, 1),
-            new DateOnly(2026, 8, 31),
+            DateOnly.MaxValue,
             offset: 0,
             limit: 2);
 
@@ -759,9 +843,133 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
     }
 
     [Fact]
-    public async Task Movements_reader_returns_empty_for_absent_table_and_maps_database_null_resource_to_zero()
+    public async Task Balance_cursor_page_preserves_empty_page_totals_and_covers_snapshot_source_boundaries()
     {
         var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var groupDimensionId = Guid.CreateVersion7();
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        var snapshotReader = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(
+                readerFactory: _ => GroupNetRowsEmpty(),
+                scalar: _ => true)),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            enrichment.Object);
+
+        var first = await snapshotReader.GetResourceBalancesByDimensionCursorAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            dimensions: null,
+            groupDimensionId,
+            "amount",
+            cursor: null,
+            limit: 10);
+        first.Rows.Should().BeEmpty();
+        first.Total.Should().Be(0);
+        first.TotalPositive.Should().Be(0m);
+        first.TotalNegativeAbsolute.Should().Be(0m);
+
+        var cursor = new OperationalRegisterDimensionResourceNetCursor(
+            AfterPositiveGroup: false,
+            AfterValueId: Guid.CreateVersion7(),
+            NextOffset: 4,
+            Total: 7,
+            TotalPositive: 12m,
+            TotalNegativeAbsolute: 3m);
+        var continuation = await snapshotReader.GetResourceBalancesByDimensionCursorAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            dimensions: null,
+            groupDimensionId,
+            "amount",
+            cursor,
+            limit: 10);
+        continuation.Rows.Should().BeEmpty();
+        continuation.Total.Should().Be(7);
+        continuation.TotalPositive.Should().Be(12m);
+        continuation.TotalNegativeAbsolute.Should().Be(3m);
+
+        var probeCount = 0;
+        var movementOnlyConnection = new RecordingDbConnection(
+            readerFactory: _ => GroupNetRowsEmpty(),
+            scalar: _ => Interlocked.Increment(ref probeCount) == 1);
+        var movementOnlyReader = new PostgresOperationalRegisterMovementsQueryReader(
+            new RecordingUnitOfWork(movementOnlyConnection),
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            enrichment.Object);
+        var movementOnly = await movementOnlyReader.GetResourceBalancesByDimensionCursorAsync(
+            RegisterId,
+            new DateOnly(2026, 8, 1),
+            [new DimensionValue(Guid.CreateVersion7(), Guid.CreateVersion7())],
+            groupDimensionId,
+            "amount",
+            cursor: null,
+            limit: 10);
+
+        movementOnly.Rows.Should().BeEmpty();
+        movementOnlyConnection.Commands.Last().CommandText.Should()
+            .Contain("matching_dimension_sets")
+            .And.Contain("FROM opreg_sales__movements movement")
+            .And.NotContain("latest_snapshot");
+        enrichment.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Movements_query_reader_rechecks_cached_context_after_transaction_change_and_rejects_missing_register()
+    {
+        var dependencies = RegisterDependencies([]);
+        var relationExists = true;
+        var connection = new RecordingDbConnection(
+            scalar: sql => sql.Contains("to_regclass", StringComparison.Ordinal)
+                ? relationExists
+                : new DateOnly(2026, 8, 1));
+        connection.Open();
+        var firstTransaction = new RecordingDbTransaction(connection);
+        var uow = new RecordingUnitOfWork(connection, hasActiveTransaction: true, firstTransaction);
+        var relationCache = new NGB.PostgreSql.Schema.PostgresRelationPresenceCache(TimeProvider.System);
+        var reader = new PostgresOperationalRegisterMovementsQueryReader(
+            uow,
+            dependencies.Registers.Object,
+            dependencies.Resources.Object,
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            Mock.Of<IDimensionValueEnrichmentReader>(MockBehavior.Strict),
+            new OperationalRegisterMetadataCache(TimeProvider.System),
+            relationCache);
+
+        (await reader.GetMaxPeriodMonthAsync(RegisterId)).Should().Be(new DateOnly(2026, 8, 1));
+
+        uow.Transaction = new RecordingDbTransaction(connection);
+        relationCache.Invalidate("opreg_sales__movements");
+        relationExists = false;
+        (await reader.GetMaxPeriodMonthAsync(RegisterId)).Should().BeNull();
+
+        var missingConnection = new RecordingDbConnection(scalar: _ => false);
+        var missingUow = new RecordingUnitOfWork(missingConnection);
+        var missingRegister = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
+        missingRegister.Setup(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OperationalRegisterAdminItem?)null);
+        var missingReader = new PostgresOperationalRegisterMovementsQueryReader(
+            missingUow,
+            missingRegister.Object,
+            Mock.Of<IOperationalRegisterResourceRepository>(MockBehavior.Strict),
+            Mock.Of<IDimensionSetReader>(MockBehavior.Strict),
+            Mock.Of<IDimensionValueEnrichmentReader>(MockBehavior.Strict));
+
+        await ((Func<Task>)(() => missingReader.GetMaxPeriodMonthAsync(RegisterId)))
+            .Should().ThrowAsync<OperationalRegisterNotFoundException>();
+    }
+
+    [Fact]
+    public async Task Movements_reader_returns_empty_for_absent_table_and_maps_database_null_resource_to_zero()
+    {
+        var dependencies = RegisterDependencies(
+        [
+            new("Quantity", "quantity", "quantity", "Quantity", 2),
+            new("Amount", "amount", "amount", "Amount", 1)
+        ]);
         var absent = new PostgresOperationalRegisterMovementsReader(
             new RecordingUnitOfWork(new RecordingDbConnection(scalar: _ => false)),
             dependencies.Registers.Object,
@@ -775,10 +983,14 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         var occurredAt = new DateTime(2026, 8, 22, 12, 0, 0, DateTimeKind.Utc);
         var present = new PostgresOperationalRegisterMovementsReader(
             new RecordingUnitOfWork(new RecordingDbConnection(
-                readerFactory: _ => MovementRows(documentId, occurredAt),
+                readerFactory: sql => sql.Contains("SELECT DISTINCT", StringComparison.Ordinal)
+                    ? MonthRows(month)
+                    : MovementRows(documentId, occurredAt),
                 scalar: _ => true)),
             dependencies.Registers.Object,
-            dependencies.Resources.Object);
+            dependencies.Resources.Object,
+            new OperationalRegisterMetadataCache(TimeProvider.System),
+            new PostgresRelationPresenceCache(TimeProvider.System));
 
         var row = (await present.GetByMonthAsync(RegisterId, month)).Should().ContainSingle().Subject;
         row.MovementId.Should().Be(9);
@@ -787,6 +999,7 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         row.DimensionSetId.Should().Be(DimensionSetId);
         row.IsStorno.Should().BeFalse();
         row.Resources.Should().Contain("amount", 0m);
+        (await present.GetDistinctMonthsByDocumentAsync(RegisterId, documentId)).Should().Equal(month);
 
         var missingColumnReader = new PostgresOperationalRegisterMovementsReader(
             new RecordingUnitOfWork(new RecordingDbConnection(
@@ -815,6 +1028,16 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             dependencies.Resources.Object);
         (await decimalReader.GetByMonthAsync(RegisterId, month)).Should()
             .ContainSingle().Which.Resources.Should().Contain("amount", 4.25m);
+
+        var missingRegister = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
+        missingRegister.Setup(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OperationalRegisterAdminItem?)null);
+        var missing = new PostgresOperationalRegisterMovementsReader(
+            new RecordingUnitOfWork(new RecordingDbConnection()),
+            missingRegister.Object,
+            Mock.Of<IOperationalRegisterResourceRepository>(MockBehavior.Strict));
+        await ((Func<Task>)(() => missing.GetByMonthAsync(RegisterId, month)))
+            .Should().ThrowAsync<OperationalRegisterNotFoundException>();
     }
 
     [Fact]
@@ -855,7 +1078,11 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             missingDependencies.Resources.Object);
         (await missingColumn.AggregateMonthAsync(RegisterId, new DateOnly(2026, 8, 1))).Should().BeEmpty();
 
-        var nonZeroDependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
+        var nonZeroDependencies = RegisterDependencies(
+        [
+            new("Quantity", "quantity", "quantity", "Quantity", 2),
+            new("Amount", "amount", "amount", "Amount", 1)
+        ]);
         var nonZero = new PostgresOperationalRegisterMonthlyProjectionAggregator(
             new RecordingUnitOfWork(new RecordingDbConnection(
                 readerFactory: _ => ProjectionRows(7.5m),
@@ -864,6 +1091,73 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             nonZeroDependencies.Resources.Object);
         (await nonZero.AggregateMonthAsync(RegisterId, new DateOnly(2026, 8, 1))).Should()
             .ContainSingle().Which.Values.Should().Contain("amount", 7.5m);
+
+        var absentDependencies = RegisterDependencies([]);
+        var absent = new PostgresOperationalRegisterMonthlyProjectionAggregator(
+            new RecordingUnitOfWork(new RecordingDbConnection(scalar: _ => false)),
+            absentDependencies.Registers.Object,
+            absentDependencies.Resources.Object);
+        (await absent.AggregateMonthAsync(RegisterId, new DateOnly(2026, 8, 1))).Should().BeEmpty();
+
+        var missingRegister = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
+        missingRegister.Setup(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((OperationalRegisterAdminItem?)null);
+        var missing = new PostgresOperationalRegisterMonthlyProjectionAggregator(
+            new RecordingUnitOfWork(new RecordingDbConnection()),
+            missingRegister.Object,
+            Mock.Of<IOperationalRegisterResourceRepository>(MockBehavior.Strict),
+            new OperationalRegisterMetadataCache(TimeProvider.System),
+            new PostgresRelationPresenceCache(TimeProvider.System));
+        await ((Func<Task>)(() => missing.AggregateMonthAsync(RegisterId, new DateOnly(2026, 8, 1))))
+            .Should().ThrowAsync<OperationalRegisterNotFoundException>();
+    }
+
+    [Fact]
+    public async Task Balance_and_turnover_readers_accept_shared_caches_and_sort_resource_metadata()
+    {
+        var resourceRows = new[]
+        {
+            new OperationalRegisterResource("Quantity", "quantity", "quantity", "Quantity", 2),
+            new OperationalRegisterResource("Amount", "amount", "amount", "Amount", 1)
+        };
+        var dimensions = new Mock<IDimensionSetReader>(MockBehavior.Strict);
+        dimensions.Setup(x => x.GetBagsByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DimensionBag>());
+        var enrichment = new Mock<IDimensionValueEnrichmentReader>(MockBehavior.Strict);
+        var month = new DateOnly(2026, 8, 1);
+
+        var balanceDependencies = RegisterDependencies(resourceRows);
+        var balance = new PostgresOperationalRegisterBalancesReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(
+                readerFactory: _ => MonthlyProjectionRows(month),
+                scalar: _ => true)),
+            balanceDependencies.Registers.Object,
+            balanceDependencies.Resources.Object,
+            dimensions.Object,
+            enrichment.Object,
+            new OperationalRegisterMetadataCache(TimeProvider.System),
+            new PostgresRelationPresenceCache(TimeProvider.System));
+
+        var balanceRow = (await balance.GetByMonthsAsync(RegisterId, month, month))
+            .Should().ContainSingle().Subject;
+        balanceRow.Values.Should().Contain("amount", 7.5m).And.Contain("quantity", 0m);
+
+        var turnoverDependencies = RegisterDependencies(resourceRows);
+        var turnover = new PostgresOperationalRegisterTurnoversReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(
+                readerFactory: _ => MonthlyProjectionRows(month),
+                scalar: _ => true)),
+            turnoverDependencies.Registers.Object,
+            turnoverDependencies.Resources.Object,
+            dimensions.Object,
+            enrichment.Object,
+            new OperationalRegisterMetadataCache(TimeProvider.System),
+            new PostgresRelationPresenceCache(TimeProvider.System));
+
+        var turnoverRow = (await turnover.GetByMonthsAsync(RegisterId, month, month))
+            .Should().ContainSingle().Subject;
+        turnoverRow.Values.Should().Contain("amount", 7.5m).And.Contain("quantity", 0m);
     }
 
     private static OperationalRegisterAdminItem Register()
@@ -1042,6 +1336,14 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         return table.CreateDataReader();
     }
 
+    private static DataTableReader MonthRows(DateOnly month)
+    {
+        var table = new DataTable();
+        table.Columns.Add("Month", typeof(DateOnly));
+        table.Rows.Add(month);
+        return table.CreateDataReader();
+    }
+
     private static DataTableReader ProjectionRows(object? amount = null, bool includeAmount = true)
     {
         var table = new DataTable();
@@ -1052,6 +1354,16 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             table.Rows.Add(DimensionSetId, amount ?? DBNull.Value);
         else
             table.Rows.Add(DimensionSetId);
+        return table.CreateDataReader();
+    }
+
+    private static DataTableReader MonthlyProjectionRows(DateOnly month)
+    {
+        var table = new DataTable();
+        table.Columns.Add("PeriodMonth", typeof(DateOnly));
+        table.Columns.Add("DimensionSetId", typeof(Guid));
+        table.Columns.Add("amount", typeof(decimal));
+        table.Rows.Add(month, DimensionSetId, 7.5m);
         return table.CreateDataReader();
     }
 

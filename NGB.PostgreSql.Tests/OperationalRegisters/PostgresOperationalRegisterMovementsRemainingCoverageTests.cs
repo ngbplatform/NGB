@@ -246,7 +246,9 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         var sut = new PostgresOperationalRegisterMovementsStore(
             new RecordingUnitOfWork(connection, hasActiveTransaction: true),
             registers.Object,
-            resources.Object);
+            resources.Object,
+            new OperationalRegisterMetadataCache(TimeProvider.System),
+            new NGB.PostgreSql.Schema.PostgresRelationShapeCache(TimeProvider.System));
         var registerId = Guid.NewGuid();
 
         Func<Task> nullBatch = () => sut.AppendAsync(registerId, null!);

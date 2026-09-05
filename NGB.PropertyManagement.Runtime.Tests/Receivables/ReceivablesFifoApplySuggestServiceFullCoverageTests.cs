@@ -3,6 +3,7 @@ using Moq;
 using NGB.Core.Documents;
 using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Contracts;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Receivables;
@@ -22,6 +23,8 @@ public sealed class ReceivablesFifoApplySuggestServiceFullCoverageTests
         await AssertInvalid(() => fixture.Sut.SuggestAsync(new ReceivablesFifoApplySuggestRequest(Guid.Empty, null)));
         await AssertInvalid(() => fixture.Sut.SuggestAsync(new ReceivablesFifoApplySuggestRequest(fixture.CreditId, 0)));
         await AssertInvalid(() => fixture.Sut.SuggestAsync(new ReceivablesFifoApplySuggestRequest(fixture.CreditId, -1)));
+        await AssertInvalid(() => fixture.Sut.SuggestAsync(new ReceivablesFifoApplySuggestRequest(
+            fixture.CreditId, FifoApplyLimits.MaxApplications + 1)));
 
         fixture.SetDetails([], []);
         await AssertInvalid(() => fixture.Sut.SuggestAsync(new ReceivablesFifoApplySuggestRequest(fixture.CreditId, null)));
@@ -66,6 +69,7 @@ public sealed class ReceivablesFifoApplySuggestServiceFullCoverageTests
         await AssertInvalid(() => fixture.LeaseQueryAsync(asOf: new DateOnly(2026, 2, 1), to: new DateOnly(2026, 1, 1)));
         await AssertInvalid(() => fixture.LeaseQueryAsync(limit: 0));
         await AssertInvalid(() => fixture.LeaseQueryAsync(limit: -1));
+        await AssertInvalid(() => fixture.LeaseQueryAsync(limit: FifoApplyLimits.MaxApplications + 1));
     }
 
     [Fact]

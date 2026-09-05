@@ -1,5 +1,6 @@
 using FluentAssertions;
 using NGB.PostgreSql.Internal;
+using System.Reflection;
 using Xunit;
 
 namespace NGB.PostgreSql.Tests.Internal;
@@ -24,6 +25,37 @@ public sealed class AsyncCachePrimitivesTests
         var second = await waiting;
         second.Dispose();
         second.Dispose();
+
+        keyedLock.Count.Should().Be(0);
+
+        var defaultComparerLock = new AsyncKeyedLock<string>();
+        using (await defaultComparerLock.AcquireAsync("default", default))
+        {
+            defaultComparerLock.Count.Should().Be(1);
+        }
+
+        defaultComparerLock.Count.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Keyed_lock_replaces_an_entry_observed_after_retirement()
+    {
+        var keyedLock = new AsyncKeyedLock<string>(StringComparer.Ordinal);
+        var lockType = typeof(AsyncKeyedLock<string>);
+        var entries = lockType.GetField("_entries", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(keyedLock)!;
+        var entryType = entries.GetType().GenericTypeArguments[1];
+        var retiredEntry = Activator.CreateInstance(entryType)!;
+        entryType.GetField("_rentCount", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(retiredEntry, -1);
+        entries.GetType().GetMethod("TryAdd")!
+            .Invoke(entries, ["retired", retiredEntry])
+            .Should().Be(true);
+
+        using (await keyedLock.AcquireAsync("retired", default))
+        {
+            keyedLock.Count.Should().Be(1);
+        }
 
         keyedLock.Count.Should().Be(0);
     }
@@ -86,5 +118,21 @@ public sealed class AsyncCachePrimitivesTests
         cache.TryGet("same", now, out var latest).Should().BeTrue();
         latest.Should().Be(99);
         cache.Count.Should().Be(1);
+    }
+
+    [Fact]
+    public void Bounded_cache_removal_tolerates_missing_order_metadata()
+    {
+        var now = new DateTimeOffset(2026, 8, 30, 12, 0, 0, TimeSpan.Zero);
+        var cache = new BoundedExpiringCache<string, int>(2);
+        cache.Set("orphaned", 1, now.AddMinutes(1), now);
+        var orderNodes = (Dictionary<string, LinkedListNode<string>>)typeof(BoundedExpiringCache<string, int>)
+            .GetField("_orderNodes", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(cache)!;
+        orderNodes.Remove("orphaned").Should().BeTrue();
+
+        cache.Remove("orphaned");
+
+        cache.Count.Should().Be(0);
     }
 }

@@ -173,7 +173,7 @@ LIMIT @QueryLimit;
                 ItemIds = itemIdArray,
                 PriceTypeIds = priceTypeIdArray,
                 Offset = PagingLimits.BoundOffset(offset),
-                QueryLimit = cursorMode && limit < int.MaxValue ? limit + 1 : limit,
+                QueryLimit = ResolveQueryLimit(cursorMode, limit),
                 KnownTotal = cursor?.Total,
                 AfterItemDisplay = cursor?.AfterItemDisplay,
                 AfterPriceTypeDisplay = cursor?.AfterPriceTypeDisplay,
@@ -184,7 +184,7 @@ LIMIT @QueryLimit;
             uow.Transaction,
             cancellationToken: ct))).AsList();
 
-        var hasMore = cursorMode && rows.Count > limit;
+        var hasMore = HasMore(cursorMode, rows.Count, limit);
         if (hasMore)
             rows.RemoveAt(rows.Count - 1);
 
@@ -209,8 +209,13 @@ LIMIT @QueryLimit;
             last?.PriceTypeId);
     }
 
-    private static Guid[] NormalizeIds(IReadOnlyList<Guid>? ids)
+    internal static Guid[] NormalizeIds(IReadOnlyList<Guid>? ids)
         => ids?.Where(static id => id != Guid.Empty).Distinct().ToArray() ?? [];
+
+    internal static int ResolveQueryLimit(bool cursorMode, int limit)
+        => cursorMode && limit < int.MaxValue ? limit + 1 : limit;
+
+    internal static bool HasMore(bool cursorMode, int rowCount, int limit) => cursorMode && rowCount > limit;
 
     private async Task<bool> ItemPricesTableExistsAsync(CancellationToken ct)
     {

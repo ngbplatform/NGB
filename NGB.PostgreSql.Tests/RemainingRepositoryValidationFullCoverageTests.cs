@@ -231,10 +231,38 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         await ((Func<Task>)(() => sut.FindCycleCreatingRequestIndexesAsync(
                 [new DocumentRelationshipCycleCheck(Guid.Empty, id, "derived")], 1)))
             .Should().ThrowAsync<NgbArgumentInvalidException>();
+        foreach (var invalidCheck in new DocumentRelationshipCycleCheck?[]
+                 {
+                     null,
+                     new(id, Guid.Empty, "derived"),
+                     new(id, Guid.NewGuid(), " ")
+                 })
+        {
+            await ((Func<Task>)(() => sut.FindCycleCreatingRequestIndexesAsync([invalidCheck!], 1)))
+                .Should().ThrowAsync<NgbArgumentInvalidException>();
+        }
+
+        (await sut.FindCycleCreatingRequestIndexesAsync(
+            [new DocumentRelationshipCycleCheck(id, Guid.NewGuid(), "derived")], 1)).Should().BeEmpty();
         (await sut.GetCardinalityConflictsAsync([])).Should().BeEmpty();
         await ((Func<Task>)(() => sut.GetCardinalityConflictsAsync(
                 [new DocumentRelationshipCardinalityCheck(id, Guid.NewGuid(), "derived", false, false)])))
             .Should().ThrowAsync<NgbArgumentInvalidException>();
+        foreach (var invalidCheck in new DocumentRelationshipCardinalityCheck?[]
+                 {
+                     null,
+                     new(Guid.Empty, id, "derived", true, false),
+                     new(id, Guid.Empty, "derived", true, false),
+                     new(id, Guid.NewGuid(), " ", true, false)
+                 })
+        {
+            await ((Func<Task>)(() => sut.GetCardinalityConflictsAsync([invalidCheck!])))
+                .Should().ThrowAsync<NgbArgumentInvalidException>();
+        }
+
+        (await sut.GetCardinalityConflictsAsync(
+            [new DocumentRelationshipCardinalityCheck(id, Guid.NewGuid(), "derived", true, true)]))
+            .Should().BeEmpty();
 
         var relationship = new DocumentRelationshipRecord
         {
@@ -302,9 +330,15 @@ public sealed class RemainingRepositoryValidationFullCoverageTests
         var userRoles = new PostgresPlatformUserRoleRepository(uow, TimeProvider.System);
         Func<Task> nullUserIds = () => userRoles.GetRolesForUsersAsync(null!);
         Func<Task> nullRoleIds = () => userRoles.ReplaceUserRolesAsync(Guid.NewGuid(), null!, null);
+        Func<Task> emptyRole = () => userRoles.GetUserIdsForRoleAsync(Guid.Empty, 1);
+        Func<Task> zeroUserLimit = () => userRoles.GetUserIdsForRoleAsync(Guid.NewGuid(), 0);
         await nullUserIds.Should().ThrowAsync<ArgumentNullException>();
         (await userRoles.GetRolesForUsersAsync([Guid.Empty, Guid.Empty])).Should().BeEmpty();
         await nullRoleIds.Should().ThrowAsync<ArgumentNullException>();
+        await emptyRole.Should().ThrowAsync<NgbArgumentRequiredException>();
+        await zeroUserLimit.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        (await userRoles.GetUserIdsForRoleAsync(Guid.NewGuid(), 1)).Should().BeEmpty();
+        connection.Commands.Clear();
 
         var accounts = new PostgresChartOfAccountsRepository(uow);
         Func<Task> nullAccountIds = () => accounts.GetAdminByIdsAsync(null!);

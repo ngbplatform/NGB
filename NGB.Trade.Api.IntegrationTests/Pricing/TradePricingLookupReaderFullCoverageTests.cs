@@ -1,11 +1,14 @@
+using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NGB.Persistence.UnitOfWork;
+using NGB.ReferenceRegisters;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.PostgreSql.Pricing;
 using NGB.Trade.PostgreSql.References;
 using NGB.Trade.Pricing;
+using Npgsql;
 using Xunit;
 
 namespace NGB.Trade.Api.IntegrationTests.Pricing;
@@ -17,7 +20,7 @@ public sealed class TradePricingLookupReaderFullCoverageTests(TradePostgresFixtu
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
-    public async Task Empty_and_missing_price_paths_are_deterministic()
+    public async Task Empty_input_paths_are_deterministic()
     {
         var dependencyFree = new TradePricingLookupReader(Mock.Of<IUnitOfWork>(MockBehavior.Strict));
 
@@ -27,15 +30,6 @@ public sealed class TradePricingLookupReaderFullCoverageTests(TradePostgresFixtu
 
         var validationReader = new TradeCatalogValidationReader(Mock.Of<IUnitOfWork>(MockBehavior.Strict));
         (await validationReader.GetInventoryItemsAsync([Guid.Empty, Guid.Empty], CancellationToken.None))
-            .Should().BeEmpty();
-
-        using var host = TradeHostFactory.Create(fixture.ConnectionString);
-        await using var scope = host.Services.CreateAsyncScope();
-        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var reader = new TradePricingLookupReader(uow);
-        var key = new TradePriceLookupKey(Guid.NewGuid(), Guid.NewGuid());
-
-        (await reader.GetLatestItemPricesAsync([key], DateOnly.MaxValue, CancellationToken.None))
             .Should().BeEmpty();
     }
 
@@ -74,4 +68,34 @@ public sealed class TradePricingLookupReaderFullCoverageTests(TradePostgresFixtu
             effectiveDate,
             sourceDocumentId));
     }
+}
+
+[Collection(TradeSchemaPostgresCollection.Name)]
+public sealed class TradePricingLookupReaderMissingSchemaFullCoverageTests(TradeSchemaPostgresFixture fixture)
+    : IAsyncLifetime
+{
+    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task Missing_item_prices_table_returns_an_empty_result()
+    {
+        var recordsTable = ReferenceRegisterNaming.RecordsTable(TradeCodes.ItemPricesRegisterCode);
+        await using (var connection = new NpgsqlConnection(fixture.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await connection.ExecuteAsync($"DROP TABLE IF EXISTS {QuoteIdentifier(recordsTable)};");
+        }
+
+        using var host = TradeHostFactory.Create(fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var reader = new TradePricingLookupReader(scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+        var key = new TradePriceLookupKey(Guid.NewGuid(), Guid.NewGuid());
+
+        (await reader.GetLatestItemPricesAsync([key], DateOnly.MaxValue, CancellationToken.None))
+            .Should().BeEmpty();
+    }
+
+    private static string QuoteIdentifier(string identifier)
+        => $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 }

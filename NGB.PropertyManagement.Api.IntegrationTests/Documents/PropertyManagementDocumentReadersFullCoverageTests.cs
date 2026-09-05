@@ -33,7 +33,8 @@ public sealed class PropertyManagementDocumentReadersFullCoverageTests(PmIntegra
         (await sut.ReadPayableChargeTypeHeadsAsync([], CancellationToken.None)).Should().BeEmpty();
         (await sut.ReadDocumentInfosAsync(null!, CancellationToken.None)).Should().BeEmpty();
         (await sut.ReadDocumentInfosAsync([], CancellationToken.None)).Should().BeEmpty();
-
+        (await sut.ReadPayableApplyHeadsAsync([], CancellationToken.None)).Should().BeEmpty();
+        (await sut.ReadReceivableApplyHeadsAsync([], CancellationToken.None)).Should().BeEmpty();
         (await sut.ReadActiveReceivableAllocationsAsync(Guid.Empty, id, id, CancellationToken.None)).Should().BeEmpty();
         (await sut.ReadActiveReceivableAllocationsAsync(id, Guid.Empty, id, CancellationToken.None)).Should().BeEmpty();
         (await sut.ReadActiveReceivableAllocationsAsync(id, id, Guid.Empty, CancellationToken.None)).Should().BeEmpty();

@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using FluentAssertions;
 using NGB.PostgreSql.Bootstrap;
 using NGB.Tools.Exceptions;
+using Npgsql;
 using Xunit;
 
 namespace NGB.PostgreSql.Tests.Bootstrap;
@@ -66,14 +67,81 @@ public sealed class PostgresDatabaseProvisionerFullCoverageTests
         await cancelled.Should().ThrowAsync<OperationCanceledException>();
     }
 
+    [Theory]
+    [InlineData(PostgresErrorCodes.DuplicateDatabase, null)]
+    [InlineData(PostgresErrorCodes.UniqueViolation, "pg_database_datname_index")]
+    public async Task EnsureDatabaseExistsAsync_ToleratesExternalCreatorWinningTheRace(
+        string sqlState,
+        string? constraint)
+    {
+        var error = Pg(sqlState, constraint);
+        var connection = new RecordingDbConnection(
+            databaseExists: false,
+            createError: error,
+            existenceResults: [false, true]);
+        var sut = new PostgresDatabaseProvisioner(new RecordingProviderFactory(connection));
+
+        await sut.EnsureDatabaseExistsAsync(ConnectionString);
+
+        connection.Commands.Should().Contain(x => x.StartsWith("CREATE DATABASE", StringComparison.Ordinal));
+        connection.Commands.Should().Contain(x => x.Contains("pg_advisory_unlock", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EnsureDatabaseExistsAsync_RethrowsDuplicateWhenDatabaseStillDoesNotExist()
+    {
+        var error = Pg(PostgresErrorCodes.DuplicateDatabase, constraint: null);
+        var connection = new RecordingDbConnection(
+            databaseExists: false,
+            createError: error,
+            existenceResults: [false, false]);
+        var sut = new PostgresDatabaseProvisioner(new RecordingProviderFactory(connection));
+
+        var act = () => sut.EnsureDatabaseExistsAsync(ConnectionString);
+
+        (await act.Should().ThrowAsync<PostgresException>()).Which.Should().BeSameAs(error);
+        connection.Commands.Should().Contain(x => x.Contains("pg_advisory_unlock", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task EnsureDatabaseExistsAsync_TreatsNonBooleanExistenceScalarAsMissing()
+    {
+        var connection = new RecordingDbConnection(
+            databaseExists: false,
+            existenceResults: [1]);
+        var sut = new PostgresDatabaseProvisioner(new RecordingProviderFactory(connection));
+
+        await sut.EnsureDatabaseExistsAsync(ConnectionString);
+
+        connection.Commands.Should().Contain("CREATE DATABASE \"ngb-jobs\"");
+    }
+
+    private static PostgresException Pg(string sqlState, string? constraint)
+        => new("error", "ERROR", "ERROR", sqlState, "", "", 0, 0, "", "", "public", "pg_database",
+            "datname", "text", constraint, "file", "1", "routine");
+
     private sealed class RecordingProviderFactory(RecordingDbConnection? connection) : DbProviderFactory
     {
         public override DbConnection? CreateConnection() => connection;
     }
 
-    private sealed class RecordingDbConnection(bool databaseExists) : DbConnection
+    private sealed class RecordingDbConnection : DbConnection
     {
+        private readonly bool _databaseExists;
+        private readonly PostgresException? _createError;
+        private readonly Queue<object?> _existenceResults;
         private ConnectionState _state;
+
+        public RecordingDbConnection(
+            bool databaseExists,
+            PostgresException? createError = null,
+            IReadOnlyList<object?>? existenceResults = null)
+        {
+            _databaseExists = databaseExists;
+            _createError = createError;
+            _existenceResults = new Queue<object?>(existenceResults ?? [databaseExists]);
+        }
+
         public List<string> Commands { get; } = [];
         [AllowNull]
         public override string ConnectionString { get; set; } = string.Empty;
@@ -90,12 +158,17 @@ public sealed class PostgresDatabaseProvisionerFullCoverageTests
             return Task.CompletedTask;
         }
         protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => throw new NotSupportedException();
-        protected override DbCommand CreateDbCommand() => new RecordingDbCommand(this, databaseExists, Commands);
+        protected override DbCommand CreateDbCommand() => new RecordingDbCommand(
+            this,
+            () => _existenceResults.Count > 0 ? _existenceResults.Dequeue() : _databaseExists,
+            _createError,
+            Commands);
     }
 
     private sealed class RecordingDbCommand(
         DbConnection connection,
-        bool databaseExists,
+        Func<object?> databaseExists,
+        PostgresException? createError,
         ICollection<string> commands) : DbCommand
     {
         private readonly RecordingParameterCollection _parameters = new();
@@ -112,12 +185,14 @@ public sealed class PostgresDatabaseProvisionerFullCoverageTests
         public override int ExecuteNonQuery()
         {
             commands.Add(CommandText);
+            if (createError is not null && CommandText.StartsWith("CREATE DATABASE", StringComparison.Ordinal))
+                throw createError;
             return 1;
         }
         public override object ExecuteScalar()
         {
             commands.Add(CommandText);
-            return databaseExists;
+            return databaseExists()!;
         }
         public override void Prepare() { }
         protected override DbParameter CreateDbParameter() => new RecordingDbParameter();

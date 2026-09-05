@@ -268,6 +268,8 @@ public sealed class PostgresReferencePayloadBatchEnrichmentReader(
         var name = metadata?.Presentation?.DisplayName;
         if (string.IsNullOrWhiteSpace(name))
             name = row.TypeCode;
+        if (string.IsNullOrWhiteSpace(name))
+            name = "Document";
 
         return string.IsNullOrWhiteSpace(row.Number)
             ? $"{name} {row.Id.ToString("N")[..8]}"

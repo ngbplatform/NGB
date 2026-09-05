@@ -136,6 +136,58 @@ public sealed class PostingEngineFullCoverageTests
     }
 
     [Fact]
+    public async Task PostAsync_WhenDimensionBatchResolverReturnsNull_RejectsTheBrokenContract()
+    {
+        var fixture = new Fixture();
+        var documentId = Guid.CreateVersion7();
+        var debit = CreateAccount("1010", NegativeBalancePolicy.Allow);
+        var credit = CreateAccount("2010", NegativeBalancePolicy.Allow);
+        fixture.DimensionSets
+            .Setup(x => x.GetOrCreateIdsAsync(It.IsAny<IReadOnlyList<DimensionBag>>(), fixture.Token))
+            .ReturnsAsync((IReadOnlyList<Guid>)null!);
+
+        var act = () => fixture.Sut.PostAsync(
+            PostingOperation.Post,
+            (context, _) =>
+            {
+                context.Post(documentId, MarchUtc, debit, credit, 1m);
+                return Task.CompletedTask;
+            },
+            manageTransaction: true,
+            fixture.Token);
+
+        await act.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("*returned 0 id(s) for 2 bag(s)*");
+        fixture.Uow.Verify(x => x.RollbackAsync(CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task PostAsync_WhenDimensionBatchResolverReturnsWrongCount_RejectsTheBrokenContract()
+    {
+        var fixture = new Fixture();
+        var documentId = Guid.CreateVersion7();
+        var debit = CreateAccount("1010", NegativeBalancePolicy.Allow);
+        var credit = CreateAccount("2010", NegativeBalancePolicy.Allow);
+        fixture.DimensionSets
+            .Setup(x => x.GetOrCreateIdsAsync(It.IsAny<IReadOnlyList<DimensionBag>>(), fixture.Token))
+            .ReturnsAsync([Guid.CreateVersion7()]);
+
+        var act = () => fixture.Sut.PostAsync(
+            PostingOperation.Post,
+            (context, _) =>
+            {
+                context.Post(documentId, MarchUtc, debit, credit, 1m);
+                return Task.CompletedTask;
+            },
+            manageTransaction: true,
+            fixture.Token);
+
+        await act.Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("*returned 1 id(s) for 2 bag(s)*");
+        fixture.Uow.Verify(x => x.RollbackAsync(CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
     public async Task PostAsync_WhenOperationalReaderReturnsDuplicateKeys_RejectsWithDiagnosticContext()
     {
         var fixture = new Fixture();

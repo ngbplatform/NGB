@@ -121,8 +121,22 @@ public sealed class MemoryCacheTicketStore : ITicketStore, IDisposable
 
         // A concurrent compaction may have dropped a racing access stamp. Capacity must
         // still be enforced, so fall back to any tracked entry in this extremely rare race.
-        if (_versions.FirstOrDefault() is { Key.Length: > 0 } fallback && _versions.TryRemove(fallback))
-            _cache.Remove(fallback.Key);
+        TryRemoveFallback(_versions, fallback => _versions.TryRemove(fallback), _cache.Remove);
+    }
+
+    internal static bool TryRemoveFallback(
+        IEnumerable<KeyValuePair<string, long>> candidates,
+        Func<KeyValuePair<string, long>, bool> tryRemove,
+        Action<string> removeCacheEntry)
+    {
+        if (candidates.FirstOrDefault() is not { Key.Length: > 0 } fallback)
+            return false;
+
+        if (!tryRemove(fallback))
+            return false;
+
+        removeCacheEntry(fallback.Key);
+        return true;
     }
 
     private void RecordNewGeneration(string key)
@@ -161,9 +175,6 @@ public sealed class MemoryCacheTicketStore : ITicketStore, IDisposable
 
         try
         {
-            if (Volatile.Read(ref _recencyStampCount) <= metadataLimit)
-                return;
-
             var compacted = new ConcurrentQueue<AccessStamp>(_versions.Select(static pair => new AccessStamp(pair.Key, pair.Value)));
             Volatile.Write(ref _recency, compacted);
             Volatile.Write(ref _recencyStampCount, compacted.Count);

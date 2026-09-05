@@ -179,6 +179,7 @@ public sealed class PropertyManagementSetupServiceEdgeCoverageTests
         await AssertBankFailure(Payload(("other", "value")), []);
         await AssertBankFailure(Payload(("gl_account_id", "invalid")), []);
         await AssertBankFailure(Payload(("gl_account_id", Guid.CreateVersion7())), []);
+        await AssertBankFailure(Payload(("gl_account_id", Guid.CreateVersion7())), [], display: null);
 
         var glId = Guid.CreateVersion7();
         await AssertBankFailure(Payload(("gl_account_id", glId)),

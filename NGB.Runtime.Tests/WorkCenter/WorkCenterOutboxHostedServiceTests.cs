@@ -228,6 +228,50 @@ public sealed class WorkCenterOutboxHostedServiceTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_exits_after_a_completed_delay_when_shutdown_is_requested_between_polls()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var processor = new Mock<IOutboxProcessor>(MockBehavior.Strict);
+        processor.Setup(candidate => candidate.ProcessBatchAsync(100, cancellation.Token))
+            .ReturnsAsync(0);
+        var maintenance = Maintenance();
+        var provider = new Mock<IServiceProvider>(MockBehavior.Strict);
+        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IOutboxProcessor)))
+            .Returns(processor.Object);
+        provider.Setup(serviceProvider => serviceProvider.GetService(typeof(IWorkCenterMaintenanceService)))
+            .Returns(maintenance.Object);
+        var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
+        scopes.Setup(factory => factory.CreateScope()).Returns(Scope(provider.Object).Object);
+        var timeProvider = new CancelAfterDelayTimeProvider(cancellation);
+        var service = new WorkCenterOutboxHostedService(
+            scopes.Object,
+            timeProvider,
+            Options(pollInterval: TimeSpan.FromMilliseconds(1)),
+            NullLogger<WorkCenterOutboxHostedService>.Instance);
+
+        var synchronizationContext = new QueuedSynchronizationContext();
+        var previousSynchronizationContext = SynchronizationContext.Current;
+        Task execution;
+        SynchronizationContext.SetSynchronizationContext(synchronizationContext);
+        try
+        {
+            execution = (Task)typeof(WorkCenterOutboxHostedService)
+                .GetMethod("ExecuteAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(service, [cancellation.Token])!;
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousSynchronizationContext);
+        }
+
+        await timeProvider.CallbackCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await synchronizationContext.RunOneAsync();
+        await execution.WaitAsync(TimeSpan.FromSeconds(5));
+        processor.Verify(candidate => candidate.ProcessBatchAsync(100, cancellation.Token), Times.Once);
+        maintenance.Verify(service => service.PruneAsync(cancellation.Token), Times.Once);
+    }
+
+    [Fact]
     public async Task Hosted_service_disposes_async_only_scoped_dependencies_asynchronously()
     {
         var processed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -349,6 +393,81 @@ public sealed class WorkCenterOutboxHostedServiceTests
         {
             if (logLevel == LogLevel.Information)
                 Messages.Add(formatter(state, exception));
+        }
+    }
+
+    private sealed class CancelAfterDelayTimeProvider(CancellationTokenSource cancellation) : TimeProvider
+    {
+        public TaskCompletionSource CallbackCompleted { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period)
+            => new CancelAfterCallbackTimer(callback, state, dueTime, cancellation, CallbackCompleted);
+    }
+
+    private sealed class CancelAfterCallbackTimer : ITimer
+    {
+        private readonly Timer _timer;
+
+        public CancelAfterCallbackTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            CancellationTokenSource cancellation,
+            TaskCompletionSource callbackCompleted)
+        {
+            _timer = new Timer(
+                _ =>
+                {
+                    callback(state);
+                    cancellation.Cancel();
+                    callbackCompleted.TrySetResult();
+                },
+                null,
+                dueTime,
+                Timeout.InfiniteTimeSpan);
+        }
+
+        public bool Change(TimeSpan dueTime, TimeSpan period) => _timer.Change(dueTime, period);
+
+        public void Dispose() => _timer.Dispose();
+
+        public ValueTask DisposeAsync() => _timer.DisposeAsync();
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> _callbacks = new();
+        private readonly SemaphoreSlim _available = new(0);
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            lock (_callbacks)
+                _callbacks.Enqueue((callback, state));
+            _available.Release();
+        }
+
+        public async Task RunOneAsync()
+        {
+            await _available.WaitAsync(TimeSpan.FromSeconds(5));
+            (SendOrPostCallback Callback, object? State) work;
+            lock (_callbacks)
+                work = _callbacks.Dequeue();
+
+            var previous = Current;
+            SetSynchronizationContext(this);
+            try
+            {
+                work.Callback(work.State);
+            }
+            finally
+            {
+                SetSynchronizationContext(previous);
+            }
         }
     }
 }

@@ -175,6 +175,27 @@ public sealed class AdminServicesFullCoverageTests
     }
 
     [Fact]
+    public async Task AdminService_UsesRepositoryHasMore_WhenKnownTotalEqualsReturnedCount()
+    {
+        var item = Item("1000", "Cash", AccountType.Asset);
+        var admin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
+        admin.Setup(x => x.GetPageAsync(
+                It.Is<ChartOfAccountsAdminPageQuery>(query => query.Offset == 0 && query.Limit == 1),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage(
+                [item],
+                Total: 1,
+                HasMore: true,
+                NextAfterCode: item.Account.Code,
+                NextAfterAccountId: item.Account.Id));
+        var sut = Service(coaAdmin: admin.Object);
+
+        var result = await sut.GetChartOfAccountsPageAsync(new(Limit: 1), default);
+
+        result.NextCursor.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
     public async Task AdminService_CoversCreateUpdateAndAllManagementDelegations()
     {
         var id = Guid.NewGuid();

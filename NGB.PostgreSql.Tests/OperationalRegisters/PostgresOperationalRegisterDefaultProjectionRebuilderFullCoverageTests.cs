@@ -71,15 +71,37 @@ public sealed class PostgresOperationalRegisterDefaultProjectionRebuilderFullCov
             sql.Should().NotContain("FROM opreg_sales__movements");
     }
 
+    [Fact]
+    public async Task Rebuild_covers_previous_source_boundaries_and_missing_register()
+    {
+        var zeroResources = Fixture(movementsExist: false, resources: []);
+        await zeroResources.Sut.RebuildMonthAsync(RegisterId, Period, Period.AddMonths(-1), default);
+        zeroResources.Connection.Commands.Last().CommandText.Should()
+            .Contain("SELECT dimension_set_id FROM opreg_sales__balances WHERE period_month = @PreviousPeriod");
+
+        var firstMonthWithResources = Fixture(
+            movementsExist: false,
+            resources: [new("amount", "amount", "amount", "Amount", 1)]);
+        await firstMonthWithResources.Sut.RebuildMonthAsync(RegisterId, Period, null, default);
+        firstMonthWithResources.Connection.Commands.Last().CommandText.Should()
+            .Contain("0::numeric AS amount")
+            .And.Contain("WHERE FALSE");
+
+        var missing = Fixture(registerExists: false).Sut;
+        await ((Func<Task>)(() => missing.RebuildMonthAsync(RegisterId, Period, null, default)))
+            .Should().ThrowAsync<NGB.OperationalRegisters.Exceptions.OperationalRegisterNotFoundException>();
+    }
+
     private static FixtureState Fixture(
         bool hasActiveTransaction = true,
         bool movementsExist = true,
-        IReadOnlyList<OperationalRegisterResource>? resources = null)
+        IReadOnlyList<OperationalRegisterResource>? resources = null,
+        bool registerExists = true)
     {
         var connection = new RecordingDbConnection(scalar: _ => movementsExist);
         var registers = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
-        registers.Setup(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OperationalRegisterAdminItem(
+        OperationalRegisterAdminItem? register = registerExists
+            ? new OperationalRegisterAdminItem(
                 RegisterId,
                 "Sales",
                 "sales",
@@ -87,7 +109,10 @@ public sealed class PostgresOperationalRegisterDefaultProjectionRebuilderFullCov
                 "Sales",
                 true,
                 DateTime.UnixEpoch,
-                DateTime.UnixEpoch));
+                DateTime.UnixEpoch)
+            : null;
+        registers.Setup(x => x.GetByIdAsync(RegisterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(register);
         var resourceRepository = new Mock<IOperationalRegisterResourceRepository>(MockBehavior.Strict);
         resourceRepository.Setup(x => x.GetByRegisterIdAsync(RegisterId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(resources ?? []);

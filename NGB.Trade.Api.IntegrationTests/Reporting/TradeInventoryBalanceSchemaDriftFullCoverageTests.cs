@@ -24,6 +24,47 @@ public sealed class TradeInventoryBalanceSchemaDriftFullCoverageTests(TradeSchem
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public void Paging_helpers_cover_null_filters_query_limits_and_seek_boundaries()
+    {
+        var id = Guid.CreateVersion7();
+        PostgresTradeCurrentItemPriceReader.NormalizeIds(null).Should().BeEmpty();
+        PostgresTradeCurrentItemPriceReader.NormalizeIds([Guid.Empty, id, id]).Should().Equal(id);
+
+        PostgresTradeCurrentItemPriceReader.ResolveQueryLimit(cursorMode: false, limit: 1).Should().Be(1);
+        PostgresTradeCurrentItemPriceReader.ResolveQueryLimit(cursorMode: true, limit: 1).Should().Be(2);
+        PostgresTradeCurrentItemPriceReader.ResolveQueryLimit(cursorMode: true, limit: int.MaxValue)
+            .Should().Be(int.MaxValue);
+
+        PostgresTradeCurrentItemPriceReader.HasMore(cursorMode: false, rowCount: 2, limit: 1)
+            .Should().BeFalse();
+        PostgresTradeCurrentItemPriceReader.HasMore(cursorMode: true, rowCount: 1, limit: 1)
+            .Should().BeFalse();
+        PostgresTradeCurrentItemPriceReader.HasMore(cursorMode: true, rowCount: 2, limit: 1)
+            .Should().BeTrue();
+
+        PostgresTradeInventoryBalanceReader.ShouldUseSeek(
+                hasCommonSeekKey: false,
+                TradeInventoryBalanceSort.ItemWarehouse,
+                afterAbsoluteQuantity: null)
+            .Should().BeFalse();
+        PostgresTradeInventoryBalanceReader.ShouldUseSeek(
+                hasCommonSeekKey: true,
+                TradeInventoryBalanceSort.ItemWarehouse,
+                afterAbsoluteQuantity: null)
+            .Should().BeTrue();
+        PostgresTradeInventoryBalanceReader.ShouldUseSeek(
+                hasCommonSeekKey: true,
+                TradeInventoryBalanceSort.AbsoluteQuantityDescending,
+                afterAbsoluteQuantity: null)
+            .Should().BeFalse();
+        PostgresTradeInventoryBalanceReader.ShouldUseSeek(
+                hasCommonSeekKey: true,
+                TradeInventoryBalanceSort.AbsoluteQuantityDescending,
+                afterAbsoluteQuantity: 1m)
+            .Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Reader_handles_missing_balance_and_movement_tables_and_rejects_missing_quantity_resource()
     {
         using var host = TradeHostFactory.Create(fixture.ConnectionString);
@@ -105,11 +146,14 @@ public sealed class TradeInventoryBalanceSchemaDriftFullCoverageTests(TradeSchem
         var reader = new PostgresTradeCurrentItemPriceReader(
             uow,
             new PostgresRelationPresenceCache(TimeProvider.System));
+        var readerWithDefaultCache = new PostgresTradeCurrentItemPriceReader(uow);
         var asOfUtc = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
 
         await ((Func<Task>)(() => reader.GetPageAsync(asOfUtc, null, null, -1, 1)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
         await ((Func<Task>)(() => reader.GetPageAsync(asOfUtc, null, null, 0, 0)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => readerWithDefaultCache.GetPageAsync(asOfUtc, null, null, -1, 1)))
             .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
         var recordsTable = ReferenceRegisterNaming.RecordsTable(TradeCodes.ItemPricesRegisterCode);

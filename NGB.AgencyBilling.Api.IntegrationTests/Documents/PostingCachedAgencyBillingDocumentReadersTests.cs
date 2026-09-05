@@ -1,14 +1,39 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NGB.AgencyBilling.Documents;
+using NGB.AgencyBilling.PostgreSql.DependencyInjection;
 using NGB.AgencyBilling.PostgreSql.Documents;
 using NGB.Persistence.Documents;
+using NGB.Persistence.UnitOfWork;
 using Xunit;
 
 namespace NGB.AgencyBilling.Api.IntegrationTests.Documents;
 
 public sealed class PostingCachedAgencyBillingDocumentReadersTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Module_applies_posting_cache_decorator_only_when_cache_is_registered(bool withCache)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IUnitOfWork>());
+        if (withCache)
+            services.AddSingleton<IDocumentPostingReadCache>(new RecordingCache());
+        services.AddAgencyBillingPostgresModule();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var inner = scope.ServiceProvider.GetRequiredService<AgencyBillingDocumentReaders>();
+        var resolved = scope.ServiceProvider.GetRequiredService<IAgencyBillingDocumentReaders>();
+
+        if (withCache)
+            resolved.Should().BeOfType<PostingCachedAgencyBillingDocumentReaders>().And.NotBeSameAs(inner);
+        else
+            resolved.Should().BeSameAs(inner);
+    }
+
     [Fact]
     public async Task Single_reads_use_cache_and_bulk_reads_pass_through()
     {

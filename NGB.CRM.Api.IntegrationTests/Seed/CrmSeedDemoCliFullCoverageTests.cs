@@ -3,7 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.CRM.Api.IntegrationTests.Infrastructure;
 using NGB.CRM.Migrator.Seed;
+using NGB.CRM.PostgreSql.Seeding;
 using NGB.CRM.Runtime;
+using NGB.Persistence.UnitOfWork;
+using NGB.Tools.Exceptions;
+using Moq;
 using Xunit;
 
 namespace NGB.CRM.Api.IntegrationTests.Seed;
@@ -24,6 +28,15 @@ public sealed class CrmSeedDemoCliFullCoverageTests(CrmPostgresFixture fixture) 
         CrmSeedDemoCli.TrimCommand([]).Should().BeEmpty();
         CrmSeedDemoCli.TrimCommand(["seed-demo"]).Should().BeEmpty();
         CrmSeedDemoCli.TrimCommand(["seed-demo", "--one", "two"]).Should().Equal("--one", "two");
+    }
+
+    [Fact]
+    public async Task Seed_state_reader_rejects_blank_prefix_before_opening_database()
+    {
+        var reader = new PostgresCrmDemoSeedStateReader(Mock.Of<IUnitOfWork>(MockBehavior.Strict));
+
+        await ((Func<Task>)(() => reader.CountLeadIntakesByNamePrefixAsync(" \t ")))
+            .Should().ThrowAsync<NgbArgumentRequiredException>();
     }
 
     [Fact]

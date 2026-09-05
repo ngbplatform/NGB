@@ -6,6 +6,7 @@ using Moq;
 using NGB.Metadata.Base;
 using NGB.Persistence.ReferenceRegisters;
 using NGB.PostgreSql.ReferenceRegisters;
+using NGB.PostgreSql.Schema;
 using NGB.PostgreSql.Tests.TestDoubles;
 using NGB.ReferenceRegisters;
 using NGB.ReferenceRegisters.Contracts;
@@ -199,6 +200,60 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
     }
 
     [Fact]
+    public async Task Ready_check_repairs_missing_base_rejects_unsafe_field_drift_and_accepts_explicit_shared_caches()
+    {
+        var missingBase = Fixture(Reg(hasRecords: true), []);
+        await missingBase.Store.EnsureReadyForWriteAsync(RegisterId, default);
+        missingBase.Connection.Commands.Should().Contain(command =>
+            command.CommandText.Contains("CREATE TABLE IF NOT EXISTS refreg_prices__records", StringComparison.Ordinal));
+
+        var required = Field("required", "required_col", ColumnType.String, nullable: false);
+        var mismatchedField = Fixture(
+            Reg(hasRecords: true),
+            [required],
+            [
+                Meta("record_id", "NO", "int8"),
+                Meta("required_col", "YES", "text")
+            ]);
+        await ((Func<Task>)(() => mismatchedField.Store.EnsureReadyForWriteAsync(RegisterId, default)))
+            .Should().ThrowAsync<ReferenceRegisterSchemaDriftAfterRecordsExistException>();
+
+        var missingField = Fixture(
+            Reg(hasRecords: true),
+            [required],
+            [Meta("record_id", "NO", "int8")]);
+        await ((Func<Task>)(() => missingField.Store.EnsureReadyForWriteAsync(RegisterId, default)))
+            .Should().ThrowAsync<ReferenceRegisterSchemaDriftAfterRecordsExistException>();
+
+        var wrongType = Fixture(
+            Reg(hasRecords: true),
+            [required],
+            [
+                Meta("record_id", "NO", "int8"),
+                Meta("required_col", "NO", "int4")
+            ]);
+        await ((Func<Task>)(() => wrongType.Store.EnsureReadyForWriteAsync(RegisterId, default)))
+            .Should().ThrowAsync<ReferenceRegisterSchemaDriftAfterRecordsExistException>();
+
+        var healthyOutsideTransaction = Fixture(
+            Reg(hasRecords: true),
+            [required],
+            [
+                Meta("record_id", "NO", "int8"),
+                Meta("required_col", "NO", "text")
+            ],
+            hasActiveTransaction: false);
+        await healthyOutsideTransaction.Store.EnsureReadyForWriteAsync(RegisterId, default);
+
+        _ = new PostgresReferenceRegisterRecordsStore(
+            new RecordingUnitOfWork(new RecordingDbConnection()),
+            Mock.Of<IReferenceRegisterRepository>(),
+            Mock.Of<IReferenceRegisterFieldRepository>(),
+            new ReferenceRegisterMetadataCache(TimeProvider.System),
+            new PostgresRelationShapeCache(TimeProvider.System));
+    }
+
+    [Fact]
     public async Task Tombstones_cover_independent_periodic_nonperiodic_fields_and_keep_filters()
     {
         var independent = Fixture(Reg(), []);
@@ -341,8 +396,9 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
     private static StoreFixture Fixture(
         ReferenceRegisterAdminItem register,
         IReadOnlyList<ReferenceRegisterField> fields,
-        IReadOnlyList<ColumnMetaSpec>? meta = null)
-        => new(register, fields, meta ?? []);
+        IReadOnlyList<ColumnMetaSpec>? meta = null,
+        bool hasActiveTransaction = true)
+        => new(register, fields, meta ?? [], hasActiveTransaction);
 
     private static ReferenceRegisterAdminItem Reg(
         ReferenceRegisterPeriodicity periodicity = ReferenceRegisterPeriodicity.NonPeriodic,
@@ -376,7 +432,8 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
     private sealed class StoreFixture(
         ReferenceRegisterAdminItem register,
         IReadOnlyList<ReferenceRegisterField> fields,
-        IReadOnlyList<ColumnMetaSpec> meta)
+        IReadOnlyList<ColumnMetaSpec> meta,
+        bool hasActiveTransaction)
     {
         public Mock<IReferenceRegisterRepository> Registers { get; } = CreateRegisters(register);
         public Mock<IReferenceRegisterFieldRepository> Fields { get; } = CreateFields(fields);
@@ -386,7 +443,10 @@ public sealed class PostgresReferenceRegisterRecordsStoreFullCoverageTests
                 : new DataTable().CreateDataReader());
 
         public PostgresReferenceRegisterRecordsStore Store => new(
-            new RecordingUnitOfWork(Connection, hasActiveTransaction: true),
+            new RecordingUnitOfWork(
+                Connection,
+                hasActiveTransaction,
+                hasActiveTransaction ? new RecordingDbTransaction(Connection) : null),
             Registers.Object,
             Fields.Object);
 

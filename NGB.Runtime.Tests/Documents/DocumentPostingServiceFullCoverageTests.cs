@@ -36,6 +36,70 @@ namespace NGB.Runtime.Tests.Documents;
 public sealed class DocumentPostingServiceFullCoverageTests
 {
     [Fact]
+    public async Task Reference_register_state_helpers_cover_empty_batch_fallback_and_incomplete_batch_results()
+    {
+        var registerId = Guid.CreateVersion7();
+        var documentId = Guid.CreateVersion7();
+        var operation = ReferenceRegisterWriteOperation.Post;
+        var now = DateTime.UtcNow;
+        var register = Register(registerId, ReferenceRegisterPeriodicity.NonPeriodic);
+        var metadata = new Mock<IReferenceRegisterRepository>(MockBehavior.Strict);
+
+        (await DocumentPostingService.LoadReferenceRegistersByIdAsync([], metadata.Object, default))
+            .Should().BeEmpty();
+        metadata.Setup(x => x.GetByIdsAsync(
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.SequenceEqual(new[] { registerId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([register]);
+        (await DocumentPostingService.LoadReferenceRegistersByIdAsync(
+                [registerId], metadata.Object, default))
+            .Should().Contain(registerId, register);
+
+        var batchState = new Mock<IReferenceRegisterWriteStateRepository>(MockBehavior.Strict);
+        var batch = batchState.As<IReferenceRegisterWriteStateBatchRepository>();
+        batch.SetupSequence(x => x.TryBeginManyAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), documentId, operation, now,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, PostingStateBeginResult>
+            {
+                [registerId] = PostingStateBeginResult.Begun
+            })
+            .ReturnsAsync(new Dictionary<Guid, PostingStateBeginResult>());
+        batch.Setup(x => x.MarkCompletedManyAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), documentId, operation, now,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var batchSut = CreateSut(
+            refregWriteStateRepository: batchState.Object,
+            postingReadCache: Mock.Of<IDocumentPostingReadCache>());
+
+        await batchSut.BeginReferenceRegisterWritesAsync([registerId], documentId, operation, now, default);
+        await batchSut.CompleteReferenceRegisterWritesAsync([registerId], documentId, operation, now, default);
+        await ((Func<Task>)(() => batchSut.BeginReferenceRegisterWritesAsync(
+                [registerId], documentId, operation, now, default)))
+            .Should().ThrowAsync<NgbInvariantViolationException>()
+            .WithMessage("*did not return state*");
+
+        var singleState = new Mock<IReferenceRegisterWriteStateRepository>(MockBehavior.Strict);
+        singleState.Setup(x => x.TryBeginAsync(registerId, documentId, operation, now,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(PostingStateBeginResult.Begun);
+        singleState.Setup(x => x.MarkCompletedAsync(registerId, documentId, operation, now,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var singleSut = CreateSut(refregWriteStateRepository: singleState.Object);
+
+        await singleSut.BeginReferenceRegisterWritesAsync([], documentId, operation, now, default);
+        await singleSut.CompleteReferenceRegisterWritesAsync([], documentId, operation, now, default);
+        await singleSut.BeginReferenceRegisterWritesAsync([registerId], documentId, operation, now, default);
+        await singleSut.CompleteReferenceRegisterWritesAsync([registerId], documentId, operation, now, default);
+
+        metadata.VerifyAll();
+        batch.VerifyAll();
+        singleState.VerifyAll();
+    }
+
+    [Fact]
     public async Task Batch_post_deduplicates_ids_batches_locked_reads_and_handles_empty_missing_and_null_inputs()
     {
         var first = Document(Guid.NewGuid(), DocumentStatus.Posted);
@@ -912,7 +976,8 @@ public sealed class DocumentPostingServiceFullCoverageTests
         IDocumentNumberingAndTypedSyncService? numberingSync = null,
         IDocumentNumberingPolicyResolver? numberingPolicies = null,
         IDocumentValidatorResolver? validators = null,
-        IEnumerable<IDocumentPostingBatchReadPrefetcher>? postingBatchReadPrefetchers = null)
+        IEnumerable<IDocumentPostingBatchReadPrefetcher>? postingBatchReadPrefetchers = null,
+        IDocumentPostingReadCache? postingReadCache = null)
         => new(
             uow: uow ?? Mock.Of<IUnitOfWork>(),
             advisoryLocks: advisoryLocks ?? Mock.Of<IAdvisoryLockManager>(),
@@ -937,5 +1002,6 @@ public sealed class DocumentPostingServiceFullCoverageTests
             audit: Mock.Of<IAuditLogService>(),
             logger: NullLogger<DocumentPostingService>.Instance,
             timeProvider: TimeProvider.System,
+            postingReadCache: postingReadCache,
             postingBatchReadPrefetchers: postingBatchReadPrefetchers);
 }

@@ -86,9 +86,7 @@ public sealed class PostgresTradeInventoryBalanceReader(IUnitOfWork uow, Operati
             AfterItemId: not null,
             AfterWarehouseId: not null
         };
-        var useSeek = hasCommonSeekKey
-                      && (sort != TradeInventoryBalanceSort.AbsoluteQuantityDescending
-                          || cursor?.AfterAbsoluteQuantity is not null);
+        var useSeek = ShouldUseSeek(hasCommonSeekKey, sort, cursor?.AfterAbsoluteQuantity);
         var seekSql = !useSeek
             ? string.Empty
             : sort == TradeInventoryBalanceSort.AbsoluteQuantityDescending
@@ -251,6 +249,9 @@ dimension_positions AS (
     LEFT JOIN movement_delta delta ON delta.dimension_set_id = keys.dimension_set_id
 )
 """;
+
+    internal static bool ShouldUseSeek(bool hasCommonSeekKey, TradeInventoryBalanceSort sort, decimal? afterAbsoluteQuantity)
+        => hasCommonSeekKey && (sort != TradeInventoryBalanceSort.AbsoluteQuantityDescending || afterAbsoluteQuantity is not null);
 
     private static Guid[] NormalizeIds(IReadOnlyList<Guid>? ids)
         => ids?.Where(static id => id != Guid.Empty).Distinct().ToArray() ?? [];

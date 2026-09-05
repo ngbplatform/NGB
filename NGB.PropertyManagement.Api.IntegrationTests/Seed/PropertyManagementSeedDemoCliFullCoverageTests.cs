@@ -1,4 +1,6 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
 using NGB.PropertyManagement.Migrator.Seed;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -99,6 +101,30 @@ public sealed class PropertyManagementSeedDemoCliFullCoverageTests
     {
         var exitCode = await PropertyManagementSeedDemoCli.RunAsync(Args("--buildings", "0"));
         exitCode.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Scoped_execution_returns_result_and_always_disposes_scope()
+    {
+        var services = Mock.Of<IServiceProvider>();
+        var scope = new Mock<IServiceScope>(MockBehavior.Strict);
+        scope.SetupGet(x => x.ServiceProvider).Returns(services);
+        scope.Setup(x => x.Dispose());
+        var factory = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
+        factory.Setup(x => x.CreateScope()).Returns(scope.Object);
+
+        var result = await PropertyManagementDemoSeeder.ExecuteInNewScopeAsync(
+            factory.Object,
+            (provider, ct) => Task.FromResult(provider == services && !ct.IsCancellationRequested ? 42 : -1),
+            CancellationToken.None);
+        Func<Task> failed = () => PropertyManagementDemoSeeder.ExecuteInNewScopeAsync<int>(
+            factory.Object,
+            (_, _) => throw new InvalidOperationException("scoped action failed"),
+            CancellationToken.None);
+
+        result.Should().Be(42);
+        await failed.Should().ThrowAsync<InvalidOperationException>().WithMessage("scoped action failed");
+        scope.Verify(x => x.Dispose(), Times.Exactly(2));
     }
 
     private static string[] BaseArgs() => ["--connection", "Host=localhost;Database=coverage"];

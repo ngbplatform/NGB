@@ -227,6 +227,80 @@ public sealed class DocumentService_UpdateDraft_And_Reads_P0Tests
     }
 
     [Fact]
+    public async Task GetPageAsync_UsesSeekCapability_NormalizesBounds_AndHandlesEveryContinuationShape()
+    {
+        var meta = BuildMetaWithHead(TypeCode, "doc_test", [
+            Col("document_id", ColumnType.Guid, true),
+            Col("display", ColumnType.String, true)
+        ]);
+        var firstId = Guid.NewGuid();
+        var calls = new List<(string? AfterDisplay, Guid? AfterId, int Limit, bool IncludeTotal)>();
+        var responses = new Queue<DocumentHeadSeekPage>(
+        [
+            new DocumentHeadSeekPage(
+                [new DocumentHeadRow(
+                    firstId,
+                    DocumentStatus.Posted,
+                    false,
+                    "Document #1",
+                    new Dictionary<string, object?> { ["display"] = "Document #1" },
+                    "DOC-1")],
+                Total: 1,
+                HasMore: true,
+                NextAfterDisplay: "Zulu",
+                NextAfterId: firstId),
+            new DocumentHeadSeekPage([], null, HasMore: false, null, null),
+            new DocumentHeadSeekPage([], null, HasMore: true, null, null),
+            new DocumentHeadSeekPage([], null, HasMore: false, null, null)
+        ]);
+        var service = CreateSut(meta, readerSetup: reader =>
+        {
+            reader.As<IDocumentSeekPageReader>()
+                .Setup(x => x.GetSeekPageAsync(
+                    It.IsAny<DocumentHeadDescriptor>(),
+                    It.IsAny<DocumentQuery>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<Guid?>(),
+                    It.IsAny<int>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<CancellationToken>()))
+                .Callback<DocumentHeadDescriptor, DocumentQuery, string?, Guid?, int, bool, CancellationToken>(
+                    (_, _, afterDisplay, afterId, limit, includeTotal, _) =>
+                        calls.Add((afterDisplay, afterId, limit, includeTotal)))
+                .ReturnsAsync(() => responses.Dequeue());
+        });
+
+        var first = await service.GetPageAsync(
+            TypeCode,
+            new PageRequestDto(Limit: PagingLimits.MaxPageSize + 1, Search: "   "),
+            default);
+        var second = await service.GetPageAsync(
+            TypeCode,
+            new PageRequestDto(Limit: 2, Cursor: $"  {first.NextCursor}  "),
+            default);
+        var missingContinuationKey = await service.GetPageAsync(
+            TypeCode,
+            new PageRequestDto(Limit: 2, Cursor: first.NextCursor),
+            default);
+        var withoutTotal = await service.GetPageAsync(
+            TypeCode,
+            new PageRequestDto(Limit: 2, IncludeTotal: false),
+            default);
+
+        first.Limit.Should().Be(PagingLimits.MaxPageSize);
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
+        second.NextCursor.Should().BeNull();
+        missingContinuationKey.HasMore.Should().BeTrue();
+        missingContinuationKey.NextCursor.Should().BeNull();
+        withoutTotal.Total.Should().BeNull();
+        calls.Should().Equal(
+            (null, null, PagingLimits.MaxPageSize, true),
+            ("Zulu", firstId, 2, false),
+            ("Zulu", firstId, 2, false),
+            (null, null, 2, false));
+    }
+
+    [Fact]
     public async Task GetPageAsync_PeriodFilters_validate_required_format_order_and_date_metadata()
     {
         var withDate = BuildMetaWithHead(TypeCode, "doc_test", [

@@ -219,7 +219,7 @@ public sealed class DocumentService(
         return MapDocumentLookups(rows);
     }
 
-    private static PageRequestDto NormalizePageRequest(PageRequestDto request)
+    internal static PageRequestDto NormalizePageRequest(PageRequestDto request)
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));

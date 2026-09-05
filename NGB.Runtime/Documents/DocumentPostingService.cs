@@ -1070,10 +1070,10 @@ internal sealed class DocumentPostingService(
                 startedAtUtc,
                 innerCt);
 
-            var oldRegistersById = oldRegisterIds.Count == 0
-                ? new Dictionary<Guid, ReferenceRegisterAdminItem>()
-                : (await refregRepository.GetByIdsAsync(oldRegisterIds, innerCt))
-                    .ToDictionary(static register => register.RegisterId);
+            var oldRegistersById = await LoadReferenceRegistersByIdAsync(
+                oldRegisterIds,
+                refregRepository,
+                innerCt);
 
             foreach (var registerId in registerIds)
             {
@@ -1287,7 +1287,18 @@ internal sealed class DocumentPostingService(
             throw new ReferenceRegisterWriteAlreadyInProgressException(registerId, documentId, operation.ToString());
     }
 
-    private async Task BeginReferenceRegisterWritesAsync(
+    internal static async Task<IReadOnlyDictionary<Guid, ReferenceRegisterAdminItem>> LoadReferenceRegistersByIdAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        IReferenceRegisterRepository repository,
+        CancellationToken ct)
+    {
+        if (registerIds.Count == 0)
+            return new Dictionary<Guid, ReferenceRegisterAdminItem>();
+
+        return (await repository.GetByIdsAsync(registerIds, ct)).ToDictionary(static register => register.RegisterId);
+    }
+
+    internal async Task BeginReferenceRegisterWritesAsync(
         IReadOnlyCollection<Guid> registerIds,
         Guid documentId,
         ReferenceRegisterWriteOperation operation,
@@ -1323,7 +1334,7 @@ internal sealed class DocumentPostingService(
         }
     }
 
-    private async Task CompleteReferenceRegisterWritesAsync(
+    internal async Task CompleteReferenceRegisterWritesAsync(
         IReadOnlyCollection<Guid> registerIds,
         Guid documentId,
         ReferenceRegisterWriteOperation operation,

@@ -154,6 +154,9 @@ public sealed class CanonicalReportExecutionHelperFullCoverageTests
                 definition, FilterRequest(" single_id ", JsonValue(first)), "single_id")
             .Should().Be(first);
         CanonicalReportExecutionHelper.GetOptionalGuidFilter(
+                definition, FilterRequest("SiNgLe_Id", JsonValue(first)), "single_id")
+            .Should().Be(first);
+        CanonicalReportExecutionHelper.GetOptionalGuidFilter(
                 definition, FilterRequest("other", JsonValue(first)), "single_id")
             .Should().BeNull();
     }

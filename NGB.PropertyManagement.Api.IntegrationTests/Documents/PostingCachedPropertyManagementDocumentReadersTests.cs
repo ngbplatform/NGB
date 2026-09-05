@@ -1,7 +1,10 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NGB.Persistence.Documents;
+using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Documents;
+using NGB.PropertyManagement.PostgreSql.DependencyInjection;
 using NGB.PropertyManagement.PostgreSql.Documents;
 using Xunit;
 
@@ -9,6 +12,28 @@ namespace NGB.PropertyManagement.Api.IntegrationTests.Documents;
 
 public sealed class PostingCachedPropertyManagementDocumentReadersTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Module_applies_posting_cache_decorator_only_when_cache_is_registered(bool withCache)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Mock.Of<IUnitOfWork>());
+        if (withCache)
+            services.AddSingleton<IDocumentPostingReadCache>(new RecordingCache());
+        services.AddPropertyManagementPostgresModule();
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var inner = scope.ServiceProvider.GetRequiredService<PropertyManagementDocumentReaders>();
+        var resolved = scope.ServiceProvider.GetRequiredService<IPropertyManagementDocumentReaders>();
+
+        if (withCache)
+            resolved.Should().BeOfType<PostingCachedPropertyManagementDocumentReaders>().And.NotBeSameAs(inner);
+        else
+            resolved.Should().BeSameAs(inner);
+    }
+
     [Fact]
     public async Task Single_reads_use_cache_and_query_or_bulk_reads_pass_through()
     {

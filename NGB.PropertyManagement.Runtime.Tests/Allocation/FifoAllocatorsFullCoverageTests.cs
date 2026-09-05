@@ -79,6 +79,19 @@ public sealed class FifoAllocatorsFullCoverageTests
         plan.RemainingCredit.Should().Be(2m);
     }
 
+    [Fact]
+    public void Payables_allocator_keeps_partially_paid_charge_open_when_credit_is_exhausted()
+    {
+        var plan = PayablesFifoAllocator.Allocate(
+            [PayableCharge(Guid.CreateVersion7(), Day, 10m)],
+            [PayableCredit(Guid.CreateVersion7(), Day, 4m)],
+            limit: null);
+
+        plan.Lines.Should().ContainSingle().Which.ChargeOutstandingAfter.Should().Be(6m);
+        plan.RemainingOutstanding.Should().Be(6m);
+        plan.RemainingCredit.Should().Be(0m);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
@@ -143,6 +156,19 @@ public sealed class FifoAllocatorsFullCoverageTests
         plan.LimitReached.Should().BeTrue();
         plan.RemainingOutstanding.Should().Be(2m);
         plan.RemainingCredit.Should().Be(2m);
+    }
+
+    [Fact]
+    public void Receivables_allocator_keeps_partially_paid_charge_open_when_credit_is_exhausted()
+    {
+        var plan = ReceivablesFifoAllocator.Allocate(
+            [ReceivableCharge(Guid.CreateVersion7(), Day, 10m)],
+            [ReceivableCredit(Guid.CreateVersion7(), Day, 4m)],
+            limit: null);
+
+        plan.Lines.Should().ContainSingle().Which.ChargeOutstandingAfter.Should().Be(6m);
+        plan.RemainingOutstanding.Should().Be(6m);
+        plan.RemainingCredit.Should().Be(0m);
     }
 
     private static PayablesOpenChargeItemDetailsDto PayableCharge(Guid id, DateOnly due, decimal outstanding)

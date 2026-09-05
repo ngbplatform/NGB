@@ -243,6 +243,24 @@ public sealed class PostgresDocumentReaderFullCoverageTests
     }
 
     [Fact]
+    public async Task Seek_page_rejects_non_positive_limit_and_empty_cursor_id()
+    {
+        var sut = Reader(Connection());
+
+        await ((Func<Task>)(() => sut.GetSeekPageAsync(
+                Head(), Query(), null, null, 0, includeTotal: false, default)))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => sut.GetSeekPageAsync(
+                Head(), Query(), null, Guid.Empty, 1, includeTotal: false, default)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+
+        (await sut.GetSeekPageAsync(
+            Head(), Query(), null, null, 1, includeTotal: false, default)).Rows.Should().BeEmpty();
+        (await sut.GetSeekPageAsync(
+            Head(), Query(), "Invoice", FirstId, 1, includeTotal: false, default)).Rows.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Head_rows_across_types_validates_and_short_circuits_each_empty_effective_input()
     {
         var sut = Reader(Connection());
@@ -331,11 +349,13 @@ public sealed class PostgresDocumentReaderFullCoverageTests
         var searched = await sut.LookupAcrossTypesAsync(
             [invoice, invoice with { TypeCode = "INVOICE" }, memo], FirstId.ToString(), 3, true, default);
         var browsed = await sut.LookupAcrossTypesAsync([invoice], null, 2, false, default);
+        var idPrefix = await sut.LookupAcrossTypesAsync([invoice], "11111111", 2, false, default);
 
         searched.Should().HaveCount(2);
         searched[1].Should().BeEquivalentTo(
             new DocumentLookupRow(SecondId, "memo", DocumentStatus.MarkedForDeletion, true, null, null));
         browsed.Should().HaveCount(2);
+        idPrefix.Should().HaveCount(2);
         connection.Commands[0].CommandText.Should()
             .Contain("UNION ALL")
             .And.Contain("LEFT JOIN")
@@ -347,6 +367,12 @@ public sealed class PostgresDocumentReaderFullCoverageTests
         connection.Commands[1].CommandText.Should().Contain("JOIN documents").And.NotContain("ILIKE");
         Parameter(connection.Commands[0], "q").Should().Be(FirstId.ToString());
         Parameter(connection.Commands[0], "queryId").Should().Be(FirstId);
+        Parameter(connection.Commands[2], "queryId").Should().Be(DBNull.Value);
+        Parameter(connection.Commands[2], "hasQueryIdPrefix").Should().Be(true);
+        Parameter(connection.Commands[2], "queryIdPrefixLower").Should().Be(
+            Guid.Parse("11111111-0000-0000-0000-000000000000"));
+        Parameter(connection.Commands[2], "queryIdPrefixUpper").Should().Be(
+            Guid.Parse("11111111-ffff-ffff-ffff-ffffffffffff"));
     }
 
     [Fact]

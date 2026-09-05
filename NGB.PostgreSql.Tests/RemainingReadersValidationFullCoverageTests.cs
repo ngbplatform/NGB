@@ -13,6 +13,7 @@ using NGB.Core.Documents;
 using NGB.Core.Documents.Relationships.Graph;
 using NGB.Core.Documents.GeneralJournalEntry;
 using NGB.Core.Dimensions.Enrichment;
+using NGB.Contracts.Common;
 using NGB.Metadata.Base;
 using NGB.Metadata.Catalogs.Storage;
 using NGB.Metadata.Documents.Storage;
@@ -108,6 +109,7 @@ public sealed class RemainingReadersValidationFullCoverageTests
                 Guid.NewGuid(), 1m, null)
         ]);
         (await sut.GetDueSystemReversalCandidatesAsync(DateOnly.MaxValue, 1)).Should().BeEmpty();
+        (await sut.GetDueSystemReversalCandidatesAsync(DateOnly.MinValue, 1)).Should().BeEmpty();
         (await sut.GetDueSystemReversalCandidatesAsync(
             DateOnly.MaxValue, 1, DateTime.UnixEpoch, Guid.NewGuid())).Should().BeEmpty();
     }
@@ -299,6 +301,27 @@ public sealed class RemainingReadersValidationFullCoverageTests
             Mock.Of<IDimensionSetReader>());
         (await entryReader.GetByDocumentAsync(Guid.NewGuid(), 0)).Should().BeEmpty();
         (await entryReader.GetByDocumentAsync(Guid.NewGuid(), 1)).Should().BeEmpty();
+        (await entryReader.GetByDocumentAsync(Guid.NewGuid())).Should().BeEmpty();
+
+        var documentId = Guid.NewGuid();
+        ((Action)(() => PostgresAccountingEntryReader.EnsureMaterializationBound(
+                documentId, PagingLimits.MaxMaterializedRows)))
+            .Should().NotThrow();
+        ((Action)(() => PostgresAccountingEntryReader.EnsureMaterializationBound(
+                documentId, PagingLimits.MaxMaterializedRows + 1)))
+            .Should().Throw<NgbInvariantViolationException>();
+        ((Action)(() => PostgresAccountingConsistencySnapshotReader.EnsureMaterializationBound(
+                PagingLimits.MaxMaterializedRows)))
+            .Should().NotThrow();
+        ((Action)(() => PostgresAccountingConsistencySnapshotReader.EnsureMaterializationBound(
+                PagingLimits.MaxMaterializedRows + 1)))
+            .Should().Throw<NgbArgumentOutOfRangeException>();
+        ((Action)(() => PostgresTrialBalanceSnapshotReader.EnsureMaterializationBound(
+                PagingLimits.MaxMaterializedRows)))
+            .Should().NotThrow();
+        ((Action)(() => PostgresTrialBalanceSnapshotReader.EnsureMaterializationBound(
+                PagingLimits.MaxMaterializedRows + 1)))
+            .Should().Throw<NgbArgumentOutOfRangeException>();
 
         var executingConnection = new RecordingDbConnection();
         var executingUow = new RecordingUnitOfWork(executingConnection, hasActiveTransaction: true);
@@ -420,6 +443,35 @@ public sealed class RemainingReadersValidationFullCoverageTests
                 new RecordingUnitOfWork(new RecordingDbConnection(_ => TurnoverRows(dimensionSetId))),
                 dimensions.Object)
             .GetForPeriodAsync(DateOnly.MaxValue)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Accounting_turnover_range_reader_maps_rows_and_empty_ranges()
+    {
+        var dimensionSetId = Guid.NewGuid();
+        var dimensions = new Mock<IDimensionSetReader>(MockBehavior.Strict);
+        dimensions.Setup(x => x.GetBagsByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, NGB.Core.Dimensions.DimensionBag>
+            {
+                [dimensionSetId] = NGB.Core.Dimensions.DimensionBag.Empty
+            });
+        var connection = new RecordingDbConnection(_ => TurnoverRows(dimensionSetId));
+        var reader = new PostgresAccountingTurnoverReader(
+            new RecordingUnitOfWork(connection),
+            dimensions.Object);
+
+        (await reader.GetRangeAsync(new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 1)))
+            .Should().ContainSingle();
+        connection.Commands.Should().ContainSingle().Which.CommandText.Should().Contain("BETWEEN @From AND @To");
+
+        var emptyDimensions = new Mock<IDimensionSetReader>(MockBehavior.Strict);
+        var empty = new PostgresAccountingTurnoverReader(
+            new RecordingUnitOfWork(new RecordingDbConnection()),
+            emptyDimensions.Object);
+        (await empty.GetRangeAsync(DateOnly.MinValue, DateOnly.MaxValue)).Should().BeEmpty();
+        emptyDimensions.VerifyNoOtherCalls();
     }
 
     [Fact]
