@@ -39,6 +39,21 @@ describe('PM reporting queries', () => {
     })
   })
 
+  it('forwards cancellation to report execution', async () => {
+    const controller = new AbortController()
+    reporting.execute.mockResolvedValue(response([
+      { rowKind: 1, values: [0, 0, 1, 1, 0, 0], displays: ['Building A', '2026-08-23'] },
+    ]))
+
+    await getPmBuildingSummary('building-1', { signal: controller.signal })
+
+    expect(reporting.execute).toHaveBeenCalledWith(
+      'pm.building.summary',
+      expect.objectContaining({ parameters: undefined }),
+      { signal: controller.signal },
+    )
+  })
+
   it.each([1, 'Detail', 'detail'])('recognizes detail row kind %s', async (rowKind) => {
     reporting.execute.mockResolvedValue(response([
       { rowKind, values: [null, null, 'bad', undefined, null, ''], displays: [null, null] },

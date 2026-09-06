@@ -442,3 +442,26 @@ test('ignores a second defaults request while initialization is in progress', as
   await flushUi()
   await flushUi()
 })
+
+test('ignores successful and failed policy loads that settle after unmount', async () => {
+  let resolvePage!: (value: { items: unknown[] }) => void
+  mocks.getCatalogPage.mockReturnValueOnce(new Promise((resolve) => {
+    resolvePage = resolve
+  }))
+  const successful = await render(AccountingPolicySettingsPage)
+  await vi.waitFor(() => expect(mocks.getCatalogPage).toHaveBeenCalledOnce())
+  successful.unmount()
+  resolvePage({ items: [] })
+  await flushUi()
+
+  mocks.getCatalogPage.mockReset()
+  let rejectPage!: (cause: unknown) => void
+  mocks.getCatalogPage.mockReturnValueOnce(new Promise((_resolve, reject) => {
+    rejectPage = reject
+  }))
+  const failed = await render(AccountingPolicySettingsPage)
+  await vi.waitFor(() => expect(mocks.getCatalogPage).toHaveBeenCalledOnce())
+  failed.unmount()
+  rejectPage(new Error('late failure'))
+  await flushUi()
+})

@@ -299,4 +299,42 @@ describe('lookup store', () => {
     expect(store.labelForCoa(id(0))).toBe(shortGuid(id(0)))
     expect(store.labelForCoa(id(2_000))).toBe('Account 2000')
   })
+
+  it('covers empty merges, malformed resolved documents, and cancellable searches', async () => {
+    const options = { signal: new AbortController().signal }
+    lookupConfigMocks.searchCatalog.mockResolvedValueOnce([])
+    lookupConfigMocks.searchCoa.mockResolvedValueOnce([])
+    lookupConfigMocks.searchDocumentsAcrossTypes.mockResolvedValueOnce([
+      { id: invoiceId, label: 'Ignored', documentType: null },
+      { id: harborId, label: null, documentType: 'pm.invoice' },
+    ])
+    lookupConfigMocks.searchDocument.mockResolvedValueOnce([])
+    const store = useLookupStore()
+
+    await store.searchCatalog('pm.property', '')
+    await store.searchCoa('', options)
+    await store.searchDocuments(['pm.invoice'], '', options)
+    await store.searchDocument('pm.invoice', '', options)
+
+    expect(lookupConfigMocks.searchCoa).toHaveBeenCalledWith('', options)
+    expect(lookupConfigMocks.searchDocumentsAcrossTypes).toHaveBeenCalledWith(['pm.invoice'], '', options)
+    expect(lookupConfigMocks.searchDocument).toHaveBeenCalledWith('pm.invoice', '', options)
+  })
+
+  it('keeps a request scope alive until every independent batch finishes', async () => {
+    let resolveFirst!: (items: Array<{ id: string; label: string }>) => void
+    let resolveSecond!: (items: Array<{ id: string; label: string }>) => void
+    lookupConfigMocks.loadCatalogItemsByIds
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
+    const store = useLookupStore()
+    const first = store.ensureCatalogLabels('pm.property', [propertyId])
+    const second = store.ensureCatalogLabels('pm.property', [harborId])
+    await vi.waitFor(() => expect(lookupConfigMocks.loadCatalogItemsByIds).toHaveBeenCalledTimes(2))
+
+    resolveFirst([{ id: propertyId, label: 'Riverfront' }])
+    await first
+    resolveSecond([{ id: harborId, label: 'Harbor' }])
+    await second
+  })
 })

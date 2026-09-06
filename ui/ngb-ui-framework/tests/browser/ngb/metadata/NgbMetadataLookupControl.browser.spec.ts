@@ -229,3 +229,52 @@ test('clears search results for empty queries or missing search behavior and ign
   await queryLookup(0, 'unavailable')
   await expect.element(view.getByText('lookup-items:none')).toBeVisible()
 })
+
+test('keeps only the latest search result, handles active failures, and aborts on unmount', async () => {
+  let search = vi.fn<(args: { query: string; signal: AbortSignal }) => Promise<Array<{ id: string; label: string }>>>()
+  const Harness = defineComponent({
+    setup() {
+      return () => h(NgbMetadataLookupControl, {
+        hint: { kind: 'catalog', catalogType: 'pm.property' },
+        modelValue: null,
+        behavior: { searchLookup: (args: { query: string; signal: AbortSignal }) => search(args) },
+      })
+    },
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/documents/edit', component: Harness }],
+  })
+  await router.push('/documents/edit')
+  await router.isReady()
+  const view = await render(Harness, { global: { plugins: [router] } })
+
+  let resolveSlow!: (items: Array<{ id: string; label: string }>) => void
+  search
+    .mockImplementationOnce(() => new Promise((resolve) => { resolveSlow = resolve }))
+    .mockResolvedValueOnce([{ id: 'new', label: 'Newest result' }])
+  const input = queryLookupRoot(0).querySelector('input') as HTMLInputElement
+  input.value = 'slow'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  input.value = 'new'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  resolveSlow([{ id: 'old', label: 'Stale result' }])
+  await flushUi()
+  await expect.element(view.getByText('lookup-items:Newest result')).toBeVisible()
+
+  search.mockRejectedValueOnce(new Error('lookup unavailable'))
+  await queryLookup(0, 'failure')
+  await expect.element(view.getByText('lookup-items:none')).toBeVisible()
+
+  let rejectPending!: (cause: unknown) => void
+  search.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectPending = reject }))
+  input.value = 'pending'
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  const pendingSignal = search.mock.calls.at(-1)?.[0].signal
+  view.unmount()
+  expect(pendingSignal?.aborted).toBe(true)
+  rejectPending(new Error('late lookup failure'))
+  await flushUi()
+})

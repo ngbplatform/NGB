@@ -196,7 +196,7 @@ export function useMetadataRegisterPageData<
       metadata.value = null;
       page.value = null;
       committedEntityTypeCode = '';
-      if (loadController === controller) loadController = null;
+      loadController = null;
       return false;
     }
 
@@ -223,7 +223,6 @@ export function useMetadataRegisterPageData<
       return true;
     } catch (cause) {
       if (seq !== loadSeq.value) return false;
-      if (controller.signal.aborted) return false;
       if (committedEntityTypeCode !== entityTypeCode) {
         metadata.value = null;
         page.value = null;

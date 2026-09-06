@@ -1121,3 +1121,26 @@ test('falls back to the standard list path when mounted at the router root', asy
   clickButtonByTitle('Close')
   expect(gjeEditMocks.navigateBack.mock.calls.at(-1)?.[2]).toBe('/accounting/general-journal-entries')
 })
+
+test('ignores successful and failed journal loads that settle after unmount', async () => {
+  await page.viewport(1280, 900)
+
+  let resolveEntry!: (value: unknown) => void
+  gjeEditMocks.getEntry.mockReturnValueOnce(new Promise((resolve) => {
+    resolveEntry = resolve
+  }))
+  const successful = await renderPage('/accounting/general-journal-entries/gje-late-success')
+  successful.view.unmount()
+  resolveEntry(clone(makeDetails({ id: 'gje-late-success' })))
+  await flushUi()
+
+  gjeEditMocks.getEntry.mockReset()
+  let rejectEntry!: (cause: unknown) => void
+  gjeEditMocks.getEntry.mockReturnValueOnce(new Promise((_resolve, reject) => {
+    rejectEntry = reject
+  }))
+  const failed = await renderPage('/accounting/general-journal-entries/gje-late-failure')
+  failed.view.unmount()
+  rejectEntry(new Error('late journal failure'))
+  await flushUi()
+})

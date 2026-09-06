@@ -23,6 +23,8 @@ describe('lookups api', () => {
 
     await lookupCatalog('pm/property', '  ', 15)
     await lookupCatalog('pm/property', 'river', 25)
+    const options = { signal: new AbortController().signal }
+    await lookupCatalog('pm/property', null, 20, options)
 
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(
       1,
@@ -33,6 +35,12 @@ describe('lookups api', () => {
       2,
       '/api/catalogs/pm%2Fproperty/lookup',
       { q: 'river', limit: 25 },
+    )
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(
+      3,
+      '/api/catalogs/pm%2Fproperty/lookup',
+      { limit: 20 },
+      options,
     )
   })
 

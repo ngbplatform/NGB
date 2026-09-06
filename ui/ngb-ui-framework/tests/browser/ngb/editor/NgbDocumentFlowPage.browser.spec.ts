@@ -483,4 +483,27 @@ describe('NgbDocumentFlowPage', () => {
     await view.getByTitle('Missing id').click()
     expect(mocks.router.push).toHaveBeenCalledTimes(callsBeforeInvalidTargets)
   })
+
+  it('ignores successful and failed graph loads that settle after unmount', async () => {
+    let resolveGraph!: (value: { nodes: unknown[]; edges: unknown[] }) => void
+    mocks.editorConfig.loadDocumentGraph.mockReturnValueOnce(new Promise((resolve) => {
+      resolveGraph = resolve
+    }))
+    const successful = await render(NgbDocumentFlowPage)
+    await vi.waitFor(() => expect(mocks.editorConfig.loadDocumentGraph).toHaveBeenCalledOnce())
+    successful.unmount()
+    resolveGraph({ nodes: [], edges: [] })
+    await Promise.resolve()
+
+    mocks.editorConfig.loadDocumentGraph.mockReset()
+    let rejectGraph!: (cause: unknown) => void
+    mocks.editorConfig.loadDocumentGraph.mockReturnValueOnce(new Promise((_resolve, reject) => {
+      rejectGraph = reject
+    }))
+    const failed = await render(NgbDocumentFlowPage)
+    await vi.waitFor(() => expect(mocks.editorConfig.loadDocumentGraph).toHaveBeenCalledOnce())
+    failed.unmount()
+    rejectGraph(new Error('late graph failure'))
+    await Promise.resolve()
+  })
 })

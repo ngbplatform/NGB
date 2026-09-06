@@ -54,7 +54,7 @@ async function coalesceLabelRequests(
       .then(() => load(freshIds))
       .finally(() => {
         for (const id of freshIds) {
-          if (pendingById?.get(id) === request) pendingById.delete(id)
+          pendingById.delete(id)
         }
         if (pendingById?.size === 0) requests.delete(scope)
       })

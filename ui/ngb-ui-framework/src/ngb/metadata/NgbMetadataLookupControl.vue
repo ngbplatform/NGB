@@ -54,14 +54,19 @@ async function onLookupQuery(queryText: string) {
   try {
     const items = await behavior.value.searchLookup({ hint: props.hint, query, signal: controller.signal })
     if (queryController === controller && !controller.signal.aborted) lookupItems.value = items
-  } catch (error) {
-    if (!controller.signal.aborted) throw error
+  } catch {
+    if (queryController !== controller) return
+    lookupItems.value = []
   } finally {
     if (queryController === controller) queryController = null
   }
 }
 
-onBeforeUnmount(() => queryController?.abort())
+onBeforeUnmount(() => {
+  const controller = queryController
+  queryController = null
+  controller?.abort()
+})
 
 function onLookupSelect(value: LookupItem | null) {
   if (!value) {

@@ -108,7 +108,7 @@ async function load(): Promise<void> {
 
   try {
     await access.load()
-    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (sequence !== loadSequence) return
     if (creating && !access.canManageRoles) {
       accessDenied.value = true
       return
@@ -121,12 +121,12 @@ async function load(): Promise<void> {
         getPermissionDefinitions({ signal: controller.signal }),
         getRole(targetRoleId, { signal: controller.signal }),
       ])
-      if (sequence !== loadSequence || controller.signal.aborted) return
+      if (sequence !== loadSequence) return
       definitions.value = nextDefinitions
       applyRole(nextRole)
     }
   } catch (cause) {
-    if (controller.signal.aborted || sequence !== loadSequence) return
+    if (sequence !== loadSequence) return
     accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
       && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load role')
@@ -209,6 +209,7 @@ watch(
 onBeforeUnmount(() => {
   loadSequence += 1
   loadController?.abort()
+  loadController = null
 })
 </script>
 

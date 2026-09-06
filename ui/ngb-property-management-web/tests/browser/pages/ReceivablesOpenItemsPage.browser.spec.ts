@@ -309,6 +309,11 @@ test('loads lease context, projects rows, labels all document types, and resolve
   expect(mocks.shellProps.resolveCreditTypeLabel('pm.receivable_payment')).toBe('Payment')
   expect(mocks.shellProps.resolveCreditTypeLabel('pm.receivable_credit_memo')).toBe('Credit Memo')
   expect(mocks.shellProps.resolveCreditTypeLabel(null)).toBe('Credit Source')
+  const signal = new AbortController().signal
+  await mocks.lookupConfig.lookupById('lease-1', { signal })
+  await mocks.lookupConfig.search('lease', { signal })
+  expect(mocks.documentById).toHaveBeenCalledWith('pm.lease', 'lease-1', { signal })
+  expect(mocks.documentPage).toHaveBeenCalledWith('pm.lease', expect.any(Object), { signal })
 
   const chargeGrid = mocks.shellProps.chargeGrid
   const creditGrid = mocks.shellProps.creditGrid
@@ -377,6 +382,12 @@ test('handles missing context, load/refresh failures, workflow factories, and al
   expect(mocks.toastPush).toHaveBeenCalledWith(expect.objectContaining({ title: 'Refreshed' }))
 
   await mocks.workflowArgs.suggestFactory()
+  const signal = new AbortController().signal
+  await mocks.workflowArgs.suggestFactory({ signal })
+  expect(mocks.suggestFifo).toHaveBeenCalledWith(
+    { leaseId: 'lease-1', createDrafts: false, limit: 500 },
+    { signal },
+  )
   expect(mocks.suggestFifo).toHaveBeenCalledWith({ leaseId: 'lease-1', createDrafts: false, limit: 500 })
   await mocks.workflowArgs.executeFactory(suggestion([item({ applyId: 'apply-1' }), item({ applyId: undefined })]))
   expect(mocks.applyBatch).toHaveBeenCalledWith({ applies: [{ applyId: 'apply-1', applyPayload: { fields: {} } }, { applyId: null, applyPayload: { fields: {} } }] })
@@ -431,6 +442,10 @@ test('synchronizes route callbacks, watchers, and every shell event', async () =
   mocks.sourceType.value = 'pm.receivable_payment'
   await flushUi()
   expect(mocks.workflow.syncPreferredTab).toHaveBeenCalled()
+  expect(mocks.routeContextArgs.shouldSkip(['lease-1', false], ['lease-1', true])).toBe(true)
+  expect(mocks.routeContextArgs.shouldSkip(['lease-1', true], ['lease-1', false])).toBe(false)
+  expect(mocks.routeContextArgs.shouldSkip(['lease-2', false], ['lease-1', true])).toBe(false)
+  expect(mocks.routeContextArgs.shouldSkip(['lease-1', false], null)).toBe(false)
 })
 
 test('covers selection fallback, grouping, all warnings, loading/errors, and result actions', async () => {
@@ -498,4 +513,25 @@ test('covers selection fallback, grouping, all warnings, loading/errors, and res
   await view.getByRole('button', { name: 'Apply more' }).click()
   expect(mocks.workflow.showAppliedTab).toHaveBeenCalledOnce()
   expect(mocks.workflow.showApplyPlanAgain).toHaveBeenCalledTimes(2)
+})
+
+test('ignores successful and failed detail requests that settle after unmount', async () => {
+  let resolveDetails!: (value: unknown) => void
+  mocks.details.mockReturnValueOnce(new Promise((resolve) => { resolveDetails = resolve }))
+  const successful = await renderPage()
+  const successfulLoad = mocks.routeContextArgs.load()
+  await vi.waitFor(() => expect(mocks.details).toHaveBeenCalledOnce())
+  successful.view.unmount()
+  resolveDetails(detailsData())
+  await successfulLoad
+
+  mocks.details.mockReset()
+  let rejectDetails!: (cause: unknown) => void
+  mocks.details.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectDetails = reject }))
+  const failed = await renderPage()
+  const failedLoad = mocks.routeContextArgs.load()
+  await vi.waitFor(() => expect(mocks.details).toHaveBeenCalledOnce())
+  failed.view.unmount()
+  rejectDetails(new Error('late receivables failure'))
+  await failedLoad
 })

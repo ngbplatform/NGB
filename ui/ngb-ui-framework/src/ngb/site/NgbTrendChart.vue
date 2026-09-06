@@ -84,7 +84,6 @@ function normalizeColor(value: string): string {
 
 function formatCompactNumber(value: number): string {
   const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return '0'
   const abs = Math.abs(numeric)
   if (abs >= 1_000_000) return `${numeric < 0 ? '-' : ''}${(abs / 1_000_000).toFixed(1)}M`
   if (abs >= 1_000) return `${numeric < 0 ? '-' : ''}${(abs / 1_000).toFixed(1)}K`

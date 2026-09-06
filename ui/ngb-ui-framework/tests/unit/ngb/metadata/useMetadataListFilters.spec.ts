@@ -351,4 +351,33 @@ describe('metadata list filters', () => {
 
     expect(harness.listFilters.filterDraft.value.property_id).toEqual({ raw: '', items: [] })
   })
+
+  it('propagates current lookup failures and aborts pending searches on context change and unmount', async () => {
+    const current = createHarness()
+    current.lookupStore.searchCatalog.mockRejectedValueOnce(new Error('lookup failed'))
+    await expect(current.listFilters.handleLookupQuery({ key: 'property_id', query: 'fail' }))
+      .rejects.toThrow('lookup failed')
+
+    const onAbort = vi.fn()
+    const pending = createHarness()
+    pending.lookupStore.searchCatalog.mockImplementation((_type, _query, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => {
+        onAbort()
+        reject(new DOMException('Aborted', 'AbortError'))
+      }, { once: true })
+    }))
+
+    const contextSearch = pending.listFilters.handleLookupQuery({ key: 'property_id', query: 'context' })
+    await Promise.resolve()
+    pending.entityTypeCode.value = 'pm.credit_note'
+    await nextTick()
+    await expect(contextSearch).resolves.toBeUndefined()
+
+    const unmountSearch = pending.listFilters.handleLookupQuery({ key: 'property_id', query: 'unmount' })
+    await Promise.resolve()
+    const unmount = onBeforeUnmountMock.mock.calls.at(-1)?.[0] as () => void
+    unmount()
+    await expect(unmountSearch).resolves.toBeUndefined()
+    expect(onAbort).toHaveBeenCalledTimes(2)
+  })
 })

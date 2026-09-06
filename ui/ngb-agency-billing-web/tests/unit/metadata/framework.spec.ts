@@ -154,6 +154,8 @@ describe('agency billing metadata framework', () => {
       hint: { kind: 'coa' },
       query: 'cash',
     } as never)
+    const signal = new AbortController().signal
+    await agencyBillingMetadataFormBehavior.searchLookup?.({ hint: { kind: 'coa' }, query: 'cash', signal } as never)
     const url = await agencyBillingMetadataFormBehavior.buildLookupTargetUrl?.({
       hint: { kind: 'coa' },
       value: { id: 'coa-1', display: 'Cash account' },
@@ -162,6 +164,7 @@ describe('agency billing metadata framework', () => {
 
     expect(searchItems).toEqual([{ id: 'coa-1', label: 'Cash account' }])
     expect(mocks.searchResolvedLookupItems).toHaveBeenCalledWith(mocks.lookupStore, { kind: 'coa' }, 'cash')
+    expect(mocks.searchResolvedLookupItems).toHaveBeenCalledWith(mocks.lookupStore, { kind: 'coa' }, 'cash', { signal })
     expect(url).toBe('/jump/coa-1')
     expect(mocks.buildLookupFieldTargetUrl).toHaveBeenCalled()
   })

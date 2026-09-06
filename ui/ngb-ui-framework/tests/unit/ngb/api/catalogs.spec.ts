@@ -56,6 +56,9 @@ describe('catalogs api', () => {
     })
     await getCatalogPage('pm/property', null as never)
     await getCatalogById('pm/property', 'catalog/1')
+    const options = { signal: new AbortController().signal }
+    await getCatalogPage('pm/property', { offset: 0, limit: 1 }, options)
+    await getCatalogById('pm/property', 'catalog/1', options)
 
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(
       1,
@@ -82,6 +85,12 @@ describe('catalogs api', () => {
       search: '',
     })
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(4, '/api/catalogs/pm%2Fproperty', undefined)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(6, '/api/catalogs/pm%2Fproperty', {
+      offset: 0,
+      limit: 1,
+      search: undefined,
+    }, options)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(7, '/api/catalogs/pm%2Fproperty/catalog%2F1', undefined, options)
   })
 
   it('routes create, update, delete, and deletion marks to the expected endpoints', async () => {

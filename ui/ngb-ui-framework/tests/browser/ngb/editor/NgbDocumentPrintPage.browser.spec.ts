@@ -538,4 +538,27 @@ describe('NgbDocumentPrintPage', () => {
     window.dispatchEvent(new Event('afterprint'))
     expect(document.title).toBe('Stable title')
   })
+
+  it('ignores successful and failed document loads that settle after unmount', async () => {
+    let resolveDocument!: (value: unknown) => void
+    mocks.editorConfig.loadDocumentById.mockReturnValueOnce(new Promise((resolve) => {
+      resolveDocument = resolve
+    }))
+    const successful = await render(NgbDocumentPrintPage)
+    await vi.waitFor(() => expect(mocks.editorConfig.loadDocumentById).toHaveBeenCalledOnce())
+    successful.unmount()
+    resolveDocument({ id: 'late-doc', payload: null })
+    await Promise.resolve()
+
+    mocks.editorConfig.loadDocumentById.mockReset()
+    let rejectDocument!: (cause: unknown) => void
+    mocks.editorConfig.loadDocumentById.mockReturnValueOnce(new Promise((_resolve, reject) => {
+      rejectDocument = reject
+    }))
+    const failed = await render(NgbDocumentPrintPage)
+    await vi.waitFor(() => expect(mocks.editorConfig.loadDocumentById).toHaveBeenCalledOnce())
+    failed.unmount()
+    rejectDocument(new Error('late document failure'))
+    await Promise.resolve()
+  })
 })

@@ -46,8 +46,7 @@ function buildGroupTree(
   keyIndex = 0,
   path: string[] = [],
 ): RegisterGroupNode[] {
-  const key = keys[keyIndex];
-  if (!key) return [];
+  const key = keys[keyIndex]!;
   const buckets = new Map<string, RegisterDataRow[]>();
   for (const row of rows) {
     const label = groupKeyPart(row, key);
@@ -141,7 +140,6 @@ export function useRegisterRows(args: UseRegisterRowsArgs) {
   });
 
   const allGroupIds = computed(() => {
-    if (!hasGroups.value) return [];
     return collectGroupIds(groupTree.value);
   });
 

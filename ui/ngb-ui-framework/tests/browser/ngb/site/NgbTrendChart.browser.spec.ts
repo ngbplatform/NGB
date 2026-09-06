@@ -44,6 +44,36 @@ const EmptyTrendHarness = defineComponent({
   },
 })
 
+const LongTrendHarness = defineComponent({
+  setup() {
+    const fifteenLabels = Array.from({ length: 15 }, (_, index) => `L${index + 1}`)
+    const sixteenLabels = Array.from({ length: 16 }, (_, index) => `M${index + 1}`)
+
+    return () => h('div', { class: 'grid h-[560px] w-[520px] grid-rows-2' }, [
+      h(NgbTrendChart, {
+        labels: fifteenLabels,
+        series: [
+          {
+            label: 'Large values',
+            color: '',
+            values: [1_500_000, -1_500_000, -1_200, 12.34],
+          },
+        ],
+      }),
+      h(NgbTrendChart, {
+        labels: sixteenLabels,
+        series: [
+          {
+            label: 'Runtime fallback color',
+            color: null as never,
+            values: [100],
+          },
+        ],
+      }),
+    ])
+  },
+})
+
 beforeEach(() => {
   document.documentElement.style.setProperty('--accent-color', '#0f766e')
   document.documentElement.style.setProperty('--ngb-muted', '#486581')
@@ -91,4 +121,21 @@ test('keeps an empty chart renderable and accessible without series nodes', asyn
   await expect.element(view.getByRole('img', { name: 'Line chart: no data' })).toBeVisible()
   expect(view.container.querySelectorAll('[data-testid="ngb-trend-series"]')).toHaveLength(0)
   expect(view.container.querySelectorAll('text').length).toBeGreaterThan(0)
+})
+
+test('bounds long axes, includes the final label, and formats compact signed values', async () => {
+  const view = await render(LongTrendHarness)
+  const charts = view.container.querySelectorAll('[data-testid="ngb-trend-chart"]')
+
+  expect(charts).toHaveLength(2)
+  expect(charts[0]?.textContent).toContain('L15')
+  expect(charts[1]?.textContent).toContain('M16')
+  expect(charts[0]?.textContent).toContain('1.5M')
+  expect(charts[0]?.textContent).toContain('-1.5M')
+  expect(charts[0]?.textContent).toContain('-1.2K')
+  expect(charts[0]?.textContent).toContain('12.3')
+
+  const series = view.container.querySelectorAll('[data-testid="ngb-trend-series"]')
+  expect(series[0]?.getAttribute('data-series-color')).toBe('#2563eb')
+  expect(series[1]?.getAttribute('data-series-color')).toBe('#2563eb')
 })

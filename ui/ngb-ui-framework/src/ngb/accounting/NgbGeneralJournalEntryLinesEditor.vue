@@ -95,8 +95,7 @@ function emitRows(next: GeneralJournalEntryEditorLineModel[]) {
 }
 
 function updateRow(rowIndex: number, patch: Partial<GeneralJournalEntryEditorLineModel>) {
-  const row = rows.value[rowIndex]
-  if (!row) return
+  const row = rows.value[rowIndex]!
   const next = rows.value.slice()
   next[rowIndex] = {
     ...row,
@@ -243,10 +242,11 @@ async function onAccountQuery(row: GeneralJournalEntryEditorLineModel, query: st
   accountLookupControllers.set(row.clientKey, controller)
   try {
     const items = await lookupStore.searchCoa(q, { signal: controller.signal })
-    if (controller.signal.aborted || accountLookupControllers.get(row.clientKey) !== controller) return
+    if (accountLookupControllers.get(row.clientKey) !== controller) return
     accountItemsByRow.value[row.clientKey] = items
-  } catch (error) {
-    if (!controller.signal.aborted) throw error
+  } catch {
+    if (accountLookupControllers.get(row.clientKey) !== controller) return
+    accountItemsByRow.value[row.clientKey] = []
   } finally {
     if (accountLookupControllers.get(row.clientKey) === controller) accountLookupControllers.delete(row.clientKey)
   }
@@ -298,10 +298,11 @@ async function onDimensionQuery(
       items = await lookupStore.searchDocuments(lookup.documentTypes, q, { signal: controller.signal })
     }
 
-    if (controller.signal.aborted || dimensionLookupControllers.get(key) !== controller) return
+    if (dimensionLookupControllers.get(key) !== controller) return
     dimensionItemsByCell.value[key] = items
-  } catch (error) {
-    if (!controller.signal.aborted) throw error
+  } catch {
+    if (dimensionLookupControllers.get(key) !== controller) return
+    dimensionItemsByCell.value[key] = []
   } finally {
     if (dimensionLookupControllers.get(key) === controller) dimensionLookupControllers.delete(key)
   }

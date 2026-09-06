@@ -170,5 +170,8 @@ describe('trade metadata framework', () => {
     await expect(tradeMetadataFormBehavior.searchLookup?.({ hint: { kind: 'coa' }, query: 'cash' } as never))
       .resolves.toEqual([{ id: 'coa-1', label: 'Cash account' }])
     expect(mocks.searchResolvedLookupItems).toHaveBeenCalledWith(mocks.lookupStore, { kind: 'coa' }, 'cash')
+    const signal = new AbortController().signal
+    await tradeMetadataFormBehavior.searchLookup?.({ hint: { kind: 'coa' }, query: 'cash', signal } as never)
+    expect(mocks.searchResolvedLookupItems).toHaveBeenCalledWith(mocks.lookupStore, { kind: 'coa' }, 'cash', { signal })
   })
 })

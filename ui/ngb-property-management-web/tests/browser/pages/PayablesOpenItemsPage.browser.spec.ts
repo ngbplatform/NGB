@@ -363,6 +363,14 @@ test('loads context, projects lookup/grid rows, resolves document types, and nav
   expect(mocks.shellProps.chargeGrid.rows[1]).toMatchObject({ chargeType: '—', vendorInvoiceNo: '—', memo: '' })
   expect(mocks.shellProps.creditGrid.rows[1]).toMatchObject({ creditType: 'Payment', memo: '' })
   expect(mocks.shellProps.chargeGrid.columns).toHaveLength(7)
+
+  const signal = new AbortController().signal
+  await mocks.lookupConfigs[0].lookupById('vendor-1', { signal })
+  await mocks.lookupConfigs[0].search('vendor', { signal })
+  await mocks.lookupConfigs[1].lookupById('property-1', { signal })
+  await mocks.lookupConfigs[1].search('property', { signal })
+  expect(mocks.catalogById).toHaveBeenCalledWith('pm.party', 'vendor-1', { signal })
+  expect(mocks.catalogById).toHaveBeenCalledWith('pm.property', 'property-1', { signal })
   expect(mocks.shellProps.creditGrid.columns).toHaveLength(6)
   const chargeGrid = mocks.shellProps.chargeGrid
   const creditGrid = mocks.shellProps.creditGrid
@@ -473,6 +481,12 @@ test('executes workflow factories, route synchronization callbacks, and shell ev
   mocks.partyId.value = 'vendor-1'
   await args.suggestFactory()
   expect(mocks.suggestFifo).toHaveBeenCalledWith({ partyId: 'vendor-1', propertyId: 'property-1', createDrafts: false, limit: 500 })
+  const signal = new AbortController().signal
+  await args.suggestFactory({ signal })
+  expect(mocks.suggestFifo).toHaveBeenCalledWith(
+    { partyId: 'vendor-1', propertyId: 'property-1', createDrafts: false, limit: 500 },
+    { signal },
+  )
   await args.executeFactory(suggestion([suggestedItem({ applyId: 'apply-1' }), suggestedItem({ applyId: undefined })]))
   expect(mocks.applyBatch).toHaveBeenCalledWith({ applies: [
     { applyId: 'apply-1', applyPayload: { fields: {} } },
@@ -581,4 +595,25 @@ test('renders every wizard warning, summary cardinality, result branch, and appl
   expect(mocks.workflow.showApplyPlanAgain).toHaveBeenCalledOnce()
   await view.getByRole('button', { name: 'Open Apply' }).click()
   expect(router.currentRoute.value.fullPath).toBe('/documents/pm.payable_apply/apply-1')
+})
+
+test('ignores successful and failed detail requests that settle after unmount', async () => {
+  let resolveDetails!: (value: unknown) => void
+  mocks.details.mockReturnValueOnce(new Promise((resolve) => { resolveDetails = resolve }))
+  const successful = await renderPage()
+  const successfulLoad = mocks.routeContextArgs.load()
+  await vi.waitFor(() => expect(mocks.details).toHaveBeenCalledOnce())
+  successful.view.unmount()
+  resolveDetails(openItemsData())
+  await successfulLoad
+
+  mocks.details.mockReset()
+  let rejectDetails!: (cause: unknown) => void
+  mocks.details.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectDetails = reject }))
+  const failed = await renderPage()
+  const failedLoad = mocks.routeContextArgs.load()
+  await vi.waitFor(() => expect(mocks.details).toHaveBeenCalledOnce())
+  failed.view.unmount()
+  rejectDetails(new Error('late payables failure'))
+  await failedLoad
 })

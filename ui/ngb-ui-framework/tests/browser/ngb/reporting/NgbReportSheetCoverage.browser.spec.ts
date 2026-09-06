@@ -73,6 +73,24 @@ function withoutIntersectionObserver() {
   })
 }
 
+function withoutResizeObserver() {
+  const previous = globalThis.ResizeObserver
+  Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: undefined })
+  return () => Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: previous })
+}
+
+test('renders without ResizeObserver support', async () => {
+  const restore = withoutResizeObserver()
+  try {
+    const { view } = await renderHarness(defineComponent({
+      setup: () => () => h(NgbReportSheet, { sheet: detailSheet('No resize observer') }),
+    }))
+    await expect.element(view.getByText('No resize observer', { exact: true })).toBeVisible()
+  } finally {
+    restore()
+  }
+})
+
 test('renders loading, default empty, custom empty, and a loaded sheet', async () => {
   const restoreObserver = withoutIntersectionObserver()
 

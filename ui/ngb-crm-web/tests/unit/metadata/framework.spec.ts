@@ -107,6 +107,9 @@ describe('CRM metadata framework', () => {
     await expect(crmMetadataFormBehavior.searchLookup?.({ hint: { kind: 'catalog' }, query: 'one' } as never))
       .resolves.toEqual([{ id: 'one', label: 'One' }])
     expect(mocks.search).toHaveBeenCalledWith(mocks.store, { kind: 'catalog' }, 'one')
+    const signal = new AbortController().signal
+    await crmMetadataFormBehavior.searchLookup?.({ hint: { kind: 'catalog' }, query: 'one', signal } as never)
+    expect(mocks.search).toHaveBeenCalledWith(mocks.store, { kind: 'catalog' }, 'one', { signal })
 
     await expect(crmMetadataFormBehavior.buildLookupTargetUrl?.({
       hint: { kind: 'catalog' }, value: 'raw', routeFullPath: '/catalogs/crm.account',

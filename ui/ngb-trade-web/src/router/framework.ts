@@ -19,9 +19,11 @@ export type TradeRouteFrameworkConfig = {
   documentRoutes: RouteRecordRaw[]
 }
 
-const tradeEntityEditorComponent = defineAsyncComponent(
-  () => import('../editor/TradeEntityEditor.vue'),
-)
+function loadTradeEntityEditor() {
+  return import('../editor/TradeEntityEditor.vue')
+}
+
+const tradeEntityEditorComponent = defineAsyncComponent(loadTradeEntityEditor)
 
 function loadTradeCatalogPage(args: MetadataCatalogListPageLoadArgs) {
   const request = {

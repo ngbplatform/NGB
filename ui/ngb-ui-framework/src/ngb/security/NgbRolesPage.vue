@@ -78,10 +78,10 @@ async function load(): Promise<void> {
       access.load(),
       getRoles({ signal: controller.signal }),
     ])
-    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (sequence !== loadSequence) return
     roles.value = nextRoles
   } catch (cause) {
-    if (controller.signal.aborted || sequence !== loadSequence) return
+    if (sequence !== loadSequence) return
     roles.value = []
     accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
       && Number((cause as { status?: unknown }).status) === 403
@@ -111,6 +111,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   loadSequence += 1
   loadController?.abort()
+  loadController = null
 })
 </script>
 

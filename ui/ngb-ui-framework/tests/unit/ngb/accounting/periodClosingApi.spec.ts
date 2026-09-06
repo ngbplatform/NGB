@@ -36,6 +36,12 @@ describe('period closing api', () => {
     await searchRetainedEarningsAccounts({ query: '  equity  ', limit: 12 })
     await searchRetainedEarningsAccounts({ query: '   ' })
 
+    const options = { signal: new AbortController().signal }
+    await getMonthCloseStatus('2026-04-01', options)
+    await getPeriodClosingCalendar(2026, options)
+    await getFiscalYearCloseStatus('2026-12-01', options)
+    await searchRetainedEarningsAccounts(undefined, options)
+
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(
       1,
       '/api/accounting/period-closing/month',
@@ -61,6 +67,10 @@ describe('period closing api', () => {
       '/api/accounting/period-closing/retained-earnings-accounts',
       { q: undefined, limit: 20 },
     )
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(6, '/api/accounting/period-closing/month', { period: '2026-04-01' }, options)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(7, '/api/accounting/period-closing/calendar', { year: 2026 }, options)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(8, '/api/accounting/period-closing/fiscal-year', { fiscalYearEndPeriod: '2026-12-01' }, options)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(9, '/api/accounting/period-closing/retained-earnings-accounts', { q: undefined, limit: 20 }, options)
   })
 
   it('posts month and fiscal-year mutations to the expected endpoints', async () => {

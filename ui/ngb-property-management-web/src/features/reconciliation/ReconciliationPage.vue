@@ -247,11 +247,11 @@ async function loadPage(page: number, cursor: string | null) {
       limit: ROW_PAGE_SIZE,
       cursor,
     }, { signal: controller.signal })
-    if (seq !== loadSequence || controller.signal.aborted) return
+    if (seq !== loadSequence) return
     data.value = nextData
     rowPage.value = page
   } catch (e: unknown) {
-    if (seq !== loadSequence || controller.signal.aborted) return
+    if (seq !== loadSequence) return
     error.value = e instanceof Error ? e.message : String(e)
     data.value = null
   } finally {

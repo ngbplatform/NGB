@@ -94,6 +94,23 @@ describe('property-management router', () => {
     expect(mocks.guards).toHaveLength(2)
   })
 
+  it('resolves every vertical page route lazily', async () => {
+    const routes = mocks.routerOptions!.routes as Array<{ path: string; component?: () => Promise<unknown> }>
+    const paths = [
+      '/home',
+      '/catalogs/pm.accounting_policy',
+      '/catalogs/pm.property',
+      '/receivables/open-items',
+      '/payables/open-items',
+      '/receivables/reconciliation',
+      '/payables/reconciliation',
+    ]
+
+    const components = await Promise.all(paths.map((path) => routes.find((route) => route.path === path)!.component!()))
+
+    expect(components).toEqual(paths.map(() => ({})))
+  })
+
   it('covers bare, anonymous, redirected, loaded, and loading guard paths', async () => {
     const guard = mocks.guards[1]!
     expect(await guard({ meta: { bare: true }, path: '/print' })).toBe(true)

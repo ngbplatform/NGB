@@ -94,6 +94,14 @@ function strategy() {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+  return { promise, resolve }
+}
+
 describe('configured catalog entity persistence', () => {
   beforeEach(() => vi.clearAllMocks())
 
@@ -170,6 +178,40 @@ describe('configured catalog entity persistence', () => {
     expect(mocks.markCatalogForDeletion).toHaveBeenCalledWith('crm.lead', 'entity-1')
     expect(mocks.unmarkCatalogForDeletion).toHaveBeenCalledWith('crm.lead', 'entity-1')
     expect(mocks.deleteCatalog).toHaveBeenCalledWith('crm.lead', 'entity-1')
+  })
+
+  it('does not publish stale catalog state after metadata or reference hydration', async () => {
+    const metadata = { form: { sections: [] } }
+    const pendingMetadata = deferred<typeof metadata>()
+    const newArgs = context({ ensureCatalogMetadata: vi.fn(() => pendingMetadata.promise) })
+    newArgs.__isNew.value = true
+    const newLoad = createConfiguredCatalogEntityEditorPersistence(newArgs as never).load()
+    newArgs.__typeCode.value = 'crm.account'
+    pendingMetadata.resolve(metadata)
+    await newLoad
+    expect(newArgs.catalogMeta.value).toBeNull()
+
+    const pendingNewHydration = deferred<void>()
+    mocks.hydrateEntityReferenceFieldsForEditing.mockReturnValueOnce(pendingNewHydration.promise)
+    const hydratedNewArgs = context()
+    hydratedNewArgs.__isNew.value = true
+    const hydratedNewLoad = createConfiguredCatalogEntityEditorPersistence(hydratedNewArgs as never).load()
+    await vi.waitFor(() => expect(mocks.hydrateEntityReferenceFieldsForEditing).toHaveBeenCalled())
+    hydratedNewArgs.__typeCode.value = 'crm.account'
+    pendingNewHydration.resolve()
+    await hydratedNewLoad
+    expect(hydratedNewArgs.catalogMeta.value).toBeNull()
+
+    const pendingExistingHydration = deferred<void>()
+    mocks.getCatalogById.mockResolvedValueOnce({ id: 'entity-1', payload: { fields: { name: 'Old' } } })
+    mocks.hydrateEntityReferenceFieldsForEditing.mockReturnValueOnce(pendingExistingHydration.promise)
+    const existingArgs = context()
+    const existingLoad = createConfiguredCatalogEntityEditorPersistence(existingArgs as never).load()
+    await vi.waitFor(() => expect(mocks.getCatalogById).toHaveBeenCalled())
+    existingArgs.__typeCode.value = 'crm.account'
+    pendingExistingHydration.resolve()
+    await existingLoad
+    expect(existingArgs.catalogItem.value).toBeNull()
   })
 })
 
@@ -282,5 +324,43 @@ describe('configured document entity persistence', () => {
     expect(second.model.value).toEqual({})
     expect(second.partsModel.value).toEqual({ lines: [{ amount: 12 }] })
     expect(secondPolicy.buildPayload).toHaveBeenCalledWith(expect.objectContaining({ partsMeta: undefined }))
+  })
+
+  it('does not publish stale document state after metadata or hydration', async () => {
+    const metadata = { form: { sections: [] }, parts: [{ key: 'lines' }] }
+    const pendingMetadata = deferred<typeof metadata>()
+    const newArgs = context({ ensureDocumentMetadata: vi.fn(() => pendingMetadata.promise) })
+    newArgs.__isNew.value = true
+    const newLoad = createConfiguredDocumentEntityEditorPersistence(newArgs as never, strategy()).load()
+    newArgs.__typeCode.value = 'crm.quote'
+    pendingMetadata.resolve(metadata)
+    await newLoad
+    expect(newArgs.docMeta.value).toBeNull()
+
+    const pendingNewHydration = deferred<void>()
+    const newPolicy = strategy()
+    newPolicy.hydrate.mockReturnValueOnce(pendingNewHydration.promise)
+    const hydratedNewArgs = context()
+    hydratedNewArgs.__isNew.value = true
+    const hydratedNewLoad = createConfiguredDocumentEntityEditorPersistence(hydratedNewArgs as never, newPolicy).load()
+    await vi.waitFor(() => expect(newPolicy.hydrate).toHaveBeenCalled())
+    hydratedNewArgs.__typeCode.value = 'crm.quote'
+    pendingNewHydration.resolve()
+    await hydratedNewLoad
+    expect(hydratedNewArgs.docMeta.value).toBeNull()
+
+    const pendingExistingHydration = deferred<void>()
+    const existingPolicy = strategy()
+    existingPolicy.hydrate.mockReturnValueOnce(pendingExistingHydration.promise)
+    mocks.getDocumentEditorState.mockResolvedValueOnce({
+      document: { id: 'entity-1', payload: { fields: { name: 'Old' }, parts: { lines: [] } } },
+    })
+    const existingArgs = context()
+    const existingLoad = createConfiguredDocumentEntityEditorPersistence(existingArgs as never, existingPolicy).load()
+    await vi.waitFor(() => expect(existingPolicy.hydrate).toHaveBeenCalled())
+    existingArgs.__typeCode.value = 'crm.quote'
+    pendingExistingHydration.resolve()
+    await existingLoad
+    expect(existingArgs.doc.value).toBeNull()
   })
 })

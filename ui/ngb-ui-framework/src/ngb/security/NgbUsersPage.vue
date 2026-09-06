@@ -81,10 +81,10 @@ async function load(): Promise<void> {
       isActive: requestedStatus === 'active' ? true : requestedStatus === 'deleted' ? false : null,
       }, { signal: controller.signal }),
     ])
-    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (sequence !== loadSequence) return
     page.value = nextPage
   } catch (cause) {
-    if (controller.signal.aborted || sequence !== loadSequence) return
+    if (sequence !== loadSequence) return
     page.value = null
     accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
       && Number((cause as { status?: unknown }).status) === 403
@@ -129,6 +129,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   loadSequence += 1
   loadController?.abort()
+  loadController = null
 })
 </script>
 

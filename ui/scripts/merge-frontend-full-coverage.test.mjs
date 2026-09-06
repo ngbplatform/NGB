@@ -133,3 +133,29 @@ test('does not let negative sourcemap counters cancel genuine branch hits', () =
   assert.deepEqual(fileCoverage.b[0], [3, 2])
   assert.deepEqual(fileCoverage.toSummary().toJSON().branches, { total: 2, covered: 2, skipped: 0, pct: 100 })
 })
+
+test('ignores uncovered points that exist only in a partial alternate sourcemap', () => {
+  const canonical = coverage({ column: 12, statementHits: 2, branchHits: [1, 1] })
+  const alternate = coverage({ column: 18, statementHits: 1, branchHits: [1, 1] })
+  alternate.statementMap[1] = { start: { line: 30, column: 0 }, end: { line: 30, column: null } }
+  alternate.s[1] = 0
+  alternate.fnMap[1] = {
+    name: '(anonymous_42)',
+    decl: { start: { line: 30, column: 0 }, end: { line: 30, column: 1 } },
+    loc: { start: { line: 30, column: 0 }, end: { line: 30, column: null } },
+    line: 30,
+  }
+  alternate.f[1] = 0
+
+  const merged = mergeFrontendCoverage([
+    { '/repo/ui/app/src/example.ts': canonical },
+    { '/repo/ui/app/src/example.ts': alternate },
+  ], [
+    '/coverage/app-unit/coverage-final.json',
+    '/coverage/app-browser/coverage-final.json',
+  ])
+  const summary = merged.fileCoverageFor('/repo/ui/app/src/example.ts').toSummary().toJSON()
+
+  assert.equal(summary.statements.total, 1)
+  assert.equal(summary.functions.total, 1)
+})

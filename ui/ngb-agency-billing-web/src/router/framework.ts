@@ -19,9 +19,11 @@ export type AgencyBillingRouteFrameworkConfig = {
   documentRoutes: RouteRecordRaw[]
 }
 
-const agencyBillingEntityEditorComponent = defineAsyncComponent(
-  () => import('../editor/AgencyBillingEntityEditor.vue'),
-)
+function loadAgencyBillingEntityEditor() {
+  return import('../editor/AgencyBillingEntityEditor.vue')
+}
+
+const agencyBillingEntityEditorComponent = defineAsyncComponent(loadAgencyBillingEntityEditor)
 
 function loadAgencyBillingCatalogPage(args: MetadataCatalogListPageLoadArgs) {
   const request = {

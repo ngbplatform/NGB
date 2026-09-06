@@ -143,4 +143,33 @@ test('renders access denied only for 403 and a normal error for other failures',
   state.getRoles.mockRejectedValueOnce('offline')
   const failed = await render(NgbRolesPage)
   await expect.element(failed.getByTestId('layout-state').last()).toHaveTextContent('false|offline|true')
+
+  setActivePinia(createPinia())
+  state.getRoles.mockRejectedValueOnce({ status: 403 })
+  const structuralDenied = await render(NgbRolesPage)
+  await expect.element(structuralDenied.getByTestId('access-denied-stub').last()).toBeVisible()
+})
+
+test('ignores successful and failed role requests that settle after unmount', async () => {
+  let resolveRoles!: (value: unknown[]) => void
+  state.getRoles.mockReturnValueOnce(new Promise((resolve) => {
+    resolveRoles = resolve
+  }))
+  const successful = await render(NgbRolesPage)
+  await vi.waitFor(() => expect(state.getRoles).toHaveBeenCalledOnce())
+  successful.unmount()
+  resolveRoles([])
+  await Promise.resolve()
+
+  setActivePinia(createPinia())
+  state.getRoles.mockReset()
+  let rejectRoles!: (cause: unknown) => void
+  state.getRoles.mockReturnValueOnce(new Promise((_resolve, reject) => {
+    rejectRoles = reject
+  }))
+  const failed = await render(NgbRolesPage)
+  await vi.waitFor(() => expect(state.getRoles).toHaveBeenCalledOnce())
+  failed.unmount()
+  rejectRoles(new Error('late role failure'))
+  await Promise.resolve()
 })

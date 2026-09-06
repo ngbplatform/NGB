@@ -300,4 +300,27 @@ describe('default lookup config', () => {
       },
     ])
   })
+
+  it('forwards cancellation options through every searchable lookup path', async () => {
+    lookupMocks.lookupCatalog.mockResolvedValueOnce([])
+    lookupMocks.getCatalogPage.mockResolvedValueOnce({ items: [] })
+    lookupMocks.getChartOfAccountsPage.mockResolvedValueOnce({ items: [] })
+    lookupMocks.lookupDocumentsAcrossTypes.mockResolvedValueOnce([])
+    lookupMocks.getDocumentPage.mockResolvedValueOnce({ items: [] })
+    const signal = new AbortController().signal
+    const options = { signal }
+    const config = createDefaultNgbLookupConfig()
+
+    await config.searchCatalog('pm.property', 'one', options)
+    await config.searchCatalog('pm.property', 'two', { signal, filters: { active: true } })
+    await config.searchCoa('cash', options)
+    await config.searchDocumentsAcrossTypes(['pm.invoice'], 'invoice', options)
+    await config.searchDocument('pm.invoice', 'invoice', options)
+
+    expect(lookupMocks.lookupCatalog).toHaveBeenCalledWith('pm.property', 'one', 25, options)
+    expect(lookupMocks.getCatalogPage).toHaveBeenCalledWith('pm.property', expect.any(Object), options)
+    expect(lookupMocks.getChartOfAccountsPage).toHaveBeenCalledWith(expect.any(Object), options)
+    expect(lookupMocks.lookupDocumentsAcrossTypes).toHaveBeenCalledWith(expect.any(Object), options)
+    expect(lookupMocks.getDocumentPage).toHaveBeenCalledWith('pm.invoice', expect.any(Object), options)
+  })
 })

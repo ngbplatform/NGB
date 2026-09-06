@@ -53,6 +53,11 @@ describe('general journal entry api', () => {
     await getGeneralJournalEntry('entry/1')
     await getGeneralJournalEntryAccountContext('acc/1')
 
+    const options = { signal: new AbortController().signal }
+    await getGeneralJournalEntryPage({}, options)
+    await getGeneralJournalEntry('entry/1', options)
+    await getGeneralJournalEntryAccountContext('acc/1', options)
+
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(
       1,
       '/api/accounting/general-journal-entries?offset=10&limit=25&search=closing&dateFrom=2026-01-01&dateTo=2026-01-31&trash=all',
@@ -63,6 +68,14 @@ describe('general journal entry api', () => {
       4,
       '/api/accounting/general-journal-entries/accounts/acc%2F1',
     )
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(
+      5,
+      '/api/accounting/general-journal-entries?offset=0&limit=50',
+      undefined,
+      options,
+    )
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(6, '/api/accounting/general-journal-entries/entry%2F1', undefined, options)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(7, '/api/accounting/general-journal-entries/accounts/acc%2F1', undefined, options)
   })
 
   it('routes create, update, workflow, reverse, and deletion endpoints to the expected paths', async () => {

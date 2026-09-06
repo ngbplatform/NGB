@@ -371,7 +371,6 @@ async function loadRetainedEarningsOptions(query = ''): Promise<void> {
     }
   } catch (error) {
     if (retainedEarningsSearchSeq.value !== seq) return
-    if (controller.signal.aborted) return
     retainedEarningsItems.value = []
     fiscalErrorMessages.value = extractErrorMessages(error)
   } finally {
@@ -394,7 +393,7 @@ async function loadCalendar(): Promise<void> {
     if (seq !== calendarLoadSequence) return
     calendar.value = nextCalendar
   } catch (error) {
-    if (seq !== calendarLoadSequence || controller.signal.aborted) return
+    if (seq !== calendarLoadSequence) return
     calendar.value = null
     calendarErrorMessages.value = extractErrorMessages(error)
   } finally {
@@ -418,7 +417,7 @@ async function loadFiscalStatus(): Promise<void> {
     fiscalStatus.value = nextStatus
     syncRetainedEarningsSelectionWithStatus()
   } catch (error) {
-    if (seq !== fiscalLoadSequence || controller.signal.aborted) return
+    if (seq !== fiscalLoadSequence) return
     fiscalStatus.value = null
     fiscalErrorMessages.value = extractErrorMessages(error)
   } finally {
@@ -444,6 +443,9 @@ onBeforeUnmount(() => {
   calendarController?.abort()
   fiscalController?.abort()
   retainedEarningsController?.abort()
+  calendarController = null
+  fiscalController = null
+  retainedEarningsController = null
 })
 
 watch(

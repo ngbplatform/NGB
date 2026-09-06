@@ -179,4 +179,33 @@ test('renders access denied only for 403 and reports other failures', async () =
   state.getUsers.mockRejectedValueOnce('offline')
   const failed = await render(NgbUsersPage)
   await expect.element(failed.getByTestId('layout-state').last()).toHaveTextContent('false|offline|true')
+
+  setActivePinia(createPinia())
+  state.getUsers.mockRejectedValueOnce({ status: 403 })
+  const structuralDenied = await render(NgbUsersPage)
+  await expect.element(structuralDenied.getByTestId('access-denied-stub').last()).toBeVisible()
+})
+
+test('ignores successful and failed user requests that settle after unmount', async () => {
+  let resolveUsers!: (value: unknown) => void
+  state.getUsers.mockReturnValueOnce(new Promise((resolve) => {
+    resolveUsers = resolve
+  }))
+  const successful = await render(NgbUsersPage)
+  await vi.waitFor(() => expect(state.getUsers).toHaveBeenCalledOnce())
+  successful.unmount()
+  resolveUsers({ items: [], offset: 0, limit: 100, total: 0 })
+  await Promise.resolve()
+
+  setActivePinia(createPinia())
+  state.getUsers.mockReset()
+  let rejectUsers!: (cause: unknown) => void
+  state.getUsers.mockReturnValueOnce(new Promise((_resolve, reject) => {
+    rejectUsers = reject
+  }))
+  const failed = await render(NgbUsersPage)
+  await vi.waitFor(() => expect(state.getUsers).toHaveBeenCalledOnce())
+  failed.unmount()
+  rejectUsers(new Error('late user failure'))
+  await Promise.resolve()
 })

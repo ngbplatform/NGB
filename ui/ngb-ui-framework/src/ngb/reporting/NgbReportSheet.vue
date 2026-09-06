@@ -119,8 +119,8 @@ const virtualWindow = computed(() => {
   const end = Math.min(source.length, firstRowEndingAfter(offsets, endTarget) + 1)
 
   return {
-    top: offsets[start] ?? 0,
-    bottom: Math.max(0, (offsets[source.length] ?? 0) - (offsets[end] ?? 0)),
+    top: offsets[start]!,
+    bottom: Math.max(0, offsets[source.length]! - offsets[end]!),
     entries: source.slice(start, end).map((row, index) => ({ row, index: start + index })),
   }
 })

@@ -42,6 +42,11 @@ describe('security api client', () => {
     await getPermissionDefinitions()
     expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/permissions/definitions')
 
+    const options = { signal: new AbortController().signal }
+    mocks.httpGet.mockResolvedValueOnce([])
+    await getPermissionDefinitions(options)
+    expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/permissions/definitions', null, options)
+
     mocks.httpGet.mockResolvedValueOnce([])
     await getUsers()
     expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/users?offset=0&limit=50')

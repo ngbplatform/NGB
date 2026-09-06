@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, effectScope, ref } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useOpenItemsWorkflow } from '../../../../src/features/open-items/workflow'
@@ -249,6 +249,44 @@ describe('open items workflow', () => {
     await first
     expect(harness.workflow.suggestData.value?.totalApplied).toBe(12)
     expect(harness.workflow.suggestLoading.value).toBe(false)
+  })
+
+  it('ignores a stale rejected suggestion after a newer request succeeds', async () => {
+    const harness = createHarness()
+    let rejectFirst!: (reason: unknown) => void
+    harness.suggestFactory
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectFirst = reject }))
+      .mockResolvedValueOnce({ suggestedApplies: [], totalApplied: 12, remainingOutstanding: 88 })
+
+    const first = harness.workflow.suggest()
+    await vi.waitFor(() => expect(harness.suggestFactory).toHaveBeenCalledOnce())
+    await harness.workflow.suggest()
+    rejectFirst(new Error('stale failure'))
+    await first
+
+    expect(harness.workflow.suggestData.value?.totalApplied).toBe(12)
+    expect(harness.workflow.suggestError.value).toBeNull()
+  })
+
+  it('cancels an in-flight suggestion when its Vue effect scope is disposed', async () => {
+    const scope = effectScope()
+    let harness!: ReturnType<typeof createHarness>
+    scope.run(() => { harness = createHarness() })
+    let resolveSuggestion!: (value: SuggestResponse) => void
+    harness.suggestFactory.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveSuggestion = resolve
+    }))
+
+    const request = harness.workflow.suggest()
+    await vi.waitFor(() => expect(harness.suggestFactory).toHaveBeenCalledOnce())
+    const signal = harness.suggestFactory.mock.calls[0]?.[0]?.signal
+    scope.stop()
+
+    expect(signal?.aborted).toBe(true)
+    expect(harness.workflow.suggestLoading.value).toBe(false)
+    resolveSuggestion({ suggestedApplies: [], totalApplied: 99, remainingOutstanding: 1 })
+    await request
+    expect(harness.workflow.suggestData.value).toBeNull()
   })
 
   it('builds canonical and fallback result lines with titles and subtitles', () => {

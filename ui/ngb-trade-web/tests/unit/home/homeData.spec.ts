@@ -139,6 +139,59 @@ describe('trade home data', () => {
     })
   })
 
+  it('normalizes malformed optional overview values and preserves default routes', async () => {
+    const payload = overview()
+    payload.diagnostics = {
+      inventory_position_count: 'invalid',
+      active_sales_item_count: 'invalid',
+      active_customer_count: 'invalid',
+      active_vendor_count: 'invalid',
+    }
+    payload.sheet.rows = [
+      detail('KPI', 'Unknown KPI'),
+      detail('KPI', 'Sales This Month'),
+      detail('KPI', 'Purchases This Month'),
+      detail('KPI', 'Inventory On Hand'),
+      detail('KPI', 'Gross Margin'),
+      detail('Inventory Position', '', { value: 0 }, {}, {}),
+      detail('Top Item', '', {}, {}, { display: 'not a margin' }),
+      detail('Top Customer', '', {}, { display: 'not counts' }, { display: 'not a margin' }),
+      detail('Top Vendor', '', {}, { display: 'not counts' }),
+      detail('Recent Document', '', {}, {}, {}),
+      detail('Unknown Category', 'Ignored'),
+      { rowKind: 'Group', cells: [] },
+    ]
+    mocks.executeReport.mockResolvedValue(payload)
+
+    const data = await loadHomeDashboard('2026-04-18')
+
+    expect(data.inventoryPositionCount).toBe(1)
+    expect(data.topItems[0]).toMatchObject({ item: 'Item', grossMargin: 0, marginPercent: 0 })
+    expect(data.topCustomers[0]).toMatchObject({ customer: 'Customer', salesDocumentCount: 0, returnDocumentCount: 0 })
+    expect(data.topVendors[0]).toMatchObject({ vendor: 'Vendor', purchaseDocumentCount: 0, returnDocumentCount: 0 })
+    expect(data.inventoryPositions[0]).toMatchObject({ item: 'Item', warehouse: 'Warehouse', route: null })
+    expect(data.recentDocuments[0]).toMatchObject({ title: 'Trade document', amountDisplay: null, documentDate: null })
+  })
+
+  it('rethrows a failed overview request after cancellation', async () => {
+    const controller = new AbortController()
+    const failure = new Error('cancelled')
+    controller.abort()
+    mocks.executeReport.mockRejectedValue(failure)
+
+    await expect(loadHomeDashboard('2026-04-18', controller.signal)).rejects.toBe(failure)
+  })
+
+  it('accepts an overview without rows and formats non-Error failures', async () => {
+    mocks.executeReport.mockResolvedValueOnce({ sheet: { columns: [] } })
+    const empty = await loadHomeDashboard('2026-04-18')
+    expect(empty.topItems).toEqual([])
+
+    mocks.executeReport.mockRejectedValueOnce('offline')
+    const failed = await loadHomeDashboard('2026-04-18')
+    expect(failed.warnings).toEqual(['Overview analytics are unavailable: offline'])
+  })
+
   it('rejects invalid as-of dates before issuing a report request', async () => {
     await expect(loadHomeDashboard('04/18/2026')).rejects.toThrow('Select a valid as-of date.')
     expect(mocks.executeReport).not.toHaveBeenCalled()

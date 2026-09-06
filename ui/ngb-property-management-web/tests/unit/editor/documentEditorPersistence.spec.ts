@@ -107,6 +107,31 @@ describe('property-management document editor persistence', () => {
     expect(args.leaseEditor.applyPersistedParts).toHaveBeenCalledWith({ parties: [] })
   })
 
+  it('discards stale new and existing document loads at every async boundary', async () => {
+    const staleAfterMetadata = context({ isNew: ref(true) })
+    staleAfterMetadata.ensureDocumentMetadata = vi.fn(async () => {
+      staleAfterMetadata.currentId.value = 'changed'
+      return { form: {} }
+    })
+    await useDocumentEntityEditorPersistence(staleAfterMetadata as never).load()
+    expect(staleAfterMetadata.docMeta.value).toBeNull()
+
+    const staleNewAfterHydration = context({ isNew: ref(true) })
+    mocks.hydrateEntityReferenceFieldsForEditing.mockImplementationOnce(async () => {
+      staleNewAfterHydration.typeCode.value = 'changed'
+    })
+    await useDocumentEntityEditorPersistence(staleNewAfterHydration as never).load()
+    expect(staleNewAfterHydration.docMeta.value).toBeNull()
+
+    const staleExisting = context()
+    mocks.getDocumentEditorState.mockResolvedValueOnce({ document: { id: 'doc-1', payload: {} } })
+    mocks.hydrateEntityReferenceFieldsForEditing.mockImplementationOnce(async () => {
+      staleExisting.currentId.value = 'changed'
+    })
+    await useDocumentEntityEditorPersistence(staleExisting as never).load()
+    expect(staleExisting.doc.value).toBeNull()
+  })
+
   it('blocks lease save and exposes a structured tenant validation error', async () => {
     const leaseEditor = {
       isLeaseDocument: ref(true),
@@ -189,6 +214,31 @@ describe('property-management catalog editor persistence', () => {
     await useCatalogEntityEditorPersistence(args as never).load()
     expect(args.model.value).toEqual({ name: 'Loaded' })
     expect(args.leaseEditor.applyPersistedParts).toHaveBeenCalledWith(null)
+  })
+
+  it('discards stale new and existing catalog loads at every async boundary', async () => {
+    const staleAfterMetadata = context({ isNew: ref(true) })
+    staleAfterMetadata.ensureCatalogMetadata = vi.fn(async () => {
+      staleAfterMetadata.currentId.value = 'changed'
+      return { form: {} }
+    })
+    await useCatalogEntityEditorPersistence(staleAfterMetadata as never).load()
+    expect(staleAfterMetadata.catalogMeta.value).toBeNull()
+
+    const staleNewAfterHydration = context({ isNew: ref(true) })
+    mocks.hydrateEntityReferenceFieldsForEditing.mockImplementationOnce(async () => {
+      staleNewAfterHydration.typeCode.value = 'changed'
+    })
+    await useCatalogEntityEditorPersistence(staleNewAfterHydration as never).load()
+    expect(staleNewAfterHydration.catalogMeta.value).toBeNull()
+
+    const staleExisting = context()
+    mocks.getCatalogById.mockResolvedValueOnce({ id: 'catalog-1', payload: {} })
+    mocks.hydrateEntityReferenceFieldsForEditing.mockImplementationOnce(async () => {
+      staleExisting.currentId.value = 'changed'
+    })
+    await useCatalogEntityEditorPersistence(staleExisting as never).load()
+    expect(staleExisting.catalogItem.value).toBeNull()
   })
 
   it('creates a catalog and reports creation to the orchestration port', async () => {

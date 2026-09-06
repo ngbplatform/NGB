@@ -74,7 +74,6 @@ export function useDashboardPageState<TDashboard>(
       dashboard.value = next
     } catch (err: unknown) {
       if (seq !== loadSequence) return
-      if (controller?.signal.aborted) return
       dashboard.value = null
       error.value = toErrorMessage(err, 'Request failed.')
     } finally {

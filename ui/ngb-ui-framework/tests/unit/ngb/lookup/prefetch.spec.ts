@@ -102,4 +102,31 @@ describe('lookup prefetch', () => {
     expect(filteringMocks.ensureResolvedLookupLabels).toHaveBeenCalledTimes(1)
     expect(filteringMocks.ensureResolvedLookupLabels).toHaveBeenCalledWith({}, hint, [firstId, secondId])
   })
+
+  it('keeps document sources separated and groups chart-of-accounts ids', async () => {
+    const firstId = '11111111-1111-1111-1111-111111111111'
+    const secondId = '22222222-2222-2222-2222-222222222222'
+
+    await prefetchLookupsForPage({
+      entityTypeCode: 'pm.invoice',
+      columns: [{ key: 'documentId' }, { key: 'accountId' }],
+      items: [{ payload: { fields: { documentId: firstId, accountId: secondId } } }],
+      lookupStore: {} as never,
+      resolveLookupHint: (_entityTypeCode, fieldKey) => fieldKey === 'documentId'
+        ? { kind: 'document', documentTypes: [' pm.invoice ', '', 'pm.credit_note'] }
+        : { kind: 'coa' },
+    })
+
+    expect(filteringMocks.ensureResolvedLookupLabels).toHaveBeenCalledTimes(2)
+    expect(filteringMocks.ensureResolvedLookupLabels).toHaveBeenCalledWith(
+      {},
+      { kind: 'document', documentTypes: [' pm.invoice ', '', 'pm.credit_note'] },
+      [firstId],
+    )
+    expect(filteringMocks.ensureResolvedLookupLabels).toHaveBeenCalledWith(
+      {},
+      { kind: 'coa' },
+      [secondId],
+    )
+  })
 })

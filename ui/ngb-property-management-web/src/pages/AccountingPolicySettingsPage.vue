@@ -170,7 +170,7 @@ async function load(): Promise<void> {
 
     initialSnapshot.value = stableStringify(model.value)
   } catch (cause) {
-    if (seq !== loadSequence || controller.signal.aborted) return
+    if (seq !== loadSequence) return
     error.value = toErrorMessage(cause, 'Failed to load the accounting policy.')
   } finally {
     if (seq === loadSequence) loading.value = false
@@ -181,6 +181,7 @@ async function load(): Promise<void> {
 onBeforeUnmount(() => {
   loadSequence += 1
   loadController?.abort()
+  loadController = null
 })
 
 async function save(): Promise<void> {

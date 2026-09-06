@@ -86,6 +86,12 @@ describe('CRM router', () => {
     expect(mocks.guards[0]).toBe(mocks.authGuard)
   })
 
+  it('resolves the vertical home-page route lazily', async () => {
+    const routes = mocks.routerOptions!.routes as Array<{ path: string; component?: () => Promise<unknown> }>
+
+    await expect(routes.find((route) => route.path === '/home')!.component!()).resolves.toEqual({})
+  })
+
   it('lets bare and unauthenticated navigation through', async () => {
     expect(await mocks.guards[1]!({ meta: { bare: true }, path: '/print' })).toBe(true)
     expect(await mocks.guards[1]!({ meta: {}, path: '/home' })).toBe(true)

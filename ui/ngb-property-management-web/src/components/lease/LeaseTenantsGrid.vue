@@ -133,16 +133,20 @@ async function onPartyQuery(rowIndex: number, q: string) {
       filters: { is_tenant: 'true' },
       signal: controller.signal,
     })
-    if (lookupControllers.get(rowIndex) !== controller || controller.signal.aborted) return
+    if (lookupControllers.get(rowIndex) !== controller) return
     lookupItemsByRow.value[rowIndex] = (items ?? []).map((x) => ({ id: x.id, label: x.label, meta: x.meta ?? undefined }))
   } catch (error) {
-    if (!controller.signal.aborted) throw error
+    if (lookupControllers.get(rowIndex) !== controller) return
+    throw error
   } finally {
     if (lookupControllers.get(rowIndex) === controller) lookupControllers.delete(rowIndex)
   }
 }
 
-onBeforeUnmount(() => lookupControllers.forEach((controller) => controller.abort()))
+onBeforeUnmount(() => {
+  lookupControllers.forEach((controller) => controller.abort())
+  lookupControllers.clear()
+})
 
 function toLookupValue(v: LeasePartyRow['party_id'] | null): LookupItem | null {
   if (!v) return null

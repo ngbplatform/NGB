@@ -1,6 +1,7 @@
 import { page } from 'vitest/browser'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
+import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 
 const mocks = vi.hoisted(() => ({
@@ -1009,4 +1010,119 @@ test('reports create, update, and activation failures and prevents a concurrent 
   resolveUpdate(roleDetails())
   await expect.poll(() => save.disabled).toBe(false)
   concurrent.unmount()
+})
+
+test('role editor discards every load phase that settles after unmount', async () => {
+  await page.viewport(1280, 900)
+  const adminAccess = {
+    userId: 'admin', authSubject: 'admin', isAuthenticated: true, isActive: true,
+    isBootstrapAdmin: false, accessVersion: 1,
+    permissions: [{ resourceKind: 'system', resourceCode: 'roles', actionCode: 'manage' }],
+  }
+
+  let resolveAccess!: (value: typeof adminAccess) => void
+  mocks.getCurrentAccess.mockReturnValueOnce(new Promise((resolve) => { resolveAccess = resolve }))
+  const accessPending = await render(NgbRoleEditorPage)
+  await vi.waitFor(() => expect(mocks.getCurrentAccess).toHaveBeenCalledOnce())
+  accessPending.unmount()
+  resolveAccess(adminAccess)
+  await Promise.resolve()
+
+  setActivePinia(createPinia())
+  mocks.getCurrentAccess.mockResolvedValue(adminAccess)
+  mocks.getRole.mockResolvedValue(roleDetails())
+  let resolveDefinitions!: (value: PermissionDefinitionDto[]) => void
+  mocks.getPermissionDefinitions.mockReturnValueOnce(new Promise((resolve) => { resolveDefinitions = resolve }))
+  const dataPending = await render(NgbRoleEditorPage)
+  await vi.waitFor(() => expect(mocks.getPermissionDefinitions).toHaveBeenCalled())
+  dataPending.unmount()
+  resolveDefinitions([])
+  await Promise.resolve()
+
+  setActivePinia(createPinia())
+  let rejectDefinitions!: (cause: unknown) => void
+  mocks.getPermissionDefinitions.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectDefinitions = reject }))
+  const failurePending = await render(NgbRoleEditorPage)
+  await vi.waitFor(() => expect(mocks.getPermissionDefinitions).toHaveBeenCalledTimes(2))
+  failurePending.unmount()
+  rejectDefinitions(new Error('late role metadata failure'))
+  await Promise.resolve()
+})
+
+test('user editor discards access, data, and failure results that settle after unmount', async () => {
+  await page.viewport(1280, 900)
+  const adminAccess = {
+    userId: 'admin', authSubject: 'admin', isAuthenticated: true, isActive: true,
+    isBootstrapAdmin: false, accessVersion: 1,
+    permissions: [{ resourceKind: 'system', resourceCode: 'users', actionCode: 'manage' }],
+  }
+
+  let resolveAccess!: (value: typeof adminAccess) => void
+  mocks.getCurrentAccess.mockReturnValueOnce(new Promise((resolve) => { resolveAccess = resolve }))
+  const accessPending = await render(NgbUserEditorPage)
+  await vi.waitFor(() => expect(mocks.getCurrentAccess).toHaveBeenCalledOnce())
+  accessPending.unmount()
+  resolveAccess(adminAccess)
+  await Promise.resolve()
+
+  setActivePinia(createPinia())
+  mocks.getCurrentAccess.mockResolvedValue(adminAccess)
+  mocks.getUser.mockResolvedValue(userDetails())
+  mocks.getUserEffectiveAccess.mockResolvedValue(effectiveAccess())
+  let resolveRoles!: (value: RoleListItemDto[]) => void
+  mocks.getRoles.mockReturnValueOnce(new Promise((resolve) => { resolveRoles = resolve }))
+  const dataPending = await render(NgbUserEditorPage)
+  await vi.waitFor(() => expect(mocks.getRoles).toHaveBeenCalled())
+  dataPending.unmount()
+  resolveRoles([])
+  await Promise.resolve()
+
+  setActivePinia(createPinia())
+  let rejectRoles!: (cause: unknown) => void
+  mocks.getRoles.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectRoles = reject }))
+  const failurePending = await render(NgbUserEditorPage)
+  await vi.waitFor(() => expect(mocks.getRoles).toHaveBeenCalledTimes(2))
+  failurePending.unmount()
+  rejectRoles(new Error('late user roles failure'))
+  await Promise.resolve()
+})
+
+test('user editor ignores effective-access refreshes that settle after unmount', async () => {
+  mocks.getRoles.mockResolvedValue([])
+  mocks.getUser.mockResolvedValue(userDetails({ roles: [] }))
+  mocks.getUserEffectiveAccess.mockResolvedValueOnce(effectiveAccess())
+
+  const successful = mount(NgbUserEditorPage, { attachTo: document.body })
+  const successfulState = (successful.vm as any).$?.setupState
+  await vi.waitFor(() => expect(successfulState.user).toBeTruthy())
+
+  mocks.getUserEffectiveAccess.mockRejectedValueOnce('refreshed effective access unavailable')
+  await successfulState.loadEffectiveAccess()
+  expect(successfulState.effectiveAccess).toBeNull()
+  expect(successfulState.effectiveError).toBe('refreshed effective access unavailable')
+
+  let resolveEffective!: (value: ReturnType<typeof effectiveAccess>) => void
+  mocks.getUserEffectiveAccess.mockImplementationOnce(() => new Promise((resolve) => {
+    resolveEffective = resolve
+  }))
+  const successfulRequest = successfulState.loadEffectiveAccess()
+  await vi.waitFor(() => expect(mocks.getUserEffectiveAccess).toHaveBeenCalledTimes(3))
+  successful.unmount()
+  resolveEffective(effectiveAccess())
+  await successfulRequest
+
+  setActivePinia(createPinia())
+  mocks.getUserEffectiveAccess.mockResolvedValueOnce(effectiveAccess())
+  const failed = mount(NgbUserEditorPage, { attachTo: document.body })
+  const failedState = (failed.vm as any).$?.setupState
+  await vi.waitFor(() => expect(failedState.user).toBeTruthy())
+  let rejectEffective!: (cause: unknown) => void
+  mocks.getUserEffectiveAccess.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+    rejectEffective = reject
+  }))
+  const failedRequest = failedState.loadEffectiveAccess()
+  await vi.waitFor(() => expect(mocks.getUserEffectiveAccess).toHaveBeenCalledTimes(5))
+  failed.unmount()
+  rejectEffective(new Error('late effective access failure'))
+  await failedRequest
 })

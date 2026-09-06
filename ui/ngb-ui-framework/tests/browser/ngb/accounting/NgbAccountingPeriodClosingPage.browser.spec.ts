@@ -267,6 +267,16 @@ async function flushUi() {
   await new Promise((resolve) => window.setTimeout(resolve, 60))
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 function clickButtonByTitle(title: string) {
   const button = document.querySelector(`button[title="${title}"]`)
   if (!(button instanceof HTMLButtonElement)) throw new Error(`Button with title "${title}" not found.`)
@@ -1158,4 +1168,35 @@ test('ignores stale retained earnings lookup successes and failures', async () =
   await flushUi()
   await expect.element(view.getByText('lookup-items:3200 · Retained Earnings')).toBeVisible()
   expect(document.body.textContent).not.toContain('Stale lookup failure.')
+})
+
+test('ignores late calendar and fiscal status successes and failures after unmount', async () => {
+  const calendarSuccess = deferred<ReturnType<typeof buildCalendar>>()
+  const fiscalSuccess = deferred<ReturnType<typeof buildFiscalStatus>>()
+  periodMocks.getPeriodClosingCalendar.mockImplementationOnce(() => calendarSuccess.promise)
+  periodMocks.getFiscalYearCloseStatus.mockImplementationOnce(() => fiscalSuccess.promise)
+
+  const successfulRender = await renderPage('/admin/accounting/period-closing?year=2026&month=2026-03&fy=2026-03')
+  const successCalendarSignal = periodMocks.getPeriodClosingCalendar.mock.calls[0]?.[1]?.signal as AbortSignal
+  const successFiscalSignal = periodMocks.getFiscalYearCloseStatus.mock.calls[0]?.[1]?.signal as AbortSignal
+  successfulRender.view.unmount()
+  expect(successCalendarSignal.aborted).toBe(true)
+  expect(successFiscalSignal.aborted).toBe(true)
+  calendarSuccess.resolve(buildCalendar({ year: 2026, closedMonths: [] }))
+  fiscalSuccess.resolve(buildFiscalStatus('2026-03-01'))
+  await flushUi()
+
+  const calendarFailure = deferred<ReturnType<typeof buildCalendar>>()
+  const fiscalFailure = deferred<ReturnType<typeof buildFiscalStatus>>()
+  periodMocks.getPeriodClosingCalendar.mockImplementationOnce(() => calendarFailure.promise)
+  periodMocks.getFiscalYearCloseStatus.mockImplementationOnce(() => fiscalFailure.promise)
+
+  const failedRender = await renderPage('/admin/accounting/period-closing?year=2026&month=2026-03&fy=2026-03')
+  failedRender.view.unmount()
+  calendarFailure.reject(new Error('late calendar failure'))
+  fiscalFailure.reject(new Error('late fiscal failure'))
+  await flushUi()
+
+  expect(document.body.textContent ?? '').not.toContain('late calendar failure')
+  expect(document.body.textContent ?? '').not.toContain('late fiscal failure')
 })

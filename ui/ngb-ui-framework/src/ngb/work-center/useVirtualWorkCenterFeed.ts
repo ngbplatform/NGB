@@ -75,7 +75,7 @@ export function useVirtualWorkCenterFeed<T>(args: {
   const virtualWindow = computed(() => {
     const items = args.items.value
     const offsets = layout.value
-    const totalHeight = offsets[offsets.length - 1] ?? 0
+    const totalHeight = offsets[offsets.length - 1]!
     if (items.length <= VIRTUALIZATION_THRESHOLD) {
       return {
         entries: items.map((item) => ({ item, key: args.getKey(item) })),
@@ -92,8 +92,8 @@ export function useVirtualWorkCenterFeed<T>(args: {
 
     return {
       entries: items.slice(start, end).map((item) => ({ item, key: args.getKey(item) })),
-      top: offsets[start] ?? 0,
-      bottom: Math.max(0, totalHeight - (offsets[end] ?? totalHeight)),
+      top: offsets[start]!,
+      bottom: Math.max(0, totalHeight - offsets[end]!),
     }
   })
 

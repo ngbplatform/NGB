@@ -563,3 +563,44 @@ test('covers selection guards, direct edit flows, refreshes, bulk creation, and 
   await unitsPanel.getByTitle('Clear selection').click()
   expect(mocks.route.query.buildingId).toBeUndefined()
 })
+
+test('ignores all successful and failed panel requests that settle after unmount', async () => {
+  mocks.route.query.buildingId = 'building-1'
+  let resolveBuildings!: (value: unknown) => void
+  let resolveUnits!: (value: unknown) => void
+  let resolveSummary!: (value: unknown) => void
+  mocks.catalogPage.mockImplementation((_type: string, request: any) => new Promise((resolve) => {
+    if (request.filters.kind === 'Building') resolveBuildings = resolve
+    else resolveUnits = resolve
+  }))
+  mocks.buildingSummary.mockReturnValueOnce(new Promise((resolve) => { resolveSummary = resolve }))
+
+  const successful = await render(PropertiesPage)
+  await vi.waitFor(() => expect(mocks.catalogPage).toHaveBeenCalledTimes(2))
+  await vi.waitFor(() => expect(mocks.buildingSummary).toHaveBeenCalledOnce())
+  successful.unmount()
+  resolveBuildings({ items: [], offset: 0, limit: 50, total: 0 })
+  resolveUnits({ items: [], offset: 0, limit: 50, total: 0 })
+  resolveSummary({ buildingDisplay: 'Late', totalUnits: 0, occupiedUnits: 0, vacantUnits: 0, vacancyPercent: 0 })
+  await flushUi()
+
+  mocks.catalogPage.mockReset()
+  mocks.buildingSummary.mockReset()
+  let rejectBuildings!: (cause: unknown) => void
+  let rejectUnits!: (cause: unknown) => void
+  let rejectSummary!: (cause: unknown) => void
+  mocks.catalogPage.mockImplementation((_type: string, request: any) => new Promise((_resolve, reject) => {
+    if (request.filters.kind === 'Building') rejectBuildings = reject
+    else rejectUnits = reject
+  }))
+  mocks.buildingSummary.mockReturnValueOnce(new Promise((_resolve, reject) => { rejectSummary = reject }))
+
+  const failed = await render(PropertiesPage)
+  await vi.waitFor(() => expect(mocks.catalogPage).toHaveBeenCalledTimes(2))
+  await vi.waitFor(() => expect(mocks.buildingSummary).toHaveBeenCalledOnce())
+  failed.unmount()
+  rejectBuildings(new Error('late buildings failure'))
+  rejectUnits(new Error('late units failure'))
+  rejectSummary(new Error('late summary failure'))
+  await flushUi()
+})

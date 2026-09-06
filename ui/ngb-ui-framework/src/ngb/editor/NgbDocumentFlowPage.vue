@@ -280,10 +280,10 @@ async function load(): Promise<void> {
       DEFAULT_MAX_NODES,
       { signal: controller.signal },
     );
-    if (seq !== loadSequence || controller.signal.aborted) return;
+    if (seq !== loadSequence) return;
     graph.value = nextGraph;
   } catch (cause) {
-    if (seq !== loadSequence || controller.signal.aborted) return;
+    if (seq !== loadSequence) return;
     error.value = toErrorMessage(cause, 'Could not load document flow.');
     graph.value = null;
   } finally {

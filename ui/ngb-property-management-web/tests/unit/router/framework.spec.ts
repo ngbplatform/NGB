@@ -36,11 +36,14 @@ describe('property-management route framework', () => {
     const config = createPmRouteFrameworkConfig()
     const props = config.catalogRoutes[0]!.props as Record<string, (...args: never[]) => unknown>
     await props.loadPage({ catalogType: 'pm.property', offset: 10, limit: 20, search: 'main', trashMode: 'deleted' })
+    const signal = new AbortController().signal
+    await props.loadPage({ catalogType: 'pm.property', offset: 0, limit: 1, search: '', trashMode: 'active', signal })
     expect(mocks.catalogPage).toHaveBeenCalledWith('pm.property', {
       offset: 10, limit: 20, search: 'main', filters: { deleted: 'deleted' },
     })
     expect(props.resolveTitle('pm.property', 'Property')).toBe('catalog:pm.property:Property')
     expect(props.resolveStorageKey('pm.property')).toBe('pm:catalog:pm.property')
+    expect(mocks.catalogPage).toHaveBeenLastCalledWith('pm.property', expect.any(Object), { signal })
 
     expect(props.resolveDrawerExtraActions({ editorFlags: {} })).toEqual([])
     expect(props.resolveDrawerExtraActions({ editorFlags: { extras: { bulkCreateUnits: false } } })).toEqual([])
@@ -67,6 +70,11 @@ describe('property-management route framework', () => {
       documentType: 'pm.lease', offset: 50, limit: 50, search: '', trashMode: 'all',
       periodFrom: null, periodTo: null, listFilters: {},
     })
+    const signal = new AbortController().signal
+    await props.loadPage({
+      documentType: 'pm.lease', offset: 0, limit: 1, search: '', trashMode: 'active',
+      periodFrom: null, periodTo: null, listFilters: {}, signal,
+    })
     expect(mocks.documentPage).toHaveBeenNthCalledWith(1, 'pm.lease', {
       offset: 0, limit: 50, search: 'lease',
       filters: { deleted: 'active', periodFrom: '2026-01-01', periodTo: '2026-12-31', party_id: 'party-1' },
@@ -74,6 +82,7 @@ describe('property-management route framework', () => {
     expect(mocks.documentPage).toHaveBeenNthCalledWith(2, 'pm.lease', {
       offset: 50, limit: 50, search: '', filters: { deleted: 'all' },
     })
+    expect(mocks.documentPage).toHaveBeenLastCalledWith('pm.lease', expect.any(Object), { signal })
     expect(props.resolveLookupHint({ entityTypeCode: 'pm.lease', fieldKey: 'party_id', lookup: null })).toEqual({ kind: 'catalog' })
     expect(props.resolveTitle('pm.lease', 'Lease')).toBe('document:pm.lease:Lease')
     expect(props.resolveStorageKey('pm.lease')).toBe('pm:document:pm.lease')
@@ -95,7 +104,7 @@ describe('property-management route framework', () => {
     expect(router.push.mock.calls).toEqual([['/receivables/open-items'], ['/payables/open-items']])
   })
 
-  it('exposes stable catalog and document route surfaces', () => {
+  it('exposes stable catalog and document route surfaces', async () => {
     const config = createPmRouteFrameworkConfig()
     expect(config.catalogRoutes.map((route) => route.path)).toEqual([
       '/catalogs/:catalogType', '/catalogs/:catalogType/new', '/catalogs/:catalogType/:id',
@@ -104,5 +113,6 @@ describe('property-management route framework', () => {
       '/documents/:documentType', '/documents/pm.receivable_apply/new', '/documents/pm.payable_apply/new',
       '/documents/:documentType/new', '/documents/:documentType/:id',
     ])
+    await expect((config.catalogRoutes[0]!.props as { editorComponent: () => Promise<unknown> }).editorComponent()).resolves.toEqual({ default: { name: 'PmEditor' } })
   })
 })

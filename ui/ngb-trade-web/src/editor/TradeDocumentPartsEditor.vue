@@ -123,12 +123,12 @@ const normalizedRowsByPart = computed(() =>
 )
 
 const rowStructureSignature = computed(() => props.parts
-  .map((part) => `${part.partCode}:${partRows(part.partCode).map((row) => String(row.__row_key ?? '')).join(',')}`)
+  .map((part) => `${part.partCode}:${partRows(part.partCode).map((row) => ensureTradeDocumentPartRowKey(row)).join(',')}`)
   .join('|'))
 
 watch(rowStructureSignature, () => {
   const liveRowKeys = new Set(props.parts.flatMap((part) =>
-    partRows(part.partCode).map((row) => String(row.__row_key ?? '')).filter(Boolean)))
+    partRows(part.partCode).map((row) => ensureTradeDocumentPartRowKey(row))))
   autoManagedValuesByRow.value = Object.fromEntries(
     Object.entries(autoManagedValuesByRow.value).filter(([rowKey]) => liveRowKeys.has(rowKey)),
   )
@@ -170,7 +170,6 @@ function setPartPage(partCode: string, page: number): void {
 
 function partRowRange(partCode: string): string {
   const total = partRows(partCode).length
-  if (total === 0) return '0 rows'
   const start = partPage(partCode) * PART_ROW_PAGE_SIZE
   const end = Math.min(total, start + PART_ROW_PAGE_SIZE)
   return `Rows ${start + 1}\u2013${end} of ${total}`
@@ -190,7 +189,7 @@ watch(
 )
 
 function emitRows(partCode: string, rows: RecordPartRow[]): void {
-  const next: RecordParts = { ...(props.modelValue ?? {}) }
+  const next: RecordParts = { ...props.modelValue }
   next[partCode] = {
     rows: normalizeTradeDocumentPartRows(rows),
   }
@@ -460,7 +459,7 @@ function applyResolvedDefaults(results: readonly TradeDocumentLineDefaultsRowRes
   if (results.length === 0) return
 
   const resultByRowKey = new Map(results.map((row) => [row.rowKey, row] as const))
-  const next: RecordParts = { ...(props.modelValue ?? {}) }
+  const next: RecordParts = { ...props.modelValue }
   let changed = false
 
   for (const part of props.parts) {
@@ -569,10 +568,11 @@ async function onLookupQuery(partCode: string, rowIndex: number, field: FieldMet
   lookupControllers.set(key, controller)
   try {
     const items = await Promise.resolve(search({ hint, query: normalizedQuery, signal: controller.signal }))
-    if (lookupControllers.get(key) === controller && !controller.signal.aborted)
+    if (lookupControllers.get(key) === controller)
       lookupItemsByCell.value = { ...lookupItemsByCell.value, [key]: items }
-  } catch (error) {
-    if (!controller.signal.aborted) throw error
+  } catch {
+    if (lookupControllers.get(key) !== controller) return
+    lookupItemsByCell.value = { ...lookupItemsByCell.value, [key]: [] }
   } finally {
     if (lookupControllers.get(key) === controller) lookupControllers.delete(key)
   }

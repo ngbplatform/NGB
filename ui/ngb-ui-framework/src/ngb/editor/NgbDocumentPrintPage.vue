@@ -237,12 +237,12 @@ async function load() {
       editorConfig.loadDocumentById(requestedDocumentType, requestedDocumentId, { signal: controller.signal }),
     ]);
 
-    if (sequence !== loadSequence || controller.signal.aborted) return;
+    if (sequence !== loadSequence) return;
     metadata.value = nextMetadata;
     documentRecord.value = nextDocument;
     await prefetchLookupLabels(nextMetadata, nextDocument);
   } catch (cause) {
-    if (sequence !== loadSequence || controller.signal.aborted) return;
+    if (sequence !== loadSequence) return;
     error.value = toErrorMessage(cause, 'Failed to load the print preview.');
   } finally {
     if (sequence === loadSequence) loading.value = false;

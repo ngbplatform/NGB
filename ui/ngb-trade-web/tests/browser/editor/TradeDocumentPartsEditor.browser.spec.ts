@@ -242,6 +242,24 @@ describe('TradeDocumentPartsEditor coverage', () => {
     await state.onLookupQuery('lines', 0, lookupField, row, null as never)
     await state.onLookupQuery('lines', 0, field('memo', 'String'), row, 'find')
     await state.onLookupQuery('lines', 0, lookupField, row, ' find ')
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('lookup unavailable'))
+    await expect(state.onLookupQuery('lines', 0, lookupField, row, 'failure')).resolves.toBeUndefined()
+
+    let resolveStaleLookup!: (items: Array<{ id: string; label: string }>) => void
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise((resolve) => { resolveStaleLookup = resolve }))
+    const staleSuccess = state.onLookupQuery('lines', 0, lookupField, row, 'stale-success')
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce([])
+    await state.onLookupQuery('lines', 0, lookupField, row, 'current-success')
+    resolveStaleLookup([{ id: ITEM_1, label: 'Stale' }])
+    await staleSuccess
+
+    let rejectStaleLookup!: (cause: unknown) => void
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectStaleLookup = reject }))
+    const staleFailure = state.onLookupQuery('lines', 0, lookupField, row, 'stale-failure')
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce([])
+    await state.onLookupQuery('lines', 0, lookupField, row, 'current-after-failure')
+    rejectStaleLookup(new Error('ignored stale failure'))
+    await staleFailure
     state.onLookupSelect('lines', 0, 'item_id', { id: ITEM_2, label: 'Two' })
     state.onLookupSelect('lines', 99, 'item_id', { id: ITEM_2, label: 'Two' })
     state.onLookupSelect('lines', 0, 'memo', null)
@@ -279,7 +297,10 @@ describe('TradeDocumentPartsEditor coverage', () => {
     expect(state.formatAmount(null)).toMatch(/0/)
     expect(state.formatAmount(12.34567)).toMatch(/12/)
 
+    const unmountController = new AbortController()
+    state.lookupControllers.set('lines:0:item_id', unmountController)
     wrapper.unmount()
+    expect(unmountController.signal.aborted).toBe(true)
 
     const readonly = mount(TradeDocumentPartsEditor, {
       props: { entityTypeCode: 'trd.sales_invoice', parts: [part()], modelValue: model(), readonly: true },
@@ -313,7 +334,7 @@ describe('TradeDocumentPartsEditor coverage', () => {
     const wrapper = mount(TradeDocumentPartsEditor, {
       props: {
         entityTypeCode: 'trd.item_price_update',
-        parts: [part()],
+        parts: [part(), part('missing')],
         modelValue: model(),
         documentModel: { effective_date: ' 2026-07-30 ', price_type_id: PRICE_TYPE },
       },
@@ -457,6 +478,9 @@ describe('TradeDocumentPartsEditor coverage', () => {
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     expect(wrapper.text()).toContain('Rows 101–101 of 101')
     expect(wrapper.find('tbody tr').text()).toContain('101')
+    const previous = wrapper.findAll('button').find((button) => button.text() === 'Previous')
+    await previous!.trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(100)
     wrapper.unmount()
   })
 

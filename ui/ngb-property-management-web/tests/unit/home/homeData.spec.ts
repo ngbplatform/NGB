@@ -194,6 +194,42 @@ describe('property-management home dashboard data', () => {
     )
   })
 
+  it('normalizes omitted collections, warnings, invalid months, and invalid route ids', async () => {
+    const response = dashboardResponse() as any
+    response.warnings = undefined
+    response.occupancyTrend = [{ month: 'invalid', occupiedUnits: 1, vacantUnits: 2 }]
+    response.collectionsTrend = undefined
+    response.leases.events = undefined
+    response.receivables.mismatches = [{
+      partyId: 'invalid', propertyId: 'invalid', leaseId: 'lease-1', leaseDisplay: 'Lease',
+      propertyDisplay: 'Property', rowKind: 'Mismatch', diff: 1,
+    }]
+    response.maintenance.items = undefined
+    mocks.httpGet.mockResolvedValue(response)
+
+    const dashboard = await loadHomeDashboard('2026-08-23')
+
+    expect(dashboard.warnings).toEqual([])
+    expect(dashboard.charts.occupancy.labels).toEqual(['invalid'])
+    expect(dashboard.charts.collections.labels).toHaveLength(12)
+    expect(dashboard.leases.events).toEqual([])
+    expect(dashboard.receivables.mismatches[0]?.route).toBe('/receivables/open-items?leaseId=lease-1')
+    expect(dashboard.maintenance.items).toEqual([])
+  })
+
+  it('normalizes omitted occupancy and mismatch collections at the API boundary', async () => {
+    const response = dashboardResponse() as any
+    response.occupancyTrend = undefined
+    response.receivables.mismatches = undefined
+    mocks.httpGet.mockResolvedValue(response)
+
+    const dashboard = await loadHomeDashboard('2026-08-23')
+
+    expect(dashboard.charts.occupancy.labels).toHaveLength(12)
+    expect(dashboard.charts.occupancy.series[0]?.values).toEqual(Array.from({ length: 12 }, () => 0))
+    expect(dashboard.receivables.mismatches).toEqual([])
+  })
+
   it('rejects invalid as-of values before issuing a request', async () => {
     await expect(loadHomeDashboard('not-a-date')).rejects.toThrow('Select a valid as-of date.')
     expect(mocks.httpGet).not.toHaveBeenCalled()

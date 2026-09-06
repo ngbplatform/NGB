@@ -801,28 +801,38 @@ test('ignores a stale account-context failure after the row switches to another 
   await expect.element(view.getByText('Department Id')).toBeVisible()
 })
 
-test('deduplicates an in-flight context request and ignores its result after the source row is removed', async () => {
+test('deduplicates an in-flight context request and ignores its result after all source rows are removed', async () => {
   await page.viewport(1280, 900)
 
   const pending = createDeferred<AccountContext>()
   linesEditorMocks.getAccountContext.mockReturnValue(pending.promise)
 
   const { view } = await renderHarness({
-    rows: [{
-      clientKey: 'row-pending',
-      side: 1,
-      account: { id: 'cash-id', label: '1100 Cash' },
-      amount: '',
-      memo: '',
-      dimensions: {},
-    }],
+    rows: [
+      {
+        clientKey: 'row-pending-1',
+        side: 1,
+        account: { id: 'cash-id', label: '1100 Cash' },
+        amount: '',
+        memo: '',
+        dimensions: {},
+      },
+      {
+        clientKey: 'row-pending-2',
+        side: 2,
+        account: { id: 'cash-id', label: '1100 Cash' },
+        amount: '',
+        memo: '',
+        dimensions: {},
+      },
+    ],
   })
 
-  await expect.element(view.getByText('Loading dimension rules…')).toBeVisible()
-  await view.getByRole('button', { name: 'Add line' }).click()
-  await flushUi()
+  await expect.element(view.getByText('Loading dimension rules…').first()).toBeVisible()
   expect(linesEditorMocks.getAccountContext).toHaveBeenCalledTimes(1)
 
+  deleteButton(0).click()
+  await flushUi()
   deleteButton(0).click()
   pending.resolve({
     accountId: 'cash-id',
@@ -1008,4 +1018,170 @@ test('bounds large journals to one DOM page while retaining every line in the ed
 
   await view.getByRole('button', { name: 'Previous' }).click()
   await expect.element(view.getByText('Lines 1–100 of 101')).toBeVisible()
+})
+
+test('clears lookup results after active account and dimension search failures', async () => {
+  linesEditorMocks.lookupStore.searchCoa.mockRejectedValueOnce(new Error('account search failed'))
+  const accountRender = await renderHarness({
+    rows: [{
+      clientKey: 'account-row',
+      side: 1,
+      account: null,
+      amount: '',
+      memo: '',
+      dimensions: {},
+    }],
+  })
+  await queryLookup(0, 'broken account')
+  await expect.element(accountRender.view.getByText('lookup-items:none')).toBeVisible()
+  accountRender.view.unmount()
+
+  linesEditorMocks.lookupStore.searchCatalog.mockRejectedValueOnce(new Error('dimension search failed'))
+  const dimensionRender = await renderHarness({
+    rows: [{
+      clientKey: 'dimension-row',
+      side: 1,
+      account: { id: 'cash-id', label: '1100 Cash' },
+      amount: '',
+      memo: '',
+      dimensions: {},
+    }],
+    preloadedAccountContexts: {
+      'cash-id': {
+        accountId: 'cash-id',
+        code: '1100',
+        name: 'Cash',
+        dimensionRules: [{
+          dimensionId: 'property_id',
+          dimensionCode: 'pm.property_id',
+          ordinal: 1,
+          isRequired: false,
+          lookup: { kind: 'catalog', catalogType: 'pm.property' },
+        }],
+      },
+    },
+  })
+  await queryLookup(1, 'broken dimension')
+  expect(queryLookupRoot(1).textContent ?? '').toContain('lookup-items:none')
+})
+
+test('ignores stale successful account and dimension lookup responses', async () => {
+  const staleAccount = createDeferred<LookupItem[]>()
+  linesEditorMocks.lookupStore.searchCoa
+    .mockReturnValueOnce(staleAccount.promise)
+    .mockResolvedValueOnce([{ id: 'fresh-account', label: 'Fresh account' }])
+
+  const accountRender = await renderHarness({
+    rows: [{
+      clientKey: 'account-race-row',
+      side: 1,
+      account: null,
+      amount: '',
+      memo: '',
+      dimensions: {},
+    }],
+  })
+  await queryLookup(0, 'stale account')
+  await queryLookup(0, 'fresh account')
+  staleAccount.resolve([{ id: 'stale-account', label: 'Stale account' }])
+  await flushUi()
+  expect(queryLookupRoot(0).textContent ?? '').toContain('lookup-items:Fresh account')
+  expect(queryLookupRoot(0).textContent ?? '').not.toContain('Stale account')
+  accountRender.view.unmount()
+
+  const staleDimension = createDeferred<LookupItem[]>()
+  linesEditorMocks.lookupStore.searchCatalog
+    .mockReturnValueOnce(staleDimension.promise)
+    .mockResolvedValueOnce([{ id: 'fresh-property', label: 'Fresh property' }])
+
+  const dimensionRender = await renderHarness({
+    rows: [{
+      clientKey: 'dimension-race-row',
+      side: 1,
+      account: { id: 'cash-id', label: '1100 Cash' },
+      amount: '',
+      memo: '',
+      dimensions: {},
+    }],
+    preloadedAccountContexts: {
+      'cash-id': {
+        accountId: 'cash-id',
+        code: '1100',
+        name: 'Cash',
+        dimensionRules: [{
+          dimensionId: 'property_id',
+          dimensionCode: 'pm.property_id',
+          ordinal: 1,
+          isRequired: false,
+          lookup: { kind: 'catalog', catalogType: 'pm.property' },
+        }],
+      },
+    },
+  })
+  await queryLookup(1, 'stale property')
+  await queryLookup(1, 'fresh property')
+  staleDimension.resolve([{ id: 'stale-property', label: 'Stale property' }])
+  await flushUi()
+  expect(queryLookupRoot(1).textContent ?? '').toContain('lookup-items:Fresh property')
+  expect(queryLookupRoot(1).textContent ?? '').not.toContain('Stale property')
+  dimensionRender.view.unmount()
+})
+
+test('aborts account, dimension, and context requests when the editor unmounts', async () => {
+  const contextRequest = createDeferred<AccountContext>()
+  const accountRequest = createDeferred<LookupItem[]>()
+  linesEditorMocks.getAccountContext.mockReturnValueOnce(contextRequest.promise)
+  linesEditorMocks.lookupStore.searchCoa.mockReturnValueOnce(accountRequest.promise)
+  const accountRender = await renderHarness({
+    rows: [{
+      clientKey: 'pending-row',
+      side: 1,
+      account: { id: 'cash-id', label: '1100 Cash' },
+      amount: '',
+      memo: '',
+      dimensions: {},
+    }],
+  })
+  await queryLookup(0, 'pending account')
+  const accountSignal = linesEditorMocks.lookupStore.searchCoa.mock.calls[0]?.[1]?.signal as AbortSignal
+  const contextSignal = linesEditorMocks.getAccountContext.mock.calls[0]?.[1]?.signal as AbortSignal
+  accountRender.view.unmount()
+  expect(accountSignal.aborted).toBe(true)
+  expect(contextSignal.aborted).toBe(true)
+  accountRequest.reject(new Error('cancelled account lookup'))
+  contextRequest.reject(new Error('cancelled context'))
+  await flushUi()
+
+  const dimensionRequest = createDeferred<LookupItem[]>()
+  linesEditorMocks.lookupStore.searchCatalog.mockReturnValueOnce(dimensionRequest.promise)
+  const dimensionRender = await renderHarness({
+    rows: [{
+      clientKey: 'pending-dimension-row',
+      side: 1,
+      account: { id: 'cash-id', label: '1100 Cash' },
+      amount: '',
+      memo: '',
+      dimensions: {},
+    }],
+    preloadedAccountContexts: {
+      'cash-id': {
+        accountId: 'cash-id',
+        code: '1100',
+        name: 'Cash',
+        dimensionRules: [{
+          dimensionId: 'property_id',
+          dimensionCode: 'pm.property_id',
+          ordinal: 1,
+          isRequired: false,
+          lookup: { kind: 'catalog', catalogType: 'pm.property' },
+        }],
+      },
+    },
+  })
+  await queryLookup(1, 'pending dimension')
+  const dimensionSignal = linesEditorMocks.lookupStore.searchCatalog.mock.calls[0]?.[2]?.signal as AbortSignal
+  dimensionRender.view.unmount()
+  expect(dimensionSignal.aborted).toBe(true)
+  dimensionRequest.reject(new Error('cancelled dimension lookup'))
+  await flushUi()
 })

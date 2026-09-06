@@ -238,10 +238,10 @@ async function load() {
   loading.value = true
   try {
     const dto = await getGeneralJournalEntry(requestedId, { signal: controller.signal })
-    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (sequence !== loadSequence) return
     await applyDetails(dto)
   } catch (cause) {
-    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (sequence !== loadSequence) return
     errorMessages.value = extractErrorMessages(cause)
   } finally {
     if (sequence === loadSequence) loading.value = false

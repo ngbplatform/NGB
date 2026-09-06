@@ -189,7 +189,7 @@ async function loadBuildings() {
       if (hit) selectedBuildingDisplay.value = resolveDisplay(hit.display ?? hit.payload?.fields?.display)
     }
   } catch (cause) {
-    if (controller.signal.aborted || sequence !== buildingsLoadSequence) return
+    if (sequence !== buildingsLoadSequence) return
     error.value = toErrorMessage(cause, 'Failed to load buildings.')
   } finally {
     if (sequence === buildingsLoadSequence) buildingsLoading.value = false
@@ -227,7 +227,7 @@ async function loadUnits() {
     if (sequence !== unitsLoadSequence) return
     unitsPage.value = nextPage
   } catch (cause) {
-    if (controller.signal.aborted || sequence !== unitsLoadSequence) return
+    if (sequence !== unitsLoadSequence) return
     error.value = toErrorMessage(cause, 'Failed to load units.')
   } finally {
     if (sequence === unitsLoadSequence) unitsLoading.value = false
@@ -268,7 +268,7 @@ async function loadBuildingSummary() {
     // Prefer report display (server-side computed) when available.
     if (s.buildingDisplay) selectedBuildingDisplay.value = s.buildingDisplay
   } catch (cause) {
-    if (controller.signal.aborted || sequence !== summaryLoadSequence) return
+    if (sequence !== summaryLoadSequence) return
     buildingSummary.value = null
     buildingSummaryError.value = toErrorMessage(cause, 'Failed to load the building summary.')
   } finally {
@@ -278,9 +278,15 @@ async function loadBuildingSummary() {
 }
 
 onBeforeUnmount(() => {
+  buildingsLoadSequence += 1
+  unitsLoadSequence += 1
+  summaryLoadSequence += 1
   buildingsController?.abort()
   unitsController?.abort()
   summaryController?.abort()
+  buildingsController = null
+  unitsController = null
+  summaryController = null
 })
 
 watch(

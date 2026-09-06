@@ -15,15 +15,9 @@ vi.mock('@ngbplatform/ui', () => ({
   lookupHintFromSource: (lookup?: object | null) => lookup ?? null,
 }))
 
-vi.mock('../../../src/editor/CRMEntityEditor.vue', async () => {
-  const { defineComponent } = await import('vue')
-  return {
-    default: defineComponent({
-      name: 'CRMEntityEditorStub',
-      template: '<div />',
-    }),
-  }
-})
+vi.mock('vue', () => ({ defineAsyncComponent: (loader: unknown) => loader }))
+
+vi.mock('../../../src/editor/CRMEntityEditor.vue', () => ({ default: { name: 'CRMEntityEditorStub' } }))
 
 import { createCRMRouteFrameworkConfig } from '../../../src/router/framework'
 
@@ -43,6 +37,8 @@ describe('CRM route framework', () => {
       search: 'northwind',
       trashMode: 'deleted',
     })
+    const signal = new AbortController().signal
+    await props.loadPage({ catalogType: 'crm.account', offset: 0, limit: 1, search: '', trashMode: 'active', signal })
 
     expect(mocks.getCatalogPage).toHaveBeenCalledWith('crm.account', {
       offset: 20,
@@ -52,6 +48,7 @@ describe('CRM route framework', () => {
     })
     expect(props.resolveTitle('crm.account', 'Account')).toBe('Accounts')
     expect(props.resolveStorageKey('crm.account')).toBe('ngb:crm:catalog:crm.account')
+    expect(mocks.getCatalogPage).toHaveBeenLastCalledWith('crm.account', expect.any(Object), { signal })
   })
 
   it('loads document pages with present and omitted period filters', async () => {
@@ -77,6 +74,8 @@ describe('CRM route framework', () => {
       periodTo: null,
       listFilters: {},
     })
+    const signal = new AbortController().signal
+    await props.loadPage({ documentType: 'crm.quote', offset: 0, limit: 1, search: '', trashMode: 'active', periodFrom: null, periodTo: null, listFilters: {}, signal })
 
     expect(mocks.getDocumentPage).toHaveBeenNthCalledWith(1, 'crm.quote', {
       offset: 0,
@@ -95,6 +94,7 @@ describe('CRM route framework', () => {
       search: '',
       filters: { deleted: 'all' },
     })
+    expect(mocks.getDocumentPage).toHaveBeenLastCalledWith('crm.quote', expect.any(Object), { signal })
     expect(props.resolveLookupHint({
       entityTypeCode: 'crm.quote',
       fieldKey: 'account_id',
@@ -104,7 +104,7 @@ describe('CRM route framework', () => {
     expect(props.resolveStorageKey('crm.quote')).toBe('ngb:crm:document:crm.quote')
   })
 
-  it('exposes metadata-driven create and edit routes with stable paths', () => {
+  it('exposes metadata-driven create and edit routes with stable paths', async () => {
     const config = createCRMRouteFrameworkConfig()
 
     expect(config.catalogRoutes.map((route) => route.path)).toEqual([
@@ -117,5 +117,6 @@ describe('CRM route framework', () => {
       '/documents/:documentType/new',
       '/documents/:documentType/:id',
     ])
+    await expect((config.catalogRoutes[0]!.props as { editorComponent: () => Promise<unknown> }).editorComponent()).resolves.toEqual({ default: { name: 'CRMEntityEditorStub' } })
   })
 })

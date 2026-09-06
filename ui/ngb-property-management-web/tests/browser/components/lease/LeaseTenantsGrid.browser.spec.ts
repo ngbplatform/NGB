@@ -215,6 +215,38 @@ describe('LeaseTenantsGrid', () => {
     wrapper.unmount()
   })
 
+  it('drops superseded lookups, propagates active failures, and aborts work on unmount', async () => {
+    let resolveStale!: (value: unknown[]) => void
+    mocks.searchCatalog
+      .mockReturnValueOnce(new Promise((resolve) => { resolveStale = resolve }))
+      .mockResolvedValueOnce([{ id: 'party-fresh', label: 'Fresh tenant' }])
+      .mockRejectedValueOnce(new Error('tenant lookup unavailable'))
+
+    const wrapper = mount(LeaseTenantsGrid, { props: { modelValue: rows() as never } })
+    const state = (wrapper.vm as any).$?.setupState
+    const stale = state.onPartyQuery(0, 'stale')
+    await state.onPartyQuery(0, 'fresh')
+    resolveStale([{ id: 'party-stale', label: 'Stale tenant' }])
+    await stale
+    expect(state.lookupItemsByRow[0]).toEqual([{ id: 'party-fresh', label: 'Fresh tenant', meta: undefined }])
+
+    await expect(state.onPartyQuery(1, 'failure')).rejects.toThrow('tenant lookup unavailable')
+
+    let rejectStale!: (cause: unknown) => void
+    mocks.searchCatalog
+      .mockReturnValueOnce(new Promise((_resolve, reject) => { rejectStale = reject }))
+      .mockResolvedValueOnce([])
+    const staleFailure = state.onPartyQuery(0, 'stale failure')
+    await state.onPartyQuery(0, 'replacement')
+    rejectStale(new Error('ignored stale tenant failure'))
+    await expect(staleFailure).resolves.toBeUndefined()
+
+    const controller = new AbortController()
+    state.lookupControllers.set(2, controller)
+    wrapper.unmount()
+    expect(controller.signal.aborted).toBe(true)
+  })
+
   it('enforces exactly one primary while adding, toggling, and deleting every row shape', async () => {
     const empty = mount(LeaseTenantsGrid, { props: { modelValue: [] } })
     await empty.get('button').trigger('click')

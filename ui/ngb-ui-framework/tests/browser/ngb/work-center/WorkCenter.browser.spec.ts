@@ -276,6 +276,7 @@ beforeEach(() => {
 
 afterEach(() => {
   intersectionObserver.restore()
+  vi.unstubAllGlobals()
 })
 
 test('drawer renders loading, error, empty and actionable feed states', async () => {
@@ -397,6 +398,42 @@ test('large Work Center feeds render only the visible virtual window', async () 
     expect(rendered).toBeLessThan(state.items.value.length)
   })
   await expect.element(view.getByText('Task 0')).toBeVisible()
+})
+
+test('large Work Center page and drawer render their virtual spacer branches while scrolling', async () => {
+  vi.stubGlobal('ResizeObserver', undefined)
+  state.items.value = Array.from({ length: 250 }, (_, index) => task({
+    id: `virtual-task-${index}`,
+    title: `Virtual task ${index}`,
+  }))
+
+  const pageView = await render(NgbWorkCenterPage)
+  pageView.container.style.height = '400px'
+  ;(pageView.container.firstElementChild as HTMLElement).style.height = '400px'
+  const pageHost = pageView.container.querySelector<HTMLElement>('.overflow-auto')!
+  pageHost.scrollTop = 8_000
+  pageHost.dispatchEvent(new Event('scroll'))
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  await nextTick()
+
+  const pageSpacers = Array.from(pageView.container.querySelectorAll<HTMLElement>('[aria-hidden="true"][style*="height"]'))
+  expect(pageSpacers.some((element) => Number.parseFloat(element.style.height) > 0)).toBe(true)
+
+  pageView.unmount()
+  const drawerView = await render(NgbWorkCenterDrawer)
+  drawerView.container.style.height = '400px'
+  const drawerHost = drawerView.container.firstElementChild as HTMLElement
+  drawerHost.style.height = '400px'
+  drawerHost.scrollTop = 8_000
+  drawerHost.dispatchEvent(new Event('scroll'))
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  await nextTick()
+
+  const drawerSpacers = Array.from(drawerView.container.querySelectorAll<HTMLElement>('[aria-hidden="true"][style*="height"]'))
+  expect(drawerSpacers.length).toBeGreaterThan(0)
+  expect(drawerSpacers.every((element) => Number.parseFloat(element.style.height) > 0)).toBe(true)
+  const drawerList = drawerView.container.querySelector<HTMLElement>('.divide-y.divide-ngb-border')!
+  expect(drawerList.firstElementChild?.getAttribute('aria-hidden')).toBe('true')
 })
 
 test('drawer keeps count-free tabs, includes Completed, and loads the next page on intersection', async () => {

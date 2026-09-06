@@ -426,3 +426,36 @@ test('bounds large reconciliation results to one DOM page', async () => {
   await view.getByRole('button', { name: 'Previous' }).click()
   await expect.element(view.getByText('Rows 1–100 of 101')).toBeVisible()
 })
+
+test('uses the requested page when a legacy response omits offset', async () => {
+  mocks.load.mockResolvedValue({
+    ...report([row({ key: 'legacy-offset' })]),
+    filteredRowCount: 101,
+    offset: undefined as never,
+    hasMore: true,
+    nextCursor: 'page-2',
+  })
+  const { view } = await renderPage('/reconciliation')
+
+  await view.getByRole('button', { name: 'Next' }).click()
+  await expect.element(view.getByText('Rows 101–101 of 101')).toBeVisible()
+})
+
+test('ignores late successful and failed loads after unmount', async () => {
+  const success = deferred<ReconciliationReport>()
+  mocks.load.mockImplementationOnce(async () => await success.promise)
+  const successfulRender = await renderPage('/reconciliation')
+  successfulRender.view.unmount()
+  success.resolve(report([row({ key: 'late-success' })]))
+  await flushUi()
+
+  const failure = deferred<ReconciliationReport>()
+  mocks.load.mockImplementationOnce(async () => await failure.promise)
+  const failedRender = await renderPage('/reconciliation')
+  failedRender.view.unmount()
+  failure.reject(new Error('late failure'))
+  await flushUi()
+
+  expect(document.body.textContent ?? '').not.toContain('late-success')
+  expect(document.body.textContent ?? '').not.toContain('late failure')
+})

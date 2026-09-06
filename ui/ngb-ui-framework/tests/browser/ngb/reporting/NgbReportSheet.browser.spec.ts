@@ -515,6 +515,40 @@ test('virtualizes large report sheets while preserving full scroll height', asyn
   expect(document.querySelectorAll('tbody tr').length).toBeLessThan(600)
 })
 
+test('updates virtual row measurements from resize observations and ignores irrelevant entries', async () => {
+  const original = globalThis.ResizeObserver
+  const callbacks: ResizeObserverCallback[] = []
+  const observed: Element[] = []
+  class ResizeObserverMock {
+    constructor(callback: ResizeObserverCallback) {
+      callbacks.push(callback)
+    }
+    observe(element: Element) { observed.push(element) }
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: ResizeObserverMock })
+
+  try {
+    await renderWithRouter(ReportSheetVirtualizedHarness)
+    await expect.poll(() => callbacks.length).toBe(2)
+    const row = observed.find((element) => element.tagName === 'TR')!
+    expect(row).toBeTruthy()
+    const irrelevant = document.createElement('div')
+
+    callbacks[1]!([
+      { target: irrelevant, contentRect: { height: 20 } },
+      { target: row, contentRect: { height: 0 } },
+      { target: row, borderBoxSize: [{ blockSize: 42 }] },
+    ] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+    callbacks[1]!([
+      { target: row, contentRect: { height: 42 } },
+    ] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+  } finally {
+    Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: original })
+  }
+})
+
 test('suppresses duplicate observer load-more signals until the sheet changes and keeps scroll restoration working after replacement', async () => {
   await page.viewport(480, 800)
   const observer = mockIntersectionObserver()

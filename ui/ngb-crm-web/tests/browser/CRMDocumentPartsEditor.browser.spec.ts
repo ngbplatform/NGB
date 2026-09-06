@@ -240,6 +240,24 @@ describe('CRMDocumentPartsEditor coverage', () => {
     await state.onLookupQuery('lines', 0, field('memo', 'String'), row, 'find')
     await state.onLookupQuery('lines', 0, lookupField, row, ' find ')
     expect(formBehavior.searchLookup).toHaveBeenCalledWith(expect.objectContaining({ query: 'find' }))
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('lookup unavailable'))
+    await expect(state.onLookupQuery('lines', 0, lookupField, row, 'failure')).resolves.toBeUndefined()
+
+    let resolveStaleLookup!: (items: Array<{ id: string; label: string }>) => void
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise((resolve) => { resolveStaleLookup = resolve }))
+    const staleSuccess = state.onLookupQuery('lines', 0, lookupField, row, 'stale-success')
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce([])
+    await state.onLookupQuery('lines', 0, lookupField, row, 'current-success')
+    resolveStaleLookup([{ id: PRODUCT_1, label: 'Stale' }])
+    await staleSuccess
+
+    let rejectStaleLookup!: (cause: unknown) => void
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectStaleLookup = reject }))
+    const staleFailure = state.onLookupQuery('lines', 0, lookupField, row, 'stale-failure')
+    ;(formBehavior.searchLookup as ReturnType<typeof vi.fn>).mockResolvedValueOnce([])
+    await state.onLookupQuery('lines', 0, lookupField, row, 'current-after-failure')
+    rejectStaleLookup(new Error('ignored stale failure'))
+    await staleFailure
     state.onLookupSelect('lines', 0, 'product_id', { id: PRODUCT_2, label: 'Two' })
     state.onLookupSelect('lines', 0, 'product_id', null)
     await state.openLookup(field('memo', 'String'), row)
@@ -276,7 +294,10 @@ describe('CRMDocumentPartsEditor coverage', () => {
     expect(state.formatAmount(null)).toMatch(/0/)
     expect(state.formatAmount(12.34567)).toMatch(/12/)
 
+    const unmountController = new AbortController()
+    state.lookupControllers.set('lines:0:product_id', unmountController)
     wrapper.unmount()
+    expect(unmountController.signal.aborted).toBe(true)
 
     const readonly = mount(CRMDocumentPartsEditor, {
       props: { entityTypeCode: 'crm.quote', parts: [part()], modelValue: model(), readonly: true },
@@ -350,6 +371,9 @@ describe('CRMDocumentPartsEditor coverage', () => {
     expect(wrapper.findAll('tbody tr')).toHaveLength(1)
     expect(wrapper.text()).toContain('Rows 101–101 of 101')
     expect(wrapper.find('tbody tr').text()).toContain('101')
+    const previous = wrapper.findAll('button').find((button) => button.text() === 'Previous')
+    await previous!.trigger('click')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(100)
     wrapper.unmount()
   })
 })

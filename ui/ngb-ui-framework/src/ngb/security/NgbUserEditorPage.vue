@@ -39,6 +39,7 @@ type UserForm = {
 }
 
 let loadSequence = 0
+let effectiveSequence = 0
 let loadController: AbortController | null = null
 let effectiveController: AbortController | null = null
 
@@ -152,6 +153,7 @@ function applyUser(next: UserDetailsDto): void {
 async function loadEffectiveAccess(): Promise<void> {
   if (isNew.value || !user.value) return
 
+  const sequence = ++effectiveSequence
   effectiveController?.abort()
   const controller = new AbortController()
   effectiveController = controller
@@ -162,10 +164,10 @@ async function loadEffectiveAccess(): Promise<void> {
 
   try {
     const nextAccess = await getUserEffectiveAccess(targetUserId, { signal: controller.signal })
-    if (controller.signal.aborted || user.value?.userId !== targetUserId) return
+    if (sequence !== effectiveSequence || user.value?.userId !== targetUserId) return
     effectiveAccess.value = nextAccess
   } catch (cause) {
-    if (controller.signal.aborted) return
+    if (sequence !== effectiveSequence) return
     effectiveAccess.value = null
     effectiveError.value = toErrorMessage(cause, 'Failed to load effective access')
   } finally {
@@ -178,6 +180,7 @@ async function loadEffectiveAccess(): Promise<void> {
 
 async function load(): Promise<void> {
   const sequence = ++loadSequence
+  effectiveSequence += 1
   loadController?.abort()
   effectiveController?.abort()
   const controller = new AbortController()
@@ -191,7 +194,7 @@ async function load(): Promise<void> {
 
   try {
     await access.load()
-    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (sequence !== loadSequence) return
     if (creating && !access.canManageUsers) {
       accessDenied.value = true
       return
@@ -208,7 +211,7 @@ async function load(): Promise<void> {
           .then((value) => ({ value, error: null as unknown }))
           .catch((cause: unknown) => ({ value: null, error: cause })),
       ])
-      if (sequence !== loadSequence || controller.signal.aborted) return
+      if (sequence !== loadSequence) return
       roles.value = nextRoles
       applyUser(nextUser)
       effectiveAccess.value = effectiveResult.value
@@ -218,7 +221,7 @@ async function load(): Promise<void> {
       effectiveLoading.value = false
     }
   } catch (cause) {
-    if (controller.signal.aborted || sequence !== loadSequence) return
+    if (sequence !== loadSequence) return
     accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
       && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load user')
@@ -423,8 +426,11 @@ watch(
 
 onBeforeUnmount(() => {
   loadSequence += 1
+  effectiveSequence += 1
   loadController?.abort()
   effectiveController?.abort()
+  loadController = null
+  effectiveController = null
 })
 </script>
 

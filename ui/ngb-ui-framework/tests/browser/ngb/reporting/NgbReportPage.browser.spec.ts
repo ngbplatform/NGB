@@ -637,6 +637,9 @@ test('wires inline filters, runs the report, exports xlsx, and opens the selecte
   dateInput.dispatchEvent(new Event('change', { bubbles: true }))
   await flushUi()
 
+  const reportScroll = view.getByRole('button', { name: 'Report sheet scroll' })
+  ;(reportScroll.element() as HTMLButtonElement).click()
+  ;(reportScroll.element() as HTMLButtonElement).click()
   clickHeaderButtonByTitle('Run')
   await flushUi()
 
@@ -2129,6 +2132,45 @@ test('ignores a stale definition rejection but reports a current definition fail
   await flushUi()
   await expect.element(view.getByText('Current definition failed')).toBeVisible()
   expect(document.body.textContent ?? '').not.toContain('Stale definition failed')
+})
+
+test('isolates overlapping filter lookups and aborts them on report changes and unmount', async () => {
+  const lookupStore = createLookupStore()
+  configureNgbReporting({
+    useLookupStore: () => lookupStore,
+    resolveLookupTarget: reportPageMocks.resolveLookupTarget,
+  })
+  const { router, view } = await renderReportPage()
+
+  lookupStore.searchCatalog.mockRejectedValueOnce(new Error('active lookup failure'))
+  lookupInput().value = 'failure'
+  lookupInput().dispatchEvent(new Event('input', { bubbles: true }))
+  await flushUi()
+  await expect.element(view.getByText('lookup-items:none')).toBeVisible()
+
+  const staleSuccess = createDeferred<Array<{ id: string; label: string }>>()
+  lookupStore.searchCatalog.mockImplementationOnce(async () => await staleSuccess.promise)
+  lookupInput().value = 'stale success'
+  lookupInput().dispatchEvent(new Event('input', { bubbles: true }))
+  await vi.waitFor(() => expect(lookupStore.searchCatalog).toHaveBeenCalledTimes(2))
+  const routeSignal = (lookupStore.searchCatalog.mock.calls.at(-1) as unknown as [string, string, { signal: AbortSignal }])[2].signal
+  await router.push('/reports/pm.portfolio.home')
+  await flushUi()
+  expect(routeSignal.aborted).toBe(true)
+  staleSuccess.resolve([{ id: 'stale', label: 'Stale lookup result' }])
+  await flushUi()
+  expect(document.body.textContent ?? '').not.toContain('Stale lookup result')
+
+  const staleFailure = createDeferred<Array<{ id: string; label: string }>>()
+  lookupStore.searchCatalog.mockImplementationOnce(async () => await staleFailure.promise)
+  lookupInput().value = 'stale failure'
+  lookupInput().dispatchEvent(new Event('input', { bubbles: true }))
+  await vi.waitFor(() => expect(lookupStore.searchCatalog).toHaveBeenCalledTimes(3))
+  const unmountSignal = (lookupStore.searchCatalog.mock.calls.at(-1) as unknown as [string, string, { signal: AbortSignal }])[2].signal
+  view.unmount()
+  expect(unmountSignal.aborted).toBe(true)
+  staleFailure.reject(new Error('late lookup failure'))
+  await flushUi()
 })
 
 test('handles definitions without parameters, filters, variants, or presentation overrides', async () => {

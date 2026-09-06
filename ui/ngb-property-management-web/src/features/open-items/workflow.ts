@@ -232,10 +232,10 @@ export function useOpenItemsWorkflow<
 
     try {
       const result = await args.suggestFactory({ signal: controller.signal })
-      if (sequence !== suggestSequence || controller.signal.aborted) return
+      if (sequence !== suggestSequence) return
       suggestData.value = result
     } catch (cause) {
-      if (sequence !== suggestSequence || controller.signal.aborted) return
+      if (sequence !== suggestSequence) return
       suggestData.value = null
       suggestError.value = cause instanceof Error ? cause.message : String(cause)
     } finally {

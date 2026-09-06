@@ -369,7 +369,7 @@ function flushReportScrollPosition() {
 }
 
 function clearPendingReportScrollPosition() {
-  if (scrollPersistenceTimer != null) clearTimeout(scrollPersistenceTimer)
+  clearTimeout(scrollPersistenceTimer!)
   scrollPersistenceTimer = null
   pendingScrollPersistence = null
 }
@@ -449,13 +449,17 @@ async function onFilterQuery(payload: { fieldCode: string; query: string }) {
   filterLookupControllers.set(payload.fieldCode, controller)
   try {
     const items = await searchReportLookupItems(lookupStore, field.lookup, payload.query, { signal: controller.signal })
-    if (filterLookupControllers.get(payload.fieldCode) !== controller || controller.signal.aborted) return
+    if (filterLookupControllers.get(payload.fieldCode) !== controller) return
     lookupItemsByFilterCode.value = {
       ...lookupItemsByFilterCode.value,
       [payload.fieldCode]: items,
     }
-  } catch (err) {
-    if (!controller.signal.aborted) throw err
+  } catch {
+    if (filterLookupControllers.get(payload.fieldCode) !== controller) return
+    lookupItemsByFilterCode.value = {
+      ...lookupItemsByFilterCode.value,
+      [payload.fieldCode]: [],
+    }
   } finally {
     if (filterLookupControllers.get(payload.fieldCode) === controller)
       filterLookupControllers.delete(payload.fieldCode)
@@ -554,12 +558,11 @@ async function runReport() {
     saveReportPageScrollTop(reportPageStateKey.value, 0)
   } catch (err) {
     if (seq !== runSeq) return
-    if (controller.signal.aborted) return
     error.value = toErrorMessage(err, 'Failed to execute the report.')
   } finally {
     if (seq === runSeq) {
       running.value = false
-      if (executionController === controller) executionController = null
+      executionController = null
     }
   }
 }
@@ -589,12 +592,11 @@ async function appendReportPage() {
     persistReportExecutionSnapshot()
   } catch (err) {
     if (seq !== runSeq) return
-    if (controller.signal.aborted) return
     error.value = toErrorMessage(err, 'Failed to load more rows.')
   } finally {
     if (seq === runSeq) {
       loadingMore.value = false
-      if (executionController === controller) executionController = null
+      executionController = null
     }
   }
 }
@@ -977,6 +979,7 @@ onBeforeUnmount(() => {
   runSeq += 1
   executionController?.abort()
   filterLookupControllers.forEach((controller) => controller.abort())
+  filterLookupControllers.clear()
 })
 </script>
 

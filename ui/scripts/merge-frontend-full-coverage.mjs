@@ -40,26 +40,36 @@ export function mergeFrontendCoverage(inputReports, inputNames = []) {
       if (!variantsByFile.has(file)) variantsByFile.set(file, [])
       variantsByFile.get(file).push({
         coverage,
+        inputName: inputNames[reportIndex],
         belongsToOwningPackage: belongsToOwningPackage(file, inputNames[reportIndex]),
       })
     }
   }
 
   const coverageMap = libCoverage.createCoverageMap({})
-  for (const entries of variantsByFile.values()) {
+  for (const [file, entries] of variantsByFile) {
     const owningEntries = entries.filter((entry) => entry.belongsToOwningPackage)
-    const variants = (owningEntries.length > 0 ? owningEntries : entries).map((entry) => entry.coverage)
-    const coveredVariants = variants.filter((variant) => coveredPointCount(variant) > 0)
+    const variants = owningEntries.length > 0 ? owningEntries : entries
+    const coveredVariants = variants.filter((entry) => coveredPointCount(entry.coverage) > 0)
     const candidates = coveredVariants.length > 0 ? coveredVariants : variants
     const ordered = [...candidates].sort((left, right) =>
-      coveredPointCount(right) - coveredPointCount(left)
-      || coveragePointCount(right) - coveragePointCount(left))
-    const canonical = structuredClone(ordered[0])
+      canonicalVariantPreference(file, right.inputName) - canonicalVariantPreference(file, left.inputName)
+      || coveredPointCount(right.coverage) - coveredPointCount(left.coverage)
+      || coveragePointCount(right.coverage) - coveragePointCount(left.coverage))
+    const canonical = structuredClone(ordered[0].coverage)
     normalizeCoverageHits(canonical)
-    for (const variant of ordered.slice(1)) mergeFileCoverageBySourceLocation(canonical, variant)
+    for (const variant of ordered.slice(1)) mergeFileCoverageBySourceLocation(canonical, variant.coverage, {
+      ignoreAbsentUncoveredPoints: true,
+    })
     coverageMap.addFileCoverage(canonical)
   }
   return coverageMap
+}
+
+function canonicalVariantPreference(file, inputName) {
+  const projectName = String(inputName ?? '').replaceAll('\\', '/').split('/').at(-2) ?? ''
+  if (String(file).endsWith('.vue')) return projectName.endsWith('-browser') ? 1 : 0
+  return projectName.endsWith('-unit') ? 1 : 0
 }
 
 function belongsToOwningPackage(file, inputName) {
@@ -89,13 +99,13 @@ function coveredPointCount(coverage) {
     + Object.values(coverage.b ?? {}).flat().filter((hits) => hits > 0).length
 }
 
-function mergeFileCoverageBySourceLocation(target, source) {
-  mergeScalarMetric(target.statementMap, target.s, source.statementMap, source.s, statementBaseKey)
-  mergeScalarMetric(target.fnMap, target.f, source.fnMap, source.f, functionBaseKey)
-  mergeBranchMetric(target.branchMap, target.b, source.branchMap, source.b)
+function mergeFileCoverageBySourceLocation(target, source, options = {}) {
+  mergeScalarMetric(target.statementMap, target.s, source.statementMap, source.s, statementBaseKey, options)
+  mergeScalarMetric(target.fnMap, target.f, source.fnMap, source.f, functionBaseKey, options)
+  mergeBranchMetric(target.branchMap, target.b, source.branchMap, source.b, options)
 }
 
-function mergeScalarMetric(targetMap, targetHits, sourceMap, sourceHits, baseKey) {
+function mergeScalarMetric(targetMap, targetHits, sourceMap, sourceHits, baseKey, options) {
   const targetIndex = semanticIndex(targetMap, baseKey)
   const sourceIndex = semanticIndex(sourceMap, baseKey)
   for (const [semanticKey, sourceId] of sourceIndex) {
@@ -103,6 +113,7 @@ function mergeScalarMetric(targetMap, targetHits, sourceMap, sourceHits, baseKey
     if (targetId !== undefined) {
       targetHits[targetId] = normalizedHitCount(targetHits[targetId]) + normalizedHitCount(sourceHits[sourceId])
     } else {
+      if (options.ignoreAbsentUncoveredPoints && normalizedHitCount(sourceHits[sourceId]) === 0) continue
       const nextId = nextMetricId(targetMap)
       targetMap[nextId] = structuredClone(sourceMap[sourceId])
       targetHits[nextId] = normalizedHitCount(sourceHits[sourceId])
@@ -110,7 +121,7 @@ function mergeScalarMetric(targetMap, targetHits, sourceMap, sourceHits, baseKey
   }
 }
 
-function mergeBranchMetric(targetMap, targetHits, sourceMap, sourceHits) {
+function mergeBranchMetric(targetMap, targetHits, sourceMap, sourceHits, options) {
   const targetIndex = semanticIndex(targetMap, branchBaseKey)
   const sourceIndex = semanticIndex(sourceMap, branchBaseKey)
   for (const [semanticKey, sourceId] of sourceIndex) {
@@ -128,6 +139,8 @@ function mergeBranchMetric(targetMap, targetHits, sourceMap, sourceHits) {
         }
       }
     } else {
+      if (options.ignoreAbsentUncoveredPoints
+        && (sourceHits[sourceId] ?? []).every((hits) => normalizedHitCount(hits) === 0)) continue
       const nextId = nextMetricId(targetMap)
       targetMap[nextId] = structuredClone(sourceMap[sourceId])
       targetHits[nextId] = (sourceHits[sourceId] ?? []).map(normalizedHitCount)

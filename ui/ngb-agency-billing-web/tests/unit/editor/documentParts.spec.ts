@@ -199,6 +199,15 @@ describe('agency billing document parts', () => {
       model: mixedCosts,
     })
     expect(mixedCosts.cost_amount).toBe(2)
+
+    const malformedPart = { amount: 0 }
+    syncAgencyBillingDocumentComputedFields({
+      documentType: 'ab.sales_invoice',
+      partsMeta: [timesheetLinesPart],
+      partsModel: { lines: undefined as never },
+      model: malformedPart,
+    })
+    expect(malformedPart.amount).toBe(0)
   })
 
   it('passes through payloads without metadata and normalizes missing rows', () => {
@@ -206,6 +215,9 @@ describe('agency billing document parts', () => {
     expect(buildAgencyBillingDocumentPartsPayload('ab.sales_invoice', null, existing)).toBe(existing)
     expect(buildAgencyBillingDocumentPartsPayload('ab.sales_invoice', [], null)).toBeNull()
     expect(buildAgencyBillingDocumentPartsPayload('ab.sales_invoice', [timesheetLinesPart], null))
+      .toEqual({ lines: { rows: [] } })
+    expect(calculateAgencyBillingDocumentPartAmount(timesheetLinesPart, null)).toBe(0)
+    expect(buildAgencyBillingDocumentPartsPayload('ab.sales_invoice', [timesheetLinesPart], { lines: null as never }))
       .toEqual({ lines: { rows: [] } })
   })
 

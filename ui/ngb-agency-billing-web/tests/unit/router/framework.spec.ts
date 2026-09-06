@@ -15,14 +15,9 @@ vi.mock('@ngbplatform/ui', () => ({
   lookupHintFromSource: (lookup?: { kind?: string; catalogType?: string; documentTypes?: string[] } | null) => lookup ?? null,
 }))
 
-vi.mock('../../../src/editor/AgencyBillingEntityEditor.vue', async () => {
-  const { defineComponent } = await import('vue')
-  return {
-    default: defineComponent({
-      template: '<div data-testid="agency-billing-entity-editor-stub"></div>',
-    }),
-  }
-})
+vi.mock('vue', () => ({ defineAsyncComponent: (loader: unknown) => loader }))
+
+vi.mock('../../../src/editor/AgencyBillingEntityEditor.vue', () => ({ default: { name: 'AgencyBillingEntityEditorStub' } }))
 
 import { createAgencyBillingRouteFrameworkConfig } from '../../../src/router/framework'
 
@@ -44,6 +39,8 @@ describe('agency billing route framework', () => {
       search: 'northwind',
       trashMode: 'deleted',
     })
+    const signal = new AbortController().signal
+    await props.loadPage({ catalogType: 'ab.client', offset: 0, limit: 1, search: '', trashMode: 'active', signal })
 
     expect(mocks.getCatalogPage).toHaveBeenCalledWith('ab.client', {
       offset: 20,
@@ -53,6 +50,7 @@ describe('agency billing route framework', () => {
     })
     expect(props.resolveTitle('ab.client', 'Client')).toBe('Clients')
     expect(props.resolveStorageKey('ab.client')).toBe('ngb:agency-billing:catalog:ab.client')
+    expect(mocks.getCatalogPage).toHaveBeenLastCalledWith('ab.client', expect.any(Object), { signal })
   })
 
   it('loads document pages with period and ad-hoc filters merged together', async () => {
@@ -82,6 +80,11 @@ describe('agency billing route framework', () => {
       periodTo: null,
       listFilters: {},
     })
+    const signal = new AbortController().signal
+    await props.loadPage({
+      documentType: 'ab.sales_invoice', offset: 0, limit: 1, search: '', trashMode: 'active',
+      periodFrom: null, periodTo: null, listFilters: {}, signal,
+    })
 
     expect(mocks.getDocumentPage).toHaveBeenCalledWith('ab.sales_invoice', {
       offset: 0,
@@ -94,12 +97,13 @@ describe('agency billing route framework', () => {
         client_id: '11111111-1111-4111-8111-111111111111',
       },
     })
-    expect(mocks.getDocumentPage).toHaveBeenLastCalledWith('ab.sales_invoice', {
+    expect(mocks.getDocumentPage).toHaveBeenNthCalledWith(2, 'ab.sales_invoice', {
       offset: 50,
       limit: 50,
       search: '',
       filters: { deleted: 'all' },
     })
+    expect(mocks.getDocumentPage).toHaveBeenLastCalledWith('ab.sales_invoice', expect.any(Object), { signal })
     expect(props.resolveLookupHint({
       entityTypeCode: 'ab.sales_invoice',
       fieldKey: 'source_timesheet_id',
@@ -109,7 +113,7 @@ describe('agency billing route framework', () => {
     expect(props.resolveStorageKey('ab.sales_invoice')).toBe('ngb:agency-billing:document:ab.sales_invoice')
   })
 
-  it('exposes the metadata-driven create and edit routes with stable paths', () => {
+  it('exposes the metadata-driven create and edit routes with stable paths', async () => {
     const config = createAgencyBillingRouteFrameworkConfig()
 
     expect(config.catalogRoutes.map((route) => route.path)).toEqual([
@@ -122,5 +126,6 @@ describe('agency billing route framework', () => {
       '/documents/:documentType/new',
       '/documents/:documentType/:id',
     ])
+    await expect((config.catalogRoutes[0]!.props as { editorComponent: () => Promise<unknown> }).editorComponent()).resolves.toEqual({ default: { name: 'AgencyBillingEntityEditorStub' } })
   })
 })

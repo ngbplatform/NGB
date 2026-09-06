@@ -1,4 +1,4 @@
-import { nextTick, reactive, ref } from 'vue'
+import { effectScope, nextTick, reactive, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -217,5 +217,55 @@ describe('query state helpers', () => {
     resolveSearch([{ id: EXISTING_ID, label: 'Stale result' }])
     await staleSearch
     expect(selection.items.value).toEqual([{ id: SELECTED_ID, label: 'Fresh result' }])
+  })
+
+  it('ignores stale rejected work and rethrows only the current search failure', async () => {
+    const route = createRoute({ propertyId: EXISTING_ID })
+    let rejectHydration!: (cause: Error) => void
+    let rejectSearch!: (cause: Error) => void
+    const selection = useRouteLookupSelection({
+      route,
+      router: createRouter(),
+      queryKey: 'propertyId',
+      lookupById: vi.fn()
+        .mockImplementationOnce(() => new Promise<string>((_resolve, reject) => { rejectHydration = reject }))
+        .mockResolvedValueOnce('Fresh'),
+      search: vi.fn()
+        .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSearch = reject }))
+        .mockResolvedValueOnce([])
+        .mockRejectedValueOnce(new Error('current failure')),
+      openTarget: vi.fn(),
+    })
+
+    const staleHydration = selection.hydrateSelected()
+    route.query.propertyId = SELECTED_ID
+    await selection.hydrateSelected()
+    rejectHydration(new Error('stale hydration'))
+    await expect(staleHydration).resolves.toBeUndefined()
+
+    const staleSearch = selection.onQuery('stale')
+    await selection.onQuery('fresh')
+    rejectSearch(new Error('stale search'))
+    await expect(staleSearch).resolves.toBeUndefined()
+    await expect(selection.onQuery('current')).rejects.toThrow('current failure')
+  })
+
+  it('aborts pending lookup work when its Vue effect scope is disposed', async () => {
+    const route = createRoute({ propertyId: EXISTING_ID })
+    const scope = effectScope()
+    let selection!: ReturnType<typeof useRouteLookupSelection>
+    scope.run(() => {
+      selection = useRouteLookupSelection({
+        route,
+        router: createRouter(),
+        queryKey: 'propertyId',
+        lookupById: vi.fn(() => new Promise(() => undefined)),
+        search: vi.fn(() => new Promise(() => undefined)),
+        openTarget: vi.fn(),
+      })
+    })
+    void selection.hydrateSelected()
+    void selection.onQuery('pending')
+    scope.stop()
   })
 })

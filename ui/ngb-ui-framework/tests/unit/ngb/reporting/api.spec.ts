@@ -71,11 +71,14 @@ describe('reporting api', () => {
     await getReportDefinitions()
     await getReportDefinition('pm/report')
     await executeReport('pm/report', executeRequest as never)
+    const options = { signal: new AbortController().signal }
+    await executeReport('pm/report', executeRequest as never, options)
     const exported = await exportReportXlsx('pm/report', exportRequest as never)
 
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(1, '/api/report-definitions')
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(2, '/api/report-definitions/pm%2Freport')
     expect(httpMocks.httpPost).toHaveBeenCalledWith('/api/reports/pm%2Freport/execute', executeRequest)
+    expect(httpMocks.httpPost).toHaveBeenCalledWith('/api/reports/pm%2Freport/execute', executeRequest, options)
     expect(httpMocks.httpPostFile).toHaveBeenCalledWith('/api/reports/pm%2Freport/export/xlsx', exportRequest)
     expect(exported).toEqual({
       blob,

@@ -32,5 +32,13 @@ describe('audit api', () => {
         limit: 25,
       },
     )
+
+    const signal = new AbortController().signal
+    await getEntityAuditLog(2, 'doc/1', { signal })
+    expect(httpMocks.httpGet).toHaveBeenLastCalledWith(
+      '/api/audit/entities/2/doc%2F1',
+      { afterOccurredAtUtc: undefined, afterAuditEventId: undefined, limit: undefined },
+      { signal },
+    )
   })
 })

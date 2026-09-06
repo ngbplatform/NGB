@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const hooks = vi.hoisted(() => ({
   mounted: [] as Array<() => unknown>,
   unmounted: [] as Array<() => unknown>,
-  watches: [] as Array<{ source: () => readonly unknown[]; callback: (current: readonly unknown[], previous?: readonly unknown[]) => Promise<void>; options: unknown }>,
+  watches: [] as Array<{ source: () => readonly unknown[]; callback: (current: readonly unknown[], previous?: readonly unknown[], onCleanup?: (callback: () => void) => void) => Promise<void>; options: unknown }>,
   migration: null as null | { sources: () => readonly unknown[]; migrate: (values: readonly unknown[]) => unknown },
   read: vi.fn(),
   remove: vi.fn(),
@@ -196,5 +196,54 @@ describe('property-management navigation hooks', () => {
     } as never)
     await hooks.watches[1]!.callback(['same'], ['same'])
     expect(sync).toHaveBeenLastCalledWith(expect.objectContaining({ contextChanged: false, autoOpenApply: false }))
+  })
+
+  it('cancels route synchronization after each asynchronous boundary', async () => {
+    let releaseHydrate!: () => void
+    let releaseLoad!: () => void
+    let releaseSync!: () => void
+    const hydrate = vi.fn(() => new Promise<void>((resolve) => { releaseHydrate = resolve }))
+    const load = vi.fn(() => new Promise<void>((resolve) => { releaseLoad = resolve }))
+    const sync = vi.fn(() => new Promise<void>((resolve) => { releaseSync = resolve }))
+    const afterSync = vi.fn()
+
+    useOpenItemsRouteContext({
+      source: () => ['lease'] as const,
+      contextKeyCount: 1,
+      hydrateContext: hydrate,
+      load,
+      preferredTab: { value: null },
+      currentError: { value: null },
+      syncAfterContextLoad: sync,
+      autoOpenApply: () => false,
+      clearAutoOpenApplyInRoute: vi.fn(),
+      afterSync,
+    } as never)
+    const watcher = hooks.watches[0]!
+
+    let cleanup!: () => void
+    const first = watcher.callback(['lease'], undefined, (callback) => { cleanup = callback })
+    cleanup()
+    releaseHydrate()
+    await first
+    expect(load).not.toHaveBeenCalled()
+
+    const second = watcher.callback(['lease'], undefined, (callback) => { cleanup = callback })
+    releaseHydrate()
+    await Promise.resolve()
+    cleanup()
+    releaseLoad()
+    await second
+    expect(sync).not.toHaveBeenCalled()
+
+    const third = watcher.callback(['lease'], undefined, (callback) => { cleanup = callback })
+    releaseHydrate()
+    await Promise.resolve()
+    releaseLoad()
+    await Promise.resolve()
+    cleanup()
+    releaseSync()
+    await third
+    expect(afterSync).not.toHaveBeenCalled()
   })
 })

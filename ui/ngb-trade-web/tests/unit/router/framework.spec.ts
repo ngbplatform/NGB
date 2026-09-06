@@ -15,15 +15,9 @@ vi.mock('@ngbplatform/ui', () => ({
   lookupHintFromSource: (lookup?: { kind?: string; catalogType?: string; documentTypes?: string[] } | null) => lookup ?? null,
 }))
 
-vi.mock('../../../src/editor/TradeEntityEditor.vue', async () => {
-  const { defineComponent } = await import('vue')
-  return {
-    default: defineComponent({
-      name: 'TradeEntityEditorStub',
-      template: '<div />',
-    }),
-  }
-})
+vi.mock('vue', () => ({ defineAsyncComponent: (loader: unknown) => loader }))
+
+vi.mock('../../../src/editor/TradeEntityEditor.vue', () => ({ default: { name: 'TradeEntityEditorStub' } }))
 
 import { createTradeRouteFrameworkConfig } from '../../../src/router/framework'
 
@@ -45,6 +39,8 @@ describe('trade route framework', () => {
       search: 'bayview',
       trashMode: 'deleted',
     })
+    const signal = new AbortController().signal
+    await props.loadPage({ catalogType: 'trd.party', offset: 0, limit: 1, search: '', trashMode: 'active', signal })
 
     expect(mocks.getCatalogPage).toHaveBeenCalledWith('trd.party', {
       offset: 20,
@@ -54,6 +50,7 @@ describe('trade route framework', () => {
     })
     expect(props.resolveTitle('trd.party', 'Party')).toBe('Parties')
     expect(props.resolveStorageKey('trd.party')).toBe('ngb:trade:catalog:trd.party')
+    expect(mocks.getCatalogPage).toHaveBeenLastCalledWith('trd.party', expect.any(Object), { signal })
   })
 
   it('loads document pages with period and ad-hoc filters merged together', async () => {
@@ -83,6 +80,8 @@ describe('trade route framework', () => {
       periodTo: null,
       listFilters: {},
     })
+    const signal = new AbortController().signal
+    await props.loadPage({ documentType: 'trd.sales_invoice', offset: 0, limit: 1, search: '', trashMode: 'active', periodFrom: null, periodTo: null, listFilters: {}, signal })
 
     expect(mocks.getDocumentPage).toHaveBeenCalledWith('trd.sales_invoice', {
       offset: 0,
@@ -95,12 +94,13 @@ describe('trade route framework', () => {
         customer_id: '11111111-1111-4111-8111-111111111111',
       },
     })
-    expect(mocks.getDocumentPage).toHaveBeenLastCalledWith('trd.sales_invoice', {
+    expect(mocks.getDocumentPage).toHaveBeenNthCalledWith(2, 'trd.sales_invoice', {
       offset: 50,
       limit: 50,
       search: '',
       filters: { deleted: 'all' },
     })
+    expect(mocks.getDocumentPage).toHaveBeenLastCalledWith('trd.sales_invoice', expect.any(Object), { signal })
     expect(props.resolveLookupHint({
       entityTypeCode: 'trd.accounting_policy',
       fieldKey: 'cash_account_id',
@@ -110,7 +110,7 @@ describe('trade route framework', () => {
     expect(props.resolveStorageKey('trd.sales_invoice')).toBe('ngb:trade:document:trd.sales_invoice')
   })
 
-  it('exposes the trade create and edit routes with stable paths', () => {
+  it('exposes the trade create and edit routes with stable paths', async () => {
     const config = createTradeRouteFrameworkConfig()
 
     expect(config.catalogRoutes.map((route) => route.path)).toEqual([
@@ -123,5 +123,6 @@ describe('trade route framework', () => {
       '/documents/:documentType/new',
       '/documents/:documentType/:id',
     ])
+    await expect((config.catalogRoutes[0]!.props as { editorComponent: () => Promise<unknown> }).editorComponent()).resolves.toEqual({ default: { name: 'TradeEntityEditorStub' } })
   })
 })

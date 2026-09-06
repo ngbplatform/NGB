@@ -54,6 +54,10 @@ describe('property-management API clients', () => {
     await expect(applyPayablesBatch(request)).resolves.toEqual({ kind: 'post' })
     await unapplyPayablesApply('apply/1')
     await expect(getPayablesReconciliation(reconciliation)).resolves.toEqual({ kind: 'get' })
+    const options = { signal: new AbortController().signal }
+    await getPayablesOpenItemsDetails(details, options)
+    await suggestPayablesFifoApply(request, options)
+    await getPayablesReconciliation(reconciliation, options)
 
     expect(http.get).toHaveBeenNthCalledWith(1, '/api/payables/open-items/details/page', {
       ...details,
@@ -72,6 +76,9 @@ describe('property-management API clients', () => {
       limit: undefined,
       cursor: undefined,
     })
+    expect(http.get).toHaveBeenNthCalledWith(3, '/api/payables/open-items/details/page', expect.any(Object), options)
+    expect(http.post).toHaveBeenNthCalledWith(4, '/api/payables/apply/fifo/suggest', request, options)
+    expect(http.get).toHaveBeenNthCalledWith(4, '/api/payables/reconciliation', expect.any(Object), options)
   })
 
   it('forwards receivables queries and commands and propagates transport failures', async () => {
@@ -97,6 +104,10 @@ describe('property-management API clients', () => {
     await expect(applyReceivablesBatch(request)).resolves.toEqual({ kind: 'post' })
     await unapplyReceivablesApply('apply/1')
     await expect(getReceivablesReconciliation(reconciliation)).resolves.toEqual({ kind: 'get' })
+    const options = { signal: new AbortController().signal }
+    await getReceivablesOpenItemsDetails(details, options)
+    await suggestLeaseFifoApply(request, options)
+    await getReceivablesReconciliation(reconciliation, options)
 
     expect(http.get).toHaveBeenNthCalledWith(1, '/api/receivables/open-items/details/page', {
       ...details,
@@ -115,6 +126,9 @@ describe('property-management API clients', () => {
       limit: undefined,
       cursor: undefined,
     })
+    expect(http.get).toHaveBeenNthCalledWith(3, '/api/receivables/open-items/details/page', expect.any(Object), options)
+    expect(http.post).toHaveBeenNthCalledWith(4, '/api/receivables/apply/fifo/suggest/lease', request, options)
+    expect(http.get).toHaveBeenNthCalledWith(4, '/api/receivables/reconciliation', expect.any(Object), options)
 
     const failure = new Error('transport failed')
     http.get.mockRejectedValueOnce(failure)

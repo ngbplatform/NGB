@@ -137,4 +137,31 @@ describe('metadata store', () => {
     expect(loadCatalogTypeMetadata).toHaveBeenCalledTimes(2)
     expect(Object.keys(store.documents)).toEqual([])
   })
+
+  it('does not repopulate catalog or document caches from requests cleared while in flight', async () => {
+    vi.resetModules()
+    const config = await import('../../../../src/ngb/metadata/config')
+    const { useMetadataStore } = await import('../../../../src/ngb/metadata/store')
+    let resolveCatalog!: (value: Record<string, unknown>) => void
+    let resolveDocument!: (value: Record<string, unknown>) => void
+    config.configureNgbMetadata({
+      loadCatalogTypeMetadata: vi.fn(() => new Promise((resolve) => { resolveCatalog = resolve })),
+      loadDocumentTypeMetadata: vi.fn(() => new Promise((resolve) => { resolveDocument = resolve })),
+    })
+    setActivePinia(createPinia())
+    const store = useMetadataStore()
+    const catalogRequest = store.ensureCatalogType('pm.property')
+    const documentRequest = store.ensureDocumentType('pm.invoice')
+    const sharedDocumentRequest = store.ensureDocumentType('pm.invoice')
+
+    store.clear()
+    resolveCatalog({ catalogType: 'pm.property', displayName: 'Stale', kind: 1, list: null, form: null, parts: null })
+    resolveDocument({ documentType: 'pm.invoice', displayName: 'Stale', kind: 2, list: null, form: null, parts: null })
+
+    await expect(catalogRequest).resolves.toMatchObject({ displayName: 'Stale' })
+    await expect(documentRequest).resolves.toMatchObject({ displayName: 'Stale' })
+    await expect(sharedDocumentRequest).resolves.toMatchObject({ displayName: 'Stale' })
+    expect(store.catalogs).toEqual({})
+    expect(store.documents).toEqual({})
+  })
 })

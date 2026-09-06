@@ -196,7 +196,7 @@ export async function loadHomeDashboard(asOf: string, signal?: AbortSignal): Pro
           { label: 'Billed', color: 'var(--ngb-blue)', values: collections.length > 0 ? collections.map((item) => item.billed) : zeroes() },
           { label: 'Collected', color: 'var(--ngb-accent-1)', values: collections.length > 0 ? collections.map((item) => item.collected) : zeroes() },
         ],
-        route: buildPmReconciliationPath('receivables', { fromMonth: fallbackWindow.monthKeys[0] ?? monthKey, toMonth: monthKey, mode: 'Movement' }),
+        route: buildPmReconciliationPath('receivables', { fromMonth: fallbackWindow.monthKeys[0]!, toMonth: monthKey, mode: 'Movement' }),
       },
       occupancy: {
         title: 'Occupancy trend', subtitle: 'Occupied and vacant units over the last 12 months', labels: occupancyLabels,

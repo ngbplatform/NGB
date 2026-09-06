@@ -88,6 +88,15 @@ describe('reporting page session helpers', () => {
     expect(storageState.session.has('ngb.report.page.execution:report:large')).toBe(false)
   })
 
+  it('accepts a malformed null row collection as an empty bounded snapshot', () => {
+    const response = buildResponse()
+    response.sheet.rows = null as never
+
+    saveReportPageExecutionSnapshot('report:null-rows', response, [])
+
+    expect(loadReportPageExecutionSnapshot('report:null-rows')?.response.sheet.rows).toBeNull()
+  })
+
   it('bounds wide snapshots by bytes and evicts the oldest execution snapshots', () => {
     const wide = buildResponse()
     wide.sheet.rows[0]!.cells[0]!.display = 'x'.repeat(300_000)

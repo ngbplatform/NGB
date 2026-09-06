@@ -291,10 +291,10 @@ async function loadCurrentPage(): Promise<void> {
       allocationOffset: pageOffsets.value.applied,
       limit: OPEN_ITEMS_PAGE_SIZE,
     }, { signal: controller.signal })
-    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (sequence !== loadSequence) return
     data.value = nextData
   } catch (cause) {
-    if (sequence !== loadSequence || controller.signal.aborted) return
+    if (sequence !== loadSequence) return
     error.value = cause instanceof Error ? cause.message : String(cause)
     data.value = null
   } finally {
