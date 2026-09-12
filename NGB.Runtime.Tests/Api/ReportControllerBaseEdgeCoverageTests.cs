@@ -249,7 +249,7 @@ public sealed class ReportControllerBaseEdgeCoverageTests
         Func<Task>[] actions = [
             () => sut.StartRun("accounting.trial_balance", new(), default),
             () => sut.GetRunStatus("accounting.trial_balance", id, default),
-            () => sut.ReadRun("accounting.trial_balance", id, default),
+            () => sut.ReadRun("accounting.trial_balance", id, ct: default),
             () => sut.CancelRun("accounting.trial_balance", id, default),
             () => sut.ExportRun("accounting.trial_balance", id, default)
         ];

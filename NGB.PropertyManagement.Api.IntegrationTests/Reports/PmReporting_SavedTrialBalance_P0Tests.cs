@@ -93,9 +93,14 @@ public sealed class PmReporting_SavedTrialBalance_P0Tests(PmIntegrationFixture f
         }
         run.Status.Should().Be("Ready");
         var page = await client.GetFromJsonAsync<ReportExecutionResponseDto>($"{root}/runs/{run.Id}?offset=0&limit=100", Json);
-        page!.HasMore.Should().BeFalse();
+        page!.Offset.Should().Be(0);
+        page.Limit.Should().Be(100);
+        page.HasMore.Should().BeFalse();
         page.Total.Should().Be(0);
         page.Sheet.Rows.Should().BeEmpty();
+        var defaultPage = await client.GetFromJsonAsync<ReportExecutionResponseDto>($"{root}/runs/{run.Id}", Json);
+        defaultPage!.Offset.Should().Be(0);
+        defaultPage.Limit.Should().Be(200);
         using var exported = await client.PostAsJsonAsync($"{root}/runs/{run.Id}/export/xlsx", new { });
         exported.StatusCode.Should().Be(HttpStatusCode.OK);
         using var zip = new ZipArchive(new MemoryStream(await exported.Content.ReadAsByteArrayAsync()), ZipArchiveMode.Read);

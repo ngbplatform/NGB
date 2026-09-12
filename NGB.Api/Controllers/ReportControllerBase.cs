@@ -5,6 +5,7 @@ using NGB.Core.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.Core.Security;
 using NGB.Runtime.Security;
+using NGB.Tools.Exceptions;
 
 namespace NGB.Api.Controllers;
 
@@ -14,8 +15,66 @@ public abstract class ReportControllerBase(
     IReportVariantService variants,
     IReportExportService exports,
     INgbAccessChecker access,
-    NgbSecurityCache cache) : ControllerBase
+    NgbSecurityCache cache,
+    IReportRunService runs,
+    IReportVariantAccessContext variantAccess)
+    : ControllerBase
 {
+    private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    private string RunOwner => variantAccess.AuthSubject
+        ?? throw new NgbArgumentRequiredException("authenticatedUser");
+
+    [HttpPost("~/api/reports/{reportCode}/runs")]
+    public async Task<ActionResult<ReportRunDto>> StartRun(
+        string reportCode,
+        [FromBody] ReportExecutionRequestDto request,
+        CancellationToken ct)
+    {
+        RequireExecuteReport(await access.GetSnapshotAsync(ct), reportCode);
+        var run = await runs.StartAsync(reportCode, RunOwner, request, ct);
+        Response.Headers.RetryAfter = "1";
+        return Accepted($"/api/reports/{Uri.EscapeDataString(reportCode)}/runs/{run.Id}/status", run);
+    }
+
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    [HttpGet("~/api/reports/{reportCode}/runs/{id:guid}/status")]
+    public async Task<ReportRunDto> GetRunStatus(string reportCode, Guid id, CancellationToken ct)
+    {
+        RequireExecuteReport(await access.GetSnapshotAsync(ct), reportCode);
+        return await runs.GetAsync(reportCode, RunOwner, id, ct) ?? throw new ReportRunNotFoundException();
+    }
+
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    [HttpGet("~/api/reports/{reportCode}/runs/{id:guid}")]
+    public async Task<ReportExecutionResponseDto> ReadRun(
+        string reportCode,
+        Guid id,
+        [FromQuery] int offset = 0,
+        [FromQuery] int limit = 200,
+        CancellationToken ct = default)
+    {
+        var permissions = await access.GetSnapshotAsync(ct);
+        RequireExecuteReport(permissions, reportCode);
+        var result = await runs.ReadAsync(reportCode, RunOwner, id, offset, limit, ct);
+        return result with { Sheet = ScrubForbiddenCellActions(result.Sheet, permissions) };
+    }
+
+    [HttpDelete("~/api/reports/{reportCode}/runs/{id:guid}")]
+    public async Task<IActionResult> CancelRun(string reportCode, Guid id, CancellationToken ct)
+    {
+        RequireExecuteReport(await access.GetSnapshotAsync(ct), reportCode);
+        await runs.CancelAsync(reportCode, RunOwner, id, ct);
+        return NoContent();
+    }
+
+    [HttpPost("~/api/reports/{reportCode}/runs/{id:guid}/export/xlsx")]
+    public async Task<IActionResult> ExportRun(string reportCode, Guid id, CancellationToken ct)
+    {
+        Require(await access.GetSnapshotAsync(ct), NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export);
+        return File(await runs.ExportAsync(reportCode, RunOwner, id, ct), XlsxContentType, BuildExportFileName(reportCode, null));
+    }
+
     [HttpGet("~/api/report-definitions")]
     public async Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
     {
@@ -60,6 +119,23 @@ public abstract class ReportControllerBase(
     {
         var snapshot = await access.GetSnapshotAsync(ct);
         Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export);
+
+        if (runs.Supports(reportCode))
+        {
+            var run = await runs.StartAsync(
+                reportCode,
+                RunOwner,
+                new(request.Layout, request.Filters, request.Parameters, request.VariantCode),
+                ct);
+
+            await runs.WaitAsync(reportCode, RunOwner, run.Id, ct);
+
+            return File(
+                await runs.ExportAsync(reportCode, RunOwner, run.Id, ct),
+                XlsxContentType,
+                BuildExportFileName(reportCode, null));
+        }
+
         var sheet = await engine.ExecuteExportSheetAsync(reportCode, request, ct);
         var bytes = await exports.ExportXlsxAsync(sheet, sheet.Meta?.Title, ct);
 
@@ -87,9 +163,7 @@ public abstract class ReportControllerBase(
         RequireViewOrExecuteReport(snapshot, reportCode);
         var variant = await variants.GetAsync(reportCode, variantCode, ct);
 
-        return variant is null
-            ? throw new ReportVariantNotFoundException(reportCode, variantCode)
-            : variant;
+        return variant ?? throw new ReportVariantNotFoundException(reportCode, variantCode);
     }
 
     [HttpPut("~/api/reports/{reportCode}/variants/{variantCode}")]
@@ -108,6 +182,7 @@ public abstract class ReportControllerBase(
     {
         var existing = await variants.GetAsync(reportCode, variantCode, ct);
         var snapshot = await access.GetSnapshotAsync(ct);
+
         if (existing?.IsShared == true)
         {
             Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.ManageSharedVariants);
@@ -131,7 +206,26 @@ public abstract class ReportControllerBase(
     {
         var snapshot = await access.GetSnapshotAsync(ct);
         RequireExecuteReport(snapshot, reportCode);
-        var response = await engine.ExecuteAsync(reportCode, request, ct);
+        ReportExecutionResponseDto response;
+
+        if (runs.Supports(reportCode))
+        {
+            if (string.IsNullOrEmpty(request.Cursor))
+            {
+                var run = await runs.StartAsync(reportCode, RunOwner, request, ct);
+                await runs.WaitAsync(reportCode, RunOwner, run.Id, ct);
+                response = await runs.ReadAsync(reportCode, RunOwner, run.Id, request.Offset, request.Limit, ct);
+            }
+            else
+            {
+                response = await runs.ContinueAsync(reportCode, RunOwner, request, ct);
+            }
+        }
+        else
+        {
+            response = await engine.ExecuteAsync(reportCode, request, ct);
+        }
+
         var sheet = ScrubForbiddenCellActions(response.Sheet, snapshot);
         return response with { Sheet = sheet };
     }
@@ -147,7 +241,9 @@ public abstract class ReportControllerBase(
             snapshot,
             NgbResourceKinds.Report,
             reportCode,
-            variant.IsShared ? NgbPermissionActions.ManageSharedVariants : NgbPermissionActions.SavePrivateVariant);
+            variant.IsShared
+                ? NgbPermissionActions.ManageSharedVariants
+                : NgbPermissionActions.SavePrivateVariant);
 
         return await variants.SaveAsync(variant with { ReportCode = reportCode, VariantCode = variantCode }, ct);
     }
