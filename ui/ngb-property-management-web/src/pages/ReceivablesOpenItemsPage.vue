@@ -33,6 +33,7 @@ import { buildOpenItemsTabs, type OpenItemsTabKey } from '../features/open-items
 import OpenItemsWorkflowShell from '../features/open-items/OpenItemsWorkflowShell.vue'
 import { useOpenItemsRouteContext } from '../features/open-items/useOpenItemsRouteContext'
 import {
+  OPEN_ITEMS_APPLY_BATCH_LIMIT,
   docLabel,
   fmtMoney,
   fmtDateOnly,
@@ -378,7 +379,7 @@ const {
     const request = {
       leaseId,
       createDrafts: false,
-      limit: 500,
+      limit: OPEN_ITEMS_APPLY_BATCH_LIMIT,
     }
     return options
       ? suggestLeaseFifoApply(request, options)

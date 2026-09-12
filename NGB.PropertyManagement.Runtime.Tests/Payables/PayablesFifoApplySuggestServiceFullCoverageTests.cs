@@ -118,6 +118,45 @@ public sealed class PayablesFifoApplySuggestServiceFullCoverageTests
         fixture.Uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
+    [Theory]
+    [InlineData(25)]
+    [InlineData(100)]
+    public async Task Suggestion_accepts_supported_limits_and_leaves_overflow_for_the_next_batch(int limit)
+    {
+        var fixture = new Fixture();
+        var charges = Enumerable.Range(0, limit + 1)
+            .Select(index => fixture.Charge(Guid.CreateVersion7(), 1m, new DateOnly(2026, 1, 1).AddDays(index)))
+            .ToArray();
+        fixture.SetOpenItems(charges, [fixture.Credit(Guid.CreateVersion7(), limit + 1)]);
+
+        var result = await fixture.QueryAsync(limit: limit);
+
+        result.SuggestedApplies.Select(x => x.ChargeDocumentId).Should()
+            .Equal(charges.Take(limit).Select(x => x.ChargeDocumentId));
+        result.TotalApplied.Should().Be(limit);
+        result.RemainingOutstanding.Should().Be(1m);
+        result.RemainingCredit.Should().Be(1m);
+        result.Warnings.Should().Contain(x => x.Code == "limit_reached");
+        fixture.Drafts.VerifyNoOtherCalls();
+        fixture.Uow.Verify(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(101)]
+    [InlineData(500)]
+    public async Task Oversized_suggestion_limit_is_rejected_before_reading_open_items(int limit)
+    {
+        var fixture = new Fixture();
+
+        await ((Func<Task>)(() => fixture.QueryAsync(limit: limit)))
+            .Should().ThrowAsync<PayablesRequestValidationException>()
+            .WithMessage("Limit must not exceed 100.");
+
+        fixture.Details.VerifyNoOtherCalls();
+        fixture.Drafts.VerifyNoOtherCalls();
+        fixture.Uow.VerifyNoOtherCalls();
+    }
+
     private static async Task AssertInvalid(Func<Task> action)
         => await action.Should().ThrowAsync<PayablesRequestValidationException>();
 

@@ -480,11 +480,11 @@ test('executes workflow factories, route synchronization callbacks, and shell ev
   await expect(args.suggestFactory()).rejects.toThrow('Select a vendor and property first.')
   mocks.partyId.value = 'vendor-1'
   await args.suggestFactory()
-  expect(mocks.suggestFifo).toHaveBeenCalledWith({ partyId: 'vendor-1', propertyId: 'property-1', createDrafts: false, limit: 500 })
+  expect(mocks.suggestFifo).toHaveBeenCalledWith({ partyId: 'vendor-1', propertyId: 'property-1', createDrafts: false, limit: 25 })
   const signal = new AbortController().signal
   await args.suggestFactory({ signal })
   expect(mocks.suggestFifo).toHaveBeenCalledWith(
-    { partyId: 'vendor-1', propertyId: 'property-1', createDrafts: false, limit: 500 },
+    { partyId: 'vendor-1', propertyId: 'property-1', createDrafts: false, limit: 25 },
     { signal },
   )
   await args.executeFactory(suggestion([suggestedItem({ applyId: 'apply-1' }), suggestedItem({ applyId: undefined })]))

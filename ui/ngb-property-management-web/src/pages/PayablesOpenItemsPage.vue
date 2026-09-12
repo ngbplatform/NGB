@@ -37,7 +37,7 @@ import { buildOpenItemsTabs, type OpenItemsTabKey } from '../features/open-items
 import OpenItemsWorkflowShell from '../features/open-items/OpenItemsWorkflowShell.vue'
 import { useOpenItemsNavigationRefresh } from '../features/open-items/useOpenItemsNavigationRefresh'
 import { useOpenItemsRouteContext } from '../features/open-items/useOpenItemsRouteContext'
-import { docLabel, fmtDateOnly, fmtMoney, formatApplyCount } from '../features/open-items/shared'
+import { OPEN_ITEMS_APPLY_BATCH_LIMIT, docLabel, fmtDateOnly, fmtMoney, formatApplyCount } from '../features/open-items/shared'
 import { useOpenItemsWorkflow } from '../features/open-items/workflow'
 
 const route = useRoute()
@@ -436,7 +436,7 @@ const {
       partyId,
       propertyId: propId,
       createDrafts: false,
-      limit: 500,
+      limit: OPEN_ITEMS_APPLY_BATCH_LIMIT,
     }
     return options
       ? suggestPayablesFifoApply(request, options)

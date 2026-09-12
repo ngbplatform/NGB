@@ -32,6 +32,40 @@ public sealed class ReceivablesApplyBatchServiceFullCoverageTests
     }
 
     [Fact]
+    public async Task Batch_accepts_25_applications_in_one_transaction()
+    {
+        var fixture = new Fixture();
+        fixture.Drafts.Setup(x => x.CreateDraftAsync(
+                It.IsAny<string>(), null, It.IsAny<DateTime>(), false, false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => Guid.CreateVersion7());
+        var items = Enumerable.Range(0, 25)
+            .Select(_ => fixture.Item(fixture.Payload(charge: Guid.CreateVersion7())))
+            .ToArray();
+
+        var result = await fixture.Sut.ExecuteAsync(new ReceivablesApplyBatchRequest(items));
+
+        result.ExecutedApplies.Should().HaveCount(25);
+        result.ExecutedApplies.Select(x => x.ApplyId).Should().OnlyHaveUniqueItems();
+        result.TotalApplied.Should().Be(25m);
+        fixture.Uow.Verify(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Once);
+        fixture.Uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Batch_rejects_26_applications_before_starting_a_transaction()
+    {
+        var fixture = new Fixture();
+        var request = new ReceivablesApplyBatchRequest(Enumerable.Repeat(fixture.Item(), 26).ToArray());
+
+        await ((Func<Task>)(() => fixture.Sut.ExecuteAsync(request)))
+            .Should().ThrowAsync<ReceivablesApplyBatchValidationException>();
+
+        fixture.Drafts.VerifyNoOtherCalls();
+        fixture.Posting.VerifyNoOtherCalls();
+        fixture.Uow.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task Payload_business_rules_reject_non_positive_empty_and_same_payment_charge()
     {
         var fixture = new Fixture();

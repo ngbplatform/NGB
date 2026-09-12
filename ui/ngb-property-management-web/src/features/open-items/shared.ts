@@ -6,6 +6,10 @@ export type OpenItemsLookupItem = {
 
 export type ApplyWizardView = 'suggest' | 'result'
 
+// The wizard posts its entire suggestion in one batch. Both apply/batch APIs
+// accept at most 25 operations, even though FIFO previews allow up to 100.
+export const OPEN_ITEMS_APPLY_BATCH_LIMIT = 25
+
 export type OpenItemsApplyResultLine = {
   key: string
   applyId: string

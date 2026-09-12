@@ -385,10 +385,10 @@ test('handles missing context, load/refresh failures, workflow factories, and al
   const signal = new AbortController().signal
   await mocks.workflowArgs.suggestFactory({ signal })
   expect(mocks.suggestFifo).toHaveBeenCalledWith(
-    { leaseId: 'lease-1', createDrafts: false, limit: 500 },
+    { leaseId: 'lease-1', createDrafts: false, limit: 25 },
     { signal },
   )
-  expect(mocks.suggestFifo).toHaveBeenCalledWith({ leaseId: 'lease-1', createDrafts: false, limit: 500 })
+  expect(mocks.suggestFifo).toHaveBeenCalledWith({ leaseId: 'lease-1', createDrafts: false, limit: 25 })
   await mocks.workflowArgs.executeFactory(suggestion([item({ applyId: 'apply-1' }), item({ applyId: undefined })]))
   expect(mocks.applyBatch).toHaveBeenCalledWith({ applies: [{ applyId: 'apply-1', applyPayload: { fields: {} } }, { applyId: null, applyPayload: { fields: {} } }] })
   await mocks.workflowArgs.executeFactory({ ...suggestion(), suggestedApplies: undefined } as never)
