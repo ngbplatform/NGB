@@ -60,7 +60,7 @@ public sealed class PostgresOperationalRegisterResourceNetReader(
         var sql = balancesTableExists
             ? $"""
               WITH latest_snapshot AS (
-                  SELECT MAX(period_month) AS period_month FROM {balancesTable}
+                  {OperationalRegisterSnapshotSql.LatestFinalizedPeriod()}
               ),
               snapshot AS (
                   SELECT COALESCE(SUM(balance.{resourceColumnCode}), 0) AS amount
@@ -85,7 +85,7 @@ public sealed class PostgresOperationalRegisterResourceNetReader(
 
         var cmd = new CommandDefinition(
             sql,
-            new { DimensionSetId = dimensionSetId },
+            new { RegisterId = registerId, DimensionSetId = dimensionSetId },
             transaction: uow.Transaction,
             cancellationToken: ct);
 
@@ -130,7 +130,7 @@ public sealed class PostgresOperationalRegisterResourceNetReader(
         var sql = balancesTableExists
             ? $"""
 WITH latest_snapshot AS (
-    SELECT MAX(period_month) AS period_month FROM {balancesTable}
+    {OperationalRegisterSnapshotSql.LatestFinalizedPeriod()}
 ),
 snapshot AS (
     SELECT requested.dimension_set_id, COALESCE(balance.{resourceColumnCode}, 0) AS amount
@@ -175,7 +175,7 @@ GROUP BY requested.dimension_set_id;
 
         var rows = await uow.Connection.QueryAsync<ResourceNetRow>(new CommandDefinition(
             sql,
-            new { DimensionSetIds = ids },
+            new { RegisterId = registerId, DimensionSetIds = ids },
             transaction: uow.Transaction,
             cancellationToken: ct));
         return rows.ToDictionary(static row => row.DimensionSetId, static row => row.NetAmount);
@@ -224,7 +224,7 @@ GROUP BY requested.dimension_set_id;
                 HAVING COUNT(*) = @DimensionCount
             ),
             latest_snapshot AS (
-                SELECT MAX(period_month) AS period_month FROM {balancesTable}
+                {OperationalRegisterSnapshotSql.LatestFinalizedPeriod()}
             ),
             snapshot AS (
                 SELECT COALESCE(SUM(balance.{resourceColumnCode}), 0) AS amount
@@ -272,6 +272,7 @@ GROUP BY requested.dimension_set_id;
             sql,
             new
             {
+                RegisterId = registerId,
                 DimensionIds = dimensionIds,
                 ValueIds = valueIds,
                 DimensionCount = dimensionCount
@@ -346,6 +347,7 @@ GROUP BY requested.dimension_set_id;
             sql,
             new
             {
+                RegisterId = registerId,
                 RequestIndexes = requestIndexes.ToArray(),
                 DimensionIds = dimensionIds.ToArray(),
                 ValueIds = valueIds.ToArray(),
@@ -438,9 +440,7 @@ matching_dimension_sets AS (
     )
 ),
 latest_snapshot AS (
-    SELECT MAX(period_month) AS period_month
-    FROM {balancesTable}
-    WHERE period_month < @AsOfMonth
+    {OperationalRegisterSnapshotSql.LatestFinalizedPeriod("finalized.period < @AsOfMonth")}
 ),
 snapshot_amounts AS (
     SELECT

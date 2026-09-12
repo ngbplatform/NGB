@@ -10,6 +10,7 @@ using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
+using NGB.PostgreSql.OperationalRegisters.Internal;
 using NGB.PostgreSql.Readers;
 using NGB.PostgreSql.Schema;
 using NGB.Tools.Exceptions;
@@ -477,6 +478,7 @@ LIMIT @Limit;
             sql,
             new
             {
+                RegisterId = registerId,
                 AsOfMonth = asOfMonthInclusive,
                 GroupDimensionId = groupDimensionId,
                 DimCount = dimCount,
@@ -583,6 +585,7 @@ LIMIT @LimitPlusOne;
             sql,
             new
             {
+                RegisterId = registerId,
                 AsOfMonth = asOfMonthInclusive,
                 GroupDimensionId = groupDimensionId,
                 DimCount = dimCount,
@@ -982,9 +985,7 @@ nets AS (
         var movementDimensionFilter = BuildDimensionFilterSql("movement", dimCount);
         return $"""
 latest_snapshot AS (
-    SELECT MAX(period_month) AS period_month
-    FROM {balancesTable}
-    WHERE period_month <= @AsOfMonth::date
+    {OperationalRegisterSnapshotSql.LatestFinalizedPeriod("finalized.period <= @AsOfMonth::date")}
 ),
 snapshot_values AS (
     SELECT balance.dimension_set_id, balance.{resourceColumnCode} AS net_amount
