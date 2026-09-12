@@ -35,7 +35,7 @@ internal sealed class ReportSubtotalBuilder(ReportCellFormatter cellFormatter)
         var labelIndex = columns
             .Select((col, idx) => new { col, idx })
             .FirstOrDefault(x => !string.Equals(x.col.SemanticRole, "measure", StringComparison.OrdinalIgnoreCase))
-            ?.idx ?? 0;
+            ?.idx ?? -1;
 
         for (var index = 0; index < columns.Count; index++)
         {

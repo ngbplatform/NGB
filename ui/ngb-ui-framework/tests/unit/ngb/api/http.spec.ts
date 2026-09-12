@@ -396,12 +396,29 @@ describe('api http', () => {
         },
       }))
 
-    const response = await httpPostFile('/api/reports/pm.occupancy/export/xlsx', { limit: 500 })
+    const signal = new AbortController().signal
+    const response = await httpPostFile('/api/reports/pm.occupancy/export/xlsx', { limit: 500 }, { signal })
 
     expect(authMocks.forceRefreshAccessToken).toHaveBeenCalledTimes(1)
     expect(response.fileName).toBe('report April.xlsx')
     expect(response.contentType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     await expect(response.blob.text()).resolves.toBe('xlsx-bytes')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const call of fetchMock.mock.calls) expect(call[1].signal).toBe(signal)
+  })
+
+  it('cancels file preparation through fetch without refreshing auth or swallowing the abort', async () => {
+    authMocks.getAccessToken.mockResolvedValue(null)
+    const controller = new AbortController()
+    fetchMock.mockImplementation((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')))
+    }))
+    const request = httpPostFile('/file', {}, { signal: controller.signal })
+    const rejected = expect(request).rejects.toMatchObject({ name: 'AbortError' })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    controller.abort()
+    await rejected
+    expect(authMocks.forceRefreshAccessToken).not.toHaveBeenCalled()
   })
 
   it('handles file auth failures and every supported content-disposition filename form', async () => {

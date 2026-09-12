@@ -20,6 +20,11 @@ docker compose -f docker-compose.crm.yml --env-file .env.crm build ngb.crm.web
 
 Generated packages are written below `artifacts/` and are ignored by Git.
 
+For testing unpublished UI changes locally, use `npm --prefix ui run pack:platform-ui -- --local-candidate`.
+This builds the candidate without requiring its integrity to match the published CRM package.
+It preserves version/registry-reference validation and leaves the CRM lockfile unchanged.
+Release validation must use the command without this flag.
+
 The CRM lockfile is resolved from npmjs.com and is not regenerated while validating or publishing the
 platform package. Update it only when CRM intentionally moves to another published package version:
 

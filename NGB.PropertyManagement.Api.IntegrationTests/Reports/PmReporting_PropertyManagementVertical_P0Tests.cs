@@ -253,11 +253,11 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["engine"].Should().Be("runtime");
             dto.Diagnostics!["executor"].Should().Be("canonical-pm-occupancy-summary");
-            dto.Total.Should().Be(2);
+            dto.Total.Should().Be(3);
             dto.HasMore.Should().BeTrue();
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "building", "total_units", "occupied_units", "occupancy_percent" });
             dto.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(1);
-            dto.Sheet.Rows.Should().ContainSingle(x => x.RowKind == ReportRowKind.Total);
+            dto.Sheet.Rows.Should().NotContain(x => x.RowKind == ReportRowKind.Total);
             var detail = dto.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Detail);
             detail.Cells[0].Action.Should().NotBeNull();
             detail.Cells[0].Action!.Kind.Should().Be("open_catalog");
@@ -266,7 +266,8 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             detail.Cells[4].Display.Should().Be("2");
             detail.Cells[5].Display.Should().Be("33.33");
 
-            var totalRow = dto.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Total);
+            var final = await client.GetFromJsonAsync<ReportExecutionResponseDto>($"/api/reports/pm.occupancy.summary/runs/{dto.Diagnostics!["runId"]}?offset=2&limit=1", Json);
+            var totalRow = final!.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Total);
             totalRow.Cells[2].Display.Should().Be("5");
             totalRow.Cells[3].Display.Should().Be("3");
             totalRow.Cells[4].Display.Should().Be("2");
@@ -290,7 +291,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
             var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             dto.Should().NotBeNull();
-            dto!.Total.Should().Be(1);
+            dto!.Total.Should().Be(2);
             dto.HasMore.Should().BeFalse();
             var detail = dto.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Detail);
             detail.Cells[0].Action.Should().BeEquivalentTo(new ReportCellActionDto("open_catalog", CatalogType: "pm.property", CatalogId: seeded.SecondBuildingId));
@@ -414,7 +415,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["executor"].Should().Be("canonical-pm-tenant-statement");
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "occurred_on_utc", "document", "entry_type", "running_balance" });
-            dto.Total.Should().Be(3);
+            dto.Total.Should().Be(5);
             dto.HasMore.Should().BeFalse();
             dto.Sheet.Rows.Should().HaveCount(5);
 
@@ -468,7 +469,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["executor"].Should().Be("canonical-pm-receivables-aging");
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "bucket", "charge", "outstanding_amount" });
-            dto.Total.Should().Be(1);
+            dto.Total.Should().Be(2);
             var detail = dto.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Detail);
             detail.Cells[0].Display.Should().Be("Current");
             detail.Cells[1].Action.Should().NotBeNull();
@@ -489,7 +490,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["executor"].Should().Be("canonical-pm-receivables-open-items");
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "kind", "outstanding_amount", "available_credit" });
-            dto.Total.Should().Be(2);
+            dto.Total.Should().Be(3);
             dto.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(2);
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Charge" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[2].Display == "30");
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Credit" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[3].Display == "50");
@@ -507,7 +508,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             firstOpenItemsPage = (await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json))!;
             firstOpenItemsPage.HasMore.Should().BeTrue();
             firstOpenItemsPage.NextCursor.Should().NotBeNullOrWhiteSpace();
-            firstOpenItemsPage.Total.Should().Be(2);
+            firstOpenItemsPage.Total.Should().Be(3);
             firstOpenItemsPage.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(1);
         }
 
@@ -522,9 +523,9 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
             var next = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             next.Should().NotBeNull();
-            next!.HasMore.Should().BeFalse();
-            next.NextCursor.Should().BeNull();
-            next.Total.Should().Be(2);
+            next!.HasMore.Should().BeTrue();
+            next.NextCursor.Should().NotBeNullOrWhiteSpace();
+            next.Total.Should().Be(3);
             next.Offset.Should().Be(1);
             next.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(1);
         }
@@ -541,7 +542,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["executor"].Should().Be("canonical-pm-receivables-open-items-details");
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "due_on_utc", "received_on_utc", "available_credit" });
-            dto.Total.Should().Be(2);
+            dto.Total.Should().Be(3);
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Charge" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[2].Display == "2026-04-05" && x.Cells[6].Display == "30");
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Credit" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[3].Display == "2026-02-07" && x.Cells[7].Display == "50");
         }

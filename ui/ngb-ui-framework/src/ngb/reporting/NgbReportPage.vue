@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { executeSavedReport, readSavedReport, exportSavedReport } from './savedRuns'
 import { useRoute, useRouter } from 'vue-router'
 import NgbBadge from '../primitives/NgbBadge.vue'
 import NgbDatePicker from '../primitives/NgbDatePicker.vue'
@@ -125,6 +126,7 @@ const pendingScrollRestore = ref(0)
 let loadSeq = 0
 let runSeq = 0
 let executionController: AbortController | null = null
+let downloadController: AbortController | null = null
 let scrollPersistenceTimer: ReturnType<typeof setTimeout> | null = null
 let pendingScrollPersistence: { key: string; scrollTop: number } | null = null
 const filterLookupControllers = new Map<string, AbortController>()
@@ -299,8 +301,9 @@ const currentBackTarget = computed(() => {
   })
 })
 
-const reportRowLimitReached = computed(() => hasReachedReportRowLimit(response.value?.sheet))
-const canLoadMore = computed(() => canAppendReportResponse(response.value)
+const savedRunId = computed(() => response.value?.diagnostics?.runId ?? null)
+const reportRowLimitReached = computed(() => !savedRunId.value && hasReachedReportRowLimit(response.value?.sheet))
+const canLoadMore = computed(() => !savedRunId.value && canAppendReportResponse(response.value)
   && !reportRowLimitReached.value
   && !loadingDefinition.value
   && !running.value
@@ -312,7 +315,7 @@ const emptyReportMessage = computed(() => {
   return 'Open the Composer, adjust filters, rows, measures, or sorting, and run again.'
 })
 const hasPagedExecutionState = computed(() => !!response.value && (response.value.hasMore || consumedAppendCursors.value.length > 0))
-const showEndOfList = computed(() => hasPagedExecutionState.value
+const showEndOfList = computed(() => !savedRunId.value && hasPagedExecutionState.value
   && !reportRowLimitReached.value
   && !canLoadMore.value
   && !loadingMore.value
@@ -544,9 +547,13 @@ async function runReport() {
   running.value = true
   loadingMore.value = false
   error.value = null
+  response.value = null
+  consumedAppendCursors.value = []
+  clearReportPageSnapshot()
 
   try {
-    const result = await executeReport(reportCode.value, buildPageExecutionRequest(), { signal: controller.signal })
+    const execute = definition.value?.capabilities?.supportsSavedExecution ? executeSavedReport : executeReport
+    const result = await execute(reportCode.value, buildPageExecutionRequest(), { signal: controller.signal })
     if (seq !== runSeq) return
 
     response.value = result
@@ -558,12 +565,41 @@ async function runReport() {
     saveReportPageScrollTop(reportPageStateKey.value, 0)
   } catch (err) {
     if (seq !== runSeq) return
-    error.value = toErrorMessage(err, 'Failed to execute the report.')
+    if (!controller.signal.aborted) error.value = toErrorMessage(err, 'Failed to execute the report.')
   } finally {
     if (seq === runSeq) {
       running.value = false
       executionController = null
     }
+  }
+}
+
+function cancelReport() {
+  executionController?.abort()
+  runSeq++
+  running.value = false
+  loadingMore.value = false
+  error.value = null
+}
+
+async function changeSavedPage(offset: number) {
+  if (!savedRunId.value || loadingMore.value || running.value) return
+  const seq = runSeq
+  const controller = new AbortController()
+  executionController?.abort()
+  executionController = controller
+  loadingMore.value = true
+  error.value = null
+  try {
+    const page = await readSavedReport(reportCode.value, savedRunId.value, offset, response.value!.limit, { signal: controller.signal })
+    if (seq !== runSeq) return
+    response.value = page
+    reportSheetRef.value?.restoreScrollTop(0)
+    persistReportExecutionSnapshot()
+  } catch (err) {
+    if (seq === runSeq && !controller.signal.aborted) error.value = toErrorMessage(err, 'Failed to load the report page.')
+  } finally {
+    if (seq === runSeq) { loadingMore.value = false; executionController = null }
   }
 }
 
@@ -601,24 +637,40 @@ async function appendReportPage() {
   }
 }
 
+function cancelDownload() {
+  downloadController?.abort()
+}
+
 async function downloadReport() {
+  downloadController?.abort()
+  const controller = new AbortController()
+  downloadController = controller
+  const code = reportCode.value
   downloading.value = true
   error.value = null
 
   try {
-    const file = await exportReportXlsx(reportCode.value, buildExportRequest(definition.value!, draft.value!))
+    let resultId = savedRunId.value
+    if (!resultId && definition.value?.capabilities?.supportsSavedExecution) {
+      const result = await executeSavedReport(code, buildPageExecutionRequest(), { signal: controller.signal })
+      resultId = result.diagnostics?.runId ?? null
+    }
+    const file = resultId
+      ? await exportSavedReport(code, resultId, { signal: controller.signal })
+      : await exportReportXlsx(code, buildExportRequest(definition.value!, draft.value!))
+    if (controller.signal.aborted) return
     const url = URL.createObjectURL(file.blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = file.fileName || `${reportCode.value.replace(/[^a-z0-9]+/gi, '-')}.xlsx`
+    link.download = file.fileName || `${code.replace(/[^a-z0-9]+/gi, '-')}.xlsx`
     document.body.appendChild(link)
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
   } catch (err) {
-    error.value = toErrorMessage(err, 'Failed to export the report.')
+    if (!controller.signal.aborted) error.value = toErrorMessage(err, 'Failed to export the report.')
   } finally {
-    downloading.value = false
+    if (downloadController === controller) { downloading.value = false; downloadController = null }
   }
 }
 
@@ -815,6 +867,7 @@ async function loadDefinitionAndRun() {
 
   runSeq += 1
   executionController?.abort()
+  downloadController?.abort()
   executionController = null
   filterLookupControllers.forEach((controller) => controller.abort())
   filterLookupControllers.clear()
@@ -978,6 +1031,7 @@ onBeforeUnmount(() => {
   loadSeq += 1
   runSeq += 1
   executionController?.abort()
+  downloadController?.abort()
   filterLookupControllers.forEach((controller) => controller.abort())
   filterLookupControllers.clear()
 })
@@ -1081,7 +1135,15 @@ onBeforeUnmount(() => {
         <div class="mt-2 text-sm text-ngb-muted">Fetching the report metadata and default layout.</div>
       </div>
 
-      <div v-else-if="definition" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div v-else-if="definition && (!error || response)" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div v-if="running && definition.capabilities?.supportsSavedExecution" role="status" class="flex items-center gap-3 p-4">
+          <span>Preparing report…</span>
+          <button type="button" class="ngb-btn" @click="cancelReport">Cancel</button>
+        </div>
+        <div v-if="downloading && definition.capabilities?.supportsSavedExecution" role="status" class="flex items-center gap-3 p-4">
+          <span>Preparing download…</span>
+          <button type="button" class="ngb-btn" @click="cancelDownload">Cancel download</button>
+        </div>
         <ReportSheet
           ref="reportSheetRef"
           class="min-h-0 flex-1"
@@ -1102,6 +1164,11 @@ onBeforeUnmount(() => {
           @load-more="appendReportPage"
           @scroll-top-change="onReportScrollTopChange"
         />
+        <nav v-if="savedRunId && response && (response.hasMore || response.offset > 0)" aria-label="Report pages" class="flex shrink-0 items-center justify-between gap-3 border-t border-ngb-border p-3">
+          <button type="button" class="ngb-btn" :disabled="running || loadingMore || response.offset === 0" @click="changeSavedPage(Math.max(0, response.offset - response.limit))">Previous</button>
+          <span>Rows {{ response.offset + 1 }}–{{ response.offset + response.sheet.rows.length }} of {{ response.total }}</span>
+          <button type="button" class="ngb-btn" :disabled="running || loadingMore || !response.hasMore" @click="changeSavedPage(response.offset + response.sheet.rows.length)">Next</button>
+        </nav>
       </div>
     </div>
   </div>

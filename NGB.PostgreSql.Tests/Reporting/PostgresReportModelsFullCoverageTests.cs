@@ -70,7 +70,8 @@ public sealed class PostgresReportModelsFullCoverageTests
         sut.ResolveAggregateExpression(ReportAggregationKind.Max).Should().Be("MAX(f.amount)");
         sut.ResolveAggregateExpression(ReportAggregationKind.Average).Should().Be("AVG(f.amount)");
 
-        Action unsupported = () => sut.ResolveAggregateExpression(ReportAggregationKind.CountDistinct);
+        sut.ResolveAggregateExpression(ReportAggregationKind.CountDistinct).Should().Be("COUNT(DISTINCT f.amount)");
+        Action unsupported = () => sut.ResolveAggregateExpression((ReportAggregationKind)999);
         unsupported.Should().Throw<NgbConfigurationViolationException>();
     }
 

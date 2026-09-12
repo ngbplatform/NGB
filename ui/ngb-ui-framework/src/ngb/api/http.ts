@@ -409,14 +409,15 @@ function parseFileNameFromContentDisposition(value: string | null): string | nul
   return basicMatch?.[1]?.trim() || null
 }
 
-export async function httpPostFile<TBody = unknown>(url: string, body?: TBody): Promise<HttpFileResponse> {
-  return await httpPostFileInternal(url, body, true)
+export async function httpPostFile<TBody = unknown>(url: string, body?: TBody, options?: HttpRequestOptions): Promise<HttpFileResponse> {
+  return await httpPostFileInternal(url, body, true, options)
 }
 
-async function httpPostFileInternal(url: string, body: unknown, retryOnUnauthorized: boolean): Promise<HttpFileResponse> {
+async function httpPostFileInternal(url: string, body: unknown, retryOnUnauthorized: boolean, options?: HttpRequestOptions): Promise<HttpFileResponse> {
   const resolvedUrl = resolveUrl(url)
   const response = await fetch(resolvedUrl, {
     method: 'POST',
+    ...(options?.signal ? { signal: options.signal } : {}),
     credentials: 'omit',
     headers: await buildJsonHeaders(body, '*/*'),
     body: body != null ? JSON.stringify(body) : undefined,
@@ -424,7 +425,7 @@ async function httpPostFileInternal(url: string, body: unknown, retryOnUnauthori
 
   if (response.status === 401 && retryOnUnauthorized) {
     const refreshedToken = await forceRefreshAccessToken().catch(() => null)
-    if (refreshedToken) return await httpPostFileInternal(url, body, false)
+    if (refreshedToken) return await httpPostFileInternal(url, body, false, options)
   }
 
   if (!response.ok) await buildResponse(response, resolvedUrl)

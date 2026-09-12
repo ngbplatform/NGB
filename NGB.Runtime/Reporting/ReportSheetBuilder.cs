@@ -201,7 +201,7 @@ public sealed class ReportSheetBuilder
             HeaderRows: pivot.HeaderRows);
     }
 
-    private static IReadOnlyList<ReportSheetColumnDto> BuildColumns(ReportQueryPlan plan)
+    internal static IReadOnlyList<ReportSheetColumnDto> BuildColumns(ReportQueryPlan plan)
     {
         var columns = new List<ReportSheetColumnDto>();
 

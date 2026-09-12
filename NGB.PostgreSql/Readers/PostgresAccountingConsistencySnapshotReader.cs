@@ -11,32 +11,9 @@ namespace NGB.PostgreSql.Readers;
 /// PostgreSQL reader for Accounting Consistency snapshots.
 /// Returns flat rows combining current balances, current turnovers, and optional previous-period balances.
 /// </summary>
-public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow) : IAccountingConsistencySnapshotReader
+public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow) : IAccountingConsistencySnapshotReader, IAccountingConsistencyStreamReader
 {
-    private sealed class Row
-    {
-        public Guid AccountId { get; init; }
-        public string AccountCode { get; init; } = null!;
-        public Guid DimensionSetId { get; init; }
-        public decimal OpeningBalance { get; init; }
-        public decimal ClosingBalance { get; init; }
-        public decimal DebitAmount { get; init; }
-        public decimal CreditAmount { get; init; }
-        public decimal PreviousClosingBalance { get; init; }
-        public bool HasCurrentBalanceRow { get; init; }
-        public bool HasTurnoverRow { get; init; }
-        public bool HasPreviousBalanceRow { get; init; }
-    }
-
-    public async Task<AccountingConsistencySnapshot> GetAsync(
-        DateOnly period,
-        DateOnly? previousPeriodForChainCheck = null,
-        CancellationToken ct = default)
-    {
-        period.EnsureMonthStart(nameof(period));
-        previousPeriodForChainCheck?.EnsureMonthStart(nameof(previousPeriodForChainCheck));
-
-        const string sql = """
+    private const string Sql = """
                            WITH current_balances AS (
                                SELECT
                                    b.account_id AS account_id,
@@ -113,11 +90,34 @@ public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow)
                            LIMIT @LimitPlusOne;
                            """;
 
+    private sealed class Row
+    {
+        public Guid AccountId { get; init; }
+        public string AccountCode { get; init; } = null!;
+        public Guid DimensionSetId { get; init; }
+        public decimal OpeningBalance { get; init; }
+        public decimal ClosingBalance { get; init; }
+        public decimal DebitAmount { get; init; }
+        public decimal CreditAmount { get; init; }
+        public decimal PreviousClosingBalance { get; init; }
+        public bool HasCurrentBalanceRow { get; init; }
+        public bool HasTurnoverRow { get; init; }
+        public bool HasPreviousBalanceRow { get; init; }
+    }
+
+    public async Task<AccountingConsistencySnapshot> GetAsync(
+        DateOnly period,
+        DateOnly? previousPeriodForChainCheck = null,
+        CancellationToken ct = default)
+    {
+        period.EnsureMonthStart(nameof(period));
+        previousPeriodForChainCheck?.EnsureMonthStart(nameof(previousPeriodForChainCheck));
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         var rows = (await uow.Connection.QueryAsync<Row>(
             new CommandDefinition(
-                sql,
+                Sql,
                 new
                 {
                     Period = period,
@@ -143,6 +143,29 @@ public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow)
                     x.HasTurnoverRow,
                     x.HasPreviousBalanceRow))
                 .ToList());
+    }
+
+    public async Task<bool> HasBalancesAsync(DateOnly period, CancellationToken ct)
+    {
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        return await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT EXISTS (SELECT 1 FROM accounting_balances b JOIN accounting_accounts a ON a.account_id=b.account_id AND NOT a.is_deleted WHERE b.period=@period)",
+            new { period }, uow.Transaction, cancellationToken: ct));
+    }
+
+    public IAsyncEnumerable<IReadOnlyList<AccountingConsistencySnapshotRow>> ReadAsync(
+        DateOnly period,
+        DateOnly? previous,
+        CancellationToken ct)
+    {
+        period.EnsureMonthStart(nameof(period));
+        previous?.EnsureMonthStart(nameof(previous));
+
+        return Reporting.PostgresReportCursorStream.ReadAsync<AccountingConsistencySnapshotRow>(
+            uow,
+            Sql.Replace("LIMIT @LimitPlusOne", ""), new { Period = period, PreviousPeriod = previous },
+            ct);
     }
 
     internal static void EnsureMaterializationBound(int rowCount)

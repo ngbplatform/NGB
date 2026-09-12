@@ -1,10 +1,12 @@
 using System.Text.Json;
+using System.IO.Compression;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.OperationalRegisters;
+using NGB.Runtime.Reporting.Runs;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.Api.IntegrationTests.Support;
 using NGB.Trade.PostgreSql.Reporting;
@@ -203,6 +205,33 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
             CancellationToken.None);
 
         await documents.PostAsync(TradeCodes.CustomerReturn, customerReturn.Id, CancellationToken.None);
+
+        // The saved execution path must preserve each vertical report's business calculations and drilldowns.
+        var savedRuns = scope.ServiceProvider.GetRequiredService<IReportRunService>();
+        foreach (var code in new[] { TradeCodes.SalesByItemReport, TradeCodes.SalesByCustomerReport, TradeCodes.PurchasesByVendorReport,
+                     TradeCodes.InventoryBalancesReport, TradeCodes.InventoryMovementsReport, TradeCodes.CurrentItemPricesReport, TradeCodes.DashboardOverviewReport })
+        {
+            var parameters = code is TradeCodes.CurrentItemPricesReport ? null
+                : code is TradeCodes.InventoryBalancesReport or TradeCodes.DashboardOverviewReport
+                    ? new Dictionary<string, string> { ["as_of_utc"] = "2026-04-30" }
+                    : BuildPeriod("2026-04-01", "2026-04-30");
+            var input = new ReportExecutionRequestDto(Parameters: parameters, DisablePaging: true);
+            var expected = await reports.ExecuteAsync(code, input, default);
+            var saved = await savedRuns.StartAsync(code, "trade-reader", input, default);
+            await host.Services.GetRequiredService<ReportRunProcessor>().ProcessNextAsync(default);
+            var all = new List<ReportSheetRowDto>();
+            ReportExecutionResponseDto page;
+            do
+            {
+                page = await savedRuns.ReadAsync(code, "trade-reader", saved.Id, all.Count, 2, default);
+                all.AddRange(page.Sheet.Rows);
+            } while (page.HasMore);
+            all.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display))))
+                .Should().Equal(expected.Sheet.Rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display)))), code);
+            await using var file = await savedRuns.ExportAsync(code, "trade-reader", saved.Id, default);
+            await using var zip = new ZipArchive(file, ZipArchiveMode.Read);
+            zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
+        }
 
         var salesByItem = await reports.ExecuteAsync(
             TradeCodes.SalesByItemReport,

@@ -48,7 +48,9 @@ public sealed class CrmControllersFullCoverageTests : IDisposable
             Mock.Of<IReportVariantService>(),
             Mock.Of<IReportExportService>(),
             access,
-            securityCache).Should().NotBeNull();
+            securityCache,
+            Mock.Of<IReportRunService>(),
+            Mock.Of<IReportVariantAccessContext>()).Should().NotBeNull();
         new SecurityController(
             Mock.Of<ICurrentAccessService>(),
             permissionDefinitions,

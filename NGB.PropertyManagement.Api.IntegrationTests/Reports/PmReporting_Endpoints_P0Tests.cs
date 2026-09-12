@@ -524,7 +524,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         firstPage!.Sheet.Rows.Should().HaveCount(2);
         firstPage.HasMore.Should().BeTrue();
         firstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
-        firstPage.Diagnostics!["executor"].Should().Be("runtime-ledger-analysis-flat-detail");
+        firstPage.Diagnostics!["executor"].Should().Be("postgres-streaming");
 
         using var secondResponse = await client.PostAsJsonAsync(
             "/api/reports/accounting.ledger.analysis/execute",
@@ -535,7 +535,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         var secondPage = await secondResponse.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json, CancellationToken.None);
         secondPage.Should().NotBeNull();
         secondPage!.Sheet.Rows.Should().NotBeEmpty();
-        secondPage.Diagnostics!["executor"].Should().Be("runtime-ledger-analysis-flat-detail");
+        secondPage.Diagnostics!["executor"].Should().Be("postgres-streaming");
 
         firstPage.Sheet.Rows
             .Concat(secondPage.Sheet.Rows)
@@ -544,7 +544,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task LedgerAnalysis_GroupedLayout_Remains_Bounded_And_DoesNot_Return_Cursor()
+    public async Task LedgerAnalysis_GroupedLayout_Pages_The_Complete_Saved_Result()
     {
         await using var factory = new PmApiFactory(_fixture);
         await SeedLedgerAnalysisScenarioAsync(factory);
@@ -574,7 +574,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         var payload = await response.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json, CancellationToken.None);
         payload.Should().NotBeNull();
         payload!.HasMore.Should().BeTrue();
-        payload.NextCursor.Should().BeNull();
+        payload.NextCursor.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]

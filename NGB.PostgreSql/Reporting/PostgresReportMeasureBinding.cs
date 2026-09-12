@@ -31,6 +31,7 @@ public sealed class PostgresReportMeasureBinding
         {
             ReportAggregationKind.Sum => $"SUM({SqlExpression})",
             ReportAggregationKind.Count => $"COUNT({SqlExpression})",
+            ReportAggregationKind.CountDistinct => $"COUNT(DISTINCT {SqlExpression})",
             ReportAggregationKind.Min => $"MIN({SqlExpression})",
             ReportAggregationKind.Max => $"MAX({SqlExpression})",
             ReportAggregationKind.Average => $"AVG({SqlExpression})",

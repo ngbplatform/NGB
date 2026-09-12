@@ -5,9 +5,13 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Reporting;
 
-public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor executor) : ITabularReportPlanExecutor
+public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor executor) : ITabularReportPlanExecutor, IStreamingReportDataSource
 {
     private readonly PostgresReportDatasetExecutor _executor = executor ?? throw new NgbConfigurationViolationException("PostgreSQL reporting plan executor requires a dataset executor registration.");
+
+    public IAsyncEnumerable<ReportDataPage> ReadAsync(ReportDataQuery query, CancellationToken ct)
+        => _executor.ReadAsync(Map(query.ReportCode, query.DatasetCode, query.RowGroups, query.ColumnGroups,
+            query.DetailFields, query.Measures, query.Sorts, query.Predicates, query.Parameters, new(0, 500), true), ct);
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

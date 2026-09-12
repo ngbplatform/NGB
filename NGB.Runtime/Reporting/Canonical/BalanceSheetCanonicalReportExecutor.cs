@@ -109,7 +109,7 @@ public sealed class BalanceSheetCanonicalReportExecutor(IBalanceSheetReportReade
             GroupKey: $"detail:{line.AccountId}");
     }
 
-    private static IReadOnlyList<ReportSheetRowDto> ToGrandTotalRows(BalanceSheetReport report)
+    internal static IReadOnlyList<ReportSheetRowDto> ToGrandTotalRows(BalanceSheetReport report)
         =>
         [
             TotalRow("Total Assets", report.TotalAssets),

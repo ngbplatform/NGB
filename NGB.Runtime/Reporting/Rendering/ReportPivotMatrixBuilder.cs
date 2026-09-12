@@ -5,7 +5,7 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.Runtime.Reporting.Rendering;
 
-internal sealed class ReportPivotMatrixBuilder(
+internal sealed partial class ReportPivotMatrixBuilder(
     ReportCellFormatter cellFormatter,
     ReportPivotHeaderBuilder headerBuilder,
     ReportComposableCellActionResolver actionResolver)
@@ -529,7 +529,7 @@ internal sealed class ReportPivotMatrixBuilder(
     private static string BuildTupleKey(IReadOnlyList<string> codes, IReadOnlyDictionary<string, object?> values)
         => codes.Count == 0
             ? "(all)"
-            : string.Join("|", codes.Select(code => $"{code}={values.GetValueOrDefault(code) ?? "<null>"}"));
+            : System.Text.Json.JsonSerializer.Serialize(codes.Select(code => values.GetValueOrDefault(code)).ToArray());
 
     private ReportSheetRowDto BuildSubtotalRow(
         ReportQueryPlan plan,
@@ -641,7 +641,10 @@ internal sealed class PivotLeafRow(
     IReadOnlyList<object?> rowGroupValues,
     IReadOnlyDictionary<string, object?> sourceValues)
 {
-    private readonly Dictionary<string, object?> _valuesByKey = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, object?> _valuesByKey = new(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, object?>? _totals;
+
+    public void SetTotals(IReadOnlyDictionary<string, object?> totals) => _totals = totals;
 
     public string Key { get; } = key;
     public IReadOnlyDictionary<string, object?> RowAxisValues { get; } = rowAxisValues;
@@ -659,6 +662,9 @@ internal sealed class PivotLeafRow(
 
     public object? GetTotal(Planning.ReportPlanMeasure measure)
     {
+        if (_totals is not null)
+            return _totals.GetValueOrDefault(measure.OutputCode);
+
         object? total = null;
         var suffix = "|" + measure.OutputCode;
 

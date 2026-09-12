@@ -1,10 +1,12 @@
 using FluentAssertions;
+using System.IO.Compression;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Api.IntegrationTests.Infrastructure;
 using NGB.CRM.Api.IntegrationTests.Support;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
+using NGB.Runtime.Reporting.Runs;
 using Npgsql;
 using Xunit;
 
@@ -47,6 +49,35 @@ public sealed class CrmReporting_Data_EndToEnd_P0Tests(CrmSeededReportingFixture
 
         response.Sheet.Rows.Should().NotBeEmpty();
         CrmIntegrationTestHelpers.SumMeasure(response, measureCode).Should().Be(expectedSum);
+    }
+
+    [Theory]
+    [InlineData(CrmCodes.SalesPipelineReport, "amount", 2421500)]
+    [InlineData(CrmCodes.OpportunityHistoryReport, "amount", 4721750)]
+    [InlineData(CrmCodes.LeadConversionFunnelReport, "lead_count", 98)]
+    [InlineData(CrmCodes.ActivitySummaryReport, "activity_count", 33)]
+    [InlineData(CrmCodes.QuoteRegisterReport, "amount", 1490977.5)]
+    public async Task Packaged_platform_executes_complete_saved_CRM_reports_and_exports(string code, string measure, decimal expected)
+    {
+        using var host = fixture.CreateSavedRunHost();
+        await using var scope = host.Services.CreateAsyncScope();
+        var definition = await scope.ServiceProvider.GetRequiredService<IReportDefinitionProvider>().GetDefinitionAsync(code, default);
+        definition.Capabilities!.SupportsSavedExecution.Should().BeTrue();
+        var runs = scope.ServiceProvider.GetRequiredService<IReportRunService>();
+        var run = await runs.StartAsync(code, "crm-reader", new(), default);
+        await host.Services.GetRequiredService<ReportRunProcessor>().ProcessNextAsync(default);
+        var rows = new List<ReportSheetRowDto>();
+        ReportExecutionResponseDto page;
+        do
+        {
+            page = await runs.ReadAsync(code, "crm-reader", run.Id, rows.Count, 7, default);
+            rows.AddRange(page.Sheet.Rows);
+        } while (page.HasMore);
+        rows.Should().NotBeEmpty();
+        CrmIntegrationTestHelpers.SumMeasure(page with { Sheet = page.Sheet with { Rows = rows } }, measure).Should().Be(expected);
+        await using var file = await runs.ExportAsync(code, "crm-reader", run.Id, default);
+        using var zip = new ZipArchive(file, ZipArchiveMode.Read);
+        zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
     }
 
     [Fact]

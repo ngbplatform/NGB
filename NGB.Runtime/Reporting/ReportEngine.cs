@@ -188,7 +188,7 @@ public sealed class ReportEngine(
                 page = page with { Total = page.Rows.Count };
         }
 
-        page = await EnrichInteractiveFieldsAsync(plan, page, ct);
+        page = await EnrichInteractiveFieldsAsync(plan, page, documentDisplayReader, ct);
         var fullSheet = _sheetBuilder.BuildSheet(runtime, plan, page);
 
         var result = useRenderedSheetPaging
@@ -250,7 +250,7 @@ public sealed class ReportEngine(
                 : request.Limit
         };
 
-    private static ReportExecutionRequestDto NormalizeRequestMaps(ReportExecutionRequestDto request)
+    internal static ReportExecutionRequestDto NormalizeRequestMaps(ReportExecutionRequestDto request)
         => request with
         {
             Filters = request.Filters?.ToDictionary(
@@ -597,9 +597,10 @@ public sealed class ReportEngine(
         return merged;
     }
 
-    private async Task<ReportDataPage> EnrichInteractiveFieldsAsync(
+    internal static async Task<ReportDataPage> EnrichInteractiveFieldsAsync(
         ReportQueryPlan plan,
         ReportDataPage page,
+        IDocumentDisplayReader? documentDisplayReader,
         CancellationToken ct)
     {
         if (documentDisplayReader is null)
@@ -706,7 +707,7 @@ public sealed class ReportEngine(
             Diagnostics: diagnostics);
     }
 
-    private static IReadOnlyList<ReportPlanGrouping> MapGroups(IReadOnlyList<Planning.ReportPlanGrouping> groups)
+    internal static IReadOnlyList<ReportPlanGrouping> MapGroups(IReadOnlyList<Planning.ReportPlanGrouping> groups)
         => groups
             .Select(x => new ReportPlanGrouping(
                 x.FieldCode,
@@ -721,7 +722,7 @@ public sealed class ReportEngine(
                 x.GroupKey))
             .ToList();
 
-    private static IReadOnlyList<ReportPlanFieldSelection> MapFields(IReadOnlyList<Planning.ReportPlanFieldSelection> fields)
+    internal static IReadOnlyList<ReportPlanFieldSelection> MapFields(IReadOnlyList<Planning.ReportPlanFieldSelection> fields)
         => fields
             .Select(x => new ReportPlanFieldSelection(
                 x.FieldCode,
@@ -730,7 +731,7 @@ public sealed class ReportEngine(
                 x.DataType))
             .ToList();
 
-    private static IReadOnlyList<ReportPlanMeasure> MapMeasures(IReadOnlyList<Planning.ReportPlanMeasure> measures)
+    internal static IReadOnlyList<ReportPlanMeasure> MapMeasures(IReadOnlyList<Planning.ReportPlanMeasure> measures)
         => measures
             .Select(x => new ReportPlanMeasure(
                 x.MeasureCode,
@@ -741,7 +742,7 @@ public sealed class ReportEngine(
                 x.FormatOverride))
             .ToList();
 
-    private static IReadOnlyList<ReportPlanSort> MapSorts(IReadOnlyList<Planning.ReportPlanSort> sorts)
+    internal static IReadOnlyList<ReportPlanSort> MapSorts(IReadOnlyList<Planning.ReportPlanSort> sorts)
         => sorts
             .Select(x => new ReportPlanSort(
                 x.FieldCode,
@@ -752,7 +753,7 @@ public sealed class ReportEngine(
                 x.GroupKey))
             .ToList();
 
-    private static IReadOnlyList<ReportPlanPredicate> MapPredicates(IReadOnlyList<Planning.ReportPlanPredicate> predicates)
+    internal static IReadOnlyList<ReportPlanPredicate> MapPredicates(IReadOnlyList<Planning.ReportPlanPredicate> predicates)
         => predicates
             .Select(x => new ReportPlanPredicate(
                 x.FieldCode,
@@ -762,7 +763,7 @@ public sealed class ReportEngine(
                 x.Filter))
             .ToList();
 
-    private static IReadOnlyList<ReportPlanParameter> MapParameters(IReadOnlyList<Planning.ReportPlanParameter> parameters)
+    internal static IReadOnlyList<ReportPlanParameter> MapParameters(IReadOnlyList<Planning.ReportPlanParameter> parameters)
         => parameters.Select(x => new ReportPlanParameter(x.ParameterCode, x.Value)).ToList();
 
     private sealed record ReportEngineExecutionEnvelope(

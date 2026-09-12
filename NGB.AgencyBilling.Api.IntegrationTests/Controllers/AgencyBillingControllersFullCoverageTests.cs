@@ -44,7 +44,9 @@ public sealed class AgencyBillingControllersFullCoverageTests : IDisposable
             Mock.Of<IReportVariantService>(),
             Mock.Of<IReportExportService>(),
             access,
-            securityCache).Should().NotBeNull();
+            securityCache,
+            Mock.Of<IReportRunService>(),
+            Mock.Of<IReportVariantAccessContext>()).Should().NotBeNull();
         new WorkCenterController(Mock.Of<IWorkCenterQueryService>()).Should().NotBeNull();
     }
 

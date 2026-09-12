@@ -70,7 +70,7 @@ public sealed class StatementOfChangesInEquityCanonicalReportExecutor(IStatement
             });
     }
 
-    private static ReportSheetRowDto ToDetailRow(
+    internal static ReportSheetRowDto ToDetailRow(
         StatementOfChangesInEquityLine line,
         DateOnly rawFrom,
         DateOnly rawTo,

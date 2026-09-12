@@ -20,12 +20,13 @@ async function openCreateVariantDialog(page: Page) {
 }
 
 test.describe('pm-web report resilience', () => {
-  test('shows an execution error banner when the initial report run fails', async ({ page }) => {
-    await mockOccupancySummaryReportApis(page, {
+  test('shows an execution error without an empty result and recovers on rerun', async ({ page }) => {
+    const options: Parameters<typeof mockOccupancySummaryReportApis>[1] = {
       executeFailure: {
         detail: 'Occupancy cube timed out during execution.',
       },
-    })
+    }
+    const api = await mockOccupancySummaryReportApis(page, options)
     await rejectUnhandledApiRequests(page, [
       '/api/main-menu',
       '/api/report-definitions/pm.occupancy.summary',
@@ -35,9 +36,19 @@ test.describe('pm-web report resilience', () => {
     await page.goto(PM_TEST_ROUTES.occupancySummaryReport)
 
     await expect(page.getByTestId('report-page')).toBeVisible()
-    await expect(page.getByText('Occupancy cube timed out during execution.', { exact: true })).toBeVisible()
-    await expect(page.getByTestId('report-sheet-empty')).toBeVisible()
-    await expect(page.getByTestId('report-sheet-empty').getByText('No rows for this layout', { exact: true })).toBeVisible()
+    const error = page.getByText('Occupancy cube timed out during execution.', { exact: true })
+    await expect(error).toBeVisible()
+    await expect(page.getByTestId('report-sheet-empty')).toHaveCount(0)
+    await expect(page.getByTestId('report-sheet-scroll')).toHaveCount(0)
+
+    options.executeFailure = null
+    await expect(page.getByTitle('Run', { exact: true })).toBeEnabled()
+    await page.getByTitle('Run', { exact: true }).click()
+
+    await expect(page.getByTestId('report-sheet-scroll').getByText('Riverfront Tower', { exact: true })).toBeVisible()
+    await expect(error).toHaveCount(0)
+    await expect(page.getByTestId('report-sheet-empty')).toHaveCount(0)
+    expect(api.getExecuteRequests()).toHaveLength(2)
   })
 
   test('renders the empty report state when execution returns no rows', async ({ page }) => {

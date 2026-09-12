@@ -336,6 +336,16 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IReportVariantAccessContext, NullReportVariantAccessContext>();
         services.TryAddScoped<IReportVariantService, ReportVariantService>();
         services.TryAddSingleton<IReportExportService, ReportXlsxExportService>();
+        services.TryAddSingleton<IStreamingReportExportService, ReportXlsxExportService>();
+        services.TryAddScoped<IReportRunService, Reporting.Runs.ReportRunService>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Runs.IStreamingReportExecutor, Reporting.Runs.TrialBalanceStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Runs.IStreamingReportExecutor, Reporting.Runs.PlannedReportStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Runs.IStreamingReportExecutor, Reporting.Runs.AccountingConsistencyStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Runs.IStreamingReportExecutor, Reporting.Runs.BalanceSheetStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Runs.IStreamingReportExecutor, Reporting.Runs.IncomeStatementStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Runs.IStreamingReportExecutor, Reporting.Runs.EquityStatementStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IReportDefinitionEnricher, Reporting.Runs.SavedReportDefinitionEnricher>());
+        services.TryAddSingleton<Reporting.Runs.ReportRunProcessor>();
         services.TryAddSingleton<IRenderedReportSnapshotStore>(static _ => new MemoryCacheRenderedReportSnapshotStore());
         services.TryAddScoped<ReportVariantRequestResolver>();
         services.TryAddScoped<IReportPlanExecutor, CompositeReportPlanExecutor>();

@@ -8,12 +8,26 @@ using NGB.Trade.Reporting;
 
 namespace NGB.Trade.Runtime.Reporting;
 
-public sealed class SalesByItemCanonicalReportExecutor(
-    ITradeAnalyticsReader analytics,
-    TimeProvider timeProvider)
+public sealed class SalesByItemCanonicalReportExecutor(ITradeAnalyticsReader analytics, TimeProvider timeProvider)
     : IReportSpecializedPlanExecutor
 {
     public string ReportCode => TradeCodes.SalesByItemReport;
+
+    public ReportExecutionRequestDto PrepareExecution(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        DateTimeOffset utcNow)
+    {
+        var parameters = new Dictionary<string, string>(request.Parameters ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        var to = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "to_utc")
+            ?? DateOnly.FromDateTime(utcNow.UtcDateTime);
+        parameters["to_utc"] = to.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var date = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "from_utc")
+            ?? new DateOnly(to.Year, to.Month, 1);
+        parameters["from_utc"] = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        return request with { Parameters = parameters };
+    }
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,

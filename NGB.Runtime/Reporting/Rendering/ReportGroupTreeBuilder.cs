@@ -4,7 +4,7 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.Runtime.Reporting.Rendering;
 
-internal sealed class ReportGroupTreeBuilder(
+internal sealed partial class ReportGroupTreeBuilder(
     ReportCellFormatter cellFormatter,
     ReportSubtotalBuilder subtotalBuilder,
     ReportComposableCellActionResolver actionResolver)

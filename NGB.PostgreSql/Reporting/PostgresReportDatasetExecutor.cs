@@ -1,4 +1,6 @@
 using Dapper;
+using System.Runtime.CompilerServices;
+using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
 using NGB.Tools.Exceptions;
@@ -7,8 +9,67 @@ namespace NGB.PostgreSql.Reporting;
 
 public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresReportSqlBuilder sqlBuilder)
 {
-    private readonly IUnitOfWork _uow = uow ?? throw new NgbConfigurationViolationException("PostgreSQL reporting executor requires a unit of work registration.");
-    private readonly PostgresReportSqlBuilder _sqlBuilder = sqlBuilder ?? throw new NgbConfigurationViolationException("PostgreSQL reporting executor requires a SQL builder registration.");
+    private readonly IUnitOfWork _uow = uow
+        ?? throw new NgbConfigurationViolationException("PostgreSQL reporting executor requires a unit of work registration.");
+    private readonly PostgresReportSqlBuilder _sqlBuilder = sqlBuilder
+        ?? throw new NgbConfigurationViolationException("PostgreSQL reporting executor requires a SQL builder registration.");
+
+    public async IAsyncEnumerable<ReportDataPage> ReadAsync(
+        PostgresReportExecutionRequest request,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        _uow.EnsureActiveTransaction();
+
+        var statement = _sqlBuilder.BuildStreaming(request);
+        var cursor = "ngb_report_" + Guid.NewGuid().ToString("N");
+
+        await _uow.Connection.ExecuteAsync(new CommandDefinition(
+            $"DECLARE {cursor} NO SCROLL CURSOR FOR {statement.Sql}",
+            statement.Parameters,
+            _uow.Transaction,
+            commandTimeout: 300,
+            cancellationToken: ct));
+
+        var columns = statement.Columns
+            .Select(x => new ReportDataColumn(x.OutputCode, x.Title, x.DataType, x.SemanticRole))
+            .ToArray();
+
+        try
+        {
+            while (true)
+            {
+                var batch = (await _uow.Connection.QueryAsync(new CommandDefinition(
+                        $"FETCH FORWARD 500 FROM {cursor}",
+                        transaction: _uow.Transaction,
+                        commandTimeout: 300,
+                        cancellationToken: ct)))
+                    .Select(x => new ReportDataRow(MaterializeRow(x)))
+                    .ToArray();
+                
+                yield return new(columns, batch, 0, 500, null, batch.Length == 500);
+                
+                if (batch.Length < 500)
+                    break;
+            }
+        }
+        finally
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await _uow.Connection.ExecuteAsync(new CommandDefinition(
+                        $"CLOSE {cursor}",
+                        transaction: _uow.Transaction,
+                        cancellationToken: ct));
+                }
+                catch (System.Data.Common.DbException)
+                {
+                     // Transaction disposal also releases cursors after a failed statement.
+                }
+            }
+        }
+    }
 
     public async Task<PostgresReportExecutionResult> ExecuteAsync(
         PostgresReportExecutionRequest request,

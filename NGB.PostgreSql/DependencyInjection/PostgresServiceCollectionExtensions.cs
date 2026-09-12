@@ -238,6 +238,11 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IIncomeStatementSnapshotReader, PostgresIncomeStatementSnapshotReader>();
         services.TryAddScoped<IStatementOfChangesInEquitySnapshotReader, PostgresStatementOfChangesInEquitySnapshotReader>();
         services.TryAddScoped<ITrialBalanceSnapshotReader, PostgresTrialBalanceSnapshotReader>();
+        services.TryAddScoped<ITrialBalanceAccountSummaryReader, PostgresTrialBalanceAccountSummaryReader>();
+        services.TryAddScoped<IReportRunStore, PostgresReportRunStore>();
+        services.TryAddScoped<IReportReadSession, PostgresReportReadSession>();
+        services.TryAddScoped<IAccountingConsistencyStreamReader, PostgresAccountingConsistencySnapshotReader>();
+        services.TryAddScoped<IAccountingStatementAccountReader, PostgresAccountingStatementAccountReader>();
         services.TryAddScoped<IAccountingBalanceReader, PostgresAccountingBalanceReader>();
         services.TryAddScoped<IAccountingEntryReader, PostgresAccountingEntryReader>();
         services.TryAddScoped<IAccountingTurnoverReader, PostgresAccountingTurnoverReader>();
@@ -263,6 +268,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<PostgresReportDatasetExecutor>();
         services.TryAddScoped<PostgresReportPlanExecutor>();
         services.TryAddScoped<ITabularReportPlanExecutor>(sp => sp.GetRequiredService<PostgresReportPlanExecutor>());
+        services.TryAddScoped<IStreamingReportDataSource>(sp => sp.GetRequiredService<PostgresReportPlanExecutor>());
         services.TryAddScoped<IReportVariantRepository, PostgresReportVariantRepository>();
         
         // Schema

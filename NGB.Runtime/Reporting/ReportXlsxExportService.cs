@@ -10,7 +10,7 @@ using NGB.Tools.Extensions;
 
 namespace NGB.Runtime.Reporting;
 
-public sealed class ReportXlsxExportService(TimeProvider? timeProvider = null) : IReportExportService
+public sealed partial class ReportXlsxExportService(TimeProvider? timeProvider = null) : IReportExportService, IStreamingReportExportService
 {
     private const string ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
     private static readonly XNamespace NsSpreadsheet = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";

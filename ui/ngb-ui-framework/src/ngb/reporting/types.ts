@@ -46,6 +46,7 @@ export enum ReportRowKind {
 }
 
 export type ReportCapabilitiesDto = {
+  supportsSavedExecution?: boolean
   allowsFilters?: boolean
   allowsRowGroups?: boolean
   allowsColumnGroups?: boolean

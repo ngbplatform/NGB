@@ -149,7 +149,7 @@ public sealed class ReportingArchitectureResidue_P0Tests
             .Single()
             .GetParameters()
             .Select(x => x.ParameterType)
-            .Should().Contain(typeof(ITrialBalanceSnapshotReader));
+            .Should().Contain(typeof(ITrialBalanceAccountSummaryReader));
 
         typeof(TrialBalanceReportService)
             .GetConstructors()

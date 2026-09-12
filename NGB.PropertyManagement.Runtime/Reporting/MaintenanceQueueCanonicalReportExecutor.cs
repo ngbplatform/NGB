@@ -17,6 +17,20 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
 {
     public string ReportCode => PropertyManagementCodes.MaintenanceQueue;
 
+    public ReportExecutionRequestDto PrepareExecution(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        DateTimeOffset utcNow)
+    {
+        var parameters = new Dictionary<string, string>(request.Parameters ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        var date = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc")
+            ?? DateOnly.FromDateTime(utcNow.UtcDateTime);
+        parameters["as_of_utc"] = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        return request with { Parameters = parameters };
+    }
+
+
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,
         ReportExecutionRequestDto request,

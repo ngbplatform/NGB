@@ -239,6 +239,23 @@ public sealed class ReportControllerBaseEdgeCoverageTests
     public void Export_filename_is_safe_and_never_empty(string reportCode, string? title, string expected)
         => Invoke<string>("BuildExportFileName", reportCode, title).Should().Be(expected);
 
+    [Fact]
+    public async Task Saved_report_endpoints_recheck_permissions_before_accessing_results()
+    {
+        var access = new Mock<INgbAccessChecker>();
+        access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Snapshot());
+        var sut = new TestReportController(access.Object);
+        var id = Guid.NewGuid();
+        Func<Task>[] actions = [
+            () => sut.StartRun("accounting.trial_balance", new(), default),
+            () => sut.GetRunStatus("accounting.trial_balance", id, default),
+            () => sut.ReadRun("accounting.trial_balance", id, default),
+            () => sut.CancelRun("accounting.trial_balance", id, default),
+            () => sut.ExportRun("accounting.trial_balance", id, default)
+        ];
+        foreach (var action in actions) await action.Should().ThrowAsync<NgbPermissionDeniedException>();
+    }
+
     private static bool Allowed(ReportCellActionDto action, PermissionSnapshot snapshot)
         => Invoke<bool>("IsCellActionAllowed", action, snapshot);
 
@@ -287,5 +304,7 @@ public sealed class ReportControllerBaseEdgeCoverageTests
             Mock.Of<IReportVariantService>(),
             exports ?? Mock.Of<IReportExportService>(),
             access,
-            cache ?? null!);
+            cache ?? null!,
+            Mock.Of<IReportRunService>(),
+            Mock.Of<IReportVariantAccessContext>());
 }

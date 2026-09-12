@@ -17,4 +17,5 @@ public sealed record ReportCapabilitiesDto(
     int? MaxColumnGroupDepth = null,
     int? MaxVisibleColumns = null,
     int? MaxVisibleRows = null,
-    int? MaxRenderedCells = null);
+    int? MaxRenderedCells = null,
+    bool SupportsSavedExecution = false);

@@ -109,7 +109,7 @@ public sealed class IncomeStatementCanonicalReportExecutor(IIncomeStatementRepor
             GroupKey: $"detail:{line.AccountId}");
     }
 
-    private static IReadOnlyList<ReportSheetRowDto> ToGrandTotalRows(IncomeStatementReport report)
+    internal static IReadOnlyList<ReportSheetRowDto> ToGrandTotalRows(IncomeStatementReport report)
         =>
         [
             TotalRow("Total Income", report.TotalIncome),
@@ -129,7 +129,7 @@ public sealed class IncomeStatementCanonicalReportExecutor(IIncomeStatementRepor
             ],
             SemanticRole: "grand_total");
 
-    private static string HumanizeSection(StatementSection section)
+    internal static string HumanizeSection(StatementSection section)
         => section switch
         {
             StatementSection.Income => "Income",

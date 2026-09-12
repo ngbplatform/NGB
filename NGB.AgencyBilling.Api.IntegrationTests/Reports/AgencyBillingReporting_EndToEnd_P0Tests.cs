@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.IO.Compression;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.AgencyBilling.Api.IntegrationTests.Infrastructure;
@@ -9,6 +10,7 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.Runtime.Reporting.Runs;
 using Xunit;
 
 namespace NGB.AgencyBilling.Api.IntegrationTests.Reports;
@@ -208,6 +210,32 @@ public sealed class AgencyBillingReporting_EndToEnd_P0Tests(AgencyBillingPostgre
             AgencyBillingCodes.ArAgingReport,
             AgencyBillingCodes.TeamUtilizationReport
         ]);
+
+        var savedRuns = scope.ServiceProvider.GetRequiredService<IReportRunService>();
+        foreach (var code in new[] { AgencyBillingCodes.UnbilledTimeReport, AgencyBillingCodes.ProjectProfitabilityReport,
+                     AgencyBillingCodes.InvoiceRegisterReport, AgencyBillingCodes.ArAgingReport, AgencyBillingCodes.TeamUtilizationReport })
+        {
+            var definition = await definitions.GetDefinitionAsync(code, default);
+            definition.Capabilities!.SupportsSavedExecution.Should().BeTrue();
+            var parameters = (definition.Parameters ?? []).ToDictionary(p => p.Code,
+                p => p.Code == "from_utc" ? "2026-04-01" : "2026-04-30");
+            var input = new ReportExecutionRequestDto(Parameters: parameters, DisablePaging: true);
+            var expected = await reports.ExecuteAsync(code, input, default);
+            var run = await savedRuns.StartAsync(code, "agency-reader", input, default);
+            await host.Services.GetRequiredService<ReportRunProcessor>().ProcessNextAsync(default);
+            var rows = new List<ReportSheetRowDto>();
+            ReportExecutionResponseDto page;
+            do
+            {
+                page = await savedRuns.ReadAsync(code, "agency-reader", run.Id, rows.Count, 2, default);
+                rows.AddRange(page.Sheet.Rows);
+            } while (page.HasMore);
+            rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display))))
+                .Should().Equal(expected.Sheet.Rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display)))), code);
+            await using var file = await savedRuns.ExportAsync(code, "agency-reader", run.Id, default);
+            await using var zip = new ZipArchive(file, ZipArchiveMode.Read);
+            zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
+        }
 
         var unbilledDefinition = await definitions.GetDefinitionAsync(AgencyBillingCodes.UnbilledTimeReport, CancellationToken.None);
         unbilledDefinition.Mode.Should().Be(ReportExecutionMode.Composable);

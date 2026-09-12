@@ -14,5 +14,7 @@ public sealed class ReportController(
     IReportVariantService variants,
     IReportExportService exports,
     INgbAccessChecker access,
-    NgbSecurityCache cache)
-    : ReportControllerBase(definitions, engine, variants, exports, access, cache);
+    NgbSecurityCache cache,
+    IReportRunService runs,
+    IReportVariantAccessContext variantAccess)
+    : ReportControllerBase(definitions, engine, variants, exports, access, cache, runs, variantAccess);

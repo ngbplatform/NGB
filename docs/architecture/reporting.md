@@ -63,7 +63,9 @@ A canonical report is usually the right choice when:
 - the output requires domain-specific row shaping;
 - the report needs a bespoke execution path for correctness or performance.
 
-Examples from the accounting side include the canonical accounting family, where some reports are cursor-paged and some are intentionally bounded and fully rendered.
+Canonical accounting executors preserve financial semantics while the report API serves complete saved results through pages and exports.
+
+All report API routes use [saved report execution](/architecture/report-execution-results): database-side aggregation, durable background processing, immutable pages and streaming exports return complete results beyond 10,000 rows, including platform and vertical reports.
 
 ## Composable reports
 

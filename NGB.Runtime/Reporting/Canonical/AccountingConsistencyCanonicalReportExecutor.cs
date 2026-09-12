@@ -95,7 +95,7 @@ public sealed class AccountingConsistencyCanonicalReportExecutor(
             });
     }
 
-    private static ReportSheetRowDto ToDetailRow(
+    internal static ReportSheetRowDto ToDetailRow(
         AccountingConsistencyIssue issue,
         IReadOnlyDictionary<Guid, DimensionBag> bagsById,
         IReadOnlyDictionary<DimensionValueKey, string> enriched)
@@ -129,7 +129,7 @@ public sealed class AccountingConsistencyCanonicalReportExecutor(
             TotalRow("Issue count", report.Issues.Count)
         ];
 
-    private static ReportSheetRowDto TotalRow(string label, long value)
+    internal static ReportSheetRowDto TotalRow(string label, long value)
         => new(
             ReportRowKind.Total,
             Cells:

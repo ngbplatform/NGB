@@ -283,7 +283,7 @@ public sealed class ReportRenderingHelperFullCoverageTests
             0,
             null,
             "subtotal");
-        allMeasures.Cells.Should().ContainSingle().Which.Display.Should().Be("Fallback label");
+        allMeasures.Cells.Should().ContainSingle().Which.Display.Should().Be("12.5", "the first measure must remain numeric");
 
         builder.BuildSummaryRow([], accumulator, "Empty", ReportRowKind.Total, 0, null, "total")
             .Cells.Should().BeEmpty();

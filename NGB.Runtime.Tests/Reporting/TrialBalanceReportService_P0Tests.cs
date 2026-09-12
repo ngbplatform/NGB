@@ -1,6 +1,8 @@
+using System.Runtime.CompilerServices;
 using FluentAssertions;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.TrialBalance;
+using NGB.Core.Dimensions;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting;
 using NGB.Tools.Exceptions;
@@ -11,278 +13,79 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class TrialBalanceReportService_P0Tests
 {
     [Fact]
-    public async Task GetPageAsync_WhenRequestIsNull_ThrowsArgumentRequired()
+    public async Task Null_request_is_rejected()
     {
-        var service = new TrialBalanceReportService(
-            new StubTrialBalanceSnapshotReader(new TrialBalanceSnapshot([])),
-            new StubAccountByIdResolver());
-
-        var action = () => service.GetPageAsync(null!, default);
-
-        await action.Should().ThrowAsync<NgbArgumentRequiredException>();
+        var service = new TrialBalanceReportService(new Reader([]));
+        await ((Func<Task>)(() => service.GetPageAsync(null!))).Should().ThrowAsync<NgbArgumentRequiredException>();
     }
 
     [Fact]
-    public async Task GetPageAsync_WhenSnapshotIsEmpty_ReturnsEmptyPageAndZeroTotals()
+    public async Task Empty_result_has_no_groups_and_zero_totals()
     {
-        var service = new TrialBalanceReportService(
-            new StubTrialBalanceSnapshotReader(new TrialBalanceSnapshot([])),
-            new StubAccountByIdResolver());
-
-        var page = await service.GetPageAsync(new TrialBalanceReportPageRequest(), default);
-
+        var page = await new TrialBalanceReportService(new Reader([])).GetPageAsync(new());
         page.Rows.Should().BeEmpty();
-        page.Total.Should().Be(0);
-        page.HasMore.Should().BeFalse();
-        page.Totals.Should().Be(new TrialBalanceReportTotals(0m, 0m, 0m, 0m));
+        page.Totals.Should().Be(new TrialBalanceReportTotals(0, 0, 0, 0));
     }
 
-    [Fact]
-    public async Task GetPageAsync_WhenAccountCannotBeResolved_UsesSnapshotCodeAndUnknownGroup()
+    [Theory]
+    [InlineData(true, 8)]
+    [InlineData(false, 6)]
+    public async Task Groups_subtotals_and_totals_preserve_account_values(bool showSubtotals, int count)
     {
-        var accountId = Guid.CreateVersion7();
-        var service = new TrialBalanceReportService(
-            new StubTrialBalanceSnapshotReader(
-                new TrialBalanceSnapshot(
-                [
-                    new TrialBalanceSnapshotRow(
-                        accountId,
-                        "9999",
-                        Guid.CreateVersion7(),
-                        1m,
-                        2m,
-                        3m)
-                ])),
-            new StubAccountByIdResolver());
-
-        var page = await service.GetPageAsync(
-            new TrialBalanceReportPageRequest { ShowSubtotals = true },
-            default);
-
-        page.Rows.Select(row => (row.RowKind, row.AccountDisplay)).Should().Equal(
-            (TrialBalanceReportRowKind.Group, "Unknown"),
-            (TrialBalanceReportRowKind.Detail, "9999"),
-            (TrialBalanceReportRowKind.Subtotal, "Unknown subtotal"));
-    }
-
-
-    [Fact]
-    public async Task GetPageAsync_Shapes_Single_Account_Column_Grouping_And_Subtotals_Without_Dimension_Columns()
-    {
-        var cashId = Guid.Parse("11111111-1111-1111-1111-111111111111");
-        var arId = Guid.Parse("22222222-2222-2222-2222-222222222222");
-        var set1 = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
-        var set2 = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
-        var set3 = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
-
-        var snapshotReader = new StubTrialBalanceSnapshotReader(
-            new TrialBalanceSnapshot([
-                new TrialBalanceSnapshotRow(cashId, "1000", set1, 10m, 5m, 1m),
-                new TrialBalanceSnapshotRow(cashId, "1000", set2, 2m, 7m, 4m),
-                new TrialBalanceSnapshotRow(arId, "1100", set3, 3m, 6m, 2m)
-            ]));
-
-        var accounts = new StubAccountByIdResolver(
-            new Account(cashId, "1000", "Operating Cash", AccountType.Asset),
-            new Account(arId, "1100", "Accounts Receivable - Tenants", AccountType.Asset));
-
-        var service = new TrialBalanceReportService(snapshotReader, accounts);
-
-        var page = await service.GetPageAsync(
-            new TrialBalanceReportPageRequest
-            {
-                FromInclusive = new DateOnly(2026, 3, 1),
-                ToInclusive = new DateOnly(2026, 3, 1),
-                Offset = 0,
-                Limit = 20,
-                ShowSubtotals = true
-            },
-            CancellationToken.None);
-
-        page.Total.Should().Be(4);
-        page.HasMore.Should().BeFalse();
-        page.Rows.Select(x => (x.RowKind, x.AccountDisplay)).Should().Equal(
-            (TrialBalanceReportRowKind.Group, "Asset"),
-            (TrialBalanceReportRowKind.Detail, "1000 — Operating Cash"),
-            (TrialBalanceReportRowKind.Detail, "1100 — Accounts Receivable - Tenants"),
-            (TrialBalanceReportRowKind.Subtotal, "Asset subtotal"));
-
-        page.Rows[1].OpeningBalance.Should().Be(12m);
-        page.Rows[1].DebitAmount.Should().Be(12m);
-        page.Rows[1].CreditAmount.Should().Be(5m);
-        page.Rows[1].ClosingBalance.Should().Be(19m);
-
-        page.Rows[3].OpeningBalance.Should().Be(15m);
-        page.Rows[3].DebitAmount.Should().Be(18m);
-        page.Rows[3].CreditAmount.Should().Be(7m);
-        page.Rows[3].ClosingBalance.Should().Be(26m);
-
-        page.Totals.Should().Be(new TrialBalanceReportTotals(15m, 18m, 7m, 26m));
-        accounts.GetByIdsCallCount.Should().Be(1);
-    }
-
-    [Fact]
-    public async Task GetPageAsync_Ignores_Offset_And_Limit_And_Returns_Full_Bounded_Row_Model()
-    {
-        var cashId = Guid.Parse("44444444-4444-4444-4444-444444444444");
-        var arId = Guid.Parse("55555555-5555-5555-5555-555555555555");
-        var set1 = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
-        var set2 = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
-
-        var snapshotReader = new StubTrialBalanceSnapshotReader(
-            new TrialBalanceSnapshot([
-                new TrialBalanceSnapshotRow(cashId, "1000", set1, 10m, 3m, 1m),
-                new TrialBalanceSnapshotRow(arId, "1100", set2, 5m, 2m, 0m)
-            ]));
-
-        var accounts = new StubAccountByIdResolver(
-            new Account(cashId, "1000", "Operating Cash", AccountType.Asset),
-            new Account(arId, "1100", "Accounts Receivable - Tenants", AccountType.Asset));
-
-        var service = new TrialBalanceReportService(snapshotReader, accounts);
-
-        var page = await service.GetPageAsync(
-            new TrialBalanceReportPageRequest
-            {
-                FromInclusive = new DateOnly(2026, 3, 1),
-                ToInclusive = new DateOnly(2026, 3, 1),
-                Offset = 99,
-                Limit = 1,
-                ShowSubtotals = false
-            },
-            CancellationToken.None);
-
-        page.Total.Should().Be(3);
-        page.HasMore.Should().BeFalse();
-        page.Rows.Select(x => (x.RowKind, x.AccountDisplay)).Should().Equal(
-            (TrialBalanceReportRowKind.Group, "Asset"),
-            (TrialBalanceReportRowKind.Detail, "1000 — Operating Cash"),
-            (TrialBalanceReportRowKind.Detail, "1100 — Accounts Receivable - Tenants"));
-    }
-
-    [Fact]
-    public async Task GetPageAsync_Large_Synthetic_Dataset_Returns_Full_Bounded_Summary()
-    {
-        var snapshotRows = new List<TrialBalanceSnapshotRow>();
-        var accounts = new List<Account>();
-
-        for (var i = 0; i < 120; i++)
+        var reader = new Reader([
+            new(Guid.NewGuid(), "1000", "Cash", AccountType.Asset, 10, 20, 3),
+            new(Guid.NewGuid(), "1100", "Receivables", AccountType.Asset, 5, 7, 4),
+            new(Guid.NewGuid(), "4000", "Rent", AccountType.Income, -15, 0, 20),
+            new(Guid.NewGuid(), "4010", "Other", AccountType.Income, 0, 0, 0)
+        ]);
+        var scope = new DimensionScopeBag([new(Guid.NewGuid(), [Guid.NewGuid()])]);
+        var page = await new TrialBalanceReportService(reader).GetPageAsync(new()
         {
-            var assetId = Guid.CreateVersion7();
-            var expenseId = Guid.CreateVersion7();
-            var assetSetId = Guid.CreateVersion7();
-            var expenseSetId = Guid.CreateVersion7();
-            var assetCode = $"1{i:000}";
-            var expenseCode = $"5{i:000}";
-
-            accounts.Add(new Account(assetId, assetCode, $"Asset {i}", AccountType.Asset));
-            accounts.Add(new Account(expenseId, expenseCode, $"Expense {i}", AccountType.Expense));
-
-            snapshotRows.Add(new TrialBalanceSnapshotRow(assetId, assetCode, assetSetId, 10m, 2m, 1m));
-            snapshotRows.Add(new TrialBalanceSnapshotRow(expenseId, expenseCode, expenseSetId, 0m, 3m, 0m));
-        }
-
-        var service = new TrialBalanceReportService(
-            new StubTrialBalanceSnapshotReader(new TrialBalanceSnapshot(snapshotRows)),
-            new StubAccountByIdResolver(accounts.ToArray()));
-
-        var page = await service.GetPageAsync(
-            new TrialBalanceReportPageRequest
-            {
-                FromInclusive = new DateOnly(2026, 3, 1),
-                ToInclusive = new DateOnly(2026, 3, 1),
-                Offset = 500,
-                Limit = 10,
-                ShowSubtotals = true
-            },
-            CancellationToken.None);
-
-        page.Rows.Should().HaveCount(244);
-        page.Total.Should().Be(244);
-        page.HasMore.Should().BeFalse();
-        page.Totals.Should().Be(new TrialBalanceReportTotals(1200m, 600m, 120m, 1680m));
-        page.Rows.First().Should().BeEquivalentTo(new { RowKind = TrialBalanceReportRowKind.Group, AccountDisplay = "Asset" });
-        page.Rows.Last().Should().BeEquivalentTo(new { RowKind = TrialBalanceReportRowKind.Subtotal, AccountDisplay = "Expense subtotal" });
+            FromInclusive = new(2026, 9, 1), ToInclusive = new(2026, 10, 1), DimensionScopes = scope, ShowSubtotals = showSubtotals
+        });
+        page.Rows.Should().HaveCount(count);
+        page.Totals.Should().Be(new TrialBalanceReportTotals(0, 27, 27, 0));
+        page.Rows.Where(r => r.RowKind == TrialBalanceReportRowKind.Detail).Select(r => r.ClosingBalance).Should().Equal(27, 8, -35, 0);
+        reader.Scopes.Should().BeSameAs(scope);
+        reader.From.Should().Be(new DateOnly(2026, 9, 1));
+        reader.To.Should().Be(new DateOnly(2026, 10, 1));
+        if (showSubtotals)
+            page.Rows.Where(r => r.RowKind == TrialBalanceReportRowKind.Subtotal).Select(r => r.ClosingBalance).Should().Equal(35, -35);
     }
 
     [Fact]
-    public async Task GetPageAsync_Omits_Subtotal_Rows_When_ShowSubtotals_Is_False()
+    public async Task More_than_ten_thousand_accounts_are_not_rejected_or_truncated()
     {
-        var expenseId = Guid.Parse("33333333-3333-3333-3333-333333333333");
-        var set1 = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
-
-        var snapshotReader = new StubTrialBalanceSnapshotReader(
-            new TrialBalanceSnapshot([
-                new TrialBalanceSnapshotRow(expenseId, "5300", set1, 0m, 7m, 0m)
-            ]));
-
-        var accounts = new StubAccountByIdResolver(
-            new Account(expenseId, "5300", "Cleaning Expense", AccountType.Expense));
-
-        var service = new TrialBalanceReportService(snapshotReader, accounts);
-
-        var page = await service.GetPageAsync(
-            new TrialBalanceReportPageRequest
-            {
-                FromInclusive = new DateOnly(2026, 3, 1),
-                ToInclusive = new DateOnly(2026, 3, 1),
-                Offset = 0,
-                Limit = 20,
-                ShowSubtotals = false
-            },
-            CancellationToken.None);
-
-        page.Rows.Select(x => x.RowKind).Should().Equal(TrialBalanceReportRowKind.Group, TrialBalanceReportRowKind.Detail);
+        var accounts = Enumerable.Range(0, 10_001).Select(i =>
+            new TrialBalanceAccountSummary(Guid.NewGuid(), i.ToString("D5"), "Account", AccountType.Asset, 1, 2, 3)).ToArray();
+        var page = await new TrialBalanceReportService(new Reader(accounts)).GetPageAsync(new() { ShowSubtotals = true });
+        page.Rows.Count(r => r.RowKind == TrialBalanceReportRowKind.Detail).Should().Be(10_001);
+        page.Totals.Should().Be(new TrialBalanceReportTotals(10_001, 20_002, 30_003, 0));
     }
 
     [Fact]
-    public async Task GetPageAsync_RejectsTheFirstRowBeyondTheMaterializationBound()
+    public async Task Cancellation_reaches_the_streaming_reader()
     {
-        var snapshot = new TrialBalanceSnapshot(
-            Enumerable.Range(0, NGB.Contracts.Common.PagingLimits.MaxMaterializedRows)
-                .Select(index => new TrialBalanceSnapshotRow(
-                    Guid.CreateVersion7(),
-                    index.ToString("D5"),
-                    Guid.CreateVersion7(),
-                    0m,
-                    0m,
-                    0m))
-                .ToArray());
-        var service = new TrialBalanceReportService(
-            new StubTrialBalanceSnapshotReader(snapshot),
-            new StubAccountByIdResolver());
-
-        var act = () => service.GetPageAsync(
-            new TrialBalanceReportPageRequest { ShowSubtotals = false },
-            default);
-
-        (await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>())
-            .Which.ParamName.Should().Be("request");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var service = new TrialBalanceReportService(new Reader([]));
+        await ((Func<Task>)(() => service.GetPageAsync(new(), cts.Token))).Should().ThrowAsync<OperationCanceledException>();
     }
 
-    private sealed class StubTrialBalanceSnapshotReader(TrialBalanceSnapshot snapshot) : ITrialBalanceSnapshotReader
+    private sealed class Reader(TrialBalanceAccountSummary[] accounts) : ITrialBalanceAccountSummaryReader
     {
-        public Task<TrialBalanceSnapshot> GetAsync(
-            DateOnly fromInclusive,
-            DateOnly toInclusive,
-            NGB.Core.Dimensions.DimensionScopeBag? dimensionScopes,
-            CancellationToken ct = default)
-            => Task.FromResult(snapshot);
-    }
-
-    private sealed class StubAccountByIdResolver(params Account[] accounts) : IAccountByIdResolver
-    {
-        private readonly Dictionary<Guid, Account> _map = accounts.ToDictionary(x => x.Id, x => x);
-        public int GetByIdsCallCount { get; private set; }
-
-        public Task<Account?> GetByIdAsync(Guid accountId, CancellationToken ct = default)
-            => Task.FromResult(_map.TryGetValue(accountId, out var account) ? account : null);
-
-        public Task<IReadOnlyDictionary<Guid, Account>> GetByIdsAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default)
+        public DimensionScopeBag? Scopes { get; private set; }
+        public DateOnly From { get; private set; }
+        public DateOnly To { get; private set; }
+        public async IAsyncEnumerable<TrialBalanceAccountSummary> ReadAsync(DateOnly fromInclusive, DateOnly toInclusive,
+            DimensionScopeBag? dimensionScopes, [EnumeratorCancellation] CancellationToken ct = default)
         {
-            GetByIdsCallCount++;
-            var result = accountIds.Where(_map.ContainsKey).ToDictionary(x => x, x => _map[x]);
-            return Task.FromResult((IReadOnlyDictionary<Guid, Account>)result);
+            Scopes = dimensionScopes;
+            From = fromInclusive;
+            To = toInclusive;
+            await Task.CompletedTask;
+            ct.ThrowIfCancellationRequested();
+            foreach (var account in accounts) yield return account;
         }
     }
 }

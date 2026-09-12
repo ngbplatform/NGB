@@ -32,6 +32,9 @@ type CommandPaletteContext = {
 const reportPageMocks = vi.hoisted(() => ({
   deleteReportVariant: vi.fn(),
   executeReport: vi.fn(),
+  executeSavedReport: vi.fn(),
+  readSavedReport: vi.fn(),
+  exportSavedReport: vi.fn(),
   exportReportXlsx: vi.fn(),
   getReportDefinition: vi.fn(),
   getReportVariants: vi.fn(),
@@ -52,6 +55,12 @@ const reportPageMocks = vi.hoisted(() => ({
     deletedVariants: [] as string[],
     commandPaletteResolver: null as null | (() => CommandPaletteContext | null | undefined),
   },
+}))
+
+vi.mock('../../../../src/ngb/reporting/savedRuns', () => ({
+  executeSavedReport: reportPageMocks.executeSavedReport,
+  readSavedReport: reportPageMocks.readSavedReport,
+  exportSavedReport: reportPageMocks.exportSavedReport,
 }))
 
 vi.mock('../../../../src/ngb/reporting/api', () => ({
@@ -547,6 +556,9 @@ beforeEach(() => {
   reportPageMocks.useCommandPalettePageContext.mockReset()
   reportPageMocks.getReportDefinition.mockReset()
   reportPageMocks.getReportVariants.mockReset()
+  reportPageMocks.executeSavedReport.mockReset()
+  reportPageMocks.readSavedReport.mockReset()
+  reportPageMocks.exportSavedReport.mockReset()
   reportPageMocks.executeReport.mockReset()
   reportPageMocks.exportReportXlsx.mockReset()
   reportPageMocks.saveReportVariant.mockReset()
@@ -2297,4 +2309,53 @@ test('does not show end-of-list for an empty restored page even when paging hist
   const { view } = await renderReportPage()
   await expect.element(view.getByText('rows:0')).toBeVisible()
   await expect.element(view.getByText('show-end:false')).toBeVisible()
+})
+
+test('browses saved results beyond 10000 rows without accumulating earlier pages', async () => {
+  (reportPageMocks.state.definition!.capabilities as Record<string, unknown>).supportsSavedExecution = true
+  reportPageMocks.state.definition!.filters = []
+  const first = { ...buildResponse(), offset: 0, limit: 200, total: 15000, hasMore: true, nextCursor: 'saved:200', diagnostics: { runId: 'saved' } }
+  reportPageMocks.executeSavedReport.mockResolvedValue(first)
+  reportPageMocks.readSavedReport.mockResolvedValue({ ...first, offset: 12000, nextCursor: 'saved:12200' })
+  await renderReportPage()
+  await expect.element(page.getByRole('navigation', { name: 'Report pages' })).toBeVisible()
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await expect.poll(() => reportPageMocks.readSavedReport.mock.calls.length).toBe(1)
+  await expect.element(page.getByText(/Rows 12001/)).toBeVisible()
+  expect(reportPageMocks.executeReport).not.toHaveBeenCalled()
+  await expect.element(page.getByRole('button', { name: 'Previous', exact: true })).toBeEnabled()
+})
+
+test('shows progress and allows cancelling a saved report', async () => {
+  (reportPageMocks.state.definition!.capabilities as Record<string, unknown>).supportsSavedExecution = true
+  reportPageMocks.state.definition!.filters = []
+  let signal: AbortSignal | undefined
+  reportPageMocks.executeSavedReport.mockImplementation((_code, _request, options) => {
+    signal = options.signal
+    return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError'))))
+  })
+  await renderReportPage()
+  await expect.element(page.getByText('Preparing report…')).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  expect(signal!.aborted).toBe(true)
+  await expect.element(page.getByText('Preparing report…')).not.toBeInTheDocument()
+})
+
+test('exports the displayed saved result and allows cancelling file preparation', async () => {
+  (reportPageMocks.state.definition!.capabilities as Record<string, unknown>).supportsSavedExecution = true
+  reportPageMocks.state.definition!.filters = []
+  reportPageMocks.executeSavedReport.mockResolvedValue({ ...buildResponse(), diagnostics: { runId: 'frozen-result' } })
+  let signal: AbortSignal | undefined
+  reportPageMocks.exportSavedReport.mockImplementation((_code, _id, options) => {
+    signal = options.signal
+    return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError'))))
+  })
+  await renderReportPage()
+  await expect.poll(() => reportPageMocks.executeSavedReport.mock.calls.length).toBe(1)
+  clickHeaderButtonByTitle('Download')
+  await expect.element(page.getByText('Preparing download…')).toBeVisible()
+  expect(reportPageMocks.exportSavedReport.mock.calls[0]?.[1]).toBe('frozen-result')
+  await page.getByRole('button', { name: 'Cancel download', exact: true }).click()
+  expect(signal!.aborted).toBe(true)
+  await expect.element(page.getByText('Preparing download…')).not.toBeInTheDocument()
 })
