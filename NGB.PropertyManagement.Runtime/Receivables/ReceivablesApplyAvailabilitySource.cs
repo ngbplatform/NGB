@@ -13,6 +13,10 @@ namespace NGB.PropertyManagement.Runtime.Receivables;
 
 public interface IReceivablesApplyAvailabilitySource : IPropertyManagementApplyAvailabilitySource
 {
+    /// <summary>
+    /// Returns exhausted payments from the supplied receivable credit sources.
+    /// Credit memos are ignored because they do not have payment Work Center tasks.
+    /// </summary>
     Task<IReadOnlySet<Guid>> GetExhaustedPaymentIdsAsync(IReadOnlyCollection<Guid> paymentIds, CancellationToken ct);
 }
 
@@ -52,6 +56,9 @@ public sealed class ReceivablesApplyAvailabilitySource(
         {
             if (!documentsById.TryGetValue(id, out var document))
                 throw new NGB.Core.Documents.Exceptions.DocumentNotFoundException(id);
+
+            if (string.Equals(document.TypeCode, PropertyManagementCodes.ReceivableCreditMemo, StringComparison.OrdinalIgnoreCase))
+                continue;
 
             if (!string.Equals(document.TypeCode, PropertyManagementCodes.ReceivablePayment, StringComparison.OrdinalIgnoreCase))
             {

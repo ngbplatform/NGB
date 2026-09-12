@@ -22,7 +22,7 @@ public sealed class ApplyAvailabilitySourcesFullCoverageTests
     private static readonly DateOnly Day = new(2026, 8, 16);
 
     [Fact]
-    public async Task Receivables_batch_availability_reads_documents_heads_and_balances_once()
+    public async Task Receivables_batch_availability_skips_credit_memos_and_reads_payment_balances_once()
     {
         var fixture = new ReceivablesFixture();
         (await fixture.Sut.GetExhaustedPaymentIdsAsync([], default)).Should().BeEmpty();
@@ -30,8 +30,10 @@ public sealed class ApplyAvailabilitySourcesFullCoverageTests
         var availableId = Guid.CreateVersion7();
         var exhaustedId = Guid.CreateVersion7();
         var draftId = Guid.CreateVersion7();
+        var creditMemoId = Guid.CreateVersion7();
         var documents = new Dictionary<Guid, DocumentRecord>
         {
+            [creditMemoId] = Document(creditMemoId, PropertyManagementCodes.ReceivableCreditMemo),
             [availableId] = Document(availableId, PropertyManagementCodes.ReceivablePayment),
             [exhaustedId] = Document(exhaustedId, PropertyManagementCodes.ReceivablePayment),
             [draftId] = new DocumentRecord
@@ -43,11 +45,11 @@ public sealed class ApplyAvailabilitySourcesFullCoverageTests
             }
         };
         fixture.Documents.Setup(x => x.GetByIdsAsync(
-                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 3),
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 4),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(documents);
         fixture.Readers.Setup(x => x.ReadReceivablePaymentHeadsAsync(
-                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2),
+                It.Is<IReadOnlyCollection<Guid>>(ids => ids.Count == 2 && ids.Contains(availableId) && ids.Contains(exhaustedId)),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(
             [
@@ -65,7 +67,7 @@ public sealed class ApplyAvailabilitySourcesFullCoverageTests
             .ReturnsAsync([-1m, 0m]);
 
         var result = await fixture.Sut.GetExhaustedPaymentIdsAsync(
-            [Guid.Empty, availableId, exhaustedId, draftId, availableId],
+            [Guid.Empty, creditMemoId, availableId, exhaustedId, draftId, availableId, creditMemoId],
             default);
 
         result.Should().BeEquivalentTo([exhaustedId, draftId]);
@@ -79,6 +81,35 @@ public sealed class ApplyAvailabilitySourcesFullCoverageTests
             "amount",
             DateOnly.MaxValue,
             It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(PropertyManagementCodes.ReceivableCreditMemo, StoredDocumentStatus.Posted)]
+    [InlineData("PM.RECEIVABLE_CREDIT_MEMO", StoredDocumentStatus.Posted)]
+    [InlineData(PropertyManagementCodes.ReceivableCreditMemo, StoredDocumentStatus.Draft)]
+    [InlineData(PropertyManagementCodes.ReceivableCreditMemo, StoredDocumentStatus.MarkedForDeletion)]
+    public async Task Credit_memo_only_batch_has_no_exhausted_payments_or_balance_reads(
+        string typeCode, StoredDocumentStatus status)
+    {
+        var fixture = new ReceivablesFixture();
+        fixture.Documents.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, DocumentRecord>
+            {
+                [fixture.DocumentId] = new()
+                {
+                    Id = fixture.DocumentId,
+                    TypeCode = typeCode,
+                    DateUtc = DateTime.UnixEpoch,
+                    Status = status
+                }
+            });
+
+        (await fixture.Sut.GetExhaustedPaymentIdsAsync([fixture.DocumentId], default)).Should().BeEmpty();
+
+        fixture.Readers.VerifyNoOtherCalls();
+        fixture.Policy.VerifyNoOtherCalls();
+        fixture.Net.VerifyNoOtherCalls();
     }
 
     [Fact]

@@ -32,6 +32,7 @@ public interface IReceivablePaymentWorkCenterSynchronizer
 /// Keeps a receivable payment's task synchronized with the authoritative
 /// open-items balance. Both document-action events and atomic apply workflows
 /// use this service, so no UI/API path can leave a stale task behind.
+/// Apply workflows also pass credit memos, which have no payment task and are ignored.
 /// </summary>
 public sealed class ReceivablePaymentWorkCenterSynchronizer(
     IDocumentRepository documents,
@@ -48,7 +49,9 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
         Guid? causationId,
         CancellationToken ct)
     {
-        var payment = await GetPaymentAsync(paymentId, ct);
+        var payment = await GetPaymentOrNullAsync(paymentId, ct);
+        if (payment is null)
+            return [];
 
         var availabilityResult = await availability.EvaluateAsync(
             PropertyManagementCodes.ReceivablePayment,
@@ -106,7 +109,9 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
     /// </summary>
     public async Task<IReadOnlyList<Guid>> CompleteIfExhaustedAsync(Guid paymentId, CancellationToken ct)
     {
-        var payment = await GetPaymentAsync(paymentId, ct);
+        var payment = await GetPaymentOrNullAsync(paymentId, ct);
+        if (payment is null)
+            return [];
 
         var availabilityResult = await availability.EvaluateAsync(
             PropertyManagementCodes.ReceivablePayment,
@@ -170,10 +175,13 @@ public sealed class ReceivablePaymentWorkCenterSynchronizer(
         }
     }
 
-    private async Task<NGB.Core.Documents.DocumentRecord> GetPaymentAsync(Guid paymentId, CancellationToken ct)
+    private async Task<NGB.Core.Documents.DocumentRecord?> GetPaymentOrNullAsync(Guid paymentId, CancellationToken ct)
     {
         var payment = await documents.GetAsync(paymentId, ct)
             ?? throw new DocumentNotFoundException(paymentId);
+
+        if (string.Equals(payment.TypeCode, PropertyManagementCodes.ReceivableCreditMemo, StringComparison.OrdinalIgnoreCase))
+            return null;
 
         if (!string.Equals(
                 payment.TypeCode,

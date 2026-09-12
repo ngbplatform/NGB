@@ -98,7 +98,52 @@ public sealed class PropertyManagementWorkCenterFullCoverageTests
             .Should().ThrowAsync<DocumentNotFoundException>();
         await ((Func<Task>)(() => fixture.Sut.SynchronizeAsync(wrongId, null, null, default)))
             .Should().ThrowAsync<DocumentTypeMismatchException>();
+        await ((Func<Task>)(() => fixture.Sut.CompleteIfExhaustedAsync(missingId, default)))
+            .Should().ThrowAsync<DocumentNotFoundException>();
+        await ((Func<Task>)(() => fixture.Sut.CompleteIfExhaustedAsync(wrongId, default)))
+            .Should().ThrowAsync<DocumentTypeMismatchException>();
         fixture.Availability.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData(PropertyManagementCodes.ReceivableCreditMemo)]
+    [InlineData("PM.RECEIVABLE_CREDIT_MEMO")]
+    public async Task Credit_memo_synchronization_and_completion_do_not_touch_payment_tasks(string typeCode)
+    {
+        var fixture = new SynchronizerFixture();
+        var creditMemoId = Guid.CreateVersion7();
+        fixture.DocumentsById[creditMemoId] = Document(creditMemoId, typeCode, "RCM-1");
+
+        (await fixture.Sut.SynchronizeAsync(creditMemoId, Guid.CreateVersion7(), Guid.CreateVersion7(), default))
+            .Should().BeEmpty();
+        (await fixture.Sut.CompleteIfExhaustedAsync(creditMemoId, default)).Should().BeEmpty();
+
+        fixture.Availability.VerifyNoOtherCalls();
+        fixture.Tasks.VerifyNoOtherCalls();
+        fixture.Realtime.VerifyNoOtherCalls();
+    }
+
+    [Theory]
+    [InlineData("post")]
+    [InlineData("repost")]
+    [InlineData("unpost")]
+    public async Task Credit_memo_apply_events_do_not_create_or_complete_payment_tasks(string action)
+    {
+        var fixture = new SynchronizerFixture();
+        var applyId = Guid.CreateVersion7();
+        var creditMemoId = Guid.CreateVersion7();
+        fixture.DocumentsById[creditMemoId] = Document(creditMemoId, PropertyManagementCodes.ReceivableCreditMemo, "RCM-1");
+        var readers = new Mock<IPropertyManagementDocumentReaders>(MockBehavior.Strict);
+        readers.Setup(x => x.ReadReceivableApplyHeadAsync(applyId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PmReceivableApplyHead(applyId, creditMemoId, Guid.CreateVersion7(),
+                new DateOnly(2026, 8, 16), 29.84m, null));
+        var policy = new PropertyManagementWorkCenterPolicy(readers.Object, fixture.Sut);
+
+        (await policy.HandleAsync(Event(applyId, PropertyManagementCodes.ReceivableApply, action), default))
+            .Should().BeEmpty();
+
+        fixture.Availability.VerifyNoOtherCalls();
+        fixture.Tasks.VerifyNoOtherCalls();
     }
 
     [Fact]
