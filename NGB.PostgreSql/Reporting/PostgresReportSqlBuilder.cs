@@ -10,7 +10,7 @@ namespace NGB.PostgreSql.Reporting;
 
 public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datasets)
 {
-    internal const int MaxCursorlessOffset = 10_000;
+    internal const int MaxCursorlessOffset = PagingLimits.MaxOffset;
     private const string DisplayFieldSuffix = "_display";
     private const string IdFieldSuffix = "_id";
 
@@ -20,7 +20,13 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
     public PostgresReportSqlStatement Build(PostgresReportExecutionRequest request) => BuildCore(request, false);
 
     internal PostgresReportSqlStatement BuildStreaming(PostgresReportExecutionRequest request)
-        => BuildCore(request with { Paging = new(0, 500, DisablePaging: true) }, true);
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        // A server cursor fetches batches; the SQL itself must not have a page limit.
+        return BuildCore(request with { Paging = new(0, 0, DisablePaging: true) }, true);
+    }
 
     private PostgresReportSqlStatement BuildCore(PostgresReportExecutionRequest request, bool streaming)
     {
@@ -28,6 +34,7 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
             throw new NgbArgumentRequiredException(nameof(request));
 
         var dataset = _datasets.GetDataset(request.DatasetCodeNorm);
+        var source = dataset.ResolveSource(request);
         var selectSql = new List<string>();
         var groupBySql = new List<string>();
         var orderColumns = new List<PostgresReportCursorColumn>();
@@ -69,13 +76,14 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
             AddProjectedColumn(selectSql, groupBySql, columns, usedAliases, expression, alias, measure.Label, measure.DataType, "measure", includeInGroupBy: false);
         }
 
-        AppendInteractiveSupportFields(request, dataset, selectSql, groupBySql, columns, usedAliases, streaming && request.Measures.Count > 0);
+        var aggregated = request.Measures.Count > 0 || request.DistinctGroups;
+        AppendInteractiveSupportFields(request, dataset, selectSql, groupBySql, columns, usedAliases, aggregated);
 
         if (selectSql.Count == 0)
             throw new NgbConfigurationViolationException($"PostgreSQL reporting request for dataset '{dataset.DatasetCodeNorm}' must select at least one row group, column group, detail field, or measure.");
 
-        if (!string.IsNullOrWhiteSpace(dataset.BaseWhereSql))
-            whereSql.Add($"({dataset.BaseWhereSql})");
+        if (!string.IsNullOrWhiteSpace(source.BaseWhereSql))
+            whereSql.Add($"({source.BaseWhereSql})");
 
         foreach (var pair in request.Parameters)
         {
@@ -85,9 +93,32 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
         foreach (var predicate in request.Predicates)
         {
             var fieldBinding = dataset.GetField(predicate.FieldCode);
-            var expression = fieldBinding.ResolveExpression(null);
+            var expression = fieldBinding.ResolveExpression(predicate.TimeGrain);
             var parameterName = $"p_{predicateIndex++}";
             whereSql.Add(BuildPredicateSql(expression, parameterName, predicate.Filter, parameters));
+        }
+
+        if (request.Selection is { } selection)
+        {
+            ValidateSelection(selection);
+
+            var expressions = selection.Fields
+                .Select(field => dataset.GetField(field.FieldCode).ResolveExpression(field.TimeGrain))
+                .ToArray();
+
+            var alternatives = new List<string>(selection.Keys.Count);
+            foreach (var key in selection.Keys)
+            {
+                var terms = new List<string>(key.Count);
+                for (var i = 0; i < key.Count; i++)
+                {
+                    terms.Add(BuildPredicateSql(expressions[i], $"p_{predicateIndex++}", new(key[i]), parameters));
+                }
+
+                alternatives.Add($"({string.Join(" AND ", terms)})");
+            }
+
+            whereSql.Add(alternatives.Count == 0 ? "FALSE" : $"({string.Join(" OR ", alternatives)})");
         }
 
         if (streaming)
@@ -173,11 +204,11 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
             ? PostgresReportCursorCodec.Decode(request.Paging.Cursor, dataset.DatasetCodeNorm, cursorColumns)
             : null;
 
-        if (request.Paging.DisablePaging)
+        if (request.Paging.DisablePaging && !streaming)
         {
             parameters.Add("materialization_limit_plus_one", PagingLimits.MaxMaterializedRows + 1);
         }
-        else
+        else if (!request.Paging.DisablePaging)
         {
             parameters.Add("limit_plus_one", request.Paging.Limit + 1);
             if (cursorValues is null && request.Paging.Offset > 0)
@@ -187,9 +218,9 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
         var innerSql = $"""
 SELECT
     {string.Join(",", selectSql)}
-FROM {dataset.FromSql}
+FROM {source.FromSql}
 {BuildWhereClause(whereSql)}
-{BuildGroupByClause(groupBySql, request.Measures.Count > 0)}
+{BuildGroupByClause(groupBySql, aggregated)}
 """;
 
         var orderBySql = BuildOrderBySql(orderColumns, cursorColumns.Count > 0);
@@ -253,15 +284,36 @@ ORDER BY {orderBySql}
 """;
         }
 
+        PostgresReportSqlLimits.Validate(sql, parameters.ParameterNames.Count());
+
         return new PostgresReportSqlStatement(
             Sql: sql,
             Parameters: parameters,
             Columns: columns,
-            IsAggregated: request.Measures.Count > 0,
+            IsAggregated: aggregated,
             Offset: request.Paging.DisablePaging || cursorValues is not null ? 0 : PagingLimits.BoundOffset(request.Paging.Offset),
             Limit: request.Paging.DisablePaging ? 0 : request.Paging.Limit,
             DatasetCode: dataset.DatasetCodeNorm,
             CursorColumns: cursorColumns);
+    }
+
+    private static void ValidateSelection(ReportRowSelection selection)
+    {
+        var maxKeys = ReportRowSelectionLimits.GetMaxKeyCount(selection.Fields.Count);
+        if (maxKeys == 0)
+            throw new NgbArgumentInvalidException("selection", $"Report row keys must contain between 1 and {ReportRowSelectionLimits.MaxFields} fields.");
+
+        if (selection.Keys.Count > maxKeys)
+            throw new NgbArgumentInvalidException("selection", $"Report row selection exceeds {ReportRowSelectionLimits.MaxKeys} keys or {ReportRowSelectionLimits.MaxValues} scalar values. Request a smaller page.");
+
+        foreach (var key in selection.Keys)
+        {
+            if (key.Count != selection.Fields.Count)
+                throw new NgbArgumentInvalidException("selection", "Report key does not match its fields.");
+
+            if (key.Any(value => value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Array or JsonValueKind.Object))
+                throw new NgbArgumentInvalidException("selection", "Report row keys must contain scalar values or null.");
+        }
     }
 
     private static void ValidateCursorlessOffset(PostgresReportPaging paging, bool hasStableCursor)
@@ -299,9 +351,12 @@ ORDER BY {orderBySql}
         if (request.Paging.DisablePaging)
             return [];
 
-        if (request.Measures.Count > 0)
+        if (request.Measures.Count > 0 || request.DistinctGroups)
         {
-            var groupingColumns = columns.Where(x => !string.Equals(x.SemanticRole, "measure", StringComparison.OrdinalIgnoreCase)).ToArray();
+            var groupingColumns = columns
+                .Where(x => x.SemanticRole is not "measure" and not "support")
+                .ToArray();
+
             if (groupingColumns.Length == 0)
                 return [];
 
@@ -383,18 +438,31 @@ ORDER BY {orderBySql}
         IReadOnlyList<object?> values,
         DynamicParameters parameters)
     {
-        var terms = new List<string>(columns.Count);
-        for (var i = 0; i < columns.Count; i++)
+        // Factor the lexicographic comparison so SQL grows linearly with key width.
+        // NULLS LAST has no successor at this position when the cursor value is null;
+        // only equal-null rows can continue through the remaining key fields.
+        string? predicate = null;
+        for (var i = columns.Count - 1; i >= 0; i--)
         {
+            var alias = columns[i].Alias;
+            if (values[i] is null)
+            {
+                if (predicate is not null)
+                    predicate = $"({alias} IS NULL AND {predicate})";
+
+                continue;
+            }
+
             var parameterName = $"cursor_{i}";
             parameters.Add(parameterName, values[i]);
-            var prefix = string.Join(" AND ", columns.Take(i).Select((x, index) => $"{x.Alias} IS NOT DISTINCT FROM @cursor_{index}"));
             var comparison = columns[i].Direction == ReportSortDirection.Desc ? "<" : ">";
-            var current = $"@{parameterName} IS NOT NULL AND ({columns[i].Alias} IS NULL OR {columns[i].Alias} {comparison} @{parameterName})";
-            terms.Add(i == 0 ? $"({current})" : $"({prefix} AND {current})");
+            var current = $"({alias} IS NULL OR {alias} {comparison} @{parameterName})";
+            predicate = predicate is null
+                ? current
+                : $"({current} OR ({alias} IS NOT DISTINCT FROM @{parameterName} AND {predicate}))";
         }
 
-        return $"({string.Join(" OR ", terms)})";
+        return predicate ?? "FALSE";
     }
 
     private static string Indent(string value, int spaces)

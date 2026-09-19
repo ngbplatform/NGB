@@ -23,7 +23,7 @@ public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor exe
                 query.Sorts,
                 query.Predicates,
                 query.Parameters,
-                new(0, 500), 
+                new(0, 0),
                 true),
             ct);
 

@@ -10,6 +10,28 @@ namespace NGB.PostgreSql.Tests.Reporting;
 
 public sealed class PostgresReportCursorPagingFullCoverageTests
 {
+    [Theory]
+    [InlineData(null, 42L)]
+    [InlineData("Alpha", null)]
+    [InlineData(null, null)]
+    public void Null_cursor_values_use_null_predicates_without_untyped_bind_parameters(string? name, long? id)
+    {
+        var builder = Builder(CursorDataset());
+        var first = builder.Build(Request());
+        var cursor = PostgresReportCursorCodec.Encode(first.DatasetCode, first.CursorColumns,
+            new Dictionary<string, object?> { ["name_out"] = name, ["__cursor_key_0"] = id });
+        var next = builder.Build(Request(cursor));
+
+        next.Parameters.ParameterNames.Contains("cursor_0").Should().Be(name is not null);
+        next.Parameters.ParameterNames.Contains("cursor_1").Should().Be(id is not null);
+        if (name is null && id is null)
+            next.Sql.Should().Contain("WHERE FALSE");
+        else if (name is null)
+            next.Sql.Should().Contain("name_out IS NULL AND");
+        else
+            next.Sql.Should().Contain("name_out IS NULL OR name_out > @cursor_0");
+    }
+
     [Fact]
     public void Detail_query_uses_hidden_stable_key_and_cursor_page_uses_seek_predicate()
     {

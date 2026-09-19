@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Contracts.Common;
 using NGB.PostgreSql.Reporting;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using Xunit;
@@ -14,6 +15,53 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 [Collection(AccountingPostgresCollection.Name)]
 public sealed class DirectReportPagingTests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
+    [Theory]
+    [InlineData(ReportSortDirection.Asc)]
+    [InlineData(ReportSortDirection.Desc)]
+    public async Task Wide_pivot_keys_reduce_page_size_without_losing_rows_or_adding_per_row_queries(ReportSortDirection direction)
+    {
+        var source = new WideSource();
+        var queries = new Counter();
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString, services =>
+        {
+            services.AddSingleton<IReportDefinitionSource>(source);
+            services.AddSingleton<IPostgresReportDatasetSource>(source);
+            services.AddScoped<IReportPageDataSource>(sp => new CountingSource(sp.GetRequiredService<PostgresReportPlanExecutor>(), queries));
+        });
+        await using var scope = host.Services.CreateAsyncScope();
+        var engine = scope.ServiceProvider.GetRequiredService<IReportEngine>();
+        var request = new ReportExecutionRequestDto(Layout: new(
+            ColumnGroups: [new("kind")], DetailFields: WideSource.Fields,
+            Sorts: [new("f0", Direction: direction)],
+            Measures: [new("amount", ReportAggregationKind.Sum)],
+            ShowDetails: true, ShowSubtotals: false, ShowGrandTotals: false), Limit: PagingLimits.MaxPageSize);
+        var ids = new List<long>();
+        var expectedPageSize = ReportRowSelectionLimits.GetMaxKeyCount(WideSource.Fields.Length);
+        string? cursor = null;
+        do
+        {
+            var before = queries.Count;
+            var page = await engine.ExecuteAsync(WideSource.Code, request with { Cursor = cursor }, default);
+            var rows = page.Sheet.Rows.Where(row => row.RowKind == ReportRowKind.Detail).ToArray();
+            rows.Length.Should().BeLessThanOrEqualTo(expectedPageSize);
+            if (page.HasMore) rows.Should().HaveCount(expectedPageSize);
+            foreach (var row in rows)
+            {
+                var id = row.Cells[1].Value!.Value.GetInt64();
+                ids.Add(id);
+                row.Cells[^2].Value!.Value.GetDecimal().Should().Be(id + 1);
+                row.Cells[^1].Value!.Value.GetDecimal().Should().Be(id + 2);
+            }
+            (queries.Count - before).Should().Be(3, "one column-key query, one row-key query, and one cell query serve the whole page");
+            cursor = page.NextCursor;
+        } while (cursor is not null);
+
+        var expected = Enumerable.Range(1, WideSource.RowCount)
+            .OrderBy(id => id % 5 == 0)
+            .ThenBy(id => id % 5 == 0 || direction == ReportSortDirection.Asc ? id : -id);
+        ids.Should().Equal(expected.Select(id => (long)id));
+    }
+
     [Theory]
     [InlineData(ReportAggregationKind.Sum, 1, 28)]
     [InlineData(ReportAggregationKind.Average, 2, 3.5)]
@@ -111,6 +159,29 @@ public sealed class DirectReportPagingTests(PostgresTestFixture fixture) : Integ
     }
 
     private sealed class Counter { public int Count; }
+
+    private sealed class WideSource : IReportDefinitionSource, IPostgresReportDatasetSource
+    {
+        public const string Code = "it.wide_pivot";
+        public const int RowCount = 47;
+        public static readonly string[] Fields = Enumerable.Range(0, ReportLayoutLimits.MaxDetailFields).Select(i => $"f{i}").ToArray();
+
+        public IReadOnlyList<ReportDefinitionDto> GetDefinitions() => [new(Code, "Wide pivot", Mode: ReportExecutionMode.Composable,
+            Dataset: new(Code, Fields: Fields.Append("kind").Select(code => new ReportFieldDto(code, code, "int64", ReportFieldKind.Attribute,
+                IsFilterable: true, IsGroupable: true, IsSortable: true, IsSelectable: true)).ToArray(),
+                Measures: [new("amount", "Amount", "decimal", [ReportAggregationKind.Sum])]),
+            Capabilities: new(AllowsRowGroups: true, AllowsColumnGroups: true, AllowsDetailFields: true, AllowsSorting: true,
+                AllowsShowDetails: true, AllowsSubtotals: true, AllowsGrandTotals: true,
+                MaxVisibleRows: PagingLimits.MaxPageSize, MaxRenderedCells: 50_000, MaxVisibleColumns: 512))];
+
+        public IReadOnlyList<PostgresReportDatasetBinding> GetDatasets() => [new(Code,
+            $"generate_series(1,{RowCount}) x CROSS JOIN generate_series(1,2) y",
+            Fields.Select((code, index) => new PostgresReportFieldBinding(code,
+                    index == 0 || index == Fields.Length - 1 ? "CASE WHEN x % 5 = 0 THEN NULL ELSE x::bigint END" : "x::bigint", "int64"))
+                .Append(new("kind", "y::bigint", "int64")).ToArray(),
+            [new("amount", "(x+y)::numeric", "decimal")])];
+    }
+
     private sealed class CountingSource(IReportPageDataSource inner, Counter counter) : IReportPageDataSource
     {
         public Task<ReportDataPage> ReadPageAsync(ReportDataQuery query, ReportPlanPaging paging, ReportRowSelection? selection, CancellationToken ct)

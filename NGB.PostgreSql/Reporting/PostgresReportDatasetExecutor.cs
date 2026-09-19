@@ -27,7 +27,7 @@ public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresRepor
             $"DECLARE {cursor} NO SCROLL CURSOR FOR {statement.Sql}",
             statement.Parameters,
             _uow.Transaction,
-            commandTimeout: 300,
+            commandTimeout: PostgresReportStreamingDefaults.CommandTimeoutSeconds,
             cancellationToken: ct));
 
         var columns = statement.Columns
@@ -39,16 +39,16 @@ public sealed class PostgresReportDatasetExecutor(IUnitOfWork uow, PostgresRepor
             while (true)
             {
                 var batch = (await _uow.Connection.QueryAsync(new CommandDefinition(
-                        $"FETCH FORWARD 500 FROM {cursor}",
+                        $"FETCH FORWARD {PostgresReportStreamingDefaults.FetchBatchSize} FROM {cursor}",
                         transaction: _uow.Transaction,
-                        commandTimeout: 300,
+                        commandTimeout: PostgresReportStreamingDefaults.CommandTimeoutSeconds,
                         cancellationToken: ct)))
                     .Select(x => new ReportDataRow(MaterializeRow(x)))
                     .ToArray();
                 
-                yield return new(columns, batch, 0, 500, null, batch.Length == 500);
+                yield return new(columns, batch, 0, PostgresReportStreamingDefaults.FetchBatchSize, null, batch.Length == PostgresReportStreamingDefaults.FetchBatchSize);
                 
-                if (batch.Length < 500)
+                if (batch.Length < PostgresReportStreamingDefaults.FetchBatchSize)
                     break;
             }
         }

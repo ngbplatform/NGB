@@ -20,7 +20,7 @@ public static class PostgresReportCursorStream
             $"DECLARE {name} NO SCROLL CURSOR FOR {sql}",
             args,
             uow.Transaction,
-            commandTimeout: 300,
+            commandTimeout: PostgresReportStreamingDefaults.CommandTimeoutSeconds,
             cancellationToken: ct));
 
         try
@@ -28,16 +28,16 @@ public static class PostgresReportCursorStream
             while (true)
             {
                 var batch = (await uow.Connection.QueryAsync<T>(new CommandDefinition(
-                        $"FETCH FORWARD 500 FROM {name}",
+                        $"FETCH FORWARD {PostgresReportStreamingDefaults.FetchBatchSize} FROM {name}",
                         transaction: uow.Transaction,
-                        commandTimeout: 300,
+                        commandTimeout: PostgresReportStreamingDefaults.CommandTimeoutSeconds,
                         cancellationToken: ct)))
                     .AsList();
 
                 if (batch.Count > 0)
                     yield return batch;
 
-                if (batch.Count < 500)
+                if (batch.Count < PostgresReportStreamingDefaults.FetchBatchSize)
                     break;
             }
         }

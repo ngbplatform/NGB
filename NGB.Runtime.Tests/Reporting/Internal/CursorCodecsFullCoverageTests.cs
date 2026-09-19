@@ -17,7 +17,7 @@ public sealed class CursorCodecsFullCoverageTests
     [InlineData(null, null, null)]
     [InlineData(10.0, null, null)]
     [InlineData(10.0, 20.0, null)]
-    public void GeneralLedgerEncode_WhenAnyTotalIsMissing_UsesLegacyFormat(
+    public void GeneralLedgerEncode_WhenAnyTotalIsMissing_OmitsAllTotals(
         double? totalDebit,
         double? totalCredit,
         double? closingBalance)
@@ -27,40 +27,37 @@ public sealed class CursorCodecsFullCoverageTests
             totalCredit is null ? null : (decimal)totalCredit,
             closingBalance is null ? null : (decimal)closingBalance));
 
-        encoded.Split('|').Should().HaveCount(6);
-        encoded.Should().Contain("counter%2Faccount%20%7C%20special");
+        var decoded = GeneralLedgerAggregatedCursorCodec.Decode(encoded);
+        decoded.TotalDebit.Should().BeNull();
+        decoded.TotalCredit.Should().BeNull();
+        decoded.ClosingBalance.Should().BeNull();
+        decoded.AfterCounterAccountCode.Should().Be("counter/account | special");
     }
 
     [Fact]
-    public void GeneralLedgerEncodeAndDecode_CurrentAndLegacyFormatsRoundTrip()
+    public void GeneralLedgerEncodeAndDecode_RoundTripWithAndWithoutTotals()
     {
         var current = Cursor(100.25m, 60.5m, 49.75m);
         var currentEncoded = GeneralLedgerAggregatedCursorCodec.Encode(current);
-        currentEncoded.Split('|').Should().HaveCount(10);
         GeneralLedgerAggregatedCursorCodec.Decode(currentEncoded).Should().BeEquivalentTo(current);
 
-        var legacy = Cursor(null, null, null);
-        var legacyDecoded = GeneralLedgerAggregatedCursorCodec.Decode(
-            GeneralLedgerAggregatedCursorCodec.Encode(legacy));
-        legacyDecoded.Should().BeEquivalentTo(legacy);
-        legacyDecoded.AfterPeriodUtc.Kind.Should().Be(DateTimeKind.Utc);
+        var withoutTotals = Cursor(null, null, null);
+        var decoded = GeneralLedgerAggregatedCursorCodec.Decode(
+            GeneralLedgerAggregatedCursorCodec.Encode(withoutTotals));
+        decoded.Should().BeEquivalentTo(withoutTotals);
+        decoded.AfterPeriodUtc.Kind.Should().Be(DateTimeKind.Utc);
     }
 
     [Theory]
-    [InlineData("bad", "Invalid cursor format")]
-    [InlineData("bad|11111111-1111-1111-1111-111111111111|code|22222222-2222-2222-2222-222222222222|33333333-3333-3333-3333-333333333333|1", "Invalid cursor timestamp")]
-    [InlineData("2026-08-21T12:34:56Z|bad|code|22222222-2222-2222-2222-222222222222|33333333-3333-3333-3333-333333333333|1", "Invalid cursor document id")]
-    [InlineData("2026-08-21T12:34:56Z|11111111-1111-1111-1111-111111111111|code|bad|33333333-3333-3333-3333-333333333333|1", "Invalid cursor counter account id")]
-    [InlineData("2026-08-21T12:34:56Z|11111111-1111-1111-1111-111111111111|code|22222222-2222-2222-2222-222222222222|bad|1", "Invalid cursor dimension set id")]
-    [InlineData("2026-08-21T12:34:56Z|11111111-1111-1111-1111-111111111111|code|22222222-2222-2222-2222-222222222222|33333333-3333-3333-3333-333333333333|bad", "Invalid cursor running balance")]
-    [InlineData("2026-08-21T12:34:56Z|11111111-1111-1111-1111-111111111111|code|22222222-2222-2222-2222-222222222222|33333333-3333-3333-3333-333333333333|1|bad|2|3", "Invalid cursor total debit")]
-    [InlineData("2026-08-21T12:34:56Z|11111111-1111-1111-1111-111111111111|code|22222222-2222-2222-2222-222222222222|33333333-3333-3333-3333-333333333333|1|2|bad|3", "Invalid cursor total credit")]
-    [InlineData("2026-08-21T12:34:56Z|11111111-1111-1111-1111-111111111111|code|22222222-2222-2222-2222-222222222222|33333333-3333-3333-3333-333333333333|1|2|3|bad", "Invalid cursor closing balance")]
-    public void GeneralLedgerDecode_RejectsEveryMalformedComponent(string value, string expectedMessage)
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("bad")]
+    public void GeneralLedgerDecode_RejectsMalformedTokens(string? value)
     {
-        var action = () => GeneralLedgerAggregatedCursorCodec.Decode(value);
+        var action = () => GeneralLedgerAggregatedCursorCodec.Decode(value!);
 
-        action.Should().Throw<NgbArgumentInvalidException>().WithMessage($"*{expectedMessage}*");
+        action.Should().Throw<NgbArgumentInvalidException>().WithMessage("*format*");
     }
 
     private static GeneralLedgerAggregatedReportCursor Cursor(

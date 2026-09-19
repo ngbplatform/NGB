@@ -1,5 +1,6 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Persistence.Documents;
 using NGB.Runtime.Reporting.Rendering;
@@ -92,7 +93,15 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
             : original.DetailFields.Count == 0 && path.Count == original.RowGroups.Count - 1;
 
         var cellBudget = Math.Min(MaxPageCells, definition.Capabilities.MaxRenderedCells ?? MaxPageCells);
-        var pageSize = Math.Clamp(request.Limit, 1, Math.Min(500, Math.Max(1, (cellBudget / Math.Max(1, width) - 1) / (separateSubtotals ? 2 : 1))));
+        var keyFieldCount = group.Length + details.Count;
+        var maxPageKeys = pivot && keyFieldCount > 0
+            ? ReportRowSelectionLimits.GetMaxKeyCount(keyFieldCount)
+            : PagingLimits.MaxPageSize;
+
+        if (maxPageKeys == 0)
+            throw new NgbArgumentInvalidException("layout", "The report row key exceeds the supported layout width.");
+
+        var pageSize = Math.Clamp(request.Limit, 1, Math.Min(maxPageKeys, Math.Max(1, (cellBudget / Math.Max(1, width) - 1) / (separateSubtotals ? 2 : 1))));
         var rows = await ReadAsync(rowPlan, new(0, pageSize, request.Cursor), null, ct);
         var rawRows = rows;
         rows = await ReportEngine.EnrichInteractiveFieldsAsync(rowPlan, rows, documentDisplays, ct);

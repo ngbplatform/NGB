@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Persistence.Documents;
 using NGB.Runtime.Reporting.Rendering;
@@ -56,7 +57,7 @@ public sealed class PlannedReportStreamingExecutor(
                     request with
                     {
                         Offset = 0,
-                        Limit = 500,
+                        Limit = PagingLimits.MaxPageSize,
                         Cursor = cursor,
                         DisablePaging = false
                     },
