@@ -93,15 +93,19 @@ test.describe('pm-web report resilience', () => {
     await expect(page.getByText('Loaded 2 properties. End of list.', { exact: true })).toBeVisible()
   })
 
-  test('shows a load-more error while keeping the already loaded rows visible', async ({ page }) => {
-    await mockOccupancySummaryReportApis(page, {
+  test('shows a load-more error while keeping the already loaded rows visible and recovers on retry', async ({ page }) => {
+    const options: Parameters<typeof mockOccupancySummaryReportApis>[1] = {
       executionResponse: occupancySummaryReportPagedFirstExecutionFixture,
+      appendResponsesByCursor: {
+        'cursor:page:2': occupancySummaryReportPagedSecondExecutionFixture,
+      },
       appendFailuresByCursor: {
         'cursor:page:2': {
           detail: 'Could not load the next page of occupancy rows.',
         },
       },
-    })
+    }
+    const api = await mockOccupancySummaryReportApis(page, options)
     await rejectUnhandledApiRequests(page, [
       '/api/main-menu',
       '/api/report-definitions/pm.occupancy.summary',
@@ -113,9 +117,26 @@ test.describe('pm-web report resilience', () => {
     const reportSheet = page.getByTestId('report-sheet-scroll')
     await expect(reportSheet.getByText('Riverfront Tower', { exact: true })).toBeVisible()
 
-    await expect(page.getByText('Could not load the next page of occupancy rows.', { exact: true })).toBeVisible()
+    const error = page.getByTestId('report-page-content')
+      .getByText('Could not load the next page of occupancy rows.')
+    const retry = page.getByRole('button', { name: 'Retry loading rows', exact: true })
+    await expect(error).toBeVisible()
     await expect(reportSheet.getByText('Riverfront Tower', { exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Load more', exact: true })).toBeVisible()
+    await expect(retry).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Load more', exact: true })).toHaveCount(0)
+    expect(api.getExecuteRequests().map((request) => request.cursor ?? null)).toEqual([null, 'cursor:page:2'])
+
+    options.appendFailuresByCursor!['cursor:page:2'] = null
+    await retry.click()
+
+    await expect(reportSheet.getByText('Harbor View Plaza', { exact: true })).toBeVisible()
+    await expect(reportSheet.getByText('Riverfront Tower', { exact: true })).toBeVisible()
+    await expect(reportSheet.getByText('Riverfront Tower', { exact: true })).toHaveCount(1)
+    await expect(page.getByText('Loaded 2 properties. End of list.', { exact: true })).toBeVisible()
+    await expect(error).toHaveCount(0)
+    await expect(retry).toHaveCount(0)
+    expect(api.getExecuteRequests().map((request) => request.cursor ?? null))
+      .toEqual([null, 'cursor:page:2', 'cursor:page:2'])
   })
 
   test('keeps the create variant dialog open when saving a variant fails', async ({ page }) => {

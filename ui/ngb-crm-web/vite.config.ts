@@ -10,6 +10,11 @@ const e2eKeycloakAlias = fileURLToPath(new URL('../tests/e2e/support/fakeKeycloa
 export default defineConfig(({ mode }) => {
   return {
     plugins: [vue(), ngbUiFrameworkPublicAssetsPlugin()],
+    optimizeDeps: {
+      // The source package mixes TS entry points with Vue SFCs. Keep their
+      // configuration modules in the same graph instead of duplicating state.
+      exclude: ['@ngbplatform/ui'],
+    },
     resolve: mode === 'e2e'
       ? {
           alias: {

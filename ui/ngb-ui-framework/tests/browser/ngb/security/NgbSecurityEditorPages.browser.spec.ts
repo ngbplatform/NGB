@@ -241,11 +241,13 @@ test('opens user audit log with the security user entity context', async () => {
 
   await expect.element(view.getByTestId('security-audit-sidebar')).toHaveTextContent('Audit 8 user-1 Alex Carter')
   await view.getByRole('button', { name: 'Audit back' }).click()
+  await expect.element(view.getByTestId('drawer-panel')).not.toBeInTheDocument()
   await view.getByTitle('Audit log').click()
   await view.getByRole('button', { name: 'Audit close' }).click()
+  await expect.element(view.getByTestId('drawer-panel')).not.toBeInTheDocument()
   await view.getByTitle('Audit log').click()
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-  await expect.element(view.getByTestId('security-audit-sidebar')).not.toBeInTheDocument()
+  await expect.element(view.getByTestId('drawer-panel')).not.toBeInTheDocument()
 })
 
 test('requires password fields only after change password is selected for an existing user', async () => {
@@ -950,11 +952,13 @@ test('covers loading, back navigation, audit close events, and assigned-user dis
   await view.getByTitle('Audit log').click()
   await expect.element(view.getByTestId('security-audit-sidebar')).toBeVisible()
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-  await expect.element(view.getByTestId('security-audit-sidebar')).not.toBeInTheDocument()
+  await expect.element(view.getByTestId('drawer-panel')).not.toBeInTheDocument()
   await view.getByTitle('Audit log').click()
   await view.getByRole('button', { name: 'Audit back' }).click()
+  await expect.element(view.getByTestId('drawer-panel')).not.toBeInTheDocument()
   await view.getByTitle('Audit log').click()
   await view.getByRole('button', { name: 'Audit close' }).click()
+  await expect.element(view.getByTestId('drawer-panel')).not.toBeInTheDocument()
 
   await view.getByRole('tab', { name: 'Assigned users' }).click()
   await expect.element(view.getByText('fallback@example.com').first()).toBeVisible()

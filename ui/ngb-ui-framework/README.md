@@ -28,8 +28,16 @@ import { ngbUiFrameworkPublicAssetsPlugin } from '@ngbplatform/ui/vite-public-as
 
 export default defineConfig({
   plugins: [vue(), ngbUiFrameworkPublicAssetsPlugin()],
+  optimizeDeps: {
+    exclude: ['@ngbplatform/ui'],
+  },
 })
 ```
+
+The package ships TypeScript modules and Vue SFCs. Exclude it from Vite dependency
+pre-bundling so application configuration and components use the same module
+instances. Apply this exclusion to separate Vitest browser configurations as well,
+and do not add the package to `optimizeDeps.include`.
 
 ## Tailwind
 
