@@ -98,7 +98,7 @@ Use Start Here before deep-diving into individual modules.
 - [Work Center](/architecture/work-center)
 - [Accounting Effects](/architecture/accounting-effects)
 - [Reporting: Canonical and Composable](/architecture/reporting)
-- [Complete Saved Report Execution](/architecture/report-execution-results)
+- [Report Browsing and Direct Downloads](/architecture/report-execution-results)
 - [Accounting and Posting](/architecture/accounting-posting)
 - [Closing Period](/architecture/closing-period)
 - [Operational Registers](/architecture/operational-registers)

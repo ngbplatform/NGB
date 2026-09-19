@@ -43,6 +43,9 @@ public sealed class ReportEngine(
         ReportExecutionRequestDto request,
         CancellationToken ct)
     {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
         var result = await ExecuteCoreAsync(
             reportCode,
             request,

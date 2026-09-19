@@ -75,7 +75,7 @@ export default defineConfig({
           page('Document Actions', '/architecture/document-actions'),
           page('Accounting Effects', '/architecture/accounting-effects'),
           page('Reporting: Canonical and Composable', '/architecture/reporting'),
-          page('Complete Saved Report Execution', '/architecture/report-execution-results'),
+          page('Report Browsing and Direct Downloads', '/architecture/report-execution-results'),
           page('Accounting and Posting', '/architecture/accounting-posting'),
           page('Closing Period', '/architecture/closing-period'),
           page('Operational Registers', '/architecture/operational-registers'),
