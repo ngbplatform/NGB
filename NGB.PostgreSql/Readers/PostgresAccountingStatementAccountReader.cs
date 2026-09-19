@@ -27,7 +27,7 @@ public sealed class PostgresAccountingStatementAccountReader(IUnitOfWork uow) : 
 
         await uow.EnsureConnectionOpenAsync(ct);
         await using var reader = await uow.Connection.ExecuteReaderAsync(new CommandDefinition(
-            Sql,
+            Sql + " ORDER BY a.statement_section,a.code COLLATE \"C\",a.account_id",
             new { FromInclusive = from, ToInclusive = to, DimensionIds = ids, ValueIds = values, DimensionCount = count },
             uow.Transaction, commandTimeout: 300, cancellationToken: ct));
 
@@ -47,7 +47,7 @@ public sealed class PostgresAccountingStatementAccountReader(IUnitOfWork uow) : 
 
     // Statements use two authoritative month-end endpoints. Range turnovers remain separate for P&L.
     // In particular a closed To month uses its closing snapshot, not a reconstruction from its opening.
-    private const string Sql = """
+    internal const string Sql = """
         WITH latest AS (
             SELECT MAX(period) FILTER (WHERE period < @FromInclusive) AS opening,
                    MAX(period) FILTER (WHERE period <= @ToInclusive) AS closing FROM accounting_closed_periods
@@ -77,6 +77,5 @@ public sealed class PostgresAccountingStatementAccountReader(IUnitOfWork uow) : 
         SELECT a.account_id,a.code,a.name,a.statement_section,SUM(v.opening),SUM(v.debit),SUM(v.credit),SUM(v.closing)
         FROM amounts v JOIN accounting_accounts a ON a.account_id=v.account_id AND a.is_deleted=FALSE
         GROUP BY a.account_id,a.code,a.name,a.statement_section
-        ORDER BY a.statement_section,a.code COLLATE "C",a.account_id;
         """;
 }

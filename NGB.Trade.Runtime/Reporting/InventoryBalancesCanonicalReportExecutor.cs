@@ -95,7 +95,7 @@ public sealed class InventoryBalancesCanonicalReportExecutor(
                     ["executor"] = "canonical-trd-inventory-balances"
                 }));
 
-        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
+        var hasMore = page.HasMore || cursor is null && offset + page.Rows.Count < page.Total;
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,

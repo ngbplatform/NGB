@@ -91,8 +91,8 @@ public sealed class AccountCard_CurrencyOfOpeningBalanceTests(PostgresTestFixtur
             // Totals must be independent of paging (but we don't hardcode the amount here).
             expectedTotalDebit ??= page.TotalDebit;
             expectedTotalCredit ??= page.TotalCredit;
-            page.TotalDebit.Should().Be(expectedTotalDebit.Value);
-            page.TotalCredit.Should().Be(expectedTotalCredit.Value);
+            page.TotalDebit.Should().Be(expectedTotalDebit!.Value);
+            page.TotalCredit.Should().Be(expectedTotalCredit!.Value);
 
             // The page opening is the running balance right before the first line of this page.
             page.OpeningBalance.Should().Be(expectedOpening);

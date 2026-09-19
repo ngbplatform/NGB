@@ -78,7 +78,7 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(
                     ["executor"] = "canonical-pm-receivables-aging"
                 }));
 
-        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
+        var hasMore = page.HasMore || cursor is null && offset + page.Rows.Count < page.Total;
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
@@ -98,6 +98,7 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(
             nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["totals"] = "current",
                 ["executor"] = "canonical-pm-receivables-aging"
             });
     }

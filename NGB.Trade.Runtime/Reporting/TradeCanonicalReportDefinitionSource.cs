@@ -20,9 +20,9 @@ public sealed class TradeCanonicalReportDefinitionSource : IReportDefinitionSour
                     allowsFilters: false,
                     allowsVariants: false,
                     allowsGrandTotals: false,
-                    maxVisibleColumns: 5,
-                    maxVisibleRows: 32,
-                    maxRenderedCells: 160),
+                    maxVisibleColumns: TradeDashboardLimits.Columns,
+                    maxVisibleRows: TradeDashboardLimits.Rows,
+                    maxRenderedCells: TradeDashboardLimits.Rows * TradeDashboardLimits.Columns),
                 DefaultLayout: new ReportLayoutDto(
                     ShowDetails: false,
                     ShowSubtotals: false,
@@ -36,7 +36,7 @@ public sealed class TradeCanonicalReportDefinitionSource : IReportDefinitionSour
                         Label: "As of")
                 ],
                 Presentation: new ReportPresentationDto(
-                    InitialPageSize: 32,
+                    InitialPageSize: TradeDashboardLimits.Rows,
                     RowNoun: "dashboard rows",
                     EmptyStateMessage: "No dashboard activity yet.")),
             new(

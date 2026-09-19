@@ -348,9 +348,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
 
         await SeedLedgerAnalysisScenarioAsync(factory);
 
-        using var resp = await client.PostAsJsonAsync(
-            "/api/reports/accounting.ledger.analysis/execute",
-            new ReportExecutionRequestDto(
+        var request = new ReportExecutionRequestDto(
                 Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["from_utc"] = "2026-02-01",
@@ -375,17 +373,23 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
                     ShowSubtotalsOnSeparateRows: false,
                     ShowGrandTotals: true),
                 Offset: 0,
-                Limit: 200));
+                Limit: 200);
+        using var resp = await client.PostAsJsonAsync("/api/reports/accounting.ledger.analysis/execute", request);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
         dto.Should().NotBeNull();
+        var accountGroup = dto!.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Group && x.Cells[0].Display == "1100 — Accounts Receivable - Tenants");
+        accountGroup.ChildrenPath.Should().NotBeNull();
+        var periods = await ReadChildAsync(client, request, accountGroup.ChildrenPath!);
+        var february = periods.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Group && x.Cells[0].Display == "February 2026");
+        var documents = await ReadChildAsync(client, request, february.ChildrenPath!);
         dto!.Sheet.Columns.Select(x => x.Code).Should().Equal("__row_hierarchy", "debit_amount__sum");
-        dto.Sheet.Columns[0].Title.Should().Be("Account\nPeriod\nDocument");
+        dto.Sheet.Columns[0].Title.Should().Be("Account");
         dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Display == "1100 — Accounts Receivable - Tenants" && !string.IsNullOrWhiteSpace(x.Cells[1].Display));
-        dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 1 && x.Cells[0].Display == "February 2026" && !string.IsNullOrWhiteSpace(x.Cells[1].Display));
-        dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 2 && x.Cells[0].Display!.StartsWith("Receivable ", StringComparison.OrdinalIgnoreCase));
+        periods.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Display == "February 2026" && !string.IsNullOrWhiteSpace(x.Cells[1].Display));
+        documents.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Display!.StartsWith("Receivable ", StringComparison.OrdinalIgnoreCase));
         dto.Sheet.Rows.Should().NotContain(x => x.RowKind == ReportRowKind.Subtotal);
         dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Total && x.Cells[0].Display == "Total");
     }
@@ -438,9 +442,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
 
         await SeedLedgerAnalysisScenarioAsync(factory);
 
-        using var resp = await client.PostAsJsonAsync(
-            "/api/reports/accounting.ledger.analysis/execute",
-            new ReportExecutionRequestDto(
+        var request = new ReportExecutionRequestDto(
                 Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["from_utc"] = "2026-02-01",
@@ -465,17 +467,23 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
                     ShowSubtotalsOnSeparateRows: true,
                     ShowGrandTotals: true),
                 Offset: 0,
-                Limit: 200));
+                Limit: 200);
+        using var resp = await client.PostAsJsonAsync("/api/reports/accounting.ledger.analysis/execute", request);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
         dto.Should().NotBeNull();
+        var accountGroup = dto!.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Group && x.Cells[0].Display == "1100 — Accounts Receivable - Tenants");
+        accountGroup.ChildrenPath.Should().NotBeNull();
+        var periods = await ReadChildAsync(client, request, accountGroup.ChildrenPath!);
+        var february = periods.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Group && x.Cells[0].Display == "February 2026");
+        var documents = await ReadChildAsync(client, request, february.ChildrenPath!);
         dto!.Sheet.Columns.Select(x => x.Code).Should().Equal("__row_hierarchy", "debit_amount__sum");
-        dto.Sheet.Rows.Should().NotContain(x => x.RowKind == ReportRowKind.Subtotal && x.OutlineLevel == 2);
-        dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Subtotal && x.OutlineLevel == 1 && x.Cells[0].Display == "February 2026 subtotal");
+        documents.Sheet.Rows.Should().NotContain(x => x.RowKind == ReportRowKind.Subtotal);
+        periods.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Subtotal && x.OutlineLevel == 0 && x.Cells[0].Display == "February 2026 subtotal");
         dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Subtotal && x.OutlineLevel == 0 && x.Cells[0].Display == "1100 — Accounts Receivable - Tenants subtotal");
-        dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 2 && x.Cells[0].Display!.StartsWith("Receivable ", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(x.Cells[1].Display));
+        documents.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Display!.StartsWith("Receivable ", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(x.Cells[1].Display));
         dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Display == "1100 — Accounts Receivable - Tenants" && string.IsNullOrWhiteSpace(x.Cells[1].Display));
     }
 
@@ -524,7 +532,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         firstPage!.Sheet.Rows.Should().HaveCount(2);
         firstPage.HasMore.Should().BeTrue();
         firstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
-        firstPage.Diagnostics!["executor"].Should().Be("postgres-streaming");
+        firstPage.Diagnostics!["executor"].Should().Be("postgres-foundation");
 
         using var secondResponse = await client.PostAsJsonAsync(
             "/api/reports/accounting.ledger.analysis/execute",
@@ -535,7 +543,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         var secondPage = await secondResponse.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json, CancellationToken.None);
         secondPage.Should().NotBeNull();
         secondPage!.Sheet.Rows.Should().NotBeEmpty();
-        secondPage.Diagnostics!["executor"].Should().Be("postgres-streaming");
+        secondPage.Diagnostics!["executor"].Should().Be("postgres-foundation");
 
         firstPage.Sheet.Rows
             .Concat(secondPage.Sheet.Rows)
@@ -727,6 +735,13 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         return new RecordPayload(dict, parts);
     }
 
+    private static async Task<ReportExecutionResponseDto> ReadChildAsync(HttpClient client, ReportExecutionRequestDto request, IReadOnlyList<JsonElement> path)
+    {
+        using var response = await client.PostAsJsonAsync("/api/reports/accounting.ledger.analysis/execute", request with { GroupPath = path });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return (await response.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json))!;
+    }
+
     private static JsonSerializerOptions CreateJson()
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
@@ -743,9 +758,7 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         await SeedLedgerAnalysisScenarioAsync(factory);
         using var client = factory.CreateClient();
 
-        using var response = await client.PostAsJsonAsync(
-            "/api/reports/accounting.ledger.analysis/execute",
-            new ReportExecutionRequestDto(
+        var request = new ReportExecutionRequestDto(
                 Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["from_utc"] = "2026-02-01",
@@ -764,8 +777,8 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
                     ShowSubtotalsOnSeparateRows: false,
                     ShowGrandTotals: true),
                 Offset: 0,
-                Limit: 100),
-            CancellationToken.None);
+                Limit: 100);
+        using var response = await client.PostAsJsonAsync("/api/reports/accounting.ledger.analysis/execute", request);
 
         response.EnsureSuccessStatusCode();
         var payload = await response.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json, CancellationToken.None);
@@ -777,7 +790,8 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         accountGroup.Cells[0].Action!.Kind.Should().Be(ReportCellActionKinds.OpenReport);
         accountGroup.Cells[0].Action!.Report!.ReportCode.Should().Be("accounting.account_card");
 
-        var documentGroup = sheet.Rows.First(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 1 && x.Cells[0].Action?.Kind == ReportCellActionKinds.OpenDocument);
+        var documents = await ReadChildAsync(client, request, accountGroup.ChildrenPath!);
+        var documentGroup = documents.Sheet.Rows.First(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Action?.Kind == ReportCellActionKinds.OpenDocument);
         documentGroup.Cells[0].Display.Should().StartWith("Receivable ");
         documentGroup.Cells[0].Action.Should().NotBeNull();
         documentGroup.Cells[0].Action!.Kind.Should().Be(ReportCellActionKinds.OpenDocument);

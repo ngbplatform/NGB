@@ -65,7 +65,7 @@ public sealed class PostgresReceivablesReportReader(IUnitOfWork uow, Operational
         // A bare integer in ORDER BY is parsed by PostgreSQL as a select-list ordinal.
         // Keep the constant as a typed expression so Aging can share the same seek tuple.
         var kindOrderSql = chargesOnly ? "0::int" : "CASE WHEN item.net_amount > 0 THEN 0 ELSE 1 END";
-        var sortDateSql = chargesOnly
+        var sortDateSql = mode == ReceivablesReportMode.OpenItems ? "DATE '9999-12-31'" : chargesOnly
             ? "COALESCE(item.due_on_utc, DATE '9999-12-31')"
             : "COALESCE(item.due_on_utc, item.received_on_utc, DATE '9999-12-31')";
         var orderBy = $"{kindOrderSql}, {sortDateSql}, item.document_id";
@@ -82,8 +82,7 @@ public sealed class PostgresReceivablesReportReader(IUnitOfWork uow, Operational
         var netSourceSql = context.BalancesExist
             ? BuildSnapshotBackedNetSourceSql(context.MovementsTable, context.BalancesTable)
             : BuildMovementOnlyNetSourceSql(context.MovementsTable);
-        var statsSql = cursor is null
-            ? """
+        var statsSql = """
 stats AS (
     SELECT
         COUNT(*)::integer AS total_count,
@@ -92,18 +91,8 @@ stats AS (
         COALESCE(SUM(CASE WHEN net_amount < 0 THEN -net_amount ELSE 0 END), 0) AS total_credit
     FROM items
 )
-"""
-            : """
-stats AS (
-    SELECT
-        @KnownTotal::integer AS total_count,
-        @KnownTotalOriginal::numeric AS total_original,
-        @KnownTotalOutstanding::numeric AS total_outstanding,
-        @KnownTotalCredit::numeric AS total_credit
-)
 """;
-        var leaseContextSql = cursor is null
-            ? """
+        var leaseContextSql = """
 lease_context AS (
     SELECT
         party.display AS party_display,
@@ -116,14 +105,6 @@ lease_context AS (
     LEFT JOIN cat_pm_party party ON party.catalog_id = lease_party.party_id
     LEFT JOIN cat_pm_property property ON property.catalog_id = lease.property_id
     WHERE lease.document_id = @LeaseId
-)
-"""
-            : """
-lease_context AS (
-    SELECT
-        @KnownPartyDisplay::text AS party_display,
-        @KnownPropertyDisplay::text AS property_display,
-        @KnownLeaseDisplay::text AS lease_display
 )
 """;
         var sql = $"""
@@ -214,15 +195,10 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
                 ChargesOnly = chargesOnly,
                 Offset = PagingLimits.BoundOffset(offset),
                 Limit = cursorPaging && limit < int.MaxValue ? limit + 1 : limit,
-                KnownTotal = cursor?.Total,
-                KnownTotalOriginal = cursor?.TotalOriginal,
-                KnownTotalOutstanding = cursor?.TotalOutstanding,
-                KnownTotalCredit = cursor?.TotalCredit,
-                KnownPartyDisplay = cursor?.PartyDisplay,
-                KnownPropertyDisplay = cursor?.PropertyDisplay,
-                KnownLeaseDisplay = cursor?.LeaseDisplay,
                 AfterKindOrder = cursor?.AfterKindOrder,
-                AfterSortDate = cursor?.AfterSortDate,
+                // Npgsql maps DateOnly.MaxValue to PostgreSQL infinity. The sort expression
+                // uses the finite date 9999-12-31, so preserve that exact value across pages.
+                AfterSortDate = cursor?.AfterSortDate?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
                 AfterDocumentId = cursor?.AfterDocumentId
             },
             uow.Transaction,
@@ -255,8 +231,14 @@ ORDER BY {orderBy.Replace("item.", "paged.")};
             first.PropertyDisplay,
             first.LeaseDisplay,
             hasMore,
-            last is null ? null : GetNextKindOrder(chargesOnly, last.NetAmount),
-            last is null ? null : GetNextSortDate(last.DueOnUtc, last.ReceivedOnUtc),
+            last is null
+                ? null
+                : GetNextKindOrder(chargesOnly, last.NetAmount),
+            last is null
+                ? null
+                : mode == ReceivablesReportMode.OpenItems
+                    ? DateOnly.MaxValue
+                    : GetNextSortDate(last.DueOnUtc, last.ReceivedOnUtc),
             last?.DocumentId);
     }
 

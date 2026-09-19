@@ -187,72 +187,6 @@ public sealed class ReportEngine_P0Tests
         sheet.Rows.Should().HaveCount(2);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_ComposableGroupedPaging_Paginates_RenderedRows_And_Defers_GrandTotal_To_Final_Page()
-    {
-        var executor = new StubGroupedComposablePlanExecutor();
-        var snapshots = new StubRenderedReportSnapshotStore();
-        var sut = new ReportEngine(
-            new ReportDefinitionCatalog([new StubComposableDefinitionSource()]),
-            new ReportLayoutValidator(),
-            new ReportExecutionPlanner(),
-            executor,
-            new ReportSheetBuilder(),
-            renderedReportSnapshotStore: snapshots);
-
-        var firstPage = await sut.ExecuteAsync(
-            StubComposableDefinitionSource.ReportCode,
-            new ReportExecutionRequestDto(Limit: 4),
-            CancellationToken.None);
-
-        firstPage.Total.Should().Be(5);
-        firstPage.HasMore.Should().BeTrue();
-        firstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
-        firstPage.Sheet.Rows.Should().HaveCount(4);
-        firstPage.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total);
-        firstPage.Sheet.Rows[0].Cells[0].Display.Should().Be("Florida Fulfillment Center");
-        firstPage.Sheet.Rows[3].Cells[0].Display.Should().Be("Texas Distribution Hub");
-
-        var secondPage = await sut.ExecuteAsync(
-            StubComposableDefinitionSource.ReportCode,
-            new ReportExecutionRequestDto(Limit: 4, Cursor: firstPage.NextCursor),
-            CancellationToken.None);
-
-        executor.Requests.Should().HaveCount(1);
-        executor.Requests.Should().OnlyContain(request => !request.DisablePaging && request.Limit == 100);
-        snapshots.SetCalls.Should().Be(1);
-        snapshots.GetCalls.Should().Be(1);
-        secondPage.Total.Should().Be(5);
-        secondPage.HasMore.Should().BeFalse();
-        secondPage.NextCursor.Should().BeNull();
-        secondPage.Sheet.Rows.Should().HaveCount(2);
-        secondPage.Sheet.Rows[0].Cells[0].Display.Should().Be("Widget Gamma");
-        secondPage.Sheet.Rows[1].RowKind.Should().Be(ReportRowKind.Total);
-        secondPage.Sheet.Rows[1].Cells[0].Display.Should().Be("Total");
-        secondPage.Sheet.Rows[1].Cells[1].Display.Should().Be("45");
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_ComposableGroupedPaging_RejectsSourceResultBeyondConfiguredCap()
-    {
-        var executor = new StubGroupedComposablePlanExecutor { HasMore = true };
-        var sut = new ReportEngine(
-            new ReportDefinitionCatalog([new StubComposableDefinitionSource()]),
-            new ReportLayoutValidator(),
-            new ReportExecutionPlanner(),
-            executor,
-            new ReportSheetBuilder());
-
-        var act = () => sut.ExecuteAsync(
-            StubComposableDefinitionSource.ReportCode,
-            new ReportExecutionRequestDto(Limit: 4),
-            CancellationToken.None);
-
-        var error = await act.Should().ThrowAsync<NGB.Core.Reporting.Exceptions.ReportLayoutValidationException>();
-        error.Which.Context["fieldPath"].Should().Be("layout.rowGroups");
-        executor.Requests.Should().ContainSingle(request => !request.DisablePaging && request.Limit == 100);
-    }
-
     private sealed class StubDocumentPlanExecutor : IReportPlanExecutor
     {
         public static readonly Guid DocumentId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -519,33 +453,6 @@ public sealed class ReportEngine_P0Tests
                 {
                     ["executor"] = "stub-grouped-composable-plan-executor"
                 }));
-        }
-    }
-
-    private sealed class StubRenderedReportSnapshotStore : IRenderedReportSnapshotStore
-    {
-        private readonly Dictionary<Guid, RenderedReportSnapshot> _items = new();
-
-        public int SetCalls { get; private set; }
-        public int GetCalls { get; private set; }
-
-        public Task<RenderedReportSnapshot?> GetAsync(Guid snapshotId, CancellationToken ct)
-        {
-            GetCalls += 1;
-            return Task.FromResult(_items.TryGetValue(snapshotId, out var snapshot) ? snapshot : null);
-        }
-
-        public Task<bool> SetAsync(RenderedReportSnapshot snapshot, CancellationToken ct)
-        {
-            SetCalls += 1;
-            _items[snapshot.SnapshotId] = snapshot;
-            return Task.FromResult(true);
-        }
-
-        public Task RemoveAsync(Guid snapshotId, CancellationToken ct)
-        {
-            _items.Remove(snapshotId);
-            return Task.CompletedTask;
         }
     }
 }

@@ -125,9 +125,9 @@ public sealed class AccountCardPagingContracts_P0Tests(PostgresTestFixture fixtu
                 totalCredit ??= page.TotalCredit;
                 closingBalance ??= page.ClosingBalance;
 
-                page.TotalDebit.Should().Be(totalDebit.Value);
-                page.TotalCredit.Should().Be(totalCredit.Value);
-                page.ClosingBalance.Should().Be(closingBalance.Value);
+                page.TotalDebit.Should().Be(totalDebit!.Value);
+                page.TotalCredit.Should().Be(totalCredit!.Value);
+                page.ClosingBalance.Should().Be(closingBalance!.Value);
 
                 page.TotalDebit.Should().Be(expected.TotalDebit);
                 page.TotalCredit.Should().Be(expected.TotalCredit);

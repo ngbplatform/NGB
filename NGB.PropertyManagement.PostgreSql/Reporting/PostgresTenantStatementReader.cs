@@ -1,13 +1,14 @@
 using Dapper;
 using NGB.Core.Documents;
 using NGB.Contracts.Common;
+using NGB.Persistence.Reporting;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Reporting;
 using NGB.Tools.Exceptions;
 
 namespace NGB.PropertyManagement.PostgreSql.Reporting;
 
-public sealed class PostgresTenantStatementReader(IUnitOfWork uow) : ITenantStatementReader
+public sealed class PostgresTenantStatementReader(IUnitOfWork uow, IReportReadSession? session = null) : ITenantStatementReader
 {
     private const string LeaseTypeCode = PropertyManagementCodes.Lease;
 
@@ -196,11 +197,23 @@ seek_rows AS (
 """
             : string.Empty;
         var pageSource = useSeek ? "seek_rows" : "visible_rows";
-        var balanceBase = useSeek ? "@known_running_balance::numeric(18,4)" : "opening.opening_balance";
-        var openingJoin = useSeek ? string.Empty : "CROSS JOIN opening_balance opening";
+        var prefixSql = useSeek && !knownStats ? """
+page_opening AS (
+    SELECT opening.opening_balance + COALESCE(SUM(visible.delta_amount) FILTER (
+        WHERE (visible.occurred_on_utc, visible.sort_order, visible.document_id)
+            <= (@after_occurred_on_utc::date, @after_sort_order::int, @after_document_id::uuid)), 0) AS running_balance
+    FROM opening_balance opening
+    LEFT JOIN visible_rows visible ON TRUE
+    GROUP BY opening.opening_balance
+),
+""" : string.Empty;
+        var balanceBase = useSeek
+            ? knownStats ? "@known_running_balance::numeric(18,4)" : "prefix.running_balance"
+            : "opening.opening_balance";
+        var openingJoin = useSeek ? knownStats ? string.Empty : "CROSS JOIN page_opening prefix" : "CROSS JOIN opening_balance opening";
         var offsetSql = useSeek ? string.Empty : "OFFSET @offset";
 
-        return StatementCte + statsSql + seekRowsSql + $"""
+        return StatementCte + statsSql + seekRowsSql + prefixSql + $"""
 paged AS (
     SELECT
         visible.occurred_on_utc,
@@ -291,7 +304,7 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
         };
 
         var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
-            BuildPageSql(cursor is not null, useSeek),
+            BuildPageSql(cursor is not null && session?.SnapshotId != Guid.Empty && session?.SnapshotId == cursor.SnapshotId, useSeek),
             parameters,
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -325,7 +338,8 @@ ORDER BY paged.occurred_on_utc, paged.sort_order, paged.document_id;
             last?.OccurredOnUtc,
             last?.SortOrder,
             last?.DocumentId,
-            last?.RunningBalance);
+            last?.RunningBalance,
+            session?.SnapshotId ?? Guid.Empty);
         page.EnsureInvariant();
 
         return page;

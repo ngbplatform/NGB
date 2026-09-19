@@ -87,7 +87,8 @@ public sealed record TenantStatementPage(
     DateOnly? NextAfterOccurredOnUtc = null,
     int? NextAfterSortOrder = null,
     Guid? NextAfterDocumentId = null,
-    decimal? NextRunningBalance = null)
+    decimal? NextRunningBalance = null,
+    Guid SnapshotId = default)
 {
     public void EnsureInvariant()
     {
@@ -113,4 +114,5 @@ public sealed record TenantStatementPageCursor(
     DateOnly? AfterOccurredOnUtc = null,
     int? AfterSortOrder = null,
     Guid? AfterDocumentId = null,
-    decimal? RunningBalance = null);
+    decimal? RunningBalance = null,
+    Guid SnapshotId = default);

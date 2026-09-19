@@ -1,9 +1,11 @@
 using FluentAssertions;
+using Moq;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.AccountCard;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Accounts;
 using NGB.Persistence.Readers.Reports;
+using NGB.Persistence.Reporting;
 using NGB.Runtime.Reporting;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -189,10 +191,14 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
         page.Lines[0].RunningBalance.Should().Be(25m);
     }
 
-    [Fact]
-    public async Task GetPageAsync_WhenCursorAlreadyCarriesGrandTotals_DoesNotReloadTotals()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetPageAsync_ReusesBalancesOnlyInsideTheSameSnapshot(bool sameSnapshot)
     {
         var accountId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var snapshotId = Guid.NewGuid();
+        var session = Mock.Of<IReportReadSession>(x => x.SnapshotId == snapshotId);
         var reader = new StubEffectivePageReader(
             page: new AccountCardLinePage
             {
@@ -214,12 +220,15 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
                     }
                 ],
                 HasMore = false,
+                PrefixDelta = 75m,
+                TotalDebit = 100m,
+                TotalCredit = 0m,
                 NextCursor = null
             });
 
         var service = new AccountCardEffectivePagedReportService(
             reader,
-            new StubChartOfAccountsRepository(accountId, "1000"));
+            new StubChartOfAccountsRepository(accountId, "1000"), session);
 
         var page = await service.GetPageAsync(new AccountCardReportPageRequest
         {
@@ -231,6 +240,7 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
             {
                 AfterPeriodUtc = new DateTime(2026, 3, 10, 12, 0, 0, DateTimeKind.Utc),
                 AfterEntryId = 10,
+                SnapshotId = sameSnapshot ? snapshotId : Guid.NewGuid(),
                 RunningBalance = 20m,
                 TotalDebit = 35m,
                 TotalCredit = 5m,
@@ -238,18 +248,18 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
             }
         }, CancellationToken.None);
 
-        reader.TotalsCallCount.Should().Be(0);
-        reader.OpeningBalanceCallCount.Should().Be(0);
+        reader.TotalsCallCount.Should().Be(sameSnapshot ? 0 : 1);
+        reader.OpeningBalanceCallCount.Should().Be(sameSnapshot ? 0 : 1);
         reader.PageRequests.Should().ContainSingle();
-        reader.PageRequests[0].IncludeTotals.Should().BeFalse();
-        page.OpeningBalance.Should().Be(20m);
-        page.TotalDebit.Should().Be(35m);
-        page.TotalCredit.Should().Be(5m);
-        page.ClosingBalance.Should().Be(30m);
+        reader.PageRequests[0].IncludeTotals.Should().Be(!sameSnapshot);
+        page.OpeningBalance.Should().Be(sameSnapshot ? 20m : 75m);
+        page.TotalDebit.Should().Be(sameSnapshot ? 35m : 100m);
+        page.TotalCredit.Should().Be(sameSnapshot ? 5m : 0m);
+        page.ClosingBalance.Should().Be(sameSnapshot ? 30m : 100m);
         page.HasMore.Should().BeFalse();
         page.NextCursor.Should().BeNull();
         page.Lines.Should().ContainSingle();
-        page.Lines[0].RunningBalance.Should().Be(30m);
+        page.Lines[0].RunningBalance.Should().Be(sameSnapshot ? 30m : 85m);
     }
 
     [Fact]

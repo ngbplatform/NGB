@@ -1,169 +1,117 @@
+using System.Runtime.CompilerServices;
 using Dapper;
 using NGB.Core.Documents;
 using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Reporting;
 using NGB.PropertyManagement.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
 namespace NGB.PropertyManagement.PostgreSql.Reporting;
 
-public sealed class PostgresMaintenanceQueueReader(IUnitOfWork uow) : IMaintenanceQueueReader
+public sealed class PostgresMaintenanceQueueReader(IUnitOfWork uow) : IMaintenanceQueueReader, IMaintenanceQueueStreamReader
 {
     private const string PropertyCode = PropertyManagementCodes.Property;
     private const string PartyCode = PropertyManagementCodes.Party;
     private const string MaintenanceCategoryCode = PropertyManagementCodes.MaintenanceCategory;
 
-    private static readonly string QueueCte = """
-WITH candidate_requests AS (
-    SELECT
-        mr.document_id AS request_id,
-        mr.display AS request_display,
-        mr.subject AS subject,
-        mr.requested_at_utc AS requested_at_utc,
-        mr.property_id AS property_id,
-        COALESCE(NULLIF(BTRIM(req_prop.display), ''), '[Property]') AS property_display,
-        CASE
-            WHEN req_prop.kind = 'Building' THEN req_prop.catalog_id
-            ELSE req_prop.parent_property_id
-        END AS building_id,
-        COALESCE(
-            CASE
-                WHEN req_prop.kind = 'Building' THEN NULLIF(BTRIM(req_prop.display), '')
-                ELSE NULLIF(BTRIM(build_prop.display), '')
-            END,
-            '[Building]') AS building_display,
-        mr.party_id AS requested_by_party_id,
-        COALESCE(NULLIF(BTRIM(req_party.display), ''), '[Party]') AS requested_by_display,
-        mr.category_id AS category_id,
-        COALESCE(NULLIF(BTRIM(cat.display), ''), '[Category]') AS category_display,
-        mr.priority AS priority
-    FROM doc_pm_maintenance_request mr
-    JOIN documents req_doc
-      ON req_doc.id = mr.document_id
-     AND req_doc.status = @posted
-    JOIN cat_pm_property req_prop
-      ON req_prop.catalog_id = mr.property_id
-    LEFT JOIN cat_pm_property build_prop
-      ON build_prop.catalog_id = CASE
-          WHEN req_prop.kind = 'Building' THEN req_prop.catalog_id
-          ELSE req_prop.parent_property_id
-      END
-    LEFT JOIN cat_pm_party req_party
-      ON req_party.catalog_id = mr.party_id
-    LEFT JOIN cat_pm_maintenance_category cat
-      ON cat.catalog_id = mr.category_id
-    WHERE mr.requested_at_utc <= @as_of
-      AND (@property_id::uuid IS NULL OR mr.property_id = @property_id::uuid)
-      AND (@building_id::uuid IS NULL OR CASE
-            WHEN req_prop.kind = 'Building' THEN req_prop.catalog_id
-            ELSE req_prop.parent_property_id
-          END = @building_id::uuid)
-      AND (@category_id::uuid IS NULL OR mr.category_id = @category_id::uuid)
-      AND (@priority::text IS NULL OR mr.priority = @priority::text)
-),
-posted_work_orders AS (
-    SELECT
-        wo.document_id AS work_order_id,
-        wo.display AS work_order_display,
-        wo.request_id AS request_id,
-        wo.assigned_party_id AS assigned_party_id,
-        COALESCE(NULLIF(BTRIM(assigned_party.display), ''), '[Party]') AS assigned_party_display,
-        wo.due_by_utc AS due_by_utc
-    FROM doc_pm_work_order wo
-    JOIN documents wo_doc
-      ON wo_doc.id = wo.document_id
-     AND wo_doc.status = @posted
-    LEFT JOIN cat_pm_party assigned_party
-      ON assigned_party.catalog_id = wo.assigned_party_id
-),
-open_work_orders AS (
-    SELECT
-        pwo.work_order_id,
-        pwo.work_order_display,
-        pwo.request_id,
-        pwo.assigned_party_id,
-        pwo.assigned_party_display,
-        pwo.due_by_utc
-    FROM posted_work_orders pwo
-    WHERE (@assigned_party_id::uuid IS NULL OR pwo.assigned_party_id = @assigned_party_id::uuid)
-      AND NOT EXISTS (
-          SELECT 1
-          FROM doc_pm_work_order_completion wc
-          JOIN documents wc_doc
-            ON wc_doc.id = wc.document_id
-           AND wc_doc.status = @posted
-          WHERE wc.work_order_id = pwo.work_order_id
-            AND wc.closed_at_utc <= @as_of)
-),
-queue_rows AS (
-    SELECT
-        cr.request_id AS request_id,
-        cr.request_display AS request_display,
-        cr.subject AS subject,
-        cr.requested_at_utc AS requested_at_utc,
-        (@as_of::date - cr.requested_at_utc)::int AS aging_days,
-        cr.building_id AS building_id,
-        cr.building_display AS building_display,
-        cr.property_id AS property_id,
-        cr.property_display AS property_display,
-        cr.category_id AS category_id,
-        cr.category_display AS category_display,
-        cr.priority AS priority,
-        cr.requested_by_party_id AS requested_by_party_id,
-        cr.requested_by_display AS requested_by_display,
-        NULL::uuid AS work_order_id,
-        NULL::text AS work_order_display,
-        NULL::uuid AS assigned_party_id,
-        NULL::text AS assigned_party_display,
-        NULL::date AS due_by_utc,
-        'Requested'::text AS queue_state
+    private static string BuildQueueKeysCte(bool bounded = false, bool seek = false)
+    {
+        var requestedLimit = bounded ? "ORDER BY cr.requested_at_utc DESC, cr.request_id DESC LIMIT @limit" : "";
+        var orderedLimit = bounded ? "ORDER BY cr.requested_at_utc DESC, cr.request_id DESC, wo.work_order_id LIMIT @limit" : "";
+        string Requested(string predicate) => $"""
+    (SELECT cr.request_id, cr.requested_at_utc, NULL::uuid AS work_order_id,
+        NULL::uuid AS assigned_party_id, NULL::date AS due_by_utc, 'Requested'::text AS queue_state
     FROM candidate_requests cr
     WHERE @assigned_party_id::uuid IS NULL
-      AND NOT EXISTS (
-          SELECT 1
-          FROM posted_work_orders pwo
-          WHERE pwo.request_id = cr.request_id)
-      AND (@queue_state::text IS NULL OR @queue_state::text = 'Requested')
-
-    UNION ALL
-
-    SELECT
-        cr.request_id AS request_id,
-        cr.request_display AS request_display,
-        cr.subject AS subject,
-        cr.requested_at_utc AS requested_at_utc,
-        (@as_of::date - cr.requested_at_utc)::int AS aging_days,
-        cr.building_id AS building_id,
-        cr.building_display AS building_display,
-        cr.property_id AS property_id,
-        cr.property_display AS property_display,
-        cr.category_id AS category_id,
-        cr.category_display AS category_display,
-        cr.priority AS priority,
-        cr.requested_by_party_id AS requested_by_party_id,
-        cr.requested_by_display AS requested_by_display,
-        owo.work_order_id AS work_order_id,
-        owo.work_order_display AS work_order_display,
-        owo.assigned_party_id AS assigned_party_id,
-        owo.assigned_party_display AS assigned_party_display,
-        owo.due_by_utc AS due_by_utc,
-        CASE
-            WHEN owo.due_by_utc IS NOT NULL AND owo.due_by_utc < @as_of THEN 'Overdue'
-            ELSE 'WorkOrdered'
-        END AS queue_state
+      AND (@queue_state::text IS NULL OR @queue_state = 'Requested')
+      AND NOT EXISTS (SELECT 1 FROM posted_work_orders pwo WHERE pwo.request_id = cr.request_id)
+      {predicate}
+      {requestedLimit})
+""";
+        string Ordered(string predicate) => $"""
+    (SELECT cr.request_id, cr.requested_at_utc, wo.work_order_id, wo.assigned_party_id, wo.due_by_utc,
+        CASE WHEN wo.due_by_utc < @as_of THEN 'Overdue' ELSE 'WorkOrdered' END
     FROM candidate_requests cr
-    JOIN open_work_orders owo
-      ON owo.request_id = cr.request_id
-    WHERE @queue_state::text IS NULL
-       OR (@queue_state::text = 'WorkOrdered' AND (owo.due_by_utc IS NULL OR owo.due_by_utc >= @as_of))
-       OR (@queue_state::text = 'Overdue' AND owo.due_by_utc IS NOT NULL AND owo.due_by_utc < @as_of)
+    JOIN posted_work_orders wo ON wo.request_id = cr.request_id
+    WHERE (@assigned_party_id::uuid IS NULL OR wo.assigned_party_id = @assigned_party_id)
+      AND (@queue_state::text IS NULL
+        OR (@queue_state = 'WorkOrdered' AND (wo.due_by_utc IS NULL OR wo.due_by_utc >= @as_of))
+        OR (@queue_state = 'Overdue' AND wo.due_by_utc < @as_of))
+      AND NOT EXISTS (
+        SELECT 1 FROM doc_pm_work_order_completion wc
+        JOIN documents wc_doc ON wc_doc.id = wc.document_id
+          AND wc_doc.status = @posted AND wc_doc.type_code = 'pm.work_order_completion'
+        WHERE wc.work_order_id = wo.work_order_id AND wc.closed_at_utc <= @as_of)
+      {predicate}
+      {orderedLimit})
+""";
+        // Disjoint ranges expose equality on a heavily repeated date to the planner. A tuple
+        // inequality can underestimate that date's rows and sort the entire queue before LIMIT.
+        const string olderDate = "AND cr.requested_at_utc < @after_requested_at_utc::date";
+        const string sameDate = "AND cr.requested_at_utc = @after_requested_at_utc::date AND cr.request_id < @after_request_id::uuid";
+        const string sameRequest = """
+AND cr.requested_at_utc = @after_requested_at_utc::date AND cr.request_id = @after_request_id::uuid
+AND (@after_work_order_id::uuid IS NULL OR wo.work_order_id > @after_work_order_id::uuid)
+""";
+        var branches = seek
+            ? new[] { Requested(olderDate), Requested(sameDate), Ordered(olderDate), Ordered(sameDate), Ordered(sameRequest) }
+            : new[] { Requested(""), Ordered("") };
+        return $"""
+WITH candidate_requests AS NOT MATERIALIZED (
+    SELECT mr.document_id AS request_id, mr.requested_at_utc
+    FROM doc_pm_maintenance_request mr
+    JOIN documents req_doc ON req_doc.id = mr.document_id
+      AND req_doc.status = @posted AND req_doc.type_code = 'pm.maintenance_request'
+    JOIN cat_pm_property req_prop ON req_prop.catalog_id = mr.property_id
+    WHERE mr.requested_at_utc <= @as_of
+      AND (@property_id::uuid IS NULL OR mr.property_id = @property_id)
+      AND (@building_id::uuid IS NULL OR CASE WHEN req_prop.kind = 'Building'
+           THEN req_prop.catalog_id ELSE req_prop.parent_property_id END = @building_id)
+      AND (@category_id::uuid IS NULL OR mr.category_id = @category_id)
+      AND (@priority::text IS NULL OR mr.priority = @priority)
+),
+posted_work_orders AS NOT MATERIALIZED (
+    SELECT wo.document_id AS work_order_id, wo.request_id, wo.assigned_party_id, wo.due_by_utc
+    FROM doc_pm_work_order wo
+    JOIN documents wo_doc ON wo_doc.id = wo.document_id
+      AND wo_doc.status = @posted AND wo_doc.type_code = 'pm.work_order'
+),
+queue_keys AS NOT MATERIALIZED (
+{string.Join("\n    UNION ALL\n", branches)}
 )
 """;
+    }
 
-    private static string BuildPageSql(bool knownTotal, bool useSeek)
+    // Display joins happen after selecting page keys; full exports execute this projection once.
+    private static string ProjectRows(string source) => $"""
+SELECT q.request_id, mr.display AS request_display, mr.subject, q.requested_at_utc,
+    (@as_of::date - q.requested_at_utc)::int AS aging_days,
+    CASE WHEN p.kind = 'Building' THEN p.catalog_id ELSE p.parent_property_id END AS building_id,
+    COALESCE(NULLIF(BTRIM(CASE WHEN p.kind = 'Building' THEN p.display ELSE b.display END), ''), '[Building]') AS building_display,
+    mr.property_id, COALESCE(NULLIF(BTRIM(p.display), ''), '[Property]') AS property_display,
+    mr.category_id, COALESCE(NULLIF(BTRIM(c.display), ''), '[Category]') AS category_display,
+    mr.priority, mr.party_id AS requested_by_party_id,
+    COALESCE(NULLIF(BTRIM(rp.display), ''), '[Party]') AS requested_by_display,
+    q.work_order_id, wo.display AS work_order_display, q.assigned_party_id,
+    CASE WHEN q.work_order_id IS NULL THEN NULL ELSE COALESCE(NULLIF(BTRIM(ap.display), ''), '[Party]') END AS assigned_party_display,
+    q.due_by_utc, q.queue_state
+FROM {source} q
+JOIN doc_pm_maintenance_request mr ON mr.document_id = q.request_id
+JOIN cat_pm_property p ON p.catalog_id = mr.property_id
+LEFT JOIN cat_pm_property b ON b.catalog_id = p.parent_property_id
+LEFT JOIN cat_pm_maintenance_category c ON c.catalog_id = mr.category_id
+LEFT JOIN cat_pm_party rp ON rp.catalog_id = mr.party_id
+LEFT JOIN doc_pm_work_order wo ON wo.document_id = q.work_order_id
+LEFT JOIN cat_pm_party ap ON ap.catalog_id = q.assigned_party_id
+""";
+
+    private static string QueueCte => BuildQueueKeysCte() + ", queue_rows AS (" + ProjectRows("queue_keys") + ")";
+
+    private static string BuildPageSql(bool knownTotal, bool useSeek, bool includeTotal = true)
     {
-        var statsSql = knownTotal
+        var statsSql = knownTotal || !includeTotal
         ? """
 ,
 stats AS (
@@ -174,14 +122,14 @@ stats AS (
 ,
 stats AS (
     SELECT COUNT(*)::int AS total_count
-    FROM queue_rows
+    FROM queue_keys
 ),
 """;
         var sourceSql = useSeek
             ? """
 seek_rows AS (
     SELECT *
-    FROM queue_rows
+    FROM queue_keys
     WHERE requested_at_utc < @after_requested_at_utc::date
        OR (requested_at_utc = @after_requested_at_utc::date AND request_id < @after_request_id::uuid)
        OR (requested_at_utc = @after_requested_at_utc::date AND request_id = @after_request_id::uuid AND (
@@ -191,17 +139,20 @@ seek_rows AS (
 ),
 """
             : string.Empty;
-        var sourceName = useSeek ? "seek_rows" : "queue_rows";
+        var sourceName = useSeek ? "seek_rows" : "queue_keys";
         var offsetSql = useSeek ? string.Empty : "OFFSET @offset";
 
-        return QueueCte + statsSql + sourceSql + $"""
-paged AS (
+        return BuildQueueKeysCte(bounded: !includeTotal && !knownTotal, seek: !includeTotal && !knownTotal && useSeek) + statsSql + sourceSql + $"""
+paged_keys AS MATERIALIZED (
 SELECT
     *
 FROM {sourceName}
 ORDER BY requested_at_utc DESC, request_id DESC, work_order_id NULLS FIRST
 {offsetSql}
 LIMIT @limit
+),
+paged AS (
+{ProjectRows("paged_keys")}
 )
 SELECT
     paged.request_id AS RequestId,
@@ -230,6 +181,53 @@ FROM stats
 LEFT JOIN paged ON TRUE
 ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id NULLS FIRST;
 """;
+    }
+
+    public async IAsyncEnumerable<IReadOnlyList<MaintenanceQueueRow>> ReadAsync(
+        MaintenanceQueueQuery query,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        query.EnsureInvariant();
+
+        await uow.EnsureConnectionOpenAsync(ct);
+        await ValidateFiltersAsync(query, ct);
+
+        var sql = QueueCte + """
+SELECT
+    paged.request_id AS RequestId,
+    paged.request_display AS RequestDisplay,
+    paged.subject AS Subject,
+    paged.requested_at_utc AS RequestedAtUtc,
+    paged.aging_days AS AgingDays,
+    paged.building_id AS BuildingId,
+    paged.building_display AS BuildingDisplay,
+    paged.property_id AS PropertyId,
+    paged.property_display AS PropertyDisplay,
+    paged.category_id AS CategoryId,
+    paged.category_display AS CategoryDisplay,
+    paged.priority AS Priority,
+    paged.requested_by_party_id AS RequestedByPartyId,
+    paged.requested_by_display AS RequestedByDisplay,
+    paged.work_order_id AS WorkOrderId,
+    paged.work_order_display AS WorkOrderDisplay,
+    paged.assigned_party_id AS AssignedPartyId,
+    paged.assigned_party_display AS AssignedPartyDisplay,
+    paged.due_by_utc AS DueByUtc,
+    paged.queue_state AS QueueState
+FROM queue_rows paged
+ORDER BY paged.requested_at_utc DESC, paged.request_id DESC, paged.work_order_id NULLS FIRST;
+""";
+        var args = new
+        {
+            as_of = query.AsOfUtc, building_id = query.BuildingId, property_id = query.PropertyId,
+            category_id = query.CategoryId, assigned_party_id = query.AssignedPartyId,
+            priority = query.Priority, queue_state = query.QueueState?.ToCode(), posted = (int)DocumentStatus.Posted
+        };
+
+        await foreach (var batch in PostgresReportCursorStream.ReadAsync<PageRow>(uow, sql, args, ct))
+        {
+            yield return batch.Select(MapRow).ToArray();
+        }
     }
 
     public async Task<MaintenanceQueuePage> GetPageAsync(MaintenanceQueueQuery query, CancellationToken ct = default)
@@ -368,6 +366,8 @@ ORDER BY ranked.row_number;
         CancellationToken ct)
     {
         query.EnsureInvariant();
+        cursorPaging |= !query.IncludeTotal;
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         if (cursor is null)
@@ -394,7 +394,7 @@ ORDER BY ranked.row_number;
         };
 
         var dbRows = (await uow.Connection.QueryAsync<CombinedRow>(new CommandDefinition(
-            BuildPageSql(cursor is not null, useSeek),
+            BuildPageSql(cursor?.Total is not null, useSeek, query.IncludeTotal),
             parameters,
             transaction: uow.Transaction,
             cancellationToken: ct))).AsList();
@@ -430,7 +430,7 @@ ORDER BY ranked.row_number;
         var last = visibleRows.LastOrDefault();
         var result = new MaintenanceQueuePage(
             rows,
-            total,
+            total ?? (!hasMore && query.Offset == 0 ? rows.Length : null),
             hasMore,
             last?.RequestedAtUtc,
             last?.RequestId,
@@ -715,7 +715,7 @@ WHERE c.catalog_code = @code
         DateOnly? DueByUtc,
         string? QueueState,
         bool HasRow,
-        int TotalCount);
+        int? TotalCount);
 
     private sealed record DashboardCombinedRow(
         Guid? RequestId,

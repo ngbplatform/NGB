@@ -1,5 +1,6 @@
+using System.Runtime.CompilerServices;
 using Dapper;
-using System.Text;
+using NGB.Accounting.Reports;
 using NGB.Accounting.Reports.GeneralLedgerAggregated;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
@@ -7,6 +8,7 @@ using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -16,12 +18,37 @@ namespace NGB.PostgreSql.Readers;
 /// Aggregated ledger reader based on accounting_register_main:
 /// groups by document + counter-account + DimensionSetId (canonical dimensions).
 /// </summary>
-public sealed class PostgresGeneralLedgerAggregatedReader(
+public sealed partial class PostgresGeneralLedgerAggregatedReader(
     IUnitOfWork uow,
     IDimensionSetReader dimensionSetReader,
     IDimensionValueEnrichmentReader dimensionValueEnrichmentReader)
-    : IGeneralLedgerAggregatedPageReader
+    : IGeneralLedgerAggregatedPageReader, IGeneralLedgerAggregatedStreamReader
 {
+    public async IAsyncEnumerable<IReadOnlyList<GeneralLedgerAggregatedLine>> ReadAsync(
+        AccountActivityQuery query,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        query.EnsureInvariant();
+        var (scopeDimIds, scopeValueIds, scopeDimensionCount) = SqlDimensionFilter.NormalizeScopes(query.DimensionScopes);
+        var sql = BuildPageSql(scopeDimensionCount > 0, hasCursor: false, hasPaging: false);
+        var args = new
+        {
+            query.AccountId,
+            FromUtc = ToMonthStartUtc(query.FromInclusive),
+            ToExclusiveUtc = ToMonthStartUtc(query.ToInclusive.AddMonths(1)),
+            ScopeDimensionCount = scopeDimensionCount,
+            ScopeDimIds = scopeDimIds,
+            ScopeValueIds = scopeValueIds
+        };
+
+        await foreach (var batch in PostgresReportCursorStream.ReadAsync<GeneralLedgerAggregatedLine>(uow, sql, args, ct))
+        {
+            await ResolveDimensionsAsync(batch, ct);
+            await ResolveDimensionValueDisplaysAsync(batch, ct);
+            yield return batch;
+        }
+    }
+
     public async Task<GeneralLedgerAggregatedPage> GetPageAsync(
         GeneralLedgerAggregatedPageRequest request,
         CancellationToken ct = default)
@@ -44,15 +71,16 @@ public sealed class PostgresGeneralLedgerAggregatedReader(
         var pagingEnabled = !request.DisablePaging;
         var take = pagingEnabled ? request.PageSize + 1 : 0;
         var cursor = pagingEnabled ? request.Cursor : null;
+        var bounded = pagingEnabled
+            ? await TryReadBoundedAsync(request, scopeDimIds, scopeValueIds, scopeDimensionCount, ct)
+            : null;
         var sql = BuildPageSql(
             hasDimensionScopes: scopeDimensionCount > 0,
             hasCursor: cursor is not null,
-            hasPaging: pagingEnabled);
+            hasPaging: pagingEnabled,
+            includePrefix: request.IncludePrefixDelta && cursor is not null);
 
-        var materialized = (await uow.Connection.QueryAsync<GeneralLedgerAggregatedLine>(
-            new CommandDefinition(
-                sql,
-                new
+        var parameters = new
                 {
                     AccountId = request.AccountId,
                     FromUtc = ToMonthStartUtc(request.FromInclusive),
@@ -65,10 +93,34 @@ public sealed class PostgresGeneralLedgerAggregatedReader(
                     AfterCounterAccountCode = cursor?.AfterCounterAccountCode,
                     AfterCounterAccountId = cursor?.AfterCounterAccountId,
                     AfterDimensionSetId = cursor?.AfterDimensionSetId,
-                    Take = take
-                },
-                uow.Transaction,
-                cancellationToken: ct))).AsList();
+                    Take = bounded is not null ? 0 : take
+                };
+        decimal prefixDelta = 0;
+        List<GeneralLedgerAggregatedLine> materialized;
+        if (bounded is not null)
+        {
+            materialized = bounded;
+            if (request.IncludePrefixDelta && cursor is not null)
+            {
+                prefixDelta = await uow.Connection.ExecuteScalarAsync<decimal>(new CommandDefinition(
+                    BuildSql(scopeDimensionCount > 0, true, false, false, prefixOnly: true),
+                    parameters,
+                    uow.Transaction,
+                    cancellationToken: ct));
+            }
+        }
+        else if (request.IncludePrefixDelta && cursor is not null)
+        {
+            materialized = (await uow.Connection.QueryAsync<GeneralLedgerAggregatedLine, PrefixRow, GeneralLedgerAggregatedLine>(
+                    new CommandDefinition(sql, parameters, uow.Transaction, cancellationToken: ct),
+                    (line, prefix) => { prefixDelta = prefix.PrefixDelta; return line; }, splitOn: "PrefixDelta"))
+                .Where(line => line.DocumentId != Guid.Empty).ToList();
+        }
+        else
+        {
+            materialized = (await uow.Connection.QueryAsync<GeneralLedgerAggregatedLine>(
+                new CommandDefinition(sql, parameters, uow.Transaction, cancellationToken: ct))).AsList();
+        }
 
         var hasMore = pagingEnabled && materialized.Count > request.PageSize;
         var lines = hasMore ? materialized.Take(request.PageSize).ToList() : materialized;
@@ -90,186 +142,112 @@ public sealed class PostgresGeneralLedgerAggregatedReader(
             };
         }
 
-        return new GeneralLedgerAggregatedPage(lines, hasMore, nextCursor);
+        return new GeneralLedgerAggregatedPage(lines, hasMore, nextCursor, prefixDelta);
     }
 
-    private static string BuildPageSql(bool hasDimensionScopes, bool hasCursor, bool hasPaging)
+    private sealed class PrefixRow
     {
-        var sql = new StringBuilder();
+        public decimal PrefixDelta { get; init; }
+    }
 
-        sql.AppendLine("WITH");
+    private static string BuildPageSql(
+        bool hasDimensionScopes,
+        bool hasCursor,
+        bool hasPaging,
+        bool includePrefix = false)
+        => BuildSql(hasDimensionScopes, hasCursor, hasPaging, includePrefix);
 
-        if (hasDimensionScopes)
-        {
-            sql.AppendLine("""
-                           requested_scope_pairs AS (
-                               SELECT *
-                               FROM unnest(CAST(@ScopeDimIds AS uuid[]), CAST(@ScopeValueIds AS uuid[])) AS sp(dimension_id, value_id)
-                           ),
-                           matching_dimension_sets AS (
-                               SELECT di.dimension_set_id
-                               FROM platform_dimension_set_items di
-                               JOIN requested_scope_pairs sp
-                                 ON sp.dimension_id = di.dimension_id
-                                AND sp.value_id = di.value_id
-                               GROUP BY di.dimension_set_id
-                               HAVING COUNT(DISTINCT di.dimension_id) = @ScopeDimensionCount
-                           ),
-                           """);
-        }
+    private static string BuildSql(
+        bool hasDimensionScopes,
+        bool hasCursor,
+        bool hasPaging,
+        bool includePrefix,
+        bool boundedDocuments = false,
+        bool afterScan = false,
+        bool prefixOnly = false)
+    {
+        var scopes = hasDimensionScopes ? """
+            requested_scope_pairs AS (
+                SELECT * FROM unnest(CAST(@ScopeDimIds AS uuid[]), CAST(@ScopeValueIds AS uuid[])) AS sp(dimension_id, value_id)
+            ),
+            matching_dimension_sets AS (
+                SELECT di.dimension_set_id FROM platform_dimension_set_items di
+                JOIN requested_scope_pairs sp ON sp.dimension_id = di.dimension_id AND sp.value_id = di.value_id
+                GROUP BY di.dimension_set_id HAVING COUNT(DISTINCT di.dimension_id) = @ScopeDimensionCount
+            ),
+            """ : string.Empty;
+        var debitScope = hasDimensionScopes ? "JOIN matching_dimension_sets ds ON ds.dimension_set_id = r.debit_dimension_set_id" : "";
+        var creditScope = hasDimensionScopes ? "JOIN matching_dimension_sets ds ON ds.dimension_set_id = r.credit_dimension_set_id" : "";
+        var seek = hasCursor ? $"""
+            WHERE ("PeriodUtc", "DocumentId", "CounterAccountCode", "CounterAccountId", "DimensionSetId") > (
+                @AfterPeriodUtc::timestamptz, @AfterDocumentId::uuid, @AfterCounterAccountCode,
+                @AfterCounterAccountId::uuid, @AfterDimensionSetId::uuid)
+            """ : "";
+        const string order = "\"PeriodUtc\", \"DocumentId\", \"CounterAccountCode\", \"CounterAccountId\", \"DimensionSetId\"";
+        var pageSql = $"SELECT * FROM final_rows {seek} ORDER BY {order} {(hasPaging ? "LIMIT @Take" : "")}";
+        var tail = includePrefix ? $"""
+            , prefix AS (
+                SELECT COALESCE(SUM("DebitAmount"-"CreditAmount"),0) AS "PrefixDelta"
+                FROM final_rows {seek.Replace(">", "<=", StringComparison.Ordinal)}
+            ), page AS ({pageSql})
+            SELECT page.*, prefix."PrefixDelta" FROM prefix LEFT JOIN page ON TRUE
+            ORDER BY {order};
+            """ : pageSql + ";";
 
-        sql.AppendLine("""
-                       me AS (
-                           SELECT account_id, code
-                           FROM accounting_accounts
-                           WHERE account_id = CAST(@AccountId AS uuid) AND is_deleted = FALSE
-                       ),
-                       agg AS (
-                           SELECT
-                               r.document_id AS "DocumentId",
-                               MIN(r.period) AS "PeriodUtc",
-                               me.account_id AS "AccountId",
-                               me.code AS "AccountCode",
-                               ac.account_id AS "CounterAccountId",
-                               ac.code AS "CounterAccountCode",
-                               r.debit_dimension_set_id AS "DimensionSetId",
-                               SUM(r.amount) AS "DebitAmount",
-                               0::numeric AS "CreditAmount"
-                           FROM accounting_register_main r
-                           CROSS JOIN me
-                           JOIN accounting_accounts ac ON ac.account_id = r.credit_account_id AND ac.is_deleted = FALSE
-                       """);
+        if (prefixOnly)
+            tail = $"SELECT COALESCE(SUM(\"DebitAmount\"-\"CreditAmount\"),0) FROM final_rows {seek.Replace(">", "<=", StringComparison.Ordinal)};";
 
-        if (hasDimensionScopes)
-        {
-            sql.AppendLine("""
-                           JOIN matching_dimension_sets debit_scope
-                             ON debit_scope.dimension_set_id = r.debit_dimension_set_id
-                           """);
-        }
-
-        sql.AppendLine("""
-                           WHERE
-                               r.debit_account_id = me.account_id
-                               AND r.period >= CAST(@FromUtc AS timestamptz)
-                               AND r.period < CAST(@ToExclusiveUtc AS timestamptz)
-                       """);
-
-        if (hasCursor)
-        {
-            sql.AppendLine("""
-                           AND (r.period, r.document_id, ac.code, ac.account_id, r.debit_dimension_set_id) > (
-                               CAST(@AfterPeriodUtc AS timestamptz),
-                               CAST(@AfterDocumentId AS uuid),
-                               @AfterCounterAccountCode,
-                               CAST(@AfterCounterAccountId AS uuid),
-                               CAST(@AfterDimensionSetId AS uuid)
-                           )
-                           """);
-        }
-
-        sql.AppendLine("""
-                           GROUP BY
-                               r.document_id,
-                               me.account_id,
-                               me.code,
-                               ac.account_id,
-                               ac.code,
-                               r.debit_dimension_set_id
-
-                           UNION ALL
-
-                           SELECT
-                               r.document_id AS "DocumentId",
-                               MIN(r.period) AS "PeriodUtc",
-                               me.account_id AS "AccountId",
-                               me.code AS "AccountCode",
-                               ad.account_id AS "CounterAccountId",
-                               ad.code AS "CounterAccountCode",
-                               r.credit_dimension_set_id AS "DimensionSetId",
-                               0::numeric AS "DebitAmount",
-                               SUM(r.amount) AS "CreditAmount"
-                           FROM accounting_register_main r
-                           CROSS JOIN me
-                           JOIN accounting_accounts ad ON ad.account_id = r.debit_account_id AND ad.is_deleted = FALSE
-                       """);
-
-        if (hasDimensionScopes)
-        {
-            sql.AppendLine("""
-                           JOIN matching_dimension_sets credit_scope
-                             ON credit_scope.dimension_set_id = r.credit_dimension_set_id
-                           """);
-        }
-
-        sql.AppendLine("""
-                           WHERE
-                               r.credit_account_id = me.account_id
-                               AND r.period >= CAST(@FromUtc AS timestamptz)
-                               AND r.period < CAST(@ToExclusiveUtc AS timestamptz)
-                       """);
-
-        if (hasCursor)
-        {
-            sql.AppendLine("""
-                           AND (r.period, r.document_id, ad.code, ad.account_id, r.credit_dimension_set_id) > (
-                               CAST(@AfterPeriodUtc AS timestamptz),
-                               CAST(@AfterDocumentId AS uuid),
-                               @AfterCounterAccountCode,
-                               CAST(@AfterCounterAccountId AS uuid),
-                               CAST(@AfterDimensionSetId AS uuid)
-                           )
-                           """);
-        }
-
-        sql.AppendLine("""
-                           GROUP BY
-                               r.document_id,
-                               me.account_id,
-                               me.code,
-                               ad.account_id,
-                               ad.code,
-                               r.credit_dimension_set_id
-                       ),
-                       final_rows AS (
-                           SELECT
-                               MIN("PeriodUtc") AS "PeriodUtc",
-                               "DocumentId",
-                               "AccountId",
-                               "AccountCode",
-                               "CounterAccountId",
-                               "CounterAccountCode",
-                               "DimensionSetId",
-                               SUM("DebitAmount") AS "DebitAmount",
-                               SUM("CreditAmount") AS "CreditAmount"
-                           FROM agg
-                           GROUP BY
-                               "DocumentId",
-                               "AccountId",
-                               "AccountCode",
-                               "CounterAccountId",
-                               "CounterAccountCode",
-                               "DimensionSetId"
-                       )
-                       SELECT
-                           "PeriodUtc",
-                           "DocumentId",
-                           "AccountId",
-                           "AccountCode",
-                           "CounterAccountId",
-                           "CounterAccountCode",
-                           "DimensionSetId",
-                           "DebitAmount",
-                           "CreditAmount"
-                       FROM final_rows
-                       ORDER BY
-                           "PeriodUtc", "DocumentId", "CounterAccountCode", "CounterAccountId", "DimensionSetId"
-                       """);
-
-        if (hasPaging)
-            sql.AppendLine("LIMIT @Take;");
-
-        return sql.ToString();
+        // Only documents that have a posting at/before the cursor can contribute to its prefix.
+        // Read all dates of those documents to preserve the original group minimum and full sum.
+        var prefixDocuments = prefixOnly ? """
+            prefix_documents AS (
+                SELECT document_id FROM accounting_register_main
+                WHERE debit_account_id=@AccountId::uuid AND period>=@FromUtc::timestamptz AND period<@ToExclusiveUtc::timestamptz
+                  AND (period,document_id)<=(@AfterPeriodUtc::timestamptz,@AfterDocumentId::uuid)
+                UNION
+                SELECT document_id FROM accounting_register_main
+                WHERE credit_account_id=@AccountId::uuid AND period>=@FromUtc::timestamptz AND period<@ToExclusiveUtc::timestamptz
+                  AND (period,document_id)<=(@AfterPeriodUtc::timestamptz,@AfterDocumentId::uuid)
+            ),
+            """ : "";
+       
+        // Aggregate narrow posting keys once. Apply the seek to complete groups: postings of
+        // one document can span dates, so filtering raw postings by the cursor splits a group.
+        return $"""
+            WITH {scopes} {prefixDocuments}
+            activity AS (
+                SELECT r.document_id, r.period, r.credit_account_id AS counter_id,
+                       r.debit_dimension_set_id AS dimension_set_id, r.amount AS debit, 0::numeric AS credit
+                FROM accounting_register_main r {debitScope}
+                WHERE r.debit_account_id = @AccountId::uuid AND r.period >= @FromUtc::timestamptz AND r.period < @ToExclusiveUtc::timestamptz
+                {(boundedDocuments ? "AND r.document_id = ANY(@CandidateDocuments::uuid[])" : "")}
+                {(prefixOnly ? "AND r.document_id IN (SELECT document_id FROM prefix_documents)" : "")}
+                UNION ALL
+                SELECT r.document_id, r.period, r.debit_account_id AS counter_id,
+                       r.credit_dimension_set_id AS dimension_set_id, 0::numeric AS debit, r.amount AS credit
+                FROM accounting_register_main r {creditScope}
+                WHERE r.credit_account_id = @AccountId::uuid AND r.period >= @FromUtc::timestamptz AND r.period < @ToExclusiveUtc::timestamptz
+                {(boundedDocuments ? "AND r.document_id = ANY(@CandidateDocuments::uuid[])" : "")}
+                {(prefixOnly ? "AND r.document_id IN (SELECT document_id FROM prefix_documents)" : "")}
+            ),
+            grouped AS (
+                SELECT document_id, MIN(period) AS period, counter_id, dimension_set_id,
+                       SUM(debit) AS debit, SUM(credit) AS credit
+                FROM activity GROUP BY document_id, counter_id, dimension_set_id
+            ),
+            final_rows AS (
+                SELECT g.period AS "PeriodUtc", g.document_id AS "DocumentId",
+                       me.account_id AS "AccountId", me.code AS "AccountCode",
+                       counter.account_id AS "CounterAccountId", counter.code AS "CounterAccountCode",
+                       g.dimension_set_id AS "DimensionSetId", g.debit AS "DebitAmount", g.credit AS "CreditAmount"
+                FROM grouped g
+                JOIN accounting_accounts counter ON counter.account_id = g.counter_id AND counter.is_deleted = FALSE
+                JOIN accounting_accounts me ON me.account_id = @AccountId::uuid AND me.is_deleted = FALSE
+                {(boundedDocuments ? "WHERE (g.period,g.document_id) <= (@ScanToPeriod::timestamptz,@ScanToDocument::uuid)" : "")}
+                {(afterScan ? "AND (g.period,g.document_id) > (@ScanAfterPeriod::timestamptz,@ScanAfterDocument::uuid)" : "")}
+            )
+            {tail}
+            """;
     }
 
     private async Task ResolveDimensionsAsync(IReadOnlyList<GeneralLedgerAggregatedLine> lines, CancellationToken ct)

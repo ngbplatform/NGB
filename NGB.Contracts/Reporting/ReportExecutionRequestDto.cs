@@ -8,4 +8,5 @@ public sealed record ReportExecutionRequestDto(
     int Offset = 0,
     int Limit = 200,
     string? Cursor = null,
-    bool DisablePaging = false);
+    bool DisablePaging = false,
+    IReadOnlyList<System.Text.Json.JsonElement>? GroupPath = null);

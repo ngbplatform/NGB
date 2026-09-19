@@ -6,7 +6,6 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.OperationalRegisters;
-using NGB.Runtime.Reporting.Runs;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.Api.IntegrationTests.Support;
 using NGB.Trade.PostgreSql.Reporting;
@@ -206,8 +205,7 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
 
         await documents.PostAsync(TradeCodes.CustomerReturn, customerReturn.Id, CancellationToken.None);
 
-        // The saved execution path must preserve each vertical report's business calculations and drilldowns.
-        var savedRuns = scope.ServiceProvider.GetRequiredService<IReportRunService>();
+        var downloads = scope.ServiceProvider.GetRequiredService<IReportDownloadService>();
         foreach (var code in new[] { TradeCodes.SalesByItemReport, TradeCodes.SalesByCustomerReport, TradeCodes.PurchasesByVendorReport,
                      TradeCodes.InventoryBalancesReport, TradeCodes.InventoryMovementsReport, TradeCodes.CurrentItemPricesReport, TradeCodes.DashboardOverviewReport })
         {
@@ -216,19 +214,43 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
                     ? new Dictionary<string, string> { ["as_of_utc"] = "2026-04-30" }
                     : BuildPeriod("2026-04-01", "2026-04-30");
             var input = new ReportExecutionRequestDto(Parameters: parameters, DisablePaging: true);
-            var expected = await reports.ExecuteAsync(code, input, default);
-            var saved = await savedRuns.StartAsync(code, "trade-reader", input, default);
-            await host.Services.GetRequiredService<ReportRunProcessor>().ProcessNextAsync(default);
-            var all = new List<ReportSheetRowDto>();
-            ReportExecutionResponseDto page;
-            do
+            if (Testing.Reporting.ReportPerformanceProbe.Enabled)
+            using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "page-200"))
             {
-                page = await savedRuns.ReadAsync(code, "trade-reader", saved.Id, all.Count, 2, default);
-                all.AddRange(page.Sheet.Rows);
-            } while (page.HasMore);
-            all.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display))))
-                .Should().Equal(expected.Sheet.Rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display)))), code);
-            await using var file = await savedRuns.ExportAsync(code, "trade-reader", saved.Id, default);
+                var sample = await reports.ExecuteAsync(code, input with { DisablePaging = false, Limit = 200 }, default);
+                if (audit is not null) audit.Rows = sample.Sheet.Rows.Count;
+            }
+            var expected = await reports.ExecuteAsync(code, input, default);
+            var all = new List<ReportSheetRowDto>();
+            await ReadLevelAsync(null);
+            async Task ReadLevelAsync(IReadOnlyList<JsonElement>? path)
+            {
+                string? cursor = null;
+                ReportExecutionResponseDto page;
+                do
+                {
+                    using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, $"page-2-depth-{path?.Count ?? 0}"))
+                    {
+                        page = await reports.ExecuteAsync(code, input with { DisablePaging = false, Limit = 2, Cursor = cursor, GroupPath = path }, default);
+                        if (audit is not null) audit.Rows = page.Sheet.Rows.Count;
+                    }
+                    foreach (var row in page.Sheet.Rows)
+                    {
+                        if (path is not null && row.RowKind == ReportRowKind.Total) continue;
+                        all.Add(row);
+                        if (row.ChildrenPath is not null) await ReadLevelAsync(row.ChildrenPath);
+                    }
+                    cursor = page.NextCursor;
+                    if (page.HasMore) cursor.Should().NotBeNullOrEmpty();
+                } while (page.HasMore);
+            }
+            all.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display).Where(value => !string.IsNullOrEmpty(value)))))
+                .Should().Equal(expected.Sheet.Rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display).Where(value => !string.IsNullOrEmpty(value))))), code);
+            using var exportAudit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "export");
+            await using var download = await downloads.PrepareAsync(code, new ReportExportRequestDto(Parameters: parameters), default);
+            using var file = new MemoryStream();
+            await download.WriteAsync(file, default);
+            file.Position = 0;
             await using var zip = new ZipArchive(file, ZipArchiveMode.Read);
             zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
         }
@@ -360,34 +382,26 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
             && row.Cells[0].Display == "Recent Document"
             && row.Cells[4].Display!.Contains("Sales Invoice", StringComparison.Ordinal));
 
-        var groupedBalancesFirstPage = await reports.ExecuteAsync(
-            TradeCodes.InventoryBalancesReport,
-            new ReportExecutionRequestDto(
-                Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["as_of_utc"] = "2026-04-30"
-                },
-                Limit: 2),
-            CancellationToken.None);
+        var balancesRequest = new ReportExecutionRequestDto(
+            Parameters: new Dictionary<string, string> { ["as_of_utc"] = "2026-04-30" }, Limit: 1);
+        var warehouseGroups = await reports.ExecuteAsync(TradeCodes.InventoryBalancesReport, balancesRequest, default);
+        warehouseGroups.HasMore.Should().BeFalse();
+        var warehouseGroup = warehouseGroups.Sheet.Rows.Single(row => row.RowKind == ReportRowKind.Group);
+        warehouseGroup.ChildrenPath.Should().NotBeNull();
+        warehouseGroup.Cells[1].Display.Should().Be("20");
 
-        groupedBalancesFirstPage.Total.Should().Be(3);
+        var groupedBalancesFirstPage = await reports.ExecuteAsync(TradeCodes.InventoryBalancesReport,
+            balancesRequest with { GroupPath = warehouseGroup.ChildrenPath }, default);
+        groupedBalancesFirstPage.Total.Should().BeNull();
         groupedBalancesFirstPage.HasMore.Should().BeTrue();
         groupedBalancesFirstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
-        groupedBalancesFirstPage.Sheet.Rows.Should().HaveCount(2);
+        groupedBalancesFirstPage.Sheet.Rows.Should().ContainSingle();
+        groupedBalancesFirstPage.Sheet.Rows[0].Cells[0].Display.Should().Be("Alpha Widget");
         groupedBalancesFirstPage.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total);
 
-        var groupedBalancesSecondPage = await reports.ExecuteAsync(
-            TradeCodes.InventoryBalancesReport,
-            new ReportExecutionRequestDto(
-                Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["as_of_utc"] = "2026-04-30"
-                },
-                Limit: 2,
-                Cursor: groupedBalancesFirstPage.NextCursor),
-            CancellationToken.None);
-
-        groupedBalancesSecondPage.Total.Should().Be(3);
+        var groupedBalancesSecondPage = await reports.ExecuteAsync(TradeCodes.InventoryBalancesReport,
+            balancesRequest with { GroupPath = warehouseGroup.ChildrenPath, Cursor = groupedBalancesFirstPage.NextCursor }, default);
+        groupedBalancesSecondPage.Total.Should().BeNull();
         groupedBalancesSecondPage.HasMore.Should().BeFalse();
         groupedBalancesSecondPage.NextCursor.Should().BeNull();
         groupedBalancesSecondPage.Sheet.Rows.Should().HaveCount(2);

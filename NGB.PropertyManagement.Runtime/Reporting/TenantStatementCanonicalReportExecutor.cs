@@ -106,7 +106,7 @@ public sealed class TenantStatementCanonicalReportExecutor(
                     ["executor"] = "canonical-pm-tenant-statement"
                 }));
 
-        var hasMore = page.HasMore || query.Offset + page.Rows.Count < page.Total;
+        var hasMore = page.HasMore || cursor is null && query.Offset + page.Rows.Count < page.Total;
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
@@ -117,7 +117,8 @@ public sealed class TenantStatementCanonicalReportExecutor(
                     page.NextAfterOccurredOnUtc,
                     page.NextAfterSortOrder,
                     page.NextAfterDocumentId,
-                    page.NextRunningBalance))
+                    page.NextRunningBalance,
+                    page.SnapshotId))
             : null;
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(

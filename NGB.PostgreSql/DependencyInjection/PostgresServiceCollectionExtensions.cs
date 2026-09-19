@@ -231,6 +231,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IAccountCardPageReader>(sp => sp.GetRequiredService<PostgresAccountCardReader>());
         services.TryAddScoped<PostgresAccountCardEffectivePageReader>();
         services.TryAddScoped<IAccountCardEffectivePageReader>(sp => sp.GetRequiredService<PostgresAccountCardEffectivePageReader>());
+        services.TryAddScoped<IAccountCardEffectiveStreamReader>(sp => sp.GetRequiredService<PostgresAccountCardEffectivePageReader>());
         services.TryAddScoped<IAccountingConsistencySnapshotReader, PostgresAccountingConsistencySnapshotReader>();
         services.TryAddScoped<IBalanceSheetSnapshotReader, PostgresBalanceSheetSnapshotReader>();
         services.TryAddScoped<ICashFlowIndirectSnapshotReader, PostgresCashFlowIndirectSnapshotReader>();
@@ -239,10 +240,11 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IStatementOfChangesInEquitySnapshotReader, PostgresStatementOfChangesInEquitySnapshotReader>();
         services.TryAddScoped<ITrialBalanceSnapshotReader, PostgresTrialBalanceSnapshotReader>();
         services.TryAddScoped<ITrialBalanceAccountSummaryReader, PostgresTrialBalanceAccountSummaryReader>();
-        services.TryAddScoped<IReportRunStore, PostgresReportRunStore>();
         services.TryAddScoped<IReportReadSession, PostgresReportReadSession>();
         services.TryAddScoped<IAccountingConsistencyStreamReader, PostgresAccountingConsistencySnapshotReader>();
         services.TryAddScoped<IAccountingStatementAccountReader, PostgresAccountingStatementAccountReader>();
+        services.TryAddScoped<IAccountingSummaryPageReader, PostgresAccountingSummaryPageReader>();
+        services.TryAddScoped<IAccountingConsistencyPageReader, PostgresAccountingConsistencyPageReader>();
         services.TryAddScoped<IAccountingBalanceReader, PostgresAccountingBalanceReader>();
         services.TryAddScoped<IAccountingEntryReader, PostgresAccountingEntryReader>();
         services.TryAddScoped<IAccountingTurnoverReader, PostgresAccountingTurnoverReader>();
@@ -257,6 +259,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IGeneralJournalReader, PostgresGeneralJournalReader>();
         services.TryAddScoped<PostgresGeneralLedgerAggregatedReader>();
         services.TryAddScoped<IGeneralLedgerAggregatedPageReader>(sp => sp.GetRequiredService<PostgresGeneralLedgerAggregatedReader>());
+        services.TryAddScoped<IGeneralLedgerAggregatedStreamReader>(sp => sp.GetRequiredService<PostgresGeneralLedgerAggregatedReader>());
         services.TryAddScoped<ILedgerAnalysisFlatDetailReader, PostgresLedgerAnalysisFlatDetailReader>();
         services.TryAddScoped<IPostingStateReader, PostgresPostingStateReader>();
         services.TryAddScoped<IDocumentRelationshipGraphReader, PostgresDocumentRelationshipGraphReader>();
@@ -269,6 +272,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<PostgresReportPlanExecutor>();
         services.TryAddScoped<ITabularReportPlanExecutor>(sp => sp.GetRequiredService<PostgresReportPlanExecutor>());
         services.TryAddScoped<IStreamingReportDataSource>(sp => sp.GetRequiredService<PostgresReportPlanExecutor>());
+        services.TryAddScoped<IReportPageDataSource>(sp => sp.GetRequiredService<PostgresReportPlanExecutor>());
         services.TryAddScoped<IReportVariantRepository, PostgresReportVariantRepository>();
         
         // Schema

@@ -6,7 +6,6 @@ using NGB.CRM.Api.IntegrationTests.Infrastructure;
 using NGB.CRM.Api.IntegrationTests.Support;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
-using NGB.Runtime.Reporting.Runs;
 using Npgsql;
 using Xunit;
 
@@ -57,25 +56,38 @@ public sealed class CrmReporting_Data_EndToEnd_P0Tests(CrmSeededReportingFixture
     [InlineData(CrmCodes.LeadConversionFunnelReport, "lead_count", 98)]
     [InlineData(CrmCodes.ActivitySummaryReport, "activity_count", 33)]
     [InlineData(CrmCodes.QuoteRegisterReport, "amount", 1490977.5)]
-    public async Task Packaged_platform_executes_complete_saved_CRM_reports_and_exports(string code, string measure, decimal expected)
+    public async Task Packaged_platform_executes_complete_paged_CRM_reports_and_exports(string code, string measure, decimal expected)
     {
-        using var host = fixture.CreateSavedRunHost();
+        using var host = fixture.CreateReportHost();
         await using var scope = host.Services.CreateAsyncScope();
-        var definition = await scope.ServiceProvider.GetRequiredService<IReportDefinitionProvider>().GetDefinitionAsync(code, default);
-        definition.Capabilities!.SupportsSavedExecution.Should().BeTrue();
-        var runs = scope.ServiceProvider.GetRequiredService<IReportRunService>();
-        var run = await runs.StartAsync(code, "crm-reader", new(), default);
-        await host.Services.GetRequiredService<ReportRunProcessor>().ProcessNextAsync(default);
+        var reports = scope.ServiceProvider.GetRequiredService<IReportEngine>();
+        if (Testing.Reporting.ReportPerformanceProbe.Enabled)
+        using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "page-200"))
+        {
+            var sample = await reports.ExecuteAsync(code, new ReportExecutionRequestDto(Limit: 200), default);
+            if (audit is not null) audit.Rows = sample.Sheet.Rows.Count;
+        }
+        string? cursor = null;
         var rows = new List<ReportSheetRowDto>();
         ReportExecutionResponseDto page;
         do
         {
-            page = await runs.ReadAsync(code, "crm-reader", run.Id, rows.Count, 7, default);
+            using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "page-7"))
+            {
+                page = await reports.ExecuteAsync(code, new ReportExecutionRequestDto(Limit: 7, Cursor: cursor), default);
+                if (audit is not null) audit.Rows = page.Sheet.Rows.Count;
+            }
+            cursor = page.NextCursor;
+            if (page.HasMore) cursor.Should().NotBeNullOrEmpty();
             rows.AddRange(page.Sheet.Rows);
         } while (page.HasMore);
         rows.Should().NotBeEmpty();
         CrmIntegrationTestHelpers.SumMeasure(page with { Sheet = page.Sheet with { Rows = rows } }, measure).Should().Be(expected);
-        await using var file = await runs.ExportAsync(code, "crm-reader", run.Id, default);
+        using var exportAudit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "export");
+        await using var download = await scope.ServiceProvider.GetRequiredService<IReportDownloadService>().PrepareAsync(code, new(), default);
+        using var file = new MemoryStream();
+        await download.WriteAsync(file, default);
+        file.Position = 0;
         using var zip = new ZipArchive(file, ZipArchiveMode.Read);
         zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
     }

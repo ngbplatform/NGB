@@ -22,7 +22,11 @@ public sealed record CashFlowIndirectSnapshot(
     int BeginningRollForwardPeriods,
     DateOnly? EndingLatestClosedPeriod,
     int EndingRollForwardPeriods,
-    IReadOnlyList<CashFlowIndirectUnclassifiedCashRow> UnclassifiedCashRows);
+    IReadOnlyList<CashFlowIndirectUnclassifiedCashRow> UnclassifiedCashRows)
+{
+    /// <summary>Total affected accounts; UnclassifiedCashRows contains a bounded diagnostic sample.</summary>
+    public int? UnclassifiedCashRowCount { get; init; }
+}
 
 public sealed record CashFlowIndirectSnapshotLine(
     CashFlowSection Section,

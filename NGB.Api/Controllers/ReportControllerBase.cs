@@ -1,9 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using System.Text.Json;
+using NGB.Api.Reporting;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.Core.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.Core.Security;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 
@@ -13,68 +17,11 @@ public abstract class ReportControllerBase(
     IReportDefinitionProvider definitions,
     IReportEngine engine,
     IReportVariantService variants,
-    IReportExportService exports,
+    IReportDownloadService downloads,
     INgbAccessChecker access,
-    NgbSecurityCache cache,
-    IReportRunService runs,
-    IReportVariantAccessContext variantAccess)
+    NgbSecurityCache cache)
     : ControllerBase
 {
-    private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-    private string RunOwner => variantAccess.AuthSubject
-        ?? throw new NgbArgumentRequiredException("authenticatedUser");
-
-    [HttpPost("~/api/reports/{reportCode}/runs")]
-    public async Task<ActionResult<ReportRunDto>> StartRun(
-        string reportCode,
-        [FromBody] ReportExecutionRequestDto request,
-        CancellationToken ct)
-    {
-        RequireExecuteReport(await access.GetSnapshotAsync(ct), reportCode);
-        var run = await runs.StartAsync(reportCode, RunOwner, request, ct);
-        Response.Headers.RetryAfter = "1";
-        return Accepted($"/api/reports/{Uri.EscapeDataString(reportCode)}/runs/{run.Id}/status", run);
-    }
-
-    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    [HttpGet("~/api/reports/{reportCode}/runs/{id:guid}/status")]
-    public async Task<ReportRunDto> GetRunStatus(string reportCode, Guid id, CancellationToken ct)
-    {
-        RequireExecuteReport(await access.GetSnapshotAsync(ct), reportCode);
-        return await runs.GetAsync(reportCode, RunOwner, id, ct) ?? throw new ReportRunNotFoundException();
-    }
-
-    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-    [HttpGet("~/api/reports/{reportCode}/runs/{id:guid}")]
-    public async Task<ReportExecutionResponseDto> ReadRun(
-        string reportCode,
-        Guid id,
-        [FromQuery] int offset = 0,
-        [FromQuery] int limit = 200,
-        CancellationToken ct = default)
-    {
-        var permissions = await access.GetSnapshotAsync(ct);
-        RequireExecuteReport(permissions, reportCode);
-        var result = await runs.ReadAsync(reportCode, RunOwner, id, offset, limit, ct);
-        return result with { Sheet = ScrubForbiddenCellActions(result.Sheet, permissions) };
-    }
-
-    [HttpDelete("~/api/reports/{reportCode}/runs/{id:guid}")]
-    public async Task<IActionResult> CancelRun(string reportCode, Guid id, CancellationToken ct)
-    {
-        RequireExecuteReport(await access.GetSnapshotAsync(ct), reportCode);
-        await runs.CancelAsync(reportCode, RunOwner, id, ct);
-        return NoContent();
-    }
-
-    [HttpPost("~/api/reports/{reportCode}/runs/{id:guid}/export/xlsx")]
-    public async Task<IActionResult> ExportRun(string reportCode, Guid id, CancellationToken ct)
-    {
-        Require(await access.GetSnapshotAsync(ct), NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export);
-        return File(await runs.ExportAsync(reportCode, RunOwner, id, ct), XlsxContentType, BuildExportFileName(reportCode, null));
-    }
-
     [HttpGet("~/api/report-definitions")]
     public async Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
     {
@@ -105,6 +52,7 @@ public abstract class ReportControllerBase(
     }
 
     [HttpPost("~/api/reports/{reportCode}/execute")]
+    [ReportRequestBudget]
     public Task<ReportExecutionResponseDto> Execute(
         [FromRoute] string reportCode,
         [FromBody] ReportExecutionRequestDto request,
@@ -112,6 +60,7 @@ public abstract class ReportControllerBase(
         => ExecuteCoreAsync(reportCode, request, ct);
 
     [HttpPost("~/api/reports/{reportCode}/export/xlsx")]
+    [ReportRequestBudget(download: true)]
     public async Task<IActionResult> ExportXlsx(
         [FromRoute] string reportCode,
         [FromBody] ReportExportRequestDto request,
@@ -120,29 +69,40 @@ public abstract class ReportControllerBase(
         var snapshot = await access.GetSnapshotAsync(ct);
         Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export);
 
-        if (runs.Supports(reportCode))
+        var download = await downloads.PrepareAsync(reportCode, request, ct);
+
+        // Also release the read session if a later MVC filter replaces or rejects this result.
+        HttpContext?.Response.RegisterForDisposeAsync(download);
+
+        return new ReportDownloadResult(download, BuildExportFileName(reportCode, download.Title));
+    }
+
+    // Native navigation lets the browser download the response without a JavaScript Blob.
+    [HttpPost("~/api/reports/{reportCode}/export/xlsx/form")]
+    [Consumes("application/x-www-form-urlencoded")]
+    [FormBearerToken]
+    [RequestSizeLimit(FormBearerTokenAttribute.MaximumBodyBytes)]
+    [ReportRequestBudget(download: true)]
+    public Task<IActionResult> ExportXlsxForm(
+        [FromRoute] string reportCode,
+        [FromForm] string request,
+        [FromServices] IOptions<JsonOptions> json,
+        CancellationToken ct)
+    {
+        ReportExportRequestDto? export;
+        try
         {
-            var run = await runs.StartAsync(
-                reportCode,
-                RunOwner,
-                new(request.Layout, request.Filters, request.Parameters, request.VariantCode),
-                ct);
-
-            await runs.WaitAsync(reportCode, RunOwner, run.Id, ct);
-
-            return File(
-                await runs.ExportAsync(reportCode, RunOwner, run.Id, ct),
-                XlsxContentType,
-                BuildExportFileName(reportCode, null));
+            export = JsonSerializer.Deserialize<ReportExportRequestDto>(request, json.Value.JsonSerializerOptions);
+        }
+        catch (JsonException)
+        {
+            throw new NgbArgumentInvalidException(nameof(request), "Invalid report export request.");
         }
 
-        var sheet = await engine.ExecuteExportSheetAsync(reportCode, request, ct);
-        var bytes = await exports.ExportXlsxAsync(sheet, sheet.Meta?.Title, ct);
+        if (export is null)
+            throw new NgbArgumentInvalidException(nameof(request), "A report export request is required.");
 
-        return File(
-            bytes,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            BuildExportFileName(reportCode, sheet.Meta?.Title));
+        return ExportXlsx(reportCode, export, ct);
     }
 
     [HttpGet("~/api/reports/{reportCode}/variants")]
@@ -206,26 +166,14 @@ public abstract class ReportControllerBase(
     {
         var snapshot = await access.GetSnapshotAsync(ct);
         RequireExecuteReport(snapshot, reportCode);
-        ReportExecutionResponseDto response;
 
-        if (runs.Supports(reportCode))
-        {
-            if (string.IsNullOrEmpty(request.Cursor))
-            {
-                var run = await runs.StartAsync(reportCode, RunOwner, request, ct);
-                await runs.WaitAsync(reportCode, RunOwner, run.Id, ct);
-                response = await runs.ReadAsync(reportCode, RunOwner, run.Id, request.Offset, request.Limit, ct);
-            }
-            else
-            {
-                response = await runs.ContinueAsync(reportCode, RunOwner, request, ct);
-            }
-        }
-        else
-        {
-            response = await engine.ExecuteAsync(reportCode, request, ct);
-        }
+        if (request.DisablePaging)
+            throw new NgbArgumentInvalidException("disablePaging", "Interactive reports require paging. Use the export endpoint for a complete download.");
 
+        if (request.Offset != 0)
+            throw new NgbArgumentInvalidException("offset", "Use the continuation cursor to request another page.");
+
+        var response = await engine.ExecuteAsync(reportCode, request, ct);
         var sheet = ScrubForbiddenCellActions(response.Sheet, snapshot);
         return response with { Sheet = sheet };
     }

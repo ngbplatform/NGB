@@ -115,8 +115,12 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
 
         // PM building and occupancy summary report readers (PostgreSQL).
         services.AddScoped<IBuildingSummaryReader, PostgresBuildingSummaryReader>();
-        services.AddScoped<IOccupancySummaryReader, PostgresOccupancySummaryReader>();
-        services.AddScoped<IMaintenanceQueueReader, PostgresMaintenanceQueueReader>();
+        services.AddScoped<PostgresOccupancySummaryReader>();
+        services.AddScoped<IOccupancySummaryReader>(sp => sp.GetRequiredService<PostgresOccupancySummaryReader>());
+        services.AddScoped<IOccupancySummaryReportReader>(sp => sp.GetRequiredService<PostgresOccupancySummaryReader>());
+        services.AddScoped<PostgresMaintenanceQueueReader>();
+        services.AddScoped<IMaintenanceQueueReader>(sp => sp.GetRequiredService<PostgresMaintenanceQueueReader>());
+        services.AddScoped<IMaintenanceQueueStreamReader>(sp => sp.GetRequiredService<PostgresMaintenanceQueueReader>());
         services.AddScoped<ITenantStatementReader, PostgresTenantStatementReader>();
         services.AddScoped<IReceivablesReportReader, PostgresReceivablesReportReader>();
         services.AddScoped<IPropertyManagementDashboardReader, PostgresPropertyManagementDashboardReader>();

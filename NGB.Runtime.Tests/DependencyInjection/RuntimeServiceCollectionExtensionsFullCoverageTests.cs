@@ -31,8 +31,6 @@ public sealed class RuntimeServiceCollectionExtensionsFullCoverageTests
         provider.GetRequiredService<ICatalogTypeRegistry>()
             .TryGet("cat.coverage", out var catalog).Should().BeTrue();
         catalog.Should().NotBeNull();
-        provider.GetRequiredService<IRenderedReportSnapshotStore>()
-            .Should().BeOfType<MemoryCacheRenderedReportSnapshotStore>();
         services.Should().Contain(descriptor => descriptor.ServiceType == typeof(PermissionAwareAdminService));
     }
 
@@ -59,9 +57,6 @@ public sealed class RuntimeServiceCollectionExtensionsFullCoverageTests
         services.AddNgbRuntime();
         services.RemoveAll<IMemoryCache>();
         using var provider = services.BuildServiceProvider();
-
-        provider.GetRequiredService<IRenderedReportSnapshotStore>()
-            .Should().BeOfType<MemoryCacheRenderedReportSnapshotStore>();
     }
 
     private sealed class MetadataContributor : IDefinitionsContributor

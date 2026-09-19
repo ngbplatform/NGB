@@ -1,5 +1,6 @@
 using NGB.Accounting.Reports.GeneralLedgerAggregated;
 using NGB.Persistence.Accounts;
+using NGB.Persistence.Reporting;
 using NGB.Persistence.Readers.Reports;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
@@ -11,7 +12,7 @@ namespace NGB.Runtime.Reporting;
 /// - aggregated detail rows grouped by document + counter-account,
 /// - opening balance and full-range totals from a specialized summary reader,
 /// - running balance per aggregated row,
-/// - cursor-carried totals so continuation pages do not re-read summary state.
+/// - totals reused only within the same read session, with fresh prefix balances for live pages.
 ///
 /// NOTE: this report is DimensionSet-first (canonical dimensions). Fixed-slot projection (first 3 dimensions)
 /// is intentionally not supported here.
@@ -19,7 +20,8 @@ namespace NGB.Runtime.Reporting;
 public sealed class GeneralLedgerAggregatedReportService(
     IGeneralLedgerAggregatedPageReader pageReader,
     IGeneralLedgerAggregatedSnapshotReader snapshotReader,
-    IChartOfAccountsRepository chartOfAccountsRepository)
+    IChartOfAccountsRepository chartOfAccountsRepository,
+    IReportReadSession? session = null)
     : IGeneralLedgerAggregatedPagedReportReader
 {
     public async Task<GeneralLedgerAggregatedReportPage> GetPageAsync(
@@ -30,23 +32,20 @@ public sealed class GeneralLedgerAggregatedReportService(
 
         var cursor = request.DisablePaging ? null : request.Cursor;
         var dimensionScopes = request.DimensionScopes;
-        GeneralLedgerAggregatedSnapshot? snapshot = null;
-        if (cursor?.TotalDebit is null
-            || cursor.TotalCredit is null
-            || cursor.ClosingBalance is null)
-        {
-            snapshot = await snapshotReader.GetAsync(
-                request.AccountId,
-                request.FromInclusive,
-                request.ToInclusive,
-                dimensionScopes,
-                ct);
-        }
+        var snapshotId = session?.SnapshotId ?? Guid.Empty;
+        
+        var reuseBalances = cursor is not null
+            && snapshotId != Guid.Empty 
+            && cursor.SnapshotId == snapshotId
+            && cursor is { TotalDebit: not null, TotalCredit: not null, ClosingBalance: not null };
 
-        var opening = cursor?.RunningBalance ?? snapshot!.OpeningBalance;
-        var totalDebit = cursor?.TotalDebit ?? snapshot!.TotalDebit;
-        var totalCredit = cursor?.TotalCredit ?? snapshot!.TotalCredit;
-        var closingBalance = cursor?.ClosingBalance ?? snapshot!.ClosingBalance;
+        var snapshot = reuseBalances
+            ? null
+            : await snapshotReader.GetAsync(request.AccountId, request.FromInclusive, request.ToInclusive, dimensionScopes, ct);
+
+        var totalDebit = reuseBalances ? cursor!.TotalDebit!.Value : snapshot!.TotalDebit;
+        var totalCredit = reuseBalances ? cursor!.TotalCredit!.Value : snapshot!.TotalCredit;
+        var closingBalance = reuseBalances ? cursor!.ClosingBalance!.Value : snapshot!.ClosingBalance;
         var snapshotAccountCode = snapshot?.AccountCode;
 
         var rawPage = await pageReader.GetPageAsync(
@@ -56,6 +55,7 @@ public sealed class GeneralLedgerAggregatedReportService(
                 FromInclusive = request.FromInclusive,
                 ToInclusive = request.ToInclusive,
                 DimensionScopes = dimensionScopes,
+                IncludePrefixDelta = cursor is not null && !reuseBalances,
                 PageSize = request.PageSize,
                 DisablePaging = request.DisablePaging,
                 Cursor = cursor is null
@@ -71,8 +71,10 @@ public sealed class GeneralLedgerAggregatedReportService(
             },
             ct);
 
+        var opening = reuseBalances ? cursor!.RunningBalance : snapshot!.OpeningBalance + rawPage.PrefixDelta;
         var running = opening;
         var reportLines = new List<GeneralLedgerAggregatedReportLine>(rawPage.Lines.Count);
+
         foreach (var line in rawPage.Lines)
         {
             running += line.Delta;
@@ -108,6 +110,7 @@ public sealed class GeneralLedgerAggregatedReportService(
                 AfterCounterAccountId = reportLines[^1].CounterAccountId,
                 AfterDimensionSetId = reportLines[^1].DimensionSetId,
                 RunningBalance = reportLines[^1].RunningBalance,
+                SnapshotId = snapshotId,
                 TotalDebit = totalDebit,
                 TotalCredit = totalCredit,
                 ClosingBalance = closingBalance

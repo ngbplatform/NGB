@@ -1,10 +1,6 @@
 import { ReportRowKind, type ReportExecutionRequestDto, type ReportExecutionResponseDto, type ReportSheetDto, type ReportSheetRowDto } from './types'
 import { stableEquals } from '../utils/stableValue'
 
-// Keep interactive report browsing bounded. The export endpoint remains the
-// path for retrieving complete, potentially very large datasets.
-export const MAX_RETAINED_REPORT_ROWS = 2_000
-
 function normalizeCursor(value: string | null | undefined): string | null {
   const normalized = String(value ?? '').trim()
   return normalized.length > 0 ? normalized : null
@@ -30,17 +26,13 @@ function cloneSheetWithRows(sheet: ReportSheetDto, rows: ReportSheetDto['rows'])
   }
 }
 
-function areSheetsAppendCompatible(left: ReportSheetDto, right: ReportSheetDto): boolean {
+export function areSheetsAppendCompatible(left: ReportSheetDto, right: ReportSheetDto): boolean {
   return stableEquals(left.columns ?? [], right.columns ?? [])
     && stableEquals(left.headerRows ?? [], right.headerRows ?? [])
 }
 
 export function canAppendReportResponse(response: ReportExecutionResponseDto | null | undefined): boolean {
   return !!response?.hasMore && !!normalizeCursor(response.nextCursor)
-}
-
-export function hasReachedReportRowLimit(sheet: ReportSheetDto | null | undefined): boolean {
-  return countLoadedReportRows(sheet) >= MAX_RETAINED_REPORT_ROWS
 }
 
 export function buildAppendRequest(baseRequest: ReportExecutionRequestDto, nextCursor: string): ReportExecutionRequestDto {
@@ -66,7 +58,7 @@ export function mergePagedReportResponses(
     sheet: cloneSheetWithRows(current.sheet, mergedRows),
     offset: current.offset,
     limit: current.limit,
-    total: next.total ?? current.total ?? mergedRows.length,
+    total: next.total ?? current.total ?? null,
     hasMore: next.hasMore,
     nextCursor: normalizeCursor(next.nextCursor),
     diagnostics: next.diagnostics ?? current.diagnostics,

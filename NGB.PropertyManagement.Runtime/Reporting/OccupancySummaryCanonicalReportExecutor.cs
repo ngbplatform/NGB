@@ -9,7 +9,7 @@ using NGB.Runtime.Reporting.Internal;
 
 namespace NGB.PropertyManagement.Runtime.Reporting;
 
-public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryReader reader)
+public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryReportReader reader)
     : IReportSpecializedPlanExecutor
 {
     public string ReportCode => PropertyManagementSecurityDefaults.OccupancySummaryReport;
@@ -41,20 +41,34 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
             asOf.ToString("yyyy-MM-dd"));
         var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
             ? null
-            : SpecializedReportCursorCodec.Decode<OccupancySummaryPageCursor>(cursorKind, request.Cursor);
-        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
-        var limit = request.DisablePaging
-            ? PagingLimits.MaxMaterializedRows + 1
-            : request.Limit <= 0 ? 50 : request.Limit;
+            : SpecializedReportCursorCodec.Decode<OccupancySummaryContinuation>(cursorKind, request.Cursor);
+        var limit = request.DisablePaging ? PagingLimits.MaxMaterializedRows + 1 : request.Limit <= 0 ? 50 : request.Limit;
+        var page = await reader.GetSliceAsync(buildingId, asOf, cursor, limit, ct);
+        var totals = !page.HasMore && request.Layout?.ShowGrandTotals != false
+            ? await reader.GetTotalsAsync(buildingId, asOf, ct)
+            : null;
+        var sheet = CreateSheet(definition, buildingId, asOf, page.Rows, totals);
 
-        var page = cursor is not null
-            ? await reader.GetCursorPageAsync(buildingId, asOf, cursor, limit, ct)
-            : await reader.GetPageAsync(buildingId, asOf, offset, limit, ct);
-        page.EnsureInvariant();
+        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
+            sheet,
+            cursor?.Offset ?? 0,
+            limit,
+            totals?.BuildingCount,
+            page.HasMore,
+            page.Next is null ? null : SpecializedReportCursorCodec.Encode(cursorKind, page.Next),
+            new Dictionary<string, string> { ["executor"] = "canonical-pm-occupancy-summary", ["paging"] = "query" });
+    }
 
-        var rows = page.Rows.Select(ToDetailRow).ToList();
-        if (request.Layout?.ShowGrandTotals != false && page.Total > 0)
-            rows.Add(ToTotalRow(page.Totals));
+    internal static ReportSheetDto CreateSheet(
+        ReportDefinitionDto definition,
+        Guid? buildingId,
+        DateOnly asOf,
+        IReadOnlyList<OccupancySummaryRow> data,
+        OccupancySummaryTotals? totals)
+    {
+        var rows = data.Select(ToDetailRow).ToList();
+        if (totals is { BuildingCount: > 0 })
+            rows.Add(ToTotalRow(totals));
 
         var subtitle = buildingId is null
             ? $"Portfolio occupancy · {asOf:yyyy-MM-dd}"
@@ -79,29 +93,7 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
                     ["executor"] = "canonical-pm-occupancy-summary"
                 }));
 
-        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
-        var nextCursor = !request.DisablePaging && hasMore
-            ? SpecializedReportCursorCodec.Encode(
-                cursorKind,
-                new OccupancySummaryPageCursor(
-                    offset + page.Rows.Count,
-                    page.Total,
-                    page.Totals,
-                    page.NextAfterBuildingDisplay,
-                    page.NextAfterBuildingId))
-            : null;
-
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: offset,
-            limit: limit,
-            total: page.Total,
-            hasMore: hasMore,
-            nextCursor: nextCursor,
-            diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["executor"] = "canonical-pm-occupancy-summary"
-            });
+        return sheet;
     }
 
     private static ReportSheetRowDto ToDetailRow(OccupancySummaryRow row)
@@ -117,7 +109,7 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(row.OccupancyPercent), row.OccupancyPercent.ToString("0.##"), "decimal")
             ]);
 
-    private static ReportSheetRowDto ToTotalRow(OccupancySummaryTotals totals)
+    internal static ReportSheetRowDto ToTotalRow(OccupancySummaryTotals totals)
         => new(
             ReportRowKind.Total,
             Cells:

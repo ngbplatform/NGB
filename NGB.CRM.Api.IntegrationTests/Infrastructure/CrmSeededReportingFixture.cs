@@ -23,8 +23,8 @@ public sealed class CrmSeededReportingFixture : IAsyncLifetime
     public IServiceProvider Services => _readOnlyHost?.Services
         ?? throw new InvalidOperationException("The seeded CRM reporting fixture is not initialized.");
 
-    // The worker makes its source transaction read-only; only the result store needs writes.
-    public IHost CreateSavedRunHost() => CrmHostFactory.Create(_database.ConnectionString, ConfigureCompactSeed);
+    // Each direct report owns a short read-only transaction over this test database.
+    public IHost CreateReportHost() => CrmHostFactory.Create(_database.ConnectionString, ConfigureCompactSeed);
 
     public string ReadOnlyConnectionString { get; private set; } = string.Empty;
 

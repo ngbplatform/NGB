@@ -1,6 +1,9 @@
 using System.Reflection;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -117,33 +120,26 @@ public sealed class ReportControllerBaseEdgeCoverageTests
             NgbPermissionActions.Export));
         var access = new Mock<INgbAccessChecker>();
         access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(snapshot);
-        var engine = new Mock<IReportEngine>();
-        engine.SetupSequence(x => x.ExecuteExportSheetAsync(
-                "trial-balance",
-                It.IsAny<ReportExportRequestDto>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ReportSheetDto([], [], Meta: null))
-            .ReturnsAsync(new ReportSheetDto([], [], new ReportSheetMetaDto("Trial Balance")));
-        var exports = new Mock<IReportExportService>();
-        exports.Setup(x => x.ExportXlsxAsync(
-                It.IsAny<ReportSheetDto>(),
-                It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync([1, 2, 3]);
-        var sut = new TestReportController(
-            access.Object,
-            engine: engine.Object,
-            exports: exports.Object);
-
-        var withoutMeta = await sut.ExportXlsx("trial-balance", new ReportExportRequestDto(), CancellationToken.None);
-        var withMeta = await sut.ExportXlsx("trial-balance", new ReportExportRequestDto(), CancellationToken.None);
-
-        withoutMeta.Should().BeOfType<FileContentResult>().Which.FileDownloadName.Should().Be("trial-balance.xlsx");
-        withMeta.Should().BeOfType<FileContentResult>().Which.FileDownloadName.Should().Be("Trial-Balance.xlsx");
-        exports.Verify(x => x.ExportXlsxAsync(
-            It.IsAny<ReportSheetDto>(), null, It.IsAny<CancellationToken>()), Times.Once);
-        exports.Verify(x => x.ExportXlsxAsync(
-            It.IsAny<ReportSheetDto>(), "Trial Balance", It.IsAny<CancellationToken>()), Times.Once);
+        var downloads = new Mock<IReportDownloadService>();
+        foreach (var title in new string?[] { null, "Trial Balance" })
+        {
+            var download = new Mock<IReportDownload>();
+            download.SetupGet(x => x.Title).Returns(title);
+            download.Setup(x => x.WriteAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+            download.Setup(x => x.DisposeAsync()).Returns(ValueTask.CompletedTask);
+            downloads.Setup(x => x.PrepareAsync("trial-balance", It.IsAny<ReportExportRequestDto>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(download.Object);
+            var sut = new TestReportController(access.Object, exports: downloads.Object);
+            var result = await sut.ExportXlsx("trial-balance", new(), default);
+            var context = new DefaultHttpContext();
+            context.Response.Body = new MemoryStream();
+            await result.ExecuteResultAsync(new ActionContext(context, new RouteData(), new ActionDescriptor()));
+            context.Response.Headers.ContentDisposition.ToString().Should().Contain(title is null ? "trial-balance.xlsx" : "Trial-Balance.xlsx");
+            context.Response.Headers.CacheControl.ToString().Should().Be("no-store");
+            context.Response.Headers["X-Accel-Buffering"].ToString().Should().Be("no");
+            download.Verify(x => x.WriteAsync(context.Response.Body, It.IsAny<CancellationToken>()), Times.Once);
+            download.Verify(x => x.DisposeAsync(), Times.Once);
+        }
     }
 
     [Fact]
@@ -240,18 +236,14 @@ public sealed class ReportControllerBaseEdgeCoverageTests
         => Invoke<string>("BuildExportFileName", reportCode, title).Should().Be(expected);
 
     [Fact]
-    public async Task Saved_report_endpoints_recheck_permissions_before_accessing_results()
+    public async Task Report_endpoints_recheck_permissions_before_reading_sources()
     {
         var access = new Mock<INgbAccessChecker>();
         access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Snapshot());
         var sut = new TestReportController(access.Object);
-        var id = Guid.NewGuid();
         Func<Task>[] actions = [
-            () => sut.StartRun("accounting.trial_balance", new(), default),
-            () => sut.GetRunStatus("accounting.trial_balance", id, default),
-            () => sut.ReadRun("accounting.trial_balance", id, ct: default),
-            () => sut.CancelRun("accounting.trial_balance", id, default),
-            () => sut.ExportRun("accounting.trial_balance", id, default)
+            () => sut.Execute("accounting.trial_balance", new(), default),
+            () => sut.ExportXlsx("accounting.trial_balance", new(), default)
         ];
         foreach (var action in actions) await action.Should().ThrowAsync<NgbPermissionDeniedException>();
     }
@@ -296,15 +288,13 @@ public sealed class ReportControllerBaseEdgeCoverageTests
         INgbAccessChecker access,
         IReportDefinitionProvider? definitions = null,
         IReportEngine? engine = null,
-        IReportExportService? exports = null,
+        IReportDownloadService? exports = null,
         NgbSecurityCache? cache = null)
         : ReportControllerBase(
             definitions ?? Mock.Of<IReportDefinitionProvider>(),
             engine ?? Mock.Of<IReportEngine>(),
             Mock.Of<IReportVariantService>(),
-            exports ?? Mock.Of<IReportExportService>(),
+            exports ?? Mock.Of<IReportDownloadService>(),
             access,
-            cache ?? null!,
-            Mock.Of<IReportRunService>(),
-            Mock.Of<IReportVariantAccessContext>());
+            cache ?? null!);
 }

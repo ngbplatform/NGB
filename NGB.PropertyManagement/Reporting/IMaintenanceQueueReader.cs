@@ -24,7 +24,7 @@ public interface IMaintenanceQueueReader
             ct);
 
         return new MaintenanceQueueDashboard(
-            page.Total,
+            page.Total ?? throw new InvalidOperationException("The dashboard requires an exact total."),
             page.Rows.Count(static row => row.QueueState == MaintenanceQueueState.Overdue),
             page.Rows.Count(static row => row.AgingDays <= 3),
             page.Rows.Count(static row => row.AgingDays is >= 4 and <= 7),

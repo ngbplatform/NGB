@@ -82,20 +82,22 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         var buildingId = Guid.CreateVersion7();
         var row = new OccupancySummaryRow(buildingId, "North", Today, 4, 3);
         var totals = new OccupancySummaryTotals(Today, 1, 4, 3);
-        var reader = new Mock<IOccupancySummaryReader>(MockBehavior.Strict);
-        reader.Setup(x => x.GetPageAsync(null, Today, 0, 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OccupancySummaryPage([row], 2, totals, HasMore: true));
-        reader.Setup(x => x.GetCursorPageAsync(
-                null, Today, It.Is<OccupancySummaryPageCursor>(cursor => cursor.Offset == 1), 1,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OccupancySummaryPage([row], 2, totals, HasMore: false));
-        reader.Setup(x => x.GetPageAsync(buildingId, Today, 2, 50, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OccupancySummaryPage([row], 3, totals));
-        reader.Setup(x => x.GetPageAsync(
-                null, Today, 0, It.Is<int>(limit => limit > 200), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OccupancySummaryPage([], 0, new OccupancySummaryTotals(Today, 0, 0, 0)));
-        reader.Setup(x => x.GetPageAsync(null, It.IsAny<DateOnly>(), 0, 200, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OccupancySummaryPage([], 0, new OccupancySummaryTotals(Today, 0, 0, 0)));
+        var reader = new Mock<IOccupancySummaryReportReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetSliceAsync(null, Today, null, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OccupancySummarySlice([row], true, new(row.BuildingDisplay, buildingId, 1)));
+        reader.Setup(x => x.GetSliceAsync(null, Today,
+                It.Is<OccupancySummaryContinuation>(cursor => cursor != null && cursor.Offset == 1), 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OccupancySummarySlice([row], false, null));
+        reader.Setup(x => x.GetSliceAsync(buildingId, Today, null, 50, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OccupancySummarySlice([row], false, null));
+        reader.Setup(x => x.GetSliceAsync(null, Today, null, It.Is<int>(limit => limit > 200), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OccupancySummarySlice([], false, null));
+        reader.Setup(x => x.GetSliceAsync(null, It.IsAny<DateOnly>(), null, 200, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OccupancySummarySlice([], false, null));
+        reader.Setup(x => x.GetTotalsAsync(null, It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OccupancySummaryTotals(Today, 0, 0, 0));
+        reader.SetupSequence(x => x.GetTotalsAsync(null, Today, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(totals).ReturnsAsync(new OccupancySummaryTotals(Today, 0, 0, 0));
         var sut = new OccupancySummaryCanonicalReportExecutor(reader.Object);
         var definition = Definition(sut.ReportCode);
 
@@ -103,6 +105,7 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
             parameters: new Dictionary<string, string> { ["as_of_utc"] = Today.ToString("yyyy-MM-dd") },
             offset: -4,
             limit: 1), default);
+        reader.Verify(x => x.GetTotalsAsync(It.IsAny<Guid?>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()), Times.Never);
         var building = await sut.ExecuteAsync(definition, Request(
             filters: Filters(("building_id", Json(buildingId))),
             parameters: new Dictionary<string, string> { ["as_of_utc"] = Today.ToString("yyyy-MM-dd") },
@@ -122,7 +125,8 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         portfolio.HasMore.Should().BeTrue();
         portfolio.PrebuiltSheet.Should().NotBeNull();
         var portfolioSheet = portfolio.PrebuiltSheet!;
-        portfolioSheet.Rows.Should().HaveCount(2);
+        portfolioSheet.Rows.Should().ContainSingle();
+        portfolioSheet.Rows.Should().NotContain(x => x.RowKind == ReportRowKind.Total);
         portfolioSheet.Meta!.Subtitle!.Should().StartWith("Portfolio occupancy");
         building.HasMore.Should().BeFalse();
         building.PrebuiltSheet.Should().NotBeNull();
@@ -277,43 +281,22 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
     public async Task Receivables_open_items_covers_both_kinds_null_displays_actions_totals_and_paging()
     {
         var chargeId = Guid.CreateVersion7();
-        var registerId = Guid.CreateVersion7();
-        ReceivablesOpenItemPageRow[] responseRows =
+        ReceivablesReportRow[] responseRows =
         [
-            new(true, chargeId, "Charge", 12m, PropertyManagementCodes.ReceivableCharge),
-            new(true, Guid.CreateVersion7(), null, 3m, " "),
-            new(false, Guid.CreateVersion7(), "Credit", 4m, PropertyManagementCodes.ReceivablePayment)
+            new(true, chargeId, PropertyManagementCodes.ReceivableCharge, "Charge", null, null, null, 12m, 12m),
+            new(true, Guid.CreateVersion7(), " ", null, null, null, null, 3m, 3m),
+            new(false, Guid.CreateVersion7(), PropertyManagementCodes.ReceivablePayment, "Credit", null, null, null, 4m, 4m)
         ];
-        var response = new ReceivablesOpenItemsResponse(registerId,
-            [
-                new ReceivablesOpenItemDto(chargeId, "Charge", 12m, PropertyManagementCodes.ReceivableCharge),
-                new ReceivablesOpenItemDto(Guid.CreateVersion7(), null, 3m, " ")
-            ],
-            [new ReceivablesOpenItemDto(Guid.CreateVersion7(), "Credit", 4m, PropertyManagementCodes.ReceivablePayment)],
-            15m,
-            4m);
-        var service = new Mock<IReceivablesOpenItemsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsCursorPageAsync(
-                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid _, Guid _, Guid _, string? _, int limit, CancellationToken _) =>
-                new ReceivablesOpenItemsPageResponse(
-                    registerId,
-                    responseRows.Take(limit).ToArray(),
-                    responseRows.Length,
-                    response.TotalOutstanding,
-                    response.TotalCredit,
-                    HasMore: limit < responseRows.Length,
-                    NextCursor: limit < responseRows.Length ? "next" : null));
-        service.Setup(x => x.GetOpenItemsPageAsync(
-                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), 1, 1, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ReceivablesOpenItemsPageResponse(
-                registerId,
-                responseRows.Skip(1).Take(1).ToArray(),
-                responseRows.Length,
-                response.TotalOutstanding,
-                response.TotalCredit,
-                Offset: 1));
-        var sut = new ReceivablesOpenItemsCanonicalReportExecutor(service.Object);
+        var reader = new Mock<IReceivablesReportReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetCursorPageAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), ReceivablesReportMode.OpenItems,
+                It.IsAny<ReceivablesReportPageCursor?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, Guid _, ReceivablesReportMode _, ReceivablesReportPageCursor? cursor, int limit, CancellationToken _) =>
+                new ReceivablesReportPage(responseRows.Skip(cursor?.Offset ?? 0).Take(limit).ToArray(), 3, 15m, 15m, 4m,
+                    null, null, null, HasMore: (cursor?.Offset ?? 0) + limit < 3));
+        reader.Setup(x => x.GetPageAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), ReceivablesReportMode.OpenItems,
+                1, 1, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReceivablesReportPage(responseRows.Skip(1).Take(1).ToArray(), 3, 15m, 15m, 4m, null, null, null));
+        var sut = new ReceivablesOpenItemsCanonicalReportExecutor(reader.Object, PolicyReader());
         var leaseId = Guid.CreateVersion7();
         var definition = Definition(sut.ReportCode);
 
@@ -327,7 +310,7 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
         sut.ReportCode.Should().Be(PropertyManagementSecurityDefaults.ReceivablesOpenItemsReport);
         first.Total.Should().Be(3);
         first.HasMore.Should().BeTrue();
-        first.NextCursor.Should().Be("next");
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
         first.PrebuiltSheet!.Rows.Should().HaveCount(2);
         first.PrebuiltSheet.Rows[0].Cells[1].Action.Should().NotBeNull();
         allWithoutTotals.PrebuiltSheet!.Rows.Should().HaveCount(3);
@@ -341,11 +324,11 @@ public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
     [Fact]
     public async Task Receivables_open_items_omits_totals_for_empty_response()
     {
-        var service = new Mock<IReceivablesOpenItemsService>(MockBehavior.Strict);
-        service.Setup(x => x.GetOpenItemsCursorPageAsync(
-                Guid.Empty, Guid.Empty, It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ReceivablesOpenItemsPageResponse(Guid.CreateVersion7(), [], 0, 0m, 0m));
-        var sut = new ReceivablesOpenItemsCanonicalReportExecutor(service.Object);
+        var reader = new Mock<IReceivablesReportReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetCursorPageAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), ReceivablesReportMode.OpenItems,
+                null, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ReceivablesReportPage([], 0, 0m, 0m, 0m, null, null, null));
+        var sut = new ReceivablesOpenItemsCanonicalReportExecutor(reader.Object, PolicyReader());
 
         var page = await sut.ExecuteAsync(Definition(sut.ReportCode), Request(filters: LeaseFilter(Guid.CreateVersion7())), default);
 

@@ -10,7 +10,6 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
-using NGB.Runtime.Reporting.Runs;
 using Xunit;
 
 namespace NGB.AgencyBilling.Api.IntegrationTests.Reports;
@@ -211,28 +210,51 @@ public sealed class AgencyBillingReporting_EndToEnd_P0Tests(AgencyBillingPostgre
             AgencyBillingCodes.TeamUtilizationReport
         ]);
 
-        var savedRuns = scope.ServiceProvider.GetRequiredService<IReportRunService>();
+        var downloads = scope.ServiceProvider.GetRequiredService<IReportDownloadService>();
         foreach (var code in new[] { AgencyBillingCodes.UnbilledTimeReport, AgencyBillingCodes.ProjectProfitabilityReport,
                      AgencyBillingCodes.InvoiceRegisterReport, AgencyBillingCodes.ArAgingReport, AgencyBillingCodes.TeamUtilizationReport })
         {
             var definition = await definitions.GetDefinitionAsync(code, default);
-            definition.Capabilities!.SupportsSavedExecution.Should().BeTrue();
             var parameters = (definition.Parameters ?? []).ToDictionary(p => p.Code,
                 p => p.Code == "from_utc" ? "2026-04-01" : "2026-04-30");
             var input = new ReportExecutionRequestDto(Parameters: parameters, DisablePaging: true);
-            var expected = await reports.ExecuteAsync(code, input, default);
-            var run = await savedRuns.StartAsync(code, "agency-reader", input, default);
-            await host.Services.GetRequiredService<ReportRunProcessor>().ProcessNextAsync(default);
-            var rows = new List<ReportSheetRowDto>();
-            ReportExecutionResponseDto page;
-            do
+            if (Testing.Reporting.ReportPerformanceProbe.Enabled)
+            using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "page-200"))
             {
-                page = await savedRuns.ReadAsync(code, "agency-reader", run.Id, rows.Count, 2, default);
-                rows.AddRange(page.Sheet.Rows);
-            } while (page.HasMore);
-            rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display))))
-                .Should().Equal(expected.Sheet.Rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display)))), code);
-            await using var file = await savedRuns.ExportAsync(code, "agency-reader", run.Id, default);
+                var sample = await reports.ExecuteAsync(code, input with { DisablePaging = false, Limit = 200 }, default);
+                if (audit is not null) audit.Rows = sample.Sheet.Rows.Count;
+            }
+            var expected = await reports.ExecuteAsync(code, input, default);
+            var rows = new List<ReportSheetRowDto>();
+            await ReadLevelAsync(null);
+            async Task ReadLevelAsync(IReadOnlyList<JsonElement>? path)
+            {
+                string? cursor = null;
+                ReportExecutionResponseDto page;
+                do
+                {
+                    using (var audit = NGB.Testing.Reporting.ReportPerformanceProbe.Begin(code, $"page-2-depth-{path?.Count ?? 0}"))
+                    {
+                        page = await reports.ExecuteAsync(code, input with { DisablePaging = false, Limit = 2, Cursor = cursor, GroupPath = path }, default);
+                        if (audit is not null) audit.Rows = page.Sheet.Rows.Count;
+                    }
+                    foreach (var row in page.Sheet.Rows)
+                    {
+                        if (path is not null && row.RowKind == ReportRowKind.Total) continue;
+                        rows.Add(row);
+                        if (row.ChildrenPath is not null) await ReadLevelAsync(row.ChildrenPath);
+                    }
+                    cursor = page.NextCursor;
+                    if (page.HasMore) cursor.Should().NotBeNullOrEmpty();
+                } while (page.HasMore);
+            }
+            rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display).Where(value => !string.IsNullOrEmpty(value)))))
+                .Should().Equal(expected.Sheet.Rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display).Where(value => !string.IsNullOrEmpty(value))))), code);
+            using var exportAudit = NGB.Testing.Reporting.ReportPerformanceProbe.Begin(code, "export");
+            await using var download = await downloads.PrepareAsync(code, new ReportExportRequestDto(Parameters: parameters), default);
+            using var file = new MemoryStream();
+            await download.WriteAsync(file, default);
+            file.Position = 0;
             await using var zip = new ZipArchive(file, ZipArchiveMode.Read);
             zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
         }

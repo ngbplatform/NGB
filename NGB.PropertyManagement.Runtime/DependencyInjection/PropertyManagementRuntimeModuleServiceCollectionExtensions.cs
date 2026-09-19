@@ -99,7 +99,9 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IReportDefinitionEnricher, PropertyManagementAccountingReportDefinitionEnricher>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, BuildingSummaryCanonicalReportExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, OccupancySummaryCanonicalReportExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<NGB.Runtime.Reporting.Streaming.IStreamingReportExecutor, OccupancySummaryStreamingExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, MaintenanceQueueCanonicalReportExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<NGB.Runtime.Reporting.Streaming.IStreamingReportExecutor, MaintenanceQueueStreamingExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, TenantStatementCanonicalReportExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, ReceivablesAgingCanonicalReportExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, ReceivablesOpenItemsCanonicalReportExecutor>());

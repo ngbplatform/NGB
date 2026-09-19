@@ -12,6 +12,18 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class ReportStreamingExport_P0Tests
 {
     [Fact]
+    public async Task Writes_to_a_nonseekable_async_only_http_stream()
+    {
+        using var bytes = new MemoryStream();
+        using var output = new AsyncOnlyStream(bytes);
+        var template = new ReportSheetDto([new("label", "Label", "string"), new("amount", "Amount", "decimal")], []);
+        await new ReportXlsxExportService().WriteXlsxAsync(output, template, Rows(1000), default);
+        bytes.Position = 0;
+        using var zip = new ZipArchive(bytes, ZipArchiveMode.Read);
+        zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Splits_sheets_repeats_headers_and_preserves_all_numeric_and_text_cells()
     {
         using var stream = new MemoryStream();
@@ -62,5 +74,22 @@ public sealed class ReportStreamingExport_P0Tests
         for (var i = 0; i < count; i++)
             yield return new(ReportRowKind.Detail, [new(Value: JsonSerializer.SerializeToElement("=1+1"), ValueType: "string"),
                 new(Value: JsonSerializer.SerializeToElement(i + 0.25m), ValueType: "decimal")]);
+    }
+
+    private sealed class AsyncOnlyStream(Stream inner) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() => throw new InvalidOperationException("Synchronous HTTP I/O is forbidden.");
+        public override Task FlushAsync(CancellationToken ct) => inner.FlushAsync(ct);
+        public override void Write(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous HTTP I/O is forbidden.");
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct) => inner.WriteAsync(buffer, offset, count, ct);
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default) => inner.WriteAsync(buffer, ct);
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 }

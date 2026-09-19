@@ -4,7 +4,7 @@ using NGB.Persistence.UnitOfWork;
 
 namespace NGB.PostgreSql.Reporting;
 
-internal static class PostgresReportCursorStream
+public static class PostgresReportCursorStream
 {
     public static async IAsyncEnumerable<IReadOnlyList<T>> ReadAsync<T>(
         IUnitOfWork uow,

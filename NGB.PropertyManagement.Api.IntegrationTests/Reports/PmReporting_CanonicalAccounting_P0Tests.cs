@@ -192,12 +192,12 @@ public sealed class PmReporting_CanonicalAccounting_P0Tests : IAsyncLifetime
             var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             dto.Should().NotBeNull();
             dto!.Diagnostics!["engine"].Should().Be("runtime");
-            dto.Diagnostics!["executor"].Should().Be("canonical-trial-balance");
+            dto.Diagnostics!["executor"].Should().Be("accounting-summary");
             dto.Sheet.Columns.Select(x => x.Code).Should().Equal("account", "debit_amount", "credit_amount");
             dto.Offset.Should().Be(0);
             dto.Limit.Should().Be(1);
             dto.Sheet.Rows.Should().BeEmpty();
-            dto.Total.Should().Be(0);
+            dto.Total.Should().BeNull();
             dto.HasMore.Should().BeFalse();
             dto.NextCursor.Should().BeNull();
         }
@@ -217,11 +217,11 @@ public sealed class PmReporting_CanonicalAccounting_P0Tests : IAsyncLifetime
             var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             dto.Should().NotBeNull();
             dto!.Diagnostics!["engine"].Should().Be("runtime");
-            dto.Diagnostics!["executor"].Should().Be("canonical-statement-of-changes-in-equity");
+            dto.Diagnostics!["executor"].Should().Be("accounting-summary");
             dto.Sheet.Columns.Select(x => x.Code).Should().Equal("component", "opening", "change", "closing");
             dto.Offset.Should().Be(0);
             dto.Limit.Should().Be(1);
-            dto.Total.Should().Be(dto.Sheet.Rows.Count);
+            dto.Total.Should().BeNull();
             dto.HasMore.Should().BeFalse();
             dto.NextCursor.Should().BeNull();
         }
@@ -244,10 +244,10 @@ public sealed class PmReporting_CanonicalAccounting_P0Tests : IAsyncLifetime
             dto.Diagnostics!["executor"].Should().Be("canonical-cash-flow-indirect");
             dto.Sheet.Columns.Select(x => x.Code).Should().Equal("line", "amount");
             dto.Offset.Should().Be(0);
-            dto.Limit.Should().Be(1);
-            dto.Total.Should().BeGreaterThan(dto.Sheet.Rows.Count);
-            dto.HasMore.Should().BeTrue();
-            dto.NextCursor.Should().NotBeNullOrWhiteSpace();
+            dto.Limit.Should().Be(dto.Sheet.Rows.Count);
+            dto.Total.Should().Be(dto.Sheet.Rows.Count);
+            dto.HasMore.Should().BeFalse();
+            dto.NextCursor.Should().BeNull();
         }
 
         using (var resp = await client.PostAsJsonAsync(

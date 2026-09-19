@@ -39,7 +39,6 @@ builder.Services.AddInfrastructure(builder.Configuration, projectName);
 builder.Services
     .AddNgbRuntime()
     .AddNgbRuntimeStartupValidation()
-    .AddNgbReportExecutionWorker()
     .AddNgbRuntimeAuthorization()
     .AddNgbPostgres(cs)
     .AddTradeModule()

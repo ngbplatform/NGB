@@ -1,6 +1,7 @@
 using NGB.Accounting.Reports.AccountCard;
 using NGB.Persistence.Accounts;
 using NGB.Persistence.Readers.Reports;
+using NGB.Persistence.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -9,11 +10,12 @@ namespace NGB.Runtime.Reporting;
 /// <summary>
 /// Canonical Account Card effective paging service.
 /// Builds report pages over a deterministic effective stream so that the UI can use true cursor paging
-/// with stable running balances and cursor-carried report totals.
+/// with balances recomputed for each read session; an export reuses totals inside its single snapshot.
 /// </summary>
 public sealed class AccountCardEffectivePagedReportService(
     IAccountCardEffectivePageReader pageReader,
-    IChartOfAccountsRepository chartOfAccountsRepository)
+    IChartOfAccountsRepository chartOfAccountsRepository,
+    IReportReadSession? session = null)
     : IAccountCardEffectivePagedReportReader
 {
     public async Task<AccountCardReportPage> GetPageAsync(
@@ -34,18 +36,15 @@ public sealed class AccountCardEffectivePagedReportService(
 
         var cursor = request.DisablePaging ? null : request.Cursor;
         var dimensionScopes = request.DimensionScopes;
+        var snapshotId = session?.SnapshotId ?? Guid.Empty;
 
-        var rangeOpening = cursor is null
-            ? await pageReader.GetOpeningBalanceAsync(
-                request.AccountId,
-                request.FromInclusive,
-                dimensionScopes,
-                ct)
-            : cursor.RunningBalance;
+        var reuseBalances = cursor is not null
+            && snapshotId != Guid.Empty && cursor.SnapshotId == snapshotId
+            && cursor is { TotalDebit: not null, TotalCredit: not null, ClosingBalance: not null };
 
-        var needTotals = cursor?.TotalDebit is null
-                         || cursor.TotalCredit is null
-                         || cursor.ClosingBalance is null;
+        var rangeOpening = reuseBalances
+            ? 0m
+            : await pageReader.GetOpeningBalanceAsync(request.AccountId, request.FromInclusive, dimensionScopes, ct);
 
         var effectivePage = await pageReader.GetPageAsync(new AccountCardLinePageRequest
         {
@@ -58,19 +57,20 @@ public sealed class AccountCardEffectivePagedReportService(
                 : new AccountCardLineCursor
                 {
                     AfterPeriodUtc = cursor.AfterPeriodUtc,
-                    AfterEntryId = cursor.AfterEntryId
+                    AfterEntryId = cursor.AfterEntryId,
                 },
             PageSize = request.PageSize,
             DisablePaging = request.DisablePaging,
-            IncludeTotals = needTotals
+            IncludeTotals = request.IncludeRangeTotals && !reuseBalances,
+            IncludePrefixDelta = cursor is not null && !reuseBalances
         }, ct);
 
-        var opening = cursor?.RunningBalance ?? rangeOpening;
-        var totalDebit = cursor?.TotalDebit ?? effectivePage.TotalDebit
-            ?? throw new NgbInvariantViolationException("Account Card effective reader must provide total debit when totals are requested.");
-        var totalCredit = cursor?.TotalCredit ?? effectivePage.TotalCredit
-            ?? throw new NgbInvariantViolationException("Account Card effective reader must provide total credit when totals are requested.");
-        var closingBalance = cursor?.ClosingBalance ?? (rangeOpening + (totalDebit - totalCredit));
+        var opening = reuseBalances ? cursor!.RunningBalance : rangeOpening + effectivePage.PrefixDelta;
+        decimal? totalDebit = request.IncludeRangeTotals ? (reuseBalances ? cursor!.TotalDebit : effectivePage.TotalDebit)
+            ?? throw new NgbInvariantViolationException("Account Card effective reader must provide total debit when totals are requested.") : null;
+        decimal? totalCredit = request.IncludeRangeTotals ? (reuseBalances ? cursor!.TotalCredit : effectivePage.TotalCredit)
+            ?? throw new NgbInvariantViolationException("Account Card effective reader must provide total credit when totals are requested.") : null;
+        var closingBalance = reuseBalances ? cursor!.ClosingBalance!.Value : rangeOpening + totalDebit - totalCredit;
 
         var running = opening;
         var reportLines = new List<AccountCardReportLine>(effectivePage.Lines.Count);
@@ -108,6 +108,7 @@ public sealed class AccountCardEffectivePagedReportService(
                 AfterPeriodUtc = reportLines[^1].PeriodUtc,
                 AfterEntryId = reportLines[^1].EntryId,
                 RunningBalance = reportLines[^1].RunningBalance,
+                SnapshotId = snapshotId,
                 TotalDebit = totalDebit,
                 TotalCredit = totalCredit,
                 ClosingBalance = closingBalance

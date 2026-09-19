@@ -29,6 +29,7 @@ public sealed class AccountCardCanonicalReportExecutor(
         var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor) ? null : AccountCardCursorCodec.Decode(request.Cursor.Trim());
         var page = await reader.GetPageAsync(new AccountCardReportPageRequest
         {
+            IncludeRangeTotals = false,
             AccountId = accountId,
             FromInclusive = from,
             ToInclusive = to,
@@ -38,6 +39,31 @@ public sealed class AccountCardCanonicalReportExecutor(
             DisablePaging = request.DisablePaging
         }, ct);
 
+        var sheet = await RenderAsync(definition, request, page, documentDisplayReader, accountByIdResolver, ct);
+
+        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
+            sheet: sheet,
+            offset: 0,
+            limit: request.DisablePaging ? sheet.Rows.Count : request.Limit,
+            total: null,
+            hasMore: page.HasMore,
+            nextCursor: page.NextCursor is null ? null : AccountCardCursorCodec.Encode(page.NextCursor),
+            diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executor"] = "canonical-account-card"
+            });
+    }
+
+    internal static async Task<ReportSheetDto> RenderAsync(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        AccountCardReportPage page,
+        IDocumentDisplayReader documentDisplayReader,
+        IAccountByIdResolver accountByIdResolver,
+        CancellationToken ct)
+    {
+        var (rawFrom, rawTo, from, to) = CanonicalReportExecutionHelper.GetRequiredDateRange(definition, request);
+        var accountId = page.AccountId;
         var documentRefs = await documentDisplayReader.ResolveRefsAsync(page.Lines.Select(x => x.DocumentId).Distinct().ToArray(), ct);
         var accountIds = page.Lines
             .Select(static line => line.CounterAccountId)
@@ -72,17 +98,7 @@ public sealed class AccountCardCanonicalReportExecutor(
                     ["executor"] = "canonical-account-card"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: 0,
-            limit: request.DisablePaging ? rows.Count : request.Limit,
-            total: null,
-            hasMore: page.HasMore,
-            nextCursor: page.NextCursor is null ? null : AccountCardCursorCodec.Encode(page.NextCursor),
-            diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["executor"] = "canonical-account-card"
-            });
+        return sheet;
     }
 
     private static ReportSheetRowDto ToDetailRow(

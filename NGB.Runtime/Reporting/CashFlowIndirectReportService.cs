@@ -169,6 +169,6 @@ public sealed class CashFlowIndirectReportService(
             "; ",
             rows.Select(x => $"{x.AccountCode} {x.AccountName}: {x.Amount:0.##}"));
 
-        throw AccountingReportValidationException.CashFlowIndirectUnclassifiedCash(details, rows.Length);
+        throw AccountingReportValidationException.CashFlowIndirectUnclassifiedCash(details, snapshot.UnclassifiedCashRowCount ?? rows.Length);
     }
 }

@@ -81,7 +81,7 @@ public static class DependencyInjection
                 };
                 var events = new JwtBearerEvents
                 {
-                    OnMessageReceived = context =>
+                    OnMessageReceived = async context =>
                     {
                         var accessToken = context.Request.Query["access_token"];
                         if (string.IsNullOrEmpty(context.Token)
@@ -91,7 +91,7 @@ public static class DependencyInjection
                             context.Token = accessToken;
                         }
 
-                        return Task.CompletedTask;
+                        await FormBearerTokenAttribute.ReadTokenAsync(context);
                     },
                     OnAuthenticationFailed = context =>
                     {

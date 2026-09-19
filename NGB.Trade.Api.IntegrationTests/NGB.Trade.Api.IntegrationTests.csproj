@@ -29,6 +29,8 @@
         <PackageReference Include="Respawn" Version="7.0.0" />
     </ItemGroup>
     <ItemGroup>
+        <Compile Include="..\quality\integration\ReportScaleAssertions.cs" Link="Infrastructure\ReportScaleAssertions.cs" />
+        <Compile Include="..\quality\integration\ReportPerformanceProbe.cs" Link="Infrastructure\ReportPerformanceProbe.cs" />
         <Compile Include="..\quality\integration\PostgreSqlIntegrationFixtureBase.cs" Link="Infrastructure\PostgreSqlIntegrationFixtureBase.cs" />
         <None Include="..\quality\integration\xunit.integration.runner.json" Link="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>

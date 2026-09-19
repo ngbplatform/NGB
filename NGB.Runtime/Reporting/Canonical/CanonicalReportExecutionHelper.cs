@@ -206,7 +206,7 @@ public static class CanonicalReportExecutionHelper
         IReadOnlyDictionary<string, string>? diagnostics = null)
     {
         var total = sheet.Rows.Count;
-        if (definition.Capabilities?.SupportsSavedExecution != true && total > PagingLimits.MaxMaterializedRows)
+        if (total > PagingLimits.MaxMaterializedRows)
         {
             throw Invalid(
                 definition,

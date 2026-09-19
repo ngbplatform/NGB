@@ -166,9 +166,9 @@ public sealed class PagingTorture_PageSize1_ThreeReaders_P2Tests(PostgresTestFix
             expectedTotalCredit ??= page.TotalCredit;
             expectedClosing ??= page.ClosingBalance;
 
-            page.TotalDebit.Should().Be(expectedTotalDebit.Value);
-            page.TotalCredit.Should().Be(expectedTotalCredit.Value);
-            page.ClosingBalance.Should().Be(expectedClosing.Value);
+            page.TotalDebit.Should().Be(expectedTotalDebit!.Value);
+            page.TotalCredit.Should().Be(expectedTotalCredit!.Value);
+            page.ClosingBalance.Should().Be(expectedClosing!.Value);
 
             if (!seenAny)
             {
@@ -187,7 +187,7 @@ public sealed class PagingTorture_PageSize1_ThreeReaders_P2Tests(PostgresTestFix
                 all.Add(l);
             }
 
-            closing = page.ClosingBalance;
+            closing = page.ClosingBalance!.Value;
 
             if (!page.HasMore)
             {

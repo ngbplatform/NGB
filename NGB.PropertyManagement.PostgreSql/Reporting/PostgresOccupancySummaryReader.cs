@@ -7,7 +7,7 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.PropertyManagement.PostgreSql.Reporting;
 
-public sealed class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancySummaryReader
+public sealed partial class PostgresOccupancySummaryReader(IUnitOfWork uow) : IOccupancySummaryReader, IOccupancySummaryReportReader
 {
     private const string PropertyCode = "pm.property";
 

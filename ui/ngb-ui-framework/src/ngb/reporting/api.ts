@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPost, httpPostFile, httpPut, type HttpRequestOptions } from '../api/http'
+import { httpDelete, httpGet, httpPost, httpPostFile, httpPostNativeDownload, httpPut, type HttpRequestOptions, type HttpFileRequestOptions } from '../api/http'
 import type { ReportDefinitionDto, ReportExecutionRequestDto, ReportExecutionResponseDto, ReportExportRequestDto, ReportVariantDto } from './types'
 
 export async function getReportDefinitions(): Promise<ReportDefinitionDto[]> {
@@ -20,8 +20,9 @@ export async function executeReport(
     : await httpPost<ReportExecutionResponseDto>(url, request)
 }
 
-export async function exportReportXlsx(reportCode: string, request: ReportExportRequestDto): Promise<{ blob: Blob; fileName: string | null }> {
-  const response = await httpPostFile(`/api/reports/${encodeURIComponent(reportCode)}/export/xlsx`, request)
+export async function exportReportXlsx(reportCode: string, request: ReportExportRequestDto, options?: HttpFileRequestOptions): Promise<{ blob: Blob; fileName: string | null }> {
+  const url = `/api/reports/${encodeURIComponent(reportCode)}/export/xlsx`
+  const response = options ? await httpPostFile(url, request, options) : await httpPostFile(url, request)
   return { blob: response.blob, fileName: response.fileName }
 }
 
@@ -39,4 +40,8 @@ export async function saveReportVariant(reportCode: string, variantCode: string,
 
 export async function deleteReportVariant(reportCode: string, variantCode: string): Promise<void> {
   await httpDelete<void>(`/api/reports/${encodeURIComponent(reportCode)}/variants/${encodeURIComponent(variantCode)}`)
+}
+
+export function exportReportXlsxInBrowser(reportCode: string, request: ReportExportRequestDto, options?: Parameters<typeof httpPostNativeDownload>[2]): Promise<void> {
+  return httpPostNativeDownload(`/api/reports/${encodeURIComponent(reportCode)}/export/xlsx/form`, request, options)
 }

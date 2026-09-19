@@ -32,10 +32,8 @@ type CommandPaletteContext = {
 const reportPageMocks = vi.hoisted(() => ({
   deleteReportVariant: vi.fn(),
   executeReport: vi.fn(),
-  executeSavedReport: vi.fn(),
-  readSavedReport: vi.fn(),
-  exportSavedReport: vi.fn(),
   exportReportXlsx: vi.fn(),
+  exportReportXlsxInBrowser: vi.fn(),
   getReportDefinition: vi.fn(),
   getReportVariants: vi.fn(),
   resolveLookupTarget: vi.fn(),
@@ -57,16 +55,12 @@ const reportPageMocks = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../../../../src/ngb/reporting/savedRuns', () => ({
-  executeSavedReport: reportPageMocks.executeSavedReport,
-  readSavedReport: reportPageMocks.readSavedReport,
-  exportSavedReport: reportPageMocks.exportSavedReport,
-}))
 
 vi.mock('../../../../src/ngb/reporting/api', () => ({
   deleteReportVariant: reportPageMocks.deleteReportVariant,
   executeReport: reportPageMocks.executeReport,
   exportReportXlsx: reportPageMocks.exportReportXlsx,
+  exportReportXlsxInBrowser: reportPageMocks.exportReportXlsxInBrowser,
   getReportDefinition: reportPageMocks.getReportDefinition,
   getReportVariants: reportPageMocks.getReportVariants,
   saveReportVariant: reportPageMocks.saveReportVariant,
@@ -542,6 +536,7 @@ function reportPageStateKey(options?: {
 }
 
 beforeEach(() => {
+  vi.stubGlobal('showSaveFilePicker', undefined)
   sessionStorage.clear()
 
   reportPageMocks.state.definition = clone(baseDefinition)
@@ -556,11 +551,11 @@ beforeEach(() => {
   reportPageMocks.useCommandPalettePageContext.mockReset()
   reportPageMocks.getReportDefinition.mockReset()
   reportPageMocks.getReportVariants.mockReset()
-  reportPageMocks.executeSavedReport.mockReset()
-  reportPageMocks.readSavedReport.mockReset()
-  reportPageMocks.exportSavedReport.mockReset()
   reportPageMocks.executeReport.mockReset()
   reportPageMocks.exportReportXlsx.mockReset()
+  reportPageMocks.exportReportXlsxInBrowser.mockReset()
+  reportPageMocks.exportReportXlsxInBrowser.mockImplementation((...args) => reportPageMocks.exportReportXlsx(...args))
+  vi.stubGlobal('showSaveFilePicker', undefined)
   reportPageMocks.saveReportVariant.mockReset()
   reportPageMocks.deleteReportVariant.mockReset()
   reportPageMocks.resolveLookupTarget.mockReset()
@@ -1070,59 +1065,19 @@ test('opens document lookup targets through the default reporting config after r
   )
 })
 
-test('creates a downloadable blob url, clicks the transient anchor, and restores button state after export completes', async () => {
-  await page.viewport(1280, 900)
-
-  let resolveExport!: (value: { blob: Blob; fileName: string }) => void
-  reportPageMocks.exportReportXlsx.mockImplementationOnce(async () => {
-    return await new Promise((resolve) => {
-      resolveExport = resolve
-    })
-  })
-
-  const createElement = document.createElement.bind(document)
-  const anchor = createElement('a')
-  const clickSpy = vi.spyOn(anchor, 'click').mockImplementation(() => {})
-  const removeSpy = vi.spyOn(anchor, 'remove')
-  const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
-    if (tagName.toLowerCase() === 'a') return anchor
-    return createElement(tagName)
-  }) as typeof document.createElement)
-  const createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:occupancy-export')
-  const revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
-
+test('hands fallback exports to the browser without buffering a Blob and surfaces validation errors', async () => {
+  await renderReportPage()
+  const createUrl = vi.spyOn(URL, 'createObjectURL')
+  reportPageMocks.exportReportXlsxInBrowser.mockResolvedValueOnce(undefined)
   try {
-    await renderReportPage()
-
-    const downloadButton = document.querySelector('button[title="Download"]') as HTMLButtonElement | null
-    if (!(downloadButton instanceof HTMLButtonElement)) throw new Error('Download button not found.')
-    expect(downloadButton.disabled).toBe(false)
-
-    downloadButton.click()
-    await vi.waitFor(() => {
-      expect(downloadButton.disabled).toBe(true)
-    })
-
-    resolveExport({
-      blob: new Blob(['xlsx-bytes']),
-      fileName: '',
-    })
-    await flushUi()
-
-    expect(createObjectUrlSpy).toHaveBeenCalledTimes(1)
-    expect(anchor.href).toBe('blob:occupancy-export')
-    expect(anchor.download).toBe('pm-occupancy-summary.xlsx')
-    expect(clickSpy).toHaveBeenCalledTimes(1)
-    expect(removeSpy).toHaveBeenCalledTimes(1)
-    expect(revokeObjectUrlSpy).toHaveBeenCalledWith('blob:occupancy-export')
-    await vi.waitFor(() => {
-      expect(downloadButton.disabled).toBe(false)
-    })
-  } finally {
-    createElementSpy.mockRestore()
-    createObjectUrlSpy.mockRestore()
-    revokeObjectUrlSpy.mockRestore()
-  }
+    clickHeaderButtonByTitle('Download')
+    await expect.poll(() => reportPageMocks.exportReportXlsxInBrowser.mock.calls.length).toBe(1)
+    expect(reportPageMocks.exportReportXlsx).not.toHaveBeenCalled()
+    expect(createUrl).not.toHaveBeenCalled()
+    const options = reportPageMocks.exportReportXlsxInBrowser.mock.calls[0]?.[2]
+    options.onError(new Error('Export validation failed'))
+    await expect.element(page.getByText('Export validation failed')).toBeVisible()
+  } finally { createUrl.mockRestore() }
 })
 
 test('auto-runs a default variant, appends paged responses, and keeps variant context in the sheet', async () => {
@@ -1922,7 +1877,7 @@ test('reports append failures, blocks concurrent and duplicate cursors, and succ
     if (!request.cursor) return buildResponse({ rows: ['North Square'], total: 3, hasMore: true, nextCursor: 'cursor-2' })
     appendAttempt += 1
     if (appendAttempt === 1) return await pendingAppend.promise
-    return buildResponse({ rows: ['Harbor Point'], total: 3, hasMore: true, nextCursor: 'cursor-2' })
+    return buildResponse({ rows: ['Harbor Point'], total: 3, hasMore: true, nextCursor: 'cursor-3' })
   })
 
   const { view } = await renderReportPage()
@@ -1937,14 +1892,16 @@ test('reports append failures, blocks concurrent and duplicate cursors, and succ
   await flushUi()
   await expect.element(view.getByText('Append failed hard')).toBeVisible()
 
-  await view.getByRole('button', { name: 'Load more' }).click()
+  await view.getByRole('button', { name: 'Retry loading rows' }).click()
   await flushUi()
   await expect.element(view.getByText('rows:2')).toBeVisible()
   expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(3)
 
   await view.getByRole('button', { name: 'Load more' }).click()
   await flushUi()
-  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(3)
+  await expect.element(view.getByText('The report cursor did not advance.')).toBeVisible()
+  await expect.element(view.getByText('rows:2')).toBeVisible()
+  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(4)
 })
 
 test('ignores a stale rejected run after navigation starts a new report lifecycle', async () => {
@@ -2311,26 +2268,10 @@ test('does not show end-of-list for an empty restored page even when paging hist
   await expect.element(view.getByText('show-end:false')).toBeVisible()
 })
 
-test('browses saved results beyond 10000 rows without accumulating earlier pages', async () => {
-  (reportPageMocks.state.definition!.capabilities as Record<string, unknown>).supportsSavedExecution = true
-  reportPageMocks.state.definition!.filters = []
-  const first = { ...buildResponse(), offset: 0, limit: 200, total: 15000, hasMore: true, nextCursor: 'saved:200', diagnostics: { runId: 'saved' } }
-  reportPageMocks.executeSavedReport.mockResolvedValue(first)
-  reportPageMocks.readSavedReport.mockResolvedValue({ ...first, offset: 12000, nextCursor: 'saved:12200' })
-  await renderReportPage()
-  await expect.element(page.getByRole('navigation', { name: 'Report pages' })).toBeVisible()
-  await page.getByRole('button', { name: 'Next', exact: true }).click()
-  await expect.poll(() => reportPageMocks.readSavedReport.mock.calls.length).toBe(1)
-  await expect.element(page.getByText(/Rows 12001/)).toBeVisible()
-  expect(reportPageMocks.executeReport).not.toHaveBeenCalled()
-  await expect.element(page.getByRole('button', { name: 'Previous', exact: true })).toBeEnabled()
-})
-
-test('shows progress and allows cancelling a saved report', async () => {
-  (reportPageMocks.state.definition!.capabilities as Record<string, unknown>).supportsSavedExecution = true
+test('shows progress and allows cancelling a report request', async () => {
   reportPageMocks.state.definition!.filters = []
   let signal: AbortSignal | undefined
-  reportPageMocks.executeSavedReport.mockImplementation((_code, _request, options) => {
+  reportPageMocks.executeReport.mockImplementation((_code, _request, options) => {
     signal = options.signal
     return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError'))))
   })
@@ -2341,21 +2282,83 @@ test('shows progress and allows cancelling a saved report', async () => {
   await expect.element(page.getByText('Preparing report…')).not.toBeInTheDocument()
 })
 
-test('exports the displayed saved result and allows cancelling file preparation', async () => {
-  (reportPageMocks.state.definition!.capabilities as Record<string, unknown>).supportsSavedExecution = true
+test('exports the current report request and allows cancelling the download', async () => {
   reportPageMocks.state.definition!.filters = []
-  reportPageMocks.executeSavedReport.mockResolvedValue({ ...buildResponse(), diagnostics: { runId: 'frozen-result' } })
+  reportPageMocks.executeReport.mockResolvedValue({ ...buildResponse(), diagnostics: { runId: 'frozen-result' } })
   let signal: AbortSignal | undefined
-  reportPageMocks.exportSavedReport.mockImplementation((_code, _id, options) => {
+  reportPageMocks.exportReportXlsx.mockImplementation((_code, _id, options) => {
     signal = options.signal
     return new Promise((_resolve, reject) => signal!.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError'))))
   })
   await renderReportPage()
-  await expect.poll(() => reportPageMocks.executeSavedReport.mock.calls.length).toBe(1)
+  await expect.poll(() => reportPageMocks.executeReport.mock.calls.length).toBe(1)
   clickHeaderButtonByTitle('Download')
   await expect.element(page.getByText('Preparing download…')).toBeVisible()
-  expect(reportPageMocks.exportSavedReport.mock.calls[0]?.[1]).toBe('frozen-result')
+  expect(reportPageMocks.exportReportXlsx.mock.calls[0]?.[0]).toBe('pm.occupancy.summary')
   await page.getByRole('button', { name: 'Cancel download', exact: true }).click()
   expect(signal!.aborted).toBe(true)
   await expect.element(page.getByText('Preparing download…')).not.toBeInTheDocument()
+})
+
+
+test('opens a group on demand and restores the root through its breadcrumb', async () => {
+  reportPageMocks.state.definition!.filters = []
+  reportPageMocks.state.variants = []
+  const root = buildResponse({ rows: ['North Square'] })
+  root.sheet.rows[0]!.rowKind = ReportRowKind.Group
+  root.sheet.rows[0]!.childrenPath = ['north-id']
+  reportPageMocks.state.executeResponses = [root, buildResponse({ rows: ['Child detail'] }), root]
+  const { view } = await renderReportPage()
+  await view.getByRole('button', { name: 'Open group' }).click()
+  await expect.element(view.getByText('first:Child detail')).toBeVisible()
+  expect(reportPageMocks.executeReport.mock.calls[1]?.[1].groupPath).toEqual(['north-id'])
+  await view.getByRole('button', { name: 'All groups', exact: true }).click()
+  await expect.element(view.getByText('first:North Square')).toBeVisible()
+  expect(reportPageMocks.executeReport.mock.calls[2]?.[1].groupPath ?? []).toEqual([])
+})
+
+test('keeps a bounded window while scrolling forward and reloads evicted rows when scrolling back', async () => {
+  reportPageMocks.state.definition!.filters = []
+  reportPageMocks.state.variants = []
+  reportPageMocks.executeReport.mockImplementation(async (_code, request) => {
+    const first = Number(request.cursor ?? 0)
+    return buildResponse({ rows: Array.from({ length: 500 }, (_, i) => `Row ${first + i}`),
+      hasMore: first < 3000, nextCursor: first < 3000 ? String(first + 500) : null })
+  })
+  const { view } = await renderReportPage()
+  await expect.element(view.getByText('rows:500')).toBeVisible()
+  for (let i = 0; i < 6; i++) {
+    await view.getByRole('button', { name: 'Load more', exact: true }).click()
+    await expect.poll(() => reportPageMocks.executeReport.mock.calls.length).toBe(i + 2)
+    await flushUi()
+  }
+  await expect.element(view.getByText('rows:2000')).toBeVisible()
+  await expect.element(view.getByText('first:Row 1500')).toBeVisible()
+  await expect.element(view.getByText('show-end:true')).toBeVisible()
+  await view.getByRole('button', { name: 'Load previous', exact: true }).click()
+  await expect.element(view.getByText('first:Row 1000')).toBeVisible()
+  await expect.element(view.getByText('rows:2000')).toBeVisible()
+  await expect.element(view.getByText('show-end:false')).toBeVisible()
+  expect(reportPageMocks.executeReport.mock.lastCall?.[1].cursor).toBe('1000')
+  await view.getByRole('button', { name: 'Load more', exact: true }).click()
+  await expect.element(view.getByText('first:Row 1500')).toBeVisible()
+  await expect.element(view.getByText('show-end:true')).toBeVisible()
+})
+
+test('streams downloads to the chosen file destination without creating a Blob URL', async () => {
+  reportPageMocks.state.definition!.filters = []
+  reportPageMocks.state.variants = []
+  const destination = new WritableStream<Uint8Array>()
+  const picker = vi.fn().mockResolvedValue({ createWritable: vi.fn().mockResolvedValue(destination) })
+  vi.stubGlobal('showSaveFilePicker', picker)
+  const { view } = await renderReportPage()
+  await expect.element(view.getByText('rows:1')).toBeVisible()
+  const createUrl = vi.spyOn(URL, 'createObjectURL')
+  try {
+    clickHeaderButtonByTitle('Download')
+    await expect.poll(() => reportPageMocks.exportReportXlsx.mock.calls.length).toBe(1)
+    expect(picker).toHaveBeenCalledOnce()
+    expect(reportPageMocks.exportReportXlsx.mock.calls[0]?.[2].destination).toBe(destination)
+    expect(createUrl).not.toHaveBeenCalled()
+  } finally { createUrl.mockRestore() }
 })

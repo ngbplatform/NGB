@@ -14,7 +14,8 @@ public sealed class PostgresReportDatasetBinding
         IReadOnlyList<PostgresReportFieldBinding> fields,
         IReadOnlyList<PostgresReportMeasureBinding> measures,
         string? baseWhereSql = null,
-        IReadOnlyList<string>? cursorKeyFieldCodes = null)
+        IReadOnlyList<string>? cursorKeyFieldCodes = null,
+        Func<PostgresReportExecutionRequest, PostgresReportSqlSource?>? aggregateSource = null)
     {
         if (string.IsNullOrWhiteSpace(datasetCode))
             throw new NgbArgumentRequiredException(nameof(datasetCode));
@@ -24,6 +25,7 @@ public sealed class PostgresReportDatasetBinding
 
         DatasetCodeNorm = CodeNormalizer.NormalizeCodeNorm(datasetCode, nameof(datasetCode));
         FromSql = fromSql;
+        _aggregateSource = aggregateSource;
         BaseWhereSql = baseWhereSql;
 
         _fields = new Dictionary<string, PostgresReportFieldBinding>(StringComparer.OrdinalIgnoreCase);
@@ -56,6 +58,11 @@ public sealed class PostgresReportDatasetBinding
         CursorKeyFields = cursorKeys;
     }
 
+    private readonly Func<PostgresReportExecutionRequest, PostgresReportSqlSource?>? _aggregateSource;
+
+    internal PostgresReportSqlSource ResolveSource(PostgresReportExecutionRequest request)
+        => _aggregateSource?.Invoke(request) ?? new(FromSql, BaseWhereSql);
+
     public string DatasetCodeNorm { get; }
     public string FromSql { get; }
     public string? BaseWhereSql { get; }
@@ -81,3 +88,6 @@ public sealed class PostgresReportDatasetBinding
         throw new NgbConfigurationViolationException($"PostgreSQL reporting dataset '{DatasetCodeNorm}' does not define measure binding '{codeNorm}'.");
     }
 }
+
+/// <summary>A persistence-owned equivalent source for a supported aggregation shape.</summary>
+public sealed record PostgresReportSqlSource(string FromSql, string? BaseWhereSql = null);

@@ -400,6 +400,7 @@ export const StubReportSheet = defineComponent({
       type: Boolean,
       default: false,
     },
+    canLoadPrevious: { type: Boolean, default: false },
     canLoadMore: {
       type: Boolean,
       default: false,
@@ -433,11 +434,13 @@ export const StubReportSheet = defineComponent({
       default: '',
     },
   },
-  emits: ['load-more', 'scroll-top-change'],
+  emits: ['load-more', 'load-previous', 'open-group', 'scroll-top-change'],
   setup(props, { emit, expose }) {
     const restoredScrollTop = ref(0)
 
     expose({
+      getScrollTop() { return restoredScrollTop.value },
+      prefixHeight(count: number) { return count * 32 },
       restoreScrollTop(value: number) {
         restoredScrollTop.value = value
       },
@@ -446,6 +449,7 @@ export const StubReportSheet = defineComponent({
     return () => h('div', { 'data-testid': 'stub-report-sheet' }, [
       h('div', `rows:${props.sheet?.rows?.length ?? 0}`),
       h('div', `loaded:${props.loadedCount}`),
+      h('div', `first:${props.sheet?.rows[0]?.cells[0]?.display ?? ''}`),
       h('div', `total:${props.totalCount ?? 'none'}`),
       h('div', `loading:${String(props.loading)}`),
       h('div', `loading-more:${String(props.loadingMore)}`),
@@ -456,6 +460,10 @@ export const StubReportSheet = defineComponent({
       h('div', `back-target:${props.backTarget || 'none'}`),
       h('div', `restored-scroll-top:${restoredScrollTop.value}`),
       h('button', { type: 'button', onClick: () => emit('scroll-top-change', 120) }, 'Report sheet scroll'),
+      props.canLoadPrevious
+        ? h('button', { type: 'button', onClick: () => emit('load-previous') }, 'Load previous') : null,
+      ...(props.sheet?.rows ?? []).filter(row => row.childrenPath).map(row =>
+        h('button', { type: 'button', onClick: () => emit('open-group', row.childrenPath, row.cells[0]?.display ?? '') }, 'Open group')),
       props.canLoadMore
         ? h('button', { type: 'button', onClick: () => emit('load-more') }, 'Load more')
         : null,

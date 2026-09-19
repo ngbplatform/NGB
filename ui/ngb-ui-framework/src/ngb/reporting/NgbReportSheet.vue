@@ -12,8 +12,8 @@ const props = defineProps<{
   loading?: boolean
   loadingMore?: boolean
   canLoadMore?: boolean
+  canLoadPrevious?: boolean
   showEndOfList?: boolean
-  rowLimitReached?: boolean
   loadedCount?: number | null
   totalCount?: number | null
   rowNoun?: string | null
@@ -26,6 +26,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'load-more'): void
+  (e: 'load-previous'): void
+  (e: 'open-group', path: unknown[], label: string): void
   (e: 'scroll-top-change', value: number): void
 }>()
 
@@ -224,9 +226,6 @@ const footerStatusText = computed(() => {
   const totalCount = normalizeCount(props.totalCount)
 
   if (props.loadingMore) return `Loading more ${pluralizeRowNoun(Math.max(loadedCount, 2), normalizeRowNoun(props.rowNoun))}…`
-  if (props.rowLimitReached) {
-    return `Loaded ${formatCountWithRowNoun(loadedCount)}. Interactive limit reached; export to retrieve the full dataset.`
-  }
   if (props.canLoadMore) return `Loaded ${formatCountWithRowNoun(loadedCount)}. Scroll to continue loading.`
   if (totalCount != null && totalCount >= loadedCount) {
     return `Loaded ${formatCountWithRowNoun(totalCount)}. End of list.`
@@ -371,6 +370,7 @@ function syncLoadMoreObserver() {
 function onScroll(event: Event) {
   pendingScrollTop = (event.currentTarget as HTMLDivElement).scrollTop
   scrollTop.value = pendingScrollTop
+  if (pendingScrollTop < 320 && props.canLoadPrevious && !props.loadingMore && !props.loading) emit('load-previous')
   if (scrollFrame != null) return
 
   scrollFrame = window.requestAnimationFrame(() => {
@@ -389,6 +389,8 @@ function restoreScrollTop(value: number) {
 
 defineExpose({
   restoreScrollTop,
+  getScrollTop: () => scrollTop.value,
+  prefixHeight: (count: number) => virtualLayout.value[Math.min(count, rows.value.length)] ?? 0,
 })
 
 watch(
@@ -455,7 +457,7 @@ onBeforeUnmount(() => {
       class="rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-5 shadow-card"
     >
       <div class="text-sm font-semibold text-ngb-text">Running report…</div>
-      <div class="mt-2 text-sm text-ngb-muted">The Report Composer is materializing the first sheet for the selected layout.</div>
+      <div class="mt-2 text-sm text-ngb-muted">Loading the first rows for the selected layout.</div>
     </div>
 
     <div
@@ -533,6 +535,8 @@ onBeforeUnmount(() => {
                 :style="cellIndex === 0 ? { paddingLeft: `${(entry.row.outlineLevel ?? 0) * 16}px` } : undefined"
               >
                 <NgbBadge v-if="cellIndex === 0 && rowKindLabel(entry.row)" tone="neutral">{{ rowKindLabel(entry.row) }}</NgbBadge>
+                <button v-if="cellIndex === 0 && entry.row.childrenPath" type="button" class="ngb-btn px-2 py-0" aria-label="Open group"
+                  @click="emit('open-group', entry.row.childrenPath, cellText(cell))">›</button>
                 <button
                   v-if="drilldownRoute(cell)"
                   type="button"
@@ -555,7 +559,7 @@ onBeforeUnmount(() => {
       <div ref="loadMoreSentinel" class="h-px w-full" aria-hidden="true" />
 
       <div
-        v-if="canLoadMore || loadingMore || showEndOfList || rowLimitReached"
+        v-if="canLoadMore || loadingMore || showEndOfList"
         class="sticky bottom-0 flex items-center justify-between gap-3 border-t border-ngb-border bg-ngb-card/95 px-4 py-3 backdrop-blur"
       >
         <div class="text-sm text-ngb-muted">{{ footerStatusText }}</div>

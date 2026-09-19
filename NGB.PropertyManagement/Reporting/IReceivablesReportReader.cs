@@ -3,7 +3,8 @@ namespace NGB.PropertyManagement.Reporting;
 public enum ReceivablesReportMode
 {
     OpenItemsDetails = 0,
-    Aging = 1
+    Aging = 1,
+    OpenItems = 2
 }
 
 public sealed record ReceivablesReportRow(

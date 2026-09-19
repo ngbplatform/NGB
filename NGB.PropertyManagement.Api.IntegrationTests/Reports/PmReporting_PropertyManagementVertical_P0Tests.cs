@@ -2,12 +2,14 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Dapper;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
+using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Reporting;
@@ -28,6 +30,121 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
 
     public async Task InitializeAsync() => await _fixture.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task Open_items_last_page_reads_current_totals_once_after_a_new_payment()
+    {
+        using var factory = new PmApiFactory(_fixture);
+        var seeded = await SeedScenarioAsync(factory);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var reports = scope.ServiceProvider.GetRequiredService<IReportEngine>();
+        var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
+        foreach (var month in new[] { "06", "07" })
+        {
+            var charge = await documents.CreateDraftAsync(PropertyManagementCodes.RentCharge, Payload(new
+            {
+                lease_id = seeded.LeaseId, period_from_utc = $"2026-{month}-01", period_to_utc = $"2026-{month}-28",
+                due_on_utc = $"2026-{month}-05", amount = "15.00"
+            }), default);
+            await documents.PostAsync(PropertyManagementCodes.RentCharge, charge.Id, default);
+        }
+        var request = new ReportExecutionRequestDto(Filters: new Dictionary<string, ReportFilterValueDto>
+            { ["lease_id"] = new(JsonSerializer.SerializeToElement(seeded.LeaseId)) }, Limit: 1);
+        var first = await reports.ExecuteAsync("pm.receivables.open_items", request, default);
+        first.HasMore.Should().BeTrue();
+        var seen = new HashSet<Guid> { first.Sheet.Rows.Single().Cells[1].Action!.DocumentId!.Value };
+        var current = first;
+        while (current.HasMore)
+        {
+            current = await reports.ExecuteAsync("pm.receivables.open_items", request with { Cursor = current.NextCursor }, default);
+            foreach (var row in current.Sheet.Rows.Where(r => r.RowKind == ReportRowKind.Detail))
+                seen.Add(row.Cells[1].Action!.DocumentId!.Value).Should().BeTrue();
+            seen.Count.Should().BeLessThanOrEqualTo(4);
+        }
+        seen.Should().HaveCount(4, "same-kind rows must not be skipped at the finite maximum-date cursor key");
+        var payment = await documents.CreateDraftAsync(PropertyManagementCodes.ReceivablePayment, Payload(new
+        {
+            lease_id = seeded.LeaseId, received_on_utc = "2026-02-16", amount = "25.00"
+        }), default);
+        await documents.PostAsync(PropertyManagementCodes.ReceivablePayment, payment.Id, default);
+        using var probe = new NGB.Testing.Reporting.ReportPerformanceProbe("pm.receivables.open_items", "current-final-totals");
+        var last = await reports.ExecuteAsync("pm.receivables.open_items", request with { Cursor = first.NextCursor, Limit = 100 }, default);
+        last.HasMore.Should().BeFalse();
+        last.Total.Should().Be(5);
+        last.Sheet.Rows.Count(row => row.RowKind == ReportRowKind.Detail).Should().Be(4);
+        var total = last.Sheet.Rows.Single(row => row.RowKind == ReportRowKind.Total);
+        total.Cells[2].Value!.Value.GetDecimal().Should().Be(60m);
+        total.Cells[3].Value!.Value.GetDecimal().Should().Be(75m);
+        probe.SqlCommands.Count(sql => sql.Contains("stats AS (", StringComparison.Ordinal)
+            && sql.Contains("nets AS (", StringComparison.Ordinal)).Should().Be(1);
+        probe.CommandCount.Should().BeLessThanOrEqualTo(8);
+    }
+
+    [Fact]
+    public async Task Queue_continuations_match_full_stream_with_tied_dates_and_multiple_work_orders()
+    {
+        using var factory = new PmApiFactory(_fixture);
+        var seeded = await SeedScenarioAsync(factory);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        await uow.BeginTransactionAsync();
+        // These isolated reader fixtures retain all typed-document references and constraints.
+        await uow.Connection.ExecuteAsync("""
+            INSERT INTO documents(id,type_code,date_utc,status,posted_at_utc)
+              SELECT md5('queue-request-'||g)::uuid,'pm.maintenance_request','2026-02-14',1,NULL
+              FROM generate_series(1,10001) g;
+            INSERT INTO doc_pm_maintenance_request(document_id,display,property_id,party_id,category_id,priority,subject,requested_at_utc)
+              SELECT md5('queue-request-'||g)::uuid,'MR-'||g,property_id,party_id,category_id,priority,'Repair '||g,'2026-02-14'
+              FROM doc_pm_maintenance_request CROSS JOIN generate_series(1,10001) g WHERE document_id=@request_id;
+            UPDATE documents SET status=2,posted_at_utc='2026-02-14'
+              WHERE id IN (SELECT md5('queue-request-'||g)::uuid FROM generate_series(1,10001) g);
+            INSERT INTO documents(id,type_code,date_utc,status,posted_at_utc)
+              SELECT md5('queue-order-'||r||'-'||w)::uuid,'pm.work_order','2026-02-14',1,NULL
+              FROM generate_series(3000,9000,3000) r CROSS JOIN generate_series(1,3) w;
+            INSERT INTO doc_pm_work_order(document_id,display,request_id,assigned_party_id,due_by_utc,cost_responsibility)
+              SELECT md5('queue-order-'||r||'-'||w)::uuid,'WO-'||r||'-'||w,md5('queue-request-'||r)::uuid,
+                assigned_party_id,due_by_utc,cost_responsibility
+              FROM doc_pm_work_order CROSS JOIN generate_series(3000,9000,3000) r CROSS JOIN generate_series(1,3) w
+              WHERE document_id=@work_order_id;
+            UPDATE documents SET status=2,posted_at_utc='2026-02-14'
+              WHERE id IN (SELECT md5('queue-order-'||r||'-'||w)::uuid
+                FROM generate_series(3000,9000,3000) r CROSS JOIN generate_series(1,3) w);
+            """, new { request_id = seeded.RequestedOnlyRequestId, work_order_id = seeded.OverdueWorkOrderId }, uow.Transaction);
+        var reader = scope.ServiceProvider.GetRequiredService<IMaintenanceQueueReader>();
+        var stream = scope.ServiceProvider.GetRequiredService<IMaintenanceQueueStreamReader>();
+        var query = new MaintenanceQueueQuery(new DateOnly(2026, 2, 15), null, null, null, null, null, null, 0, 100, IncludeTotal: false);
+        var expected = new List<MaintenanceQueueRow>();
+        await foreach (var batch in stream.ReadAsync(query)) expected.AddRange(batch);
+        expected.Should().HaveCount(10010);
+        foreach (var limit in new[] { 100, 233 })
+        {
+            var actual = new List<MaintenanceQueueRow>();
+            MaintenanceQueuePageCursor? cursor = null;
+            do
+            {
+                using var probe = new NGB.Testing.Reporting.ReportPerformanceProbe("pm.maintenance.queue", "tied-date-page-" + limit);
+                var page = await reader.GetCursorPageAsync(query with { Limit = limit }, cursor);
+                page.Total.Should().BeNull();
+                page.Rows.Should().NotBeEmpty();
+                actual.AddRange(page.Rows);
+                actual.Count.Should().BeLessThanOrEqualTo(expected.Count);
+                probe.CommandCount.Should().Be(1, "one set-based page query must not grow with row count");
+                cursor = page.HasMore ? new MaintenanceQueuePageCursor(actual.Count, null,
+                    page.NextAfterRequestedAtUtc, page.NextAfterRequestId, page.NextAfterWorkOrderId) : null;
+            } while (cursor is not null);
+            actual.Should().Equal(expected);
+        }
+        // Exercise a boundary inside one request's ascending work-order keys explicitly.
+        var siblings = expected.GroupBy(r => r.RequestId).First(group => group.Count() == 3).ToArray();
+        siblings.Should().HaveCount(3);
+        foreach (var previous in siblings.Take(2))
+        {
+            var cursor = new MaintenanceQueuePageCursor(0, null, previous.RequestedAtUtc, previous.RequestId, previous.WorkOrderId);
+            var next = await reader.GetCursorPageAsync(query with { Limit = 1 }, cursor);
+            next.Rows.Should().Equal(expected[expected.IndexOf(previous) + 1]);
+        }
+        await uow.RollbackAsync();
+    }
 
     [Fact]
     public async Task PropertyManagementDashboardReader_OnEmptyDatabase_ReturnsTwelveMonthZeroSnapshot()
@@ -253,7 +370,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["engine"].Should().Be("runtime");
             dto.Diagnostics!["executor"].Should().Be("canonical-pm-occupancy-summary");
-            dto.Total.Should().Be(3);
+            dto.Total.Should().BeNull();
             dto.HasMore.Should().BeTrue();
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "building", "total_units", "occupied_units", "occupancy_percent" });
             dto.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(1);
@@ -266,7 +383,14 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             detail.Cells[4].Display.Should().Be("2");
             detail.Cells[5].Display.Should().Be("33.33");
 
-            var final = await client.GetFromJsonAsync<ReportExecutionResponseDto>($"/api/reports/pm.occupancy.summary/runs/{dto.Diagnostics!["runId"]}?offset=2&limit=1", Json);
+            ReportExecutionResponseDto final = dto;
+            while (final.HasMore)
+            {
+                using var next = await client.PostAsJsonAsync("/api/reports/pm.occupancy.summary/execute",
+                    new ReportExecutionRequestDto(Parameters: new Dictionary<string, string> { ["as_of_utc"] = "2026-02-15" }, Limit: 1, Cursor: final.NextCursor));
+                next.StatusCode.Should().Be(HttpStatusCode.OK);
+                final = (await next.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json))!;
+            }
             var totalRow = final!.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Total);
             totalRow.Cells[2].Display.Should().Be("5");
             totalRow.Cells[3].Display.Should().Be("3");
@@ -291,7 +415,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
             var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             dto.Should().NotBeNull();
-            dto!.Total.Should().Be(2);
+            dto!.Total.Should().Be(1);
             dto.HasMore.Should().BeFalse();
             var detail = dto.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Detail);
             detail.Cells[0].Action.Should().BeEquivalentTo(new ReportCellActionDto("open_catalog", CatalogType: "pm.property", CatalogId: seeded.SecondBuildingId));
@@ -316,7 +440,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["engine"].Should().Be("runtime");
             dto.Diagnostics!["executor"].Should().Be("canonical-pm-maintenance-queue");
-            dto.Total.Should().Be(3);
+            dto.Total.Should().BeNull();
             dto.HasMore.Should().BeTrue();
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "queue_state", "request", "subject", "work_order", "assigned_to", "due_by_utc" });
             dto.Sheet.Rows.Should().OnlyContain(x => x.RowKind == ReportRowKind.Detail);
@@ -415,7 +539,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["executor"].Should().Be("canonical-pm-tenant-statement");
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "occurred_on_utc", "document", "entry_type", "running_balance" });
-            dto.Total.Should().Be(5);
+            dto.Total.Should().Be(3);
             dto.HasMore.Should().BeFalse();
             dto.Sheet.Rows.Should().HaveCount(5);
 
@@ -469,7 +593,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["executor"].Should().Be("canonical-pm-receivables-aging");
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "bucket", "charge", "outstanding_amount" });
-            dto.Total.Should().Be(2);
+            dto.Total.Should().Be(1);
             var detail = dto.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Detail);
             detail.Cells[0].Display.Should().Be("Current");
             detail.Cells[1].Action.Should().NotBeNull();
@@ -490,7 +614,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["executor"].Should().Be("canonical-pm-receivables-open-items");
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "kind", "outstanding_amount", "available_credit" });
-            dto.Total.Should().Be(3);
+            dto.Total.Should().Be(2);
             dto.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(2);
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Charge" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[2].Display == "30");
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Credit" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[3].Display == "50");
@@ -508,7 +632,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             firstOpenItemsPage = (await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json))!;
             firstOpenItemsPage.HasMore.Should().BeTrue();
             firstOpenItemsPage.NextCursor.Should().NotBeNullOrWhiteSpace();
-            firstOpenItemsPage.Total.Should().Be(3);
+            firstOpenItemsPage.Total.Should().BeNull();
             firstOpenItemsPage.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(1);
         }
 
@@ -523,9 +647,9 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
             var next = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             next.Should().NotBeNull();
-            next!.HasMore.Should().BeTrue();
-            next.NextCursor.Should().NotBeNullOrWhiteSpace();
-            next.Total.Should().Be(3);
+            next!.HasMore.Should().BeFalse();
+            next.NextCursor.Should().BeNull();
+            next.Total.Should().Be(2);
             next.Offset.Should().Be(1);
             next.Sheet.Rows.Count(x => x.RowKind == ReportRowKind.Detail).Should().Be(1);
         }
@@ -542,7 +666,7 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             dto.Should().NotBeNull();
             dto!.Diagnostics!["executor"].Should().Be("canonical-pm-receivables-open-items-details");
             dto.Sheet.Columns.Select(x => x.Code).Should().Contain(new[] { "due_on_utc", "received_on_utc", "available_credit" });
-            dto.Total.Should().Be(3);
+            dto.Total.Should().Be(2);
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Charge" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[2].Display == "2026-04-05" && x.Cells[6].Display == "30");
             dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Detail && x.Cells[0].Display == "Credit" && x.Cells[1].Action != null && x.Cells[1].Action!.Kind == "open_document" && x.Cells[3].Display == "2026-02-07" && x.Cells[7].Display == "50");
         }

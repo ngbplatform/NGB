@@ -30,7 +30,8 @@ public sealed class ReportVariantRequestResolver(IReportVariantService variants)
             Offset: request.Offset,
             Limit: request.Limit,
             Cursor: request.Cursor,
-            DisablePaging: request.DisablePaging);
+            DisablePaging: request.DisablePaging,
+            GroupPath: request.GroupPath);
     }
 
     private static IReadOnlyDictionary<string, T>? Merge<T>(

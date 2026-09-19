@@ -80,7 +80,7 @@ public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(
                     ["executor"] = "canonical-pm-receivables-open-items-details"
                 }));
 
-        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
+        var hasMore = page.HasMore || cursor is null && offset + page.Rows.Count < page.Total;
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
@@ -100,6 +100,7 @@ public sealed class ReceivablesOpenItemsDetailsCanonicalReportExecutor(
             nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["totals"] = "current",
                 ["executor"] = "canonical-pm-receivables-open-items-details"
             });
     }

@@ -30,7 +30,8 @@ public sealed partial class ReportXlsxExportService
         if (rowsPerWorksheet <= headers.Count)
             throw new ArgumentOutOfRangeException(nameof(rowsPerWorksheet));
 
-        await using var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true);
+        await using var bufferedOutput = new AsyncExportBuffer(output, ct);
+        await using var archive = await ZipArchive.CreateAsync(bufferedOutput, ZipArchiveMode.Create, leaveOpen: true, entryNameEncoding: null, ct);
         var titles = new List<string>();
         var title = SanitizeWorksheetTitle(template.Meta?.Title);
         await using var enumerator = rows.GetAsyncEnumerator(ct);
@@ -44,7 +45,7 @@ public sealed partial class ReportXlsxExportService
             var suffix = sheetNumber == 1 ? "" : $" ({sheetNumber})";
             titles.Add(title[..Math.Min(title.Length, 31 - suffix.Length)] + suffix);
 
-            await using var entry = archive.CreateEntry($"xl/worksheets/sheet{sheetNumber}.xml", CompressionLevel.Fastest).Open();
+            await using var entry = await archive.CreateEntry($"xl/worksheets/sheet{sheetNumber}.xml", CompressionLevel.Fastest).OpenAsync(ct);
             await using var writer = XmlWriter.Create(entry, new XmlWriterSettings { Async = true, Encoding = new UTF8Encoding(false), CloseOutput = false });
             await writer.WriteStartDocumentAsync();
             await writer.WriteStartElementAsync(null, "worksheet", NsSpreadsheet.NamespaceName);
@@ -157,12 +158,12 @@ public sealed partial class ReportXlsxExportService
                     new XAttribute("ContentType", "application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml")));
         }
 
-        WriteEntry(archive, "[Content_Types].xml", ToXmlString(contentTypes));
-        WriteEntry(archive, "_rels/.rels", BuildRootRelationshipsXml());
-        WriteEntry(archive, "docProps/core.xml", BuildCoreXml(template.Meta?.Title ?? title));
-        WriteEntry(archive, "xl/workbook.xml", ToXmlString(workbook));
-        WriteEntry(archive, "xl/_rels/workbook.xml.rels", ToXmlString(relationships));
-        WriteEntry(archive, "xl/styles.xml", BuildStylesXml());
+        await WriteEntryAsync(archive, "[Content_Types].xml", ToXmlString(contentTypes), ct);
+        await WriteEntryAsync(archive, "_rels/.rels", BuildRootRelationshipsXml(), ct);
+        await WriteEntryAsync(archive, "docProps/core.xml", BuildCoreXml(template.Meta?.Title ?? title), ct);
+        await WriteEntryAsync(archive, "xl/workbook.xml", ToXmlString(workbook), ct);
+        await WriteEntryAsync(archive, "xl/_rels/workbook.xml.rels", ToXmlString(relationships), ct);
+        await WriteEntryAsync(archive, "xl/styles.xml", BuildStylesXml(), ct);
         
         var app = XDocument.Parse(BuildAppXml(title));
         var vt = XNamespace.Get("http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes");
@@ -170,6 +171,15 @@ public sealed partial class ReportXlsxExportService
         var titleVector = app.Root!.Element(NsExtended + "TitlesOfParts")!.Element(vt + "vector")!;
         titleVector.SetAttributeValue("size", titles.Count);
         titleVector.ReplaceNodes(titles.Select(t => new XElement(vt + "lpstr", t)));
-        WriteEntry(archive, "docProps/app.xml", ToXmlString(app));
+
+        await WriteEntryAsync(archive, "docProps/app.xml", ToXmlString(app), ct);
+    }
+
+    private static async Task WriteEntryAsync(ZipArchive archive, string path, string content, CancellationToken ct)
+    {
+        await using var entry = await archive.CreateEntry(path, CompressionLevel.Fastest).OpenAsync(ct);
+        await using var writer = new StreamWriter(entry, new UTF8Encoding(false), leaveOpen: true);
+        await writer.WriteAsync(content.AsMemory(), ct);
+        await writer.FlushAsync(ct);
     }
 }

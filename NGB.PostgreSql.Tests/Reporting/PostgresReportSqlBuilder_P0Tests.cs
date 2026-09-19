@@ -381,8 +381,10 @@ public sealed class PostgresReportSqlBuilder_P0Tests
             Parameters: new Dictionary<string, object?>(),
             Paging: new PostgresReportPaging(0, 20)));
 
-        statement.Sql.Should().Contain($"f.account_id AS {ReportInteractiveSupport.SupportAccountId}");
-        statement.Sql.Should().Contain($"f.document_id AS {ReportInteractiveSupport.SupportDocumentId}");
+        statement.Sql.Should().Contain($"MIN((f.account_id)::text)::uuid END AS {ReportInteractiveSupport.SupportAccountId}");
+        statement.Sql.Should().Contain("COUNT(DISTINCT f.account_id)=1 AND COUNT(f.account_id)=COUNT(*)");
+        statement.Sql.Should().Contain($"MIN((f.document_id)::text)::uuid END AS {ReportInteractiveSupport.SupportDocumentId}");
+        statement.Sql.Should().Contain("GROUP BY f.account_display,f.document_display\n");
         statement.Columns.Select(x => x.OutputCode).Should().Contain([ReportInteractiveSupport.SupportAccountId, ReportInteractiveSupport.SupportDocumentId]);
     }
 
@@ -426,8 +428,10 @@ public sealed class PostgresReportSqlBuilder_P0Tests
             Parameters: new Dictionary<string, object?>(),
             Paging: new PostgresReportPaging(0, 20)));
 
-        statement.Sql.Should().Contain("f.warehouse_id AS warehouse_id");
-        statement.Sql.Should().Contain("f.item_id AS item_id");
+        statement.Sql.Should().Contain("MIN((f.warehouse_id)::text)::uuid END AS warehouse_id");
+        statement.Sql.Should().Contain("COUNT(DISTINCT f.warehouse_id)=1 AND COUNT(f.warehouse_id)=COUNT(*)");
+        statement.Sql.Should().Contain("MIN((f.item_id)::text)::uuid END AS item_id");
+        statement.Sql.Should().Contain("GROUP BY f.warehouse_display,f.item_display\n");
         statement.Columns.Select(x => x.OutputCode).Should().Contain(["warehouse_id", "item_id"]);
     }
 }

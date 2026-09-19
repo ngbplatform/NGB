@@ -64,7 +64,7 @@ public sealed class CurrentItemPricesCanonicalReportExecutor(
                     ["executor"] = "canonical-trd-current-item-prices"
                 }));
 
-        var hasMore = page.HasMore || offset + page.Rows.Count < page.Total;
+        var hasMore = page.HasMore || cursor is null && offset + page.Rows.Count < page.Total;
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,

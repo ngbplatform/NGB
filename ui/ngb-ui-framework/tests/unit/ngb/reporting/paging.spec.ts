@@ -4,7 +4,6 @@ import {
   buildAppendRequest,
   canAppendReportResponse,
   countLoadedReportRows,
-  hasReachedReportRowLimit,
   mergePagedReportResponses,
 } from '../../../../src/ngb/reporting/paging'
 import {
@@ -67,11 +66,6 @@ describe('report paging helpers', () => {
     expect(count).toBe(2)
     expect(countLoadedReportRows(undefined)).toBe(0)
     expect(countLoadedReportRows(createSheet([null as never]))).toBe(1)
-    expect(hasReachedReportRowLimit(createSheet([]))).toBe(false)
-    expect(hasReachedReportRowLimit(createSheet(Array.from({ length: 2_000 }, () => ({
-      rowKind: ReportRowKind.Detail,
-      cells: [],
-    }))))).toBe(true)
   })
 
   it('detects appendable responses and builds normalized append requests', () => {
@@ -189,7 +183,7 @@ describe('report paging helpers', () => {
       sheet: { columns: [], rows: [], meta: null, headerRows: null },
       offset: 0,
       limit: 50,
-      total: 0,
+      total: null,
       hasMore: false,
       nextCursor: null,
       diagnostics: { source: 'current' },

@@ -5,6 +5,9 @@ namespace NGB.Accounting.Reports.AccountCard;
 
 public sealed class AccountCardReportPageRequest : PageSizeBase
 {
+    /// <summary>Whether full-range totals are needed in addition to the visible lines.</summary>
+    public bool IncludeRangeTotals { get; init; } = true;
+
     public Guid AccountId { get; init; }
     public DateOnly FromInclusive { get; init; }
     public DateOnly ToInclusive { get; init; }

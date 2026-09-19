@@ -421,6 +421,45 @@ describe('api http', () => {
     expect(authMocks.forceRefreshAccessToken).not.toHaveBeenCalled()
   })
 
+  it('streams the response into the file destination without constructing a whole-file Blob', async () => {
+    authMocks.getAccessToken.mockResolvedValue(null)
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2]))
+        controller.enqueue(new Uint8Array([3, 4]))
+        controller.close()
+      },
+    }))
+    const blob = vi.spyOn(response, 'blob')
+    fetchMock.mockResolvedValue(response)
+    const chunks: number[] = []
+    const close = vi.fn()
+    const destination = new WritableStream<Uint8Array>({
+      write(chunk) { chunks.push(...chunk) }, close,
+    })
+    await httpPostFile('/file', {}, { destination })
+    expect(chunks).toEqual([1, 2, 3, 4])
+    expect(close).toHaveBeenCalledOnce()
+    expect(blob).not.toHaveBeenCalled()
+  })
+
+  it('cancels an in-progress streamed file and aborts its destination', async () => {
+    authMocks.getAccessToken.mockResolvedValue(null)
+    const controller = new AbortController()
+    const abort = vi.fn()
+    const cancel = vi.fn()
+    fetchMock.mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+      start(source) { source.enqueue(new Uint8Array([1])) }, cancel,
+    })))
+    const destination = new WritableStream<Uint8Array>({
+      write() { controller.abort() }, abort,
+    })
+    await expect(httpPostFile('/file', {}, { destination, signal: controller.signal }))
+      .rejects.toMatchObject({ name: 'AbortError' })
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(abort).toHaveBeenCalledOnce()
+  })
+
   it('handles file auth failures and every supported content-disposition filename form', async () => {
     authMocks.getAccessToken.mockResolvedValue(null)
     authMocks.forceRefreshAccessToken.mockRejectedValueOnce(new Error('refresh failed'))

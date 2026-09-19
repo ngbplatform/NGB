@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 
@@ -42,6 +43,8 @@ public class PmApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        if (Testing.Reporting.ReportPerformanceProbe.Enabled)
+            builder.ConfigureServices(services => services.AddSingleton<IStartupFilter, NGB.Testing.Reporting.ReportAuditStartupFilter>());
 
         builder.ConfigureAppConfiguration((_, cfg) =>
         {

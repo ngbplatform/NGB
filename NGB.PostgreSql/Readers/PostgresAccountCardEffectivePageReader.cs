@@ -1,5 +1,7 @@
+using System.Runtime.CompilerServices;
 using Dapper;
 using System.Text;
+using NGB.Accounting.Reports;
 using NGB.Accounting.Reports.AccountCard;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
@@ -7,16 +9,17 @@ using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
 namespace NGB.PostgreSql.Readers;
 
-public sealed class PostgresAccountCardEffectivePageReader(
+public sealed partial class PostgresAccountCardEffectivePageReader(
     IUnitOfWork uow,
     IDimensionSetReader dimensionSetReader,
     IDimensionValueEnrichmentReader dimensionValueEnrichmentReader)
-    : IAccountCardEffectivePageReader
+    : IAccountCardEffectivePageReader, IAccountCardEffectiveStreamReader
 {
     private sealed class PageWithTotalsRow
     {
@@ -31,9 +34,36 @@ public sealed class PostgresAccountCardEffectivePageReader(
         public Guid? DimensionSetId { get; init; }
         public decimal? DebitAmount { get; init; }
         public decimal? CreditAmount { get; init; }
+        public decimal PrefixDelta { get; init; }
         public decimal TotalDebit { get; init; }
         public decimal TotalCredit { get; init; }
         public bool HasMore { get; init; }
+    }
+
+    public async IAsyncEnumerable<IReadOnlyList<AccountCardLine>> ReadAsync(
+        AccountActivityQuery query,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        query.EnsureInvariant();
+
+        var (scopeDimIds, scopeValueIds, scopeDimensionCount) = SqlDimensionFilter.NormalizeScopes(query.DimensionScopes);
+        var sql = BuildPageSql(scopeDimensionCount > 0, hasCursor: false, includeTotals: false, disablePaging: true);
+        var args = new
+        {
+            query.AccountId,
+            FromUtc = ToMonthStartUtc(query.FromInclusive),
+            ToExclusiveUtc = ToMonthStartUtc(query.ToInclusive.AddMonths(1)),
+            ScopeDimensionCount = scopeDimensionCount,
+            ScopeDimIds = scopeDimIds,
+            ScopeValueIds = scopeValueIds
+        };
+
+        await foreach (var batch in PostgresReportCursorStream.ReadAsync<AccountCardLine>(uow, sql, args, ct))
+        {
+            await ResolveDimensionsAsync(batch, ct);
+            await ResolveDimensionValueDisplaysAsync(batch, ct);
+            yield return batch;
+        }
     }
 
     public async Task<decimal> GetOpeningBalanceAsync(
@@ -155,6 +185,9 @@ public sealed class PostgresAccountCardEffectivePageReader(
         int scopeDimensionCount,
         CancellationToken ct)
     {
+        if (!request.DisablePaging)
+            return await QueryBoundedPageAsync(request, scopeDimIds, scopeValueIds, scopeDimensionCount, ct);
+
         var pagingEnabled = !request.DisablePaging;
         var sql = BuildPageSql(
             hasDimensionScopes: scopeDimensionCount > 0,
@@ -245,6 +278,7 @@ public sealed class PostgresAccountCardEffectivePageReader(
             Lines = lines,
             HasMore = hasMore,
             NextCursor = BuildNextCursor(lines, hasMore),
+            PrefixDelta = rows.Count == 0 ? 0m : rows[0].PrefixDelta,
             TotalDebit = totalDebit,
             TotalCredit = totalCredit
         };
@@ -275,7 +309,7 @@ public sealed class PostgresAccountCardEffectivePageReader(
         return new AccountCardLineCursor
         {
             AfterPeriodUtc = last.PeriodUtc,
-            AfterEntryId = last.EntryId
+            AfterEntryId = last.EntryId,
         };
     }
 
@@ -324,6 +358,15 @@ public sealed class PostgresAccountCardEffectivePageReader(
         }
     }
 
+    private static string WithAccountCodes(string query)
+        => $"""
+            SELECT page.*, a.code AS "AccountCode", counter.code AS "CounterAccountCode"
+            FROM ({query.Trim().TrimEnd(';')}) page
+            LEFT JOIN accounting_accounts a ON a.account_id = page."AccountId"
+            LEFT JOIN accounting_accounts counter ON counter.account_id = page."CounterAccountId"
+            ORDER BY page."PeriodUtc" NULLS LAST, page."EntryId" NULLS LAST;
+            """;
+
     private static string BuildPageSql(bool hasDimensionScopes, bool hasCursor, bool includeTotals, bool disablePaging)
     {
         var sql = new StringBuilder();
@@ -361,9 +404,7 @@ public sealed class PostgresAccountCardEffectivePageReader(
                                r.period AS "PeriodUtc",
                                r.document_id AS "DocumentId",
                                me.account_id AS "AccountId",
-                               me.code AS "AccountCode",
                                ac.account_id AS "CounterAccountId",
-                               ac.code AS "CounterAccountCode",
                                r.credit_dimension_set_id AS "CounterAccountDimensionSetId",
                                r.debit_dimension_set_id AS "DimensionSetId",
                                1::smallint AS "Sign",
@@ -394,9 +435,7 @@ public sealed class PostgresAccountCardEffectivePageReader(
                                r.period AS "PeriodUtc",
                                r.document_id AS "DocumentId",
                                me.account_id AS "AccountId",
-                               me.code AS "AccountCode",
                                ad.account_id AS "CounterAccountId",
-                               ad.code AS "CounterAccountCode",
                                r.debit_dimension_set_id AS "CounterAccountDimensionSetId",
                                r.credit_dimension_set_id AS "DimensionSetId",
                                (-1)::smallint AS "Sign",
@@ -448,9 +487,7 @@ public sealed class PostgresAccountCardEffectivePageReader(
                                "PeriodUtc",
                                "DocumentId",
                                "AccountId",
-                               "AccountCode",
                                "CounterAccountId",
-                               "CounterAccountCode",
                                "CounterAccountDimensionSetId",
                                "DimensionSetId",
                                CASE WHEN "Sign" = 1 THEN "Amount" ELSE 0::numeric END AS "DebitAmount",
@@ -484,7 +521,7 @@ public sealed class PostgresAccountCardEffectivePageReader(
                 sql.AppendLine("LIMIT @LimitPlusOne;");
             }
 
-            return sql.ToString();
+            return WithAccountCodes(sql.ToString());
         }
 
         if (disablePaging)
@@ -494,7 +531,9 @@ public sealed class PostgresAccountCardEffectivePageReader(
                        totals AS (
                            SELECT
                                COALESCE(SUM("DebitAmount"), 0) AS "TotalDebit",
-                               COALESCE(SUM("CreditAmount"), 0) AS "TotalCredit"
+                               COALESCE(SUM("CreditAmount"), 0) AS "TotalCredit",
+                               COALESCE(SUM("DebitAmount" - "CreditAmount") FILTER (WHERE ("PeriodUtc", "EntryId")
+                                   <= (CAST(@AfterPeriodUtc AS timestamptz), CAST(@AfterEntryId AS bigint))), 0) AS "PrefixDelta"
                            FROM effective_lines
                        )
                        SELECT
@@ -502,22 +541,21 @@ public sealed class PostgresAccountCardEffectivePageReader(
                            p."PeriodUtc",
                            p."DocumentId",
                            p."AccountId",
-                           p."AccountCode",
                            p."CounterAccountId",
-                           p."CounterAccountCode",
                            p."CounterAccountDimensionSetId",
                            p."DimensionSetId",
                            p."DebitAmount",
                            p."CreditAmount",
                            t."TotalDebit",
                            t."TotalCredit",
+                           t."PrefixDelta",
                            FALSE AS "HasMore"
                        FROM totals t
                        LEFT JOIN effective_lines p ON TRUE
                        ORDER BY p."PeriodUtc" NULLS LAST, p."EntryId" NULLS LAST;
                        """);
 
-            return sql.ToString();
+            return WithAccountCodes(sql.ToString());
         }
 
         sql.AppendLine("""
@@ -548,7 +586,9 @@ public sealed class PostgresAccountCardEffectivePageReader(
                        totals AS (
                            SELECT
                                COALESCE(SUM("DebitAmount"), 0) AS "TotalDebit",
-                               COALESCE(SUM("CreditAmount"), 0) AS "TotalCredit"
+                               COALESCE(SUM("CreditAmount"), 0) AS "TotalCredit",
+                               COALESCE(SUM("DebitAmount" - "CreditAmount") FILTER (WHERE ("PeriodUtc", "EntryId")
+                                   <= (CAST(@AfterPeriodUtc AS timestamptz), CAST(@AfterEntryId AS bigint))), 0) AS "PrefixDelta"
                            FROM effective_lines
                        )
                        SELECT
@@ -556,15 +596,14 @@ public sealed class PostgresAccountCardEffectivePageReader(
                            p."PeriodUtc",
                            p."DocumentId",
                            p."AccountId",
-                           p."AccountCode",
                            p."CounterAccountId",
-                           p."CounterAccountCode",
                            p."CounterAccountDimensionSetId",
                            p."DimensionSetId",
                            p."DebitAmount",
                            p."CreditAmount",
                            t."TotalDebit",
                            t."TotalCredit",
+                           t."PrefixDelta",
                            f."HasMore"
                        FROM totals t
                        CROSS JOIN page_flags f
@@ -572,7 +611,7 @@ public sealed class PostgresAccountCardEffectivePageReader(
                        ORDER BY p."PeriodUtc" NULLS LAST, p."EntryId" NULLS LAST;
                        """);
 
-        return sql.ToString();
+        return WithAccountCodes(sql.ToString());
     }
 
     private static DateTime ToMonthStartUtc(DateOnly period)

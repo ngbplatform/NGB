@@ -1,9 +1,11 @@
 using FluentAssertions;
+using Moq;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.GeneralLedgerAggregated;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Accounts;
 using NGB.Persistence.Readers.Reports;
+using NGB.Persistence.Reporting;
 using NGB.Runtime.Reporting;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -132,8 +134,10 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         report.NextCursor.Should().BeNull();
     }
 
-    [Fact]
-    public async Task GetPageAsync_Preserves_Running_Balance_Continuation_Across_Cursor_Pages()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetPageAsync_ReusesBalancesOnlyInsideTheSameSnapshot(bool sameSnapshot)
     {
         var accountId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var counterId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -146,10 +150,12 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         var snapshotReader = new StubGeneralLedgerAggregatedSnapshotReader(
             new GeneralLedgerAggregatedSnapshot("1000", 10m, 7m, 2m));
 
+        var session = new Mock<IReportReadSession>();
+        session.SetupGet(x => x.SnapshotId).Returns(Guid.NewGuid());
         var service = new GeneralLedgerAggregatedReportService(
             pageReader,
             snapshotReader,
-            new StubChartOfAccountsRepository(accountId, "1000"));
+            new StubChartOfAccountsRepository(accountId, "1000"), session.Object);
 
         var page1 = await service.GetPageAsync(
             new GeneralLedgerAggregatedReportPageRequest
@@ -170,6 +176,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         page1.Lines[0].RunningBalance.Should().Be(15m);
         snapshotReader.CallCount.Should().Be(1);
 
+        if (!sameSnapshot) session.SetupGet(x => x.SnapshotId).Returns(Guid.NewGuid());
         var page2 = await service.GetPageAsync(
             new GeneralLedgerAggregatedReportPageRequest
             {
@@ -187,7 +194,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         page2.Lines.Should().ContainSingle();
         page2.Lines[0].RunningBalance.Should().Be(15m);
         page2.ClosingBalance.Should().Be(15m);
-        snapshotReader.CallCount.Should().Be(1);
+        snapshotReader.CallCount.Should().Be(sameSnapshot ? 1 : 2);
     }
 
     [Fact]
@@ -407,7 +414,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
                         }
                     ],
                     false,
-                    null));
+                    null, PrefixDelta: 5m));
         }
     }
 

@@ -90,6 +90,8 @@ public sealed class PostgresAccountingConsistencySnapshotReader(IUnitOfWork uow)
                            LIMIT @LimitPlusOne;
                            """;
 
+    internal static string SourceSql => Sql[..Sql.IndexOf("ORDER BY", StringComparison.Ordinal)];
+
     private sealed class Row
     {
         public Guid AccountId { get; init; }

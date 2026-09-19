@@ -32,8 +32,7 @@ public sealed class CanonicalAccountingReportDefinitionSource : IReportDefinitio
                     AllowsGrandTotals: true,
                     AllowsVariants: true,
                     AllowsXlsxExport: true,
-                    MaxVisibleColumns: 3,
-                    SupportsSavedExecution: true),
+                    MaxVisibleColumns: 3),
                 DefaultLayout: new ReportLayoutDto(
                     ShowDetails: false,
                     ShowSubtotals: true,

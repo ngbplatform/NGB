@@ -1,13 +1,17 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Definitions;
-using NGB.PropertyManagement.Runtime.Receivables;
+using NGB.PropertyManagement.Reporting;
+using NGB.PropertyManagement.Runtime.Policy;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 
 namespace NGB.PropertyManagement.Runtime.Reporting;
 
-public sealed class ReceivablesOpenItemsCanonicalReportExecutor(IReceivablesOpenItemsService openItems)
+public sealed class ReceivablesOpenItemsCanonicalReportExecutor(
+    IReceivablesReportReader reader,
+    IPropertyManagementAccountingPolicyReader policyReader)
     : IReportSpecializedPlanExecutor
 {
     public string ReportCode => PropertyManagementSecurityDefaults.ReceivablesOpenItemsReport;
@@ -19,21 +23,65 @@ public sealed class ReceivablesOpenItemsCanonicalReportExecutor(IReceivablesOpen
     {
         var leaseId = CanonicalReportExecutionHelper.GetRequiredGuidFilter(definition, request, "lease_id");
 
-        var offset = Math.Max(0, request.Offset);
+        var policy = await policyReader.GetRequiredAsync(ct);
+
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            policy.ReceivablesOpenItemsOperationalRegisterId.ToString("D"),
+            leaseId.ToString("D"));
+
+        var cursor = string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<ReceivablesReportPageCursor>(cursorKind, request.Cursor);
+
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
         var limit = request.Limit <= 0 ? 50 : request.Limit;
         var useLegacyOffset = offset > 0 && string.IsNullOrWhiteSpace(request.Cursor);
+
         var open = useLegacyOffset
-            ? await openItems.GetOpenItemsPageAsync(Guid.Empty, Guid.Empty, leaseId, offset, limit, ct)
-            : await openItems.GetOpenItemsCursorPageAsync(Guid.Empty, Guid.Empty, leaseId, request.Cursor, limit, ct);
-        offset = open.Offset;
+            ? await reader.GetPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                leaseId,
+                ReceivablesReportMode.OpenItems,
+                offset,
+                limit,
+                ct)
+            : await reader.GetCursorPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                leaseId,
+                ReceivablesReportMode.OpenItems,
+                cursor,
+                limit,
+                ct);
+
+        var hasMore = useLegacyOffset
+            ? offset + open.Rows.Count < open.Total
+            : open.HasMore;
+
+        var nextCursor = !useLegacyOffset && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new ReceivablesReportPageCursor(
+                    offset + open.Rows.Count,
+                    open.Total,
+                    open.TotalOriginal,
+                    open.TotalOutstanding,
+                    open.TotalCredit,
+                    open.PartyDisplay,
+                    open.PropertyDisplay,
+                    open.LeaseDisplay,
+                    open.NextAfterKindOrder,
+                    open.NextAfterSortDate,
+                    open.NextAfterDocumentId))
+            : null;
 
         var rows = open.Rows.Select(x => ToDetailRow(new OpenItemRow(
             x.IsCharge ? "Charge" : "Credit",
-            x.ItemDisplay,
-            x.IsCharge ? x.Amount : null,
-            x.IsCharge ? null : x.Amount,
+            x.Display,
+            x.IsCharge ? x.OpenAmount : null,
+            x.IsCharge ? null : x.OpenAmount,
             x.DocumentType,
-            x.ItemId))).ToList();
+            x.DocumentId))).ToList();
 
         if (request.Layout?.ShowGrandTotals != false && open.Total > 0)
             rows.Add(ToTotalRow(open.TotalOutstanding, open.TotalCredit));
@@ -60,10 +108,11 @@ public sealed class ReceivablesOpenItemsCanonicalReportExecutor(IReceivablesOpen
             offset: offset,
             limit: limit,
             total: open.Total,
-            hasMore: useLegacyOffset ? offset + open.Rows.Count < open.Total : open.HasMore,
-            nextCursor: useLegacyOffset ? null : open.NextCursor,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
+                ["totals"] = "current",
                 ["executor"] = "canonical-pm-receivables-open-items"
             });
     }

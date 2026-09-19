@@ -15,6 +15,9 @@ public sealed class AccountCardReportCursor
     /// </summary>
     public decimal RunningBalance { get; init; }
 
+    /// <summary>Balances may be reused only inside this same consistent read session.</summary>
+    public Guid SnapshotId { get; init; }
+
     /// <summary>
     /// Grand total debit for the whole filtered range.
     /// Optional for backward-compatible cursors created before totals were embedded.

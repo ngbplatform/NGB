@@ -5,13 +5,67 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Reporting;
 
-public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor executor) : ITabularReportPlanExecutor, IStreamingReportDataSource
+public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor executor)
+    : ITabularReportPlanExecutor, IStreamingReportDataSource, IReportPageDataSource
 {
-    private readonly PostgresReportDatasetExecutor _executor = executor ?? throw new NgbConfigurationViolationException("PostgreSQL reporting plan executor requires a dataset executor registration.");
+    private readonly PostgresReportDatasetExecutor _executor = executor
+        ?? throw new NgbConfigurationViolationException("PostgreSQL reporting plan executor requires a dataset executor registration.");
 
     public IAsyncEnumerable<ReportDataPage> ReadAsync(ReportDataQuery query, CancellationToken ct)
-        => _executor.ReadAsync(Map(query.ReportCode, query.DatasetCode, query.RowGroups, query.ColumnGroups,
-            query.DetailFields, query.Measures, query.Sorts, query.Predicates, query.Parameters, new(0, 500), true), ct);
+        => _executor.ReadAsync(
+            Map(
+                query.ReportCode,
+                query.DatasetCode,
+                query.RowGroups,
+                query.ColumnGroups,
+                query.DetailFields,
+                query.Measures,
+                query.Sorts,
+                query.Predicates,
+                query.Parameters,
+                new(0, 500), 
+                true),
+            ct);
+
+    public async Task<ReportDataPage> ReadPageAsync(
+        ReportDataQuery query,
+        ReportPlanPaging paging,
+        ReportRowSelection? selection,
+        CancellationToken ct)
+    {
+        var request = Map(
+            query.ReportCode,
+            query.DatasetCode,
+            query.RowGroups,
+            query.ColumnGroups,
+            query.DetailFields,
+            query.Measures,
+            query.Sorts,
+            query.Predicates,
+            query.Parameters,
+            paging,
+            false);
+
+        var result = await _executor.ExecuteAsync(request with
+        {
+            Selection = selection,
+            DistinctGroups = query.DetailFields.Count == 0 && (query.RowGroups.Count > 0 || query.ColumnGroups.Count > 0)
+        }, ct);
+
+        return new(
+            result.Columns.Select(c => new ReportDataColumn(
+                c.OutputCode,
+                c.Title,
+                c.DataType,
+                c.SemanticRole)).ToArray(),
+            result.Rows.Select(r => new ReportDataRow(r.Values)).ToArray(),
+            result.Offset,
+            result.Limit,
+            result.Total,
+            result.HasMore,
+            result.NextCursor,
+            result.Diagnostics);
+    }
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,
@@ -82,7 +136,7 @@ public sealed class PostgresReportPlanExecutor(PostgresReportDatasetExecutor exe
             DetailFields: detailFields.Select(x => new PostgresReportFieldSelection(x.FieldCode, x.OutputCode, x.Label, x.DataType)).ToList(),
             Measures: measures.Select(x => new PostgresReportMeasureSelection(x.MeasureCode, x.OutputCode, x.Label, x.DataType, x.Aggregation, x.FormatOverride)).ToList(),
             Sorts: sorts.Select(x => new PostgresReportSortSelection(x.FieldCode, x.MeasureCode, x.Direction, x.TimeGrain, x.AppliesToColumnAxis, x.GroupKey)).ToList(),
-            Predicates: predicates.Select(x => new PostgresReportPredicateSelection(x.FieldCode, x.OutputCode, x.Label, x.DataType, x.Filter)).ToList(),
+            Predicates: predicates.Select(x => new PostgresReportPredicateSelection(x.FieldCode, x.OutputCode, x.Label, x.DataType, x.Filter, x.TimeGrain)).ToList(),
             Parameters: MapParameters(reportCode, parameters),
             Paging: new PostgresReportPaging(paging.Offset, paging.Limit, paging.Cursor, disablePaging));
 

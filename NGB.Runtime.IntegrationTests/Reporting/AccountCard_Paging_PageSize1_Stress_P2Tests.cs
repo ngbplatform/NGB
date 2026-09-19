@@ -1,9 +1,12 @@
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using NGB.Application.Abstractions.Services;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.PostingState;
 using NGB.Accounting.Reports.AccountCard;
+using NGB.Contracts.Reporting;
 using NGB.Persistence.Accounts;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Accounts;
@@ -100,6 +103,35 @@ public sealed class AccountCard_Paging_PageSize1_Stress_P2Tests(PostgresTestFixt
         ids.Should().HaveCount(expectedLines);
         ids.Distinct().Should().HaveCount(expectedLines);
         ids.Should().BeInAscendingOrder();
+    }
+
+    [Theory]
+    [InlineData("accounting.account_card")]
+    [InlineData("accounting.general_ledger_aggregated")]
+    public async Task Continuation_recalculates_balance_after_a_backdated_posting(string code)
+    {
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+        var cash = await SeedCoAAsync(host);
+        await PostAsync(host, Guid.NewGuid(), PeriodUtc.AddDays(2), "50", "90.1", 5m);
+        await PostAsync(host, Guid.NewGuid(), PeriodUtc.AddDays(3), "50", "90.1", 7m);
+        var request = new ReportExecutionRequestDto(
+            Filters: new Dictionary<string, ReportFilterValueDto> { ["account_id"] = new(JsonSerializer.SerializeToElement(cash)) },
+            Parameters: new Dictionary<string, string> { ["from_utc"] = "2026-01-01", ["to_utc"] = "2026-01-31" }, Limit: 1);
+        ReportExecutionResponseDto first;
+        await using (var scope = host.Services.CreateAsyncScope())
+            first = await scope.ServiceProvider.GetRequiredService<IReportEngine>().ExecuteAsync(code, request, default);
+        first.HasMore.Should().BeTrue();
+        first.Sheet.Rows.Single(r => r.RowKind == ReportRowKind.Detail).Cells[^1].Value!.Value.GetDecimal().Should().Be(5m);
+
+        // Commit a source change before the keyset boundary between two HTTP-sized read sessions.
+        await PostAsync(host, Guid.NewGuid(), PeriodUtc.AddDays(1), "50", "90.1", 11m);
+        await using var nextScope = host.Services.CreateAsyncScope();
+        var next = await nextScope.ServiceProvider.GetRequiredService<IReportEngine>()
+            .ExecuteAsync(code, request with { Cursor = first.NextCursor }, default);
+        next.HasMore.Should().BeFalse();
+        next.Sheet.Rows.Single(r => r.RowKind == ReportRowKind.Detail).Cells[^1].Value!.Value.GetDecimal().Should().Be(23m);
+        foreach (var total in next.Sheet.Rows.Where(r => r.RowKind == ReportRowKind.Total))
+            total.Cells[^1].Value!.Value.GetDecimal().Should().Be(23m);
     }
 
     private static async Task<Guid> SeedCoAAsync(IHost host)

@@ -507,7 +507,7 @@ public sealed class RemainingReadersValidationFullCoverageTests
         journalLine.CreditDimensions.Should().BeSameAs(NGB.Core.Dimensions.DimensionBag.Empty);
 
         var ledger = new PostgresGeneralLedgerAggregatedReader(
-            new RecordingUnitOfWork(new RecordingDbConnection(_ => GeneralLedgerRows(firstSet))),
+            new RecordingUnitOfWork(new RecordingDbConnection(command => GeneralLedgerRows(firstSet, candidates: command.Contains("SELECT * FROM ((")))),
             dimensionSets.Object,
             enrichment.Object);
         var ledgerPage = await ledger.GetPageAsync(new GeneralLedgerAggregatedPageRequest
@@ -568,7 +568,7 @@ public sealed class RemainingReadersValidationFullCoverageTests
         oppositeLine.CreditDimensions.Should().BeSameAs(NGB.Core.Dimensions.DimensionBag.Empty);
 
         var ledgerPaged = new PostgresGeneralLedgerAggregatedReader(
-            new RecordingUnitOfWork(new RecordingDbConnection(_ => GeneralLedgerRows(firstSet, 2))),
+            new RecordingUnitOfWork(new RecordingDbConnection(command => GeneralLedgerRows(firstSet, 2, candidates: command.Contains("SELECT * FROM ((")))),
             dimensionSets.Object,
             enrichment.Object);
         var ledgerPagedResult = await ledgerPaged.GetPageAsync(new GeneralLedgerAggregatedPageRequest
@@ -596,7 +596,7 @@ public sealed class RemainingReadersValidationFullCoverageTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<Guid, NGB.Core.Dimensions.DimensionBag>());
         var missingLedger = new PostgresGeneralLedgerAggregatedReader(
-            new RecordingUnitOfWork(new RecordingDbConnection(_ => GeneralLedgerRows(firstSet))),
+            new RecordingUnitOfWork(new RecordingDbConnection(command => GeneralLedgerRows(firstSet, candidates: command.Contains("SELECT * FROM ((")))),
             missingLedgerDimensions.Object,
             enrichment.Object);
         (await missingLedger.GetPageAsync(new GeneralLedgerAggregatedPageRequest
@@ -1012,9 +1012,16 @@ public sealed class RemainingReadersValidationFullCoverageTests
         return table.CreateDataReader();
     }
 
-    private static DataTableReader GeneralLedgerRows(Guid dimensionSetId, int count = 1)
+    private static DataTableReader GeneralLedgerRows(Guid dimensionSetId, int count = 1, bool candidates = false)
     {
         var table = new DataTable();
+        if (candidates)
+        {
+            table.Columns.Add("Period", typeof(DateTime));
+            table.Columns.Add("DocumentId", typeof(Guid));
+            for (var i = 0; i < count; i++) table.Rows.Add(DateTime.UnixEpoch.AddMinutes(i), Guid.NewGuid());
+            return table.CreateDataReader();
+        }
         table.Columns.Add("PeriodUtc", typeof(DateTime));
         table.Columns.Add("DocumentId", typeof(Guid));
         table.Columns.Add("AccountId", typeof(Guid));

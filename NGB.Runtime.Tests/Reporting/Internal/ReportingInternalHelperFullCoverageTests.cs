@@ -43,7 +43,7 @@ public sealed class ReportingInternalHelperFullCoverageTests
         Cursor(totalDebit: null, totalCredit: null, closing: null).PipeCount().Should().Be(2);
         Cursor(totalDebit: 1m, totalCredit: null, closing: null).PipeCount().Should().Be(2);
         Cursor(totalDebit: 1m, totalCredit: 2m, closing: null).PipeCount().Should().Be(2);
-        Cursor(totalDebit: 1m, totalCredit: 2m, closing: 3m).PipeCount().Should().Be(5);
+        Cursor(totalDebit: 1m, totalCredit: 2m, closing: 3m).PipeCount().Should().Be(6);
     }
 
     [Theory]

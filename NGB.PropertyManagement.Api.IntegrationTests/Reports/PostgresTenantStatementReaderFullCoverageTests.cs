@@ -178,5 +178,17 @@ public sealed class PostgresTenantStatementReaderFullCoverageTests(PmIntegration
         tail.Rows.Should().ContainSingle().Which.DocumentId.Should().Be(secondChargeId);
         tail.HasMore.Should().BeFalse();
         tail.Total.Should().Be(2);
+        tail.Rows[0].RunningBalance.Should().Be(300m);
+        await uow.ExecuteInUowTransactionAsync(async ct =>
+            await uow.Connection.ExecuteAsync(new CommandDefinition(
+                "UPDATE documents SET status = @Draft, posted_at_utc = NULL WHERE id = @Id;",
+                new { Draft = (short)DocumentStatus.Draft, Id = firstChargeId }, uow.Transaction, cancellationToken: ct)), default);
+        var changed = await reader.GetCursorPageAsync(query, new TenantStatementPageCursor(
+            0, first.Total, first.Totals, first.NextAfterOccurredOnUtc, first.NextAfterSortOrder,
+            first.NextAfterDocumentId, first.NextRunningBalance), default);
+        changed.Rows.Should().ContainSingle().Which.DocumentId.Should().Be(secondChargeId);
+        changed.Rows[0].RunningBalance.Should().Be(200m);
+        changed.Total.Should().Be(1);
+        changed.Totals.ClosingBalance.Should().Be(200m);
     }
 }

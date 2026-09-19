@@ -386,6 +386,11 @@ export async function httpDelete<TResponse, TBody = unknown>(
   return httpRequest<TResponse>('DELETE', url, body, options)
 }
 
+export type HttpFileRequestOptions = HttpRequestOptions & {
+  /** File System Access destination; pipeTo applies backpressure and avoids buffering the whole download. */
+  destination?: WritableStream<Uint8Array>
+}
+
 export type HttpFileResponse = {
   blob: Blob
   fileName: string | null
@@ -409,11 +414,11 @@ function parseFileNameFromContentDisposition(value: string | null): string | nul
   return basicMatch?.[1]?.trim() || null
 }
 
-export async function httpPostFile<TBody = unknown>(url: string, body?: TBody, options?: HttpRequestOptions): Promise<HttpFileResponse> {
+export async function httpPostFile<TBody = unknown>(url: string, body?: TBody, options?: HttpFileRequestOptions): Promise<HttpFileResponse> {
   return await httpPostFileInternal(url, body, true, options)
 }
 
-async function httpPostFileInternal(url: string, body: unknown, retryOnUnauthorized: boolean, options?: HttpRequestOptions): Promise<HttpFileResponse> {
+async function httpPostFileInternal(url: string, body: unknown, retryOnUnauthorized: boolean, options?: HttpFileRequestOptions): Promise<HttpFileResponse> {
   const resolvedUrl = resolveUrl(url)
   const response = await fetch(resolvedUrl, {
     method: 'POST',
@@ -430,9 +435,71 @@ async function httpPostFileInternal(url: string, body: unknown, retryOnUnauthori
 
   if (!response.ok) await buildResponse(response, resolvedUrl)
 
+  if (options?.destination) {
+    if (!response.body) throw new Error('The download response has no body.')
+    await response.body.pipeTo(options.destination, { signal: options.signal })
+  }
   return {
-    blob: await response.blob(),
+    blob: options?.destination ? new Blob() : await response.blob(),
     fileName: parseFileNameFromContentDisposition(response.headers.get('content-disposition')),
     contentType: response.headers.get('content-type'),
   }
+}
+
+let nativeDownloadFrame: HTMLIFrameElement | null = null
+let nativeDownloadCleanup: ReturnType<typeof setTimeout> | null = null
+
+/** Browser-owned download: the file body never enters the JavaScript heap. */
+export async function httpPostNativeDownload(
+  url: string,
+  body: unknown,
+  options?: { signal?: AbortSignal; onError?: (error: Error) => void },
+): Promise<void> {
+  const target = new URL(resolveUrl(url))
+  // A same-origin frame also lets us surface a rejected request to the user.
+  if (target.origin !== window.location.origin) throw new Error('Browser downloads require the same-origin API proxy.')
+  const token = await getAccessToken()
+  options?.signal?.throwIfAborted()
+  if (!token) throw new Error('Please sign in again before downloading the report.')
+  nativeDownloadFrame?.remove()
+  if (nativeDownloadCleanup !== null) clearTimeout(nativeDownloadCleanup)
+  const frame = document.createElement('iframe')
+  frame.name = `ngb-download-${crypto.randomUUID()}`
+  frame.hidden = true
+  frame.title = 'Report download'
+  nativeDownloadFrame = frame
+  const cleanup = () => {
+    frame.remove()
+    if (nativeDownloadFrame === frame) {
+      nativeDownloadFrame = null
+      if (nativeDownloadCleanup !== null) clearTimeout(nativeDownloadCleanup)
+      nativeDownloadCleanup = null
+    }
+  }
+  frame.onload = () => {
+    const text = frame.contentDocument?.body?.textContent?.trim()
+    if (!text) return // Initial about:blank; attachment responses are handled by the browser.
+    try {
+      const problem = JSON.parse(text) as unknown
+      options?.onError?.(new Error(toApiErrorMessage(isRecord(problem) && typeof problem.status === 'number' ? problem.status : 400, problem)))
+    } catch { options?.onError?.(new Error('The report download failed. Please try again.')) }
+    cleanup()
+  }
+  document.body.appendChild(frame)
+  const form = document.createElement('form')
+  form.method = 'POST'
+  form.action = target.toString()
+  form.target = frame.name
+  form.hidden = true
+  for (const [name, value] of Object.entries({ access_token: token, request: JSON.stringify(body) })) {
+    const input = document.createElement('input')
+    input.type = 'hidden'
+    input.name = name
+    input.value = value
+    form.appendChild(input)
+  }
+  document.body.appendChild(form)
+  try { form.submit() } catch (error) { cleanup(); throw error } finally { form.remove() }
+  // Longer than the server's five-minute export budget; one frame, independent of file size.
+  nativeDownloadCleanup = setTimeout(cleanup, 310_000)
 }

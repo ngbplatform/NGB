@@ -8,13 +8,6 @@ namespace NGB.Runtime.Hosting;
 
 public static class RuntimeHostingServiceCollectionExtensions
 {
-    /// <summary>Hosts the durable report queue. Can run in API hosts or in a dedicated worker host.</summary>
-    public static IServiceCollection AddNgbReportExecutionWorker(this IServiceCollection services)
-    {
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ReportRunsHostedService>());
-        return services;
-    }
-
     /// <summary>
     /// Adds fail-fast validation of the composed NGB definitions to a generic host.
     /// Call this from a host composition root after choosing to host NGB Runtime.

@@ -83,7 +83,7 @@ public sealed class PurchasesByVendorCanonicalReportExecutor(
                     ["executor"] = "canonical-trd-purchases-by-vendor"
                 }));
 
-        var hasMore = page.HasMore || offset + pageRows.Count < page.Total;
+        var hasMore = page.HasMore || cursor is null && offset + pageRows.Count < page.Total;
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,

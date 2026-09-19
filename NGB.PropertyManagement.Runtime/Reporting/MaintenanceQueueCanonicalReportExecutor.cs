@@ -36,19 +36,7 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
         ReportExecutionRequestDto request,
         CancellationToken ct)
     {
-        var query = new MaintenanceQueueQuery(
-            AsOfUtc: CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc")
-                     ?? DateOnly.FromDateTime(DateTime.UtcNow),
-            BuildingId: CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "building_id"),
-            PropertyId: CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "property_id"),
-            CategoryId: CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "category_id"),
-            AssignedPartyId: CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "assigned_party_id"),
-            Priority: GetOptionalPriorityFilter(definition, request, "priority"),
-            QueueState: GetOptionalQueueStateFilter(definition, request, "queue_state"),
-            Offset: Math.Max(0, request.Offset),
-            Limit: request.Limit <= 0 ? 100 : request.Limit);
-
-        query.EnsureInvariant();
+        var query = CreateQuery(definition, request);
 
         var cursorKind = BuildCursorKind(query);
         var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
@@ -64,33 +52,9 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
             : await reader.GetPageAsync(query, ct);
         page.EnsureInvariant();
 
-        var sheet = new ReportSheetDto(
-            Columns:
-            [
-                new ReportSheetColumnDto("queue_state", "Queue State", "string", Width: 130, IsFrozen: true),
-                new ReportSheetColumnDto("request", "Request", "string", Width: 170, IsFrozen: true),
-                new ReportSheetColumnDto("subject", "Subject", "string", Width: 220),
-                new ReportSheetColumnDto("requested_at_utc", "Requested At", "date", Width: 120),
-                new ReportSheetColumnDto("aging_days", "Aging Days", "int32", Width: 110),
-                new ReportSheetColumnDto("building", "Building", "string", Width: 220),
-                new ReportSheetColumnDto("property", "Property", "string", Width: 220),
-                new ReportSheetColumnDto("category", "Category", "string", Width: 160),
-                new ReportSheetColumnDto("priority", "Priority", "string", Width: 110),
-                new ReportSheetColumnDto("requested_by", "Requested By", "string", Width: 180),
-                new ReportSheetColumnDto("work_order", "Work Order", "string", Width: 170),
-                new ReportSheetColumnDto("assigned_to", "Assigned To", "string", Width: 180),
-                new ReportSheetColumnDto("due_by_utc", "Due By", "date", Width: 120)
-            ],
-            Rows: page.Rows.Select(ToRow).ToArray(),
-            Meta: new ReportSheetMetaDto(
-                Title: definition.Name,
-                Subtitle: $"As of {query.AsOfUtc:yyyy-MM-dd}",
-                Diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["executor"] = "canonical-pm-maintenance-queue"
-                }));
+        var sheet = CreateSheet(definition, query.AsOfUtc, page.Rows);
 
-        var hasMore = page.HasMore || query.Offset + page.Rows.Count < page.Total;
+        var hasMore = page.HasMore || cursor is null && query.Offset + page.Rows.Count < page.Total;
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
@@ -113,6 +77,57 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
             {
                 ["executor"] = "canonical-pm-maintenance-queue"
             });
+    }
+
+    internal static MaintenanceQueueQuery CreateQuery(ReportDefinitionDto definition, ReportExecutionRequestDto request)
+    {
+        var query = new MaintenanceQueueQuery(
+            AsOfUtc: CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc")
+                     ?? DateOnly.FromDateTime(DateTime.UtcNow),
+            BuildingId: CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "building_id"),
+            PropertyId: CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "property_id"),
+            CategoryId: CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "category_id"),
+            AssignedPartyId: CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "assigned_party_id"),
+            Priority: GetOptionalPriorityFilter(definition, request, "priority"),
+            QueueState: GetOptionalQueueStateFilter(definition, request, "queue_state"),
+            Offset: Math.Max(0, request.Offset),
+            Limit: request.Limit <= 0 ? 100 : request.Limit,
+            IncludeTotal: false);
+
+        query.EnsureInvariant();
+
+        return query;
+    }
+
+    internal static ReportSheetDto CreateSheet(ReportDefinitionDto definition, DateOnly asOf, IReadOnlyList<MaintenanceQueueRow> rows)
+    {
+        var sheet = new ReportSheetDto(
+            Columns:
+            [
+                new ReportSheetColumnDto("queue_state", "Queue State", "string", Width: 130, IsFrozen: true),
+                new ReportSheetColumnDto("request", "Request", "string", Width: 170, IsFrozen: true),
+                new ReportSheetColumnDto("subject", "Subject", "string", Width: 220),
+                new ReportSheetColumnDto("requested_at_utc", "Requested At", "date", Width: 120),
+                new ReportSheetColumnDto("aging_days", "Aging Days", "int32", Width: 110),
+                new ReportSheetColumnDto("building", "Building", "string", Width: 220),
+                new ReportSheetColumnDto("property", "Property", "string", Width: 220),
+                new ReportSheetColumnDto("category", "Category", "string", Width: 160),
+                new ReportSheetColumnDto("priority", "Priority", "string", Width: 110),
+                new ReportSheetColumnDto("requested_by", "Requested By", "string", Width: 180),
+                new ReportSheetColumnDto("work_order", "Work Order", "string", Width: 170),
+                new ReportSheetColumnDto("assigned_to", "Assigned To", "string", Width: 180),
+                new ReportSheetColumnDto("due_by_utc", "Due By", "date", Width: 120)
+            ],
+            Rows: rows.Select(ToRow).ToArray(),
+            Meta: new ReportSheetMetaDto(
+                Title: definition.Name,
+                Subtitle: $"As of {asOf:yyyy-MM-dd}",
+                Diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["executor"] = "canonical-pm-maintenance-queue"
+                }));
+
+        return sheet;
     }
 
     private string BuildCursorKind(MaintenanceQueueQuery query)

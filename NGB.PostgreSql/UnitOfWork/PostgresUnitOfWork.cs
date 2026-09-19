@@ -111,7 +111,7 @@ public sealed class PostgresUnitOfWork : IUnitOfWork
     public async Task RollbackAsync(CancellationToken ct = default)
     {
         // Transaction finalization MUST NOT depend on the caller's CancellationToken.
-        _logger.LogWarning("DB transaction ROLLBACK.");
+        _logger.LogDebug("DB transaction ROLLBACK.");
 
         var transaction = Transaction;
         if (transaction is null)

@@ -151,6 +151,21 @@ public sealed class TradePricing_EndToEnd_P0Tests(TradePostgresFixture fixture) 
             CancellationToken.None);
         var secondPosted = await documents.PostAsync(TradeCodes.ItemPriceUpdate, secondDraft.Id, CancellationToken.None);
 
+        if (Testing.Reporting.ReportPerformanceProbe.Enabled)
+        {
+            foreach (var size in new[] { 1, 200 })
+            {
+                using var audit = Testing.Reporting.ReportPerformanceProbe.Begin(TradeCodes.CurrentItemPricesReport, $"populated-page-{size}");
+                var sample = await reports.ExecuteAsync(TradeCodes.CurrentItemPricesReport, new ReportExecutionRequestDto(Limit: size), default);
+                sample.Sheet.Rows.Should().NotBeEmpty();
+                if (audit is not null) audit.Rows = sample.Sheet.Rows.Count;
+            }
+            using var exportAudit = Testing.Reporting.ReportPerformanceProbe.Begin(TradeCodes.CurrentItemPricesReport, "populated-export");
+            await using var download = await scope.ServiceProvider.GetRequiredService<IReportDownloadService>()
+                .PrepareAsync(TradeCodes.CurrentItemPricesReport, new ReportExportRequestDto(), default);
+            await download.WriteAsync(Stream.Null, default);
+        }
+
         var priceReader = scope.ServiceProvider.GetRequiredService<ITradeCurrentItemPriceReader>();
         var asOfUtc = new DateTime(2030, 4, 30, 0, 0, 0, DateTimeKind.Utc);
         var firstPricePage = await priceReader.GetCursorPageAsync(

@@ -112,7 +112,8 @@ public sealed class PostgresAccountCardEffectivePageReaderFullCoverageTests
         page.Lines.Should().BeEmpty();
         var command = fixture.Connection.Commands.Should().ContainSingle().Subject;
         command.CommandText.Should().NotContain("@AfterPeriodUtc");
-        command.CommandText.Should().Contain("LIMIT @LimitPlusOne");
+        command.CommandText.Should().Contain("LIMIT @ScanSize");
+        command.ParametersSnapshot.Single(parameter => parameter.ParameterName == "ScanSize").Value.Should().Be(256);
         command.ParametersSnapshot.Single(parameter => parameter.ParameterName == "AfterPeriodUtc").Value
             .Should().Be(DBNull.Value);
         command.ParametersSnapshot.Single(parameter => parameter.ParameterName == "AfterEntryId").Value
@@ -146,9 +147,10 @@ public sealed class PostgresAccountCardEffectivePageReaderFullCoverageTests
         fixture.Dimensions.LastIds.Should().BeEquivalentTo(new[] { PrimarySetId, CounterSetId });
         fixture.Enrichment.Calls.Should().Be(1);
         var sql = fixture.Connection.Commands.Should().ContainSingle().Subject.CommandText;
-        sql.Should().Contain("requested_scope_pairs");
+        sql.Should().Contain("WITH requested AS");
+        sql.Should().Contain("@ScopeDimensionCount");
         sql.Should().Contain("@AfterPeriodUtc");
-        sql.Should().Contain("LIMIT @LimitPlusOne");
+        sql.Should().Contain("LIMIT @ScanSize");
     }
 
     [Fact]
@@ -261,7 +263,10 @@ public sealed class PostgresAccountCardEffectivePageReaderFullCoverageTests
             ["CounterAccountDimensionSetId"] = counterSetId,
             ["DimensionSetId"] = primarySetId,
             ["DebitAmount"] = 12m,
-            ["CreditAmount"] = 0m
+            ["CreditAmount"] = 0m,
+            ["Amount"] = 12m,
+            ["Sign"] = (short)1,
+            ["IsEffective"] = true
         };
 
     private static IReadOnlyDictionary<string, object?> TotalsLineRow(

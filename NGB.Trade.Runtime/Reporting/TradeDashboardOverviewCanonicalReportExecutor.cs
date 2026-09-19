@@ -29,8 +29,8 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
         var analyticsSnapshot = await analytics.GetDashboardOverviewAsync(
             fromInclusive,
             asOf,
-            topItemLimit: 5,
-            recentDocumentLimit: 8,
+            topItemLimit: TradeDashboardLimits.Top,
+            recentDocumentLimit: TradeDashboardLimits.RecentDocuments,
             ct);
         var salesByItem = analyticsSnapshot.SalesByItem;
         var salesByCustomer = analyticsSnapshot.SalesByCustomer;
@@ -44,7 +44,7 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
             warehouseIds: null,
             TradeInventoryBalanceSort.AbsoluteQuantityDescending,
             offset: 0,
-            limit: 8,
+            limit: TradeDashboardLimits.Inventory,
             ct);
         var inventoryPositions = balances.Rows;
         var inventoryPositionCount = balances.Total;
@@ -55,7 +55,7 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
         var inventoryOnHand = balances.TotalQuantity;
         var topItems = salesByItem.Rows
             .Where(static x => x.NetSales != 0m || x.SoldQuantity != 0m || x.ReturnedQuantity != 0m)
-            .Take(5)
+            .Take(TradeDashboardLimits.Top)
             .ToArray();
 
         var rows = new List<ReportSheetRowDto>
@@ -127,7 +127,9 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
         }
         else
         {
-            rows.AddRange(salesByCustomer.Rows.Take(5).Select(row => TopCustomerRow(row, fromInclusive, asOf)));
+            rows.AddRange(salesByCustomer.Rows
+                .Take(TradeDashboardLimits.Top)
+                .Select(row => TopCustomerRow(row, fromInclusive, asOf)));
         }
 
         rows.Add(HeaderRow("Top Vendors"));
@@ -137,7 +139,9 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
         }
         else
         {
-            rows.AddRange(purchasesByVendor.Rows.Take(5).Select(row => TopVendorRow(row, fromInclusive, asOf)));
+            rows.AddRange(purchasesByVendor.Rows
+                .Take(TradeDashboardLimits.Top)
+                .Select(row => TopVendorRow(row, fromInclusive, asOf)));
         }
 
         rows.Add(HeaderRow("Largest Inventory Positions"));

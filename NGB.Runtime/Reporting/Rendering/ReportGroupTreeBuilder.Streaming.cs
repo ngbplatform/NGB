@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
-using NGB.Runtime.Reporting.Runs;
+using NGB.Runtime.Reporting.Streaming;
 using NGB.Tools.Exceptions;
 
 namespace NGB.Runtime.Reporting.Rendering;

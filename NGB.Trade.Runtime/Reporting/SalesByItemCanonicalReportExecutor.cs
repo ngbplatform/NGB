@@ -84,7 +84,7 @@ public sealed class SalesByItemCanonicalReportExecutor(ITradeAnalyticsReader ana
                     ["executor"] = "canonical-trd-sales-by-item"
                 }));
 
-        var hasMore = page.HasMore || offset + pageRows.Count < page.Total;
+        var hasMore = page.HasMore || cursor is null && offset + pageRows.Count < page.Total;
         var nextCursor = !request.DisablePaging && hasMore
             ? SpecializedReportCursorCodec.Encode(
                 cursorKind,
