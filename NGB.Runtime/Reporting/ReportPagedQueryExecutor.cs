@@ -28,6 +28,9 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
         for (var i = 0; i < path.Count; i++)
         {
             var g = original.RowGroups[i];
+            if (!IsGroupValueCompatible(path[i], g.DataType))
+                throw new NgbArgumentInvalidException("groupPath", "Invalid report group value type.");
+
             predicates.Add(new(g.FieldCode, g.OutputCode, g.Label, g.DataType, new(path[i]), g.TimeGrain));
         }
         
@@ -58,18 +61,22 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
 
         var pivot = plan.ColumnGroups.Count > 0;
         var columnRows = Array.Empty<ReportDataRow>();
-        var width = ReportSheetBuilder.BuildColumns(rowPlan).Count;
+        var rowAxisWidth = ReportSheetBuilder.BuildColumns(original).Count - original.Measures.Count;
+        var width = rowAxisWidth + original.Measures.Count;
         
         if (pivot)
         {
             var columnPlan = plan with
             {
                 RowGroups = [], DetailFields = [],
+                // Every expanded branch shares the root column axis. Filtering it
+                // by the branch would move pivot values under different headers.
+                Predicates = original.Predicates,
                 Sorts = plan.Sorts.Where(s => s.AppliesToColumnAxis).ToArray()
             };
 
             var maxWidth = Math.Min(MaxColumns, definition.Capabilities.MaxVisibleColumns ?? MaxColumns);
-            var available = maxWidth - (group.Length > 0 ? 1 : details.Count) - (plan.Shape.ShowGrandTotals ? plan.Measures.Count : 0);
+            var available = maxWidth - rowAxisWidth - (plan.Shape.ShowGrandTotals ? plan.Measures.Count : 0);
             var maxLeaves = available / Math.Max(1, plan.Measures.Count);
 
             if (maxLeaves < 1)
@@ -81,7 +88,7 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
                 throw TooWide(maxWidth);
 
             columnRows = columns.Rows.ToArray();
-            width = (group.Length > 0 ? 1 : details.Count) + columnRows.Length * plan.Measures.Count + (plan.Shape.ShowGrandTotals ? plan.Measures.Count : 0);
+            width = rowAxisWidth + columnRows.Length * plan.Measures.Count + (plan.Shape.ShowGrandTotals ? plan.Measures.Count : 0);
         }
 
         var separateSubtotals = group.Length > 0
@@ -145,7 +152,7 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
         // measures still query the original observations (never sum averages or distinct counts).
         ReportDataRow? grand = null;
         IReadOnlyList<ReportDataRow> grandCells = [];
-        if (!rows.HasMore && plan.Shape.ShowGrandTotals && plan.Measures.Count > 0)
+        if (path.Count == 0 && !rows.HasMore && plan.Shape.ShowGrandTotals && plan.Measures.Count > 0)
         {
             var grandPlan = plan with
             {
@@ -215,9 +222,11 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
         
         if (pivot)
         {
-            var renderer = new ReportPivotMatrixBuilder(formatter, new(formatter, actions), actions);
+            var headerActions = new ReportComposableCellActionResolver(original, definition.Dataset);
+            var renderer = new ReportPivotMatrixBuilder(formatter, new(formatter, headerActions), actions);
             var result = renderer.BuildPage(
                 plan,
+                original,
                 rows.Rows,
                 columnRows,
                 cells,
@@ -237,7 +246,7 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
         }
         else
         {
-            var columns = ReportSheetBuilder.BuildColumns(plan);
+            var columns = ReportSheetBuilder.BuildColumns(original);
             var rendered = new List<ReportSheetRowDto>();
 
             foreach (var row in rows.Rows)
@@ -247,7 +256,7 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
                     group.Length == 0
                         ? ReportRowKind.Detail 
                         : ReportRowKind.Group,
-                    columns.Select(column => ReportRowHierarchy.IsHierarchyColumn(column)
+                    columns.Select(column => ReportRowHierarchy.IsHierarchyColumn(column) && group.Length > 0
                         ? formatter.BuildLabelCell(ReportRowHierarchy.FormatGroupLabel(
                             formatter, group[0],
                             values.GetValueOrDefault(group[0].OutputCode)),
@@ -324,6 +333,23 @@ public sealed class ReportPagedQueryExecutor(IReportPageDataSource source, IDocu
         };
 
         return new(sheet, 0, pageSize, null, rows.HasMore, rows.NextCursor, diagnostics);
+    }
+
+    private static bool IsGroupValueCompatible(JsonElement value, string dataType)
+    {
+        if (value.ValueKind == JsonValueKind.Null)
+            return true;
+
+        return dataType.ToLowerInvariant() switch
+        {
+            "string" or "text" => value.ValueKind == JsonValueKind.String,
+            "guid" or "uuid" => value.ValueKind == JsonValueKind.String && value.TryGetGuid(out _),
+            "bool" or "boolean" => value.ValueKind is JsonValueKind.True or JsonValueKind.False,
+            "int" or "int32" or "int64" or "integer" or "long" => value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out _),
+            "decimal" or "number" or "double" or "float" => value.ValueKind == JsonValueKind.Number,
+            "date" or "datetime" or "datetimeoffset" => value.ValueKind == JsonValueKind.String,
+            _ => true
+        };
     }
 
     private Task<ReportDataPage> ReadAsync(

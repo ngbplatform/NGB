@@ -75,7 +75,7 @@ public sealed class LedgerAnalysis_Composable_EndToEnd_P0Tests(PostgresTestFixtu
         response.Diagnostics.Should().ContainKey("engine").WhoseValue.Should().Be("runtime");
         response.Diagnostics.Should().ContainKey("executor").WhoseValue.Should().Be("postgres-foundation");
         response.Sheet.Columns.Select(x => x.Code).Should().Equal("__row_hierarchy", "debit_amount__sum");
-        response.Sheet.Columns[0].Title.Should().Be("Account");
+        response.Sheet.Columns[0].Title.Should().Be("Account\nPeriod\nDocument");
         response.Sheet.Meta!.HasRowOutline.Should().BeTrue();
 
         var accountGroup = response.Sheet.Rows.First(
@@ -90,8 +90,10 @@ public sealed class LedgerAnalysis_Composable_EndToEnd_P0Tests(PostgresTestFixtu
 
         accountGroup.ChildrenPath.Should().NotBeNull();
         var periods = await ComposableReportingIntegrationTestHelpers.ExecuteLedgerAnalysisAsync(host, request with { GroupPath = accountGroup.ChildrenPath });
+        periods.Sheet.Columns.Should().BeEquivalentTo(response.Sheet.Columns, options => options.WithStrictOrdering());
         var month = periods.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Group && x.Cells[0].Display == "February 2026");
         var documents = await ComposableReportingIntegrationTestHelpers.ExecuteLedgerAnalysisAsync(host, request with { GroupPath = month.ChildrenPath });
+        documents.Sheet.Columns.Should().BeEquivalentTo(response.Sheet.Columns, options => options.WithStrictOrdering());
         documents.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group
             && x.Cells[0].Display != null && x.Cells[0].Display!.StartsWith("IT Document A IT-LA-001", StringComparison.OrdinalIgnoreCase)
             && x.Cells[0].Action != null && x.Cells[0].Action!.Kind == ReportCellActionKinds.OpenDocument

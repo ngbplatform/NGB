@@ -7,6 +7,7 @@ internal sealed partial class ReportPivotMatrixBuilder
 {
     public ReportPivotSheetBuildResult BuildPage(
         ReportQueryPlan plan,
+        ReportQueryPlan presentationPlan,
         IReadOnlyList<ReportDataRow> axisRows,
         IReadOnlyList<ReportDataRow> columnRows,
         IReadOnlyList<ReportDataRow> cells,
@@ -15,7 +16,7 @@ internal sealed partial class ReportPivotMatrixBuilder
         bool showGroupValues,
         bool separateSubtotals)
     {
-        var rowColumns = BuildRowAxisColumns(plan);
+        var rowColumns = BuildRowAxisColumns(presentationPlan);
         var columnCodes = plan.ColumnGroups.Select(g => g.OutputCode).ToArray();
         var axisCodes = ReportRowHierarchy.BuildValueCodes(plan);
         var leaves = columnRows.Select(row => new PivotColumnLeaf(

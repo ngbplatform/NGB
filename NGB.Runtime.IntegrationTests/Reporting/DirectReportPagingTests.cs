@@ -8,6 +8,7 @@ using NGB.Contracts.Reporting;
 using NGB.Contracts.Common;
 using NGB.PostgreSql.Reporting;
 using NGB.Runtime.IntegrationTests.Infrastructure;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
@@ -121,6 +122,9 @@ public sealed class DirectReportPagingTests(PostgresTestFixture fixture) : Integ
         {
             var before = queries.Count;
             var page = await engine.ExecuteAsync(DirectComposableExportsTests.Source.Code, childrenRequest with { Cursor = cursor }, default);
+            page.Sheet.Columns.Should().BeEquivalentTo(root.Sheet.Columns, options => options.WithStrictOrdering());
+            JsonSerializer.Serialize(page.Sheet.HeaderRows).Should().Be(JsonSerializer.Serialize(root.Sheet.HeaderRows));
+            page.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total);
             var idColumn = page.Sheet.Columns.ToList().FindIndex(c => c.Code == "id");
             ids.AddRange(page.Sheet.Rows.Where(r => r.RowKind == ReportRowKind.Detail).Select(r => r.Cells[idColumn].Value!.Value.GetInt64()));
             (queries.Count - before).Should().BeLessThanOrEqualTo(pivot ? 5 : 2);
@@ -131,6 +135,66 @@ public sealed class DirectReportPagingTests(PostgresTestFixture fixture) : Integ
         Func<Task> changed = () => engine.ExecuteAsync(DirectComposableExportsTests.Source.Code,
             request with { Cursor = root.NextCursor, GroupPath = [JsonSerializer.SerializeToElement(0)] }, default);
         await changed.Should().ThrowAsync<Exception>().WithMessage("*cursor*");
+    }
+
+    [Fact]
+    public async Task Nested_pivot_branches_keep_the_root_columns_when_their_column_values_differ()
+    {
+        var source = new DirectComposableExportsTests.Source("(VALUES (1,1),(2,2),(4001,3)) AS xy(x,y)");
+        var queries = new Counter();
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString, services =>
+        {
+            services.AddSingleton<IReportDefinitionSource>(source);
+            services.AddSingleton<IPostgresReportDatasetSource>(source);
+            services.AddScoped<IReportPageDataSource>(sp => new CountingSource(sp.GetRequiredService<PostgresReportPlanExecutor>(), queries));
+        });
+        await using var scope = host.Services.CreateAsyncScope();
+        var engine = scope.ServiceProvider.GetRequiredService<IReportEngine>();
+        var request = new ReportExecutionRequestDto(Layout: new(
+            RowGroups: [new("bucket"), new("customer_display")], ColumnGroups: [new("kind")], DetailFields: ["id"],
+            Measures: [new("amount", ReportAggregationKind.Sum)], ShowDetails: true, ShowSubtotals: true,
+            ShowSubtotalsOnSeparateRows: false, ShowGrandTotals: false));
+        var root = await engine.ExecuteAsync(DirectComposableExportsTests.Source.Code, request, default);
+        root.Sheet.Rows.Should().HaveCount(2);
+        var before = queries.Count;
+        var branch = await engine.ExecuteAsync(DirectComposableExportsTests.Source.Code,
+            request with { GroupPath = root.Sheet.Rows[0].ChildrenPath }, default);
+        (queries.Count - before).Should().Be(3);
+        branch.Sheet.Rows.Should().ContainSingle();
+        branch.Sheet.Rows[0].ChildrenPath.Should().HaveCount(2);
+        before = queries.Count;
+        var details = await engine.ExecuteAsync(DirectComposableExportsTests.Source.Code,
+            request with { GroupPath = branch.Sheet.Rows[0].ChildrenPath }, default);
+        (queries.Count - before).Should().Be(3);
+        details.Sheet.Rows.Should().HaveCount(2);
+        foreach (var sheet in new[] { branch.Sheet, details.Sheet })
+        {
+            sheet.Columns.Should().BeEquivalentTo(root.Sheet.Columns, options => options.WithStrictOrdering());
+            JsonSerializer.Serialize(sheet.HeaderRows).Should().Be(JsonSerializer.Serialize(root.Sheet.HeaderRows));
+            sheet.Rows.Should().OnlyContain(row => row.Cells.Count == root.Sheet.Columns.Count);
+            sheet.Rows.Should().OnlyContain(row => row.Cells.Last().Value == null, "the last pivot column belongs to the other root group");
+        }
+    }
+
+    [Fact]
+    public async Task Invalid_group_value_type_is_rejected_before_querying_the_database()
+    {
+        var source = new DirectComposableExportsTests.Source();
+        var queries = new Counter();
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString, services =>
+        {
+            services.AddSingleton<IReportDefinitionSource>(source);
+            services.AddSingleton<IPostgresReportDatasetSource>(source);
+            services.AddScoped<IReportPageDataSource>(sp => new CountingSource(sp.GetRequiredService<PostgresReportPlanExecutor>(), queries));
+        });
+        await using var scope = host.Services.CreateAsyncScope();
+        var engine = scope.ServiceProvider.GetRequiredService<IReportEngine>();
+        Func<Task> execute = () => engine.ExecuteAsync(DirectComposableExportsTests.Source.Code,
+            new(Layout: new(RowGroups: [new("customer_display")], DetailFields: ["id"],
+                Measures: [new("amount", ReportAggregationKind.Sum)], ShowDetails: true),
+                GroupPath: [JsonSerializer.SerializeToElement(1)]), default);
+        await execute.Should().ThrowAsync<NgbArgumentInvalidException>().WithMessage("*group value type*");
+        queries.Count.Should().Be(0);
     }
 
     [Fact]

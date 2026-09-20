@@ -32,6 +32,17 @@ export class ReportPageWindow {
   get retainedCursorBytes() { return this.bookmarkBytes }
   get previousCursor() { return this.bookmarks.get(this.start - 1)?.cursor ?? null }
   get rowCount() { return this.pages.reduce((n, page) => n + page.sheet.rows.length, 0) }
+  get byteSize() { return this.retainedBytes + this.bookmarkBytes }
+  clone(): ReportPageWindow {
+    const copy = new ReportPageWindow(this.maxRows, this.maxBytes, this.maxBookmarks, this.maxBookmarkBytes)
+    copy.pages = [...this.pages]
+    copy.bookmarks = new Map(this.bookmarks)
+    copy.bookmarkBytes = this.bookmarkBytes
+    copy.start = this.start
+    copy.retainedBytes = this.retainedBytes
+    copy.sizes = [...this.sizes]
+    return copy
+  }
   get response(): ReportExecutionResponseDto | null {
     return this.pages.reduce<ReportExecutionResponseDto | null>((all, page) => all ? mergePagedReportResponses(all, page) : page, null)
   }

@@ -70,7 +70,7 @@ export function saveReportPageExecutionSnapshot(
     response,
     consumedCursors: Array.from(new Set(consumedCursors.map((entry) => entry.trim()).filter((entry) => entry.length > 0))),
     savedAtMs: Date.now(),
-    version: 2,
+    version: 3,
   } satisfies ReportPageExecutionSnapshot
 
   // Row count alone does not protect wide pivot reports. Keep synchronous
@@ -89,7 +89,7 @@ export function loadReportPageExecutionSnapshot(routeStateKey: string | null | u
   if (!storageKey) return null
 
   const snapshot = readStorageJsonOrNull<ReportPageExecutionSnapshot>('session', storageKey)
-  if (!snapshot?.response?.sheet || snapshot.version !== 2) return null
+  if (!snapshot?.response?.sheet || snapshot.version !== 3) return null
 
   return {
     response: snapshot.response,

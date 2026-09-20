@@ -89,7 +89,8 @@ function makeStressSheet(rows: number, measureCount = 10): ReportSheetDto {
   }
 }
 
-const mobileSheet = makeSheet(12)
+// Keep enough rows to require vertical scrolling without relying on narrow-column wrapping.
+const mobileSheet = makeSheet(24)
 
 const ReportSheetMobileHarness = defineComponent({
   setup() {

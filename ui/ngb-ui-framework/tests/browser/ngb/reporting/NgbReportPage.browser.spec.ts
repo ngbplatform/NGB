@@ -2301,20 +2301,33 @@ test('exports the current report request and allows cancelling the download', as
 })
 
 
-test('opens a group on demand and restores the root through its breadcrumb', async () => {
+test('expands a group inline and collapses it without navigation or another request', async () => {
   reportPageMocks.state.definition!.filters = []
   reportPageMocks.state.variants = []
   const root = buildResponse({ rows: ['North Square'] })
   root.sheet.rows[0]!.rowKind = ReportRowKind.Group
   root.sheet.rows[0]!.childrenPath = ['north-id']
   reportPageMocks.state.executeResponses = [root, buildResponse({ rows: ['Child detail'] }), root]
-  const { view } = await renderReportPage()
-  await view.getByRole('button', { name: 'Open group' }).click()
-  await expect.element(view.getByText('first:Child detail')).toBeVisible()
-  expect(reportPageMocks.executeReport.mock.calls[1]?.[1].groupPath).toEqual(['north-id'])
-  await view.getByRole('button', { name: 'All groups', exact: true }).click()
+  const { view, router } = await renderReportPage()
   await expect.element(view.getByText('first:North Square')).toBeVisible()
-  expect(reportPageMocks.executeReport.mock.calls[2]?.[1].groupPath ?? []).toEqual([])
+  const url = router.currentRoute.value.fullPath
+  const originalParameters = clone(reportPageMocks.executeReport.mock.calls[0]?.[1].parameters)
+  const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement
+  dateInput.value = '2026-10-01'
+  dateInput.dispatchEvent(new Event('input', { bubbles: true }))
+  dateInput.dispatchEvent(new Event('change', { bubbles: true }))
+  await flushUi()
+  await view.getByRole('button', { name: 'Expand group' }).click()
+  await expect.element(view.getByText('row:Child detail', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('first:North Square')).toBeVisible()
+  expect(router.currentRoute.value.fullPath).toBe(url)
+  expect(reportPageMocks.executeReport.mock.calls[1]?.[1].groupPath).toEqual(['north-id'])
+  expect(reportPageMocks.executeReport.mock.calls[1]?.[1].parameters).toEqual(originalParameters)
+  await view.getByRole('button', { name: 'Collapse group', exact: true }).click()
+  await expect.element(view.getByText('row:Child detail', { exact: true })).not.toBeInTheDocument()
+  await view.getByRole('button', { name: 'Expand group', exact: true }).click()
+  await expect.element(view.getByText('row:Child detail', { exact: true })).toBeVisible()
+  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(2)
 })
 
 test('keeps a bounded window while scrolling forward and reloads evicted rows when scrolling back', async () => {
@@ -2361,4 +2374,58 @@ test('streams downloads to the chosen file destination without creating a Blob U
     expect(reportPageMocks.exportReportXlsx.mock.calls[0]?.[2].destination).toBe(destination)
     expect(createUrl).not.toHaveBeenCalled()
   } finally { createUrl.mockRestore() }
+})
+
+test('isolates expanded sections and late child responses across accounting report navigation', async () => {
+  const staleChild = createDeferred<ReportExecutionResponseDto>()
+  reportPageMocks.getReportDefinition.mockImplementation(async (code: string) => ({
+    ...clone(baseDefinition), reportCode: code, name: code, filters: [],
+  }))
+  reportPageMocks.getReportVariants.mockResolvedValue([])
+  reportPageMocks.executeReport.mockImplementation(async (code: string, request: ReportExecutionRequestDto) => {
+    if (request.groupPath?.length) return await staleChild.promise
+    const result = buildResponse({ rows: [code] })
+    if (code === 'accounting.trial_balance') {
+      result.sheet.rows[0]!.rowKind = ReportRowKind.Group
+      result.sheet.rows[0]!.childrenPath = [1]
+    }
+    return result
+  })
+  const { view, router } = await renderReportPage('/reports/accounting.trial_balance')
+  await view.getByRole('button', { name: 'Expand group' }).click()
+  await expect.poll(() => reportPageMocks.executeReport.mock.calls.length).toBe(2)
+  const childSignal = reportPageMocks.executeReport.mock.calls[1]?.[2].signal as AbortSignal
+  for (const code of ['accounting.income_statement', 'accounting.statement_of_changes_in_equity', 'accounting.ledger.analysis']) {
+    await router.push(`/reports/${code}`)
+    await expect.element(view.getByText(`first:${code}`)).toBeVisible()
+    expect(reportPageMocks.executeReport.mock.lastCall?.[0]).toBe(code)
+    expect(reportPageMocks.executeReport.mock.lastCall?.[1].groupPath).toEqual([])
+  }
+  expect(childSignal.aborted).toBe(true)
+  staleChild.resolve(buildResponse({ rows: ['stale trial balance child'] }))
+  await flushUi()
+  await expect.element(view.getByText('first:accounting.ledger.analysis')).toBeVisible()
+  expect(document.body.textContent).not.toContain('stale trial balance child')
+})
+
+
+test('ignores a variant lookup hydration that completes after switching reports', async () => {
+  const hydration = createDeferred<void>()
+  const lookupStore = createLookupStore()
+  lookupStore.ensureCatalogLabels.mockImplementationOnce(async () => hydration.promise)
+  configureNgbReporting({ useLookupStore: () => lookupStore, resolveLookupTarget: reportPageMocks.resolveLookupTarget })
+  reportPageMocks.getReportDefinition.mockImplementation(async (code: string) => ({
+    ...clone(baseDefinition), reportCode: code, name: code,
+    filters: code === 'pm.occupancy.summary' ? clone(baseDefinition.filters) : [],
+  }))
+  reportPageMocks.getReportVariants.mockImplementation(async (code: string) => code === 'pm.occupancy.summary' ? clone(baseVariants) : [])
+  const { router, view } = await renderReportPage('/reports/pm.occupancy.summary?variant=audit-view')
+  await expect.poll(() => lookupStore.ensureCatalogLabels.mock.calls.length).toBe(1)
+  await router.push('/reports/accounting.income_statement')
+  await expect.element(view.getByText('rows:1')).toBeVisible()
+  hydration.resolve()
+  await flushUi()
+  expect(reportPageMocks.executeReport.mock.calls.map(call => call[0])).toEqual(['accounting.income_statement'])
+  await expect.element(view.getByText('variant:none')).toBeVisible()
+  await expect.element(view.getByText('accounting.income_statement', { exact: true })).toBeVisible()
 })

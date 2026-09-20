@@ -1,4 +1,5 @@
 import { defineComponent, h, ref, type PropType } from 'vue'
+import type { ReportDisplayRow } from '../../../../src/ngb/reporting/groupTree'
 
 type LookupItem = {
   id: string
@@ -12,7 +13,7 @@ type VariantOption = {
 }
 
 type ReportSheetDto = {
-  rows?: unknown[]
+  rows?: ReportDisplayRow[]
 }
 
 type ReportContext = {
@@ -434,7 +435,7 @@ export const StubReportSheet = defineComponent({
       default: '',
     },
   },
-  emits: ['load-more', 'load-previous', 'open-group', 'scroll-top-change'],
+  emits: ['load-more', 'load-previous', 'group-action', 'scroll-top-change'],
   setup(props, { emit, expose }) {
     const restoredScrollTop = ref(0)
 
@@ -462,8 +463,11 @@ export const StubReportSheet = defineComponent({
       h('button', { type: 'button', onClick: () => emit('scroll-top-change', 120) }, 'Report sheet scroll'),
       props.canLoadPrevious
         ? h('button', { type: 'button', onClick: () => emit('load-previous') }, 'Load previous') : null,
-      ...(props.sheet?.rows ?? []).filter(row => row.childrenPath).map(row =>
-        h('button', { type: 'button', onClick: () => emit('open-group', row.childrenPath, row.cells[0]?.display ?? '') }, 'Open group')),
+      ...(props.sheet?.rows ?? []).map(row => h('div', `row:${row.cells[0]?.display ?? ''}`)),
+      ...(props.sheet?.rows ?? []).filter(row => row.group).map(row => {
+        const group = row.group!
+        return h('button', { type: 'button', onClick: () => emit('group-action', group.id, 'toggle') }, group.expanded ? 'Collapse group' : 'Expand group')
+      }),
       props.canLoadMore
         ? h('button', { type: 'button', onClick: () => emit('load-more') }, 'Load more')
         : null,

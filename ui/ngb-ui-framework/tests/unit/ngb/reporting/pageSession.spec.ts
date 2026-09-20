@@ -136,12 +136,12 @@ describe('reporting page session helpers', () => {
   it('normalizes nullish keys and malformed persisted cursor collections', () => {
     storageState.session.set('ngb.report.page.execution:missing-cursors', JSON.stringify({
       response: buildResponse(),
-      version: 2,
+      version: 3,
     }))
     storageState.session.set('ngb.report.page.execution:null-cursors', JSON.stringify({
       response: buildResponse(),
       consumedCursors: [null, ' cursor-1 ', ''],
-      version: 2,
+      version: 3,
     }))
 
     expect(loadReportPageExecutionSnapshot('missing-cursors')).toEqual({

@@ -5,6 +5,7 @@ import NgbBadge from '../primitives/NgbBadge.vue'
 
 import { resolveReportCellActionUrl } from './config'
 import { ReportRowKind, type ReportCellDto, type ReportSheetDto, type ReportSheetRowDto } from './types'
+import type { ReportDisplayRow, GroupAction } from './groupTree'
 import type { ReportRouteContext, ReportSourceTrail } from './navigation'
 
 const props = defineProps<{
@@ -27,12 +28,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'load-more'): void
   (e: 'load-previous'): void
-  (e: 'open-group', path: unknown[], label: string): void
+  (e: 'group-action', id: string, action: GroupAction): void
   (e: 'scroll-top-change', value: number): void
 }>()
 
 const columns = computed(() => props.sheet!.columns)
-const rows = computed(() => props.sheet?.rows ?? [])
+const rows = computed(() => (props.sheet?.rows ?? []) as ReportDisplayRow[])
 const hasRows = computed(() => rows.value.length > 0)
 const headerRows = computed(() => props.sheet?.headerRows ?? [])
 const hasColumnGroups = computed(() => headerRows.value.length > 0)
@@ -55,6 +56,19 @@ const totalMeasureColumnCount = computed(() => {
   return columns.value.filter(column => column.semanticRole === 'pivot-total').length
 })
 
+const DEFAULT_REPORT_COLUMN_WIDTH = 160
+const REPORT_HIERARCHY_COLUMN_WIDTH = 416
+
+// The mounted row window must not determine column widths: width changes alter
+// wrapping and row measurements, which can repeatedly change that same window.
+const columnWidths = computed(() => columns.value.map((column, index) => {
+  if (column.width != null && Number.isFinite(column.width) && column.width > 0) return column.width
+  return hasColumnGroups.value && index === 0 ? REPORT_HIERARCHY_COLUMN_WIDTH : DEFAULT_REPORT_COLUMN_WIDTH
+}))
+const tableStyle = computed<CSSProperties>(() => ({
+  width: `${columnWidths.value.reduce((total, width) => total + width, 0)}px`,
+}))
+
 const router = useRouter()
 const decimalFormatter = new Intl.NumberFormat(undefined, {
   minimumFractionDigits: 2,
@@ -75,7 +89,9 @@ let loadMoreObserver: IntersectionObserver | null = null
 let viewportResizeObserver: ResizeObserver | null = null
 let rowResizeObserver: ResizeObserver | null = null
 let loadMoreRequestPending = false
+const pendingGroups = new Set<string>()
 let scrollFrame: number | null = null
+let measurementFrame: number | null = null
 let pendingScrollTop = 0
 
 const REPORT_VIRTUALIZATION_THRESHOLD = 200
@@ -129,8 +145,13 @@ const virtualWindow = computed(() => {
 
 function observeVirtualRow(element: unknown, row: ReportSheetRowDto) {
   const previous = elementByRow.get(row)
-  if (previous) rowResizeObserver?.unobserve(previous)
-  if (!(element instanceof Element) || rows.value.length <= REPORT_VIRTUALIZATION_THRESHOLD) return
+  if (previous === element) return
+  if (previous) {
+    rowResizeObserver?.unobserve(previous)
+    rowByElement.delete(previous)
+    elementByRow.delete(row)
+  }
+  if (!(element instanceof Element)) return
   elementByRow.set(row, element)
   rowByElement.set(element, row)
   rowResizeObserver?.observe(element)
@@ -272,7 +293,7 @@ function headerCellStyle(rowIndex: number): CSSProperties {
 }
 
 function rowRenderKey(row: ReportSheetRowDto, rowIndex: number): string {
-  return `${String(row.rowKind)}:${String(row.groupKey ?? 'nogroup')}:${rowIndex}`
+  return (row as ReportDisplayRow).viewKey ?? `${String(row.rowKind)}:${String(row.groupKey ?? 'nogroup')}:${rowIndex}`
 }
 
 function headerCellClass(cell: ReportCellDto, headerIndex: number, cellIndex: number): string {
@@ -315,15 +336,10 @@ function bodyCellClass(row: ReportSheetRowDto, cellIndex: number): string {
   return classes.join(' ')
 }
 
-const tableClass = 'min-w-full border-collapse text-sm'
+const tableClass = 'min-w-full table-fixed border-collapse text-sm'
 
 function bodyRowHoverClass(): string {
   return hasColumnGroups.value ? 'hover:bg-[rgba(11,60,93,.025)]' : ''
-}
-
-function bodyContentClass(cellIndex: number): string {
-  if (hasColumnGroups.value && cellIndex === 0) return 'flex items-start gap-2 min-w-[26rem]'
-  return 'flex items-start gap-2'
 }
 
 function isTotalLeafHeaderCell(headerIndex: number, cellIndex: number): boolean {
@@ -354,17 +370,26 @@ function syncLoadMoreObserver() {
   disconnectLoadMoreObserver()
 
   if (typeof IntersectionObserver === 'undefined') return
-  if (!shouldEmitLoadMore()) return
-
   loadMoreObserver = new IntersectionObserver((entries) => {
-    if (entries.some((entry) => entry.isIntersecting)) requestLoadMore()
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue
+      if (entry.target === loadMoreSentinel.value) requestLoadMore()
+      else {
+        const id = (entry.target as HTMLElement).dataset.groupNext
+        if (id && !pendingGroups.has(id)) {
+          pendingGroups.add(id)
+          emit('group-action', id, 'next')
+        }
+      }
+    }
   }, {
     root: scrollHost.value!,
     rootMargin: '0px 0px 320px 0px',
     threshold: 0.01,
   })
 
-  loadMoreObserver.observe(loadMoreSentinel.value!)
+  if (loadMoreSentinel.value && shouldEmitLoadMore()) loadMoreObserver.observe(loadMoreSentinel.value)
+  for (const element of scrollHost.value?.querySelectorAll('[data-group-next]') ?? []) loadMoreObserver.observe(element)
 }
 
 function onScroll(event: Event) {
@@ -387,7 +412,20 @@ function restoreScrollTop(value: number) {
   scrollTop.value = scrollHost.value.scrollTop
 }
 
+function captureAnchor() {
+  const index = Math.min(rows.value.length - 1, firstRowEndingAfter(virtualLayout.value, scrollTop.value))
+  const row = rows.value[index]
+  return row ? { key: rowRenderKey(row, index), offset: virtualLayout.value[index]! - scrollTop.value } : null
+}
+
+function restoreAnchor(anchor: { key: string; offset: number }) {
+  const index = rows.value.findIndex((row, index) => rowRenderKey(row, index) === anchor.key)
+  if (index >= 0) restoreScrollTop(virtualLayout.value[index]! - anchor.offset)
+}
+
 defineExpose({
+  captureAnchor,
+  restoreAnchor,
   restoreScrollTop,
   getScrollTop: () => scrollTop.value,
   prefixHeight: (count: number) => virtualLayout.value[Math.min(count, rows.value.length)] ?? 0,
@@ -397,10 +435,13 @@ watch(
   () => [props.canLoadMore, props.loadingMore, props.loading, hasRows.value, props.sheet, rows.value.length],
   () => {
     loadMoreRequestPending = false
+    pendingGroups.clear()
     syncLoadMoreObserver()
   },
   { flush: 'post' },
 )
+
+watch(virtualWindow, syncLoadMoreObserver, { flush: 'post' })
 
 onMounted(() => {
   viewportHeight.value = scrollHost.value?.clientHeight || viewportHeight.value
@@ -424,7 +465,12 @@ onMounted(() => {
         measuredRowHeights.set(row, height)
         changed = true
       }
-      if (changed) measuredHeightVersion.value += 1
+      // Commit measurements outside ResizeObserver delivery. Updating the virtual
+      // window during delivery would resize observed rows again in the same frame.
+      if (changed && measurementFrame == null) measurementFrame = window.requestAnimationFrame(() => {
+        measurementFrame = null
+        measuredHeightVersion.value += 1
+      })
     })
     for (const element of scrollHost.value?.querySelectorAll('tbody tr') ?? []) {
       if (rowByElement.has(element)) rowResizeObserver.observe(element)
@@ -438,6 +484,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (scrollFrame != null) window.cancelAnimationFrame(scrollFrame)
+  if (measurementFrame != null) window.cancelAnimationFrame(measurementFrame)
+  measurementFrame = null
   scrollFrame = null
   emit('scroll-top-change', pendingScrollTop || scrollHost.value?.scrollTop || 0)
   loadMoreRequestPending = false
@@ -476,7 +524,10 @@ onBeforeUnmount(() => {
       class="min-h-0 min-w-0 overflow-auto overscroll-contain rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card shadow-card"
       @scroll="onScroll"
     >
-      <table :class="tableClass" data-testid="report-sheet-table">
+      <table :class="tableClass" :style="tableStyle" data-testid="report-sheet-table">
+        <colgroup>
+          <col v-for="(column, index) in columns" :key="column.code" :style="{ width: `${columnWidths[index]}px` }" />
+        </colgroup>
         <thead class="bg-ngb-card">
           <template v-if="headerRows.length > 0">
             <tr v-for="(headerRow, headerIndex) in headerRows" :key="headerRow.groupKey ?? `header:${headerIndex}`">
@@ -521,8 +572,19 @@ onBeforeUnmount(() => {
             :ref="(element) => observeVirtualRow(element, entry.row)"
             :key="rowRenderKey(entry.row, entry.index)"
             :class="[rowClass(entry.row), bodyRowHoverClass()]"
-            style="content-visibility: auto; contain-intrinsic-block-size: 49px"
           >
+            <td v-if="entry.row.control" :colspan="Math.max(1, columns.length)"
+              class="border-b border-ngb-border/70 px-4 py-3 text-sm"
+              :data-group-next="entry.row.control.autoLoad ? entry.row.control.id : undefined"
+              :style="{ paddingLeft: `${16 + (entry.row.outlineLevel ?? 0) * 16}px` }"
+              :role="entry.row.control.error ? 'alert' : 'status'">
+              <span v-if="!entry.row.control.action || entry.row.control.error">{{ entry.row.control.text }}</span>
+              <button v-if="entry.row.control.action" type="button" class="ngb-btn ml-3 px-3 py-1"
+                @click="emit('group-action', entry.row.control.id, entry.row.control.action)">
+                {{ entry.row.control.error ? 'Retry' : entry.row.control.text }}
+              </button>
+            </td>
+            <template v-else>
             <td
               v-for="(cell, cellIndex) in entry.row.cells"
               :key="`${rowRenderKey(entry.row, entry.index)}:${cellIndex}`"
@@ -531,24 +593,27 @@ onBeforeUnmount(() => {
               :rowspan="cell.rowSpan ?? 1"
             >
               <div
-                :class="bodyContentClass(cellIndex)"
+                class="flex min-w-0 items-start gap-2"
                 :style="cellIndex === 0 ? { paddingLeft: `${(entry.row.outlineLevel ?? 0) * 16}px` } : undefined"
               >
                 <NgbBadge v-if="cellIndex === 0 && rowKindLabel(entry.row)" tone="neutral">{{ rowKindLabel(entry.row) }}</NgbBadge>
-                <button v-if="cellIndex === 0 && entry.row.childrenPath" type="button" class="ngb-btn px-2 py-0" aria-label="Open group"
-                  @click="emit('open-group', entry.row.childrenPath, cellText(cell))">›</button>
+                <button v-if="cellIndex === 0 && entry.row.group" type="button" class="ngb-btn px-2 py-0"
+                  :aria-label="`${entry.row.group.expanded ? 'Collapse' : 'Expand'} group ${cellText(cell)}`"
+                  :aria-expanded="entry.row.group.expanded"
+                  @click="emit('group-action', entry.row.group.id, 'toggle')">{{ entry.row.group.expanded ? '⌄' : '›' }}</button>
                 <button
                   v-if="drilldownRoute(cell)"
                   type="button"
-                  class="cursor-pointer whitespace-pre-wrap break-words text-left hover:underline"
+                  class="min-w-0 cursor-pointer whitespace-pre-wrap break-words text-left hover:underline"
                   :class="isSubtotalOrTotal(entry.row) ? 'font-semibold' : undefined"
                   @click="onCellActivate(cell)"
                 >
                   {{ cellText(cell) }}
                 </button>
-                <span v-else class="whitespace-pre-wrap break-words" :class="isSubtotalOrTotal(entry.row) ? 'font-semibold' : undefined">{{ cellText(cell) }}</span>
+                <span v-else class="min-w-0 whitespace-pre-wrap break-words" :class="isSubtotalOrTotal(entry.row) ? 'font-semibold' : undefined">{{ cellText(cell) }}</span>
               </div>
             </td>
+            </template>
           </tr>
           <tr v-if="virtualWindow.bottom > 0" aria-hidden="true">
             <td :colspan="Math.max(1, columns.length)" class="border-0 p-0" :style="{ height: `${virtualWindow.bottom}px` }" />
