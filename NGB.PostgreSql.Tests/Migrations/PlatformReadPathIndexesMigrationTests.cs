@@ -4,16 +4,16 @@ using Xunit;
 
 namespace NGB.PostgreSql.Tests.Migrations;
 
-public sealed class PlatformSearchTrigramIndexesMigrationTests
+public sealed class PlatformReadPathIndexesMigrationTests
 {
     [Fact]
     public void Generate_installs_trigram_support_and_all_platform_search_indexes()
     {
-        var migration = new PlatformSearchTrigramIndexesMigration();
+        var migration = new PlatformReadPathIndexesMigration();
 
         var sql = migration.Generate();
 
-        migration.Name.Should().Be("platform_search_trigram_indexes");
+        migration.Name.Should().Be("platform_read_path_indexes");
         sql.Should()
             .Contain("CREATE EXTENSION IF NOT EXISTS pg_trgm")
             .And.Contain("ngb_install_search_trigram_indexes")

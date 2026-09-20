@@ -48,7 +48,8 @@ public sealed class DatabaseBootstrapper_MigrationSetCompleteness_P0Tests
         for (var i = 0; i < wired.Count; i++)
         {
             var ddl = wired[i];
-            var sql = ddl.Generate();
+            // DDL examples in comments are not executable table/index dependencies.
+            var sql = Regex.Replace(ddl.Generate(), @"(?m)^\s*--[^\r\n]*", "");
 
             // Allow a DDL object to both create and use a table within the same SQL blob.
             // We enforce cross-object ordering, which is the common source of regressions.

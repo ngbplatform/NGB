@@ -1,3 +1,5 @@
+SELECT ngb_install_search_trigram_indexes(ARRAY['cat_trd_', 'doc_trd_']);
+
 -- Supports latest unit-cost lookup by the requested (warehouse, item) pairs.
 -- Header indexes restrict candidates by warehouse/date before joining line rows.
 CREATE INDEX IF NOT EXISTS ix_doc_trd_purchase_receipt__warehouse_date_document

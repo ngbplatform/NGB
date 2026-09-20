@@ -17,13 +17,12 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     : IntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task Bootstrapper_ReplacesLegacyFinalizationsIndex_WithQueueIndexes_AndSchemaRemainsValid()
+    public async Task Bootstrapper_RestoresFinalizationQueueIndexes_WithoutDuplicatingUniqueConstraint()
     {
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
-        await ExecuteAsync(
-            Fixture.ConnectionString,
-            "CREATE INDEX IF NOT EXISTS ix_opreg_finalizations_register_period ON operational_register_finalizations(register_id, period);");
+        await DropIndexAsync(Fixture.ConnectionString, "ix_opreg_finalizations_dirty_queue");
+        await DropIndexAsync(Fixture.ConnectionString, "ix_opreg_finalizations_blocked_queue");
 
         await MigrationSet.ApplyPlatformMigrationsAsync(Fixture.ConnectionString);
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_opreg_finalizations_register_period")).Should().BeFalse();
@@ -127,15 +126,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
         await conn.OpenAsync();
 
         await using var cmd = new NpgsqlCommand($"DROP INDEX IF EXISTS {indexName};", conn);
-        await cmd.ExecuteNonQueryAsync();
-    }
-
-    private static async Task ExecuteAsync(string cs, string sql)
-    {
-        await using var conn = new NpgsqlConnection(cs);
-        await conn.OpenAsync();
-
-        await using var cmd = new NpgsqlCommand(sql, conn);
         await cmd.ExecuteNonQueryAsync();
     }
 

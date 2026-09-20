@@ -98,7 +98,6 @@ public static class DatabaseBootstrapper
         new OperationalRegisterWriteStateMigration(),
         new OperationalRegisterWriteLogHistoryMigration(),
         new OperationalRegistersIndexesMigration(),
-        new OperationalRegisterMovementsPagingIndexesMigration(),
 
         // Reference Registers (registry / fields / key rules / idempotency)
         new ReferenceRegistersMigration(),
@@ -122,7 +121,6 @@ public static class DatabaseBootstrapper
         new PlatformUserAccessVersionsMigration(),
         new PlatformUserProvisioningOperationsMigration(),
         new PlatformDocumentActionsWorkCenterMigration(),
-        new RemoveStoredReportResultsMigration(),
 
         // Accounting (dimension rules)
         new AccountingAccountDimensionRulesMigration(),
@@ -144,8 +142,8 @@ public static class DatabaseBootstrapper
         new PostedDocumentImmutabilityGuardMigration(),
         new PostedDocumentHeaderImmutabilityGuardMigration(),
 
-        // Search support (requires all platform search target tables).
-        new PlatformSearchTrigramIndexesMigration(),
+        // Current read-path delta, applied after the released DDL objects.
+        new PlatformReadPathIndexesMigration(),
     ];
 
     /// <summary>
@@ -228,7 +226,6 @@ public static class DatabaseBootstrapper
         new OperationalRegisterWriteStateMigration(),
         new OperationalRegisterWriteLogHistoryMigration(),
         new OperationalRegistersIndexesMigration(),
-        new OperationalRegisterMovementsPagingIndexesMigration(),
 
         // Reference registers: core tables + normalization + critical guards/indexes.
         new ReferenceRegistersMigration(),
@@ -252,7 +249,6 @@ public static class DatabaseBootstrapper
         new PlatformUserAccessVersionsMigration(),
         new PlatformUserProvisioningOperationsMigration(),
         new PlatformDocumentActionsWorkCenterMigration(),
-        new RemoveStoredReportResultsMigration(),
 
         // Audit: append-only guards + paging/index contracts.
         new PlatformAuditAppendOnlyGuardMigration(),
@@ -264,7 +260,7 @@ public static class DatabaseBootstrapper
         new GeneralJournalEntryIndexesMigration(),
         new PostedDocumentImmutabilityGuardMigration(),
         new PostedDocumentHeaderImmutabilityGuardMigration(),
-        new PlatformSearchTrigramIndexesMigration(),
+        new PlatformReadPathIndexesMigration(),
     ];
 
     public static async Task InitializeAsync(string connectionString, CancellationToken ct = default)

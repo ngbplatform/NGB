@@ -1,3 +1,4 @@
+using Dapper;
 using FluentAssertions;
 using NGB.Persistence.Migrations;
 using NGB.PostgreSql.Bootstrap;
@@ -44,6 +45,16 @@ public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradeSchemaPostgresFixt
             .Should().BeTrue();
         (await DisplayTrigramIndexExistsAsync(fixture.ConnectionString, "doc_trd_sales_invoice"))
             .Should().BeTrue();
+
+        await using var conn = new NpgsqlConnection(fixture.ConnectionString);
+        await conn.OpenAsync();
+        var indexes = (await conn.QueryAsync<string>(
+            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public';")).ToArray();
+        foreach (var document in new[] { "purchase_receipt", "sales_invoice", "customer_return", "vendor_return", "inventory_adjustment" })
+        {
+            indexes.Should().Contain($"ix_doc_trd_{document}__warehouse_date_document")
+                .And.Contain($"ix_doc_trd_{document}__lines__item_document");
+        }
     }
 
     [Fact]

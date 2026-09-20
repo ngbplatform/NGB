@@ -1,3 +1,4 @@
+using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Persistence.Migrations;
@@ -40,6 +41,15 @@ public sealed class CrmSchemaMigrator_NoRepair_P0Tests(CrmSchemaPostgresFixture 
         (await TriggerExistsAsync(fixture.ConnectionString, "doc_crm_quote", "trg_posted_immutable")).Should().BeTrue();
         (await TriggerExistsAsync(fixture.ConnectionString, "doc_crm_quote__lines", "trg_posted_immutable")).Should().BeTrue();
         (await IndexExistsAsync(fixture.ConnectionString, "doc_crm_quote__lines", "ix_doc_crm_quote__lines__product_id")).Should().BeTrue();
+
+        await using var conn = new NpgsqlConnection(fixture.ConnectionString);
+        await conn.OpenAsync();
+        (await conn.QueryAsync<string>(
+            """
+            SELECT tablename FROM pg_indexes WHERE schemaname = 'public'
+              AND tablename IN ('cat_crm_account', 'doc_crm_quote')
+              AND indexdef LIKE '%USING gin (display %gin_trgm_ops)%';
+            """)).Should().BeEquivalentTo("cat_crm_account", "doc_crm_quote");
 
         using var host = CrmHostFactory.Create(fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();

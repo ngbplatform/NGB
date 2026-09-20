@@ -1,3 +1,4 @@
+using Dapper;
 using FluentAssertions;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Migrations.Evolve;
@@ -38,6 +39,20 @@ public sealed class PmSchemaMigrator_NoRepair_P0Tests(PmSchemaIntegrationFixture
             .Should().BeTrue();
         (await TriggerExistsAsync(fixture.ConnectionString, "doc_pm_work_order_completion", "trg_posted_immutable"))
             .Should().BeTrue();
+
+        await using var conn = new NpgsqlConnection(fixture.ConnectionString);
+        await conn.OpenAsync();
+        var indexes = (await conn.QueryAsync<string>(
+            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public';")).ToArray();
+        indexes.Should().Contain("ix_doc_pm_lease__start_document")
+            .And.Contain("ix_doc_pm_maintenance_request__queue_seek");
+        var searchTables = (await conn.QueryAsync<string>(
+            """
+            SELECT tablename FROM pg_indexes WHERE schemaname = 'public'
+              AND tablename IN ('cat_pm_property', 'doc_pm_rent_charge')
+              AND indexdef LIKE '%USING gin (display %gin_trgm_ops)%';
+            """)).ToArray();
+        searchTables.Should().BeEquivalentTo("cat_pm_property", "doc_pm_rent_charge");
     }
 
     [Fact]

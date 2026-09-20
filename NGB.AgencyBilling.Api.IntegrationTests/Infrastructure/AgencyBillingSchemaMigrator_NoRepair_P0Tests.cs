@@ -1,3 +1,4 @@
+using Dapper;
 using FluentAssertions;
 using NGB.AgencyBilling.PostgreSql.Bootstrap;
 using NGB.AgencyBilling.PostgreSql.Migrations;
@@ -35,6 +36,15 @@ public sealed class AgencyBillingSchemaMigrator_NoRepair_P0Tests(AgencyBillingSc
         (await TableExistsAsync(fixture.ConnectionString, "cat_ab_client")).Should().BeTrue();
         (await TableExistsAsync(fixture.ConnectionString, "doc_ab_timesheet")).Should().BeTrue();
         (await TableExistsAsync(fixture.ConnectionString, "doc_ab_customer_payment__applies")).Should().BeTrue();
+
+        await using var conn = new NpgsqlConnection(fixture.ConnectionString);
+        await conn.OpenAsync();
+        (await conn.QueryAsync<string>(
+            """
+            SELECT tablename FROM pg_indexes WHERE schemaname = 'public'
+              AND tablename IN ('cat_ab_client', 'doc_ab_sales_invoice')
+              AND indexdef LIKE '%USING gin (display %gin_trgm_ops)%';
+            """)).Should().BeEquivalentTo("cat_ab_client", "doc_ab_sales_invoice");
     }
 
     [Fact]

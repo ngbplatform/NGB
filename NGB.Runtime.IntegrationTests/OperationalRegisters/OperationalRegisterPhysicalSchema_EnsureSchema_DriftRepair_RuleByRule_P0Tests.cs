@@ -1,10 +1,12 @@
 using System.Text.RegularExpressions;
+using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.OperationalRegisters;
+using NGB.PostgreSql.Bootstrap;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.Runtime.OperationalRegisters;
 using NGB.Tools.Exceptions;
@@ -26,6 +28,42 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 public sealed class OperationalRegisterPhysicalSchema_EnsureSchema_DriftRepair_RuleByRule_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Movements_CursorIndex_IsCreated_AndRestoredWithoutAnUpgradeMigration(bool usePlatformRepair)
+    {
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+        var (registerId, tableCode) = await CreateRegisterAndEnsureSchemaAsync(host, CancellationToken.None);
+        var movementsTable = OperationalRegisterNaming.MovementsTable(tableCode);
+        await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
+        await conn.OpenAsync();
+
+        const string indexesSql = """
+            SELECT indexname FROM pg_indexes
+            WHERE schemaname = 'public' AND tablename = @Table
+              AND indexdef LIKE '%(occurred_at_utc, movement_id)';
+            """;
+        var parameters = new { Table = movementsTable };
+        var indexes = (await conn.QueryAsync<string>(indexesSql, parameters)).ToArray();
+        indexes.Should().ContainSingle("new dynamic tables receive cursor indexes from their schema contract");
+        await DatabaseBootstrapper.RepairAsync(Fixture.ConnectionString);
+        (await conn.QueryAsync<string>(indexesSql, parameters)).Should().Equal(indexes,
+            "repair must reuse an existing index rather than create a duplicate under a different name");
+        await DropIndexAsync(Fixture.ConnectionString, indexes[0]);
+
+        if (usePlatformRepair)
+            await DatabaseBootstrapper.RepairAsync(Fixture.ConnectionString);
+        else
+        {
+            await using var scope = host.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<IOperationalRegisterMovementsStore>()
+                .EnsureSchemaAsync(registerId, CancellationToken.None);
+        }
+
+        (await conn.QueryAsync<string>(indexesSql, parameters)).Should().Equal(indexes);
+    }
+
     [Fact]
     public async Task Movements_AppendOnlyGuardDropped_EnsureSchema_RecreatesTrigger_AndBlocksMutation()
     {

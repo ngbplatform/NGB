@@ -1,3 +1,5 @@
+SELECT ngb_install_search_trigram_indexes(ARRAY['cat_pm_', 'doc_pm_']);
+
 -- Supports the keyset scan used by monthly rent-charge generation.
 CREATE INDEX IF NOT EXISTS ix_doc_pm_lease__start_document
     ON doc_pm_lease(start_on_utc, document_id)
