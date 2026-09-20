@@ -222,6 +222,7 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
             }
             var expected = await reports.ExecuteAsync(code, input, default);
             var all = new List<ReportSheetRowDto>();
+            ReportSheetDto? rootSheet = null;
             await ReadLevelAsync(null);
             async Task ReadLevelAsync(IReadOnlyList<JsonElement>? path)
             {
@@ -234,9 +235,15 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
                         page = await reports.ExecuteAsync(code, input with { DisablePaging = false, Limit = 2, Cursor = cursor, GroupPath = path }, default);
                         if (audit is not null) audit.Rows = page.Sheet.Rows.Count;
                     }
+                    rootSheet ??= page.Sheet;
+                    page.Sheet.Columns.Should().Equal(rootSheet.Columns,
+                        "root pages and expanded groups share one table schema in {0}", code);
+                    JsonSerializer.Serialize(page.Sheet.HeaderRows).Should().Be(JsonSerializer.Serialize(rootSheet.HeaderRows));
+                    if (path is not null)
+                        page.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total,
+                            "expanded groups must not repeat their parent totals in {0}", code);
                     foreach (var row in page.Sheet.Rows)
                     {
-                        if (path is not null && row.RowKind == ReportRowKind.Total) continue;
                         all.Add(row);
                         if (row.ChildrenPath is not null) await ReadLevelAsync(row.ChildrenPath);
                     }
@@ -389,6 +396,8 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
         var warehouseGroup = warehouseGroups.Sheet.Rows.Single(row => row.RowKind == ReportRowKind.Group);
         warehouseGroup.ChildrenPath.Should().NotBeNull();
         warehouseGroup.Cells[1].Display.Should().Be("20");
+        warehouseGroups.Sheet.Rows.Single(row => row.RowKind == ReportRowKind.Total)
+            .Cells[1].Value!.Value.GetDecimal().Should().Be(20m);
 
         var groupedBalancesFirstPage = await reports.ExecuteAsync(TradeCodes.InventoryBalancesReport,
             balancesRequest with { GroupPath = warehouseGroup.ChildrenPath }, default);
@@ -397,6 +406,7 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
         groupedBalancesFirstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
         groupedBalancesFirstPage.Sheet.Rows.Should().ContainSingle();
         groupedBalancesFirstPage.Sheet.Rows[0].Cells[0].Display.Should().Be("Alpha Widget");
+        groupedBalancesFirstPage.Sheet.Rows[0].Cells[1].Value!.Value.GetDecimal().Should().Be(7m);
         groupedBalancesFirstPage.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total);
 
         var groupedBalancesSecondPage = await reports.ExecuteAsync(TradeCodes.InventoryBalancesReport,
@@ -404,10 +414,14 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
         groupedBalancesSecondPage.Total.Should().BeNull();
         groupedBalancesSecondPage.HasMore.Should().BeFalse();
         groupedBalancesSecondPage.NextCursor.Should().BeNull();
-        groupedBalancesSecondPage.Sheet.Rows.Should().HaveCount(2);
+        groupedBalancesSecondPage.Sheet.Rows.Should().ContainSingle();
         groupedBalancesSecondPage.Sheet.Rows[0].Cells[0].Display.Should().Be("Bravo Gadget");
-        groupedBalancesSecondPage.Sheet.Rows[1].RowKind.Should().Be(ReportRowKind.Total);
-        groupedBalancesSecondPage.Sheet.Rows[1].Cells[1].Display.Should().Be("20");
+        groupedBalancesSecondPage.Sheet.Rows[0].Cells[1].Value!.Value.GetDecimal().Should().Be(13m);
+        groupedBalancesSecondPage.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total);
+        groupedBalancesFirstPage.Sheet.Rows.Concat(groupedBalancesSecondPage.Sheet.Rows)
+            .Sum(row => row.Cells[1].Value!.Value.GetDecimal())
+            .Should().Be(warehouseGroup.Cells[1].Value!.Value.GetDecimal(),
+                "paging must preserve all inventory quantities without repeating the warehouse total");
 
         var analytics = scope.ServiceProvider.GetRequiredService<ITradeAnalyticsReader>();
         var from = new DateOnly(2026, 4, 1);

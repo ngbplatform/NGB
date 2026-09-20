@@ -386,7 +386,22 @@ public sealed class PmReporting_Endpoints_P0Tests : IAsyncLifetime
         var february = periods.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Group && x.Cells[0].Display == "February 2026");
         var documents = await ReadChildAsync(client, request, february.ChildrenPath!);
         dto!.Sheet.Columns.Select(x => x.Code).Should().Equal("__row_hierarchy", "debit_amount__sum");
-        dto.Sheet.Columns[0].Title.Should().Be("Account");
+        dto.Sheet.Columns[0].Title.Should().Be("Account\nPeriod\nDocument");
+        foreach (var childPage in new[] { periods, documents })
+        {
+            childPage.Sheet.Columns.Should().Equal(dto.Sheet.Columns,
+                "every expanded level renders under the same hierarchy and measure headers");
+            childPage.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total,
+                "the parent group already displays the aggregate for its children");
+            childPage.HasMore.Should().BeFalse();
+        }
+
+        periods.Sheet.Rows.Where(row => row.RowKind == ReportRowKind.Group)
+            .Sum(row => row.Cells[1].Value!.Value.GetDecimal())
+            .Should().Be(accountGroup.Cells[1].Value!.Value.GetDecimal());
+        documents.Sheet.Rows.Where(row => row.RowKind == ReportRowKind.Group)
+            .Sum(row => row.Cells[1].Value!.Value.GetDecimal())
+            .Should().Be(february.Cells[1].Value!.Value.GetDecimal());
         dto.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Display == "1100 — Accounts Receivable - Tenants" && !string.IsNullOrWhiteSpace(x.Cells[1].Display));
         periods.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Display == "February 2026" && !string.IsNullOrWhiteSpace(x.Cells[1].Display));
         documents.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group && x.OutlineLevel == 0 && x.Cells[0].Display!.StartsWith("Receivable ", StringComparison.OrdinalIgnoreCase));
