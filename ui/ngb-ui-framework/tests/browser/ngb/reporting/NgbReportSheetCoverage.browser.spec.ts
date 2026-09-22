@@ -1,10 +1,11 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { configureNgbReporting } from '../../../../src/ngb/reporting/config'
 import NgbReportSheet from '../../../../src/ngb/reporting/NgbReportSheet.vue'
+import type { ReportDisplayRow } from '../../../../src/ngb/reporting/groupTree'
 import { ReportRowKind, type ReportSheetDto, type ReportSheetRowDto } from '../../../../src/ngb/reporting/types'
 
 const emptySheet: ReportSheetDto = {
@@ -383,4 +384,92 @@ test('keeps load-more disabled while loading and safely ignores scroll restorati
   } finally {
     restoreObserver()
   }
+})
+
+test('restores the visible row anchor after rows are prepended and ignores removed anchors', async () => {
+  const restoreResize = withoutResizeObserver()
+  const restoreIntersection = withoutIntersectionObserver()
+  const handle = ref<InstanceType<typeof NgbReportSheet> | null>(null)
+  const sheet = ref<ReportSheetDto>({ ...detailSheet(), rows: Array.from({ length: 300 }, (_, i) => ({
+    rowKind: ReportRowKind.Detail, viewKey: `row-${i}`, cells: [{ display: `Row ${i}` }],
+  })) })
+  try {
+    await renderHarness(defineComponent({ setup: () => () => h('div', { style: 'display:flex;height:300px' }, [
+      h(NgbReportSheet, { ref: handle, sheet: sheet.value }),
+    ]) }))
+    handle.value!.restoreScrollTop(502)
+    // Browsers may quantize CSS scroll positions to fractional device pixels.
+    const initialScrollTop = handle.value!.getScrollTop()
+    expect(Math.abs(initialScrollTop - 502)).toBeLessThan(1)
+    const anchor = handle.value!.captureAnchor()!
+    expect(anchor).toEqual({ key: 'row-10', offset: 490 - initialScrollTop })
+    expect(handle.value!.prefixHeight(2)).toBe(98)
+    expect(handle.value!.prefixHeight(-1)).toBe(0)
+    sheet.value = { ...sheet.value, rows: [{ rowKind: ReportRowKind.Detail, viewKey: 'inserted', cells: [{ display: 'Inserted row' }] } as ReportDisplayRow, ...sheet.value.rows] }
+    await nextTick()
+    handle.value!.restoreAnchor(anchor)
+    const restoredScrollTop = handle.value!.getScrollTop()
+    expect(Math.abs(restoredScrollTop - Math.floor(initialScrollTop + 49))).toBeLessThan(1)
+    const restoredAnchor = handle.value!.captureAnchor()!
+    expect(restoredAnchor.key).toBe(anchor.key)
+    // Allow one pixel for integer normalization and one for browser quantization.
+    expect(Math.abs(restoredAnchor.offset - anchor.offset)).toBeLessThan(2)
+    handle.value!.restoreAnchor({ key: 'missing', offset: 0 })
+    expect(handle.value!.getScrollTop()).toBe(restoredScrollTop)
+    sheet.value = emptySheet
+    await nextTick()
+    expect(handle.value!.captureAnchor()).toBeNull()
+    handle.value!.restoreAnchor(anchor)
+    expect(handle.value!.prefixHeight(10)).toBe(0)
+  } finally { restoreResize(); restoreIntersection() }
+})
+
+test('requests previous rows near the top only when both loading states are idle', async () => {
+  const restore = withoutIntersectionObserver()
+  const loading = ref(false)
+  const loadingMore = ref(false)
+  const onLoadPrevious = vi.fn()
+  try {
+    const { view } = await renderHarness(defineComponent({ setup: () => () => h(NgbReportSheet, {
+      sheet: detailSheet(), canLoadPrevious: true, loading: loading.value, loadingMore: loadingMore.value, onLoadPrevious,
+    }) }))
+    const host = view.getByTestId('report-sheet-scroll').element()
+    host.dispatchEvent(new Event('scroll'))
+    expect(onLoadPrevious).toHaveBeenCalledOnce()
+    loadingMore.value = true
+    await nextTick()
+    host.dispatchEvent(new Event('scroll'))
+    loadingMore.value = false
+    loading.value = true
+    await nextTick()
+    host.dispatchEvent(new Event('scroll'))
+    expect(onLoadPrevious).toHaveBeenCalledOnce()
+    loading.value = false
+    await nextTick()
+    host.dispatchEvent(new Event('scroll'))
+    expect(onLoadPrevious).toHaveBeenCalledTimes(2)
+  } finally { restore() }
+})
+
+test('deduplicates group sentinel notifications and handles a sheet without a scroll host', async () => {
+  let notify!: IntersectionObserverCallback
+  const observer = { observe: vi.fn(), disconnect: vi.fn(), unobserve: vi.fn() }
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: IntersectionObserverCallback) { notify = callback; return observer }
+  })
+  const sheet = ref<ReportSheetDto | null>(null)
+  const onGroupAction = vi.fn()
+  try {
+    await renderHarness(defineComponent({ setup: () => () => h(NgbReportSheet, { sheet: sheet.value, onGroupAction }) }))
+    expect(observer.observe).not.toHaveBeenCalled()
+    sheet.value = { ...detailSheet(), rows: [{ rowKind: ReportRowKind.Detail, cells: [], viewKey: 'control',
+      control: { id: 'group', text: 'Load group', action: 'next', autoLoad: true },
+    } as ReportDisplayRow] }
+    await nextTick()
+    const target = document.querySelector('[data-group-next]')!
+    const entries = [target, target, document.createElement('div')].map(target => ({ target, isIntersecting: true }) as IntersectionObserverEntry)
+    notify(entries, observer as unknown as IntersectionObserver)
+    expect(onGroupAction).toHaveBeenCalledExactlyOnceWith('group', 'next')
+    expect((target as HTMLElement).style.paddingLeft).toBe('16px')
+  } finally { vi.unstubAllGlobals() }
 })

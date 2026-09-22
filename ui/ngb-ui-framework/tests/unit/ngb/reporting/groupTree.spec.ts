@@ -27,6 +27,80 @@ function deferred<T>() {
 }
 
 describe('inline report groups', () => {
+  it('ignores unknown groups and unavailable paging directions and renders empty groups', async () => {
+    const tree = new ReportGroupTree(vi.fn())
+    expect(tree.sheet).toBeNull()
+    tree.act('missing', 'toggle')
+    tree.act('missing', 'next')
+    const loader = vi.fn(async () => page([]))
+    tree.reset(page([group(['A']), { ...detail('Last group'), rowKind: ReportRowKind.Group }]).sheet, loader)
+    tree.act('missing', 'toggle')
+    toggle(tree, 'A')
+    await settled(tree)
+    expect(tree.sheet!.rows.find(row => row.control)?.control?.text).toBe('No rows in this group.')
+    const id = tree.sheet!.rows[0]!.group!.id
+    tree.act(id, 'next')
+    tree.act(id, 'previous')
+    expect(loader).toHaveBeenCalledOnce()
+  })
+
+  it('offers a reload for an expanded child cancelled before its first page arrived', async () => {
+    const pending = deferred<ReportExecutionResponseDto>()
+    const loader = vi.fn().mockResolvedValueOnce(page([group(['A', 'nested'])]))
+      .mockReturnValueOnce(pending.promise).mockResolvedValueOnce(page([detail('reloaded')]))
+    const tree = setup([group(['A'])], loader)
+    toggle(tree, 'A'); await settled(tree)
+    toggle(tree, 'nested')
+    toggle(tree, 'A')
+    toggle(tree, 'A')
+    const reload = tree.sheet!.rows.find(row => row.control?.text === 'Reload group')!.control!
+    expect(reload.action).toBe('restart')
+    tree.act(reload.id, reload.action!)
+    await settled(tree)
+    pending.resolve(page([detail('stale')]))
+    await Promise.resolve(); await Promise.resolve()
+    expect(labels(tree)).toEqual(['A', 'nested', 'reloaded'])
+  })
+
+  it('restarts a group after its backward cursor history expires', async () => {
+    const loader = vi.fn(async (_path: unknown[], cursor: string | null) => {
+      const start = Number(cursor ?? 0)
+      return page(Array.from({ length: 100 }, (_, i) => detail(String(start + i))), String(start + 100))
+    })
+    const tree = setup([group(['A'])], loader)
+    toggle(tree, 'A'); await settled(tree)
+    const id = tree.sheet!.rows[0]!.group!.id
+    for (let i = 0; i < 40; i++) { tree.act(id, 'next'); await Promise.resolve(); await Promise.resolve() }
+    while (tree.sheet!.rows.some(row => row.control?.action === 'previous')) {
+      tree.act(id, 'previous'); await Promise.resolve(); await Promise.resolve()
+    }
+    expect(tree.sheet!.rows.find(row => row.control?.action === 'restart')?.control?.text).toBe('Back to group beginning')
+    tree.act(id, 'restart'); await settled(tree)
+    expect(labels(tree)[1]).toBe('0')
+    expect(loader.mock.lastCall?.[1]).toBeNull()
+  })
+
+  it('ignores failures from a cancelled request after resetting the report', async () => {
+    let reject!: (error: Error) => void
+    const loader = vi.fn(() => new Promise<ReportExecutionResponseDto>((_resolve, fail) => { reject = fail }))
+    const tree = setup([group(['A'])], loader)
+    toggle(tree, 'A')
+    tree.reset()
+    reject(new Error('Old request failed'))
+    await Promise.resolve(); await Promise.resolve()
+    expect(tree.sheet).toBeNull()
+    tree.reset(page([detail('Fresh report')]).sheet, loader)
+    expect(labels(tree)).toEqual(['Fresh report'])
+  })
+
+  it('does not call a missing loader', () => {
+    const tree = setup([group(['A'])], null)
+    toggle(tree, 'A')
+    expect(labels(tree)).toEqual(['A'])
+    tree.reset()
+    expect(tree.sheet).toBeNull()
+  })
+
   it('lazily expands independent branches under their parents, keeps totals and reuses cached pages', async () => {
     const loader = vi.fn(async (path: unknown[]) => page([detail(`${path[0]} child`), { ...detail('branch total'), rowKind: ReportRowKind.Total }]))
     const total = { ...detail('total'), rowKind: ReportRowKind.Total }

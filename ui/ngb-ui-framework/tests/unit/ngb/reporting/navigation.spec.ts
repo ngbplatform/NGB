@@ -48,6 +48,13 @@ function encodeBase64UrlJson(value: unknown): string {
 }
 
 describe('reporting navigation helpers', () => {
+  it('retains scalar group keys, discards objects and caps route depth', () => {
+    const context = createRouteContext('groups')
+    context.request.groupPath = [null, 'north', 42, false, {}, [], ...Array.from({ length: 40 }, (_, i) => i)]
+    const restored = decodeReportRouteContextParam(encodeReportRouteContextParam(context))!
+    expect(restored.request.groupPath).toEqual([null, 'north', 42, false, ...Array.from({ length: 28 }, (_, i) => i)])
+  })
+
   it('builds report urls that round-trip route context, source trail, and back target', () => {
     const definition = createReportDefinition()
     const draft = createComposerDraft(definition)

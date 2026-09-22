@@ -443,6 +443,15 @@ describe('api http', () => {
     expect(blob).not.toHaveBeenCalled()
   })
 
+  it('rejects an empty streamed response before writing to the destination', async () => {
+    fetchMock.mockResolvedValue(new Response(null))
+    const write = vi.fn()
+    const destination = new WritableStream<Uint8Array>({ write })
+    await expect(httpPostFile('/file', {}, { destination })).rejects.toThrow('The download response has no body.')
+    expect(write).not.toHaveBeenCalled()
+    expect(destination.locked).toBe(false)
+  })
+
   it('cancels an in-progress streamed file and aborts its destination', async () => {
     authMocks.getAccessToken.mockResolvedValue(null)
     const controller = new AbortController()

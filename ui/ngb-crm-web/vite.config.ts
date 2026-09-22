@@ -14,6 +14,17 @@ export default defineConfig(({ mode }) => {
       // The source package mixes TS entry points with Vue SFCs. Keep their
       // configuration modules in the same graph instead of duplicating state.
       exclude: ['@ngbplatform/ui'],
+      // Excluding the source package also hides its dependencies from the scan.
+      // Bundle them up front so concurrent browsers do not load outdated chunks
+      // while Vite discovers the framework's imports on the first page load.
+      include: [
+        'vue',
+        'pinia',
+        'vue-router',
+        '@headlessui/vue',
+        '@microsoft/signalr',
+        ...(mode === 'e2e' ? [] : ['keycloak-js']),
+      ],
     },
     resolve: mode === 'e2e'
       ? {

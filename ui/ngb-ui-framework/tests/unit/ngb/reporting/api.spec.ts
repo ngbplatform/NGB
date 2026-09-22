@@ -5,6 +5,7 @@ const httpMocks = vi.hoisted(() => ({
   httpGet: vi.fn(),
   httpPost: vi.fn(),
   httpPostFile: vi.fn(),
+  httpPostNativeDownload: vi.fn(),
   httpPut: vi.fn(),
 }))
 
@@ -13,6 +14,7 @@ vi.mock('../../../../src/ngb/api/http', () => ({
   httpGet: httpMocks.httpGet,
   httpPost: httpMocks.httpPost,
   httpPostFile: httpMocks.httpPostFile,
+  httpPostNativeDownload: httpMocks.httpPostNativeDownload,
   httpPut: httpMocks.httpPut,
 }))
 
@@ -20,6 +22,7 @@ import {
   deleteReportVariant,
   executeReport,
   exportReportXlsx,
+  exportReportXlsxInBrowser,
   getReportDefinition,
   getReportDefinitions,
   getReportVariant,
@@ -33,7 +36,23 @@ describe('reporting api', () => {
     httpMocks.httpGet.mockReset()
     httpMocks.httpPost.mockReset()
     httpMocks.httpPostFile.mockReset()
+    httpMocks.httpPostNativeDownload.mockReset()
     httpMocks.httpPut.mockReset()
+  })
+
+  it('forwards export cancellation, streaming destination and native download errors', async () => {
+    const request = { parameters: { date: '2026-09-22' } }
+    const signal = new AbortController().signal
+    const destination = new WritableStream<Uint8Array>()
+    const file = { blob: new Blob(), fileName: 'report.xlsx' }
+    httpMocks.httpPostFile.mockResolvedValue(file)
+    await expect(exportReportXlsx('report/code', request, { signal, destination })).resolves.toEqual(file)
+    expect(httpMocks.httpPostFile).toHaveBeenCalledWith('/api/reports/report%2Fcode/export/xlsx', request, { signal, destination })
+
+    const onError = vi.fn()
+    httpMocks.httpPostNativeDownload.mockResolvedValue(undefined)
+    await exportReportXlsxInBrowser('report/code', request, { signal, onError })
+    expect(httpMocks.httpPostNativeDownload).toHaveBeenCalledWith('/api/reports/report%2Fcode/export/xlsx/form', request, { signal, onError })
   })
 
   it('loads report definitions and executes/export reports with encoded report codes', async () => {

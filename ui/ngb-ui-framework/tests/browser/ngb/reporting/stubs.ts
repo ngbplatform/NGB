@@ -387,6 +387,8 @@ export const StubReportComposerPanel = defineComponent({
   },
 })
 
+export const reportSheetHandleOverrides: { value: Record<string, unknown> | null } = { value: null }
+
 export const StubReportSheet = defineComponent({
   props: {
     sheet: {
@@ -445,6 +447,7 @@ export const StubReportSheet = defineComponent({
       restoreScrollTop(value: number) {
         restoredScrollTop.value = value
       },
+      ...reportSheetHandleOverrides.value,
     })
 
     return () => h('div', { 'data-testid': 'stub-report-sheet' }, [

@@ -118,6 +118,14 @@ describe('reporting page session helpers', () => {
     vi.useRealTimers()
   })
 
+  it('evicts legacy snapshots without timestamps before recent snapshots', () => {
+    storageState.session.set('ngb.report.page.execution:legacy', JSON.stringify({ response: buildResponse() }))
+    for (let index = 0; index < 8; index++) saveReportPageExecutionSnapshot(`recent:${index}`, buildResponse(), [])
+    expect(storageState.session.has('ngb.report.page.execution:legacy')).toBe(false)
+    expect(loadReportPageExecutionSnapshot('recent:7')?.response).toEqual(buildResponse())
+    expect(storageState.session.size).toBe(8)
+  })
+
   it('ignores malformed snapshots and blank keys', () => {
     storageState.session.set('ngb.report.page.execution:broken', JSON.stringify({
       response: {

@@ -11,6 +11,21 @@ function page(first: number, count = 100): ReportExecutionResponseDto {
 }
 
 describe('report page window', () => {
+  it('accepts an initial append and rejects changed columns without losing retained pages', () => {
+    const cache = new ReportPageWindow(100)
+    expect(cache.response).toBeNull()
+    cache.append('0', page(0))
+    const incompatible = page(100)
+    incompatible.sheet.columns[0]!.code = 'other'
+    expect(() => cache.append('100', incompatible)).toThrow('columns changed')
+    expect(cache.response?.sheet.rows[0]!.cells[0]!.value).toBe(0)
+    expect(cache.retainedCursorCount).toBe(1)
+    cache.append('100', page(100))
+    expect(() => cache.prepend(incompatible)).toThrow('columns changed')
+    expect(cache.response?.sheet.rows[0]!.cells[0]!.value).toBe(100)
+    expect(cache.canLoadPrevious).toBe(true)
+  })
+
   it('keeps only the row window after browsing one million rows', () => {
     const cache = new ReportPageWindow()
     cache.reset(page(0))

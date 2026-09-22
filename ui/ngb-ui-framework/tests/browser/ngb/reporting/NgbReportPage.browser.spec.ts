@@ -2,9 +2,10 @@ import { page } from 'vitest/browser'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 
 import {
+  reportSheetHandleOverrides,
   StubBadge,
   StubDatePicker,
   StubDateRangeFilter,
@@ -536,6 +537,7 @@ function reportPageStateKey(options?: {
 }
 
 beforeEach(() => {
+  reportSheetHandleOverrides.value = null
   vi.stubGlobal('showSaveFilePicker', undefined)
   sessionStorage.clear()
 
@@ -2428,4 +2430,245 @@ test('ignores a variant lookup hydration that completes after switching reports'
   expect(reportPageMocks.executeReport.mock.calls.map(call => call[0])).toEqual(['accounting.income_statement'])
   await expect.element(view.getByText('variant:none')).toBeVisible()
   await expect.element(view.getByText('accounting.income_statement', { exact: true })).toBeVisible()
+})
+
+test.each(['resolve', 'reject'] as const)('ignores selected-variant hydration that %s after navigation', async (outcome) => {
+  const hydration = createDeferred<void>()
+  const lookupStore = createLookupStore()
+  configureNgbReporting({ useLookupStore: () => lookupStore })
+  const { router, view } = await renderReportPage()
+  lookupStore.ensureCatalogLabels.mockImplementationOnce(() => hydration.promise)
+  clickHeaderButtonByTitle('Composer')
+  await nextTick()
+  const select = view.getByTestId('composer-variant-select').element() as HTMLSelectElement
+  select.value = 'audit-view'
+  select.dispatchEvent(new Event('input', { bubbles: true }))
+  await nextTick()
+  await view.getByRole('button', { name: 'Composer load variant' }).click()
+  await expect.poll(() => lookupStore.ensureCatalogLabels.mock.calls.length).toBe(1)
+  await router.push('/reports/other')
+  await flushUi()
+  if (outcome === 'resolve') hydration.resolve()
+  else hydration.reject(new Error('Stale variant hydration'))
+  await flushUi()
+  expect(reportPageMocks.executeReport).not.toHaveBeenCalled()
+  expect(document.body.textContent).not.toContain('Stale variant hydration')
+})
+
+test.each(['resolve', 'reject'] as const)('ignores default reset hydration that %s after navigation', async (outcome) => {
+  reportPageMocks.state.variants = clone(baseVariants).map(variant => ({ ...variant, isDefault: variant.variantCode === 'audit-view' }))
+  const hydration = createDeferred<void>()
+  const lookupStore = createLookupStore()
+  lookupStore.ensureCatalogLabels.mockImplementationOnce(() => hydration.promise)
+  configureNgbReporting({ useLookupStore: () => lookupStore })
+  const { router, view } = await renderReportPage('/reports/pm.occupancy.summary?variant=portfolio-view')
+  clickHeaderButtonByTitle('Composer')
+  await view.getByRole('button', { name: 'Composer reset variant' }).click()
+  await expect.poll(() => lookupStore.ensureCatalogLabels.mock.calls.length).toBe(1)
+  reportPageMocks.state.variants = []
+  await router.push('/reports/other')
+  await flushUi()
+  if (outcome === 'resolve') hydration.resolve()
+  else hydration.reject(new Error('Stale reset hydration'))
+  await flushUi()
+  expect(reportPageMocks.executeReport).not.toHaveBeenCalled()
+  expect(document.body.textContent).not.toContain('Stale reset hydration')
+})
+
+test.each(['context', 'default'] as const)('ignores initial %s hydration completed after navigation', async (source) => {
+  const hydration = createDeferred<void>()
+  const lookupStore = createLookupStore()
+  lookupStore.ensureCatalogLabels.mockImplementationOnce(() => hydration.promise)
+  configureNgbReporting({ useLookupStore: () => lookupStore })
+  const variant = clone(baseVariants[1])
+  reportPageMocks.state.variants = [{ ...variant, isDefault: true }]
+  const ctx = encodeReportRouteContextParam({ reportCode: baseDefinition.reportCode, request: {
+    parameters: variant.parameters, filters: variant.filters, layout: variant.layout, offset: 0, limit: 2,
+  } })!
+  const { router } = await renderReportPage(source === 'context' ? `/reports/pm.occupancy.summary?ctx=${ctx}` : undefined)
+  await expect.poll(() => lookupStore.ensureCatalogLabels.mock.calls.length).toBe(1)
+  reportPageMocks.state.variants = []
+  await router.push('/reports/other')
+  await flushUi()
+  hydration.resolve()
+  await flushUi()
+  expect(reportPageMocks.executeReport).not.toHaveBeenCalled()
+})
+
+test('does not persist an execution after navigation interrupts its route update', async () => {
+  reportPageMocks.state.definition!.filters = []
+  reportPageMocks.state.variants = []
+  const pending = createDeferred<ReportExecutionResponseDto>()
+  reportPageMocks.executeReport.mockReturnValueOnce(pending.promise)
+  const { router, view } = await renderReportPage()
+  const routeUpdate = createDeferred<void>()
+  const entered = vi.fn()
+  const removeGuard = router.beforeEach(async to => {
+    if (to.query.ctx) { entered(); await routeUpdate.promise }
+  })
+  pending.resolve(buildResponse({ rows: ['Old result'] }))
+  await expect.poll(() => entered.mock.calls.length).toBe(1)
+  reportPageMocks.state.definition!.filters = clone(baseDefinition.filters)
+  await router.push('/reports/other')
+  await flushUi()
+  routeUpdate.resolve()
+  await flushUi()
+  removeGuard()
+  await expect.element(view.getByText('rows:0')).toBeVisible()
+  expect(Object.keys(sessionStorage).filter(key => key.startsWith('ngb.report.page.execution:'))).toEqual([])
+})
+
+test('ignores a cancelled file picker result and a picker AbortError', async () => {
+  const pending = createDeferred<FileSystemFileHandle>()
+  const createWritable = vi.fn()
+  const picker = vi.fn().mockReturnValueOnce(pending.promise).mockRejectedValueOnce(new DOMException('User cancelled', 'AbortError'))
+  vi.stubGlobal('showSaveFilePicker', picker)
+  const { view } = await renderReportPage()
+  clickHeaderButtonByTitle('Download')
+  await view.getByRole('button', { name: 'Cancel download' }).click()
+  pending.resolve({ createWritable } as unknown as FileSystemFileHandle)
+  await flushUi()
+  expect(createWritable).not.toHaveBeenCalled()
+  clickHeaderButtonByTitle('Download')
+  await flushUi()
+  expect(picker).toHaveBeenCalledTimes(2)
+  expect(reportPageMocks.exportReportXlsx).not.toHaveBeenCalled()
+  expect(document.body.textContent).not.toContain('User cancelled')
+  expect(document.body.textContent).not.toContain('Preparing download')
+})
+
+test('surfaces stream failures even if aborting the destination also fails', async () => {
+  const abort = vi.fn().mockRejectedValue(new Error('Already closed'))
+  vi.stubGlobal('showSaveFilePicker', vi.fn().mockResolvedValue({ createWritable: vi.fn().mockResolvedValue({ abort }) }))
+  reportPageMocks.exportReportXlsx.mockRejectedValueOnce(new Error('Write failed'))
+  const { view } = await renderReportPage()
+  clickHeaderButtonByTitle('Download')
+  await expect.element(view.getByText('Write failed')).toBeVisible()
+  expect(abort).toHaveBeenCalledOnce()
+  expect(document.body.textContent).not.toContain('Already closed')
+})
+
+test('finishes a download when the picker supplies no writable destination', async () => {
+  vi.stubGlobal('showSaveFilePicker', vi.fn().mockResolvedValue({ createWritable: vi.fn().mockResolvedValue(undefined) }))
+  await renderReportPage()
+  clickHeaderButtonByTitle('Download')
+  await expect.poll(() => reportPageMocks.exportReportXlsx.mock.calls.length).toBe(1)
+  expect(reportPageMocks.exportReportXlsx.mock.lastCall?.[2]).toEqual({ signal: expect.any(AbortSignal) })
+})
+
+test('keeps a new download pending when a cancelled download completes late', async () => {
+  const stale = createDeferred<void>()
+  const current = createDeferred<void>()
+  reportPageMocks.exportReportXlsxInBrowser.mockReturnValueOnce(stale.promise).mockReturnValueOnce(current.promise)
+  const { router, view } = await renderReportPage()
+  clickHeaderButtonByTitle('Download')
+  await expect.poll(() => reportPageMocks.exportReportXlsxInBrowser.mock.calls.length).toBe(1)
+  const oldSignal = reportPageMocks.exportReportXlsxInBrowser.mock.calls[0]![2].signal as AbortSignal
+  await router.push('/reports/other')
+  await flushUi()
+  expect(oldSignal.aborted).toBe(true)
+  clickHeaderButtonByTitle('Download')
+  await expect.poll(() => reportPageMocks.exportReportXlsxInBrowser.mock.calls.length).toBe(2)
+  stale.resolve()
+  await flushUi()
+  await expect.element(view.getByText('Preparing download…')).toBeVisible()
+  current.resolve()
+  await expect.element(view.getByText('Preparing download…')).not.toBeInTheDocument()
+})
+
+async function renderPagedReport(handleOverrides: Record<string, unknown> | null = null) {
+  reportSheetHandleOverrides.value = handleOverrides
+  reportPageMocks.state.definition!.filters = []
+  reportPageMocks.state.variants = []
+  reportPageMocks.executeReport.mockImplementation(async (_code, request) => {
+    const first = Number(request.cursor ?? 0)
+    return buildResponse({ rows: Array.from({ length: 500 }, (_, i) => `Row ${first + i}`), hasMore: true, nextCursor: String(first + 500) })
+  })
+  const result = await renderReportPage()
+  for (let i = 0; i < 4; i++) {
+    await result.view.getByRole('button', { name: 'Load more', exact: true }).click()
+    await expect.element(result.view.getByText(`first:Row ${i === 3 ? 500 : 0}`)).toBeVisible()
+  }
+  return result
+}
+
+test('preserves the window and retries a failed previous page with optional scroll methods absent', async () => {
+  const { view } = await renderPagedReport({ getScrollTop: undefined, prefixHeight: undefined })
+  const pending = createDeferred<ReportExecutionResponseDto>()
+  reportPageMocks.executeReport.mockReturnValueOnce(pending.promise)
+  const previous = view.getByRole('button', { name: 'Load previous', exact: true }).element() as HTMLButtonElement
+  previous.click()
+  previous.click()
+  await flushUi()
+  expect(reportPageMocks.executeReport).toHaveBeenCalledTimes(6)
+  pending.reject(new Error('Previous page unavailable'))
+  await expect.element(view.getByText('Previous page unavailable')).toBeVisible()
+  await expect.element(view.getByText('first:Row 500')).toBeVisible()
+  await view.getByRole('button', { name: 'Load previous', exact: true }).click()
+  await expect.element(view.getByText('first:Row 0')).toBeVisible()
+  await expect.element(view.getByText('restored-scroll-top:0')).toBeVisible()
+  expect(document.body.textContent).not.toContain('Previous page unavailable')
+})
+
+test.each(['resolve', 'reject'] as const)('ignores a previous page that %s after the report is rerun', async (outcome) => {
+  const { view } = await renderPagedReport()
+  const pending = createDeferred<ReportExecutionResponseDto>()
+  reportPageMocks.executeReport.mockReturnValueOnce(pending.promise)
+  await view.getByRole('button', { name: 'Load previous', exact: true }).click()
+  clickHeaderButtonByTitle('Run')
+  await expect.element(view.getByText('first:Row 0')).toBeVisible()
+  if (outcome === 'resolve') pending.resolve(buildResponse({ rows: ['Stale previous'] }))
+  else pending.reject(new Error('Stale previous'))
+  await flushUi()
+  expect(document.body.textContent).not.toContain('Stale previous')
+  await expect.element(view.getByText('rows:500')).toBeVisible()
+  await expect.element(view.getByText('loading-more:false')).toBeVisible()
+})
+
+test('preserves row anchors for paging and discards anchor restoration from superseded runs', async () => {
+  const anchor = { key: 'visible-row', offset: -12 }
+  const restoreAnchor = vi.fn()
+  const restoreScrollTop = vi.fn()
+  const { view } = await renderPagedReport({ captureAnchor: () => anchor, restoreAnchor, restoreScrollTop })
+  restoreAnchor.mockClear()
+  await view.getByRole('button', { name: 'Load previous', exact: true }).click()
+  await expect.element(view.getByText('first:Row 0')).toBeVisible()
+  expect(restoreAnchor).toHaveBeenCalledWith(anchor)
+  expect(restoreScrollTop).not.toHaveBeenCalled()
+  const pending = createDeferred<ReportExecutionResponseDto>()
+  reportPageMocks.executeReport.mockReturnValueOnce(pending.promise).mockReturnValueOnce(pending.promise)
+  restoreAnchor.mockClear()
+  const run = document.querySelector('button[title="Run"]') as HTMLButtonElement
+  run.click()
+  run.click()
+  await nextTick()
+  await nextTick()
+  expect(restoreAnchor).toHaveBeenCalledTimes(1)
+  pending.resolve(buildResponse({ rows: ['Latest run'] }))
+  await expect.element(view.getByText('first:Latest run')).toBeVisible()
+})
+
+test('offers a fresh run when large cursors exhaust backward history', async () => {
+  reportPageMocks.state.definition!.filters = []
+  reportPageMocks.state.variants = []
+  const cursorPayload = 'x'.repeat(140_000)
+  reportPageMocks.executeReport.mockImplementation(async (_code, request) => {
+    const first = Number(String(request.cursor ?? '0').split(':')[0])
+    return buildResponse({ rows: Array.from({ length: 500 }, (_, i) => `Row ${first + i}`),
+      hasMore: true, nextCursor: `${first + 500}:${cursorPayload}` })
+  })
+  const { view } = await renderReportPage()
+  for (let i = 0; i < 4; i++) await view.getByRole('button', { name: 'Load more', exact: true }).click()
+  const restart = view.getByRole('button', { name: 'Back to beginning', exact: true })
+  await expect.element(restart).toBeVisible()
+  const pending = createDeferred<ReportExecutionResponseDto>()
+  reportPageMocks.executeReport.mockReturnValueOnce(pending.promise)
+  await view.getByRole('button', { name: 'Load more', exact: true }).click()
+  await expect.element(restart).toBeDisabled()
+  pending.resolve(buildResponse({ rows: ['Last page'], hasMore: false }))
+  await expect.element(restart).toBeEnabled()
+  await restart.click()
+  await expect.element(view.getByText('first:Row 0')).toBeVisible()
+  await expect.element(restart).not.toBeInTheDocument()
+  expect(reportPageMocks.executeReport.mock.lastCall?.[1].cursor).toBeUndefined()
 })

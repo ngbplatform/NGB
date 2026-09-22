@@ -136,7 +136,7 @@ const groupTree = new ReportGroupTree(() => {
   })
 })
 const displaySheet = computed(() => { void treeVersion.value; return response.value ? groupTree.sheet : null })
-let executedRequest: ReportExecutionRequestDto | null = null
+let executedRequest: ReturnType<typeof buildPageExecutionRequest> | null = null
 let executionStateKey: string | null = null
 
 function initializeGroupTree(result: ReportExecutionResponseDto) {
@@ -144,7 +144,7 @@ function initializeGroupTree(result: ReportExecutionResponseDto) {
   const request = executedRequest!
   groupTree.reset(result.sheet, (path, cursor, signal) => executeReport(code, {
     ...request, groupPath: path, cursor, offset: 0,
-    limit: Math.min(request.limit ?? REPORT_GROUP_LIMITS.pageRows, REPORT_GROUP_LIMITS.pageRows),
+    limit: Math.min(request.limit, REPORT_GROUP_LIMITS.pageRows),
   }, { signal }))
 }
 function onGroupAction(id: string, action: GroupAction) { groupTree.act(id, action) }
@@ -611,8 +611,9 @@ async function runCurrentReport() {
     clearPendingReportScrollPosition()
     saveReportPageScrollTop(reportPageStateKey.value, 0)
   } catch (err) {
+    // Cancelling or replacing an execution advances runSeq before its rejection is handled.
     if (seq !== runSeq) return
-    if (!controller.signal.aborted) error.value = toErrorMessage(err, 'Failed to execute the report.')
+    error.value = toErrorMessage(err, 'Failed to execute the report.')
   } finally {
     if (seq === runSeq) {
       running.value = false
@@ -659,7 +660,7 @@ async function appendReportPage() {
     persistReportExecutionSnapshot()
   } catch (err) {
     if (seq !== runSeq) return
-    if (!controller.signal.aborted) error.value = toErrorMessage(err, 'Failed to load more rows.')
+    error.value = toErrorMessage(err, 'Failed to load more rows.')
   } finally {
     if (seq === runSeq) {
       loadingMore.value = false
@@ -687,7 +688,7 @@ async function prependReportPage() {
     if (!reportSheetRef.value?.captureAnchor) reportSheetRef.value?.restoreScrollTop(scrollTop + (reportSheetRef.value?.prefixHeight?.(added) ?? 0))
     persistReportExecutionSnapshot()
   } catch (err) {
-    if (seq === runSeq && !controller.signal.aborted) error.value = toErrorMessage(err, 'Failed to load previous rows.')
+    if (seq === runSeq) error.value = toErrorMessage(err, 'Failed to load previous rows.')
   } finally {
     if (seq === runSeq) { loadingMore.value = false; executionController = null }
   }
@@ -946,6 +947,8 @@ async function loadDefinitionAndRun() {
   executionController?.abort()
   downloadController?.abort()
   executionController = null
+  downloadController = null
+  downloading.value = false
   filterLookupControllers.forEach((controller) => controller.abort())
   filterLookupControllers.clear()
   const seq = ++loadSeq

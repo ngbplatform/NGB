@@ -110,7 +110,7 @@ export class ReportGroupTree {
           const branch = this.branches.get(id)
           view.group = { id, expanded: branch?.expanded ?? false }
           if (!branch?.expanded) continue
-          const childDepth = (view.outlineLevel ?? 0) + 1
+          const childDepth = level + depth + 1
           const page = branch.window.response
           if (branch.window.canLoadPrevious)
             rows.push(this.control(branch, childDepth, 'previous', 'Load previous rows', 'previous'))
@@ -213,7 +213,8 @@ export class ReportGroupTree {
         if (child) visit(child.sheet.rows)
       }
     }
-    visit(this.root?.rows ?? [])
+    // Pruning runs only after setRoot or while processing a visible branch.
+    visit(this.root!.rows)
     for (const branch of this.branches.values()) if (!reachable.has(branch.id)) this.drop(branch)
   }
 
@@ -240,7 +241,8 @@ export class ReportGroupTree {
       if (controller !== branch.controller || controller.signal.aborted || this.branches.get(branch.id) !== branch || !this.loader) continue
       this.active++
       const generation = this.generation
-      const cursor = branch.direction === 'next' ? branch.window.response?.nextCursor ?? null
+      // act() accepts continuation requests only when this window has a cursor.
+      const cursor = branch.direction === 'next' ? branch.window.response!.nextCursor!
         : branch.direction === 'previous' ? branch.window.previousCursor : null
       const loader = this.loader
       void (async () => {
