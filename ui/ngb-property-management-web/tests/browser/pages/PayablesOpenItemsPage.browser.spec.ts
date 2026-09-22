@@ -503,8 +503,7 @@ test('executes workflow factories, route synchronization callbacks, and shell ev
   mocks.openApply.value = true
   mocks.refreshFlag.value = true
   mocks.routeContextArgs.clearAutoOpenApplyInRoute([null, null, true, true])
-  expect(mocks.clearQueryKeys).toHaveBeenCalledWith(expect.anything(), expect.anything(), ['openApply', 'source'])
-  expect(mocks.clearQueryKeys).toHaveBeenCalledWith(expect.anything(), expect.anything(), ['refresh'])
+  expect(mocks.clearQueryKeys).toHaveBeenCalledExactlyOnceWith(expect.anything(), expect.anything(), ['openApply', 'source', 'refresh'])
   mocks.routeContextArgs.clearAutoOpenApplyInRoute([null, null, true, false])
   expect(mocks.routeContextArgs.source()).toEqual(['vendor-1', 'property-1', true, true])
   expect(mocks.routeContextArgs.autoOpenApply(['vendor-1', 'property-1', true, false])).toBe(true)

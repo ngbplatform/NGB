@@ -167,7 +167,9 @@ async function hydrateContextFromRoute(): Promise<void> {
 }
 
 function clearAutoOpenApplyInRoute(): void {
-  omitRouteQueryKeys(route, router, ['openApply', 'source'])
+  // Consume the document action flags in one navigation. Separate replacements
+  // race on the same query and can restore openApply, resetting its in-flight suggestion.
+  omitRouteQueryKeys(route, router, ['openApply', 'source', 'refresh'])
 }
 
 function clearRefreshFlagInRoute(): void {
@@ -538,10 +540,7 @@ useOpenItemsRouteContext({
   currentError: error,
   syncAfterContextLoad,
   autoOpenApply: (current) => current[2],
-  clearAutoOpenApplyInRoute: (current) => {
-    clearAutoOpenApplyInRoute()
-    if (current[3]) clearRefreshFlagInRoute()
-  },
+  clearAutoOpenApplyInRoute,
   shouldSkip: (current, previous) => {
     const [partyId, propertyId, shouldOpenApply, shouldRefresh] = current
     const [prevPartyId, prevPropertyId, prevShouldOpenApply, prevShouldRefresh] = previous ?? [null, null, false, false]
