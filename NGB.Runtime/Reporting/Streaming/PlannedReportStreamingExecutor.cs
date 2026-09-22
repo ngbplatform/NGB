@@ -119,7 +119,7 @@ public sealed class PlannedReportStreamingExecutor(
         }
     }
 
-    private async IAsyncEnumerable<ReportDataRow> ReadPlanAsync(
+    private async IAsyncEnumerable<ReportStreamingDataRow> ReadPlanAsync(
         ReportQueryPlan plan,
         [EnumeratorCancellation] CancellationToken ct)
     {
@@ -137,9 +137,9 @@ public sealed class PlannedReportStreamingExecutor(
         await foreach (var batch in source.ReadAsync(query, ct))
         {
             var enriched = await ReportEngine.EnrichInteractiveFieldsAsync(plan, batch, documentDisplays, ct);
-            foreach (var row in enriched.Rows)
+            for (var i = 0; i < batch.Rows.Count; i++)
             {
-                yield return row;
+                yield return new(batch.Rows[i].Values, enriched.Rows[i].Values);
             }
         }
     }

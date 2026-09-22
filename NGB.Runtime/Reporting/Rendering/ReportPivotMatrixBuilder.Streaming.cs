@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.Runtime.Reporting.Streaming;
 using NGB.Tools.Exceptions;
@@ -11,7 +10,7 @@ internal sealed partial class ReportPivotMatrixBuilder
     public async IAsyncEnumerable<ReportRowWrite> BuildStreamingAsync(
         ReportDefinitionRuntimeModel definition,
         ReportQueryPlan plan,
-        Func<ReportQueryPlan, CancellationToken, IAsyncEnumerable<ReportDataRow>> read,
+        Func<ReportQueryPlan, CancellationToken, IAsyncEnumerable<ReportStreamingDataRow>> read,
         Action<ReportSheetDto> setTemplate,
         [EnumeratorCancellation] CancellationToken ct)
     {
@@ -29,7 +28,7 @@ internal sealed partial class ReportPivotMatrixBuilder
         await foreach (var row in read(columnPlan, ct))
         {
             leaves.Add(new(
-                BuildTupleKey(columnCodes, row.Values),
+                BuildTupleKey(columnCodes, row.RawValues),
                 columnCodes.Select(c => row.Values.GetValueOrDefault(c)).ToArray(),
                 plan.ColumnGroups
                     .Select(g => _cellFormatter.FormatGroupLabel(row.Values.GetValueOrDefault(g.OutputCode), g.TimeGrain))
@@ -85,17 +84,21 @@ internal sealed partial class ReportPivotMatrixBuilder
         
         await using var totals = new ReportSummaryStreams(plan, read, ct);
 
-        IAsyncEnumerator<ReportDataRow>? leafTotals = null;
+        IAsyncEnumerator<ReportStreamingDataRow>? leafTotals = null;
 
         try
         {
-            if (plan.Shape.ShowGrandTotals && (hasDetails || plan.RowGroups.Count == 0))
+            // The row grain also determines its label and safe drilldown identity,
+            // independently of which pivot columns contain observations.
+            if (hasDetails || plan.RowGroups.Count == 0)
                 leafTotals = read(ReportSummaryStreams.AtGrain(plan, plan.RowGroups.Count, details: true), ct).GetAsyncEnumerator(ct);
 
             await foreach (var leaf in ReadLeavesAsync(plan, read, ct))
             {
                 var different = 0;
-                while (different < groups.Count && Equals(groups[different].RowGroupValues[different], leaf.RowGroupValues[different]))
+                while (different < groups.Count && Equals(
+                    groups[different].RawValues.GetValueOrDefault(plan.RowGroups[different].OutputCode),
+                    leaf.RawValues.GetValueOrDefault(plan.RowGroups[different].OutputCode)))
                 {
                     different++;
                 }
@@ -122,11 +125,12 @@ internal sealed partial class ReportPivotMatrixBuilder
                     var group = stream.Current;
                     for (var i = 0; i <= level; i++)
                     {
-                        if (!Equals(group.RowGroupValues[i], leaf.RowGroupValues[i]))
+                        var code = plan.RowGroups[i].OutputCode;
+                        if (!Equals(group.RawValues.GetValueOrDefault(code), leaf.RawValues.GetValueOrDefault(code)))
                             throw new NgbInvariantViolationException("Pivot summary order differs from its detail stream.");
                     }
                     
-                    group.SetTotals((await totals.NextAsync(level, leaf.SourceValues)).Values);
+                    group.SetTotals((await totals.NextAsync(level, leaf.RawValues)).Values);
                     groups.Add(group);
 
                     yield return new(
@@ -142,7 +146,7 @@ internal sealed partial class ReportPivotMatrixBuilder
                     foreach (var code in ReportRowHierarchy.BuildValueCodes(plan))
                     {
 
-                        if (!Equals(leaf.RowAxisValues.GetValueOrDefault(code), leafTotals.Current.Values.GetValueOrDefault(code)))
+                        if (!Equals(leaf.RawValues.GetValueOrDefault(code), leafTotals.Current.RawValues.GetValueOrDefault(code)))
                             throw new NgbInvariantViolationException("Pivot leaf total order differs from its detail stream.");
                     }
 
@@ -185,7 +189,7 @@ internal sealed partial class ReportPivotMatrixBuilder
 
     private static async IAsyncEnumerable<PivotLeafRow> ReadLeavesAsync(
         ReportQueryPlan plan,
-        Func<ReportQueryPlan, CancellationToken, IAsyncEnumerable<ReportDataRow>> read,
+        Func<ReportQueryPlan, CancellationToken, IAsyncEnumerable<ReportStreamingDataRow>> read,
         [EnumeratorCancellation] CancellationToken ct)
     {
         var axisCodes = ReportRowHierarchy.BuildValueCodes(plan);
@@ -194,19 +198,20 @@ internal sealed partial class ReportPivotMatrixBuilder
         
         await foreach (var row in read(plan, ct))
         {
-            if (leaf is null || axisCodes.Any(code => !Equals(leaf.RowAxisValues.GetValueOrDefault(code), row.Values.GetValueOrDefault(code))))
+            if (leaf is null || axisCodes.Any(code => !Equals(leaf.RawValues.GetValueOrDefault(code), row.RawValues.GetValueOrDefault(code))))
             {
                 if (leaf is not null)
                     yield return leaf;
 
                 leaf = new(
-                    BuildTupleKey(axisCodes, row.Values),
+                    BuildTupleKey(axisCodes, row.RawValues),
                     axisCodes.ToDictionary(c => c, c => row.Values.GetValueOrDefault(c), StringComparer.OrdinalIgnoreCase),
                     plan.RowGroups.Select(g => row.Values.GetValueOrDefault(g.OutputCode)).ToArray(),
-                    row.Values);
+                    row.Values,
+                    row.RawValues);
             }
 
-            var columnKey = BuildTupleKey(columnCodes, row.Values);
+            var columnKey = BuildTupleKey(columnCodes, row.RawValues);
 
             foreach (var measure in plan.Measures)
             {

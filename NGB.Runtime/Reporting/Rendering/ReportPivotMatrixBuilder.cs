@@ -246,7 +246,11 @@ internal sealed partial class ReportPivotMatrixBuilder(
                 continue;
             }
 
-            cells.Add(_cellFormatter.BuildCell(leafRow.RowAxisValues.GetValueOrDefault(rowAxisColumn.Code), rowAxisColumn, semanticRole: rowAxisColumn.SemanticRole, action: _actionResolver.ResolveForDetailColumn(rowAxisColumn.Code, leafRow.SourceValues)));
+            cells.Add(_cellFormatter.BuildCell(
+                leafRow.SourceValues.GetValueOrDefault(rowAxisColumn.Code),
+                rowAxisColumn,
+                semanticRole: rowAxisColumn.SemanticRole,
+                action: _actionResolver.ResolveForDetailColumn(rowAxisColumn.Code, leafRow.SourceValues)));
         }
 
         foreach (var valueColumn in valueColumns)
@@ -281,7 +285,7 @@ internal sealed partial class ReportPivotMatrixBuilder(
     {
         var cells = new List<ReportCellDto>(rowAxisColumns.Count + valueColumns.Count);
         var firstLeaf = leafRows[start];
-        var currentValue = firstLeaf.RowGroupValues[level];
+        var currentValue = firstLeaf.SourceValues.GetValueOrDefault(plan.RowGroups[level].OutputCode);
         var currentLabel = _cellFormatter.FormatGroupLabel(currentValue, plan.RowGroups[level].TimeGrain);
         var inlineGroupTotals = ShouldInlineGroupTotals(plan, level, hasDetailRows);
 
@@ -542,7 +546,7 @@ internal sealed partial class ReportPivotMatrixBuilder(
     {
         var cells = new List<ReportCellDto>(rowAxisColumns.Count + valueColumns.Count);
         var firstLeaf = leafRows[start];
-        var currentValue = firstLeaf.RowGroupValues[level];
+        var currentValue = firstLeaf.SourceValues.GetValueOrDefault(plan.RowGroups[level].OutputCode);
         var currentLabel = _cellFormatter.FormatGroupLabel(currentValue, plan.RowGroups[level].TimeGrain) + " subtotal";
 
         foreach (var rowAxisColumn in rowAxisColumns)
@@ -639,7 +643,8 @@ internal sealed class PivotLeafRow(
     string key,
     IReadOnlyDictionary<string, object?> rowAxisValues,
     IReadOnlyList<object?> rowGroupValues,
-    IReadOnlyDictionary<string, object?> sourceValues)
+    IReadOnlyDictionary<string, object?> sourceValues,
+    IReadOnlyDictionary<string, object?>? rawValues = null)
 {
     private readonly Dictionary<string, object?> _valuesByKey = new(StringComparer.Ordinal);
     private IReadOnlyDictionary<string, object?>? _totals;
@@ -649,7 +654,8 @@ internal sealed class PivotLeafRow(
     public string Key { get; } = key;
     public IReadOnlyDictionary<string, object?> RowAxisValues { get; } = rowAxisValues;
     public IReadOnlyList<object?> RowGroupValues { get; } = rowGroupValues;
-    public IReadOnlyDictionary<string, object?> SourceValues { get; } = sourceValues;
+    public IReadOnlyDictionary<string, object?> SourceValues => _totals ?? sourceValues;
+    public IReadOnlyDictionary<string, object?> RawValues { get; } = rawValues ?? sourceValues;
 
     public void AddValue(string columnLeafKey, Planning.ReportPlanMeasure measure, object? value)
     {

@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.Runtime.Reporting.Streaming;
 using NGB.Tools.Exceptions;
@@ -11,7 +10,7 @@ internal sealed partial class ReportGroupTreeBuilder
     public async IAsyncEnumerable<ReportRowWrite> BuildStreamingAsync(
         ReportQueryPlan plan,
         IReadOnlyList<ReportSheetColumnDto> columns,
-        Func<ReportQueryPlan, CancellationToken, IAsyncEnumerable<ReportDataRow>> read,
+        Func<ReportQueryPlan, CancellationToken, IAsyncEnumerable<ReportStreamingDataRow>> read,
         [EnumeratorCancellation] CancellationToken ct)
     {
         var ordinal = 0;
@@ -29,7 +28,7 @@ internal sealed partial class ReportGroupTreeBuilder
         var open = new List<OpenGroupState>();
 
         await using var summaries = new ReportSummaryStreams(plan, read, ct);
-        ReportDataRow? previous = null;
+        ReportStreamingDataRow? previous = null;
         await foreach (var data in read(plan, ct))
         {
             hasRows = true;
@@ -72,7 +71,7 @@ internal sealed partial class ReportGroupTreeBuilder
 
             var different = previous is null
                 ? 0
-                : FindFirstDifferentLevel(plan.RowGroups, previous.Values, data.Values);
+                : FindFirstDifferentLevel(plan.RowGroups, previous.RawValues, data.RawValues);
 
             for (var level = open.Count - 1; level >= different; level--)
             {
@@ -87,7 +86,7 @@ internal sealed partial class ReportGroupTreeBuilder
                 var grouping = plan.RowGroups[level];
                 var total = _subtotalBuilder.CreateAccumulator(plan.Measures);
                 var summary = plan.Measures.Count > 0
-                    ? (await summaries.NextAsync(level, data.Values)).Values
+                    ? (await summaries.NextAsync(level, data.RawValues)).Values
                     : data.Values;
 
                 if (plan.Measures.Count > 0)
@@ -95,12 +94,12 @@ internal sealed partial class ReportGroupTreeBuilder
 
                 var state = new OpenGroupState(
                     level, grouping,
-                    data.Values.GetValueOrDefault(grouping.OutputCode),
+                    summary.GetValueOrDefault(grouping.OutputCode),
                     System.Text.Json.JsonSerializer.Serialize(plan.RowGroups.Take(level + 1)
                         .Select(g => new
                         {
                             g.OutputCode,
-                            Value = data.Values.GetValueOrDefault(g.OutputCode)
+                            Value = data.RawValues.GetValueOrDefault(g.OutputCode)
                         })),
                     total,
                     ordinal,
@@ -143,11 +142,11 @@ internal sealed partial class ReportGroupTreeBuilder
 /// Averaging averages or summing distinct counts would produce incorrect report totals.</summary>
 internal sealed class ReportSummaryStreams(
     ReportQueryPlan plan,
-    Func<ReportQueryPlan, CancellationToken, IAsyncEnumerable<ReportDataRow>> read,
+    Func<ReportQueryPlan, CancellationToken, IAsyncEnumerable<ReportStreamingDataRow>> read,
     CancellationToken ct)
     : IAsyncDisposable
 {
-    private readonly Dictionary<int, IAsyncEnumerator<ReportDataRow>> _streams = [];
+    private readonly Dictionary<int, IAsyncEnumerator<ReportStreamingDataRow>> _streams = [];
 
     public static ReportQueryPlan AtGrain(ReportQueryPlan plan, int levels, bool columns = false, bool details = false)
     {
@@ -171,7 +170,7 @@ internal sealed class ReportSummaryStreams(
         };
     }
 
-    public async Task<ReportDataRow> NextAsync(int level, IReadOnlyDictionary<string, object?> current)
+    public async Task<ReportStreamingDataRow> NextAsync(int level, IReadOnlyDictionary<string, object?> current)
     {
         if (!_streams.TryGetValue(level, out var stream))
         {
@@ -185,8 +184,16 @@ internal sealed class ReportSummaryStreams(
         for (var i = 0; i <= level; i++)
         {
             var code = plan.RowGroups[i].OutputCode;
-            if (!Equals(current.GetValueOrDefault(code), stream.Current.Values.GetValueOrDefault(code)))
-                throw new NgbInvariantViolationException("Report summary order does not match the detail hierarchy.");
+            if (!Equals(current.GetValueOrDefault(code), stream.Current.RawValues.GetValueOrDefault(code)))
+            {
+                throw new NgbInvariantViolationException(
+                    "Report summary order does not match the detail hierarchy.",
+                    new Dictionary<string, object?>
+                    {
+                        ["reportCode"] = plan.ReportCode,
+                        ["level"] = level, ["field"] = code
+                    });
+            }
         }
 
         return stream.Current;
