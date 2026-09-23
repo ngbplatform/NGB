@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { markRaw } from 'vue'
+import { markRaw, ref } from 'vue'
 import {
   NgbConfiguredEntityEditor,
+  forwardEntityEditorHandle,
+  type EntityEditorHandle,
   type ConfiguredEntityEditorConfiguration,
   type ConfiguredEntityEditorProps,
 } from '@ngbplatform/ui/editor'
@@ -24,6 +26,9 @@ const editorProps = withDefaults(defineProps<ConfiguredEntityEditorProps>(), {
   navigateOnCreate: undefined,
 })
 
+const editorRef = ref<EntityEditorHandle | null>(null)
+defineExpose(forwardEntityEditorHandle(editorRef))
+
 const configuration: ConfiguredEntityEditorConfiguration = {
   documentPartsExtensionKey: 'crm-document-parts',
   documentPartsEditor: markRaw(CRMDocumentPartsEditor),
@@ -34,5 +39,5 @@ const configuration: ConfiguredEntityEditorConfiguration = {
 </script>
 
 <template>
-  <NgbConfiguredEntityEditor v-bind="{ ...editorProps, ...$attrs }" :configuration="configuration" />
+  <NgbConfiguredEntityEditor ref="editorRef" v-bind="{ ...editorProps, ...$attrs }" :configuration="configuration" />
 </template>

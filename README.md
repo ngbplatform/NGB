@@ -559,8 +559,11 @@ docker compose -f docker-compose.ab.yml --env-file .env.ab up --build
 
 ### Run the CRM demo locally
 
+CRM installs the platform UI from a local npm package. Repack it after changing
+`ui/ngb-ui-framework`, including when testing unpublished changes, before rebuilding the web image:
+
 ```bash
-npm --prefix ui run pack:platform-ui
+npm --prefix ui run pack:platform-ui -- --local-candidate
 docker compose -f docker-compose.crm.yml --env-file .env.crm up --build
 ```
 
