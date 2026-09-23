@@ -28,9 +28,24 @@ function createHandle() {
     closeAuditLog: vi.fn(),
     getIsDirty: vi.fn().mockReturnValue(true),
     getCanSave: vi.fn().mockReturnValue(true),
-    getFlags: vi.fn(),
+    getFlags: vi.fn().mockReturnValue({ canSave: true, isDirty: true }),
   } satisfies EntityEditorHandle<{ version: number }>
 }
+
+test.each(Object.keys(createHandle()) as (keyof EntityEditorHandle)[])(
+  'forwards %s to the mounted editor, preserving its result and receiver',
+  async (method) => {
+    const mounted = createHandle()
+    const forwarded = forwardEntityEditorHandle(shallowRef(mounted))
+
+    const result = forwarded[method]()
+
+    expect(mounted[method]).toHaveBeenCalledExactlyOnceWith()
+    expect(mounted[method].mock.contexts[0]).toBe(mounted)
+    expect(result).toBe(mounted[method].mock.results[0]!.value)
+    await result
+  },
+)
 
 test('resolves the current editor after mount and replacement without capturing a stale handle', async () => {
   const editor = shallowRef<EntityEditorHandle<{ version: number }> | null>(null)

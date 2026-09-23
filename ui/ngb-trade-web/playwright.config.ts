@@ -8,7 +8,8 @@ import { loadE2eEnv, resolvePlaywrightAuthFile } from '../tests/e2e/support/e2eE
 
 const uiWorkspaceDir = fileURLToPath(new URL('..', import.meta.url))
 const e2eHost = process.env.TRADE_WEB_E2E_HOST?.trim() || TRADE_WEB_DEV_HOST
-const e2ePort = parsePort(process.env.TRADE_WEB_E2E_PORT, TRADE_WEB_DEV_PORT + 1)
+// Keep E2E servers outside the adjacent ports used by running vertical dev servers.
+const e2ePort = parsePort(process.env.TRADE_WEB_E2E_PORT, TRADE_WEB_DEV_PORT + 100)
 const e2eBaseUrl = `http://${e2eHost}:${e2ePort}`
 const workCenterSpecs = /trade-web\/work-center\.spec\.ts/
 

@@ -19,6 +19,7 @@ export default defineConfig({
     exclude: ['@ngbplatform/ui'],
     include: [
       '@headlessui/vue',
+      '@microsoft/signalr',
       'pinia',
       'vue-router',
       'keycloak-js',
