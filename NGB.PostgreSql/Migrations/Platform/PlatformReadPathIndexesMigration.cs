@@ -13,10 +13,12 @@ public sealed class PlatformReadPathIndexesMigration : IDdlObject
 
     public string Name => "platform_read_path_indexes";
 
-    public string Generate()
+    public string Generate() => ReadEmbeddedSql(ResourceName);
+
+    internal static string ReadEmbeddedSql(string resourceName)
     {
-        using var stream = typeof(PlatformReadPathIndexesMigration).Assembly.GetManifestResourceStream(ResourceName)
-            ?? throw new NgbInvariantViolationException($"Missing embedded migration resource: {ResourceName}");
+        using var stream = typeof(PlatformReadPathIndexesMigration).Assembly.GetManifestResourceStream(resourceName)
+            ?? throw new NgbInvariantViolationException($"Missing embedded migration resource: {resourceName}");
 
         using var reader = new StreamReader(stream);
 

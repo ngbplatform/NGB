@@ -135,9 +135,12 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task GetPageAsync_ReusesBalancesOnlyInsideTheSameSnapshot(bool sameSnapshot)
+    [InlineData(true, null)]
+    [InlineData(true, "debit")]
+    [InlineData(true, "credit")]
+    [InlineData(true, "closing")]
+    [InlineData(false, null)]
+    public async Task GetPageAsync_ReusesBalancesOnlyInsideTheSameSnapshot(bool sameSnapshot, string? missing)
     {
         var accountId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var counterId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -177,6 +180,19 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         snapshotReader.CallCount.Should().Be(1);
 
         if (!sameSnapshot) session.SetupGet(x => x.SnapshotId).Returns(Guid.NewGuid());
+        var continuation = new GeneralLedgerAggregatedReportCursor
+        {
+            AfterPeriodUtc = page1.NextCursor!.AfterPeriodUtc,
+            AfterDocumentId = page1.NextCursor.AfterDocumentId,
+            AfterCounterAccountCode = page1.NextCursor.AfterCounterAccountCode,
+            AfterCounterAccountId = page1.NextCursor.AfterCounterAccountId,
+            AfterDimensionSetId = page1.NextCursor.AfterDimensionSetId,
+            RunningBalance = page1.NextCursor.RunningBalance,
+            SnapshotId = page1.NextCursor.SnapshotId,
+            TotalDebit = missing == "debit" ? null : page1.NextCursor!.TotalDebit,
+            TotalCredit = missing == "credit" ? null : page1.NextCursor!.TotalCredit,
+            ClosingBalance = missing == "closing" ? null : page1.NextCursor!.ClosingBalance
+        };
         var page2 = await service.GetPageAsync(
             new GeneralLedgerAggregatedReportPageRequest
             {
@@ -184,7 +200,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
                 FromInclusive = new DateOnly(2026, 3, 1),
                 ToInclusive = new DateOnly(2026, 3, 1),
                 PageSize = 1,
-                Cursor = page1.NextCursor
+                Cursor = continuation
             },
             CancellationToken.None);
 
@@ -194,7 +210,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         page2.Lines.Should().ContainSingle();
         page2.Lines[0].RunningBalance.Should().Be(15m);
         page2.ClosingBalance.Should().Be(15m);
-        snapshotReader.CallCount.Should().Be(sameSnapshot ? 1 : 2);
+        snapshotReader.CallCount.Should().Be(sameSnapshot && missing is null ? 1 : 2);
     }
 
     [Fact]

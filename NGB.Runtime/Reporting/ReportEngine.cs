@@ -85,9 +85,6 @@ public sealed class ReportEngine(
         CancellationToken ct,
         int? hardSourceRowLimit = null)
     {
-        if (request is null)
-            throw new NgbArgumentRequiredException(nameof(request));
-
         var definition = await _definitions.GetDefinitionAsync(reportCode, ct);
         var requestWithVariant = variantResolver is null
             ? request

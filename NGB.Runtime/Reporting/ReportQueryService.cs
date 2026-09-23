@@ -51,8 +51,8 @@ public sealed class ReportQueryService(
             if (!result.HasMore
                 && inner is not null
                 && definition.Mode == ReportExecutionMode.Canonical
-                && result.Diagnostics?.GetValueOrDefault("paging") != "query"
-                && result.Diagnostics?.GetValueOrDefault("totals") != "current"
+                && result.Diagnostics!.GetValueOrDefault("paging") != "query"
+                && result.Diagnostics!.GetValueOrDefault("totals") != "current"
                 && result.Sheet.Rows.Any(IsGrandTotal))
             {
                 var totals = await engine.ExecuteAsync(

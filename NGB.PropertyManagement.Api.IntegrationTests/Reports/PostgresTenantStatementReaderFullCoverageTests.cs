@@ -179,6 +179,25 @@ public sealed class PostgresTenantStatementReaderFullCoverageTests(PmIntegration
         tail.HasMore.Should().BeFalse();
         tail.Total.Should().Be(2);
         tail.Rows[0].RunningBalance.Should().Be(300m);
+        var noSession = new NGB.PropertyManagement.PostgreSql.Reporting.PostgresTenantStatementReader(uow);
+        (await noSession.GetCursorPageAsync(query, new(0, first.Total, first.Totals), default)).SnapshotId.Should().BeEmpty();
+        var session = scope.ServiceProvider.GetRequiredService<NGB.Persistence.Reporting.IReportReadSession>();
+        await session.BeginAsync(default);
+        var frozen = await reader.GetCursorPageAsync(query, null, default);
+        var cursorInSession = new TenantStatementPageCursor(1, frozen.Total, frozen.Totals,
+            frozen.NextAfterOccurredOnUtc, frozen.NextAfterSortOrder, frozen.NextAfterDocumentId, frozen.NextRunningBalance, frozen.SnapshotId);
+        var frozenTail = await reader.GetCursorPageAsync(query, cursorInSession, default);
+        frozenTail.Rows.Should().ContainSingle().Which.DocumentId.Should().Be(secondChargeId);
+        frozenTail.Totals.Should().Be(frozen.Totals);
+        frozenTail.Rows[0].RunningBalance.Should().Be(300m);
+        var offsetTail = await reader.GetCursorPageAsync(query, cursorInSession with { AfterOccurredOnUtc = null }, default);
+        offsetTail.Rows.Should().ContainSingle().Which.DocumentId.Should().Be(secondChargeId);
+        await session.EndAsync(default);
+        await session.BeginAsync(default);
+        var freshTail = await reader.GetCursorPageAsync(query, cursorInSession, default);
+        freshTail.Rows.Should().ContainSingle().Which.DocumentId.Should().Be(secondChargeId);
+        freshTail.SnapshotId.Should().NotBe(frozen.SnapshotId);
+        await session.EndAsync(default);
         await uow.ExecuteInUowTransactionAsync(async ct =>
             await uow.Connection.ExecuteAsync(new CommandDefinition(
                 "UPDATE documents SET status = @Draft, posted_at_utc = NULL WHERE id = @Id;",

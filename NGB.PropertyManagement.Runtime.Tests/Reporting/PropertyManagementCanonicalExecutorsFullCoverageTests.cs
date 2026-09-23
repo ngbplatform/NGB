@@ -22,6 +22,80 @@ namespace NGB.PropertyManagement.Runtime.Tests.Reporting;
 
 public sealed class PropertyManagementCanonicalExecutorsFullCoverageTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Maintenance_stream_freezes_the_date_and_numbers_rows_across_empty_batches(bool explicitDate)
+    {
+        var clock = new FixedClock();
+        var reader = new Mock<IMaintenanceQueueStreamReader>(MockBehavior.Strict);
+        var expectedDate = explicitDate ? Today : new DateOnly(2026, 9, 22);
+        using var cancellation = new CancellationTokenSource();
+        reader.Setup(x => x.ReadAsync(It.Is<MaintenanceQueueQuery>(q => q.AsOfUtc == expectedDate), cancellation.Token)).Returns(Batches());
+        var sut = new MaintenanceQueueStreamingExecutor(reader.Object, clock);
+        var prepared = sut.Prepare(Definition(sut.ReportCode), new(Parameters: explicitDate ? new Dictionary<string, string> { ["as_of_utc"] = Today.ToString("yyyy-MM-dd") } : null));
+        sut.Template(prepared).Rows.Should().BeEmpty();
+        var rows = new List<NGB.Runtime.Reporting.Streaming.ReportRowWrite>();
+        await foreach (var row in sut.ReadAsync(prepared, cancellation.Token)) rows.Add(row);
+        rows.Select(r => r.Ordinal).Should().Equal(0, 1);
+        rows.Should().OnlyContain(r => r.Row.RowKind == ReportRowKind.Detail);
+        reader.VerifyAll();
+        async IAsyncEnumerable<IReadOnlyList<MaintenanceQueueRow>> Batches()
+        {
+            await Task.CompletedTask;
+            yield return [];
+            yield return [MaintenanceRow()];
+            yield return [MaintenanceRow()];
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Occupancy_stream_preparation_supports_clock_defaults_and_explicit_total_preferences(bool totals)
+    {
+        var sut = new OccupancySummaryStreamingExecutor(Mock.Of<IOccupancySummaryReportReader>(), new FixedClock());
+        var prepared = sut.Prepare(Definition(sut.ReportCode), new(Layout: totals ? null : new(ShowGrandTotals: false), Parameters: totals ? new Dictionary<string, string> { ["as_of_utc"] = "2026-09-22" } : null));
+        using var json = JsonDocument.Parse(prepared);
+        json.RootElement.GetProperty("AsOf").GetString().Should().Be("2026-09-22");
+        json.RootElement.GetProperty("Totals").GetBoolean().Should().Be(totals);
+    }
+
+    private sealed class FixedClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Preparation_freezes_dates_and_preserves_request_parameters(bool explicitDates)
+    {
+        NGB.Application.Abstractions.Services.IReportSpecializedPlanExecutor[] executors =
+        [
+            new BuildingSummaryCanonicalReportExecutor(Mock.Of<IBuildingSummaryReader>()),
+            new OccupancySummaryCanonicalReportExecutor(Mock.Of<IOccupancySummaryReportReader>()),
+            new MaintenanceQueueCanonicalReportExecutor(Mock.Of<IMaintenanceQueueReader>()),
+            new TenantStatementCanonicalReportExecutor(Mock.Of<ITenantStatementReader>(), Mock.Of<IDocumentService>(), Mock.Of<ICatalogService>())
+        ];
+        foreach (var executor in executors)
+        {
+            var field = executor is TenantStatementCanonicalReportExecutor ? "to_utc" : "as_of_utc";
+            var parameters = explicitDates ? new Dictionary<string, string> { [field] = "2025-12-15", ["custom"] = "retained" } : null;
+            var request = new ReportExecutionRequestDto(Parameters: parameters, Limit: 7);
+            var prepared = executor.PrepareExecution(Definition(executor.ReportCode), request, new DateTimeOffset(2026, 9, 22, 1, 0, 0, TimeSpan.Zero));
+            prepared.Parameters![field].Should().Be(explicitDates ? "2025-12-15" : "2026-09-22");
+            prepared.Limit.Should().Be(7);
+            if (explicitDates)
+            {
+                prepared.Parameters["custom"].Should().Be("retained");
+                prepared.Parameters.Should().NotBeSameAs(parameters);
+                parameters.Should().HaveCount(2);
+            }
+            else request.Parameters.Should().BeNull();
+        }
+    }
+
     private static readonly DateOnly Today = new(2026, 8, 16);
 
     [Fact]

@@ -257,6 +257,22 @@ public sealed class PmReporting_PropertyManagementVertical_P0Tests : IAsyncLifet
             finalReceivablesPage.Total.Should().Be(2);
             finalReceivablesPage.HasMore.Should().BeFalse();
             finalReceivablesPage.Rows.Should().ContainSingle();
+            var legacyContinuation = await receivablesReader.GetCursorPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                seeded.LeaseId,
+                ReceivablesReportMode.OpenItemsDetails,
+                cursor with { AfterSortDate = null },
+                limit: 1);
+            legacyContinuation.Rows.Should().BeEquivalentTo(finalReceivablesPage.Rows);
+            legacyContinuation.HasMore.Should().BeFalse();
+            var allReceivables = await receivablesReader.GetCursorPageAsync(
+                policy.ReceivablesOpenItemsOperationalRegisterId,
+                seeded.LeaseId,
+                ReceivablesReportMode.OpenItemsDetails,
+                cursor: null,
+                limit: int.MaxValue);
+            allReceivables.Rows.Should().HaveCount(2);
+            allReceivables.HasMore.Should().BeFalse();
         }
 
         using (var resp = await client.GetAsync("/api/report-definitions"))

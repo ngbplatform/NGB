@@ -80,8 +80,10 @@ public sealed class CashFlowIndirectReportService_P0Tests
         report.EndingCash.Should().Be(80m);
     }
 
-    [Fact]
-    public async Task GetAsync_WhenSnapshotContainsUnclassifiedCashRows_ThrowsValidationException()
+    [Theory]
+    [InlineData(null)]
+    [InlineData(12)]
+    public async Task GetAsync_WhenSnapshotContainsUnclassifiedCashRows_ThrowsValidationException(int? count)
     {
         var service = new CashFlowIndirectReportService(
             new StubSnapshotReader(
@@ -99,7 +101,7 @@ public sealed class CashFlowIndirectReportService_P0Tests
                     UnclassifiedCashRows:
                     [
                         new CashFlowIndirectUnclassifiedCashRow("1500", "Equipment", -25m)
-                    ])),
+                    ]) { UnclassifiedCashRowCount = count }),
             new SpyLogger<CashFlowIndirectReportService>());
 
         var act = () => service.GetAsync(

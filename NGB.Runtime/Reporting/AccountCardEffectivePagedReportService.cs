@@ -66,11 +66,26 @@ public sealed class AccountCardEffectivePagedReportService(
         }, ct);
 
         var opening = reuseBalances ? cursor!.RunningBalance : rangeOpening + effectivePage.PrefixDelta;
-        decimal? totalDebit = request.IncludeRangeTotals ? (reuseBalances ? cursor!.TotalDebit : effectivePage.TotalDebit)
-            ?? throw new NgbInvariantViolationException("Account Card effective reader must provide total debit when totals are requested.") : null;
-        decimal? totalCredit = request.IncludeRangeTotals ? (reuseBalances ? cursor!.TotalCredit : effectivePage.TotalCredit)
-            ?? throw new NgbInvariantViolationException("Account Card effective reader must provide total credit when totals are requested.") : null;
-        var closingBalance = reuseBalances ? cursor!.ClosingBalance!.Value : rangeOpening + totalDebit - totalCredit;
+
+        decimal? totalDebit = request.IncludeRangeTotals
+            ? reuseBalances
+                ? cursor!.TotalDebit!.Value
+                : effectivePage.TotalDebit
+                    ?? throw new NgbInvariantViolationException("Account Card effective reader must provide total debit when totals are requested.")
+            : null;
+
+        decimal? totalCredit = request.IncludeRangeTotals
+            ? reuseBalances
+                ? cursor!.TotalCredit!.Value
+                : effectivePage.TotalCredit
+                    ?? throw new NgbInvariantViolationException("Account Card effective reader must provide total credit when totals are requested.")
+            : null;
+
+        decimal? closingBalance = reuseBalances
+            ? cursor!.ClosingBalance!.Value
+            : request.IncludeRangeTotals
+                ? rangeOpening + totalDebit!.Value - totalCredit!.Value
+                : null;
 
         var running = opening;
         var reportLines = new List<AccountCardReportLine>(effectivePage.Lines.Count);

@@ -14,6 +14,28 @@ namespace NGB.Runtime.Tests.Api;
 public sealed class ReportRequestBudgetTests
 {
     [Fact]
+    public async Task Deadline_after_headers_aborts_connection_and_releases_admission()
+    {
+        using var budget = new ReportRequestBudget(Options.Create(new ReportRequestLimits { PageTimeoutSeconds = 0 }));
+        var context = Context();
+        var response = new Moq.Mock<Microsoft.AspNetCore.Http.Features.IHttpResponseFeature>();
+        response.SetupGet(x => x.HasStarted).Returns(true);
+        context.HttpContext.Features.Set(response.Object);
+        var lifetime = new Moq.Mock<Microsoft.AspNetCore.Http.Features.IHttpRequestLifetimeFeature>();
+        lifetime.SetupProperty(x => x.RequestAborted);
+        context.HttpContext.Features.Set(lifetime.Object);
+        await new ReportRequestBudgetFilter(false, budget).OnResourceExecutionAsync(context, async () =>
+        {
+            try { await Task.Delay(Timeout.Infinite, context.HttpContext.RequestAborted); }
+            catch (OperationCanceledException) { }
+            return new ResourceExecutedContext(context, []);
+        });
+        lifetime.Verify(x => x.Abort(), Moq.Times.Once);
+        budget.Gate(false).CurrentCount.Should().Be(12);
+        context.HttpContext.RequestAborted.Should().Be(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Busy_downloads_are_rejected_before_execution_without_blocking_pages()
     {
         using var budget = new ReportRequestBudget(Options.Create(new ReportRequestLimits { ConcurrentDownloads = 1 }));

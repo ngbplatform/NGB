@@ -41,7 +41,12 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
             1,
             CancellationToken.None));
 
+        var reportReader = scope.ServiceProvider.GetRequiredService<IOccupancySummaryReportReader>();
+        foreach (var limit in new[] { 0, -1, int.MaxValue })
+            await AssertOutOfRange(() => reportReader.GetSliceAsync(null, AsOf, null, limit));
+        await AssertInvalid(() => reportReader.GetSliceAsync(Guid.Empty, AsOf, null, 1));
         var missingId = Guid.CreateVersion7();
+        await AssertInvalid(() => reportReader.GetSliceAsync(missingId, AsOf, null, 1));
         await AssertInvalid(() => buildingReader.GetSummaryAsync(missingId, AsOf, CancellationToken.None));
         await AssertInvalid(() => occupancyReader.GetPageAsync(missingId, AsOf, 0, 1, CancellationToken.None));
 
@@ -64,6 +69,16 @@ public sealed class PostgresBuildingAndOccupancyReadersFullCoverageTests(PmInteg
             AsOf,
             CancellationToken.None);
         normalizedDisplay.BuildingDisplay.Should().NotBeNullOrWhiteSpace();
+        await AssertInvalid(() => reportReader.GetSliceAsync(deletedId, AsOf, null, 1));
+        await AssertInvalid(() => reportReader.GetSliceAsync(unitId, AsOf, null, 1));
+        (await reportReader.GetSliceAsync(blankDisplayId, AsOf, null, 1)).Rows.Should().ContainSingle();
+        (await occupancyReader.GetPageAsync(blankDisplayId, AsOf, 0, 1)).Rows.Should().ContainSingle();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        await uow.BeginTransactionAsync();
+        var maintenance = scope.ServiceProvider.GetRequiredService<IMaintenanceQueueStreamReader>();
+        await foreach (var batch in maintenance.ReadAsync(new(AsOf, null, null, null, null, null, MaintenanceQueueState.Requested, 0, 10), default))
+            batch.Should().BeEmpty();
+        await uow.RollbackAsync();
     }
 
     [Fact]

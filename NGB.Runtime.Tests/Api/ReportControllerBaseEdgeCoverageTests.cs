@@ -20,6 +20,63 @@ namespace NGB.Runtime.Tests.Api;
 public sealed class ReportControllerBaseEdgeCoverageTests
 {
     [Fact]
+    public async Task Valid_form_export_and_first_page_are_forwarded()
+    {
+        var access = new Mock<INgbAccessChecker>();
+        access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Snapshot(
+            Permission(NgbResourceKinds.Report, "test", NgbPermissionActions.Export), Permission(NgbResourceKinds.Report, "test", NgbPermissionActions.Execute)));
+        var downloads = new Mock<IReportDownloadService>();
+        downloads.Setup(x => x.PrepareAsync("test", It.IsAny<ReportExportRequestDto>(), default)).ReturnsAsync(Mock.Of<IReportDownload>());
+        var engine = new Mock<IReportEngine>();
+        engine.Setup(x => x.ExecuteAsync("test", It.IsAny<ReportExecutionRequestDto>(), default)).ReturnsAsync(new ReportExecutionResponseDto(new([], []), 0, 1, null, false, null));
+        var sut = new TestReportController(access.Object, engine: engine.Object, exports: downloads.Object);
+        (await sut.ExportXlsxForm("test", "{}", Options.Create(new JsonOptions()), default)).Should().NotBeNull();
+        (await sut.Execute("test", new(), default)).HasMore.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Null_form_export_is_rejected_before_downloading()
+    {
+        var sut = new TestReportController(Mock.Of<INgbAccessChecker>());
+        Action action = () => sut.ExportXlsxForm("test", "null", Options.Create(new JsonOptions()), default);
+        action.Should().Throw<NGB.Tools.Exceptions.NgbArgumentInvalidException>().WithMessage("*required*");
+    }
+
+    [Fact]
+    public async Task Nonzero_offset_is_rejected_before_executing_report()
+    {
+        var access = new Mock<INgbAccessChecker>();
+        access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Snapshot(Permission(NgbResourceKinds.Report, "test", NgbPermissionActions.Execute)));
+        var sut = new TestReportController(access.Object);
+        var action = () => sut.Execute("test", new(Offset: 1), default);
+        await action.Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentInvalidException>().WithMessage("*continuation cursor*");
+    }
+
+    [Fact]
+    public async Task Failed_download_after_headers_aborts_connection_and_disposes_source()
+    {
+        var access = new Mock<INgbAccessChecker>();
+        access.Setup(x => x.GetSnapshotAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Snapshot(Permission(NgbResourceKinds.Report, "test", NgbPermissionActions.Export)));
+        var download = new Mock<IReportDownload>();
+        download.Setup(x => x.WriteAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>())).ThrowsAsync(new IOException("broken stream"));
+        var downloads = new Mock<IReportDownloadService>();
+        downloads.Setup(x => x.PrepareAsync("test", It.IsAny<ReportExportRequestDto>(), It.IsAny<CancellationToken>())).ReturnsAsync(download.Object);
+        var http = new DefaultHttpContext();
+        var response = new Mock<Microsoft.AspNetCore.Http.Features.IHttpResponseFeature>();
+        response.SetupGet(x => x.HasStarted).Returns(true);
+        response.SetupGet(x => x.Headers).Returns(new HeaderDictionary());
+        http.Features.Set(response.Object);
+        var lifetime = new Mock<Microsoft.AspNetCore.Http.Features.IHttpRequestLifetimeFeature>();
+        http.Features.Set(lifetime.Object);
+        var sut = new TestReportController(access.Object, exports: downloads.Object) { ControllerContext = new ControllerContext { HttpContext = http } };
+        var result = await sut.ExportXlsx("test", new(), default);
+        var action = () => result.ExecuteResultAsync(new ActionContext(http, new RouteData(), new ActionDescriptor()));
+        await action.Should().ThrowAsync<IOException>().WithMessage("broken stream");
+        lifetime.Verify(x => x.Abort(), Times.Once);
+        download.Verify(x => x.DisposeAsync(), Times.Once);
+    }
+
+    [Fact]
     public void Permission_helpers_cover_report_admin_fallbacks_short_circuits_and_failures()
     {
         const string reportCode = "custom-report";

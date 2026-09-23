@@ -781,8 +781,10 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         probeCount.Should().Be(2);
     }
 
-    [Fact]
-    public async Task Balance_cursor_page_uses_seek_and_carried_totals_without_repeating_windows()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Balance_cursor_page_uses_seek_and_carried_totals_without_repeating_windows(bool more)
     {
         var dependencies = RegisterDependencies([new("Amount", "amount", "amount", "Amount", 1)]);
         var valueId = Guid.NewGuid();
@@ -797,7 +799,7 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
                 [new(groupDimensionId, valueId)] = "Resolved"
             });
         var connection = new RecordingDbConnection(
-            readerFactory: _ => GroupNetRows(valueId, -4m, 7, 12m, 4m),
+            readerFactory: _ => GroupNetRows(valueId, -4m, 7, 12m, 4m, more ? 2 : 1),
             scalar: _ => true);
         var sut = new PostgresOperationalRegisterMovementsQueryReader(
             new RecordingUnitOfWork(connection),
@@ -819,7 +821,8 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
                 Total: 7,
                 TotalPositive: 12m,
                 TotalNegativeAbsolute: 4m),
-            limit: 2);
+            limit: 1);
+        page.HasMore.Should().Be(more);
 
         page.Rows.Should().ContainSingle().Which.Display.Should().Be("Resolved");
         page.Total.Should().Be(7);
@@ -839,7 +842,7 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
             dimensions: null,
             groupDimensionId,
             "amount");
-        legacyRows.Should().ContainSingle().Which.Display.Should().Be("Resolved");
+        legacyRows.Should().HaveCount(more ? 2 : 1).And.OnlyContain(r => r.Display == "Resolved");
     }
 
     [Fact]
@@ -1214,7 +1217,7 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         decimal netAmount,
         int total,
         decimal totalPositive,
-        decimal totalNegativeAbsolute)
+        decimal totalNegativeAbsolute, int count = 1)
     {
         var table = new DataTable();
         table.Columns.Add("ValueId", typeof(Guid));
@@ -1222,7 +1225,7 @@ public sealed class OperationalRegisterReadersValidationFullCoverageTests
         table.Columns.Add("TotalCount", typeof(int));
         table.Columns.Add("TotalPositive", typeof(decimal));
         table.Columns.Add("TotalNegativeAbsolute", typeof(decimal));
-        table.Rows.Add(valueId, netAmount, total, totalPositive, totalNegativeAbsolute);
+        for (var i = 0; i < count; i++) table.Rows.Add(valueId, netAmount, total, totalPositive, totalNegativeAbsolute);
         return table.CreateDataReader();
     }
 

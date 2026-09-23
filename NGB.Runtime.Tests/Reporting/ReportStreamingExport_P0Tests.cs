@@ -12,6 +12,23 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class ReportStreamingExport_P0Tests
 {
     [Fact]
+    public async Task Invalid_sheet_capacity_and_data_row_spans_are_rejected()
+    {
+        var exporter = new ReportXlsxExportService();
+        var template = new ReportSheetDto([new("value", "Value", "string")], []);
+        using var output = new MemoryStream();
+        await ((Func<Task>)(() => exporter.WriteXlsxAsync(output, template, Rows(0), 1, default)))
+            .Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => exporter.WriteXlsxAsync(output, template, Spanned(), default)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbInvariantViolationException>().WithMessage("*span*");
+        async IAsyncEnumerable<ReportSheetRowDto> Spanned()
+        {
+            await Task.CompletedTask;
+            yield return new(ReportRowKind.Detail, [new(Value: null, RowSpan: 2)]);
+        }
+    }
+
+    [Fact]
     public async Task Writes_to_a_nonseekable_async_only_http_stream()
     {
         using var bytes = new MemoryStream();

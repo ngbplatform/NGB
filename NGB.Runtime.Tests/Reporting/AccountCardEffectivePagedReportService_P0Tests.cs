@@ -192,9 +192,14 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task GetPageAsync_ReusesBalancesOnlyInsideTheSameSnapshot(bool sameSnapshot)
+    [InlineData(true, null)]
+    [InlineData(true, "debit")]
+    [InlineData(true, "credit")]
+    [InlineData(true, "closing")]
+    [InlineData(false, null)]
+    [InlineData(false, null, false)]
+    [InlineData(true, null, false)]
+    public async Task GetPageAsync_ReusesBalancesOnlyInsideTheSameSnapshot(bool sameSnapshot, string? missing, bool includeTotals = true)
     {
         var accountId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var snapshotId = Guid.NewGuid();
@@ -236,26 +241,28 @@ public sealed class AccountCardEffectivePagedReportService_P0Tests
             FromInclusive = new DateOnly(2026, 3, 1),
             ToInclusive = new DateOnly(2026, 3, 1),
             PageSize = 1,
+            IncludeRangeTotals = includeTotals,
             Cursor = new AccountCardReportCursor
             {
                 AfterPeriodUtc = new DateTime(2026, 3, 10, 12, 0, 0, DateTimeKind.Utc),
                 AfterEntryId = 10,
                 SnapshotId = sameSnapshot ? snapshotId : Guid.NewGuid(),
                 RunningBalance = 20m,
-                TotalDebit = 35m,
-                TotalCredit = 5m,
-                ClosingBalance = 30m
+                TotalDebit = missing == "debit" ? null : 35m,
+                TotalCredit = missing == "credit" ? null : 5m,
+                ClosingBalance = missing == "closing" ? null : 30m
             }
         }, CancellationToken.None);
 
-        reader.TotalsCallCount.Should().Be(sameSnapshot ? 0 : 1);
+        sameSnapshot = sameSnapshot && missing is null;
+        reader.TotalsCallCount.Should().Be(includeTotals && !sameSnapshot ? 1 : 0);
         reader.OpeningBalanceCallCount.Should().Be(sameSnapshot ? 0 : 1);
         reader.PageRequests.Should().ContainSingle();
-        reader.PageRequests[0].IncludeTotals.Should().Be(!sameSnapshot);
+        reader.PageRequests[0].IncludeTotals.Should().Be(includeTotals && !sameSnapshot);
         page.OpeningBalance.Should().Be(sameSnapshot ? 20m : 75m);
-        page.TotalDebit.Should().Be(sameSnapshot ? 35m : 100m);
-        page.TotalCredit.Should().Be(sameSnapshot ? 5m : 0m);
-        page.ClosingBalance.Should().Be(sameSnapshot ? 30m : 100m);
+        page.TotalDebit.Should().Be(includeTotals ? sameSnapshot ? 35m : 100m : null);
+        page.TotalCredit.Should().Be(includeTotals ? sameSnapshot ? 5m : 0m : null);
+        page.ClosingBalance.Should().Be(sameSnapshot ? 30m : includeTotals ? 100m : null);
         page.HasMore.Should().BeFalse();
         page.NextCursor.Should().BeNull();
         page.Lines.Should().ContainSingle();

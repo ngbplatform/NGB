@@ -4,6 +4,8 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Accounting.Reports.AccountCard;
+using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.Testing.Reporting;
@@ -38,6 +40,18 @@ public sealed class AccountCardBrowsingTests(PostgresTestFixture fixture) : Inte
         page.Sheet.Rows[0].Cells[^1].Value!.Value.GetDecimal().Should().Be(9);
         probe.CommandCount.Should().BeInRange(1, 20);
         probe.SqlCommands.Count(sql => sql.Contains("candidates AS MATERIALIZED")).Should().Be(4);
+
+        var reader = scope.ServiceProvider.GetRequiredService<IAccountCardEffectivePageReader>();
+        var continued = await reader.GetPageAsync(new AccountCardLinePageRequest
+        {
+            AccountId = cash,
+            FromInclusive = new(2026, 1, 1), ToInclusive = new(2026, 1, 1),
+            PageSize = 1, IncludePrefixDelta = true,
+            Cursor = new() { AfterPeriodUtc = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), AfterEntryId = 0 }
+        }, default);
+        continued.Lines.Should().ContainSingle().Which.DebitAmount.Should().Be(9);
+        continued.PrefixDelta.Should().Be(0);
+        continued.HasMore.Should().BeFalse();
     }
 
     [Fact]

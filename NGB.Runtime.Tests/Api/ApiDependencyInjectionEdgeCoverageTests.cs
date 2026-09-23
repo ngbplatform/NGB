@@ -27,6 +27,23 @@ namespace NGB.Runtime.Tests.Api;
 
 public sealed class ApiDependencyInjectionEdgeCoverageTests
 {
+    [Theory]
+    [InlineData("ConcurrentPages")]
+    [InlineData("ConcurrentDownloads")]
+    [InlineData("PageTimeoutSeconds")]
+    [InlineData("DownloadTimeoutSeconds")]
+    public void Nonpositive_report_limits_fail_options_validation(string option)
+    {
+        var configuration = new ConfigurationBuilder().AddConfiguration(Configuration()).AddInMemoryCollection(new Dictionary<string, string?>
+        { [$"Reporting:Requests:{option}"] = "0" }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInfrastructure(configuration, "API");
+        using var provider = services.BuildServiceProvider();
+        Action read = () => _ = provider.GetRequiredService<IOptions<NGB.Api.Reporting.ReportRequestLimits>>().Value;
+        read.Should().Throw<OptionsValidationException>().WithMessage("*positive*");
+    }
+
     [Fact]
     public void Swagger_schema_ids_cover_plain_nested_generic_and_generic_parameter_types()
     {

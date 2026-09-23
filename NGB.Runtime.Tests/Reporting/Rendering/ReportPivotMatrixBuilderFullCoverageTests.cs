@@ -14,6 +14,128 @@ namespace NGB.Runtime.Tests.Reporting.Rendering;
 public sealed class ReportPivotMatrixBuilderFullCoverageTests
 {
     [Fact]
+    public async Task Abandoning_a_pivot_surfaces_a_failure_to_close_its_summary_stream()
+    {
+        var definition = Definition();
+        var plan = Plan(definition, new(RowGroups: [new("account_display")], ColumnGroups: [new("period_utc", ReportTimeGrain.Year)],
+            DetailFields: ["document_display"], Measures: [new("debit_amount")], ShowDetails: true, ShowGrandTotals: false));
+        var rows = Builder(plan, definition).BuildStreamingAsync(definition, plan, Read, _ => { }, default).GetAsyncEnumerator();
+        (await rows.MoveNextAsync()).Should().BeTrue();
+        rows.Current.Row.RowKind.Should().Be(ReportRowKind.Group);
+        await ((Func<Task>)(async () => await rows.DisposeAsync())).Should().ThrowAsync<IOException>().WithMessage("summary cleanup failed");
+
+        async IAsyncEnumerable<NGB.Runtime.Reporting.Streaming.ReportStreamingDataRow> Read(ReportQueryPlan query, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            var summary = query.RowGroups.Count > 0 && query.DetailFields.Count == 0 && query.ColumnGroups.Count > 0;
+            try
+            {
+                foreach (var group in new[] { "A", "B" })
+                {
+                    var values = new Dictionary<string, object?>
+                    {
+                        [plan.RowGroups[0].OutputCode] = group,
+                        [plan.DetailFields[0].OutputCode] = "D",
+                        [plan.ColumnGroups[0].OutputCode] = new DateTime(2026, 1, 1),
+                        [plan.Measures[0].OutputCode] = 5m
+                    };
+                    yield return new(values, values);
+                }
+            }
+            finally
+            {
+                if (summary) throw new IOException("summary cleanup failed");
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("summary_end")]
+    [InlineData("summary_order")]
+    [InlineData("leaf_end")]
+    [InlineData("leaf_order")]
+    [InlineData("none")]
+    public async Task Streaming_requires_aligned_summaries_and_closes_every_source(string failure)
+    {
+        var definition = Definition();
+        var plan = Plan(definition, new(RowGroups: [new("account_display")], ColumnGroups: [new("period_utc", ReportTimeGrain.Year)],
+            DetailFields: ["document_display"], Measures: [new("debit_amount")], ShowDetails: true, ShowGrandTotals: false));
+        var disposed = 0;
+        var actual = new List<ReportRowKind>();
+        var action = async () =>
+        {
+            await foreach (var row in Builder(plan, definition).BuildStreamingAsync(definition, plan, Read, _ => { }, default)) actual.Add(row.Row.RowKind);
+        };
+        if (failure == "none")
+        {
+            await action();
+            actual.Should().Equal(ReportRowKind.Group, ReportRowKind.Detail);
+        }
+        else await action.Should().ThrowAsync<NgbInvariantViolationException>();
+        disposed.Should().BeGreaterThan(0);
+        async IAsyncEnumerable<NGB.Runtime.Reporting.Streaming.ReportStreamingDataRow> Read(ReportQueryPlan query, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            try
+            {
+                var summary = query.RowGroups.Count > 0 && query.DetailFields.Count == 0 && query.ColumnGroups.Count > 0;
+                var leaf = query.DetailFields.Count > 0 && query.ColumnGroups.Count == 0;
+                if (summary && failure == "summary_end" || leaf && failure == "leaf_end") yield break;
+                var values = new Dictionary<string, object?>
+                {
+                    [plan.RowGroups[0].OutputCode] = summary && failure == "summary_order" ? "wrong" : "A",
+                    [plan.DetailFields[0].OutputCode] = leaf && failure == "leaf_order" ? "wrong" : "D",
+                    [plan.ColumnGroups[0].OutputCode] = new DateTime(2026, 1, 1),
+                    [plan.Measures[0].OutputCode] = 5m
+                };
+                yield return new(values, values);
+            }
+            finally { disposed++; }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Streaming_enforces_column_caps_with_or_without_grand_totals(bool totals)
+    {
+        var original = Definition();
+        var definition = new ReportDefinitionRuntimeModel(original.Definition with { Capabilities = original.Definition.Capabilities! with { MaxVisibleColumns = 1 } });
+        var plan = Plan(definition, new(ColumnGroups: [new("period_utc", ReportTimeGrain.Year)], Measures: [new("debit_amount")], ShowGrandTotals: totals));
+        var action = async () =>
+        {
+            await foreach (var row in Builder(plan, definition).BuildStreamingAsync(definition, plan, Read, _ => { }, default)) { }
+        };
+        await action.Should().ThrowAsync<NGB.Core.Reporting.Exceptions.ReportLayoutValidationException>();
+        async IAsyncEnumerable<NGB.Runtime.Reporting.Streaming.ReportStreamingDataRow> Read(ReportQueryPlan _, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            for (var year = 2025; year <= 2027; year++)
+            {
+                var values = new Dictionary<string, object?> { [plan.ColumnGroups[0].OutputCode] = new DateTime(year, 1, 1) };
+                yield return new(values, values);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Empty_stream_sets_template_without_opening_summary_streams()
+    {
+        var definition = Definition();
+        var plan = Plan(definition, new(ColumnGroups: [new("period_utc", ReportTimeGrain.Year)], Measures: [new("debit_amount")]));
+        ReportSheetDto? template = null;
+        var rows = new List<NGB.Runtime.Reporting.Streaming.ReportRowWrite>();
+        await foreach (var row in Builder(plan, definition).BuildStreamingAsync(definition, plan, Read, t => template = t, default)) rows.Add(row);
+        rows.Should().BeEmpty();
+        template.Should().NotBeNull();
+        async IAsyncEnumerable<NGB.Runtime.Reporting.Streaming.ReportStreamingDataRow> Read(ReportQueryPlan _, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
+
+    [Fact]
     public void ConstructorAndBuild_RejectMissingDependenciesArgumentsAndColumnGroups()
     {
         var definition = Definition();

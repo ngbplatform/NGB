@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using NGB.Accounting.Accounts;
+using NGB.Accounting.Reports.AccountCard;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Accounts;
@@ -74,6 +75,24 @@ public sealed class AccountingReports_DimensionFilterSemantics_P1Tests(PostgresT
 
         dim1Only.Should().HaveCount(2);
         dim1Only.All(x => x.Dimensions.Items.Contains(new DimensionValue(dim1, a1))).Should().BeTrue();
+
+        var effective = scope.ServiceProvider.GetRequiredService<IAccountCardEffectivePageReader>();
+        var first = await effective.GetPageAsync(new AccountCardLinePageRequest
+        {
+            AccountId = cashId, FromInclusive = new(2026, 1, 1), ToInclusive = new(2026, 1, 1),
+            DimensionScopes = new([new(dim1, [a1])]), PageSize = 1
+        }, default);
+        first.HasMore.Should().BeTrue();
+        var next = await effective.GetPageAsync(new AccountCardLinePageRequest
+        {
+            AccountId = cashId, FromInclusive = new(2026, 1, 1), ToInclusive = new(2026, 1, 1),
+            DimensionScopes = new([new(dim1, [a1])]), PageSize = 1,
+            Cursor = first.NextCursor, IncludePrefixDelta = true
+        }, default);
+        next.HasMore.Should().BeFalse();
+        next.Lines.Should().ContainSingle();
+        next.PrefixDelta.Should().Be(first.Lines.Single().DebitAmount - first.Lines.Single().CreditAmount);
+        next.Lines.Single().Dimensions.Items.Should().Contain(new DimensionValue(dim1, a1));
     }
 
     [Fact]

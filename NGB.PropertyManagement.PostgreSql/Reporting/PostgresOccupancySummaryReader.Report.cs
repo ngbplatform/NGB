@@ -68,7 +68,7 @@ building_rows AS (
         if (buildingId is null)
             return;
 
-        if (buildingId == Guid.Empty)
+        if (buildingId.Value == Guid.Empty)
             throw new NgbArgumentInvalidException(nameof(buildingId), "Select a building.");
 
         await uow.EnsureConnectionOpenAsync(ct);

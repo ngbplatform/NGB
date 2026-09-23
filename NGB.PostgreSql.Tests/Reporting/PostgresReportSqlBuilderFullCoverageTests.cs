@@ -12,6 +12,27 @@ namespace NGB.PostgreSql.Tests.Reporting;
 
 public sealed class PostgresReportSqlBuilderFullCoverageTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Pivot_measure_sort_joins_totals_at_the_complete_row_grain(bool rowAxis)
+    {
+        var sql = Builder().BuildStreaming(Request(rows: rowAxis ? [Group("name")] : [], columns: [Group("state")],
+            measures: [new("amount", "amount", "Amount", "decimal", ReportAggregationKind.Sum)],
+            sorts: [new("amount", "amount", ReportSortDirection.Desc)])).Sql;
+        sql.Should().Contain(rowAxis ? "JOIN sort_rows ON report_rows.\"name\" IS NOT DISTINCT FROM sort_rows.\"name\"" : "JOIN sort_rows ON TRUE")
+            .And.Contain("sort_rows.amount DESC");
+    }
+
+    [Fact]
+    public void Aggregate_drilldown_preserves_non_uuid_support_keys_only_for_unambiguous_groups()
+    {
+        var builder = Builder(fields: [Field("item_display"), new("item_id", "f.item_id", "int64")]);
+        var sql = builder.Build(Request(rows: [Group("item_display")],
+            measures: [new("amount", "amount", "Amount", "decimal", ReportAggregationKind.Sum)])).Sql;
+        sql.Should().Contain("THEN MIN(f.item_id) END").And.Contain("COUNT(DISTINCT f.item_id)=1");
+    }
+
     [Fact]
     public void Build_guards_required_input_selection_and_covers_base_where_and_default_order_fallbacks()
     {

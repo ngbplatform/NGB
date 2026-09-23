@@ -9,6 +9,13 @@ public sealed class ReportingReaderDefaultMethodsFullCoverageTests
     private static readonly DateOnly Today = new(2026, 8, 22);
 
     [Fact]
+    public async Task Dashboard_requires_an_exact_total()
+    {
+        IMaintenanceQueueReader reader = new MaintenanceReaderFake(total: null);
+        await ((Func<Task>)(() => reader.GetDashboardAsync(Today, 10))).Should().ThrowAsync<InvalidOperationException>().WithMessage("*exact total*");
+    }
+
+    [Fact]
     public async Task DefaultCursorAdapters_ForwardOffsetsAndComputeBothHasMoreOutcomes()
     {
         var maintenanceFake = new MaintenanceReaderFake();
@@ -97,7 +104,7 @@ public sealed class ReportingReaderDefaultMethodsFullCoverageTests
             state);
     }
 
-    private sealed class MaintenanceReaderFake(IReadOnlyList<MaintenanceQueueRow>? rows = null, int total = 3)
+    private sealed class MaintenanceReaderFake(IReadOnlyList<MaintenanceQueueRow>? rows = null, int? total = 3)
         : IMaintenanceQueueReader
     {
         private readonly IReadOnlyList<MaintenanceQueueRow> _rows = rows ?? [MaintenanceRow(1, MaintenanceQueueState.Requested)];

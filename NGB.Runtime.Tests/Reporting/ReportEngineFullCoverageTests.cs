@@ -12,6 +12,42 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class ReportEngineFullCoverageTests
 {
     [Fact]
+    public async Task Query_service_rejects_missing_continuations_and_always_ends_the_session()
+    {
+        var definition = Definition();
+        var fixture = new EngineFixture(definition);
+        fixture.Executor.Page = DataPage(Row("A", 10m)) with { HasMore = true, NextCursor = null };
+        var session = new Moq.Mock<NGB.Persistence.Reporting.IReportReadSession>();
+        using var protector = new ReportCursorProtector(Microsoft.Extensions.Options.Options.Create(new ReportCursorProtectionOptions()));
+        var service = new ReportQueryService(fixture.Sut, new DefinitionProvider(definition), new(Moq.Mock.Of<IReportVariantService>()), session.Object, protector);
+        await ((Func<Task>)(() => service.ExecuteAsync(definition.ReportCode, new(), default))).Should().ThrowAsync<NgbInvariantViolationException>();
+        session.Verify(x => x.EndAsync(CancellationToken.None), Moq.Times.Once);
+        fixture.Executor.Page = DataPage(Row("A", 10m));
+        (await service.ExecuteExportSheetAsync(definition.ReportCode, new(), default)).Rows.Should().NotBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("grand_total")]
+    [InlineData("grand-total")]
+    [InlineData(null)]
+    public async Task Query_service_removes_semantic_totals_on_intermediate_pages_and_refreshes_terminal_totals(string? role)
+    {
+        var definition = new ReportDefinitionDto("test", "Test", Mode: ReportExecutionMode.Canonical);
+        var fixture = new EngineFixture(definition);
+        var detail = new ReportSheetRowDto(ReportRowKind.Detail, [new(Value: null)]);
+        var total = new ReportSheetRowDto(role == null ? ReportRowKind.Total : ReportRowKind.Subtotal, [new(Value: null)], SemanticRole: role);
+        fixture.Executor.Page = new([], [], 0, 1, null, true, "next", PrebuiltSheet: new([], [detail, total]));
+        using var protector = new ReportCursorProtector(Microsoft.Extensions.Options.Options.Create(new ReportCursorProtectionOptions()));
+        var service = new ReportQueryService(fixture.Sut, new DefinitionProvider(definition), new(Moq.Mock.Of<IReportVariantService>()), Moq.Mock.Of<NGB.Persistence.Reporting.IReportReadSession>(), protector);
+        var first = await service.ExecuteAsync("test", new(), default);
+        first.Sheet.Rows.Should().ContainSingle().Which.RowKind.Should().Be(ReportRowKind.Detail);
+        fixture.Executor.Page = fixture.Executor.Page with { HasMore = false, NextCursor = null };
+        var final = await service.ExecuteAsync("test", new(Cursor: first.NextCursor), default);
+        final.Sheet.Rows.Should().HaveCount(2);
+        fixture.Executor.CallCount.Should().Be(3);
+    }
+
+    [Fact]
     public async Task ConstructorAndExport_RejectMissingExecutorAndNullRequest()
     {
         var definition = Definition();

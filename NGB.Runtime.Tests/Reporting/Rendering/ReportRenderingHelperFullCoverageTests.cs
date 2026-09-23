@@ -508,6 +508,7 @@ public sealed class ReportRenderingHelperFullCoverageTests
             Detail("warehouse_display"),
             Detail("multi_document_display"),
             Detail("plain_display"),
+            Detail("missing_display"),
             Detail("plain")
         ]);
         var resolver = new ReportComposableCellActionResolver(plan, dataset);
@@ -537,6 +538,7 @@ public sealed class ReportRenderingHelperFullCoverageTests
             ["plain_id"] = documentId
         }).Should().BeNull();
         resolver.ResolveForDetailColumn("plain", new Dictionary<string, object?>()).Should().BeNull();
+        resolver.ResolveForDetailColumn("warehouse_display", new Dictionary<string, object?>()).Should().BeNull();
         resolver.ResolveForDetailColumn("source_document_display", new Dictionary<string, object?>
         {
             ["source_document_id"] = 123

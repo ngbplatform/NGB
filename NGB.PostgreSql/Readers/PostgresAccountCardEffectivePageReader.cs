@@ -188,12 +188,11 @@ public sealed partial class PostgresAccountCardEffectivePageReader(
         if (!request.DisablePaging)
             return await QueryBoundedPageAsync(request, scopeDimIds, scopeValueIds, scopeDimensionCount, ct);
 
-        var pagingEnabled = !request.DisablePaging;
         var sql = BuildPageSql(
             hasDimensionScopes: scopeDimensionCount > 0,
-            hasCursor: pagingEnabled && request.Cursor is not null,
+            hasCursor: false,
             includeTotals: false,
-            disablePaging: request.DisablePaging);
+            disablePaging: true);
 
         var rows = (await uow.Connection.QueryAsync<AccountCardLine>(
             new CommandDefinition(
@@ -205,17 +204,10 @@ public sealed partial class PostgresAccountCardEffectivePageReader(
                     ToExclusiveUtc = ToMonthStartUtc(request.ToInclusive.AddMonths(1)),
                     ScopeDimensionCount = scopeDimensionCount,
                     ScopeDimIds = scopeDimIds,
-                    ScopeValueIds = scopeValueIds,
-                    AfterPeriodUtc = pagingEnabled ? request.Cursor?.AfterPeriodUtc : null,
-                    AfterEntryId = pagingEnabled ? request.Cursor?.AfterEntryId : null,
-                    LimitPlusOne = request.PageSize + 1
+                    ScopeValueIds = scopeValueIds
                 },
                 uow.Transaction,
                 cancellationToken: ct))).AsList();
-
-        var hasMore = pagingEnabled && rows.Count > request.PageSize;
-        if (hasMore)
-            rows.RemoveAt(rows.Count - 1);
 
         await ResolveDimensionsAsync(rows, ct);
         await ResolveDimensionValueDisplaysAsync(rows, ct);
@@ -223,8 +215,8 @@ public sealed partial class PostgresAccountCardEffectivePageReader(
         return new AccountCardLinePage
         {
             Lines = rows,
-            HasMore = hasMore,
-            NextCursor = BuildNextCursor(rows, hasMore)
+            HasMore = false,
+            NextCursor = null
         };
     }
 
@@ -502,25 +494,8 @@ public sealed partial class PostgresAccountCardEffectivePageReader(
 
         if (!includeTotals)
         {
-            sql.AppendLine("""
-                           SELECT *
-                           FROM effective_lines
-                           WHERE 1 = 1
-                           """);
-
-            if (hasCursor)
-                sql.AppendLine("""  AND ("PeriodUtc", "EntryId") > (CAST(@AfterPeriodUtc AS timestamptz), @AfterEntryId)""");
-
-            sql.AppendLine("ORDER BY \"PeriodUtc\", \"EntryId\"");
-            if (disablePaging)
-            {
-                sql.AppendLine(";");
-            }
-            else
-            {
-                sql.AppendLine("LIMIT @LimitPlusOne;");
-            }
-
+            // Interactive pages use bounded scanning. This shape serves complete streams only.
+            sql.AppendLine("SELECT * FROM effective_lines ORDER BY \"PeriodUtc\", \"EntryId\";");
             return WithAccountCodes(sql.ToString());
         }
 

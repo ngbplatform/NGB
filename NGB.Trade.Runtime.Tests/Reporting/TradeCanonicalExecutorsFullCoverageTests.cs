@@ -22,6 +22,38 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
     private static readonly Guid WarehouseDimensionId = DeterministicGuid.Create($"Dimension|{TradeCodes.Warehouse}");
     private static readonly TimeProvider Clock = new TestTimeProvider(new DateTimeOffset(2026, 4, 18, 12, 0, 0, TimeSpan.Zero));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Preparation_freezes_dates_without_mutating_the_callers_request(bool explicitDates)
+    {
+        NGB.Application.Abstractions.Services.IReportSpecializedPlanExecutor[] executors =
+        [
+            new InventoryBalancesCanonicalReportExecutor(PolicyReader(Policy()), new InventoryBalanceStub([]), Clock),
+            new InventoryMovementsCanonicalReportExecutor(PolicyReader(Policy()), EmptyMovements().Object, Mock.Of<IDocumentRepository>(), Clock),
+            new SalesByItemCanonicalReportExecutor(new AnalyticsStub(), Clock),
+            new SalesByCustomerCanonicalReportExecutor(new AnalyticsStub(), Clock),
+            new PurchasesByVendorCanonicalReportExecutor(new AnalyticsStub(), Clock)
+        ];
+        foreach (var executor in executors)
+        {
+            var inventory = executor is InventoryBalancesCanonicalReportExecutor;
+            var field = inventory ? "as_of_utc" : "to_utc";
+            var parameters = explicitDates ? new Dictionary<string, string> { [field] = "2025-12-15", ["from_utc"] = "2025-11-01" } : null;
+            var request = new ReportExecutionRequestDto(Parameters: parameters, Limit: 7);
+            var prepared = executor.PrepareExecution(Definition(executor.ReportCode), request, new DateTimeOffset(2026, 9, 22, 1, 0, 0, TimeSpan.Zero));
+            prepared.Parameters![field].Should().Be(explicitDates ? "2025-12-15" : "2026-09-22");
+            if (!inventory) prepared.Parameters["from_utc"].Should().Be(explicitDates ? "2025-11-01" : "2026-09-01");
+            prepared.Limit.Should().Be(7);
+            if (explicitDates)
+            {
+                prepared.Parameters.Should().NotBeSameAs(parameters);
+                parameters.Should().HaveCount(2);
+            }
+            else request.Parameters.Should().BeNull();
+        }
+    }
+
     [Fact]
     public async Task SalesByItem_CoversFilteringPagingDetailsTotalsAndTotalsDisabled()
     {
@@ -244,6 +276,11 @@ public sealed class TradeCanonicalExecutorsFullCoverageTests
         first.NextCursor.Should().NotBeNullOrWhiteSpace();
         cursorPage.Offset.Should().Be(1);
         cursorPage.Total.Should().Be(3);
+        var last = await sut.ExecuteAsync(Definition(sut.ReportCode),
+            new ReportExecutionRequestDto(Cursor: cursorPage.NextCursor, Limit: 1), default);
+        last.Offset.Should().Be(2);
+        last.HasMore.Should().BeFalse();
+        last.NextCursor.Should().BeNull();
         second.PrebuiltSheet!.Rows.Should().HaveCount(3);
     }
 

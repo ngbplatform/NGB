@@ -13,6 +13,39 @@ namespace NGB.Runtime.Tests.Reporting.Rendering;
 public sealed class ReportSummaryStreamsTests
 {
     [Fact]
+    public async Task Premature_summary_end_is_rejected()
+    {
+        await using var summaries = new ReportSummaryStreams(Plan(), Read, default);
+        await ((Func<Task>)(async () => await summaries.NextAsync(0, Values("first")))).Should().ThrowAsync<NgbInvariantViolationException>();
+        async IAsyncEnumerable<ReportStreamingDataRow> Read(ReportQueryPlan _, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Groups_use_summary_queries_only_when_measures_are_requested(bool measures)
+    {
+        var plan = measures ? Plan() : Plan() with { Measures = [] };
+        var formatter = new ReportCellFormatter();
+        var builder = new ReportGroupTreeBuilder(formatter, new(formatter), new(plan));
+        var calls = 0;
+        var rows = new List<ReportRowWrite>();
+        await foreach (var row in builder.BuildStreamingAsync(plan, ReportSheetBuilder.BuildColumns(plan), Read, default)) rows.Add(row);
+        calls.Should().Be(measures ? 3 : 1);
+        rows.Should().Contain(r => r.Row.RowKind == ReportRowKind.Group);
+        async IAsyncEnumerable<ReportStreamingDataRow> Read(ReportQueryPlan _, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            calls++;
+            await Task.CompletedTask;
+            yield return new(Values("first"), Values("first"));
+        }
+    }
+
+    [Fact]
     public async Task Equal_display_labels_do_not_hide_a_mismatched_source_key()
     {
         var plan = Plan();
