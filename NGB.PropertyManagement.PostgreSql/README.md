@@ -7,11 +7,14 @@ This project is the **Property Management** migration pack (Evolve).
 - Place SQL scripts under `db/migrations/`.
 - Scripts are embedded resources.
 
-This pack now uses a **single clean-slate PM baseline** for recreated databases:
+The pack starts with a PM baseline and applies subsequent versioned migrations:
 
 - `V2026_03_13_1000__ngb_pm_final_clean_baseline.sql`
+- `V2026_05_17_0100__ngb_pm_platform_perf_read_path_indexes.sql`
+- `V2026_08_26_0100__ngb_pm_read_path_indexes.sql`
+- `V2026_09_15_0100__ngb_pm_queue_seek_index.sql`
 
-The baseline contains the final PM schema state for:
+The pack covers:
 
 - `pm.party`
 - `pm.property` (Building | Unit, parent_property_id, unit_no, DB-computed display)
@@ -47,5 +50,5 @@ default charge type, and operational register setup.
 - The PM migration pack depends on the `platform` pack.
 - PM bootstrapper also installs standard typed-document immutability guards via
   `ngb_install_typed_document_immutability_guards()`.
-- For recreated / non-production environments, keep only the final clean baseline and delete the
-  older PM versioned migrations that it supersedes.
+- New databases apply the baseline and all subsequent migrations. Existing databases retain their
+  migration history and apply pending scripts; do not delete or edit applied versioned migrations.

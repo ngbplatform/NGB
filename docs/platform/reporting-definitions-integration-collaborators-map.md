@@ -94,7 +94,7 @@ Verified collaborators:
 - optional report variant resolver
 - optional filter scope expander
 - optional document display reader
-- optional rendered snapshot store
+- optional grouped and accounting page executors
 
 Role in the boundary:
 

@@ -12,6 +12,10 @@ description: Manual local developer runbook for bringing up NGB services without
 
 This runbook is the manual companion to `docker-compose.pm.yml`. Use it when you want to run parts of the stack locally from source instead of letting Docker Compose do everything.
 
+The commands below use Bash syntax. For prerequisites, HTTPS certificate export, Windows setup,
+and package preparation before building the full solution or CRM, follow
+[Run Locally](/start-here/run-locally).
+
 ## Verified anchors
 
 ```text
@@ -97,7 +101,7 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run --project NGB.PropertyManagement.W
 From `ui/`:
 
 ```bash
-npm install
+npm ci
 npm run dev:pm-web
 ```
 

@@ -9,7 +9,13 @@ This page gives two supported local-development patterns:
 1. **full Docker Compose bootstrap** — fastest way to get a demo running end to end;
 2. **hybrid manual development** — infrastructure in containers, .NET and UI projects started locally for debugging.
 
-The examples below use **Property Management**, because its Docker assets and environment file are complete and explicit. Trade and Agency Billing follow the same pattern with their own compose files and environment files.
+The examples below use **Property Management**. Trade and Agency Billing follow the same pattern
+with their own compose and environment files. CRM additionally consumes local platform packages;
+follow [Prepare local platform packages](#prepare-local-platform-packages) before starting it.
+
+Use .NET 10 SDK, Docker Compose v2 with Linux containers, and Node.js 22.14+ for local UI work.
+Bash examples run from the repository root unless stated otherwise; PowerShell alternatives are
+provided for package preparation and certificate setup.
 
 ## Option 1: Full Docker Compose bootstrap
 
@@ -54,19 +60,20 @@ Demo user:
 
 ### ⚠️ Windows note
 
-Before starting the application in Docker on Windows, ensure that the `$HOME` environment variable is set in the current PowerShell session.
-
-Check the current value:
+Compose reads the `HOME` environment variable, not PowerShell's separate `$HOME` variable.
+Set it in the session that launches Compose:
 
 ```powershell
-echo "$HOME"
+$env:HOME = $env:USERPROFILE.Replace('\', '/')
 ```
 
-If it is not set correctly, define it manually:
+For IDE launches, configure `HOME` in the run configuration, or persist it and restart the IDE:
 
 ```powershell
 [System.Environment]::SetEnvironmentVariable('HOME', $env:USERPROFILE.Replace('\', '/'), 'User')
 ```
+
+Export the PFX file as described under [HTTPS certificates](#https-certificates) before startup.
 
 ### Start the demo
 
@@ -101,6 +108,90 @@ The PM compose stack runs the migrator container with this effective sequence:
 3. optionally run `seed-demo`.
 
 That means a fresh local environment comes up already migrated and seeded.
+
+## Prepare local platform packages
+
+The full solution includes CRM, which consumes `NGB.Platform.*` through NuGet. PM, AB, and Trade
+use project references. Before building CRM or the complete solution against unpublished/local
+platform code, populate the local feed configured in `NuGet.config`.
+
+### NuGet on macOS/Linux or Git Bash
+
+```bash
+bash packaging/nuget/pack-platform.sh
+```
+
+The script packages the complete set from `packaging/nuget/projects.txt`, refreshes
+`artifacts/nuget`, removes replaced versions from `artifacts/nuget-cache`, and restores `NGB.sln`.
+
+### NuGet in PowerShell
+
+From the repository root, with .NET 10 SDK available:
+
+```powershell
+$packageVersion = dotnet msbuild .\NGB.Tools\NGB.Tools.csproj -nologo -getProperty:PackageVersion
+if ($LASTEXITCODE -ne 0) { throw "Could not resolve the platform version" }
+$packageVersion = $packageVersion.Trim()
+New-Item -ItemType Directory -Force .\artifacts\nuget | Out-Null
+
+Get-Content .\packaging\nuget\projects.txt | ForEach-Object {
+    if ($_.Trim()) {
+        dotnet pack $_ -c Release -o .\artifacts\nuget
+        if ($LASTEXITCODE -ne 0) { throw "Failed to pack $_" }
+    }
+}
+
+# Invalidate only this version of local platform packages after repacking.
+Get-ChildItem .\artifacts\nuget-cache -Directory -Filter 'ngb.platform.*' | ForEach-Object {
+    $cachedVersion = Join-Path $_.FullName $packageVersion
+    if (Test-Path $cachedVersion) { Remove-Item $cachedVersion -Recurse -Force }
+}
+
+dotnet restore .\NGB.sln --configfile .\NuGet.config --force-evaluate
+if ($LASTEXITCODE -ne 0) { throw "Solution restore failed" }
+```
+
+### CRM UI on macOS/Linux
+
+The CRM Compose file requires `artifacts/npm/ngbplatform-ui-local.tgz`. Create it before building
+the web image, and recreate it after changing `ui/ngb-ui-framework`:
+
+```bash
+npm --prefix ui ci
+npm --prefix ui run pack:platform-ui -- --local-candidate
+```
+
+The flag allows unpublished local content while keeping the dedicated CRM lockfile unchanged.
+For release validation, follow the strict packaging instructions in `packaging/PUBLISHING.md`.
+
+### CRM UI in PowerShell
+
+The current packaging script launches `npm.cmd` directly through `execFileSync`, which does not
+work on native Windows. Run the packaging step in a temporary Linux container instead. This also
+avoids requiring a host Node.js installation; dependencies live in a disposable Docker volume:
+
+```powershell
+docker run --rm `
+  --mount "type=bind,source=$($PWD.Path),target=/workspace" `
+  --mount "type=volume,target=/workspace/ui/node_modules" `
+  -w /workspace/ui `
+  node:22.17-alpine `
+  sh -c "npm ci --workspaces=false --ignore-scripts && npm run pack:platform-ui -- --local-candidate"
+
+if ($LASTEXITCODE -ne 0) { throw "UI package creation failed" }
+```
+
+### Start CRM
+
+After both package preparations and certificate setup:
+
+```bash
+docker compose -f docker-compose.crm.yml --env-file .env.crm up -d --build
+```
+
+`Unable to find package NGB.Platform.*` indicates that the required NuGet version is absent from
+the configured feeds. `ENOENT ... ngbplatform-ui-local.tgz` indicates that the UI packaging step
+was skipped. Both artifacts are ignored by Git and must be recreated on a new machine.
 
 ## Option 2: Hybrid manual development
 
@@ -178,7 +269,7 @@ From the UI workspace root:
 
 ```bash
 cd ui
-npm install
+npm ci
 npm run dev:pm-web
 ```
 
@@ -187,15 +278,31 @@ The UI workspace already exposes dedicated workspace scripts such as:
 - `npm run dev:pm-web`
 - `npm run dev:trade-web`
 - `npm run dev:ab-web`
+- `npm run dev:crm-web`
 
 ## Developer notes
 
 ### HTTPS certificates
 
-The Docker Compose setup mounts ASP.NET certificates from `${HOME}/.aspnet/https`. On a new machine, generate development certificates first if needed:
+Compose mounts `${HOME}/.aspnet/https` and uses `/https/servercert.pfx` by default. Trust and
+export a development certificate, using the same password as `ASPNET_CERT_PASS` in `.env.*`.
+Trusting the certificate alone does not create the mounted PFX file.
+
+Bash:
 
 ```bash
 dotnet dev-certs https --trust
+mkdir -p "$HOME/.aspnet/https"
+dotnet dev-certs https --export-path "$HOME/.aspnet/https/servercert.pfx" --password "<ASPNET_CERT_PASS>"
+```
+
+PowerShell:
+
+```powershell
+$env:HOME = $env:USERPROFILE.Replace('\', '/')
+New-Item -ItemType Directory -Force "$env:HOME/.aspnet/https" | Out-Null
+dotnet dev-certs https --trust
+dotnet dev-certs https --export-path "$env:HOME/.aspnet/https/servercert.pfx" --password "<ASPNET_CERT_PASS>"
 ```
 
 ### Local hostname for Keycloak
@@ -208,7 +315,7 @@ Modern browsers generally resolve `*.localhost` correctly. If your environment d
 
 ### Validation commands
 
-Useful validation commands from the repository root:
+After preparing the local NuGet feed above, use these commands from the repository root:
 
 ```bash
 dotnet build NGB.sln
@@ -219,7 +326,7 @@ From the UI workspace:
 
 ```bash
 cd ui
-npm install
+npm ci
 npm run test:all
 ```
 

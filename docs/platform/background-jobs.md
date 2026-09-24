@@ -30,6 +30,12 @@ The core design decisions are:
 - jobs should be bounded and safe to rerun;
 - important jobs should use business-key locking when needed.
 
+In 3.0, `NGB.BackgroundJobs` is provider-neutral. The host selects PostgreSQL storage through
+`NGB.BackgroundJobs.PostgreSql` and passes `PostgresHangfireJobStorageFactory.Create` to
+`AddNgbBackgroundJobs`. Infrastructure provisioning uses `PostgresDatabaseProvisioner` from
+`NGB.PostgreSql`; HTTP error/health integration uses `NGB.PostgreSql.AspNetCore`.
+See [Host composition](/start-here/host-composition) for the complete registration order.
+
 ## Platform job catalog
 
 The fixed platform job catalog includes recurring jobs such as:

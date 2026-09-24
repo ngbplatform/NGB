@@ -33,7 +33,9 @@ See also:
 
 **Role**
 
-`ReportEngine` is the orchestration entry point for report execution and export-sheet generation.
+`ReportQueryService` is the registered `IReportEngine` entry point and owns the read session and
+public continuation cursor. It delegates to `ReportEngine` for planning and bounded sheet generation.
+Full downloads use `ReportDownloadService`, not the bounded export-sheet helper.
 
 **Explicit collaborators visible in source**
 
@@ -45,7 +47,9 @@ See also:
 - `ReportVariantRequestResolver`
 - `ReportFilterScopeExpander`
 - `IDocumentDisplayReader`
-- `IRenderedReportSnapshotStore`
+- `ReportPagedQueryExecutor`
+- `AccountingSummaryPagedExecutor`
+- `AccountingConsistencyPagedExecutor`
 
 **What this proves**
 
@@ -58,7 +62,11 @@ See also:
 5. execution;
 6. interactive enrichment;
 7. final sheet construction;
-8. optional rendered-sheet snapshot paging.
+8. bounded group/page composition through the query executors.
+
+There is no rendered-sheet snapshot store. See
+[Report Browsing and Direct Downloads](/architecture/report-execution-results) for the public
+HTTP contract, per-page read sessions, and streaming downloads.
 
 ## 2. `ReportExecutionPlanner`
 
@@ -172,7 +180,7 @@ This class translates the PostgreSQL execution request into a SQL statement obje
 - build predicates;
 - build sort clauses;
 - build group by;
-- apply offset/limit paging;
+- apply deterministic cursor predicates and bounded `limit + 1` reads;
 - produce `PostgresReportSqlStatement`.
 
 **What this proves**

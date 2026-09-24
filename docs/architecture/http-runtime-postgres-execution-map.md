@@ -57,7 +57,8 @@ From these files, the following is directly grounded:
 
 - `NGB.Runtime` depends on `NGB.Definitions`, `NGB.Metadata`, `NGB.Persistence`, `NGB.Accounting`, `NGB.OperationalRegisters`, `NGB.ReferenceRegisters`, `NGB.Contracts`, and `NGB.Application.Abstractions`.
 - `DocumentService` is the universal, metadata-driven document CRUD and runtime orchestration entry for document behavior.
-- `ReportEngine` is the runtime execution center for report definitions, layout validation, planning, execution, sheet building, paging, and rendered-sheet snapshot logic.
+- `ReportQueryService` owns read sessions and public cursors; `ReportEngine` coordinates definitions,
+  validation, planning, sheet building, and bounded page executors.
 
 ### 3. PostgreSQL provider owns SQL shaping and dataset execution
 
@@ -147,10 +148,11 @@ The file shows a layered reporting flow:
 6. compute effective layout;
 7. build execution context;
 8. build query plan;
-9. execute through plan executor;
+9. dispatch to a bounded query executor or the plan executor;
 10. enrich interactive fields;
 11. build report sheet;
-12. optionally materialize rendered-sheet snapshots for grouped paging.
+12. delegate grouped browsing to `ReportPagedQueryExecutor`, with a protected continuation cursor
+    from `ReportQueryService`.
 
 This is important architecturally: runtime owns **report semantics and orchestration**, while PostgreSQL owns **SQL realization**.
 
@@ -169,7 +171,7 @@ Together they show:
 - safe alias enforcement;
 - explicit handling for row groups, column groups, details, measures, predicates, sorts, and support fields;
 - execution through the active unit of work / transaction;
-- paging with `OFFSET` / `LIMIT + 1` in the generic composable path;
+- deterministic cursor predicates and `LIMIT + 1` over-fetching in the composable page path;
 - structured diagnostics returned to the runtime/report layer.
 
 ## Architectural reading

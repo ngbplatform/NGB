@@ -8,10 +8,23 @@ PostgreSQL adapter for NGB Platform background jobs. It contains the Hangfire Po
 dotnet add package NGB.Platform.BackgroundJobs.PostgreSql
 ```
 
-Register the adapter in the application composition root after the core PostgreSQL services:
+Pass the storage factory to the background host and register the inspection adapter after the
+core PostgreSQL services:
 
 ```csharp
-services
-    .AddNgbPostgres(connectionString)
+using NGB.BackgroundJobs.Hosting;
+using NGB.BackgroundJobs.PostgreSql;
+using NGB.BackgroundJobs.PostgreSql.DependencyInjection;
+using NGB.PostgreSql.Bootstrap;
+using NGB.PostgreSql.DependencyInjection;
+
+var bootstrap = builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create);
+await bootstrap.EnsureInfrastructureAsync(new PostgresDatabaseProvisioner());
+
+builder.Services
+    .AddNgbPostgres(bootstrap.ApplicationConnectionString)
     .AddNgbPostgresBackgroundJobsAdapter();
 ```
+
+The host also composes Runtime, startup validation, its vertical modules, and PostgreSQL HTTP/health
+integration. The storage factory alone does not register those application services.

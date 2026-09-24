@@ -118,13 +118,16 @@ Verified responsibilities:
 - resolves effective layout;
 - builds execution context;
 - builds query plan via `ReportExecutionPlanner`;
-- chooses rendered-sheet paging behavior for grouped composable reports;
+- delegates interactive grouped browsing to `ReportPagedQueryExecutor`;
 - executes through `IReportPlanExecutor`;
 - enriches interactive document fields through `IDocumentDisplayReader`;
 - builds final sheet through `ReportSheetBuilder`;
 - returns `ReportExecutionResponseDto`.
 
-This is the central verified orchestration point where definition-time and executor-time concerns meet.
+`ReportQueryService` wraps this engine with read-session lifetime and public cursor protection.
+The grouped path reads bounded branches rather than caching a complete rendered sheet. Full
+downloads use `ReportDownloadService`; see
+[Report Browsing and Direct Downloads](/architecture/report-execution-results).
 
 #### `NGB.Runtime/Reporting/ReportSheetBuilder.cs`
 
@@ -180,7 +183,7 @@ Verified responsibilities:
 - applies base where clause;
 - applies predicates and parameters;
 - resolves sorts;
-- applies offset/limit paging;
+- applies deterministic cursor predicates and bounded `limit + 1` reads;
 - produces `PostgresReportSqlStatement`.
 
 This is the verified point where declarative report selections become SQL projection and filtering.

@@ -135,13 +135,13 @@ The current PostgreSQL composable executor:
 - builds SQL through the SQL builder;
 - runs it through the current unit-of-work connection;
 - materializes rows through Dapper;
-- uses offset + limit+1 style paging semantics for the foundation path.
+- uses deterministic cursor predicates and `limit + 1` over-fetching for page continuation.
 
-This is important for design decisions:
-
-- for moderate datasets, the foundation path is fine;
-- for very heavy reports, you may want a specialized path later;
-- you should not accidentally assume keyset paging where the verified provider path currently uses offset-based paging.
+The public HTTP path rejects nonzero offsets and disabled paging. `ReportQueryService` validates
+and protects cursors, and `ReportPagedQueryExecutor` reads the requested `groupPath` branch.
+Return `hasMore` and `nextCursor`; do not require an exact total on every page. Full downloads
+use the streaming export path. See
+[Report Browsing and Direct Downloads](/architecture/report-execution-results).
 
 ## 7. Compose it into the vertical host
 

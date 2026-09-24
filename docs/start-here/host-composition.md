@@ -39,7 +39,7 @@ The verified `NGB.PropertyManagement.Api/Program.cs` file shows the canonical pa
 1. build a standard ASP.NET Core host;
 2. add observability and health checks;
 3. validate the application connection string;
-4. register `AddNgbRuntime()`;
+4. register `AddNgbRuntime().AddNgbRuntimeStartupValidation()`;
 5. register `AddNgbPostgres(connectionString)`;
 6. register vertical modules and runtime/postgres extensions;
 7. add controllers, auth, error handling, and app-specific services;
@@ -47,11 +47,19 @@ The verified `NGB.PropertyManagement.Api/Program.cs` file shows the canonical pa
 
 That is the most important composition rule in the platform: **hosts compose, libraries execute**.
 
+Web concerns are split between `NGB.Hosting.AspNetCore` (authentication, CORS, error handling,
+branding, health responses) and `NGB.PostgreSql.AspNetCore` (PostgreSQL exception mapping and
+health probes). Register `AddNgbPostgresExceptionMapping()` and
+`AddHealthChecks().AddNgbPostgresHealthCheck(connectionString)` explicitly.
+
 ## The background jobs host pattern
 
 `NGB.PropertyManagement.BackgroundJobs/Program.cs` shows a second canonical host shape.
 
-It uses the platform background-jobs bootstrap first, ensures infrastructure, then composes the same runtime and PostgreSQL modules as the API host plus a background-jobs module for the vertical.
+It calls `AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create)`, then
+`EnsureInfrastructureAsync(new PostgresDatabaseProvisioner())`. It composes Runtime with explicit
+startup validation, PostgreSQL, `AddNgbPostgresBackgroundJobsAdapter()`, and the vertical modules.
+PostgreSQL HTTP exception mapping and health checks are explicit here too.
 
 That means background processing is not a special side system. It runs on the same platform execution core.
 

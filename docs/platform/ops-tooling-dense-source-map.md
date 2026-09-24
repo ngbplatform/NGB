@@ -152,8 +152,8 @@ This file is the vertical **Background Jobs host composition root**.
 The confirmed flow is:
 
 1. create the web application builder;
-2. call `AddNgbBackgroundJobs(...)` to bootstrap host-level background-jobs infrastructure;
-3. await `EnsureInfrastructureAsync()`;
+2. call `AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create)` to bootstrap host-level background-jobs infrastructure;
+3. await `EnsureInfrastructureAsync(new PostgresDatabaseProvisioner())`;
 4. register:
    - NGB runtime,
    - NGB PostgreSQL provider,

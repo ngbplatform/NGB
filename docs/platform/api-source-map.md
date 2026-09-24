@@ -20,7 +20,9 @@ NGB.PropertyManagement.Api/Program.cs
 It references:
 
 - `Microsoft.AspNetCore.App`
-- authentication / OpenAPI / Serilog / Swagger packages
+- JWT authentication / OpenAPI / HTTP resilience / Swagger packages
+- `NGB.Accounting`
+- `NGB.Hosting.AspNetCore`
 - `NGB.Contracts`
 - `NGB.Application.Abstractions`
 - `NGB.Runtime`
@@ -38,6 +40,8 @@ The Property Management API host wires together:
 - health checks;
 - infrastructure configuration;
 - `AddNgbRuntime()`;
+- `AddNgbRuntimeStartupValidation()`;
+- PostgreSQL exception mapping and health through `NGB.PostgreSql.AspNetCore`;
 - `AddNgbPostgres(...)`;
 - vertical module registration;
 - controllers/OpenAPI;
@@ -55,10 +59,13 @@ It is the platform layer where these concerns meet:
 
 - ASP.NET Core plumbing;
 - shared controller conventions;
-- auth integration;
-- error handling;
+- Keycloak administration clients and API-specific auth integration;
 - runtime/application service exposure;
 - HTTP-ready DTO contracts.
+
+Provider-neutral authentication, CORS, branding, health responses, and global error handling live
+in `NGB.Hosting.AspNetCore`. The API host composes those helpers with the PostgreSQL web adapter;
+they are not implemented by `NGB.Api` itself.
 
 ## What the Property Management host is a good example of
 

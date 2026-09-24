@@ -50,7 +50,7 @@ Visible concerns include:
 - filter/variant expansion
 - logical plan building
 - executor invocation
-- rendered sheet paging and diagnostics
+- bounded branch/page composition and diagnostics
 
 ### 3. Provider-agnostic execution center
 The `NGB.Runtime.csproj` dependency shape shows runtime depends on definitions/metadata/engines/persistence abstractions rather than only on a concrete PostgreSQL implementation.

@@ -40,6 +40,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Split PostgreSQL Hangfire storage and recurring-job inspection from the provider-neutral
   background-jobs package into `NGB.Platform.BackgroundJobs.PostgreSql`; database provisioning is
   exposed by `NGB.Platform.PostgreSql`.
+- Changed background-host bootstrap signatures to require a storage factory and database
+  provisioner; low-level Hangfire registration now receives an explicit `JobStorage`.
+- Added required batch/page members to public service and persistence interfaces, and replaced
+  `IPlatformUserRepository.GetAllAsync` with paged reads.
+- Extended positional paging/report DTOs, changing their constructor and deconstruction signatures;
+  account-card totals and closing balance are now nullable.
+- Changed `ReportControllerBase` to depend on `IReportDownloadService`. Interactive report HTTP
+  requests reject nonzero offsets and `disablePaging=true`; clients must follow continuation cursors
+  and use the export endpoint for complete downloads.
+- Bounded catalog/document paging and record payload sizes; oversized writes must be split into
+  smaller operations. See the migration guide for limits.
 - Requires coordinated deployment of all `NGB.Platform.*` packages and `@ngbplatform/ui` at
   `3.0.0`; mixed 2.x/3.x platform graphs are unsupported.
 
@@ -48,6 +59,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
   direction and prevent SQL, concrete storage providers, and ASP.NET Core concerns from leaking
   into provider-neutral layers.
 - Complete backend and frontend coverage gates with per-file completeness validation.
+- Direct report paging, inline group expansion, streamed XLSX downloads, and per-instance report
+  request admission limits.
 
 ### Changed
 - Batched high-volume read and write paths across catalogs, documents, reporting, registers,

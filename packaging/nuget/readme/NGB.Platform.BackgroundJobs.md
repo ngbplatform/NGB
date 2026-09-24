@@ -17,5 +17,9 @@ dotnet add package NGB.Platform.BackgroundJobs
 
 ## Notes
 
-The package includes `hangfire-dashboard.css` as a content file copied to consuming host output.
+Hosts supply the Hangfire `JobStorage` explicitly. For PostgreSQL, use
+`NGB.Platform.BackgroundJobs.PostgreSql` and pass `PostgresHangfireJobStorageFactory.Create` to
+`AddNgbBackgroundJobs`. Register PostgreSQL health/error integration separately through
+`NGB.Platform.PostgreSql.AspNetCore`.
 
+The package includes `hangfire-dashboard.css` as a content file copied to consuming host output.

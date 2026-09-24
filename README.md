@@ -504,10 +504,10 @@ This account is intended for demo and evaluation use only.
 
 You should have the following installed:
 
-- .NET SDK
-- Docker and Docker Compose
-- Node.js
-- PostgreSQL client tools if you want to inspect databases manually
+- .NET 10 SDK for local backend builds
+- Docker with Linux containers and Docker Compose v2
+- Node.js 22.14+ and npm for local frontend development (the Dockerfiles use Node.js 22.17)
+- Bash for the repository's shell scripts; Windows PowerShell alternatives are linked below
 
 ### Clone the repository
 
@@ -517,27 +517,52 @@ cd NGB
 ```
 ### 🔒 HTTPS certificates
 
-The Docker Compose setup mounts ASP.NET certificates from `${HOME}/.aspnet/https`. On a new machine, generate development certificates first if needed:
+The Docker Compose setup mounts ASP.NET certificates from `${HOME}/.aspnet/https` and expects
+`servercert.pfx`. Trust and export a development certificate; the export password must match
+`ASPNET_CERT_PASS` in the selected `.env.*` file:
 
 ```bash
 dotnet dev-certs https --trust
+mkdir -p "$HOME/.aspnet/https"
+dotnet dev-certs https --export-path "$HOME/.aspnet/https/servercert.pfx" --password "<ASPNET_CERT_PASS>"
 ```
 
 ### ⚠️ Windows note
 
-Before starting the application in Docker on Windows, ensure that the `$HOME` environment variable is set in the current PowerShell session.
-
-Check the current value:
-
-```powershell
-echo "$HOME"
-```
-
-If it is not set correctly, define it manually:
+Docker Compose reads the `HOME` environment variable. PowerShell's `$HOME` variable alone does not
+set it for child processes. In the same PowerShell session used to run Compose:
 
 ```powershell
-[System.Environment]::SetEnvironmentVariable('HOME', $env:USERPROFILE.Replace('\', '/'), 'User')
+$env:HOME = $env:USERPROFILE.Replace('\', '/')
+New-Item -ItemType Directory -Force "$env:HOME/.aspnet/https" | Out-Null
+dotnet dev-certs https --trust
+dotnet dev-certs https --export-path "$env:HOME/.aspnet/https/servercert.pfx" --password "<ASPNET_CERT_PASS>"
 ```
+
+For Compose launched by an IDE, also configure `HOME` in that run configuration or persist it as a
+user environment variable and restart the IDE.
+
+### Prepare local platform packages
+
+CRM consumes NuGet and npm packages, while PM, Trade, and Agency Billing use platform source
+projects/workspaces. Before building the complete solution or starting CRM against unpublished
+changes, create the local NuGet feed. Before building the CRM web image, create its UI tarball too.
+Generated packages are ignored by Git and are absent after a fresh clone.
+
+On macOS/Linux, from the repository root:
+
+```bash
+bash packaging/nuget/pack-platform.sh
+npm --prefix ui ci
+npm --prefix ui run pack:platform-ui -- --local-candidate
+```
+
+The NuGet script packs all platform projects, refreshes `artifacts/nuget`, invalidates replaced
+cache entries, and restores the solution. The UI command creates
+`artifacts/npm/ngbplatform-ui-local.tgz` without changing the published CRM lockfile.
+
+On Windows, follow the [PowerShell package preparation instructions](docs/start-here/run-locally.md#prepare-local-platform-packages).
+They include a Linux-container UI packaging command for the current script's Windows launcher limitation.
 
 ### Run the Property Management demo locally
 
@@ -559,15 +584,17 @@ docker compose -f docker-compose.ab.yml --env-file .env.ab up --build
 
 ### Run the CRM demo locally
 
-CRM installs the platform UI from a local npm package. Repack it after changing
-`ui/ngb-ui-framework`, including when testing unpublished changes, before rebuilding the web image:
+Complete the package preparation above first. Repack after changing platform backend or UI code,
+then rebuild the CRM images:
 
 ```bash
-npm --prefix ui run pack:platform-ui -- --local-candidate
 docker compose -f docker-compose.crm.yml --env-file .env.crm up --build
 ```
 
 ### Build the .NET solution
+
+Prepare the local NuGet packages above first when the required platform version is unpublished or
+when validating local platform changes through CRM.
 
 ```bash
 dotnet build NGB.sln

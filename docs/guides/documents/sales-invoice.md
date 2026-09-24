@@ -58,7 +58,7 @@ NGB.Trade.Runtime/
     SalesInvoiceValidator.cs
 
 NGB.Trade.PostgreSql/
-  Bootstrap/db/migrations/
+  db/migrations/
     V2026_04_18_0002__add_trd_sales_invoice.sql
 ```
 

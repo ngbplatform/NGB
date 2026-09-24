@@ -53,9 +53,14 @@ API admission settings live under `Reporting:Requests`: `ConcurrentPages` (12), 
 
 The native-download adapter currently removes its iframe after 310 seconds, matching the default five-minute server budget with a margin. Increasing the server download deadline also requires aligning this client cleanup delay.
 
-## Removing the previous implementation
+## Deployment
 
-Stop old API/worker instances before applying `V2026_09_13_0100__remove_stored_report_results.sql`, then start the updated API and UI together. The migration drops only `platform_report_run_rows` and `platform_report_runs`. Their storage is released by DROP; there is no slow recurring DELETE backlog. It preserves business registers, documents, accounting records and report variants. Historical migrations remain immutable. `/runs` endpoints and the report-run hosted service are removed.
+Deploy matching 3.0 API and UI packages and run the committed platform/vertical migration packs.
+The current repository does not contain a stored-report-results cleanup migration or report-run
+tables/endpoints. Upgrading from the `v2.0.0` release uses the migration history already in the packs;
+do not reset that history. Clients that used nonzero offsets or disabled paging must switch to
+continuation cursors and the download endpoint as described in the
+[3.0 migration guide](../guides/migrating-to-3.0.md).
 
 CRM consumes the platform through NuGet and npm packages. Validate platform changes against freshly packed packages while preserving that consumer boundary.
 

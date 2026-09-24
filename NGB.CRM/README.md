@@ -2,7 +2,7 @@
 
 NGB.CRM is an industry demo vertical for sales pipeline and customer relationship workflows on top of NGB Platform.
 
-The module intentionally consumes NGB Platform through NuGet packages:
+The CRM solution intentionally consumes NGB Platform through NuGet packages, including:
 
 - `NGB.Platform.Contracts`
 - `NGB.Platform.Definitions`
@@ -11,6 +11,11 @@ The module intentionally consumes NGB Platform through NuGet packages:
 - `NGB.Platform.PostgreSql`
 - `NGB.Platform.PostgreSql.AspNetCore`
 - `NGB.Platform.Api`
+- `NGB.Platform.Hosting.AspNetCore`
+- `NGB.Platform.Runtime.Hosting`
+- `NGB.Platform.BackgroundJobs`
+- `NGB.Platform.BackgroundJobs.PostgreSql`
+- `NGB.Platform.Watchdog`
 - `NGB.Platform.Migrator.Core`
 
 The CRM projects must not reference platform source projects directly. Internal `NGB.CRM.*` project references are allowed.
@@ -28,20 +33,37 @@ CRM does not include general ledger, inventory, invoicing, payroll, procurement,
 
 ## Local Package Verification
 
-Before publishing `NGB.Platform.*` packages to NuGet.org, build them into the local feed:
+Before building against unpublished platform code, package the complete platform into the local
+feed. From the repository root on macOS/Linux or Git Bash:
 
 ```bash
-dotnet pack <platform-project>.csproj -c Release -o artifacts/nuget
+bash packaging/nuget/pack-platform.sh
 ```
 
-Then restore/build CRM with the repository `NuGet.config`:
+The script refreshes the feed and restores the solution. Then build CRM:
 
 ```bash
-dotnet restore NGB.CRM.Api/NGB.CRM.Api.csproj --configfile NuGet.config
 dotnet build NGB.CRM.Api/NGB.CRM.Api.csproj -c Release --no-restore
 ```
 
 After the packages are published, the same `PackageReference` entries can restore from NuGet.org.
+
+For native Windows, use the [PowerShell package preparation instructions](../docs/start-here/run-locally.md#prepare-local-platform-packages).
+
+## Docker Compose
+
+The local CRM web image requires `artifacts/npm/ngbplatform-ui-local.tgz` as well as the backend
+NuGet packages. On macOS/Linux, install the UI tooling and create the tarball:
+
+```bash
+npm --prefix ui ci
+npm --prefix ui run pack:platform-ui -- --local-candidate
+docker compose -f docker-compose.crm.yml --env-file .env.crm up -d --build
+```
+
+On Windows, use the Linux-container packaging command in the linked instructions, then run the
+same Compose command. Prepare the HTTPS certificate described in the root README first.
+Repack after platform changes: these artifacts are ignored by Git and are not created by Compose.
 
 ## Migrations
 

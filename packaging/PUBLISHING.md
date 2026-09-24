@@ -13,6 +13,8 @@ packages in release builds.
 
 ```bash
 bash packaging/nuget/pack-platform.sh
+bash packaging/nuget/verify-platform-packages.sh
+npm --prefix ui ci
 npm --prefix ui run test:api-compat
 npm --prefix ui run pack:platform-ui
 docker compose -f docker-compose.crm.yml --env-file .env.crm build ngb.crm.web
@@ -20,16 +22,26 @@ docker compose -f docker-compose.crm.yml --env-file .env.crm build ngb.crm.web
 
 Generated packages are written below `artifacts/` and are ignored by Git.
 
+These shell commands target macOS/Linux. For local Windows builds, use the
+[PowerShell and Linux-container alternatives](../docs/start-here/run-locally.md#prepare-local-platform-packages).
+Release workflows run on Linux and require strict candidate validation.
+
 For testing unpublished UI changes locally, use `npm --prefix ui run pack:platform-ui -- --local-candidate`.
 This builds the candidate without requiring its integrity to match the published CRM package.
 It preserves version/registry-reference validation and leaves the CRM lockfile unchanged.
 Release validation must use the command without this flag.
 
-The CRM lockfile is resolved from npmjs.com and is not regenerated while validating or publishing the
-platform package. Update it only when CRM intentionally moves to another published package version:
+The CRM lockfile must describe the exact release candidate: version, registry URL, dependency
+metadata, and SHA-512 integrity. Packaging and publishing validate this lockfile; they do not
+regenerate it. Prepare it when accepting a new release candidate, then verify it against the
+published package. An integrity mismatch must be resolved before the strict release workflows pass;
+`--local-candidate` is only a local-development bypass. Never replace an already published version
+with different content.
+
+For a package version already available on npmjs.com, update the dedicated consumer lockfile with:
 
 ```bash
-npm --prefix ui/ngb-crm-web install --save-exact @ngbplatform/ui@3.0.0
+npm --prefix ui/ngb-crm-web install --workspaces=false --save-exact @ngbplatform/ui@3.0.0
 ```
 
 ## SemVer and API compatibility

@@ -184,7 +184,8 @@ This proves derivation is a first-class runtime workflow and not an ad hoc UI sh
 - `ReportExecutionPlanner`
 - `IReportPlanExecutor`
 - `ReportSheetBuilder`
-- optional variant/filter/document-display/snapshot collaborators
+- optional variant/filter/document-display collaborators
+- bounded grouped and accounting page executors
 
 **Why this matters for the execution core**
 

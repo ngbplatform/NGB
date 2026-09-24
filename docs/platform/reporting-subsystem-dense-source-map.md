@@ -35,13 +35,16 @@ A grounded reading of the source shows these stages:
 
 This is important because it explains why NGB can support both canonical and composable reporting without collapsing everything into one database-specific layer.
 
-## 2. Runtime orchestration starts in `ReportEngine`
+## 2. Runtime orchestration through `ReportQueryService` and `ReportEngine`
 
 **Verified anchor**
 
 - `NGB.Runtime/Reporting/ReportEngine.cs`
 
-`ReportEngine` is the central coordinator for report execution.
+`IReportEngine` resolves to `ReportQueryService`, which opens a read session, validates and protects
+continuation state, and delegates planning/rendering to `ReportEngine`. The engine coordinates
+bounded interactive execution and the bounded export-sheet helper; full downloads use
+`ReportDownloadService`.
 
 From the verified constructor dependencies and method flow, the engine does all of the following:
 
@@ -54,13 +57,16 @@ From the verified constructor dependencies and method flow, the engine does all 
 - invokes the plan executor;
 - enriches interactive document fields through `IDocumentDisplayReader`;
 - builds the final sheet through `ReportSheetBuilder`;
-- optionally stores and reuses rendered-sheet snapshots for grouped paging scenarios.
+- delegates grouped browsing to `ReportPagedQueryExecutor` and specialized accounting pages to
+  `AccountingSummaryPagedExecutor` / `AccountingConsistencyPagedExecutor`.
 
 ### Why this matters
 
 This proves that `ReportEngine` is the real reporting orchestration hub. It is not a trivial façade.
 
-It also proves that paging in the reporting subsystem is not only database paging. There is also a **rendered-sheet paging** mode for composable reports when grouping/pivot/subtotals make raw row paging insufficient.
+Composable browsing reads the next row-group level using `groupPath` and bounded provider queries.
+Pivot pages preserve all cells for the selected row-axis keys. There is no rendered-sheet snapshot
+store. See [Report Browsing and Direct Downloads](/architecture/report-execution-results).
 
 ## 3. Planning is explicit in `ReportExecutionPlanner`
 
@@ -161,7 +167,7 @@ The verified code shows that it is responsible for:
 - building predicates;
 - building sort clauses;
 - building group-by;
-- applying offset/limit paging;
+- applying deterministic cursor predicates and bounded `limit + 1` reads;
 - producing a final `PostgresReportSqlStatement`.
 
 ### Architectural meaning
@@ -199,7 +205,8 @@ That is a good sign: the provider is focused, not overloaded.
 The verified anchors support the following chain:
 
 ```text
-ReportEngine
+ReportQueryService (read session and public cursor)
+  → ReportEngine / ReportPagedQueryExecutor
   → ReportExecutionPlanner
   → IReportPlanExecutor
   → PostgresReportDatasetCatalog
@@ -218,7 +225,7 @@ From the verified anchors we can say with confidence that:
 - the reporting engine and planner support a flexible plan model;
 - the sheet builder supports grouped and pivoted rendering;
 - the PostgreSQL provider supports dataset-driven composable execution;
-- Runtime owns rendered-sheet paging and enrichment behavior.
+- Runtime owns branch/page composition, cursor protection, and enrichment behavior.
 
 ### Inferred from the verified files
 
@@ -254,8 +261,8 @@ The verified provider-side workflow is:
   - inspect `PostgresReportDatasetExecutor`
 - wrong final sheet shape / pivot rendering / visible row cap:
   - inspect `ReportSheetBuilder`
-- wrong orchestration / variant / rendered-sheet paging:
-  - inspect `ReportEngine`
+- wrong orchestration / variant / branch paging:
+  - inspect `ReportQueryService`, `ReportEngine`, and `ReportPagedQueryExecutor`
 
 ## 11. Recommended reading order
 

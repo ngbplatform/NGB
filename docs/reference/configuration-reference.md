@@ -25,7 +25,8 @@ NGB.Migrator.Core/README.md
 
 ## Scope of this page
 
-This page documents the concrete configuration keys that are visible in the published Property Management example. The same patterns are repeated across the Trade and Agency Billing verticals with vertical-specific prefixes and port values.
+This page documents the concrete configuration keys in the Property Management example. The same
+patterns are used by Trade, Agency Billing, and CRM with vertical-specific prefixes and port values.
 
 ## Configuration shape
 
@@ -78,6 +79,24 @@ The PM API host uses the following configuration keys in the verified developmen
 | `KeycloakSettings:ClientIds[]` | `ngb-pm-api`, `ngb-pm-web-client`, `ngb-tester` |
 | `ExternalLinksSettings:HealthUiUrl` | `https://localhost:7075/health-ui` |
 | `ExternalLinksSettings:BackgroundJobsUiUrl` | `https://localhost:7074/hangfire` |
+
+### Reporting
+
+`NGB.Api/DependencyInjection.cs` binds the report request budget and cursor protection settings:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `Reporting:Requests:ConcurrentPages` | `12` | Concurrent interactive report requests per API instance |
+| `Reporting:Requests:ConcurrentDownloads` | `2` | Concurrent report downloads per API instance |
+| `Reporting:Requests:PageTimeoutSeconds` | `30` | Interactive request deadline |
+| `Reporting:Requests:DownloadTimeoutSeconds` | `300` | Download deadline |
+| `Reporting:Cursor:SigningKey` | Ephemeral process key | Base64 of at least 32 random bytes; share across replicas and restarts to preserve cursor validity |
+
+Environment-variable equivalents use double underscores, for example
+`Reporting__Requests__ConcurrentDownloads` and `Reporting__Cursor__SigningKey`.
+Capacity exhaustion returns HTTP 429 with `Retry-After`. Align download deadlines with proxy
+timeouts and the UI's native-download cleanup delay. See
+[Report Browsing and Direct Downloads](/architecture/report-execution-results).
 
 ## Background Jobs host
 
