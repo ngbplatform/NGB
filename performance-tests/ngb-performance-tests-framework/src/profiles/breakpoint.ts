@@ -55,7 +55,8 @@ export function buildBreakpointProfile(args: BreakpointProfileArgs = {}): Option
     thresholds: mergeThresholds(
       relaxedThresholds(),
       diagnosticOperationThresholds,
-      { http_reqs: ['rate>0.1'] },
+      // Keep running through overload, but do not report a lossy profile as PASS.
+      { http_reqs: ['rate>0.1'], dropped_iterations: ['count<1'] },
       reportExecutionBreakdownThresholds(args.reportBreakdownIds),
       diagnosticBreakdownThresholds(args.diagnosticBreakdowns),
     ),

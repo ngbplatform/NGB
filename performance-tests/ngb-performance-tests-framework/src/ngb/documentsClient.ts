@@ -155,16 +155,26 @@ export class DocumentsClient {
     });
   }
 
-  executeAction(documentType: string, documentId: string, actionCode: string): NgbHttpResponse {
+  executeAction(
+    documentType: string,
+    documentId: string,
+    actionCode: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    tags: NgbRequestTags = {},
+  ): NgbHttpResponse {
     return this.http.post(
       `/api/documents/${encodeURIComponent(documentType)}/${encodeURIComponent(documentId)}/actions/${encodeURIComponent(actionCode)}`,
-      undefined,
+      { expectedVersion },
       {
+        idempotencyKey,
+        expectedStatuses: [200],
         tags: {
           vertical: this.env.vertical,
           area: 'documents',
-          operation: 'platform.documents.action',
+          operation: actionCode === 'post' ? 'platform.documents.post' : 'platform.documents.action',
           documentType,
+          ...tags,
         },
       },
     );

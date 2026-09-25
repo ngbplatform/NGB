@@ -9,7 +9,8 @@ export type DiagnosticBreakdownSelector = Partial<Record<
   | 'reportId'
   | 'entityKind'
   | 'periodProfile'
-  | 'status',
+  | 'status'
+  | 'postingMode',
   string
 >>;
 
@@ -17,6 +18,9 @@ export const commonThresholds: ThresholdMap = {
   http_req_failed: ['rate<0.01'],
   checks: ['rate>0.99'],
   ngb_business_operation_failed: ['rate<0.01'],
+  'http_req_failed{area:report-export}': ['rate==0'],
+  'http_req_failed{area:reports}': ['rate<0.01'],
+  'http_req_failed{operation:platform.documents.post}': ['rate==0'],
 };
 
 export const operationThresholds: ThresholdMap = {
@@ -61,6 +65,18 @@ export function reportExecutionBreakdownThresholds(reportIds: readonly string[] 
     thresholds[`ngb_report_execution_duration{area:reports,operation:platform.reports.execute,reportId:${reportId}}`] = [
       'max<600000',
     ];
+    thresholds[`ngb_business_operation_failed{area:reports,operation:platform.reports.execute,reportId:${reportId}}`] = ['rate<0.01'];
+    for (const status of ['0', '400', '403', '409', '429', '500', '503', '504']) {
+      thresholds[`ngb_business_operation_failed{area:reports,operation:platform.reports.execute,reportId:${reportId},status:${status}}`] = ['rate<1.01'];
+    }
+    for (const periodProfile of ['open', 'closed', 'long']) {
+      Object.assign(thresholds, diagnosticBreakdownThresholds([{
+        area: 'reports', operation: 'platform.reports.execute', reportId, periodProfile,
+      }]));
+      for (const status of ['0', '400', '403', '409', '429', '500', '503', '504']) {
+        thresholds[`ngb_business_operation_failed{area:reports,operation:platform.reports.execute,reportId:${reportId},periodProfile:${periodProfile},status:${status}}`] = ['rate<1.01'];
+      }
+    }
   }
 
   return thresholds;
@@ -104,6 +120,7 @@ function toK6TagSelector(selector: DiagnosticBreakdownSelector): string {
     'entityKind',
     'periodProfile',
     'status',
+    'postingMode',
   ] as const;
   const parts: string[] = [];
 

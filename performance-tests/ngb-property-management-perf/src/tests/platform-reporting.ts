@@ -10,6 +10,10 @@ export const options = buildBaselineProfile({
   scenarioName: 'platform_reporting',
   tags: { vertical: 'property-management', scenario: 'pm.platform_reporting' },
   reportBreakdownIds: PM_REPORT_BREAKDOWN_IDS,
+  diagnosticBreakdowns: ['open', 'closed', 'long'].flatMap(periodProfile => {
+    const selector = { area: 'report-export', operation: 'platform.reports.export_xlsx', reportId: 'accounting.ledger.analysis', periodProfile };
+    return [selector, ...['0', '200', '400', '403', '429', '500', '503', '504'].map(status => ({ ...selector, status }))];
+  }),
 });
 
 export function setup(): NgbAuthSetupData {

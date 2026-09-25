@@ -296,28 +296,56 @@ LIMIT @limitPlusOne;
 """;
 
         long? total = null;
-        IReadOnlyList<IDictionary<string, object?>> materialized;
-        if (includeTotal)
+        async Task<IReadOnlyList<IDictionary<string, object?>>> ReadPageAsync(string sql, bool readTotal)
         {
-            await using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
-                $"{countSql}\n{pageSql}",
-                parameters,
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-            total = await results.ReadSingleAsync<long>();
-            materialized = (await results.ReadAsync())
-                .Select(static row => (IDictionary<string, object?>)row)
-                .ToArray();
-        }
-        else
-        {
-            materialized = (await uow.Connection.QueryAsync(new CommandDefinition(
-                    pageSql,
+            if (readTotal)
+            {
+                await using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                    $"{countSql}\n{sql}",
+                    parameters,
+                    transaction: uow.Transaction,
+                    cancellationToken: ct));
+                total = await results.ReadSingleAsync<long>();
+
+                return (await results.ReadAsync())
+                    .Select(static row => (IDictionary<string, object?>)row)
+                    .ToArray();
+            }
+
+            return (await uow.Connection.QueryAsync(new CommandDefinition(
+                    sql,
                     parameters,
                     transaction: uow.Transaction,
                     cancellationToken: ct)))
                 .Select(static row => (IDictionary<string, object?>)row)
                 .ToArray();
+        }
+
+        IReadOnlyList<IDictionary<string, object?>> materialized;
+        if (!where.HasHeadCriteria && afterId is null)
+        {
+            // A full first page of non-null displays precedes every null/missing head.
+            // Avoid scanning the missing-head anti-join on ordinary list opens.
+            var firstPageSql = $"""
+                SELECT c.id AS "Id", c.is_deleted AS "IsDeleted",
+                       h.{Qi(head.DisplayColumn)} AS "Display",
+                       h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                  FROM {Qi(head.HeadTableName)} h
+                  JOIN catalogs c ON c.id = h.catalog_id
+                 WHERE c.catalog_code = @catalogCode
+                   AND ({where.CatalogWhereSql})
+                   AND h.{Qi(head.DisplayColumn)} IS NOT NULL
+                 ORDER BY h.{Qi(head.DisplayColumn)}, c.id
+                 LIMIT @limitPlusOne;
+                """;
+
+            materialized = await ReadPageAsync(firstPageSql, includeTotal);
+            if (materialized.Count < limit + 1)
+                materialized = await ReadPageAsync(pageSql, readTotal: false);
+        }
+        else
+        {
+            materialized = await ReadPageAsync(pageSql, includeTotal);
         }
 
         var hasMore = materialized.Count > limit;

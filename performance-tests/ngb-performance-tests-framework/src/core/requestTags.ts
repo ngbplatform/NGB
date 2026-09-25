@@ -11,6 +11,7 @@ export interface NgbRequestTags {
   readonly entityKind?: string;
   readonly periodProfile?: string;
   readonly status?: string;
+  readonly postingMode?: string;
 }
 
 export function buildTags(tags: NgbRequestTags): Record<string, string> {
@@ -29,6 +30,7 @@ export function buildTags(tags: NgbRequestTags): Record<string, string> {
   addTag(normalized, 'entityKind', tags.entityKind);
   addTag(normalized, 'periodProfile', tags.periodProfile);
   addTag(normalized, 'status', tags.status);
+  addTag(normalized, 'postingMode', tags.postingMode);
 
   return normalized;
 }

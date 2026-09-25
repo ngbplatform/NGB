@@ -1,7 +1,7 @@
 import { check, fail } from 'k6';
 import exec from 'k6/execution';
 
-import { defaultHandleSummary } from '../../../ngb-performance-tests-framework/src/core/summary.ts';
+import { defaultHandleSummary, withSummaryTrendStats } from '../../../ngb-performance-tests-framework/src/core/summary.ts';
 import { readNgbPerfEnv } from '../../../ngb-performance-tests-framework/src/core/env.ts';
 import type { DiagnosticBreakdownSelector } from '../../../ngb-performance-tests-framework/src/profiles/thresholds.ts';
 import { getNgbScenarioContext, setupNgbAccessToken } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioBuilder.ts';
@@ -40,7 +40,7 @@ const WRITE_HEAVY_DIAGNOSTIC_BREAKDOWNS: readonly DiagnosticBreakdownSelector[] 
     'platform.documents.create',
     'platform.documents.update',
     'platform.documents.open',
-    'platform.documents.derive_actions',
+    'platform.documents.editor_state',
     'platform.documents.post',
     'platform.documents.delete_draft',
   ].map((operation) => ({
@@ -50,6 +50,8 @@ const WRITE_HEAVY_DIAGNOSTIC_BREAKDOWNS: readonly DiagnosticBreakdownSelector[] 
   })),
   ...[
     'platform.documents.list',
+    'platform.documents.create',
+    'platform.documents.editor_state',
     'platform.documents.open',
     'platform.documents.post',
   ].map((operation) => ({
@@ -63,7 +65,7 @@ const WRITE_HEAVY_DIAGNOSTIC_BREAKDOWNS: readonly DiagnosticBreakdownSelector[] 
   { area: 'audit', operation: 'platform.audit.entity_log', entityKind: 'Document' },
 ];
 
-export const options = buildMultiScenarioWorkload(
+const workloadOptions = buildMultiScenarioWorkload(
   {
     lifecycle: writeHeavyArrivalScenario('lifecycle', {
       rate: 4,
@@ -105,9 +107,23 @@ export const options = buildMultiScenarioWorkload(
   {
     profileName: WRITE_HEAVY_PROFILE,
     reportBreakdownIds: PM_REPORT_BREAKDOWN_IDS,
-    diagnosticBreakdowns: WRITE_HEAVY_DIAGNOSTIC_BREAKDOWNS,
+    diagnosticBreakdowns: WRITE_HEAVY_DIAGNOSTIC_BREAKDOWNS.flatMap(selector => [selector, ...['0', '200', '400', '403', '409', '429', '500', '503'].map(status => ({ ...selector, status }))]),
   },
 );
+
+export const options = withSummaryTrendStats({
+  ...workloadOptions,
+  thresholds: {
+    ...workloadOptions.thresholds,
+    'checks{operation:pm.write_heavy.write_executed}': ['rate==1'],
+    'ngb_pm_lifecycle_branch{branch:write}': ['count>0'],
+    'ngb_pm_lifecycle_branch{branch:missing_fixture}': ['count==0'],
+    'ngb_pm_posting_succeeded{postingMode:replay}': ['count>=0'],
+    ...(readBooleanEnv('NGB_PERF_ENABLE_POSTING', false) ? {
+      'ngb_pm_posting_succeeded{postingMode:fresh}': ['count>0'],
+    } : {}),
+  },
+});
 
 export function setup(): NgbAuthSetupData {
   assertWriteHeavyEnabled();

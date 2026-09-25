@@ -21,7 +21,8 @@ public interface IDocumentRepository
         CancellationToken ct = default);
 
     /// <summary>
-    /// Loads and locks the document row until the current transaction completes (SELECT ... FOR UPDATE).
+    /// Loads and locks the document row until the current transaction completes, serializing writers.
+    /// The immutable document key remains available to concurrent foreign-key references (FOR NO KEY UPDATE).
     /// Requires an active transaction.
     /// </summary>
     Task<DocumentRecord?> GetForUpdateAsync(Guid documentId, CancellationToken ct = default);

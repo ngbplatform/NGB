@@ -68,6 +68,26 @@ public sealed class DirectComposableExportsTests(PostgresTestFixture fixture) : 
         }
     }
 
+    [Theory]
+    [InlineData(ReportAggregationKind.Sum, 28)]
+    [InlineData(ReportAggregationKind.Average, 3.5)]
+    [InlineData(ReportAggregationKind.Min, 1)]
+    [InlineData(ReportAggregationKind.Max, 7)]
+    [InlineData(ReportAggregationKind.Count, 8)]
+    [InlineData(ReportAggregationKind.CountDistinct, 4)]
+    public async Task Grouped_exports_without_details_preserve_leaf_and_grand_totals(ReportAggregationKind aggregation, decimal expected)
+    {
+        var source = new Source("(VALUES (1),(1),(3),(5)) AS x(x) CROSS JOIN generate_series(1,2) y");
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString, services =>
+        { services.AddSingleton<IReportDefinitionSource>(source); services.AddSingleton<IPostgresReportDatasetSource>(source); });
+        var sheet = await DirectAccountingExportsTests.RunAsync(host, Source.Code, new(Layout: new(
+            RowGroups: [new("bucket")], Measures: [new("amount", aggregation)],
+            ShowDetails: false, ShowSubtotals: true, ShowGrandTotals: true)));
+        sheet.Rows.Should().NotContain(r => r.RowKind == ReportRowKind.Detail);
+        sheet.Rows.Single(r => r.RowKind == ReportRowKind.Group).Cells.Last().Value!.Value.GetDecimal().Should().Be(expected);
+        sheet.Rows.Single(r => r.RowKind == ReportRowKind.Total).Cells.Last().Value!.Value.GetDecimal().Should().Be(expected);
+    }
+
     [Fact]
     public async Task A_measure_only_report_preserves_its_first_numeric_result()
     {

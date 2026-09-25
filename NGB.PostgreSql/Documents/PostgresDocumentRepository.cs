@@ -182,6 +182,9 @@ WHERE id = ANY(@Ids);
         return rows.ToDictionary(static row => row.Id, static row => row.ToRecord());
     }
 
+    // Registry identifiers never change. NO KEY UPDATE still serializes document writers,
+    // while allowing the KEY SHARE locks taken by action-execution foreign keys.
+    // FOR UPDATE would deadlock when concurrent actions insert their execution rows first.
     public async Task<DocumentRecord?> GetForUpdateAsync(Guid documentId, CancellationToken ct = default)
     {
         await uow.EnsureOpenForTransactionAsync(ct);
@@ -200,7 +203,7 @@ WHERE id = ANY(@Ids);
                                marked_for_deletion_at_utc AS MarkedForDeletionAtUtc
                            FROM documents
                            WHERE id = @Id
-                           FOR UPDATE;
+                           FOR NO KEY UPDATE;
                            """;
 
         var cmd = new CommandDefinition(sql, new { Id = documentId }, transaction: uow.Transaction, cancellationToken: ct);
@@ -236,7 +239,7 @@ SELECT
 FROM documents
 WHERE id = ANY(@Ids)
 ORDER BY id
-FOR UPDATE;
+FOR NO KEY UPDATE;
 """;
 
         var rows = await uow.Connection.QueryAsync<DocumentRow>(

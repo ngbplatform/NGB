@@ -35,7 +35,7 @@ public sealed class ReportSummaryStreamsTests
         var calls = 0;
         var rows = new List<ReportRowWrite>();
         await foreach (var row in builder.BuildStreamingAsync(plan, ReportSheetBuilder.BuildColumns(plan), Read, default)) rows.Add(row);
-        calls.Should().Be(measures ? 3 : 1);
+        calls.Should().Be(measures ? 2 : 1);
         rows.Should().Contain(r => r.Row.RowKind == ReportRowKind.Group);
         async IAsyncEnumerable<ReportStreamingDataRow> Read(ReportQueryPlan _, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
         {

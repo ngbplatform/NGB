@@ -125,11 +125,22 @@ if [[ -n "${NGB_K6_SUMMARY_EXPORT:-}" ]]; then
   fi
 fi
 
+if command -v node >/dev/null 2>&1; then
+  node "$(dirname "$0")/write-run-manifest.mjs" "$TEST_FILE" "$OUTPUT_MODE" "$NGB_K6_SUMMARY_EXPORT"
+else
+  echo "Node is unavailable; run manifest could not be written." >&2
+fi
+
 echo "Starting k6: test=$TEST_FILE output=$OUTPUT_MODE env_file=$ENV_FILE summary_export=${NGB_K6_SUMMARY_EXPORT:-none}"
 
 case "$OUTPUT_MODE" in
   local)
-    k6 run "$TEST_FILE"
+    if [[ -n "${NGB_K6_TIME_SERIES_EXPORT:-}" ]]; then
+      mkdir -p "$(dirname "$NGB_K6_TIME_SERIES_EXPORT")"
+      k6 run --out "json=$NGB_K6_TIME_SERIES_EXPORT" "$TEST_FILE"
+    else
+      k6 run "$TEST_FILE"
+    fi
     ;;
   cloud)
     k6 cloud run --local-execution --include-system-env-vars "$TEST_FILE"

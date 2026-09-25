@@ -1,3 +1,5 @@
+import { Counter } from 'k6/metrics';
+
 import { jsonHas, operationSucceeded } from '../../../ngb-performance-tests-framework/src/core/checks.ts';
 import { randomSuffix } from '../../../ngb-performance-tests-framework/src/core/random.ts';
 import type { NgbScenarioContext } from '../../../ngb-performance-tests-framework/src/scenarios/scenarioTypes.ts';
@@ -13,18 +15,23 @@ import {
 } from './pmFlowSupport.ts';
 import { pmPlatformAuditFlow } from './pmPlatformAuditFlow.ts';
 
+const branches = new Counter('ngb_pm_lifecycle_branch');
+
 export function pmDocumentLifecycleFlow(context: NgbScenarioContext): boolean {
   if (!context.env.enableWrites) {
+    branches.add(1, { branch: 'read_only' });
     readLifecycleSurfaces(context);
     return false;
   }
 
   const fixture = resolveMaintenanceRequestFixture(context);
   if (!fixture) {
+    branches.add(1, { branch: 'missing_fixture' });
     readLifecycleSurfaces(context);
     return false;
   }
 
+  branches.add(1, { branch: 'write' });
   const period = resolvePeriodProfile('open');
   const suffix = randomSuffix('pm-perf-maintenance');
   const createPayload = maintenanceRequestPayload(
@@ -34,8 +41,8 @@ export function pmDocumentLifecycleFlow(context: NgbScenarioContext): boolean {
     period.asOfUtc,
   );
   const createResponse = context.documents.createDocument(PM_DOCUMENT_TYPES.maintenanceRequest, createPayload);
-  operationSucceeded(createResponse, [200, 201]);
-  jsonHas(createResponse, 'id');
+  let succeeded = operationSucceeded(createResponse, [200, 201]);
+  succeeded = jsonHas(createResponse, 'id') && succeeded;
 
   const documentId = responseDocumentId(createResponse);
   if (!documentId) {
@@ -47,24 +54,24 @@ export function pmDocumentLifecycleFlow(context: NgbScenarioContext): boolean {
     documentId,
     maintenanceRequestPayload(fixture, `Perf maintenance lifecycle updated ${suffix}`, 'high', period.asOfUtc),
   );
-  operationSucceeded(updateResponse, [200]);
+  succeeded = operationSucceeded(updateResponse, [200]) && succeeded;
 
-  operationSucceeded(context.documents.openDocument(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]);
-  operationSucceeded(context.documents.getEditorState(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]);
+  succeeded = operationSucceeded(context.documents.openDocument(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]) && succeeded;
+  succeeded = operationSucceeded(context.documents.getEditorState(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]) && succeeded;
   pmPlatformAuditFlow(context, documentId);
 
   if (postingEnabled(context)) {
-    operationSucceeded(context.documents.postDocument(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]);
-    operationSucceeded(context.documents.getDocumentFlow(PM_DOCUMENT_TYPES.maintenanceRequest, documentId, 2, 100), [200]);
+    succeeded = operationSucceeded(context.documents.postDocument(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200]) && succeeded;
+    succeeded = operationSucceeded(context.documents.getDocumentFlow(PM_DOCUMENT_TYPES.maintenanceRequest, documentId, 2, 100), [200]) && succeeded;
     pmPlatformAuditFlow(context, documentId);
-    return true;
+    return succeeded;
   }
 
   if (cleanupCreatedDraftsEnabled()) {
-    operationSucceeded(context.documents.deleteDraft(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200, 202, 204]);
+    succeeded = operationSucceeded(context.documents.deleteDraft(PM_DOCUMENT_TYPES.maintenanceRequest, documentId), [200, 202, 204]) && succeeded;
   }
 
-  return true;
+  return succeeded;
 }
 
 function readLifecycleSurfaces(context: NgbScenarioContext): void {

@@ -85,7 +85,10 @@ internal sealed partial class ReportGroupTreeBuilder
             {
                 var grouping = plan.RowGroups[level];
                 var total = _subtotalBuilder.CreateAccumulator(plan.Measures);
-                var summary = plan.Measures.Count > 0
+                // Without details or a column axis, the input is already aggregated at
+                // the deepest row-group grain. Re-reading that grain duplicates the query.
+                var useInputSummary = !hasDetailRows && plan.ColumnGroups.Count == 0 && level == plan.RowGroups.Count - 1;
+                var summary = plan.Measures.Count > 0 && !useInputSummary
                     ? (await summaries.NextAsync(level, data.RawValues)).Values
                     : data.Values;
 
