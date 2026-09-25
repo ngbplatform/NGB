@@ -92,18 +92,28 @@ public sealed class AccountingLedgerAnalysisPostgresDatasetSource : IPostgresRep
 
     public static PostgresReportSqlSource? SelectAccountAggregateSource(PostgresReportExecutionRequest request)
     {
-        // Account-only sums do not need a document join or display strings on every posting.
-        // Other shapes (details, dates, dimensions, counts, averages, pivots) keep raw observations.
-        static bool AccountField(string field) => field is "account_id" or "account_code" or "account_name" or "account_display";
+        // Sum-only account/period shapes can aggregate before joining account labels.
+        // Keep exact timestamps so time grains, predicates and selections retain their semantics.
+        // Details, dimensions and non-additive measures still use raw observations.
+        static bool AggregateField(string field)
+            => field is "account_id" or "account_code" or "account_name" or "account_display" or "period_utc";
 
         if (request.DetailFields.Count != 0 || request.Measures.Count == 0
             || request.Measures.Any(m => m.Aggregation != ReportAggregationKind.Sum)
-            || request.RowGroups.Concat(request.ColumnGroups).Any(g => !AccountField(g.FieldCode))
-            || request.Predicates.Any(p => !AccountField(p.FieldCode))
-            || request.Sorts.Any(s => s.MeasureCode is null && !AccountField(s.FieldCode))
-            || request.Selection?.Fields.Any(f => !AccountField(f.FieldCode)) == true)
+            || request.RowGroups.Concat(request.ColumnGroups).Any(g => !AggregateField(g.FieldCode))
+            || request.Predicates.Any(p => !AggregateField(p.FieldCode))
+            || request.Sorts.Any(s => s.MeasureCode is null && !AggregateField(s.FieldCode))
+            || request.Selection?.Fields.Any(f => !AggregateField(f.FieldCode)) == true)
         {
             return null;
+        }
+
+        if (request.RowGroups.Concat(request.ColumnGroups).Any(g => g.FieldCode == "period_utc")
+            || request.Predicates.Any(p => p.FieldCode == "period_utc")
+            || request.Sorts.Any(s => s.MeasureCode is null && s.FieldCode == "period_utc")
+            || request.Selection?.Fields.Any(f => f.FieldCode == "period_utc") == true)
+        {
+            return AccountPeriodAggregateSource;
         }
 
         return new PostgresReportSqlSource("""
@@ -128,4 +138,26 @@ public sealed class AccountingLedgerAnalysisPostgresDatasetSource : IPostgresRep
             ) x
             """);
     }
+
+    private static readonly PostgresReportSqlSource AccountPeriodAggregateSource = new("""
+        (
+            SELECT a.account_id, a.code AS account_code, a.name AS account_name,
+                   a.code || ' — ' || a.name AS account_display, r.period,
+                   SUM(r.debit_amount) AS debit_amount, SUM(r.credit_amount) AS credit_amount,
+                   SUM(r.debit_amount - r.credit_amount) AS net_amount
+            FROM (
+                SELECT debit_account_id AS account_id, period, SUM(amount) AS debit_amount, 0::numeric AS credit_amount
+                FROM accounting_register_main
+                WHERE period >= @from_utc AND period < @to_utc_exclusive
+                GROUP BY debit_account_id, period
+                UNION ALL
+                SELECT credit_account_id AS account_id, period, 0::numeric AS debit_amount, SUM(amount) AS credit_amount
+                FROM accounting_register_main
+                WHERE period >= @from_utc AND period < @to_utc_exclusive
+                GROUP BY credit_account_id, period
+            ) r
+            JOIN accounting_accounts a ON a.account_id = r.account_id AND a.is_deleted = FALSE
+            GROUP BY a.account_id, a.code, a.name, r.period
+        ) x
+        """);
 }

@@ -7,7 +7,7 @@ const command = (name,args) => { try { return execFileSync(name,args,{encoding:'
 const hash = value => createHash('sha256').update(value).digest('hex');
 const settings = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
  !/(TOKEN|SECRET|PASSWORD|AUTHORIZATION|CREDENTIAL|KEY)/i.test(key)
- && (/^NGB_(PERF_|PM_|K6_)/.test(key)
+ && (/^NGB_(PERF_|PM_|K6_|CAPACITY_|BREAKPOINT_)/.test(key)
  || ['NGB_API_BASE_URL','NGB_VERTICAL'].includes(key))).sort(([a],[b]) => a.localeCompare(b)));
 const manifest = {
  schemaVersion:1, startedAtUtc:new Date().toISOString(), testFile, outputMode,
