@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using Dapper;
 using NGB.Core.Dimensions;
 using NGB.Persistence.OperationalRegisters;
@@ -209,19 +210,13 @@ GROUP BY requested.dimension_set_id;
             return 0m;
 
         var (dimensionIds, valueIds, dimensionCount) = SqlDimensionFilter.Normalize(dimensions);
+        var matchingDimensionSets = BuildMatchingDimensionSetsSql(dimensionCount);
         var balancesTable = ResolveBalancesTableName(tableName);
         var balancesTableExists = await TableExistsAsync(balancesTable, ct);
         var sql = balancesTableExists
             ? $"""
             WITH matching_dimension_sets AS (
-                SELECT item.dimension_set_id
-                FROM platform_dimension_set_items item
-                JOIN UNNEST(@DimensionIds::uuid[], @ValueIds::uuid[])
-                  AS requested(dimension_id, value_id)
-                  ON requested.dimension_id = item.dimension_id
-                 AND requested.value_id = item.value_id
-                GROUP BY item.dimension_set_id
-                HAVING COUNT(*) = @DimensionCount
+                {matchingDimensionSets}
             ),
             latest_snapshot AS (
                 {OperationalRegisterSnapshotSql.LatestFinalizedPeriod()}
@@ -249,14 +244,7 @@ GROUP BY requested.dimension_set_id;
             """
             : $"""
             WITH matching_dimension_sets AS (
-                SELECT item.dimension_set_id
-                FROM platform_dimension_set_items item
-                JOIN UNNEST(@DimensionIds::uuid[], @ValueIds::uuid[])
-                  AS requested(dimension_id, value_id)
-                  ON requested.dimension_id = item.dimension_id
-                 AND requested.value_id = item.value_id
-                GROUP BY item.dimension_set_id
-                HAVING COUNT(*) = @DimensionCount
+                {matchingDimensionSets}
             )
             SELECT COALESCE(
                 SUM(CASE WHEN movement.is_storno
@@ -274,11 +262,38 @@ GROUP BY requested.dimension_set_id;
             {
                 RegisterId = registerId,
                 DimensionIds = dimensionIds,
-                ValueIds = valueIds,
-                DimensionCount = dimensionCount
+                ValueIds = valueIds
             },
             transaction: uow.Transaction,
             cancellationToken: ct));
+    }
+
+    internal static string BuildMatchingDimensionSetsSql(int dimensionCount)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(dimensionCount, 1);
+
+        // Intersect indexed (dimension, value) lookups. Grouping the union of all
+        // matches scans every item in common scopes even when one filter is unique.
+        // The planner can start with the most selective pair, regardless of input order.
+        var sql = new StringBuilder("SELECT d0.dimension_set_id\nFROM platform_dimension_set_items d0\n");
+        for (var index = 1; index < dimensionCount; index++)
+        {
+            sql.AppendLine($"""
+                JOIN platform_dimension_set_items d{index}
+                  ON d{index}.dimension_set_id = d0.dimension_set_id
+                 AND d{index}.dimension_id = (@DimensionIds::uuid[])[{index + 1}]
+                 AND d{index}.value_id = (@ValueIds::uuid[])[{index + 1}]
+                """);
+        }
+
+        // The primary key (dimension_set_id, dimension_id) prevents duplicate matches.
+        // Additional dimensions in a set remain allowed: this is a subset filter.
+        sql.Append("""
+            WHERE d0.dimension_id = (@DimensionIds::uuid[])[1]
+              AND d0.value_id = (@ValueIds::uuid[])[1]
+            """);
+
+        return sql.ToString();
     }
 
     public async Task<IReadOnlyList<decimal>> GetNetsByDimensionsAsync(
