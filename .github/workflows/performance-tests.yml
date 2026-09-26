@@ -43,6 +43,10 @@ jobs:
         working-directory: performance-tests
         run: npm run typecheck
 
+      - name: Test diagnostic tooling (offline)
+        working-directory: performance-tests
+        run: npm run test:tooling
+
   pm-smoke:
     needs: typecheck
     if: github.event_name == 'workflow_dispatch' && inputs.run_pm_smoke

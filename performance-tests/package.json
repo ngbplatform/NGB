@@ -35,10 +35,20 @@
     "ab:smoke": "./scripts/run-k6.sh --env-file ngb-agency-billing-perf/.env.local --test ngb-agency-billing-perf/src/tests/smoke.ts",
     "pm:posting-contract": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.write.local --test ngb-property-management-perf/src/tests/posting-contract.ts",
     "pm:reporting-probe": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/reporting-probe.ts",
-    "pm:read-regression-probe": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/read-regression-probe.ts"
+    "pm:read-regression-probe": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/read-regression-probe.ts",
+    "pm:diagnostics": "node scripts/diagnostics/run.mjs",
+    "pm:capacity:diagnostics": "node scripts/diagnostics/run.mjs --profile platform-mixed-capacity",
+    "pm:write-heavy:diagnostics": "node scripts/diagnostics/run.mjs --profile write-heavy",
+    "test:tooling": "node --test scripts/diagnostics/tests/*.test.mjs && python3 -B -m unittest discover -s scripts/analysis -p \"test_*.py\"",
+    "test:metric-grouping": "python3 -B scripts/diagnostics/verify-metric-grouping.py"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.30.1",
     "@types/k6": "latest",
+    "pg": "8.23.0",
     "typescript": "latest"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }

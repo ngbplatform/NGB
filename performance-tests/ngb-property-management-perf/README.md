@@ -70,6 +70,12 @@ cd performance-tests
 
 ## Test Files
 
+For repeatable local runs with per-stage time series and PostgreSQL/Docker diagnostics,
+use the [diagnostic runbook](../docs/performance/diagnostics.md). In particular,
+`npm run pm:capacity:diagnostics` explicitly enables writes and fresh posting, uses
+`.env.write.local`, and saves output under `artifacts/runs/`. Its scripts are tracked
+under `scripts/diagnostics/`; cleaning `artifacts/` does not remove them.
+
 - `smoke.ts`: login, health, metadata, document list, report definition, trial balance, ledger analysis
 - `baseline.ts`: broad platform baseline with reads, reports, effects, graph, audit, and period-closing read surfaces
 - `load.ts`, `stress.ts`, `spike.ts`, `soak.ts`: profile-specific platform mixes, not lease-only browsing

@@ -6,6 +6,15 @@ vertical scenario packages. Platform releases are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- Versioned PM diagnostic runners, a fixed-query read-only Postgres MCP sampler,
+  offline time-series/resource analysis and explicit before/after comparison tools.
+- English performance runbooks and comparison methodology. Run-specific reports,
+  evidence indexes and generated output remain under ignored `artifacts/`.
+- Offline tooling contract tests; diagnostic tooling no longer depends on artifacts,
+  personal filesystem paths or an npm cache installation.
+
 ### Fixed
 
 - Group k6 HTTP metrics by stable operation names to prevent dynamic document IDs

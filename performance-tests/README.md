@@ -8,7 +8,9 @@ performance-tests/
   ngb-property-management-perf/      Property Management scenarios
   ngb-trade-perf/                    Trade smoke scaffold
   ngb-agency-billing-perf/           Agency Billing smoke scaffold
-  scripts/                           macOS/Linux and PowerShell runners
+  scripts/                           Runners, diagnostics and offline analysis tools
+  docs/performance/                  Reusable runbooks and comparison methodology
+  artifacts/                         Disposable generated results (ignored by Git)
 ```
 
 The framework is intentionally independent from the normal backend and frontend builds. It type-checks in CI, while live k6 runs are opt-in and should target dedicated non-production environments.
@@ -22,14 +24,17 @@ separate build and test workflow. Trade and Agency Billing remain smoke scaffold
 their version does not imply full performance coverage.
 
 See the [performance test changelog](./CHANGELOG.md) for workload and validation changes.
-Preserve existing result files and run manifests as historical records. When comparing
-runs, check their workload configuration and dataset identity as well as their versions.
+When comparing runs, check workload configuration and dataset identity as well as versions.
+Reusable tools and operating instructions are versioned. Run-specific reports and raw
+results belong in ignored `artifacts/` and can be archived externally before cleanup.
+See the [performance operations guide](docs/performance/README.md) for the storage
+contract, diagnostic commands and comparison methodology.
 
 ## Quick Start
 
 ```bash
 cd performance-tests
-npm install
+npm ci
 npm run typecheck
 cp ngb-property-management-perf/.env.example ngb-property-management-perf/.env.local
 ./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/smoke.ts
@@ -39,7 +44,7 @@ PowerShell:
 
 ```powershell
 cd performance-tests
-npm install
+npm ci
 npm run typecheck
 Copy-Item ngb-property-management-perf/.env.example ngb-property-management-perf/.env.local
 ./scripts/run-k6.ps1 -EnvFile ngb-property-management-perf/.env.local -TestFile ngb-property-management-perf/src/tests/smoke.ts
@@ -85,3 +90,21 @@ environment variable wins over the value in `.env.local` or `.env.write.local`.
 `pm:all` is the standard read-mostly PM validation chain. `pm:write-heavy` is destructive,
 uses `ngb-property-management-perf/.env.write.local`, and is intentionally excluded from
 `pm:all`.
+
+## Diagnostic Runs and Offline Analysis
+
+Install Node.js 22.13 or newer and the locked dependencies with `npm ci`. On macOS/Linux:
+
+```bash
+npm run test:tooling
+npm run pm:capacity:diagnostics -- --check
+# macOS: run mixed capacity with writes and fresh posting, while preventing idle sleep.
+caffeinate -i npm run pm:capacity:diagnostics
+```
+
+The preflight is read-only and does not run a k6 test. The load command saves an isolated
+run directory under `artifacts/runs/`; the maintained tools and SQL live under `scripts/`.
+See [diagnostic runs](docs/performance/diagnostics.md) for configuration, Linux commands,
+interruption behavior and offline analysis, and [comparison methodology](docs/performance/comparison-methodology.md)
+for valid before/after conclusions. These diagnostic profiles are opt-in and are not
+added to `pm:all`.
