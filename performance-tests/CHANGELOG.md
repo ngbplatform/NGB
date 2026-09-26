@@ -4,6 +4,14 @@ This changelog covers the private performance test workspace, shared framework, 
 vertical scenario packages. Platform releases are documented in the
 [repository changelog](../CHANGELOG.md).
 
+## [Unreleased]
+
+### Fixed
+
+- Group k6 HTTP metrics by stable operation names to prevent dynamic document IDs
+  and query values from creating unbounded URL metric series during write-heavy
+  runs. Preserve request routing, status/error metrics, and diagnostic tags.
+
 ## [3.0.0]
 
 ### Changed

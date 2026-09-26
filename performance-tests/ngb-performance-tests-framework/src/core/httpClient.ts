@@ -115,7 +115,8 @@ export class NgbHttpClient {
         Authorization: `Bearer ${accessToken}`,
         ...(method === 'GET' || method === 'DELETE' ? {} : { 'Content-Type': 'application/json' }),
       },
-      tags,
+      // Group dynamic URLs by operation so document IDs do not create new metric series.
+      tags: tags.operation ? { ...tags, name: tags.operation } : tags,
       timeout: this.timeout,
       responseCallback: expectedStatuses(...expectedStatusCodes),
     };

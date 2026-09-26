@@ -160,6 +160,14 @@ Standard tags:
 
 Do not add high-cardinality tags such as document IDs, user IDs, random suffixes, or tenant-specific identifiers.
 
+`NgbHttpClient` sets the k6 HTTP `name` tag to the stable `operation` tag, including
+on authentication retries. k6 groups the HTTP `name` and `url` metric tags under
+that name, so document IDs and query values do not create a separate series for
+each request URL. The actual request URL and HTTP method remain unchanged, and
+status, document type, report ID, and other diagnostic tags still distinguish
+their respective metrics. Requests without an `operation` retain k6's default
+URL naming; always supply a stable operation for custom dynamic routes.
+
 Vertical packages can pass stable report codes to profile builders through `reportBreakdownIds`. The framework then creates diagnostic k6 submetrics for `platform.reports.execute` by `reportId`, so exported summaries show per-report latency without the shared framework knowing vertical-specific report catalogs. When verticals add `periodProfile`, summary rows include that label as well.
 
 Vertical packages can also pass stable tag selectors through `diagnosticBreakdowns`. The framework materializes matching k6 submetrics for HTTP duration, HTTP failures, business operation duration, and business operation failures. Use this for bounded, low-cardinality slices such as `area + operation + documentType`, `area + operation + catalogType`, or a small set of status-specific failure buckets; never include document IDs or user-specific values.
