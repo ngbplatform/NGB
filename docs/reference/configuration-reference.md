@@ -88,14 +88,18 @@ The PM API host uses the following configuration keys in the verified developmen
 |---|---|---|
 | `Reporting:Requests:ConcurrentPages` | `12` | Concurrent interactive report requests per API instance |
 | `Reporting:Requests:ConcurrentDownloads` | `2` | Concurrent report downloads per API instance |
+| `Reporting:Requests:QueuedDownloads` | `4` | Maximum pending downloads per instance; `0` disables waiting |
+| `Reporting:Requests:DownloadQueueTimeoutSeconds` | `3` | Maximum FIFO queue wait before report preparation; must be positive |
 | `Reporting:Requests:PageTimeoutSeconds` | `30` | Interactive request deadline |
-| `Reporting:Requests:DownloadTimeoutSeconds` | `300` | Download deadline |
+| `Reporting:Requests:DownloadTimeoutSeconds` | `300` | Download execution deadline after admission |
 | `Reporting:Cursor:SigningKey` | Ephemeral process key | Base64 of at least 32 random bytes; share across replicas and restarts to preserve cursor validity |
 
 Environment-variable equivalents use double underscores, for example
 `Reporting__Requests__ConcurrentDownloads` and `Reporting__Cursor__SigningKey`.
-Capacity exhaustion returns HTTP 429 with `Retry-After`. Align download deadlines with proxy
-timeouts and the UI's native-download cleanup delay. See
+A full download queue or expired queue wait returns HTTP 429 with `Retry-After: 3`.
+Queued downloads do not start report preparation or open report read sessions. Page admission
+remains immediate. Align the combined queue wait and execution deadline with proxy and client
+timeouts. See
 [Report Browsing and Direct Downloads](/architecture/report-execution-results).
 
 ## Background Jobs host

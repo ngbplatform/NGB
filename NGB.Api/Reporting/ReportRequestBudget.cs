@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -9,17 +10,42 @@ public sealed class ReportRequestLimits
 {
     public int ConcurrentPages { get; set; } = 12;
     public int ConcurrentDownloads { get; set; } = 2;
+    public int QueuedDownloads { get; set; } = 4;
+    public int DownloadQueueTimeoutSeconds { get; set; } = 3;
     public int PageTimeoutSeconds { get; set; } = 30;
     public int DownloadTimeoutSeconds { get; set; } = 300;
 }
 
-/// <summary>Per API instance admission limits; no unbounded queue holds HTTP requests or database connections.</summary>
+/// <summary>Per-instance limits with a bounded FIFO download queue before report preparation.</summary>
 public sealed class ReportRequestBudget(IOptions<ReportRequestLimits> options) : IDisposable
 {
-    private readonly SemaphoreSlim _pages = new(options.Value.ConcurrentPages, options.Value.ConcurrentPages);
-    private readonly SemaphoreSlim _downloads = new(options.Value.ConcurrentDownloads, options.Value.ConcurrentDownloads);
+    private readonly ConcurrencyLimiter _pages = CreateLimiter(options.Value.ConcurrentPages, 0);
+    private readonly ConcurrencyLimiter _downloads = CreateLimiter(options.Value.ConcurrentDownloads, options.Value.QueuedDownloads);
 
-    public SemaphoreSlim Gate(bool download) => download ? _downloads : _pages;
+    /// <summary>Returns an owned execution lease, or null when admission is full or times out.</summary>
+    public async ValueTask<RateLimitLease?> AcquireAsync(bool download, CancellationToken ct)
+    {
+        using var waiting = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        if (download)
+            waiting.CancelAfter(TimeSpan.FromSeconds(options.Value.DownloadQueueTimeoutSeconds));
+
+        try
+        {
+            var lease = await (download ? _downloads : _pages).AcquireAsync(1, waiting.Token);
+            if (lease.IsAcquired)
+                return lease;
+
+            lease.Dispose();
+            return null;
+        }
+        catch (OperationCanceledException) when (waiting.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            // A queue deadline is capacity exhaustion; a client disconnect must still propagate.
+            return null;
+        }
+    }
+
+    public RateLimiterStatistics Statistics(bool download) => (download ? _downloads : _pages).GetStatistics()!;
 
     public TimeSpan Timeout(bool download) => TimeSpan.FromSeconds(download
         ? options.Value.DownloadTimeoutSeconds
@@ -30,6 +56,13 @@ public sealed class ReportRequestBudget(IOptions<ReportRequestLimits> options) :
         _pages.Dispose();
         _downloads.Dispose();
     }
+
+    private static ConcurrencyLimiter CreateLimiter(int concurrent, int queued) => new(new ConcurrencyLimiterOptions
+    {
+        PermitLimit = concurrent,
+        QueueLimit = queued,
+        QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+    });
 }
 
 public sealed class ReportRequestBudgetAttribute : TypeFilterAttribute
@@ -45,9 +78,10 @@ public sealed class ReportRequestBudgetFilter(bool download, ReportRequestBudget
     {
         var http = context.HttpContext;
         var original = http.RequestAborted;
-        var gate = budget.Gate(download);
+        using var admission = await budget.AcquireAsync(download, original);
+        original.ThrowIfCancellationRequested();
 
-        if (!await gate.WaitAsync(0, original))
+        if (admission is null)
         {
             http.Response.Headers.RetryAfter = "3";
             context.Result = new ObjectResult(new ProblemDetails
@@ -95,7 +129,6 @@ public sealed class ReportRequestBudgetFilter(bool download, ReportRequestBudget
         finally
         {
             http.RequestAborted = original;
-            gate.Release();
         }
     }
 }

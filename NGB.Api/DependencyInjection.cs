@@ -33,7 +33,14 @@ public static class DependencyInjection
     {
         services.TryAddSingleton(TimeProvider.System);
         services.AddOptions<NGB.Api.Reporting.ReportRequestLimits>().Bind(configuration.GetSection("Reporting:Requests"))
-            .Validate(o => o.ConcurrentPages > 0 && o is { ConcurrentDownloads: > 0, PageTimeoutSeconds: > 0, DownloadTimeoutSeconds: > 0 }, "Report request limits must be positive.")
+            .Validate(o => o.ConcurrentPages > 0 && o is
+            {
+                ConcurrentDownloads: > 0,
+                PageTimeoutSeconds: > 0,
+                DownloadTimeoutSeconds: > 0,
+                DownloadQueueTimeoutSeconds: > 0
+            }, "Report request limits must be positive.")
+            .Validate(o => o.QueuedDownloads >= 0, "The report download queue limit must not be negative.")
             .ValidateOnStart();
         services.TryAddSingleton<NGB.Api.Reporting.ReportRequestBudget>();
         services.Configure<NGB.Runtime.Reporting.ReportCursorProtectionOptions>(configuration.GetSection("Reporting:Cursor"));

@@ -32,6 +32,7 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
     [InlineData("ConcurrentDownloads")]
     [InlineData("PageTimeoutSeconds")]
     [InlineData("DownloadTimeoutSeconds")]
+    [InlineData("DownloadQueueTimeoutSeconds")]
     public void Nonpositive_report_limits_fail_options_validation(string option)
     {
         var configuration = new ConfigurationBuilder().AddConfiguration(Configuration()).AddInMemoryCollection(new Dictionary<string, string?>
@@ -42,6 +43,25 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
         using var provider = services.BuildServiceProvider();
         Action read = () => _ = provider.GetRequiredService<IOptions<NGB.Api.Reporting.ReportRequestLimits>>().Value;
         read.Should().Throw<OptionsValidationException>().WithMessage("*positive*");
+    }
+
+    [Theory]
+    [InlineData(-1, false)]
+    [InlineData(0, true)]
+    [InlineData(4, true)]
+    public void Download_queue_accepts_zero_to_disable_waiting_and_rejects_negative_limits(int queued, bool valid)
+    {
+        var configuration = new ConfigurationBuilder().AddConfiguration(Configuration()).AddInMemoryCollection(new Dictionary<string, string?>
+        { ["Reporting:Requests:QueuedDownloads"] = queued.ToString() }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInfrastructure(configuration, "API");
+        using var provider = services.BuildServiceProvider();
+        Action read = () => _ = provider.GetRequiredService<IOptions<NGB.Api.Reporting.ReportRequestLimits>>().Value;
+        if (valid)
+            read.Should().NotThrow();
+        else
+            read.Should().Throw<OptionsValidationException>().WithMessage("*negative*");
     }
 
     [Fact]
