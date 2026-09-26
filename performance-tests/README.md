@@ -13,6 +13,18 @@ performance-tests/
 
 The framework is intentionally independent from the normal backend and frontend builds. It type-checks in CI, while live k6 runs are opt-in and should target dedicated non-production environments.
 
+## Version and Compatibility
+
+Performance test suite version: **3.0.0**. Target platform: **NGB Platform 3.0.x**.
+The root workspace, shared framework, and all three vertical packages use a coordinated
+version aligned with the platform release line. They remain private packages with a
+separate build and test workflow. Trade and Agency Billing remain smoke scaffolds;
+their version does not imply full performance coverage.
+
+See the [performance test changelog](./CHANGELOG.md) for workload and validation changes.
+Preserve existing result files and run manifests as historical records. When comparing
+runs, check their workload configuration and dataset identity as well as their versions.
+
 ## Quick Start
 
 ```bash
