@@ -26,16 +26,29 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
         var nowUtc = timeProvider.GetUtcNowDateTime();
         nowUtc.EnsureUtc(nameof(nowUtc));
 
+        // An unchanged actor is a read: do not hold an email lock for the rest of
+        // the business transaction. Creation, rebinding and metadata changes still
+        // use the serialized write path below; the match uses this statement's snapshot.
         const string sql = """
-                           WITH email_lock AS (
+                           WITH unchanged_user AS MATERIALIZED (
+                               SELECT user_id
+                               FROM platform_users
+                               WHERE auth_subject = @AuthSubject
+                                 AND email IS NOT DISTINCT FROM @Email
+                                 AND display_name IS NOT DISTINCT FROM @DisplayName
+                                 AND is_active = @IsActive
+                           ),
+                           email_lock AS (
                                SELECT 1 AS locked
                                WHERE @NormalizedEmail IS NULL
+                                 AND NOT EXISTS (SELECT 1 FROM unchanged_user)
 
                                UNION ALL
 
                                SELECT 1 AS locked
                                FROM (SELECT pg_advisory_xact_lock(hashtextextended('platform_users.email:' || @NormalizedEmail, 0))) l
                                WHERE @NormalizedEmail IS NOT NULL
+                                 AND NOT EXISTS (SELECT 1 FROM unchanged_user)
                            ),
                            matched AS (
                                SELECT
@@ -88,6 +101,8 @@ public sealed class PostgresPlatformUserRepository(IUnitOfWork uow, TimeProvider
                                    updated_at_utc = EXCLUDED.updated_at_utc
                                RETURNING user_id
                            )
+                           SELECT user_id FROM unchanged_user
+                           UNION ALL
                            SELECT user_id FROM updated
                            UNION ALL
                            SELECT user_id FROM unchanged
