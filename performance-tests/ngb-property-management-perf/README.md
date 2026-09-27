@@ -116,6 +116,12 @@ flows gated by `NGB_PERF_ENABLE_WRITES`. `pm:platform-breakpoint` uses the same 
 ramps scheduled iterations/second until the environment starts dropping iterations or breaching
 reliability/latency thresholds.
 
+Breakpoint defaults to 500 preallocated VUs (maximum 500), a 52-minute arrival
+schedule, and up to 75 seconds for final iterations to complete. See the
+[framework profile settings](../ngb-performance-tests-framework/README.md) for overrides.
+Use `npm run pm:diagnostics -- --profile platform-breakpoint` to collect resource
+samples and per-stage evidence. The diagnostic wrapper disables writes and posting.
+
 `pm:write-heavy` is intentionally excluded from `pm:all` and uses `.env.write.local` by default:
 
 ```bash

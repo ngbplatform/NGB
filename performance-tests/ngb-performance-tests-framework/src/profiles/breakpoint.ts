@@ -21,6 +21,7 @@ export interface BreakpointProfileArgs extends SingleScenarioProfileArgs {
   readonly rampDuration?: string;
   readonly holdDuration?: string;
   readonly rampDownDuration?: string;
+  readonly gracefulStop?: string;
   readonly preAllocatedVUs?: number;
   readonly maxVUs?: number;
 }
@@ -29,11 +30,24 @@ const DEFAULT_BREAKPOINT_RATES = [2, 4, 8, 12, 16, 24, 32] as const;
 const DEFAULT_RAMP_DURATION = '2m';
 const DEFAULT_HOLD_DURATION = '5m';
 const DEFAULT_RAMP_DOWN_DURATION = '3m';
-const DEFAULT_PRE_ALLOCATED_VUS = 80;
+const DEFAULT_GRACEFUL_STOP = '75s';
+const DEFAULT_PRE_ALLOCATED_VUS = 500;
 const DEFAULT_MAX_VUS = 500;
 
 export function buildBreakpointProfile(args: BreakpointProfileArgs = {}): Options {
   const scenarioName = args.scenarioName ?? 'breakpoint';
+  const preAllocatedVUs = resolvePositiveInteger(
+    'NGB_BREAKPOINT_PRE_ALLOCATED_VUS', DEFAULT_PRE_ALLOCATED_VUS, args.preAllocatedVUs,
+  );
+  const maxVUs = resolvePositiveInteger('NGB_BREAKPOINT_MAX_VUS', DEFAULT_MAX_VUS, args.maxVUs);
+  const gracefulStop = normalizeDuration(
+    args.gracefulStop ?? readEnvDuration('NGB_BREAKPOINT_GRACEFUL_STOP') ?? DEFAULT_GRACEFUL_STOP,
+    'gracefulStop',
+  );
+
+  if (maxVUs < preAllocatedVUs) {
+    throw new Error(`NGB breakpoint profile requires maxVUs (${maxVUs}) to be >= preAllocatedVUs (${preAllocatedVUs}).`);
+  }
 
   return withSummaryTrendStats({
     scenarios: {
@@ -41,11 +55,11 @@ export function buildBreakpointProfile(args: BreakpointProfileArgs = {}): Option
         executor: 'ramping-arrival-rate',
         startRate: 1,
         timeUnit: '1s',
-        preAllocatedVUs: args.preAllocatedVUs ?? readPositiveInteger(
-          'NGB_BREAKPOINT_PRE_ALLOCATED_VUS',
-          DEFAULT_PRE_ALLOCATED_VUS,
-        ),
-        maxVUs: args.maxVUs ?? readPositiveInteger('NGB_BREAKPOINT_MAX_VUS', DEFAULT_MAX_VUS),
+        // Allocate the pool before measurement so VU initialization cannot skip arrivals.
+        preAllocatedVUs,
+        maxVUs,
+        // Allow a final iteration to finish after initial auth jitter (up to 45s).
+        gracefulStop,
         stages: [...resolveBreakpointStages(args)],
         exec: args.exec ?? 'default',
         env: { NGB_AUTH_INITIAL_JITTER_SECONDS: '45', ...(args.env ?? {}) },
@@ -171,15 +185,11 @@ function readBreakpointRates(value: string | undefined): number[] | undefined {
   return normalizeRates(rates);
 }
 
-function readPositiveInteger(name: string, fallback: number): number {
-  const value = __ENV[name]?.trim();
-  if (!value) {
-    return fallback;
-  }
-
-  const parsed = Number(value);
+function resolvePositiveInteger(name: string, fallback: number, override?: number): number {
+  const raw = __ENV[name]?.trim();
+  const parsed = override ?? (raw ? Number(raw) : fallback);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`Expected ${name} to be a positive integer but received: ${value}`);
+    throw new Error(`Expected ${name} to be a positive integer but received: ${override ?? raw}`);
   }
 
   return parsed;

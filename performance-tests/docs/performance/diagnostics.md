@@ -46,6 +46,21 @@ minutes plus setup and graceful completion. Passing the highest stage establishe
 tested capacity point, not the maximum capacity. Write-heavy uses the duration/rates
 already configured in `.env.write.local`; the accepted local profile is 30 minutes.
 
+Breakpoint schedules 2, 4, 8, 12, 16, 24 and 32 iterations/second, with a 2-minute
+ramp and a 5-minute hold per level, then a 3-minute ramp down: 52 minutes plus setup
+and up to 75 seconds of graceful completion. It preallocates all 500 VUs before load
+starts to avoid arrival gaps caused by growing the pool during measurement. The
+zero-dropped-iterations gate remains strict. `NGB_BREAKPOINT_PRE_ALLOCATED_VUS`,
+`NGB_BREAKPOINT_MAX_VUS` and `NGB_BREAKPOINT_GRACEFUL_STOP` can override these defaults;
+check the env file and inherited environment for old settings before rerunning.
+
+When comparing runs made with different VU allocation or graceful-stop settings,
+record the configuration change and compare matching steady hold windows. Whole-run
+averages include different completion tails, and fewer drops after preallocation
+alone do not establish an application performance improvement. Confirm there are no
+interrupted iterations in `run.log` and inspect load-generator CPU/RSS as well as
+application/database resources.
+
 To change the capacity schedule explicitly:
 
 ```bash

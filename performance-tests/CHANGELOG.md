@@ -17,6 +17,10 @@ vertical scenario packages. Platform releases are documented in the
 
 ### Fixed
 
+- Preallocate the breakpoint profile's 500-VU pool before load starts and allow
+  75 seconds for final iterations to complete after authentication jitter. Keep
+  the arrival schedule and zero-dropped-iterations gate unchanged; validate VU
+  limits and expose `NGB_BREAKPOINT_GRACEFUL_STOP` for explicit overrides.
 - Group k6 HTTP metrics by stable operation names to prevent dynamic document IDs
   and query values from creating unbounded URL metric series during write-heavy
   runs. Preserve request routing, status/error metrics, and diagnostic tags.
