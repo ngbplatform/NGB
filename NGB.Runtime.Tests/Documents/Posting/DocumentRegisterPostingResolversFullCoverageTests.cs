@@ -106,14 +106,8 @@ public sealed class DocumentRegisterPostingResolversFullCoverageTests
         var resolver = new DefinitionsDocumentOperationalRegisterPostingActionResolver(
             Definitions(("doc", typeof(BlockingOpHandler), null)), [handler]);
 
-        var first = Task.Run(() => resolver.TryResolve(Document()));
-        entered.Wait();
-        var second = Task.Run(() => resolver.TryResolve(Document()));
-        await Task.Delay(25);
-        release.Set();
-
-        (await first).Should().NotBeNull();
-        (await second).Should().NotBeNull();
+        await AssertWaitingCallerAsync(() => resolver.TryResolve(Document()), entered, release);
+        handler.TypeCodeReads.Should().Be(1, "the waiting caller must reuse the handler cached by the lock owner");
     }
 
     [Fact]
@@ -125,14 +119,53 @@ public sealed class DocumentRegisterPostingResolversFullCoverageTests
         var resolver = new DefinitionsDocumentReferenceRegisterPostingActionResolver(
             Definitions(("doc", null, typeof(BlockingReferenceHandler))), [handler]);
 
-        var first = Task.Run(() => resolver.TryResolve(Document()));
-        entered.Wait();
-        var second = Task.Run(() => resolver.TryResolve(Document()));
-        await Task.Delay(25);
-        release.Set();
+        await AssertWaitingCallerAsync(() => resolver.TryResolve(Document()), entered, release);
+        handler.TypeCodeReads.Should().Be(1, "the waiting caller must reuse the handler cached by the lock owner");
+    }
 
-        (await first).Should().NotBeNull();
-        (await second).Should().NotBeNull();
+    private static async Task AssertWaitingCallerAsync<T>(Func<T?> resolve, ManualResetEventSlim entered, ManualResetEventSlim release)
+        where T : Delegate
+    {
+        var deadline = TimeSpan.FromSeconds(10);
+        var first = Task.Run(resolve);
+        var second = new TaskCompletionSource<T?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waiter = new Thread(() =>
+        {
+            try
+            {
+                second.SetResult(resolve());
+            }
+            catch (Exception error)
+            {
+                second.SetException(error);
+            }
+        })
+        {
+            IsBackground = true
+        };
+        var ownerEntered = false;
+        var waiterBlocked = false;
+        try
+        {
+            ownerEntered = entered.Wait(deadline);
+            if (ownerEntered)
+            {
+                waiter.Start();
+                // The dedicated thread has no other waits before returning. Observe actual
+                // lock contention before allowing the owner to populate the cache.
+                waiterBlocked = SpinWait.SpinUntil(
+                    () => (waiter.ThreadState & ThreadState.WaitSleepJoin) != 0, deadline);
+            }
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        (await first.WaitAsync(deadline)).Should().NotBeNull();
+        ownerEntered.Should().BeTrue("the first caller must resolve the handler while holding the cache lock");
+        (await second.Task.WaitAsync(deadline)).Should().NotBeNull();
+        waiterBlocked.Should().BeTrue("the second caller must reach the lock before the cache is populated");
     }
 
     private static void AssertMisconfigured(Action action, string reason)
@@ -191,10 +224,13 @@ public sealed class DocumentRegisterPostingResolversFullCoverageTests
         ManualResetEventSlim entered,
         ManualResetEventSlim release) : OpHandler(code)
     {
+        public int TypeCodeReads { get; private set; }
+
         public override string TypeCode
         {
             get
             {
+                TypeCodeReads++;
                 entered.Set();
                 release.Wait();
                 return base.TypeCode;
@@ -225,10 +261,13 @@ public sealed class DocumentRegisterPostingResolversFullCoverageTests
         ManualResetEventSlim entered,
         ManualResetEventSlim release) : ReferenceHandler(code)
     {
+        public int TypeCodeReads { get; private set; }
+
         public override string TypeCode
         {
             get
             {
+                TypeCodeReads++;
                 entered.Set();
                 release.Wait();
                 return base.TypeCode;

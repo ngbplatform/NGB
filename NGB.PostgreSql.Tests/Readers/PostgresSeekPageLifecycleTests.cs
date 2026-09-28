@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using FluentAssertions;
 using Moq;
+using NGB.Core.Documents;
 using NGB.Metadata.Base;
 using NGB.Persistence.Catalogs.Universal;
 using NGB.Persistence.Documents.Universal;
@@ -15,15 +16,32 @@ namespace NGB.PostgreSql.Tests.Readers;
 public sealed class PostgresSeekPageLifecycleTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Empty_filtered_page_returns_total_and_disposes_both_result_sets(bool document)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Filtered_page_returns_total_and_materialized_rows_after_disposing_both_result_sets(bool document, bool hasRows)
     {
+        var id = Guid.NewGuid();
         var count = new DataTable();
         count.Columns.Add("Total", typeof(long));
-        count.Rows.Add(0L);
+        count.Rows.Add(hasRows ? 1L : 0L);
         var rows = new DataTable();
         rows.Columns.Add("Id", typeof(Guid));
+        rows.Columns.Add("Display", typeof(string));
+        rows.Columns.Add("SortDisplay", typeof(string));
+        rows.Columns.Add("name", typeof(string));
+        if (document)
+        {
+            rows.Columns.Add("Status", typeof(short));
+            rows.Columns.Add("Number", typeof(string));
+            if (hasRows) rows.Rows.Add(id, "Alpha", "Alpha", "Alpha", (short)DocumentStatus.Draft, "INV-1");
+        }
+        else
+        {
+            rows.Columns.Add("IsDeleted", typeof(bool));
+            if (hasRows) rows.Rows.Add(id, "Alpha", "Alpha", "Alpha", false);
+        }
         using var results = new DataTableReader([count, rows]);
         var connection = new RecordingDbConnection(readerFactory: _ => results);
         var uow = new RecordingUnitOfWork(connection);
@@ -33,18 +51,33 @@ public sealed class PostgresSeekPageLifecycleTests
             var page = await new PostgresDocumentReader(uow, []).GetSeekPageAsync(
                 new("invoice", "doc_invoice", "name", [new("name", ColumnType.String)]),
                 new("Alpha", []), null, null, 10, includeTotal: true);
-            page.Total.Should().Be(0);
-            page.Rows.Should().BeEmpty();
+            page.Total.Should().Be(hasRows ? 1 : 0);
+            page.Rows.Should().HaveCount(hasRows ? 1 : 0);
             page.HasMore.Should().BeFalse();
+            if (hasRows)
+            {
+                page.Rows[0].Id.Should().Be(id);
+                page.Rows[0].Display.Should().Be("Alpha");
+                page.Rows[0].Fields["name"].Should().Be("Alpha");
+                page.Rows[0].Status.Should().Be(DocumentStatus.Draft);
+                page.Rows[0].Number.Should().Be("INV-1");
+            }
         }
         else
         {
             var page = await new PostgresCatalogReader(uow).GetSeekPageAsync(
                 new("customers", "cat_customers", "name", [new("name", ColumnType.String)]),
                 new("Alpha", []), null, null, 10, includeTotal: true);
-            page.Total.Should().Be(0);
-            page.Rows.Should().BeEmpty();
+            page.Total.Should().Be(hasRows ? 1 : 0);
+            page.Rows.Should().HaveCount(hasRows ? 1 : 0);
             page.HasMore.Should().BeFalse();
+            if (hasRows)
+            {
+                page.Rows[0].Id.Should().Be(id);
+                page.Rows[0].Display.Should().Be("Alpha");
+                page.Rows[0].Fields["name"].Should().Be("Alpha");
+                page.Rows[0].IsMarkedForDeletion.Should().BeFalse();
+            }
         }
 
         results.IsClosed.Should().BeTrue();
