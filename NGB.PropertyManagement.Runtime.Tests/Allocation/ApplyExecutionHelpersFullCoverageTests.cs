@@ -26,7 +26,7 @@ public sealed class ApplyExecutionHelpersFullCoverageTests
         var locks = new Mock<IAdvisoryLockManager>();
         await PayablesApplyExecutionHelpers.LockDocumentsDeterministicallyAsync(
             locks.Object, [credit, Guid.Empty, charge, credit], default);
-        locks.Invocations.Select(x => (Guid)x.Arguments[0]).Should().Equal(charge, credit);
+        locks.Invocations.Select(x => x.Arguments[0].Should().BeOfType<Guid>().Which).Should().Equal(charge, credit);
     }
 
     [Fact]
@@ -169,7 +169,7 @@ public sealed class ApplyExecutionHelpersFullCoverageTests
         var locks = new Mock<IAdvisoryLockManager>();
         await ReceivablesApplyExecutionHelpers.LockDocumentsDeterministicallyAsync(
             locks.Object, [credit, Guid.Empty, charge, credit], default);
-        locks.Invocations.Select(x => (Guid)x.Arguments[0]).Should().Equal(charge, credit);
+        locks.Invocations.Select(x => x.Arguments[0].Should().BeOfType<Guid>().Which).Should().Equal(charge, credit);
 
         var applyId = Guid.CreateVersion7();
         var drafts = new Mock<IDocumentDraftService>();

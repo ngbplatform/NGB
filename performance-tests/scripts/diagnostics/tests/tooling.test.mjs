@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createServer, samplingSql } from '../postgres-server.mjs';
+import { createServer, samplingSql, contentionSql } from '../postgres-server.mjs';
 import { databaseEnvironment, loadEnvironment, parseOptions, workloadEnvironment } from '../config.mjs';
 
 test('dotenv is data, never shell code; inherited values win', () => {
@@ -68,7 +68,7 @@ async function withServer(query, action) {
 test('MCP accepts only its fixed sampler and enforces a read-only transaction with rollback', async () => {
   await withServer(async () => ({ rows: [{ sample: { read_only: 'on' } }] }), async (client, statements, released) => {
     const tools = await client.listTools();
-    assert.deepEqual(tools.tools.map(tool => tool.name), ['sample_resources']);
+    assert.deepEqual(tools.tools.map(tool => tool.name), ['sample_resources', 'sample_contention']);
     const result = await client.callTool({ name: 'sample_resources', arguments: {} });
     assert.equal(result.isError, undefined);
     assert.equal(statements[0], 'BEGIN READ ONLY');
@@ -94,5 +94,20 @@ test('sampling failures release connections, rollback and redact sensitive drive
     assert.doesNotMatch(JSON.stringify(result), /secret|password/);
     assert.equal(statements.at(-1), 'ROLLBACK');
     assert.deepEqual(released(), { releases: 1, destroyed: false });
+  });
+});
+
+test('contention MCP query is fixed, parameterized and read-only; invalid IDs cannot inject SQL', async () => {
+  await withServer(async () => ({ rows: [{ sample: { read_only: 'on' } }] }), async (client, statements, released) => {
+    await client.callTool({ name: 'sample_contention', arguments: { jobId: '123' } });
+    assert.deepEqual(statements, ['BEGIN READ ONLY', { text: contentionSql, values: ['123'], queryMode: 'extended' }, 'ROLLBACK']);
+    assert.equal(released().releases, 1);
+    for (const jobId of ['1;DELETE', '-1', '0', '1.2', '9999999999999999999', 123, null]) {
+      await assert.rejects(client.callTool({ name: 'sample_contention', arguments: { jobId } }));
+    }
+    await assert.rejects(client.callTool({ name: 'sample_contention', arguments: { sql: 'SELECT 1' } }));
+    assert.equal(statements.length, 3);
+    await client.callTool({ name: 'sample_contention', arguments: {} });
+    assert.deepEqual(statements[4].values, [null]);
   });
 });

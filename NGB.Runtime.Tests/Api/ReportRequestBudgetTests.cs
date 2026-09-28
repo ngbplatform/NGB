@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.Tests.Api;
 
-public sealed class ReportRequestBudgetTests
+public sealed partial class ReportRequestBudgetTests
 {
     [Fact]
     public async Task Deadline_after_headers_aborts_connection_and_releases_admission()
@@ -128,21 +128,23 @@ public sealed class ReportRequestBudgetTests
         budget.Statistics(true).CurrentQueuedCount.Should().Be(0);
     }
 
-    [Fact]
-    public async Task Full_download_queue_rejects_excess_requests_and_preserves_fifo_order()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Full_report_queue_rejects_excess_requests_and_preserves_fifo_order(bool download)
     {
         using var budget = new ReportRequestBudget(Options.Create(new ReportRequestLimits
-        { ConcurrentDownloads = 1, QueuedDownloads = 2 }));
-        using var active = await budget.AcquireAsync(true, CancellationToken.None);
-        var first = budget.AcquireAsync(true, CancellationToken.None).AsTask();
-        var second = budget.AcquireAsync(true, CancellationToken.None).AsTask();
-        budget.Statistics(true).CurrentQueuedCount.Should().Be(2);
+        { ConcurrentPages = 1, QueuedPages = 2, ConcurrentDownloads = 1, QueuedDownloads = 2 }));
+        using var active = await budget.AcquireAsync(download, CancellationToken.None);
+        var first = budget.AcquireAsync(download, CancellationToken.None).AsTask();
+        var second = budget.AcquireAsync(download, CancellationToken.None).AsTask();
+        budget.Statistics(download).CurrentQueuedCount.Should().Be(2);
         var context = Context();
-        await new ReportRequestBudgetFilter(true, budget).OnResourceExecutionAsync(context,
+        await new ReportRequestBudgetFilter(download, budget).OnResourceExecutionAsync(context,
             () => throw new InvalidOperationException("An overflow request must not execute."));
         AssertBusy(context);
-        using var page = await budget.AcquireAsync(false, CancellationToken.None);
-        page.Should().NotBeNull("download pressure must not consume page permits");
+        using var page = await budget.AcquireAsync(!download, CancellationToken.None);
+        page.Should().NotBeNull("page and download admission must remain independent");
         active!.Dispose();
         using var firstLease = await first.WaitAsync(TimeSpan.FromSeconds(5));
         firstLease.Should().NotBeNull();
@@ -152,57 +154,61 @@ public sealed class ReportRequestBudgetTests
         secondLease.Should().NotBeNull();
     }
 
-    [Fact]
-    public async Task Cancelled_waiter_does_not_execute_and_immediately_frees_queue_capacity()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cancelled_waiter_does_not_execute_and_immediately_frees_queue_capacity(bool download)
     {
         using var budget = new ReportRequestBudget(Options.Create(new ReportRequestLimits
-        { ConcurrentDownloads = 1, QueuedDownloads = 1 }));
-        using var active = await budget.AcquireAsync(true, CancellationToken.None);
+        { ConcurrentPages = 1, QueuedPages = 1, PageQueueTimeoutSeconds = 1, ConcurrentDownloads = 1, QueuedDownloads = 1 }));
+        using var active = await budget.AcquireAsync(download, CancellationToken.None);
         using var disconnected = new CancellationTokenSource();
         var context = Context();
         context.HttpContext.RequestAborted = disconnected.Token;
-        var pending = new ReportRequestBudgetFilter(true, budget).OnResourceExecutionAsync(context,
+        var pending = new ReportRequestBudgetFilter(download, budget).OnResourceExecutionAsync(context,
             () => throw new InvalidOperationException("A cancelled waiter must not execute."));
-        budget.Statistics(true).CurrentQueuedCount.Should().Be(1);
+        budget.Statistics(download).CurrentQueuedCount.Should().Be(1);
         disconnected.Cancel();
         var observe = async () => await pending;
         await observe.Should().ThrowAsync<OperationCanceledException>();
         context.Result.Should().BeNull("client cancellation must not be turned into HTTP 429");
         context.HttpContext.RequestAborted.Should().Be(disconnected.Token);
-        budget.Statistics(true).CurrentQueuedCount.Should().Be(0);
-        budget.Statistics(true).CurrentAvailablePermits.Should().Be(0);
-        var replacement = budget.AcquireAsync(true, CancellationToken.None).AsTask();
+        budget.Statistics(download).CurrentQueuedCount.Should().Be(0);
+        budget.Statistics(download).CurrentAvailablePermits.Should().Be(0);
+        var replacement = budget.AcquireAsync(download, CancellationToken.None).AsTask();
         replacement.IsCompleted.Should().BeFalse();
         active!.Dispose();
         using var lease = await replacement.WaitAsync(TimeSpan.FromSeconds(5));
         lease.Should().NotBeNull();
     }
 
-    [Fact]
-    public async Task Queue_deadline_returns_429_without_execution_or_stealing_an_active_slot()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Queue_deadline_returns_429_without_execution_or_stealing_an_active_slot(bool download)
     {
         using var budget = new ReportRequestBudget(Options.Create(new ReportRequestLimits
-        { ConcurrentDownloads = 1, QueuedDownloads = 1, DownloadQueueTimeoutSeconds = 1 }));
-        using var active = await budget.AcquireAsync(true, CancellationToken.None);
+        { ConcurrentPages = 1, QueuedPages = 1, PageQueueTimeoutSeconds = 1, ConcurrentDownloads = 1, QueuedDownloads = 1, DownloadQueueTimeoutSeconds = 1 }));
+        using var active = await budget.AcquireAsync(download, CancellationToken.None);
         var context = Context();
-        var pending = new ReportRequestBudgetFilter(true, budget).OnResourceExecutionAsync(context,
+        var pending = new ReportRequestBudgetFilter(download, budget).OnResourceExecutionAsync(context,
             () => throw new InvalidOperationException("An expired waiter must not execute."));
         pending.IsCompleted.Should().BeFalse();
-        budget.Statistics(true).CurrentQueuedCount.Should().Be(1);
+        budget.Statistics(download).CurrentQueuedCount.Should().Be(1);
         await pending.WaitAsync(TimeSpan.FromSeconds(5));
         AssertBusy(context);
         context.HttpContext.RequestAborted.Should().Be(CancellationToken.None);
-        budget.Statistics(true).CurrentQueuedCount.Should().Be(0);
-        budget.Statistics(true).CurrentAvailablePermits.Should().Be(0);
+        budget.Statistics(download).CurrentQueuedCount.Should().Be(0);
+        budget.Statistics(download).CurrentAvailablePermits.Should().Be(0);
         active!.Dispose();
-        using var recovered = await budget.AcquireAsync(true, CancellationToken.None);
+        using var recovered = await budget.AcquireAsync(download, CancellationToken.None);
         recovered.Should().NotBeNull();
     }
 
     [Fact]
     public async Task Busy_pages_still_reject_immediately_without_using_download_capacity()
     {
-        using var budget = new ReportRequestBudget(Options.Create(new ReportRequestLimits { ConcurrentPages = 1 }));
+        using var budget = new ReportRequestBudget(Options.Create(new ReportRequestLimits { ConcurrentPages = 1, QueuedPages = 0 }));
         using var page = await budget.AcquireAsync(false, CancellationToken.None);
         var context = Context();
         var rejected = new ReportRequestBudgetFilter(false, budget).OnResourceExecutionAsync(context,

@@ -25,7 +25,9 @@ public abstract class PostgreSqlIntegrationFixtureBase : IAsyncLifetime
 
     protected abstract string DatabaseName { get; }
 
-    protected virtual string PostgreSqlImage => "postgres:16";
+    // Run the same integration suite against the deployed PostgreSQL version without changing its default.
+    protected virtual string PostgreSqlImage =>
+        Environment.GetEnvironmentVariable("NGB_TEST_POSTGRES_IMAGE") is { Length: > 0 } image ? image : "postgres:16";
 
     /// <summary>
     /// Schema-mutating tests get a dedicated fixture and rebuild the schema between cases.

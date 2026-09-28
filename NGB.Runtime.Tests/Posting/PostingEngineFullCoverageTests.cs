@@ -241,7 +241,7 @@ public sealed class PostingEngineFullCoverageTests
         });
         fixture.AdvisoryLocks.Invocations
             .Where(invocation => invocation.Method.Name == nameof(IAdvisoryLockManager.LockPeriodAsync))
-            .Select(invocation => (DateOnly)invocation.Arguments[0])
+            .Select(invocation => invocation.Arguments[0].Should().BeOfType<DateOnly>().Which)
             .Should().ContainInOrder(march, april);
         fixture.Uow.Verify(x => x.RollbackAsync(CancellationToken.None), Times.Once);
     }

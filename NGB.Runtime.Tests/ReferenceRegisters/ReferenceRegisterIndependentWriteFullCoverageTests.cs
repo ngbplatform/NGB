@@ -150,8 +150,8 @@ public sealed class ReferenceRegisterIndependentWriteFullCoverageTests
 
         var old = Record(Guid.Empty, null, deleted: true);
         var nonPeriodic = new Fixture();
-        nonPeriodic.Reader.Setup(x => x.SliceLastForEffectiveMomentAsync(nonPeriodic.RegisterId, Guid.Empty,
-            Now, Now, null, It.IsAny<CancellationToken>())).ReturnsAsync(old);
+        nonPeriodic.Reader.Setup(x => x.SliceLastForWriteAsync(nonPeriodic.RegisterId, Guid.Empty,
+            Now, null, It.IsAny<CancellationToken>())).ReturnsAsync(old);
         IReadOnlyList<AuditFieldChange>? nonPeriodicChanges = null;
         CaptureAudit(nonPeriodic.Audit, c => nonPeriodicChanges = c);
         (await nonPeriodic.Sut.UpsertByDimensionSetIdAsync(nonPeriodic.RegisterId, Guid.Empty, null,
@@ -160,15 +160,15 @@ public sealed class ReferenceRegisterIndependentWriteFullCoverageTests
 
         var period = new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc);
         var periodic = new Fixture(Register(Guid.NewGuid(), ReferenceRegisterPeriodicity.Month));
-        periodic.Reader.Setup(x => x.SliceLastForEffectiveMomentAsync(periodic.RegisterId, Guid.Empty,
-            period, Now, null, It.IsAny<CancellationToken>()))
+        periodic.Reader.Setup(x => x.SliceLastForWriteAsync(periodic.RegisterId, Guid.Empty,
+            period, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Record(Guid.Empty, period.AddMonths(-1), deleted: false));
         IReadOnlyList<AuditFieldChange>? periodicChanges = null;
         CaptureAudit(periodic.Audit, c => periodicChanges = c);
         await periodic.Sut.UpsertByDimensionSetIdAsync(periodic.RegisterId, Guid.Empty, period,
             values, Guid.NewGuid(), manageTransaction: false);
-        periodic.Reader.Verify(x => x.SliceLastForEffectiveMomentAsync(periodic.RegisterId, Guid.Empty,
-            period, Now, null, It.IsAny<CancellationToken>()), Times.Once);
+        periodic.Reader.Verify(x => x.SliceLastForWriteAsync(periodic.RegisterId, Guid.Empty,
+            period, null, It.IsAny<CancellationToken>()), Times.Once);
         periodicChanges.Should().HaveCount(3);
         periodic.Store.Verify(x => x.AppendAsync(periodic.RegisterId,
             It.Is<IReadOnlyList<ReferenceRegisterRecordWrite>>(r => r.Count == 1 && !r[0].IsDeleted && r[0].PeriodUtc == period),
@@ -199,8 +199,8 @@ public sealed class ReferenceRegisterIndependentWriteFullCoverageTests
         await ((Func<Task>)(() => f.Sut.TombstoneByDimensionSetIdAsync(f.RegisterId, setId, Now, Guid.NewGuid())))
             .Should().ThrowAsync<ReferenceRegisterIndependentWriteAlreadyInProgressException>();
 
-        f.Reader.SetupSequence(x => x.SliceLastForEffectiveMomentAsync(f.RegisterId, setId,
-                Now, Now, null, It.IsAny<CancellationToken>()))
+        f.Reader.SetupSequence(x => x.SliceLastForWriteAsync(f.RegisterId, setId,
+                Now, null, It.IsAny<CancellationToken>()))
             .ReturnsAsync((ReferenceRegisterRecordRead?)null)
             .ReturnsAsync(Record(setId, null, deleted: true))
             .ReturnsAsync(Record(setId, null, deleted: false));

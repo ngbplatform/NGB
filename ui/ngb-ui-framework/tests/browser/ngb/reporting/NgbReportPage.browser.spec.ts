@@ -1237,6 +1237,7 @@ test('restores a saved execution snapshot and scroll position without re-running
   await expect.element(view.getByText('total:2')).toBeVisible()
   await expect.element(view.getByText('variant:audit-view')).toBeVisible()
   await expect.element(view.getByText('restored-scroll-top:240')).toBeVisible()
+  await expect.element(view.getByText('loaded:2')).toBeVisible()
 })
 
 test('navigates back to the prior report in the source trail when no outer back target is present', async () => {
@@ -2348,16 +2349,20 @@ test('keeps a bounded window while scrolling forward and reloads evicted rows wh
     await flushUi()
   }
   await expect.element(view.getByText('rows:2000')).toBeVisible()
+  await expect.element(view.getByText('loaded:3500')).toBeVisible()
   await expect.element(view.getByText('first:Row 1500')).toBeVisible()
   await expect.element(view.getByText('show-end:true')).toBeVisible()
+  await expect.element(view.getByText('loaded:3500')).toBeVisible()
   await view.getByRole('button', { name: 'Load previous', exact: true }).click()
   await expect.element(view.getByText('first:Row 1000')).toBeVisible()
   await expect.element(view.getByText('rows:2000')).toBeVisible()
+  await expect.element(view.getByText('loaded:3500')).toBeVisible()
   await expect.element(view.getByText('show-end:false')).toBeVisible()
   expect(reportPageMocks.executeReport.mock.lastCall?.[1].cursor).toBe('1000')
   await view.getByRole('button', { name: 'Load more', exact: true }).click()
   await expect.element(view.getByText('first:Row 1500')).toBeVisible()
   await expect.element(view.getByText('show-end:true')).toBeVisible()
+  await expect.element(view.getByText('loaded:3500')).toBeVisible()
 })
 
 test('streams downloads to the chosen file destination without creating a Blob URL', async () => {
@@ -2671,4 +2676,35 @@ test('offers a fresh run when large cursors exhaust backward history', async () 
   await expect.element(view.getByText('first:Row 0')).toBeVisible()
   await expect.element(restart).not.toBeInTheDocument()
   expect(reportPageMocks.executeReport.mock.lastCall?.[1].cursor).toBeUndefined()
+})
+
+test.each([498, 499, 500])('keeps loaded progress beyond a bounded window of %i-row pages', async size => {
+  reportPageMocks.state.definition!.filters = []
+  reportPageMocks.state.variants = []
+  reportPageMocks.executeReport.mockImplementation(async (_code, request) => {
+    const first = Number(request.cursor ?? 0)
+    const result = buildResponse({ rows: Array.from({ length: size }, (_, i) => `Row ${first + i}`),
+      hasMore: true, nextCursor: String(first + size) })
+    result.total = null
+    return result
+  })
+  const { view } = await renderReportPage()
+  await expect.element(view.getByText(`loaded:${size}`, { exact: true })).toBeVisible()
+  for (let index = 1; index <= 6; index++) {
+    await view.getByRole('button', { name: 'Load more', exact: true }).click()
+    await expect.element(view.getByText(`loaded:${(index + 1) * size}`, { exact: true })).toBeVisible()
+  }
+  await expect.element(view.getByText(`rows:${4 * size}`, { exact: true })).toBeVisible()
+  await expect.element(view.getByText('total:none', { exact: true })).toBeVisible()
+  await view.getByRole('button', { name: 'Load previous', exact: true }).click()
+  await expect.element(view.getByText(`first:Row ${2 * size}`, { exact: true })).toBeVisible()
+  await expect.element(view.getByText(`loaded:${7 * size}`, { exact: true })).toBeVisible()
+  await view.getByRole('button', { name: 'Load more', exact: true }).click()
+  await expect.element(view.getByText(`first:Row ${3 * size}`, { exact: true })).toBeVisible()
+  await expect.element(view.getByText(`loaded:${7 * size}`, { exact: true })).toBeVisible()
+  await view.getByRole('button', { name: 'Load more', exact: true }).click()
+  await expect.element(view.getByText(`loaded:${8 * size}`, { exact: true })).toBeVisible()
+  clickHeaderButtonByTitle('Run')
+  await expect.element(view.getByText(`loaded:${size}`, { exact: true })).toBeVisible()
+  await expect.element(view.getByText(`rows:${size}`, { exact: true })).toBeVisible()
 })

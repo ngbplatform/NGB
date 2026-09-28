@@ -71,6 +71,40 @@ Operational register finalization can easily overlap or be retried. A good job d
 - bounded processing per run;
 - safe reruns.
 
+The PostgreSQL default projector uses an owned `ReadCommitted` transaction and a
+separate register finalizer lock (`ORF`). It briefly acquires the ordinary register
+and operational-month locks (`ORR`/`ORP`) to capture the maximum committed movement
+ID, then rolls back a savepoint to release those locks while retaining `ORF`.
+The movement store takes `ORR` before allocating IDs for append and storno. The
+ascending, non-cycling sequence must use `CACHE 1`; unsafe settings fail explicitly.
+Direct SQL movement writes or sequence resets violate this contract.
+
+The immutable movement prefix is aggregated outside the movement locks. Turnovers
+cover the selected month; cumulative balances include all earlier movements, so
+backdated writes between months do not depend on an already dirty predecessor.
+Projection rows remain uncommitted and invisible to other readers. Publication
+queues for the ordinary locks using PostgreSQL blocking advisory locks, applies the
+committed movement tail, marks the month Finalized, and commits atomically. Normal
+concurrent writes no longer discard the entire calculation. Unchanged projection
+rows are preserved to avoid unnecessary WAL. Database-visible waits also let
+PostgreSQL detect cycles with external transactions or schema maintenance.
+
+`PostgresOptions.OperationalRegisterPublicationTimeoutSeconds` defaults to 5 seconds
+and bounds each boundary capture and each publication lock/catch-up attempt. It is
+not a deadline for the full aggregation or transaction commit. Conflicts roll back
+the owned month and retry at most three times (100/200 ms backoff). Exhaustion throws
+`OperationalRegisterFinalizationBusyException` and fails the job; it must not be
+reported as successful `finalized_count=0`. Caller cancellation rolls back without
+retry. A write after publication can legitimately mark the month Dirty again.
+Monitor job failures, duration, finalized count, and dirty age under sustained load.
+
+Custom projectors, providers without preparation support, external transactions,
+and registers without immutable movement metadata retain the serialized behavior.
+Update API and background-worker hosts together. No schema migration is needed;
+all movement writers must obey the lock/sequence contract before enabling the new
+finalizer. The full-history aggregate may increase read/CPU cost; validate it with
+the same capacity profile and data volume used for the original incident.
+
 ### Integrity scans
 
 Accounting and audit integrity scans should be able to run repeatedly and produce diagnostics without corrupting business state.

@@ -15,7 +15,7 @@ public sealed class PostgresAdvisoryLockManager(
     IOptions<PostgresOptions> options,
     ILogger<PostgresAdvisoryLockManager> logger,
     TimeProvider timeProvider)
-    : IAdvisoryLockBatchManager
+    : IAdvisoryLockBatchManager, IOperationalRegisterFinalizationLockManager
 {
     private const uint FnvOffset = 2166136261u;
     private const uint FnvPrime = 16777619u;
@@ -380,6 +380,60 @@ FROM attempts;
         await LockTwoIntAsync(key1, second, ct);
 
         logger.LogDebug("Catalog advisory locks acquired {Namespace}: {Key2A} and {Key2B}.", ns, first, second);
+    }
+
+    public async Task LockOperationalRegisterFinalizationAsync(Guid registerId, CancellationToken ct = default)
+    {
+        uow.EnsureActiveTransaction();
+
+        var (a, b) = GetGuidLockKeys(registerId);
+        var (first, second) = OrderGuidLockKeys(a, b);
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(options.Value.AdvisoryLockWaitTimeoutSeconds));
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            """
+SELECT pg_advisory_xact_lock(@Namespace, @First);
+SELECT pg_advisory_xact_lock(@Namespace, @Second);
+""",
+            new
+            {
+                Namespace = AdvisoryLockNamespaces.OperationalRegisterFinalization,
+                First = first,
+                Second = second
+            },
+            transaction: uow.Transaction,
+            cancellationToken: deadline.Token));
+    }
+
+    public async Task LockOperationalRegisterPublicationAsync(
+        Guid registerId,
+        DateOnly periodMonth,
+        CancellationToken ct)
+    {
+        uow.EnsureActiveTransaction();
+
+        var (a, b) = GetGuidLockKeys(registerId);
+        var (first, second) = OrderGuidLockKeys(a, b);
+
+        // Separate statements enforce lock ordering; blocking locks participate in the
+        // server wait queue and deadlock detector. The caller supplies a bounded token.
+        const string sql = """
+SELECT pg_advisory_xact_lock(@RegisterNamespace, @First);
+SELECT pg_advisory_xact_lock(@RegisterNamespace, @Second);
+SELECT pg_advisory_xact_lock(@MonthNamespace, @Month);
+""";
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                RegisterNamespace = AdvisoryLockNamespaces.OperationalRegister,
+                First = first, Second = second,
+                MonthNamespace = AdvisoryLockNamespaces.OperationalRegisterPeriod,
+                Month = checked(periodMonth.Year * 100 + periodMonth.Month)
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
     }
 
     public async Task LockOperationalRegisterAsync(Guid registerId, CancellationToken ct = default)

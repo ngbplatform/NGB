@@ -294,6 +294,38 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
             .Should().ThrowAsync<InvalidOperationException>();
     }
 
+    [Theory]
+    [InlineData(true, false, 2, 1)]
+    [InlineData(true, true, 3, 3)]
+    [InlineData(false, true, 1, 0)]
+    public async Task Runner_retries_only_owned_failed_transactions_and_propagates_exhaustion(
+        bool owned, bool alwaysFail, int calls, int rollbacks)
+    {
+        var id = Guid.NewGuid();
+        var month = new DateOnly(2026, 1, 1);
+        var uow = new Mock<IUnitOfWork>();
+        uow.SetupGet(x => x.HasActiveTransaction).Returns(true);
+        var projector = DefaultProjector();
+        var attempts = 0;
+        var failure = new OperationalRegisterFinalizationBusyException(id, month, new TimeoutException());
+        projector.Setup(x => x.RebuildMonthAsync(It.IsAny<OperationalRegisterMonthProjectionContext>(), It.IsAny<CancellationToken>()))
+            .Returns(() => ++attempts == 1 || alwaysFail ? Task.FromException(failure) : Task.CompletedTask);
+        var finalizations = DirtyRepository(id, month);
+        var runner = Runner(uow, registers: RegisterRepository(id, "stock"), finalizations: finalizations, defaults: [projector.Object]);
+        if (alwaysFail)
+        {
+            var thrown = await ((Func<Task>)(async () => await runner.FinalizeRegisterDirtyAsync(id, manageTransaction: owned)))
+                .Should().ThrowAsync<OperationalRegisterFinalizationBusyException>();
+            thrown.Which.Should().BeSameAs(failure);
+            finalizations.Verify(x => x.MarkFinalizedAsync(id, month, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+        else (await runner.FinalizeRegisterDirtyAsync(id, manageTransaction: owned)).Should().Be(1);
+        attempts.Should().Be(calls);
+        uow.Verify(x => x.BeginTransactionAsync(It.IsAny<CancellationToken>()), Times.Exactly(owned ? calls : 0));
+        uow.Verify(x => x.RollbackAsync(It.IsAny<CancellationToken>()), Times.Exactly(rollbacks));
+        uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Exactly(alwaysFail ? 0 : 1));
+    }
+
     private static OperationalRegisterFinalizationService Service(
         Mock<IUnitOfWork> uow,
         Mock<IAdvisoryLockManager> locks,

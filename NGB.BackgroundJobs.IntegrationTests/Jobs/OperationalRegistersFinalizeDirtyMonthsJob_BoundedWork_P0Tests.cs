@@ -38,6 +38,20 @@ public sealed class OperationalRegistersFinalizeDirtyMonthsJob_BoundedWork_P0Tes
         snapshot["finalized_count"].Should().Be(7);
     }
 
+    [Fact]
+    public async Task Exhausted_publication_propagates_failure_instead_of_a_successful_zero_count()
+    {
+        var failure = new NGB.OperationalRegisters.Exceptions.OperationalRegisterFinalizationBusyException(
+            Guid.NewGuid(), new DateOnly(2026, 1, 1), new TimeoutException());
+        var maintenance = new FakeMaintenanceService(0) { Failure = failure };
+        var job = new OperationalRegistersFinalizeDirtyMonthsJob(maintenance,
+            NullLogger<OperationalRegistersFinalizeDirtyMonthsJob>.Instance, new CapturingMetrics());
+        var observed = await ((Func<Task>)(() => job.RunAsync(CancellationToken.None)))
+            .Should().ThrowAsync<NGB.OperationalRegisters.Exceptions.OperationalRegisterFinalizationBusyException>();
+        observed.Which.Should().BeSameAs(failure);
+        maintenance.FinalizeDirtyCalls.Should().ContainSingle();
+    }
+
     private sealed record FinalizeDirtyCall(int MaxItems);
 
     private sealed class FakeMaintenanceService : IOperationalRegisterAdminMaintenanceService
@@ -49,12 +63,14 @@ public sealed class OperationalRegistersFinalizeDirtyMonthsJob_BoundedWork_P0Tes
             _finalized = finalized;
         }
 
+        public Exception? Failure { get; init; }
+
         public List<FinalizeDirtyCall> FinalizeDirtyCalls { get; } = new();
 
         public Task<int> FinalizeDirtyAsync(int maxItems = 50, CancellationToken ct = default)
         {
             FinalizeDirtyCalls.Add(new FinalizeDirtyCall(maxItems));
-            return Task.FromResult(_finalized);
+            return Failure is null ? Task.FromResult(_finalized) : Task.FromException<int>(Failure);
         }
 
         public Task<int> FinalizeRegisterDirtyAsync(Guid registerId, int maxPeriods = 50, CancellationToken ct = default) =>

@@ -59,7 +59,6 @@ import {
 import {
   buildAppendRequest,
   canAppendReportResponse,
-  countLoadedReportRows,
 } from './paging'
 import {
   clearReportPageExecutionSnapshot,
@@ -348,7 +347,7 @@ const showEndOfList = computed(() => hasPagedExecutionState.value
   && !loadingMore.value
   && !running.value
   && response.value!.sheet.rows.length > 0)
-const loadedRowCount = computed(() => countLoadedReportRows(response.value?.sheet))
+const loadedRowCount = computed(() => response.value ? pageWindow.loadedRowCount : 0)
 const totalRowCount = computed(() => {
   const total = response.value?.total
   return typeof total === 'number' && Number.isFinite(total) && total >= 0 ? total : null

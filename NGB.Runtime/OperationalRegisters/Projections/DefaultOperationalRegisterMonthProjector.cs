@@ -10,8 +10,9 @@ namespace NGB.Runtime.OperationalRegisters.Projections;
 /// Notes:
 /// - Uses SQL aggregation from the ground-truth movements table.
 /// - Writes month-local net rows to turnovers.
-/// - Builds balances as cumulative end-of-month snapshots by applying current turnovers
-///   over the latest finalized prior balance snapshot, if any.
+/// - The concurrent PostgreSQL path builds cumulative balances from the immutable movement
+///   prefix plus catch-up, so backdated writes cannot make it depend on a dirty predecessor.
+/// - The serialized fallback applies turnovers to the latest finalized prior snapshot.
 /// - Modules that need different balance semantics can override this with a typed projector.
 /// </summary>
 public sealed class DefaultOperationalRegisterMonthProjector(
@@ -20,9 +21,19 @@ public sealed class DefaultOperationalRegisterMonthProjector(
     IOperationalRegisterTurnoversStore turnovers,
     IOperationalRegisterBalancesStore balances,
     IOperationalRegisterDefaultProjectionRebuilder? optimizedRebuilder = null)
-    : IOperationalRegisterDefaultMonthProjector
+    : IOperationalRegisterPreparingDefaultMonthProjector
 {
-    public async Task RebuildMonthAsync(OperationalRegisterMonthProjectionContext context, CancellationToken ct = default)
+    public bool SupportsPreparation => optimizedRebuilder is IOperationalRegisterProjectionPreparation;
+
+    public Task<IOperationalRegisterPreparedProjection> PrepareMonthAsync(
+        OperationalRegisterMonthProjectionContext context,
+        CancellationToken ct = default)
+        => ((IOperationalRegisterProjectionPreparation)optimizedRebuilder!)
+            .PrepareMonthAsync(context.RegisterId, context.PeriodMonth, ct);
+
+    public async Task RebuildMonthAsync(
+        OperationalRegisterMonthProjectionContext context,
+        CancellationToken ct = default)
     {
         if (context.RegisterId == Guid.Empty)
             throw new NgbArgumentRequiredException(nameof(context));

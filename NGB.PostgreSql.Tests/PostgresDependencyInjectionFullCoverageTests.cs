@@ -55,6 +55,26 @@ public sealed class PostgresDependencyInjectionFullCoverageTests
         scope.ServiceProvider.GetRequiredService<IAuditHealthReader>().Should().NotBeNull();
     }
 
+    [Theory]
+    [InlineData(-1, false)]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(5, true)]
+    [InlineData(int.MaxValue, false)]
+    public void Publication_deadline_is_validated_at_startup(int seconds, bool valid)
+    {
+        var services = new ServiceCollection();
+        services.AddPostgres(options =>
+        {
+            options.ConnectionString = "Host=localhost;Database=test";
+            options.OperationalRegisterPublicationTimeoutSeconds = seconds;
+        });
+        using var provider = services.BuildServiceProvider();
+        Action read = () => _ = provider.GetRequiredService<IOptions<PostgresOptions>>().Value;
+        if (valid) read.Should().NotThrow();
+        else read.Should().Throw<OptionsValidationException>().WithMessage("*publication timeout*");
+    }
+
     [Fact]
     public void Empty_configured_connection_string_fails_options_validation()
     {

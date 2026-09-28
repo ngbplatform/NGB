@@ -1,5 +1,5 @@
 import type { ReportExecutionResponseDto } from './types'
-import { areSheetsAppendCompatible, mergePagedReportResponses } from './paging'
+import { areSheetsAppendCompatible, countLoadedReportRows, mergePagedReportResponses } from './paging'
 
 /** Retains a small window of row data. Earlier pages retain only their continuation bookmarks. */
 export class ReportPageWindow {
@@ -7,6 +7,8 @@ export class ReportPageWindow {
   private bookmarks = new Map<number, { cursor: string | null; bytes: number }>()
   private bookmarkBytes = 0
   private start = 0
+  private loadedRows = 0
+  private furthestLoadedPage = -1
   private retainedBytes = 0
   private sizes: number[] = []
   constructor(
@@ -22,6 +24,8 @@ export class ReportPageWindow {
     this.bookmarkBytes = 0
     this.remember(0, null)
     this.start = 0
+    this.loadedRows = countLoadedReportRows(page.sheet)
+    this.furthestLoadedPage = 0
     this.sizes = [this.estimate(page)]
     this.retainedBytes = this.sizes[0]!
   }
@@ -31,6 +35,8 @@ export class ReportPageWindow {
   get retainedCursorCount() { return this.bookmarks.size }
   get retainedCursorBytes() { return this.bookmarkBytes }
   get previousCursor() { return this.bookmarks.get(this.start - 1)?.cursor ?? null }
+  /** Forward progress survives eviction; reloading visited pages does not count them again. */
+  get loadedRowCount() { return this.loadedRows }
   get rowCount() { return this.pages.reduce((n, page) => n + page.sheet.rows.length, 0) }
   get byteSize() { return this.retainedBytes + this.bookmarkBytes }
   clone(): ReportPageWindow {
@@ -39,6 +45,8 @@ export class ReportPageWindow {
     copy.bookmarks = new Map(this.bookmarks)
     copy.bookmarkBytes = this.bookmarkBytes
     copy.start = this.start
+    copy.loadedRows = this.loadedRows
+    copy.furthestLoadedPage = this.furthestLoadedPage
     copy.retainedBytes = this.retainedBytes
     copy.sizes = [...this.sizes]
     return copy
@@ -50,7 +58,8 @@ export class ReportPageWindow {
   append(cursor: string, page: ReportExecutionResponseDto): number {
     if (page.hasMore && page.nextCursor === cursor) throw new Error('The report cursor did not advance.')
     this.validateShape(page)
-    this.remember(this.start + this.pages.length, cursor)
+    const pageIndex = this.start + this.pages.length
+    this.remember(pageIndex, cursor)
     this.pages.push(page)
     const size = this.estimate(page)
     this.sizes.push(size)
@@ -60,6 +69,10 @@ export class ReportPageWindow {
       removed += this.pages.shift()!.sheet.rows.length
       this.retainedBytes -= this.sizes.shift()!
       this.start++
+    }
+    if (pageIndex > this.furthestLoadedPage) {
+      this.loadedRows += countLoadedReportRows(page.sheet)
+      this.furthestLoadedPage = pageIndex
     }
     return removed
   }

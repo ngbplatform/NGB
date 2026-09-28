@@ -193,17 +193,16 @@ public sealed class ReferenceRegisterIndependentWriteService(
         // Audit principle (same as Operational Registers):
         // - document-based RR writes are covered by document.* audit events
         // - Independent-mode writes must emit a high-level audit event (per command), not per physical row.
-        var recordedAsOfUtc = startedAtUtc;
-
+        // The key lock is held. Read the transaction-visible state rather than comparing
+        // database-generated recorded timestamps with the application clock.
         var effectiveAsOfUtc = reg.Periodicity == ReferenceRegisterPeriodicity.NonPeriodic
-            ? recordedAsOfUtc
+            ? startedAtUtc
             : periodUtc!.Value;
 
-        var old = await recordsReader.SliceLastForEffectiveMomentAsync(
+        var old = await recordsReader.SliceLastForWriteAsync(
             registerId,
             dimensionSetId,
             effectiveAsOfUtc,
-            recordedAsOfUtc,
             recorderDocumentId: null,
             ct);
         
@@ -307,13 +306,10 @@ public sealed class ReferenceRegisterIndependentWriteService(
         // If no version exists (or the latest is already deleted), this is a safe no-op.
         // Persistence reader returns the latest version for the key (including tombstones).
         // We need the last values to satisfy NOT NULL columns when appending a tombstone.
-        var recordedAsOfUtc = startedAtUtc;
-
-        var last = await recordsReader.SliceLastForEffectiveMomentAsync(
+        var last = await recordsReader.SliceLastForWriteAsync(
             registerId,
             dimensionSetId,
             effectiveAsOfUtc: asOfUtc,
-            recordedAsOfUtc: recordedAsOfUtc,
             recorderDocumentId: null,
             ct);
 

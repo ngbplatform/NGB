@@ -181,6 +181,38 @@ public static class CanonicalReportExecutionHelper
         return scopes.Count == 0 ? null : new DimensionScopeBag(scopes);
     }
 
+    /// <summary>
+    /// Limits source rows before querying so a canonical page has room for its opening/total rows.
+    /// The requested limit and cursor offsets continue to count source rows, not rendered rows.
+    /// </summary>
+    public static int ResolvePageDataLimit(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        int defaultLimit,
+        int reservedRows)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(defaultLimit);
+        ArgumentOutOfRangeException.ThrowIfNegative(reservedRows);
+
+        // Materialized execution must retain the overflow probe; it cannot silently return a page.
+        if (request.DisablePaging)
+            return PagingLimits.MaxMaterializedRows + 1;
+
+        var requestedLimit = request.Limit <= 0 ? defaultLimit : request.Limit;
+        if (definition.Capabilities?.MaxVisibleRows is not { } maxRows)
+            return requestedLimit;
+
+        if (maxRows <= reservedRows)
+        {
+            throw Invalid(
+                definition,
+                "layout",
+                $"The report row limit of {maxRows} must allow room for {reservedRows} summary rows and at least one data row.");
+        }
+
+        return Math.Min(requestedLimit, maxRows - reservedRows);
+    }
+
     public static ReportDataPage CreatePrebuiltPage(
         ReportSheetDto sheet,
         int offset,

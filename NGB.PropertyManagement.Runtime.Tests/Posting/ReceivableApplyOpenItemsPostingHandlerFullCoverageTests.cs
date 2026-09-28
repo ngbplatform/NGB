@@ -55,7 +55,7 @@ public sealed class ReceivableApplyOpenItemsPostingHandlerFullCoverageTests
         await fixture.Sut.BuildMovementsAsync(
             fixture.Document(DocumentStatus.Draft), fixture.Builder.Object, default);
 
-        fixture.Locks.Invocations.Select(x => (Guid)x.Arguments[0]).Should().Equal(fixture.CreditId, fixture.ChargeId);
+        fixture.Locks.Invocations.Select(x => x.Arguments[0].Should().BeOfType<Guid>().Which).Should().Equal(fixture.CreditId, fixture.ChargeId);
         fixture.Relationships.Verify(x => x.CreateAsync(
             fixture.DocumentId, It.IsAny<Guid>(), "based_on", false, It.IsAny<CancellationToken>()), Times.Exactly(2));
         fixture.Movements.Should().HaveCount(2);
@@ -75,7 +75,7 @@ public sealed class ReceivableApplyOpenItemsPostingHandlerFullCoverageTests
         await fixture.Sut.BuildMovementsAsync(
             fixture.Document(DocumentStatus.Posted), fixture.Builder.Object, default);
 
-        fixture.Locks.Invocations.Select(x => (Guid)x.Arguments[0]).Should().Equal(fixture.ChargeId, fixture.CreditId);
+        fixture.Locks.Invocations.Select(x => x.Arguments[0].Should().BeOfType<Guid>().Which).Should().Equal(fixture.ChargeId, fixture.CreditId);
         fixture.Relationships.VerifyNoOtherCalls();
         fixture.Movements.Should().HaveCount(2);
     }

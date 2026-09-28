@@ -32,17 +32,30 @@ public static class DependencyInjection
         string projectName)
     {
         services.TryAddSingleton(TimeProvider.System);
-        services.AddOptions<NGB.Api.Reporting.ReportRequestLimits>().Bind(configuration.GetSection("Reporting:Requests"))
+        services.AddMetrics();
+        services.AddOptions<Reporting.ReportRequestLimits>()
+            .Bind(configuration.GetSection("Reporting:Requests"))
             .Validate(o => o.ConcurrentPages > 0 && o is
             {
                 ConcurrentDownloads: > 0,
                 PageTimeoutSeconds: > 0,
+                PageQueueTimeoutSeconds: > 0,
                 DownloadTimeoutSeconds: > 0,
                 DownloadQueueTimeoutSeconds: > 0
             }, "Report request limits must be positive.")
-            .Validate(o => o.QueuedDownloads >= 0, "The report download queue limit must not be negative.")
+            .Validate(o => o.PageTimeoutSeconds <= 4_294_967 && o is
+                {
+                    DownloadTimeoutSeconds: <= 4_294_967,
+                    PageQueueTimeoutSeconds: <= 4_294_967,
+                    DownloadQueueTimeoutSeconds: <= 4_294_967
+                }, "Report timeouts must be within the cancellation timer range.")
+            .Validate(o => o is
+            {
+                QueuedDownloads: >= 0,
+                QueuedPages: >= 0
+            }, "Report queue limits must not be negative.")
             .ValidateOnStart();
-        services.TryAddSingleton<NGB.Api.Reporting.ReportRequestBudget>();
+        services.TryAddSingleton<Reporting.ReportRequestBudget>();
         services.Configure<NGB.Runtime.Reporting.ReportCursorProtectionOptions>(configuration.GetSection("Reporting:Cursor"));
 
         services

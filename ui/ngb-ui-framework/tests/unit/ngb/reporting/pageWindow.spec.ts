@@ -35,6 +35,7 @@ describe('report page window', () => {
       expect(cache.retainedCursorCount).toBeLessThanOrEqual(128)
       expect(cache.retainedCursorBytes).toBeLessThanOrEqual(512 * 1024)
     }
+    expect(cache.loadedRowCount).toBe(1_000_000)
     expect(cache.response?.sheet.rows).toHaveLength(2_000)
     expect(cache.response?.sheet.rows[0]?.cells[0]?.value).toBe(998_000)
     expect(cache.previousCursor).toBe('997900')
@@ -83,5 +84,96 @@ describe('report page window', () => {
     expect(cache.rowCount).toBe(10)
     expect(() => cache.append('20', { ...page(20), nextCursor: '20' })).toThrow('did not advance')
     expect(cache.rowCount).toBe(10)
+  })
+
+  it.each([498, 499, 500])('counts all loaded rows beyond the window with %i-row pages', size => {
+    const cache = new ReportPageWindow()
+    expect(cache.loadedRowCount).toBe(0)
+    cache.reset(page(0, size))
+    for (let index = 1; index < 12; index++) {
+      cache.append(String(index * size), page(index * size, size))
+      expect(cache.loadedRowCount).toBe((index + 1) * size)
+      expect(cache.rowCount).toBeLessThanOrEqual(2_000)
+    }
+    expect(cache.rowCount).toBe(size * 4)
+  })
+
+  it('does not double count previous pages or forward reloads, including after bookmark eviction', () => {
+    const cache = new ReportPageWindow(200, 1_000_000, 3)
+    cache.reset(page(0))
+    for (let first = 100; first <= 600; first += 100) cache.append(String(first), page(first))
+    expect(cache.loadedRowCount).toBe(700)
+    expect(cache.retainedCursorCount).toBe(3)
+    cache.prepend(page(400))
+    expect(cache.loadedRowCount).toBe(700)
+    expect(cache.historyTruncated).toBe(true)
+    cache.append('600', page(600))
+    expect(cache.loadedRowCount).toBe(700)
+    cache.append('700', page(700))
+    expect(cache.loadedRowCount).toBe(800)
+  })
+
+  it('excludes grand totals and advances only by rows actually returned', () => {
+    const cache = new ReportPageWindow(2)
+    const first = page(0, 2)
+    first.sheet.rows.push({ rowKind: ReportRowKind.Total, cells: [] })
+    cache.reset(first)
+    expect(cache.loadedRowCount).toBe(2)
+    const empty = page(2, 0)
+    empty.nextCursor = 'after-empty'
+    cache.append('2', empty)
+    expect(cache.loadedRowCount).toBe(2)
+    const last = page(2, 1)
+    last.sheet.rows.push({ rowKind: ReportRowKind.Detail, semanticRole: 'grand_total', cells: [] })
+    last.hasMore = false
+    last.nextCursor = null
+    cache.append('after-empty', last)
+    expect(cache.loadedRowCount).toBe(3)
+    expect(cache.rowCount).toBe(2)
+    cache.reset(page(0, 0))
+    expect(cache.loadedRowCount).toBe(0)
+    cache.reset(page(0, 1))
+    expect(cache.loadedRowCount).toBe(1)
+  })
+
+  it('retains progress when wide pages evict earlier rows by byte budget', () => {
+    const cache = new ReportPageWindow(2000, 2000)
+    cache.reset(page(0, 10))
+    const wide = page(10, 10)
+    wide.sheet.rows[0]!.cells[0]!.display = 'x'.repeat(1200)
+    cache.append('10', wide)
+    expect(cache.rowCount).toBe(10)
+    expect(cache.loadedRowCount).toBe(20)
+  })
+
+  it('leaves progress unchanged when appending invalid pages', () => {
+    const cache = new ReportPageWindow(100)
+    cache.append('0', page(0))
+    expect(cache.loadedRowCount).toBe(100)
+    const incompatible = page(100)
+    incompatible.sheet.columns[0]!.code = 'other'
+    expect(() => cache.append('100', incompatible)).toThrow('columns changed')
+    expect(() => cache.append('100', { ...page(100), nextCursor: '100' })).toThrow('did not advance')
+    expect(cache.loadedRowCount).toBe(100)
+    cache.append('100', page(100))
+    expect(cache.loadedRowCount).toBe(200)
+  })
+
+  it('clones progress independently while preserving the forward frontier', () => {
+    const cache = new ReportPageWindow(100)
+    cache.reset(page(0))
+    cache.append('100', page(100))
+    cache.append('200', page(200))
+    const copy = cache.clone()
+    expect(copy.loadedRowCount).toBe(300)
+    copy.prepend(page(100))
+    copy.append('200', page(200))
+    expect(copy.loadedRowCount).toBe(300)
+    copy.append('300', page(300))
+    expect(copy.loadedRowCount).toBe(400)
+    expect(cache.loadedRowCount).toBe(300)
+    copy.reset(page(0, 3))
+    expect(copy.loadedRowCount).toBe(3)
+    expect(cache.loadedRowCount).toBe(300)
   })
 })

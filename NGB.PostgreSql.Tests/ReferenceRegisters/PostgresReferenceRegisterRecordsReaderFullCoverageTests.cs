@@ -22,6 +22,61 @@ public sealed class PostgresReferenceRegisterRecordsReaderFullCoverageTests
     private static readonly Guid RecorderId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     private static readonly DateTime AsOf = new(2026, 8, 16, 12, 0, 0, DateTimeKind.Utc);
 
+    [Theory]
+    [InlineData(ReferenceRegisterPeriodicity.NonPeriodic)]
+    [InlineData(ReferenceRegisterPeriodicity.Day)]
+    public async Task Write_read_requires_active_transaction_before_accessing_database(ReferenceRegisterPeriodicity periodicity)
+    {
+        var f = Fixture(periodicity, ReferenceRegisterRecordMode.Independent);
+        Func<Task> read = () => f.Reader.SliceLastForWriteAsync(RegisterId, DimensionSetId, AsOf);
+        await read.Should().ThrowAsync<InvalidOperationException>().WithMessage("No active recording transaction.");
+        f.Connection.Commands.Should().BeEmpty();
+        f.Registers.Verify(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(ReferenceRegisterPeriodicity.NonPeriodic)]
+    [InlineData(ReferenceRegisterPeriodicity.Day)]
+    public async Task Write_read_validates_register_and_utc_but_accepts_empty_dimension_set(ReferenceRegisterPeriodicity periodicity)
+    {
+        var f = Fixture(periodicity, ReferenceRegisterRecordMode.Independent);
+        var reader = new PostgresReferenceRegisterRecordsReader(
+            new RecordingUnitOfWork(f.Connection, hasActiveTransaction: true), f.Registers.Object, f.Fields.Object);
+        Func<Task> emptyRegister = () => reader.SliceLastForWriteAsync(Guid.Empty, DimensionSetId, AsOf);
+        Func<Task> localEffective = () => reader.SliceLastForWriteAsync(
+            RegisterId, DimensionSetId, DateTime.SpecifyKind(AsOf, DateTimeKind.Local));
+        await emptyRegister.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+        await localEffective.Should().ThrowAsync<NgbArgumentInvalidException>();
+        f.Connection.Commands.Should().BeEmpty();
+        (await reader.SliceLastForWriteAsync(RegisterId, Guid.Empty, AsOf)).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(ReferenceRegisterPeriodicity.NonPeriodic)]
+    [InlineData(ReferenceRegisterPeriodicity.Day)]
+    public async Task Write_read_preserves_recorder_mode_guards(ReferenceRegisterPeriodicity periodicity)
+    {
+        var independent = Fixture(periodicity, ReferenceRegisterRecordMode.Independent);
+        var independentReader = new PostgresReferenceRegisterRecordsReader(
+            new RecordingUnitOfWork(independent.Connection, hasActiveTransaction: true),
+            independent.Registers.Object, independent.Fields.Object);
+        Func<Task> forbidden = () => independentReader.SliceLastForWriteAsync(RegisterId, DimensionSetId, AsOf, RecorderId);
+        (await forbidden.Should().ThrowAsync<ReferenceRegisterRecordsValidationException>())
+            .Which.Reason.Should().Be("recorder_forbidden");
+
+        var subordinate = Fixture(periodicity, ReferenceRegisterRecordMode.SubordinateToRecorder);
+        var subordinateReader = new PostgresReferenceRegisterRecordsReader(
+            new RecordingUnitOfWork(subordinate.Connection, hasActiveTransaction: true),
+            subordinate.Registers.Object, subordinate.Fields.Object);
+        foreach (var recorderId in new Guid?[] { null, Guid.Empty })
+        {
+            Func<Task> missing = () => subordinateReader.SliceLastForWriteAsync(RegisterId, DimensionSetId, AsOf, recorderId);
+            (await missing.Should().ThrowAsync<ReferenceRegisterRecordsValidationException>())
+                .Which.Reason.Should().Be("recorder_required");
+        }
+        (await subordinateReader.SliceLastForWriteAsync(RegisterId, DimensionSetId, AsOf, RecorderId)).Should().BeNull();
+    }
+
     [Fact]
     public async Task Slice_last_validates_arguments_modes_metadata_and_absent_data()
     {

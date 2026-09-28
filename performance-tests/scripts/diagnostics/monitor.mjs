@@ -56,6 +56,16 @@ export class Monitor {
   }
 
   async close() { await this.client.close(); }
+
+  async sampleContention(jobId) {
+    const result = await this.client.callTool({ name: 'sample_contention', arguments: jobId ? { jobId } : {} }, undefined, { timeout: 8000 });
+    if (result.isError) throw new Error('Finalization MCP sampling failed.');
+    const sample = JSON.parse(result.content.find(item => item.type === 'text').text)[0]?.sample;
+    if (sample?.read_only !== 'on' || sample.months_count !== sample.months?.length) {
+      throw new Error('Finalization MCP snapshot is missing, truncated or not read-only.');
+    }
+    return sample;
+  }
 }
 
 export async function inspectContainers(names) {

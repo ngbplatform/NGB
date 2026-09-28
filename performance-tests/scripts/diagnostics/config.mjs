@@ -2,9 +2,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { parseEnv, parseArgs } from 'node:util';
+import { contentionConfig } from './contention-config.mjs';
 
 export const workspace = fileURLToPath(new URL('../../', import.meta.url));
-export const profiles = ['write-heavy', 'platform-mixed-capacity', 'platform-read-capacity', 'platform-breakpoint'];
+export const profiles = ['write-heavy', 'platform-mixed-capacity', 'platform-read-capacity', 'platform-breakpoint', 'platform-contention'];
 
 export function loadEnvironment(path, inherited = process.env) {
   return { ...parseEnv(readFileSync(path, 'utf8')), ...inherited };
@@ -24,13 +25,18 @@ export function parseOptions(args) {
 }
 
 export function workloadEnvironment(profile, env) {
-  const writes = ['write-heavy', 'platform-mixed-capacity'].includes(profile);
+  const writes = ['write-heavy', 'platform-mixed-capacity', 'platform-contention'].includes(profile);
   const result = { ...env,
     NGB_PERF_ENABLE_WRITES: String(writes),
     NGB_PERF_ENABLE_POSTING: String(writes),
     NGB_PERF_ENABLE_PERIOD_CLOSE: 'false',
     NGB_PM_POSTING_MODE: 'fresh',
   };
+  if (profile === 'platform-contention') {
+    const config = contentionConfig(env);
+    Object.assign(result, { NGB_CAPACITY_VUS: String(config.vus), NGB_CAPACITY_RAMP_DURATION: config.ramp,
+      NGB_CAPACITY_HOLD_DURATION: config.hold, NGB_CAPACITY_RAMP_DOWN_DURATION: config.down });
+  }
   if (profile.endsWith('-capacity')) {
     result.NGB_CAPACITY_VUS ||= '80,160,240,320';
     result.NGB_CAPACITY_RAMP_DURATION ||= '5m';

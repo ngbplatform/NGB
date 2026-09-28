@@ -164,7 +164,7 @@ public sealed class PayablesApplyBatchServiceFullCoverageTests
             It.IsAny<decimal>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
         fixture.Posting.Verify(x => x.PostAsync(It.IsAny<Guid>(), false, It.IsAny<CancellationToken>()), Times.Exactly(2));
         fixture.Locks.Invocations.Where(x => x.Method.Name == nameof(IAdvisoryLockManager.LockDocumentAsync))
-            .Select(x => (Guid)x.Arguments[0])
+            .Select(x => x.Arguments[0].Should().BeOfType<Guid>().Which)
             .Should().BeInAscendingOrder().And.OnlyHaveUniqueItems();
         fixture.Uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
     }

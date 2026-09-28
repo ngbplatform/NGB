@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { finished } from 'node:stream/promises';
 import { parseOptions, workspace, loadEnvironment, workloadEnvironment, databaseEnvironment } from './config.mjs';
 import { Monitor, command, inspectContainers } from './monitor.mjs';
+import { ContentionController } from './contention.mjs';
 
 function hasCompleteOutput(directory) {
   try {
@@ -25,7 +26,7 @@ export async function runDiagnostic(options, dependencies = {}) {
   const launch = dependencies.spawn || spawn;
   if (options.help) {
     console.log(`Usage: node scripts/diagnostics/run.mjs --profile <profile> [options]
-  Profiles: write-heavy, platform-mixed-capacity, platform-read-capacity, platform-breakpoint
+  Profiles: write-heavy, platform-mixed-capacity, platform-read-capacity, platform-breakpoint, platform-contention
     --env-file <path>           Workload env file; paths are relative to the workspace
     --database-env-file <path>  PostgreSQL env file (default: ../.env.pm)
     --dataset-id <id>           Identity of the restored dataset, when known
@@ -36,11 +37,12 @@ export async function runDiagnostic(options, dependencies = {}) {
     return 0;
   }
 
-  const writes = ['write-heavy', 'platform-mixed-capacity'].includes(options.profile);
+  const writes = ['write-heavy', 'platform-mixed-capacity', 'platform-contention'].includes(options.profile);
   const envFile = resolve(root, options['env-file'] || `ngb-property-management-perf/.env.${writes ? 'write.' : ''}local`);
   const env = workloadEnvironment(options.profile, loadEnvironment(envFile));
   const dbEnv = databaseEnvironment(resolve(root, options['database-env-file']));
   const containers = [env.NGB_DIAGNOSTICS_API_CONTAINER || 'ngb.pm.api', env.NGB_DIAGNOSTICS_DB_CONTAINER || 'ngb.pm.postgres'];
+  if (options.profile === 'platform-contention') containers.push(env.NGB_DIAGNOSTICS_WORKER_CONTAINER || 'ngb.pm.backgroundjobs');
   const monitor = dependencies.monitor || new Monitor(dbEnv, containers);
   const stamp = new Date().toISOString().replaceAll(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   const directory = join(root, 'artifacts', 'runs', `${options.profile}-${stamp}-${randomUUID().slice(0, 8)}`);
@@ -64,6 +66,8 @@ export async function runDiagnostic(options, dependencies = {}) {
   let childClosed;
   let workloadClosed = false;
   const cancelled = new AbortController();
+  const contention = options.profile === 'platform-contention'
+    ? (dependencies.contention || new ContentionController({ root, directory, env, monitor, execute: executeCommand })) : null;
   const stopChild = signal => {
     if (!child?.pid || workloadClosed) return;
     try { process.kill(-child.pid, signal); } catch (error) { if (error.code !== 'ESRCH') throw error; }
@@ -71,6 +75,7 @@ export async function runDiagnostic(options, dependencies = {}) {
   const onSignal = signal => {
     state.signal ||= signal;
     stopping = true;
+    contention?.stopTriggering?.();
     cancelled.abort();
     stopChild(signal);
     if (!killTimer && child) killTimer = setTimeout(() => stopChild('SIGKILL'), 10000);
@@ -95,6 +100,7 @@ export async function runDiagnostic(options, dependencies = {}) {
       transactionSampleLimit: 200, note: 'CPU 100% represents approximately one core. Sampling can miss brief waits.',
     });
     console.log(`Results and diagnostics: ${directory}`);
+    if (contention) await contention.prepare();
     if (state.signal) throw new Error('Preflight interrupted.');
     if (options.check) {
       state.status = 'preflight-passed';
@@ -116,9 +122,13 @@ export async function runDiagnostic(options, dependencies = {}) {
       child.stderr.pipe(log, { end: false });
       child.stdout.pipe(process.stdout, { end: false });
       child.stderr.pipe(process.stderr, { end: false });
+      if (contention) {
+        child.stdout.on('data', chunk => contention.onOutput(chunk));
+        child.stderr.on('data', chunk => contention.onOutput(chunk));
+      }
       childClosed = new Promise(resolveChild => {
-        child.once('error', () => { workloadClosed = true; resolveChild({ code: 2, signal: null }); });
-        child.once('close', (code, signal) => { workloadClosed = true; resolveChild({ code, signal }); });
+        child.once('error', () => { workloadClosed = true; contention?.stopTriggering?.(); resolveChild({ code: 2, signal: null }); });
+        child.once('close', (code, signal) => { workloadClosed = true; contention?.stopTriggering?.(); resolveChild({ code, signal }); });
       });
       completion = Promise.race([childClosed, new Promise((_, reject) => log.once('error', reject))]);
       polling = (async () => {
@@ -127,11 +137,13 @@ export async function runDiagnostic(options, dependencies = {}) {
           try { await delay(5000, undefined, { signal: cancelled.signal }); } catch { break; }
           if (stopping) break;
           resources(await monitor.sample(iteration++ % 3 === 0));
+          if (contention && !stopping) await contention.tick();
         }
       })();
       // Surface sampler failures immediately rather than allowing unhandled rejections.
       polling.catch(() => {
         state.diagnosticErrorSamples++;
+        state.failureReason = 'Diagnostic sampling or contention control failed; inspect saved evidence.';
         stopChild('SIGTERM');
         if (!killTimer) killTimer = setTimeout(() => stopChild('SIGKILL'), 10000);
       });
@@ -142,10 +154,20 @@ export async function runDiagnostic(options, dependencies = {}) {
       cancelled.abort();
       await polling;
       resources(await monitor.sample());
+      if (contention && !state.signal) await contention.finish();
       state.exitCode = state.signal ? (state.signal === 'SIGINT' ? 130 : 143) : (result.code ?? 1);
       if (!state.exitCode && (state.diagnosticErrorSamples || !hasCompleteOutput(directory))) {
         state.exitCode = 2;
         state.failureReason = 'Diagnostic gaps or incomplete summary, manifest or time-series output.';
+      }
+      if (contention) {
+        await contention.close(); // Flush metric stream before offline analysis.
+        try {
+          await executeCommand('python3', [join(root, 'scripts/analysis/contention.py'), directory], { timeout: 180000 });
+        } catch {
+          if (!state.exitCode) state.exitCode = 2;
+          state.failureReason = 'Contention evidence did not pass validation. Inspect contention-analysis.json.';
+        }
       }
       state.status = state.signal ? 'interrupted' : state.exitCode === 0 ? 'completed' : 'failed';
     }
@@ -164,6 +186,7 @@ export async function runDiagnostic(options, dependencies = {}) {
     if (killTimer) clearTimeout(killTimer);
     if (polling) await polling.catch(() => {});
     if (log) { log.end(); await finished(log).catch(() => {}); }
+    if (contention) await contention.close().catch(() => {});
     await monitor.close().catch(() => {});
     state.completedAtUtc = new Date().toISOString();
     persist();

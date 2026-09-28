@@ -5,6 +5,7 @@ using Dapper;
 using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.OperationalRegisters.Exceptions;
+using NGB.Persistence.Locks;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
@@ -18,14 +19,17 @@ public sealed class PostgresOperationalRegisterMovementsStore(
     IUnitOfWork uow,
     IOperationalRegisterRepository registersRepo,
     IOperationalRegisterResourceRepository resourcesRepo,
+    IAdvisoryLockManager locks,
     OperationalRegisterMetadataCache? metadataCache = null,
     PostgresRelationShapeCache? relationShapeCache = null)
     : IOperationalRegisterMovementsStore
 {
     private readonly OperationalRegisterMetadataCache _metadataCache = metadataCache
         ?? new OperationalRegisterMetadataCache(TimeProvider.System);
+
     private readonly PostgresRelationShapeCache _relationShapeCache = relationShapeCache
         ?? new PostgresRelationShapeCache(TimeProvider.System);
+
     private readonly ConcurrentDictionary<Guid, ScopedMetadata> _scopedMetadata = new();
     private readonly ConcurrentDictionary<Guid, SchemaReadiness> _schemasReadyForWrite = new();
     private readonly ConcurrentDictionary<Guid, SchemaReadiness> _hasMovementsEnsured = new();
@@ -172,6 +176,7 @@ CREATE TABLE IF NOT EXISTS {table}(
 
         await uow.EnsureConnectionOpenAsync(ct);
         uow.EnsureActiveTransaction();
+        await locks.LockOperationalRegisterAsync(registerId, ct);
 
         var context = await GetMetadataAsync(registerId, ct);
         var table = context.MovementsTable;
@@ -227,6 +232,7 @@ FROM UNNEST({string.Join(", ", unnestArgs)}) AS x({string.Join(", ", unnestCols)
     {
         await uow.EnsureConnectionOpenAsync(ct);
         uow.EnsureActiveTransaction();
+        await locks.LockOperationalRegisterAsync(registerId, ct);
 
         var context = await GetMetadataAsync(registerId, ct);
         var table = context.MovementsTable;

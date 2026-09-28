@@ -104,6 +104,8 @@ public static class PostgresServiceCollectionExtensions
         services.AddOptions<PostgresOptions>()
             .Validate(opts => !string.IsNullOrWhiteSpace(opts.ConnectionString),
                 "PostgreSQL connection string must not be empty.")
+            .Validate(opts => opts.OperationalRegisterPublicationTimeoutSeconds is > 0 and <= 4_294_967,
+                "Operational register publication timeout must be positive and within the cancellation timer range.")
             .ValidateOnStart();
 
         // One-time global Dapper configuration (DateOnly, etc.)
@@ -319,6 +321,9 @@ public sealed class PostgresOptions
     /// "infinite" hangs under load.
     /// </summary>
     public int AdvisoryLockWaitTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>Deadline for register/month acquisition plus incremental projection catch-up.</summary>
+    public int OperationalRegisterPublicationTimeoutSeconds { get; set; } = 5;
 
     /// <summary>
     /// Whether to enable detailed error messages. Default is false.

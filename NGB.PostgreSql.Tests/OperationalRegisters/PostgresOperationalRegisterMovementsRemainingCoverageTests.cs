@@ -247,6 +247,7 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
             new RecordingUnitOfWork(connection, hasActiveTransaction: true),
             registers.Object,
             resources.Object,
+            Mock.Of<NGB.Persistence.Locks.IAdvisoryLockManager>(),
             new OperationalRegisterMetadataCache(TimeProvider.System),
             new NGB.PostgreSql.Schema.PostgresRelationShapeCache(TimeProvider.System));
         var registerId = Guid.NewGuid();
@@ -282,7 +283,8 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         var sut = new PostgresOperationalRegisterMovementsStore(
             new RecordingUnitOfWork(connection, hasActiveTransaction: true),
             registers.Object,
-            resources.Object);
+            resources.Object,
+            Mock.Of<NGB.Persistence.Locks.IAdvisoryLockManager>());
 
         Func<Task> emptyDocument = () => sut.AppendAsync(
             registerId,
@@ -325,7 +327,8 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         var resourceStore = new PostgresOperationalRegisterMovementsStore(
             new RecordingUnitOfWork(resourceConnection, hasActiveTransaction: true),
             resourceRegisters.Object,
-            resourceDefinitions.Object);
+            resourceDefinitions.Object,
+            Mock.Of<NGB.Persistence.Locks.IAdvisoryLockManager>());
         await resourceStore.EnsureSchemaAsync(registerId);
         var schemaCommand = resourceConnection.Commands
             .Should().ContainSingle(command => command.CommandText.Contains("CREATE TABLE IF NOT EXISTS", StringComparison.Ordinal))
@@ -353,7 +356,8 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
         var sut = new PostgresOperationalRegisterMovementsStore(
             new RecordingUnitOfWork(connection, hasActiveTransaction: true),
             registers.Object,
-            resources.Object);
+            resources.Object,
+            Mock.Of<NGB.Persistence.Locks.IAdvisoryLockManager>());
 
         await sut.EnsureReadyForWriteAsync(registerId, default);
 
@@ -361,6 +365,35 @@ public sealed class PostgresOperationalRegisterMovementsRemainingCoverageTests
             command.CommandText.Contains("pg_attribute", StringComparison.Ordinal));
         resources.VerifyAll();
         registers.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Low_level_writes_cannot_allocate_movement_ids_until_register_lock_is_granted(bool storno)
+    {
+        var id = Guid.NewGuid();
+        var registers = new Mock<IOperationalRegisterRepository>();
+        registers.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(Register(id, hasMovements: true));
+        var resources = new Mock<IOperationalRegisterResourceRepository>();
+        resources.Setup(x => x.GetByRegisterIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var locks = new Mock<NGB.Persistence.Locks.IAdvisoryLockManager>(MockBehavior.Strict);
+        var granted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        locks.Setup(x => x.LockOperationalRegisterAsync(id, It.IsAny<CancellationToken>())).Returns(granted.Task);
+        var connection = new RecordingDbConnection();
+        var store = new PostgresOperationalRegisterMovementsStore(new RecordingUnitOfWork(connection, hasActiveTransaction: true),
+            registers.Object, resources.Object, locks.Object);
+        var pending = storno ? store.AppendStornoByDocumentAsync(id, Guid.NewGuid())
+            : store.AppendAsync(id, [Movement(new Dictionary<string, decimal>())]);
+        try
+        {
+            pending.IsCompleted.Should().BeFalse();
+            connection.Commands.Should().BeEmpty("movement allocation must follow register serialization");
+        }
+        finally { granted.TrySetResult(); }
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        connection.Commands.Should().Contain(command => command.CommandText.Contains("INSERT INTO opreg_"));
+        locks.Verify(x => x.LockOperationalRegisterAsync(id, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     private static OperationalRegisterMovement Movement(IReadOnlyDictionary<string, decimal> resources)

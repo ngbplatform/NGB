@@ -30,6 +30,9 @@ public static class AdvisoryLockNamespaces
     // Operational Registers: register-level serialization for projection-chain-sensitive operations.
     public static readonly int OperationalRegister = Pack("ORR", 1);
 
+    // Finalizers only; movement writers never acquire this namespace.
+    public static readonly int OperationalRegisterFinalization = Pack("ORF", 1);
+
     // Operational Registers: protect dynamic DDL (CREATE TABLE / ALTER TABLE / CREATE TRIGGER)
     // executed by EnsureSchemaAsync() for per-register tables.
     public static readonly int OperationalRegisterSchema = Pack("ORS", 1);

@@ -1,5 +1,4 @@
 using NGB.Application.Abstractions.Services;
-using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
@@ -45,9 +44,11 @@ public sealed class SalesByItemCanonicalReportExecutor(ITradeAnalyticsReader ana
             : SpecializedReportCursorCodec.Decode<TradeAnalyticsPageCursor<SalesByItemTotals>>(
                 cursorKind, request.Cursor);
         var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
-        var limit = request.DisablePaging
-            ? PagingLimits.MaxMaterializedRows + 1
-            : (request.Limit <= 0 ? 100 : request.Limit);
+        var limit = CanonicalReportExecutionHelper.ResolvePageDataLimit(
+            definition,
+            request,
+            defaultLimit: 100,
+            reservedRows: request.Layout?.ShowGrandTotals != false ? 1 : 0);
         var page = cursor is not null || (!request.DisablePaging && offset == 0)
             ? await analytics.GetSalesByItemCursorPageAsync(
                 fromInclusive, toInclusive, itemIds, customerIds, warehouseIds, cursor, limit, ct)

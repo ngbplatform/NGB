@@ -18,6 +18,7 @@ public sealed class AgencyReportScaleCollection : ICollectionFixture<AgencyRepor
 
 public sealed class AgencyReportScaleFixture : IAsyncLifetime
 {
+    public const int GroupCount = 501;
     private readonly AgencyBillingPostgresFixture _database = new();
     public IHost Host { get; private set; } = null!;
     public async Task InitializeAsync()
@@ -37,8 +38,8 @@ public sealed class AgencyReportScaleFixture : IAsyncLifetime
         var terms = (await catalogs.GetPageAsync(AgencyBillingCodes.PaymentTerms, new PageRequestDto(0, 25, "Net 30"), default)).Items.Single(x => x.Display == "Net 30").Id;
         var service = await Catalog(AgencyBillingCodes.ServiceItem, new { display = "Scale", code = "SCALE", name = "Scale",
             unit_of_measure = (int)AgencyBillingServiceItemUnitOfMeasure.Hour, is_active = true });
-        // 10,240 posted time lines, 256 clients/projects/team members and 256 partially billed invoices.
-        for (var i = 0; i < 256; i++)
+        // 20,040 posted time lines and 501 groups force continuation even at the maximum page size.
+        for (var i = 0; i < GroupCount; i++)
         {
             var client = await Catalog(AgencyBillingCodes.Client, new { display = $"Client {i:D4}", client_code = $"C{i:D4}", name = $"Client {i:D4}",
                 status = (int)AgencyBillingClientStatus.Active, payment_terms_id = terms, is_active = true, default_currency = AgencyBillingCodes.DefaultCurrency });
@@ -82,6 +83,6 @@ public sealed class AgencyBillingReporting_ScaleTests(AgencyReportScaleFixture f
         var definition = await scope.ServiceProvider.GetRequiredService<IReportDefinitionProvider>().GetDefinitionAsync(code, default);
         var parameters = (definition.Parameters ?? []).ToDictionary(p => p.Code, p => p.Code == "from_utc" ? "2026-04-01" : "2026-04-30");
         await ReportScaleAssertions.VerifyAsync(scope.ServiceProvider.GetRequiredService<IReportEngine>(),
-            scope.ServiceProvider.GetRequiredService<IReportDownloadService>(), code, new ReportExecutionRequestDto(Parameters: parameters), minimumExportRows: 512);
+            scope.ServiceProvider.GetRequiredService<IReportDownloadService>(), code, new ReportExecutionRequestDto(Parameters: parameters), minimumExportRows: AgencyReportScaleFixture.GroupCount * 2);
     }
 }

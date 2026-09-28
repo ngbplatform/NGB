@@ -159,7 +159,13 @@ public sealed class DatabaseGuards_PlatformDimensions_DbConstraints_P0Tests(Sche
         };
 
         var ex = await act.Should().ThrowAsync<PostgresException>();
-        ex.Which.SqlState.Should().Be("23503");
+        // PostgreSQL 18 distinguishes RESTRICT from NO ACTION with SQLSTATE 23001.
+        ex.Which.SqlState.Should().Be(conn.PostgreSqlVersion.Major >= 18
+            ? PostgresErrorCodes.RestrictViolation : PostgresErrorCodes.ForeignKeyViolation);
         ex.Which.ConstraintName.Should().Be("fk_platform_dimset_items_dimension");
+        (await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM platform_dimensions WHERE dimension_id = @Id", new { Id = dimId }))
+            .Should().Be(1, "the rejected deletion must leave the parent intact");
+        (await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM platform_dimension_set_items WHERE dimension_id = @Id", new { Id = dimId }))
+            .Should().Be(1, "the referencing item must remain intact");
     }
 }

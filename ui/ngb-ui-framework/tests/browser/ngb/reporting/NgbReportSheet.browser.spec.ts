@@ -151,7 +151,7 @@ const ReportSheetLargeWindowHarness = defineComponent({
     return () => h('div', { style: 'width: 480px; height: 680px; display: flex;' }, [
       h(NgbReportSheet, {
         sheet: makeSheet(6),
-        loadedCount: 2_000,
+        loadedCount: 2_495,
         totalCount: 5_000,
         rowNoun: 'property',
         canLoadMore: true,
@@ -444,7 +444,7 @@ test('shows a load-more footer without breaking the report shell contract', asyn
 test('continues incremental loading beyond two thousand visited rows', async () => {
   const view = await renderWithRouter(ReportSheetLargeWindowHarness)
   await expect.element(view.getByText(
-    'Loaded 2,000 properties. Scroll to continue loading.',
+    'Loaded 2,495 properties. Scroll to continue loading.',
     { exact: true },
   )).toBeVisible()
   await expect.element(view.getByRole('button', { name: 'Load more', exact: true })).toBeEnabled()

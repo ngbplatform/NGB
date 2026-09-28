@@ -157,7 +157,7 @@ public sealed class DocumentDraftServiceFullCoverageTests
             It.IsAny<CancellationToken>()), Times.Once);
         fixture.Locks.Invocations
             .Where(invocation => invocation.Method.Name == nameof(IAdvisoryLockManager.LockDocumentAsync))
-            .Select(invocation => (Guid)invocation.Arguments[0])
+            .Select(invocation => invocation.Arguments[0].Should().BeOfType<Guid>().Which)
             .Should().Equal(ids.OrderBy(static id => id));
     }
 

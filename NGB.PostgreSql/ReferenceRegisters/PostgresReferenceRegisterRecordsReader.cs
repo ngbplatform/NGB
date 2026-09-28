@@ -127,11 +127,47 @@ public sealed class PostgresReferenceRegisterRecordsReader(
         Guid? recorderDocumentId = null,
         CancellationToken ct = default)
     {
+        recordedAsOfUtc.EnsureUtc(nameof(recordedAsOfUtc));
+
+        return await SliceLastForEffectiveMomentCoreAsync(
+            registerId,
+            dimensionSetId,
+            effectiveAsOfUtc,
+            recordedAsOfUtc,
+            recorderDocumentId,
+            ct);
+    }
+
+    public Task<ReferenceRegisterRecordRead?> SliceLastForWriteAsync(
+        Guid registerId,
+        Guid dimensionSetId,
+        DateTime effectiveAsOfUtc,
+        Guid? recorderDocumentId = null,
+        CancellationToken ct = default)
+    {
+        uow.EnsureActiveTransaction();
+
+        return SliceLastForEffectiveMomentCoreAsync(
+            registerId,
+            dimensionSetId,
+            effectiveAsOfUtc,
+            recordedAsOfUtc: null,
+            recorderDocumentId,
+            ct);
+    }
+
+    private async Task<ReferenceRegisterRecordRead?> SliceLastForEffectiveMomentCoreAsync(
+        Guid registerId,
+        Guid dimensionSetId,
+        DateTime effectiveAsOfUtc,
+        DateTime? recordedAsOfUtc,
+        Guid? recorderDocumentId,
+        CancellationToken ct)
+    {
         registerId.EnsureNonEmpty(nameof(registerId));
         // Guid.Empty is a valid DimensionSetId (empty bag)
 
         effectiveAsOfUtc.EnsureUtc(nameof(effectiveAsOfUtc));
-        recordedAsOfUtc.EnsureUtc(nameof(recordedAsOfUtc));
         
         await uow.EnsureConnectionOpenAsync(ct);
 
@@ -149,10 +185,10 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                 throw new ReferenceRegisterRecordsValidationException(registerId, reason: "recorder_forbidden", details: new { recordMode = reg.RecordMode });
         }
 
-        if (reg.Periodicity == ReferenceRegisterPeriodicity.NonPeriodic)
+        if (reg.Periodicity == ReferenceRegisterPeriodicity.NonPeriodic && recordedAsOfUtc is { } recordedBoundary)
         {
             // Non-periodic has no effective time; treat recordedAsOfUtc as the as-of boundary.
-            return await SliceLastAsync(registerId, dimensionSetId, recordedAsOfUtc, recorderDocumentId, ct);
+            return await SliceLastAsync(registerId, dimensionSetId, recordedBoundary, recorderDocumentId, ct);
         }
 
         var table = context.RecordsTable;
@@ -176,6 +212,12 @@ public sealed class PostgresReferenceRegisterRecordsReader(
             ? "AND t.recorder_document_id = @RecorderDocumentId"
             : "AND t.recorder_document_id IS NULL";
 
+        // Command decisions use all MVCC-visible versions under the caller's key lock.
+        // Only historical reads impose a recorded-time boundary.
+        var whereRecorded = recordedAsOfUtc.HasValue
+            ? "AND t.recorded_at_utc <= @RecordedAsOfUtc"
+            : string.Empty;
+
         var sql = $"""
                   SELECT
                       record_id            AS "RecordId",
@@ -189,7 +231,7 @@ public sealed class PostgresReferenceRegisterRecordsReader(
                   WHERE
                       t.dimension_set_id = @DimensionSetId
                       {whereRecorder}
-                      AND t.recorded_at_utc <= @RecordedAsOfUtc
+                      {whereRecorded}
                       {wherePeriod}
                   ORDER BY {orderByPeriod} t.recorded_at_utc DESC, t.record_id DESC
                   LIMIT 1;

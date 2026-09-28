@@ -1,5 +1,4 @@
 using NGB.Application.Abstractions.Services;
-using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
@@ -35,9 +34,11 @@ public sealed class ReceivablesAgingCanonicalReportExecutor(
             ? null
             : SpecializedReportCursorCodec.Decode<ReceivablesReportPageCursor>(cursorKind, request.Cursor);
         var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
-        var limit = request.DisablePaging
-            ? PagingLimits.MaxMaterializedRows + 1
-            : request.Limit <= 0 ? 50 : request.Limit;
+        var limit = CanonicalReportExecutionHelper.ResolvePageDataLimit(
+            definition,
+            request,
+            defaultLimit: 50,
+            reservedRows: request.Layout?.ShowGrandTotals != false ? 1 : 0);
         var page = cursor is not null
             ? await reader.GetCursorPageAsync(
                 policy.ReceivablesOpenItemsOperationalRegisterId, leaseId,

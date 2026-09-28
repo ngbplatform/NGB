@@ -39,6 +39,7 @@
     "pm:diagnostics": "node scripts/diagnostics/run.mjs",
     "pm:capacity:diagnostics": "node scripts/diagnostics/run.mjs --profile platform-mixed-capacity",
     "pm:write-heavy:diagnostics": "node scripts/diagnostics/run.mjs --profile write-heavy",
+    "pm:contention:diagnostics": "node scripts/diagnostics/run.mjs --profile platform-contention",
     "test:tooling": "node --experimental-strip-types --test scripts/diagnostics/tests/*.test.mjs && python3 -B -m unittest discover -s scripts/analysis -p \"test_*.py\"",
     "test:metric-grouping": "python3 -B scripts/diagnostics/verify-metric-grouping.py"
   },

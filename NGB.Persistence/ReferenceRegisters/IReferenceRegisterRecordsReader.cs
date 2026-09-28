@@ -30,8 +30,7 @@ public interface IReferenceRegisterRecordsReader
     /// Returns the last record version for the specified key that is EFFECTIVE as of <paramref name="effectiveAsOfUtc"/>,
     /// while considering only versions RECORDED not after <paramref name="recordedAsOfUtc"/>.
     ///
-    /// This is used by independent-mode writes to compute the previous value at an effective moment even when a write is backdated
-    /// (i.e. <c>PeriodUtc</c> is in the past, but the row is recorded now).
+    /// The effective and recorded boundaries are independent, allowing historical queries of backdated versions.
     ///
     /// For non-periodic registers, <paramref name="effectiveAsOfUtc"/> is ignored and the method behaves like
     /// <see cref="SliceLastAsync"/> with <paramref name="recordedAsOfUtc"/>.
@@ -41,6 +40,20 @@ public interface IReferenceRegisterRecordsReader
         Guid dimensionSetId,
         DateTime effectiveAsOfUtc,
         DateTime recordedAsOfUtc,
+        Guid? recorderDocumentId = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the latest transaction-visible version effective at <paramref name="effectiveAsOfUtc"/>,
+    /// including tombstones, without a recorded-time cutoff. Non-periodic registers ignore effective time.
+    /// Requires an active transaction; the caller must hold the register key lock before reading and writing.
+    /// Use this for read-before-write decisions so application/database clock skew cannot hide committed
+    /// versions or this transaction's own writes. Use the as-of methods for historical reads.
+    /// </summary>
+    Task<ReferenceRegisterRecordRead?> SliceLastForWriteAsync(
+        Guid registerId,
+        Guid dimensionSetId,
+        DateTime effectiveAsOfUtc,
         Guid? recorderDocumentId = null,
         CancellationToken ct = default);
 

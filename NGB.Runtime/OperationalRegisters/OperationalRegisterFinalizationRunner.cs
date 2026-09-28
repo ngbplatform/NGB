@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NGB.Core.Locks;
@@ -18,8 +19,9 @@ namespace NGB.Runtime.OperationalRegisters;
 ///
 /// Semantics:
 /// - Enumerates dirty register-months.
-/// - For each month, opens a transaction (if <c>manageTransaction=true</c>), acquires a month lock,
-///   invokes a module-provided projector (if any) or the default projector, and then marks the month finalized.
+/// - Default PostgreSQL projections are prepared before acquiring movement locks, then validated
+///   and caught up to committed movements under short publication locks before atomic commit.
+/// - Custom projectors and externally managed transactions keep the serialized contract.
 /// - Module projectors always win over the default path.
 /// - <c>BlockedNoProjector</c> is kept only as a defensive fallback for misconfigured hosts that do not register
 ///   the default projector.
@@ -161,7 +163,8 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
 
         foreach (var item in dirty)
         {
-            if (await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct))
+            var outcome = await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct);
+            if (outcome == FinalizationOutcome.Finalized)
                 finalizedCount++;
         }
 
@@ -188,14 +191,47 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
         var finalizedCount = 0;
         foreach (var item in items)
         {
-            if (await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct))
+            var outcome = await FinalizeOneAsync(item.RegisterId, item.Period, register, manageTransaction, ct);
+            if (outcome == FinalizationOutcome.Finalized)
                 finalizedCount++;
         }
 
         return finalizedCount;
     }
 
-    private async Task<bool> FinalizeOneAsync(
+    private enum FinalizationOutcome
+    {
+        Unchanged,
+        Finalized
+    }
+
+    private async Task<FinalizationOutcome> FinalizeOneAsync(
+        Guid registerId,
+        DateOnly periodMonth,
+        OperationalRegisterAdminItem? register,
+        bool manageTransaction,
+        CancellationToken ct)
+    {
+        // Retry only a rolled-back owned month, not the whole batch. Exhaustion is a failure,
+        // never a successful zero count. External transactions remain the caller's responsibility.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await FinalizeAttemptAsync(registerId, periodMonth, register, manageTransaction, ct);
+            }
+            catch (OperationalRegisterFinalizationBusyException) when (manageTransaction && attempt < 3 && !ct.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    "Retrying operational register {RegisterId} month {PeriodMonth} publication; attempt {Attempt} of 3.",
+                    registerId, periodMonth, attempt + 1);
+
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * attempt), ct);
+            }
+        }
+    }
+
+    private async Task<FinalizationOutcome> FinalizeAttemptAsync(
         Guid registerId,
         DateOnly periodMonth,
         OperationalRegisterAdminItem? register,
@@ -209,21 +245,35 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
 
         try
         {
-            await _locks.LockOperationalRegisterAsync(registerId, ct);
+            var finalizerLocks = _locks as IOperationalRegisterFinalizationLockManager;
+            if (finalizerLocks is not null)
+                await finalizerLocks.LockOperationalRegisterFinalizationAsync(registerId, ct);
+
+            var preparing = _defaultProjector as IOperationalRegisterPreparingDefaultMonthProjector;
+            var prepare = manageTransaction
+                && _uow.Transaction?.IsolationLevel == IsolationLevel.ReadCommitted
+                && finalizerLocks is not null
+                && preparing?.SupportsPreparation == true
+                && register is { HasMovements: true }
+                && !_projectorsByCodeNorm.ContainsKey(NormalizeCodeNorm(register.Code));
+
+            if (!prepare)
+                await _locks.LockOperationalRegisterAsync(registerId, ct);
 
             // Month lock prevents concurrent finalization and movement writes to the same month.
             // Namespace this lock to Operational Registers so accounting posting/closing can proceed concurrently.
-            await _locks.LockPeriodAsync(periodMonth, AdvisoryLockPeriodScope.OperationalRegister, ct);
+            if (!prepare)
+                await _locks.LockPeriodAsync(periodMonth, AdvisoryLockPeriodScope.OperationalRegister, ct);
 
             // Under concurrency, the dirty list may contain stale items.
-            // Re-check the current status under the month lock/transaction to ensure idempotency.
+            // Re-check under finalizer serialization; prepared results catch up before publication.
             var current = await _finalizations.GetAsync(registerId, periodMonth, ct);
             if (current is null || current.Status != OperationalRegisterFinalizationStatus.Dirty)
             {
                 if (manageTransaction)
                     await _uow.CommitAsync(ct);
 
-                return false;
+                return FinalizationOutcome.Unchanged;
             }
 
             if (register is null)
@@ -239,7 +289,12 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
                 NowUtc: nowUtc,
                 Movements: _movements);
 
-            if (_projectorsByCodeNorm.TryGetValue(codeNorm, out var projector))
+            if (prepare)
+            {
+                var prepared = await preparing!.PrepareMonthAsync(ctx, ct);
+                await prepared.CompleteAsync(ct);
+            }
+            else if (_projectorsByCodeNorm.TryGetValue(codeNorm, out var projector))
             {
                 await projector.RebuildMonthAsync(ctx, ct);
             }
@@ -265,15 +320,16 @@ public sealed class OperationalRegisterFinalizationRunner : IOperationalRegister
                 if (manageTransaction)
                     await _uow.CommitAsync(ct);
 
-                return false;
+                return FinalizationOutcome.Unchanged;
             }
 
-            await _finalizations.MarkFinalizedAsync(registerId, periodMonth, nowUtc, nowUtc, ct);
+            var publishedAtUtc = _timeProvider.GetUtcNow().UtcDateTime;
+            await _finalizations.MarkFinalizedAsync(registerId, periodMonth, publishedAtUtc, publishedAtUtc, ct);
 
             if (manageTransaction)
                 await _uow.CommitAsync(ct);
 
-            return true;
+            return FinalizationOutcome.Finalized;
         }
         catch
         {

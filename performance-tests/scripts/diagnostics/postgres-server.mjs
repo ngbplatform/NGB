@@ -7,6 +7,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import pg from 'pg';
 
 export const samplingSql = readFileSync(new URL('./sql/postgres-resources.sql', import.meta.url), 'utf8');
+export const contentionSql = readFileSync(new URL('./sql/contention.sql', import.meta.url), 'utf8');
 
 export function createServer(pool) {
   const server = new Server({ name: 'ngb-postgres-diagnostics', version: '1.0.0' }, { capabilities: { tools: {} } });
@@ -14,16 +15,26 @@ export function createServer(pool) {
     name: 'sample_resources', description: 'Read PostgreSQL resource counters and lock activity. PostgreSQL 17+.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  }, {
+    name: 'sample_contention', description: 'Read finalization status and one Hangfire job, without job arguments or business data.',
+    inputSchema: { type: 'object', properties: { jobId: { type: 'string', pattern: '^[1-9][0-9]{0,17}$' } }, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   }] }));
   server.setRequestHandler(CallToolRequestSchema, async request => {
-    if (request.params.name !== 'sample_resources' || Object.keys(request.params.arguments || {}).length) {
-      throw new Error('Only sample_resources with no arguments is supported.');
+    const args = request.params.arguments || {};
+    const contention = request.params.name === 'sample_contention';
+    if (contention ? Object.keys(args).some(key => key !== 'jobId') ||
+        (args.jobId !== undefined && (typeof args.jobId !== 'string' || !/^[1-9][0-9]{0,17}$/.test(args.jobId)))
+      : request.params.name !== 'sample_resources' || Object.keys(args).length) {
+      throw new Error('Only the fixed diagnostic sampling tools and their documented arguments are supported.');
     }
     let connection;
     try {
       connection = await pool.connect();
       await connection.query('BEGIN READ ONLY');
-      const result = await connection.query({ text: samplingSql, queryMode: 'extended' });
+      const result = await connection.query(contention
+        ? { text: contentionSql, values: [args.jobId ?? null], queryMode: 'extended' }
+        : { text: samplingSql, queryMode: 'extended' });
       return { content: [{ type: 'text', text: JSON.stringify(result.rows) }] };
     } catch (error) {
       // Do not forward driver messages, SQL or credentials to artifacts/MCP clients.

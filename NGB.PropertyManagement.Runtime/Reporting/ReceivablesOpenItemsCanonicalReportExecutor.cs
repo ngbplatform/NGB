@@ -35,7 +35,11 @@ public sealed class ReceivablesOpenItemsCanonicalReportExecutor(
             : SpecializedReportCursorCodec.Decode<ReceivablesReportPageCursor>(cursorKind, request.Cursor);
 
         var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
-        var limit = request.Limit <= 0 ? 50 : request.Limit;
+        var limit = CanonicalReportExecutionHelper.ResolvePageDataLimit(
+            definition,
+            request,
+            defaultLimit: 50,
+            reservedRows: request.Layout?.ShowGrandTotals != false ? 1 : 0);
         var useLegacyOffset = offset > 0 && string.IsNullOrWhiteSpace(request.Cursor);
 
         var open = useLegacyOffset

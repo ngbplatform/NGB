@@ -60,14 +60,15 @@ public sealed class TenantStatementCanonicalReportExecutor(
         var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
             ? null
             : SpecializedReportCursorCodec.Decode<TenantStatementPageCursor>(cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
+        var includeOpeningBalance = fromUtc is not null && offset == 0;
+        var reservedRows = (includeOpeningBalance ? 1 : 0) + (request.Layout?.ShowGrandTotals != false ? 1 : 0);
         var query = new TenantStatementQuery(
             LeaseId: leaseId,
             FromUtc: fromUtc,
             ToUtc: toUtc,
-            Offset: cursor?.Offset ?? Math.Max(0, request.Offset),
-            Limit: request.DisablePaging
-                ? PagingLimits.MaxMaterializedRows + 1
-                : request.Limit <= 0 ? 100 : request.Limit);
+            Offset: offset,
+            Limit: CanonicalReportExecutionHelper.ResolvePageDataLimit(definition, request, defaultLimit: 100, reservedRows: reservedRows));
         query.EnsureInvariant();
 
         var page = cursor is not null
@@ -78,7 +79,7 @@ public sealed class TenantStatementCanonicalReportExecutor(
         var subtitle = await BuildSubtitleAsync(leaseId, fromUtc, toUtc, ct);
 
         var rows = new List<ReportSheetRowDto>();
-        if (fromUtc is not null && query.Offset == 0)
+        if (includeOpeningBalance)
             rows.Add(ToOpeningBalanceRow(page.Totals.OpeningBalance));
 
         rows.AddRange(page.Rows.Select(ToDetailRow));

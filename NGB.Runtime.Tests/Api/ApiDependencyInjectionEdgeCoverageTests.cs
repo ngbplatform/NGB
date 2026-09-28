@@ -31,6 +31,7 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
     [InlineData("ConcurrentPages")]
     [InlineData("ConcurrentDownloads")]
     [InlineData("PageTimeoutSeconds")]
+    [InlineData("PageQueueTimeoutSeconds")]
     [InlineData("DownloadTimeoutSeconds")]
     [InlineData("DownloadQueueTimeoutSeconds")]
     public void Nonpositive_report_limits_fail_options_validation(string option)
@@ -46,13 +47,32 @@ public sealed class ApiDependencyInjectionEdgeCoverageTests
     }
 
     [Theory]
-    [InlineData(-1, false)]
-    [InlineData(0, true)]
-    [InlineData(4, true)]
-    public void Download_queue_accepts_zero_to_disable_waiting_and_rejects_negative_limits(int queued, bool valid)
+    [InlineData("PageTimeoutSeconds")]
+    [InlineData("DownloadTimeoutSeconds")]
+    [InlineData("PageQueueTimeoutSeconds")]
+    [InlineData("DownloadQueueTimeoutSeconds")]
+    public void Report_deadlines_outside_timer_range_fail_at_startup(string option)
     {
         var configuration = new ConfigurationBuilder().AddConfiguration(Configuration()).AddInMemoryCollection(new Dictionary<string, string?>
-        { ["Reporting:Requests:QueuedDownloads"] = queued.ToString() }).Build();
+        { [$"Reporting:Requests:{option}"] = int.MaxValue.ToString() }).Build();
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration, "API");
+        using var provider = services.BuildServiceProvider();
+        Action read = () => _ = provider.GetRequiredService<IOptions<NGB.Api.Reporting.ReportRequestLimits>>().Value;
+        read.Should().Throw<OptionsValidationException>().WithMessage("*timer range*");
+    }
+
+    [Theory]
+    [InlineData("QueuedPages", -1, false)]
+    [InlineData("QueuedPages", 0, true)]
+    [InlineData("QueuedPages", 48, true)]
+    [InlineData("QueuedDownloads", -1, false)]
+    [InlineData("QueuedDownloads", 0, true)]
+    [InlineData("QueuedDownloads", 4, true)]
+    public void Report_queues_accept_zero_to_disable_waiting_and_reject_negative_limits(string option, int queued, bool valid)
+    {
+        var configuration = new ConfigurationBuilder().AddConfiguration(Configuration()).AddInMemoryCollection(new Dictionary<string, string?>
+        { [$"Reporting:Requests:{option}"] = queued.ToString() }).Build();
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddInfrastructure(configuration, "API");

@@ -1,5 +1,4 @@
 using NGB.Application.Abstractions.Services;
-using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
@@ -42,7 +41,11 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRep
         var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
             ? null
             : SpecializedReportCursorCodec.Decode<OccupancySummaryContinuation>(cursorKind, request.Cursor);
-        var limit = request.DisablePaging ? PagingLimits.MaxMaterializedRows + 1 : request.Limit <= 0 ? 50 : request.Limit;
+        var limit = CanonicalReportExecutionHelper.ResolvePageDataLimit(
+            definition,
+            request,
+            defaultLimit: 50,
+            reservedRows: request.Layout?.ShowGrandTotals != false ? 1 : 0);
         var page = await reader.GetSliceAsync(buildingId, asOf, cursor, limit, ct);
         var totals = !page.HasMore && request.Layout?.ShowGrandTotals != false
             ? await reader.GetTotalsAsync(buildingId, asOf, ct)

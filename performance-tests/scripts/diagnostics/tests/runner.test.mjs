@@ -120,3 +120,42 @@ test('SIGINT reaches the workload and records interruption rather than success',
     assert.equal(isClosed(), true);
   });
 });
+
+test('contention preflight closes collectors and never starts k6 or finalization', async () => {
+  await withWorkspace(async ({ dependencies, options }) => {
+    options.profile = 'platform-contention';
+    const calls = [];
+    dependencies.contention = { prepare: async () => calls.push('prepare'), close: async () => calls.push('close'),
+      tick: async () => assert.fail('preflight must not trigger'), finish: async () => assert.fail('no workload') };
+    assert.equal(await runDiagnostic(options, dependencies), 0);
+    assert.deepEqual(calls, ['prepare', 'close']);
+  });
+});
+
+test('contention evidence failure overrides green k6 and closes the collector', async () => {
+  await withWorkspace(async ({ dependencies, options, result }) => {
+    options.profile = 'platform-contention'; options.check = false;
+    dependencies.spawn = fakeWorkload(0);
+    let closed = 0, stopped = 0;
+    dependencies.contention = { prepare: async () => {}, onOutput: () => {},
+      finish: async () => { throw new Error('Finalization was never triggered.'); },
+      close: async () => { closed++; }, stopTriggering: () => { stopped++; } };
+    assert.equal(await runDiagnostic(options, dependencies), 2);
+    assert.equal(result().state.k6ExitCode, 0);
+    assert.equal(result().state.status, 'failed');
+    assert.equal(closed, 1);
+    assert.equal(stopped, 1);
+  });
+});
+
+test('contention analyzer failure cannot be hidden by successful k6', async () => {
+  await withWorkspace(async ({ dependencies, options, result }) => {
+    options.profile = 'platform-contention'; options.check = false;
+    dependencies.spawn = fakeWorkload(0);
+    dependencies.contention = { prepare: async () => {}, onOutput: () => {}, finish: async () => {}, close: async () => {} };
+    dependencies.command = async name => { if (name === 'python3') throw new Error('Failed evidence checks.'); return 'k6'; };
+    assert.equal(await runDiagnostic(options, dependencies), 2);
+    assert.match(result().state.failureReason, /Contention evidence/);
+    assert.equal(result().state.k6ExitCode, 0);
+  });
+});

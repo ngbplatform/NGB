@@ -1,3 +1,5 @@
+using NGB.Persistence.OperationalRegisters;
+
 namespace NGB.Runtime.OperationalRegisters.Projections;
 
 /// <summary>
@@ -9,4 +11,14 @@ namespace NGB.Runtime.OperationalRegisters.Projections;
 public interface IOperationalRegisterDefaultMonthProjector
 {
     Task RebuildMonthAsync(OperationalRegisterMonthProjectionContext context, CancellationToken ct = default);
+}
+
+/// <summary>Opt-in preparation supported only by the platform default projector.</summary>
+public interface IOperationalRegisterPreparingDefaultMonthProjector : IOperationalRegisterDefaultMonthProjector
+{
+    bool SupportsPreparation { get; }
+
+    Task<IOperationalRegisterPreparedProjection> PrepareMonthAsync(
+        OperationalRegisterMonthProjectionContext context,
+        CancellationToken ct = default);
 }

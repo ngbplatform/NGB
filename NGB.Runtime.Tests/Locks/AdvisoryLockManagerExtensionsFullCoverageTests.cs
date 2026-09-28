@@ -45,7 +45,7 @@ public sealed class AdvisoryLockManagerExtensionsFullCoverageTests
 
         await locks.Object.LockDocumentsDeterministicallyAsync([later, earlier, later]);
 
-        locks.Invocations.Select(invocation => (Guid)invocation.Arguments[0])
+        locks.Invocations.Select(invocation => invocation.Arguments[0].Should().BeOfType<Guid>().Which)
             .Should().Equal(earlier, later);
     }
 

@@ -29,33 +29,37 @@ internal static class ReportScaleAssertions
         small.Rows = one.Sheet.Rows.Count;
         var smallCount = small.CommandCount;
         small.Dispose();
-        using var larger = new ReportPerformanceProbe(code, "scale-page-200");
-        var page = await reports.ExecuteAsync(code, input with { Limit = 200 }, default);
-        larger.Rows = page.Sheet.Rows.Count;
-        larger.CommandCount.Should().BeInRange(1, Math.Max(12, smallCount + 6), code + " must batch related-row lookups");
-        page.Sheet.Rows.Should().NotBeEmpty(code);
-        page.Sheet.Rows.Count.Should().BeLessThanOrEqualTo(1000);
-        larger.Dispose();
-        
-        if (page.HasMore)
+        foreach (var limit in new[] { 200, 500 })
         {
-            using var next = new ReportPerformanceProbe(code, "scale-continuation-200");
-            var continued = await reports.ExecuteAsync(code, input with { Limit = 200, Cursor = page.NextCursor }, default);
-            continued.Sheet.Rows.Should().NotBeEmpty(code);
-            next.CommandCount.Should().BeInRange(1, Math.Max(16, smallCount + 10), code);
-            next.Rows = continued.Sheet.Rows.Count;
+            using var larger = new ReportPerformanceProbe(code, $"scale-page-{limit}");
+            var page = await reports.ExecuteAsync(code, input with { Limit = limit }, default);
+            larger.Rows = page.Sheet.Rows.Count;
+            larger.CommandCount.Should().BeInRange(1, Math.Max(12, smallCount + 6), code + " must batch related-row lookups");
+            page.Sheet.Rows.Should().NotBeEmpty(code);
+            page.Sheet.Rows.Count.Should().BeLessThanOrEqualTo(1000);
+            larger.Dispose();
+
+            if (page.HasMore)
+            {
+                page.NextCursor.Should().NotBeNullOrWhiteSpace(code);
+                using var next = new ReportPerformanceProbe(code, $"scale-continuation-{limit}");
+                var continued = await reports.ExecuteAsync(code, input with { Limit = limit, Cursor = page.NextCursor }, default);
+                continued.Sheet.Rows.Should().NotBeEmpty(code);
+                next.CommandCount.Should().BeInRange(1, Math.Max(16, smallCount + 10), code);
+                next.Rows = continued.Sheet.Rows.Count;
+            }
+
+            var child = one.Sheet.Rows.FirstOrDefault(r => r.ChildrenPath is not null)?.ChildrenPath;
+            if (child is not null)
+            {
+                using var childTrace = new ReportPerformanceProbe(code, $"scale-child-{limit}");
+                var children = await reports.ExecuteAsync(code, input with { Limit = limit, GroupPath = child }, default);
+                children.Sheet.Rows.Should().NotBeEmpty(code);
+                childTrace.CommandCount.Should().BeInRange(1, 24, code);
+                childTrace.Rows = children.Sheet.Rows.Count;
+            }
         }
-        
-        var child = one.Sheet.Rows.FirstOrDefault(r => r.ChildrenPath is not null)?.ChildrenPath;
-        if (child is not null)
-        {
-            using var childTrace = new ReportPerformanceProbe(code, "scale-child-200");
-            var children = await reports.ExecuteAsync(code, input with { Limit = 200, GroupPath = child }, default);
-            children.Sheet.Rows.Should().NotBeEmpty(code);
-            childTrace.CommandCount.Should().BeInRange(1, 24, code);
-            childTrace.Rows = children.Sheet.Rows.Count;
-        }
-        
+
         using var exported = new ReportPerformanceProbe(code, "scale-full-xlsx");
         await using var download = await downloads.PrepareAsync(
             code,
