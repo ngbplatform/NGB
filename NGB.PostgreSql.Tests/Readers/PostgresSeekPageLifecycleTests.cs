@@ -85,18 +85,27 @@ public sealed class PostgresSeekPageLifecycleTests
     }
 
     [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(false, false, true)]
-    [InlineData(false, true, false)]
-    [InlineData(false, true, true)]
-    [InlineData(true, false, false)]
-    [InlineData(true, false, true)]
-    [InlineData(true, true, false)]
-    [InlineData(true, true, true)]
-    public async Task Failed_count_or_page_read_disposes_results_before_propagating_original_error(
-        bool document, bool failPage, bool asynchronousDisposal)
+    [InlineData(false, false, false, false)]
+    [InlineData(false, false, true, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, true, true, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, true, true, false)]
+    [InlineData(false, false, false, true)]
+    [InlineData(false, false, true, true)]
+    [InlineData(false, true, false, true)]
+    [InlineData(false, true, true, true)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, false, true, true)]
+    [InlineData(true, true, false, true)]
+    [InlineData(true, true, true, true)]
+    public async Task Failed_count_or_page_read_awaits_cleanup_and_propagates_read_or_disposal_error(
+        bool document, bool failPage, bool asynchronousDisposal, bool disposalFails)
     {
         var original = new InvalidOperationException("Injected result read failure");
+        var disposalError = new InvalidOperationException("Injected reader disposal failure");
         var disposeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseDispose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reader = new Mock<DbDataReader>();
@@ -126,7 +135,8 @@ public sealed class PostgresSeekPageLifecycleTests
         reader.Setup(x => x.DisposeAsync()).Returns(() =>
         {
             disposeStarted.TrySetResult();
-            return asynchronousDisposal ? new ValueTask(releaseDispose.Task) : ValueTask.CompletedTask;
+            if (asynchronousDisposal) return new ValueTask(releaseDispose.Task);
+            return disposalFails ? ValueTask.FromException(disposalError) : ValueTask.CompletedTask;
         });
         var connection = new RecordingDbConnection(readerFactory: _ => reader.Object);
         var uow = new RecordingUnitOfWork(connection);
@@ -146,11 +156,12 @@ public sealed class PostgresSeekPageLifecycleTests
         }
         finally
         {
-            releaseDispose.TrySetResult();
+            if (asynchronousDisposal && disposalFails) releaseDispose.TrySetException(disposalError);
+            else releaseDispose.TrySetResult();
         }
 
         var error = await ((Func<Task>)(() => operation)).Should().ThrowAsync<InvalidOperationException>();
-        error.Which.Should().BeSameAs(original);
+        error.Which.Should().BeSameAs(disposalFails ? disposalError : original);
         reader.Verify(x => x.DisposeAsync(), Times.Once);
         connection.Commands.Should().ContainSingle("a failed count/page must not trigger a fallback query");
         failedResult.Should().Be(failPage ? 1 : 0);
