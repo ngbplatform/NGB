@@ -326,6 +326,96 @@ public sealed class OperationalRegisterFinalizationFullCoverageTests
         uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Exactly(alwaysFail ? 0 : 1));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Runner_serializes_default_projectors_that_do_not_support_preparation(bool implementsPreparation)
+    {
+        var id = Guid.NewGuid();
+        var month = new DateOnly(2026, 1, 1);
+        var transaction = new Mock<System.Data.Common.DbTransaction>();
+        transaction.SetupGet(x => x.IsolationLevel).Returns(System.Data.IsolationLevel.ReadCommitted);
+        var uow = new Mock<IUnitOfWork>();
+        uow.SetupGet(x => x.Transaction).Returns(transaction.Object);
+        var locks = new Mock<IAdvisoryLockManager>();
+        var publicationLocks = locks.As<IOperationalRegisterFinalizationLockManager>();
+        var projector = DefaultProjector();
+        Mock<IOperationalRegisterPreparingDefaultMonthProjector>? preparing = null;
+        if (implementsPreparation)
+        {
+            preparing = projector.As<IOperationalRegisterPreparingDefaultMonthProjector>();
+            preparing.SetupGet(x => x.SupportsPreparation).Returns(false);
+        }
+        var registers = RegisterRepository(id, "stock");
+        registers.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Register(id, "stock") with { HasMovements = true });
+        var finalizations = DirtyRepository(id, month);
+        var runner = Runner(uow, locks, registers, finalizations, defaults: [projector.Object]);
+
+        (await runner.FinalizeRegisterDirtyAsync(id)).Should().Be(1);
+
+        publicationLocks.Verify(x => x.LockOperationalRegisterFinalizationAsync(id, It.IsAny<CancellationToken>()), Times.Once);
+        locks.Verify(x => x.LockOperationalRegisterAsync(id, It.IsAny<CancellationToken>()), Times.Once);
+        locks.Verify(x => x.LockPeriodAsync(month, AdvisoryLockPeriodScope.OperationalRegister, It.IsAny<CancellationToken>()), Times.Once);
+        projector.Verify(x => x.RebuildMonthAsync(
+            It.Is<OperationalRegisterMonthProjectionContext>(c => c.RegisterId == id && c.PeriodMonth == month),
+            It.IsAny<CancellationToken>()), Times.Once);
+        preparing?.Verify(x => x.PrepareMonthAsync(It.IsAny<OperationalRegisterMonthProjectionContext>(), It.IsAny<CancellationToken>()), Times.Never);
+        finalizations.Verify(x => x.MarkFinalizedAsync(id, month, Now, Now, It.IsAny<CancellationToken>()), Times.Once);
+        uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("mutable")]
+    [InlineData("custom")]
+    [InlineData("prepare")]
+    public async Task Runner_prepares_only_existing_immutable_registers_without_custom_projectors(string scenario)
+    {
+        var id = Guid.NewGuid();
+        var month = new DateOnly(2026, 1, 1);
+        var transaction = new Mock<System.Data.Common.DbTransaction>();
+        transaction.SetupGet(x => x.IsolationLevel).Returns(System.Data.IsolationLevel.ReadCommitted);
+        var uow = new Mock<IUnitOfWork>();
+        uow.SetupGet(x => x.Transaction).Returns(transaction.Object);
+        uow.SetupGet(x => x.HasActiveTransaction).Returns(true);
+        var locks = new Mock<IAdvisoryLockManager>();
+        locks.As<IOperationalRegisterFinalizationLockManager>();
+        var projector = new Mock<IOperationalRegisterPreparingDefaultMonthProjector>();
+        projector.SetupGet(x => x.SupportsPreparation).Returns(true);
+        var prepared = new Mock<IOperationalRegisterPreparedProjection>();
+        projector.Setup(x => x.PrepareMonthAsync(It.IsAny<OperationalRegisterMonthProjectionContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(prepared.Object);
+        var custom = Projector("stock");
+        var registers = RegisterRepository(id, "stock");
+        registers.Setup(x => x.GetByIdAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(scenario == "missing" ? null : Register(id, "stock") with { HasMovements = scenario != "mutable" });
+        var finalizations = DirtyRepository(id, month);
+        var runner = Runner(uow, locks, registers, finalizations,
+            projectors: scenario == "custom" ? [custom.Object] : [], defaults: [projector.Object]);
+
+        if (scenario == "missing")
+        {
+            await ((Func<Task>)(() => runner.FinalizeRegisterDirtyAsync(id)))
+                .Should().ThrowAsync<OperationalRegisterNotFoundException>();
+            uow.Verify(x => x.RollbackAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+        else
+        {
+            (await runner.FinalizeRegisterDirtyAsync(id)).Should().Be(1);
+            finalizations.Verify(x => x.MarkFinalizedAsync(id, month, Now, Now, It.IsAny<CancellationToken>()), Times.Once);
+            uow.Verify(x => x.CommitAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        var prepare = scenario == "prepare";
+        locks.Verify(x => x.LockOperationalRegisterAsync(id, It.IsAny<CancellationToken>()), prepare ? Times.Never : Times.Once);
+        locks.Verify(x => x.LockPeriodAsync(month, AdvisoryLockPeriodScope.OperationalRegister, It.IsAny<CancellationToken>()), prepare ? Times.Never : Times.Once);
+        projector.Verify(x => x.PrepareMonthAsync(It.IsAny<OperationalRegisterMonthProjectionContext>(), It.IsAny<CancellationToken>()), prepare ? Times.Once : Times.Never);
+        prepared.Verify(x => x.CompleteAsync(It.IsAny<CancellationToken>()), prepare ? Times.Once : Times.Never);
+        projector.Verify(x => x.RebuildMonthAsync(It.IsAny<OperationalRegisterMonthProjectionContext>(), It.IsAny<CancellationToken>()), scenario == "mutable" ? Times.Once : Times.Never);
+        custom.Verify(x => x.RebuildMonthAsync(It.IsAny<OperationalRegisterMonthProjectionContext>(), It.IsAny<CancellationToken>()), scenario == "custom" ? Times.Once : Times.Never);
+    }
+
     private static OperationalRegisterFinalizationService Service(
         Mock<IUnitOfWork> uow,
         Mock<IAdvisoryLockManager> locks,

@@ -15,14 +15,16 @@ public sealed class LedgerAnalysisAccountPeriodAggregationTests(PostgresTestFixt
     : IntegrationTestBase(fixture)
 {
     [Theory]
-    [InlineData(null, false)]
-    [InlineData(ReportTimeGrain.Day, false)]
-    [InlineData(ReportTimeGrain.Week, false)]
-    [InlineData(ReportTimeGrain.Month, false)]
-    [InlineData(ReportTimeGrain.Quarter, false)]
-    [InlineData(ReportTimeGrain.Year, false)]
-    [InlineData(ReportTimeGrain.Month, true)]
-    public async Task Account_period_sums_preserve_raw_results_filters_selection_and_paging(ReportTimeGrain? grain, bool pivot)
+    [InlineData(null, false, true)]
+    [InlineData(ReportTimeGrain.Day, false, true)]
+    [InlineData(ReportTimeGrain.Week, false, true)]
+    [InlineData(ReportTimeGrain.Month, false, true)]
+    [InlineData(ReportTimeGrain.Quarter, false, true)]
+    [InlineData(ReportTimeGrain.Year, false, true)]
+    [InlineData(ReportTimeGrain.Month, true, true)]
+    [InlineData(null, false, false)]
+    public async Task Account_period_sums_preserve_raw_results_filters_selection_and_paging(
+        ReportTimeGrain? grain, bool pivot, bool groupByPeriod)
     {
         using var host = ComposableReportingIntegrationTestHelpers.CreateHost(Fixture.ConnectionString);
         var (cash, revenue, _) = await ReportingTestHelpers.SeedMinimalCoAAsync(host);
@@ -47,7 +49,7 @@ public sealed class LedgerAnalysisAccountPeriodAggregationTests(PostgresTestFixt
         var period = new PostgresReportGroupingSelection("period_utc", "period", "Period", "datetime", grain);
         var account = new PostgresReportGroupingSelection("account_display", "account", "Account", "string");
         var request = new PostgresReportExecutionRequest("accounting.ledger.analysis",
-            pivot ? [account] : [account, period], pivot ? [period] : [], [],
+            pivot || !groupByPeriod ? [account] : [account, period], pivot ? [period] : [], [],
             [new("debit_amount", "debit", "Debit", "decimal", ReportAggregationKind.Sum),
              new("credit_amount", "credit", "Credit", "decimal", ReportAggregationKind.Sum),
              new("net_amount", "net", "Net", "decimal", ReportAggregationKind.Sum)],

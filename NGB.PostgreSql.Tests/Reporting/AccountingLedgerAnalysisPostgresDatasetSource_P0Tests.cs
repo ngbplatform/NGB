@@ -7,6 +7,31 @@ namespace NGB.PostgreSql.Tests.Reporting;
 
 public sealed class AccountingLedgerAnalysisPostgresDatasetSource_P0Tests
 {
+    [Theory]
+    [InlineData("predicate")]
+    [InlineData("sort")]
+    [InlineData("selection")]
+    public void Period_references_without_period_grouping_retain_timestamp_aggregation(string reference)
+    {
+        var instant = System.Text.Json.JsonSerializer.SerializeToElement(new DateTime(2026, 9, 7, 12, 0, 0, DateTimeKind.Utc));
+        var request = new NGB.PostgreSql.Reporting.PostgresReportExecutionRequest("accounting.ledger.analysis",
+            [new("account_code", "account", "Account", "string")], [], [],
+            [new("debit_amount", "amount", "Amount", "decimal", ReportAggregationKind.Sum)], [], [],
+            new Dictionary<string, object?>(), new(0, 10));
+        request = reference switch
+        {
+            "predicate" => request with { Predicates = [new("period_utc", "period", "Period", "datetime", new(instant))] },
+            "sort" => request with { Sorts = [new("period_utc", null, ReportSortDirection.Asc)] },
+            _ => request with { Selection = new([new("period_utc")], [[instant]]) }
+        };
+
+        var source = AccountingLedgerAnalysisPostgresDatasetSource.SelectAccountAggregateSource(request);
+
+        source.Should().NotBeNull();
+        source!.FromSql.Should().Contain("GROUP BY debit_account_id, period")
+            .And.Contain("GROUP BY credit_account_id, period");
+    }
+
     [Fact]
     public void Optimized_source_requires_account_or_period_fields_and_additive_measures()
     {

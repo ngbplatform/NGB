@@ -5,6 +5,8 @@
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <NoWarn>$(NoWarn);DAP005</NoWarn>
+        <!-- The fault worker is outside the solution; keep its configuration aligned with this test project. -->
+        <ShouldUnsetParentConfigurationAndPlatform>false</ShouldUnsetParentConfigurationAndPlatform>
     </PropertyGroup>
 
     <ItemGroup>
@@ -35,6 +37,8 @@
         <None Include="..\quality\integration\xunit.integration.runner.json" Link="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
     <Target Name="CopyFinalizationFaultWorker" AfterTargets="Build">
+        <Error Condition="!Exists('$(MSBuildThisFileDirectory)..\quality\integration\NGB.Finalization.TestWorker\bin\$(Configuration)\net10.0\NGB.Finalization.TestWorker.dll')"
+               Text="The finalization fault worker was not built for $(Configuration)." />
         <ItemGroup>
             <FinalizationWorkerFiles Include="$(MSBuildThisFileDirectory)..\quality\integration\NGB.Finalization.TestWorker\bin\$(Configuration)\net10.0\**\*" />
         </ItemGroup>

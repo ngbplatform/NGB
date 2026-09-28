@@ -57,6 +57,13 @@ public sealed class CanonicalReportPageDataLimitTests
         => CanonicalReportExecutionHelper.ResolvePageDataLimit(Definition(null), new(Limit: requested), 50, 2)
             .Should().Be(expected);
 
+    [Theory]
+    [InlineData(0, 50)]
+    [InlineData(500, 500)]
+    public void Missing_capabilities_preserves_requested_or_default_limit(int requested, int expected)
+        => CanonicalReportExecutionHelper.ResolvePageDataLimit(new("test.canonical", "Test"), new(Limit: requested), 50, 2)
+            .Should().Be(expected);
+
     [Fact]
     public void Materialized_execution_preserves_overflow_detection_instead_of_truncating()
         => CanonicalReportExecutionHelper.ResolvePageDataLimit(Definition(500), new(Limit: 500, DisablePaging: true), 50, 2)
