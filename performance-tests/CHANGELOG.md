@@ -6,14 +6,26 @@ vertical scenario packages. Platform releases are documented in the
 
 ## [Unreleased]
 
+No changes yet.
+
+## [3.0.0] - 2026-09-29
+
 ### Added
 
+- Restructured shared framework with separate vertical scenarios, runners, diagnostics,
+  offline analysis, and reusable performance runbooks.
 - Versioned PM diagnostic runners, a fixed-query read-only Postgres MCP sampler,
   offline time-series/resource analysis and explicit before/after comparison tools.
 - English performance runbooks and comparison methodology. Run-specific reports,
   evidence indexes and generated output remain under ignored `artifacts/`.
 - Offline tooling contract tests; diagnostic tooling no longer depends on artifacts,
   personal filesystem paths or an npm cache installation.
+- Focused posting-contract, reporting, and read-regression diagnostic probes.
+- Report diagnostics by report ID, period, and status; document-operation diagnostics
+  and counters for executed lifecycle/posting branches.
+- Resolved k6 run options in summaries and run manifests from the macOS/Linux runner,
+  including the Git revision, change fingerprint, tool versions, non-secret settings,
+  capacity/breakpoint overrides, and optional dataset/API image identities.
 
 ### Fixed
 
@@ -24,8 +36,10 @@ vertical scenario packages. Platform releases are documented in the
 - Group k6 HTTP metrics by stable operation names to prevent dynamic document IDs
   and query values from creating unbounded URL metric series during write-heavy
   runs. Preserve request routing, status/error metrics, and diagnostic tags.
-
-## [3.0.0]
+- Check dropped iterations globally in multi-scenario workloads and breakpoint so
+  unmatched tagged submetrics cannot hide skipped load.
+- Count nested lifecycle operation failures and require actual write/posting branch
+  execution in write-heavy validation.
 
 ### Changed
 
@@ -38,22 +52,6 @@ vertical scenario packages. Platform releases are documented in the
   same command and key, with separate counters for fresh postings and replays.
 - Require zero HTTP failures for posting and XLSX export in the standard thresholds.
   HTTP 429 responses count as failures.
-
-### Added
-
-- Focused posting-contract, reporting, and read-regression diagnostic probes.
-- Report diagnostics by report ID, period, and status; document-operation diagnostics
-  and counters for executed lifecycle/posting branches.
-- Resolved k6 run options in summaries and run manifests from the macOS/Linux runner,
-  including the Git revision, change fingerprint, tool versions, non-secret settings,
-  capacity/breakpoint overrides, and optional dataset/API image identities.
-
-### Fixed
-
-- Check dropped iterations globally in multi-scenario workloads and breakpoint so
-  unmatched tagged submetrics cannot hide skipped load.
-- Count nested lifecycle operation failures and require actual write/posting branch
-  execution in write-heavy validation.
 
 ### Migration and comparisons
 

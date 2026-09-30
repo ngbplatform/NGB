@@ -25,7 +25,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Security
 - N/A
 
-## [3.0.0] - 2026-09-04
+## [3.0.0] - 2026-09-29
 
 ### Breaking changes
 - Split provider-neutral ASP.NET Core hosting from `NGB.Platform.Api` into
@@ -61,18 +61,28 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Complete backend and frontend coverage gates with per-file completeness validation.
 - Direct report paging, inline group expansion, streamed XLSX downloads, and per-instance report
   request admission limits.
+- Expanded Property Management performance scenarios, posting/reporting/read-regression probes,
+  reproducible run manifests, and offline diagnostic and comparison tooling.
 
 ### Changed
 - Batched high-volume read and write paths across catalogs, documents, reporting, registers,
   background processing, and vertical services to remove N+1 queries and reduce allocations.
 - Aligned .NET package, assembly, telemetry, npm package, web-application, lockfile, and publishing
   versions on the 3.0 release line.
+- Restructured `ngb-performance-tests-framework` and its runners, diagnostics, and analysis tools;
+  aligned the private performance workspace and vertical suites with version 3.0.0.
+- Improved frontend report browsing, request handling, and shared UI behavior across all four
+  vertical applications.
 
 ### Fixed
 - Hardened integration-test isolation, shared PostgreSQL fixture startup, schema migration
   concurrency, and deterministic paging behavior.
 - Removed framework-specific package dependencies from reusable provider-neutral projects and
   moved them to their owning adapters.
+- Fixed backend and frontend regressions across document lifecycle operations, reporting,
+  authentication, Work Center, and vertical workflows, with expanded regression tests.
+- Corrected performance-test posting semantics, dropped-iteration checks, breakpoint VU allocation,
+  and HTTP metric grouping. See the [performance changelog](performance-tests/CHANGELOG.md).
 
 ### Migration
 - Follow [Migrating from 2.0.0 to 3.0.0](docs/guides/migrating-to-3.0.md) before updating platform

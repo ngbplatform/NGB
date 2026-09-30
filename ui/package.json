@@ -1,5 +1,6 @@
 {
   "name": "ngb-ui-workspace",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "scripts": {

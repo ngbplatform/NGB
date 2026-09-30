@@ -27,7 +27,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>NGB;NGB Platform;.NET;PostgreSQL;business applications</PackageTags>
-    <PackageReleaseNotes>Major release: introduce explicit hosting and PostgreSQL ASP.NET Core adapters, enforce clean composition-root boundaries, and align backend and frontend packages on 3.0.0.</PackageReleaseNotes>
+    <PackageReleaseNotes>Major release: explicit hosting and PostgreSQL adapters, backend and frontend fixes, batched data access and streamed reporting, full-coverage gates, and restructured performance tests. Breaking changes and migration: https://docs.ngbplatform.com/guides/migrating-to-3.0</PackageReleaseNotes>
     <Copyright>Copyright (c) NGB Platform 2026</Copyright>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

@@ -38,6 +38,19 @@ published package. An integrity mismatch must be resolved before the strict rele
 `--local-candidate` is only a local-development bypass. Never replace an already published version
 with different content.
 
+For a new version that is not yet in the registry:
+
+1. Build the tarball with `npm --prefix ui run pack:platform-ui -- --local-candidate`.
+2. From `ui/ngb-crm-web`, run
+   `npm install --package-lock-only --workspaces=false --ignore-scripts --save-exact ../../artifacts/npm/ngbplatform-ui-3.0.0.tgz`.
+3. Replace only the temporary file references: set `dependencies["@ngbplatform/ui"]` in
+   `package.json` and `packages[""].dependencies["@ngbplatform/ui"]` in `package-lock.json` back
+   to `3.0.0`; set the locked UI package's `resolved` to
+   `https://registry.npmjs.org/@ngbplatform/ui/-/ui-3.0.0.tgz`. Preserve the generated integrity
+   and dependency metadata. Do not change the tarball after accepting this candidate.
+4. Review the lockfile diff and rerun `npm --prefix ui run pack:platform-ui` from the repository
+   root without `--local-candidate`. Commit the reviewed lockfile before publication.
+
 For a package version already available on npmjs.com, update the dedicated consumer lockfile with:
 
 ```bash
@@ -127,6 +140,6 @@ then publishes in dependency order with `--skip-duplicate` so a partially comple
 The CRM release workflow restores with `NuGet.Registry.Config` and its own npm lockfile, so local package
 outputs cannot leak into production images.
 
-Set the repository variable `NGB_CRM_RELEASE_ENABLED=true` after both package families are public.
-Until then, automatic CRM image builds remain gated; `workflow_dispatch` is still available for an
-intentional verification run.
+CRM image builds are gated by the live registry dependency check. When the entire NuGet package
+set is unavailable, CRM builds are skipped; a partially available dependency set fails the check.
+After both package families are published, rerun `container-images` through `workflow_dispatch`.
