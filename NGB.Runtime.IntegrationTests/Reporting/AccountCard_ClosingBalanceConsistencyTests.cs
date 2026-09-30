@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AccountCard_ClosingBalanceConsistencyTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

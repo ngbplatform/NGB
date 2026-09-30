@@ -8,7 +8,6 @@ using NGB.Persistence.AuditLog;
 using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.AuditLog;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.Tools.Extensions;
@@ -21,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.AuditLog;
 /// P0: DocumentRelationshipService must be atomic with the Business AuditLog.
 /// If audit writing fails after INSERT, the relationship rows + audit rows + actor upsert must rollback.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_Atomicity_Rollback_DocumentRelationship_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

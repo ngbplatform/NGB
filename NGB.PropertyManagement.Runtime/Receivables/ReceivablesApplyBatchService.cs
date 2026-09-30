@@ -28,16 +28,18 @@ namespace NGB.PropertyManagement.Runtime.Receivables;
 public sealed class ReceivablesApplyBatchService(
     IDocumentDraftService drafts,
     IDocumentPostingService posting,
-    IDocumentRelationshipService relationships,
     IPropertyManagementAccountingPolicyReader policyReader,
     IReceivableApplyHeadWriter applyHeadWriter,
     IDocumentRepository documents,
     IAdvisoryLockManager locks,
     IUnitOfWork uow,
-    IReceivablePaymentWorkCenterSynchronizer workCenter)
+    IReceivablePaymentWorkCenterSynchronizer workCenter,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IReceivablesApplyBatchService
 {
-    private const int MaxLines = 500;
+    // Each line posts a document and updates accounting/open-item registers in the
+    // same atomic transaction. Keep the lock-holding budget deliberately small.
+    private const int MaxLines = 25;
 
     public async Task<ReceivablesApplyBatchResponse> ExecuteAsync(
         ReceivablesApplyBatchRequest request,
@@ -85,6 +87,8 @@ public sealed class ReceivablesApplyBatchService(
         if (parsed.Count == 0)
             throw ReceivablesApplyBatchValidationException.AppliesMustNotBeEmpty();
 
+        using var postingReadScope = postingReadCache?.BeginScope();
+
         // Resolve register id for response (also validates policy existence early).
         var policy = await policyReader.GetRequiredAsync(ct);
 
@@ -97,52 +101,116 @@ public sealed class ReceivablesApplyBatchService(
             docIds.AddRange(parsed.Select(x => x.CreditDocumentId));
             docIds.AddRange(parsed.Select(x => x.ChargeDocumentId));
             docIds.AddRange(parsed.Where(x => x.ApplyId is not null).Select(x => x.ApplyId!.Value));
+
             await ReceivablesApplyExecutionHelpers.LockDocumentsDeterministicallyAsync(locks, docIds, innerCt);
 
-            foreach (var a in parsed)
+            var existingApplyDocuments = await documents.GetForUpdateByIdsAsync(
+                parsed.Where(static item => item.ApplyId.HasValue)
+                    .Select(static item => item.ApplyId!.Value)
+                    .Distinct()
+                    .ToArray(),
+                innerCt);
+
+            var applyIds = new Guid[parsed.Count];
+            var newDraftIndexes = Enumerable.Range(0, parsed.Count)
+                .Where(index => parsed[index].ApplyId is null)
+                .ToArray();
+
+            if (newDraftIndexes.Length > 0 && drafts is IDocumentDraftBatchService batchDrafts)
             {
-                var createdDraft = a.ApplyId is null;
-                var applyId = a.ApplyId ?? await drafts.CreateDraftAsync(
-                    typeCode: PropertyManagementCodes.ReceivableApply,
-                    number: null,
-                    dateUtc: new DateTime(a.AppliedOnUtc.Year, a.AppliedOnUtc.Month, a.AppliedOnUtc.Day, 0, 0, 0, DateTimeKind.Utc),
+                var createdIds = await batchDrafts.CreateDraftsAsync(
+                    newDraftIndexes.Select(index => new DocumentDraftCreateRequest(
+                            PropertyManagementCodes.ReceivableApply,
+                            Number: null,
+                            ToDocumentDateUtc(parsed[index].AppliedOnUtc)))
+                        .ToArray(),
                     manageTransaction: false,
                     ct: innerCt);
 
-                if (!createdDraft)
-                    await EnsureExistingApplyDraftAsync(documents, applyId, innerCt);
+                for (var index = 0; index < newDraftIndexes.Length; index++)
+                {
+                    applyIds[newDraftIndexes[index]] = createdIds[index];
+                }
+            }
 
-                await applyHeadWriter.UpsertAsync(
-                    documentId: applyId,
-                    creditDocumentId: a.CreditDocumentId,
-                    chargeDocumentId: a.ChargeDocumentId,
-                    appliedOnUtc: a.AppliedOnUtc,
-                    amount: a.Amount,
-                    memo: a.Memo,
-                    ct: innerCt);
+            for (var index = 0; index < parsed.Count; index++)
+            {
+                var item = parsed[index];
+                if (item.ApplyId is { } existingId)
+                {
+                    EnsureExistingApplyDraft(existingId, existingApplyDocuments);
+                    applyIds[index] = existingId;
+                    continue;
+                }
 
-                await ReceivablesApplyExecutionHelpers.EnsureApplyRelationshipsAsync(
-                    relationships,
-                    applyId,
-                    creditDocumentId: a.CreditDocumentId,
-                    chargeDocumentId: a.ChargeDocumentId,
-                    ct: innerCt);
+                if (applyIds[index] == Guid.Empty)
+                {
+                    applyIds[index] = await drafts.CreateDraftAsync(
+                        PropertyManagementCodes.ReceivableApply,
+                        number: null,
+                        dateUtc: ToDocumentDateUtc(item.AppliedOnUtc),
+                        manageTransaction: false,
+                        ct: innerCt);
+                }
+            }
 
-                await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
+            var headWrites = parsed.Select((item, index) => new ReceivableApplyHeadWrite(
+                    applyIds[index],
+                    item.CreditDocumentId,
+                    item.ChargeDocumentId,
+                    item.AppliedOnUtc,
+                    item.Amount,
+                    item.Memo))
+                .ToArray();
+
+            if (applyHeadWriter is IReceivableApplyHeadBatchWriter batchHeadWriter)
+            {
+                await batchHeadWriter.UpsertManyAsync(headWrites, innerCt);
+            }
+            else
+            {
+                foreach (var head in headWrites)
+                {
+                    await applyHeadWriter.UpsertAsync(
+                        head.DocumentId,
+                        head.CreditDocumentId,
+                        head.ChargeDocumentId,
+                        head.AppliedOnUtc,
+                        head.Amount,
+                        head.Memo,
+                        innerCt);
+                }
+            }
+
+            if (posting is IDocumentPostingBatchService batchPosting)
+            {
+                await batchPosting.PostManyAsync(applyIds, manageTransaction: false, ct: innerCt);
+            }
+            else
+            {
+                foreach (var applyId in applyIds)
+                {
+                    await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
+                }
+            }
+
+            for (var index = 0; index < parsed.Count; index++)
+            {
+                var item = parsed[index];
+                var applyId = applyIds[index];
 
                 executed.Add(new ReceivablesApplyBatchExecutedItem(
                     ApplyId: applyId,
-                    CreditDocumentId: a.CreditDocumentId,
-                    ChargeDocumentId: a.ChargeDocumentId,
-                    AppliedOnUtc: a.AppliedOnUtc,
-                    Amount: a.Amount,
-                    CreatedDraft: createdDraft));
+                    CreditDocumentId: item.CreditDocumentId,
+                    ChargeDocumentId: item.ChargeDocumentId,
+                    AppliedOnUtc: item.AppliedOnUtc,
+                    Amount: item.Amount,
+                    CreatedDraft: item.ApplyId is null));
             }
 
-            foreach (var paymentId in parsed.Select(static x => x.CreditDocumentId).Distinct())
-            {
-                affectedUsers.UnionWith(await workCenter.CompleteIfExhaustedAsync(paymentId, innerCt));
-            }
+            affectedUsers.UnionWith(await workCenter.CompleteIfExhaustedAsync(
+                parsed.Select(static x => x.CreditDocumentId).Distinct().ToArray(),
+                innerCt));
 
             return (IReadOnlyCollection<Guid>)affectedUsers.ToArray();
         }, ct);
@@ -164,6 +232,9 @@ public sealed class ReceivablesApplyBatchService(
         DateOnly AppliedOnUtc,
         decimal Amount,
         string? Memo);
+
+    private static DateTime ToDocumentDateUtc(DateOnly date)
+        => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
     private static ApplyFields ParsePayload(RecordPayload payload)
     {
@@ -258,10 +329,9 @@ public sealed class ReceivablesApplyBatchService(
         };
     }
 
-    private static async Task EnsureExistingApplyDraftAsync(IDocumentRepository documents, Guid applyId, CancellationToken ct)
+    private static void EnsureExistingApplyDraft(Guid applyId, IReadOnlyDictionary<Guid, DocumentRecord> documents)
     {
-        var doc = await documents.GetForUpdateAsync(applyId, ct);
-        if (doc is null)
+        if (!documents.TryGetValue(applyId, out var doc))
             throw ReceivablesApplyBatchValidationException.ApplyNotFound(applyId);
 
         if (!string.Equals(doc.TypeCode, PropertyManagementCodes.ReceivableApply, StringComparison.Ordinal))

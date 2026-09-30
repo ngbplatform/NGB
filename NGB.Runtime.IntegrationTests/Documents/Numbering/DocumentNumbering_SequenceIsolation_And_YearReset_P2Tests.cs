@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.Numbering;
 /// - fiscalYear is derived from document DateUtc (UTC year)
 /// - switching year does not affect prior-year sequences
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentNumbering_SequenceIsolation_And_YearReset_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

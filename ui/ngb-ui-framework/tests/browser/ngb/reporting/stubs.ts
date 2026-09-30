@@ -1,4 +1,5 @@
 import { defineComponent, h, ref, type PropType } from 'vue'
+import type { ReportDisplayRow } from '../../../../src/ngb/reporting/groupTree'
 
 type LookupItem = {
   id: string
@@ -12,7 +13,7 @@ type VariantOption = {
 }
 
 type ReportSheetDto = {
-  rows?: unknown[]
+  rows?: ReportDisplayRow[]
 }
 
 type ReportContext = {
@@ -226,12 +227,15 @@ export const StubDrawer = defineComponent({
   },
   emits: ['update:open'],
   setup(props, { emit, slots }) {
-    return () => props.open
-      ? h('div', { 'data-testid': 'stub-drawer' }, [
+    return () => {
+      const content = slots.default?.()
+      return props.open
+        ? h('div', { 'data-testid': 'stub-drawer' }, [
         h('button', { type: 'button', onClick: () => emit('update:open', false) }, 'Drawer close'),
-        slots.default?.(),
+        content,
       ])
-      : null
+        : null
+    }
   },
 })
 
@@ -320,12 +324,18 @@ export const StubDateRangeFilter = defineComponent({
         disabled: props.disabled,
         onInput: (event: Event) => emit('update:toDate', (event.target as HTMLInputElement).value),
       }),
+      h('button', { type: 'button', onClick: () => emit('update:fromDate', null) }, 'Clear range start'),
+      h('button', { type: 'button', onClick: () => emit('update:toDate', null) }, 'Clear range end'),
     ])
   },
 })
 
 export const StubReportComposerPanel = defineComponent({
   props: {
+    modelValue: {
+      type: Object as PropType<Record<string, unknown> | null>,
+      default: null,
+    },
     selectedVariantCode: {
       type: String,
       default: '',
@@ -340,6 +350,8 @@ export const StubReportComposerPanel = defineComponent({
     },
   },
   emits: [
+    'update:modelValue',
+    'filter-query',
     'update:selectedVariantCode',
     'create-variant',
     'edit-variant',
@@ -367,11 +379,15 @@ export const StubReportComposerPanel = defineComponent({
       h('button', { type: 'button', onClick: () => emit('delete-variant') }, 'Composer delete variant'),
       h('button', { type: 'button', onClick: () => emit('reset-variant') }, 'Composer reset variant'),
       h('button', { type: 'button', onClick: () => emit('load-variant') }, 'Composer load variant'),
+      h('button', { type: 'button', onClick: () => emit('update:modelValue', props.modelValue) }, 'Composer keep draft'),
+      h('button', { type: 'button', onClick: () => emit('filter-query', { fieldCode: 'missing', query: 'none' }) }, 'Composer query missing filter'),
       h('button', { type: 'button', onClick: () => emit('run') }, 'Composer run'),
       h('button', { type: 'button', onClick: () => emit('close') }, 'Composer close'),
     ])
   },
 })
+
+export const reportSheetHandleOverrides: { value: Record<string, unknown> | null } = { value: null }
 
 export const StubReportSheet = defineComponent({
   props: {
@@ -387,6 +403,7 @@ export const StubReportSheet = defineComponent({
       type: Boolean,
       default: false,
     },
+    canLoadPrevious: { type: Boolean, default: false },
     canLoadMore: {
       type: Boolean,
       default: false,
@@ -420,19 +437,23 @@ export const StubReportSheet = defineComponent({
       default: '',
     },
   },
-  emits: ['load-more', 'scroll-top-change'],
+  emits: ['load-more', 'load-previous', 'group-action', 'scroll-top-change'],
   setup(props, { emit, expose }) {
     const restoredScrollTop = ref(0)
 
     expose({
+      getScrollTop() { return restoredScrollTop.value },
+      prefixHeight(count: number) { return count * 32 },
       restoreScrollTop(value: number) {
         restoredScrollTop.value = value
       },
+      ...reportSheetHandleOverrides.value,
     })
 
     return () => h('div', { 'data-testid': 'stub-report-sheet' }, [
       h('div', `rows:${props.sheet?.rows?.length ?? 0}`),
       h('div', `loaded:${props.loadedCount}`),
+      h('div', `first:${props.sheet?.rows[0]?.cells[0]?.display ?? ''}`),
       h('div', `total:${props.totalCount ?? 'none'}`),
       h('div', `loading:${String(props.loading)}`),
       h('div', `loading-more:${String(props.loadingMore)}`),
@@ -443,6 +464,13 @@ export const StubReportSheet = defineComponent({
       h('div', `back-target:${props.backTarget || 'none'}`),
       h('div', `restored-scroll-top:${restoredScrollTop.value}`),
       h('button', { type: 'button', onClick: () => emit('scroll-top-change', 120) }, 'Report sheet scroll'),
+      props.canLoadPrevious
+        ? h('button', { type: 'button', onClick: () => emit('load-previous') }, 'Load previous') : null,
+      ...(props.sheet?.rows ?? []).map(row => h('div', `row:${row.cells[0]?.display ?? ''}`)),
+      ...(props.sheet?.rows ?? []).filter(row => row.group).map(row => {
+        const group = row.group!
+        return h('button', { type: 'button', onClick: () => emit('group-action', group.id, 'toggle') }, group.expanded ? 'Collapse group' : 'Expand group')
+      }),
       props.canLoadMore
         ? h('button', { type: 'button', onClick: () => emit('load-more') }, 'Load more')
         : null,

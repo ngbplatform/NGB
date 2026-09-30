@@ -146,14 +146,10 @@ public sealed class ReferenceRegisterIndependentWriteService(
 
         var reg = await GetIndependentRegisterOrThrowAsync(registerId, ct);
 
-        // IMPORTANT (deadlock prevention):
-        // Acquire the per-register schema lock before *any* reads from the physical records table.
-        // Otherwise, we can deadlock with concurrent EnsureSchema:
-        // - Tx A (writer) reads from refreg_*__records (AccessShare), then later tries to acquire schema advisory lock.
-        // - Tx B (EnsureSchema) holds schema advisory lock and tries to take an AccessExclusive DDL lock on the same table.
-        //   => classic cycle (A waits for advisory lock; B waits for table lock held by A).
-        // Holding the schema lock for the whole transaction prevents DDL from racing with writer reads.
-        await recordsStore.EnsureSchemaAsync(registerId, ct);
+        // Check the physical shape before the first records-table read. Healthy schemas only use a
+        // read-only catalog query; drift repair acquires the schema advisory lock before table access.
+        // No later operation in this transaction attempts to upgrade to the schema lock.
+        await recordsStore.EnsureReadyForWriteAsync(registerId, ct);
 
         // Serialize writes for the same key.
         await keyLock.LockKeyAsync(registerId, dimensionSetId, ct);
@@ -197,17 +193,16 @@ public sealed class ReferenceRegisterIndependentWriteService(
         // Audit principle (same as Operational Registers):
         // - document-based RR writes are covered by document.* audit events
         // - Independent-mode writes must emit a high-level audit event (per command), not per physical row.
-        var recordedAsOfUtc = startedAtUtc;
-
+        // The key lock is held. Read the transaction-visible state rather than comparing
+        // database-generated recorded timestamps with the application clock.
         var effectiveAsOfUtc = reg.Periodicity == ReferenceRegisterPeriodicity.NonPeriodic
-            ? recordedAsOfUtc
+            ? startedAtUtc
             : periodUtc!.Value;
 
-        var old = await recordsReader.SliceLastForEffectiveMomentAsync(
+        var old = await recordsReader.SliceLastForWriteAsync(
             registerId,
             dimensionSetId,
             effectiveAsOfUtc,
-            recordedAsOfUtc,
             recorderDocumentId: null,
             ct);
         
@@ -281,7 +276,7 @@ public sealed class ReferenceRegisterIndependentWriteService(
         var reg = await GetIndependentRegisterOrThrowAsync(registerId, ct);
 
         // See UpsertByDimensionSetIdCoreAsync for the deadlock rationale.
-        await recordsStore.EnsureSchemaAsync(registerId, ct);
+        await recordsStore.EnsureReadyForWriteAsync(registerId, ct);
 
         // Serialize writes for the same key.
         await keyLock.LockKeyAsync(registerId, dimensionSetId, ct);
@@ -311,13 +306,10 @@ public sealed class ReferenceRegisterIndependentWriteService(
         // If no version exists (or the latest is already deleted), this is a safe no-op.
         // Persistence reader returns the latest version for the key (including tombstones).
         // We need the last values to satisfy NOT NULL columns when appending a tombstone.
-        var recordedAsOfUtc = startedAtUtc;
-
-        var last = await recordsReader.SliceLastForEffectiveMomentAsync(
+        var last = await recordsReader.SliceLastForWriteAsync(
             registerId,
             dimensionSetId,
             effectiveAsOfUtc: asOfUtc,
-            recordedAsOfUtc: recordedAsOfUtc,
             recorderDocumentId: null,
             ct);
 

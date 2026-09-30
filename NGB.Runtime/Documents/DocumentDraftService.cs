@@ -10,6 +10,7 @@ using NGB.Runtime.Documents.Validation;
 using NGB.Runtime.Documents.Numbering;
 using NGB.Runtime.Documents.Policies;
 using NGB.Runtime.Documents.Workflow;
+using NGB.Runtime.Locks;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
@@ -32,9 +33,11 @@ internal sealed class DocumentDraftService(
     IDocumentNumberingPolicyResolver numberingPolicies,
     IDocumentTypeRegistry documentTypes,
     IAuditLogService audit,
-    TimeProvider timeProvider)
-    : IDocumentDraftService
+    TimeProvider timeProvider,
+    IDocumentNumberBatchAllocator? numberBatchAllocator = null)
+    : IDocumentDraftBatchService
 {
+    private const int MaxCreateBatchSize = 1_000;
     private const string OpUpdateDraft = "DocumentDraft.UpdateDraft";
     private const string OpDeleteDraft = "DocumentDraft.DeleteDraft";
 
@@ -65,11 +68,225 @@ internal sealed class DocumentDraftService(
             async innerCt =>
             {
                 var now = timeProvider.GetUtcNowDateTime();
-                await CreateInCurrentTransactionAsync(id, typeCode, normalizedNumber, dateUtc, now, suppressAudit, innerCt);
+                await CreateInCurrentTransactionAsync(
+                    id,
+                    typeCode,
+                    normalizedNumber,
+                    dateUtc,
+                    now,
+                    suppressAudit,
+                    acquireLock: true,
+                    ct: innerCt);
+
                 return id;
             },
             ct);
     }
+
+    public async Task<IReadOnlyList<Guid>> CreateDraftsAsync(
+        IReadOnlyList<DocumentDraftCreateRequest> requests,
+        bool manageTransaction = true,
+        bool suppressAudit = false,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(requests);
+
+        if (requests.Count == 0)
+            return [];
+
+        if (requests.Count > MaxCreateBatchSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(requests),
+                requests.Count,
+                $"At most {MaxCreateBatchSize} drafts are allowed per batch.");
+        }
+
+        var prepared = new PreparedDraft[requests.Count];
+        for (var index = 0; index < requests.Count; index++)
+        {
+            var request = requests[index]
+                ?? throw new NgbArgumentInvalidException(nameof(requests), "Draft batch must not contain null items.");
+
+            if (string.IsNullOrWhiteSpace(request.TypeCode))
+                throw new NgbArgumentRequiredException(nameof(requests));
+
+            request.DateUtc.EnsureUtc(nameof(requests));
+            if (documentTypes.TryGet(request.TypeCode) is null)
+                throw new DocumentTypeNotFoundException(request.TypeCode);
+
+            prepared[index] = new PreparedDraft(
+                Guid.CreateVersion7(),
+                request.TypeCode,
+                string.IsNullOrWhiteSpace(request.Number) ? null : request.Number.Trim(),
+                request.DateUtc);
+        }
+
+        return await uow.ExecuteInUowTransactionAsync(manageTransaction, async innerCt =>
+            {
+                var now = timeProvider.GetUtcNowDateTime();
+                var requiresIndividualNumbering = prepared
+                    .Where(item => item.Number is null
+                        && numberingPolicies.Resolve(item.TypeCode)?.EnsureNumberOnCreateDraft == true)
+                    .ToArray();
+                var individuallyNumberedIds = requiresIndividualNumbering
+                    .Select(static item => item.Id)
+                    .ToHashSet();
+                var batchable = prepared
+                    .Where(item => !individuallyNumberedIds.Contains(item.Id))
+                    .ToArray();
+
+                // Mixed batches must use one global lock order. Locking the batchable
+                // subset first and auto-numbered drafts afterwards can otherwise invert
+                // the order seen by another transaction and create a deadlock cycle.
+                await advisoryLocks.LockDocumentsDeterministicallyAsync(
+                    prepared.Select(static item => item.Id).ToArray(),
+                    innerCt);
+
+                if (requiresIndividualNumbering.Length > 0 && numberBatchAllocator is not null)
+                {
+                    // Preserve the single-create contract: validators observe the requested
+                    // draft before an automatically allocated number is applied.
+                    await ValidatePreparedDraftsAsync(prepared, now, innerCt);
+
+                    var assignedNumbers = await numberBatchAllocator.AllocateAsync(
+                        requiresIndividualNumbering.Select(static item =>
+                                new DocumentNumberAllocationRequest(item.Id, item.TypeCode, item.DateUtc))
+                            .ToArray(),
+                        innerCt);
+
+                    var numberedBatch = prepared
+                        .Select(item => assignedNumbers.TryGetValue(item.Id, out var assigned)
+                            ? item with { Number = assigned }
+                            : item)
+                        .ToArray();
+
+                    if (assignedNumbers.Count != requiresIndividualNumbering.Length
+                        || numberedBatch.Any(item => individuallyNumberedIds.Contains(item.Id)
+                            && string.IsNullOrWhiteSpace(item.Number)))
+                    {
+                        throw new NgbInvariantViolationException(
+                            "Document number batch allocator did not return one number for every requested draft.");
+                    }
+
+                    await CreateBatchInCurrentTransactionAsync(
+                        numberedBatch,
+                        now,
+                        suppressAudit,
+                        innerCt,
+                        validate: false);
+
+                    return prepared.Select(static item => item.Id).ToArray();
+                }
+
+                if (batchable.Length > 0)
+                {
+                    await CreateBatchInCurrentTransactionAsync(
+                        batchable,
+                        now,
+                        suppressAudit,
+                        innerCt);
+                }
+
+                foreach (var item in requiresIndividualNumbering)
+                {
+                    await CreateInCurrentTransactionAsync(
+                        item.Id,
+                        item.TypeCode,
+                        item.Number,
+                        item.DateUtc,
+                        now,
+                        suppressAudit,
+                        acquireLock: false,
+                        ct: innerCt);
+                }
+
+                return (IReadOnlyList<Guid>)prepared.Select(static item => item.Id).ToArray();
+            },
+            ct);
+    }
+
+    private async Task CreateBatchInCurrentTransactionAsync(
+        IReadOnlyList<PreparedDraft> prepared,
+        DateTime now,
+        bool suppressAudit,
+        CancellationToken ct,
+        bool validate = true)
+    {
+        var records = BuildDraftRecords(prepared, now);
+
+        if (validate)
+            await ValidateDraftsAsync(records, ct);
+
+        if (documents is IDocumentDraftBatchRepository batchRepository)
+        {
+            await batchRepository.CreateDraftsAsync(records, ct);
+        }
+        else
+        {
+            foreach (var record in records)
+            {
+                await documents.CreateAsync(record, ct);
+            }
+        }
+
+        foreach (var group in records.GroupBy(static record => record.TypeCode, StringComparer.OrdinalIgnoreCase))
+        {
+            await writeEngine.EnsureDraftStorageCreatedManyAsync(
+                group.Select(static record => record.Id).ToArray(),
+                group.Key,
+                acquireLocks: false,
+                ct);
+        }
+
+        if (suppressAudit)
+            return;
+
+        await audit.WriteBatchAsync(
+            records.Select(record => new AuditLogWriteRequest(
+                    AuditEntityKind.Document,
+                    record.Id,
+                    AuditActionCodes.DocumentCreateDraft,
+                    BuildCreateDraftChanges(record.TypeCode, record.Number, record.DateUtc),
+                    new
+                    {
+                        typeCode = record.TypeCode,
+                        number = record.Number,
+                        dateUtc = record.DateUtc
+                    }))
+                .ToArray(),
+            ct);
+    }
+
+    private async Task ValidatePreparedDraftsAsync(IReadOnlyList<PreparedDraft> prepared, DateTime now, CancellationToken ct)
+        => await ValidateDraftsAsync(BuildDraftRecords(prepared, now), ct);
+
+    private async Task ValidateDraftsAsync(IReadOnlyList<DocumentRecord> records, CancellationToken ct)
+    {
+        foreach (var record in records)
+        {
+            foreach (var validator in validators.ResolveDraftValidators(record.TypeCode))
+            {
+                await validator.ValidateCreateDraftAsync(record, ct);
+            }
+        }
+    }
+
+    private static DocumentRecord[] BuildDraftRecords(
+        IReadOnlyList<PreparedDraft> prepared,
+        DateTime now)
+        => prepared
+            .Select(item => new DocumentRecord
+            {
+                Id = item.Id,
+                TypeCode = item.TypeCode,
+                Number = item.Number,
+                DateUtc = item.DateUtc,
+                Status = DocumentStatus.Draft,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            })
+            .ToArray();
 
     public async Task<bool> UpdateDraftAsync(
         Guid documentId,
@@ -249,9 +466,11 @@ internal sealed class DocumentDraftService(
         DateTime dateUtc,
         DateTime nowUtc,
         bool suppressAudit,
+        bool acquireLock,
         CancellationToken ct)
     {
-        await advisoryLocks.LockDocumentAsync(id, ct);
+        if (acquireLock)
+            await advisoryLocks.LockDocumentAsync(id, ct);
 
         var numberingPolicy = numberingPolicies.Resolve(typeCode);
 
@@ -316,4 +535,24 @@ internal sealed class DocumentDraftService(
                 ct: ct);
         }
     }
+
+    private static IReadOnlyList<AuditFieldChange> BuildCreateDraftChanges(
+        string typeCode,
+        string? number,
+        DateTime dateUtc)
+    {
+        var changes = new List<AuditFieldChange>
+        {
+            AuditLogService.Change("type_code", null, typeCode),
+            AuditLogService.Change("date_utc", null, dateUtc),
+            AuditLogService.Change("status", null, DocumentStatus.Draft)
+        };
+
+        if (!string.IsNullOrWhiteSpace(number))
+            changes.Add(AuditLogService.Change("number", null, number));
+
+        return changes;
+    }
+
+    private sealed record PreparedDraft(Guid Id, string TypeCode, string? Number, DateTime DateUtc);
 }

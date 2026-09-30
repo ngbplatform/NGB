@@ -6,6 +6,8 @@ public interface IPlatformRoleRepository
 {
     Task<IReadOnlyList<PlatformRole>> GetAllAsync(CancellationToken ct = default);
 
+    Task<IReadOnlyList<PlatformRoleListRecord>> GetListAsync(int limit, CancellationToken ct = default);
+
     Task<PlatformRole?> GetByIdAsync(Guid roleId, CancellationToken ct = default);
 
     Task<PlatformRole?> GetByCodeAsync(string code, CancellationToken ct = default);
@@ -23,3 +25,5 @@ public interface IPlatformRoleRepository
 
     Task<IReadOnlyDictionary<Guid, int>> GetAssignedUserCountsAsync(CancellationToken ct = default);
 }
+
+public sealed record PlatformRoleListRecord(PlatformRole Role, int AssignedUserCount);

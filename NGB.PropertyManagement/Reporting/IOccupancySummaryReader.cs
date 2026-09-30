@@ -8,4 +8,16 @@ public interface IOccupancySummaryReader
         int offset,
         int limit,
         CancellationToken ct = default);
+
+    async Task<OccupancySummaryPage> GetCursorPageAsync(
+        Guid? buildingId,
+        DateOnly asOfUtc,
+        OccupancySummaryPageCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.Offset ?? 0;
+        var page = await GetPageAsync(buildingId, asOfUtc, offset, limit, ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
 }

@@ -150,4 +150,20 @@ describe('entity editor business context', () => {
     await nextTick()
     expect(syncComputedDisplayMock).toHaveBeenCalledTimes(1)
   })
+
+  it('handles profiles without optional tags, watches, or model hooks', async () => {
+    resolveProfileMock.mockReturnValue({})
+
+    const { state, business } = createHarness()
+
+    expect(business.tags.value).toEqual([])
+    expect(business.hasTag(null as never)).toBe(false)
+    state.docMeta.value = null
+    expect(business.hasDocumentTables.value).toBe(false)
+
+    state.typeCode.value = 'pm.credit_note'
+    await nextTick()
+    expect(sanitizeModelForEditingMock).not.toHaveBeenCalled()
+    expect(syncComputedDisplayMock).not.toHaveBeenCalled()
+  })
 })

@@ -13,8 +13,8 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// <summary>
 /// P0: Reference Registers admin endpoint should surface physical schema health for per-register tables.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegisterAdminEndpoint_PhysicalSchemaHealth_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegisterAdminEndpoint_PhysicalSchemaHealth_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

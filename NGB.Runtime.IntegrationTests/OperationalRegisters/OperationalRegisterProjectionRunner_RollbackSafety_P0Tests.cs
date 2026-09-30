@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterProjectionRunner_RollbackSafety_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -470,6 +470,7 @@ public sealed class OperationalRegisterProjectionRunner_RollbackSafety_P0Tests(P
     private sealed class ThrowingAfterWriteProjector(
         ProjectorState state,
         ProjectorCallLog log,
+        IUnitOfWork uow,
         IOperationalRegisterTurnoversStore turnovers,
         IOperationalRegisterBalancesStore balances)
         : IOperationalRegisterMonthProjector
@@ -479,7 +480,7 @@ public sealed class OperationalRegisterProjectionRunner_RollbackSafety_P0Tests(P
         public async Task RebuildMonthAsync(OperationalRegisterMonthProjectionContext context, CancellationToken ct = default)
         {
             // Runner must execute projector inside the same transaction.
-            context.UnitOfWork.EnsureActiveTransaction();
+            uow.EnsureActiveTransaction();
 
             if (state.NonEmptySetId == Guid.Empty)
                 throw new XunitException("Test misconfiguration: NonEmptySetId is empty.");
@@ -522,6 +523,7 @@ public sealed class OperationalRegisterProjectionRunner_RollbackSafety_P0Tests(P
         ProjectorState state,
         ProjectorCallLog log,
         CancelAfterWriteTrigger trigger,
+        IUnitOfWork uow,
         IOperationalRegisterTurnoversStore turnovers,
         IOperationalRegisterBalancesStore balances)
         : IOperationalRegisterMonthProjector
@@ -531,7 +533,7 @@ public sealed class OperationalRegisterProjectionRunner_RollbackSafety_P0Tests(P
         public async Task RebuildMonthAsync(OperationalRegisterMonthProjectionContext context, CancellationToken ct = default)
         {
             // Runner must execute projector inside the same transaction.
-            context.UnitOfWork.EnsureActiveTransaction();
+            uow.EnsureActiveTransaction();
 
             if (state.NonEmptySetId == Guid.Empty)
                 throw new XunitException("Test misconfiguration: NonEmptySetId is empty.");

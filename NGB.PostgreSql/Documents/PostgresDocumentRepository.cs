@@ -9,7 +9,7 @@ using NGB.Tools.Extensions;
 
 namespace NGB.PostgreSql.Documents;
 
-public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepository
+public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentDraftBatchRepository
 {
     public async Task CreateAsync(DocumentRecord doc, CancellationToken ct = default)
     {
@@ -64,6 +64,65 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
         await uow.Connection.ExecuteAsync(cmd);
     }
 
+    public async Task CreateDraftsAsync(IReadOnlyList<DocumentRecord> drafts, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(drafts);
+
+        if (drafts.Count == 0)
+            return;
+
+        foreach (var draft in drafts)
+        {
+            if (string.IsNullOrWhiteSpace(draft.TypeCode))
+                throw new NgbArgumentRequiredException(nameof(drafts));
+
+            if (draft.Status != DocumentStatus.Draft || draft.PostedAtUtc is not null || draft.MarkedForDeletionAtUtc is not null)
+                throw new NgbArgumentInvalidException(nameof(drafts), "Batch document insertion accepts Draft rows only.");
+
+            draft.DateUtc.EnsureUtc(nameof(drafts));
+            draft.CreatedAtUtc.EnsureUtc(nameof(drafts));
+            draft.UpdatedAtUtc.EnsureUtc(nameof(drafts));
+        }
+
+        await uow.EnsureOpenForTransactionAsync(ct);
+
+        const string sql = """
+INSERT INTO documents(
+    id, type_code, number, date_utc,
+    status, posted_at_utc, marked_for_deletion_at_utc,
+    version, created_at_utc, updated_at_utc)
+SELECT
+    source.id, source.type_code, source.number, source.date_utc,
+    @DraftStatus, NULL, NULL,
+    source.version, source.created_at_utc, source.updated_at_utc
+FROM UNNEST(
+    @Ids::uuid[],
+    @TypeCodes::text[],
+    @Numbers::text[],
+    @DatesUtc::timestamptz[],
+    @Versions::bigint[],
+    @CreatedAtUtc::timestamptz[],
+    @UpdatedAtUtc::timestamptz[])
+AS source(id, type_code, number, date_utc, version, created_at_utc, updated_at_utc);
+""";
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                Ids = drafts.Select(static draft => draft.Id).ToArray(),
+                TypeCodes = drafts.Select(static draft => draft.TypeCode).ToArray(),
+                Numbers = drafts.Select(static draft => draft.Number).ToArray(),
+                DatesUtc = drafts.Select(static draft => draft.DateUtc).ToArray(),
+                Versions = drafts.Select(static draft => draft.Version).ToArray(),
+                CreatedAtUtc = drafts.Select(static draft => draft.CreatedAtUtc).ToArray(),
+                UpdatedAtUtc = drafts.Select(static draft => draft.UpdatedAtUtc).ToArray(),
+                DraftStatus = (short)DocumentStatus.Draft
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+    }
+
     public async Task<DocumentRecord?> GetAsync(Guid documentId, CancellationToken ct = default)
     {
         await uow.EnsureConnectionOpenAsync(ct);
@@ -89,6 +148,43 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
         return row?.ToRecord();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, DocumentRecord>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+
+        var ids = documentIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, DocumentRecord>();
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    id AS Id,
+    type_code AS TypeCode,
+    number AS Number,
+    date_utc AS DateUtc,
+    status AS Status,
+    version AS Version,
+    created_at_utc AS CreatedAtUtc,
+    updated_at_utc AS UpdatedAtUtc,
+    posted_at_utc AS PostedAtUtc,
+    marked_for_deletion_at_utc AS MarkedForDeletionAtUtc
+FROM documents
+WHERE id = ANY(@Ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync<DocumentRow>(
+            new CommandDefinition(sql, new { Ids = ids }, transaction: uow.Transaction, cancellationToken: ct));
+
+        return rows.ToDictionary(static row => row.Id, static row => row.ToRecord());
+    }
+
+    // Registry identifiers never change. NO KEY UPDATE still serializes document writers,
+    // while allowing the KEY SHARE locks taken by action-execution foreign keys.
+    // FOR UPDATE would deadlock when concurrent actions insert their execution rows first.
     public async Task<DocumentRecord?> GetForUpdateAsync(Guid documentId, CancellationToken ct = default)
     {
         await uow.EnsureOpenForTransactionAsync(ct);
@@ -107,12 +203,49 @@ public sealed class PostgresDocumentRepository(IUnitOfWork uow) : IDocumentRepos
                                marked_for_deletion_at_utc AS MarkedForDeletionAtUtc
                            FROM documents
                            WHERE id = @Id
-                           FOR UPDATE;
+                           FOR NO KEY UPDATE;
                            """;
 
         var cmd = new CommandDefinition(sql, new { Id = documentId }, transaction: uow.Transaction, cancellationToken: ct);
         var row = await uow.Connection.QuerySingleOrDefaultAsync<DocumentRow>(cmd);
+
         return row?.ToRecord();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, DocumentRecord>> GetForUpdateByIdsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+
+        var ids = documentIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, DocumentRecord>();
+
+        await uow.EnsureOpenForTransactionAsync(ct);
+
+        const string sql = """
+SELECT
+    id AS Id,
+    type_code AS TypeCode,
+    number AS Number,
+    date_utc AS DateUtc,
+    status AS Status,
+    version AS Version,
+    created_at_utc AS CreatedAtUtc,
+    updated_at_utc AS UpdatedAtUtc,
+    posted_at_utc AS PostedAtUtc,
+    marked_for_deletion_at_utc AS MarkedForDeletionAtUtc
+FROM documents
+WHERE id = ANY(@Ids)
+ORDER BY id
+FOR NO KEY UPDATE;
+""";
+
+        var rows = await uow.Connection.QueryAsync<DocumentRow>(
+            new CommandDefinition(sql, new { Ids = ids }, transaction: uow.Transaction, cancellationToken: ct));
+
+        return rows.ToDictionary(static row => row.Id, static row => row.ToRecord());
     }
 
     public async Task UpdateStatusAsync(

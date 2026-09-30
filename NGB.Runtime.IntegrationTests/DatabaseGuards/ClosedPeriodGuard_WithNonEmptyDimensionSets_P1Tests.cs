@@ -16,8 +16,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 ///   instead of the intended closed-period error.
 /// - This verifies the closed-period guard is the effective stop regardless of non-empty DimensionSetId.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ClosedPeriodGuard_WithNonEmptyDimensionSets_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ClosedPeriodGuard_WithNonEmptyDimensionSets_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly Period = ReportingTestHelpers.Period; // 2026-01-01

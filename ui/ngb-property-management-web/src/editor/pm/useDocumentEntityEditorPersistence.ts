@@ -23,38 +23,59 @@ export function useDocumentEntityEditorPersistence(args: PmEntityEditorPersisten
   }
 
   async function load() {
+    const typeCode = args.typeCode.value
+    const id = args.currentId.value
+    const isNew = args.isNew.value
+    const isCurrent = () => args.typeCode.value === typeCode
+      && args.currentId.value === id
+      && args.isNew.value === isNew
+
     args.catalogMeta.value = null
     args.catalogItem.value = null
-    args.docMeta.value = await args.ensureDocumentMetadata(args.typeCode.value)
+    const metadataPromise = args.ensureDocumentMetadata(typeCode)
 
-    if (args.isNew.value) {
-      args.doc.value = null
-      args.docEffects.value = null
-      args.model.value = {}
-      ensureModelKeys(args.docMeta.value.form, args.model.value)
-      applyInitialFieldValues(args.model.value, args.initialFields.value)
+    if (isNew) {
+      const metadata = await metadataPromise
+      if (!isCurrent()) return
+      const nextModel: typeof args.model.value = {}
+      ensureModelKeys(metadata.form, nextModel)
+      applyInitialFieldValues(nextModel, args.initialFields.value)
       await hydrateEntityReferenceFieldsForEditing({
-        entityTypeCode: args.typeCode.value,
-        form: args.docMeta.value.form,
-        model: args.model.value,
+        entityTypeCode: typeCode,
+        form: metadata.form,
+        model: nextModel,
         lookupStore: args.lookupStore,
       })
+      if (!isCurrent()) return
+
+      args.docMeta.value = metadata
+      args.doc.value = null
+      args.docEffects.value = null
+      args.model.value = nextModel
       syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value)
       args.leaseEditor.applyInitialParts(args.initialParts.value)
       args.resetInitialSnapshot()
       return
     }
 
-    const { document } = await getDocumentEditorState(args.typeCode.value, args.currentId.value!)
-    args.doc.value = document
-    setModelFromFields(args.model, document.payload?.fields)
-    ensureModelKeys(args.docMeta.value.form, args.model.value)
+    const [metadata, editorState] = await Promise.all([
+      metadataPromise,
+      getDocumentEditorState(typeCode, id!),
+    ])
+    const { document } = editorState
+    const nextModel: typeof args.model.value = { ...(document.payload?.fields ?? {}) }
+    ensureModelKeys(metadata.form, nextModel)
     await hydrateEntityReferenceFieldsForEditing({
-      entityTypeCode: args.typeCode.value,
-      form: args.docMeta.value.form,
-      model: args.model.value,
+      entityTypeCode: typeCode,
+      form: metadata.form,
+      model: nextModel,
       lookupStore: args.lookupStore,
     })
+    if (!isCurrent()) return
+
+    args.docMeta.value = metadata
+    args.doc.value = document
+    args.model.value = nextModel
     syncNgbEditorComputedDisplay(args.currentEditorContext(), args.model.value)
     args.leaseEditor.applyPersistedParts(document.payload?.parts)
     args.resetInitialSnapshot()

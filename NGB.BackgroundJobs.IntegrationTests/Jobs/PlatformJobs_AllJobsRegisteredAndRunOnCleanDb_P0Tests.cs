@@ -4,6 +4,8 @@ using NGB.BackgroundJobs.Catalog;
 using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.IntegrationTests.Infrastructure;
+using NGB.BackgroundJobs.PostgreSql;
+using NGB.BackgroundJobs.PostgreSql.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
 using Xunit;
@@ -55,14 +57,16 @@ public sealed class PlatformJobs_AllJobsRegisteredAndRunOnCleanDb_P0Tests(Hangfi
 
         services.AddLogging();
         services.AddNgbPostgres(connectionString);
+        services.AddNgbPostgresBackgroundJobsAdapter();
         services.AddNgbRuntime();
 
         // Note: we intentionally compose the full BackgroundJobs module to catch DI regressions.
         // We do not start a Host here, so Hangfire Server hosted service will not run.
-        services.AddPlatformBackgroundJobsHangfire(o =>
+        services.AddPlatformBackgroundJobsHangfire(
+            PostgresHangfireJobStorageFactory.Create(connectionString, "hangfire", true),
+            o =>
         {
             o.ConnectionString = connectionString;
-            o.PrepareSchemaIfNecessary = true;
             o.WorkerCount = 1;
         });
 

@@ -9,8 +9,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
-public sealed class PlatformSchema_DetectsMissingCriticalIndex_P4_4_Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PlatformSchema_DetectsMissingCriticalIndex_P4_4_Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

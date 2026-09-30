@@ -15,8 +15,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Catalogs;
 
-[Collection(PostgresCollection.Name)]
-public sealed class CatalogService_ReadPathOptimization_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class CatalogService_ReadPathOptimization_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string CatalogCode = "it_cat_read_path";
@@ -77,6 +77,37 @@ public sealed class CatalogService_ReadPathOptimization_P1Tests(PostgresTestFixt
             CancellationToken.None);
 
         lookup.Should().ContainSingle(x => x.Id == orphanId && x.Label == orphanId.ToString("D"));
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(8, true)]
+    public async Task Seek_first_page_and_continuations_preserve_missing_heads(int limit, bool includeTotal)
+    {
+        await EnsureCleanCatalogAsync(Fixture.ConnectionString);
+        using var host = CreateHost();
+        await using var scope = host.Services.CreateAsyncScope();
+        var svc = scope.ServiceProvider.GetRequiredService<ICatalogService>();
+        var drafts = scope.ServiceProvider.GetRequiredService<ICatalogDraftService>();
+        var expected = new List<Guid>();
+        foreach (var name in new[] { "Alpha", "Beta", "Gamma" })
+            expected.Add((await svc.CreateAsync(CatalogCode, new RecordPayload(new Dictionary<string, JsonElement>
+                { ["name"] = JsonSerializer.SerializeToElement(name) }), CancellationToken.None)).Id);
+        expected.Add(await drafts.CreateAsync(CatalogCode, ct: CancellationToken.None));
+        var found = new List<Guid>();
+        string? cursor = null;
+        for (var n = 0; n < 5; n++)
+        {
+            var page = await svc.GetPageAsync(CatalogCode, new PageRequestDto(0, limit)
+                { Cursor = cursor, IncludeTotal = includeTotal && n == 0 }, CancellationToken.None);
+            page.Total.Should().Be(includeTotal && n == 0 ? 4 : null);
+            found.AddRange(page.Items.Select(x => x.Id));
+            if (!page.HasMore) break;
+            page.NextCursor.Should().NotBeNullOrEmpty().And.NotBe(cursor);
+            cursor = page.NextCursor;
+        }
+        found.Should().Equal(expected);
     }
 
     private static async Task EnsureCleanCatalogAsync(string connectionString)

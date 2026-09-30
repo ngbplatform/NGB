@@ -10,7 +10,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Maintenance;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AccountingRebuildService_ClosedPeriod_NoSideEffects_P1Tests(PostgresTestFixture fixture)
 {
     private PostgresTestFixture Fixture { get; } = fixture;

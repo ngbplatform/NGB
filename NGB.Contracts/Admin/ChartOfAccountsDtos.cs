@@ -26,7 +26,8 @@ public sealed record ChartOfAccountsPageRequestDto(
     IReadOnlyList<string>? AccountTypes = null,
     bool IncludeDeleted = false,
     bool? OnlyActive = null,
-    bool? OnlyDeleted = null);
+    bool? OnlyDeleted = null,
+    string? Cursor = null);
 
 public sealed record ChartOfAccountsAccountDto(
     Guid AccountId,
@@ -43,7 +44,8 @@ public sealed record ChartOfAccountsPageDto(
     IReadOnlyList<ChartOfAccountsAccountDto> Items,
     int Offset,
     int Limit,
-    int? Total);
+    int? Total,
+    string? NextCursor = null);
 
 public sealed record ChartOfAccountsUpsertRequestDto(
     string Code,

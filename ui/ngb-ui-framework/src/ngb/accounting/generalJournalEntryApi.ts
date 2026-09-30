@@ -1,4 +1,5 @@
 import { httpGet, httpPost, httpPut } from '../api/http';
+import type { HttpRequestOptions } from '../api/http';
 import type {
   CreateGeneralJournalEntryDraftRequestDto,
   GeneralJournalEntryAccountContextDto,
@@ -26,6 +27,7 @@ export type GetGeneralJournalEntryPageArgs = {
 
 export async function getGeneralJournalEntryPage(
   args: GetGeneralJournalEntryPageArgs,
+  options?: HttpRequestOptions,
 ): Promise<GeneralJournalEntryPageDto> {
   const q = new URLSearchParams();
   q.set('offset', String(args.offset ?? 0));
@@ -34,12 +36,17 @@ export async function getGeneralJournalEntryPage(
   if (args.dateFrom) q.set('dateFrom', args.dateFrom);
   if (args.dateTo) q.set('dateTo', args.dateTo);
   if (args.trash) q.set('trash', args.trash);
-  const qs = q.toString();
-  return await httpGet<GeneralJournalEntryPageDto>(`${base}${qs ? `?${qs}` : ''}`);
+  const url = `${base}?${q.toString()}`;
+  return options
+    ? await httpGet<GeneralJournalEntryPageDto>(url, undefined, options)
+    : await httpGet<GeneralJournalEntryPageDto>(url);
 }
 
-export async function getGeneralJournalEntry(id: string): Promise<GeneralJournalEntryDetailsDto> {
-  return await httpGet<GeneralJournalEntryDetailsDto>(`${base}/${encodeURIComponent(id)}`);
+export async function getGeneralJournalEntry(id: string, options?: HttpRequestOptions): Promise<GeneralJournalEntryDetailsDto> {
+  const url = `${base}/${encodeURIComponent(id)}`;
+  return options
+    ? await httpGet<GeneralJournalEntryDetailsDto>(url, undefined, options)
+    : await httpGet<GeneralJournalEntryDetailsDto>(url);
 }
 
 export async function createGeneralJournalEntryDraft(
@@ -99,8 +106,15 @@ export async function reverseGeneralJournalEntry(
 
 export async function getGeneralJournalEntryAccountContext(
   accountId: string,
+  options?: HttpRequestOptions,
 ): Promise<GeneralJournalEntryAccountContextDto> {
-  return await httpGet<GeneralJournalEntryAccountContextDto>(`${base}/accounts/${encodeURIComponent(accountId)}`);
+  const url = `${base}/accounts/${encodeURIComponent(accountId)}`;
+  if (!options) return await httpGet<GeneralJournalEntryAccountContextDto>(url);
+  return await httpGet<GeneralJournalEntryAccountContextDto>(
+    url,
+    undefined,
+    options,
+  );
 }
 
 export async function markGeneralJournalEntryForDeletion(id: string): Promise<GeneralJournalEntryDetailsDto> {

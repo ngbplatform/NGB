@@ -1,6 +1,7 @@
 using Dapper;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.CashFlow;
+using NGB.Accounting.PostingState;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
 using NGB.Tools.Exceptions;
@@ -50,30 +51,57 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         var latestClosed = await GetLatestClosedPeriodsAsync(beginningAsOfDate, toInclusive, ct);
         var lineDefinitions = await LoadLineDefinitionsAsync(ct);
 
-        var openingRows = await LoadBalanceStateRowsAsync(beginningAsOfDate, latestClosed.BeginningLatestClosedPeriod, ct);
-        var closingRows = await LoadBalanceStateRowsAsync(toInclusive, latestClosed.EndingLatestClosedPeriod, ct);
-
-        var combined = new Dictionary<Guid, MutableBalanceRow>();
-        foreach (var row in openingRows)
+        var combined = new Dictionary<(CashFlowRole Role, string? Line), MutableBalanceRow>();
+        if (latestClosed.BeginningLatestClosedPeriod is null && latestClosed.EndingLatestClosedPeriod is null)
         {
-            if (!combined.TryGetValue(row.AccountId, out var current))
+            var endpointRows = await LoadBalanceStateInceptionEndpointsAsync(beginningAsOfDate, toInclusive, ct);
+            foreach (var row in endpointRows)
             {
-                current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.AccountName, row.StatementSection, row.CashFlowRole, row.CashFlowLineCode);
-                combined[row.AccountId] = current;
+                var key = (row.CashFlowRole, row.CashFlowLineCode);
+                if (!combined.TryGetValue(key, out var current))
+                {
+                    current = new MutableBalanceRow(
+                        row.AccountCode,
+                        row.CashFlowRole,
+                        row.CashFlowLineCode);
+                    combined[key] = current;
+                }
+                current.OpeningBalance += row.OpeningBalance;
+                current.ClosingBalance += row.ClosingBalance;
             }
-
-            current.OpeningBalance += row.ClosingBalance;
         }
-
-        foreach (var row in closingRows)
+        else
         {
-            if (!combined.TryGetValue(row.AccountId, out var current))
+            var openingRows = await LoadBalanceStateRowsAsync(
+                beginningAsOfDate,
+                latestClosed.BeginningLatestClosedPeriod,
+                ct);
+            var closingRows = await LoadBalanceStateRowsAsync(
+                toInclusive,
+                latestClosed.EndingLatestClosedPeriod,
+                ct);
+
+            foreach (var row in openingRows)
             {
-                current = new MutableBalanceRow(row.AccountId, row.AccountCode, row.AccountName, row.StatementSection, row.CashFlowRole, row.CashFlowLineCode);
-                combined[row.AccountId] = current;
+                if (!combined.TryGetValue((row.CashFlowRole, row.CashFlowLineCode), out var current))
+                {
+                    current = new MutableBalanceRow(row.AccountCode, row.CashFlowRole, row.CashFlowLineCode);
+                    combined[(row.CashFlowRole, row.CashFlowLineCode)] = current;
+                }
+
+                current.OpeningBalance += row.ClosingBalance;
             }
 
-            current.ClosingBalance += row.ClosingBalance;
+            foreach (var row in closingRows)
+            {
+                if (!combined.TryGetValue((row.CashFlowRole, row.CashFlowLineCode), out var current))
+                {
+                    current = new MutableBalanceRow(row.AccountCode, row.CashFlowRole, row.CashFlowLineCode);
+                    combined[(row.CashFlowRole, row.CashFlowLineCode)] = current;
+                }
+
+                current.ClosingBalance += row.ClosingBalance;
+            }
         }
 
         var beginningCash = 0m;
@@ -104,7 +132,9 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         var operatingLines = new Dictionary<string, MutableLine>();
         foreach (var wc in workingCapitalLines.Values)
         {
-            AddAmount(operatingLines, wc, wc.Amount);
+            // workingCapitalLines is already grouped by LineCode and operatingLines is
+            // still empty here, so every entry is unique by construction.
+            operatingLines.Add(wc.LineCode, wc);
         }
 
         foreach (var row in pnlRows)
@@ -145,7 +175,12 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
             EndingRollForwardPeriods: latestClosed.EndingLatestClosedPeriod is null
                 ? 0
                 : CountPeriods(latestClosed.EndingLatestClosedPeriod.Value.AddMonths(1), StartOfMonth(toInclusive)),
-            UnclassifiedCashRows: unclassifiedCashRows);
+            UnclassifiedCashRows: unclassifiedCashRows.Select(x => new CashFlowIndirectUnclassifiedCashRow(x.AccountCode, x.AccountName, x.Amount)).ToArray())
+        {
+            UnclassifiedCashRowCount = unclassifiedCashRows.Count == 0
+                ? 0
+                : Math.Max(unclassifiedCashRows[0].TotalCount, unclassifiedCashRows.Count)
+        };
     }
 
     private async Task<LatestClosedPeriodsRow> GetLatestClosedPeriodsAsync(
@@ -224,19 +259,16 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                       GROUP BY AccountId
                   )
                   SELECT
-                      fr.AccountId,
-                      a.code AS AccountCode,
-                      a.name AS AccountName,
-                      a.statement_section AS StatementSection,
+                      MIN(a.code) AS AccountCode,
                       a.cash_flow_role AS CashFlowRole,
                       a.cash_flow_line_code AS CashFlowLineCode,
-                      fr.ClosingBalance AS ClosingBalance
+                      SUM(fr.ClosingBalance) AS ClosingBalance
                   FROM final_rows fr
                   JOIN accounting_accounts a
                     ON a.account_id = fr.AccountId
                    AND a.is_deleted = FALSE
                   WHERE a.cash_flow_role = ANY(@RelevantRoles::smallint[])
-                  ORDER BY a.code;
+                  GROUP BY a.cash_flow_role, a.cash_flow_line_code;
                   """;
 
         return await QueryRowsAsync<BalanceStateRow>(
@@ -249,16 +281,77 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
             ct);
     }
 
+    private async Task<IReadOnlyList<BalanceStateRow>> LoadBalanceStateInceptionEndpointsAsync(
+        DateOnly openingAsOfDate,
+        DateOnly closingAsOfDate,
+        CancellationToken ct)
+    {
+        const string sql = """
+                           WITH endpoint_ledger_rows AS (
+                               SELECT
+                                   r.debit_account_id AS AccountId,
+                                   SUM(CASE
+                                       WHEN r.period < @OpeningToExclusiveUtc THEN r.amount
+                                       ELSE 0::numeric
+                                   END) AS OpeningBalance,
+                                   SUM(r.amount) AS ClosingBalance
+                               FROM accounting_register_main r
+                               WHERE r.period < @ClosingToExclusiveUtc
+                               GROUP BY r.debit_account_id
+
+                               UNION ALL
+
+                               SELECT
+                                   r.credit_account_id AS AccountId,
+                                   SUM(CASE
+                                       WHEN r.period < @OpeningToExclusiveUtc THEN -r.amount
+                                       ELSE 0::numeric
+                                   END) AS OpeningBalance,
+                                   SUM(-r.amount) AS ClosingBalance
+                               FROM accounting_register_main r
+                               WHERE r.period < @ClosingToExclusiveUtc
+                               GROUP BY r.credit_account_id
+                           ),
+                           final_rows AS (
+                               SELECT
+                                   AccountId,
+                                   SUM(OpeningBalance) AS OpeningBalance,
+                                   SUM(ClosingBalance) AS ClosingBalance
+                               FROM endpoint_ledger_rows
+                               GROUP BY AccountId
+                           )
+                           SELECT
+                               MIN(a.code) AS AccountCode,
+                               a.cash_flow_role AS CashFlowRole,
+                               a.cash_flow_line_code AS CashFlowLineCode,
+                               SUM(fr.OpeningBalance) AS OpeningBalance,
+                               SUM(fr.ClosingBalance) AS ClosingBalance
+                           FROM final_rows fr
+                           JOIN accounting_accounts a
+                             ON a.account_id = fr.AccountId
+                            AND a.is_deleted = FALSE
+                           WHERE a.cash_flow_role = ANY(@RelevantRoles::smallint[])
+                           GROUP BY a.cash_flow_role, a.cash_flow_line_code;
+                           """;
+
+        return await QueryRowsAsync<BalanceStateRow>(
+            sql,
+            new
+            {
+                OpeningToExclusiveUtc = ToExclusiveUtc(openingAsOfDate),
+                ClosingToExclusiveUtc = ToExclusiveUtc(closingAsOfDate),
+                RelevantRoles = BalanceRoles
+            },
+            ct);
+    }
+
     private async Task<IReadOnlyList<BalanceStateRow>> LoadBalanceStateSnapshotOnlyRowsAsync(
         DateOnly snapshotPeriod,
         CancellationToken ct)
     {
         var sql = """
                   SELECT
-                      b.account_id AS AccountId,
-                      a.code AS AccountCode,
-                      a.name AS AccountName,
-                      a.statement_section AS StatementSection,
+                      MIN(a.code) AS AccountCode,
                       a.cash_flow_role AS CashFlowRole,
                       a.cash_flow_line_code AS CashFlowLineCode,
                       SUM(b.closing_balance) AS ClosingBalance
@@ -268,8 +361,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                    AND a.is_deleted = FALSE
                   WHERE b.period = @SnapshotPeriod::date
                     AND a.cash_flow_role = ANY(@RelevantRoles::smallint[])
-                  GROUP BY b.account_id, a.code, a.name, a.statement_section, a.cash_flow_role, a.cash_flow_line_code
-                  ORDER BY a.code;
+                  GROUP BY a.cash_flow_role, a.cash_flow_line_code;
                   """;
 
         return await QueryRowsAsync<BalanceStateRow>(
@@ -337,18 +429,16 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                       GROUP BY combined.AccountId
                   )
                   SELECT
-                      fr.AccountId,
-                      a.code AS AccountCode,
-                      a.name AS AccountName,
-                      a.statement_section AS StatementSection,
+                      MIN(a.code) AS AccountCode,
                       a.cash_flow_role AS CashFlowRole,
                       a.cash_flow_line_code AS CashFlowLineCode,
-                      fr.ClosingBalance AS ClosingBalance
+                      SUM(fr.ClosingBalance) AS ClosingBalance
                   FROM final_rows fr
                   JOIN accounting_accounts a
                     ON a.account_id = fr.AccountId
                    AND a.is_deleted = FALSE
-                  ORDER BY a.code;
+                  WHERE a.cash_flow_role = ANY(@RelevantRoles::smallint[])
+                  GROUP BY a.cash_flow_role, a.cash_flow_line_code;
                   """;
 
         return await QueryRowsAsync<BalanceStateRow>(
@@ -377,6 +467,10 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                       FROM accounting_register_main r
                       WHERE r.period >= @FromUtc
                         AND r.period < @ToExclusiveUtc
+                        AND NOT EXISTS (
+                            SELECT 1 FROM accounting_posting_state close
+                            WHERE close.document_id = r.document_id AND close.operation = @ClosingOperation
+                        )
                       GROUP BY r.debit_account_id
 
                       UNION ALL
@@ -388,6 +482,10 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                       FROM accounting_register_main r
                       WHERE r.period >= @FromUtc
                         AND r.period < @ToExclusiveUtc
+                        AND NOT EXISTS (
+                            SELECT 1 FROM accounting_posting_state close
+                            WHERE close.document_id = r.document_id AND close.operation = @ClosingOperation
+                        )
                       GROUP BY r.credit_account_id
                   ),
                   final_rows AS (
@@ -399,18 +497,16 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                       GROUP BY AccountId
                   )
                   SELECT
-                      a.code AS AccountCode,
-                      a.name AS AccountName,
-                      a.statement_section AS StatementSection,
+                      MIN(a.code) AS AccountCode,
                       a.cash_flow_role AS CashFlowRole,
                       a.cash_flow_line_code AS CashFlowLineCode,
-                      (fr.CreditAmount - fr.DebitAmount) AS NetMovement
+                      SUM(fr.CreditAmount - fr.DebitAmount) AS NetMovement
                   FROM final_rows fr
                   JOIN accounting_accounts a
                     ON a.account_id = fr.AccountId
                    AND a.is_deleted = FALSE
                   WHERE a.statement_section = ANY(@ProfitAndLossSections::smallint[])
-                  ORDER BY a.code;
+                  GROUP BY a.cash_flow_role, a.cash_flow_line_code;
                   """;
 
         return await QueryRowsAsync<ProfitAndLossRangeRow>(
@@ -419,7 +515,8 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
             {
                 FromUtc = StartOfDayUtc(fromInclusive),
                 ToExclusiveUtc = ToExclusiveUtc(toInclusive),
-                ProfitAndLossSections
+                ProfitAndLossSections,
+                ClosingOperation = (short)PostingOperation.CloseFiscalYear
             },
             ct);
     }
@@ -513,7 +610,7 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
             .ToArray();
     }
 
-    private async Task<IReadOnlyList<CashFlowIndirectUnclassifiedCashRow>> LoadUnclassifiedCashRowsAsync(
+    private async Task<IReadOnlyList<UnclassifiedCashRow>> LoadUnclassifiedCashRowsAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,
         CancellationToken ct)
@@ -564,14 +661,16 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
                   SELECT
                       AccountCode,
                       AccountName,
-                      SUM(Amount) AS Amount
+                      SUM(Amount) AS Amount,
+                      COUNT(*) OVER ()::integer AS TotalCount
                   FROM cash_rows
                   GROUP BY AccountCode, AccountName
                   HAVING SUM(Amount) <> 0
-                  ORDER BY AccountCode;
+                  ORDER BY AccountCode
+                  LIMIT 50;
                   """;
 
-        return await QueryRowsAsync<CashFlowIndirectUnclassifiedCashRow>(
+        return await QueryRowsAsync<UnclassifiedCashRow>(
             sql,
             new
             {
@@ -646,20 +745,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
         current.Amount += amount;
     }
 
-    private static void AddAmount(IDictionary<string, MutableLine> target, MutableLine source, decimal amount)
-    {
-        if (amount == 0m)
-            return;
-
-        if (!target.TryGetValue(source.LineCode, out var current))
-        {
-            current = new MutableLine(source.LineCode, source.Label, source.SortOrder);
-            target[source.LineCode] = current;
-        }
-
-        current.Amount += amount;
-    }
-
     private async Task<IReadOnlyList<T>> QueryRowsAsync<T>(string sql, object args, CancellationToken ct)
     {
         await uow.EnsureConnectionOpenAsync(ct);
@@ -701,20 +786,16 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
 
     private sealed class BalanceStateRow
     {
-        public Guid AccountId { get; init; }
         public string AccountCode { get; init; } = string.Empty;
-        public string AccountName { get; init; } = string.Empty;
-        public StatementSection StatementSection { get; init; }
         public CashFlowRole CashFlowRole { get; init; }
         public string? CashFlowLineCode { get; init; }
+        public decimal OpeningBalance { get; init; }
         public decimal ClosingBalance { get; init; }
     }
 
     private sealed class ProfitAndLossRangeRow
     {
         public string AccountCode { get; init; } = string.Empty;
-        public string AccountName { get; init; } = string.Empty;
-        public StatementSection StatementSection { get; init; }
         public CashFlowRole CashFlowRole { get; init; }
         public string? CashFlowLineCode { get; init; }
         public decimal NetMovement { get; init; }
@@ -740,21 +821,23 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
     }
 
     private sealed class MutableBalanceRow(
-        Guid accountId,
         string accountCode,
-        string accountName,
-        StatementSection statementSection,
         CashFlowRole cashFlowRole,
         string? cashFlowLineCode)
     {
-        public Guid AccountId { get; } = accountId;
         public string AccountCode { get; } = accountCode;
-        public string AccountName { get; } = accountName;
-        public StatementSection StatementSection { get; } = statementSection;
         public CashFlowRole CashFlowRole { get; } = cashFlowRole;
         public string? CashFlowLineCode { get; } = cashFlowLineCode;
         public decimal OpeningBalance { get; set; }
         public decimal ClosingBalance { get; set; }
+    }
+
+    private sealed class UnclassifiedCashRow
+    {
+        public string AccountCode { get; init; } = string.Empty;
+        public string AccountName { get; init; } = string.Empty;
+        public decimal Amount { get; init; }
+        public int TotalCount { get; init; }
     }
 
     private sealed class MutableLine(string lineCode, string label, int sortOrder)

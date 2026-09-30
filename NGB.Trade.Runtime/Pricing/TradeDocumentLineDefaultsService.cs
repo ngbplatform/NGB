@@ -15,12 +15,25 @@ public sealed class TradeDocumentLineDefaultsService(
     IUnitOfWork uow,
     TimeProvider timeProvider)
 {
+    internal const int MaxRowsPerRequest = 500;
+
     public async Task<TradeDocumentLineDefaultsResponseDto> ResolveAsync(
         TradeDocumentLineDefaultsRequestDto request,
         CancellationToken ct)
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
+
+        if (request.Rows is null)
+            throw new NgbArgumentRequiredException(nameof(request.Rows));
+
+        if (request.Rows.Count > MaxRowsPerRequest)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(request.Rows),
+                request.Rows.Count,
+                $"At most {MaxRowsPerRequest:N0} rows are allowed per request.");
+        }
 
         var documentType = NormalizeDocumentType(request.DocumentType);
         var rows = request.Rows

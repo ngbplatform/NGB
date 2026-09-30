@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using NGB.Persistence.Documents;
 using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Catalogs;
@@ -7,14 +9,17 @@ using NGB.PropertyManagement.BackgroundJobs;
 using NGB.PostgreSql.Documents;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.PostgreSql.BackgroundJobs;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.PostgreSql.Catalogs;
 using NGB.PropertyManagement.PostgreSql.Documents;
 using NGB.PropertyManagement.PostgreSql.Payables;
 using NGB.PropertyManagement.PostgreSql.Receivables;
 using NGB.PropertyManagement.PostgreSql.Reporting;
+using NGB.PropertyManagement.PostgreSql.Seeding;
 using NGB.PropertyManagement.Payables;
 using NGB.PropertyManagement.Receivables;
 using NGB.PropertyManagement.Reporting;
+using NGB.PropertyManagement.Catalogs;
+using NGB.PropertyManagement.Seeding;
 
 namespace NGB.PropertyManagement.PostgreSql.DependencyInjection;
 
@@ -23,7 +28,7 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
     public static IServiceCollection AddPropertyManagementPostgresModule(this IServiceCollection services)
     {
         // IMPORTANT: do NOT use TryAddEnumerable with factory-based registrations; it can't deduplicate them.
-        services.AddScoped<PropertyManagementSecuritySeeder>();
+        services.AddScoped<IPropertyUnitNumberReader, PostgresPropertyUnitNumberReader>();
 
         // Most PM catalogs are simple head-only tables => use the generic PostgresHeadCatalogTypeStorage.
         services.AddScoped<ICatalogTypeStorage>(sp =>
@@ -90,8 +95,17 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
         services.AddScoped<IPostgresDocumentListFilterSqlContributor, PropertyManagementDocumentListFilterSqlContributor>();
 
         // Posting handlers need fast typed reads for posting.
-        services.AddScoped<IPropertyManagementDocumentReaders, PropertyManagementDocumentReaders>();
+        services.AddScoped<PropertyManagementDocumentReaders>();
+        services.AddScoped<IPropertyManagementPostingBatchHeadReader>(sp => sp.GetRequiredService<PropertyManagementDocumentReaders>());
+        services.AddScoped<IPropertyManagementDocumentReaders>(sp =>
+        {
+            var inner = sp.GetRequiredService<PropertyManagementDocumentReaders>();
+            var cache = sp.GetService<IDocumentPostingReadCache>();
+            return cache is null ? inner : new PostingCachedPropertyManagementDocumentReaders(inner, cache);
+        });
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentPostingBatchReadPrefetcher, PropertyManagementPostingBatchReadPrefetcher>());
         services.AddScoped<IPropertyManagementRentChargeGenerationReader, PropertyManagementRentChargeGenerationReader>();
+        services.AddScoped<IPropertyManagementDemoSeedReadStore, PostgresPropertyManagementDemoSeedReadStore>();
 
         // Receivables read/report services (PostgreSQL).
         services.AddScoped<IReceivablesReconciliationService, PostgresReceivablesReconciliationService>();
@@ -101,9 +115,15 @@ public static class PropertyManagementPostgresModuleServiceCollectionExtensions
 
         // PM building and occupancy summary report readers (PostgreSQL).
         services.AddScoped<IBuildingSummaryReader, PostgresBuildingSummaryReader>();
-        services.AddScoped<IOccupancySummaryReader, PostgresOccupancySummaryReader>();
-        services.AddScoped<IMaintenanceQueueReader, PostgresMaintenanceQueueReader>();
+        services.AddScoped<PostgresOccupancySummaryReader>();
+        services.AddScoped<IOccupancySummaryReader>(sp => sp.GetRequiredService<PostgresOccupancySummaryReader>());
+        services.AddScoped<IOccupancySummaryReportReader>(sp => sp.GetRequiredService<PostgresOccupancySummaryReader>());
+        services.AddScoped<PostgresMaintenanceQueueReader>();
+        services.AddScoped<IMaintenanceQueueReader>(sp => sp.GetRequiredService<PostgresMaintenanceQueueReader>());
+        services.AddScoped<IMaintenanceQueueStreamReader>(sp => sp.GetRequiredService<PostgresMaintenanceQueueReader>());
         services.AddScoped<ITenantStatementReader, PostgresTenantStatementReader>();
+        services.AddScoped<IReceivablesReportReader, PostgresReceivablesReportReader>();
+        services.AddScoped<IPropertyManagementDashboardReader, PostgresPropertyManagementDashboardReader>();
 
         // PM-specific reporting dataset bindings.
         services.AddSingleton<IPostgresReportDatasetSource, PmAccountingLedgerAnalysisPostgresDatasetSource>();

@@ -35,6 +35,6 @@ public sealed class ReportPermissionDefinitionSource(IReportDefinitionProvider r
         => action
             .Replace('_', ' ')
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(static x => x.Length == 0 ? x : char.ToUpperInvariant(x[0]) + x[1..])
+            .Select(static x => char.ToUpperInvariant(x[0]) + x[1..])
             .Aggregate((a, b) => $"{a} {b}");
 }

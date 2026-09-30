@@ -20,14 +20,13 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// - FK to documents (both ends)
 /// - unique triplet (from, relationship_code_norm, to) with case-insensitive normalization
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentRelationships_Constraints_Enforced_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentRelationships_Constraints_Enforced_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task RelationshipCode_CheckConstraints_AreEnforced()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var fromId = Guid.CreateVersion7();
@@ -105,7 +104,6 @@ public sealed class DocumentRelationships_Constraints_Enforced_P0Tests(PostgresT
     [Fact]
     public async Task NotSelf_UniqueTriplet_And_ForeignKeys_AreEnforced()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var fromId = Guid.CreateVersion7();

@@ -10,6 +10,7 @@ using NGB.Definitions.Documents.Validation;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Locks;
 using NGB.Persistence.OperationalRegisters;
+using NGB.Runtime.Locks;
 using NGB.Tools.Exceptions;
 
 namespace NGB.AgencyBilling.Runtime.Documents.Validation;
@@ -56,10 +57,22 @@ public sealed class CustomerPaymentPostValidator(
             .OrderBy(x => x)
             .ToArray();
 
-        foreach (var invoiceId in invoiceIds)
-        {
-            await locks.LockDocumentAsync(invoiceId, ct);
-        }
+        await locks.LockDocumentsDeterministicallyAsync(invoiceIds, ct);
+
+        var invoiceDocuments = await documents.GetByIdsAsync(invoiceIds, ct);
+        var invoiceHeads = await readers.ReadSalesInvoiceHeadsAsync(invoiceIds, ct);
+        var dimensionSetByInvoiceId = invoiceHeads.ToDictionary(
+            static pair => pair.Key,
+            static pair => DeterministicDimensionSetId.FromBag(
+                AgencyBillingPostingCommon.ArOpenItemBag(
+                    pair.Value.ClientId,
+                    pair.Value.ProjectId,
+                    pair.Value.DocumentId)));
+        var openAmounts = await netReader.GetNetByDimensionSetsAsync(
+            arOpenItemsRegister.RegisterId,
+            dimensionSetByInvoiceId.Values.ToArray(),
+            resourceColumnCode: "amount",
+            ct);
 
         var totalApplied = 0m;
         var groupedApplies = applies
@@ -68,8 +81,7 @@ public sealed class CustomerPaymentPostValidator(
 
         foreach (var (invoiceId, invoiceApplies) in groupedApplies)
         {
-            var invoiceDocument = await documents.GetAsync(invoiceId, ct);
-            if (invoiceDocument is null
+            if (!invoiceDocuments.TryGetValue(invoiceId, out var invoiceDocument)
                 || !string.Equals(invoiceDocument.TypeCode, AgencyBillingCodes.SalesInvoice, StringComparison.OrdinalIgnoreCase))
             {
                 throw new NgbArgumentInvalidException("applies", "Referenced sales invoice was not found.");
@@ -78,7 +90,9 @@ public sealed class CustomerPaymentPostValidator(
             if (invoiceDocument.Status != DocumentStatus.Posted)
                 throw new NgbArgumentInvalidException("applies", "Referenced sales invoice must be posted.");
 
-            var invoice = await readers.ReadSalesInvoiceHeadAsync(invoiceId, ct);
+            if (!invoiceHeads.TryGetValue(invoiceId, out var invoice))
+                throw new NgbConfigurationViolationException($"Sales Invoice document '{invoiceId}' is missing its Agency Billing head row.");
+
             if (invoice.ClientId != payment.ClientId)
                 throw new NgbArgumentInvalidException("applies", "Payment client must match the client on every applied sales invoice.");
 
@@ -91,13 +105,8 @@ public sealed class CustomerPaymentPostValidator(
                 invoiceAppliedAmount = AgencyBillingPostingCommon.RoundScale4(invoiceAppliedAmount + apply.AppliedAmount);
             }
 
-            var dimensionSetId = DeterministicDimensionSetId.FromBag(
-                AgencyBillingPostingCommon.ArOpenItemBag(invoice.ClientId, invoice.ProjectId, invoice.DocumentId));
-            var openAmount = await netReader.GetNetByDimensionSetAsync(
-                arOpenItemsRegister.RegisterId,
-                dimensionSetId,
-                resourceColumnCode: "amount",
-                ct);
+            var dimensionSetId = dimensionSetByInvoiceId[invoiceId];
+            openAmounts.TryGetValue(dimensionSetId, out var openAmount);
 
             if (invoiceAppliedAmount > AgencyBillingPostingCommon.RoundScale4(openAmount))
             {

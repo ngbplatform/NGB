@@ -18,6 +18,8 @@ public sealed class AccountCardLinePageRequest : PageSizeBase
     /// </summary>
     public DimensionScopeBag? DimensionScopes { get; init; }
 
+    public bool IncludePrefixDelta { get; init; }
+
     public AccountCardLineCursor? Cursor { get; init; }
 
     /// <summary>

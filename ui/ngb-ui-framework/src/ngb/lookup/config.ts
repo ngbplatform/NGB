@@ -2,7 +2,10 @@ import type { Awaitable, LookupItem } from '../metadata/types'
 
 export type LookupSearchOptions = {
   filters?: Record<string, string>
+  signal?: AbortSignal
 }
+
+export type LookupRequestOptions = { signal?: AbortSignal }
 
 export type ResolvedDocumentLookupItem = LookupItem & {
   documentType: string
@@ -13,11 +16,11 @@ export type LookupFrameworkConfig = {
   searchCatalog: (catalogType: string, query: string, options?: LookupSearchOptions) => Awaitable<LookupItem[]>
   loadCoaItem: (id: string) => Awaitable<LookupItem | null>
   loadCoaItemsByIds: (ids: string[]) => Awaitable<LookupItem[]>
-  searchCoa: (query: string) => Awaitable<LookupItem[]>
+  searchCoa: (query: string, options?: LookupRequestOptions) => Awaitable<LookupItem[]>
   loadDocumentItem: (documentType: string, id: string) => Awaitable<LookupItem | null>
   loadDocumentItemsByIds: (documentTypes: string[], ids: string[]) => Awaitable<ResolvedDocumentLookupItem[]>
-  searchDocument: (documentType: string, query: string) => Awaitable<LookupItem[]>
-  searchDocumentsAcrossTypes: (documentTypes: string[], query: string) => Awaitable<ResolvedDocumentLookupItem[]>
+  searchDocument: (documentType: string, query: string, options?: LookupRequestOptions) => Awaitable<LookupItem[]>
+  searchDocumentsAcrossTypes: (documentTypes: string[], query: string, options?: LookupRequestOptions) => Awaitable<ResolvedDocumentLookupItem[]>
   buildCatalogUrl: (catalogType: string, id: string) => string
   buildCoaUrl: (id: string) => string
   buildDocumentUrl: (documentType: string, id: string) => string

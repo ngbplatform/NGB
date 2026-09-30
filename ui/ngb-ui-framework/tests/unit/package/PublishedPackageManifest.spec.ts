@@ -19,7 +19,7 @@ describe('published @ngbplatform/ui manifest', () => {
     expect(published.files).toContain('src')
     expect(Object.keys(published.exports).sort()).toEqual(Object.keys(sourceManifest.exports).sort())
 
-    for (const subpath of ['./contracts', './editor', './layout', './navigation', './work-center']) {
+    for (const subpath of ['./contracts', './editor', './layout', './lazy', './navigation', './work-center']) {
       const publishedExport = published.exports[subpath]
       expect(publishedExport, `${subpath} must be part of the published public API`).toBeDefined()
       const sourcePath = typeof publishedExport === 'string' ? publishedExport : publishedExport.import

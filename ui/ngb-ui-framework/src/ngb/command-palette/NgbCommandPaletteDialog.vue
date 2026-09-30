@@ -45,17 +45,12 @@
                       :aria-expanded="store.hasResults"
                       :aria-controls="listboxId"
                       :aria-activedescendant="activeDescendantId"
-                      @input="store.setQuery(String(($event.target as HTMLInputElement)?.value ?? ''))"
+                      @input="store.setQuery(($event.target as HTMLInputElement).value)"
                       @keydown="onInputKeyDown"
                     />
 
                     <span class="hidden items-center gap-1 md:flex">
-                      <template v-if="isMac">
-                        <span class="ngb-kbd">⌘</span>
-                      </template>
-                      <template v-else>
-                        <span class="ngb-kbd">Ctrl</span>
-                      </template>
+                      <span class="ngb-kbd">{{ primaryModifier }}</span>
                       <span class="ngb-kbd">K</span>
                     </span>
                   </div>
@@ -173,12 +168,10 @@ import NgbCommandPaletteFooterHints from './NgbCommandPaletteFooterHints.vue'
 const store = useCommandPaletteStore()
 const inputRef = ref<HTMLInputElement | null>(null)
 const lastFocusedElement = ref<HTMLElement | null>(null)
-let restoreFocusTimer: number | null = null
 
 const listboxId = 'ngb-command-palette-listbox'
 const placeholder = 'Search pages, records, reports, or run a command…'
-const isMac = /Mac|iPhone|iPad|iPod/i.test(String(globalThis.navigator?.platform ?? ''))
-const primaryModifier = computed(() => (isMac ? '⌘' : 'Ctrl'))
+const primaryModifier = ['Ctrl', '⌘'][Number(/Mac|iPhone|iPad|iPod/i.test(globalThis.navigator.platform))]!
 
 function onDocumentFocusIn(event: FocusEvent): void {
   if (store.isOpen) return
@@ -214,7 +207,7 @@ const scopeBadgeLabel = computed<string | null>(() => {
 })
 
 const liveRegionText = computed(() => {
-  if (store.hasRemoteError) return store.remoteError ?? 'Remote search is unavailable.'
+  if (store.hasRemoteError) return store.remoteError!
   if (store.showRemoteLoading) return 'Updating remote results.'
   if (store.groups.length === 0) return store.cleanQuery ? `No results for ${store.cleanQuery}.` : 'Showing command palette shortcuts.'
   return `${flatItems.value.length} results available.`
@@ -223,26 +216,13 @@ const liveRegionText = computed(() => {
 watch(
   () => store.isOpen,
   async (open) => {
-    if (open) {
-      if (restoreFocusTimer) {
-        window.clearTimeout(restoreFocusTimer)
-        restoreFocusTimer = null
-      }
+    if (!open) return
 
-      const activeElement = document.activeElement
-      if (activeElement instanceof HTMLElement && activeElement !== document.body)
-        lastFocusedElement.value = activeElement
-      await nextTick()
-      focusInput(true)
-      return
-    }
-
-    const restoreTarget = lastFocusedElement.value
-    restoreFocusTimer = window.setTimeout(() => {
-      restoreFocusTimer = null
-      if (store.isOpen) return
-      restoreTarget?.focus?.()
-    }, 180)
+    const activeElement = document.activeElement
+    if (activeElement instanceof HTMLElement && activeElement !== document.body)
+      lastFocusedElement.value = activeElement
+    await nextTick()
+    focusInput()
   },
 )
 
@@ -251,7 +231,7 @@ watch(
   async () => {
     if (!store.isOpen) return
     await nextTick()
-    focusInput(true)
+    focusInput()
   },
 )
 
@@ -264,27 +244,19 @@ watch(
   },
 )
 
-function focusInput(selectAll = false, attempt = 0): void {
+function focusInput(attempt = 0): void {
   inputRef.value?.focus()
-  if (selectAll) inputRef.value?.select()
+  inputRef.value?.select()
   window.setTimeout(() => {
     if (!store.isOpen) return
     if (document.activeElement === inputRef.value) return
     if (attempt >= 4) return
-    focusInput(selectAll, attempt + 1)
+    focusInput(attempt + 1)
   }, attempt === 0 ? 0 : 16)
 }
 
 function restoreLastFocus(): void {
-  if (store.isOpen) return
-  if (restoreFocusTimer) {
-    window.clearTimeout(restoreFocusTimer)
-    restoreFocusTimer = null
-  }
-  window.setTimeout(() => {
-    if (store.isOpen) return
-    lastFocusedElement.value?.focus?.()
-  }, 0)
+  lastFocusedElement.value?.focus()
 }
 
 onMounted(() => {
@@ -300,9 +272,7 @@ function isActive(key: string): boolean {
 }
 
 function setActive(key: string): void {
-  const index = indexByKey.value.get(key)
-  if (index == null) return
-  store.setActiveIndex(index)
+  store.setActiveIndex(indexByKey.value.get(key)!)
 }
 
 function optionId(key: string): string {

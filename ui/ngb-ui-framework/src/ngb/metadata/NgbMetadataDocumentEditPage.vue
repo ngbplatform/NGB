@@ -42,7 +42,7 @@ const closeTo = computed(() => {
   return props.resolveCloseTo?.(documentType.value) ?? buildEntityFallbackCloseTarget('document', documentType.value)
 })
 
-const copyDraftToken = computed(() => (!idParam.value ? normalizeQueryString(route.query.copyDraft) : null))
+const copyDraftToken = computed(() => normalizeQueryString(route.query.copyDraft))
 const copyDraftSnapshot = computed(() =>
   (!idParam.value && documentType.value)
     ? readDocumentCopyDraft(copyDraftToken.value, documentType.value)

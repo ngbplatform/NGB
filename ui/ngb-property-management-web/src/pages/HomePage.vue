@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   buildAccountingPeriodClosingPath,
@@ -11,13 +11,15 @@ import {
   NgbDashboardStatusBanner,
   NgbIcon,
   NgbPageHeader,
-  NgbTrendChart,
   useDashboardPageState,
 } from '@ngbplatform/ui'
+import { loadNgbTrendChart } from '@ngbplatform/ui/lazy'
 
 import { loadHomeDashboard, type HomeDashboardData } from '../home/homeData'
 
 type Tone = 'neutral' | 'warn' | 'danger' | 'success'
+
+const NgbTrendChart = defineAsyncComponent(loadNgbTrendChart)
 
 const router = useRouter()
 
@@ -57,8 +59,7 @@ function openRoute(target: string | null | undefined) {
 }
 
 const collectionsRate = computed(() => {
-  const data = dashboard.value
-  if (!data) return 0
+  const data = dashboard.value!
   const billed = data.receivables.currentMonthBilled
   if (billed <= 0) return 0
   return (data.receivables.currentMonthCollected / billed) * 100
@@ -66,8 +67,7 @@ const collectionsRate = computed(() => {
 
 const currentYear = computed(() => Number.parseInt(asOf.value.slice(0, 4), 10))
 const reconciliationBaseRoute = computed(() => {
-  const data = dashboard.value
-  if (!data) return '/receivables/reconciliation'
+  const data = dashboard.value!
   return `/receivables/reconciliation?fromMonth=${encodeURIComponent(data.monthKey)}&toMonth=${encodeURIComponent(data.monthKey)}&mode=Balance`
 })
 

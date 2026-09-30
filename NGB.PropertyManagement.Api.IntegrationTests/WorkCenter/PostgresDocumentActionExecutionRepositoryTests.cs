@@ -93,6 +93,83 @@ public sealed class PostgresDocumentActionExecutionRepositoryTests(PmIntegration
             .Should().ThrowAsync<NgbArgumentInvalidException>()
             .WithMessage("*cannot exceed 4194304 UTF-8 bytes*");
     }
+    
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Concurrent_actions_with_distinct_keys_serialize_without_foreign_key_lock_upgrade_deadlock(bool batch)
+    {
+        await using var factory = new PmApiFactory(fixture);
+        var documentId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var ct = timeout.Token;
+
+        await using (var seed = factory.Services.CreateAsyncScope())
+        {
+            var uow = seed.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var documents = seed.ServiceProvider.GetRequiredService<IDocumentRepository>();
+            await uow.BeginTransactionAsync(ct);
+            await documents.CreateAsync(new DocumentRecord
+            {
+                Id = documentId,
+                TypeCode = "pm.receivable_payment",
+                Number = "RP-CONCURRENT-ACTIONS",
+                DateUtc = now,
+                Status = DocumentStatus.Draft,
+                Version = 1,
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now
+            }, ct);
+            await uow.CommitAsync(ct);
+        }
+
+        await using var first = factory.Services.CreateAsyncScope();
+        await using var second = factory.Services.CreateAsyncScope();
+        var scopes = new[] { first.ServiceProvider, second.ServiceProvider };
+        var executionIds = new Guid[2];
+        for (var i = 0; i < scopes.Length; i++)
+        {
+            var uow = scopes[i].GetRequiredService<IUnitOfWork>();
+            var executions = scopes[i].GetRequiredService<IDocumentActionExecutionRepository>();
+            await uow.BeginTransactionAsync(ct);
+            var begin = await executions.TryBeginAsync(
+                $"concurrent-{documentId:N}-{i}", FingerprintA, documentId,
+                "pm.receivable_payment", "post", now, ct);
+            begin.Status.Should().Be(DocumentActionExecutionBeginStatus.Begun);
+            executionIds[i] = begin.ExecutionId;
+        }
+
+        // Both inserts now hold a foreign-key KEY SHARE lock on the same parent.
+        // State updates must serialize without upgrading either reference lock to FOR UPDATE.
+        async Task<long> CompleteAsync(int index)
+        {
+            var services = scopes[index];
+            var uow = services.GetRequiredService<IUnitOfWork>();
+            var documents = services.GetRequiredService<IDocumentRepository>();
+            var executions = services.GetRequiredService<IDocumentActionExecutionRepository>();
+            try
+            {
+                var locked = batch
+                    ? (await documents.GetForUpdateByIdsAsync([documentId], ct))[documentId]
+                    : await documents.GetForUpdateAsync(documentId, ct);
+                locked.Should().NotBeNull();
+                var updated = await documents.IncrementVersionAsync(documentId, DateTime.UtcNow, ct);
+                updated.Version.Should().Be(locked!.Version + 1);
+                await executions.MarkCompletedAsync(executionIds[index], "{}", DateTime.UtcNow, ct);
+                await uow.CommitAsync(ct);
+                return updated.Version;
+            }
+            catch
+            {
+                await uow.RollbackAsync(CancellationToken.None);
+                throw;
+            }
+        }
+
+        var versions = await Task.WhenAll(CompleteAsync(0), CompleteAsync(1));
+        versions.Should().BeEquivalentTo(new long[] { 2, 3 });
+    }
 
     [Fact]
     public async Task Supports_begun_in_progress_conflict_completed_and_completion_invariants()

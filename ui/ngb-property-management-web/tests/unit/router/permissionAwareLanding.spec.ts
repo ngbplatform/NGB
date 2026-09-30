@@ -45,4 +45,25 @@ describe('permission-aware landing', () => {
     expect(menuContainsRoute(groups, '/admin/security/users/123')).toBe(true)
     expect(resolvePermissionAwareLanding(groups, '/admin/security/users/123')).toBeNull()
   })
+
+  it('rejects external and empty routes and reports exact and missing menu matches', () => {
+    const groups = [
+      group(10, [['https://example.test/external', 1], ['   ', 2], ['/catalogs/pm.property', 3]]),
+    ]
+
+    expect(findFirstPermittedMenuRoute(groups)).toBe('/catalogs/pm.property')
+    expect(menuContainsRoute(groups, '/catalogs/pm.property')).toBe(true)
+    expect(menuContainsRoute(groups, '/catalogs/pm.party')).toBe(false)
+    expect(menuContainsRoute(groups, 'https://example.test/external')).toBe(false)
+    expect(menuContainsRoute(groups, null as never)).toBe(false)
+    expect(menuContainsRoute([group(1, [['https://example.test/external', 1]])], '/home')).toBe(false)
+    expect(findFirstPermittedMenuRoute([])).toBeNull()
+  })
+
+  it('handles root, already-selected, empty, and external landing targets', () => {
+    expect(resolvePermissionAwareLanding([group(1, [['/catalogs/pm.property', 1]])], '/')).toBe('/catalogs/pm.property')
+    expect(resolvePermissionAwareLanding([group(1, [['/', 1]])], '/')).toBeNull()
+    expect(resolvePermissionAwareLanding([], '/')).toBeNull()
+    expect(resolvePermissionAwareLanding([], 'https://example.test')).toBeNull()
+  })
 })

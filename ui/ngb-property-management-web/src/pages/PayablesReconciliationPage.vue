@@ -60,6 +60,13 @@ const definition = createReconciliationPageDefinition({
   getTotalDiff: (report) => report.totalDiff,
   getRowCount: (report) => report.rowCount,
   getMismatchRowCount: (report) => report.mismatchRowCount,
+  getFilteredRowCount: (report) => report.filteredRowCount,
+  getGlOnlyRowCount: (report) => report.glOnlyRowCount,
+  getOpenItemsOnlyRowCount: (report) => report.openItemsOnlyRowCount,
+  getOffset: (report) => report.offset,
+  getLimit: (report) => report.limit,
+  getHasMore: (report) => report.hasMore,
+  getNextCursor: (report) => report.nextCursor,
 })
 </script>
 

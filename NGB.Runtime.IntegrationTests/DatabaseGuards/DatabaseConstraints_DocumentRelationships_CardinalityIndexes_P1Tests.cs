@@ -14,8 +14,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// indexes (see DocumentRelationshipsCardinalityIndexesMigration) to prevent corruption
 /// even if application validation is bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_DocumentRelationships_CardinalityIndexes_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_DocumentRelationships_CardinalityIndexes_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateTime T0 = new(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc);

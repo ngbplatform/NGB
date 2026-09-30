@@ -12,8 +12,8 @@ const defaultRoutes: NgbNavigationRoutes = {
 
 let navigationConfig: NgbNavigationConfig = {}
 
-function segment(value: string | null | undefined): string {
-  return encodeURIComponent(String(value ?? '').trim())
+function segment(value: string): string {
+  return encodeURIComponent(value)
 }
 
 function documentPath(

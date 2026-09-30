@@ -12,7 +12,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// <summary>
 /// P0: Fail fast on table name collisions (table_code) for operational registers.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegister_TableCodeCollisions_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

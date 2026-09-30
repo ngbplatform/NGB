@@ -97,6 +97,20 @@ public sealed class StatementOfChangesInEquityCanonicalReportExecutor_P0Tests
         realAction.Report.Filters.Should().ContainKeys("account_id", "property_id");
 
         sheet.Rows[1].Cells[0].Action.Should().BeNull();
+
+        var withoutGrandTotal = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(
+                Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["from_utc"] = "2026-01-01",
+                    ["to_utc"] = "2026-03-31"
+                },
+                Layout: new ReportLayoutDto(ShowGrandTotals: false)),
+            CancellationToken.None);
+
+        withoutGrandTotal.PrebuiltSheet!.Rows.Should().HaveCount(2);
+        withoutGrandTotal.PrebuiltSheet.Rows.Should().OnlyContain(row => row.RowKind == ReportRowKind.Detail);
     }
 
     private sealed class StubReportReader(StatementOfChangesInEquityReport report) : IStatementOfChangesInEquityReportReader

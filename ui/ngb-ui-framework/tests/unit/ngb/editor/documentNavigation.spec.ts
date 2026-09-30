@@ -66,12 +66,14 @@ describe('document navigation helpers', () => {
       { key: '  ' },
       {},
     ])
+    expect(navigation.listFormFields(null)).toEqual([])
+    expect(navigation.listFormFields({ sections: [{}, { rows: [{}] }] })).toEqual([])
     expect(navigation.formMetadataFieldKeys({
       sections: [
         {
           rows: [
             {
-              fields: [{ key: 'number' }, { key: ' memo ' }, { key: '' }],
+              fields: [{ key: 'number' }, { key: ' memo ' }, { key: '' }, {}],
             },
           ],
         },
@@ -129,5 +131,15 @@ describe('document navigation helpers', () => {
       'pm.invoice',
       'doc-1',
     )).toBe('/reports/pm.aging')
+
+    expect(navigation.resolveDocumentReopenTarget(
+      {
+        fullPath: '/documents-full/pm.invoice/doc-1/effects',
+        query: {},
+      } as never,
+      'pm.invoice',
+      'doc-1',
+      '/documents/another.document?panel=edit&id=another-id',
+    )).toContain('/documents-full/pm.invoice/doc-1')
   })
 })

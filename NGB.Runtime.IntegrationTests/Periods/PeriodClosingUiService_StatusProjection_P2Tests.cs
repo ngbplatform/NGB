@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class PeriodClosingUiService_StatusProjection_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -83,8 +83,6 @@ public sealed class PeriodClosingUiService_StatusProjection_P2Tests(PostgresTest
     [Fact]
     public async Task GetFiscalYearStatusAsync_ProjectsClosedRetainedEarningsAccount_WhenFiscalYearIsCompleted()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await ReportingTestHelpers.SeedMinimalCoAAsync(host);
 

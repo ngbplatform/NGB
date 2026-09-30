@@ -9,6 +9,7 @@ test.describe('pm-web home page', () => {
     await mockHomeDashboardApis(page)
     await rejectUnhandledApiRequests(page, [
       '/api/main-menu',
+      '/api/dashboard',
       '/api/reports/pm.occupancy.summary/execute',
       '/api/reports/pm.maintenance.queue/execute',
       '/api/documents/pm.lease',

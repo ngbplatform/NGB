@@ -20,14 +20,17 @@ internal sealed class ReferenceRegisterAdminReadService(
         if (list.Count == 0)
             return [];
 
-        // NOTE: The list is expected to be small. For a high-cardinality installation,
-        // a dedicated Postgres admin reader can batch counts in a single query.
+        var registerIds = list.Select(static register => register.RegisterId).ToArray();
+        var fieldCounts = await fields.CountByRegisterIdsAsync(registerIds, ct);
+        var dimensionRuleCounts = await dimensionRules.CountByRegisterIdsAsync(registerIds, ct);
         var result = new List<(ReferenceRegisterAdminItem, int, int)>(list.Count);
+
         foreach (var r in list)
         {
-            var f = await fields.GetByRegisterIdAsync(r.RegisterId, ct);
-            var d = await dimensionRules.GetByRegisterIdAsync(r.RegisterId, ct);
-            result.Add((r, f.Count, d.Count));
+            result.Add((
+                r,
+                fieldCounts.GetValueOrDefault(r.RegisterId),
+                dimensionRuleCounts.GetValueOrDefault(r.RegisterId)));
         }
 
         return result;

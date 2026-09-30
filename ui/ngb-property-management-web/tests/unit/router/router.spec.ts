@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   routerOptions: null as Record<string, unknown> | null,
   guards: [] as Array<(to: Record<string, unknown>) => unknown>,
   auth: { authenticated: false },
-  menu: { groups: [] as unknown[], isLoading: false, load: vi.fn().mockResolvedValue(undefined) },
+  menu: { groups: [] as unknown[], hasLoaded: false, isLoading: false, load: vi.fn().mockResolvedValue(undefined) },
   resolvePermissionAwareLanding: vi.fn(() => null as string | null),
   authGuard: vi.fn(),
 }))
@@ -67,6 +67,7 @@ describe('property-management router', () => {
   beforeEach(() => {
     mocks.auth.authenticated = false
     mocks.menu.groups = []
+    mocks.menu.hasLoaded = false
     mocks.menu.isLoading = false
     mocks.menu.load.mockClear()
     mocks.resolvePermissionAwareLanding.mockReset().mockReturnValue(null)
@@ -93,6 +94,23 @@ describe('property-management router', () => {
     expect(mocks.guards).toHaveLength(2)
   })
 
+  it('resolves every vertical page route lazily', async () => {
+    const routes = mocks.routerOptions!.routes as Array<{ path: string; component?: () => Promise<unknown> }>
+    const paths = [
+      '/home',
+      '/catalogs/pm.accounting_policy',
+      '/catalogs/pm.property',
+      '/receivables/open-items',
+      '/payables/open-items',
+      '/receivables/reconciliation',
+      '/payables/reconciliation',
+    ]
+
+    const components = await Promise.all(paths.map((path) => routes.find((route) => route.path === path)!.component!()))
+
+    expect(components).toEqual(paths.map(() => ({})))
+  })
+
   it('covers bare, anonymous, redirected, loaded, and loading guard paths', async () => {
     const guard = mocks.guards[1]!
     expect(await guard({ meta: { bare: true }, path: '/print' })).toBe(true)
@@ -103,8 +121,10 @@ describe('property-management router', () => {
     expect(mocks.menu.load).toHaveBeenCalledOnce()
     mocks.menu.load.mockClear()
     mocks.menu.groups = [{}]
+    mocks.menu.hasLoaded = true
     expect(await guard({ path: '/allowed' })).toBe(true)
     mocks.menu.groups = []
+    mocks.menu.hasLoaded = false
     mocks.menu.isLoading = true
     expect(await guard({ path: '/allowed' })).toBe(true)
     expect(mocks.menu.load).not.toHaveBeenCalled()

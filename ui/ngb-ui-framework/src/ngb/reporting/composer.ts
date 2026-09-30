@@ -178,7 +178,7 @@ function normalizeMeasureState(definition: ReportDefinitionDto, measures: Report
 }
 
 function buildMeasureLayoutLabelOverride(definition: ReportDefinitionDto, measure: ReportComposerMeasureState): string | null {
-  const aggregation = normalizeAggregationValue(measure.aggregation) ?? resolveDefaultAggregation(definition, measure.measureCode)
+  const aggregation = measure.aggregation!
   const trimmed = String(measure.labelOverride ?? '').trim()
   if (trimmed.length > 0) return trimmed
 
@@ -190,10 +190,6 @@ function normalizeDetailFieldState(detailFields: string[]): string[] {
   return detailFields
     .map((fieldCode) => normalizeCode(fieldCode))
     .filter((fieldCode, index, items) => fieldCode.length > 0 && items.indexOf(fieldCode) === index)
-}
-
-function buildSortStateKey(fieldCode: string, timeGrain: ReportTimeGrain | null): string {
-  return `${fieldCode}|${timeGrain ?? ''}`
 }
 
 function buildAxisSortStateKey(fieldCode: string, timeGrain: ReportTimeGrain | null, appliesToColumnAxis: boolean, groupKey: string | null): string {
@@ -225,7 +221,7 @@ function resolveGroupedSortTimeGrain(
 ): ReportTimeGrain | null | undefined {
   if (groupedTimeGrains.length > 0) {
     if (requestedTimeGrain !== null && groupedTimeGrains.includes(requestedTimeGrain)) return requestedTimeGrain
-    return groupedTimeGrains[0] ?? null
+    return groupedTimeGrains[0]!
   }
 
   if (hasGroupingWithoutTimeGrain) {
@@ -359,7 +355,7 @@ function buildLayoutFromDraft(definition: ReportDefinitionDto, draft: ReportComp
     })),
     measures: measures.map((measure) => ({
       measureCode: measure.measureCode,
-      aggregation: normalizeAggregationValue(measure.aggregation) ?? resolveDefaultAggregation(definition, measure.measureCode),
+      aggregation: measure.aggregation!,
       labelOverride: buildMeasureLayoutLabelOverride(definition, measure) ?? undefined,
     })),
     detailFields,
@@ -505,7 +501,7 @@ export function applyExecutionRequestToDraft(definition: ReportDefinitionDto, re
 
   if (request.parameters) {
     for (const [key, value] of Object.entries(request.parameters)) {
-      next.parameters[key] = String(value ?? '').trim()
+      next.parameters[key] = String(value).trim()
     }
   }
 
@@ -567,9 +563,9 @@ export function applyExecutionRequestToDraft(definition: ReportDefinitionDto, re
 
 export function applyVariantToDraft(definition: ReportDefinitionDto, variant: ReportVariantDto): ReportComposerDraft {
   return applyExecutionRequestToDraft(definition, {
-    layout: variant.layout ?? null,
-    filters: variant.filters ?? null,
-    parameters: variant.parameters ?? null,
+    layout: variant.layout,
+    filters: variant.filters,
+    parameters: variant.parameters,
     variantCode: variant.variantCode,
     offset: 0,
     limit: 500,
@@ -577,7 +573,7 @@ export function applyVariantToDraft(definition: ReportDefinitionDto, variant: Re
 }
 
 export function slugifyVariantCode(name: string): string {
-  const normalized = String(name ?? '')
+  const normalized = String(name)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -600,10 +596,10 @@ export function buildVariantDto(
   return {
     variantCode: options.variantCode,
     reportCode: definition.reportCode,
-    name: String(options.name ?? '').trim(),
-    layout: request.layout ?? null,
-    filters: request.filters ?? null,
-    parameters: request.parameters ?? null,
+    name: String(options.name).trim(),
+    layout: request.layout,
+    filters: request.filters,
+    parameters: request.parameters,
     isDefault: !!options.isDefault,
     isShared: options.isShared !== false,
   }
@@ -880,8 +876,6 @@ function buildBaseExecutionRequest(definition: ReportDefinitionDto, draft: Repor
 
     if (value == null) continue
     if (Array.isArray(value) && value.length === 0) continue
-    if (typeof value === 'string' && value.length === 0) continue
-
     filterEntries.push([field.fieldCode, {
       value,
       includeDescendants: !!state.includeDescendants,
@@ -892,7 +886,7 @@ function buildBaseExecutionRequest(definition: ReportDefinitionDto, draft: Repor
 
   const parameters = Object.fromEntries(
     Object.entries(draft.parameters)
-      .map(([key, value]) => [key, String(value ?? '').trim()])
+      .map(([key, value]) => [key, String(value).trim()])
       .filter(([, value]) => value.length > 0),
   )
 

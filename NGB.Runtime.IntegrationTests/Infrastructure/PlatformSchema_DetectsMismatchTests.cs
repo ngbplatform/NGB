@@ -8,8 +8,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
-public sealed class PlatformSchema_DetectsMismatchTests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PlatformSchema_DetectsMismatchTests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

@@ -10,15 +10,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Accounts;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsManagement_ConcurrentDuplicateCode_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ConcurrentCreateSameCode_OneSucceeds_OtherFails_AndOnlyOneNotDeletedRowExists()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = CreateHost();
 
         // We intentionally avoid using 50/90.1 to not depend on any other test's conventions.

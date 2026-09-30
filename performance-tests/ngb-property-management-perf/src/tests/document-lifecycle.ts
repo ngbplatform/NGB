@@ -8,6 +8,9 @@ export const options = buildBaselineProfile({
   exec: 'documentLifecycle',
   scenarioName: 'document_lifecycle',
   tags: { vertical: 'property-management', scenario: 'pm.document_lifecycle' },
+  diagnosticBreakdowns: ['list', 'open', 'editor_state'].map(operation => ({
+    area: 'documents', operation: `platform.documents.${operation}`, documentType: 'pm.maintenance_request',
+  })),
 });
 
 export function setup(): NgbAuthSetupData {

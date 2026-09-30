@@ -99,11 +99,19 @@ public sealed class PayableApplyOpenItemsOperationalRegisterPostingHandler(
             new DimensionValue(itemDimId, apply.CreditDocumentId)
         ]);
 
-        var chargeDimSetId = await dimensionSets.GetOrCreateIdAsync(chargeBag, ct);
-        var creditDimSetId = await dimensionSets.GetOrCreateIdAsync(creditBag, ct);
+        var dimensionSetIds = await dimensionSets.GetOrCreateIdsAsync([chargeBag, creditBag], ct);
+        if (dimensionSetIds.Count != 2)
+            throw new NgbInvariantViolationException("Dimension set service returned an unexpected number of ids for Payable Apply.");
 
-        var chargeOutstanding = await netReader.GetNetByDimensionSetAsync(reg.RegisterId, chargeDimSetId, resourceColumnCode: "amount", ct);
-        var creditNet = await netReader.GetNetByDimensionSetAsync(reg.RegisterId, creditDimSetId, resourceColumnCode: "amount", ct);
+        var chargeDimSetId = dimensionSetIds[0];
+        var creditDimSetId = dimensionSetIds[1];
+        var netAmounts = await netReader.GetNetByDimensionSetsAsync(
+            reg.RegisterId,
+            dimensionSetIds,
+            resourceColumnCode: "amount",
+            ct);
+        netAmounts.TryGetValue(chargeDimSetId, out var chargeOutstanding);
+        netAmounts.TryGetValue(creditDimSetId, out var creditNet);
 
         if (document.Status == DocumentStatus.Posted)
         {

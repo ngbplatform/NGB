@@ -1,4 +1,4 @@
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import { expect, test } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h, ref } from 'vue'
@@ -41,8 +41,8 @@ const HeaderActionClusterHarness = defineComponent({
                 ],
               },
               {
-                key: 'empty',
-                items: [],
+                key: 'secondary',
+                items: [{ key: 'export', title: 'Export', icon: 'download' }],
               },
             ]
           : [],
@@ -71,6 +71,7 @@ test('emits primary, grouped menu, and close actions while respecting disabled i
   expect(disabledPrimary.disabled).toBe(true)
 
   await view.getByRole('button', { name: 'More actions' }).click()
+  await userEvent.keyboard('{ArrowDown}')
   await expect.element(view.getByText('Document', { exact: true })).toBeVisible()
 
   await expect.element(view.getByText('Share', { exact: true })).toBeVisible()
@@ -78,6 +79,7 @@ test('emits primary, grouped menu, and close actions while respecting disabled i
   expect(disabledMoreAction.disabled).toBe(true)
 
   await expect.element(view.getByText('Open audit log', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('Export', { exact: true })).toBeVisible()
   ;(view.getByText('Open audit log', { exact: true }).element()?.closest('button') as HTMLButtonElement).click()
   await expect.element(view.getByTestId('cluster-state')).toHaveTextContent('actions:save,audit;close:0')
 

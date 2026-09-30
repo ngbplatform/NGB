@@ -1,10 +1,6 @@
-import { markRaw } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
+import { defineAsyncComponent } from 'vue'
 import {
-  NgbMetadataCatalogEditPage,
-  NgbMetadataCatalogListPage,
-  NgbMetadataDocumentEditPage,
-  NgbMetadataDocumentListPage,
   getCatalogPage,
   getDocumentPage,
   type MetadataCatalogEditPageProps,
@@ -13,8 +9,8 @@ import {
   type MetadataDocumentEditPageProps,
   type MetadataDocumentListPageProps,
 } from '@ngbplatform/ui'
+import { loadNgbMetadataCatalogEditPage, loadNgbMetadataCatalogListPage, loadNgbMetadataDocumentEditPage, loadNgbMetadataDocumentListPage } from '@ngbplatform/ui/lazy'
 
-import AgencyBillingEntityEditor from '../editor/AgencyBillingEntityEditor.vue'
 import { getAgencyBillingLookupHint } from '../lookup/hints'
 import { catalogCollectionTitle, documentCollectionTitle } from '../utils/entityCollectionTitles'
 
@@ -23,15 +19,22 @@ export type AgencyBillingRouteFrameworkConfig = {
   documentRoutes: RouteRecordRaw[]
 }
 
-const agencyBillingEntityEditorComponent = markRaw(AgencyBillingEntityEditor)
+function loadAgencyBillingEntityEditor() {
+  return import('../editor/AgencyBillingEntityEditor.vue')
+}
+
+const agencyBillingEntityEditorComponent = defineAsyncComponent(loadAgencyBillingEntityEditor)
 
 function loadAgencyBillingCatalogPage(args: MetadataCatalogListPageLoadArgs) {
-  return getCatalogPage(args.catalogType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
     filters: { deleted: args.trashMode },
-  })
+  }
+  return args.signal
+    ? getCatalogPage(args.catalogType, request, { signal: args.signal })
+    : getCatalogPage(args.catalogType, request)
 }
 
 function resolveAgencyBillingCatalogTitle(catalogType: string, displayName: string): string {
@@ -54,7 +57,7 @@ const agencyBillingCatalogEditPageProps = {
 } satisfies MetadataCatalogEditPageProps
 
 function loadAgencyBillingDocumentPage(args: Parameters<MetadataDocumentListPageProps['loadPage']>[0]) {
-  return getDocumentPage(args.documentType, {
+  const request = {
     offset: args.offset,
     limit: args.limit,
     search: args.search,
@@ -64,7 +67,10 @@ function loadAgencyBillingDocumentPage(args: Parameters<MetadataDocumentListPage
       ...(args.periodTo ? { periodTo: args.periodTo } : {}),
       ...args.listFilters,
     },
-  })
+  }
+  return args.signal
+    ? getDocumentPage(args.documentType, request, { signal: args.signal })
+    : getDocumentPage(args.documentType, request)
 }
 
 function resolveAgencyBillingDocumentTitle(documentType: string, displayName: string): string {
@@ -94,14 +100,14 @@ const agencyBillingDocumentEditPageProps = {
 export function createAgencyBillingRouteFrameworkConfig(): AgencyBillingRouteFrameworkConfig {
   return {
     catalogRoutes: [
-      { path: '/catalogs/:catalogType', component: NgbMetadataCatalogListPage, props: agencyBillingCatalogListPageProps },
-      { path: '/catalogs/:catalogType/new', name: 'CatalogCreate', component: NgbMetadataCatalogEditPage, props: agencyBillingCatalogEditPageProps },
-      { path: '/catalogs/:catalogType/:id', component: NgbMetadataCatalogEditPage, props: agencyBillingCatalogEditPageProps },
+      { path: '/catalogs/:catalogType', component: loadNgbMetadataCatalogListPage, props: agencyBillingCatalogListPageProps },
+      { path: '/catalogs/:catalogType/new', name: 'CatalogCreate', component: loadNgbMetadataCatalogEditPage, props: agencyBillingCatalogEditPageProps },
+      { path: '/catalogs/:catalogType/:id', component: loadNgbMetadataCatalogEditPage, props: agencyBillingCatalogEditPageProps },
     ],
     documentRoutes: [
-      { path: '/documents/:documentType', component: NgbMetadataDocumentListPage, props: agencyBillingDocumentListPageProps },
-      { path: '/documents/:documentType/new', name: 'DocumentCreate', component: NgbMetadataDocumentEditPage, props: agencyBillingDocumentEditPageProps },
-      { path: '/documents/:documentType/:id', component: NgbMetadataDocumentEditPage, props: agencyBillingDocumentEditPageProps },
+      { path: '/documents/:documentType', component: loadNgbMetadataDocumentListPage, props: agencyBillingDocumentListPageProps },
+      { path: '/documents/:documentType/new', name: 'DocumentCreate', component: loadNgbMetadataDocumentEditPage, props: agencyBillingDocumentEditPageProps },
+      { path: '/documents/:documentType/:id', component: loadNgbMetadataDocumentEditPage, props: agencyBillingDocumentEditPageProps },
     ],
   }
 }

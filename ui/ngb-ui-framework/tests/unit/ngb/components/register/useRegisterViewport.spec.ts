@@ -157,6 +157,12 @@ describe('register viewport', () => {
       'row-14',
       'row-15',
     ])
+
+    const { viewport, heightPx } = createHarness()
+    runMountedHooks()
+    viewport.value = null
+    heightPx.value = 180
+    resizeObserverState.callback?.([] as ResizeObserverEntry[], {} as ResizeObserver)
   })
 
   it('falls back to configured height when no viewport is available and disconnects on unmount', () => {

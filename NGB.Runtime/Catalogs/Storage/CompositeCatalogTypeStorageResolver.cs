@@ -10,20 +10,23 @@ namespace NGB.Runtime.Catalogs.Storage;
 /// Resolver that prefers the TypedStorage binding declared in Definitions, and falls back to
 /// resolving storages by their <see cref="ICatalogTypeStorage.CatalogCode"/>.
 /// </summary>
-public sealed class CompositeCatalogTypeStorageResolver(
-    DefinitionsRegistry definitions,
-    IEnumerable<ICatalogTypeStorage> storages)
-    : ICatalogTypeStorageResolver
+public sealed class CompositeCatalogTypeStorageResolver : ICatalogTypeStorageResolver
 {
-    private readonly DefinitionsRegistry _definitions = definitions ?? throw new NgbArgumentRequiredException(nameof(definitions));
-    private readonly IReadOnlyList<ICatalogTypeStorage> _allStorages = DefinitionRuntimeBindingHelpers.ToReadOnlyList(
-        storages ?? throw new NgbArgumentRequiredException(nameof(storages)));
+    private readonly DefinitionsRegistry _definitions;
+    private readonly IReadOnlyList<ICatalogTypeStorage> _allStorages;
     private readonly Dictionary<string, ICatalogTypeStorage> _boundStorages = new(StringComparer.OrdinalIgnoreCase);
     private readonly Lock _boundStoragesGate = new();
-    private readonly InMemoryCatalogTypeStorageResolver _fallback = new(
-        BuildFallbackStorages(
-            definitions ?? throw new NgbArgumentRequiredException(nameof(definitions)),
-            DefinitionRuntimeBindingHelpers.ToReadOnlyList(storages ?? throw new NgbArgumentRequiredException(nameof(storages)))));
+    private readonly InMemoryCatalogTypeStorageResolver _fallback;
+
+    public CompositeCatalogTypeStorageResolver(
+        DefinitionsRegistry definitions,
+        IEnumerable<ICatalogTypeStorage> storages)
+    {
+        _definitions = definitions ?? throw new NgbArgumentRequiredException(nameof(definitions));
+        _allStorages = DefinitionRuntimeBindingHelpers.ToReadOnlyList(
+            storages ?? throw new NgbArgumentRequiredException(nameof(storages)));
+        _fallback = new InMemoryCatalogTypeStorageResolver(BuildFallbackStorages(_definitions, _allStorages));
+    }
 
     public ICatalogTypeStorage? TryResolve(string catalogCode)
     {
@@ -38,12 +41,9 @@ public sealed class CompositeCatalogTypeStorageResolver(
 
     private ICatalogTypeStorage ResolveBoundStorage(NGB.Definitions.Catalogs.CatalogTypeDefinition def)
     {
-        if (_boundStorages.TryGetValue(def.TypeCode, out var cached))
-            return cached;
-
         lock (_boundStoragesGate)
         {
-            if (_boundStorages.TryGetValue(def.TypeCode, out cached))
+            if (_boundStorages.TryGetValue(def.TypeCode, out var cached))
                 return cached;
 
             var resolved = BuildBoundStorage(def);
@@ -54,8 +54,7 @@ public sealed class CompositeCatalogTypeStorageResolver(
 
     private ICatalogTypeStorage BuildBoundStorage(NGB.Definitions.Catalogs.CatalogTypeDefinition def)
     {
-        var storageType = def.TypedStorageType
-            ?? throw new NgbInvariantViolationException($"Catalog '{def.TypeCode}' has no typed storage binding.");
+        var storageType = def.TypedStorageType!;
 
         if (!typeof(ICatalogTypeStorage).IsAssignableFrom(storageType))
         {
@@ -83,7 +82,7 @@ public sealed class CompositeCatalogTypeStorageResolver(
                 details: new
                 {
                     storageType = storageType.FullName,
-                    matches = matches.Select(storage => storage.GetType().FullName ?? storage.GetType().Name).ToArray()
+                    matches = matches.Select(storage => storage.GetType().ToString()).ToArray()
                 });
         }
 

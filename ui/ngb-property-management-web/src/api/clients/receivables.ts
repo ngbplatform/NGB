@@ -1,4 +1,4 @@
-import { httpGet, httpPost } from '@ngbplatform/ui'
+import { httpGet, httpPost, type HttpRequestOptions } from '@ngbplatform/ui'
 import type {
   ReceivablesApplyBatchRequestDto,
   ReceivablesApplyBatchResponseDto,
@@ -15,20 +15,34 @@ export async function getReceivablesOpenItemsDetails(args: {
   propertyId?: string | null
   asOfMonth?: string | null // DateOnly: YYYY-MM-DD
   toMonth?: string | null   // DateOnly: YYYY-MM-DD
-}): Promise<ReceivablesOpenItemsDetailsResponseDto> {
-  return await httpGet<ReceivablesOpenItemsDetailsResponseDto>('/api/receivables/open-items/details', {
+  chargeOffset?: number | null
+  creditOffset?: number | null
+  allocationOffset?: number | null
+  limit?: number | null
+}, options?: HttpRequestOptions): Promise<ReceivablesOpenItemsDetailsResponseDto> {
+  const query = {
     leaseId: args.leaseId,
     partyId: args.partyId,
     propertyId: args.propertyId,
     asOfMonth: args.asOfMonth,
     toMonth: args.toMonth,
-  })
+    chargeOffset: args.chargeOffset,
+    creditOffset: args.creditOffset,
+    allocationOffset: args.allocationOffset,
+    limit: args.limit,
+  }
+  return options
+    ? await httpGet<ReceivablesOpenItemsDetailsResponseDto>('/api/receivables/open-items/details/page', query, options)
+    : await httpGet<ReceivablesOpenItemsDetailsResponseDto>('/api/receivables/open-items/details/page', query)
 }
 
 export async function suggestLeaseFifoApply(
   request: ReceivablesSuggestFifoApplyRequestDto,
+  options?: HttpRequestOptions,
 ): Promise<ReceivablesSuggestFifoApplyResponseDto> {
-  return await httpPost<ReceivablesSuggestFifoApplyResponseDto>('/api/receivables/apply/fifo/suggest/lease', request)
+  return options
+    ? await httpPost<ReceivablesSuggestFifoApplyResponseDto>('/api/receivables/apply/fifo/suggest/lease', request, options)
+    : await httpPost<ReceivablesSuggestFifoApplyResponseDto>('/api/receivables/apply/fifo/suggest/lease', request)
 }
 
 export async function applyReceivablesBatch(
@@ -45,10 +59,21 @@ export async function getReceivablesReconciliation(args: {
   fromMonthInclusive: string // YYYY-MM-DD
   toMonthInclusive: string   // YYYY-MM-DD
   mode?: ReceivablesReconciliationModeDto | null
-}): Promise<ReceivablesReconciliationReportDto> {
-  return await httpGet<ReceivablesReconciliationReportDto>('/api/receivables/reconciliation', {
+  status?: 'All' | 'Matched' | 'Mismatch' | 'GlOnly' | 'OpenItemsOnly' | null
+  offset?: number | null
+  limit?: number | null
+  cursor?: string | null
+}, options?: HttpRequestOptions): Promise<ReceivablesReconciliationReportDto> {
+  const query = {
     fromMonthInclusive: args.fromMonthInclusive,
     toMonthInclusive: args.toMonthInclusive,
     mode: args.mode,
-  })
+    status: args.status,
+    offset: args.offset,
+    limit: args.limit,
+    cursor: args.cursor,
+  }
+  return options
+    ? await httpGet<ReceivablesReconciliationReportDto>('/api/receivables/reconciliation', query, options)
+    : await httpGet<ReceivablesReconciliationReportDto>('/api/receivables/reconciliation', query)
 }

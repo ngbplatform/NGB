@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NgbBadge from '../primitives/NgbBadge.vue'
@@ -47,9 +47,27 @@ const dimensionItemsByCell = ref<Record<string, LookupItem[]>>({})
 const accountContextsByRow = ref<Record<string, GeneralJournalEntryAccountContextDto | null>>({})
 const accountContextCache = ref<Record<string, GeneralJournalEntryAccountContextDto | null>>({})
 const loadingContexts = ref<Record<string, string>>({})
+const accountLookupControllers = new Map<string, AbortController>()
+const dimensionLookupControllers = new Map<string, AbortController>()
+const accountContextRequests = new Map<
+  string,
+  { controller: AbortController; promise: Promise<GeneralJournalEntryAccountContextDto | null> }
+>()
 
-const rows = computed(() => props.modelValue ?? [])
+const rows = computed(() => props.modelValue)
 const canEdit = computed(() => !props.readonly)
+const ROW_PAGE_SIZE = 100
+const rowPage = ref(0)
+const rowPageCount = computed(() => Math.max(1, Math.ceil(rows.value.length / ROW_PAGE_SIZE)))
+const currentRowPage = computed(() => Math.min(rowPage.value, rowPageCount.value - 1))
+const pagedRows = computed(() => {
+  const start = currentRowPage.value * ROW_PAGE_SIZE
+  return rows.value.slice(start, start + ROW_PAGE_SIZE).map((row, index) => ({ row, rowIndex: start + index }))
+})
+const rowRange = computed(() => {
+  const start = currentRowPage.value * ROW_PAGE_SIZE
+  return `Lines ${start + 1}\u2013${Math.min(rows.value.length, start + ROW_PAGE_SIZE)} of ${rows.value.length}`
+})
 
 const sideOptions = [
   { value: 1, label: 'Debit' },
@@ -77,21 +95,21 @@ function emitRows(next: GeneralJournalEntryEditorLineModel[]) {
 }
 
 function updateRow(rowIndex: number, patch: Partial<GeneralJournalEntryEditorLineModel>) {
-  const next = rows.value.map((row, index) => {
-    if (index !== rowIndex) return { ...row, dimensions: { ...(row.dimensions ?? {}) } }
-    return {
-      ...row,
-      ...patch,
-      dimensions: { ...(patch.dimensions ?? row.dimensions ?? {}) },
-    }
-  })
+  const row = rows.value[rowIndex]!
+  const next = rows.value.slice()
+  next[rowIndex] = {
+    ...row,
+    ...patch,
+    dimensions: { ...(patch.dimensions ?? row.dimensions) },
+  }
   emitRows(next)
 }
 
 function addRow() {
   if (!canEdit.value) return
+  rowPage.value = Math.floor(rows.value.length / ROW_PAGE_SIZE)
   emitRows([
-    ...rows.value.map((row) => ({ ...row, dimensions: { ...(row.dimensions ?? {}) } })),
+    ...rows.value,
     createGeneralJournalEntryLine(),
   ])
 }
@@ -100,14 +118,19 @@ function removeRow(rowIndex: number) {
   if (!canEdit.value) return
   const next = rows.value
     .filter((_, index) => index !== rowIndex)
-    .map((row) => ({ ...row, dimensions: { ...(row.dimensions ?? {}) } }))
-  emitRows(next.length > 0 ? next : [createGeneralJournalEntryLine()])
+  const normalized = next.length > 0 ? next : [createGeneralJournalEntryLine()]
+  rowPage.value = Math.min(currentRowPage.value, Math.max(0, Math.ceil(normalized.length / ROW_PAGE_SIZE) - 1))
+  emitRows(normalized)
+}
+
+function setRowPage(page: number): void {
+  rowPage.value = Math.max(0, Math.min(page, rowPageCount.value - 1))
 }
 
 function humanizeDimensionLabel(code: string): string {
-  const raw = String(code ?? '').trim()
+  const raw = code.trim()
   if (!raw) return 'Dimension'
-  const last = raw.includes('.') ? raw.split('.').pop() ?? raw : raw
+  const last = raw.includes('.') ? raw.split('.').pop()! : raw
   return last
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (m) => m.toUpperCase())
@@ -120,7 +143,7 @@ function cellKey(rowKey: string, dimensionId: string): string {
 watch(
   () => props.preloadedAccountContexts,
   (next) => {
-    accountContextCache.value = { ...(next ?? {}) }
+    accountContextCache.value = { ...next }
   },
   { immediate: true, deep: true },
 )
@@ -135,16 +158,14 @@ function rowByClientKey(clientKey: string): GeneralJournalEntryEditorLineModel |
 
 function clearLoadingContext(rowKey: string) {
   if (!loadingContexts.value[rowKey]) return
-  const next = { ...loadingContexts.value }
-  delete next[rowKey]
-  loadingContexts.value = next
+  delete loadingContexts.value[rowKey]
 }
 
 async function ensureAccountContext(row: GeneralJournalEntryEditorLineModel) {
   const accountId = row.account?.id
   if (!accountId) {
     clearLoadingContext(row.clientKey)
-    accountContextsByRow.value = { ...accountContextsByRow.value, [row.clientKey]: null }
+    accountContextsByRow.value[row.clientKey] = null
     return
   }
 
@@ -152,40 +173,51 @@ async function ensureAccountContext(row: GeneralJournalEntryEditorLineModel) {
   if (existing?.accountId === accountId) return
 
   if (hasCachedAccountContext(accountId)) {
-    accountContextsByRow.value = {
-      ...accountContextsByRow.value,
-      [row.clientKey]: accountContextCache.value[accountId] ?? null,
-    }
+    accountContextsByRow.value[row.clientKey] = accountContextCache.value[accountId]!
     return
   }
 
   const requestKey = `${row.clientKey}:${accountId}`
   if (loadingContexts.value[row.clientKey] === requestKey) return
 
-  loadingContexts.value = { ...loadingContexts.value, [row.clientKey]: requestKey }
+  loadingContexts.value[row.clientKey] = requestKey
   try {
-    const context = await getGeneralJournalEntryAccountContext(accountId)
+    let request = accountContextRequests.get(accountId)
+    if (!request) {
+      const controller = new AbortController()
+      const promise = getGeneralJournalEntryAccountContext(accountId, { signal: controller.signal })
+        .then((context) => {
+          accountContextCache.value[accountId] = context
+          return context
+        })
+        .catch((error: unknown) => {
+          if (controller.signal.aborted) return null
+          throw error
+        })
+        .finally(() => accountContextRequests.delete(accountId))
+      request = { controller, promise }
+      accountContextRequests.set(accountId, request)
+    }
+
+    const context = await request.promise
     if (loadingContexts.value[row.clientKey] !== requestKey) return
 
     const latestRow = rowByClientKey(row.clientKey)
     if (latestRow?.account?.id !== accountId) return
 
-    accountContextCache.value = { ...accountContextCache.value, [accountId]: context }
-    accountContextsByRow.value = { ...accountContextsByRow.value, [row.clientKey]: context }
+    accountContextsByRow.value[row.clientKey] = context
   } catch {
     if (loadingContexts.value[row.clientKey] !== requestKey) return
-    accountContextsByRow.value = { ...accountContextsByRow.value, [row.clientKey]: null }
+    accountContextsByRow.value[row.clientKey] = null
   } finally {
     if (loadingContexts.value[row.clientKey] === requestKey) clearLoadingContext(row.clientKey)
   }
 }
 
 watch(
-  () => rows.value.map((row) => `${row.clientKey}:${row.account?.id ?? ''}`).join('|'),
+  () => pagedRows.value.map(({ row }) => `${row.clientKey}:${row.account?.id ?? ''}`).join('|'),
   async () => {
-    for (const row of rows.value) {
-      await ensureAccountContext(row)
-    }
+    await Promise.all(pagedRows.value.map(({ row }) => ensureAccountContext(row)))
   },
   { immediate: true },
 )
@@ -199,38 +231,44 @@ function selectedDimensionItem(row: GeneralJournalEntryEditorLineModel, rule: Ge
 }
 
 async function onAccountQuery(row: GeneralJournalEntryEditorLineModel, query: string) {
-  const q = String(query ?? '').trim()
+  const q = query.trim()
+  accountLookupControllers.get(row.clientKey)?.abort()
   if (!q) {
-    accountItemsByRow.value = { ...accountItemsByRow.value, [row.clientKey]: [] }
+    accountItemsByRow.value[row.clientKey] = []
     return
   }
 
-  const items = await lookupStore.searchCoa(q)
-  accountItemsByRow.value = { ...accountItemsByRow.value, [row.clientKey]: items }
+  const controller = new AbortController()
+  accountLookupControllers.set(row.clientKey, controller)
+  try {
+    const items = await lookupStore.searchCoa(q, { signal: controller.signal })
+    if (accountLookupControllers.get(row.clientKey) !== controller) return
+    accountItemsByRow.value[row.clientKey] = items
+  } catch {
+    if (accountLookupControllers.get(row.clientKey) !== controller) return
+    accountItemsByRow.value[row.clientKey] = []
+  } finally {
+    if (accountLookupControllers.get(row.clientKey) === controller) accountLookupControllers.delete(row.clientKey)
+  }
 }
 
 function onAccountSelect(rowIndex: number, item: GeneralJournalEntryEditorLineModel['account']) {
-  const key = rows.value[rowIndex]?.clientKey
-  if (key) clearLoadingContext(key)
+  const key = rows.value[rowIndex]!.clientKey
+  clearLoadingContext(key)
 
   updateRow(rowIndex, { account: item, dimensions: {} })
 
-  if (!key) return
-
   if (!item) {
-    accountContextsByRow.value = { ...accountContextsByRow.value, [key]: null }
+    accountContextsByRow.value[key] = null
     return
   }
 
   if (hasCachedAccountContext(item.id)) {
-    accountContextsByRow.value = {
-      ...accountContextsByRow.value,
-      [key]: accountContextCache.value[item.id] ?? null,
-    }
+    accountContextsByRow.value[key] = accountContextCache.value[item.id]!
     return
   }
 
-  accountContextsByRow.value = { ...accountContextsByRow.value, [key]: null }
+  accountContextsByRow.value[key] = null
 }
 
 async function onDimensionQuery(
@@ -238,32 +276,54 @@ async function onDimensionQuery(
   rule: GeneralJournalEntryDimensionRuleDto,
   query: string,
 ) {
-  const q = String(query ?? '').trim()
+  const q = query.trim()
   const lookup = rule.lookup
   const key = cellKey(row.clientKey, rule.dimensionId)
+  dimensionLookupControllers.get(key)?.abort()
 
   if (!q || !lookup) {
-    dimensionItemsByCell.value = { ...dimensionItemsByCell.value, [key]: [] }
+    dimensionItemsByCell.value[key] = []
     return
   }
 
+  const controller = new AbortController()
+  dimensionLookupControllers.set(key, controller)
   let items: LookupItem[] = []
-  if (lookup.kind === 'catalog') items = await lookupStore.searchCatalog(lookup.catalogType, q)
-  else if (lookup.kind === 'coa') items = await lookupStore.searchCoa(q)
-  else if (lookup.kind === 'document') items = await lookupStore.searchDocuments(lookup.documentTypes, q)
+  try {
+    if (lookup.kind === 'catalog') {
+      items = await lookupStore.searchCatalog(lookup.catalogType, q, { signal: controller.signal })
+    } else if (lookup.kind === 'coa') {
+      items = await lookupStore.searchCoa(q, { signal: controller.signal })
+    } else {
+      items = await lookupStore.searchDocuments(lookup.documentTypes, q, { signal: controller.signal })
+    }
 
-  dimensionItemsByCell.value = { ...dimensionItemsByCell.value, [key]: items }
+    if (dimensionLookupControllers.get(key) !== controller) return
+    dimensionItemsByCell.value[key] = items
+  } catch {
+    if (dimensionLookupControllers.get(key) !== controller) return
+    dimensionItemsByCell.value[key] = []
+  } finally {
+    if (dimensionLookupControllers.get(key) === controller) dimensionLookupControllers.delete(key)
+  }
 }
+
+onBeforeUnmount(() => {
+  for (const controller of accountLookupControllers.values()) controller.abort()
+  for (const controller of dimensionLookupControllers.values()) controller.abort()
+  for (const request of accountContextRequests.values()) request.controller.abort()
+  accountLookupControllers.clear()
+  dimensionLookupControllers.clear()
+  accountContextRequests.clear()
+})
 
 function onDimensionSelect(
   rowIndex: number,
   rule: GeneralJournalEntryDimensionRuleDto,
   item: GeneralJournalEntryEditorLineModel['account'],
 ) {
-  const current = rows.value[rowIndex]
-  if (!current) return
-
-  const nextDimensions = { ...(current.dimensions ?? {}) }
+  const current = rows.value[rowIndex]!
+  const nextDimensions = { ...current.dimensions }
   if (!item) delete nextDimensions[rule.dimensionId]
   else nextDimensions[rule.dimensionId] = item
 
@@ -272,6 +332,10 @@ function onDimensionSelect(
 
 function dimensionItems(row: GeneralJournalEntryEditorLineModel, rule: GeneralJournalEntryDimensionRuleDto) {
   return dimensionItemsByCell.value[cellKey(row.clientKey, rule.dimensionId)] ?? []
+}
+
+function dimensionRulesForRow(row: GeneralJournalEntryEditorLineModel): GeneralJournalEntryDimensionRuleDto[] {
+  return contextForRow(row)?.dimensionRules ?? []
 }
 
 async function openAccount(row: GeneralJournalEntryEditorLineModel) {
@@ -287,7 +351,7 @@ async function openAccount(row: GeneralJournalEntryEditorLineModel) {
 
 async function openDimension(row: GeneralJournalEntryEditorLineModel, rule: GeneralJournalEntryDimensionRuleDto) {
   const target = await buildLookupFieldTargetUrl({
-    hint: rule.lookup ?? null,
+    hint: rule.lookup!,
     value: selectedDimensionItem(row, rule),
     route,
   })
@@ -336,8 +400,8 @@ function badgeToneForDiff(): 'success' | 'warn' {
       </thead>
 
       <tbody>
-        <template v-for="(row, rowIndex) in rows" :key="row.clientKey">
-          <tr class="border-t border-ngb-border align-top transition-colors hover:bg-ngb-bg">
+        <template v-for="{ row, rowIndex } in pagedRows" :key="row.clientKey">
+          <tr class="border-t border-ngb-border align-top transition-colors [content-visibility:auto] [contain-intrinsic-block-size:42px] hover:bg-ngb-bg">
             <td class="border-r border-dotted border-ngb-border px-2 py-1 align-top text-right text-ngb-muted">
               <div class="flex h-8 items-center justify-end">{{ rowIndex + 1 }}</div>
             </td>
@@ -374,7 +438,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
                 :disabled="!canEdit"
                 variant="grid"
                 placeholder="0.00"
-                @update:model-value="updateRow(rowIndex, { amount: String($event ?? '') })"
+                @update:model-value="updateRow(rowIndex, { amount: $event })"
               />
             </td>
 
@@ -384,7 +448,7 @@ function badgeToneForDiff(): 'success' | 'warn' {
                 :disabled="!canEdit"
                 variant="grid"
                 placeholder="Memo"
-                @update:model-value="updateRow(rowIndex, { memo: String($event ?? '') })"
+                @update:model-value="updateRow(rowIndex, { memo: $event })"
               />
             </td>
 
@@ -405,11 +469,11 @@ function badgeToneForDiff(): 'success' | 'warn' {
             <td colspan="6" class="px-4 py-3 text-sm text-ngb-muted">Loading dimension rules…</td>
           </tr>
 
-          <tr v-if="contextForRow(row)?.dimensionRules?.length" class="border-t border-ngb-border bg-ngb-bg/40">
+          <tr v-if="dimensionRulesForRow(row).length" class="border-t border-ngb-border bg-ngb-bg/40">
             <td colspan="6" class="px-4 py-3">
               <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <div
-                  v-for="rule in contextForRow(row)?.dimensionRules ?? []"
+                  v-for="rule in dimensionRulesForRow(row)"
                   :key="rule.dimensionId"
                   class="rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-3"
                 >
@@ -438,8 +502,28 @@ function badgeToneForDiff(): 'success' | 'warn' {
       </tbody>
     </table>
 
-    <div class="flex items-center justify-between gap-3 border-t border-ngb-border px-3 py-2">
-      <div class="text-sm text-ngb-muted">{{ rows.length }} line(s)</div>
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-ngb-border px-3 py-2">
+      <div class="text-sm text-ngb-muted">{{ rowPageCount > 1 ? rowRange : `${rows.length} line(s)` }}</div>
+
+      <div v-if="rowPageCount > 1" class="flex items-center gap-2 text-xs text-ngb-muted">
+        <button
+          type="button"
+          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="currentRowPage === 0"
+          @click="setRowPage(currentRowPage - 1)"
+        >
+          Previous
+        </button>
+        <span>Page {{ currentRowPage + 1 }} of {{ rowPageCount }}</span>
+        <button
+          type="button"
+          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="currentRowPage + 1 >= rowPageCount"
+          @click="setRowPage(currentRowPage + 1)"
+        >
+          Next
+        </button>
+      </div>
 
       <button
         type="button"

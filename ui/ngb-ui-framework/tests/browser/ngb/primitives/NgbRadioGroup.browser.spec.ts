@@ -38,6 +38,15 @@ const RadioGroupHarness = defineComponent({
   },
 })
 
+const MinimalRadioGroupHarness = defineComponent({
+  setup() {
+    return () => h(NgbRadioGroup, {
+      modelValue: 'draft',
+      options: options.slice(0, 1),
+    })
+  },
+})
+
 test('renders label and hint text and updates the selected value when a different option is chosen', async () => {
   await page.viewport(1280, 900)
 
@@ -64,4 +73,14 @@ test('keeps all radio inputs disabled and does not emit value updates when disab
 
   ;(view.getByText('Deleted', { exact: true }).element() as HTMLElement).click()
   await expect.element(view.getByTestId('radio-state')).toHaveTextContent('value:draft')
+})
+
+test('omits optional label and hint containers when their values are absent', async () => {
+  await page.viewport(1280, 900)
+
+  await render(MinimalRadioGroupHarness)
+
+  expect(document.body.textContent?.includes('Status')).toBe(false)
+  expect(document.body.textContent?.includes('Choose the current status.')).toBe(false)
+  expect(document.querySelectorAll('input[type="radio"]')).toHaveLength(1)
 })

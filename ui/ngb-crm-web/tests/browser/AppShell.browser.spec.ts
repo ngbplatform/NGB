@@ -72,6 +72,7 @@ type AccessStore = {
 type MenuStore = {
   groups: Array<{ label: string; ordinal: number; icon?: string | null; items: Array<{ kind: string; code: string; label: string; route: string; ordinal: number; icon?: string | null }> }>
   load: ReturnType<typeof vi.fn>
+  reset: ReturnType<typeof vi.fn>
 }
 
 type PaletteStore = {
@@ -128,6 +129,7 @@ beforeEach(() => {
       },
     ],
     load: vi.fn(async () => undefined),
+    reset: vi.fn(),
   }
   mocks.paletteStore = {
     hydrate: vi.fn(async () => undefined),

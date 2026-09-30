@@ -10,6 +10,8 @@ import type { JsonObject, JsonValue, RecordFields, RecordParts } from '../metada
 const STORAGE_KEY_PREFIX = 'ngb:document-copy-draft:';
 const SNAPSHOT_VERSION = 1;
 const MAX_SNAPSHOT_AGE_MS = 6 * 60 * 60 * 1000;
+const MAX_SNAPSHOT_COUNT = 16;
+const MAX_SNAPSHOT_BYTES = 1024 * 1024;
 
 type StoredDocumentCopyDraft = {
   version: number;
@@ -52,7 +54,7 @@ function getStores(): CopyDraftStore[] {
       kind: 'session',
       getItem: (key) => readStorageString('session', key),
       setItem: (key, value) => {
-        void writeStorageString('session', key, value);
+        if (!writeStorageString('session', key, value)) throw new Error('Session storage write failed.');
       },
       removeItem: (key) => removeStorageItem('session', key),
       keys: () => listStorageKeys('session'),
@@ -64,7 +66,7 @@ function getStores(): CopyDraftStore[] {
       kind: 'local',
       getItem: (key) => readStorageString('local', key),
       setItem: (key, value) => {
-        void writeStorageString('local', key, value);
+        if (!writeStorageString('local', key, value)) throw new Error('Local storage write failed.');
       },
       removeItem: (key) => removeStorageItem('local', key),
       keys: () => listStorageKeys('local'),
@@ -100,8 +102,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function cleanupExpiredSnapshots(store: CopyDraftStore): void {
+function cleanupSnapshots(store: CopyDraftStore, maxCount = MAX_SNAPSHOT_COUNT): void {
   const now = Date.now();
+  const validSnapshots: Array<{ key: string; createdAtMs: number }> = [];
 
   for (const key of store.keys()) {
     if (!key || !key.startsWith(STORAGE_KEY_PREFIX)) continue;
@@ -117,11 +120,18 @@ function cleanupExpiredSnapshots(store: CopyDraftStore): void {
       const createdAtMs = Date.parse(String(parsed.createdAtUtc ?? ''));
       if (!Number.isFinite(createdAtMs) || now - createdAtMs > MAX_SNAPSHOT_AGE_MS) {
         store.removeItem(key);
+      } else {
+        validSnapshots.push({ key, createdAtMs });
       }
     } catch {
       store.removeItem(key);
     }
   }
+
+  validSnapshots
+    .sort((left, right) => left.createdAtMs - right.createdAtMs || left.key.localeCompare(right.key))
+    .slice(0, Math.max(0, validSnapshots.length - maxCount))
+    .forEach(({ key }) => store.removeItem(key));
 }
 
 function parseSnapshot(raw: string | null): StoredDocumentCopyDraft | null {
@@ -160,26 +170,22 @@ function sanitizeForStorage(value: unknown, seen: WeakSet<object> = new WeakSet(
     return value.map((item) => sanitizeForStorage(item, seen));
   }
 
-  if (typeof value === 'object') {
-    if (seen.has(value)) return null;
-    seen.add(value);
+  if (seen.has(value)) return null;
+  seen.add(value);
 
-    const out: JsonObject = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (item === undefined) continue;
-      out[key] = sanitizeForStorage(item, seen);
-    }
-    return out;
+  const out: JsonObject = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item === undefined) continue;
+    out[key] = sanitizeForStorage(item, seen);
   }
-
-  return null;
+  return out;
 }
 
 function buildPayload(snapshot: DocumentCopyDraftSnapshot): StoredDocumentCopyDraft {
   return {
     version: SNAPSHOT_VERSION,
     documentType: snapshot.documentType,
-    fields: (sanitizeForStorage(snapshot.fields ?? {}) ?? {}) as RecordFields,
+    fields: sanitizeForStorage(snapshot.fields ?? {}) as RecordFields,
     parts: sanitizeForStorage(snapshot.parts ?? null) as RecordParts | null,
     createdAtUtc: new Date().toISOString(),
   };
@@ -199,10 +205,11 @@ export function saveDocumentCopyDraft(snapshot: DocumentCopyDraftSnapshot): stri
   const stores = getStores();
   const payload = buildPayload(snapshot);
   const serialized = JSON.stringify(payload);
+  if (serialized.length * 2 > MAX_SNAPSHOT_BYTES) return null;
   const key = buildStorageKey(token);
 
   for (const store of stores) {
-    cleanupExpiredSnapshots(store);
+    cleanupSnapshots(store, MAX_SNAPSHOT_COUNT - 1);
     if (writeToStore(store, key, serialized)) return token;
   }
 
@@ -218,7 +225,7 @@ export function readDocumentCopyDraft(
 
   const key = buildStorageKey(normalizedToken);
   for (const store of getStores()) {
-    cleanupExpiredSnapshots(store);
+    cleanupSnapshots(store);
 
     const parsed = parseSnapshot(store.getItem(key));
     if (!parsed) continue;

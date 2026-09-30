@@ -1,4 +1,5 @@
 using NGB.PostgreSql.Reporting;
+using NGB.PostgreSql.Reporting.Accounting;
 
 namespace NGB.PropertyManagement.PostgreSql.Reporting;
 
@@ -106,6 +107,8 @@ public sealed class PmAccountingLedgerAnalysisPostgresDatasetSource : IPostgresR
                     new PostgresReportMeasureBinding("debit_amount", "x.debit_amount", "decimal"),
                     new PostgresReportMeasureBinding("credit_amount", "x.credit_amount", "decimal"),
                     new PostgresReportMeasureBinding("net_amount", "x.net_amount", "decimal")
-                ])
+                ],
+                cursorKeyFieldCodes: ["entry_id", "posting_side"],
+                aggregateSource: AccountingLedgerAnalysisPostgresDatasetSource.SelectAccountAggregateSource)
         ];
 }

@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class Reports_DimensionSets_NotCollapsed_ByDimensionSetId_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// <summary>
 /// P0: OperationalRegisterManagementService resources management is audited and strictly no-op when unchanged.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterManagementService_Resources_Auditing_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

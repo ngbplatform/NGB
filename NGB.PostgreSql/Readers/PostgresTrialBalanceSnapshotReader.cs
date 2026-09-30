@@ -1,4 +1,5 @@
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
@@ -137,7 +138,8 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                        tr.CreditAmount
                    FROM turnover_rows tr
                    JOIN accounting_accounts a ON a.account_id = tr.AccountId AND a.is_deleted = FALSE
-                   ORDER BY a.code, tr.DimensionSetId;
+                   ORDER BY a.code, tr.DimensionSetId
+                   LIMIT @LimitPlusOne;
                    """;
 
         return await QueryRowsAsync(
@@ -148,7 +150,8 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                 ToInclusive = toInclusive,
                 ScopeDimensionCount = scopeDimensionCount,
                 ScopeDimIds = scopeDimIds,
-                ScopeValueIds = scopeValueIds
+                ScopeValueIds = scopeValueIds,
+                LimitPlusOne = PagingLimits.MaxMaterializedRows + 1
             },
             ct);
     }
@@ -213,7 +216,8 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                        fr.CreditAmount
                    FROM final_rows fr
                    JOIN accounting_accounts a ON a.account_id = fr.AccountId AND a.is_deleted = FALSE
-                   ORDER BY a.code, fr.DimensionSetId;
+                   ORDER BY a.code, fr.DimensionSetId
+                   LIMIT @LimitPlusOne;
                    """;
 
         return await QueryRowsAsync(
@@ -225,7 +229,8 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                 ToInclusive = toInclusive,
                 ScopeDimensionCount = scopeDimensionCount,
                 ScopeDimIds = scopeDimIds,
-                ScopeValueIds = scopeValueIds
+                ScopeValueIds = scopeValueIds,
+                LimitPlusOne = PagingLimits.MaxMaterializedRows + 1
             },
             ct);
     }
@@ -302,7 +307,8 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                        fr.CreditAmount
                    FROM final_rows fr
                    JOIN accounting_accounts a ON a.account_id = fr.AccountId AND a.is_deleted = FALSE
-                   ORDER BY a.code, fr.DimensionSetId;
+                   ORDER BY a.code, fr.DimensionSetId
+                   LIMIT @LimitPlusOne;
                    """;
 
         return await QueryRowsAsync(
@@ -314,7 +320,8 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                 ToInclusive = toInclusive,
                 ScopeDimensionCount = scopeDimensionCount,
                 ScopeDimIds = scopeDimIds,
-                ScopeValueIds = scopeValueIds
+                ScopeValueIds = scopeValueIds,
+                LimitPlusOne = PagingLimits.MaxMaterializedRows + 1
             },
             ct);
     }
@@ -333,6 +340,8 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                 transaction: uow.Transaction,
                 cancellationToken: ct))).AsList();
 
+        EnsureMaterializationBound(rows.Count);
+
         return rows
             .Select(x => new TrialBalanceSnapshotRow(
                 x.AccountId,
@@ -342,6 +351,17 @@ public sealed class PostgresTrialBalanceSnapshotReader(IUnitOfWork uow) : ITrial
                 x.DebitAmount,
                 x.CreditAmount))
             .ToList();
+    }
+
+    internal static void EnsureMaterializationBound(int rowCount)
+    {
+        if (rowCount <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new NgbArgumentOutOfRangeException(
+            "filters",
+            rowCount,
+            $"Trial balance can materialize up to {PagingLimits.MaxMaterializedRows} account/dimension rows. Narrow the filters and try again.");
     }
 
     private static string BuildScopeCtes()

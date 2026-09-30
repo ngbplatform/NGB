@@ -1,6 +1,8 @@
 using FluentAssertions;
+using Hangfire;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Moq;
 using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.Infrastructure;
@@ -12,33 +14,27 @@ namespace NGB.BackgroundJobs.Tests.DependencyInjection;
 public sealed class NgbBackgroundJobsServiceCollectionExtensions_P0Tests
 {
     [Fact]
-    public void AddNgbBackgroundJobsHangfire_WhenConnectionStringMissing_ThrowsConfigurationViolation()
+    public void AddNgbBackgroundJobsHangfire_RejectsNullCollectionStorageAndConfigureDelegate()
     {
-        var services = new ServiceCollection();
+        Action nullServices = () => PlatformBackgroundJobsServiceCollectionExtensions
+            .AddPlatformBackgroundJobsHangfire(null!, Mock.Of<JobStorage>(), _ => { });
+        Action nullStorage = () => new ServiceCollection().AddPlatformBackgroundJobsHangfire(null!, _ => { });
+        Action nullConfigure = () => new ServiceCollection()
+            .AddPlatformBackgroundJobsHangfire(Mock.Of<JobStorage>(), null!);
 
-        var act = () => services.AddPlatformBackgroundJobsHangfire(o =>
-        {
-            o.ConnectionString = ""; // missing
-        });
-
-        var ex = act.Should().Throw<NgbConfigurationViolationException>()
-            .WithMessage("*ConnectionString must be provided*")
-            .Which;
-
-        ex.ErrorCode.Should().Be(NgbConfigurationViolationException.Code);
+        nullServices.Should().Throw<NgbArgumentRequiredException>();
+        nullStorage.Should().Throw<NgbArgumentRequiredException>();
+        nullConfigure.Should().Throw<NgbArgumentRequiredException>();
     }
 
     [Fact]
     public void AddNgbBackgroundJobsHangfire_Registers_Defaults_And_AllPlatformJobs()
     {
         var services = new ServiceCollection();
+        var storage = Mock.Of<JobStorage>();
 
-        services.AddPlatformBackgroundJobsHangfire(o =>
+        services.AddPlatformBackgroundJobsHangfire(storage, o =>
         {
-            // We do not build or resolve JobStorage in this unit test; the connection string is only required
-            // for registering Hangfire PostgreSQL storage configuration.
-            o.ConnectionString = "Host=localhost;Port=5432;Database=ngb_test;Username=ngb;Password=ngb";
-            o.PrepareSchemaIfNecessary = false;
             o.WorkerCount = 1;
         });
 
@@ -73,5 +69,50 @@ public sealed class NgbBackgroundJobsServiceCollectionExtensions_P0Tests
         jobImpls.Should().Contain(typeof(AccountingAggregatesDriftCheckJob));
         jobImpls.Should().Contain(typeof(AccountingOperationsStuckMonitorJob));
         jobImpls.Should().Contain(typeof(GeneralJournalEntryAutoReversePostingJob));
+        services.Single(x => x.ServiceType == typeof(JobStorage)).ImplementationInstance.Should().BeSameAs(storage);
     }
+
+    [Fact]
+    public void AddNgbBackgroundJobsHangfire_UsesSuppliedProviderNeutralStorage()
+    {
+        var services = new ServiceCollection();
+        var storage = Mock.Of<JobStorage>();
+        services.AddPlatformBackgroundJobsHangfire(storage, _ => { });
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<JobStorage>().Should().BeSameAs(storage);
+    }
+
+    [Fact]
+    public void AddNgbBackgroundJobsHangfire_AppliesGlobalAndServerOptionsForBothOptionalBranches()
+    {
+        var storage = Mock.Of<JobStorage>();
+        var services = new ServiceCollection();
+        services.AddPlatformBackgroundJobsHangfire(storage, o =>
+        {
+            o.WorkerCount = 3;
+            o.Queues = [];
+            o.ServerName = " ";
+        });
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IGlobalConfiguration>().Should().NotBeNull();
+        CreateHangfireServerHostedService(services, provider).Should().NotBeNull();
+
+        var namedServices = new ServiceCollection();
+        namedServices.AddPlatformBackgroundJobsHangfire(storage, o =>
+        {
+            o.Queues = ["critical"];
+            o.ServerName = "named";
+        });
+        using var namedProvider = namedServices.BuildServiceProvider();
+        namedProvider.GetRequiredService<IGlobalConfiguration>().Should().NotBeNull();
+        CreateHangfireServerHostedService(namedServices, namedProvider).Should().NotBeNull();
+    }
+
+    private static object CreateHangfireServerHostedService(
+        IServiceCollection services,
+        IServiceProvider provider) => services
+        .Single(x => x.ServiceType == typeof(IHostedService) && x.ImplementationFactory is not null)
+        .ImplementationFactory!(provider);
 }

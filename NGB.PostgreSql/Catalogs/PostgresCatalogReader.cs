@@ -1,13 +1,15 @@
 using System.Data;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Persistence.Catalogs.Universal;
 using NGB.Persistence.Common;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Search;
 using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Catalogs;
 
-internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
+internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogSeekPageReader
 {
     public async Task<long> CountAsync(CatalogHeadDescriptor head, CatalogQuery query, CancellationToken ct = default)
     {
@@ -56,6 +58,8 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
         if (limit <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
 
+        offset = PagingLimits.BoundOffset(offset);
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         var where = BuildWhere(head, query);
@@ -92,6 +96,269 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
             .ToList();
     }
 
+    public async Task<CatalogHeadQueryPage> GetPageWithTotalAsync(
+        CatalogHeadDescriptor head,
+        CatalogQuery query,
+        int offset,
+        int limit,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Argument is out of range.");
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        offset = PagingLimits.BoundOffset(offset);
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var where = BuildWhere(head, query);
+        var parameters = where.Params;
+        parameters.Add("catalogCode", head.CatalogCode);
+        parameters.Add("offset", offset);
+        parameters.Add("limit", limit);
+
+        var countSql = where.HasHeadCriteria
+            ? $"""
+               SELECT COUNT(*)
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN catalogs c ON c.id = h.catalog_id
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.HeadWhereSql});
+               """
+            : $"""
+               SELECT COUNT(*)
+                 FROM catalogs c
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.CatalogWhereSql});
+               """;
+
+        var pageSql = where.HasHeadCriteria
+            ? $"""
+               SELECT c.id         AS "Id",
+                      c.is_deleted AS "IsDeleted",
+                      h.{Qi(head.DisplayColumn)} AS "Display"{BuildSelectFields(head)},
+                      COUNT(*) OVER() AS "TotalCount"
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN catalogs c ON c.id = h.catalog_id
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.HeadWhereSql})
+                ORDER BY h.{Qi(head.DisplayColumn)} NULLS LAST, c.id
+                OFFSET @offset
+                 LIMIT @limit;
+               """
+            : $"""
+               SELECT rows.*,
+                      COUNT(*) OVER() AS "TotalCount"
+                 FROM (
+                     SELECT c.id         AS "Id",
+                            c.is_deleted AS "IsDeleted",
+                            h.{Qi(head.DisplayColumn)} AS "Display"{BuildSelectFields(head)}
+                       FROM {Qi(head.HeadTableName)} h
+                       JOIN catalogs c ON c.id = h.catalog_id
+                      WHERE c.catalog_code = @catalogCode
+                        AND ({where.CatalogWhereSql})
+                     UNION ALL
+                     SELECT c.id         AS "Id",
+                            c.is_deleted AS "IsDeleted",
+                            NULL::text   AS "Display"{BuildNullSelectFields(head)}
+                       FROM catalogs c
+                      WHERE c.catalog_code = @catalogCode
+                        AND ({where.CatalogWhereSql})
+                        AND NOT EXISTS (
+                            SELECT 1
+                              FROM {Qi(head.HeadTableName)} h
+                             WHERE h.catalog_id = c.id
+                        )
+                 ) rows
+                ORDER BY "Display" NULLS LAST, "Id"
+                OFFSET @offset
+                 LIMIT @limit;
+               """;
+
+        var rows = (await uow.Connection.QueryAsync(new CommandDefinition(
+            pageSql,
+            parameters,
+            transaction: uow.Transaction,
+            cancellationToken: ct))).AsList();
+        var total = rows.Count == 0
+            ? 0
+            : Convert.ToInt64(((IDictionary<string, object?>)rows[0])["TotalCount"]!);
+
+        if (rows.Count == 0 && offset > 0)
+        {
+            total = await uow.Connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                countSql,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+        }
+
+        return new CatalogHeadQueryPage(
+            rows.Select(row => ToRow(head, (IDictionary<string, object?>)row)).ToArray(),
+            total);
+    }
+
+    public async Task<CatalogHeadSeekPage> GetSeekPageAsync(
+        CatalogHeadDescriptor head,
+        CatalogQuery query,
+        string? afterDisplay,
+        Guid? afterId,
+        int limit,
+        bool includeTotal,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        if (afterId == Guid.Empty)
+            throw new NgbArgumentInvalidException(nameof(afterId), "Cursor ID must not be empty.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var where = BuildWhere(head, query);
+        var parameters = where.Params;
+
+        parameters.Add("catalogCode", head.CatalogCode);
+        parameters.Add("afterDisplay", afterDisplay);
+        parameters.Add("afterId", afterId);
+        parameters.Add("limitPlusOne", checked(limit + 1));
+
+        var countSql = where.HasHeadCriteria
+            ? $"""
+               SELECT COUNT(*)
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN catalogs c ON c.id = h.catalog_id
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.HeadWhereSql});
+               """
+            : $"""
+               SELECT COUNT(*)
+                 FROM catalogs c
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.CatalogWhereSql});
+               """;
+
+        var sourceSql = where.HasHeadCriteria
+            ? $"""
+               SELECT c.id AS "Id",
+                      c.is_deleted AS "IsDeleted",
+                      h.{Qi(head.DisplayColumn)} AS "Display",
+                      h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN catalogs c ON c.id = h.catalog_id
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.HeadWhereSql})
+               """
+            : $"""
+               SELECT c.id AS "Id",
+                      c.is_deleted AS "IsDeleted",
+                      h.{Qi(head.DisplayColumn)} AS "Display",
+                      h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN catalogs c ON c.id = h.catalog_id
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.CatalogWhereSql})
+               UNION ALL
+               SELECT c.id AS "Id",
+                      c.is_deleted AS "IsDeleted",
+                      NULL::text AS "Display",
+                      NULL::text AS "SortDisplay"{BuildNullSelectFields(head)}
+                 FROM catalogs c
+                WHERE c.catalog_code = @catalogCode
+                  AND ({where.CatalogWhereSql})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {Qi(head.HeadTableName)} h WHERE h.catalog_id = c.id)
+               """;
+
+        var pageSql = $"""
+SELECT *
+FROM (
+{sourceSql}
+) rows
+WHERE @afterId::uuid IS NULL
+   OR (
+        @afterDisplay::text IS NULL
+        AND "SortDisplay" IS NULL
+        AND "Id" > @afterId)
+   OR (
+        @afterDisplay::text IS NOT NULL
+        AND (
+            "SortDisplay" > @afterDisplay
+            OR ("SortDisplay" = @afterDisplay AND "Id" > @afterId)
+            OR "SortDisplay" IS NULL))
+ORDER BY "SortDisplay" NULLS LAST, "Id"
+LIMIT @limitPlusOne;
+""";
+
+        long? total = null;
+        async Task<IReadOnlyList<IDictionary<string, object?>>> ReadPageAsync(string sql, bool readTotal)
+        {
+            if (readTotal)
+            {
+                await using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                    $"{countSql}\n{sql}",
+                    parameters,
+                    transaction: uow.Transaction,
+                    cancellationToken: ct));
+                total = await results.ReadSingleAsync<long>();
+
+                return (await results.ReadAsync())
+                    .Select(static row => (IDictionary<string, object?>)row)
+                    .ToArray();
+            }
+
+            return (await uow.Connection.QueryAsync(new CommandDefinition(
+                    sql,
+                    parameters,
+                    transaction: uow.Transaction,
+                    cancellationToken: ct)))
+                .Select(static row => (IDictionary<string, object?>)row)
+                .ToArray();
+        }
+
+        IReadOnlyList<IDictionary<string, object?>> materialized;
+        if (!where.HasHeadCriteria && afterId is null)
+        {
+            // A full first page of non-null displays precedes every null/missing head.
+            // Avoid scanning the missing-head anti-join on ordinary list opens.
+            var firstPageSql = $"""
+                SELECT c.id AS "Id", c.is_deleted AS "IsDeleted",
+                       h.{Qi(head.DisplayColumn)} AS "Display",
+                       h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                  FROM {Qi(head.HeadTableName)} h
+                  JOIN catalogs c ON c.id = h.catalog_id
+                 WHERE c.catalog_code = @catalogCode
+                   AND ({where.CatalogWhereSql})
+                   AND h.{Qi(head.DisplayColumn)} IS NOT NULL
+                 ORDER BY h.{Qi(head.DisplayColumn)}, c.id
+                 LIMIT @limitPlusOne;
+                """;
+
+            materialized = await ReadPageAsync(firstPageSql, includeTotal);
+            if (materialized.Count < limit + 1)
+                materialized = await ReadPageAsync(pageSql, readTotal: false);
+        }
+        else
+        {
+            materialized = await ReadPageAsync(pageSql, includeTotal);
+        }
+
+        var hasMore = materialized.Count > limit;
+        var visible = materialized.Take(limit).ToArray();
+        var last = visible.LastOrDefault();
+        return new CatalogHeadSeekPage(
+            visible.Select(row => ToRow(head, row)).ToArray(),
+            total,
+            hasMore,
+            last is null ? null : last["SortDisplay"] as string,
+            last is null ? null : (Guid?)last["Id"]);
+    }
+
     private async Task<IReadOnlyList<CatalogHeadRow>> GetPageWithoutHeadCriteriaAsync(
         CatalogHeadDescriptor head,
         CatalogWhere where,
@@ -126,9 +393,12 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
             transaction: uow.Transaction,
             cancellationToken: ct));
 
-        rows.AddRange(nonNullRows.Select(r => ToRow(head, (IDictionary<string, object?>)r)));
+        foreach (var row in nonNullRows)
+        {
+            rows.Add(ToRow(head, (IDictionary<string, object?>)row));
+        }
 
-        if (rows.Count == limit)
+        if (rows.Count >= limit)
             return rows;
 
         var nonNullCountSql = $"""
@@ -148,8 +418,6 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
 
         var nullOffset = Math.Max(0L, offset - nonNullCount);
         var remaining = limit - rows.Count;
-        if (remaining <= 0)
-            return rows;
 
         p.Add("nullOffset", nullOffset);
         p.Add("remaining", remaining);
@@ -224,6 +492,176 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
         return row is null ? null : ToRow(head, (IDictionary<string, object?>)row);
     }
 
+    public async Task<IReadOnlyList<CatalogHeadRow>> GetByIdsWithFieldsAsync(
+        CatalogHeadDescriptor head,
+        IReadOnlyList<Guid> ids,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+        ArgumentNullException.ThrowIfNull(ids);
+
+        if (ids.Count == 0)
+            return [];
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var sql = $"""
+SELECT c.id AS "Id",
+       c.is_deleted AS "IsDeleted",
+       h.{Qi(head.DisplayColumn)} AS "Display"{BuildSelectFields(head)}
+FROM catalogs c
+LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id
+WHERE c.catalog_code = @catalogCode
+  AND c.id = ANY(@ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync(new CommandDefinition(
+            sql,
+            new { catalogCode = head.CatalogCode, ids = ids.ToArray() },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+        var byId = rows
+            .Select(row => ToRow(head, (IDictionary<string, object?>)row))
+            .ToDictionary(static row => row.Id);
+
+        return ids
+            .Distinct()
+            .Where(byId.ContainsKey)
+            .Select(id => byId[id])
+            .ToArray();
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetActiveDescendantIdsAsync(
+        CatalogHeadDescriptor head,
+        IReadOnlyList<Guid> rootIds,
+        string parentColumnCode,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+
+        ArgumentNullException.ThrowIfNull(rootIds);
+
+        if (string.IsNullOrWhiteSpace(parentColumnCode))
+            throw new NgbArgumentRequiredException(nameof(parentColumnCode));
+
+        if (!head.Columns.Any(column =>
+                string.Equals(column.ColumnName, parentColumnCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new NgbArgumentInvalidException(
+                nameof(parentColumnCode),
+                $"Column '{parentColumnCode}' is not defined in catalog head '{head.HeadTableName}'.");
+        }
+
+        var roots = rootIds.Distinct().ToArray();
+        if (roots.Length == 0)
+            return [];
+
+        if (roots.Any(static id => id == Guid.Empty))
+            throw new NgbArgumentInvalidException(nameof(rootIds), "Root ids must not contain an empty identifier.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var parentColumn = Qi(parentColumnCode);
+        var sql = $"""
+WITH RECURSIVE descendants AS (
+    SELECT h.catalog_id AS id
+      FROM {Qi(head.HeadTableName)} h
+      JOIN catalogs c
+        ON c.id = h.catalog_id
+       AND c.catalog_code = @catalogCode
+       AND c.is_deleted = FALSE
+     WHERE h.{parentColumn} = ANY(@rootIds)
+
+    UNION
+
+    SELECT child.catalog_id AS id
+      FROM {Qi(head.HeadTableName)} child
+      JOIN catalogs c
+        ON c.id = child.catalog_id
+       AND c.catalog_code = @catalogCode
+       AND c.is_deleted = FALSE
+      JOIN descendants parent
+        ON child.{parentColumn} = parent.id
+)
+SELECT id
+  FROM descendants
+ WHERE id <> ALL(@rootIds)
+ ORDER BY id;
+""";
+
+        var ids = await uow.Connection.QueryAsync<Guid>(new CommandDefinition(
+            sql,
+            new { catalogCode = head.CatalogCode, rootIds = roots },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        return ids.AsList();
+    }
+
+    public async Task<bool> HasParentChainViolationAsync(
+        CatalogHeadDescriptor head,
+        Guid catalogId,
+        Guid parentId,
+        string parentColumnCode,
+        int maxDepth,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+
+        if (catalogId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(catalogId));
+
+        if (parentId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(parentId));
+
+        if (string.IsNullOrWhiteSpace(parentColumnCode))
+            throw new NgbArgumentRequiredException(nameof(parentColumnCode));
+
+        if (maxDepth <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(maxDepth), maxDepth, "Maximum hierarchy depth must be positive.");
+
+        if (!head.Columns.Any(column => string.Equals(column.ColumnName, parentColumnCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new NgbArgumentInvalidException(
+                nameof(parentColumnCode),
+                $"Column '{parentColumnCode}' is not defined in catalog head '{head.HeadTableName}'.");
+        }
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var parentColumn = Qi(parentColumnCode);
+        var sql = $"""
+WITH RECURSIVE parent_chain(id, depth, visited, violation) AS (
+    SELECT @ParentId::uuid,
+           0,
+           ARRAY[@CatalogId]::uuid[],
+           @ParentId = @CatalogId
+
+    UNION ALL
+
+    SELECT h.{parentColumn},
+           parent.depth + 1,
+           parent.visited || parent.id,
+           h.{parentColumn} = ANY(parent.visited || parent.id)
+               OR parent.depth + 1 >= @MaxDepth
+      FROM parent_chain parent
+      JOIN {Qi(head.HeadTableName)} h
+        ON h.catalog_id = parent.id
+     WHERE NOT parent.violation
+       AND parent.depth < @MaxDepth
+       AND h.{parentColumn} IS NOT NULL
+)
+SELECT COALESCE(BOOL_OR(violation), FALSE)
+  FROM parent_chain;
+""";
+
+        return await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            sql,
+            new { CatalogId = catalogId, ParentId = parentId, MaxDepth = maxDepth },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+    }
+
     public async Task<IReadOnlyList<CatalogLookupRow>> LookupAsync(
         CatalogHeadDescriptor head,
         string? query,
@@ -231,12 +669,17 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
         CancellationToken ct = default)
     {
         EnsureValid(head);
-        if (limit <= 0) return [];
+
+        if (limit <= 0)
+            return [];
 
         await uow.EnsureConnectionOpenAsync(ct);
 
         var q = (query ?? string.Empty).Trim();
         var hasQuery = q.Length > 0;
+        var queryId = Guid.TryParse(q, out var parsedQueryId) ? parsedQueryId : (Guid?)null;
+        var queryIdRange = default(GuidSearchRange);
+        var hasQueryIdPrefix = queryId is null && GuidSearchRange.TryCreate(q, out queryIdRange);
         var headDisplaySql = $"h.{Qi(head.DisplayColumn)}";
         var labelSql = $"COALESCE({headDisplaySql}, c.id::text)";
         var sql = hasQuery
@@ -247,7 +690,13 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
                  LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id
                 WHERE c.catalog_code = @catalogCode
                   AND c.is_deleted = FALSE
-                  AND {labelSql} ILIKE ('%' || @q::text || '%')
+                  AND (
+                      {headDisplaySql} ILIKE ('%' || @q::text || '%')
+                      OR ({headDisplaySql} IS NULL AND (
+                          (@queryId IS NOT NULL AND c.id = @queryId)
+                          OR (@hasQueryIdPrefix AND c.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper)
+                      ))
+                  )
                 ORDER BY {headDisplaySql} NULLS LAST, c.updated_at_utc DESC, c.id DESC
                 LIMIT @limit;
                """
@@ -283,7 +732,16 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
 
         var rows = await uow.Connection.QueryAsync<CatalogLookupSqlRow>(new CommandDefinition(
             sql,
-            new { catalogCode = head.CatalogCode, q, limit },
+            new
+            {
+                catalogCode = head.CatalogCode,
+                q,
+                queryId,
+                hasQueryIdPrefix,
+                queryIdPrefixLower = hasQueryIdPrefix ? queryIdRange.Lower : Guid.Empty,
+                queryIdPrefixUpper = hasQueryIdPrefix ? queryIdRange.Upper : Guid.Empty,
+                limit
+            },
             transaction: uow.Transaction,
             cancellationToken: ct));
 
@@ -356,11 +814,20 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
 
         var normalizedQuery = (query ?? string.Empty).Trim();
         var hasQuery = normalizedQuery.Length > 0;
+        var queryId = Guid.TryParse(normalizedQuery, out var parsedQueryId) ? parsedQueryId : (Guid?)null;
+        var queryIdRange = default(GuidSearchRange);
+        var hasQueryIdPrefix = queryId is null && GuidSearchRange.TryCreate(normalizedQuery, out queryIdRange);
 
         var p = new DynamicParameters();
         p.Add("perTypeLimit", perTypeLimit, dbType: DbType.Int32);
         if (hasQuery)
+        {
             p.Add("q", normalizedQuery, dbType: DbType.String);
+            p.Add("queryId", queryId, dbType: DbType.Guid);
+            p.Add("hasQueryIdPrefix", hasQueryIdPrefix, dbType: DbType.Boolean);
+            p.Add("queryIdPrefixLower", hasQueryIdPrefix ? queryIdRange.Lower : Guid.Empty, dbType: DbType.Guid);
+            p.Add("queryIdPrefixUpper", hasQueryIdPrefix ? queryIdRange.Upper : Guid.Empty, dbType: DbType.Guid);
+        }
 
         var subqueries = new List<string>(distinctHeads.Length);
 
@@ -373,42 +840,74 @@ internal sealed class PostgresCatalogReader(IUnitOfWork uow) : ICatalogReader
             var activeFilterSql = activeOnly ? "AND c.is_deleted = FALSE" : string.Empty;
             var headDisplaySql = $"h.{Qi(head.DisplayColumn)}";
             var labelSql = $"COALESCE({headDisplaySql}, c.id::text)";
-            var fromSql = hasQuery
-                ? $"catalogs c LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id"
-                : $"{Qi(head.HeadTableName)} h JOIN catalogs c ON c.id = h.catalog_id";
-            var searchFilterSql = hasQuery
-                ? $"AND {labelSql} ILIKE ('%' || @q::text || '%')"
-                : string.Empty;
-            var orderBySql = hasQuery
-                ? $"""
-                  CASE
-                      WHEN {labelSql} ILIKE ('%' || @q::text || '%') THEN 0
-                      ELSE 1
-                  END,
-                  {labelSql},
-                  c.id
-                  """
-                : $"""
-                  {headDisplaySql} NULLS LAST,
-                  c.id
-                  """;
 
-            subqueries.Add($"""
+            if (hasQuery)
+            {
+                subqueries.Add($"""
+                            (
+                                WITH candidates AS (
+                                    SELECT h.catalog_id AS id, 0 AS rank
+                                      FROM {Qi(head.HeadTableName)} h
+                                      JOIN catalogs c ON c.id = h.catalog_id
+                                     WHERE c.catalog_code = @{catalogCodeParam}
+                                       {activeFilterSql}
+                                       AND {headDisplaySql} ILIKE ('%' || @q::text || '%')
+                                    UNION ALL
+                                    SELECT c.id, 1 AS rank
+                                      FROM catalogs c
+                                     WHERE c.catalog_code = @{catalogCodeParam}
+                                       {activeFilterSql}
+                                       AND (
+                                           (@queryId IS NOT NULL AND c.id = @queryId)
+                                           OR (@hasQueryIdPrefix AND c.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper)
+                                       )
+                                       AND NOT EXISTS (
+                                           SELECT 1
+                                             FROM {Qi(head.HeadTableName)} missing_head
+                                            WHERE missing_head.catalog_id = c.id
+                                       )
+                                ),
+                                ranked_candidates AS (
+                                    SELECT id, MIN(rank) AS rank
+                                      FROM candidates
+                                     GROUP BY id
+                                )
+                                SELECT
+                                    c.id AS "Id",
+                                    @{catalogCodeParam} AS "CatalogCode",
+                                    c.is_deleted AS "IsMarkedForDeletion",
+                                    {labelSql} AS "Label"
+                                FROM ranked_candidates candidate
+                                JOIN catalogs c ON c.id = candidate.id
+                                LEFT JOIN {Qi(head.HeadTableName)} h ON h.catalog_id = c.id
+                                ORDER BY
+                                    candidate.rank,
+                                    {labelSql},
+                                    c.id
+                                LIMIT @perTypeLimit
+                            )
+                            """);
+            }
+            else
+            {
+                subqueries.Add($"""
                             (
                                 SELECT
                                     c.id AS "Id",
                                     @{catalogCodeParam} AS "CatalogCode",
                                     c.is_deleted AS "IsMarkedForDeletion",
                                     {labelSql} AS "Label"
-                                FROM {fromSql}
+                                FROM {Qi(head.HeadTableName)} h
+                                JOIN catalogs c ON c.id = h.catalog_id
                                 WHERE c.catalog_code = @{catalogCodeParam}
                                   {activeFilterSql}
-                                  {searchFilterSql}
                                 ORDER BY
-                                    {orderBySql}
+                                    {headDisplaySql} NULLS LAST,
+                                    c.id
                                 LIMIT @perTypeLimit
                             )
                             """);
+            }
         }
 
         var sql = string.Join("\nUNION ALL\n", subqueries);

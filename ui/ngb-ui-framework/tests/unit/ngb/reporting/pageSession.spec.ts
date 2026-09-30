@@ -5,6 +5,7 @@ const storageState = vi.hoisted(() => ({
 }))
 
 vi.mock('../../../../src/ngb/utils/storage', () => ({
+  listStorageKeys: vi.fn((scope: 'session' | 'local') => Array.from(storageState[scope].keys())),
   readStorageJsonOrNull: vi.fn((scope: 'session' | 'local', key: string) => {
     const raw = storageState[scope].get(key)
     return raw ? JSON.parse(raw) : null
@@ -73,6 +74,58 @@ describe('reporting page session helpers', () => {
     })
   })
 
+  it('does not synchronously persist oversized report sheets', () => {
+    const response = buildResponse()
+    response.sheet.rows = Array.from({ length: 501 }, (_, index) => ({
+      rowKind: ReportRowKind.Detail,
+      cells: [{ display: `Row ${index}`, value: index, valueType: 'number' }],
+    }))
+    storageState.session.set('ngb.report.page.execution:report:large', 'stale')
+
+    saveReportPageExecutionSnapshot('report:large', response, ['cursor-1'])
+
+    expect(loadReportPageExecutionSnapshot('report:large')).toBeNull()
+    expect(storageState.session.has('ngb.report.page.execution:report:large')).toBe(false)
+  })
+
+  it('accepts a malformed null row collection as an empty bounded snapshot', () => {
+    const response = buildResponse()
+    response.sheet.rows = null as never
+
+    saveReportPageExecutionSnapshot('report:null-rows', response, [])
+
+    expect(loadReportPageExecutionSnapshot('report:null-rows')?.response.sheet.rows).toBeNull()
+  })
+
+  it('bounds wide snapshots by bytes and evicts the oldest execution snapshots', () => {
+    const wide = buildResponse()
+    wide.sheet.rows[0]!.cells[0]!.display = 'x'.repeat(300_000)
+    saveReportPageExecutionSnapshot('report:wide', wide, [])
+    expect(loadReportPageExecutionSnapshot('report:wide')).toBeNull()
+
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-08T12:00:00Z'))
+    for (let index = 0; index < 10; index += 1) {
+      saveReportPageExecutionSnapshot(`report:${index}`, buildResponse(), [])
+      vi.advanceTimersByTime(1)
+    }
+
+    const executionKeys = Array.from(storageState.session.keys())
+      .filter((key) => key.startsWith('ngb.report.page.execution:'))
+    expect(executionKeys).toHaveLength(8)
+    expect(loadReportPageExecutionSnapshot('report:0')).toBeNull()
+    expect(loadReportPageExecutionSnapshot('report:9')).not.toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('evicts legacy snapshots without timestamps before recent snapshots', () => {
+    storageState.session.set('ngb.report.page.execution:legacy', JSON.stringify({ response: buildResponse() }))
+    for (let index = 0; index < 8; index++) saveReportPageExecutionSnapshot(`recent:${index}`, buildResponse(), [])
+    expect(storageState.session.has('ngb.report.page.execution:legacy')).toBe(false)
+    expect(loadReportPageExecutionSnapshot('recent:7')?.response).toEqual(buildResponse())
+    expect(storageState.session.size).toBe(8)
+  })
+
   it('ignores malformed snapshots and blank keys', () => {
     storageState.session.set('ngb.report.page.execution:broken', JSON.stringify({
       response: {
@@ -88,11 +141,39 @@ describe('reporting page session helpers', () => {
     expect(storageState.session.size).toBe(1)
   })
 
+  it('normalizes nullish keys and malformed persisted cursor collections', () => {
+    storageState.session.set('ngb.report.page.execution:missing-cursors', JSON.stringify({
+      response: buildResponse(),
+      version: 3,
+    }))
+    storageState.session.set('ngb.report.page.execution:null-cursors', JSON.stringify({
+      response: buildResponse(),
+      consumedCursors: [null, ' cursor-1 ', ''],
+      version: 3,
+    }))
+
+    expect(loadReportPageExecutionSnapshot('missing-cursors')).toEqual({
+      response: buildResponse(),
+      consumedCursors: [],
+    })
+    expect(loadReportPageExecutionSnapshot('null-cursors')).toEqual({
+      response: buildResponse(),
+      consumedCursors: ['cursor-1'],
+    })
+    expect(loadReportPageExecutionSnapshot(null)).toBeNull()
+    saveReportPageExecutionSnapshot(undefined, buildResponse(), [])
+    clearReportPageExecutionSnapshot(null)
+    expect(storageState.session.size).toBe(2)
+  })
+
   it('stores, normalizes, and clears scroll position', () => {
     saveReportPageScrollTop('report:ctx', 128.8)
     expect(loadReportPageScrollTop('report:ctx')).toBe(128)
 
     saveReportPageScrollTop('report:ctx', 0)
+    expect(loadReportPageScrollTop('report:ctx')).toBe(0)
+
+    saveReportPageScrollTop('report:ctx', Number.POSITIVE_INFINITY)
     expect(loadReportPageScrollTop('report:ctx')).toBe(0)
 
     saveReportPageScrollTop('report:ctx', 75)
@@ -102,5 +183,16 @@ describe('reporting page session helpers', () => {
     saveReportPageExecutionSnapshot('report:ctx', buildResponse(), ['cursor-1'])
     clearReportPageExecutionSnapshot('report:ctx')
     expect(loadReportPageExecutionSnapshot('report:ctx')).toBeNull()
+  })
+
+  it('ignores blank scroll keys and invalid persisted positions', () => {
+    saveReportPageScrollTop(null, 42)
+    expect(loadReportPageScrollTop(undefined)).toBe(0)
+    clearReportPageScrollTop('  ')
+
+    storageState.session.set('ngb.report.page.scroll:invalid', 'not-a-number')
+    storageState.session.set('ngb.report.page.scroll:negative', '-12')
+    expect(loadReportPageScrollTop('invalid')).toBe(0)
+    expect(loadReportPageScrollTop('negative')).toBe(0)
   })
 })

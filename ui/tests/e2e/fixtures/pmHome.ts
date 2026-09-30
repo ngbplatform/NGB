@@ -45,6 +45,133 @@ function row(rowKind: ReportRowKind, cells: ReportCellDto[]): ReportSheetRowDto 
   }
 }
 
+export const homeDashboardFixture = {
+  asOfUtc: '2026-04-07',
+  warnings: [],
+  portfolio: {
+    buildingCount: 3,
+    totalUnits: 120,
+    occupiedUnits: 108,
+    vacantUnits: 12,
+    occupancyPercent: 90,
+    futureOccupiedUnits: 108,
+    futureOccupancyPercent: 90,
+  },
+  leases: {
+    expiring30Count: 2,
+    upcomingMoveInCount: 1,
+    upcomingMoveOutCount: 1,
+    events: [
+      {
+        kind: 'Move-in',
+        date: '2026-04-10',
+        leaseId: '11111111-aaaa-4aaa-8aaa-111111111111',
+        leaseDisplay: 'Lease A-101',
+        propertyDisplay: 'Riverfront Flats',
+      },
+      {
+        kind: 'Move-out',
+        date: '2026-04-12',
+        leaseId: PM_TEST_IDS.receivablesLeaseId,
+        leaseDisplay: 'Lease B-204',
+        propertyDisplay: 'Harbor Point',
+      },
+    ],
+  },
+  receivables: {
+    totalOpenItemsNet: 1475,
+    totalDiff: -200,
+    rowCount: 2,
+    mismatchRowCount: 1,
+    currentMonthBilled: 2625,
+    currentMonthCollected: 2000,
+    mismatches: [
+      {
+        partyId: PM_TEST_IDS.receivablesPartyId,
+        propertyId: PM_TEST_IDS.receivablesPropertyId,
+        leaseId: PM_TEST_IDS.receivablesLeaseId,
+        leaseDisplay: 'Lease B-204',
+        propertyDisplay: 'Riverfront Flats',
+        rowKind: 'Mismatch',
+        diff: -200,
+      },
+    ],
+  },
+  maintenance: {
+    openItemCount: 3,
+    overdueCount: 1,
+    items: [
+      {
+        requestId: 'maintenance-request-1001',
+        workOrderId: null,
+        queueState: 'Overdue',
+        subject: 'HVAC follow-up',
+        requestDisplay: 'REQ-1001',
+        propertyDisplay: 'Riverfront Flats',
+        requestedAtUtc: '2026-04-01',
+        dueByUtc: '2026-04-05',
+        agingDays: 6,
+        assignedTo: 'Jamie Lee',
+      },
+      {
+        requestId: 'maintenance-request-1002',
+        workOrderId: 'maintenance-work-order-1002',
+        queueState: 'WorkOrdered',
+        subject: 'Lobby lighting',
+        requestDisplay: 'REQ-1002',
+        propertyDisplay: 'Harbor Point',
+        requestedAtUtc: '2026-04-03',
+        dueByUtc: '2026-04-08',
+        agingDays: 4,
+        assignedTo: 'Alex Carter',
+      },
+      {
+        requestId: 'maintenance-request-1003',
+        workOrderId: null,
+        queueState: 'Requested',
+        subject: 'Unit turnover paint',
+        requestDisplay: 'REQ-1003',
+        propertyDisplay: 'Oak Terrace',
+        requestedAtUtc: '2026-04-07',
+        dueByUtc: '2026-04-12',
+        agingDays: 1,
+        assignedTo: 'Unassigned',
+      },
+    ],
+    aging: {
+      days0To3: 1,
+      days4To7: 2,
+      days8To14: 0,
+      days15Plus: 0,
+    },
+  },
+  periods: {
+    pendingCloseCount: 2,
+    lastClosedPeriod: '2026-02',
+    nextClosablePeriod: '2026-03',
+    firstGapPeriod: '2026-03',
+  },
+  occupancyTrend: Array.from({ length: 12 }, (_, index) => ({
+    month: new Date(Date.UTC(2025, 4 + index, 1)).toISOString().slice(0, 10),
+    occupiedUnits: 108,
+    vacantUnits: 12,
+  })),
+  collectionsTrend: [
+    { month: '2025-05-01', billed: 0, collected: 0 },
+    { month: '2025-06-01', billed: 0, collected: 0 },
+    { month: '2025-07-01', billed: 0, collected: 0 },
+    { month: '2025-08-01', billed: 0, collected: 0 },
+    { month: '2025-09-01', billed: 0, collected: 0 },
+    { month: '2025-10-01', billed: 0, collected: 0 },
+    { month: '2025-11-01', billed: 0, collected: 0 },
+    { month: '2025-12-01', billed: 0, collected: 0 },
+    { month: '2026-01-01', billed: 0, collected: 0 },
+    { month: '2026-02-01', billed: 0, collected: 0 },
+    { month: '2026-03-01', billed: 2325, collected: 2100 },
+    { month: '2026-04-01', billed: 2625, collected: 2000 },
+  ],
+}
+
 export const homeLeaseDocumentsFixture = page<DocumentDto>([
   postedDocument('11111111-aaaa-4aaa-8aaa-111111111111', 'Lease A-101', {
     start_on_utc: '2026-04-10',

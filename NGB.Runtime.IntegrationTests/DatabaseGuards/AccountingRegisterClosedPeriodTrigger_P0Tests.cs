@@ -6,8 +6,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingRegisterClosedPeriodTrigger_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingRegisterClosedPeriodTrigger_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly Period = ReportingTestHelpers.Period; // 2026-01-01

@@ -8,7 +8,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_DbAppendOnlyGuards_EventsAndChanges_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -19,7 +19,6 @@ public sealed class AuditLog_DbAppendOnlyGuards_EventsAndChanges_P0Tests(Postgre
     [Fact]
     public async Task AuditEvents_Table_IsAppendOnly_UpdateAndDeleteAreForbidden()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         Guid docId;
@@ -64,7 +63,6 @@ public sealed class AuditLog_DbAppendOnlyGuards_EventsAndChanges_P0Tests(Postgre
     [Fact]
     public async Task AuditEventChanges_Table_IsAppendOnly_UpdateAndDeleteAreForbidden()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Ensure we have at least one event with changes.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using NGB.Contracts.Common;
 using NGB.Contracts.Effects;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
@@ -44,8 +45,13 @@ public sealed class DocumentEffectsQueryService(
         if (record is null)
             throw new NgbArgumentRequiredException(nameof(record));
 
-        if (limit <= 0)
-            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be positive.");
+        if (limit is <= 0 or > PagingLimits.MaxPageSize)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(limit),
+                limit,
+                $"Limit must be between 1 and {PagingLimits.MaxPageSize}.");
+        }
 
         if (record.Status != DocumentStatus.Posted)
             return new DocumentEffectsQueryResult([], [], []);
@@ -131,9 +137,6 @@ public sealed class DocumentEffectsQueryService(
             .Take(limit)
             .ToArray();
 
-        if (orderedRows.Length == 0)
-            return [];
-
         var bagsById = await ResolveBagsByIdsAsync(orderedRows.Select(x => x.Movement.DimensionSetId), ct);
         var resolved = await ResolveDisplaysAsync(bagsById.Values, ct);
 
@@ -194,9 +197,6 @@ public sealed class DocumentEffectsQueryService(
             .Take(limit)
             .ToArray();
 
-        if (orderedRows.Length == 0)
-            return [];
-
         var bagsById = await ResolveBagsByIdsAsync(orderedRows.Select(x => x.Record.DimensionSetId), ct);
         var resolved = await ResolveDisplaysAsync(bagsById.Values, ct);
 
@@ -237,9 +237,6 @@ public sealed class DocumentEffectsQueryService(
         CancellationToken ct)
     {
         var ids = dimensionSetIds.Distinct().ToArray();
-        if (ids.Length == 0)
-            return new Dictionary<Guid, DimensionBag>();
-
         return await dimensionSetReader.GetBagsByIdsAsync(ids, ct);
     }
 
@@ -296,8 +293,5 @@ public sealed class DocumentEffectsQueryService(
     }
 
     private static string ShortGuid(Guid valueId)
-    {
-        var s = valueId.ToString("N");
-        return s.Length > 8 ? s[..8] : s;
-    }
+        => valueId.ToString("N")[..8];
 }

@@ -10,6 +10,7 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.OperationalRegisters.Contracts;
+using NGB.Persistence.Documents;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Runtime.Accounts;
 using NGB.Tools.Exceptions;
@@ -132,6 +133,24 @@ public sealed class ProjectCatalogUpsertValidator_P0Tests
             AgencyBillingTestData.CreateCatalogValidationContext(
                 AgencyBillingCodes.Project,
                 AgencyBillingTestData.Fields(("client_id", clientId), ("start_date", "2026-04-01"), ("end_date", "2026-04-30"))),
+            CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ValidateUpsertAsync_When_Only_Start_Date_Is_Present_Passes()
+    {
+        var clientId = Guid.NewGuid();
+        var refs = new AgencyBillingTestData.ReferenceReadersStub
+        {
+            ReadClientAsyncFunc = (_, _) => Task.FromResult<AgencyBillingClientReference?>(
+                AgencyBillingTestData.ClientReference(clientId)),
+        };
+        var sut = new ProjectCatalogUpsertValidator(refs);
+
+        await sut.ValidateUpsertAsync(
+            AgencyBillingTestData.CreateCatalogValidationContext(
+                AgencyBillingCodes.Project,
+                AgencyBillingTestData.Fields(("client_id", clientId), ("start_date", "2026-04-01"))),
             CancellationToken.None);
     }
 
@@ -332,6 +351,33 @@ public sealed class RateCardCatalogUpsertValidator_P0Tests
                 AgencyBillingTestData.Fields(("billing_rate", 100m), ("cost_rate", 0m))),
             CancellationToken.None);
     }
+
+    [Fact]
+    public async Task ValidateUpsertAsync_When_Only_EffectiveFrom_Is_Present_Passes()
+    {
+        var sut = new RateCardCatalogUpsertValidator(new AgencyBillingTestData.ReferenceReadersStub());
+
+        await sut.ValidateUpsertAsync(
+            AgencyBillingTestData.CreateCatalogValidationContext(
+                AgencyBillingCodes.RateCard,
+                AgencyBillingTestData.Fields(("billing_rate", 100m), ("effective_from", "2026-04-01"))),
+            CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task ValidateUpsertAsync_When_EffectiveRange_Is_Ordered_Passes()
+    {
+        var sut = new RateCardCatalogUpsertValidator(new AgencyBillingTestData.ReferenceReadersStub());
+
+        await sut.ValidateUpsertAsync(
+            AgencyBillingTestData.CreateCatalogValidationContext(
+                AgencyBillingCodes.RateCard,
+                AgencyBillingTestData.Fields(
+                    ("billing_rate", 100m),
+                    ("effective_from", "2026-04-01"),
+                    ("effective_to", "2026-04-01"))),
+            CancellationToken.None);
+    }
 }
 
 public sealed class AccountingPolicyCatalogUpsertValidator_P0Tests
@@ -375,6 +421,21 @@ public sealed class AccountingPolicyCatalogUpsertValidator_P0Tests
 
         ex.ParamName.Should().Be(fieldKey);
         ex.Reason.Should().Be(expectedReason);
+    }
+
+    [Fact]
+    public async Task ValidateUpsertAsync_When_Required_Guid_Is_Empty_Throws()
+    {
+        var sut = CreateSut([], new Dictionary<Guid, OperationalRegisterAdminItem>());
+        var fields = ValidPolicyFields();
+        fields["cash_account_id"] = Guid.Empty;
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            sut.ValidateUpsertAsync(
+                AgencyBillingTestData.CreateCatalogValidationContext(AgencyBillingCodes.AccountingPolicy, fields),
+                CancellationToken.None));
+
+        ex.ParamName.Should().Be("cash_account_id");
     }
 
     [Fact]
@@ -565,11 +626,19 @@ public sealed class AccountingPolicyCatalogUpsertValidator_P0Tests
         IReadOnlyDictionary<Guid, OperationalRegisterAdminItem> registers)
     {
         var coaAdmin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
-        coaAdmin.Setup(x => x.GetAsync(true, It.IsAny<CancellationToken>())).ReturnsAsync(accounts);
+        coaAdmin.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+            {
+                var idSet = ids.ToHashSet();
+                return accounts.Where(x => idSet.Contains(x.Account.Id)).ToArray();
+            });
 
         var registerRepo = new Mock<IOperationalRegisterRepository>(MockBehavior.Strict);
-        registerRepo.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Guid id, CancellationToken _) => registers.TryGetValue(id, out var register) ? register : null);
+        registerRepo.Setup(x => x.GetByIdsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.Where(registers.ContainsKey).Select(id => registers[id]).ToArray());
 
         return new AccountingPolicyCatalogUpsertValidator(coaAdmin.Object, registerRepo.Object);
     }
@@ -626,6 +695,47 @@ public sealed class AccountingPolicyCatalogUpsertValidator_P0Tests
 
 public sealed class AgencyBillingAccountingPolicyReader_P0Tests
 {
+    [Fact]
+    public async Task GetRequiredAsync_UsesPostingReadCacheWhenAvailable()
+    {
+        var cache = new Mock<IDocumentPostingReadCache>(MockBehavior.Strict);
+        cache.Setup(x => x.GetOrAddAsync<AgencyBillingAccountingPolicy>(
+                "policy:agency-billing",
+                It.IsAny<Func<CancellationToken, Task<AgencyBillingAccountingPolicy>>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns((string _, Func<CancellationToken, Task<AgencyBillingAccountingPolicy>> factory, CancellationToken ct) => factory(ct));
+        var sut = new AgencyBillingAccountingPolicyReader(
+            CreateCatalogService(ValidPolicyJsonFields()),
+            cache.Object);
+
+        var result = await sut.GetRequiredAsync();
+
+        result.Should().NotBeNull();
+        cache.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetRequiredAsync_When_PayloadFields_AreNull_ThrowsMissingField()
+    {
+        var catalogs = new Mock<ICatalogService>(MockBehavior.Strict);
+        var item = new CatalogItemDto(
+            Guid.NewGuid(),
+            "Policy",
+            new RecordPayload(null, null),
+            IsMarkedForDeletion: false,
+            IsDeleted: false);
+        catalogs.Setup(x => x.GetPageAsync(
+                AgencyBillingCodes.AccountingPolicy,
+                It.IsAny<PageRequestDto>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PageResponseDto<CatalogItemDto>([item], 0, 2, 1));
+        var sut = new AgencyBillingAccountingPolicyReader(catalogs.Object);
+
+        var ex = await Assert.ThrowsAsync<NgbConfigurationViolationException>(() => sut.GetRequiredAsync());
+
+        ex.Message.Should().Contain("cash_account_id").And.Contain("missing");
+    }
+
     [Fact]
     public async Task GetRequiredAsync_When_No_Policy_Exists_Throws()
     {

@@ -386,6 +386,22 @@ describe('useWorkCenter', () => {
     expect(workCenter.loadMoreError.value).toBeNull()
   })
 
+  it('bounds a long-lived feed and stops requesting cursors at the retention limit', async () => {
+    installWindow()
+    api.items.mockResolvedValueOnce(page(
+      Array.from({ length: 2_001 }, (_, index) => task({ id: `task-${index}` })),
+      'cursor-2',
+    ))
+    const { useWorkCenter } = await freshWorkCenter()
+    const workCenter = useWorkCenter()
+
+    await workCenter.load({ tab: 'tasks' })
+
+    expect(workCenter.items.value).toHaveLength(2_000)
+    expect(workCenter.items.value.at(-1)?.id).toBe('task-1999')
+    expect(workCenter.nextCursor.value).toBeNull()
+  })
+
   it('aborts superseded feeds and ignores their stale successful result', async () => {
     installWindow()
     const staleRequest = deferred<WorkCenterPage>()

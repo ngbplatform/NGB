@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createGeneralJournalEntryLine,
+  createGeneralJournalEntryLineKey,
   formatGeneralJournalEntryMoney,
   generalJournalEntryApprovalStateLabel,
   generalJournalEntryJournalTypeLabel,
@@ -28,17 +29,24 @@ describe('generalJournalEntry helpers', () => {
       memo: '',
       dimensions: {},
     })
+    expect(createGeneralJournalEntryLineKey('custom')).toMatch(/^custom-[a-z0-9]+-[a-z0-9]+$/)
+    expect(createGeneralJournalEntryLine().clientKey).toMatch(/^line-/)
   })
 
   it('parses amount strings and formats money consistently', () => {
     expect(parseGeneralJournalEntryAmount('1,250.50')).toBe(1250.5)
     expect(Number.isNaN(parseGeneralJournalEntryAmount('oops'))).toBe(true)
     expect(formatGeneralJournalEntryMoney(1250.5)).toBe('1,250.50')
+    expect(formatGeneralJournalEntryMoney(Number.NaN)).toBe('0.00')
+    expect(parseGeneralJournalEntryAmount(null as never)).toBe(0)
   })
 
   it('normalizes date-only values and converts them to utc midday timestamps', () => {
     expect(normalizeDateOnly('2026-04-08T22:15:00Z')).toBe('2026-04-08')
     expect(normalizeDateOnly('')).toBeNull()
+    expect(normalizeDateOnly(null)).toBeNull()
+    expect(normalizeDateOnly('not-a-date')).toBeNull()
+    expect(normalizeDateOnly('April 9, 2026')).toBe('2026-04-09')
     expect(toUtcMidday('2026-04-08')).toBe('2026-04-08T12:00:00Z')
     expect(() => toUtcMidday(null)).toThrow('Date is required.')
   })
@@ -48,6 +56,7 @@ describe('generalJournalEntry helpers', () => {
     vi.setSystemTime(new Date('2026-04-08T09:30:00Z'))
 
     expect(todayDateOnly()).toBe('2026-04-08')
+    expect(todayDateOnly(new Date('2027-01-02T12:00:00Z'))).toBe('2027-01-02')
   })
 
   it('maps approval, source, and journal type labels from mixed inputs', () => {
@@ -57,5 +66,35 @@ describe('generalJournalEntry helpers', () => {
     expect(generalJournalEntrySourceLabel(1)).toBe('Manual')
     expect(generalJournalEntryJournalTypeLabel(5)).toBe('Closing')
     expect(generalJournalEntryJournalTypeLabel('unknown')).toBe('—')
+
+    expect([
+      normalizeGeneralJournalEntryApprovalState(9),
+      normalizeGeneralJournalEntryApprovalState(Number.NaN),
+      normalizeGeneralJournalEntryApprovalState('1'),
+      normalizeGeneralJournalEntryApprovalState('draft'),
+      normalizeGeneralJournalEntryApprovalState('2'),
+      normalizeGeneralJournalEntryApprovalState('3'),
+      normalizeGeneralJournalEntryApprovalState('approved'),
+      normalizeGeneralJournalEntryApprovalState('4'),
+      normalizeGeneralJournalEntryApprovalState('rejected'),
+      normalizeGeneralJournalEntryApprovalState('unknown'),
+      normalizeGeneralJournalEntryApprovalState(null),
+    ]).toEqual([9, 1, 1, 1, 2, 3, 3, 4, 4, 1, 1])
+    expect([
+      normalizeGeneralJournalEntrySource(7),
+      normalizeGeneralJournalEntrySource(Number.NaN),
+      normalizeGeneralJournalEntrySource('2'),
+      normalizeGeneralJournalEntrySource('1'),
+      normalizeGeneralJournalEntrySource('manual'),
+      normalizeGeneralJournalEntrySource('unknown'),
+      normalizeGeneralJournalEntrySource(null),
+    ]).toEqual([7, 1, 2, 1, 1, 1, 1])
+    expect([1, 2, 3, 4, 5].map(generalJournalEntryJournalTypeLabel)).toEqual([
+      'Standard', 'Reversing', 'Adjusting', 'Opening', 'Closing',
+    ])
+    expect([1, 2, 3, 4].map(generalJournalEntryApprovalStateLabel)).toEqual([
+      'Draft', 'Submitted', 'Approved', 'Rejected',
+    ])
+    expect(generalJournalEntrySourceLabel('system')).toBe('System')
   })
 })

@@ -168,4 +168,63 @@ describe('reporting lookup filter helpers', () => {
       includeDescendants: false,
     })
   })
+
+  it('handles absent filters, definitions, draft state, lookup metadata, and empty hydration results', async () => {
+    const lookupStore = createLookupStore()
+    const draft = createDraft()
+
+    await hydrateReportLookupItemsFromFilters(lookupStore, definition, draft, null)
+    await hydrateReportLookupItemsFromFilters(lookupStore, { filters: null }, draft, {})
+    await hydrateReportLookupItemsFromFilters(lookupStore, {
+      filters: [
+        { fieldCode: 'missing_state', label: 'Missing state', dataType: 'Guid', lookup: { kind: 'coa' } },
+        { fieldCode: 'ignored', label: 'No lookup', dataType: 'Guid', lookup: null },
+        { fieldCode: 'property', label: 'No value', dataType: 'Guid', lookup: { kind: 'catalog', catalogType: 'pm.property' } },
+      ],
+    }, draft, {
+      missing_state: { value: accountId },
+      ignored: { value: accountId },
+    })
+
+    lookupStore.labelForCatalog.mockReturnValue('')
+    await hydrateReportLookupItemsFromFilters(lookupStore, definition, draft, {
+      property: { value: catalogId },
+    })
+    expect(draft.filters.property.raw).toBe('')
+  })
+
+  it('hydrates independent lookup filters concurrently and commits them together', async () => {
+    const lookupStore = createLookupStore()
+    const draft = createDraft()
+    let resolveCatalog!: () => void
+    let resolveDocument!: () => void
+    let resolveCoa!: () => void
+    lookupStore.ensureCatalogLabels.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveCatalog = resolve }))
+    lookupStore.ensureAnyDocumentLabels.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveDocument = resolve }))
+    lookupStore.ensureCoaLabels.mockImplementationOnce(() => new Promise<void>((resolve) => { resolveCoa = resolve }))
+
+    const hydration = hydrateReportLookupItemsFromFilters(lookupStore, definition, draft, {
+      property: { value: catalogId },
+      source_document: { value: documentId },
+      retained_earnings_account: { value: accountId },
+    })
+
+    await vi.waitFor(() => {
+      expect(lookupStore.ensureCatalogLabels).toHaveBeenCalledOnce()
+      expect(lookupStore.ensureAnyDocumentLabels).toHaveBeenCalledOnce()
+      expect(lookupStore.ensureCoaLabels).toHaveBeenCalledOnce()
+    })
+    expect(draft.filters.property.raw).toBe('manual property')
+    expect(draft.filters.source_document.raw).toBe('manual doc')
+    expect(draft.filters.retained_earnings_account.raw).toBe('manual account')
+
+    resolveCatalog()
+    resolveDocument()
+    resolveCoa()
+    await hydration
+
+    expect(draft.filters.property.raw).toBe('')
+    expect(draft.filters.source_document.raw).toBe('')
+    expect(draft.filters.retained_earnings_account.raw).toBe('')
+  })
 })

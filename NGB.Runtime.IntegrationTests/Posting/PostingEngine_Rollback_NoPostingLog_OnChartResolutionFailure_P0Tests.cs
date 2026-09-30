@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_Rollback_NoPostingLog_OnChartResolutionFailure_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

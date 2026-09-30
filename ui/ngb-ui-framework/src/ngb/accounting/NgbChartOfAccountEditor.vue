@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NgbConfirmDialog from '../components/NgbConfirmDialog.vue'
@@ -138,8 +138,8 @@ const cashFlowLineDisabled = computed(() =>
   || !selectedCashFlowRoleOption.value?.supportsLineCode,
 )
 
-const codeValue = computed(() => String(form.code ?? '').trim())
-const nameValue = computed(() => String(form.name ?? '').trim())
+const codeValue = computed(() => String(form.code).trim())
+const nameValue = computed(() => String(form.name).trim())
 const accountTypeValue = computed(() => String(form.accountType ?? '').trim())
 const cashFlowLineCodeValue = computed(() => String(form.cashFlowLineCode ?? '').trim())
 
@@ -221,8 +221,8 @@ const title = computed(() => {
 })
 
 const auditEntityTitle = computed(() => {
-  const code = String(current.value?.code ?? '').trim()
-  const name = String(current.value?.name ?? '').trim()
+  const code = current.value!.code.trim()
+  const name = current.value!.name.trim()
   if (code && name) return `${code} — ${name}`
   return code || name || null
 })
@@ -296,9 +296,12 @@ watch(
 )
 
 let loadSeq = 0
+let loadController: AbortController | null = null
 
 function initializeCreateMode() {
   loadSeq += 1
+  loadController?.abort()
+  loadController = null
   loading.value = false
   error.value = null
   current.value = null
@@ -309,22 +312,26 @@ function initializeCreateMode() {
 
 async function loadAccount(accountId: string) {
   const seq = ++loadSeq
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   current.value = null
   auditOpen.value = false
 
   try {
-    const account = await getChartOfAccountById(accountId)
-    if (seq !== loadSeq) return
+    const account = await getChartOfAccountById(accountId, { signal: controller.signal })
+    if (seq !== loadSeq || controller.signal.aborted) return
     current.value = account
     applyAccount(account)
     initialSnapshot.value = currentSnapshot.value
   } catch (cause) {
-    if (seq !== loadSeq) return
+    if (seq !== loadSeq || controller.signal.aborted) return
     error.value = toErrorMessage(cause, 'Failed to load the account.')
   } finally {
     if (seq === loadSeq) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -340,6 +347,12 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadSeq += 1
+  loadController?.abort()
+  loadController = null
+})
 
 function buildAccountShareTarget(accountId: string) {
   return buildChartOfAccountsPath({
@@ -371,7 +384,6 @@ function closeAuditLog() {
 }
 
 function requestMarkForDeletion() {
-  if (!flags.value.canMarkForDeletion) return
   markConfirmOpen.value = true
 }
 
@@ -397,8 +409,7 @@ async function save() {
       return
     }
 
-    const accountId = current.value?.accountId ?? props.id
-    if (!accountId) throw new Error('Missing accountId')
+    const accountId = current.value!.accountId || props.id!
 
     const updated = await updateChartOfAccount(accountId, request)
     current.value = updated
@@ -421,12 +432,10 @@ async function markForDeletion() {
 
   try {
     await markChartOfAccountForDeletion(accountId)
-    current.value = current.value
-      ? {
-          ...current.value,
-          isMarkedForDeletion: true,
-        }
-      : null
+    current.value = {
+      ...current.value!,
+      isMarkedForDeletion: true,
+    }
     auditOpen.value = false
     emit('changed')
   } catch (cause) {
@@ -450,13 +459,11 @@ async function unmarkForDeletion() {
 
   try {
     await unmarkChartOfAccountForDeletion(accountId)
-    current.value = current.value
-      ? {
-          ...current.value,
-          isMarkedForDeletion: false,
-          isDeleted: false,
-        }
-      : null
+    current.value = {
+      ...current.value!,
+      isMarkedForDeletion: false,
+      isDeleted: false,
+    }
     auditOpen.value = false
     emit('changed')
   } catch (cause) {
@@ -489,7 +496,7 @@ defineExpose({
     v-if="auditOpen"
     :open="auditOpen"
     :entity-kind="AUDIT_ENTITY_KIND_COA_ACCOUNT"
-    :entity-id="current?.accountId ?? null"
+    :entity-id="current!.accountId"
     :entity-title="auditEntityTitle"
     @back="closeAuditLog"
     @close="emit('close')"

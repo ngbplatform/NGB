@@ -8,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_PlatformDimensions_P5_13_Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_PlatformDimensions_P5_13_Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenPlatformDimensionsUniqueIndexMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(Fixture.ConnectionString, "ux_platform_dimensions_code_norm_not_deleted");

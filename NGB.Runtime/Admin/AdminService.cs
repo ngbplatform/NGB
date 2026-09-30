@@ -2,9 +2,11 @@ using NGB.Accounting.Accounts;
 using NGB.Accounting.CashFlow;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Admin;
+using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Persistence.Accounts;
 using NGB.Runtime.Accounts;
+using NGB.Runtime.Reporting;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -69,53 +71,79 @@ public sealed class AdminService(
         if (request.Limit is <= 0 or > 500)
             throw new NgbArgumentOutOfRangeException(nameof(request.Limit), request.Limit, "Limit must be between 1 and 500.");
 
-        var items = await coaAdmin.GetAsync(includeDeleted: request.IncludeDeleted, ct);
-
-        // Soft delete filter (recycle bin).
-        // - OnlyDeleted == true  => deleted only
-        // - OnlyDeleted == false => not deleted only
-        // - null                 => no extra filter (respect IncludeDeleted)
-        if (request.OnlyDeleted is not null)
-            items = items.Where(x => x.IsDeleted == request.OnlyDeleted.Value).ToArray();
-
-        if (request.OnlyActive is not null)
-            items = items.Where(x => x.IsActive == request.OnlyActive.Value).ToArray();
-
-        if (request.AccountTypes is { Count: > 0 })
-        {
-            var allowed = request.AccountTypes
+        var accountTypes = request.AccountTypes is { Count: > 0 }
+            ? request.AccountTypes
                 .Select(x => ParseAccountType(x, nameof(request.AccountTypes)))
-                .ToHashSet();
+                .Distinct()
+                .ToArray()
+            : [];
 
-            items = items.Where(x => allowed.Contains(x.Account.Type)).ToArray();
-        }
+        var search = InputTextLimits.NormalizeSearch(request.Search);
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var s = request.Search.Trim();
-            items = items
-                .Where(x => x.Account.Code.Contains(s, StringComparison.OrdinalIgnoreCase)
-                            || x.Account.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
-                            || x.Account.Type.ToString().Contains(s, StringComparison.OrdinalIgnoreCase))
+        var searchAccountTypes = search is null
+            ? []
+            : Enum.GetValues<AccountType>()
+                .Where(type => type.ToString().Contains(search, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
-        }
 
-        var total = items.Count;
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            "admin.chart-of-accounts",
+            request.IncludeDeleted.ToString(),
+            request.OnlyDeleted?.ToString(),
+            request.OnlyActive?.ToString(),
+            string.Join(',', accountTypes.Order()),
+            search,
+            string.Join(',', searchAccountTypes.Order()));
+        var cursor = string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<ChartOfAccountsPageCursor>(cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? request.Offset;
 
-        var page = items
-            .OrderBy(x => x.Account.Code, StringComparer.OrdinalIgnoreCase)
-            .Skip(request.Offset)
-            .Take(request.Limit)
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(request.Offset), offset, "Offset must be 0 or greater.");
+
+        var result = await coaAdmin.GetPageAsync(
+            new ChartOfAccountsAdminPageQuery(
+                request.IncludeDeleted,
+                request.OnlyDeleted,
+                request.OnlyActive,
+                accountTypes,
+                search,
+                searchAccountTypes,
+                offset,
+                request.Limit,
+                cursor?.Total,
+                cursor?.AfterCode,
+                cursor?.AfterAccountId),
+            ct);
+
+        var page = result.Items
             .Select(Map)
             .ToArray();
 
-        return new ChartOfAccountsPageDto(page, request.Offset, request.Limit, total);
+        var hasMore = result.HasMore || offset + page.Length < result.Total;
+        var nextCursor = hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new ChartOfAccountsPageCursor(
+                    offset + page.Length,
+                    result.Total,
+                    result.NextAfterCode,
+                    result.NextAfterAccountId))
+            : null;
+
+        return new ChartOfAccountsPageDto(page, offset, request.Limit, result.Total, nextCursor);
     }
+
+    private sealed record ChartOfAccountsPageCursor(
+        int Offset,
+        int Total,
+        string? AfterCode = null,
+        Guid? AfterAccountId = null);
 
     public async Task<ChartOfAccountsAccountDto> GetChartOfAccountAsync(Guid accountId, CancellationToken ct)
     {
-        var items = await coaAdmin.GetAsync(includeDeleted: true, ct);
-        var item = items.FirstOrDefault(x => x.Account.Id == accountId);
+        var item = await coaAdmin.GetByIdAsync(accountId, ct);
         if (item is null)
             throw new AccountNotFoundException(accountId);
 
@@ -135,6 +163,14 @@ public sealed class AdminService(
         var uniqIds = ids.Where(static id => id != Guid.Empty).Distinct().ToArray();
         if (uniqIds.Length == 0)
             return [];
+
+        if (uniqIds.Length > PagingLimits.MaxLookupIds)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(ids),
+                uniqIds.Length,
+                $"At most {PagingLimits.MaxLookupIds} distinct IDs are allowed.");
+        }
 
         var items = await coaAdmin.GetByIdsAsync(uniqIds, ct);
         return items

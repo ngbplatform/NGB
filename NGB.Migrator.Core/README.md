@@ -3,7 +3,7 @@
 `NGB.Migrator.Core` is the **shared schema migrator CLI engine** for NGB.
 
 It is designed to be referenced by **application-specific migrator hosts**
-(e.g. `NGB.Demo.Trade.Migrator`) and executed as a **deployment step**
+(e.g. `NGB.Trade.Migrator`) and executed as a **deployment step**
 (CI/CD pipeline, Kubernetes Job).
 
 > This library is **not** intended to run implicitly from your Web/API startup in production.
@@ -40,7 +40,7 @@ Create a small console project, reference:
 
 - `NGB.Migrator.Core`
 - platform + vertical PostgreSql modules that contain embedded migrations
-  (e.g. `NGB.PostgreSql`, `NGB.Demo.Trade.PostgreSql`)
+  (e.g. `NGB.PostgreSql`, `NGB.Trade.PostgreSql`)
 
 ### `Program.cs`
 
@@ -104,12 +104,12 @@ Naming:
 dotnet run --project <YourApp>.Migrator -- --list-modules
 ```
 
-### Migrate platform + demo.trade
+### Migrate platform + trade
 
 ```bash
 dotnet run --project <YourApp>.Migrator -- \
   --connection "Host=localhost;Database=ngb;Username=postgres;Password=postgres" \
-  --modules platform,demo.trade
+  --modules platform,trade
 ```
 
 ### Migrate + Repair
@@ -117,14 +117,14 @@ dotnet run --project <YourApp>.Migrator -- \
 ```bash
 dotnet run --project <YourApp>.Migrator -- \
   --connection "..." \
-  --modules platform,demo.trade \
+  --modules platform,trade \
   --repair
 ```
 
 ### Plan-only / dry-run
 
 ```bash
-dotnet run --project <YourApp>.Migrator -- --dry-run --info --modules platform,demo.trade
+dotnet run --project <YourApp>.Migrator -- --dry-run --info --modules platform,trade
 ```
 
 ---

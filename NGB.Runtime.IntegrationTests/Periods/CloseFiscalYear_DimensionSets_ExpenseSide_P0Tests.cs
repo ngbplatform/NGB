@@ -23,7 +23,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 ///   Dr Retained Earnings (empty dims)
 ///   Cr Expense (expense dims)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_DimensionSets_ExpenseSide_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

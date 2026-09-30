@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NgbBadge from '../primitives/NgbBadge.vue'
 import NgbDatePicker from '../primitives/NgbDatePicker.vue'
@@ -22,10 +22,13 @@ import DocumentDateRangeFilter from './NgbReportDateRangeFilter.vue'
 import { getConfiguredNgbReporting, resolveReportLookupTarget } from './config'
 import ReportComposerPanel from './NgbReportComposerPanel.vue'
 import ReportSheet from './NgbReportSheet.vue'
+import { ReportPageWindow } from './pageWindow'
+import { ReportGroupTree, REPORT_GROUP_LIMITS, type GroupAction } from './groupTree'
 import {
   deleteReportVariant,
   executeReport,
   exportReportXlsx,
+  exportReportXlsxInBrowser,
   getReportDefinition,
   getReportVariants,
   saveReportVariant,
@@ -53,7 +56,10 @@ import {
   tryResolveOptionLabel,
   type ReportPageBadge,
 } from './pageHelpers'
-import { buildAppendRequest, canAppendReportResponse, countLoadedReportRows, mergePagedReportResponses } from './paging'
+import {
+  buildAppendRequest,
+  canAppendReportResponse,
+} from './paging'
 import {
   clearReportPageExecutionSnapshot,
   clearReportPageScrollTop,
@@ -67,6 +73,7 @@ import type {
   ReportComposerLookupItem,
   ReportDefinitionDto,
   ReportExecutionResponseDto,
+  ReportExecutionRequestDto,
   ReportFilterFieldDto,
   ReportVariantDto,
 } from './types'
@@ -88,6 +95,10 @@ const lookupStore = getConfiguredNgbReporting().useLookupStore()
 
 type ReportSheetHandle = {
   restoreScrollTop: (value: number) => void
+  getScrollTop: () => number
+  prefixHeight: (count: number) => number
+  captureAnchor?: () => { key: string; offset: number } | null
+  restoreAnchor?: (anchor: { key: string; offset: number }) => void
 }
 
 const loadingDefinition = ref(false)
@@ -98,7 +109,7 @@ const savingVariant = ref(false)
 const error = ref<string | null>(null)
 const definition = ref<ReportDefinitionDto | null>(null)
 const draft = ref<ReportComposerDraft | null>(null)
-const response = ref<ReportExecutionResponseDto | null>(null)
+const response = shallowRef<ReportExecutionResponseDto | null>(null)
 const composerOpen = ref(false)
 const lookupItemsByFilterCode = ref<Record<string, ReportComposerLookupItem[]>>({})
 const variants = ref<ReportVariantDto[]>([])
@@ -113,12 +124,43 @@ const deleteVariantOpen = ref(false)
 const suppressedBootstrapKey = ref<string | null>(null)
 const reportSheetRef = ref<ReportSheetHandle | null>(null)
 const consumedAppendCursors = ref<string[]>([])
+const pageWindow = new ReportPageWindow()
+const treeVersion = ref(0)
+const groupTree = new ReportGroupTree(() => {
+  const anchor = reportSheetRef.value?.captureAnchor?.()
+  const scope = runSeq
+  treeVersion.value++
+  if (anchor) void nextTick(() => {
+    if (scope === runSeq) reportSheetRef.value?.restoreAnchor?.(anchor)
+  })
+})
+const displaySheet = computed(() => { void treeVersion.value; return response.value ? groupTree.sheet : null })
+let executedRequest: ReturnType<typeof buildPageExecutionRequest> | null = null
+let executionStateKey: string | null = null
+
+function initializeGroupTree(result: ReportExecutionResponseDto) {
+  const code = reportCode.value
+  const request = executedRequest!
+  groupTree.reset(result.sheet, (path, cursor, signal) => executeReport(code, {
+    ...request, groupPath: path, cursor, offset: 0,
+    limit: Math.min(request.limit, REPORT_GROUP_LIMITS.pageRows),
+  }, { signal }))
+}
+function onGroupAction(id: string, action: GroupAction) { groupTree.act(id, action) }
+const canLoadPrevious = computed(() => !!response.value && pageWindow.canLoadPrevious)
+const historyTruncated = computed(() => !!response.value && pageWindow.historyTruncated)
 const pendingScrollRestore = ref(0)
 
 let loadSeq = 0
 let runSeq = 0
+let executionController: AbortController | null = null
+let downloadController: AbortController | null = null
+let scrollPersistenceTimer: ReturnType<typeof setTimeout> | null = null
+let pendingScrollPersistence: { key: string; scrollTop: number } | null = null
+const filterLookupControllers = new Map<string, AbortController>()
+const SCROLL_PERSIST_DELAY_MS = 200
 
-const reportCode = computed(() => decodeURIComponent(String(route.params.reportCode ?? '').trim()))
+const reportCode = computed(() => decodeURIComponent(String(route.params.reportCode).trim()))
 const routeBootstrapKey = computed(() => stableStringify({
   reportCode: reportCode.value,
   variant: route.query.variant ?? null,
@@ -224,7 +266,7 @@ const activeParameterBadges = computed<ReportPageBadge[]>(() => {
       return true
     })
     .map((parameter) => {
-      const raw = String(draft.value?.parameters[parameter.code] ?? '').trim()
+      const raw = draft.value!.parameters[parameter.code]!.trim()
       if (raw.length === 0) return null
       return {
         key: `parameter:${parameter.code}`,
@@ -236,15 +278,15 @@ const activeParameterBadges = computed<ReportPageBadge[]>(() => {
 
 const optionalFilterBadges = computed<ReportPageBadge[]>(() => {
   if (!definition.value || !draft.value) return []
+  const currentDraft = draft.value
 
   return (definition.value.filters ?? [])
     .filter((field) => !field.isRequired)
     .map((field) => {
-      const state = draft.value?.filters[field.fieldCode]
-      if (!state) return null
+      const state = currentDraft.filters[field.fieldCode]!
 
       const itemLabels = state.items
-        .map((item) => String(item.label ?? item.id ?? '').trim())
+        .map((item) => item.label.trim())
         .filter((label) => label.length > 0)
 
       const rawValues = itemLabels.length === 0
@@ -269,9 +311,10 @@ const currentRouteContext = computed<ReportRouteContext | null>(() => {
   return {
     ...context,
     request: {
-      ...context.request,
-      limit: resolveDefinitionInitialPageLimit(context.request.limit ?? 500),
+      ...(response.value && executedRequest ? executedRequest : context.request),
+      limit: resolveDefinitionInitialPageLimit(),
       variantCode: activeVariantCode.value || null,
+      groupPath: [],
     },
   }
 })
@@ -287,7 +330,11 @@ const currentBackTarget = computed(() => {
   })
 })
 
-const canLoadMore = computed(() => canAppendReportResponse(response.value) && !loadingDefinition.value && !running.value && !loadingMore.value)
+const canLoadMore = computed(() => canAppendReportResponse(response.value)
+  && !loadingDefinition.value
+  && !running.value
+  && !loadingMore.value
+  && !error.value)
 const reportPresentation = computed(() => definition.value?.presentation ?? null)
 const emptyReportMessage = computed(() => {
   const configured = String(reportPresentation.value?.emptyStateMessage ?? '').trim()
@@ -295,8 +342,12 @@ const emptyReportMessage = computed(() => {
   return 'Open the Composer, adjust filters, rows, measures, or sorting, and run again.'
 })
 const hasPagedExecutionState = computed(() => !!response.value && (response.value.hasMore || consumedAppendCursors.value.length > 0))
-const showEndOfList = computed(() => hasPagedExecutionState.value && !canLoadMore.value && !loadingMore.value && !running.value && (response.value?.sheet.rows?.length ?? 0) > 0)
-const loadedRowCount = computed(() => countLoadedReportRows(response.value?.sheet))
+const showEndOfList = computed(() => hasPagedExecutionState.value
+  && !response.value!.hasMore
+  && !loadingMore.value
+  && !running.value
+  && response.value!.sheet.rows.length > 0)
+const loadedRowCount = computed(() => response.value ? pageWindow.loadedRowCount : 0)
 const totalRowCount = computed(() => {
   const total = response.value?.total
   return typeof total === 'number' && Number.isFinite(total) && total >= 0 ? total : null
@@ -306,21 +357,19 @@ const reportRowNoun = computed(() => {
   return configured.length > 0 ? configured : 'row'
 })
 
-function resolveDefinitionInitialPageLimit(fallback: number) {
-  const normalizedFallback = Number.isFinite(fallback) && fallback > 0 ? Math.max(1, Math.floor(fallback)) : 500
+function resolveDefinitionInitialPageLimit() {
   const configured = reportPresentation.value?.initialPageSize
   return typeof configured === 'number' && Number.isFinite(configured) && configured > 0
-    ? Math.max(1, Math.floor(configured))
-    : normalizedFallback
+    ? Math.min(500, Math.max(1, Math.floor(configured)))
+    : 500
 }
 
 function buildPageExecutionRequest() {
-  if (!definition.value || !draft.value) throw new Error('Report definition and draft are required.')
-
-  const request = buildExecutionRequest(definition.value, draft.value)
+  const request = buildExecutionRequest(definition.value!, draft.value!)
   return {
     ...request,
-    limit: resolveDefinitionInitialPageLimit(request.limit ?? 500),
+    limit: resolveDefinitionInitialPageLimit(),
+    groupPath: [],
   }
 }
 
@@ -330,16 +379,34 @@ function clearReportPageSnapshot() {
 }
 
 function persistReportExecutionSnapshot() {
-  if (!response.value) {
-    clearReportPageExecutionSnapshot(reportPageStateKey.value)
+  if (!response.value || executionStateKey !== reportPageStateKey.value) return
+  if (pageWindow.canLoadPrevious || consumedAppendCursors.value.length > 0) {
+    clearReportPageSnapshot()
     return
   }
-
-  saveReportPageExecutionSnapshot(reportPageStateKey.value, response.value, consumedAppendCursors.value)
+  saveReportPageExecutionSnapshot(reportPageStateKey.value, response.value!, consumedAppendCursors.value)
 }
 
 function onReportScrollTopChange(scrollTop: number) {
-  saveReportPageScrollTop(reportPageStateKey.value, scrollTop)
+  pendingScrollPersistence = { key: reportPageStateKey.value, scrollTop }
+  if (scrollPersistenceTimer != null) clearTimeout(scrollPersistenceTimer)
+  scrollPersistenceTimer = setTimeout(flushReportScrollPosition, SCROLL_PERSIST_DELAY_MS)
+}
+
+function flushReportScrollPosition() {
+  if (scrollPersistenceTimer != null) {
+    clearTimeout(scrollPersistenceTimer)
+    scrollPersistenceTimer = null
+  }
+  const pending = pendingScrollPersistence
+  pendingScrollPersistence = null
+  if (pending) saveReportPageScrollTop(pending.key, pending.scrollTop)
+}
+
+function clearPendingReportScrollPosition() {
+  clearTimeout(scrollPersistenceTimer!)
+  scrollPersistenceTimer = null
+  pendingScrollPersistence = null
 }
 
 async function restorePendingScrollPosition() {
@@ -356,6 +423,10 @@ function tryRestoreReportExecutionSnapshot(): boolean {
   if (!snapshot) return false
 
   response.value = snapshot.response
+  executedRequest = buildPageExecutionRequest()
+  executionStateKey = reportPageStateKey.value
+  pageWindow.reset(snapshot.response)
+  initializeGroupTree(snapshot.response)
   consumedAppendCursors.value = snapshot.consumedCursors
   pendingScrollRestore.value = loadReportPageScrollTop(reportPageStateKey.value)
   error.value = null
@@ -363,8 +434,7 @@ function tryRestoreReportExecutionSnapshot(): boolean {
 }
 
 function updateDraft(mutator: (next: ReportComposerDraft) => void) {
-  if (!draft.value) return
-  const next = cloneComposerDraft(draft.value)
+  const next = cloneComposerDraft(draft.value!)
   mutator(next)
   draft.value = next
 }
@@ -385,17 +455,14 @@ function setParameterValue(code: string, value: string | null) {
 
 function setFilterRaw(fieldCode: string, value: string) {
   updateDraft((next) => {
-    const state = next.filters[fieldCode]
-    if (!state) return
-    state.raw = value
+    next.filters[fieldCode]!.raw = value
   })
 }
 
 function setFilterItem(fieldCode: string, value: unknown) {
   const item = coerceReportComposerLookupItem(value)
   updateDraft((next) => {
-    const state = next.filters[fieldCode]
-    if (!state) return
+    const state = next.filters[fieldCode]!
     state.items = item ? [{ ...item }] : []
     if (item) state.raw = ''
   })
@@ -403,7 +470,7 @@ function setFilterItem(fieldCode: string, value: unknown) {
 
 async function openFilterItem(field: ReportFilterFieldDto) {
   const target = await resolveReportLookupTarget({
-    hint: field.lookup ?? null,
+    hint: field.lookup!,
     value: selectedFilterItem(field),
     routeFullPath: route.fullPath,
   })
@@ -416,10 +483,25 @@ async function onFilterQuery(payload: { fieldCode: string; query: string }) {
   const field = definition.value?.filters?.find((entry) => entry.fieldCode === payload.fieldCode)
   if (!field?.lookup) return
 
-  const items = await searchReportLookupItems(lookupStore, field.lookup, payload.query)
-  lookupItemsByFilterCode.value = {
-    ...lookupItemsByFilterCode.value,
-    [payload.fieldCode]: items,
+  filterLookupControllers.get(payload.fieldCode)?.abort()
+  const controller = new AbortController()
+  filterLookupControllers.set(payload.fieldCode, controller)
+  try {
+    const items = await searchReportLookupItems(lookupStore, field.lookup, payload.query, { signal: controller.signal })
+    if (filterLookupControllers.get(payload.fieldCode) !== controller) return
+    lookupItemsByFilterCode.value = {
+      ...lookupItemsByFilterCode.value,
+      [payload.fieldCode]: items,
+    }
+  } catch {
+    if (filterLookupControllers.get(payload.fieldCode) !== controller) return
+    lookupItemsByFilterCode.value = {
+      ...lookupItemsByFilterCode.value,
+      [payload.fieldCode]: [],
+    }
+  } finally {
+    if (filterLookupControllers.get(payload.fieldCode) === controller)
+      filterLookupControllers.delete(payload.fieldCode)
   }
 }
 
@@ -435,19 +517,19 @@ async function createDraftFromContext(definitionValue: ReportDefinitionDto, cont
   return nextDraft
 }
 
-async function refreshVariants(options?: {
-  preferredSelectedVariantCode?: string
-  preferredActiveVariantCode?: string
+async function refreshVariants(options: {
+  preferredSelectedVariantCode: string
+  preferredActiveVariantCode: string
 }) {
   const list = await getReportVariants(reportCode.value)
   variants.value = list
 
-  const preferredActive = options?.preferredActiveVariantCode ?? activeVariantCode.value
+  const preferredActive = options.preferredActiveVariantCode
   activeVariantCode.value = preferredActive && list.some((variant) => variant.variantCode === preferredActive)
     ? preferredActive
     : ''
 
-  const preferredSelected = options?.preferredSelectedVariantCode ?? selectedVariantCode.value
+  const preferredSelected = options.preferredSelectedVariantCode
   if (preferredSelected && list.some((variant) => variant.variantCode === preferredSelected)) {
     selectedVariantCode.value = preferredSelected
     return
@@ -462,14 +544,11 @@ async function refreshVariants(options?: {
 }
 
 async function syncRouteStateWithCurrentReportContext() {
-  if (!definition.value || !draft.value) return
-
   const nextQuery: Record<string, unknown> = { ...route.query }
-  const nextContext = encodeReportRouteContextParam(currentRouteContext.value)
+  const nextContext = encodeReportRouteContextParam(currentRouteContext.value)!
   const nextSourceTrail = encodeReportSourceTrailParam(sourceTrail.value)
 
-  if (nextContext) nextQuery.ctx = nextContext
-  else delete nextQuery.ctx
+  nextQuery.ctx = nextContext
 
   if (nextSourceTrail) nextQuery.src = nextSourceTrail
   else delete nextQuery.src
@@ -489,7 +568,7 @@ async function syncRouteStateWithCurrentReportContext() {
   suppressedBootstrapKey.value = stableStringify({
     reportCode: reportCode.value,
     variant: nextQuery.variant ?? null,
-    ctx: nextQuery.ctx ?? null,
+    ctx: nextQuery.ctx,
     src: nextQuery.src ?? null,
   })
 
@@ -497,91 +576,181 @@ async function syncRouteStateWithCurrentReportContext() {
 }
 
 async function runReport() {
-  if (!definition.value || !draft.value) return
+  await runCurrentReport()
+}
 
+async function runCurrentReport() {
   const seq = ++runSeq
+  executionController?.abort()
+  const controller = new AbortController()
+  executionController = controller
   running.value = true
   loadingMore.value = false
   error.value = null
+  response.value = null
+  groupTree.reset()
+  executedRequest = buildPageExecutionRequest()
+  executionStateKey = null
+  consumedAppendCursors.value = []
+  clearReportPageSnapshot()
 
   try {
-    const result = await executeReport(reportCode.value, buildPageExecutionRequest())
+    const result = await executeReport(reportCode.value, executedRequest!, { signal: controller.signal })
     if (seq !== runSeq) return
 
     response.value = result
+    pageWindow.reset(result)
+    initializeGroupTree(result)
     consumedAppendCursors.value = []
     pendingScrollRestore.value = 0
     await syncRouteStateWithCurrentReportContext()
+    if (seq !== runSeq) return
+    executionStateKey = reportPageStateKey.value
     persistReportExecutionSnapshot()
+    clearPendingReportScrollPosition()
     saveReportPageScrollTop(reportPageStateKey.value, 0)
   } catch (err) {
+    // Cancelling or replacing an execution advances runSeq before its rejection is handled.
     if (seq !== runSeq) return
     error.value = toErrorMessage(err, 'Failed to execute the report.')
   } finally {
-    if (seq === runSeq) running.value = false
+    if (seq === runSeq) {
+      running.value = false
+      executionController = null
+    }
   }
 }
 
-async function appendReportPage() {
-  if (!definition.value || !draft.value || !response.value) return
+function cancelReport() {
+  executionController?.abort()
+  runSeq++
+  running.value = false
+  loadingMore.value = false
+  error.value = null
+}
 
-  const nextCursor = String(response.value.nextCursor ?? '').trim()
+async function appendReportPage() {
+  const nextCursor = response.value?.nextCursor?.trim()
   if (!nextCursor || loadingMore.value || running.value) return
-  if (consumedAppendCursors.value.includes(nextCursor)) return
 
   const seq = runSeq
+  executionController?.abort()
+  const controller = new AbortController()
+  executionController = controller
   loadingMore.value = true
   error.value = null
 
   try {
-    const page = await executeReport(reportCode.value, buildAppendRequest(buildPageExecutionRequest(), nextCursor))
+    const page = await executeReport(reportCode.value, buildAppendRequest({
+      ...executedRequest!,
+    }, nextCursor), { signal: controller.signal })
     if (seq !== runSeq) return
 
-    response.value = mergePagedReportResponses(response.value, page)
-    consumedAppendCursors.value = [...consumedAppendCursors.value, nextCursor]
+    const scrollTop = reportSheetRef.value?.getScrollTop?.() ?? 0
+    const removed = pageWindow.append(nextCursor, page)
+    const removedHeight = reportSheetRef.value?.prefixHeight?.(removed) ?? 0
+    response.value = pageWindow.response
+    groupTree.setRoot(response.value!.sheet)
+    consumedAppendCursors.value = [nextCursor]
+    if (removed > 0 && !reportSheetRef.value?.captureAnchor) {
+      await nextTick()
+      reportSheetRef.value?.restoreScrollTop(scrollTop - removedHeight)
+    }
     persistReportExecutionSnapshot()
   } catch (err) {
     if (seq !== runSeq) return
     error.value = toErrorMessage(err, 'Failed to load more rows.')
   } finally {
-    if (seq === runSeq) loadingMore.value = false
+    if (seq === runSeq) {
+      loadingMore.value = false
+      executionController = null
+    }
   }
 }
 
+async function prependReportPage() {
+  if (!canLoadPrevious.value || loadingMore.value || running.value) return
+  const seq = runSeq
+  const controller = new AbortController()
+  executionController?.abort()
+  executionController = controller
+  loadingMore.value = true
+  error.value = null
+  try {
+    const page = await executeReport(reportCode.value, { ...executedRequest!, cursor: pageWindow.previousCursor }, { signal: controller.signal })
+    if (seq !== runSeq) return
+    const scrollTop = reportSheetRef.value?.getScrollTop?.() ?? 0
+    const added = pageWindow.prepend(page)
+    response.value = pageWindow.response
+    groupTree.setRoot(response.value!.sheet)
+    await nextTick()
+    if (!reportSheetRef.value?.captureAnchor) reportSheetRef.value?.restoreScrollTop(scrollTop + (reportSheetRef.value?.prefixHeight?.(added) ?? 0))
+    persistReportExecutionSnapshot()
+  } catch (err) {
+    if (seq === runSeq) error.value = toErrorMessage(err, 'Failed to load previous rows.')
+  } finally {
+    if (seq === runSeq) { loadingMore.value = false; executionController = null }
+  }
+}
+
+function cancelDownload() {
+  downloadController?.abort()
+}
+
 async function downloadReport() {
-  if (!definition.value || !draft.value) return
+  downloadController?.abort()
+  const controller = new AbortController()
+  downloadController = controller
+  const code = reportCode.value
   downloading.value = true
   error.value = null
 
   try {
-    const file = await exportReportXlsx(reportCode.value, buildExportRequest(definition.value, draft.value))
-    const url = URL.createObjectURL(file.blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = file.fileName || `${reportCode.value.replace(/[^a-z0-9]+/gi, '-') || 'report'}.xlsx`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
+    const picker = (window as Window & { showSaveFilePicker?: (options: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle> }).showSaveFilePicker
+    const handle = picker ? await picker.call(window, {
+      suggestedName: `${code.replace(/[^a-z0-9]+/gi, '-')}.xlsx`,
+      types: [{ description: 'Excel workbook', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }],
+    }) : null
+    if (controller.signal.aborted) return
+    if (!handle) {
+      await exportReportXlsxInBrowser(code, buildExportRequest(definition.value!, draft.value!), {
+        signal: controller.signal,
+        onError: (err) => { error.value = toErrorMessage(err, 'Failed to export the report.') },
+      })
+      return
+    }
+    const destination = await handle.createWritable()
+    try {
+      await exportReportXlsx(code, buildExportRequest(definition.value!, draft.value!), { signal: controller.signal, ...(destination ? { destination } : {}) })
+    } catch (err) {
+      await destination?.abort().catch(() => undefined)
+      throw err
+    }
   } catch (err) {
-    error.value = toErrorMessage(err, 'Failed to export the report.')
+    if (!controller.signal.aborted && !(err instanceof DOMException && err.name === 'AbortError')) error.value = toErrorMessage(err, 'Failed to export the report.')
   } finally {
-    downloading.value = false
+    if (downloadController === controller) { downloading.value = false; downloadController = null }
   }
 }
 
 async function loadSelectedVariant() {
-  if (!definition.value) return
-
+  const seq = loadSeq
   const variant = selectedVariant.value
   if (!variant) return
 
   try {
-    draft.value = await createDraftFromVariant(definition.value, variant)
+    const nextDraft = await createDraftFromVariant(definition.value!, variant)
+    if (seq !== loadSeq) return
+    draft.value = nextDraft
     activeVariantCode.value = variant.variantCode
     selectedVariantCode.value = variant.variantCode
-    if (draft.value && canAutoRunReport(definition.value, draft.value)) await runReport()
+    if (canAutoRunReport(definition.value!, draft.value)) await runReport()
     else {
+      runSeq++
+      executionController?.abort()
+      running.value = false
+      loadingMore.value = false
+      groupTree.reset()
       response.value = null
       consumedAppendCursors.value = []
       error.value = null
@@ -589,27 +758,34 @@ async function loadSelectedVariant() {
       clearReportPageSnapshot()
     }
   } catch (err) {
+    if (seq !== loadSeq) return
     error.value = toErrorMessage(err, 'Failed to load the report variant.')
   }
 }
 
 async function resetToDefault() {
-  if (!definition.value) return
-
+  const seq = loadSeq
   try {
     const defaultVariant = variants.value.find((variant) => !!variant.isDefault) ?? null
     if (defaultVariant) {
       selectedVariantCode.value = defaultVariant.variantCode
       activeVariantCode.value = defaultVariant.variantCode
-      draft.value = await createDraftFromVariant(definition.value, defaultVariant)
+      const nextDraft = await createDraftFromVariant(definition.value!, defaultVariant)
+      if (seq !== loadSeq) return
+      draft.value = nextDraft
     } else {
       selectedVariantCode.value = ''
       activeVariantCode.value = ''
-      draft.value = createComposerDraft(definition.value)
+      draft.value = createComposerDraft(definition.value!)
     }
 
-    if (draft.value && canAutoRunReport(definition.value, draft.value)) await runReport()
+    if (canAutoRunReport(definition.value!, draft.value)) await runReport()
     else {
+      runSeq++
+      executionController?.abort()
+      running.value = false
+      loadingMore.value = false
+      groupTree.reset()
       response.value = null
       consumedAppendCursors.value = []
       error.value = null
@@ -617,6 +793,7 @@ async function resetToDefault() {
       clearReportPageSnapshot()
     }
   } catch (err) {
+    if (seq !== loadSeq) return
     error.value = toErrorMessage(err, 'Failed to reset the report.')
   }
 }
@@ -633,16 +810,14 @@ function openEditVariantDialog() {
   if (!selectedVariant.value) return
 
   variantDialogMode.value = 'edit'
-  variantDialogName.value = selectedVariant.value.name ?? ''
+  variantDialogName.value = selectedVariant.value.name
   variantDialogDefault.value = !!selectedVariant.value.isDefault
   variantDialogError.value = null
   variantDialogOpen.value = true
 }
 
 async function submitVariantDialog() {
-  if (!definition.value || !draft.value) return
-
-  const name = String(variantDialogName.value ?? '').trim()
+  const name = variantDialogName.value.trim()
   savingVariant.value = true
   variantDialogError.value = null
   error.value = null
@@ -650,7 +825,7 @@ async function submitVariantDialog() {
   try {
     if (variantDialogMode.value === 'create') {
       const variantCode = chooseAvailableVariantCode(name, variants.value)
-      const payload = buildVariantDto(definition.value, draft.value, {
+      const payload = buildVariantDto(definition.value!, draft.value!, {
         variantCode,
         name,
         isDefault: variantDialogDefault.value,
@@ -736,13 +911,13 @@ async function deleteSelectedVariant() {
 }
 
 async function saveCurrentVariant() {
-  if (!definition.value || !draft.value || !activeVariant.value) return
+  if (!activeVariant.value) return
 
   savingVariant.value = true
   error.value = null
 
   try {
-    const saved = await saveReportVariant(reportCode.value, activeVariant.value.variantCode, buildVariantDto(definition.value, draft.value, {
+    const saved = await saveReportVariant(reportCode.value, activeVariant.value.variantCode, buildVariantDto(definition.value!, draft.value!, {
       variantCode: activeVariant.value.variantCode,
       name: activeVariant.value.name,
       isDefault: !!activeVariant.value.isDefault,
@@ -768,6 +943,13 @@ async function loadDefinitionAndRun() {
   if (!code) return
 
   runSeq += 1
+  executionController?.abort()
+  downloadController?.abort()
+  executionController = null
+  downloadController = null
+  downloading.value = false
+  filterLookupControllers.forEach((controller) => controller.abort())
+  filterLookupControllers.clear()
   const seq = ++loadSeq
   loadingDefinition.value = true
   running.value = false
@@ -785,6 +967,9 @@ async function loadDefinitionAndRun() {
   activeVariantCode.value = ''
   consumedAppendCursors.value = []
   pendingScrollRestore.value = 0
+  groupTree.reset()
+  executedRequest = null
+  executionStateKey = null
 
   try {
     const [loadedDefinition, loadedVariants] = await Promise.all([
@@ -810,15 +995,21 @@ async function loadDefinitionAndRun() {
         ? contextVariantCode
         : ''
       selectedVariantCode.value = activeVariantCode.value
-      draft.value = await createDraftFromContext(loadedDefinition, routeContext)
+      const nextDraft = await createDraftFromContext(loadedDefinition, routeContext)
+      if (seq !== loadSeq) return
+      draft.value = nextDraft
     } else if (requestedVariant) {
       selectedVariantCode.value = requestedVariant.variantCode
       activeVariantCode.value = requestedVariant.variantCode
-      draft.value = await createDraftFromVariant(loadedDefinition, requestedVariant)
+      const nextDraft = await createDraftFromVariant(loadedDefinition, requestedVariant)
+      if (seq !== loadSeq) return
+      draft.value = nextDraft
     } else if (defaultVariant) {
       selectedVariantCode.value = defaultVariant.variantCode
       activeVariantCode.value = defaultVariant.variantCode
-      draft.value = await createDraftFromVariant(loadedDefinition, defaultVariant)
+      const nextDraft = await createDraftFromVariant(loadedDefinition, defaultVariant)
+      if (seq !== loadSeq) return
+      draft.value = nextDraft
     } else {
       selectedVariantCode.value = ''
       activeVariantCode.value = ''
@@ -830,7 +1021,7 @@ async function loadDefinitionAndRun() {
       return
     }
 
-    if (draft.value && canAutoRunReport(loadedDefinition, draft.value)) await runReport()
+    if (draft.value && canAutoRunReport(loadedDefinition, draft.value)) await runCurrentReport()
     else {
       response.value = null
       error.value = null
@@ -905,6 +1096,7 @@ useCommandPalettePageContext(() => ({
 
 watch(reportPageStateKey, (nextKey, prevKey) => {
   if (nextKey === prevKey || !response.value) return
+  flushReportScrollPosition()
   persistReportExecutionSnapshot()
 }, { flush: 'post' })
 
@@ -921,13 +1113,24 @@ watch(routeBootstrapKey, (nextKey) => {
 
   void loadDefinitionAndRun()
 }, { immediate: true })
+
+onBeforeUnmount(() => {
+  flushReportScrollPosition()
+  loadSeq += 1
+  runSeq += 1
+  executionController?.abort()
+  downloadController?.abort()
+  groupTree.reset()
+  filterLookupControllers.forEach((controller) => controller.abort())
+  filterLookupControllers.clear()
+})
 </script>
 
 <template>
   <div class="h-full min-h-0 flex flex-col" data-testid="report-page">
     <NgbPageHeader :title="pageTitle" can-back @back="navigateBack(router, route, backToSourceUrl)">
       <template #secondary>
-        <div v-if="pageSubtitle" class="text-xs text-ngb-muted truncate">{{ pageSubtitle }}</div>
+        <div class="text-xs text-ngb-muted truncate">{{ pageSubtitle }}</div>
       </template>
       <template #actions>
         <div class="flex flex-wrap items-center justify-end gap-2">
@@ -955,14 +1158,14 @@ watch(routeBootstrapKey, (nextKey) => {
               :model-value="filterState(field).raw"
               :disabled="loadingDefinition || running || downloading || !draft"
               :placeholder="field.label"
-              @update:model-value="setFilterRaw(field.fieldCode, String($event ?? ''))"
+              @update:model-value="setFilterRaw(field.fieldCode, String($event))"
             />
           </div>
 
           <DocumentDateRangeFilter
             v-if="inlineDateRange && draft"
-            :from-date="String(draft.parameters[inlineDateRange.fromCode] ?? '')"
-            :to-date="String(draft.parameters[inlineDateRange.toCode] ?? '')"
+            :from-date="draft.parameters[inlineDateRange.fromCode]"
+            :to-date="draft.parameters[inlineDateRange.toCode]"
             :from-placeholder="inlineDateRange.fromLabel"
             :to-placeholder="inlineDateRange.toLabel"
             :title="inlineDateRange.title ?? undefined"
@@ -1007,6 +1210,7 @@ watch(routeBootstrapKey, (nextKey) => {
     <div class="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden p-6" data-testid="report-page-content">
       <div v-if="error" class="rounded-[var(--ngb-radius)] border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100">
         {{ error }}
+        <button v-if="response?.hasMore && !loadingMore && !running" class="ngb-btn ml-3" type="button" @click="appendReportPage">Retry loading rows</button>
       </div>
 
       <div v-if="activeBadges.length > 0" class="-mb-1 flex flex-wrap items-center gap-2" data-testid="report-page-active-badges">
@@ -1021,14 +1225,26 @@ watch(routeBootstrapKey, (nextKey) => {
         <div class="mt-2 text-sm text-ngb-muted">Fetching the report metadata and default layout.</div>
       </div>
 
-      <div v-else-if="definition" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div v-else-if="definition && (!error || response)" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div v-if="running" role="status" class="flex items-center gap-3 p-4">
+          <span>Preparing report…</span>
+          <button type="button" class="ngb-btn" @click="cancelReport">Cancel</button>
+        </div>
+        <div v-if="downloading" role="status" class="flex items-center gap-3 p-4">
+          <span>Preparing download…</span>
+          <button type="button" class="ngb-btn" @click="cancelDownload">Cancel download</button>
+        </div>
+        <div v-if="historyTruncated" class="px-3 py-2">
+          <button type="button" class="ngb-btn" :disabled="running || loadingMore" @click="runCurrentReport">Back to beginning</button>
+        </div>
         <ReportSheet
           ref="reportSheetRef"
           class="min-h-0 flex-1"
-          :sheet="response?.sheet ?? null"
+          :sheet="displaySheet"
           :loading="running"
           :loading-more="loadingMore"
           :can-load-more="canLoadMore"
+          :can-load-previous="canLoadPrevious"
           :current-report-context="currentRouteContext"
           :source-trail="sourceTrail"
           :back-target="currentBackTarget"
@@ -1039,6 +1255,8 @@ watch(routeBootstrapKey, (nextKey) => {
           empty-title="No rows for this layout"
           :empty-message="emptyReportMessage"
           @load-more="appendReportPage"
+          @load-previous="prependReportPage"
+          @group-action="onGroupAction"
           @scroll-top-change="onReportScrollTopChange"
         />
       </div>

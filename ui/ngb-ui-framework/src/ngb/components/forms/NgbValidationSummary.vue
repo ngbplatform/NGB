@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="messages?.length"
+    v-if="messages.length"
     role="alert"
     aria-live="assertive"
     aria-atomic="true"

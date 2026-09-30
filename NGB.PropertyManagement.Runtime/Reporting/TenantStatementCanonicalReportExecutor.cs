@@ -7,6 +7,7 @@ using NGB.Core.Documents.Exceptions;
 using NGB.Core.Reporting.Exceptions;
 using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Tools.Exceptions;
@@ -21,6 +22,19 @@ public sealed class TenantStatementCanonicalReportExecutor(
     : IReportSpecializedPlanExecutor
 {
     public string ReportCode => PropertyManagementSecurityDefaults.TenantStatementReport;
+
+    public ReportExecutionRequestDto PrepareExecution(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        DateTimeOffset utcNow)
+    {
+        var parameters = new Dictionary<string, string>(request.Parameters ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        var to = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "to_utc")
+            ?? DateOnly.FromDateTime(utcNow.UtcDateTime);
+        parameters["to_utc"] = to.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        return request with { Parameters = parameters };
+    }
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,
@@ -38,21 +52,34 @@ public sealed class TenantStatementCanonicalReportExecutor(
                 "parameters.to_utc",
                 $"{CanonicalReportExecutionHelper.GetParameterLabel(definition, "to_utc")} must be on or after {CanonicalReportExecutionHelper.GetParameterLabel(definition, "from_utc") }.");
 
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            leaseId.ToString("D"),
+            fromUtc?.ToString("yyyy-MM-dd"),
+            toUtc.ToString("yyyy-MM-dd"));
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<TenantStatementPageCursor>(cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
+        var includeOpeningBalance = fromUtc is not null && offset == 0;
+        var reservedRows = (includeOpeningBalance ? 1 : 0) + (request.Layout?.ShowGrandTotals != false ? 1 : 0);
         var query = new TenantStatementQuery(
             LeaseId: leaseId,
             FromUtc: fromUtc,
             ToUtc: toUtc,
-            Offset: Math.Max(0, request.Offset),
-            Limit: request.Limit <= 0 ? 100 : request.Limit);
+            Offset: offset,
+            Limit: CanonicalReportExecutionHelper.ResolvePageDataLimit(definition, request, defaultLimit: 100, reservedRows: reservedRows));
         query.EnsureInvariant();
 
-        var page = await reader.GetPageAsync(query, ct);
+        var page = cursor is not null
+            ? await reader.GetCursorPageAsync(query, cursor, ct)
+            : await reader.GetPageAsync(query, ct);
         page.EnsureInvariant();
 
         var subtitle = await BuildSubtitleAsync(leaseId, fromUtc, toUtc, ct);
 
         var rows = new List<ReportSheetRowDto>();
-        if (fromUtc is not null && query.Offset == 0)
+        if (includeOpeningBalance)
             rows.Add(ToOpeningBalanceRow(page.Totals.OpeningBalance));
 
         rows.AddRange(page.Rows.Select(ToDetailRow));
@@ -80,13 +107,28 @@ public sealed class TenantStatementCanonicalReportExecutor(
                     ["executor"] = "canonical-pm-tenant-statement"
                 }));
 
+        var hasMore = page.HasMore || cursor is null && query.Offset + page.Rows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new TenantStatementPageCursor(
+                    query.Offset + page.Rows.Count,
+                    page.Total,
+                    page.Totals,
+                    page.NextAfterOccurredOnUtc,
+                    page.NextAfterSortOrder,
+                    page.NextAfterDocumentId,
+                    page.NextRunningBalance,
+                    page.SnapshotId))
+            : null;
+
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
             sheet: sheet,
             offset: query.Offset,
             limit: query.Limit,
             total: page.Total,
-            hasMore: query.Offset + page.Rows.Count < page.Total,
-            nextCursor: null,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-pm-tenant-statement"

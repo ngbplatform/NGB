@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.Concurrency;
 /// P0: NegativeBalancePolicy must be concurrency-safe.
 /// Two concurrent "spend" postings should never both succeed if the second would drive balance below zero.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class NegativeBalancePolicy_Concurrency_DoubleSpend_P0Tests(PostgresTestFixture fixture)
 {
     private const string Cash = "50";

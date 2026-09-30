@@ -10,14 +10,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Dimensions;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DimensionTables_DbAppendOnlyGuards_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PlatformDimensionSets_And_Items_AreAppendOnly_UpdateAndDeleteAreForbidden()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Create a non-empty dimension set via the service (so the row definitely exists).
@@ -112,7 +111,6 @@ public sealed class DimensionTables_DbAppendOnlyGuards_P0Tests(PostgresTestFixtu
     [Fact]
     public async Task EmptyDimensionSetRow_IsProtected_FromUpdateAndDelete()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);

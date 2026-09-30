@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.Numbering;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentNumbering_FormatterAndManualNumbers_P4Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

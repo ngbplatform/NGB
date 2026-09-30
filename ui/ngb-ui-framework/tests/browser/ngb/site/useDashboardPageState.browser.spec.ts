@@ -4,7 +4,7 @@ import { render } from 'vitest-browser-vue'
 import { RouterView, createMemoryHistory, createRouter, useRoute } from 'vue-router'
 import { defineComponent, h, nextTick } from 'vue'
 
-import { StubDatePicker, StubIcon, StubVChart } from './stubs'
+import { StubDatePicker, StubIcon } from './stubs'
 
 vi.mock('../../../../src/ngb/primitives/NgbDatePicker.vue', () => ({
   default: StubDatePicker,
@@ -12,10 +12,6 @@ vi.mock('../../../../src/ngb/primitives/NgbDatePicker.vue', () => ({
 
 vi.mock('../../../../src/ngb/primitives/NgbIcon.vue', () => ({
   default: StubIcon,
-}))
-
-vi.mock('vue-echarts', () => ({
-  default: StubVChart,
 }))
 
 import NgbDashboardAsOfToolbar from '../../../../src/ngb/site/NgbDashboardAsOfToolbar.vue'
@@ -44,10 +40,6 @@ function createDeferred<T>() {
   })
 
   return { promise, resolve, reject }
-}
-
-function readJson(locator: { element(): Element }): Record<string, unknown> {
-  return JSON.parse(locator.element().textContent ?? '{}') as Record<string, unknown>
 }
 
 async function flushUi() {
@@ -151,9 +143,8 @@ test('wires the dashboard route query, toolbar, warnings banner, and trend chart
   await expect.element(view.getByText('Late data')).toBeVisible()
   await expect.element(view.getByText('Stale occupancy cache')).toBeVisible()
 
-  let option = readJson(view.getByTestId('stub-vchart-option'))
-  let series = option.series as Array<Record<string, unknown>>
-  expect(series[0]?.data).toEqual([94, 96])
+  expect(view.container.querySelector('[data-series-label="Occupancy"]')
+    ?.getAttribute('data-series-values')).toBe('[94,96]')
 
   const dateInput = view.getByTestId('stub-date-picker').element() as HTMLInputElement
   dateInput.value = '2026-04-30'
@@ -173,9 +164,8 @@ test('wires the dashboard route query, toolbar, warnings banner, and trend chart
   await flushUi()
 
   await expect.element(view.getByText('Blocked ledger sync')).toBeVisible()
-  option = readJson(view.getByTestId('stub-vchart-option'))
-  series = option.series as Array<Record<string, unknown>>
-  expect(series[0]?.data).toEqual([97, 98])
+  expect(view.container.querySelector('[data-series-label="Occupancy"]')
+    ?.getAttribute('data-series-values')).toBe('[97,98]')
   expect(dashboardLoad).toHaveBeenCalledWith('2026-04-08')
   expect(dashboardLoad).toHaveBeenLastCalledWith('2026-04-30')
 })
@@ -219,9 +209,8 @@ test('ignores stale browser-level dashboard loads and surfaces refresh failures 
   await expect.element(view.getByText('Fresh warning')).toBeVisible()
   expect(document.body.textContent ?? '').not.toContain('Stale warning')
 
-  const option = readJson(view.getByTestId('stub-vchart-option'))
-  const series = option.series as Array<Record<string, unknown>>
-  expect(series[0]?.data).toEqual([95, 99])
+  expect(view.container.querySelector('[data-series-label="Occupancy"]')
+    ?.getAttribute('data-series-values')).toBe('[95,99]')
 
   await view.getByRole('button', { name: 'Refresh' }).click()
   await flushUi()
@@ -229,5 +218,5 @@ test('ignores stale browser-level dashboard loads and surfaces refresh failures 
 
   await expect.element(view.getByText('Dashboard data failed to load')).toBeVisible()
   await expect.element(view.getByText('Dashboard exploded')).toBeVisible()
-  expect(document.querySelector('[data-testid="stub-vchart"]')).toBeNull()
+  expect(document.querySelector('[data-testid="ngb-trend-chart"]')).toBeNull()
 })

@@ -20,8 +20,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 ///   - updating user-facing fields (name/ordinal)
 ///   - inserting new optional resources (new columns in future movements)
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseGuards_OperationalRegisters_ResourcesGuards_WhenHasMovements_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseGuards_OperationalRegisters_ResourcesGuards_WhenHasMovements_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

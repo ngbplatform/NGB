@@ -1,6 +1,8 @@
 using System.Text.Json;
 using FluentAssertions;
 using NGB.Contracts.Common;
+using NGB.Contracts.Services;
+using NGB.Contracts.Metadata;
 using NGB.Metadata.Documents.Hybrid;
 using NGB.Runtime.Documents;
 using Xunit;
@@ -9,6 +11,62 @@ namespace NGB.Runtime.Tests.Documents;
 
 public sealed class DocumentAuditChangeBuilder_P0Tests
 {
+
+    [Fact]
+    public void DocumentDtoOverloads_CoverCreateUpdateFalsePresentationAndAddedRemovedFields()
+    {
+        var before = new DocumentDto(
+            Guid.CreateVersion7(),
+            "Before",
+            new RecordPayload(Fields: new Dictionary<string, JsonElement>
+            {
+                ["removed"] = JsonSerializer.SerializeToElement(1),
+                ["same"] = JsonSerializer.SerializeToElement("same")
+            }),
+            DocumentStatus.Draft,
+            false);
+        var after = before with
+        {
+            Display = "After",
+            Payload = new RecordPayload(Fields: new Dictionary<string, JsonElement>
+            {
+                ["added"] = JsonSerializer.SerializeToElement(2),
+                ["same"] = JsonSerializer.SerializeToElement("same")
+            })
+        };
+
+        DocumentAuditChangeBuilder.BuildCreateChanges(before).Should().HaveCount(2);
+        DocumentAuditChangeBuilder.BuildCreateChanges(
+            before,
+            new DocumentPresentationMetadata(ComputedDisplay: false, HasNumber: false)).Should().HaveCount(2);
+        DocumentAuditChangeBuilder.BuildUpdateChanges(before, after)
+            .Select(change => change.FieldPath).Should().Equal("added", "removed");
+        DocumentAuditChangeBuilder.BuildUpdateChanges(
+            before,
+            after,
+            new DocumentPresentationMetadata(ComputedDisplay: false, HasNumber: false))
+            .Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void BuildCreateChanges_SkipsUndefinedValuesAndHandlesNullPartPayloadAndRows()
+    {
+        var payload = new RecordPayload(
+            Fields: new Dictionary<string, JsonElement>
+            {
+                ["undefined"] = default
+            },
+            Parts: new Dictionary<string, RecordPartPayload>
+            {
+                ["null_payload"] = null!,
+                ["null_rows"] = new RecordPartPayload(null!),
+                ["undefined_cell"] = new RecordPartPayload([
+                    new Dictionary<string, JsonElement> { ["undefined"] = default }
+                ])
+            });
+
+        DocumentAuditChangeBuilder.BuildCreateChanges(payload).Should().BeEmpty();
+    }
 
     [Fact]
     public void BuildCreateChanges_Ignores_SystemManaged_TopLevel_Display_And_Number()

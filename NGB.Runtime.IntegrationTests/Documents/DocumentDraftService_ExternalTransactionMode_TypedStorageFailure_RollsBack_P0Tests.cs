@@ -11,8 +11,8 @@ using NGB.Definitions;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentDraftService_ExternalTransactionMode_TypedStorageFailure_RollsBack_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentDraftService_ExternalTransactionMode_TypedStorageFailure_RollsBack_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     // IMPORTANT:

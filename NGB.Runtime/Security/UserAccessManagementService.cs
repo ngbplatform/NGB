@@ -1,4 +1,5 @@
 using System.Net.Mail;
+using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 using NGB.Core.AuditLog;
 using NGB.Core.Security;
@@ -6,6 +7,7 @@ using NGB.Persistence.AuditLog;
 using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.AuditLog;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 
@@ -21,40 +23,91 @@ public sealed class UserAccessManagementService(
     IAuditLogService audit)
     : IUserAccessManagementService
 {
-    public async Task<IReadOnlyList<UserListItemDto>> GetUsersAsync(CancellationToken ct)
+    internal const int MaxRoleAssignmentsPerUser = 500;
+    internal const int MaxUserPageSize = 100;
+
+    public async Task<PageResponseDto<UserListItemDto>> GetUsersAsync(UserPageRequestDto request, CancellationToken ct)
     {
-        var platformUsers = await users.GetAllAsync(ct);
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            "security.users",
+            request.IsActive?.ToString());
+        var cursor = string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<PlatformUserPageCursor>(cursorKind, request.Cursor);
+        var offset = Math.Clamp(cursor?.Offset ?? request.Offset, 0, PagingLimits.MaxOffset);
+        var limit = request.Limit <= 0
+            ? PagingLimits.DefaultPageSize
+            : Math.Min(request.Limit, MaxUserPageSize);
+        var platformPage = cursor is null
+            ? await users.GetPageAsync(offset, limit, request.IsActive, ct)
+            : await users.GetCursorPageAsync(cursor, limit, request.IsActive, ct);
+        var platformUsers = platformPage.Items;
         var userIds = platformUsers.Select(x => x.UserId).ToArray();
         var identityProviderIds = platformUsers
             .Select(static x => NormalizeIdentityProviderId(x.AuthSubject))
             .OfType<string>()
             .ToArray();
-
-        var rolesByUserTask = userRoles.GetRolesForUsersAsync(userIds, ct);
-        var identityProviderUsersByIdTask = identityProvider.GetUsersByIdsAsync(identityProviderIds, ct);
-        await Task.WhenAll(rolesByUserTask, identityProviderUsersByIdTask);
-
-        var rolesByUser = await rolesByUserTask;
-        var identityProviderUsersById = await identityProviderUsersByIdTask;
-        var fallbackEmails = platformUsers
-            .Where(user => !HasIdentityProviderUser(identityProviderUsersById, user.AuthSubject))
+        var platformEmails = platformUsers
             .Select(static user => NormalizeIdentityProviderEmail(user.Email))
             .OfType<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var identityProviderUsersByEmail = fallbackEmails.Length == 0
-            ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
-            : await identityProvider.FindUsersByEmailsAsync(fallbackEmails, ct);
+        var rolesByUserTask = userRoles.GetRolesForUsersAsync(userIds, ct);
+        IReadOnlyDictionary<string, IdentityProviderUserDto> identityProviderUsersById;
+        IReadOnlyDictionary<string, IdentityProviderUserDto> identityProviderUsersByEmail;
+        var useLocalStatusWhenSnapshotMisses = false;
 
-        return platformUsers
+        if (identityProvider is IIdentityProviderUserPageSnapshotReader snapshotReader)
+        {
+            var snapshot = snapshotReader.GetCachedUsers(identityProviderIds, platformEmails);
+            identityProviderUsersById = snapshot.ById;
+            identityProviderUsersByEmail = snapshot.ByEmail;
+            useLocalStatusWhenSnapshotMisses = true;
+            await rolesByUserTask;
+        }
+        else if (identityProvider is IIdentityProviderBulkUserReader bulkReader)
+        {
+            var batchTask = bulkReader.GetUsersAsync(identityProviderIds, platformEmails, ct);
+
+            await Task.WhenAll(rolesByUserTask, batchTask);
+
+            var batch = await batchTask;
+            identityProviderUsersById = batch.ById;
+            identityProviderUsersByEmail = batch.ByEmail;
+        }
+        else
+        {
+            var identityProviderUsersByIdTask = identityProvider.GetUsersByIdsAsync(identityProviderIds, ct);
+
+            await Task.WhenAll(rolesByUserTask, identityProviderUsersByIdTask);
+
+            identityProviderUsersById = await identityProviderUsersByIdTask;
+            var fallbackEmails = platformUsers
+                .Where(user => !HasIdentityProviderUser(identityProviderUsersById, user.AuthSubject))
+                .Select(static user => NormalizeIdentityProviderEmail(user.Email))
+                .OfType<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            identityProviderUsersByEmail = fallbackEmails.Length == 0
+                ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+                : await identityProvider.FindUsersByEmailsAsync(fallbackEmails, ct);
+        }
+
+        var rolesByUser = await rolesByUserTask;
+
+        var items = platformUsers
             .Select(user =>
             {
                 rolesByUser.TryGetValue(user.UserId, out var assignedRoles);
                 var keycloakEnabled = ResolveIdentityProviderEnabled(
                     user,
                     identityProviderUsersById,
-                    identityProviderUsersByEmail);
+                    identityProviderUsersByEmail,
+                    useLocalStatusWhenSnapshotMisses && user.IsActive);
 
                 var roles = (assignedRoles ?? [])
                     .OrderBy(static role => role.Name, StringComparer.OrdinalIgnoreCase)
@@ -73,6 +126,24 @@ public sealed class UserAccessManagementService(
             })
             .OrderBy(static x => x.DisplayName ?? x.Email ?? x.AuthSubject, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        var hasMore = platformPage.HasMore || offset + items.Length < platformPage.Total;
+        var nextCursor = hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new PlatformUserPageCursor(
+                    offset + items.Length,
+                    platformPage.Total,
+                    platformPage.NextAfterSortKey,
+                    platformPage.NextAfterUserId))
+            : null;
+        return new PageResponseDto<UserListItemDto>(
+            items,
+            offset,
+            limit,
+            checked((int)platformPage.Total),
+            hasMore,
+            nextCursor);
     }
 
     public async Task<UserDetailsDto> GetUserAsync(Guid userId, CancellationToken ct)
@@ -90,6 +161,8 @@ public sealed class UserAccessManagementService(
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
+
+        EnsureRoleAssignmentLimit(request.RoleIds);
 
         var email = NormalizeRequiredEmail(request.Email, nameof(request.Email));
         var temporaryPassword = string.IsNullOrWhiteSpace(request.TemporaryPassword)
@@ -208,6 +281,8 @@ public sealed class UserAccessManagementService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
+        EnsureRoleAssignmentLimit(request.RoleIds);
+
         var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
         var email = NormalizeOptionalEmail(request.Email, nameof(request.Email))
             ?? NormalizeRequiredEmail(user.Email, nameof(request.Email));
@@ -306,6 +381,8 @@ public sealed class UserAccessManagementService(
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
+
+        EnsureRoleAssignmentLimit(request.RoleIds);
 
         var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
         var oldRoles = await userRoles.GetRolesForUserAsync(userId, ct);
@@ -427,6 +504,20 @@ public sealed class UserAccessManagementService(
     private static RoleBadgeDto ToRoleBadge(PlatformRole role)
         => new(role.RoleId, role.Code, role.Name, role.IsSystem, role.IsActive);
 
+    private static void EnsureRoleAssignmentLimit(IReadOnlyList<Guid> roleIds)
+    {
+        if (roleIds is null)
+            throw new NgbArgumentRequiredException(nameof(roleIds));
+
+        if (roleIds.Count > MaxRoleAssignmentsPerUser)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(roleIds),
+                roleIds.Count,
+                $"At most {MaxRoleAssignmentsPerUser:N0} roles are allowed per user.");
+        }
+    }
+
     private async Task<string> ResolveIdentityProviderUserIdAsync(
         PlatformUser user,
         IReadOnlyList<string?> emailCandidates,
@@ -443,9 +534,17 @@ public sealed class UserAccessManagementService(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var usersByEmail = normalizedEmails.Length == 0
+            ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+            : await identityProvider.FindUsersByEmailsAsync(normalizedEmails, ct);
+
         foreach (var email in normalizedEmails)
         {
-            var byEmail = await identityProvider.FindUserByEmailAsync(email, ct);
+            usersByEmail.TryGetValue(email, out var byEmail);
+            byEmail ??= usersByEmail
+                .FirstOrDefault(pair => pair.Key.Equals(email, StringComparison.OrdinalIgnoreCase))
+                .Value;
+
             if (byEmail is not null)
                 return byEmail.UserId;
         }
@@ -521,7 +620,8 @@ public sealed class UserAccessManagementService(
     private static bool? ResolveIdentityProviderEnabled(
         PlatformUser user,
         IReadOnlyDictionary<string, IdentityProviderUserDto> usersById,
-        IReadOnlyDictionary<string, IdentityProviderUserDto> usersByEmail)
+        IReadOnlyDictionary<string, IdentityProviderUserDto> usersByEmail,
+        bool fallback)
     {
         var identityProviderId = NormalizeIdentityProviderId(user.AuthSubject);
         if (identityProviderId is not null && usersById.TryGetValue(identityProviderId, out var byId))
@@ -531,7 +631,7 @@ public sealed class UserAccessManagementService(
         if (email is not null && usersByEmail.TryGetValue(email, out var byEmail))
             return byEmail.Enabled;
 
-        return false;
+        return fallback;
     }
 
     private static string? NormalizeIdentityProviderId(string? identityProviderUserId)
@@ -548,44 +648,46 @@ public sealed class UserAccessManagementService(
     {
         var oldRoleIds = oldRoles.Select(static role => role.RoleId).ToHashSet();
         var newRoleIds = newRoles.Select(static role => role.RoleId).ToHashSet();
+        var requests = new List<AuditLogWriteRequest>();
 
         foreach (var role in newRoles.Where(role => !oldRoleIds.Contains(role.RoleId)))
         {
-            await audit.WriteAsync(
+            requests.Add(new AuditLogWriteRequest(
                 AuditEntityKind.SecurityRole,
                 role.RoleId,
                 AuditActionCodes.SecurityRoleUpdate,
-                changes:
+                Changes:
                 [
                     AuditLogService.Change("assigned_users", null, auditUser)
                 ],
-                metadata: new
+                Metadata: new
                 {
                     assignment = "added",
                     roleCode = role.Code,
                     user = auditUser
-                },
-                ct: ct);
+                }));
         }
 
         foreach (var role in oldRoles.Where(role => !newRoleIds.Contains(role.RoleId)))
         {
-            await audit.WriteAsync(
+            requests.Add(new AuditLogWriteRequest(
                 AuditEntityKind.SecurityRole,
                 role.RoleId,
                 AuditActionCodes.SecurityRoleUpdate,
-                changes:
+                Changes:
                 [
                     AuditLogService.Change("assigned_users", auditUser, null)
                 ],
-                metadata: new
+                Metadata: new
                 {
                     assignment = "removed",
                     roleCode = role.Code,
                     user = auditUser
-                },
-                ct: ct);
+                }));
         }
+
+        if (requests.Count > 0)
+            await audit.WriteBatchAsync(requests, ct);
     }
 
     private static IReadOnlyList<AuditFieldChange> BuildUserAuditChanges(

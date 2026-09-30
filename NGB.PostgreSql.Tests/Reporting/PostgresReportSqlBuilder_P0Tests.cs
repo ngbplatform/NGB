@@ -57,7 +57,7 @@ public sealed class PostgresReportSqlBuilder_P0Tests
                 ["from_utc"] = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc),
                 ["to_utc_exclusive"] = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc)
             },
-            Paging: new PostgresReportPaging(10, 25));
+            Paging: new PostgresReportPaging(0, 25));
 
         var statement = sut.Build(request);
 
@@ -68,15 +68,17 @@ public sealed class PostgresReportSqlBuilder_P0Tests
         statement.Sql.Should().Contain("WHERE r.property_id = @p_0");
         statement.Sql.Should().Contain("GROUP BY");
         statement.Sql.Should().Contain("ORDER BY period_utc__month DESC");
-        statement.Sql.Should().Contain("OFFSET @offset");
+        statement.Sql.Should().NotContain("OFFSET @offset");
         statement.Sql.Should().Contain("LIMIT @limit_plus_one");
-        statement.Parameters.ParameterNames.Should().Contain(["p_0", "offset", "limit_plus_one"]);
+        statement.Parameters.ParameterNames.Should().Contain(["p_0", "limit_plus_one"])
+            .And.NotContain("offset");
         statement.Columns.Should().HaveCount(3);
         statement.IsAggregated.Should().BeTrue();
+        statement.CursorColumns.Should().NotBeEmpty();
     }
 
     [Fact]
-    public void SqlBuilder_Omits_Paging_Clauses_For_Unpaged_Exports()
+    public void SqlBuilder_HardCaps_Unpaged_Exports()
     {
         var sut = new PostgresReportSqlBuilder(new PostgresReportDatasetCatalog([
             new StubDatasetSource(BuildDatasetBinding("accounting.ledger.analysis"))
@@ -103,7 +105,9 @@ public sealed class PostgresReportSqlBuilder_P0Tests
 
         statement.Sql.Should().NotContain("OFFSET @offset");
         statement.Sql.Should().NotContain("LIMIT @limit_plus_one");
-        statement.Parameters.ParameterNames.Should().NotContain(["offset", "limit_plus_one"]);
+        statement.Sql.Should().Contain("LIMIT @materialization_limit_plus_one");
+        statement.Parameters.ParameterNames.Should().NotContain(["offset", "limit_plus_one"])
+            .And.Contain("materialization_limit_plus_one");
         statement.Offset.Should().Be(0);
         statement.Limit.Should().Be(0);
     }
@@ -141,7 +145,7 @@ public sealed class PostgresReportSqlBuilder_P0Tests
         statement.Sql.Should().Contain("date_trunc('month', r.period_utc) AS period_utc__month");
         statement.Sql.Should().Contain("SUM(r.debit_amount) AS debit__sum");
         statement.Sql.Should().Contain("GROUP BY");
-        statement.Sql.Should().Contain("ORDER BY account_code, period_utc__month");
+        statement.Sql.Should().Contain("ORDER BY account_code ASC NULLS LAST, period_utc__month ASC NULLS LAST");
         statement.Columns.Select(x => x.SemanticRole).Should().Equal("row-group", "column-group", "measure");
     }
 
@@ -377,8 +381,10 @@ public sealed class PostgresReportSqlBuilder_P0Tests
             Parameters: new Dictionary<string, object?>(),
             Paging: new PostgresReportPaging(0, 20)));
 
-        statement.Sql.Should().Contain($"f.account_id AS {ReportInteractiveSupport.SupportAccountId}");
-        statement.Sql.Should().Contain($"f.document_id AS {ReportInteractiveSupport.SupportDocumentId}");
+        statement.Sql.Should().Contain($"MIN((f.account_id)::text)::uuid END AS {ReportInteractiveSupport.SupportAccountId}");
+        statement.Sql.Should().Contain("COUNT(DISTINCT f.account_id)=1 AND COUNT(f.account_id)=COUNT(*)");
+        statement.Sql.Should().Contain($"MIN((f.document_id)::text)::uuid END AS {ReportInteractiveSupport.SupportDocumentId}");
+        statement.Sql.Should().Contain("GROUP BY f.account_display,f.document_display\n");
         statement.Columns.Select(x => x.OutputCode).Should().Contain([ReportInteractiveSupport.SupportAccountId, ReportInteractiveSupport.SupportDocumentId]);
     }
 
@@ -422,8 +428,10 @@ public sealed class PostgresReportSqlBuilder_P0Tests
             Parameters: new Dictionary<string, object?>(),
             Paging: new PostgresReportPaging(0, 20)));
 
-        statement.Sql.Should().Contain("f.warehouse_id AS warehouse_id");
-        statement.Sql.Should().Contain("f.item_id AS item_id");
+        statement.Sql.Should().Contain("MIN((f.warehouse_id)::text)::uuid END AS warehouse_id");
+        statement.Sql.Should().Contain("COUNT(DISTINCT f.warehouse_id)=1 AND COUNT(f.warehouse_id)=COUNT(*)");
+        statement.Sql.Should().Contain("MIN((f.item_id)::text)::uuid END AS item_id");
+        statement.Sql.Should().Contain("GROUP BY f.warehouse_display,f.item_display\n");
         statement.Columns.Select(x => x.OutputCode).Should().Contain(["warehouse_id", "item_id"]);
     }
 }

@@ -28,6 +28,32 @@ public sealed class PostgresClosedPeriodRepository(IUnitOfWork uow) : IClosedPer
         return await uow.Connection.ExecuteScalarAsync<bool>(cmd);
     }
 
+    public async Task<DateOnly?> FindFirstClosedAsync(
+        IReadOnlyCollection<DateOnly> periods,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(periods);
+
+        if (periods.Count == 0)
+            return null;
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+                           SELECT period
+                           FROM accounting_closed_periods
+                           WHERE period = ANY(@Periods)
+                           ORDER BY period
+                           LIMIT 1;
+                           """;
+
+        return await uow.Connection.QuerySingleOrDefaultAsync<DateOnly?>(new CommandDefinition(
+            sql,
+            new { Periods = periods.Distinct().Order().ToArray() },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+    }
+
     public async Task MarkClosedAsync(
         DateOnly period,
         string closedBy,

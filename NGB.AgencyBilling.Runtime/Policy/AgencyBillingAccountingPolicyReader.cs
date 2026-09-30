@@ -1,14 +1,22 @@
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
+using NGB.Persistence.Documents;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
 namespace NGB.AgencyBilling.Runtime.Policy;
 
-public sealed class AgencyBillingAccountingPolicyReader(ICatalogService catalogs)
+public sealed class AgencyBillingAccountingPolicyReader(
+    ICatalogService catalogs,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IAgencyBillingAccountingPolicyReader
 {
-    public async Task<AgencyBillingAccountingPolicy> GetRequiredAsync(CancellationToken ct = default)
+    public Task<AgencyBillingAccountingPolicy> GetRequiredAsync(CancellationToken ct = default)
+        => postingReadCache is null
+            ? ReadRequiredAsync(ct)
+            : postingReadCache.GetOrAddAsync("policy:agency-billing", ReadRequiredAsync, ct);
+
+    private async Task<AgencyBillingAccountingPolicy> ReadRequiredAsync(CancellationToken ct)
     {
         var page = await catalogs.GetPageAsync(
             AgencyBillingCodes.AccountingPolicy,

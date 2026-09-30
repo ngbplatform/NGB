@@ -11,6 +11,8 @@ using NGB.PropertyManagement.DependencyInjection;
 using NGB.PropertyManagement.Runtime.Catalogs;
 using NGB.PropertyManagement.Runtime.Catalogs.Validation;
 using NGB.PropertyManagement.Runtime.Documents.Validation;
+using NGB.PropertyManagement.Contracts.Dashboard;
+using NGB.PropertyManagement.Runtime.Dashboard;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.Runtime.Policy;
 using NGB.PropertyManagement.Runtime.Posting;
@@ -18,6 +20,7 @@ using NGB.PropertyManagement.Runtime.Payables;
 using NGB.PropertyManagement.Runtime.Receivables;
 using NGB.PropertyManagement.Runtime.Reporting;
 using NGB.PropertyManagement.Runtime.Security;
+using NGB.PropertyManagement.Security;
 using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.Documents.Validation;
@@ -29,7 +32,10 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
 {
     public static IServiceCollection AddPropertyManagementRuntimeModule(this IServiceCollection services)
     {
+        services.TryAddSingleton(new PropertyManagementDemoAdministratorOptions());
         services.TryAddScoped<IPropertyManagementSetupService, PropertyManagementSetupService>();
+        services.TryAddScoped<IPropertyManagementSecuritySetupService, PropertyManagementSecuritySetupService>();
+        services.TryAddScoped<IPropertyManagementDashboardService, PropertyManagementDashboardService>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, PropertyManagementPermissionDefinitionSource>());
 
         services.TryAddScoped<IPropertyManagementAccountingPolicyReader, PropertyManagementAccountingPolicyReader>();
@@ -93,7 +99,9 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IReportDefinitionEnricher, PropertyManagementAccountingReportDefinitionEnricher>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, BuildingSummaryCanonicalReportExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, OccupancySummaryCanonicalReportExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<NGB.Runtime.Reporting.Streaming.IStreamingReportExecutor, OccupancySummaryStreamingExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, MaintenanceQueueCanonicalReportExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<NGB.Runtime.Reporting.Streaming.IStreamingReportExecutor, MaintenanceQueueStreamingExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, TenantStatementCanonicalReportExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, ReceivablesAgingCanonicalReportExecutor>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IReportSpecializedPlanExecutor, ReceivablesOpenItemsCanonicalReportExecutor>());

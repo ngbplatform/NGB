@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters
     /// Rationale: actor upsert updates platform_users.updated_at_utc. If a no-op path still reaches AuditLogService,
     /// it will silently mutate platform_users even when no audit event is emitted.
     /// </summary>
-    [Collection(PostgresCollection.Name)]
+    [Collection(RegistersPostgresCollection.Name)]
     public sealed class OperationalRegisterManagementService_NoOp_WithActor_DoesNotTouchPlatformUsers_P0Tests(PostgresTestFixture fixture)
         : IntegrationTestBase(fixture)
     {

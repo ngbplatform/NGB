@@ -1,4 +1,4 @@
-import { httpGet, httpPost } from '../api/http';
+import { httpGet, httpPost, type HttpRequestOptions } from '../api/http';
 import type {
   CloseFiscalYearRequestDto,
   CloseMonthRequestDto,
@@ -10,8 +10,14 @@ import type {
   RetainedEarningsAccountOptionDto,
 } from './periodClosingTypes';
 
-export async function getMonthCloseStatus(period: string): Promise<PeriodCloseStatusDto> {
-  return await httpGet<PeriodCloseStatusDto>('/api/accounting/period-closing/month', { period });
+export async function getMonthCloseStatus(
+  period: string,
+  options?: HttpRequestOptions,
+): Promise<PeriodCloseStatusDto> {
+  const query = { period };
+  return options
+    ? await httpGet<PeriodCloseStatusDto>('/api/accounting/period-closing/month', query, options)
+    : await httpGet<PeriodCloseStatusDto>('/api/accounting/period-closing/month', query);
 }
 
 export async function closeMonth(request: CloseMonthRequestDto): Promise<PeriodCloseStatusDto> {
@@ -22,16 +28,24 @@ export async function reopenMonth(request: ReopenMonthRequestDto): Promise<Perio
   return await httpPost<PeriodCloseStatusDto>('/api/accounting/period-closing/month/reopen', request);
 }
 
-export async function getPeriodClosingCalendar(year: number): Promise<PeriodClosingCalendarDto> {
-  return await httpGet<PeriodClosingCalendarDto>('/api/accounting/period-closing/calendar', { year });
+export async function getPeriodClosingCalendar(
+  year: number,
+  options?: HttpRequestOptions,
+): Promise<PeriodClosingCalendarDto> {
+  const query = { year };
+  return options
+    ? await httpGet<PeriodClosingCalendarDto>('/api/accounting/period-closing/calendar', query, options)
+    : await httpGet<PeriodClosingCalendarDto>('/api/accounting/period-closing/calendar', query);
 }
 
 export async function getFiscalYearCloseStatus(
   fiscalYearEndPeriod: string,
+  options?: HttpRequestOptions,
 ): Promise<FiscalYearCloseStatusDto> {
-  return await httpGet<FiscalYearCloseStatusDto>('/api/accounting/period-closing/fiscal-year', {
-    fiscalYearEndPeriod,
-  });
+  const query = { fiscalYearEndPeriod };
+  return options
+    ? await httpGet<FiscalYearCloseStatusDto>('/api/accounting/period-closing/fiscal-year', query, options)
+    : await httpGet<FiscalYearCloseStatusDto>('/api/accounting/period-closing/fiscal-year', query);
 }
 
 export async function closeFiscalYear(
@@ -49,12 +63,12 @@ export async function reopenFiscalYear(
 export async function searchRetainedEarningsAccounts(args?: {
   query?: string | null;
   limit?: number;
-}): Promise<RetainedEarningsAccountOptionDto[]> {
-  return await httpGet<RetainedEarningsAccountOptionDto[]>(
-    '/api/accounting/period-closing/retained-earnings-accounts',
-    {
-      q: args?.query?.trim() || undefined,
-      limit: args?.limit ?? 20,
-    },
-  );
+}, options?: HttpRequestOptions): Promise<RetainedEarningsAccountOptionDto[]> {
+  const query = {
+    q: args?.query?.trim() || undefined,
+    limit: args?.limit ?? 20,
+  };
+  return options
+    ? await httpGet<RetainedEarningsAccountOptionDto[]>('/api/accounting/period-closing/retained-earnings-accounts', query, options)
+    : await httpGet<RetainedEarningsAccountOptionDto[]>('/api/accounting/period-closing/retained-earnings-accounts', query);
 }

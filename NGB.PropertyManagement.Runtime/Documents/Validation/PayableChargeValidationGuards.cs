@@ -64,23 +64,16 @@ internal static class PayableChargeValidationGuards
         if (el.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return false;
 
-        try
+        if (el.ValueKind is JsonValueKind.True or JsonValueKind.False)
         {
-            if (el.ValueKind == JsonValueKind.True || el.ValueKind == JsonValueKind.False)
-            {
-                value = el.GetBoolean();
-                return true;
-            }
-
-            if (el.ValueKind == JsonValueKind.String && bool.TryParse(el.GetString(), out var b))
-            {
-                value = b;
-                return true;
-            }
+            value = el.GetBoolean();
+            return true;
         }
-        catch
+
+        if (el.ValueKind == JsonValueKind.String && bool.TryParse(el.GetString(), out var b))
         {
-            return false;
+            value = b;
+            return true;
         }
 
         return false;

@@ -52,7 +52,19 @@ public sealed class ReportSheetBuilder
             throw new NgbInvariantViolationException("Reporting sheet builder requires a materialized data page.");
 
         if (page.PrebuiltSheet is not null)
+        {
+            EnsureVisibleRowCap(definition, plan, page.PrebuiltSheet.Rows.Count, includeCanonical: true);
+            if (definition.Capabilities.MaxVisibleColumns is > 0 and { } maxColumns
+                && page.PrebuiltSheet.Columns.Count > maxColumns)
+            {
+                throw Invalid(
+                    definition,
+                    "layout",
+                    $"This report would display {page.PrebuiltSheet.Columns.Count} columns, which exceeds the limit of {maxColumns}.");
+            }
+
             return MergePrebuiltSheet(definition, plan, page);
+        }
 
         var actionResolver = new ReportComposableCellActionResolver(plan, definition.Dataset);
         var cellFormatter = new ReportCellFormatter();
@@ -101,7 +113,7 @@ public sealed class ReportSheetBuilder
         ReportQueryPlan plan,
         ReportDataPage page)
     {
-        var sheet = page.PrebuiltSheet ?? throw new NgbInvariantViolationException("Reporting sheet builder expected a prebuilt sheet instance.");
+        var sheet = page.PrebuiltSheet!;
         var meta = sheet.Meta;
         var diagnostics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (meta?.Diagnostics is not null)
@@ -161,12 +173,9 @@ public sealed class ReportSheetBuilder
             ["headerRows"] = pivot.HeaderRows.Count.ToString()
         };
 
-        if (pivot.Diagnostics is not null)
+        foreach (var pair in pivot.Diagnostics)
         {
-            foreach (var pair in pivot.Diagnostics)
-            {
-                diagnostics[pair.Key] = pair.Value;
-            }
+            diagnostics[pair.Key] = pair.Value;
         }
 
         if (page.Diagnostics is not null)
@@ -192,7 +201,7 @@ public sealed class ReportSheetBuilder
             HeaderRows: pivot.HeaderRows);
     }
 
-    private static IReadOnlyList<ReportSheetColumnDto> BuildColumns(ReportQueryPlan plan)
+    internal static IReadOnlyList<ReportSheetColumnDto> BuildColumns(ReportQueryPlan plan)
     {
         var columns = new List<ReportSheetColumnDto>();
 
@@ -238,16 +247,18 @@ public sealed class ReportSheetBuilder
     private static void EnsureVisibleRowCap(
         ReportDefinitionRuntimeModel definition,
         ReportQueryPlan plan,
-        int visibleRows)
+        int visibleRows,
+        bool includeCanonical = false)
     {
-        if (definition.Definition.Mode != ReportExecutionMode.Composable)
+        if (!includeCanonical && definition.Definition.Mode != ReportExecutionMode.Composable)
             return;
 
-        if (definition.Capabilities.MaxVisibleRows is not { } maxRows || visibleRows <= maxRows)
+        var maxRows = definition.Capabilities.MaxVisibleRows;
+        if (maxRows is null || visibleRows <= maxRows.Value)
             return;
 
         var fieldPath = ResolveVisibleRowFieldPath(plan);
-        var message = $"This report would display {visibleRows} rows, which exceeds the limit of {maxRows}. Narrow the filters or reduce the number of groups and try again.";
+        var message = $"This report would display {visibleRows} rows, which exceeds the limit of {maxRows.Value}. Narrow the filters or reduce the number of groups and try again.";
         throw Invalid(definition, fieldPath, message);
     }
 

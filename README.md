@@ -24,6 +24,11 @@
 </p>
 
 <p align="center">
+  Current release: <strong>3.0.0</strong> ·
+  <a href="docs/guides/migrating-to-3.0.md">Migration guide from 2.0.0</a>
+</p>
+
+<p align="center">
   <a href="https://ngbplatform.com">Website</a>
   ·
   <a href="https://docs.ngbplatform.com">Docs</a>
@@ -219,13 +224,22 @@ The repository currently contains the platform core and source code for the demo
 
 NGB follows a **layered platform architecture** built around reusable platform hosts, shared contracts and metadata, a central execution core, specialized business engines, and PostgreSQL-based persistence.
 
-At the top level, NGB provides dedicated platform hosts for API delivery, background processing, health and operability, and schema deployment. These hosts do not implement business behavior themselves. Instead, they compose and expose the platform through shared contracts, abstractions, and runtime orchestration.
+At the top level, vertical application hosts compose reusable API, background-processing, health,
+and migration capabilities. Provider-neutral hosting behavior lives in dedicated hosting adapters;
+PostgreSQL-specific web and Hangfire integration lives in provider adapters. These layers do not
+implement business behavior themselves. They expose the platform through shared contracts,
+abstractions, and runtime orchestration.
 
 At the center of the platform is **NGB.Runtime**. It acts as the execution core that coordinates catalogs, documents, posting, reporting, validation, and workflow behavior. Rather than scattering business logic across hosts, NGB concentrates orchestration in the runtime layer and delegates specialized responsibilities to dedicated platform engines.
 
 Those engines include **NGB.Accounting**, **NGB.OperationalRegisters**, **NGB.ReferenceRegisters**, and the business audit log. Together they provide the core business mechanics of the platform: ledger semantics, register-based state handling, reference-state projection, and append-only auditability.
 
-Persistence and database interaction are handled through **NGB.PostgreSql**, which serves as the platform’s infrastructure bridge for readers, writers, and migration support. Platform data is stored in **PostgreSQL**, while authentication is integrated with **Keycloak**.
+Persistence and database interaction are handled through **NGB.PostgreSql**, which serves as the
+platform’s infrastructure bridge for readers, writers, and migrations. **NGB.Hosting.AspNetCore**
+and **NGB.Runtime.Hosting** own provider-neutral host integration, while
+**NGB.PostgreSql.AspNetCore** and **NGB.BackgroundJobs.PostgreSql** own PostgreSQL-specific host
+adapters. Platform data is stored in **PostgreSQL**, while authentication is integrated with
+**Keycloak**.
 
 ### High-level architecture
 
@@ -238,11 +252,13 @@ flowchart TB
     classDef infra fill:#f7f7f7,stroke:#6b7280,stroke-width:1.5px,color:#111827;
     classDef external fill:#ffffff,stroke:#9ca3af,stroke-width:1.2px,color:#111827;
 
-    subgraph HOSTS["Platform Hosts"]
-        API["NGB.Api<br/>HTTP / API host"]
-        BG["NGB.BackgroundJobs<br/>Scheduled job host"]
-        WD["NGB.Watchdog<br/>Health / operability host"]
-        MIG["NGB.Migrator<br/>Schema deployment host"]
+    subgraph HOSTS["Host Composition"]
+        API["NGB.Api<br/>API controllers and endpoints"]
+        HOSTING["NGB.Hosting.AspNetCore<br/>Provider-neutral web hosting"]
+        RTHOST["NGB.Runtime.Hosting<br/>Runtime host lifecycle"]
+        BG["NGB.BackgroundJobs<br/>Provider-neutral scheduling"]
+        WD["NGB.Watchdog<br/>Health / operability hosting"]
+        MIG["NGB.Migrator.Core<br/>Schema deployment"]
     end
 
     subgraph SURFACE["Contracts, Metadata, and Platform Surface"]
@@ -266,6 +282,8 @@ flowchart TB
 
     subgraph INFRA["Persistence and Integration"]
         PG["NGB.PostgreSql<br/>Persistence, readers, writers, migrations support"]
+        PGWEB["NGB.PostgreSql.AspNetCore<br/>PostgreSQL HTTP and health adapters"]
+        BGPG["NGB.BackgroundJobs.PostgreSql<br/>PostgreSQL Hangfire adapter"]
     end
 
     subgraph EXTERNAL["External Systems"]
@@ -275,9 +293,15 @@ flowchart TB
 
     API --> CONTRACTS
     API --> APPABS
-    BG --> APPABS
-    WD --> APPABS
+    API --> HOSTING
+    RTHOST --> RUNTIME
+    BG --> HOSTING
+    BG --> RUNTIME
+    BGPG -. selected by application host .-> BG
+    WD --> HOSTING
     MIG --> PG
+    PGWEB --> PG
+    PGWEB --> HOSTING
 
     CONTRACTS --> RUNTIME
     APPABS --> RUNTIME
@@ -296,24 +320,23 @@ flowchart TB
     RR --> PG
     AUDIT --> PG
 
-    API -. authentication .-> KC
-    BG -. authentication .-> KC
-    WD -. authentication .-> KC
+    HOSTING -. authentication .-> KC
 
     PG --> DB
 
-    class API,BG,WD,MIG host;
+    class API,HOSTING,RTHOST,BG,WD,MIG host;
     class CONTRACTS,APPABS,DEFINITIONS,METADATA,CORE surface;
     class RUNTIME runtime;
     class ACCOUNTING,OR,RR,AUDIT engine;
-    class PG infra;
+    class PG,PGWEB,BGPG infra;
     class DB,KC external;
 ```
 
 ### Architectural layers
 
-1. **Platform Hosts**  
-   Entry-point hosts for HTTP APIs, background jobs, health monitoring, and schema deployment.
+1. **Host Composition**
+   Reusable API, background-jobs, health, migration, generic-host, and ASP.NET Core adapters composed
+   by vertical entry points.
 
 2. **Contracts, Metadata, and Platform Surface**  
    Shared DTOs, application abstractions, metadata, definitions, and common primitives that define how the platform is described and consumed.
@@ -325,7 +348,8 @@ flowchart TB
    Specialized engines for accounting, operational registers, reference registers, and append-only audit logging.
 
 5. **Persistence and Integration**  
-   PostgreSQL-based infrastructure through **NGB.PostgreSql**, plus integration with external systems such as PostgreSQL and Keycloak.
+   PostgreSQL-based infrastructure and explicit provider adapters, plus integration with external
+   systems such as PostgreSQL and Keycloak.
 
 ---
 
@@ -383,13 +407,17 @@ NGB.sln
 │  ├─ NGB.Contracts
 │  ├─ NGB.Application.Abstractions
 │  ├─ NGB.Runtime
+│  ├─ NGB.Runtime.Hosting
 │  ├─ NGB.Accounting
 │  ├─ NGB.OperationalRegisters
 │  ├─ NGB.ReferenceRegisters
+│  ├─ NGB.Hosting.AspNetCore
 │  ├─ NGB.Api
 │  ├─ NGB.BackgroundJobs
+│  ├─ NGB.BackgroundJobs.PostgreSql
 │  ├─ NGB.Watchdog
 │  ├─ NGB.PostgreSql
+│  ├─ NGB.PostgreSql.AspNetCore
 │  ├─ NGB.Persistence
 │  ├─ NGB.Tools
 │  └─ NGB.Migrator.Core
@@ -476,10 +504,10 @@ This account is intended for demo and evaluation use only.
 
 You should have the following installed:
 
-- .NET SDK
-- Docker and Docker Compose
-- Node.js
-- PostgreSQL client tools if you want to inspect databases manually
+- .NET 10 SDK for local backend builds
+- Docker with Linux containers and Docker Compose v2
+- Node.js 22.14+ and npm for local frontend development (the Dockerfiles use Node.js 22.17)
+- Bash for the repository's shell scripts; Windows PowerShell alternatives are linked below
 
 ### Clone the repository
 
@@ -489,27 +517,52 @@ cd NGB
 ```
 ### 🔒 HTTPS certificates
 
-The Docker Compose setup mounts ASP.NET certificates from `${HOME}/.aspnet/https`. On a new machine, generate development certificates first if needed:
+The Docker Compose setup mounts ASP.NET certificates from `${HOME}/.aspnet/https` and expects
+`servercert.pfx`. Trust and export a development certificate; the export password must match
+`ASPNET_CERT_PASS` in the selected `.env.*` file:
 
 ```bash
 dotnet dev-certs https --trust
+mkdir -p "$HOME/.aspnet/https"
+dotnet dev-certs https --export-path "$HOME/.aspnet/https/servercert.pfx" --password "<ASPNET_CERT_PASS>"
 ```
 
 ### ⚠️ Windows note
 
-Before starting the application in Docker on Windows, ensure that the `$HOME` environment variable is set in the current PowerShell session.
-
-Check the current value:
-
-```powershell
-echo "$HOME"
-```
-
-If it is not set correctly, define it manually:
+Docker Compose reads the `HOME` environment variable. PowerShell's `$HOME` variable alone does not
+set it for child processes. In the same PowerShell session used to run Compose:
 
 ```powershell
-[System.Environment]::SetEnvironmentVariable('HOME', $env:USERPROFILE.Replace('\', '/'), 'User')
+$env:HOME = $env:USERPROFILE.Replace('\', '/')
+New-Item -ItemType Directory -Force "$env:HOME/.aspnet/https" | Out-Null
+dotnet dev-certs https --trust
+dotnet dev-certs https --export-path "$env:HOME/.aspnet/https/servercert.pfx" --password "<ASPNET_CERT_PASS>"
 ```
+
+For Compose launched by an IDE, also configure `HOME` in that run configuration or persist it as a
+user environment variable and restart the IDE.
+
+### Prepare local platform packages
+
+CRM consumes NuGet and npm packages, while PM, Trade, and Agency Billing use platform source
+projects/workspaces. Before building the complete solution or starting CRM against unpublished
+changes, create the local NuGet feed. Before building the CRM web image, create its UI tarball too.
+Generated packages are ignored by Git and are absent after a fresh clone.
+
+On macOS/Linux, from the repository root:
+
+```bash
+bash packaging/nuget/pack-platform.sh
+npm --prefix ui ci
+npm --prefix ui run pack:platform-ui -- --local-candidate
+```
+
+The NuGet script packs all platform projects, refreshes `artifacts/nuget`, invalidates replaced
+cache entries, and restores the solution. The UI command creates
+`artifacts/npm/ngbplatform-ui-local.tgz` without changing the published CRM lockfile.
+
+On Windows, follow the [PowerShell package preparation instructions](docs/start-here/run-locally.md#prepare-local-platform-packages).
+They include a Linux-container UI packaging command for the current script's Windows launcher limitation.
 
 ### Run the Property Management demo locally
 
@@ -531,12 +584,17 @@ docker compose -f docker-compose.ab.yml --env-file .env.ab up --build
 
 ### Run the CRM demo locally
 
+Complete the package preparation above first. Repack after changing platform backend or UI code,
+then rebuild the CRM images:
+
 ```bash
-npm --prefix ui run pack:platform-ui
 docker compose -f docker-compose.crm.yml --env-file .env.crm up --build
 ```
 
 ### Build the .NET solution
+
+Prepare the local NuGet packages above first when the required platform version is unpublished or
+when validating local platform changes through CRM.
 
 ```bash
 dotnet build NGB.sln

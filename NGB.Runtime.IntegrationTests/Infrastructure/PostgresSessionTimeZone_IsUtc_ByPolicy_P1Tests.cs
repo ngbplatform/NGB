@@ -7,7 +7,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostgresSessionTimeZone_IsUtc_ByPolicy_P1Tests(PostgresTestFixture fixture)
 {
     [Fact]

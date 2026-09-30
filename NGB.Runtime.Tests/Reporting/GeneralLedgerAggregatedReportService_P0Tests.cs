@@ -1,10 +1,13 @@
 using FluentAssertions;
+using Moq;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.GeneralLedgerAggregated;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Accounts;
 using NGB.Persistence.Readers.Reports;
+using NGB.Persistence.Reporting;
 using NGB.Runtime.Reporting;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Reporting;
@@ -12,7 +15,132 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class GeneralLedgerAggregatedReportService_P0Tests
 {
     [Fact]
-    public async Task GetPageAsync_Preserves_Running_Balance_Continuation_Across_Cursor_Pages()
+    public async Task GetPageAsync_WhenRequestIsNull_ThrowsRequiredArgument()
+    {
+        var service = new GeneralLedgerAggregatedReportService(null!, null!, null!);
+
+        var act = () => service.GetPageAsync(null!, CancellationToken.None);
+
+        await act.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_WhenAccountIdIsEmpty_ThrowsRequiredArgument()
+    {
+        var service = new GeneralLedgerAggregatedReportService(null!, null!, null!);
+
+        var act = () => service.GetPageAsync(
+            new GeneralLedgerAggregatedReportPageRequest
+            {
+                AccountId = Guid.Empty,
+                FromInclusive = new DateOnly(2026, 3, 1),
+                ToInclusive = new DateOnly(2026, 3, 1),
+                PageSize = 1
+            },
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_WhenDateRangeIsReversed_ThrowsOutOfRange()
+    {
+        var service = new GeneralLedgerAggregatedReportService(null!, null!, null!);
+
+        var act = () => service.GetPageAsync(
+            new GeneralLedgerAggregatedReportPageRequest
+            {
+                AccountId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                FromInclusive = new DateOnly(2026, 3, 1),
+                ToInclusive = new DateOnly(2026, 2, 1),
+                PageSize = 1
+            },
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(2026, 3, 2, 2026, 4, 1)]
+    [InlineData(2026, 3, 1, 2026, 4, 2)]
+    public async Task GetPageAsync_WhenEndpointIsNotMonthStart_ThrowsOutOfRange(
+        int fromYear,
+        int fromMonth,
+        int fromDay,
+        int toYear,
+        int toMonth,
+        int toDay)
+    {
+        var service = new GeneralLedgerAggregatedReportService(null!, null!, null!);
+
+        var act = () => service.GetPageAsync(
+            new GeneralLedgerAggregatedReportPageRequest
+            {
+                AccountId = Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                FromInclusive = new DateOnly(fromYear, fromMonth, fromDay),
+                ToInclusive = new DateOnly(toYear, toMonth, toDay),
+                PageSize = 1
+            },
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_WhenPageSizeIsNotPositive_ForwardsNormalizedDefaultPageSize()
+    {
+        var accountId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var pageReader = new EmptyGeneralLedgerAggregatedPageReader();
+        var service = new GeneralLedgerAggregatedReportService(
+            pageReader,
+            new StubGeneralLedgerAggregatedSnapshotReader(
+                new GeneralLedgerAggregatedSnapshot("1000", 0m, 0m, 0m)),
+            new StubChartOfAccountsRepository(accountId, "1000"));
+
+        await service.GetPageAsync(
+            new GeneralLedgerAggregatedReportPageRequest
+            {
+                AccountId = accountId,
+                FromInclusive = new DateOnly(2026, 3, 1),
+                ToInclusive = new DateOnly(2026, 3, 1),
+                PageSize = 0
+            },
+            CancellationToken.None);
+
+        pageReader.LastRequest.Should().NotBeNull();
+        pageReader.LastRequest!.PageSize.Should().Be(20);
+    }
+
+    [Theory]
+    [InlineData("1000", "repository-code", "1000")]
+    [InlineData("", "repository-code", "repository-code")]
+    [InlineData("   ", null, null)]
+    public async Task GetPageAsync_WhenPageIsEmpty_SelectsAccountCodeFromAvailableFallback(
+        string snapshotCode,
+        string? repositoryCode,
+        string? expectedCode)
+    {
+        var accountId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var service = new GeneralLedgerAggregatedReportService(
+            new EmptyGeneralLedgerAggregatedPageReader(),
+            new StubGeneralLedgerAggregatedSnapshotReader(
+                new GeneralLedgerAggregatedSnapshot(snapshotCode, 0m, 0m, 0m)),
+            new StubChartOfAccountsRepository(accountId, repositoryCode));
+
+        var report = await service.GetPageAsync(ValidRequest(accountId), CancellationToken.None);
+
+        report.AccountCode.Should().Be(expectedCode ?? accountId.ToString());
+        report.Lines.Should().BeEmpty();
+        report.NextCursor.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(true, "debit")]
+    [InlineData(true, "credit")]
+    [InlineData(true, "closing")]
+    [InlineData(false, null)]
+    public async Task GetPageAsync_ReusesBalancesOnlyInsideTheSameSnapshot(bool sameSnapshot, string? missing)
     {
         var accountId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var counterId = Guid.Parse("22222222-2222-2222-2222-222222222222");
@@ -25,10 +153,12 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         var snapshotReader = new StubGeneralLedgerAggregatedSnapshotReader(
             new GeneralLedgerAggregatedSnapshot("1000", 10m, 7m, 2m));
 
+        var session = new Mock<IReportReadSession>();
+        session.SetupGet(x => x.SnapshotId).Returns(Guid.NewGuid());
         var service = new GeneralLedgerAggregatedReportService(
             pageReader,
             snapshotReader,
-            new StubChartOfAccountsRepository(accountId, "1000"));
+            new StubChartOfAccountsRepository(accountId, "1000"), session.Object);
 
         var page1 = await service.GetPageAsync(
             new GeneralLedgerAggregatedReportPageRequest
@@ -49,6 +179,20 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         page1.Lines[0].RunningBalance.Should().Be(15m);
         snapshotReader.CallCount.Should().Be(1);
 
+        if (!sameSnapshot) session.SetupGet(x => x.SnapshotId).Returns(Guid.NewGuid());
+        var continuation = new GeneralLedgerAggregatedReportCursor
+        {
+            AfterPeriodUtc = page1.NextCursor!.AfterPeriodUtc,
+            AfterDocumentId = page1.NextCursor.AfterDocumentId,
+            AfterCounterAccountCode = page1.NextCursor.AfterCounterAccountCode,
+            AfterCounterAccountId = page1.NextCursor.AfterCounterAccountId,
+            AfterDimensionSetId = page1.NextCursor.AfterDimensionSetId,
+            RunningBalance = page1.NextCursor.RunningBalance,
+            SnapshotId = page1.NextCursor.SnapshotId,
+            TotalDebit = missing == "debit" ? null : page1.NextCursor!.TotalDebit,
+            TotalCredit = missing == "credit" ? null : page1.NextCursor!.TotalCredit,
+            ClosingBalance = missing == "closing" ? null : page1.NextCursor!.ClosingBalance
+        };
         var page2 = await service.GetPageAsync(
             new GeneralLedgerAggregatedReportPageRequest
             {
@@ -56,7 +200,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
                 FromInclusive = new DateOnly(2026, 3, 1),
                 ToInclusive = new DateOnly(2026, 3, 1),
                 PageSize = 1,
-                Cursor = page1.NextCursor
+                Cursor = continuation
             },
             CancellationToken.None);
 
@@ -66,7 +210,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         page2.Lines.Should().ContainSingle();
         page2.Lines[0].RunningBalance.Should().Be(15m);
         page2.ClosingBalance.Should().Be(15m);
-        snapshotReader.CallCount.Should().Be(1);
+        snapshotReader.CallCount.Should().Be(sameSnapshot && missing is null ? 1 : 2);
     }
 
     [Fact]
@@ -160,6 +304,28 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         pageReader.LastRequest!.DisablePaging.Should().BeTrue();
         pageReader.LastRequest.Cursor.Should().BeNull();
         page.HasMore.Should().BeFalse();
+    }
+
+    private static GeneralLedgerAggregatedReportPageRequest ValidRequest(Guid? accountId = null)
+        => new()
+        {
+            AccountId = accountId ?? Guid.Parse("11111111-1111-1111-1111-111111111111"),
+            FromInclusive = new DateOnly(2026, 3, 1),
+            ToInclusive = new DateOnly(2026, 3, 1),
+            PageSize = 1
+        };
+
+    private sealed class EmptyGeneralLedgerAggregatedPageReader : IGeneralLedgerAggregatedPageReader
+    {
+        public GeneralLedgerAggregatedPageRequest? LastRequest { get; private set; }
+
+        public Task<GeneralLedgerAggregatedPage> GetPageAsync(
+            GeneralLedgerAggregatedPageRequest request,
+            CancellationToken ct = default)
+        {
+            LastRequest = request;
+            return Task.FromResult(new GeneralLedgerAggregatedPage([], false, null));
+        }
     }
 
     private sealed class StubGeneralLedgerAggregatedPageReader(
@@ -264,7 +430,7 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
                         }
                     ],
                     false,
-                    null));
+                    null, PrefixDelta: 5m));
         }
     }
 
@@ -285,10 +451,11 @@ public sealed class GeneralLedgerAggregatedReportService_P0Tests
         }
     }
 
-    private sealed class StubChartOfAccountsRepository(Guid accountId, string code) : IChartOfAccountsRepository
+    private sealed class StubChartOfAccountsRepository(Guid accountId, string? code) : IChartOfAccountsRepository
     {
         public Task<IReadOnlyList<Account>> GetAllAsync(CancellationToken ct = default) => Task.FromResult<IReadOnlyList<Account>>([]);
         public Task<IReadOnlyList<ChartOfAccountsAdminItem>> GetForAdminAsync(bool includeDeleted = false, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ChartOfAccountsAdminItem>>([]);
+        public Task<ChartOfAccountsAdminPage> GetAdminPageAsync(ChartOfAccountsAdminPageQuery query, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<ChartOfAccountsAdminItem?> GetAdminByIdAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult<ChartOfAccountsAdminItem?>(null);
         public Task<IReadOnlyList<ChartOfAccountsAdminItem>> GetAdminByIdsAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<ChartOfAccountsAdminItem>>([]);
         public Task<bool> HasMovementsAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(false);

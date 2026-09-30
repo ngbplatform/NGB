@@ -8,8 +8,8 @@ public static class NgbFeatureTelemetry
     internal const string MeterName = "NGB.Platform";
     internal const string ActivitySourceName = "NGB.Platform.DocumentActionsWorkCenter";
 
-    internal static readonly ActivitySource Activities = new(ActivitySourceName, "2.0.0");
-    private static readonly Meter Meter = new(MeterName, "2.0.0");
+    internal static readonly ActivitySource Activities = new(ActivitySourceName, "3.0.0");
+    private static readonly Meter Meter = new(MeterName, "3.0.0");
 
     internal static readonly Counter<long> DocumentActionExecutions =
         Meter.CreateCounter<long>("ngb.document_action.executions");

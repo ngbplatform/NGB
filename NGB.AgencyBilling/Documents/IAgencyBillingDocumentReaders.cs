@@ -10,11 +10,23 @@ public interface IAgencyBillingDocumentReaders
 
     Task<AgencyBillingTimesheetHead> ReadTimesheetHeadAsync(Guid documentId, CancellationToken ct = default);
 
+    Task<IReadOnlyDictionary<Guid, AgencyBillingTimesheetHead>> ReadTimesheetHeadsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<AgencyBillingTimesheetLine>> ReadTimesheetLinesAsync(
         Guid documentId,
         CancellationToken ct = default);
 
+    Task<IReadOnlyDictionary<Guid, IReadOnlyList<AgencyBillingTimesheetLine>>> ReadTimesheetLinesAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default);
+
     Task<AgencyBillingSalesInvoiceHead> ReadSalesInvoiceHeadAsync(Guid documentId, CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, AgencyBillingSalesInvoiceHead>> ReadSalesInvoiceHeadsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default);
 
     Task<IReadOnlyList<AgencyBillingSalesInvoiceLine>> ReadSalesInvoiceLinesAsync(
         Guid documentId,

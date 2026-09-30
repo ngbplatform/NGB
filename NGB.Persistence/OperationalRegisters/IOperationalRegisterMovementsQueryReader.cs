@@ -15,6 +15,115 @@ namespace NGB.Persistence.OperationalRegisters;
 /// </summary>
 public interface IOperationalRegisterMovementsQueryReader
 {
+    /// <summary>
+    /// Returns a seek-paged exact UTC-date range ordered by occurrence and MovementId.
+    /// The caller requests one extra row to determine whether another page exists.
+    /// </summary>
+    Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByOccurredAtCursorAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions = null,
+        OperationalRegisterOccurredAtCursor? cursor = null,
+        int limit = 101,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns an exact UTC-date range page ordered by occurrence and MovementId.
+    /// Filtering, counting, sorting and paging are performed in the database.
+    /// A null limit disables paging while retaining the total count.
+    /// </summary>
+    Task<OperationalRegisterMovementQueryPage> GetByOccurredAtPageAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions = null,
+        int offset = 0,
+        int? limit = 100,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Aggregates a resource by one Dimension value entirely in the database, using storno
+    /// semantics and AND filters for the remaining dimensions.
+    /// </summary>
+    Task<IReadOnlyList<OperationalRegisterDimensionResourceNetRow>> GetResourceNetsByDimensionAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Database-paged counterpart of <see cref="GetResourceNetsByDimensionAsync"/>.
+    /// Positive nets are ordered before negative nets; totals cover the complete filtered result.
+    /// </summary>
+    Task<OperationalRegisterDimensionResourceNetPage> GetResourceNetsByDimensionPageAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        int offset,
+        int limit,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the cumulative resource balance as of the end of <paramref name="asOfMonthInclusive"/>.
+    /// Implementations may use the latest finalized monthly balance snapshot and only roll forward
+    /// movements posted after that snapshot.
+    /// </summary>
+    Task<IReadOnlyList<OperationalRegisterDimensionResourceNetRow>> GetResourceBalancesByDimensionAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Database-paged counterpart of <see cref="GetResourceBalancesByDimensionAsync"/>.
+    /// </summary>
+    Task<OperationalRegisterDimensionResourceNetPage> GetResourceBalancesByDimensionPageAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        int offset,
+        int limit,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Seek-paged counterpart of <see cref="GetResourceBalancesByDimensionPageAsync"/>.
+    /// A cursor carries the previously computed totals so subsequent pages avoid repeating
+    /// full-result window aggregates.
+    /// </summary>
+    async Task<OperationalRegisterDimensionResourceNetPage> GetResourceBalancesByDimensionCursorAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        OperationalRegisterDimensionResourceNetCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        var offset = cursor?.NextOffset ?? 0;
+        var page = await GetResourceBalancesByDimensionPageAsync(
+            registerId,
+            asOfMonthInclusive,
+            dimensions,
+            groupDimensionId,
+            resourceColumnCode,
+            offset,
+            limit,
+            ct);
+        return page with { HasMore = offset + page.Rows.Count < page.Total };
+    }
+
     Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByMonthsAsync(
         Guid registerId,
         DateOnly fromInclusive,

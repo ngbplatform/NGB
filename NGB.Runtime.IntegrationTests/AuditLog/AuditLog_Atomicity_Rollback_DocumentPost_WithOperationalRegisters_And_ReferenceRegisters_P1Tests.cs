@@ -15,7 +15,6 @@ using NGB.Persistence.AuditLog;
 using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.AuditLog;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Dimensions;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
@@ -37,7 +36,7 @@ namespace NGB.Runtime.IntegrationTests.AuditLog;
 ///
 /// If ANY participant fails, the whole operation must rollback with NO partial writes.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_Atomicity_Rollback_DocumentPost_WithOperationalRegisters_And_ReferenceRegisters_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

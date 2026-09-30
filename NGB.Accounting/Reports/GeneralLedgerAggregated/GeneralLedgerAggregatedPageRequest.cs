@@ -18,5 +18,8 @@ public sealed class GeneralLedgerAggregatedPageRequest : PageSizeBase
     /// </summary>
     public DimensionScopeBag? DimensionScopes { get; init; }
 
+    /// <summary>Calculate net movement up to the cursor in the current read session.</summary>
+    public bool IncludePrefixDelta { get; init; }
+
     public GeneralLedgerAggregatedLineCursor? Cursor { get; init; }
 }

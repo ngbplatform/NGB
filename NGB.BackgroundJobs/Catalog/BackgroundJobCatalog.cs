@@ -19,7 +19,7 @@ public sealed class BackgroundJobCatalog : IBackgroundJobCatalog
             if (contributor is null)
                 continue;
 
-            var contributorName = contributor.GetType().FullName ?? contributor.GetType().Name;
+            var contributorName = contributor.GetType().FullName!;
             var jobIds = contributor.GetJobIds();
 
             foreach (var rawJobId in jobIds)

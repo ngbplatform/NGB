@@ -16,6 +16,7 @@ import {
   createRole,
   createUser,
   deactivateUser,
+  deactivateRole,
   getCurrentAccess,
   getPermissionDefinitions,
   getRole,
@@ -24,6 +25,7 @@ import {
   getUserEffectiveAccess,
   getUsers,
   reactivateRole,
+  reactivateUser,
   replaceRolePermissions,
   replaceUserRoles,
   updateRole,
@@ -40,9 +42,18 @@ describe('security api client', () => {
     await getPermissionDefinitions()
     expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/permissions/definitions')
 
+    const options = { signal: new AbortController().signal }
+    mocks.httpGet.mockResolvedValueOnce([])
+    await getPermissionDefinitions(options)
+    expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/permissions/definitions', null, options)
+
     mocks.httpGet.mockResolvedValueOnce([])
     await getUsers()
-    expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/users')
+    expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/users?offset=0&limit=50')
+
+    mocks.httpGet.mockResolvedValueOnce([])
+    await getUsers({ offset: -10, limit: 25, isActive: false })
+    expect(mocks.httpGet).toHaveBeenLastCalledWith('/api/security/users?offset=0&limit=25&isActive=false')
 
     mocks.httpGet.mockResolvedValueOnce({})
     await getUser('user/id')
@@ -92,6 +103,10 @@ describe('security api client', () => {
     await deactivateUser('user-1')
     expect(mocks.httpPost).toHaveBeenLastCalledWith('/api/security/users/user-1/deactivate')
 
+    mocks.httpPost.mockResolvedValueOnce(undefined)
+    await reactivateUser('user/1')
+    expect(mocks.httpPost).toHaveBeenLastCalledWith('/api/security/users/user%2F1/reactivate')
+
     mocks.httpPut.mockResolvedValueOnce(undefined)
     await replaceUserRoles('user-1', ['role-2'])
     expect(mocks.httpPut).toHaveBeenLastCalledWith('/api/security/users/user-1/roles', { roleIds: ['role-2'] })
@@ -109,6 +124,10 @@ describe('security api client', () => {
     mocks.httpPost.mockResolvedValueOnce(undefined)
     await reactivateRole('role-1')
     expect(mocks.httpPost).toHaveBeenLastCalledWith('/api/security/roles/role-1/reactivate')
+
+    mocks.httpPost.mockResolvedValueOnce(undefined)
+    await deactivateRole('role/1')
+    expect(mocks.httpPost).toHaveBeenLastCalledWith('/api/security/roles/role%2F1/deactivate')
 
     mocks.httpPut.mockResolvedValueOnce(undefined)
     await replaceRolePermissions('role-1', [{ resourceKind: 'system', resourceCode: 'users', actionCode: 'view' }])

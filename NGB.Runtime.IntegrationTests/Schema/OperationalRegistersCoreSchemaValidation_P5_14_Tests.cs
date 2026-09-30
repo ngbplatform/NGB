@@ -8,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegistersCoreSchemaValidation_P5_14_Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegistersCoreSchemaValidation_P5_14_Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenSchemaIsIntact_Succeeds()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await using var scope = host.Services.CreateAsyncScope();
@@ -28,7 +27,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_P5_14_Tests(Postgre
     [Fact]
     public async Task ValidateAsync_WhenCriticalIndexMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // table_code uniqueness is a platform safety invariant: it prevents collisions between per-register tables.
@@ -45,7 +43,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_P5_14_Tests(Postgre
     [Fact]
     public async Task ValidateAsync_WhenResourceImmutabilityTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Defense-in-depth: after a register has movements, resources must not be mutated in a way that would

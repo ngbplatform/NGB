@@ -32,23 +32,23 @@ public sealed class OperationalRegisterAdminReadService(
 
     public Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyFinalizationsAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
         => finalizations.GetDirtyAsync(registerId, limit, ct);
 
     public Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedFinalizationsAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
         => finalizations.GetBlockedAsync(registerId, limit, ct);
 
     public Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyFinalizationsAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
         => finalizations.GetDirtyAcrossAllAsync(limit, ct);
 
     public Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedFinalizationsAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default)
         => finalizations.GetBlockedAcrossAllAsync(limit, ct);
 }

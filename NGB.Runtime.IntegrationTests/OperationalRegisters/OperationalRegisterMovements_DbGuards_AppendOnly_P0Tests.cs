@@ -19,15 +19,13 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: per-register movements tables are append-only.
 /// UPDATE/DELETE must be blocked by the shared append-only guard trigger.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovements_DbGuards_AppendOnly_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task UpdateAndDeleteAreForbiddenOnMovementsTable()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var registerCode = "rr_" + Guid.CreateVersion7().ToString("N")[..8];

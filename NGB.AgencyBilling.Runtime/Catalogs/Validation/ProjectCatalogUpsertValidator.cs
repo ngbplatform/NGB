@@ -18,7 +18,10 @@ public sealed class ProjectCatalogUpsertValidator(IAgencyBillingReferenceReaders
         }
 
         var clientId = AgencyBillingValidationValueReaders.ReadGuid(context.Fields, "client_id");
-        if (clientId is null || clientId == Guid.Empty)
+        if (!clientId.HasValue)
+            throw new NgbArgumentInvalidException("client_id", "Client is required.");
+
+        if (clientId.Value == Guid.Empty)
             throw new NgbArgumentInvalidException("client_id", "Client is required.");
 
         await AgencyBillingCatalogValidationGuards.EnsureClientAsync(clientId.Value, "client_id", references, ct);
@@ -29,7 +32,10 @@ public sealed class ProjectCatalogUpsertValidator(IAgencyBillingReferenceReaders
 
         var startDate = AgencyBillingValidationValueReaders.ReadDate(context.Fields, "start_date");
         var endDate = AgencyBillingValidationValueReaders.ReadDate(context.Fields, "end_date");
-        if (startDate is not null && endDate is not null && endDate < startDate)
-            throw new NgbArgumentInvalidException("end_date", "End Date must be on or after Start Date.");
+        if (startDate.HasValue && endDate.HasValue)
+        {
+            if (endDate.Value < startDate.Value)
+                throw new NgbArgumentInvalidException("end_date", "End Date must be on or after Start Date.");
+        }
     }
 }

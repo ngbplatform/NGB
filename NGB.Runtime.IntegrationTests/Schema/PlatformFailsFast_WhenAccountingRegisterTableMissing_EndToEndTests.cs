@@ -15,15 +15,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// P3 coverage: if the DB schema is broken (e.g., register table missing), platform must fail fast.
 /// IMPORTANT: This test must be schema-safe (must restore the table name), otherwise it will break Respawn for all tests.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class PlatformFailsFast_WhenAccountingRegisterTableMissing_EndToEndTests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PlatformFailsFast_WhenAccountingRegisterTableMissing_EndToEndTests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Posting_WhenAccountingRegisterMainTableMissing_ThrowsPostgresUndefinedTable()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Ensure we have a minimal CoA so PostingAction reaches the DB write layer.

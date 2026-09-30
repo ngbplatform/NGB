@@ -17,15 +17,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// 3) re-apply platform migrations (idempotent drift repair)
 /// 4) validation passes again
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_3Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_3Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenAccountDimensionRulesUniqueIndexDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropIndexAsync(Fixture.ConnectionString, "ux_acc_dim_rules_account_ordinal");
         (await IndexExistsAsync(Fixture.ConnectionString, "ux_acc_dim_rules_account_ordinal"))
             .Should().BeFalse("the test must simulate index drift");
@@ -50,8 +48,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_3Te
     [Fact]
     public async Task ValidateAsync_WhenAccountDimensionRulesDimensionIndexDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropIndexAsync(Fixture.ConnectionString, "ix_acc_dim_rules_dimension_id");
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_acc_dim_rules_dimension_id"))
             .Should().BeFalse("the test must simulate index drift");
@@ -76,8 +72,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_3Te
     [Fact]
     public async Task ValidateAsync_WhenDimensionSetItemsSetIndexDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropIndexAsync(Fixture.ConnectionString, "ix_platform_dimset_items_set");
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_dimset_items_set"))
             .Should().BeFalse("the test must simulate index drift");
@@ -102,8 +96,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_3Te
     [Fact]
     public async Task ValidateAsync_WhenDimensionSetItemsValueIndexDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropIndexAsync(Fixture.ConnectionString, "ix_platform_dimset_items_dimension_value_set");
         (await IndexExistsAsync(Fixture.ConnectionString, "ix_platform_dimset_items_dimension_value_set"))
             .Should().BeFalse("the test must simulate index drift");
@@ -128,8 +120,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_3Te
     [Fact]
     public async Task ValidateAsync_WhenClosedPeriodGuardTriggerDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropTriggerAsync(Fixture.ConnectionString, "accounting_register_main", "trg_acc_reg_no_closed_period");
         (await TriggerExistsAsync(Fixture.ConnectionString, "accounting_register_main", "trg_acc_reg_no_closed_period"))
             .Should().BeFalse("the test must simulate trigger drift");

@@ -9,7 +9,10 @@ This page focuses on the verified reporting path across runtime and PostgreSQL.
 ## Verified source anchors
 
 ```text
+NGB.Runtime/Reporting/ReportQueryService.cs
 NGB.Runtime/Reporting/ReportEngine.cs
+NGB.Runtime/Reporting/ReportPagedQueryExecutor.cs
+NGB.Runtime/Reporting/ReportDownloadService.cs
 NGB.PostgreSql/Reporting/PostgresReportSqlBuilder.cs
 NGB.PostgreSql/Reporting/PostgresReportDatasetExecutor.cs
 ```
@@ -27,7 +30,8 @@ That split is important because it prevents provider-specific SQL concerns from 
 
 <script setup>
 const flowchart = String.raw`flowchart LR
-    Host["API host"] -->|execute report| Runtime["ReportEngine"]
+    Host["API host"] -->|execute report| Query["ReportQueryService"]
+    Query -->|read session and cursor validation| Runtime["ReportEngine and page executors"]
     Runtime -->|resolve definition and layout| Planner["Planner and validators"]
     Planner -->|normalized report plan| Runtime
     Runtime -->|provider execution request| PgBuilder["PostgresReportSqlBuilder"]
@@ -56,7 +60,12 @@ The verified `ReportEngine` file explicitly performs these stages:
 - execute through plan executor;
 - enrich interactive fields;
 - build final sheet;
-- optionally cache rendered-sheet snapshots.
+- delegate grouped or specialized accounting page reads to bounded query executors.
+
+`ReportQueryService` is registered as `IReportEngine` and owns the read-session lifetime and
+public cursor protection. Full downloads use `IReportDownloadService` / `ReportDownloadService`
+and stream through `IStreamingReportExportService`; they do not materialize a complete sheet.
+There is no rendered-sheet snapshot store.
 
 ## PostgreSQL side details
 
@@ -103,7 +112,12 @@ Both layers surface diagnostics, which is important for operability and report t
 
 ## Performance note
 
-The verified generic PostgreSQL composable path still uses `OFFSET` / `LIMIT + 1` in the SQL builder/executor pair. That aligns with the already-known performance hotspot for generic composable reporting and is one reason canonical accounting reports have stronger specialized paging paths.
+Interactive report HTTP requests require zero offset and follow an opaque continuation cursor.
+The provider uses deterministic cursor predicates and `LIMIT + 1` over-fetching to determine
+`HasMore`; grouped browsing reads one branch at a time. Full financial aggregates and exports
+still scan their matching source range. See
+[Report Browsing and Direct Downloads](/architecture/report-execution-results) for limits and
+performance validation.
 
 ## Recommended reading order
 

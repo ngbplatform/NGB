@@ -362,6 +362,57 @@ public sealed class PostgresWorkCenterRepository(IUnitOfWork uow)
         return new WorkCenterTaskMutationResult(recipients.Length > 0, recipients);
     }
 
+    public async Task<WorkCenterTaskMutationResult> CompleteByDeduplicationKeysAsync(
+        string taskCode,
+        IReadOnlyCollection<string> deduplicationKeys,
+        DateTime completedAtUtc,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deduplicationKeys);
+
+        completedAtUtc.EnsureUtc(nameof(completedAtUtc));
+
+        if (deduplicationKeys.Count == 0)
+            return new WorkCenterTaskMutationResult(false, []);
+
+        await uow.EnsureOpenForTransactionAsync(ct);
+
+        const string sql = """
+            WITH updated AS (
+            UPDATE platform_tasks
+            SET status = @Status,
+                completed_at_utc = @CompletedAtUtc,
+                cancelled_at_utc = NULL,
+                updated_at_utc = @CompletedAtUtc,
+                version = version + 1
+            WHERE task_code = @TaskCode
+              AND deduplication_key = ANY(@DeduplicationKeys)
+              AND status IN (@OpenStatus, @InProgressStatus)
+            RETURNING id
+            )
+            SELECT DISTINCT recipient.user_id
+            FROM updated
+            JOIN platform_task_recipients recipient ON recipient.task_id = updated.id;
+            """;
+
+        var recipients = (await uow.Connection.QueryAsync<Guid>(
+            new CommandDefinition(
+                sql,
+                new
+                {
+                    TaskCode = taskCode,
+                    DeduplicationKeys = deduplicationKeys.Distinct(StringComparer.Ordinal).ToArray(),
+                    Status = (short)WorkCenterTaskStatus.Completed,
+                    OpenStatus = (short)WorkCenterTaskStatus.Open,
+                    InProgressStatus = (short)WorkCenterTaskStatus.InProgress,
+                    CompletedAtUtc = completedAtUtc
+                },
+                uow.Transaction,
+                cancellationToken: ct))).ToArray();
+
+        return new WorkCenterTaskMutationResult(recipients.Length > 0, recipients);
+    }
+
     public async Task<WorkCenterTaskMutationResult> CancelByDeduplicationKeyAsync(
         string taskCode,
         string deduplicationKey,

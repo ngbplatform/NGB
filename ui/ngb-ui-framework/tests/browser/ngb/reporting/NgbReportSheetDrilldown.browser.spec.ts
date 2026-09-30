@@ -165,15 +165,11 @@ async function renderSheet(
       },
       {
         path: '/documents/:documentType/:id',
-        component: {
-          template: '<div data-testid="document-target-page">Document target</div>',
-        },
+        component: { render: () => h('div', { 'data-testid': 'document-target-page' }, 'Document target') },
       },
       {
         path: '/reports/:reportCode',
-        component: {
-          template: '<div data-testid="report-target-page">Report target</div>',
-        },
+        component: { render: () => h('div', { 'data-testid': 'report-target-page' }, 'Report target') },
       },
     ],
   })

@@ -128,4 +128,31 @@ public sealed class PostgresUserAccessVersionRepository(IUnitOfWork uow, TimePro
 
         await uow.Connection.ExecuteAsync(cmd);
     }
+
+    public async Task IncrementForRoleAsync(Guid roleId, CancellationToken ct = default)
+    {
+        roleId.EnsureRequired(nameof(roleId));
+        await uow.EnsureOpenForTransactionAsync(ct);
+
+        var nowUtc = timeProvider.GetUtcNowDateTime();
+        nowUtc.EnsureUtc(nameof(nowUtc));
+
+        const string sql = """
+                           INSERT INTO platform_user_access_versions
+                           (user_id, version, updated_at_utc)
+                           SELECT ur.user_id, 2, @NowUtc
+                           FROM platform_user_roles ur
+                           WHERE ur.role_id = @RoleId
+                           ON CONFLICT (user_id)
+                           DO UPDATE SET
+                               version = platform_user_access_versions.version + 1,
+                               updated_at_utc = EXCLUDED.updated_at_utc;
+                           """;
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new { RoleId = roleId, NowUtc = nowUtc },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+    }
 }

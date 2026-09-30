@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Dimensions;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DimensionSetWriter_ArgumentValidation_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -52,9 +52,9 @@ public sealed class PostgresReferenceRegisterKeyLock(IUnitOfWork uow) : IReferen
             MixGuid(ref h, dimensionSetId);
 
             // Avoid key2=0 to reduce accidental collisions with other code that might treat 0 specially.
-            if (h == 0) h = 1;
-
-            return (int)h;
+            return NormalizeKey2(h);
         }
     }
+
+    internal static int NormalizeKey2(uint hash) => hash == 0 ? 1 : unchecked((int)hash);
 }

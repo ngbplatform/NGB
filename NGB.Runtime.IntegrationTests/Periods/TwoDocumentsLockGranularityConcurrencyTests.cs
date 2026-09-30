@@ -16,7 +16,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class TwoDocumentsLockGranularityConcurrencyTests(PostgresTestFixture fixture)
 {
     private const string TypeCode = "it_doc_tx";

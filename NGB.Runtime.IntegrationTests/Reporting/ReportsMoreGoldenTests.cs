@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ReportsMoreGoldenTests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private static readonly DateTime PrevPeriodUtc = new(2025, 12, 1, 0, 0, 0, DateTimeKind.Utc);

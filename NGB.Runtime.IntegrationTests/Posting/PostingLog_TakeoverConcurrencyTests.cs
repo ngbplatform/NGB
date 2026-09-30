@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLog_TakeoverConcurrencyTests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private const string Cash = "50";
@@ -24,7 +24,6 @@ public sealed class PostingLog_TakeoverConcurrencyTests(PostgresTestFixture fixt
     [Fact]
     public async Task PostAsync_StaleInProgress_TwoConcurrentAttempts_OnlyOneTakesOver_AndWritesOnce()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await SeedMinimalCoaAsync(host);

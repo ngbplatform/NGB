@@ -17,8 +17,8 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// (append-only guard / per-register indexes / semantic constraints) for registers with has_records=true,
 /// and the per-register EnsureSchema path must repair the drift.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegistersCoreSchemaValidation_PhysicalTables_RuleByRule_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegistersCoreSchemaValidation_PhysicalTables_RuleByRule_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

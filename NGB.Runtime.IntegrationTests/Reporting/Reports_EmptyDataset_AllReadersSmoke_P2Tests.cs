@@ -10,7 +10,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class Reports_EmptyDataset_AllReadersSmoke_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

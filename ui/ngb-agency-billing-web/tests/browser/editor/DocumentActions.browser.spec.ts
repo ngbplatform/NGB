@@ -9,10 +9,11 @@ const mocks = vi.hoisted(() => ({
   createDocumentPersistence: vi.fn(),
 }))
 
-vi.mock('@ngbplatform/ui/editor', async () => {
+vi.mock('@ngbplatform/ui/editor', async (importOriginal) => {
   const { defineComponent, h } = await import('vue')
 
   return {
+    ...await importOriginal<typeof import('@ngbplatform/ui/editor')>(),
     NgbConfiguredEntityEditor: defineComponent({
       name: 'NgbConfiguredEntityEditor',
       inheritAttrs: false,

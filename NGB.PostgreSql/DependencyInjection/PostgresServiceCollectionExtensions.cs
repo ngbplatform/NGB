@@ -17,6 +17,7 @@ using NGB.Persistence.Documents.Storage;
 using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
+using NGB.Persistence.Databases;
 using NGB.Persistence.Locks;
 using NGB.Persistence.Migrations;
 using NGB.Persistence.OperationalRegisters;
@@ -27,6 +28,7 @@ using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.Reporting;
 using NGB.Persistence.Readers;
 using NGB.Persistence.Readers.Accounts;
+using NGB.Persistence.Ui;
 using NGB.Persistence.Readers.PostingState;
 using NGB.Persistence.Readers.Documents;
 using NGB.Persistence.Readers.Reports;
@@ -45,6 +47,7 @@ using NGB.PostgreSql.Documents.Actions;
 using NGB.PostgreSql.Documents.Numbering;
 using NGB.PostgreSql.Documents.GeneralJournalEntry;
 using NGB.PostgreSql.AuditLog;
+using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Dimensions;
 using NGB.PostgreSql.Locks;
 using NGB.PostgreSql.OperationalRegisters;
@@ -93,11 +96,16 @@ public static class PostgresServiceCollectionExtensions
         // Configure options
         services.Configure(configureOptions);
         services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<PostgresRelationPresenceCache>();
+        services.TryAddSingleton<PostgresRelationShapeCache>();
+        services.TryAddSingleton<IDatabaseProvisioner, PostgresDatabaseProvisioner>();
 
         // Validate options on startup
         services.AddOptions<PostgresOptions>()
             .Validate(opts => !string.IsNullOrWhiteSpace(opts.ConnectionString),
                 "PostgreSQL connection string must not be empty.")
+            .Validate(opts => opts.OperationalRegisterPublicationTimeoutSeconds is > 0 and <= 4_294_967,
+                "Operational register publication timeout must be positive and within the cancellation timer range.")
             .ValidateOnStart();
 
         // One-time global Dapper configuration (DateOnly, etc.)
@@ -121,6 +129,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IPlatformUserRepository, PostgresPlatformUserRepository>();
         services.TryAddScoped<IAuditEventWriter, PostgresAuditEventWriter>();
         services.TryAddScoped<IAuditEventReader, PostgresAuditEventReader>();
+        services.TryAddScoped<IAuditHealthReader, PostgresAuditHealthReader>();
 
         // Security / access management (NGB-owned application authorization)
         services.TryAddScoped<IPlatformRoleRepository, PostgresPlatformRoleRepository>();
@@ -136,6 +145,8 @@ public static class PostgresServiceCollectionExtensions
 
         // Operational Registers (persistence contracts only; runtime/write engine comes later)
         services.TryAddScoped<IOperationalRegisterRepository, PostgresOperationalRegisterRepository>();
+        services.TryAddSingleton<OperationalRegisterReadContextCache>();
+        services.TryAddSingleton<OperationalRegisterMetadataCache>();
         services.TryAddScoped<IOperationalRegisterAdminReader, PostgresOperationalRegisterAdminReader>();
         services.TryAddScoped<IOperationalRegisterPhysicalSchemaHealthReader, PostgresOperationalRegisterPhysicalSchemaHealthReader>();
         services.TryAddScoped<IOperationalRegisterDimensionRuleRepository, PostgresOperationalRegisterDimensionRuleRepository>();
@@ -151,9 +162,11 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IOperationalRegisterBalancesReader, PostgresOperationalRegisterBalancesReader>();
         services.TryAddScoped<IOperationalRegisterTurnoversStore, PostgresOperationalRegisterTurnoversStore>();
         services.TryAddScoped<IOperationalRegisterBalancesStore, PostgresOperationalRegisterBalancesStore>();
+        services.TryAddScoped<IOperationalRegisterDefaultProjectionRebuilder, PostgresOperationalRegisterDefaultProjectionRebuilder>();
 
         // Reference Registers (metadata + idempotency state)
         services.TryAddScoped<IReferenceRegisterRepository, PostgresReferenceRegisterRepository>();
+        services.TryAddSingleton<ReferenceRegisterMetadataCache>();
         services.TryAddScoped<IReferenceRegisterFieldRepository, PostgresReferenceRegisterFieldRepository>();
         services.TryAddScoped<IReferenceRegisterDimensionRuleRepository, PostgresReferenceRegisterDimensionRuleRepository>();
         services.TryAddScoped<IReferenceRegisterWriteStateRepository, PostgresReferenceRegisterWriteStateRepository>();
@@ -220,6 +233,7 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IAccountCardPageReader>(sp => sp.GetRequiredService<PostgresAccountCardReader>());
         services.TryAddScoped<PostgresAccountCardEffectivePageReader>();
         services.TryAddScoped<IAccountCardEffectivePageReader>(sp => sp.GetRequiredService<PostgresAccountCardEffectivePageReader>());
+        services.TryAddScoped<IAccountCardEffectiveStreamReader>(sp => sp.GetRequiredService<PostgresAccountCardEffectivePageReader>());
         services.TryAddScoped<IAccountingConsistencySnapshotReader, PostgresAccountingConsistencySnapshotReader>();
         services.TryAddScoped<IBalanceSheetSnapshotReader, PostgresBalanceSheetSnapshotReader>();
         services.TryAddScoped<ICashFlowIndirectSnapshotReader, PostgresCashFlowIndirectSnapshotReader>();
@@ -227,6 +241,12 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IIncomeStatementSnapshotReader, PostgresIncomeStatementSnapshotReader>();
         services.TryAddScoped<IStatementOfChangesInEquitySnapshotReader, PostgresStatementOfChangesInEquitySnapshotReader>();
         services.TryAddScoped<ITrialBalanceSnapshotReader, PostgresTrialBalanceSnapshotReader>();
+        services.TryAddScoped<ITrialBalanceAccountSummaryReader, PostgresTrialBalanceAccountSummaryReader>();
+        services.TryAddScoped<IReportReadSession, PostgresReportReadSession>();
+        services.TryAddScoped<IAccountingConsistencyStreamReader, PostgresAccountingConsistencySnapshotReader>();
+        services.TryAddScoped<IAccountingStatementAccountReader, PostgresAccountingStatementAccountReader>();
+        services.TryAddScoped<IAccountingSummaryPageReader, PostgresAccountingSummaryPageReader>();
+        services.TryAddScoped<IAccountingConsistencyPageReader, PostgresAccountingConsistencyPageReader>();
         services.TryAddScoped<IAccountingBalanceReader, PostgresAccountingBalanceReader>();
         services.TryAddScoped<IAccountingEntryReader, PostgresAccountingEntryReader>();
         services.TryAddScoped<IAccountingTurnoverReader, PostgresAccountingTurnoverReader>();
@@ -234,12 +254,14 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<IAccountingTurnoverAggregationReader, PostgresAccountingTurnoverAggregationReader>();
         services.TryAddScoped<IAccountingPeriodActivityReader, PostgresAccountingPeriodActivityReader>();
         services.TryAddScoped<IAccountLookupReader, PostgresAccountLookupReader>();
+        services.TryAddScoped<IReferencePayloadBatchEnrichmentReader, PostgresReferencePayloadBatchEnrichmentReader>();
         services.TryAddScoped<IRetainedEarningsAccountLookupReader, PostgresRetainedEarningsAccountLookupReader>();
         services.TryAddScoped<IClosedPeriodReader, PostgresClosedPeriodReader>();
         services.TryAddScoped<IDimensionDefinitionReader, PostgresDimensionDefinitionReader>();
         services.TryAddScoped<IGeneralJournalReader, PostgresGeneralJournalReader>();
         services.TryAddScoped<PostgresGeneralLedgerAggregatedReader>();
         services.TryAddScoped<IGeneralLedgerAggregatedPageReader>(sp => sp.GetRequiredService<PostgresGeneralLedgerAggregatedReader>());
+        services.TryAddScoped<IGeneralLedgerAggregatedStreamReader>(sp => sp.GetRequiredService<PostgresGeneralLedgerAggregatedReader>());
         services.TryAddScoped<ILedgerAnalysisFlatDetailReader, PostgresLedgerAnalysisFlatDetailReader>();
         services.TryAddScoped<IPostingStateReader, PostgresPostingStateReader>();
         services.TryAddScoped<IDocumentRelationshipGraphReader, PostgresDocumentRelationshipGraphReader>();
@@ -251,10 +273,14 @@ public static class PostgresServiceCollectionExtensions
         services.TryAddScoped<PostgresReportDatasetExecutor>();
         services.TryAddScoped<PostgresReportPlanExecutor>();
         services.TryAddScoped<ITabularReportPlanExecutor>(sp => sp.GetRequiredService<PostgresReportPlanExecutor>());
+        services.TryAddScoped<IStreamingReportDataSource>(sp => sp.GetRequiredService<PostgresReportPlanExecutor>());
+        services.TryAddScoped<IReportPageDataSource>(sp => sp.GetRequiredService<PostgresReportPlanExecutor>());
         services.TryAddScoped<IReportVariantRepository, PostgresReportVariantRepository>();
         
         // Schema
-        services.TryAddScoped<IDbSchemaInspector, PostgresSchemaInspector>();
+        services.TryAddScoped<PostgresSchemaInspector>();
+        services.TryAddScoped<IDbSchemaInspector>(sp => sp.GetRequiredService<PostgresSchemaInspector>());
+        services.TryAddScoped<IDbSchemaSnapshotScopeFactory>(sp => sp.GetRequiredService<PostgresSchemaInspector>());
         services.TryAddScoped<IDbTypeMapper, PostgresDbTypeMapper>();
         services.TryAddScoped<IAccountingCoreSchemaValidationService, PostgresAccountingCoreSchemaValidationService>();
         services.TryAddScoped<IOperationalRegistersCoreSchemaValidationService, PostgresOperationalRegistersCoreSchemaValidationService>();
@@ -263,6 +289,7 @@ public static class PostgresServiceCollectionExtensions
         
         // Writers
         services.TryAddScoped<IAccountingBalanceWriter, PostgresAccountingBalanceWriter>();
+        services.TryAddScoped<IAccountingBalanceProjectionWriter, PostgresAccountingBalanceProjectionWriter>();
         services.TryAddScoped<IAccountingEntryMaintenanceWriter, PostgresAccountingEntryMaintenanceWriter>();
         services.TryAddScoped<IAccountingEntryWriter, PostgresAccountingEntryWriter>();
         services.TryAddScoped<IAccountingTurnoverWriter, PostgresAccountingTurnoverWriter>();
@@ -294,6 +321,9 @@ public sealed class PostgresOptions
     /// "infinite" hangs under load.
     /// </summary>
     public int AdvisoryLockWaitTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>Deadline for register/month acquisition plus incremental projection catch-up.</summary>
+    public int OperationalRegisterPublicationTimeoutSeconds { get; set; } = 5;
 
     /// <summary>
     /// Whether to enable detailed error messages. Default is false.

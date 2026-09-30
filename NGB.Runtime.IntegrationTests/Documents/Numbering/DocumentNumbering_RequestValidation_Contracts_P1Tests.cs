@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.Numbering;
 /// P1: Guard rails for document numbering inputs and transaction requirements.
 /// These tests intentionally cover "dirty inputs" that are easy to miss in happy-path flows.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentNumbering_RequestValidation_Contracts_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

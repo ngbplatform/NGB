@@ -13,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// P2: Contract tests that lock in request/parameter validation for Runtime report services.
 /// These should fail fast (before any DB work) with clear exception types.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ReportServices_RequestValidation_Contracts_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -14,8 +14,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentDraftService_DeleteDraft_TypedStorageDeleteHook_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentDraftService_DeleteDraft_TypedStorageDeleteHook_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     // IMPORTANT: use unique names to avoid colliding with real module typed tables.
@@ -25,7 +25,6 @@ public sealed class DocumentDraftService_DeleteDraft_TypedStorageDeleteHook_P0Te
     [Fact]
     public async Task DeleteDraftAsync_WhenTypedStorageHasRestrictFk_DeletesTypedRowAndDocumentRow()
     {
-        await Fixture.ResetDatabaseAsync();
         await EnsureTypedTableExistsAsync(Fixture.ConnectionString);
 
         using var host = IntegrationHostFactory.Create(
@@ -82,7 +81,6 @@ public sealed class DocumentDraftService_DeleteDraft_TypedStorageDeleteHook_P0Te
     [Fact]
     public async Task DeleteDraftAsync_WhenTypedDeleteThrows_RollsBack_DoesNotDeleteDocument_AndDoesNotWriteAudit()
     {
-        await Fixture.ResetDatabaseAsync();
         await EnsureTypedTableExistsAsync(Fixture.ConnectionString);
 
         using var host = IntegrationHostFactory.Create(

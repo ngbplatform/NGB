@@ -61,20 +61,16 @@ public sealed class StatementOfChangesInEquityCanonicalReportExecutor(IStatement
                     ["executor"] = "canonical-statement-of-changes-in-equity"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: 0,
-            limit: rows.Count,
-            total: rows.Count,
-            hasMore: false,
-            nextCursor: null,
+        return CanonicalReportExecutionHelper.CreateBoundedPrebuiltPage(
+            definition,
+            sheet,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-statement-of-changes-in-equity"
             });
     }
 
-    private static ReportSheetRowDto ToDetailRow(
+    internal static ReportSheetRowDto ToDetailRow(
         StatementOfChangesInEquityLine line,
         DateOnly rawFrom,
         DateOnly rawTo,

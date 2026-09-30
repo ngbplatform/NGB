@@ -8,9 +8,9 @@ public sealed class AccountCardReportPage
     public DateOnly FromInclusive { get; init; }
     public DateOnly ToInclusive { get; init; }
     public decimal OpeningBalance { get; init; }
-    public decimal TotalDebit { get; init; }
-    public decimal TotalCredit { get; init; }
-    public decimal ClosingBalance { get; init; }
+    public decimal? TotalDebit { get; init; }
+    public decimal? TotalCredit { get; init; }
+    public decimal? ClosingBalance { get; init; }
 
     public IReadOnlyList<AccountCardReportLine> Lines { get; init; } = [];
 

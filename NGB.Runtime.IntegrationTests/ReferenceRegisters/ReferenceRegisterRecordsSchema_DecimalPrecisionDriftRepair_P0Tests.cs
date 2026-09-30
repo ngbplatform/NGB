@@ -13,14 +13,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegisterRecordsSchema_DecimalPrecisionDriftRepair_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegisterRecordsSchema_DecimalPrecisionDriftRepair_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task EnsureSchema_WhenNoRecords_DriftRepairsDecimalPrecisionAndScale()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         const string code = "RR_DECIMAL_PREC_DRIFT";
@@ -100,7 +99,6 @@ public sealed class ReferenceRegisterRecordsSchema_DecimalPrecisionDriftRepair_P
     [Fact]
     public async Task EnsureSchema_WhenRecordsExist_ThrowsOnDecimalPrecisionDrift()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         const string code = "RR_DECIMAL_PREC_DRIFT_HAS_RECORDS";

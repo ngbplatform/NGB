@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// - No Completed log when action returns no-op.
 /// - Exceptions rollback the transaction (no partial writes).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class DocumentWorkflowExecutor_Semantics_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

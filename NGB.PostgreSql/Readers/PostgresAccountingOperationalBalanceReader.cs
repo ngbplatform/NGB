@@ -17,23 +17,13 @@ public sealed class PostgresAccountingOperationalBalanceReader(IUnitOfWork uow) 
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        // Latest closed month <= period (if any). When there is no closed period, base is 0.
-        const string prevSql = """
-                               SELECT MAX(period) 
-                               FROM accounting_closed_periods 
-                               WHERE period <= @Period;
-                               """;
-
-        var prevCmd = new CommandDefinition(
-            prevSql,
-            new { Period = period },
-            transaction: uow.Transaction,
-            cancellationToken: ct);
-
-        var previousClosedPeriod = await uow.Connection.ExecuteScalarAsync<DateOnly?>(prevCmd);
-
         const string sql = """
-                           WITH k AS (
+                           WITH previous_period AS (
+                               SELECT MAX(period) AS period
+                               FROM accounting_closed_periods
+                               WHERE period <= @Period
+                           ),
+                           k AS (
                                SELECT *
                                FROM UNNEST(
                                    @AccountIds::uuid[],
@@ -48,8 +38,9 @@ public sealed class PostgresAccountingOperationalBalanceReader(IUnitOfWork uow) 
                                COALESCE(t.debit_amount, 0) AS DebitTurnover,
                                COALESCE(t.credit_amount, 0) AS CreditTurnover
                            FROM k
+                           CROSS JOIN previous_period pp
                            LEFT JOIN accounting_balances pb
-                               ON pb.period = @PreviousPeriod
+                               ON pb.period = pp.period
                               AND pb.account_id = k.account_id
                               AND pb.dimension_set_id = k.dimension_set_id
                            LEFT JOIN accounting_turnovers t
@@ -65,8 +56,7 @@ public sealed class PostgresAccountingOperationalBalanceReader(IUnitOfWork uow) 
             {
                 AccountIds = keys.Select(x => x.AccountId).ToArray(),
                 DimensionSetIds = keys.Select(x => x.DimensionSetId).ToArray(),
-                Period = period,
-                PreviousPeriod = previousClosedPeriod
+                Period = period
             },
             transaction: uow.Transaction,
             cancellationToken: ct);

@@ -5,7 +5,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
 /// <summary>
 /// Convenience helper for integration tests:
-/// - creates a Host using IntegrationHostFactory bound to the current PostgresTestFixture connection string
+/// - creates a Host using IntegrationHostFactory bound to an explicit fixture connection string
 /// - creates a scope
 /// - disposes both when scope is disposed
 ///
@@ -15,21 +15,17 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 ///
 /// Usage:
 /// <code>
-/// using var scope = CreateScope();
+/// using var scope = CreateScope(fixture);
 /// var svc = scope.ServiceProvider.GetRequiredService&lt;...&gt;();
 /// </code>
 /// </summary>
 internal static class TestScopeFactory
 {
-    public static IServiceScope CreateScope()
+    public static IServiceScope CreateScope(PostgresTestFixture fixture)
     {
-        var cs = PostgresTestFixture.CurrentConnectionString;
-        if (string.IsNullOrWhiteSpace(cs))
-            throw new NotSupportedException(
-                "PostgresTestFixture.CurrentConnectionString is not initialized. " +
-                "Ensure you are using PostgresTestFixture and it has been initialized by xUnit.");
+        ArgumentNullException.ThrowIfNull(fixture);
 
-        var host = IntegrationHostFactory.Create(cs);
+        var host = IntegrationHostFactory.Create(fixture.ConnectionString);
 
         // IMPORTANT: use async scopes because some services implement only IAsyncDisposable.
         var scope = host.Services.CreateAsyncScope();
@@ -43,7 +39,7 @@ internal static class TestScopeFactory
 
         public void Dispose()
         {
-            // xUnit tests often use `using var scope = CreateScope();`.
+            // xUnit tests often use `using var scope = CreateScope(fixture);`.
             // Block on async disposal to avoid DI throwing when it finds IAsyncDisposable-only services.
             DisposeAsync().AsTask().GetAwaiter().GetResult();
         }

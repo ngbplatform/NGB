@@ -178,6 +178,12 @@ test('closes from the close button and outside clicks', async () => {
 
   await view.getByTestId('outside-target').click()
   expect(document.body.textContent).not.toContain('Reset')
+
+  await view.getByRole('button', { name: /Columns/i }).click()
+  await view.getByRole('checkbox', { name: 'Status' }).click()
+  await expect.element(view.getByText('name|amount')).toBeVisible()
+  await view.getByRole('button', { name: 'Reset' }).click()
+  await expect.element(view.getByText('name|amount|status')).toBeVisible()
 })
 
 test('shares one storage contract with register grid for visible columns, widths, and order', async () => {
@@ -233,4 +239,22 @@ test('falls back to the live column model when persisted chooser storage is malf
   expect(readStorage(chooserStorageKey)).toEqual({
     visible: ['name', 'amount'],
   })
+})
+
+test('hydrates legacy array storage and ignores an explicit null payload', async () => {
+  await page.viewport(1280, 900)
+  window.localStorage.setItem(chooserStorageKey, JSON.stringify(['status']))
+
+  const legacyView = await render(ColumnChooserHarness, { props: { storageKey: chooserStorageKey } })
+  await expect.element(legacyView.getByText('status', { exact: true })).toBeVisible()
+  legacyView.unmount()
+
+  window.localStorage.setItem(chooserStorageKey, 'null')
+  const nullView = await render(ColumnChooserHarness, { props: { storageKey: chooserStorageKey } })
+  await expect.element(nullView.getByText('name|amount|status', { exact: true })).toBeVisible()
+  nullView.unmount()
+
+  window.localStorage.setItem(chooserStorageKey, JSON.stringify({ order: ['status'] }))
+  const missingVisibleView = await render(ColumnChooserHarness, { props: { storageKey: chooserStorageKey } })
+  await expect.element(missingVisibleView.getByText('name|amount|status', { exact: true })).toBeVisible()
 })

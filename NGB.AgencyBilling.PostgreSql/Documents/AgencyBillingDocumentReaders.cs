@@ -91,6 +91,38 @@ WHERE document_id = @document_id;
             new CommandDefinition(sql, new { document_id = documentId }, uow.Transaction, cancellationToken: ct));
     }
 
+    public async Task<IReadOnlyDictionary<Guid, AgencyBillingTimesheetHead>> ReadTimesheetHeadsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        var ids = NormalizeIds(documentIds);
+        if (ids.Length == 0)
+            return new Dictionary<Guid, AgencyBillingTimesheetHead>();
+
+        uow.EnsureActiveTransaction();
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    document_id AS DocumentId,
+    document_date_utc AS DocumentDateUtc,
+    team_member_id AS TeamMemberId,
+    project_id AS ProjectId,
+    client_id AS ClientId,
+    work_date AS WorkDate,
+    total_hours AS TotalHours,
+    amount AS Amount,
+    cost_amount AS CostAmount,
+    notes AS Notes
+FROM doc_ab_timesheet
+WHERE document_id = ANY(@document_ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync<AgencyBillingTimesheetHead>(
+            new CommandDefinition(sql, new { document_ids = ids }, uow.Transaction, cancellationToken: ct));
+        return rows.ToDictionary(static row => row.DocumentId);
+    }
+
     public async Task<IReadOnlyList<AgencyBillingTimesheetLine>> ReadTimesheetLinesAsync(
         Guid documentId,
         CancellationToken ct = default)
@@ -121,6 +153,44 @@ ORDER BY ordinal;
         return rows.ToArray();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<AgencyBillingTimesheetLine>>> ReadTimesheetLinesAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        var ids = NormalizeIds(documentIds);
+        if (ids.Length == 0)
+            return new Dictionary<Guid, IReadOnlyList<AgencyBillingTimesheetLine>>();
+
+        uow.EnsureActiveTransaction();
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    document_id AS DocumentId,
+    ordinal AS Ordinal,
+    service_item_id AS ServiceItemId,
+    description AS Description,
+    hours AS Hours,
+    billable AS Billable,
+    billing_rate AS BillingRate,
+    cost_rate AS CostRate,
+    line_amount AS LineAmount,
+    line_cost_amount AS LineCostAmount
+FROM doc_ab_timesheet__lines
+WHERE document_id = ANY(@document_ids)
+ORDER BY document_id, ordinal;
+""";
+
+        var rows = await uow.Connection.QueryAsync<AgencyBillingTimesheetLine>(
+            new CommandDefinition(sql, new { document_ids = ids }, uow.Transaction, cancellationToken: ct));
+
+        return rows
+            .GroupBy(static row => row.DocumentId)
+            .ToDictionary(
+                static group => group.Key,
+                static group => (IReadOnlyList<AgencyBillingTimesheetLine>)group.ToArray());
+    }
+
     public async Task<AgencyBillingSalesInvoiceHead> ReadSalesInvoiceHeadAsync(
         Guid documentId,
         CancellationToken ct = default)
@@ -146,6 +216,39 @@ WHERE document_id = @document_id;
 
         return await uow.Connection.QuerySingleAsync<AgencyBillingSalesInvoiceHead>(
             new CommandDefinition(sql, new { document_id = documentId }, uow.Transaction, cancellationToken: ct));
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, AgencyBillingSalesInvoiceHead>> ReadSalesInvoiceHeadsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default)
+    {
+        var ids = NormalizeIds(documentIds);
+        if (ids.Length == 0)
+            return new Dictionary<Guid, AgencyBillingSalesInvoiceHead>();
+
+        uow.EnsureActiveTransaction();
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT
+    document_id AS DocumentId,
+    document_date_utc AS DocumentDateUtc,
+    due_date AS DueDate,
+    client_id AS ClientId,
+    project_id AS ProjectId,
+    contract_id AS ContractId,
+    currency_code AS CurrencyCode,
+    memo AS Memo,
+    amount AS Amount,
+    notes AS Notes
+FROM doc_ab_sales_invoice
+WHERE document_id = ANY(@document_ids);
+""";
+
+        var rows = await uow.Connection.QueryAsync<AgencyBillingSalesInvoiceHead>(
+            new CommandDefinition(sql, new { document_ids = ids }, uow.Transaction, cancellationToken: ct));
+
+        return rows.ToDictionary(static row => row.DocumentId);
     }
 
     public async Task<IReadOnlyList<AgencyBillingSalesInvoiceLine>> ReadSalesInvoiceLinesAsync(
@@ -222,5 +325,11 @@ ORDER BY ordinal;
             new CommandDefinition(sql, new { document_id = documentId }, uow.Transaction, cancellationToken: ct));
 
         return rows.ToArray();
+    }
+
+    private static Guid[] NormalizeIds(IReadOnlyCollection<Guid> documentIds)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+        return documentIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
     }
 }

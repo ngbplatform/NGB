@@ -194,6 +194,7 @@ export type ReportExportRequestDto = {
 }
 
 export type ReportExecutionRequestDto = {
+  groupPath?: unknown[] | null
   layout?: ReportLayoutDto | null
   filters?: Record<string, ReportFilterValueDto> | null
   parameters?: Record<string, string> | null
@@ -240,6 +241,7 @@ export type ReportSheetColumnDto = {
 }
 
 export type ReportSheetRowDto = {
+  childrenPath?: unknown[] | null
   rowKind: ReportRowKind
   cells: ReportCellDto[]
   outlineLevel?: number

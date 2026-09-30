@@ -61,7 +61,7 @@ public static class DimensionBagEnrichmentExtensions
             {
                 // Short GUID keeps UI compact but is still deterministic.
                 var s = x.ValueId.ToString("N");
-                result[x.DimensionId] = s.Length > 8 ? s[..8] : s;
+                result[x.DimensionId] = s[..8];
             }
         }
 

@@ -20,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// The critical invariant: even under concurrency, the closed-period guard must reject operations
 /// *before* any side effects (entries/turnovers/balances/posting_log) are persisted.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ClosedPeriodPolicy_ConcurrentForbiddenOpsTests(PostgresTestFixture fixture)
 {
     [Fact]

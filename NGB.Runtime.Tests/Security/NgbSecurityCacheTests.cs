@@ -3,6 +3,8 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using NGB.Core.Security;
 using NGB.Runtime.Security;
+using System.Collections.Concurrent;
+using System.Reflection;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Security;
@@ -51,6 +53,305 @@ public sealed class NgbSecurityCacheTests
 
         result.Failed.Should().BeTrue();
         result.Failures.Should().Contain(x => x.Contains(nameof(NgbSecurityCacheOptions.ReportDefinitionsTtl), StringComparison.Ordinal));
+
+        validator.Validate(
+                Options.DefaultName,
+                new NgbSecurityCacheOptions { MaxEntries = 99 })
+            .Failed.Should().BeTrue();
+        validator.Validate(
+                Options.DefaultName,
+                new NgbSecurityCacheOptions { MaxEntries = 200_001 })
+            .Failed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Cache_EvictsOldestTrackedSecurityKeyAtConfiguredBound()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions { MaxEntries = 100 }));
+        var firstUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+
+        for (var index = 0; index <= 100; index++)
+        {
+            var userId = index == 0
+                ? firstUserId
+                : Guid.Parse($"00000000-0000-0000-0000-{index + 1:000000000000}");
+            await cache.GetOrCreatePermissionSnapshotAsync(
+                userId,
+                accessVersion: 1,
+                _ => Task.FromResult(index),
+                CancellationToken.None);
+        }
+
+        var reloaded = await cache.GetOrCreatePermissionSnapshotAsync(
+            firstUserId,
+            accessVersion: 1,
+            _ => Task.FromResult(999),
+            CancellationToken.None);
+
+        reloaded.Should().Be(999);
+        cache.TrackedEntryCount.Should().Be(100);
+        cache.EvictionMetadataCount.Should().Be(100);
+    }
+
+    [Fact]
+    public async Task Replacing_and_expiring_entries_does_not_grow_eviction_metadata_or_remove_a_new_generation()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions { MaxEntries = 100 }));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+
+        for (var index = 0; index < 500; index++)
+        {
+            memoryCache.Remove($"ngb:security:main-menu:{snapshot.AccessCacheKey}");
+            (await cache.GetOrCreateMainMenuAsync(
+                snapshot,
+                _ => Task.FromResult(index),
+                CancellationToken.None)).Should().Be(index);
+        }
+
+        cache.TrackedEntryCount.Should().Be(1);
+        cache.EvictionMetadataCount.Should().Be(1);
+        (await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            _ => Task.FromResult(-1),
+            CancellationToken.None)).Should().Be(499);
+    }
+
+    [Fact]
+    public async Task Concurrent_cold_reads_share_one_population_and_reuse_the_cached_value()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+
+        async Task<int> Load(CancellationToken ct)
+        {
+            Interlocked.Increment(ref calls);
+            await release.Task.WaitAsync(ct);
+            return 42;
+        }
+
+        var reads = Enumerable.Range(0, 24)
+            .Select(_ => cache.GetOrCreateMainMenuAsync(snapshot, Load, CancellationToken.None))
+            .ToArray();
+        await Task.Yield();
+        release.SetResult();
+
+        var values = await Task.WhenAll(reads);
+        var cached = await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            _ => Task.FromResult(99),
+            CancellationToken.None);
+
+        values.Should().OnlyContain(value => value == 42);
+        cached.Should().Be(42);
+        calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Failed_population_is_not_cached_and_a_later_request_can_retry()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var calls = 0;
+
+        Func<Task> failed = async () => await cache.GetOrCreateCatalogMetadataAsync<int>(
+            snapshot,
+            _ =>
+            {
+                Interlocked.Increment(ref calls);
+                return Task.FromException<int>(new InvalidOperationException("failed"));
+            },
+            CancellationToken.None);
+
+        await failed.Should().ThrowAsync<InvalidOperationException>();
+        var retried = await cache.GetOrCreateCatalogMetadataAsync(
+            snapshot,
+            _ => Task.FromResult(17),
+            CancellationToken.None);
+
+        retried.Should().Be(17);
+        calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Cancelling_one_waiter_does_not_cancel_a_shared_population_for_healthy_waiters()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+
+        async Task<int> Load(CancellationToken ct)
+        {
+            Interlocked.Increment(ref calls);
+            started.SetResult();
+            await release.Task.WaitAsync(ct);
+            return 42;
+        }
+
+        using var cancelledWaiter = new CancellationTokenSource();
+        var first = cache.GetOrCreateMainMenuAsync(snapshot, Load, cancelledWaiter.Token);
+        await started.Task;
+        var healthy = cache.GetOrCreateMainMenuAsync(snapshot, Load, CancellationToken.None);
+
+        cancelledWaiter.Cancel();
+        await ((Func<Task>)(async () => await first)).Should().ThrowAsync<OperationCanceledException>();
+        release.SetResult();
+
+        (await healthy).Should().Be(42);
+        calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Cancelling_the_only_waiter_abandons_population_and_allows_retry()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var cancellation = new CancellationTokenSource();
+        var cancelled = cache.GetOrCreateCatalogMetadataAsync<int>(
+            snapshot,
+            async ct =>
+            {
+                started.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                return 1;
+            },
+            cancellation.Token);
+
+        await started.Task;
+        cancellation.Cancel();
+        await ((Func<Task>)(async () => await cancelled)).Should().ThrowAsync<OperationCanceledException>();
+
+        var retried = await cache.GetOrCreateCatalogMetadataAsync(
+            snapshot,
+            _ => Task.FromResult(17),
+            CancellationToken.None);
+
+        retried.Should().Be(17);
+    }
+
+    [Fact]
+    public async Task Removing_a_live_entry_removes_its_tracking_metadata()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+
+        await cache.GetOrCreateMainMenuAsync(snapshot, _ => Task.FromResult(42), CancellationToken.None);
+        cache.TrackedEntryCount.Should().Be(1);
+
+        memoryCache.Remove($"ngb:security:main-menu:{snapshot.AccessCacheKey}");
+        await WaitUntilAsync(() => cache.TrackedEntryCount == 0);
+
+        cache.EvictionMetadataCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Pending_population_covers_abandon_completed_and_dispose_races()
+    {
+        var abandoned = new NgbSecurityCache.PendingPopulation(_ => Task.FromResult<object?>(1));
+        abandoned.TryAddWaiter().Should().BeTrue();
+        abandoned.ReleaseWaiterAndAbandonIfLast().Should().BeTrue();
+        abandoned.TryAddWaiter().Should().BeFalse();
+        abandoned.Cancel();
+        abandoned.Dispose();
+        abandoned.Cancel();
+
+        using var completed = new NgbSecurityCache.PendingPopulation(_ => Task.FromResult<object?>(2));
+        completed.TryAddWaiter().Should().BeTrue();
+        (await completed.Task).Should().Be(2);
+        completed.ReleaseWaiterAndAbandonIfLast().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Abandoned_population_left_by_a_racing_waiter_is_removed_and_retried()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.NewGuid(), accessVersion: 1);
+        var key = $"ngb:security:main-menu:{snapshot.AccessCacheKey}";
+        var pending = typeof(NgbSecurityCache)
+            .GetField("pendingPopulations", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(cache)
+            .Should().BeOfType<ConcurrentDictionary<string, NgbSecurityCache.PendingPopulation>>()
+            .Subject;
+        using var abandoned = new NgbSecurityCache.PendingPopulation(_ => Task.FromResult<object?>(-1));
+        abandoned.TryAddWaiter().Should().BeTrue();
+        abandoned.ReleaseWaiterAndAbandonIfLast().Should().BeTrue();
+        pending.TryAdd(key, abandoned).Should().BeTrue();
+
+        var value = await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            _ => Task.FromResult(42),
+            CancellationToken.None);
+
+        value.Should().Be(42);
+        pending.Should().NotContainKey(key);
+    }
+
+    [Fact]
+    public async Task Existing_live_population_is_joined_without_creating_a_replacement()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cache = new NgbSecurityCache(
+            memoryCache,
+            new TestOptionsMonitor<NgbSecurityCacheOptions>(new NgbSecurityCacheOptions()));
+        var snapshot = CreateSnapshot(Guid.CreateVersion7(), accessVersion: 1);
+        var key = $"ngb:security:main-menu:{snapshot.AccessCacheKey}";
+        var pending = typeof(NgbSecurityCache)
+            .GetField("pendingPopulations", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(cache)
+            .Should().BeOfType<ConcurrentDictionary<string, NgbSecurityCache.PendingPopulation>>()
+            .Subject;
+        using var live = new NgbSecurityCache.PendingPopulation(_ => Task.FromResult<object?>(88));
+        pending.TryAdd(key, live).Should().BeTrue();
+        var replacementCalls = 0;
+
+        var result = await cache.GetOrCreateMainMenuAsync(
+            snapshot,
+            _ =>
+            {
+                replacementCalls++;
+                return Task.FromResult(99);
+            },
+            CancellationToken.None);
+
+        result.Should().Be(88);
+        replacementCalls.Should().Be(0);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> predicate)
+    {
+        for (var attempt = 0; attempt < 100 && !predicate(); attempt++)
+            await Task.Delay(10);
+
+        predicate().Should().BeTrue();
     }
 
     private static PermissionSnapshot CreateSnapshot(Guid userId, long accessVersion)

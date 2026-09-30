@@ -65,8 +65,9 @@ public sealed class PostingEngineOrchestrationTests
         var opBalReader = new Mock<IAccountingOperationalBalanceReader>(MockBehavior.Strict);
 
         var closedPeriods = new Mock<IClosedPeriodRepository>(MockBehavior.Strict);
-        closedPeriods.Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        closedPeriods.Setup(x => x.FindFirstClosedAsync(
+                It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DateOnly?)null);
 
         var validator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Strict);
         validator.Setup(x => x.Validate(It.IsAny<IReadOnlyList<AccountingEntry>>()));
@@ -167,8 +168,9 @@ public sealed class PostingEngineOrchestrationTests
 
         var opBalReader = new Mock<IAccountingOperationalBalanceReader>(MockBehavior.Strict);
         var closedPeriods = new Mock<IClosedPeriodRepository>(MockBehavior.Strict);
-        closedPeriods.Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        closedPeriods.Setup(x => x.FindFirstClosedAsync(
+                It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DateOnly?)null);
 
         var validator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Strict);
         validator.Setup(x => x.Validate(It.IsAny<IReadOnlyList<AccountingEntry>>()));
@@ -183,8 +185,11 @@ public sealed class PostingEngineOrchestrationTests
 
         var dimensionSetService = new Mock<NGB.Runtime.Dimensions.IDimensionSetService>(MockBehavior.Loose);
         dimensionSetService
-            .Setup(x => x.GetOrCreateIdAsync(It.IsAny<NGB.Core.Dimensions.DimensionBag>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.Empty);
+            .Setup(x => x.GetOrCreateIdsAsync(
+                It.IsAny<IReadOnlyList<NGB.Core.Dimensions.DimensionBag>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<NGB.Core.Dimensions.DimensionBag> bags, CancellationToken _) =>
+                bags.Select(static _ => Guid.Empty).ToArray());
 
         var logger = new Mock<ILogger<PostingEngine>>();
 
@@ -256,8 +261,9 @@ public sealed class PostingEngineOrchestrationTests
         var opBalReader = new Mock<IAccountingOperationalBalanceReader>(MockBehavior.Strict);
 
         var closedPeriods = new Mock<IClosedPeriodRepository>(MockBehavior.Strict);
-        closedPeriods.Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        closedPeriods.Setup(x => x.FindFirstClosedAsync(
+                It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DateOnly?)null);
 
         var validator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Strict);
         validator.Setup(x => x.Validate(It.IsAny<IReadOnlyList<AccountingEntry>>()));
@@ -272,8 +278,11 @@ public sealed class PostingEngineOrchestrationTests
 
         var dimensionSetService = new Mock<NGB.Runtime.Dimensions.IDimensionSetService>(MockBehavior.Loose);
         dimensionSetService
-            .Setup(x => x.GetOrCreateIdAsync(It.IsAny<NGB.Core.Dimensions.DimensionBag>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.Empty);
+            .Setup(x => x.GetOrCreateIdsAsync(
+                It.IsAny<IReadOnlyList<NGB.Core.Dimensions.DimensionBag>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<NGB.Core.Dimensions.DimensionBag> bags, CancellationToken _) =>
+                bags.Select(static _ => Guid.Empty).ToArray());
 
         var logger = new Mock<ILogger<PostingEngine>>();
 
@@ -345,8 +354,9 @@ public sealed class PostingEngineOrchestrationTests
         var opBalReader = new Mock<IAccountingOperationalBalanceReader>(MockBehavior.Strict);
 
         var closedPeriods = new Mock<IClosedPeriodRepository>(MockBehavior.Strict);
-        closedPeriods.Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        closedPeriods.Setup(x => x.FindFirstClosedAsync(
+                It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DateOnly?)null);
 
         var validator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Strict);
         validator.Setup(x => x.Validate(It.IsAny<IReadOnlyList<AccountingEntry>>()))
@@ -362,8 +372,11 @@ public sealed class PostingEngineOrchestrationTests
 
         var dimensionSetService = new Mock<NGB.Runtime.Dimensions.IDimensionSetService>(MockBehavior.Loose);
         dimensionSetService
-            .Setup(x => x.GetOrCreateIdAsync(It.IsAny<NGB.Core.Dimensions.DimensionBag>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.Empty);
+            .Setup(x => x.GetOrCreateIdsAsync(
+                It.IsAny<IReadOnlyList<NGB.Core.Dimensions.DimensionBag>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<NGB.Core.Dimensions.DimensionBag> bags, CancellationToken _) =>
+                bags.Select(static _ => Guid.Empty).ToArray());
 
         var logger = new Mock<ILogger<PostingEngine>>();
 

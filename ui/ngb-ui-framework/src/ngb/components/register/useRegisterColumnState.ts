@@ -1,4 +1,4 @@
-import { computed, ref, watch, type CSSProperties, type ComputedRef, type Ref } from 'vue';
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type CSSProperties, type ComputedRef, type Ref } from 'vue';
 import { loadJson, saveJson } from '../../utils/storage';
 import type { RegisterColumn } from './registerTypes';
 
@@ -14,7 +14,7 @@ type UseRegisterColumnStateArgs = {
   storageKey: ComputedRef<string | undefined>;
   showStatusColumn: ComputedRef<boolean>;
   statusColWidth: ComputedRef<number>;
-  emitVisibleColumnKeys: (value: string[]) => void;
+  emitVisibleColumnKeys?: (value: string[]) => void;
 };
 
 type RegisterColumnState = {
@@ -28,6 +28,8 @@ type RegisterColumnState = {
   setVisible: (keys: string[]) => void;
 };
 
+const COLUMN_STATE_PERSIST_DELAY_MS = 150;
+
 function isAccidentalVisible(value: string[] | null) {
   return !!value && value.length === 1 && value[0] === 'display';
 }
@@ -38,6 +40,32 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
   const localVisible = ref<string[] | null>(args.visibleColumnKeys.value ? [...args.visibleColumnKeys.value] : null);
   const persistEnabled = ref(false);
   const derivedFromPartialColumns = ref(args.columns.value.length <= 1);
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingPersistenceKey: string | null = null;
+
+  function flushPendingPersistence() {
+    if (persistTimer != null) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+
+    const storageKey = pendingPersistenceKey;
+    pendingPersistenceKey = null;
+    if (storageKey) {
+      saveJson(storageKey, {
+        order: [...localOrder.value],
+        widths: { ...localWidths.value },
+        visible: localVisible.value ? [...localVisible.value] : undefined,
+      });
+    }
+  }
+
+  function schedulePersistence(storageKey: string) {
+    pendingPersistenceKey = storageKey;
+
+    if (persistTimer != null) clearTimeout(persistTimer);
+    persistTimer = setTimeout(flushPendingPersistence, COLUMN_STATE_PERSIST_DELAY_MS);
+  }
 
   function ensureStateAfterColumnsReady() {
     const columns = args.columns.value;
@@ -69,10 +97,7 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
     derivedFromPartialColumns.value = columns.length <= 1;
   }
 
-  function hydrateFromStorage() {
-    const storageKey = args.storageKey.value;
-    if (!storageKey) return;
-
+  function hydrateFromStorage(storageKey: string) {
     const saved = loadJson<PersistedColumns | string[] | null>(storageKey, null);
     if (!saved) return;
 
@@ -88,11 +113,11 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
 
   watch(
     args.storageKey,
-    (next, prev) => {
+    (next, previous) => {
+      if (previous && previous !== next) flushPendingPersistence();
       if (!next) return;
-      if (prev && next === prev) return;
       resetLocalStateFromColumns();
-      hydrateFromStorage();
+      hydrateFromStorage(next);
       ensureStateAfterColumnsReady();
     },
     { immediate: true },
@@ -111,15 +136,12 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
     () => {
       const storageKey = args.storageKey.value;
       if (!storageKey || !persistEnabled.value) return;
-
-      saveJson(storageKey, {
-        order: localOrder.value,
-        widths: localWidths.value,
-        visible: localVisible.value ?? undefined,
-      });
+      schedulePersistence(storageKey);
     },
     { deep: true },
   );
+
+  if (getCurrentScope()) onScopeDispose(flushPendingPersistence);
 
   watch(
     args.visibleColumnKeys,
@@ -133,14 +155,18 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
   const orderedColumns = computed(() => {
     const byKey = new Map(args.columns.value.map((column) => [column.key, column] as const));
     const result: RegisterColumn[] = [];
+    const included = new Set<string>();
 
     for (const key of localOrder.value) {
       const column = byKey.get(key);
-      if (column) result.push(column);
+      if (column) {
+        result.push(column);
+        included.add(column.key);
+      }
     }
 
     for (const column of args.columns.value) {
-      if (!result.find((entry) => entry.key === column.key)) result.push(column);
+      if (!included.has(column.key)) result.push(column);
     }
 
     return result;
@@ -154,7 +180,7 @@ export function useRegisterColumnState(args: UseRegisterColumnStateArgs): Regist
 
   function setVisible(keys: string[]) {
     localVisible.value = keys;
-    args.emitVisibleColumnKeys(keys);
+    args.emitVisibleColumnKeys?.(keys);
   }
 
   function colWidth(column: RegisterColumn) {

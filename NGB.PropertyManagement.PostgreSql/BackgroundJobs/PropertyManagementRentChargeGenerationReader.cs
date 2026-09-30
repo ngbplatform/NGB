@@ -2,6 +2,7 @@ using Dapper;
 using NGB.Contracts.Metadata;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.BackgroundJobs;
+using NGB.Tools.Exceptions;
 
 namespace NGB.PropertyManagement.PostgreSql.BackgroundJobs;
 
@@ -10,8 +11,24 @@ public sealed class PropertyManagementRentChargeGenerationReader(IUnitOfWork uow
 {
     public async Task<IReadOnlyList<PmRentChargeGenerationLease>> ReadPostedLeasesForMonthlyRentChargeGenerationAsync(
         DateOnly asOfUtc,
+        DateOnly? afterStartOnUtc,
+        Guid? afterLeaseId,
+        int limit,
         CancellationToken ct = default)
     {
+        if (afterStartOnUtc.HasValue != afterLeaseId.HasValue)
+        {
+            throw new NgbArgumentInvalidException(
+                nameof(afterLeaseId),
+                "Both rent-charge generation cursor values must be supplied together.");
+        }
+
+        if (afterLeaseId == Guid.Empty)
+            throw new NgbArgumentInvalidException(nameof(afterLeaseId), "Cursor lease id must not be empty.");
+
+        if (limit is <= 0 or > 1000)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Page size must be between 1 and 1000.");
+
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
@@ -27,7 +44,13 @@ JOIN doc_pm_lease l
   ON l.document_id = d.id
 WHERE d.status = @posted
   AND l.start_on_utc <= @as_of_utc
-ORDER BY l.start_on_utc, l.document_id;
+  AND (
+      CAST(@after_start_on_utc AS date) IS NULL
+      OR l.start_on_utc > CAST(@after_start_on_utc AS date)
+      OR (l.start_on_utc = CAST(@after_start_on_utc AS date) AND l.document_id > CAST(@after_lease_id AS uuid))
+  )
+ORDER BY l.start_on_utc, l.document_id
+LIMIT @limit;
 """;
 
         var rows = await uow.Connection.QueryAsync<PmRentChargeGenerationLease>(
@@ -36,7 +59,10 @@ ORDER BY l.start_on_utc, l.document_id;
                 new
                 {
                     posted = (int)DocumentStatus.Posted,
-                    as_of_utc = asOfUtc
+                    as_of_utc = asOfUtc,
+                    after_start_on_utc = afterStartOnUtc,
+                    after_lease_id = afterLeaseId,
+                    limit
                 },
                 uow.Transaction,
                 cancellationToken: ct));

@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.Catalogs;
 /// - fail fast when manageTransaction=false is used without an active transaction
 /// - external commit persists both the registry flag and the audit event
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class CatalogDraftService_MarkDeleted_ExternalTransactionMode_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

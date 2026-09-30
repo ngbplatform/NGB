@@ -6,6 +6,7 @@ using NGB.Core.Documents;
 using NGB.Definitions.Documents.Validation;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Locks;
+using NGB.Runtime.Locks;
 using NGB.Tools.Exceptions;
 
 namespace NGB.AgencyBilling.Runtime.Documents.Validation;
@@ -44,10 +45,14 @@ public sealed class SalesInvoicePostValidator(
             .OrderBy(x => x)
             .ToArray();
 
-        foreach (var timesheetId in referencedTimesheetIds)
-        {
-            await locks.LockDocumentAsync(timesheetId, ct);
-        }
+        await locks.LockDocumentsDeterministicallyAsync(referencedTimesheetIds, ct);
+
+        var serviceItems = await AgencyBillingCatalogValidationGuards.LoadServiceItemsAsync(
+            lines.Select(static line => line.ServiceItemId.GetValueOrDefault()),
+            references,
+            ct);
+        var sourceDocuments = await documents.GetByIdsAsync(referencedTimesheetIds, ct);
+        var sourceTimesheets = await readers.ReadTimesheetHeadsAsync(referencedTimesheetIds, ct);
 
         var expectedAmount = 0m;
         var currentUsageByTimesheet = new Dictionary<Guid, (decimal Hours, decimal Amount)>();
@@ -57,8 +62,9 @@ public sealed class SalesInvoicePostValidator(
             var line = lines[i];
             var prefix = $"lines[{i}]";
 
-            if (line.ServiceItemId is { } serviceItemId && serviceItemId != Guid.Empty)
-                await AgencyBillingCatalogValidationGuards.EnsureServiceItemAsync(serviceItemId, $"{prefix}.service_item_id", references, ct);
+            var serviceItemId = line.ServiceItemId.GetValueOrDefault();
+            if (serviceItemId != Guid.Empty)
+                AgencyBillingCatalogValidationGuards.EnsureServiceItem(serviceItemId, $"{prefix}.service_item_id", serviceItems);
 
             if (line.QuantityHours <= 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.quantity_hours", "Quantity Hours must be greater than zero.");
@@ -82,8 +88,7 @@ public sealed class SalesInvoicePostValidator(
             if (line.SourceTimesheetId is not { } sourceTimesheetId || sourceTimesheetId == Guid.Empty)
                 continue;
 
-            var sourceDocument = await documents.GetAsync(sourceTimesheetId, ct);
-            if (sourceDocument is null
+            if (!sourceDocuments.TryGetValue(sourceTimesheetId, out var sourceDocument)
                 || !string.Equals(sourceDocument.TypeCode, AgencyBillingCodes.Timesheet, StringComparison.OrdinalIgnoreCase))
             {
                 throw new NgbArgumentInvalidException($"{prefix}.source_timesheet_id", "Referenced source timesheet was not found.");
@@ -92,8 +97,20 @@ public sealed class SalesInvoicePostValidator(
             if (sourceDocument.Status != DocumentStatus.Posted)
                 throw new NgbArgumentInvalidException($"{prefix}.source_timesheet_id", "Referenced source timesheet must be posted.");
 
-            var sourceTimesheet = await readers.ReadTimesheetHeadAsync(sourceTimesheetId, ct);
-            if (sourceTimesheet.ClientId != head.ClientId || sourceTimesheet.ProjectId != head.ProjectId)
+            if (!sourceTimesheets.TryGetValue(sourceTimesheetId, out var sourceTimesheet))
+            {
+                throw new NgbConfigurationViolationException(
+                    $"Timesheet document '{sourceTimesheetId}' is missing its Agency Billing head row.");
+            }
+
+            if (sourceTimesheet.ClientId != head.ClientId)
+            {
+                throw new NgbArgumentInvalidException(
+                    $"{prefix}.source_timesheet_id",
+                    "Referenced source timesheet must belong to the same client and project as the invoice.");
+            }
+
+            if (sourceTimesheet.ProjectId != head.ProjectId)
             {
                 throw new NgbArgumentInvalidException(
                     $"{prefix}.source_timesheet_id",
@@ -109,12 +126,20 @@ public sealed class SalesInvoicePostValidator(
         if (AgencyBillingPostingCommon.RoundScale4(head.Amount) != AgencyBillingPostingCommon.RoundScale4(expectedAmount))
             throw new NgbArgumentInvalidException("amount", "Amount must equal the sum of invoice line amounts.");
 
+        var usedTimesheetIds = currentUsageByTimesheet.Keys.ToArray();
+        var timesheetLinesByDocument = await readers.ReadTimesheetLinesAsync(usedTimesheetIds, ct);
+        var existingUsageByTimesheet = await invoiceUsageReader.GetPostedInvoiceUsageForTimesheetsAsync(
+            usedTimesheetIds,
+            ct: ct);
+
         foreach (var (timesheetId, currentUsage) in currentUsageByTimesheet)
         {
-            var timesheetLines = await readers.ReadTimesheetLinesAsync(timesheetId, ct);
+            timesheetLinesByDocument.TryGetValue(timesheetId, out var timesheetLines);
+            timesheetLines ??= Array.Empty<AgencyBillingTimesheetLine>();
             var billableHours = AgencyBillingPostingCommon.RoundScale4(timesheetLines.Where(x => x.Billable).Sum(x => x.Hours));
             var billableAmount = AgencyBillingPostingCommon.RoundScale4(timesheetLines.Where(x => x.Billable).Sum(AgencyBillingPostingCommon.ResolveTimesheetLineAmount));
-            var existingUsage = await invoiceUsageReader.GetPostedInvoiceUsageForTimesheetAsync(timesheetId, ct: ct);
+            existingUsageByTimesheet.TryGetValue(timesheetId, out var existingUsage);
+            existingUsage ??= new AgencyBillingTimesheetInvoiceUsage(0m, 0m);
 
             var availableHours = AgencyBillingPostingCommon.RoundScale4(billableHours - existingUsage.InvoicedHours);
             var availableAmount = AgencyBillingPostingCommon.RoundScale4(billableAmount - existingUsage.InvoicedAmount);
@@ -154,7 +179,14 @@ public sealed class SalesInvoicePostValidator(
         if (!contract.IsActive)
             throw new NgbArgumentInvalidException("contract_id", "Referenced client contract must be active.");
 
-        if (contract.ClientId != invoice.ClientId || contract.ProjectId != invoice.ProjectId)
+        if (contract.ClientId != invoice.ClientId)
+        {
+            throw new NgbArgumentInvalidException(
+                "contract_id",
+                "Referenced client contract must belong to the same client and project as the invoice.");
+        }
+
+        if (contract.ProjectId != invoice.ProjectId)
         {
             throw new NgbArgumentInvalidException(
                 "contract_id",

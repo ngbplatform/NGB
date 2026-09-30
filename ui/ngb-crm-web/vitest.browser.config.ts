@@ -16,14 +16,10 @@ export default defineConfig({
     'import.meta.env.VITE_KEYCLOAK_CLIENT_ID': JSON.stringify('ngb-crm-web-client'),
   },
   optimizeDeps: {
+    exclude: ['@ngbplatform/ui'],
     include: [
       '@headlessui/vue',
-      '@ngbplatform/ui',
-      'echarts/core',
-      'echarts/charts',
-      'echarts/components',
-      'echarts/renderers',
-      'vue-echarts',
+      '@microsoft/signalr',
       'pinia',
       'vue-router',
       'keycloak-js',

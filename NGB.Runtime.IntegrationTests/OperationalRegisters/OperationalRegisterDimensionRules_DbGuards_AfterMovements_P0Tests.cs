@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// <summary>
 /// P0: DB-level guards must enforce append-only dimension rules after movements exist even if callers bypass runtime services.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterDimensionRules_DbGuards_AfterMovements_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

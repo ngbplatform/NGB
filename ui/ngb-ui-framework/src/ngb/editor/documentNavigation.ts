@@ -110,6 +110,6 @@ export function listFormFields(form: FormShape): FormFieldDescriptor[] {
 
 export function formMetadataFieldKeys(form: FormMetadata | null | undefined): string[] {
   return listFormFields(form)
-    .map((field) => String(field?.key ?? '').trim())
+    .map((field) => String(field.key ?? '').trim())
     .filter((key) => key.length > 0);
 }

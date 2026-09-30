@@ -71,10 +71,9 @@ public sealed class BackgroundJobsHealthReporter_HealthyConfiguration_P0Tests(Ha
         // Override NullJobScheduleProvider.
         services.AddSingleton<IJobScheduleProvider>(schedules);
 
-        services.AddPlatformBackgroundJobsHangfire(o =>
+        services.AddPlatformBackgroundJobsHangfire(fixture.JobStorage, o =>
         {
             o.ConnectionString = fixture.ConnectionString;
-            o.PrepareSchemaIfNecessary = true;
             o.WorkerCount = 1;
             o.DistributedLockTimeoutSeconds = 1;
         });

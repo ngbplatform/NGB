@@ -29,7 +29,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisters_HappyPath_FullFlow_SmokeContract_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

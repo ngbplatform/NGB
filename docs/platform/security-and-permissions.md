@@ -83,6 +83,18 @@ KeycloakAdminClientSettings:ClientId
 KeycloakAdminClientSettings:ClientSecret
 ```
 
+The client also has process-wide resource boundaries. Defaults are suitable for a single API instance and can be tuned per deployment:
+
+```text
+KeycloakAdminClientSettings:AdminBatchConcurrency=8
+KeycloakAdminClientSettings:MaxConcurrentAdminRequests=16
+KeycloakAdminClientSettings:MaxQueuedAdminRequests=256
+KeycloakAdminClientSettings:MaxPendingUserLookups=128
+KeycloakAdminClientSettings:MaxResponseContentBytes=1048576
+```
+
+Keep batch concurrency at or below the global request limit. A full queue is rejected immediately instead of consuming unbounded memory; canceled callers leave the queue without canceling a shared cache population.
+
 Do not expose Keycloak Admin REST credentials to the frontend.
 
 ## Local Testing
@@ -101,4 +113,3 @@ Then open:
 ```
 
 The e2e suite has mocked UI coverage for the security routes. Full end-to-end user provisioning still requires a working Keycloak test environment because the backend intentionally owns Keycloak Admin REST calls.
-

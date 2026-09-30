@@ -197,7 +197,9 @@ test('wires single lookup branch, open action, clear/select, and include-descend
   ;(buttons[1] as HTMLButtonElement).click()
   await expect.element(view.getByText('selected:none')).toBeVisible()
 
-  ;(buttons[2] as HTMLButtonElement).click()
+  const openButton = document.querySelector('[data-testid="stub-lookup"] button[data-action="open"]')
+  if (!(openButton instanceof HTMLButtonElement)) throw new Error('Lookup open action not found.')
+  openButton.click()
   await expect.element(view.getByText('opens:1')).toBeVisible()
 })
 
@@ -224,6 +226,8 @@ test('renders select branch for option filters and input branch for free-form va
   await expect.element(selectView.getByText('select:Any|Open|Posted')).toBeVisible()
   await selectView.getByTestId('stub-select').click()
   await expect.element(selectView.getByText('raw:selected')).toBeVisible()
+  selectView.getByTestId('stub-select').element().dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }))
+  await expect.element(selectView.getByText('raw:', { exact: true })).toBeVisible()
 
   const inputView = await render(InputHarness)
   await expect.element(inputView.getByTestId('stub-input')).toBeVisible()

@@ -233,6 +233,7 @@ export type EditorAuditLoadOptions = {
   afterOccurredAtUtc?: string | null;
   afterAuditEventId?: string | null;
   limit?: number;
+  signal?: AbortSignal;
 };
 
 export type EditorAuditBehavior = {

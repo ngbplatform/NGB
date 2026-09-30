@@ -75,9 +75,10 @@ This file confirms that the background-jobs host is a platform composition root 
 The verified flow is:
 
 1. create builder;
-2. bootstrap NGB background jobs hosting;
-3. ensure infrastructure;
-4. compose runtime + PostgreSQL + vertical modules + vertical background jobs;
+2. bootstrap with `AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create)`;
+3. call `EnsureInfrastructureAsync(new PostgresDatabaseProvisioner())`;
+4. compose Runtime, explicit startup validation, PostgreSQL and its background-jobs adapter,
+   PostgreSQL HTTP/health adapters, and the vertical modules;
 5. use and map background jobs pipeline;
 6. run.
 

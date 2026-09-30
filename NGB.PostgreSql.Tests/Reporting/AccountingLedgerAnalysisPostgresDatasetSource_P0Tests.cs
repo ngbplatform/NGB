@@ -7,6 +7,57 @@ namespace NGB.PostgreSql.Tests.Reporting;
 
 public sealed class AccountingLedgerAnalysisPostgresDatasetSource_P0Tests
 {
+    [Theory]
+    [InlineData("predicate")]
+    [InlineData("sort")]
+    [InlineData("selection")]
+    public void Period_references_without_period_grouping_retain_timestamp_aggregation(string reference)
+    {
+        var instant = System.Text.Json.JsonSerializer.SerializeToElement(new DateTime(2026, 9, 7, 12, 0, 0, DateTimeKind.Utc));
+        var request = new NGB.PostgreSql.Reporting.PostgresReportExecutionRequest("accounting.ledger.analysis",
+            [new("account_code", "account", "Account", "string")], [], [],
+            [new("debit_amount", "amount", "Amount", "decimal", ReportAggregationKind.Sum)], [], [],
+            new Dictionary<string, object?>(), new(0, 10));
+        request = reference switch
+        {
+            "predicate" => request with { Predicates = [new("period_utc", "period", "Period", "datetime", new(instant))] },
+            "sort" => request with { Sorts = [new("period_utc", null, ReportSortDirection.Asc)] },
+            _ => request with { Selection = new([new("period_utc")], [[instant]]) }
+        };
+
+        var source = AccountingLedgerAnalysisPostgresDatasetSource.SelectAccountAggregateSource(request);
+
+        source.Should().NotBeNull();
+        source!.FromSql.Should().Contain("GROUP BY debit_account_id, period")
+            .And.Contain("GROUP BY credit_account_id, period");
+    }
+
+    [Fact]
+    public void Optimized_source_requires_account_or_period_fields_and_additive_measures()
+    {
+        var request = new NGB.PostgreSql.Reporting.PostgresReportExecutionRequest("accounting.ledger.analysis", [], [], [],
+            [new("debit_amount", "amount", "Amount", "decimal", ReportAggregationKind.Sum)], [], [], new Dictionary<string, object?>(), new(0, 10));
+        foreach (var field in new[] { "account_id", "account_code", "account_name", "account_display", "period_utc" })
+        {
+            var valid = request with { RowGroups = [new(field, field, field, "string")], Sorts = [new(field, null, ReportSortDirection.Asc)],
+                Selection = new([new(field)], [[System.Text.Json.JsonSerializer.SerializeToElement("A")]]) };
+            AccountingLedgerAnalysisPostgresDatasetSource.SelectAccountAggregateSource(valid).Should().NotBeNull();
+        }
+        var invalid = new[]
+        {
+            request with { DetailFields = [new("account_code", "account_code", "Code", "string")] },
+            request with { Measures = [] },
+            request with { Measures = [new("debit_amount", "amount", "Amount", "decimal", ReportAggregationKind.Average)] },
+            request with { ColumnGroups = [new("dimension_set_id", "dimension", "Dimension", "uuid")] },
+            request with { Predicates = [new("document_id", "document", "Document", "uuid", new(System.Text.Json.JsonSerializer.SerializeToElement(Guid.NewGuid())))] },
+            request with { Sorts = [new("document_display", null, ReportSortDirection.Asc)] },
+            request with { Selection = new([new("document_id")], []) }
+        };
+        foreach (var item in invalid)
+            AccountingLedgerAnalysisPostgresDatasetSource.SelectAccountAggregateSource(item).Should().BeNull();
+        AccountingLedgerAnalysisPostgresDatasetSource.SelectAccountAggregateSource(request with { Sorts = [new("debit_amount", "debit_amount", ReportSortDirection.Desc)] }).Should().NotBeNull();
+    }
+
     [Fact]
     public void Source_Registers_Ledger_Analysis_Dataset_Binding()
     {

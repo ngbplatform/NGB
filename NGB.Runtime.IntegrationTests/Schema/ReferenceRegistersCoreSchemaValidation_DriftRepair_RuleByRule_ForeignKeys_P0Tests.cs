@@ -17,15 +17,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// 3) re-apply platform migrations (bootstrapper),
 /// 4) validate again (OK).
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegistersCoreSchemaValidation_DriftRepair_RuleByRule_ForeignKeys_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegistersCoreSchemaValidation_DriftRepair_RuleByRule_ForeignKeys_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenRefRegFieldsRegisterFkDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropConstraintAsync(Fixture.ConnectionString, "reference_register_fields", "fk_refreg_fields__register");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -45,8 +43,6 @@ public sealed class ReferenceRegistersCoreSchemaValidation_DriftRepair_RuleByRul
     [Fact]
     public async Task ValidateAsync_WhenRefRegDimRulesRegisterFkDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropConstraintAsync(Fixture.ConnectionString, "reference_register_dimension_rules", "fk_refreg_dim_rules__register");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -66,8 +62,6 @@ public sealed class ReferenceRegistersCoreSchemaValidation_DriftRepair_RuleByRul
     [Fact]
     public async Task ValidateAsync_WhenRefRegDimRulesDimensionFkDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropConstraintAsync(Fixture.ConnectionString, "reference_register_dimension_rules", "fk_refreg_dim_rules__dimension");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);

@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// P0: CloseFiscalYear must preserve Trial Balance invariants.
 /// ΣDebit == ΣCredit for the closed month, and ΣClosingBalance == 0.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_TrialBalanceBalanced_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

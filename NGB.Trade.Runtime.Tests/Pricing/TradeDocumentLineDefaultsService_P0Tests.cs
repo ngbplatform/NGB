@@ -24,6 +24,32 @@ public sealed class TradeDocumentLineDefaultsService_P0Tests
     }
 
     [Fact]
+    public async Task ResolveAsync_RejectsNullAndOversizedRowsBeforeCallingDependencies()
+    {
+        var sut = CreateSut();
+        var row = new TradeDocumentLineDefaultsRowRequestDto("line", Guid.NewGuid(), null);
+
+        var nullRows = () => sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(TradeCodes.SalesInvoice, null, null, null, null, null, null!),
+            CancellationToken.None);
+        var oversized = () => sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(
+                TradeCodes.SalesInvoice,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Enumerable.Repeat(row, TradeDocumentLineDefaultsService.MaxRowsPerRequest + 1).ToArray()),
+            CancellationToken.None);
+
+        (await nullRows.Should().ThrowAsync<NgbArgumentRequiredException>())
+            .Which.ParamName.Should().Be("Rows");
+        (await oversized.Should().ThrowAsync<NgbArgumentOutOfRangeException>())
+            .Which.ParamName.Should().Be("Rows");
+    }
+
+    [Fact]
     public async Task ResolveAsync_WhenDocumentTypeIsUnsupported_Throws()
     {
         var sut = CreateSut();
@@ -42,6 +68,130 @@ public sealed class TradeDocumentLineDefaultsService_P0Tests
         var ex = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
         ex.Which.ParamName.Should().Be("documentType");
         ex.Which.Reason.Should().Contain("is not supported");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_WhenDocumentTypeIsNull_Throws()
+    {
+        var sut = CreateSut();
+
+        var act = () => sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(null!, null, null, null, null, null, []),
+            CancellationToken.None);
+
+        var ex = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
+        ex.Which.ParamName.Should().Be("documentType");
+    }
+
+    [Theory]
+    [InlineData(TradeCodes.PurchaseReceipt)]
+    [InlineData(TradeCodes.InventoryAdjustment)]
+    public async Task ResolveAsync_CostDocumentWithoutWarehouse_CoversSupportedTypesAndWhitespaceDate(string documentType)
+    {
+        var itemId = Guid.NewGuid();
+        var pricing = new Mock<ITradePricingLookupReader>(MockBehavior.Strict);
+        pricing.Setup(x => x.GetItemSalesProfilesAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, TradeItemSalesProfile>());
+        var sut = CreateSut(pricing.Object);
+
+        var response = await sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(
+                documentType, "   ", null, null, null, null,
+                [new TradeDocumentLineDefaultsRowRequestDto("line-1", itemId, null)]),
+            CancellationToken.None);
+
+        response.Rows.Should().ContainSingle().Which.UnitCost.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ResolveAsync_SalesInvoiceWithoutResolvedPriceType_ReturnsEmptyDefaults()
+    {
+        var itemId = Guid.NewGuid();
+        var pricing = new Mock<ITradePricingLookupReader>(MockBehavior.Strict);
+        pricing.Setup(x => x.GetItemSalesProfilesAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, TradeItemSalesProfile>());
+        var sut = CreateSut(pricing.Object);
+
+        var response = await sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(
+                TradeCodes.SalesInvoice, null, null, null, null, null,
+                [new TradeDocumentLineDefaultsRowRequestDto("line-1", itemId, null)]),
+            CancellationToken.None);
+
+        response.Rows.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new TradeDocumentLineDefaultsRowResultDto("line-1", null, null, null, null));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_SalesInvoiceWithProfileWithoutDefaultPriceType_ReturnsEmptyDefaults()
+    {
+        var itemId = Guid.NewGuid();
+        var pricing = new Mock<ITradePricingLookupReader>(MockBehavior.Strict);
+        pricing.Setup(x => x.GetItemSalesProfilesAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, TradeItemSalesProfile>
+            {
+                [itemId] = new(itemId, null, null)
+            });
+        var sut = CreateSut(pricing.Object);
+
+        var response = await sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(
+                TradeCodes.SalesInvoice,
+                AsOfDate: null,
+                WarehouseId: null,
+                PriceTypeId: null,
+                SalesInvoiceId: null,
+                PurchaseReceiptId: null,
+                Rows: [new TradeDocumentLineDefaultsRowRequestDto("line-1", itemId, null)]),
+            CancellationToken.None);
+
+        response.Rows.Should().ContainSingle().Which.Should().BeEquivalentTo(
+            new TradeDocumentLineDefaultsRowResultDto("line-1", null, null, null, null));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_ItemPriceUpdate_CoversExplicitPriceTypeAndNullSnapshotCurrency()
+    {
+        var profileItemId = Guid.NewGuid();
+        var explicitItemId = Guid.NewGuid();
+        var profilePriceTypeId = Guid.NewGuid();
+        var explicitPriceTypeId = Guid.NewGuid();
+        var pricing = new Mock<ITradePricingLookupReader>(MockBehavior.Strict);
+        pricing.Setup(x => x.GetItemSalesProfilesAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, TradeItemSalesProfile>
+            {
+                [profileItemId] = new(profileItemId, profilePriceTypeId, " ")
+            });
+        pricing.Setup(x => x.GetLatestItemPricesAsync(
+                It.IsAny<IReadOnlyCollection<TradePriceLookupKey>>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<TradePriceLookupKey, TradeItemPriceSnapshot>
+            {
+                [new(profileItemId, profilePriceTypeId)] = new(
+                    profileItemId, profilePriceTypeId, 11m, null!, new DateOnly(2026, 4, 18), null),
+                [new(explicitItemId, explicitPriceTypeId)] = new(
+                    explicitItemId, explicitPriceTypeId, 12m, "EUR", new DateOnly(2026, 4, 18), null)
+            });
+        var sut = CreateSut(pricing.Object);
+
+        var response = await sut.ResolveAsync(
+            new TradeDocumentLineDefaultsRequestDto(
+                TradeCodes.ItemPriceUpdate, "2026-04-18", null, null, null, null,
+                [
+                    new TradeDocumentLineDefaultsRowRequestDto("profile", profileItemId, null),
+                    new TradeDocumentLineDefaultsRowRequestDto("explicit", explicitItemId, explicitPriceTypeId)
+                ]),
+            CancellationToken.None);
+
+        response.Rows.Single(x => x.RowKey == "profile").Should().BeEquivalentTo(
+            new TradeDocumentLineDefaultsRowResultDto(
+                "profile", new NGB.Contracts.Common.RefValueDto(profilePriceTypeId, profilePriceTypeId.ToString("D")), 11m,
+                TradeCodes.DefaultCurrency, null));
+        response.Rows.Single(x => x.RowKey == "explicit").Should().BeEquivalentTo(
+            new TradeDocumentLineDefaultsRowResultDto("explicit", null, 12m, "EUR", null));
     }
 
     [Fact]

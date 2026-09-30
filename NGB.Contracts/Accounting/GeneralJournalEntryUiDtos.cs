@@ -68,7 +68,8 @@ public sealed record GeneralJournalEntryPageDto(
     IReadOnlyList<GeneralJournalEntryListItemDto> Items,
     int Offset,
     int Limit,
-    int? Total);
+    int? Total,
+    string? NextCursor = null);
 
 public sealed record GeneralJournalEntryDocumentDto(
     Guid Id,

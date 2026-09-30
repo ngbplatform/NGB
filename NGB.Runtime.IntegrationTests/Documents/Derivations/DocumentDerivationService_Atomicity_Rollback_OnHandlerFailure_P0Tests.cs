@@ -4,7 +4,6 @@ using NGB.Core.Documents;
 using NGB.Definitions;
 using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
-using NGB.Runtime.UnitOfWork;
 using NGB.Runtime.Documents;
 using NGB.Runtime.Documents.Derivations;
 using NGB.Runtime.IntegrationTests.Infrastructure;
@@ -12,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.Derivations;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentDerivationService_Atomicity_Rollback_OnHandlerFailure_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

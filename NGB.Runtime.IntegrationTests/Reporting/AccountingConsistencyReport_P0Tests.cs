@@ -8,7 +8,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AccountingConsistencyReport_P0Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private static readonly Guid EmptyDimensionSetId = Guid.Empty;

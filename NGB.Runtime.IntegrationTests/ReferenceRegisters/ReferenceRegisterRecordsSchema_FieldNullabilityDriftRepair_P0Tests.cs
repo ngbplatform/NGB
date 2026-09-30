@@ -10,7 +10,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterRecordsSchema_FieldNullabilityDriftRepair_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPost, httpPut } from './http'
+import { httpDelete, httpGet, httpPost, httpPut, type HttpRequestOptions } from './http'
 import type { CatalogItemDto, CatalogTypeMetadataDto, PageRequest, PageResponseDto, RecordPayload } from './contracts'
 
 function toPageQuery(req: PageRequest | null | undefined) {
@@ -18,15 +18,21 @@ export async function getCatalogTypeMetadata(catalogType: string): Promise<Catal
 export async function getCatalogPage(
   catalogType: string,
   req: PageRequest,
+  options?: HttpRequestOptions,
 ): Promise<PageResponseDto<CatalogItemDto>> {
+  const url = `/api/catalogs/${encodeURIComponent(catalogType)}`
+  const query = toPageQuery(req)
+  if (!options) return await httpGet<PageResponseDto<CatalogItemDto>>(url, query)
   return await httpGet<PageResponseDto<CatalogItemDto>>(
-    `/api/catalogs/${encodeURIComponent(catalogType)}`,
-    toPageQuery(req),
+    url,
+    query,
+    options,
   )
 }
 
-export async function getCatalogById(catalogType: string, id: string): Promise<CatalogItemDto> {
-  return await httpGet<CatalogItemDto>(`/api/catalogs/${encodeURIComponent(catalogType)}/${encodeURIComponent(id)}`)
+export async function getCatalogById(catalogType: string, id: string, options?: HttpRequestOptions): Promise<CatalogItemDto> {
+  const url = `/api/catalogs/${encodeURIComponent(catalogType)}/${encodeURIComponent(id)}`
+  return options ? await httpGet<CatalogItemDto>(url, undefined, options) : await httpGet<CatalogItemDto>(url)
 }
 
 export async function createCatalog(catalogType: string, payload: RecordPayload): Promise<CatalogItemDto> {

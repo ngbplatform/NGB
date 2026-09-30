@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/http'
 import NgbDrawer from '../components/NgbDrawer.vue'
@@ -37,6 +37,11 @@ type UserForm = {
   confirmPassword: string
   requirePasswordUpdate: boolean
 }
+
+let loadSequence = 0
+let effectiveSequence = 0
+let loadController: AbortController | null = null
+let effectiveController: AbortController | null = null
 
 type UserFieldErrors = Partial<Record<keyof Omit<UserForm, 'requirePasswordUpdate'>, string>>
 
@@ -148,20 +153,40 @@ function applyUser(next: UserDetailsDto): void {
 async function loadEffectiveAccess(): Promise<void> {
   if (isNew.value || !user.value) return
 
+  const sequence = ++effectiveSequence
+  effectiveController?.abort()
+  const controller = new AbortController()
+  effectiveController = controller
+  const targetUserId = user.value.userId
+
   effectiveLoading.value = true
   effectiveError.value = null
 
   try {
-    effectiveAccess.value = await getUserEffectiveAccess(user.value.userId)
+    const nextAccess = await getUserEffectiveAccess(targetUserId, { signal: controller.signal })
+    if (sequence !== effectiveSequence || user.value?.userId !== targetUserId) return
+    effectiveAccess.value = nextAccess
   } catch (cause) {
+    if (sequence !== effectiveSequence) return
     effectiveAccess.value = null
     effectiveError.value = toErrorMessage(cause, 'Failed to load effective access')
   } finally {
-    effectiveLoading.value = false
+    if (effectiveController === controller) {
+      effectiveLoading.value = false
+      effectiveController = null
+    }
   }
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  effectiveSequence += 1
+  loadController?.abort()
+  effectiveController?.abort()
+  const controller = new AbortController()
+  loadController = controller
+  const targetUserId = userId.value
+  const creating = isNew.value
   loading.value = true
   error.value = null
   accessDenied.value = false
@@ -169,22 +194,40 @@ async function load(): Promise<void> {
 
   try {
     await access.load()
-    if (isNew.value && !access.canManageUsers) {
+    if (sequence !== loadSequence) return
+    if (creating && !access.canManageUsers) {
       accessDenied.value = true
       return
     }
 
-    roles.value = await getRoles()
-    if (!isNew.value) {
-      const nextUser = await getUser(userId.value)
+    if (creating) {
+      roles.value = await getRoles({ signal: controller.signal })
+    } else {
+      effectiveLoading.value = true
+      const [nextRoles, nextUser, effectiveResult] = await Promise.all([
+        getRoles({ signal: controller.signal }),
+        getUser(targetUserId, { signal: controller.signal }),
+        Promise.resolve(getUserEffectiveAccess(targetUserId, { signal: controller.signal }))
+          .then((value) => ({ value, error: null as unknown }))
+          .catch((cause: unknown) => ({ value: null, error: cause })),
+      ])
+      if (sequence !== loadSequence) return
+      roles.value = nextRoles
       applyUser(nextUser)
-      await loadEffectiveAccess()
+      effectiveAccess.value = effectiveResult.value
+      effectiveError.value = effectiveResult.error
+        ? toErrorMessage(effectiveResult.error, 'Failed to load effective access')
+        : null
+      effectiveLoading.value = false
     }
   } catch (cause) {
-    accessDenied.value = cause instanceof ApiError && cause.status === 403
+    if (sequence !== loadSequence) return
+    accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
+      && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load user')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -193,7 +236,6 @@ function isRoleSelected(roleId: string): boolean {
 }
 
 function setRoleSelected(roleId: string, selected: boolean): void {
-  if (!canEdit.value) return
   const next = new Set(selectedRoleIds.value)
   if (selected) next.add(roleId)
   else next.delete(roleId)
@@ -204,17 +246,12 @@ function isEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
-function cleanOptional(value: string): string | null {
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
 function uniqueMessages(messages: string[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
   for (const message of messages) {
-    const text = String(message ?? '').trim()
-    if (!text || seen.has(text)) continue
+    const text = message.trim()
+    if (seen.has(text)) continue
     seen.add(text)
     result.push(text)
   }
@@ -275,7 +312,6 @@ function validateBeforeSave(): boolean {
 }
 
 function startChangePassword(): void {
-  if (!canEdit.value) return
   changePasswordMode.value = true
   form.value.password = ''
   form.value.confirmPassword = ''
@@ -296,7 +332,7 @@ function cancelChangePassword(): void {
 }
 
 async function save(): Promise<void> {
-  if (!canEdit.value || saving.value) return
+  if (saving.value) return
 
   if (!validateBeforeSave()) {
     error.value = null
@@ -312,7 +348,7 @@ async function save(): Promise<void> {
         email: form.value.email.trim(),
         firstName: null,
         lastName: null,
-        displayName: cleanOptional(form.value.displayName),
+        displayName: form.value.displayName.trim(),
         enabled: true,
         temporaryPassword: form.value.password,
         requirePasswordUpdate: form.value.requirePasswordUpdate,
@@ -327,11 +363,11 @@ async function save(): Promise<void> {
 
     const password = changePasswordMode.value ? form.value.password : null
     const updated = await updateUser(userId.value, {
-      email: cleanOptional(form.value.email),
+      email: form.value.email.trim(),
       firstName: null,
       lastName: null,
-      displayName: cleanOptional(form.value.displayName),
-      enabled: user.value?.keycloakEnabled ?? user.value?.isActive ?? true,
+      displayName: form.value.displayName.trim(),
+      enabled: user.value!.keycloakEnabled ?? user.value!.isActive,
       temporaryPassword: password,
       requirePasswordUpdate: false,
       roleIds: selectedRoleIds.value,
@@ -349,14 +385,12 @@ async function save(): Promise<void> {
 }
 
 async function confirmActivationChange(): Promise<void> {
-  if (!user.value || !confirmMode.value) return
-
   activating.value = true
   error.value = null
 
   try {
-    if (confirmMode.value === 'deactivate') await deactivateUser(user.value.userId)
-    else await reactivateUser(user.value.userId)
+    if (confirmMode.value === 'deactivate') await deactivateUser(user.value!.userId)
+    else await reactivateUser(user.value!.userId)
     confirmMode.value = null
     await load()
   } catch (cause) {
@@ -375,7 +409,6 @@ function openRole(roleId: string): void {
 }
 
 function openAuditLog(): void {
-  if (!canOpenAudit.value) return
   auditOpen.value = true
 }
 
@@ -390,6 +423,15 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  effectiveSequence += 1
+  loadController?.abort()
+  effectiveController?.abort()
+  loadController = null
+  effectiveController = null
+})
 </script>
 
 <template>
@@ -469,8 +511,7 @@ watch(
                     :value="form.password"
                     :disabled="!canEdit"
                     autocomplete="new-password"
-                    class="h-9 w-full rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card px-3 pr-10 text-sm text-ngb-text placeholder:text-ngb-muted/70 ngb-focus"
-                    :class="!canEdit ? 'cursor-not-allowed opacity-60' : ''"
+                    class="h-9 w-full rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card px-3 pr-10 text-sm text-ngb-text placeholder:text-ngb-muted/70 ngb-focus disabled:cursor-not-allowed disabled:opacity-60"
                     @input="form.password = ($event.target as HTMLInputElement).value"
                   />
                   <button
@@ -494,8 +535,7 @@ watch(
                     :value="form.confirmPassword"
                     :disabled="!canEdit"
                     autocomplete="new-password"
-                    class="h-9 w-full rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card px-3 pr-10 text-sm text-ngb-text placeholder:text-ngb-muted/70 ngb-focus"
-                    :class="!canEdit ? 'cursor-not-allowed opacity-60' : ''"
+                    class="h-9 w-full rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card px-3 pr-10 text-sm text-ngb-text placeholder:text-ngb-muted/70 ngb-focus disabled:cursor-not-allowed disabled:opacity-60"
                     @input="form.confirmPassword = ($event.target as HTMLInputElement).value"
                   />
                   <button
@@ -596,7 +636,7 @@ watch(
       :confirm-text="confirmMode === 'reactivate' ? 'Reactivate' : 'Deactivate'"
       :danger="confirmMode === 'deactivate'"
       :confirm-loading="activating"
-      @update:open="(value) => { if (!value) confirmMode = null }"
+      @update:open="confirmMode = null"
       @confirm="confirmActivationChange"
     />
 
@@ -604,7 +644,7 @@ watch(
       <NgbEntityAuditSidebar
         :open="auditOpen"
         :entity-kind="AUDIT_ENTITY_KIND_SECURITY_USER"
-        :entity-id="user?.userId ?? null"
+        :entity-id="user!.userId"
         :entity-title="auditEntityTitle"
         :behavior="USER_AUDIT_BEHAVIOR"
         @back="closeAuditLog"

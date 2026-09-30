@@ -11,12 +11,24 @@ namespace NGB.Runtime.Tests.Reporting;
 public sealed class IncomeStatementReportService_P0Tests
 {
     [Fact]
+    public async Task GetAsync_WhenRequestIsNull_ThrowsArgumentRequired()
+    {
+        var service = new IncomeStatementReportService(
+            new StubIncomeStatementSnapshotReader(new IncomeStatementSnapshot([])));
+
+        var action = () => service.GetAsync(null!, default);
+
+        await action.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
     public async Task GetAsync_Computes_ExtendedSectionTotals_And_Excludes_ZeroLines_When_Requested()
     {
         var service = new IncomeStatementReportService(
             new StubIncomeStatementSnapshotReader(
                 new IncomeStatementSnapshot([
                     new IncomeStatementSnapshotRow(Guid.NewGuid(), "4000", "Rental Income", StatementSection.Income, 0m, 100m),
+                    new IncomeStatementSnapshotRow(Guid.NewGuid(), "4100", "Zero Income", StatementSection.Income, 0m, 0m),
                     new IncomeStatementSnapshotRow(Guid.NewGuid(), "5000", "Cost of Goods Sold", StatementSection.CostOfGoodsSold, 60m, 0m),
                     new IncomeStatementSnapshotRow(Guid.NewGuid(), "6000", "Operating Expense", StatementSection.Expenses, 0m, 0m),
                     new IncomeStatementSnapshotRow(Guid.NewGuid(), "7000", "Other Income", StatementSection.OtherIncome, 0m, 10m),

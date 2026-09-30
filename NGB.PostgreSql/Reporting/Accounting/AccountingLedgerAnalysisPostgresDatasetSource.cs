@@ -1,4 +1,5 @@
 using NGB.Core.Reporting;
+using NGB.Contracts.Reporting;
 
 namespace NGB.PostgreSql.Reporting.Accounting;
 
@@ -84,6 +85,79 @@ public sealed class AccountingLedgerAnalysisPostgresDatasetSource : IPostgresRep
                     new PostgresReportMeasureBinding("debit_amount", "x.debit_amount", "decimal"),
                     new PostgresReportMeasureBinding("credit_amount", "x.credit_amount", "decimal"),
                     new PostgresReportMeasureBinding("net_amount", "x.net_amount", "decimal")
-                ])
+                ],
+                cursorKeyFieldCodes: ["entry_id", "posting_side"],
+                aggregateSource: SelectAccountAggregateSource)
         ];
+
+    public static PostgresReportSqlSource? SelectAccountAggregateSource(PostgresReportExecutionRequest request)
+    {
+        // Sum-only account/period shapes can aggregate before joining account labels.
+        // Keep exact timestamps so time grains, predicates and selections retain their semantics.
+        // Details, dimensions and non-additive measures still use raw observations.
+        static bool AggregateField(string field)
+            => field is "account_id" or "account_code" or "account_name" or "account_display" or "period_utc";
+
+        if (request.DetailFields.Count != 0 || request.Measures.Count == 0
+            || request.Measures.Any(m => m.Aggregation != ReportAggregationKind.Sum)
+            || request.RowGroups.Concat(request.ColumnGroups).Any(g => !AggregateField(g.FieldCode))
+            || request.Predicates.Any(p => !AggregateField(p.FieldCode))
+            || request.Sorts.Any(s => s.MeasureCode is null && !AggregateField(s.FieldCode))
+            || request.Selection?.Fields.Any(f => !AggregateField(f.FieldCode)) == true)
+        {
+            return null;
+        }
+
+        if (request.RowGroups.Concat(request.ColumnGroups).Any(g => g.FieldCode == "period_utc")
+            || request.Predicates.Any(p => p.FieldCode == "period_utc")
+            || request.Sorts.Any(s => s.MeasureCode is null && s.FieldCode == "period_utc")
+            || request.Selection?.Fields.Any(f => f.FieldCode == "period_utc") == true)
+        {
+            return AccountPeriodAggregateSource;
+        }
+
+        return new PostgresReportSqlSource("""
+            (
+                SELECT a.account_id, a.code AS account_code, a.name AS account_name,
+                       a.code || ' — ' || a.name AS account_display,
+                       SUM(r.debit_amount) AS debit_amount, SUM(r.credit_amount) AS credit_amount,
+                       SUM(r.debit_amount - r.credit_amount) AS net_amount
+                FROM (
+                    SELECT debit_account_id AS account_id, SUM(amount) AS debit_amount, 0::numeric AS credit_amount
+                    FROM accounting_register_main
+                    WHERE period >= @from_utc AND period < @to_utc_exclusive
+                    GROUP BY debit_account_id
+                    UNION ALL
+                    SELECT credit_account_id AS account_id, 0::numeric AS debit_amount, SUM(amount) AS credit_amount
+                    FROM accounting_register_main
+                    WHERE period >= @from_utc AND period < @to_utc_exclusive
+                    GROUP BY credit_account_id
+                ) r
+                JOIN accounting_accounts a ON a.account_id = r.account_id AND a.is_deleted = FALSE
+                GROUP BY a.account_id, a.code, a.name
+            ) x
+            """);
+    }
+
+    private static readonly PostgresReportSqlSource AccountPeriodAggregateSource = new("""
+        (
+            SELECT a.account_id, a.code AS account_code, a.name AS account_name,
+                   a.code || ' — ' || a.name AS account_display, r.period,
+                   SUM(r.debit_amount) AS debit_amount, SUM(r.credit_amount) AS credit_amount,
+                   SUM(r.debit_amount - r.credit_amount) AS net_amount
+            FROM (
+                SELECT debit_account_id AS account_id, period, SUM(amount) AS debit_amount, 0::numeric AS credit_amount
+                FROM accounting_register_main
+                WHERE period >= @from_utc AND period < @to_utc_exclusive
+                GROUP BY debit_account_id, period
+                UNION ALL
+                SELECT credit_account_id AS account_id, period, 0::numeric AS debit_amount, SUM(amount) AS credit_amount
+                FROM accounting_register_main
+                WHERE period >= @from_utc AND period < @to_utc_exclusive
+                GROUP BY credit_account_id, period
+            ) r
+            JOIN accounting_accounts a ON a.account_id = r.account_id AND a.is_deleted = FALSE
+            GROUP BY a.account_id, a.code, a.name, r.period
+        ) x
+        """);
 }

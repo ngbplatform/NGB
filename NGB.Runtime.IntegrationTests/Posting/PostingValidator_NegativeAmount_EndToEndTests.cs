@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingValidator_NegativeAmount_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

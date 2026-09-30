@@ -4,11 +4,7 @@ namespace NGB.Runtime.Reporting.Internal;
 
 internal static class ReportDisplayHelpers
 {
-    public static string ShortGuid(Guid value)
-    {
-        var s = value.ToString("N");
-        return s.Length > 8 ? s[..8] : s;
-    }
+    public static string ShortGuid(Guid value) => value.ToString("N")[..8];
 
     public static IReadOnlyList<string> ToDimensionDisplayValues(
         this DimensionBag bag,

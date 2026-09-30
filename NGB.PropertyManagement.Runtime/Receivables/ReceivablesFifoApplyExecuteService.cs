@@ -1,6 +1,7 @@
 using NGB.Persistence.Documents;
 using NGB.Persistence.Locks;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Contracts;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Documents;
 using NGB.PropertyManagement.Receivables;
@@ -29,7 +30,8 @@ public sealed class ReceivablesFifoApplyExecuteService(
     IDocumentRepository documents,
     IAdvisoryLockManager advisoryLocks,
     IUnitOfWork uow,
-    IReceivablePaymentWorkCenterSynchronizer workCenter)
+    IReceivablePaymentWorkCenterSynchronizer workCenter,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IReceivablesFifoApplyExecuteService
 {
     public async Task<ReceivablesFifoApplyExecuteResponse> ExecuteAsync(
@@ -42,9 +44,16 @@ public sealed class ReceivablesFifoApplyExecuteService(
         if (request.MaxApplications is not null && request.MaxApplications <= 0)
             throw ReceivablesRequestValidationException.MaxApplicationsInvalid();
 
+        if (request.MaxApplications > FifoApplyLimits.MaxAtomicApplications)
+            throw ReceivablesRequestValidationException.MaxApplicationsTooLarge(FifoApplyLimits.MaxAtomicApplications);
+
+        var maxApplications = request.MaxApplications ?? FifoApplyLimits.DefaultMaxAtomicApplications;
+
+        using var postingReadScope = postingReadCache?.BeginScope();
+
         // 1) Plan (no writes).
         var plan = await suggest.SuggestAsync(
-            new ReceivablesFifoApplySuggestRequest(request.CreditDocumentId, request.MaxApplications),
+            new ReceivablesFifoApplySuggestRequest(request.CreditDocumentId, maxApplications),
             ct);
 
         if (plan.SuggestedApplies.Count == 0)
@@ -69,28 +78,42 @@ public sealed class ReceivablesFifoApplyExecuteService(
             var creditSource = await ReceivableCreditSourceResolver.ReadRequiredAsync(readers, documents, request.CreditDocumentId, innerCt);
             var dateUtc = DateTime.SpecifyKind(creditSource.CreditDateUtc.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-            foreach (var s in plan.SuggestedApplies)
+            var suggestions = plan.SuggestedApplies
+                .Where(static suggestion => suggestion.Amount > 0m)
+                .ToArray();
+            var applyIds = await ReceivablesApplyExecutionHelpers.CreateApplyDraftsAndUpsertHeadsAsync(
+                drafts,
+                relationships,
+                applyHeadWriter,
+                suggestions.Select(suggestion => new ReceivablesApplyExecutionHelpers.ApplyDraftRequest(
+                        PropertyManagementCodes.ReceivableApply,
+                        dateUtc,
+                        request.CreditDocumentId,
+                        suggestion.ChargeDocumentId,
+                        creditSource.CreditDateUtc,
+                        suggestion.Amount,
+                        Memo: null))
+                    .ToArray(),
+                innerCt);
+
+            if (posting is IDocumentPostingBatchService batchPosting)
             {
-                if (s.Amount <= 0m)
-                    continue;
+                await batchPosting.PostManyAsync(applyIds, manageTransaction: false, ct: innerCt);
+            }
+            else
+            {
+                foreach (var applyId in applyIds)
+                {
+                    await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
+                }
+            }
 
-                var applyId = await ReceivablesApplyExecutionHelpers.CreateApplyDraftAndUpsertHeadAsync(
-                    drafts: drafts,
-                    relationships: relationships,
-                    headWriter: applyHeadWriter,
-                    typeCode: PropertyManagementCodes.ReceivableApply,
-                    dateUtc: dateUtc,
-                    creditDocumentId: request.CreditDocumentId,
-                    chargeDocumentId: s.ChargeDocumentId,
-                    appliedOnUtc: creditSource.CreditDateUtc,
-                    amount: s.Amount,
-                    memo: null,
-                    ct: innerCt);
+            for (var index = 0; index < suggestions.Length; index++)
+            {
+                var suggestion = suggestions[index];
+                var applyId = applyIds[index];
 
-                // Post inside the same outer transaction.
-                await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
-
-                executed.Add(new ReceivablesExecutedApplyDto(applyId, s.ChargeDocumentId, s.Amount));
+                executed.Add(new ReceivablesExecutedApplyDto(applyId, suggestion.ChargeDocumentId, suggestion.Amount));
             }
 
             if (executed.Count > 0)

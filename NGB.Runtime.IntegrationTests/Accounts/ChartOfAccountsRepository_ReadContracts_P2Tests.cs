@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Accounts;
 /// - admin list ordering and includeDeleted behavior
 /// - GetCodeById and HasMovements semantics (used by immutability rules and UX).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsRepository_ReadContracts_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

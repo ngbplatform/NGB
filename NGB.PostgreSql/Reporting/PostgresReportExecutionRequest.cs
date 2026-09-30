@@ -1,4 +1,5 @@
 using NGB.Contracts.Reporting;
+using NGB.Application.Abstractions.Services;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Normalization;
 
@@ -13,7 +14,9 @@ public sealed record PostgresReportExecutionRequest(
     IReadOnlyList<PostgresReportSortSelection> Sorts,
     IReadOnlyList<PostgresReportPredicateSelection> Predicates,
     IReadOnlyDictionary<string, object?> Parameters,
-    PostgresReportPaging Paging)
+    PostgresReportPaging Paging,
+    ReportRowSelection? Selection = null,
+    bool DistinctGroups = false)
 {
     public string DatasetCodeNorm { get; } = CodeNormalizer.NormalizeCodeNorm(
         string.IsNullOrWhiteSpace(DatasetCode) ? throw new NgbArgumentRequiredException(nameof(DatasetCode)) : DatasetCode,
@@ -58,6 +61,7 @@ public sealed record PostgresReportPredicateSelection(
     string OutputCode,
     string Label,
     string DataType,
-    ReportFilterValueDto Filter);
+    ReportFilterValueDto Filter,
+    ReportTimeGrain? TimeGrain = null);
 
 public sealed record PostgresReportPaging(int Offset, int Limit, string? Cursor = null, bool DisablePaging = false);

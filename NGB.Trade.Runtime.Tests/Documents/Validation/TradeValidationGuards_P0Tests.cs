@@ -6,10 +6,12 @@ using NGB.Accounting.Dimensions;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
+using NGB.Core.Catalogs.Exceptions;
 using NGB.Core.Documents;
 using NGB.Persistence.Documents;
 using NGB.Tools.Exceptions;
 using NGB.Trade.Documents;
+using NGB.Trade.References;
 using NGB.Trade.Runtime.Documents.Validation;
 
 namespace NGB.Trade.Runtime.Tests.Documents.Validation;
@@ -443,6 +445,38 @@ public sealed class TradeCatalogValidationGuards_P0Tests
         var ex = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
         ex.Which.ParamName.Should().Be("lines[0].item_id");
         ex.Which.Reason.Should().Be("Selected item must be marked as an inventory item.");
+    }
+
+    [Fact]
+    public void Batched_inventory_item_guard_covers_required_missing_deleted_inactive_and_type_rules()
+    {
+        const string fieldPath = "lines[0].item_id";
+        var missingId = Guid.CreateVersion7();
+        var deletedId = Guid.CreateVersion7();
+        var inactiveId = Guid.CreateVersion7();
+        var serviceId = Guid.CreateVersion7();
+        var inventoryId = Guid.CreateVersion7();
+        IReadOnlyDictionary<Guid, TradeInventoryItemValidationSnapshot> snapshots =
+            new Dictionary<Guid, TradeInventoryItemValidationSnapshot>
+            {
+                [deletedId] = new(deletedId, IsDeleted: true, IsActive: true, IsInventoryItem: true),
+                [inactiveId] = new(inactiveId, IsDeleted: false, IsActive: false, IsInventoryItem: true),
+                [serviceId] = new(serviceId, IsDeleted: false, IsActive: true, IsInventoryItem: false),
+                [inventoryId] = new(inventoryId, IsDeleted: false, IsActive: true, IsInventoryItem: true)
+            };
+
+        ((Action)(() => TradeCatalogValidationGuards.EnsureInventoryItem(Guid.Empty, fieldPath, snapshots)))
+            .Should().Throw<NgbArgumentInvalidException>();
+        ((Action)(() => TradeCatalogValidationGuards.EnsureInventoryItem(missingId, fieldPath, snapshots)))
+            .Should().Throw<CatalogNotFoundException>();
+        ((Action)(() => TradeCatalogValidationGuards.EnsureInventoryItem(deletedId, fieldPath, snapshots)))
+            .Should().Throw<NgbArgumentInvalidException>().WithMessage("*not available*");
+        ((Action)(() => TradeCatalogValidationGuards.EnsureInventoryItem(inactiveId, fieldPath, snapshots)))
+            .Should().Throw<NgbArgumentInvalidException>().WithMessage("*inactive*");
+        ((Action)(() => TradeCatalogValidationGuards.EnsureInventoryItem(serviceId, fieldPath, snapshots)))
+            .Should().Throw<NgbArgumentInvalidException>().WithMessage("*inventory item*");
+        ((Action)(() => TradeCatalogValidationGuards.EnsureInventoryItem(inventoryId, fieldPath, snapshots)))
+            .Should().NotThrow();
     }
 
     public static IEnumerable<object[]> ActiveCatalogGuardCases()

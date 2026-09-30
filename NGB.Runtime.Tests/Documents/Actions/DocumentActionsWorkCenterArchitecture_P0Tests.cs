@@ -21,21 +21,20 @@ public sealed class DocumentActionsWorkCenterArchitecture_P0Tests
     public void Platform_projects_do_not_reference_vertical_assemblies()
     {
         var root = FindRepositoryRoot();
-        var platformProjects = new[]
-        {
-            "NGB.Core/NGB.Core.csproj",
-            "NGB.Metadata/NGB.Metadata.csproj",
-            "NGB.Definitions/NGB.Definitions.csproj",
-            "NGB.Application.Abstractions/NGB.Application.Abstractions.csproj",
-            "NGB.Persistence/NGB.Persistence.csproj",
-            "NGB.PostgreSql/NGB.PostgreSql.csproj",
-            "NGB.Runtime/NGB.Runtime.csproj",
-            "NGB.Api/NGB.Api.csproj"
-        };
+        var platformProjects = Directory
+            .EnumerateDirectories(root, "NGB.*", SearchOption.TopDirectoryOnly)
+            .Where(directory => !VerticalProjectMarkers.Any(marker =>
+                Path.GetFileName(directory).StartsWith($"NGB.{marker}", StringComparison.OrdinalIgnoreCase)))
+            .SelectMany(directory => Directory.EnumerateFiles(directory, "*.csproj", SearchOption.TopDirectoryOnly))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
 
-        foreach (var relativePath in platformProjects)
+        platformProjects.Should().NotBeEmpty();
+
+        foreach (var projectPath in platformProjects)
         {
-            var references = ReadProjectReferences(Path.Combine(root, relativePath));
+            var relativePath = Path.GetRelativePath(root, projectPath);
+            var references = ReadProjectReferences(projectPath);
             references.Should().NotContain(
                 reference => VerticalProjectMarkers.Any(
                     marker => reference.Contains(marker, StringComparison.OrdinalIgnoreCase)),

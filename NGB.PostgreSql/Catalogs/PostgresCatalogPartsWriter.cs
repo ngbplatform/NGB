@@ -9,6 +9,9 @@ namespace NGB.PostgreSql.Catalogs;
 
 internal sealed class PostgresCatalogPartsWriter(IUnitOfWork uow) : ICatalogPartsWriter
 {
+    private const int MaxParametersPerBatch = 2000;
+    private const int MaxRowsPerBatch = 500;
+
     public async Task ReplacePartsAsync(
         IReadOnlyList<CatalogTableMetadata> partTables,
         Guid catalogId,
@@ -30,8 +33,12 @@ internal sealed class PostgresCatalogPartsWriter(IUnitOfWork uow) : ICatalogPart
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
+        var preparedParts = new List<PreparedPart>();
         foreach (var t in partTables)
         {
+            if (t is null)
+                continue;
+
             if (t.Kind != TableKind.Part)
                 continue;
 
@@ -39,18 +46,14 @@ internal sealed class PostgresCatalogPartsWriter(IUnitOfWork uow) : ICatalogPart
             if (string.IsNullOrWhiteSpace(tableName))
                 throw new NgbArgumentInvalidException(nameof(partTables), "Part table name is required.");
 
-            var deleteSql = $"DELETE FROM {Qi(tableName)} WHERE catalog_id = @catalogId;";
-            await uow.Connection.ExecuteAsync(new CommandDefinition(
-                deleteSql,
-                new { catalogId },
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-
             rowsByTable.TryGetValue(tableName, out var rows);
             rows ??= [];
 
             if (rows.Count == 0)
+            {
+                preparedParts.Add(new PreparedPart(tableName, rows, []));
                 continue;
+            }
 
             var allowed = t.Columns
                 .Where(c => !IsCatalogId(c.ColumnName) && c.ColumnType != ColumnType.Json)
@@ -83,44 +86,90 @@ internal sealed class PostgresCatalogPartsWriter(IUnitOfWork uow) : ICatalogPart
             if (orderedColumns.Count == 0)
                 throw new NgbArgumentInvalidException(nameof(rowsByTable), $"No insertable columns provided for '{tableName}'.");
 
-            var insertColumnsSql = new List<string> { "catalog_id" };
-            insertColumnsSql.AddRange(orderedColumns.Select(Qi));
+            preparedParts.Add(new PreparedPart(tableName, rows, orderedColumns));
+        }
 
-            var p = new DynamicParameters();
-            p.Add("catalogId", catalogId);
+        if (preparedParts.Count == 0)
+            return;
 
-            var valuesSql = new List<string>(rows.Count);
-            for (var i = 0; i < rows.Count; i++)
-            {
-                var r = rows[i];
-                var rowParams = new List<string> { "@catalogId" };
+        var deleteSql = string.Join(
+            Environment.NewLine,
+            preparedParts.Select(part => $"DELETE FROM {Qi(part.TableName)} WHERE catalog_id = @catalogId;"));
+        var pendingSql = new List<string> { deleteSql };
+        var pendingParameters = new DynamicParameters();
+        pendingParameters.Add("catalogId", catalogId);
+        var pendingParameterCount = 0;
+        var statementIndex = 0;
 
-                foreach (var col in orderedColumns)
-                {
-                    var paramName = $"p_{col}_{i}";
-                    r.TryGetValue(col, out var value);
-                    p.Add(paramName, value);
-                    rowParams.Add("@" + paramName);
-                }
-
-                valuesSql.Add("(" + string.Join(", ", rowParams) + ")");
-            }
-
-            var insertSql = $"""
-                            INSERT INTO {Qi(tableName)} ({string.Join(", ", insertColumnsSql)})
-                            VALUES {string.Join(", ", valuesSql)};
-                            """;
-
+        async Task FlushAsync()
+        {
             await uow.Connection.ExecuteAsync(new CommandDefinition(
-                insertSql,
-                p,
+                string.Join(Environment.NewLine, pendingSql),
+                pendingParameters,
                 transaction: uow.Transaction,
                 cancellationToken: ct));
+
+            pendingSql = [];
+            pendingParameters = new DynamicParameters();
+            pendingParameters.Add("catalogId", catalogId);
+            pendingParameterCount = 0;
         }
+
+        foreach (var part in preparedParts)
+        {
+            if (part.Rows.Count == 0)
+                continue;
+
+            var insertColumnsSql = new List<string> { "catalog_id" };
+            insertColumnsSql.AddRange(part.OrderedColumns.Select(Qi));
+
+            var batchSize = Math.Clamp(MaxParametersPerBatch / part.OrderedColumns.Count, 1, MaxRowsPerBatch);
+
+            for (var offset = 0; offset < part.Rows.Count; offset += batchSize)
+            {
+                var take = Math.Min(batchSize, part.Rows.Count - offset);
+                var requiredParameters = take * part.OrderedColumns.Count;
+
+                if (pendingParameterCount > 0 && pendingParameterCount + requiredParameters > MaxParametersPerBatch)
+                    await FlushAsync();
+
+                var valuesSql = new List<string>(take);
+                var currentStatementIndex = statementIndex++;
+
+                for (var batchIndex = 0; batchIndex < take; batchIndex++)
+                {
+                    var row = part.Rows[offset + batchIndex];
+                    var rowParams = new List<string> { "@catalogId" };
+
+                    for (var columnIndex = 0; columnIndex < part.OrderedColumns.Count; columnIndex++)
+                    {
+                        var col = part.OrderedColumns[columnIndex];
+                        var paramName = $"p_{currentStatementIndex}_{batchIndex}_{columnIndex}";
+                        row.TryGetValue(col, out var value);
+                        pendingParameters.Add(paramName, value);
+                        rowParams.Add("@" + paramName);
+                    }
+
+                    valuesSql.Add("(" + string.Join(", ", rowParams) + ")");
+                }
+
+                pendingSql.Add($"""
+                                INSERT INTO {Qi(part.TableName)} ({string.Join(", ", insertColumnsSql)})
+                                VALUES {string.Join(", ", valuesSql)};
+                                """);
+                pendingParameterCount += requiredParameters;
+            }
+        }
+
+        await FlushAsync();
     }
 
-    private static bool IsCatalogId(string name)
-        => string.Equals(name, "catalog_id", StringComparison.OrdinalIgnoreCase);
+    private sealed record PreparedPart(
+        string TableName,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows,
+        IReadOnlyList<string> OrderedColumns);
+
+    private static bool IsCatalogId(string name) => string.Equals(name, "catalog_id", StringComparison.OrdinalIgnoreCase);
 
     private static string Qi(string ident)
     {

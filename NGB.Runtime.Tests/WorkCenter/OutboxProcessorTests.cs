@@ -1,12 +1,16 @@
+using System.Collections.Concurrent;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.IntegrationEvents;
+using NGB.Core.WorkCenter;
+using NGB.Definitions.WorkCenter;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.Security;
@@ -130,6 +134,178 @@ public sealed class OutboxProcessorTests
             It.IsAny<long>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
         outbox.VerifyAll();
         uow.CommitCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Independent_subjects_are_parallelized_while_each_subject_keeps_claim_order()
+    {
+        var uow = new RecordingUnitOfWork();
+        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
+        var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
+        var factoryCalls = 0;
+        var changedUserId = Guid.NewGuid();
+        var first = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/a/1");
+        var second = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/b/2");
+        var third = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid(), subject: "document/a/1");
+        var captured = new ConcurrentBag<IReadOnlyList<OutboxConsumerWorkItem>>();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bothStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = 0;
+
+        outbox.Setup(repository => repository.ClaimBatchAsync(
+                "work-center", 3, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([first, second, third]);
+        var factory = new DelegatePartitionProcessorFactory(async (partition, ct) =>
+            {
+                Interlocked.Increment(ref factoryCalls);
+                captured.Add(partition);
+                if (Interlocked.Increment(ref running) == 2)
+                    bothStarted.TrySetResult();
+
+                await release.Task.WaitAsync(ct);
+                Interlocked.Decrement(ref running);
+                return [changedUserId];
+            });
+        realtime.Setup(notifier => notifier.NotifyUsersChangedAsync(
+                Now.Ticks,
+                It.Is<IReadOnlyCollection<Guid>>(users => users.SequenceEqual(new[] { changedUserId })),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var processor = Processor(
+            uow,
+            outbox,
+            [],
+            realtime.Object,
+            partitionProcessorFactory: factory,
+            options: new NgbWorkCenterOptions { ProjectionParallelism = 2 });
+
+        var processing = processor.ProcessBatchAsync(3, CancellationToken.None);
+        await bothStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        release.TrySetResult();
+
+        (await processing).Should().Be(3);
+        captured.Should().HaveCount(2);
+        captured.Single(partition => partition[0].Event.Subject == "document/a/1")
+            .Select(item => item.Event.EventId)
+            .Should().Equal(first.Event.EventId, third.Event.EventId);
+        factoryCalls.Should().Be(2);
+        realtime.VerifyAll();
+        uow.CommitCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Scoped_partition_factory_resolves_and_executes_the_concrete_partition_processor()
+    {
+        var uow = new RecordingUnitOfWork();
+        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
+        var item = WorkItem("test.no_policy", attempt: 3);
+        outbox.Setup(repository => repository.MarkCompletedAsync(
+                item.Event.EventId,
+                "work-center",
+                3,
+                Now,
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var services = new ServiceCollection();
+        services.AddScoped(_ => new WorkCenterOutboxPartitionProcessor(
+            uow,
+            outbox.Object,
+            [],
+            RecipientResolver(),
+            new FixedTimeProvider(Now),
+            NullLogger<WorkCenterOutboxPartitionProcessor>.Instance));
+        await using var provider = services.BuildServiceProvider();
+        var factory = new WorkCenterOutboxPartitionProcessorFactory(
+            provider.GetRequiredService<IServiceScopeFactory>());
+
+        var changedUsers = await factory.ProcessAsync([item], CancellationToken.None);
+
+        changedUsers.Should().BeEmpty();
+        outbox.VerifyAll();
+        uow.CommitCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Recipient_metadata_is_cached_within_a_batch_and_reset_between_batches()
+    {
+        var uow = new RecordingUnitOfWork();
+        var outbox = new Mock<IOutboxEventRepository>(MockBehavior.Strict);
+        var realtime = new Mock<IWorkCenterRealtimeNotifier>(MockBehavior.Strict);
+        var preferences = new Mock<INotificationPreferenceRepository>(MockBehavior.Strict);
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        var roles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
+        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        var recipientUserId = Guid.NewGuid();
+        var first = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid());
+        var second = WorkItem(DocumentActionCompletedV1.EventType, 1, eventId: Guid.NewGuid());
+
+        outbox.Setup(repository => repository.ClaimBatchAsync(
+                "work-center", 2, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([first, second]);
+        foreach (var item in new[] { first, second })
+        {
+            outbox.Setup(repository => repository.MarkCompletedAsync(
+                    item.Event.EventId, "work-center", 1, Now, It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+        }
+
+        users.Setup(repository => repository.GetByIdsAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { recipientUserId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, NGB.Core.AuditLog.PlatformUser>
+            {
+                [recipientUserId] = new(
+                    recipientUserId,
+                    $"subject-{recipientUserId:N}",
+                    Email: null,
+                    DisplayName: null,
+                    IsActive: true,
+                    Now,
+                    Now)
+            });
+        preferences.Setup(repository => repository.GetForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { recipientUserId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+
+        var source = new Mock<IWorkCenterPreferenceDefinitionSource>(MockBehavior.Strict);
+        source.Setup(candidate => candidate.GetDefinitions())
+            .Returns([
+                new WorkCenterPreferenceDefinition(
+                    "test.notification",
+                    WorkCenterPreferenceKind.Notification,
+                    "Test notification",
+                    "Tests",
+                    DefaultEnabled: true,
+                    UserCanDisable: true,
+                    NotificationSeverity.Information,
+                    new HashSet<NotificationChannel> { NotificationChannel.InApp },
+                    Retention: null)
+            ]);
+        var resolver = new WorkCenterPreferenceRecipientResolver(
+            preferences.Object,
+            users.Object,
+            roles.Object,
+            userRoles.Object,
+            new WorkCenterPreferenceDefinitionRegistry([source.Object]));
+        var processor = Processor(
+            uow,
+            outbox,
+            [new ResolvingPolicy(resolver, recipientUserId)],
+            realtime.Object,
+            resolver);
+
+        (await processor.ProcessBatchAsync(2, CancellationToken.None)).Should().Be(2);
+        (await processor.ProcessBatchAsync(2, CancellationToken.None)).Should().Be(2);
+
+        users.Verify(repository => repository.GetByIdsAsync(
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        preferences.Verify(repository => repository.GetForUsersAsync(
+            It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+        outbox.VerifyAll();
+        source.VerifyAll();
+        realtime.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -382,15 +558,20 @@ public sealed class OutboxProcessorTests
         RecordingUnitOfWork uow,
         Mock<IOutboxEventRepository> outbox,
         IEnumerable<IDocumentActionCompletedWorkCenterPolicy> policies,
-        IWorkCenterRealtimeNotifier realtime)
+        IWorkCenterRealtimeNotifier realtime,
+        WorkCenterPreferenceRecipientResolver? recipientResolver = null,
+        IWorkCenterOutboxPartitionProcessorFactory? partitionProcessorFactory = null,
+        NgbWorkCenterOptions? options = null)
         => new(
             uow,
             outbox.Object,
             policies,
             realtime,
-            RecipientResolver(),
+            recipientResolver ?? RecipientResolver(),
             new FixedTimeProvider(Now),
-            NullLogger<OutboxProcessor>.Instance);
+            NullLogger<OutboxProcessor>.Instance,
+            partitionProcessorFactory,
+            options is null ? null : Microsoft.Extensions.Options.Options.Create(options));
 
     private static async Task AssertPoisonEventIsDeadLetteredAsync(
         OutboxConsumerWorkItem item,
@@ -435,7 +616,8 @@ public sealed class OutboxProcessorTests
         string eventType,
         int attempt,
         int schemaVersion = DocumentActionCompletedV1.SchemaVersion,
-        Guid? eventId = null)
+        Guid? eventId = null,
+        string subject = "subject")
     {
         var id = eventId ?? Guid.Parse("01980000-7000-8000-8000-000000000001");
         var correlationId = Guid.Parse("01980000-7000-8000-8000-000000000002");
@@ -445,7 +627,7 @@ public sealed class OutboxProcessorTests
                     id,
                     Now.AddMinutes(-1),
                     "tests",
-                    "subject",
+                    subject,
                     null,
                     correlationId,
                     null,
@@ -468,7 +650,7 @@ public sealed class OutboxProcessorTests
                 schemaVersion,
                 Now.AddMinutes(-1),
                 "tests",
-                "subject",
+                subject,
                 null,
                 correlationId,
                 null,
@@ -510,6 +692,34 @@ public sealed class OutboxProcessorTests
     private sealed class FixedTimeProvider(DateTime now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => new(now);
+    }
+
+    private sealed class DelegatePartitionProcessorFactory(
+        Func<IReadOnlyList<OutboxConsumerWorkItem>, CancellationToken, Task<IReadOnlyCollection<Guid>>> process)
+        : IWorkCenterOutboxPartitionProcessorFactory
+    {
+        public Task<IReadOnlyCollection<Guid>> ProcessAsync(
+            IReadOnlyList<OutboxConsumerWorkItem> items,
+            CancellationToken ct)
+            => process(items, ct);
+    }
+
+    private sealed class ResolvingPolicy(
+        WorkCenterPreferenceRecipientResolver resolver,
+        Guid recipientUserId)
+        : IDocumentActionCompletedWorkCenterPolicy
+    {
+        public async Task<IReadOnlyList<Guid>> HandleAsync(
+            DocumentActionCompletedV1 completed,
+            CancellationToken ct)
+        {
+            await resolver.ResolveAsync(
+                "test.notification",
+                WorkCenterPreferenceKind.Notification,
+                [recipientUserId],
+                ct);
+            return [];
+        }
     }
 
     private sealed class RecordingUnitOfWork : IUnitOfWork

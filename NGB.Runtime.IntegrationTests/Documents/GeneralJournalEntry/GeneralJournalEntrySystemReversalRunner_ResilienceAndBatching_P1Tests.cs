@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntrySystemReversalRunner_ResilienceAndBatching_P1Tests(PostgresTestFixture fixture)
 {
     private PostgresTestFixture Fixture { get; } = fixture;

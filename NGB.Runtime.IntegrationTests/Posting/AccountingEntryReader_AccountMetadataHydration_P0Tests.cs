@@ -9,7 +9,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AccountingEntryReader_AccountMetadataHydration_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

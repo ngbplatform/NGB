@@ -14,6 +14,12 @@ import {
 } from '../../../../src/ngb/command-palette/storage'
 
 describe('command palette recent storage', () => {
+  it('returns an empty list when persisted JSON is not an array', () => {
+    readStorageJsonMock.mockReturnValue({ invalid: true })
+
+    expect(loadCommandPaletteRecent('ngb:test:recent')).toEqual([])
+  })
+
   it('loads, filters, sorts, and caps recent entries', () => {
     readStorageJsonMock.mockReturnValue([
       null,
@@ -79,5 +85,37 @@ describe('command palette recent storage', () => {
     saveCommandPaletteRecent('ngb:test:recent', entries)
 
     expect(writeStorageJsonMock).toHaveBeenCalledWith('local', 'ngb:test:recent', entries.slice(0, 10))
+  })
+
+  it('normalizes optional string fields and rejects objects missing required fields', () => {
+    readStorageJsonMock.mockReturnValue([
+      {},
+      'not-an-object',
+      {
+        key: 'document:1',
+        kind: 'document',
+        scope: 'documents',
+        title: 'Invoice INV-001',
+        subtitle: 'Northwind',
+        icon: 'file-text',
+        badge: 'Draft',
+        route: '/documents/pm.invoice/doc-1',
+        status: 'Draft',
+        openInNewTabSupported: true,
+        timestamp: '2026-04-08T13:00:00.000Z',
+      },
+    ])
+
+    expect(loadCommandPaletteRecent('ngb:test:recent')).toEqual([
+      expect.objectContaining({
+        key: 'document:1',
+        subtitle: 'Northwind',
+        icon: 'file-text',
+        badge: 'Draft',
+        route: '/documents/pm.invoice/doc-1',
+        status: 'Draft',
+        openInNewTabSupported: true,
+      }),
+    ])
   })
 })

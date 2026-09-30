@@ -12,7 +12,7 @@ public sealed class ReportController(
     IReportDefinitionProvider definitions,
     IReportEngine engine,
     IReportVariantService variants,
-    IReportExportService exports,
+    IReportDownloadService downloads,
     INgbAccessChecker access,
     NgbSecurityCache cache)
-    : ReportControllerBase(definitions, engine, variants, exports, access, cache);
+    : ReportControllerBase(definitions, engine, variants, downloads, access, cache);

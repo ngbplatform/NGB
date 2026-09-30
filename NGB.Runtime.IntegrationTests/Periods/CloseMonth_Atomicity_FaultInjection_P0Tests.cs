@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseMonth_Atomicity_FaultInjection_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -147,6 +147,9 @@ public sealed class CloseMonth_Atomicity_FaultInjection_P0Tests(PostgresTestFixt
         public Task<bool> IsClosedAsync(DateOnly period, CancellationToken ct = default) =>
             inner.IsClosedAsync(period, ct);
 
+        public Task<DateOnly?> FindFirstClosedAsync(IReadOnlyCollection<DateOnly> periods, CancellationToken ct = default)
+            => inner.FindFirstClosedAsync(periods, ct);
+
         public async Task MarkClosedAsync(DateOnly period, string closedBy, DateTime closedAtUtc, CancellationToken ct = default)
         {
             await inner.MarkClosedAsync(period, closedBy, closedAtUtc, ct);
@@ -158,8 +161,7 @@ public sealed class CloseMonth_Atomicity_FaultInjection_P0Tests(PostgresTestFixt
             throw new NotSupportedException("Simulated failure after MarkClosedAsync");
         }
 
-        public Task ReopenAsync(DateOnly period, CancellationToken ct = default) =>
-            inner.ReopenAsync(period, ct);
+        public Task ReopenAsync(DateOnly period, CancellationToken ct = default) => inner.ReopenAsync(period, ct);
     }
 
     private sealed class ThrowingIntegrityChecker : IAccountingIntegrityChecker

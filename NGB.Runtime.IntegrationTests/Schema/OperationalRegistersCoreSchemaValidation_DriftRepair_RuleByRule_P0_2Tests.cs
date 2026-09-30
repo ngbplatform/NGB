@@ -12,28 +12,22 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// P0: rule-by-rule validator coverage for Operational Registers core schema.
 /// Covers extra invariants not yet covered by the first rule-by-rule pack.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByRule_P0_2Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByRule_P0_2Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
-    public async Task ValidateAsync_WhenFinalizationsIndexMissing_FailsThenBootstrapperRepairs()
+    public async Task Bootstrapper_RestoresFinalizationQueueIndexes_WithoutDuplicatingUniqueConstraint()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
-        await DropIndexAsync(Fixture.ConnectionString, "ix_opreg_finalizations_register_period");
-
-        await using (var scope = host.Services.CreateAsyncScope())
-        {
-            var validator = scope.ServiceProvider.GetRequiredService<IOperationalRegistersCoreSchemaValidationService>();
-
-            Func<Task> act = () => validator.ValidateAsync(CancellationToken.None);
-            await act.Should().ThrowAsync<NgbConfigurationViolationException>()
-                .WithMessage("*ix_opreg_finalizations_register_period*");
-        }
+        await DropIndexAsync(Fixture.ConnectionString, "ix_opreg_finalizations_dirty_queue");
+        await DropIndexAsync(Fixture.ConnectionString, "ix_opreg_finalizations_blocked_queue");
 
         await MigrationSet.ApplyPlatformMigrationsAsync(Fixture.ConnectionString);
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_opreg_finalizations_register_period")).Should().BeFalse();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_opreg_finalizations_dirty_queue")).Should().BeTrue();
+        (await IndexExistsAsync(Fixture.ConnectionString, "ix_opreg_finalizations_blocked_queue")).Should().BeTrue();
 
         await using (var scope = host.Services.CreateAsyncScope())
         {
@@ -45,7 +39,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenCodeNormIndexMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(Fixture.ConnectionString, "ux_operational_registers_code_norm");
@@ -71,7 +64,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenDimRulesImmutabilityTriggerMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTriggerAsync(
@@ -100,7 +92,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenDimRulesImmutabilityFunctionMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // The trigger depends on the function, so drop the trigger first.
@@ -136,6 +127,18 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
 
         await using var cmd = new NpgsqlCommand($"DROP INDEX IF EXISTS {indexName};", conn);
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> IndexExistsAsync(string cs, string indexName)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(
+            "SELECT EXISTS (SELECT 1 FROM pg_class WHERE relkind = 'i' AND relname = @name);",
+            conn);
+        cmd.Parameters.AddWithValue("name", indexName);
+        return (bool)(await cmd.ExecuteScalarAsync())!;
     }
 
     private static async Task DropTriggerAsync(string cs, string tableName, string triggerName)

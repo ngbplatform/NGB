@@ -10,8 +10,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentReader_GetHeadRowsByIdsAcrossTypes_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentReader_GetHeadRowsByIdsAcrossTypes_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string TypeA = "it_doc_head_batch_a";

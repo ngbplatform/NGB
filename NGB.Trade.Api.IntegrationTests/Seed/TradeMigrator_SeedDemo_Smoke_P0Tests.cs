@@ -160,9 +160,48 @@ public sealed class TradeMigrator_SeedDemo_Smoke_P0Tests(TradePostgresFixture fi
 
         var exit1 = await TradeSeedDemoCli.RunAsync(args, Frozen2026Clock);
         var exit2 = await TradeSeedDemoCli.RunAsync(args, Frozen2026Clock);
+        var exit3 = await TradeSeedDemoCli.RunAsync(
+            [.. args, "--skip-if-activity-exists", "true"],
+            Frozen2026Clock);
 
         exit1.Should().Be(0);
         exit2.Should().Be(1);
+        exit3.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SeedDemo_OneDayBoundary_UsesUnsourcedReturnAndPaymentFallbacks()
+    {
+        var args = new[]
+        {
+            "--connection", fixture.ConnectionString,
+            "--seed", "20260823",
+            "--from", "2026-04-11",
+            "--to", "2026-04-11",
+            "--warehouses", "2",
+            "--customers", "1",
+            "--vendors", "1",
+            "--items", "1",
+            "--price-updates", "1",
+            "--purchase-receipts", "2",
+            "--sales-invoices", "1",
+            "--customer-payments", "1",
+            "--vendor-payments", "1",
+            "--inventory-transfers", "1",
+            "--inventory-adjustments", "1",
+            "--customer-returns", "1",
+            "--vendor-returns", "1",
+            "--close-periods", "false"
+        };
+
+        (await TradeSeedDemoCli.RunAsync(args, Frozen2026Clock)).Should().Be(0);
+
+        await using var conn = new NpgsqlConnection(fixture.ConnectionString);
+        await conn.OpenAsync();
+        await AssertPostedDocCountAsync(conn, TradeCodes.CustomerReturn, 1);
+        await AssertPostedDocCountAsync(conn, TradeCodes.VendorReturn, 1);
+        await AssertPostedDocCountAsync(conn, TradeCodes.CustomerPayment, 1);
+        await AssertPostedDocCountAsync(conn, TradeCodes.VendorPayment, 1);
     }
 
     private static async Task AssertPostedDocCountAsync(NpgsqlConnection conn, string typeCode, int expected)

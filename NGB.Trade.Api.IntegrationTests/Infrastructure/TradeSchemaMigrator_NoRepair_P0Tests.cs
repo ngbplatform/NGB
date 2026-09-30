@@ -1,4 +1,6 @@
+using Dapper;
 using FluentAssertions;
+using NGB.Persistence.Migrations;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Migrations.Evolve;
 using NGB.Trade.PostgreSql.Bootstrap;
@@ -8,8 +10,8 @@ using Xunit;
 
 namespace NGB.Trade.Api.IntegrationTests.Infrastructure;
 
-[Collection(TradePostgresCollection.Name)]
-public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradePostgresFixture fixture)
+[Collection(TradeSchemaPostgresCollection.Name)]
+public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradeSchemaPostgresFixture fixture)
 {
     [Fact]
     public async Task Migrate_WithoutRepair_Installs_Critical_Trade_Document_Guards_And_Indexes()
@@ -39,6 +41,20 @@ public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradePostgresFixture fi
             .Should().BeTrue();
         (await IndexExistsAsync(fixture.ConnectionString, "doc_trd_item_price_update__lines", "ix_doc_trd_item_price_update__lines__currency"))
             .Should().BeTrue();
+        (await DisplayTrigramIndexExistsAsync(fixture.ConnectionString, "cat_trd_item"))
+            .Should().BeTrue();
+        (await DisplayTrigramIndexExistsAsync(fixture.ConnectionString, "doc_trd_sales_invoice"))
+            .Should().BeTrue();
+
+        await using var conn = new NpgsqlConnection(fixture.ConnectionString);
+        await conn.OpenAsync();
+        var indexes = (await conn.QueryAsync<string>(
+            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public';")).ToArray();
+        foreach (var document in new[] { "purchase_receipt", "sales_invoice", "customer_return", "vendor_return", "inventory_adjustment" })
+        {
+            indexes.Should().Contain($"ix_doc_trd_{document}__warehouse_date_document")
+                .And.Contain($"ix_doc_trd_{document}__lines__item_document");
+        }
     }
 
     [Fact]
@@ -54,6 +70,24 @@ public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradePostgresFixture fi
 
         (await IndexExistsAsync(fixture.ConnectionString, "doc_trd_item_price_update__lines", "ix_doc_trd_item_price_update__lines__currency"))
             .Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(60_000)]
+    public async Task Repair_WithExplicitTimeoutBoundaries_CompletesAgainstMigratedSchema(int milliseconds)
+    {
+        await fixture.ResetDatabaseAsync();
+        var options = new MigrationExecutionOptions(
+            LockTimeout: TimeSpan.FromMilliseconds(milliseconds),
+            StatementTimeout: TimeSpan.FromMilliseconds(milliseconds));
+
+        var act = () => TradeDatabaseBootstrapper.RepairModuleAsync(
+            fixture.ConnectionString,
+            options,
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     private static async Task RecreatePublicSchemaAsync(string cs)
@@ -130,5 +164,25 @@ public sealed class TradeSchemaMigrator_NoRepair_P0Tests(TradePostgresFixture fi
             conn);
 
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> DisplayTrigramIndexExistsAsync(string cs, string tableName)
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync();
+
+        await using var cmd = new NpgsqlCommand(
+            """
+            SELECT COUNT(*)::int
+              FROM pg_indexes
+             WHERE schemaname = 'public'
+               AND tablename = @table
+               AND indexdef ILIKE '%USING gin (display%gin_trgm_ops)%';
+            """,
+            conn);
+
+        cmd.Parameters.AddWithValue("table", tableName);
+        var count = (int)(await cmd.ExecuteScalarAsync())!;
+        return count > 0;
     }
 }

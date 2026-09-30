@@ -8,7 +8,8 @@ Infrastructure module for platform background job scheduling and execution.
 
 - Define the platform job catalog (fixed ids).
 - Provide contracts for scheduling (`IJobScheduleProvider`) and job execution (`IPlatformBackgroundJob`).
-- Register Hangfire (PostgreSQL storage) and install recurring jobs on startup.
+- Register Hangfire with a host-supplied `JobStorage` and install recurring jobs on startup.
+- Keep PostgreSQL storage creation in `NGB.Platform.BackgroundJobs.PostgreSql`.
 
 ## How to use (vertical app)
 
@@ -46,11 +47,31 @@ Notes:
 ### 2) Register Hangfire
 
 ```csharp
-services.AddPlatformBackgroundJobsHangfire(o =>
+using NGB.BackgroundJobs.DependencyInjection;
+using NGB.BackgroundJobs.PostgreSql;
+using NGB.BackgroundJobs.PostgreSql.DependencyInjection;
+
+var connectionString = configuration.GetConnectionString("Hangfire")
+    ?? throw new InvalidOperationException("Hangfire connection string is required.");
+var storage = PostgresHangfireJobStorageFactory.Create(
+    connectionString, "hangfire", prepareSchemaIfNecessary: true);
+
+services.AddPlatformBackgroundJobsHangfire(storage, o =>
 {
-    o.ConnectionString = configuration.GetConnectionString("Hangfire")!;
-    // optional: worker count, queues, etc
+    o.ConnectionString = connectionString;
+    o.StorageNamespace = "hangfire";
+    // Optional: WorkerCount, Queues, ServerName.
 });
+services.AddNgbPostgresBackgroundJobsAdapter();
 ```
 
 If `IJobScheduleProvider` is not registered, all jobs remain unscheduled by default.
+
+For a complete ASP.NET Core host, use
+`builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create)` and
+`await bootstrap.EnsureInfrastructureAsync(new PostgresDatabaseProvisioner())`, then register
+Runtime, startup validation, PostgreSQL, its background-jobs adapter, and the vertical modules.
+PostgreSQL health checks and HTTP exception mapping are explicit registrations from
+`NGB.Platform.PostgreSql.AspNetCore`. See
+[the 3.0 migration guide](../docs/guides/migrating-to-3.0.md) and
+[the CRM host](../NGB.CRM.BackgroundJobs/Program.cs).

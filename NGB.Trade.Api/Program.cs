@@ -1,13 +1,16 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Serilog;
 using NGB.Api;
-using NGB.Api.GlobalErrorHandling;
 using NGB.Api.Reporting;
-using NGB.Api.Sso;
 using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.ErrorHandling;
+using NGB.Hosting.AspNetCore.Identity;
+using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using NGB.Tools.Exceptions;
 using NGB.Trade.Api.Services;
 using NGB.Trade.DependencyInjection;
@@ -20,20 +23,22 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.AddSerilog();
 
+var cs = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(cs))
+    throw new NgbConfigurationViolationException("Please provide PostgreSQL connection string in 'ConnectionStrings:DefaultConnection'.");
+
+builder.Services.AddNgbPostgresExceptionMapping();
 builder.Services.AddHealthChecks()
     .AddWebApplication()
-    .AddPostgres(builder.Configuration)
+    .AddNgbPostgresHealthCheck(cs)
     .AddKeycloak()
     .AddNgbWorkCenterHealth();
 
 builder.Services.AddInfrastructure(builder.Configuration, projectName);
 
-var cs = builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrWhiteSpace(cs))
-    throw new NgbConfigurationViolationException("Please provide PostgreSQL connection string in 'ConnectionStrings:DefaultConnection'.");
-
 builder.Services
     .AddNgbRuntime()
+    .AddNgbRuntimeStartupValidation()
     .AddNgbRuntimeAuthorization()
     .AddNgbPostgres(cs)
     .AddTradeModule()

@@ -202,8 +202,28 @@ public sealed class ReportVariantService_P0Tests
         public Task<PlatformUser?> GetByIdAsync(Guid userId, CancellationToken ct = default)
             => Task.FromResult(_byId.GetValueOrDefault(userId));
 
-        public Task<IReadOnlyList<PlatformUser>> GetAllAsync(CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<PlatformUser>>(_byId.Values.ToArray());
+        public Task<PlatformUserPage> GetPageAsync(
+            int offset,
+            int limit,
+            bool? isActive,
+            CancellationToken ct = default)
+        {
+            var filtered = _byId.Values
+                .Where(user => isActive is null || user.IsActive == isActive)
+                .OrderBy(user => user.DisplayName ?? user.Email ?? user.AuthSubject, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            return Task.FromResult(new PlatformUserPage(filtered.Skip(offset).Take(limit).ToArray(), filtered.Length));
+        }
+
+        public Task<IReadOnlyList<PlatformUser>> GetByEmailsAsync(
+            IReadOnlyList<string> emails,
+            CancellationToken ct = default)
+        {
+            var requested = emails.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult<IReadOnlyList<PlatformUser>>(_byId.Values
+                .Where(user => user.Email is not null && requested.Contains(user.Email))
+                .ToArray());
+        }
 
         public Task<IReadOnlyDictionary<Guid, PlatformUser>> GetByIdsAsync(IReadOnlyList<Guid> userIds, CancellationToken ct = default)
         {
@@ -231,13 +251,20 @@ public sealed class ReportVariantService_P0Tests
     {
         private readonly List<ReportVariantRecord> _rows = [];
 
-        public Task<IReadOnlyList<ReportVariantRecord>> ListVisibleAsync(string reportCodeNorm, Guid? currentUserId, CancellationToken ct)
+        public Task<IReadOnlyList<ReportVariantRecord>> ListVisibleAsync(string reportCodeNorm, Guid? currentUserId, int limit, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<ReportVariantRecord>>(_rows
                 .Where(x => x.ReportCodeNorm == reportCodeNorm && (x.IsShared || (currentUserId.HasValue && x.OwnerPlatformUserId == currentUserId)))
                 .OrderByDescending(x => x.IsDefault)
                 .ThenByDescending(x => x.IsShared)
                 .ThenBy(x => x.Name)
+                .Take(limit)
                 .ToList());
+
+        public Task<int> CountInScopeAsync(string reportCodeNorm, Guid? ownerPlatformUserId, bool isShared, CancellationToken ct)
+            => Task.FromResult(_rows.Count(x =>
+                x.ReportCodeNorm == reportCodeNorm
+                && x.IsShared == isShared
+                && (isShared || x.OwnerPlatformUserId == ownerPlatformUserId)));
 
         public Task<ReportVariantRecord?> GetVisibleAsync(string reportCodeNorm, string variantCodeNorm, Guid? currentUserId, CancellationToken ct)
             => Task.FromResult(_rows.SingleOrDefault(x => x.ReportCodeNorm == reportCodeNorm && x.VariantCodeNorm == variantCodeNorm && (x.IsShared || (currentUserId.HasValue && x.OwnerPlatformUserId == currentUserId))));

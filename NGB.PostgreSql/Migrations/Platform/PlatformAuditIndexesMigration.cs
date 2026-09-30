@@ -27,4 +27,3 @@ public sealed class PlatformAuditIndexesMigration : IDdlObject
                                     ON platform_audit_event_changes(audit_event_id, ordinal);
                                 """;
 }
-

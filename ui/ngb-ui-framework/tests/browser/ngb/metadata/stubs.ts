@@ -28,7 +28,7 @@ export const StubSelect = defineComponent({
     return () => h('button', {
       type: 'button',
       'data-testid': 'stub-select',
-      onClick: () => emit('update:modelValue', 'selected'),
+      onClick: (event: MouseEvent) => emit('update:modelValue', event.shiftKey ? null : 'selected'),
     }, `select:${props.options.map((option) => option.label).join('|')}`)
   },
 })
@@ -442,6 +442,10 @@ export const StubRegisterPageLayout = defineComponent({
       type: Boolean,
       default: false,
     },
+    disableCreate: {
+      type: Boolean,
+      default: false,
+    },
     storageKey: {
       type: String,
       default: '',
@@ -471,6 +475,7 @@ export const StubRegisterPageLayout = defineComponent({
       h('div', `title:${props.title}`),
       h('div', `storage:${props.storageKey}`),
       h('div', `filter-active:${String(props.filterActive)}`),
+      h('div', `create-disabled:${String(props.disableCreate)}`),
       h('div', `drawer-open:${String(props.drawerOpen)}`),
       props.warning ? h('div', `warning:${props.warning}`) : null,
       h('button', { type: 'button', onClick: () => emit('back') }, 'Layout back'),
@@ -479,6 +484,7 @@ export const StubRegisterPageLayout = defineComponent({
       h('button', { type: 'button', onClick: () => emit('filter') }, 'Layout filter'),
       h('button', { type: 'button', onClick: () => emit('prev') }, 'Layout prev'),
       h('button', { type: 'button', onClick: () => emit('next') }, 'Layout next'),
+      h('button', { type: 'button', onClick: () => emit('update:drawerOpen', true) }, 'Layout keep drawer open'),
       props.drawerOpen
         ? h('button', { type: 'button', onClick: () => void requestDrawerClose() }, 'Layout close drawer')
         : null,

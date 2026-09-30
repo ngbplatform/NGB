@@ -1,10 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using System.Text.Json;
+using NGB.Api.Reporting;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.Core.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.Core.Security;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Runtime.Security;
+using NGB.Tools.Exceptions;
 
 namespace NGB.Api.Controllers;
 
@@ -12,9 +17,10 @@ public abstract class ReportControllerBase(
     IReportDefinitionProvider definitions,
     IReportEngine engine,
     IReportVariantService variants,
-    IReportExportService exports,
+    IReportDownloadService downloads,
     INgbAccessChecker access,
-    NgbSecurityCache cache) : ControllerBase
+    NgbSecurityCache cache)
+    : ControllerBase
 {
     [HttpGet("~/api/report-definitions")]
     public async Task<IReadOnlyList<ReportDefinitionDto>> GetAllDefinitions(CancellationToken ct)
@@ -27,14 +33,14 @@ public abstract class ReportControllerBase(
             return [];
         }
 
-        return await cache.GetOrCreateReportDefinitionsAsync(
+        return (await cache.GetOrCreateReportDefinitionsAsync(
             snapshot,
             async token =>
             {
                 var all = await definitions.GetAllDefinitionsAsync(token);
                 return FilterDefinitions(all, snapshot);
             },
-            ct) ?? [];
+            ct))!;
     }
 
     [HttpGet("~/api/report-definitions/{reportCode}")]
@@ -46,6 +52,7 @@ public abstract class ReportControllerBase(
     }
 
     [HttpPost("~/api/reports/{reportCode}/execute")]
+    [ReportRequestBudget]
     public Task<ReportExecutionResponseDto> Execute(
         [FromRoute] string reportCode,
         [FromBody] ReportExecutionRequestDto request,
@@ -53,6 +60,7 @@ public abstract class ReportControllerBase(
         => ExecuteCoreAsync(reportCode, request, ct);
 
     [HttpPost("~/api/reports/{reportCode}/export/xlsx")]
+    [ReportRequestBudget(download: true)]
     public async Task<IActionResult> ExportXlsx(
         [FromRoute] string reportCode,
         [FromBody] ReportExportRequestDto request,
@@ -60,13 +68,41 @@ public abstract class ReportControllerBase(
     {
         var snapshot = await access.GetSnapshotAsync(ct);
         Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.Export);
-        var sheet = await engine.ExecuteExportSheetAsync(reportCode, request, ct);
-        var bytes = await exports.ExportXlsxAsync(sheet, sheet.Meta?.Title, ct);
 
-        return File(
-            bytes,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            BuildExportFileName(reportCode, sheet.Meta?.Title));
+        var download = await downloads.PrepareAsync(reportCode, request, ct);
+
+        // Also release the read session if a later MVC filter replaces or rejects this result.
+        HttpContext?.Response.RegisterForDisposeAsync(download);
+
+        return new ReportDownloadResult(download, BuildExportFileName(reportCode, download.Title));
+    }
+
+    // Native navigation lets the browser download the response without a JavaScript Blob.
+    [HttpPost("~/api/reports/{reportCode}/export/xlsx/form")]
+    [Consumes("application/x-www-form-urlencoded")]
+    [FormBearerToken]
+    [RequestSizeLimit(FormBearerTokenAttribute.MaximumBodyBytes)]
+    [ReportRequestBudget(download: true)]
+    public Task<IActionResult> ExportXlsxForm(
+        [FromRoute] string reportCode,
+        [FromForm] string request,
+        [FromServices] IOptions<JsonOptions> json,
+        CancellationToken ct)
+    {
+        ReportExportRequestDto? export;
+        try
+        {
+            export = JsonSerializer.Deserialize<ReportExportRequestDto>(request, json.Value.JsonSerializerOptions);
+        }
+        catch (JsonException)
+        {
+            throw new NgbArgumentInvalidException(nameof(request), "Invalid report export request.");
+        }
+
+        if (export is null)
+            throw new NgbArgumentInvalidException(nameof(request), "A report export request is required.");
+
+        return ExportXlsx(reportCode, export, ct);
     }
 
     [HttpGet("~/api/reports/{reportCode}/variants")]
@@ -87,9 +123,7 @@ public abstract class ReportControllerBase(
         RequireViewOrExecuteReport(snapshot, reportCode);
         var variant = await variants.GetAsync(reportCode, variantCode, ct);
 
-        return variant is null
-            ? throw new ReportVariantNotFoundException(reportCode, variantCode)
-            : variant;
+        return variant ?? throw new ReportVariantNotFoundException(reportCode, variantCode);
     }
 
     [HttpPut("~/api/reports/{reportCode}/variants/{variantCode}")]
@@ -108,6 +142,7 @@ public abstract class ReportControllerBase(
     {
         var existing = await variants.GetAsync(reportCode, variantCode, ct);
         var snapshot = await access.GetSnapshotAsync(ct);
+
         if (existing?.IsShared == true)
         {
             Require(snapshot, NgbResourceKinds.Report, reportCode, NgbPermissionActions.ManageSharedVariants);
@@ -131,6 +166,13 @@ public abstract class ReportControllerBase(
     {
         var snapshot = await access.GetSnapshotAsync(ct);
         RequireExecuteReport(snapshot, reportCode);
+
+        if (request.DisablePaging)
+            throw new NgbArgumentInvalidException("disablePaging", "Interactive reports require paging. Use the export endpoint for a complete download.");
+
+        if (request.Offset != 0)
+            throw new NgbArgumentInvalidException("offset", "Use the continuation cursor to request another page.");
+
         var response = await engine.ExecuteAsync(reportCode, request, ct);
         var sheet = ScrubForbiddenCellActions(response.Sheet, snapshot);
         return response with { Sheet = sheet };
@@ -147,7 +189,9 @@ public abstract class ReportControllerBase(
             snapshot,
             NgbResourceKinds.Report,
             reportCode,
-            variant.IsShared ? NgbPermissionActions.ManageSharedVariants : NgbPermissionActions.SavePrivateVariant);
+            variant.IsShared
+                ? NgbPermissionActions.ManageSharedVariants
+                : NgbPermissionActions.SavePrivateVariant);
 
         return await variants.SaveAsync(variant with { ReportCode = reportCode, VariantCode = variantCode }, ct);
     }

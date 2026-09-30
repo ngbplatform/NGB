@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef } from 'vue';
+import { computed, getCurrentScope, onScopeDispose, ref, watch, type ComputedRef } from 'vue';
 import type { RouteLocationNormalizedLoaded } from 'vue-router';
 
 import { prefetchLookupsForPage } from '../lookup/prefetch';
@@ -64,10 +64,11 @@ export type UseMetadataRegisterPageDataArgs<
   route: RouteLocationNormalizedLoaded;
   entityTypeCode: ComputedRef<string>;
   reloadKey: ComputedRef<string>;
-  loadMetadata: (entityTypeCode: string) => Promise<TMeta>;
+  loadMetadata: (entityTypeCode: string, options?: { signal?: AbortSignal }) => Promise<TMeta>;
   loadPage: (args: {
     entityTypeCode: string;
     metadata: TMeta;
+    signal?: AbortSignal;
   }) => Promise<TPage>;
   lookupStore?: LookupStoreApi;
   resolveLookupHint?: (args: {
@@ -109,6 +110,8 @@ export function useMetadataRegisterPageData<
   const metadata = ref<TMeta | null>(null);
   const page = ref<TPage | null>(null);
   const loadSeq = ref(0);
+  let loadController: AbortController | null = null;
+  let committedEntityTypeCode = '';
 
   const listFilters = computed<readonly TField[]>(() => metadata.value?.list?.filters ?? []);
   const hasListFilters = computed(() => listFilters.value.length > 0);
@@ -161,7 +164,7 @@ export function useMetadataRegisterPageData<
   async function prefetchReferenceLabels(): Promise<void> {
     if (!args.lookupStore || !args.resolveLookupHint) return;
 
-    const entityTypeCode = String(args.entityTypeCode.value ?? '').trim();
+    const entityTypeCode = args.entityTypeCode.value.trim();
     const columns = metadata.value?.list?.columns ?? [];
     const items = page.value?.items ?? [];
     if (!entityTypeCode || columns.length === 0 || items.length === 0) return;
@@ -181,16 +184,19 @@ export function useMetadataRegisterPageData<
   }
 
   async function load(): Promise<boolean> {
-    const entityTypeCode = String(args.entityTypeCode.value ?? '').trim();
+    const entityTypeCode = args.entityTypeCode.value.trim();
     const seq = ++loadSeq.value;
+    loadController?.abort();
+    const controller = new AbortController();
+    loadController = controller;
 
     if (!entityTypeCode) {
-      if (seq === loadSeq.value) {
-        loading.value = false;
-        error.value = null;
-        metadata.value = null;
-        page.value = null;
-      }
+      loading.value = false;
+      error.value = null;
+      metadata.value = null;
+      page.value = null;
+      committedEntityTypeCode = '';
+      loadController = null;
       return false;
     }
 
@@ -198,24 +204,43 @@ export function useMetadataRegisterPageData<
     error.value = null;
 
     try {
-      const nextMetadata = await args.loadMetadata(entityTypeCode);
-      if (seq !== loadSeq.value) return false;
+      const nextMetadata = await args.loadMetadata(entityTypeCode, { signal: controller.signal });
+      if (seq !== loadSeq.value || controller.signal.aborted) return false;
+
+      // Publish the new schema together with an empty page. This keeps error-state
+      // headings available without ever rendering rows from the previous schema.
       metadata.value = nextMetadata;
+      page.value = null;
+      committedEntityTypeCode = entityTypeCode;
 
       const nextPage = await args.loadPage({
         entityTypeCode,
         metadata: nextMetadata,
+        signal: controller.signal,
       });
-      if (seq !== loadSeq.value) return false;
+      if (seq !== loadSeq.value || controller.signal.aborted) return false;
       page.value = nextPage;
       return true;
     } catch (cause) {
       if (seq !== loadSeq.value) return false;
+      if (committedEntityTypeCode !== entityTypeCode) {
+        metadata.value = null;
+        page.value = null;
+      }
       error.value = args.formatError?.(cause) ?? defaultErrorMessage(cause);
       return false;
     } finally {
       if (seq === loadSeq.value) loading.value = false;
+      if (loadController === controller) loadController = null;
     }
+  }
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      loadSeq.value += 1;
+      loadController?.abort();
+      loadController = null;
+    });
   }
 
   watch(args.reloadKey, () => {
@@ -227,7 +252,7 @@ export function useMetadataRegisterPageData<
     () => {
       void prefetchReferenceLabels();
     },
-    { immediate: true, deep: true },
+    { immediate: true },
   );
 
   return {

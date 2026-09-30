@@ -22,7 +22,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 ///   base = latest closed closing balance (<= month) + current month turnovers (to-date).
 /// This test is end-to-end and ensures PostingEngine does not ignore to-date turnovers.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_NegativeBalance_UsesOperationalBase_EndToEnd_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

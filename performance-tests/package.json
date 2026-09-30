@@ -1,7 +1,7 @@
 {
   "name": "ngb-performance-tests",
   "private": true,
-  "version": "1.1.1",
+  "version": "3.0.0",
   "type": "module",
   "workspaces": [
     "ngb-performance-tests-framework",
@@ -32,10 +32,24 @@
     "pm:write-heavy": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.write.local --test ngb-property-management-perf/src/tests/write-heavy.ts",
     "pm:all": "npm run pm:smoke && npm run pm:baseline && npm run pm:platform-read && npm run pm:platform-reporting && npm run pm:document-lifecycle && npm run pm:audit && npm run pm:maintenance && npm run pm:load && npm run pm:stress && npm run pm:spike && npm run pm:business-day",
     "trade:smoke": "./scripts/run-k6.sh --env-file ngb-trade-perf/.env.local --test ngb-trade-perf/src/tests/smoke.ts",
-    "ab:smoke": "./scripts/run-k6.sh --env-file ngb-agency-billing-perf/.env.local --test ngb-agency-billing-perf/src/tests/smoke.ts"
+    "ab:smoke": "./scripts/run-k6.sh --env-file ngb-agency-billing-perf/.env.local --test ngb-agency-billing-perf/src/tests/smoke.ts",
+    "pm:posting-contract": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.write.local --test ngb-property-management-perf/src/tests/posting-contract.ts",
+    "pm:reporting-probe": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/reporting-probe.ts",
+    "pm:read-regression-probe": "./scripts/run-k6.sh --env-file ngb-property-management-perf/.env.local --test ngb-property-management-perf/src/tests/read-regression-probe.ts",
+    "pm:diagnostics": "node scripts/diagnostics/run.mjs",
+    "pm:capacity:diagnostics": "node scripts/diagnostics/run.mjs --profile platform-mixed-capacity",
+    "pm:write-heavy:diagnostics": "node scripts/diagnostics/run.mjs --profile write-heavy",
+    "pm:contention:diagnostics": "node scripts/diagnostics/run.mjs --profile platform-contention",
+    "test:tooling": "node --experimental-strip-types --test scripts/diagnostics/tests/*.test.mjs && python3 -B -m unittest discover -s scripts/analysis -p \"test_*.py\"",
+    "test:metric-grouping": "python3 -B scripts/diagnostics/verify-metric-grouping.py"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.30.1",
     "@types/k6": "latest",
+    "pg": "8.23.0",
     "typescript": "latest"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }

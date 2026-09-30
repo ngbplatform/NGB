@@ -10,7 +10,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_RetainedEarningsAccountValidation_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -19,8 +19,6 @@ public sealed class CloseFiscalYear_RetainedEarningsAccountValidation_P0Tests(Po
     [Fact]
     public async Task CloseFiscalYear_WhenRetainedEarningsNotFound_Throws()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await using var scope = host.Services.CreateAsyncScope();
@@ -39,8 +37,6 @@ public sealed class CloseFiscalYear_RetainedEarningsAccountValidation_P0Tests(Po
     [Fact]
     public async Task CloseFiscalYear_WhenRetainedEarningsInactive_IsTreatedAsNotFound_Throws()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var retainedAccountId = await CreateAccountAsync(host,
@@ -67,8 +63,6 @@ public sealed class CloseFiscalYear_RetainedEarningsAccountValidation_P0Tests(Po
     [Fact]
     public async Task CloseFiscalYear_WhenRetainedEarningsSoftDeleted_IsTreatedAsNotFound_Throws()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var retainedAccountId = await CreateAccountAsync(host,
@@ -101,8 +95,6 @@ public sealed class CloseFiscalYear_RetainedEarningsAccountValidation_P0Tests(Po
     [Fact]
     public async Task CloseFiscalYear_WhenRetainedEarningsNotEquitySection_Throws()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var retainedAccountId = await CreateAccountAsync(host,
@@ -129,8 +121,6 @@ public sealed class CloseFiscalYear_RetainedEarningsAccountValidation_P0Tests(Po
     [Fact]
     public async Task CloseFiscalYear_WhenRetainedEarningsNotCreditNormal_Throws()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Contra under Equity flips the normal balance to Debit.
@@ -158,8 +148,6 @@ public sealed class CloseFiscalYear_RetainedEarningsAccountValidation_P0Tests(Po
     [Fact]
     public async Task CloseFiscalYear_WhenRetainedEarningsRequiresDimensions_ThrowsValidation()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await using var createScope = host.Services.CreateAsyncScope();

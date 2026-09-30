@@ -17,7 +17,7 @@ using NGB.Core.Reporting;
 using NGB.Core.Security;
 using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.Security;
 using NGB.Persistence.AuditLog;
 using NGB.Runtime.AuditLog;
 using Xunit;
@@ -1019,7 +1019,7 @@ public sealed class PmSecurityAccessManagement_Http_P0Tests(PmIntegrationFixture
     private static async Task SeedSecurityDefaultsAsync(PmApiFactory factory)
     {
         await using var scope = factory.Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<PropertyManagementSecuritySeeder>().EnsureSeededAsync();
+        await scope.ServiceProvider.GetRequiredService<IPropertyManagementSecuritySetupService>().EnsureDefaultsAsync();
     }
 
     private static JsonSerializerOptions CreateJson()

@@ -1,12 +1,11 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class GeneralLedgerAggregated_Semantics_P1Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     [Fact]

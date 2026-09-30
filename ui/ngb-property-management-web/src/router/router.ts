@@ -1,65 +1,66 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { buildChartOfAccountsPath, createAuthGuard, ngbRouteAliasRedirectRoutes, NgbAccountingPeriodClosingPage, NgbChartOfAccountsPage, NgbDocumentEffectsPage, NgbDocumentFlowPage, NgbDocumentPrintPage, NgbGeneralJournalEntryEditPage, NgbGeneralJournalEntryListPage, NgbNotificationPreferencesPage, NgbReportPage, NgbRoleEditorPage, NgbRolesPage, NgbUserEditorPage, NgbUsersPage, NgbWorkCenterPage, useAuthStore, useMainMenuStore } from '@ngbplatform/ui'
+import { buildChartOfAccountsPath, createAuthGuard, ngbRouteAliasRedirectRoutes, useAuthStore, useMainMenuStore } from '@ngbplatform/ui'
+import { loadNgbAccountingPeriodClosingPage, loadNgbChartOfAccountsPage, loadNgbDocumentEffectsPage, loadNgbDocumentFlowPage, loadNgbDocumentPrintPage, loadNgbGeneralJournalEntryEditPage, loadNgbGeneralJournalEntryListPage, loadNgbNotificationPreferencesPage, loadNgbReportPage, loadNgbRoleEditorPage, loadNgbRolesPage, loadNgbUserEditorPage, loadNgbUsersPage, loadNgbWorkCenterPage } from '@ngbplatform/ui/lazy'
 import { createPmRouteFrameworkConfig } from './framework'
 import { resolvePermissionAwareLanding } from './permissionAwareLanding'
 
-import HomePage from '../pages/HomePage.vue'
-import AccountingPolicySettingsPage from '../pages/AccountingPolicySettingsPage.vue'
-import ReceivablesOpenItemsPage from '../pages/ReceivablesOpenItemsPage.vue'
-import PayablesOpenItemsPage from '../pages/PayablesOpenItemsPage.vue'
-import ReceivablesReconciliationPage from '../pages/ReceivablesReconciliationPage.vue'
-import PayablesReconciliationPage from '../pages/PayablesReconciliationPage.vue'
-import PropertiesPage from '../pages/PropertiesPage.vue'
+const loadHomePage = () => import('../pages/HomePage.vue').then((module) => module.default)
+const loadAccountingPolicySettingsPage = () => import('../pages/AccountingPolicySettingsPage.vue').then((module) => module.default)
+const loadReceivablesOpenItemsPage = () => import('../pages/ReceivablesOpenItemsPage.vue').then((module) => module.default)
+const loadPayablesOpenItemsPage = () => import('../pages/PayablesOpenItemsPage.vue').then((module) => module.default)
+const loadReceivablesReconciliationPage = () => import('../pages/ReceivablesReconciliationPage.vue').then((module) => module.default)
+const loadPayablesReconciliationPage = () => import('../pages/PayablesReconciliationPage.vue').then((module) => module.default)
+const loadPropertiesPage = () => import('../pages/PropertiesPage.vue').then((module) => module.default)
 const { catalogRoutes, documentRoutes } = createPmRouteFrameworkConfig()
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/home' },
-    { path: '/home', component: HomePage },
-    { path: '/work-center', component: NgbWorkCenterPage, props: { vertical: 'pm' } },
-    { path: '/settings/notifications', component: NgbNotificationPreferencesPage },
+    { path: '/home', component: loadHomePage },
+    { path: '/work-center', component: loadNgbWorkCenterPage, props: { vertical: 'pm' } },
+    { path: '/settings/notifications', component: loadNgbNotificationPreferencesPage },
 
     // Property Management: Accounting Policy is a single-record settings screen.
-    { path: '/catalogs/pm.accounting_policy', component: AccountingPolicySettingsPage },
+    { path: '/catalogs/pm.accounting_policy', component: loadAccountingPolicySettingsPage },
     { path: '/catalogs/pm.accounting_policy/new', redirect: '/catalogs/pm.accounting_policy' },
     { path: '/catalogs/pm.accounting_policy/:id', redirect: '/catalogs/pm.accounting_policy' },
 
     // Property Management: Properties (Building → Units) master-detail.
-    { path: '/catalogs/pm.property', component: PropertiesPage },
+    { path: '/catalogs/pm.property', component: loadPropertiesPage },
 
     ...catalogRoutes,
 
     ...ngbRouteAliasRedirectRoutes,
 
     ...documentRoutes,
-    { path: '/documents/:documentType/:id/effects', component: NgbDocumentEffectsPage },
-    { path: '/documents/:documentType/:id/flow', component: NgbDocumentFlowPage },
-    { path: '/documents/:documentType/:id/print', component: NgbDocumentPrintPage, meta: { bare: true } },
+    { path: '/documents/:documentType/:id/effects', component: loadNgbDocumentEffectsPage },
+    { path: '/documents/:documentType/:id/flow', component: loadNgbDocumentFlowPage },
+    { path: '/documents/:documentType/:id/print', component: loadNgbDocumentPrintPage, meta: { bare: true } },
 
-    { path: '/receivables/open-items', component: ReceivablesOpenItemsPage },
-    { path: '/payables/open-items', component: PayablesOpenItemsPage },
-    { path: '/receivables/reconciliation', component: ReceivablesReconciliationPage },
-    { path: '/payables/reconciliation', component: PayablesReconciliationPage },
+    { path: '/receivables/open-items', component: loadReceivablesOpenItemsPage },
+    { path: '/payables/open-items', component: loadPayablesOpenItemsPage },
+    { path: '/receivables/reconciliation', component: loadReceivablesReconciliationPage },
+    { path: '/payables/reconciliation', component: loadPayablesReconciliationPage },
 
-    { path: '/accounting/general-journal-entries', component: NgbGeneralJournalEntryListPage },
-    { path: '/accounting/general-journal-entries/new', component: NgbGeneralJournalEntryEditPage },
-    { path: '/accounting/general-journal-entries/:id', component: NgbGeneralJournalEntryEditPage },
+    { path: '/accounting/general-journal-entries', component: loadNgbGeneralJournalEntryListPage },
+    { path: '/accounting/general-journal-entries/new', component: loadNgbGeneralJournalEntryEditPage },
+    { path: '/accounting/general-journal-entries/:id', component: loadNgbGeneralJournalEntryEditPage },
 
 
-    { path: '/reports/:reportCode', component: NgbReportPage },
+    { path: '/reports/:reportCode', component: loadNgbReportPage },
     {
       path: '/admin/accounting/period-closing',
-      component: NgbAccountingPeriodClosingPage,
+      component: loadNgbAccountingPeriodClosingPage,
       props: {
         backTarget: buildChartOfAccountsPath(),
       },
     },
-    { path: '/admin/chart-of-accounts', component: NgbChartOfAccountsPage },
-    { path: '/admin/security/users', component: NgbUsersPage },
-    { path: '/admin/security/users/:userId', component: NgbUserEditorPage },
-    { path: '/admin/security/roles', component: NgbRolesPage },
-    { path: '/admin/security/roles/:roleId', component: NgbRoleEditorPage },
+    { path: '/admin/chart-of-accounts', component: loadNgbChartOfAccountsPage },
+    { path: '/admin/security/users', component: loadNgbUsersPage },
+    { path: '/admin/security/users/:userId', component: loadNgbUserEditorPage },
+    { path: '/admin/security/roles', component: loadNgbRolesPage },
+    { path: '/admin/security/roles/:roleId', component: loadNgbRoleEditorPage },
   ],
 })
 
@@ -72,7 +73,7 @@ router.beforeEach(async (to) => {
   if (!auth.authenticated) return true
 
   const menu = useMainMenuStore()
-  if (menu.groups.length === 0 && !menu.isLoading) {
+  if (!menu.hasLoaded && !menu.isLoading) {
     await menu.load()
   }
 

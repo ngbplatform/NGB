@@ -54,6 +54,16 @@ export type ReceivablesOpenItemsDetailsResponseDto = {
   allocations: ReceivablesAllocationDetailsDto[]
   totalOutstanding: number
   totalCredit: number
+  chargeCount?: number | null
+  creditCount?: number | null
+  allocationCount?: number | null
+  chargeOffset?: number | null
+  creditOffset?: number | null
+  allocationOffset?: number | null
+  limit?: number | null
+  chargesHaveMore?: boolean | null
+  creditsHaveMore?: boolean | null
+  allocationsHaveMore?: boolean | null
 }
 
 export type ReceivablesApplyWarningDto = {
@@ -159,6 +169,13 @@ export type ReceivablesReconciliationReportDto = {
   rowCount: number
   mismatchRowCount: number
   rows: ReceivablesReconciliationRowDto[]
+  offset?: number | null
+  limit?: number | null
+  hasMore?: boolean | null
+  nextCursor?: string | null
+  filteredRowCount?: number | null
+  glOnlyRowCount?: number | null
+  openItemsOnlyRowCount?: number | null
 }
 
 export type PayablesOpenChargeItemDetailsDto = {
@@ -214,6 +231,16 @@ export type PayablesOpenItemsDetailsResponseDto = {
   allocations: PayablesAllocationDetailsDto[]
   totalOutstanding: number
   totalCredit: number
+  chargeCount?: number | null
+  creditCount?: number | null
+  allocationCount?: number | null
+  chargeOffset?: number | null
+  creditOffset?: number | null
+  allocationOffset?: number | null
+  limit?: number | null
+  chargesHaveMore?: boolean | null
+  creditsHaveMore?: boolean | null
+  allocationsHaveMore?: boolean | null
 }
 
 export type PayablesReconciliationModeDto = 'Movement' | 'Balance'
@@ -244,6 +271,13 @@ export type PayablesReconciliationReportDto = {
   rowCount: number
   mismatchRowCount: number
   rows: PayablesReconciliationRowDto[]
+  offset?: number | null
+  limit?: number | null
+  hasMore?: boolean | null
+  nextCursor?: string | null
+  filteredRowCount?: number | null
+  glOnlyRowCount?: number | null
+  openItemsOnlyRowCount?: number | null
 }
 
 export type PayablesApplyWarningDto = {

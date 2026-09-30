@@ -56,7 +56,6 @@ const inputClass = computed(() => {
 })
 
 function onInput(event: Event): void {
-  const target = event.target
-  if (target instanceof HTMLInputElement) emit('update:modelValue', target.value)
+  emit('update:modelValue', (event.currentTarget as HTMLInputElement).value)
 }
 </script>

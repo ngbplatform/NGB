@@ -23,7 +23,7 @@ public sealed class BasicAccountingPostingValidator : IAccountingPostingValidato
         if (entries.Count == 0)
             throw new NgbArgumentInvalidException("entries", "Document has no accounting entries.");
 
-        static void ThrowInvalid(string reason) => throw new NgbArgumentInvalidException("entries", reason);
+        static NgbArgumentInvalidException Invalid(string reason) => new("entries", reason);
 
         var first = entries[0];
 
@@ -33,7 +33,7 @@ public sealed class BasicAccountingPostingValidator : IAccountingPostingValidato
         }
         catch (NgbArgumentInvalidException)
         {
-            ThrowInvalid("Posting period must be UTC (DateTimeKind.Utc).");
+            throw Invalid("Posting period must be UTC (DateTimeKind.Utc).");
         }
 
         var documentId = first.DocumentId;
@@ -43,7 +43,7 @@ public sealed class BasicAccountingPostingValidator : IAccountingPostingValidato
         foreach (var e in entries)
         {
             if (e.DocumentId != documentId)
-                ThrowInvalid($"All entries must belong to the same DocumentId. Expected {documentId}, actual {e.DocumentId}.");
+                throw Invalid($"All entries must belong to the same DocumentId. Expected {documentId}, actual {e.DocumentId}.");
 
             try
             {
@@ -51,31 +51,31 @@ public sealed class BasicAccountingPostingValidator : IAccountingPostingValidato
             }
             catch (NgbArgumentInvalidException)
             {
-                ThrowInvalid($"Posting period must be UTC (DateTimeKind.Utc). DocumentId={documentId}.");
+                throw Invalid($"Posting period must be UTC (DateTimeKind.Utc). DocumentId={documentId}.");
             }
 
             if (e.Period.Date != dayUtc)
-                ThrowInvalid($"All entries must be in the same UTC day. Expected {dayUtc:O}, actual {e.Period.Date:O}. DocumentId={documentId}.");
+                throw Invalid($"All entries must be in the same UTC day. Expected {dayUtc:O}, actual {e.Period.Date:O}. DocumentId={documentId}.");
 
             if (e.Amount <= 0m)
-                ThrowInvalid($"Entry amount must be > 0. DocumentId={documentId}.");
+                throw Invalid($"Entry amount must be > 0. DocumentId={documentId}.");
 
             // Ensure stable precision (to match DECIMAL(?, MaxAmountScale) in DB)
             var scale = GetScale(e.Amount);
             if (scale > MaxAmountScale)
-                ThrowInvalid($"Entry amount has too many decimal places (scale={scale}, max={MaxAmountScale}). DocumentId={documentId}.");
+                throw Invalid($"Entry amount has too many decimal places (scale={scale}, max={MaxAmountScale}). DocumentId={documentId}.");
 
             if (e.Debit is null)
-                ThrowInvalid($"Debit account is required. DocumentId={documentId}.");
+                throw Invalid($"Debit account is required. DocumentId={documentId}.");
 
             if (e.Credit is null)
-                ThrowInvalid($"Credit account is required. DocumentId={documentId}.");
+                throw Invalid($"Credit account is required. DocumentId={documentId}.");
 
             var debit = e.Debit!;
             var credit = e.Credit!;
 
             if (ReferenceEquals(debit, credit) || debit.Id == credit.Id)
-                ThrowInvalid($"Debit and Credit accounts must be different. DocumentId={documentId}. AccountId={debit.Id}.");
+                throw Invalid($"Debit and Credit accounts must be different. DocumentId={documentId}. AccountId={debit.Id}.");
 
             ValidateSide("Debit", debit, e.DebitDimensions, documentId);
             ValidateSide("Credit", credit, e.CreditDimensions, documentId);

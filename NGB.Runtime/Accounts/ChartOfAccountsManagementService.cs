@@ -18,7 +18,8 @@ public sealed class ChartOfAccountsManagementService(
     IChartOfAccountsRepository repository,
     ICashFlowLineRepository cashFlowLines,
     IAuditLogService audit,
-    ILogger<ChartOfAccountsManagementService> logger)
+    ILogger<ChartOfAccountsManagementService> logger,
+    ChartOfAccountsSnapshotCache snapshotCache)
     : IChartOfAccountsManagementService
 {
     public async Task<Guid> CreateAsync(CreateAccountRequest request, CancellationToken ct = default)
@@ -27,7 +28,6 @@ public sealed class ChartOfAccountsManagementService(
             throw new NgbArgumentRequiredException(nameof(request));
         
         var acc = BuildAccount(
-            id: null,
             request.Code,
             request.Name,
             request.Type,
@@ -55,6 +55,7 @@ public sealed class ChartOfAccountsManagementService(
             return acc.Id;
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Created account {AccountId} ({Code})", accountId, acc.Code);
         return accountId;
     }
@@ -101,6 +102,7 @@ public sealed class ChartOfAccountsManagementService(
                 ct: innerCt);
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Updated account {AccountId} ({Code})", updated.Id, updated.Code);
     }
 
@@ -128,6 +130,7 @@ public sealed class ChartOfAccountsManagementService(
                 ct: innerCt);
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Set account {AccountId} active={IsActive}", accountId, isActive);
     }
 
@@ -164,6 +167,7 @@ public sealed class ChartOfAccountsManagementService(
                 ct: innerCt);
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Marked for deletion account {AccountId}", accountId);
     }
 
@@ -193,6 +197,7 @@ public sealed class ChartOfAccountsManagementService(
                 ct: innerCt);
         }, ct);
 
+        snapshotCache.Invalidate();
         logger.LogInformation("Unmarked account {AccountId} for deletion", accountId);
     }
 
@@ -297,7 +302,6 @@ public sealed class ChartOfAccountsManagementService(
     }
 
     private static Account BuildAccount(
-        Guid? id,
         string code,
         string name,
         AccountType type,
@@ -308,7 +312,7 @@ public sealed class ChartOfAccountsManagementService(
         CashFlowRole? cashFlowRole,
         string? cashFlowLineCode)
     {
-        var resolvedId = id ?? Guid.CreateVersion7();
+        var resolvedId = Guid.CreateVersion7();
         var rules = BuildDimensionRulesFromRequest(resolvedId, dimensionRules);
 
         return new Account(
@@ -490,7 +494,7 @@ public sealed class ChartOfAccountsManagementService(
                         "Working-capital accounts must belong to Assets or Liabilities.");
                 }
 
-                EnsureLineSection(line, CashFlowSection.Operating, account.CashFlowRole);
+                EnsureLineSection(line!, CashFlowSection.Operating, account.CashFlowRole);
                 return;
 
             case CashFlowRole.NonCashOperatingAdjustment:
@@ -501,7 +505,7 @@ public sealed class ChartOfAccountsManagementService(
                         "Non-cash operating adjustments must belong to profit-and-loss sections.");
                 }
 
-                EnsureLineSection(line, CashFlowSection.Operating, account.CashFlowRole);
+                EnsureLineSection(line!, CashFlowSection.Operating, account.CashFlowRole);
                 return;
 
             case CashFlowRole.InvestingCounterparty:
@@ -512,7 +516,7 @@ public sealed class ChartOfAccountsManagementService(
                         "Investing counterparty accounts must belong to Assets.");
                 }
 
-                EnsureLineSection(line, CashFlowSection.Investing, account.CashFlowRole);
+                EnsureLineSection(line!, CashFlowSection.Investing, account.CashFlowRole);
                 return;
 
             case CashFlowRole.FinancingCounterparty:
@@ -523,7 +527,7 @@ public sealed class ChartOfAccountsManagementService(
                         "Financing counterparty accounts must belong to Liabilities or Equity.");
                 }
 
-                EnsureLineSection(line, CashFlowSection.Financing, account.CashFlowRole);
+                EnsureLineSection(line!, CashFlowSection.Financing, account.CashFlowRole);
                 return;
 
             default:
@@ -531,11 +535,11 @@ public sealed class ChartOfAccountsManagementService(
         }
     }
 
-    private static void EnsureLineSection(CashFlowLineDefinition? line, CashFlowSection expectedSection, CashFlowRole role)
+    private static void EnsureLineSection(
+        CashFlowLineDefinition line,
+        CashFlowSection expectedSection,
+        CashFlowRole role)
     {
-        if (line is null)
-            throw new NgbInvariantViolationException($"Cash flow role '{role}' requires a cash flow line definition.");
-
         if (line.Section != expectedSection)
         {
             throw new NgbArgumentInvalidException(

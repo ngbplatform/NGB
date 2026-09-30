@@ -5,6 +5,7 @@ using NGB.Contracts.Reporting;
 using NGB.Contracts.Search;
 using NGB.Contracts.Services;
 using NGB.Core.Reporting;
+using NGB.Tools.Exceptions;
 
 namespace NGB.Trade.Api.Services;
 
@@ -18,6 +19,7 @@ public sealed class TradeCommandPaletteSearchService(
     private const string DocumentsCode = "documents";
     private const string CatalogsCode = "catalogs";
     private const string ReportsCode = "reports";
+    private const int MaxQueryLength = 256;
 
     private static readonly TimeSpan MetadataCacheTtl = TimeSpan.FromMinutes(10);
 
@@ -25,38 +27,50 @@ public sealed class TradeCommandPaletteSearchService(
         CommandPaletteSearchRequestDto request,
         CancellationToken ct)
     {
-        var query = (request.Query ?? string.Empty).Trim();
-        if (query.Length == 0)
+        var query = NormalizeQuery(request.Query);
+        if (query is null)
             return new CommandPaletteSearchResponseDto([]);
 
         var scope = NormalizeScope(request.Scope);
-        var limit = Math.Clamp(request.Limit <= 0 ? 20 : request.Limit, 1, 30);
+        var limit = Math.Min(request.Limit <= 0 ? 20 : request.Limit, 30);
         var groups = new List<CommandPaletteGroupDto>(capacity: 3);
+        var reportsTask = scope is null or ReportsCode
+            ? SafeGroupAsync(ReportsCode, () => SearchReportsAsync(query, limit, ct), ct)
+            : null;
 
         if (scope is null or DocumentsCode)
         {
             var documentsGroup = await SafeGroupAsync(DocumentsCode, () => SearchDocumentsAsync(query, limit, request.Context, ct), ct);
-            if (documentsGroup is not null && documentsGroup.Items.Count > 0)
+            if (documentsGroup is not null)
                 groups.Add(documentsGroup);
         }
 
         if (scope is null or CatalogsCode)
         {
             var catalogsGroup = await SafeGroupAsync(CatalogsCode, () => SearchCatalogsAsync(query, limit, request.Context, ct), ct);
-            if (catalogsGroup is not null && catalogsGroup.Items.Count > 0)
+            if (catalogsGroup is not null)
                 groups.Add(catalogsGroup);
         }
 
-        if (scope is null or ReportsCode)
+        if (reportsTask is not null)
         {
-            var reportsGroup = await SafeGroupAsync(ReportsCode, () => SearchReportsAsync(query, limit, request.Context, ct), ct);
-            if (reportsGroup is not null && reportsGroup.Items.Count > 0)
+            var reportsGroup = await reportsTask;
+            if (reportsGroup is not null)
                 groups.Add(reportsGroup);
         }
 
-        return new CommandPaletteSearchResponseDto(groups
-            .OrderBy(static group => GroupOrder(group.Code))
-            .ToArray());
+        return new CommandPaletteSearchResponseDto(groups);
+    }
+
+    private static string? NormalizeQuery(string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return null;
+
+        if (query.Length > MaxQueryLength)
+            throw new NgbArgumentOutOfRangeException(nameof(query), query.Length, $"Search text can contain up to {MaxQueryLength} characters.");
+
+        return query.Trim();
     }
 
     private async Task<CommandPaletteGroupDto?> SafeGroupAsync(
@@ -149,15 +163,11 @@ public sealed class TradeCommandPaletteSearchService(
             : new CommandPaletteGroupDto(CatalogsCode, "Catalogs", items);
     }
 
-    private async Task<CommandPaletteGroupDto?> SearchReportsAsync(
-        string query,
-        int limit,
-        CommandPaletteSearchContextDto? context,
-        CancellationToken ct)
+    private async Task<CommandPaletteGroupDto?> SearchReportsAsync(string query, int limit, CancellationToken ct)
     {
         var definitions = await GetReportDefinitionsAsync(ct);
         var items = definitions
-            .Select(definition => CreateReportItem(query, definition, context))
+            .Select(definition => CreateReportItem(query, definition))
             .Where(static item => item is not null)
             .Select(static item => item!)
             .OrderByDescending(static item => item.Score)
@@ -178,9 +188,7 @@ public sealed class TradeCommandPaletteSearchService(
     {
         var number = document.Number?.Trim();
         var display = document.Display?.Trim();
-        var title = number?.Length > 0
-            ? $"{descriptor.Label} {number}"
-            : $"{descriptor.Label} {display ?? document.Id.ToString()}";
+        var title = $"{descriptor.Label} {ResolveDocumentTitleValue(number, display, document.Id)}";
 
         var subtitleParts = new List<string>(capacity: 3);
         if (display?.Length > 0 && !string.Equals(display, number, StringComparison.OrdinalIgnoreCase))
@@ -242,10 +250,7 @@ public sealed class TradeCommandPaletteSearchService(
             Score: decimal.Round(score, 4));
     }
 
-    private static CommandPaletteResultItemDto? CreateReportItem(
-        string query,
-        ReportDefinitionDto definition,
-        CommandPaletteSearchContextDto? context)
+    private static CommandPaletteResultItemDto? CreateReportItem(string query, ReportDefinitionDto definition)
     {
         var group = definition.Group?.Trim();
         var description = definition.Description?.Trim();
@@ -253,15 +258,11 @@ public sealed class TradeCommandPaletteSearchService(
         if (score <= 0m)
             return null;
 
-        if (string.Equals(context?.EntityType, "report", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(context?.EntityId?.ToString(), definition.ReportCode, StringComparison.OrdinalIgnoreCase))
-        {
-            score += 0.02m;
-        }
-
         var subtitleParts = new List<string>(capacity: 2);
+
         if (group?.Length > 0)
             subtitleParts.Add(group);
+
         if (description?.Length > 0)
             subtitleParts.Add(description);
 
@@ -280,7 +281,7 @@ public sealed class TradeCommandPaletteSearchService(
     }
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetDocumentDescriptorsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "trade-command-palette:documents",
                async entry =>
                {
@@ -296,11 +297,10 @@ public sealed class TradeCommandPaletteSearchService(
                            ResolveItemIcon(item.Icon, "file-text"),
                            ResolveAliases(item.DocumentType, item.DisplayName)))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private async Task<IReadOnlyList<SearchableDescriptor>> GetCatalogDescriptorsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "trade-command-palette:catalogs",
                async entry =>
                {
@@ -314,11 +314,10 @@ public sealed class TradeCommandPaletteSearchService(
                            ResolveItemIcon(item.Icon, "grid"),
                            ResolveAliases(item.CatalogType, item.DisplayName)))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private async Task<IReadOnlyList<ReportDefinitionDto>> GetReportDefinitionsAsync(CancellationToken ct)
-        => await cache.GetOrCreateAsync(
+        => (await cache.GetOrCreateAsync(
                "trade-command-palette:reports",
                async entry =>
                {
@@ -332,8 +331,7 @@ public sealed class TradeCommandPaletteSearchService(
                            !string.Equals(definition.ReportCode, AccountingReportCodes.PostingLog, StringComparison.OrdinalIgnoreCase)
                            && !string.Equals(definition.ReportCode, AccountingReportCodes.Consistency, StringComparison.OrdinalIgnoreCase))
                        .ToArray();
-               })
-           ?? [];
+               }))!;
 
     private static string? NormalizeScope(string? scope)
         => (scope ?? string.Empty).Trim().ToLowerInvariant() switch
@@ -401,17 +399,16 @@ public sealed class TradeCommandPaletteSearchService(
             _ => status.ToString()
         };
 
-    private static int GroupOrder(string code)
-        => code switch
-        {
-            "actions" => 0,
-            "go-to" => 1,
-            DocumentsCode => 2,
-            CatalogsCode => 3,
-            ReportsCode => 4,
-            "recent" => 5,
-            _ => 99
-        };
+    private static string ResolveDocumentTitleValue(string? number, string? display, Guid id)
+    {
+        if (!string.IsNullOrEmpty(number))
+            return number;
+
+        if (!string.IsNullOrEmpty(display))
+            return display;
+
+        return id.ToString();
+    }
 
     private static decimal Score(string query, params string?[] candidates)
     {
@@ -452,18 +449,13 @@ public sealed class TradeCommandPaletteSearchService(
 
         if (normalizedCandidate.Equals(normalizedQuery, StringComparison.Ordinal))
             return 1.0m;
+
         if (normalizedCandidate.StartsWith(normalizedQuery, StringComparison.Ordinal))
             return 0.92m;
-        if (normalizedCandidate.Contains(normalizedQuery, StringComparison.Ordinal))
-            return 0.78m;
 
-        foreach (var token in normalizedCandidate.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (token.StartsWith(normalizedQuery, StringComparison.Ordinal))
-                return 0.72m;
-        }
-
-        return 0m;
+        return normalizedCandidate.Contains(normalizedQuery, StringComparison.Ordinal)
+            ? 0.78m
+            : 0m;
     }
 
     private static string Normalize(string? value)

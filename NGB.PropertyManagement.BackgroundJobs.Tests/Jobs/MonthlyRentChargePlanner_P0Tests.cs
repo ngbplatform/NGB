@@ -6,6 +6,43 @@ namespace NGB.PropertyManagement.BackgroundJobs.Tests.Jobs;
 
 public sealed class MonthlyRentChargePlanner_P0Tests
 {
+    [Theory]
+    [InlineData("2026-01-01", "2026-01-31", 0, "2026-01-31")]
+    [InlineData("2026-02-01", "2026-01-31", 1000, "2026-01-31")]
+    [InlineData("2026-02-01", "2026-01-15", 1000, "2026-02-28")]
+    public void BuildCandidates_InvalidOrIneligibleLease_ReturnsEmpty(
+        string start,
+        string? end,
+        decimal amount,
+        string asOf)
+    {
+        var lease = new PmRentChargeGenerationLease(
+            Guid.NewGuid(),
+            DateOnly.Parse(start),
+            end is null ? null : DateOnly.Parse(end),
+            amount,
+            1);
+
+        var result = MonthlyRentChargePlanner.BuildCandidates(lease, DateOnly.Parse(asOf));
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildCandidates_LeaseEndAfterAsOf_ClipsPeriodToAsOf()
+    {
+        var lease = new PmRentChargeGenerationLease(
+            Guid.NewGuid(),
+            new DateOnly(2026, 2, 1),
+            new DateOnly(2026, 12, 31),
+            1000m,
+            1);
+
+        var result = MonthlyRentChargePlanner.BuildCandidates(lease, new DateOnly(2026, 2, 14));
+
+        result.Should().ContainSingle().Which.PeriodToUtc.Should().Be(new DateOnly(2026, 2, 14));
+    }
+
     [Fact]
     public void BuildCandidates_ClipsPeriodsToLeaseBounds_AndBackfillsOnlyDueMonths()
     {

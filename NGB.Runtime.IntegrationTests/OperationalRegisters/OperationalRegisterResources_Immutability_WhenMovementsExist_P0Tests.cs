@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: semantics rely on storno rows copied from prior movements.
 /// Therefore physical resource columns (column_code) must not disappear after movements exist.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_Immutability_WhenMovementsExist_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

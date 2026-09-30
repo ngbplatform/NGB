@@ -56,7 +56,7 @@ public sealed class HttpCurrentActorContext(IHttpContextAccessor httpContextAcce
         if (preferredUsername is not null)
             return preferredUsername;
 
-        var identityName = principal.Identity?.Name;
+        var identityName = principal.Identity!.Name;
         if (!string.IsNullOrWhiteSpace(identityName))
             return identityName.Trim();
 

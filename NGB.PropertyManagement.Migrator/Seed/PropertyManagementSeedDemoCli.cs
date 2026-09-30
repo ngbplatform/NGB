@@ -2,8 +2,6 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Dapper;
-using Npgsql;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.CashFlow;
 using NGB.Application.Abstractions.Services;
@@ -17,6 +15,7 @@ using NGB.PropertyManagement.PostgreSql.DependencyInjection;
 using NGB.PropertyManagement.Runtime;
 using NGB.PropertyManagement.Runtime.Catalogs;
 using NGB.PropertyManagement.Runtime.DependencyInjection;
+using NGB.PropertyManagement.Seeding;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.CurrentActor;
 using NGB.Runtime.Periods;
@@ -84,11 +83,12 @@ internal static class PropertyManagementSeedDemoCli
                 seedScope.ServiceProvider.GetRequiredService<IChartOfAccountsManagementService>(),
                 seedScope.ServiceProvider.GetRequiredService<IPeriodClosingService>(),
                 seedScope.ServiceProvider.GetRequiredService<IClosedPeriodReader>(),
-                effectiveTimeProvider);
+                seedScope.ServiceProvider.GetRequiredService<IPropertyManagementDemoSeedReadStore>(),
+                effectiveTimeProvider,
+                provider.GetRequiredService<IServiceScopeFactory>());
 
             var summary = await seeder.RunAsync();
             PrintSummary(summary);
-            return 0;
         }
         catch (PropertyManagementDemoDatasetAlreadyExistsException) when (options?.SkipIfDatasetExists == true)
         {
@@ -101,6 +101,8 @@ internal static class PropertyManagementSeedDemoCli
             Console.Error.WriteLine(ex);
             return 1;
         }
+
+        return 0;
     }
 
     private static void PrintSummary(PropertyManagementDemoSeedSummary summary)
@@ -189,9 +191,6 @@ internal sealed record PropertyManagementDemoSeedOptions(
         var advisoryLockWaitTimeoutSeconds = PropertyManagementSeedCliArgs.GetInt(args, "--advisory-lock-timeout-seconds", 600);
         var skipIfDatasetExists = PropertyManagementSeedCliArgs.GetBool(args, "--skip-if-dataset-exists", false);
 
-        if (string.IsNullOrWhiteSpace(datasetCode))
-            throw new NgbArgumentInvalidException("--dataset", "'--dataset' must be non-empty.");
-
         if (fromDate > toDate)
             throw new NgbArgumentInvalidException("--from", "'--from' must be less than or equal to '--to'.");
 
@@ -210,7 +209,7 @@ internal sealed record PropertyManagementDemoSeedOptions(
         if (vendors is <= 0 or > 5_000)
             throw new NgbArgumentOutOfRangeException("--vendors", vendors, "'--vendors' must be between 1 and 5000.");
 
-        if (occupancyRate is <= 0d or > 1d)
+        if (!double.IsFinite(occupancyRate) || occupancyRate is <= 0d or > 1d)
             throw new NgbArgumentOutOfRangeException("--occupancy-rate", occupancyRate, "'--occupancy-rate' must be > 0 and <= 1.");
 
         if (progressEvery < 0)
@@ -275,8 +274,11 @@ internal sealed class PropertyManagementDemoSeeder(
     IChartOfAccountsManagementService chartOfAccountsManagement,
     IPeriodClosingService periodClosing,
     IClosedPeriodReader closedPeriodReader,
-    TimeProvider timeProvider)
+    IPropertyManagementDemoSeedReadStore seedReadStore,
+    TimeProvider timeProvider,
+    IServiceScopeFactory? scopeFactory = null)
 {
+    private const int SeedCatalogConcurrency = 4;
     private readonly Random _random = new(options.Seed);
     private readonly HashSet<string> _usedPartyDisplays = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedPartyEmails = new(StringComparer.OrdinalIgnoreCase);
@@ -347,16 +349,15 @@ internal sealed class PropertyManagementDemoSeeder(
 
     public async Task<PropertyManagementDemoSeedSummary> RunAsync(CancellationToken ct = default)
     {
-        await EnsureDatasetDoesNotExistAsync(ct);
+        if (await seedReadStore.DatasetExistsAsync(DatasetMarker(), ct))
+            throw new PropertyManagementDemoDatasetAlreadyExistsException(options.DatasetCode);
+
         var retainedEarningsAccountId = await EnsureRetainedEarningsAccountAsync(ct);
 
-        await using var conn = new NpgsqlConnection(options.ConnectionString);
-        await conn.OpenAsync(ct);
-        await conn.ExecuteAsync(new CommandDefinition("SET TIME ZONE 'UTC';", cancellationToken: ct));
-
         await EnsureDemoBankAccountsAsync(ct);
-        var lookup = await LoadLookupsAsync(conn, ct);
-        await PrimeExistingPartyIdentitiesAsync(conn, ct);
+        var lookup = CreateLookup(await seedReadStore.LoadLookupsAsync(ct));
+        var existingParties = await seedReadStore.LoadPartyIdentitiesAsync(ct);
+        PrimeExistingPartyIdentities(existingParties.Select(x => (x.Display, x.Email)));
         var buildings = await SeedBuildingsAndUnitsAsync(ct);
         var tenants = await SeedTenantsAsync(ct);
         var vendors = await SeedVendorsAsync(ct);
@@ -397,63 +398,28 @@ internal sealed class PropertyManagementDemoSeeder(
             maintenance.CompletionsPosted);
     }
 
-    private async Task EnsureDatasetDoesNotExistAsync(CancellationToken ct)
+    internal static DemoLookup CreateLookup(PropertyManagementDemoSeedLookupSnapshot snapshot)
     {
-        await using var conn = new NpgsqlConnection(options.ConnectionString);
-        await conn.OpenAsync(ct);
-
-        var exists = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
-            """
-            select exists (
-                select 1
-                  from cat_pm_property
-                 where kind = 'Building'
-                   and address_line2 = @Marker
-            );
-            """,
-            new { Marker = DatasetMarker() },
-            cancellationToken: ct));
-
-        if (exists)
-            throw new PropertyManagementDemoDatasetAlreadyExistsException(options.DatasetCode);
+        return new DemoLookup(
+            RequireDefaultBankAccountId(snapshot.DefaultBankAccountId),
+            snapshot.BankAccounts.Select(x => new LookupRow(x.Id, x.Name)).ToList(),
+            snapshot.ReceivableChargeTypes.Single(x => string.Equals(x.Name, "Utility", StringComparison.OrdinalIgnoreCase)).Id,
+            snapshot.ReceivableChargeTypes.Single(x => string.Equals(x.Name, "Parking", StringComparison.OrdinalIgnoreCase)).Id,
+            snapshot.PayableChargeTypes.Single(x => string.Equals(x.Name, "Repair", StringComparison.OrdinalIgnoreCase)).Id,
+            snapshot.PayableChargeTypes.Single(x => string.Equals(x.Name, "Utility", StringComparison.OrdinalIgnoreCase)).Id,
+            snapshot.MaintenanceCategories.Select(x => new LookupRow(x.Id, x.Name)).ToList());
     }
 
-    private async Task<DemoLookup> LoadLookupsAsync(NpgsqlConnection conn, CancellationToken ct)
+    internal static Guid RequireDefaultBankAccountId(Guid? defaultBankAccountId)
     {
-        var bankAccounts = (await conn.QueryAsync<LookupRow>(new CommandDefinition(
-            "select catalog_id as Id, display as Name from cat_pm_bank_account order by is_default desc, display;",
-            cancellationToken: ct))).ToList();
-
-        var defaultBankAccountId = await conn.ExecuteScalarAsync<Guid?>(new CommandDefinition(
-            "select catalog_id from cat_pm_bank_account where is_default = true order by catalog_id limit 1;",
-            cancellationToken: ct));
-
-        if (defaultBankAccountId is null || defaultBankAccountId == Guid.Empty)
+        var requiredId = defaultBankAccountId.GetValueOrDefault();
+        if (requiredId == Guid.Empty)
             throw new NgbConfigurationViolationException("Default PM bank account was not found. Run seed-defaults first.");
 
-        var receivableChargeTypes = (await conn.QueryAsync<LookupRow>(new CommandDefinition(
-            "select catalog_id as Id, display as Name from cat_pm_receivable_charge_type order by display;",
-            cancellationToken: ct))).ToList();
-
-        var payableChargeTypes = (await conn.QueryAsync<LookupRow>(new CommandDefinition(
-            "select catalog_id as Id, display as Name from cat_pm_payable_charge_type order by display;",
-            cancellationToken: ct))).ToList();
-
-        var maintenanceCategories = (await conn.QueryAsync<LookupRow>(new CommandDefinition(
-            "select catalog_id as Id, display as Name from cat_pm_maintenance_category order by display;",
-            cancellationToken: ct))).ToList();
-
-        return new DemoLookup(
-            defaultBankAccountId.Value,
-            bankAccounts,
-            receivableChargeTypes.Single(x => string.Equals(x.Name, "Utility", StringComparison.OrdinalIgnoreCase)).Id,
-            receivableChargeTypes.Single(x => string.Equals(x.Name, "Parking", StringComparison.OrdinalIgnoreCase)).Id,
-            payableChargeTypes.Single(x => string.Equals(x.Name, "Repair", StringComparison.OrdinalIgnoreCase)).Id,
-            payableChargeTypes.Single(x => string.Equals(x.Name, "Utility", StringComparison.OrdinalIgnoreCase)).Id,
-            maintenanceCategories);
+        return requiredId;
     }
 
-    private async Task EnsureDemoBankAccountsAsync(CancellationToken ct)
+    internal async Task EnsureDemoBankAccountsAsync(CancellationToken ct)
     {
         var activeBankAccounts = await catalogs.GetPageAsync(
             PropertyManagementCodes.BankAccount,
@@ -492,17 +458,8 @@ internal sealed class PropertyManagementDemoSeeder(
         }
     }
 
-    private async Task PrimeExistingPartyIdentitiesAsync(NpgsqlConnection conn, CancellationToken ct)
+    internal void PrimeExistingPartyIdentities(IEnumerable<(string? Display, string? Email)> rows)
     {
-        var rows = await conn.QueryAsync<(string? Display, string? Email)>(new CommandDefinition(
-            """
-            select display as Display,
-                   email as Email
-              from cat_pm_party
-             order by display nulls last, email nulls last;
-            """,
-            cancellationToken: ct));
-
         foreach (var row in rows)
         {
             if (!string.IsNullOrWhiteSpace(row.Display))
@@ -513,7 +470,7 @@ internal sealed class PropertyManagementDemoSeeder(
         }
     }
 
-    private async Task<Guid> EnsureActiveCashEquivalentAssetAccountAsync(string code, string name, CancellationToken ct)
+    internal async Task<Guid> EnsureActiveCashEquivalentAssetAccountAsync(string code, string name, CancellationToken ct)
     {
         var accounts = await chartOfAccountsAdmin.GetAsync(includeDeleted: true, ct);
         var existing = accounts.FirstOrDefault(x => string.Equals(x.Account.Code, code, StringComparison.OrdinalIgnoreCase));
@@ -557,7 +514,7 @@ internal sealed class PropertyManagementDemoSeeder(
             ct);
     }
 
-    private async Task<Guid> EnsureRetainedEarningsAccountAsync(CancellationToken ct)
+    internal async Task<Guid> EnsureRetainedEarningsAccountAsync(CancellationToken ct)
     {
         const string retainedEarningsCode = "3200";
         const string retainedEarningsName = "Retained Earnings";
@@ -589,7 +546,7 @@ internal sealed class PropertyManagementDemoSeeder(
 
     private async Task<List<BuildingSeedResult>> SeedBuildingsAndUnitsAsync(CancellationToken ct)
     {
-        var results = new List<BuildingSeedResult>(options.Buildings);
+        var plans = new List<(int UnitCount, RecordPayload Payload)>(options.Buildings);
 
         for (var i = 0; i < options.Buildings; i++)
         {
@@ -598,7 +555,7 @@ internal sealed class PropertyManagementDemoSeeder(
             var streetNo = 100 + i * 17;
             var streetName = StreetNames[i % StreetNames.Length];
 
-            var building = await catalogs.CreateAsync(PropertyManagementCodes.Property, Payload(new
+            plans.Add((unitCount, Payload(new
             {
                 kind = "Building",
                 address_line1 = $"{streetNo} {streetName} Ave",
@@ -606,74 +563,185 @@ internal sealed class PropertyManagementDemoSeeder(
                 city = city.City,
                 state = city.State,
                 zip = city.Zip
-            }), ct);
-
-            var bulk = await bulkUnits.BulkCreateUnitsAsync(new PropertyBulkCreateUnitsRequest
-            {
-                BuildingId = building.Id,
-                FromInclusive = 101,
-                ToInclusive = 100 + unitCount,
-                Step = 1,
-                UnitNoFormat = "{0:000}",
-                FloorSize = 100
-            }, ct);
-
-            results.Add(new BuildingSeedResult(building.Id, bulk.CreatedIds.ToList()));
+            })));
         }
 
-        return results;
+        var created = await CreateBuildingsAsync(plans, ct);
+
+        return created
+            .Select(x => new BuildingSeedResult(x.BuildingId, x.UnitIds))
+            .ToList();
     }
 
     private async Task<List<PartySeedResult>> SeedTenantsAsync(CancellationToken ct)
     {
         var identities = AllocatePartyIdentities(BuildTenantBaseDisplays(), options.Tenants, "tenant");
-        var list = new List<PartySeedResult>(options.Tenants);
+        var payloads = new RecordPayload[identities.Count];
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            var party = await catalogs.CreateAsync(PropertyManagementCodes.Party, Payload(new
+            payloads[i] = Payload(new
             {
                 display = identity.Display,
                 email = identity.Email,
                 phone = DemoPhone(i),
                 is_tenant = true,
                 is_vendor = false
-            }), ct);
-
-            list.Add(new PartySeedResult(party.Id, identity.Display));
+            });
         }
 
-        return list;
+        var created = await CreateCatalogsAsync(PropertyManagementCodes.Party, payloads, ct);
+
+        return identities
+            .Select((identity, index) => new PartySeedResult(created[index].Id, identity.Display))
+            .ToList();
     }
 
     private async Task<List<PartySeedResult>> SeedVendorsAsync(CancellationToken ct)
     {
         var identities = AllocatePartyIdentities(BuildVendorBaseDisplays(), options.Vendors, "vendor");
-        var list = new List<PartySeedResult>(options.Vendors);
+        var payloads = new RecordPayload[identities.Count];
+
         for (var i = 0; i < identities.Count; i++)
         {
             var identity = identities[i];
-            var party = await catalogs.CreateAsync(PropertyManagementCodes.Party, Payload(new
+            payloads[i] = Payload(new
             {
                 display = identity.Display,
                 email = identity.Email,
                 phone = DemoPhone(i + 10_000),
                 is_tenant = false,
                 is_vendor = true
-            }), ct);
-
-            list.Add(new PartySeedResult(party.Id, identity.Display));
+            });
         }
 
-        return list;
+        var created = await CreateCatalogsAsync(PropertyManagementCodes.Party, payloads, ct);
+
+        return identities
+            .Select((identity, index) => new PartySeedResult(created[index].Id, identity.Display))
+            .ToList();
     }
 
-    private List<LeasePlan> BuildLeasePlans(IReadOnlyList<Guid> unitIds, IReadOnlyList<Guid> tenantIds)
+    private async Task<IReadOnlyList<BuildingCreationResult>> CreateBuildingsAsync(
+        IReadOnlyList<(int UnitCount, RecordPayload Payload)> plans,
+        CancellationToken ct)
+    {
+        if (scopeFactory is null || plans.Count <= 1)
+        {
+            var sequential = new BuildingCreationResult[plans.Count];
+            for (var i = 0; i < plans.Count; i++)
+                sequential[i] = await CreateBuildingAsync(catalogs, bulkUnits, plans[i], ct);
+
+            return sequential;
+        }
+
+        var results = new BuildingCreationResult[plans.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, plans.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = SeedCatalogConcurrency,
+                CancellationToken = ct
+            },
+            async (index, token) =>
+            {
+                results[index] = await ExecuteInNewScopeAsync(
+                    scopeFactory,
+                    (services, innerToken) => CreateBuildingAsync(
+                        services.GetRequiredService<ICatalogService>(),
+                        services.GetRequiredService<IPropertyBulkCreateUnitsService>(),
+                        plans[index],
+                        innerToken),
+                    token);
+            });
+
+        return results;
+    }
+
+    private static async Task<BuildingCreationResult> CreateBuildingAsync(
+        ICatalogService catalogService,
+        IPropertyBulkCreateUnitsService bulkCreateUnits,
+        (int UnitCount, RecordPayload Payload) plan,
+        CancellationToken ct)
+    {
+        var building = await catalogService.CreateAsync(PropertyManagementCodes.Property, plan.Payload, ct);
+        var bulk = await bulkCreateUnits.BulkCreateUnitsAsync(new PropertyBulkCreateUnitsRequest
+        {
+            BuildingId = building.Id,
+            FromInclusive = 101,
+            ToInclusive = 100 + plan.UnitCount,
+            Step = 1,
+            UnitNoFormat = "{0:000}",
+            FloorSize = 100
+        }, ct);
+
+        return new BuildingCreationResult(building.Id, bulk.CreatedIds.ToList());
+    }
+
+    private async Task<IReadOnlyList<CatalogItemDto>> CreateCatalogsAsync(
+        string catalogType,
+        IReadOnlyList<RecordPayload> payloads,
+        CancellationToken ct)
+    {
+        if (scopeFactory is null || payloads.Count <= 1)
+        {
+            var sequential = new CatalogItemDto[payloads.Count];
+            for (var i = 0; i < payloads.Count; i++)
+            {
+                sequential[i] = await catalogs.CreateAsync(catalogType, payloads[i], ct);
+            }
+
+            return sequential;
+        }
+
+        var results = new CatalogItemDto[payloads.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, payloads.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = SeedCatalogConcurrency,
+                CancellationToken = ct
+            },
+            async (index, token) =>
+            {
+                results[index] = await ExecuteInNewScopeAsync(
+                    scopeFactory,
+                    (services, innerToken) => services.GetRequiredService<ICatalogService>()
+                        .CreateAsync(catalogType, payloads[index], innerToken),
+                    token);
+            });
+
+        return results;
+    }
+
+    internal static async Task<T> ExecuteInNewScopeAsync<T>(
+        IServiceScopeFactory scopeFactory,
+        Func<IServiceProvider, CancellationToken, Task<T>> action,
+        CancellationToken ct)
+    {
+        var scope = scopeFactory.CreateAsyncScope();
+        try
+        {
+            return await action(scope.ServiceProvider, ct);
+        }
+        finally
+        {
+            await DisposeScopeAsync(scope);
+        }
+    }
+
+    private static Task DisposeScopeAsync(AsyncServiceScope scope) => scope.DisposeAsync().AsTask();
+
+    internal List<LeasePlan> BuildLeasePlans(IReadOnlyList<Guid> unitIds, IReadOnlyList<Guid> tenantIds)
     {
         var shuffledUnits = unitIds.OrderBy(_ => _random.Next()).ToList();
         var shuffledTenants = tenantIds.OrderBy(_ => _random.Next()).ToList();
 
-        var occupiedUnitCount = Math.Max(1, Math.Min(shuffledUnits.Count, (int)Math.Round(shuffledUnits.Count * options.OccupancyRate, MidpointRounding.AwayFromZero)));
+        var occupiedUnitCount = shuffledUnits.Count == 0
+            ? 0
+            : Math.Max(1, Math.Min(
+                shuffledUnits.Count,
+                (int)Math.Round(shuffledUnits.Count * options.OccupancyRate, MidpointRounding.AwayFromZero)));
         occupiedUnitCount = Math.Min(occupiedUnitCount, shuffledTenants.Count);
 
         var plans = new List<LeasePlan>();
@@ -695,36 +763,30 @@ internal sealed class PropertyManagementDemoSeeder(
                     predecessorStart.AddDays(30),
                     options.ToDate.AddDays(-45));
 
-                if (predecessorEnd > predecessorStart)
-                {
-                    plans.Add(new LeasePlan(
-                        unitId, 
-                        shuffledTenants[tenantIndex++],
-                        predecessorStart,
-                        predecessorEnd,
-                        RentAmount(),
-                        DueDay(),
-                        false));
+                plans.Add(new LeasePlan(
+                    unitId,
+                    shuffledTenants[tenantIndex++],
+                    predecessorStart,
+                    predecessorEnd,
+                    RentAmount(),
+                    DueDay(),
+                    false));
 
-                    var activeStart = ClampDate(
-                        predecessorEnd.AddDays(_random.Next(15, 61)),
-                        predecessorEnd.AddDays(1),
-                        options.ToDate.AddDays(-14));
+                var activeStart = ClampDate(
+                    predecessorEnd.AddDays(_random.Next(15, 61)),
+                    predecessorEnd.AddDays(1),
+                    options.ToDate.AddDays(-14));
 
-                    if (activeStart > predecessorEnd && activeStart <= options.ToDate)
-                    {
-                        plans.Add(new LeasePlan(
-                            unitId, 
-                            shuffledTenants[tenantIndex++],
-                            activeStart,
-                            null,
-                            RentAmount(),
-                            DueDay(), 
-                            true));
+                plans.Add(new LeasePlan(
+                    unitId,
+                    shuffledTenants[tenantIndex++],
+                    activeStart,
+                    null,
+                    RentAmount(),
+                    DueDay(),
+                    true));
 
-                        continue;
-                    }
-                }
+                continue;
             }
 
             if (canCreateClosedLease && modeRoll < 0.35d)
@@ -735,19 +797,16 @@ internal sealed class PropertyManagementDemoSeeder(
                     closedStart.AddDays(14),
                     options.ToDate.AddDays(-7));
 
-                if (closedEnd > closedStart)
-                {
-                    plans.Add(new LeasePlan(
-                        unitId, 
-                        shuffledTenants[tenantIndex++], 
-                        closedStart,
-                        closedEnd,
-                        RentAmount(),
-                        DueDay(),
-                        false));
+                plans.Add(new LeasePlan(
+                    unitId,
+                    shuffledTenants[tenantIndex++],
+                    closedStart,
+                    closedEnd,
+                    RentAmount(),
+                    DueDay(),
+                    false));
 
-                    continue;
-                }
+                continue;
             }
 
             var activeLeaseStartMax = options.ToDate.AddDays(-7);
@@ -787,8 +846,6 @@ internal sealed class PropertyManagementDemoSeeder(
 
             list.Add(new SeededLease(
                 lease.Id,
-                plan.UnitId,
-                plan.TenantPartyId,
                 plan.StartDate,
                 plan.EndDate,
                 plan.RentAmount,
@@ -799,7 +856,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return list;
     }
 
-    private async Task<ReceivablesSummary> SeedReceivablesAsync(
+    internal async Task<ReceivablesSummary> SeedReceivablesAsync(
         IReadOnlyList<SeededLease> leases,
         DemoLookup lookup,
         CancellationToken ct)
@@ -809,9 +866,10 @@ internal sealed class PropertyManagementDemoSeeder(
         foreach (var lease in leases)
         {
             var month = new DateOnly(lease.StartDate.Year, lease.StartDate.Month, 1);
-            var effectiveLeaseEnd = lease.EndDate is null || lease.EndDate > options.ToDate
+            var requestedLeaseEnd = lease.EndDate.GetValueOrDefault(options.ToDate);
+            var effectiveLeaseEnd = requestedLeaseEnd > options.ToDate
                 ? options.ToDate
-                : lease.EndDate.Value;
+                : requestedLeaseEnd;
             var lastMonth = new DateOnly(effectiveLeaseEnd.Year, effectiveLeaseEnd.Month, 1);
 
             while (month <= lastMonth)
@@ -952,7 +1010,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return summary;
     }
 
-    private async Task MaybeCreateReceivableSettlementAsync(
+    internal async Task MaybeCreateReceivableSettlementAsync(
         Guid leaseId,
         Guid chargeDocumentId,
         DateOnly dueDate,
@@ -1030,7 +1088,7 @@ internal sealed class PropertyManagementDemoSeeder(
         summary.ReceivableAppliesPosted++;
     }
 
-    private async Task<PayablesSummary> SeedPayablesAsync(
+    internal async Task<PayablesSummary> SeedPayablesAsync(
         IReadOnlyList<BuildingSeedResult> buildings,
         IReadOnlyList<PartySeedResult> vendors,
         DemoLookup lookup,
@@ -1042,6 +1100,10 @@ internal sealed class PropertyManagementDemoSeeder(
 
         while (month <= lastMonth)
         {
+            var chargeFrom = month < options.FromDate ? options.FromDate : month;
+            var nominalChargeTo = month.AddDays(19);
+            var chargeTo = nominalChargeTo > options.ToDate ? options.ToDate : nominalChargeTo;
+
             foreach (var building in buildings)
             {
                 var chargeCount = _random.Next(0, 3);
@@ -1051,9 +1113,7 @@ internal sealed class PropertyManagementDemoSeeder(
                     var chargeTypeId = _random.NextDouble() < 0.55d
                         ? lookup.RepairChargeTypeId
                         : lookup.UtilityExpenseChargeTypeId;
-                    var dueDate = month.AddDays(_random.Next(0, 20));
-                    if (dueDate > options.ToDate)
-                        continue;
+                    var dueDate = RandomDate(chargeFrom, chargeTo);
 
                     var amount = decimal.Round(_random.Next(120, 2250) + (decimal)_random.NextDouble(), 4);
                     var charge = await CreateAndPostDocumentAsync(
@@ -1136,7 +1196,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return summary;
     }
 
-    private async Task<MaintenanceSummary> SeedMaintenanceAsync(
+    internal async Task<MaintenanceSummary> SeedMaintenanceAsync(
         IReadOnlyList<BuildingSeedResult> buildings,
         IReadOnlyList<PartySeedResult> tenants,
         IReadOnlyList<PartySeedResult> vendors,
@@ -1150,12 +1210,13 @@ internal sealed class PropertyManagementDemoSeeder(
 
         while (month <= lastMonth)
         {
+            var requestFrom = month < options.FromDate ? options.FromDate : month;
+            var nominalRequestTo = month.AddDays(24);
+            var requestTo = nominalRequestTo > options.ToDate ? options.ToDate : nominalRequestTo;
             var requestCount = _random.Next(1, Math.Min(6, Math.Max(2, unitIds.Count / 10)) + 1);
             for (var i = 0; i < requestCount; i++)
             {
-                var requestedOn = month.AddDays(_random.Next(0, 25));
-                if (requestedOn > options.ToDate)
-                    continue;
+                var requestedOn = RandomDate(requestFrom, requestTo);
 
                 var request = await CreateAndPostDocumentAsync(
                     PropertyManagementCodes.MaintenanceRequest,
@@ -1218,7 +1279,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return summary;
     }
 
-    private async Task EnsureReceivableCreditMemoSeededAsync(
+    internal async Task EnsureReceivableCreditMemoSeededAsync(
         IReadOnlyList<SeededLease> leases,
         DemoLookup lookup,
         ReceivablesSummary summary,
@@ -1247,7 +1308,7 @@ internal sealed class PropertyManagementDemoSeeder(
         summary.ReceivableCreditMemosPosted++;
     }
 
-    private async Task EnsureReceivableReturnedPaymentSeededAsync(
+    internal async Task EnsureReceivableReturnedPaymentSeededAsync(
         IReadOnlyList<SeededLease> leases,
         DemoLookup lookup,
         ReceivablesSummary summary,
@@ -1290,7 +1351,7 @@ internal sealed class PropertyManagementDemoSeeder(
         summary.ReceivableReturnedPaymentsPosted++;
     }
 
-    private async Task EnsurePayableCreditMemoSeededAsync(
+    internal async Task EnsurePayableCreditMemoSeededAsync(
         IReadOnlyList<BuildingSeedResult> buildings,
         IReadOnlyList<PartySeedResult> vendors,
         DemoLookup lookup,
@@ -1317,7 +1378,7 @@ internal sealed class PropertyManagementDemoSeeder(
         summary.PayableCreditMemosPosted++;
     }
 
-    private async Task<DocumentDto> CreateAndPostDocumentAsync(
+    internal async Task<DocumentDto> CreateAndPostDocumentAsync(
         string typeCode,
         DateTime dateUtc,
         RecordPayload payload,
@@ -1330,7 +1391,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return posted;
     }
 
-    private void TrackDocumentProgress(string typeCode)
+    internal void TrackDocumentProgress(string typeCode)
     {
         _postedDocuments++;
         if (options.ProgressEvery <= 0 || _postedDocuments % options.ProgressEvery != 0)
@@ -1339,15 +1400,18 @@ internal sealed class PropertyManagementDemoSeeder(
         Console.WriteLine($"- Progress: posted_documents={_postedDocuments}, last_type={typeCode}, dataset={options.DatasetCode}");
     }
 
-    private async Task<PeriodClosingSummary> SeedPeriodClosingsAsync(Guid retainedEarningsAccountId, CancellationToken ct)
+    internal async Task<PeriodClosingSummary> SeedPeriodClosingsAsync(Guid retainedEarningsAccountId, CancellationToken ct)
     {
         var currentYear = timeProvider.GetUtcToday().Year;
         var firstMonth = new DateOnly(options.FromDate.Year, options.FromDate.Month, 1);
         var lastMonth = new DateOnly(options.ToDate.Year, options.ToDate.Month, 1);
         var firstTrackedMonth = new DateOnly(firstMonth.Year, 1, 1);
-        var closedPeriods = (await closedPeriodReader.GetClosedAsync(firstTrackedMonth, lastMonth, ct))
-            .Select(x => x.Period)
-            .ToHashSet();
+        var closedPeriods = new HashSet<DateOnly>();
+
+        foreach (var closedPeriod in await closedPeriodReader.GetClosedAsync(firstTrackedMonth, lastMonth, ct))
+        {
+            closedPeriods.Add(closedPeriod.Period);
+        }
 
         var monthsClosed = 0;
         var fiscalYearsClosed = 0;
@@ -1374,7 +1438,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return new PeriodClosingSummary(monthsClosed, fiscalYearsClosed);
     }
 
-    private async Task<int> EnsureMonthsClosedAsync(
+    internal async Task<int> EnsureMonthsClosedAsync(
         DateOnly fromInclusive,
         DateOnly toInclusive,
         HashSet<DateOnly> closedPeriods,
@@ -1387,7 +1451,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return closedNow;
     }
 
-    private async Task<int> EnsureMonthClosedAsync(
+    internal async Task<int> EnsureMonthClosedAsync(
         DateOnly month,
         HashSet<DateOnly> closedPeriods,
         CancellationToken ct)
@@ -1400,12 +1464,12 @@ internal sealed class PropertyManagementDemoSeeder(
         return 1;
     }
 
-    private string DatasetMarker() => $"Dataset {options.DatasetCode}";
+    internal string DatasetMarker() => $"Dataset {options.DatasetCode}";
 
-    private Guid PickBankAccountId(DemoLookup lookup)
+    internal Guid PickBankAccountId(DemoLookup lookup)
         => lookup.BankAccounts[_random.Next(lookup.BankAccounts.Count)].Id;
 
-    private List<PartyIdentity> AllocatePartyIdentities(
+    internal List<PartyIdentity> AllocatePartyIdentities(
         IEnumerable<string> baseDisplays,
         int requiredCount,
         string label)
@@ -1493,14 +1557,14 @@ internal sealed class PropertyManagementDemoSeeder(
         }
     }
 
-    private static PartyIdentity CreatePartyIdentity(string display, string? emailLocalPart = null)
+    internal static PartyIdentity CreatePartyIdentity(string display, string? emailLocalPart = null)
     {
         var normalizedDisplay = display.Trim();
         var email = $"{emailLocalPart ?? BuildEmailLocalPart(normalizedDisplay)}@ngbplatform.com";
         return new PartyIdentity(normalizedDisplay, email);
     }
 
-    private static string BuildEmailToken(string value)
+    internal static string BuildEmailToken(string value)
     {
         var token = new StringBuilder();
         foreach (var ch in value)
@@ -1512,7 +1576,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return token.Length == 0 ? "dataset" : token.ToString();
     }
 
-    private static string BuildEmailLocalPart(string display)
+    internal static string BuildEmailLocalPart(string display)
     {
         var tokens = SplitDisplayTokens(display);
         if (tokens.Count == 0)
@@ -1521,15 +1585,12 @@ internal sealed class PropertyManagementDemoSeeder(
         if (tokens.Count > 2 && IsLegalSuffix(tokens[^1]))
             tokens.RemoveAt(tokens.Count - 1);
 
-        if (tokens.Count == 0)
-            throw new NgbArgumentInvalidException(nameof(display), "Display must contain at least one non-legal token.");
-
         var first = tokens[0];
         var last = tokens.Count >= 2 ? tokens[^1] : tokens[0];
         return $"{char.ToLowerInvariant(first[0])}.{last.ToLowerInvariant()}";
     }
 
-    private static List<string> SplitDisplayTokens(string display)
+    internal static List<string> SplitDisplayTokens(string display)
     {
         var tokens = new List<string>();
         var current = new StringBuilder();
@@ -1555,20 +1616,20 @@ internal sealed class PropertyManagementDemoSeeder(
         return tokens;
     }
 
-    private static bool IsLegalSuffix(string token)
+    internal static bool IsLegalSuffix(string token)
         => token.Equals("LLC", StringComparison.OrdinalIgnoreCase)
            || token.Equals("INC", StringComparison.OrdinalIgnoreCase)
            || token.Equals("LTD", StringComparison.OrdinalIgnoreCase)
            || token.Equals("CORP", StringComparison.OrdinalIgnoreCase)
            || token.Equals("CO", StringComparison.OrdinalIgnoreCase);
 
-    private string Pick(string[] items) => items[_random.Next(items.Length)];
+    internal string Pick(string[] items) => items[_random.Next(items.Length)];
 
-    private int DueDay() => _random.Next(1, 11);
+    internal int DueDay() => _random.Next(1, 11);
 
-    private decimal RentAmount() => decimal.Round(_random.Next(950, 3250), 2);
+    internal decimal RentAmount() => decimal.Round(_random.Next(950, 3250), 2);
 
-    private static DateOnly ClampDate(DateOnly value, DateOnly minInclusive, DateOnly maxInclusive)
+    internal static DateOnly ClampDate(DateOnly value, DateOnly minInclusive, DateOnly maxInclusive)
     {
         if (maxInclusive < minInclusive)
             return minInclusive;
@@ -1582,7 +1643,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return value;
     }
 
-    private DateOnly RandomDate(DateOnly minInclusive, DateOnly maxInclusive)
+    internal DateOnly RandomDate(DateOnly minInclusive, DateOnly maxInclusive)
     {
         if (minInclusive > maxInclusive)
             return minInclusive;
@@ -1591,10 +1652,10 @@ internal sealed class PropertyManagementDemoSeeder(
         return minInclusive.AddDays(delta == 0 ? 0 : _random.Next(0, delta + 1));
     }
 
-    private static DateTime ToDateTimeUtc(DateOnly date)
+    internal static DateTime ToDateTimeUtc(DateOnly date)
         => new(date.Year, date.Month, date.Day, 12, 0, 0, DateTimeKind.Utc);
 
-    private static RecordPayload Payload(object fields, IReadOnlyDictionary<string, RecordPartPayload>? parts = null)
+    internal static RecordPayload Payload(object fields, IReadOnlyDictionary<string, RecordPartPayload>? parts = null)
     {
         var element = JsonSerializer.SerializeToElement(fields, Json);
         var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
@@ -1607,7 +1668,7 @@ internal sealed class PropertyManagementDemoSeeder(
         return new RecordPayload(dict, parts);
     }
 
-    private static string DemoPhone(int index) => $"201-555-{(index % 10_000):0000}";
+    internal static string DemoPhone(int index) => $"201-555-{(index % 10_000):0000}";
 
     private static class LeaseParts
     {
@@ -1627,7 +1688,7 @@ internal sealed class PropertyManagementDemoSeeder(
             };
     }
 
-    private sealed record LookupRow(Guid Id, string Name);
+    internal sealed record LookupRow(Guid Id, string Name);
 
     private sealed record DemoBankAccountSeed(
         string AccountCode,
@@ -1636,13 +1697,15 @@ internal sealed class PropertyManagementDemoSeeder(
         string BankName,
         string Last4);
 
-    private sealed record PartyIdentity(string Display, string Email);
+    internal sealed record PartyIdentity(string Display, string Email);
 
-    private sealed record PartySeedResult(Guid Id, string Display);
+    internal sealed record PartySeedResult(Guid Id, string Display);
 
-    private sealed record BuildingSeedResult(Guid BuildingId, IReadOnlyList<Guid> UnitIds);
+    internal sealed record BuildingSeedResult(Guid BuildingId, IReadOnlyList<Guid> UnitIds);
+
+    private sealed record BuildingCreationResult(Guid BuildingId, IReadOnlyList<Guid> UnitIds);
     
-    private sealed record LeasePlan(
+    internal sealed record LeasePlan(
         Guid UnitId,
         Guid TenantPartyId,
         DateOnly StartDate,
@@ -1651,17 +1714,15 @@ internal sealed class PropertyManagementDemoSeeder(
         int DueDay,
         bool IsActive);
 
-    private sealed record SeededLease(
+    internal sealed record SeededLease(
         Guid Id,
-        Guid UnitId,
-        Guid TenantPartyId,
         DateOnly StartDate,
         DateOnly? EndDate,
         decimal RentAmount,
         int DueDay,
         bool IsActive);
 
-    private sealed record DemoLookup(
+    internal sealed record DemoLookup(
         Guid DefaultBankAccountId,
         IReadOnlyList<LookupRow> BankAccounts,
         Guid UtilityChargeTypeId,
@@ -1670,9 +1731,9 @@ internal sealed class PropertyManagementDemoSeeder(
         Guid UtilityExpenseChargeTypeId,
         IReadOnlyList<LookupRow> MaintenanceCategories);
 
-    private sealed record PeriodClosingSummary(int MonthsClosed, int FiscalYearsClosed);
+    internal sealed record PeriodClosingSummary(int MonthsClosed, int FiscalYearsClosed);
 
-    private sealed class ReceivablesSummary
+    internal sealed class ReceivablesSummary
     {
         public int RentChargesPosted { get; set; }
         public int ReceivableChargesPosted { get; set; }
@@ -1683,7 +1744,7 @@ internal sealed class PropertyManagementDemoSeeder(
         public int ReceivableAppliesPosted { get; set; }
     }
 
-    private sealed class PayablesSummary
+    internal sealed class PayablesSummary
     {
         public int PayableChargesPosted { get; set; }
         public int PayableCreditMemosPosted { get; set; }
@@ -1691,7 +1752,7 @@ internal sealed class PropertyManagementDemoSeeder(
         public int PayableAppliesPosted { get; set; }
     }
 
-    private sealed class MaintenanceSummary
+    internal sealed class MaintenanceSummary
     {
         public int RequestsPosted { get; set; }
         public int WorkOrdersPosted { get; set; }

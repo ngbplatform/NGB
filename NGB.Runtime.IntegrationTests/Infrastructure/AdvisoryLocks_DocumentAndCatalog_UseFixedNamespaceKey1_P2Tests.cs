@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// This pins down that key1 is stable and prevents collisions with other lock families
 /// (e.g., Period locks using PER\x01).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_DocumentAndCatalog_UseFixedNamespaceKey1_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

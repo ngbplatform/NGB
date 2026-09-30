@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Dimensions;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DimensionSets_DeterministicAndConcurrency_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

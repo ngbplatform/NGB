@@ -11,7 +11,6 @@ using NGB.Persistence.Documents;
 using NGB.Persistence.Readers;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.AuditLog;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using Npgsql;
@@ -19,7 +18,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_Atomicity_Rollback_DocumentPost_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

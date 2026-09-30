@@ -37,9 +37,6 @@ public sealed class ReportFilterScopeExpander(
             if (!TryReadGuidValues(pair.Value.Value, out var valueIds))
                 continue;
 
-            if (valueIds.Count == 0)
-                continue;
-
             candidates.Add(new ScopeCandidate(pair.Key, dimensionCode, pair.Value.IncludeDescendants, valueIds));
         }
 
@@ -65,6 +62,15 @@ public sealed class ReportFilterScopeExpander(
         var expanded = await dimensionScopeExpansionService.ExpandAsync(runtime.ReportCodeNorm, new DimensionScopeBag(scopeCandidates), ct);
         if (expanded is null || expanded.IsEmpty)
             return request;
+
+        var expandedValueCount = expanded.Sum(static scope => scope.ValueIds.Count);
+        if (expandedValueCount > ReportLayoutLimits.MaxExpandedDimensionValues)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                "filters",
+                expandedValueCount,
+                $"Expanded dimension filters can contain up to {ReportLayoutLimits.MaxExpandedDimensionValues} values.");
+        }
 
         var fieldByDimensionId = candidates
             .Where(x => dimensionIdsByCode.TryGetValue(x.DimensionCode, out _))
@@ -115,11 +121,11 @@ public sealed class ReportFilterScopeExpander(
         {
             case CatalogLookupSourceDto catalog:
                 dimensionCode = catalog.CatalogType;
-                return !string.IsNullOrWhiteSpace(dimensionCode);
+                return true;
 
             case DocumentLookupSourceDto { DocumentTypes.Count: 1 } document:
                 dimensionCode = document.DocumentTypes[0];
-                return !string.IsNullOrWhiteSpace(dimensionCode);
+                return true;
 
             default:
                 return false;
@@ -136,11 +142,11 @@ public sealed class ReportFilterScopeExpander(
         {
             case CatalogLookupSourceDto catalog:
                 dimensionCode = catalog.CatalogType;
-                return !string.IsNullOrWhiteSpace(dimensionCode);
+                return true;
 
             case DocumentLookupSourceDto { DocumentTypes.Count: 1 } document:
                 dimensionCode = document.DocumentTypes[0];
-                return !string.IsNullOrWhiteSpace(dimensionCode);
+                return true;
 
             default:
                 return false;
@@ -151,38 +157,34 @@ public sealed class ReportFilterScopeExpander(
     {
         ids = [];
 
-        try
+        switch (value.ValueKind)
         {
-            switch (value.ValueKind)
+            case JsonValueKind.String when value.TryGetGuid(out var guid) && guid != Guid.Empty:
+                ids = [guid];
+                return true;
+
+            case JsonValueKind.Array:
             {
-                case JsonValueKind.String when value.TryGetGuid(out var guid):
-                    ids = [guid];
-                    return true;
+                var arrayLength = value.GetArrayLength();
+                if (arrayLength > ReportLayoutLimits.MaxValuesPerFilter)
+                    return false;
 
-                case JsonValueKind.Array:
+                var list = new List<Guid>(arrayLength);
+                foreach (var item in value.EnumerateArray())
                 {
-                    var list = new List<Guid>();
-                    foreach (var item in value.EnumerateArray())
-                    {
-                        if (!item.TryGetGuid(out var itemGuid))
-                            return false;
+                    if (item.ValueKind != JsonValueKind.String || !item.TryGetGuid(out var itemGuid))
+                        return false;
 
-                        if (itemGuid != Guid.Empty)
-                            list.Add(itemGuid);
-                    }
-
-                    ids = list.Distinct().ToArray();
-                    return ids.Count > 0;
+                    if (itemGuid != Guid.Empty)
+                        list.Add(itemGuid);
                 }
 
-                default:
-                    return false;
+                ids = list.Distinct().ToArray();
+                return ids.Count > 0;
             }
-        }
-        catch (InvalidOperationException)
-        {
-            ids = [];
-            return false;
+
+            default:
+                return false;
         }
     }
 

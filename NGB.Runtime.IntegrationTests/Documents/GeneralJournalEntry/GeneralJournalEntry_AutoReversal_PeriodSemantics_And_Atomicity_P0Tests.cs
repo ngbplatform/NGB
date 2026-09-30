@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_AutoReversal_PeriodSemantics_And_Atomicity_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

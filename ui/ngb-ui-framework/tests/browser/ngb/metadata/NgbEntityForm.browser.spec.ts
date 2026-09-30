@@ -66,6 +66,10 @@ const form = {
         },
       ],
     },
+    {
+      title: 'Empty',
+      rows: undefined,
+    },
   ],
 }
 
@@ -73,7 +77,9 @@ const SectionsHarness = defineComponent({
   setup() {
     const formRef = ref<InstanceType<typeof NgbEntityForm> | null>(null)
     const focusResult = ref('pending')
+    const scrollResult = ref('pending')
     const firstErrorResult = ref('pending')
+    const missingErrorResult = ref('pending')
 
     return () => h('div', [
       h(NgbEntityForm, {
@@ -87,8 +93,13 @@ const SectionsHarness = defineComponent({
         entityTypeCode: 'pm.invoice',
         status: 2,
         forceReadonly: true,
-        presentation: 'sections',
       }),
+      h('button', {
+        type: 'button',
+        onClick: () => {
+          scrollResult.value = String(formRef.value?.scrollToField('customer_id') ?? false)
+        },
+      }, 'Run scroll'),
       h('button', {
         type: 'button',
         onClick: () => {
@@ -101,8 +112,16 @@ const SectionsHarness = defineComponent({
           firstErrorResult.value = String(formRef.value?.focusFirstError(['missing', 'amount']) ?? false)
         },
       }, 'Run first error'),
+      h('button', {
+        type: 'button',
+        onClick: () => {
+          missingErrorResult.value = String(formRef.value?.focusFirstError(['missing']) ?? false)
+        },
+      }, 'Run missing error'),
+      h('div', `scroll:${scrollResult.value}`),
       h('div', `focus:${focusResult.value}`),
       h('div', `first-error:${firstErrorResult.value}`),
+      h('div', `missing-error:${missingErrorResult.value}`),
     ])
   },
 })
@@ -140,11 +159,15 @@ test('renders sectioned layouts and exposes focus helpers through validation tar
   expect(document.activeElement?.getAttribute('aria-label')).not.toBe('field-customer_id')
 
   await view.getByRole('button', { name: 'Run focus' }).click()
+  await view.getByRole('button', { name: 'Run scroll' }).click()
   await view.getByRole('button', { name: 'Run first error' }).click()
+  expect(document.activeElement?.getAttribute('aria-label')).toBe('field-amount')
+  await view.getByRole('button', { name: 'Run missing error' }).click()
 
+  await expect.element(view.getByText('scroll:true')).toBeVisible()
   await expect.element(view.getByText('focus:true')).toBeVisible()
   await expect.element(view.getByText('first-error:true')).toBeVisible()
-  expect(document.activeElement?.getAttribute('aria-label')).toBe('field-amount')
+  await expect.element(view.getByText('missing-error:false')).toBeVisible()
 })
 
 test('renders flat presentation as a single fields block and honors behavior display-field override', async () => {
@@ -153,4 +176,17 @@ test('renders flat presentation as a single fields block and honors behavior dis
   expect(document.querySelector('[data-testid="form-layout"]')).toBeNull()
   await expect.element(view.getByText('display-field:customer_id')).toBeVisible()
   await expect.element(view.getByText('rows:2')).toBeVisible()
+})
+
+test('renders an empty form when optional sections are omitted', async () => {
+  const view = await render(NgbEntityForm, {
+    props: {
+      form: {},
+      model: {},
+      entityTypeCode: 'pm.empty',
+    },
+  })
+
+  expect(view.getByTestId('form-layout').element()).toBeInstanceOf(HTMLElement)
+  expect(document.querySelector('[data-testid="form-section"]')).toBeNull()
 })

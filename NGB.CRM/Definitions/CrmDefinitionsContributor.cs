@@ -351,8 +351,10 @@ public sealed class CrmDefinitionsContributor : IDefinitionsContributor
                         new("display", ColumnType.String),
                         new("document_date_utc", ColumnType.Date, Required: true),
                         new("lead_intake_id", ColumnType.Guid, Required: true, Lookup: DocumentLookup(CrmCodes.LeadIntake), MirroredRelationship: new MirroredDocumentRelationshipMetadata("converts")),
-                        new("account_id", ColumnType.Guid, Required: true, Lookup: CatalogLookup(CrmCodes.Account)),
-                        new("contact_id", ColumnType.Guid, Required: true, Lookup: CatalogLookup(CrmCodes.Contact)),
+                        // A conversion derived from a qualified lead is persisted before these values are selected.
+                        // LeadConversionPostValidator enforces both fields at the Draft -> Posted boundary.
+                        new("account_id", ColumnType.Guid, Lookup: CatalogLookup(CrmCodes.Account)),
+                        new("contact_id", ColumnType.Guid, Lookup: CatalogLookup(CrmCodes.Contact)),
                         new("create_opportunity", ColumnType.Boolean, Required: true),
                         new("opportunity_name", ColumnType.String),
                         new("stage_id", ColumnType.Guid, Lookup: CatalogLookup(CrmCodes.OpportunityStage)),

@@ -6,7 +6,9 @@ namespace NGB.Persistence.OperationalRegisters;
 /// Low-level store for per-register movements tables (<c>opreg_*__movements</c>).
 ///
 /// Semantics:
-/// - Movements are append-only.
+/// - Movements are append-only. PostgreSQL allocates movement IDs only after acquiring the
+///   transaction-scoped register lock, including for storno. The ascending sequence uses CACHE 1.
+///   Direct SQL writes or resetting/reconfiguring the sequence violate the projection contract.
 /// - Unpost/Repost is implemented by appending storno movements (a copy of the document's existing movements with
 ///   <c>is_storno = true</c>).
 /// </summary>
@@ -17,6 +19,9 @@ public interface IOperationalRegisterMovementsStore
     /// Must be called inside an active transaction.
     /// </summary>
     Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default);
+
+    /// <summary>Fast write-path readiness check; implementations may use durable metadata markers.</summary>
+    Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default) => EnsureSchemaAsync(registerId, ct);
 
     /// <summary>
     /// Appends movements.

@@ -185,18 +185,19 @@ public sealed class PmReporting_CanonicalAccounting_P0Tests : IAsyncLifetime
                            ["from_utc"] = "2026-03-01",
                            ["to_utc"] = "2026-03-31"
                        },
-                       Offset: 999,
+                       Offset: 0,
                        Limit: 1)))
         {
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
             var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             dto.Should().NotBeNull();
             dto!.Diagnostics!["engine"].Should().Be("runtime");
-            dto.Diagnostics!["executor"].Should().Be("canonical-trial-balance");
+            dto.Diagnostics!["executor"].Should().Be("accounting-summary");
             dto.Sheet.Columns.Select(x => x.Code).Should().Equal("account", "debit_amount", "credit_amount");
             dto.Offset.Should().Be(0);
-            dto.Limit.Should().Be(dto.Sheet.Rows.Count);
-            dto.Total.Should().Be(dto.Sheet.Rows.Count);
+            dto.Limit.Should().Be(1);
+            dto.Sheet.Rows.Should().BeEmpty();
+            dto.Total.Should().BeNull();
             dto.HasMore.Should().BeFalse();
             dto.NextCursor.Should().BeNull();
         }
@@ -209,18 +210,18 @@ public sealed class PmReporting_CanonicalAccounting_P0Tests : IAsyncLifetime
                            ["from_utc"] = "2026-03-01",
                            ["to_utc"] = "2026-03-31"
                        },
-                       Offset: 999,
+                       Offset: 0,
                        Limit: 1)))
         {
             resp.StatusCode.Should().Be(HttpStatusCode.OK);
             var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
             dto.Should().NotBeNull();
             dto!.Diagnostics!["engine"].Should().Be("runtime");
-            dto.Diagnostics!["executor"].Should().Be("canonical-statement-of-changes-in-equity");
+            dto.Diagnostics!["executor"].Should().Be("accounting-summary");
             dto.Sheet.Columns.Select(x => x.Code).Should().Equal("component", "opening", "change", "closing");
             dto.Offset.Should().Be(0);
-            dto.Limit.Should().Be(dto.Sheet.Rows.Count);
-            dto.Total.Should().Be(dto.Sheet.Rows.Count);
+            dto.Limit.Should().Be(1);
+            dto.Total.Should().BeNull();
             dto.HasMore.Should().BeFalse();
             dto.NextCursor.Should().BeNull();
         }
@@ -233,7 +234,7 @@ public sealed class PmReporting_CanonicalAccounting_P0Tests : IAsyncLifetime
                            ["from_utc"] = "2026-03-01",
                            ["to_utc"] = "2026-03-31"
                        },
-                       Offset: 999,
+                       Offset: 0,
                        Limit: 1)))
         {
             resp.StatusCode.Should().Be(HttpStatusCode.OK);

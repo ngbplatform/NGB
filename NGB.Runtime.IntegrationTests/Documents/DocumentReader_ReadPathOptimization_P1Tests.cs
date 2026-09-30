@@ -11,8 +11,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentReader_ReadPathOptimization_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentReader_ReadPathOptimization_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string TypeCode = "it_doc_read_path";
@@ -20,7 +20,7 @@ public sealed class DocumentReader_ReadPathOptimization_P1Tests(PostgresTestFixt
     private const string DisplayColumn = "display";
 
     [Fact]
-    public async Task CountAndGetPageAsync_WithoutHeadCriteria_PagesAcrossHeadRowsAndNullOrMissingHeadRows()
+    public async Task CombinedPageAsync_WithoutHeadCriteria_PagesAcrossHeadRowsAndNullOrMissingHeadRows()
     {
         await EnsureCleanDocumentTypeAsync(Fixture.ConnectionString);
 
@@ -44,10 +44,12 @@ public sealed class DocumentReader_ReadPathOptimization_P1Tests(PostgresTestFixt
         var head = HeadDescriptor();
         var query = new DocumentQuery(Search: null, Filters: []);
 
-        var total = await reader.CountAsync(head, query, CancellationToken.None);
-        var page = await reader.GetPageAsync(head, query, offset: 2, limit: 10, CancellationToken.None);
+        var combined = reader.Should().BeAssignableTo<IDocumentCombinedPageReader>().Subject;
+        var result = await combined.GetPageWithTotalAsync(
+            head, query, offset: 2, limit: 10, CancellationToken.None);
+        var page = result.Rows;
 
-        total.Should().Be(4);
+        result.Total.Should().Be(4);
         page.Select(x => x.Id).Should().Equal(nullDisplayId, missingHeadId);
 
         page[0].Display.Should().Be(nullDisplayId.ToString("D"));
@@ -60,7 +62,7 @@ public sealed class DocumentReader_ReadPathOptimization_P1Tests(PostgresTestFixt
     }
 
     [Fact]
-    public async Task CountAndGetPageAsync_WithoutHeadCriteria_PreservesActiveSoftDeleteFilter()
+    public async Task CombinedPageAsync_WithoutHeadCriteria_PreservesActiveSoftDeleteFilter()
     {
         await EnsureCleanDocumentTypeAsync(Fixture.ConnectionString);
 
@@ -84,12 +86,52 @@ public sealed class DocumentReader_ReadPathOptimization_P1Tests(PostgresTestFixt
             SoftDeleteFilterMode = SoftDeleteFilterMode.Active
         };
 
-        var total = await reader.CountAsync(head, query, CancellationToken.None);
-        var page = await reader.GetPageAsync(head, query, offset: 0, limit: 10, CancellationToken.None);
+        var combined = reader.Should().BeAssignableTo<IDocumentCombinedPageReader>().Subject;
+        var result = await combined.GetPageWithTotalAsync(
+            head, query, offset: 0, limit: 10, CancellationToken.None);
+        var page = result.Rows;
 
-        total.Should().Be(2);
+        result.Total.Should().Be(2);
         page.Select(x => x.Id).Should().Equal(activeHeadId, activeMissingHeadId);
         page.Should().NotContain(x => x.Id == deletedId);
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(3, true)]
+    [InlineData(8, false)]
+    public async Task Seek_first_page_and_continuations_preserve_nulls_ties_and_missing_heads(int limit, bool includeTotal)
+    {
+        await EnsureCleanDocumentTypeAsync(Fixture.ConnectionString);
+        var ids = Enumerable.Range(1, 6).Select(i => Guid.Parse($"00000000-0000-0000-0000-{i:000000000000}")).ToArray();
+        for (var i = 0; i < ids.Length; i++)
+            await SeedDocumentAsync(Fixture.ConnectionString, ids[i], $"SEEK-{i}",
+                i == 5 ? DocumentStatus.MarkedForDeletion : DocumentStatus.Draft);
+        await SeedHeadAsync(Fixture.ConnectionString, ids[0], "Alpha", 10m);
+        await SeedHeadAsync(Fixture.ConnectionString, ids[1], "Alpha", 20m);
+        await SeedHeadAsync(Fixture.ConnectionString, ids[2], "Beta", 30m);
+        await SeedHeadAsync(Fixture.ConnectionString, ids[3], null, 40m);
+        await SeedHeadAsync(Fixture.ConnectionString, ids[5], "Aardvark deleted", 60m);
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var reader = (IDocumentSeekPageReader)scope.ServiceProvider.GetRequiredService<IDocumentReader>();
+        var query = new DocumentQuery(Search: null, Filters: []) { SoftDeleteFilterMode = SoftDeleteFilterMode.Active };
+        var found = new List<Guid>();
+        string? display = null;
+        Guid? afterId = null;
+        for (var pageNumber = 0; pageNumber < 6; pageNumber++)
+        {
+            var page = await reader.GetSeekPageAsync(HeadDescriptor(), query, display, afterId, limit,
+                includeTotal && pageNumber == 0, CancellationToken.None);
+            page.Total.Should().Be(includeTotal && pageNumber == 0 ? 5L : null);
+            found.AddRange(page.Rows.Select(r => r.Id));
+            if (!page.HasMore) break;
+            (page.NextAfterId != afterId).Should().BeTrue();
+            display = page.NextAfterDisplay;
+            afterId = page.NextAfterId;
+        }
+        found.Should().Equal(ids.Take(5));
     }
 
     private static DocumentHeadDescriptor HeadDescriptor()

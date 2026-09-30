@@ -33,8 +33,11 @@ function isTotalLikeRowKind(rowKind: unknown): boolean {
     || rowKind === 'subtotal'
 }
 
-export async function getPmBuildingSummary(buildingId: string, opts?: { asOfUtc?: string }): Promise<PmBuildingSummaryDto> {
-  const response = await executeReport('pm.building.summary', {
+export async function getPmBuildingSummary(
+  buildingId: string,
+  opts?: { asOfUtc?: string; signal?: AbortSignal },
+): Promise<PmBuildingSummaryDto> {
+  const request = {
     filters: {
       building_id: {
         value: buildingId,
@@ -43,7 +46,10 @@ export async function getPmBuildingSummary(buildingId: string, opts?: { asOfUtc?
     parameters: opts?.asOfUtc ? { as_of_utc: opts.asOfUtc } : undefined,
     limit: 2,
     offset: 0,
-  })
+  }
+  const response = opts?.signal
+    ? await executeReport('pm.building.summary', request, { signal: opts.signal })
+    : await executeReport('pm.building.summary', request)
 
   const rows = response.sheet.rows ?? []
   const detailRowIndex = rows.findIndex((row) => isDetailLikeRowKind(row.rowKind))

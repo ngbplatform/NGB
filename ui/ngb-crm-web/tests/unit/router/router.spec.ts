@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   routerOptions: null as Record<string, unknown> | null,
   guards: [] as Array<(to: Record<string, unknown>) => unknown>,
   auth: { authenticated: false },
-  menu: { groups: [] as unknown[], isLoading: false, load: vi.fn().mockResolvedValue(undefined) },
+  menu: { groups: [] as unknown[], hasLoaded: false, isLoading: false, load: vi.fn().mockResolvedValue(undefined) },
   resolvePermissionAwareLanding: vi.fn(() => null as string | null),
   authGuard: vi.fn(),
 }))
@@ -61,6 +61,7 @@ describe('CRM router', () => {
   beforeEach(() => {
     mocks.auth.authenticated = false
     mocks.menu.groups = []
+    mocks.menu.hasLoaded = false
     mocks.menu.isLoading = false
     mocks.menu.load.mockClear()
     mocks.resolvePermissionAwareLanding.mockReset().mockReturnValue(null)
@@ -85,6 +86,12 @@ describe('CRM router', () => {
     expect(mocks.guards[0]).toBe(mocks.authGuard)
   })
 
+  it('resolves the vertical home-page route lazily', async () => {
+    const routes = mocks.routerOptions!.routes as Array<{ path: string; component?: () => Promise<unknown> }>
+
+    await expect(routes.find((route) => route.path === '/home')!.component!()).resolves.toEqual({})
+  })
+
   it('lets bare and unauthenticated navigation through', async () => {
     expect(await mocks.guards[1]!({ meta: { bare: true }, path: '/print' })).toBe(true)
     expect(await mocks.guards[1]!({ meta: {}, path: '/home' })).toBe(true)
@@ -101,8 +108,10 @@ describe('CRM router', () => {
   it('returns true for an allowed route and skips menu loading when loaded or loading', async () => {
     mocks.auth.authenticated = true
     mocks.menu.groups = [{}]
+    mocks.menu.hasLoaded = true
     expect(await mocks.guards[1]!({ path: '/allowed' })).toBe(true)
     mocks.menu.groups = []
+    mocks.menu.hasLoaded = false
     mocks.menu.isLoading = true
     expect(await mocks.guards[1]!({ path: '/allowed' })).toBe(true)
     expect(mocks.menu.load).not.toHaveBeenCalled()

@@ -4,6 +4,7 @@ using NGB.CRM.Runtime;
 using NGB.Contracts.Security;
 using NGB.Core.Security;
 using NGB.CRM.Api.IntegrationTests.Infrastructure;
+using NGB.CRM.Reporting;
 using NGB.Runtime.Admin;
 using NGB.Runtime.Security;
 using Xunit;
@@ -179,7 +180,9 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
         var users = scope.ServiceProvider.GetRequiredService<NGB.Persistence.AuditLog.IPlatformUserRepository>();
         var userRoles = scope.ServiceProvider.GetRequiredService<NGB.Persistence.Security.IPlatformUserRoleRepository>();
 
-        var user = (await users.GetAllAsync(CancellationToken.None))
+        var user = (await users.GetByEmailsAsync(
+                ["alex.carter@demo.ngbplatform.com"],
+                CancellationToken.None))
             .Should()
             .ContainSingle(x =>
                 x.Email == "alex.carter@demo.ngbplatform.com"
@@ -189,6 +192,21 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
 
         var assignedRoles = await userRoles.GetRolesForUserAsync(user.UserId, CancellationToken.None);
         assignedRoles.Should().ContainSingle(x => x.Code == "crm.administrator");
+    }
+
+    [Fact]
+    public async Task DashboardReader_OnEmptyDatabase_ReturnsZeroSnapshotAndValidatesLimit()
+    {
+        using var host = CrmHostFactory.Create(fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var reader = scope.ServiceProvider.GetRequiredService<ICrmDashboardReader>();
+        var asOf = new DateOnly(2026, 8, 21);
+
+        var snapshot = await reader.GetAsync(asOf, opportunityLimit: 6, CancellationToken.None);
+
+        snapshot.Should().BeEquivalentTo(new CrmDashboardSnapshot(0m, 0m, 0, 0, 0, 0m, 0, 0, []));
+        var invalidLimit = () => reader.GetAsync(asOf, opportunityLimit: 0, CancellationToken.None);
+        await invalidLimit.Should().ThrowAsync<ArgumentOutOfRangeException>();
     }
 
     private static readonly string[] CrmDocumentTypes =

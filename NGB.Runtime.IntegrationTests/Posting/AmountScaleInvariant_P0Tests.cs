@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// P0: Scale invariant for amount (NUMERIC(18,4)) must be enforced at the platform boundary.
 /// Otherwise the DB will round and Trial Balance may drift (e.g. 0.0001).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AmountScaleInvariant_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

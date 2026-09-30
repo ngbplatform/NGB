@@ -5,7 +5,6 @@ import { ReportRowKind, type ReportCellDto, type ReportExecutionResponseDto, typ
 import { normalizeDateOnlyValue } from '../utils/dateValues'
 import { toErrorMessage } from '../utils/errorMessage'
 
-const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 const MONTH_KEY_RE = /^(\d{4})-(\d{2})$/
 const DEFAULT_PAGE_LIMIT = 200
 const MAX_PAGED_REQUESTS = 20
@@ -66,14 +65,8 @@ export function parseDashboardUtcDateOnly(value: string | null | undefined): Dat
   const normalized = normalizeDateOnlyValue(value)
   if (!normalized) return null
 
-  const match = DATE_ONLY_RE.exec(normalized)
-  if (!match) return null
-
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  const date = new Date(Date.UTC(year, month - 1, day))
-  return Number.isNaN(date.getTime()) ? null : date
+  const [year, month, day] = normalized.split('-').map(Number)
+  return new Date(Date.UTC(year!, month! - 1, day!))
 }
 
 export function toDashboardUtcDateOnly(date: Date): string {
@@ -104,7 +97,7 @@ export function toDashboardUtcMonthKey(date: Date): string {
 }
 
 export function formatDashboardMonthLabel(monthKey: string): string {
-  const match = MONTH_KEY_RE.exec(String(monthKey ?? '').trim())
+  const match = MONTH_KEY_RE.exec(monthKey.trim())
   if (!match) return monthKey
 
   const year = Number(match[1])

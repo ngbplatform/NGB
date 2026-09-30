@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntryFacade_EndToEnd_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

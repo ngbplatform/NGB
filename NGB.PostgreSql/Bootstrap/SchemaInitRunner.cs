@@ -35,6 +35,27 @@ public static class SchemaInitRunner
 
         var discoveryAssemblies = MigrationAssemblyDiscovery.LoadForPackDiscovery();
         var packs = SchemaMigrator.DiscoverPacks(discoveryAssemblies);
+        await RunWithPacksAsync(
+            connectionString,
+            mode,
+            packs,
+            includePackIds,
+            dryRun,
+            options,
+            log,
+            ct);
+    }
+
+    internal static async Task RunWithPacksAsync(
+        string connectionString,
+        SchemaInitMode mode,
+        IReadOnlyList<MigrationPack> packs,
+        IReadOnlyCollection<string>? includePackIds = null,
+        bool dryRun = false,
+        MigrationExecutionOptions? options = null,
+        Action<string>? log = null,
+        CancellationToken ct = default)
+    {
         var plan = SchemaMigrator.Plan(packs, includePackIds);
 
         log?.Invoke("Schema init plan:");

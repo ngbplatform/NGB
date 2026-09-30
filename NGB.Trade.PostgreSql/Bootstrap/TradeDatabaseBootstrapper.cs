@@ -40,6 +40,7 @@ public static class TradeDatabaseBootstrapper
                 ON doc_trd_item_price_update__lines(currency);
 
             SELECT ngb_install_typed_document_immutability_guards();
+            SELECT ngb_install_search_trigram_indexes(ARRAY['cat_trd_', 'doc_trd_']);
             """,
             cancellationToken: ct));
     }

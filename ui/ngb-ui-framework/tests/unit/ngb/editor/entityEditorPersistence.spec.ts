@@ -114,6 +114,16 @@ function createPersistenceHarness() {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (cause: unknown) => void
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve
+    reject = nextReject
+  })
+  return { promise, resolve, reject }
+}
+
 describe('entity editor persistence', () => {
   it('applies initial values by cloning nested data and replaces models from payload fields', () => {
     const target = {
@@ -188,6 +198,22 @@ describe('entity editor persistence', () => {
     await persistence.save()
     expect(state.error.value).toEqual({ summary: 'save failed' })
     expect(state.saving.value).toBe(false)
+  })
+
+  it('ignores a failed load after a newer load has completed', async () => {
+    const { state, adapters, persistence } = createPersistenceHarness()
+    const stale = deferred<void>()
+    adapters.document.load
+      .mockImplementationOnce(() => stale.promise)
+      .mockResolvedValueOnce(undefined)
+
+    const staleLoad = persistence.load()
+    await persistence.load()
+    stale.reject(new Error('stale failure'))
+    await staleLoad
+
+    expect(state.error.value).toBeNull()
+    expect(state.loading.value).toBe(false)
   })
 
   it('honors empty-type, missing-form, and capability guards', async () => {

@@ -1,4 +1,5 @@
 using NGB.Accounting.Reports.AccountCard;
+using NGB.Core.Dimensions;
 
 namespace NGB.Persistence.Readers.Reports;
 
@@ -10,5 +11,15 @@ namespace NGB.Persistence.Readers.Reports;
 /// </summary>
 public interface IAccountCardEffectivePageReader
 {
+    /// <summary>
+    /// Computes the balance immediately before <paramref name="fromInclusive"/> at the database,
+    /// already restricted to one account and the requested dimension scope.
+    /// </summary>
+    Task<decimal> GetOpeningBalanceAsync(
+        Guid accountId,
+        DateOnly fromInclusive,
+        DimensionScopeBag? dimensionScopes,
+        CancellationToken ct = default);
+
     Task<AccountCardLinePage> GetPageAsync(AccountCardLinePageRequest request, CancellationToken ct = default);
 }

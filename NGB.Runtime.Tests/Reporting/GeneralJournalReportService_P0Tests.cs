@@ -1,14 +1,68 @@
 using FluentAssertions;
+using Moq;
 using NGB.Accounting.Reports.GeneralJournal;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Reporting;
 
 public sealed class GeneralJournalReportService_P0Tests
 {
+    [Fact]
+    public async Task GetPageAsync_NullRequest_ThrowsArgumentRequired()
+    {
+        var service = new GeneralJournalReportService(Mock.Of<IGeneralJournalReader>());
+
+        var action = () => service.GetPageAsync(null!);
+
+        await action.Should().ThrowAsync<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_ToBeforeFrom_ThrowsOutOfRange()
+    {
+        var service = new GeneralJournalReportService(Mock.Of<IGeneralJournalReader>());
+
+        var action = () => service.GetPageAsync(Request(new DateOnly(2026, 2, 1), new DateOnly(2026, 1, 1)));
+
+        await action.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(2, 1)]
+    [InlineData(1, 2)]
+    public async Task GetPageAsync_NonMonthStartBoundary_ThrowsOutOfRange(int fromDay, int toDay)
+    {
+        var service = new GeneralJournalReportService(Mock.Of<IGeneralJournalReader>());
+
+        var action = () => service.GetPageAsync(Request(
+            new DateOnly(2026, 1, fromDay),
+            new DateOnly(2026, 2, toDay)));
+
+        await action.Should().ThrowAsync<NgbArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public async Task GetPageAsync_NonPositiveRequestedPageSize_IsNormalizedByPagingContract()
+    {
+        var reader = new Mock<IGeneralJournalReader>(MockBehavior.Strict);
+        reader.Setup(x => x.GetPageAsync(
+                It.Is<GeneralJournalPageRequest>(request => request.PageSize == 20),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GeneralJournalPage([], false, null));
+        var service = new GeneralJournalReportService(reader.Object);
+
+        await service.GetPageAsync(Request(
+            new DateOnly(2026, 1, 1),
+            new DateOnly(2026, 2, 1),
+            pageSize: 0));
+
+        reader.VerifyAll();
+    }
+
     [Fact]
     public async Task GetPageAsync_WithDimensionScopes_Uses_Single_Page_Read_And_Preserves_Request_Filters()
     {
@@ -82,4 +136,7 @@ public sealed class GeneralJournalReportService_P0Tests
             return Task.FromResult(page);
         }
     }
+
+    private static GeneralJournalPageRequest Request(DateOnly from, DateOnly to, int pageSize = 10)
+        => new() { FromInclusive = from, ToInclusive = to, PageSize = pageSize };
 }

@@ -22,7 +22,7 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// - Same (registerId, dimensionSetId) writes must serialize.
 /// - Different dimensionSetId keys must not block each other.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterKeyLock_Concurrency_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

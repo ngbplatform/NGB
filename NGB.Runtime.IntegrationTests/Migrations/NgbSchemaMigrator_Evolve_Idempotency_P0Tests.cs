@@ -12,8 +12,8 @@ namespace NGB.Runtime.IntegrationTests.Migrations;
 /// P0: Evolve-based schema versioning must be idempotent.
 /// The migrator must also be able to recreate the changelog table if it is missing.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class NgbSchemaMigrator_Evolve_Idempotency_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class NgbSchemaMigrator_Evolve_Idempotency_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

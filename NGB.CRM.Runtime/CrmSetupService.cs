@@ -1,6 +1,7 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Contracts;
+using NGB.CRM.Security;
 using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 using NGB.Contracts.Services;
@@ -26,7 +27,8 @@ public sealed class CrmSetupService(
     IUnitOfWork uow,
     IPlatformUserRepository platformUsers,
     IPlatformUserRoleRepository userRoles,
-    IUserAccessVersionRepository userAccessVersions)
+    IUserAccessVersionRepository userAccessVersions,
+    CrmDemoAdministratorOptions demoAdministrator)
     : ICrmSetupService
 {
     public async Task<CrmSetupResult> EnsureDefaultsAsync(CancellationToken ct = default)
@@ -304,20 +306,14 @@ public sealed class CrmSetupService(
         var adminRole = (await roles.GetRolesAsync(ct))
             .Single(role => string.Equals(role.Code, "crm.administrator", StringComparison.OrdinalIgnoreCase));
 
-        var authSubject = Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_ID")
-            ?? "6d49204b-867c-4180-a30d-a5e290e13c73";
-        var email = Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_EMAIL")
-            ?? "alex.carter@demo.ngbplatform.com";
-        var firstName = Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_FIRST_NAME") ?? "Alex";
-        var lastName = Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_LAST_NAME") ?? "Carter";
-        var displayName = $"{firstName.Trim()} {lastName.Trim()}".Trim();
+        var displayName = $"{demoAdministrator.FirstName} {demoAdministrator.LastName}".Trim();
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             var userId = await platformUsers.UpsertAsync(
-                authSubject,
-                email,
-                string.IsNullOrWhiteSpace(displayName) ? email : displayName,
+                demoAdministrator.AuthSubject,
+                demoAdministrator.Email,
+                string.IsNullOrWhiteSpace(displayName) ? demoAdministrator.Email : displayName,
                 isActive: true,
                 innerCt);
 
@@ -475,15 +471,15 @@ public sealed class CrmSetupService(
         string display,
         RecordPayload payload,
         CancellationToken ct,
-        string? matchField = null,
-        string? matchValue = null)
+        string matchField,
+        string matchValue)
     {
         var page = await catalogs.GetPageAsync(
             catalogType,
             new PageRequestDto(
                 Offset: 0,
                 Limit: 200,
-                Search: string.IsNullOrWhiteSpace(matchField) ? display : null),
+                Search: null),
             ct);
 
         var matches = page.Items
@@ -507,12 +503,9 @@ public sealed class CrmSetupService(
 
     private static bool CatalogPayloadFieldEquals(
         CatalogItemDto item,
-        string? field,
-        string? expected)
+        string field,
+        string expected)
     {
-        if (string.IsNullOrWhiteSpace(field) || string.IsNullOrWhiteSpace(expected))
-            return false;
-
         if (item.Payload.Fields is null || !item.Payload.Fields.TryGetValue(field, out var value))
             return false;
 

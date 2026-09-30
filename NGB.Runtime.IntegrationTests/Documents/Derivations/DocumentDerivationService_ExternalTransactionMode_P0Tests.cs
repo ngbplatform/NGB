@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.Derivations;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentDerivationService_ExternalTransactionMode_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

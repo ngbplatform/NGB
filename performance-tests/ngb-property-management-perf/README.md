@@ -70,6 +70,12 @@ cd performance-tests
 
 ## Test Files
 
+For repeatable local runs with per-stage time series and PostgreSQL/Docker diagnostics,
+use the [diagnostic runbook](../docs/performance/diagnostics.md). In particular,
+`npm run pm:capacity:diagnostics` explicitly enables writes and fresh posting, uses
+`.env.write.local`, and saves output under `artifacts/runs/`. Its scripts are tracked
+under `scripts/diagnostics/`; cleaning `artifacts/` does not remove them.
+
 - `smoke.ts`: login, health, metadata, document list, report definition, trial balance, ledger analysis
 - `baseline.ts`: broad platform baseline with reads, reports, effects, graph, audit, and period-closing read surfaces
 - `load.ts`, `stress.ts`, `spike.ts`, `soak.ts`: profile-specific platform mixes, not lease-only browsing
@@ -109,6 +115,12 @@ uses a weighted user-workload mix: browsing, heavy read, reports, audit/maintena
 flows gated by `NGB_PERF_ENABLE_WRITES`. `pm:platform-breakpoint` uses the same mixed workload but
 ramps scheduled iterations/second until the environment starts dropping iterations or breaching
 reliability/latency thresholds.
+
+Breakpoint defaults to 500 preallocated VUs (maximum 500), a 52-minute arrival
+schedule, and up to 75 seconds for final iterations to complete. See the
+[framework profile settings](../ngb-performance-tests-framework/README.md) for overrides.
+Use `npm run pm:diagnostics -- --profile platform-breakpoint` to collect resource
+samples and per-stage evidence. The diagnostic wrapper disables writes and posting.
 
 `pm:write-heavy` is intentionally excluded from `pm:all` and uses `.env.write.local` by default:
 
@@ -232,3 +244,29 @@ NGB_PERF_ENABLE_CASH_FLOW=true
 environments that relied on executing cash flow for non-open period profiles.
 
 Enable writes/posting/period close only for disposable non-production data. Shared demo environments should stay read-only.
+
+## Posting contract and diagnostic probes
+
+`pmRentChargePostingFlow` now creates a rent charge from the configured fixture's payload and posts it through the versioned document-action API. `NGB_PM_FIXTURE_RENT_CHARGE_ID` is a **template**, not a document repeatedly posted. The default `NGB_PM_POSTING_MODE=fresh` measures a real new posting per iteration. `idempotent-replay` creates one document per VU and reuses the same request body and `Idempotency-Key`; counters distinguish actual postings from replays. Neither mode modifies the template.
+
+The template period must be open. Set all three overrides when using a template from a closed period, choosing dates within its lease term:
+
+```bash
+NGB_PM_POSTING_FROM_UTC=2026-09-01 \
+NGB_PM_POSTING_TO_UTC=2026-09-10 \
+NGB_PM_POSTING_DUE_ON_UTC=2026-09-10 \
+NGB_PM_POSTING_MODE=idempotent-replay \
+npm run pm:posting-contract
+```
+
+`pm:posting-contract` performs three iterations per VU (default 1, maximum 4 via `NGB_PM_POSTING_PROBE_VUS`). Fresh mode leaves three posted documents per VU; replay mode leaves one. Posted documents remain in the test dataset. Restore the same dataset between comparable write benchmarks. The old workload repeatedly called legacy `/post` on an already posted fixture; its latency is not a baseline for actual posting throughput.
+
+`npm run pm:reporting-probe` runs execute and XLSX requests separately for open/closed/long profiles, three times each. `NGB_PM_REPORTING_PROBE_VUS=5` tests contention for download slots; HTTP 429 counts as a failure. The profile labels describe configured date ranges, not a guarantee that the corresponding accounting period is currently open.
+
+`npm run pm:read-regression-probe` isolates catalog and maintenance first-page reads, totals, offsets, and period filters. It performs six repetitions; exclude the first from warm measurements. These short probes diagnose a cause; they do not replace sustained capacity tests.
+
+Run summaries include resolved k6 options. The runner also writes a `.manifest.json` with the Git revision, change fingerprint, k6 version, host information and non-secret test settings. Set `NGB_PERF_DATASET_ID` and `NGB_PERF_API_IMAGE_ID` to identify the restored dataset and deployed API image. Missing identities are recorded as null. Manifests do not read Docker configuration or environment secrets.
+
+Multi-scenario and breakpoint profiles now gate **global** `dropped_iterations`. The breakpoint gate does not abort overload stages, but a run with dropped iterations finishes as FAIL. Posting and XLSX have separate zero-error gates; report execution has its own error-rate gate. Diagnostic `rate<1.01` thresholds only materialize breakdowns and are not acceptance criteria. Write-heavy additionally checks that the write branch was executed and that complete lifecycle operations succeeded.
+
+For local runs, set `NGB_K6_TIME_SERIES_EXPORT=artifacts/run.samples.json.gz` to retain timestamped k6 samples alongside the summary. Use unique paths for every run.

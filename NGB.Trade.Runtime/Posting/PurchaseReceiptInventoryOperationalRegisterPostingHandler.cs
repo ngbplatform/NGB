@@ -35,19 +35,20 @@ public sealed class PurchaseReceiptInventoryOperationalRegisterPostingHandler(
         }
 
         var occurredAtUtc = TradePostingCommon.ToOccurredAtUtc(head.DocumentDateUtc);
+        var dimensionSetIds = await dimensionSets.GetOrCreateIdsAsync(
+            lines.Select(line => TradePostingCommon.InventoryBag(line.ItemId, head.WarehouseId)).ToArray(),
+            ct);
 
-        foreach (var line in lines)
+        for (var i = 0; i < lines.Count; i++)
         {
-            var dimensionSetId = await dimensionSets.GetOrCreateIdAsync(
-                TradePostingCommon.InventoryBag(line.ItemId, head.WarehouseId),
-                ct);
+            var line = lines[i];
 
             builder.Add(
                 registerCode: register.Code,
                 new OperationalRegisterMovement(
                     DocumentId: document.Id,
                     OccurredAtUtc: occurredAtUtc,
-                    DimensionSetId: dimensionSetId,
+                    DimensionSetId: dimensionSetIds[i],
                     Resources: TradePostingCommon.BuildInventoryMovementResources(line.Quantity)));
         }
     }

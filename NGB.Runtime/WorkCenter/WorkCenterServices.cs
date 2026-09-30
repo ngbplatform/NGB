@@ -31,6 +31,7 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
     IPlatformUserRoleRepository userRoles,
     WorkCenterPreferenceDefinitionRegistry definitions)
 {
+    private const int MaxRoleFanOut = 2_000;
     private readonly Dictionary<Guid, NGB.Core.AuditLog.PlatformUser?> _users = [];
     private readonly HashSet<Guid> _loadedUsers = [];
     private readonly Dictionary<Guid, IReadOnlyList<PlatformRole>> _rolesByUser = [];
@@ -69,7 +70,18 @@ internal sealed class WorkCenterPreferenceRecipientResolver(
 
         if (!_membersByRole.TryGetValue(role.RoleId, out var candidates))
         {
-            candidates = await userRoles.GetUserIdsForRoleAsync(role.RoleId, ct);
+            candidates = await userRoles.GetUserIdsForRoleAsync(role.RoleId, MaxRoleFanOut + 1, ct);
+            if (candidates.Count > MaxRoleFanOut)
+            {
+                throw new NgbConfigurationViolationException(
+                    $"Work Center role assignment exceeds the supported fan-out of {MaxRoleFanOut:N0} users.",
+                    context: new Dictionary<string, object?>
+                    {
+                        ["roleCode"] = role.Code,
+                        ["roleId"] = role.RoleId,
+                        ["fanOutLimit"] = MaxRoleFanOut
+                    });
+            }
             _membersByRole[role.RoleId] = candidates;
         }
 
@@ -269,6 +281,28 @@ internal sealed class WorkCenterTaskService(
             return result.RecipientUserIds;
         }, ct);
 
+    public Task<IReadOnlyList<Guid>> CompleteByDeduplicationKeysAsync(
+        string taskCode,
+        IReadOnlyCollection<string> deduplicationKeys,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deduplicationKeys);
+
+        if (deduplicationKeys.Count == 0)
+            return Task.FromResult<IReadOnlyList<Guid>>([]);
+
+        return InTransactionAsync(async innerCt =>
+        {
+            var result = await tasks.CompleteByDeduplicationKeysAsync(
+                taskCode,
+                deduplicationKeys,
+                timeProvider.GetUtcNowDateTime(),
+                innerCt);
+
+            return result.RecipientUserIds;
+        }, ct);
+    }
+
     public Task<IReadOnlyList<Guid>> CancelByDeduplicationKeyAsync(
         string taskCode,
         string deduplicationKey,
@@ -378,6 +412,8 @@ internal sealed class WorkCenterQueryService(
     IWorkCenterRealtimeNotifier realtime)
     : IWorkCenterQueryService
 {
+    internal const int MaxPreferenceUpdates = 500;
+
     public async Task<WorkCenterSummaryDto> GetSummaryAsync(string? vertical, CancellationToken ct)
     {
         using var activity = NgbFeatureTelemetry.Activities.StartActivity("work_center.summary.query");
@@ -632,10 +668,18 @@ internal sealed class WorkCenterQueryService(
         UpdateNotificationPreferencesRequestDto request,
         CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Preferences.Count > MaxPreferenceUpdates)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(request.Preferences),
+                request.Preferences.Count,
+                $"At most {MaxPreferenceUpdates} notification preferences can be updated at once.");
+        }
+
         var userId = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            ArgumentNullException.ThrowIfNull(request);
-
             var access = await GetAccessAsync(innerCt);
             var now = timeProvider.GetUtcNowDateTime();
             var updates = new Dictionary<(string Code, NotificationChannel Channel), NotificationPreferenceRecord>();

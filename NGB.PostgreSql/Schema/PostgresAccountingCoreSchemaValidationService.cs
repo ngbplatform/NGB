@@ -108,17 +108,17 @@ public sealed class PostgresAccountingCoreSchemaValidationService(
         await uow.EnsureConnectionOpenAsync(ct);
 
         // 5.1) Closed-period guards (defense in depth)
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_forbid_posting_into_closed_period", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_acc_reg_no_closed_period", "accounting_register_main", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_acc_reg_no_closed_period_delete", "accounting_register_main", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_acc_turnovers_no_closed_period", "accounting_turnovers", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_acc_turnovers_no_closed_period_delete", "accounting_turnovers", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_acc_balances_no_closed_period", "accounting_balances", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_acc_balances_no_closed_period_delete", "accounting_balances", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_forbid_posting_into_closed_period", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_reg_no_closed_period", "accounting_register_main", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_reg_no_closed_period_delete", "accounting_register_main", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_turnovers_no_closed_period", "accounting_turnovers", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_turnovers_no_closed_period_delete", "accounting_turnovers", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_balances_no_closed_period", "accounting_balances", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_acc_balances_no_closed_period_delete", "accounting_balances", errors, ct);
 
         // 5.2) Typed posted-document immutability guards
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_forbid_mutation_of_posted_document", errors, ct);
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_install_typed_document_immutability_guards", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_forbid_mutation_of_posted_document", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_install_typed_document_immutability_guards", errors, ct);
 
         // Every typed document table is a public table starting with 'doc_' and containing 'document_id'.
         // Such tables must be protected by reusable trigger 'trg_posted_immutable'.
@@ -151,9 +151,9 @@ public sealed class PostgresAccountingCoreSchemaValidationService(
         }
 
         // 5.3) Dimension Sets must be immutable snapshots (append-only)
-        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, "ngb_forbid_mutation_of_append_only_table", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_platform_dimension_sets_append_only", "platform_dimension_sets", errors, ct);
-        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, "trg_platform_dimension_set_items_append_only", "platform_dimension_set_items", errors, ct);
+        await PostgresSchemaValidationChecks.RequireFunctionAsync(uow, snapshot, "ngb_forbid_mutation_of_append_only_table", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_platform_dimension_sets_append_only", "platform_dimension_sets", errors, ct);
+        await PostgresSchemaValidationChecks.RequireTriggerAsync(uow, snapshot, "trg_platform_dimension_set_items_append_only", "platform_dimension_set_items", errors, ct);
 
         // 5.4) Reserved empty DimensionSet (Guid.Empty) must exist and must be empty (no items)
         var emptySetRowExists = await uow.Connection.ExecuteScalarAsync<int>(

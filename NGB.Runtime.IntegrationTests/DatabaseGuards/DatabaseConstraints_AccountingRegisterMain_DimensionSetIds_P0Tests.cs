@@ -11,8 +11,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P0: accounting_register_main must enforce DimensionSetId FK invariants at the DB level.
 /// This protects the platform even if application-layer validation is bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_AccountingRegisterMain_DimensionSetIds_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_AccountingRegisterMain_DimensionSetIds_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateTime PeriodUtc = new(2026, 1, 15, 0, 0, 0, DateTimeKind.Utc);

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.Persistence.Catalogs.Storage;
+using NGB.Persistence.Documents;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Catalogs;
 using NGB.PostgreSql.Reporting;
@@ -8,7 +9,9 @@ using NGB.Trade.Documents;
 using NGB.Trade.Pricing;
 using NGB.Trade.PostgreSql.Documents;
 using NGB.Trade.PostgreSql.Pricing;
+using NGB.Trade.PostgreSql.References;
 using NGB.Trade.PostgreSql.Reporting;
+using NGB.Trade.References;
 using NGB.Trade.Reporting;
 
 namespace NGB.Trade.PostgreSql.DependencyInjection;
@@ -73,9 +76,18 @@ public static class TradePostgresModuleServiceCollectionExtensions
                 "cat_trd_accounting_policy",
                 [PostgresHeadCatalogTypeStorage.Column.DraftString("display", "display")]));
 
-        services.AddScoped<ITradeDocumentReaders, TradeDocumentReaders>();
+        services.AddScoped<TradeDocumentReaders>();
+        services.AddScoped<ITradeDocumentReaders>(sp =>
+        {
+            var inner = sp.GetRequiredService<TradeDocumentReaders>();
+            var cache = sp.GetService<IDocumentPostingReadCache>();
+            return cache is null ? inner : new PostingCachedTradeDocumentReaders(inner, cache);
+        });
         services.AddScoped<ITradePricingLookupReader, TradePricingLookupReader>();
+        services.AddScoped<ITradeCatalogValidationReader, TradeCatalogValidationReader>();
         services.AddScoped<ITradeAnalyticsReader, PostgresTradeAnalyticsReader>();
+        services.AddScoped<ITradeInventoryBalanceReader, PostgresTradeInventoryBalanceReader>();
+        services.AddScoped<ITradeCurrentItemPriceReader, PostgresTradeCurrentItemPriceReader>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostgresReportDatasetSource, TradeOperationalReportsPostgresDatasetSource>());
 
         return services;

@@ -20,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 /// NOTE: These tests are expected to go RED until the runtime enforces immutability
 /// for UpdateDraftHeader/ReplaceDraftLines when ApprovalState != Draft.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_ImmutabilityAfterSubmit_P0Tests(PostgresTestFixture fixture)
 {
     private PostgresTestFixture Fixture { get; } = fixture;

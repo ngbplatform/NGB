@@ -2,7 +2,7 @@
 import { NgbConfirmDialog, NgbDrawer, NgbIcon } from '@ngbplatform/ui'
 
 import OpenItemsPageLayout from './OpenItemsPageLayout.vue'
-import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsTabKey } from './presentation'
+import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsPageState, OpenItemsTabKey } from './presentation'
 import type { OpenItemsApplyResultLine, OpenItemsLookupItem } from './shared'
 
 type LookupControl = {
@@ -31,6 +31,9 @@ const props = withDefaults(defineProps<{
   tabs: Array<{ key: OpenItemsTabKey; label: string }>
   chargeGrid: OpenItemsGridDefinition
   creditGrid: OpenItemsGridDefinition
+  chargePage?: OpenItemsPageState
+  creditPage?: OpenItemsPageState
+  appliedPage?: OpenItemsPageState
   appliedRows: OpenItemsAppliedAllocationView[]
   appliedSubtitle: string
   appliedEmptyMessage: string
@@ -70,6 +73,7 @@ const emit = defineEmits<{
   (e: 'apply'): void
   (e: 'dismissPageResult'): void
   (e: 'update:activeTab', value: OpenItemsTabKey): void
+  (e: 'page', value: { tab: OpenItemsTabKey; offset: number }): void
   (e: 'update:applyWizardOpen', value: boolean): void
   (e: 'applyWizardAction'): void
   (e: 'update:unapplyConfirmOpen', value: boolean): void
@@ -93,6 +97,9 @@ const emit = defineEmits<{
     :active-tab="activeTab"
     :charge-grid="chargeGrid"
     :credit-grid="creditGrid"
+    :charge-page="chargePage"
+    :credit-page="creditPage"
+    :applied-page="appliedPage"
     :applied-rows="appliedRows"
     :applied-subtitle="appliedSubtitle"
     :applied-empty-message="appliedEmptyMessage"
@@ -110,6 +117,7 @@ const emit = defineEmits<{
     @apply="emit('apply')"
     @dismissPageResult="emit('dismissPageResult')"
     @update:activeTab="emit('update:activeTab', $event)"
+    @page="emit('page', $event)"
   />
 
   <NgbDrawer

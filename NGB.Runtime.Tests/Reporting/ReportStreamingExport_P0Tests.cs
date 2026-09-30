@@ -1,0 +1,112 @@
+using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Xml.Linq;
+using FluentAssertions;
+using NGB.Contracts.Reporting;
+using NGB.Runtime.Reporting;
+using Xunit;
+
+namespace NGB.Runtime.Tests.Reporting;
+
+public sealed class ReportStreamingExport_P0Tests
+{
+    [Fact]
+    public async Task Invalid_sheet_capacity_and_data_row_spans_are_rejected()
+    {
+        var exporter = new ReportXlsxExportService();
+        var template = new ReportSheetDto([new("value", "Value", "string")], []);
+        using var output = new MemoryStream();
+        await ((Func<Task>)(() => exporter.WriteXlsxAsync(output, template, Rows(0), 1, default)))
+            .Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => exporter.WriteXlsxAsync(output, template, Spanned(), default)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbInvariantViolationException>().WithMessage("*span*");
+        async IAsyncEnumerable<ReportSheetRowDto> Spanned()
+        {
+            await Task.CompletedTask;
+            yield return new(ReportRowKind.Detail, [new(Value: null, RowSpan: 2)]);
+        }
+    }
+
+    [Fact]
+    public async Task Writes_to_a_nonseekable_async_only_http_stream()
+    {
+        using var bytes = new MemoryStream();
+        using var output = new AsyncOnlyStream(bytes);
+        var template = new ReportSheetDto([new("label", "Label", "string"), new("amount", "Amount", "decimal")], []);
+        await new ReportXlsxExportService().WriteXlsxAsync(output, template, Rows(1000), default);
+        bytes.Position = 0;
+        using var zip = new ZipArchive(bytes, ZipArchiveMode.Read);
+        zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Splits_sheets_repeats_headers_and_preserves_all_numeric_and_text_cells()
+    {
+        using var stream = new MemoryStream();
+        var exporter = new ReportXlsxExportService();
+        var template = new ReportSheetDto([new("label", "Label", "string"), new("amount", "Amount", "decimal")], [], new(Title: "Very long report title that exceeds thirty one characters"));
+        await exporter.WriteXlsxAsync(stream, template, Rows(11), 5, default);
+        stream.Position = 0;
+        await using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+        XNamespace ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        await using var workbookStream = archive.GetEntry("xl/workbook.xml")!.Open();
+        var workbook = XDocument.Load(workbookStream);
+        workbook.Descendants(ns + "sheet").Should().HaveCount(3);
+        workbook.Descendants(ns + "sheet").Select(s => s.Attribute("name")!.Value).Should().OnlyHaveUniqueItems().And.OnlyContain(n => n.Length <= 31);
+        var amounts = new List<decimal>();
+        for (var i = 1; i <= 3; i++)
+        {
+            await using var sheetStream = archive.GetEntry($"xl/worksheets/sheet{i}.xml")!.Open();
+            var sheet = XDocument.Load(sheetStream);
+            var rows = sheet.Descendants(ns + "row").ToArray();
+            rows.Length.Should().BeLessThanOrEqualTo(5);
+            rows[0].Value.Should().Contain("Label");
+            rows.Skip(1).SelectMany(r => r.Descendants(ns + "f")).Should().BeEmpty("text starting with '=' must not become an Excel formula");
+            amounts.AddRange(rows.Skip(1).Select(r => decimal.Parse(r.Elements(ns + "c").ElementAt(1).Element(ns + "v")!.Value, System.Globalization.CultureInfo.InvariantCulture)));
+        }
+        amounts.Should().Equal(Enumerable.Range(0, 11).Select(i => i + 0.25m));
+    }
+
+    [Fact]
+    public async Task Empty_stream_still_produces_a_valid_workbook_and_cancellation_stops_reading()
+    {
+        var exporter = new ReportXlsxExportService();
+        var template = new ReportSheetDto([new("label", "Label", "string"), new("amount", "Amount", "decimal")], []);
+        using var stream = new MemoryStream();
+        await exporter.WriteXlsxAsync(stream, template, Rows(0), default);
+        stream.Position = 0;
+        await using (var zip = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true))
+            zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        using var cancelled = new MemoryStream();
+        await ((Func<Task>)(() => exporter.WriteXlsxAsync(cancelled, template, Rows(5), cts.Token))).Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    private static async IAsyncEnumerable<ReportSheetRowDto> Rows(int count, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        ct.ThrowIfCancellationRequested();
+        for (var i = 0; i < count; i++)
+            yield return new(ReportRowKind.Detail, [new(Value: JsonSerializer.SerializeToElement("=1+1"), ValueType: "string"),
+                new(Value: JsonSerializer.SerializeToElement(i + 0.25m), ValueType: "decimal")]);
+    }
+
+    private sealed class AsyncOnlyStream(Stream inner) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() => throw new InvalidOperationException("Synchronous HTTP I/O is forbidden.");
+        public override Task FlushAsync(CancellationToken ct) => inner.FlushAsync(ct);
+        public override void Write(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous HTTP I/O is forbidden.");
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct) => inner.WriteAsync(buffer, offset, count, ct);
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default) => inner.WriteAsync(buffer, ct);
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+    }
+}

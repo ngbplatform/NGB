@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Accounts;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsManagement_Immutability_WithMovementsTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -22,7 +22,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// Note: per-register tables (opreg_*__movements) are created dynamically and are NOT always dropped by Respawn.
 /// Therefore, tests MUST avoid using a constant register code (table name) if they assert table existence.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovements_UtcEnforcement_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

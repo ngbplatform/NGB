@@ -15,8 +15,8 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// <summary>
 /// P0: Admin endpoint returns physical schema health for per-register tables (opreg_&lt;table_code&gt;__*).
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegisterAdminEndpoint_PhysicalSchemaHealth_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegisterAdminEndpoint_PhysicalSchemaHealth_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

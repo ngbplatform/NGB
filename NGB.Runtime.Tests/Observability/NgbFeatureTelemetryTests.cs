@@ -5,6 +5,7 @@ using Xunit;
 
 namespace NGB.Runtime.Tests.Observability;
 
+[Collection(TelemetrySerialCollection.Name)]
 public sealed class NgbFeatureTelemetryTests
 {
     [Fact]

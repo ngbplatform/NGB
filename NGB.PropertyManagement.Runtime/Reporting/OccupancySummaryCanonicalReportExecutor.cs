@@ -2,15 +2,29 @@ using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.PropertyManagement.Definitions;
 using NGB.PropertyManagement.Reporting;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 
 namespace NGB.PropertyManagement.Runtime.Reporting;
 
-public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryReader reader)
+public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryReportReader reader)
     : IReportSpecializedPlanExecutor
 {
     public string ReportCode => PropertyManagementSecurityDefaults.OccupancySummaryReport;
+
+    public ReportExecutionRequestDto PrepareExecution(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        DateTimeOffset utcNow)
+    {
+        var parameters = new Dictionary<string, string>(request.Parameters ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        var date = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc")
+            ?? DateOnly.FromDateTime(utcNow.UtcDateTime);
+        parameters["as_of_utc"] = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        return request with { Parameters = parameters };
+    }
 
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,
@@ -20,15 +34,44 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
         var buildingId = CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "building_id");
         var asOf = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc")
             ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var offset = Math.Max(0, request.Offset);
-        var limit = request.Limit <= 0 ? 50 : request.Limit;
+        var cursorKind = SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            buildingId?.ToString("D"),
+            asOf.ToString("yyyy-MM-dd"));
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<OccupancySummaryContinuation>(cursorKind, request.Cursor);
+        var limit = CanonicalReportExecutionHelper.ResolvePageDataLimit(
+            definition,
+            request,
+            defaultLimit: 50,
+            reservedRows: request.Layout?.ShowGrandTotals != false ? 1 : 0);
+        var page = await reader.GetSliceAsync(buildingId, asOf, cursor, limit, ct);
+        var totals = !page.HasMore && request.Layout?.ShowGrandTotals != false
+            ? await reader.GetTotalsAsync(buildingId, asOf, ct)
+            : null;
+        var sheet = CreateSheet(definition, buildingId, asOf, page.Rows, totals);
 
-        var page = await reader.GetPageAsync(buildingId, asOf, offset, limit, ct);
-        page.EnsureInvariant();
+        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
+            sheet,
+            cursor?.Offset ?? 0,
+            limit,
+            totals?.BuildingCount,
+            page.HasMore,
+            page.Next is null ? null : SpecializedReportCursorCodec.Encode(cursorKind, page.Next),
+            new Dictionary<string, string> { ["executor"] = "canonical-pm-occupancy-summary", ["paging"] = "query" });
+    }
 
-        var rows = page.Rows.Select(ToDetailRow).ToList();
-        if (request.Layout?.ShowGrandTotals != false && page.Total > 0)
-            rows.Add(ToTotalRow(page.Totals));
+    internal static ReportSheetDto CreateSheet(
+        ReportDefinitionDto definition,
+        Guid? buildingId,
+        DateOnly asOf,
+        IReadOnlyList<OccupancySummaryRow> data,
+        OccupancySummaryTotals? totals)
+    {
+        var rows = data.Select(ToDetailRow).ToList();
+        if (totals is { BuildingCount: > 0 })
+            rows.Add(ToTotalRow(totals));
 
         var subtitle = buildingId is null
             ? $"Portfolio occupancy · {asOf:yyyy-MM-dd}"
@@ -53,17 +96,7 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
                     ["executor"] = "canonical-pm-occupancy-summary"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: offset,
-            limit: limit,
-            total: page.Total,
-            hasMore: offset + page.Rows.Count < page.Total,
-            nextCursor: null,
-            diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["executor"] = "canonical-pm-occupancy-summary"
-            });
+        return sheet;
     }
 
     private static ReportSheetRowDto ToDetailRow(OccupancySummaryRow row)
@@ -79,7 +112,7 @@ public sealed class OccupancySummaryCanonicalReportExecutor(IOccupancySummaryRea
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue(row.OccupancyPercent), row.OccupancyPercent.ToString("0.##"), "decimal")
             ]);
 
-    private static ReportSheetRowDto ToTotalRow(OccupancySummaryTotals totals)
+    internal static ReportSheetRowDto ToTotalRow(OccupancySummaryTotals totals)
         => new(
             ReportRowKind.Total,
             Cells:

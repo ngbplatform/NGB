@@ -41,7 +41,7 @@ NGB.Trade.Runtime/
     ItemPriceUpdateHandler.cs
 
 NGB.Trade.PostgreSql/
-  Bootstrap/db/migrations/
+  db/migrations/
     V2026_04_18_0003__add_trd_item_price_update.sql
 ```
 

@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// Reporting Core — golden tests that lock in reporting behavior around period/year closing.
 /// IMPORTANT: Uses dedicated far-future fiscal year (2032) to avoid collisions with other tests.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ReportsAfterClosingGoldenTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

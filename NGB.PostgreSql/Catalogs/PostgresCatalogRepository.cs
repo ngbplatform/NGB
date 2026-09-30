@@ -109,6 +109,39 @@ public sealed class PostgresCatalogRepository(IUnitOfWork uow) : ICatalogReposit
         return row?.ToRecord();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, CatalogRecord>> GetByIdsAsync(
+        IReadOnlyList<Guid> catalogIds,
+        CancellationToken ct = default)
+    {
+        if (catalogIds is null)
+            throw new NgbArgumentRequiredException(nameof(catalogIds));
+
+        var ids = catalogIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, CatalogRecord>();
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+                           SELECT
+                               id              AS Id,
+                               catalog_code     AS CatalogCode,
+                               is_deleted       AS IsDeleted,
+                               created_at_utc   AS CreatedAtUtc,
+                               updated_at_utc   AS UpdatedAtUtc
+                           FROM catalogs
+                           WHERE id = ANY(@Ids);
+                           """;
+
+        var rows = await uow.Connection.QueryAsync<CatalogRow>(new CommandDefinition(
+            sql,
+            new { Ids = ids },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        return rows.ToDictionary(static row => row.Id, static row => row.ToRecord());
+    }
+
     public async Task<CatalogRecord?> GetForUpdateAsync(Guid catalogId, CancellationToken ct = default)
     {
         await uow.EnsureOpenForTransactionAsync(ct);

@@ -16,14 +16,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPostingService_MarkUnmarkForDeletion_IdempotencyAndFailFast_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task MarkForDeletionAsync_WhenCalledTwice_IsIdempotent_NoSecondAudit_AndDoesNotChangeTimestamps()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var dateUtc = new DateTime(2026, 02, 04, 12, 0, 0, DateTimeKind.Utc);
@@ -105,7 +104,6 @@ public sealed class DocumentPostingService_MarkUnmarkForDeletion_IdempotencyAndF
     [Fact]
     public async Task MarkForDeletionAsync_WhenPosted_Throws_AndNoAudit()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var nowUtc = new DateTime(2026, 02, 04, 12, 0, 0, DateTimeKind.Utc);
@@ -143,7 +141,6 @@ public sealed class DocumentPostingService_MarkUnmarkForDeletion_IdempotencyAndF
     [Fact]
     public async Task UnmarkForDeletionAsync_WhenPosted_Throws_AndNoAudit()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var nowUtc = new DateTime(2026, 02, 04, 12, 0, 0, DateTimeKind.Utc);

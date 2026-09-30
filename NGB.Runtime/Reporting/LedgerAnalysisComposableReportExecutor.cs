@@ -74,7 +74,7 @@ public sealed class LedgerAnalysisComposableReportExecutor(
 
         var page = await _flatDetailReader.GetPageAsync(
             new LedgerAnalysisFlatDetailPageRequest(
-                DatasetCode: plan.DatasetCode ?? throw new NgbConfigurationViolationException("Ledger analysis flat detail mode requires a dataset code."),
+                DatasetCode: plan.DatasetCode!,
                 DetailFields: plan.DetailFields.Select(x => new LedgerAnalysisFlatDetailFieldSelection(x.FieldCode, x.OutputCode, x.Label, x.DataType)).ToList(),
                 Measures: plan.Measures.Select(x => new LedgerAnalysisFlatDetailMeasureSelection(x.MeasureCode, x.OutputCode, x.Label, x.DataType)).ToList(),
                 Predicates: plan.Predicates.Select(x => new LedgerAnalysisFlatDetailPredicate(x.FieldCode, x.OutputCode, x.Label, x.DataType, x.Filter.Value.Clone())).ToList(),
@@ -109,7 +109,7 @@ public sealed class LedgerAnalysisComposableReportExecutor(
         if (string.IsNullOrWhiteSpace(plan.DatasetCode))
             return false;
 
-        if (plan.RowGroups.Count > 0 || plan.ColumnGroups.Count > 0 || plan.Shape.IsPivot)
+        if (plan.RowGroups.Count > 0 || plan.ColumnGroups.Count > 0)
             return false;
 
         if (plan.DetailFields.Count == 0)

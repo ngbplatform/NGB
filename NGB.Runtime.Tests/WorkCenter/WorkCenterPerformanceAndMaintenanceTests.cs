@@ -99,7 +99,7 @@ public sealed class WorkCenterPerformanceAndMaintenanceTests
         roles.Setup(repository => repository.GetByCodeAsync("sales", It.IsAny<CancellationToken>()))
             .ReturnsAsync(sales);
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
-                sales.RoleId, It.IsAny<CancellationToken>()))
+                sales.RoleId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([userId]);
         preferences.Setup(repository => repository.GetForUsersAsync(
                 It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()))
@@ -118,11 +118,41 @@ public sealed class WorkCenterPerformanceAndMaintenanceTests
 
         roles.Verify(repository => repository.GetByCodeAsync("sales", It.IsAny<CancellationToken>()), Times.Once);
         userRoles.Verify(repository => repository.GetUserIdsForRoleAsync(
-            sales.RoleId, It.IsAny<CancellationToken>()), Times.Once);
+            sales.RoleId, It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
         users.Verify(repository => repository.GetByIdsAsync(
             It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
         preferences.Verify(repository => repository.GetForUsersAsync(
             It.IsAny<IReadOnlyList<Guid>>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Role_resolution_rejects_excessive_fan_out_before_loading_user_state()
+    {
+        var sales = Role("sales");
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        var roles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
+        var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        var preferences = new Mock<INotificationPreferenceRepository>(MockBehavior.Strict);
+        roles.Setup(repository => repository.GetByCodeAsync("sales", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sales);
+        userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
+                sales.RoleId,
+                2_001,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Range(0, 2_001).Select(_ => Guid.NewGuid()).ToArray());
+        var resolver = new WorkCenterPreferenceRecipientResolver(
+            preferences.Object,
+            users.Object,
+            roles.Object,
+            userRoles.Object,
+            Registry(Definition("test.task", roles: null, WorkCenterPreferenceKind.Task)));
+
+        var action = () => resolver.ResolveRoleAssignmentAsync(
+            "test.task", WorkCenterPreferenceKind.Task, "sales", CancellationToken.None);
+
+        await action.Should().ThrowAsync<NGB.Tools.Exceptions.NgbConfigurationViolationException>();
+        users.VerifyNoOtherCalls();
+        preferences.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -180,7 +210,8 @@ public sealed class WorkCenterPerformanceAndMaintenanceTests
             DocumentActionExecutionRetention = TimeSpan.Zero,
             TerminalTaskRetention = TimeSpan.FromDays(3651),
             MaintenanceBatchSize = 0,
-            MaximumMaintenanceBatchesPerRun = 0
+            MaximumMaintenanceBatchesPerRun = 0,
+            ProjectionParallelism = 0
         });
 
         invalid.Failed.Should().BeTrue();
@@ -188,6 +219,7 @@ public sealed class WorkCenterPerformanceAndMaintenanceTests
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.TerminalTaskRetention)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.MaintenanceBatchSize)));
         invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.MaximumMaintenanceBatchesPerRun)));
+        invalid.Failures.Should().Contain(message => message.Contains(nameof(NgbWorkCenterOptions.ProjectionParallelism)));
     }
 
     private static Mock<IUnitOfWork> UnitOfWork()

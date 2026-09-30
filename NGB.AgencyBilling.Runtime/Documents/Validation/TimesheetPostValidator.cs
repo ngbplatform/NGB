@@ -30,6 +30,11 @@ public sealed class TimesheetPostValidator(
         if (lines.Count == 0)
             throw new NgbArgumentInvalidException("lines", "Timesheet must contain at least one line.");
 
+        var serviceItems = await AgencyBillingCatalogValidationGuards.LoadServiceItemsAsync(
+            lines.Select(static line => line.ServiceItemId.GetValueOrDefault()),
+            references,
+            ct);
+
         var expectedHours = 0m;
         var expectedAmount = 0m;
         var expectedCostAmount = 0m;
@@ -39,8 +44,9 @@ public sealed class TimesheetPostValidator(
             var line = lines[i];
             var prefix = $"lines[{i}]";
 
-            if (line.ServiceItemId is { } serviceItemId && serviceItemId != Guid.Empty)
-                await AgencyBillingCatalogValidationGuards.EnsureServiceItemAsync(serviceItemId, $"{prefix}.service_item_id", references, ct);
+            var serviceItemId = line.ServiceItemId.GetValueOrDefault();
+            if (serviceItemId != Guid.Empty)
+                AgencyBillingCatalogValidationGuards.EnsureServiceItem(serviceItemId, $"{prefix}.service_item_id", serviceItems);
 
             if (line.Hours <= 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.hours", "Hours must be greater than zero.");
@@ -80,7 +86,7 @@ public sealed class TimesheetPostValidator(
 
                 expectedAmount += line.LineAmount.Value;
             }
-            else if (line.LineAmount is not null && AgencyBillingPostingCommon.RoundScale4(line.LineAmount.Value) != 0m)
+            else if (AgencyBillingPostingCommon.RoundScale4(line.LineAmount.GetValueOrDefault()) != 0m)
             {
                 throw new NgbArgumentInvalidException($"{prefix}.line_amount", "Non-billable time must not carry billable amount.");
             }

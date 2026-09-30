@@ -22,7 +22,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 /// 5) Concurrent Submit on same document -> exactly one succeeds (no deadlocks, single number)
 /// 6) Approve after Submit -> must NOT consume the sequence again (number stable)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_Numbering_Advanced_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

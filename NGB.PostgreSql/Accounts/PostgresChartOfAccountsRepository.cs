@@ -2,6 +2,7 @@ using Dapper;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.CashFlow;
 using NGB.Accounting.Dimensions;
+using NGB.Contracts.Common;
 using NGB.Persistence.Accounts;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.UnitOfWork;
@@ -111,6 +112,121 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
         }
 
         return list;
+    }
+
+    public async Task<ChartOfAccountsAdminPage> GetAdminPageAsync(
+        ChartOfAccountsAdminPageQuery query,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var useSeek = query.AfterCode is not null && query.AfterAccountId.HasValue;
+        var seekSql = useSeek
+            ? "AND (code, account_id) > (@AfterCode::text, @AfterAccountId::uuid)"
+            : string.Empty;
+        var offsetSql = useSeek ? string.Empty : "OFFSET @Offset";
+        var select = $"""
+                              SELECT
+                                  account_id             AS "AccountId",
+                                  code                   AS "Code",
+                                  name                   AS "Name",
+                                  account_type           AS "AccountType",
+                                  statement_section      AS "StatementSection",
+                                  cash_flow_role         AS "CashFlowRole",
+                                  cash_flow_line_code    AS "CashFlowLineCode",
+                                  is_contra              AS "IsContra",
+                                  negative_balance_policy AS "NegativeBalancePolicy",
+                                  is_active              AS "IsActive",
+                                  is_deleted             AS "IsDeleted"
+                              FROM accounting_accounts
+                              WHERE (@IncludeDeleted OR NOT is_deleted)
+                                AND (@OnlyDeleted::boolean IS NULL OR is_deleted = @OnlyDeleted)
+                                AND (@OnlyActive::boolean IS NULL OR is_active = @OnlyActive)
+                                AND (@FilterAccountTypes = FALSE OR account_type = ANY(@AccountTypes))
+                                AND (
+                                    @Search::text IS NULL
+                                    OR code ILIKE @Search ESCAPE '\'
+                                    OR name ILIKE @Search ESCAPE '\'
+                                    OR (@FilterSearchAccountTypes AND account_type = ANY(@SearchAccountTypes))
+                                )
+                                {seekSql}
+                              """;
+        var parameters = new
+        {
+            query.IncludeDeleted,
+            query.OnlyDeleted,
+            query.OnlyActive,
+            FilterAccountTypes = query.AccountTypes.Count > 0,
+            AccountTypes = query.AccountTypes.Select(static type => (short)type).ToArray(),
+            Search = query.Search is null ? null : $"%{EscapeLike(query.Search)}%",
+            FilterSearchAccountTypes = query.SearchAccountTypes.Count > 0,
+            SearchAccountTypes = query.SearchAccountTypes.Select(static type => (short)type).ToArray(),
+            Offset = PagingLimits.BoundOffset(query.Offset),
+            query.AfterCode,
+            query.AfterAccountId,
+            Limit = query.KnownTotal.HasValue && query.Limit < int.MaxValue
+                ? query.Limit + 1
+                : query.Limit
+        };
+
+        int total;
+        List<AccountRow> rows;
+        if (query.KnownTotal is { } knownTotal)
+        {
+            rows = (await uow.Connection.QueryAsync<AccountRow>(new CommandDefinition(
+                $"""
+                 {select}
+                 ORDER BY code, account_id
+                 {offsetSql}
+                 LIMIT @Limit;
+                 """,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct))).AsList();
+            total = knownTotal;
+        }
+        else
+        {
+            using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                $"""
+                 SELECT COUNT(*)::int FROM ({select}) filtered;
+                 {select}
+                 ORDER BY code, account_id
+                 {offsetSql}
+                 LIMIT @Limit;
+                 """,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+
+            total = await results.ReadSingleAsync<int>();
+            rows = (await results.ReadAsync<AccountRow>()).AsList();
+        }
+
+        var hasMore = query.KnownTotal.HasValue && rows.Count > query.Limit;
+        if (hasMore)
+            rows.RemoveRange(query.Limit, rows.Count - query.Limit);
+
+        var ruleMap = await LoadDimensionRulesAsync(rows.Select(static row => row.AccountId).ToArray(), ct);
+        var items = rows.Select(row =>
+        {
+            ruleMap.TryGetValue(row.AccountId, out var rules);
+            return new ChartOfAccountsAdminItem
+            {
+                Account = ToAccount(row, rules),
+                IsActive = row.IsActive,
+                IsDeleted = row.IsDeleted
+            };
+        }).ToArray();
+
+        var last = rows.LastOrDefault();
+        return new ChartOfAccountsAdminPage(
+            items,
+            total,
+            hasMore,
+            last?.Code,
+            last?.AccountId);
     }
 
     public async Task<ChartOfAccountsAdminItem?> GetAdminByIdAsync(Guid accountId, CancellationToken ct = default)
@@ -392,6 +508,12 @@ public sealed class PostgresChartOfAccountsRepository(IUnitOfWork uow) : IChartO
             cashFlowRole: (CashFlowRole)r.CashFlowRole,
             cashFlowLineCode: r.CashFlowLineCode);
     }
+
+    private static string EscapeLike(string value)
+        => value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
 
     private async Task<Dictionary<Guid, IReadOnlyList<AccountDimensionRule>>> LoadDimensionRulesAsync(
         Guid[] accountIds,

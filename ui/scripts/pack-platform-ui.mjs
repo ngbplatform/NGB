@@ -17,6 +17,7 @@ const crmRoot = join(uiRoot, 'ngb-crm-web')
 const outputRoot = resolve(uiRoot, '..', 'artifacts', 'npm')
 const sourceManifest = JSON.parse(await readFile(join(sourceRoot, 'package.json'), 'utf8'))
 const requestedVersion = readVersionArgument(process.argv.slice(2)) ?? sourceManifest.version
+const localCandidate = process.argv.includes('--local-candidate')
 
 if (requestedVersion !== sourceManifest.version) {
   throw new Error(
@@ -109,12 +110,15 @@ async function verifyCrmConsumerLock(tarballPath, version) {
     crmLock.packages?.['']?.dependencies?.['@ngbplatform/ui'] !== version
     || locked?.version !== version
     || locked?.resolved !== expectedResolved
-    || locked?.integrity !== expectedIntegrity
+    || (!localCandidate && locked?.integrity !== expectedIntegrity)
   ) {
     throw new Error(
       `CRM package-lock must reference the exact @ngbplatform/ui ${version} release candidate `
         + 'including its registry URL and SHA-512 integrity.',
     )
+  }
+  if (localCandidate) {
+    console.log('Local candidate only; the published CRM lockfile remains unchanged.')
   }
 }
 

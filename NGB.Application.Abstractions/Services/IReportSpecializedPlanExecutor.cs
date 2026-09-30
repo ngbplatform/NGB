@@ -15,6 +15,12 @@ public interface IReportSpecializedPlanExecutor
 {
     string ReportCode { get; }
 
+    /// <summary>Resolve time-dependent defaults once for an entire execution attempt, before reading any page.</summary>
+    ReportExecutionRequestDto PrepareExecution(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        DateTimeOffset utcNow) => request;
+
     Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,
         ReportExecutionRequestDto request,

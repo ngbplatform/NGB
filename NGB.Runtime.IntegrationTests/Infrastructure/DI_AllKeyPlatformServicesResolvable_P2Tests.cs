@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P2: DI contract smoke-test.
 /// Ensures the production-shape IntegrationHost registers the core platform services.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class DI_AllKeyPlatformServicesResolvable_P2Tests(PostgresTestFixture fixture)
 {
     private PostgresTestFixture Fixture { get; } = fixture;

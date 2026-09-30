@@ -56,9 +56,9 @@ export type EditorEntityProfile = {
 
 export type EditorFrameworkConfig = {
   routing?: EditorRoutingConfig;
-  loadDocumentById: (documentType: string, id: string) => Promise<DocumentRecord>;
-  loadDocumentEffects: (documentType: string, id: string, limit?: number) => Promise<DocumentEffects>;
-  loadDocumentGraph: (documentType: string, id: string, depth?: number, maxNodes?: number) => Promise<RelationshipGraph>;
+  loadDocumentById: (documentType: string, id: string, options?: { signal?: AbortSignal }) => Promise<DocumentRecord>;
+  loadDocumentEffects: (documentType: string, id: string, limit?: number, options?: { signal?: AbortSignal }) => Promise<DocumentEffects>;
+  loadDocumentGraph: (documentType: string, id: string, depth?: number, maxNodes?: number, options?: { signal?: AbortSignal }) => Promise<RelationshipGraph>;
   loadEntityAuditLog: (
     entityKind: number,
     entityId: string,

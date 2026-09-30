@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   buildReportPageUrl: vi.fn((reportCode: string) => `/reports/${reportCode}`),
   getReportDefinitions: vi.fn(),
+  groups: [{ title: 'Main' }],
   searchCommandPalette: vi.fn(async () => [{ key: 'remote:1' }]),
 }))
 
@@ -10,6 +11,7 @@ vi.mock('@ngbplatform/ui', () => ({
   buildReportPageUrl: mocks.buildReportPageUrl,
   getReportDefinitions: mocks.getReportDefinitions,
   searchCommandPalette: mocks.searchCommandPalette,
+  useMainMenuStore: () => ({ groups: mocks.groups }),
 }))
 
 vi.mock('../../../src/command-palette/agencyBillingStaticItems', () => ({
@@ -34,6 +36,8 @@ describe('agency billing command palette config', () => {
     const config = createAgencyBillingCommandPaletteConfig(router as never)
 
     expect(config.router).toBe(router)
+    expect(config.getMenuGroups?.()).toBe(mocks.groups)
+    expect(config.buildHeuristicCurrentActions?.('/home')).toEqual([{ key: 'heuristic:/home' }])
     expect(config.recentStorageKey).toBe('ngb:agency-billing:command-palette:recent')
     expect(config.favoriteItems).toEqual([{ key: 'favorite:1' }])
     expect(config.createItems).toEqual([{ key: 'create:1' }])
@@ -54,6 +58,7 @@ describe('agency billing command palette config', () => {
       { reportCode: 'accounting.posting_log', name: 'Posting Log', group: 'Diagnostics', description: 'Hidden' },
       { reportCode: 'accounting.consistency', name: 'Consistency', group: 'Diagnostics', description: 'Hidden' },
       { reportCode: 'ab.ar_aging', name: 'AR Aging', group: '', description: '' },
+      { reportCode: 'ab.unclassified', name: 'Unclassified', group: null, description: null },
       { reportCode: 'trd.sales_by_item', name: 'Trade Report', group: 'Trade', description: 'Ignored' },
     ])
 
@@ -76,6 +81,12 @@ describe('agency billing command palette config', () => {
         icon: 'icon:ab.ar_aging',
         route: '/reports/ab.ar_aging',
         defaultRank: 699,
+      }),
+      expect.objectContaining({
+        key: 'report:ab.unclassified',
+        subtitle: 'Run this report',
+        keywords: ['ab.unclassified', '', ''],
+        defaultRank: 698,
       }),
     ])
   })

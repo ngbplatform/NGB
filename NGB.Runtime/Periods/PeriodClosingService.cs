@@ -5,6 +5,7 @@ using NGB.Accounting.Periods;
 using NGB.Accounting.PostingState;
 using NGB.Accounting.PostingState.Readers;
 using NGB.Core.AuditLog;
+using NGB.Core.Locks;
 using NGB.Persistence.AuditLog;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Checkers;
@@ -18,6 +19,7 @@ using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.Writers;
 using NGB.Runtime.Accounting;
+using NGB.Runtime.Locks;
 using NGB.Runtime.AuditLog;
 using NGB.Runtime.Diagnostics;
 using NGB.Runtime.Posting;
@@ -51,7 +53,8 @@ public sealed class PeriodClosingService(
     AccountingNegativeBalanceChecker negativeBalanceChecker,
     IAccountByIdResolver accountByIdResolver,
     ILogger<PeriodClosingService> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IAccountingBalanceProjectionWriter? balanceProjectionWriter = null)
     : IPeriodClosingService
 {
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
@@ -98,20 +101,24 @@ public sealed class PeriodClosingService(
                 // Integrity check (turnovers must match register aggregation for this period)
                 await integrityChecker.AssertPeriodIsBalancedAsync(period, innerCt);
 
-                // Get turnover for the period
-                var turnovers = await turnoverReader.GetForPeriodAsync(period, innerCt);
-
-                // Get balances from the previous period (month)
-                var previousPeriod = period.AddMonths(-1);
-                var previousBalances = await balanceReader.GetForPeriodAsync(previousPeriod, innerCt);
-
-                // Calculate the new balances (with carry-forward)
-                var balances = calculator.Calculate(turnovers, previousBalances, period).ToList();
-
-                await CheckNegativeBalanceAsync(balances, innerCt);
-
-                // Save balances
-                await balanceWriter.SaveAsync(balances, innerCt);
+                if (balanceProjectionWriter is not null)
+                {
+                    var projection = await balanceProjectionWriter.ProjectAsync(
+                        period,
+                        replaceExisting: false,
+                        innerCt);
+                    HandleProjectionViolations(projection);
+                }
+                else
+                {
+                    // Portable fallback for non-PostgreSQL persistence adapters.
+                    var turnovers = await turnoverReader.GetForPeriodAsync(period, innerCt);
+                    var previousPeriod = period.AddMonths(-1);
+                    var previousBalances = await balanceReader.GetForPeriodAsync(previousPeriod, innerCt);
+                    var balances = calculator.Calculate(turnovers, previousBalances, period).ToList();
+                    await CheckNegativeBalanceAsync(balances, innerCt);
+                    await balanceWriter.SaveAsync(balances, innerCt);
+                }
 
                 var closedAtUtc = _timeProvider.GetUtcNowDateTime();
                 closedAtUtc.EnsureUtc(nameof(closedAtUtc));
@@ -681,6 +688,40 @@ public sealed class PeriodClosingService(
         }
     }
 
+    private void HandleProjectionViolations(AccountingBalanceProjectionResult projection)
+    {
+        if (projection.ForbiddenCount > 0)
+        {
+            var details = projection.ViolationSamples
+                .Where(x => x.Policy == NegativeBalancePolicy.Forbid)
+                .Select(x => $"Negative balance forbidden: {x.AccountCode} {x.AccountName} ({x.AccountType}) = {x.ClosingBalance} period={x.Period:yyyy-MM-dd}")
+                .ToArray();
+            var suffix = projection.ForbiddenCount > details.Length
+                ? $"{Environment.NewLine}... and {projection.ForbiddenCount - details.Length} more forbidden balances."
+                : string.Empty;
+
+            throw new AccountingNegativeBalanceForbiddenException(string.Join(Environment.NewLine, details) + suffix);
+        }
+
+        foreach (var warning in projection.ViolationSamples.Where(x => x.Policy == NegativeBalancePolicy.Warn))
+        {
+            logger.LogWarning(
+                "WARN: Negative balance: {WAccountCode} {WAccountName} ({WAccountType}) = {WClosingBalance} period={DateOnly:yyyy-MM-dd}",
+                warning.AccountCode,
+                warning.AccountName,
+                warning.AccountType,
+                warning.ClosingBalance,
+                warning.Period);
+        }
+
+        if (projection.WarningCount > projection.ViolationSamples.Count(x => x.Policy == NegativeBalancePolicy.Warn))
+        {
+            logger.LogWarning(
+                "Additional negative-balance warnings omitted from per-row logging. count={Count}",
+                projection.WarningCount - projection.ViolationSamples.Count(x => x.Policy == NegativeBalancePolicy.Warn));
+        }
+    }
+
     private static bool IsProfitAndLoss(StatementSection section)
         => section is StatementSection.Income
             or StatementSection.Expenses
@@ -693,10 +734,13 @@ public sealed class PeriodClosingService(
         DateOnly fiscalYearEndPeriod,
         CancellationToken ct)
     {
-        for (var p = yearStart; p <= fiscalYearEndPeriod; p = p.AddMonths(1))
+        var periods = new List<DateOnly>();
+        for (var period = yearStart; period <= fiscalYearEndPeriod; period = period.AddMonths(1))
         {
-            await advisoryLocks.LockPeriodAsync(p, ct);
+            periods.Add(period);
         }
+
+        await advisoryLocks.LockPeriodsDeterministicallyAsync(periods, AdvisoryLockPeriodScope.Accounting, ct);
     }
 
     private async Task EnsureFiscalYearClosePrerequisitesAsync(
@@ -721,11 +765,20 @@ public sealed class PeriodClosingService(
         }
 
         // Strict rule: all months BEFORE the fiscal year-end month must already be closed.
+        // Read the complete range once; checking each month separately turns a yearly close into an N+1 query.
         // Closing entries are posted into the open end month; afterward the caller may close that month via IPeriodClosingService.
-        for (var p = yearStart; p < fiscalYearEndPeriod; p = p.AddMonths(1))
+        if (yearStart >= fiscalYearEndPeriod)
+            return;
+
+        var lastRequiredPeriod = fiscalYearEndPeriod.AddMonths(-1);
+        var closedPeriods = (await closedPeriodReader.GetClosedAsync(yearStart, lastRequiredPeriod, ct))
+            .Select(static row => row.Period)
+            .ToHashSet();
+
+        for (var period = yearStart; period <= lastRequiredPeriod; period = period.AddMonths(1))
         {
-            if (!await closedPeriodRepository.IsClosedAsync(p, ct))
-                throw new FiscalYearClosingPrerequisiteNotMetException(p);
+            if (!closedPeriods.Contains(period))
+                throw new FiscalYearClosingPrerequisiteNotMetException(period);
         }
     }
 
@@ -737,7 +790,7 @@ public sealed class PeriodClosingService(
         if (latestClosedPeriod is null)
             return PeriodClosingChainEvaluator.Build(earliestActivityPeriod, latestClosedPeriod, []);
 
-        var chainStartPeriod = earliestActivityPeriod ?? latestClosedPeriod.Value;
+        var chainStartPeriod = earliestActivityPeriod.GetValueOrDefault(latestClosedPeriod.Value);
         if (chainStartPeriod > latestClosedPeriod.Value)
             return PeriodClosingChainEvaluator.Build(earliestActivityPeriod, latestClosedPeriod, []);
 

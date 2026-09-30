@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { NgbBadge, NgbButton, NgbIcon, NgbLookup, NgbPageHeader, NgbRegisterGrid, NgbTabs } from '@ngbplatform/ui'
 
 import { applyDocumentLabel, docLabel, fmtDateOnly, fmtMoney, type OpenItemsApplyResultLine, type OpenItemsLookupItem } from './shared'
-import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsTabKey } from './presentation'
+import type { OpenItemsAppliedAllocationView, OpenItemsGridDefinition, OpenItemsPageResultView, OpenItemsPageState, OpenItemsTabKey } from './presentation'
 
 type LookupControl = {
   key: string
@@ -30,6 +31,9 @@ const props = defineProps<{
   tabs: Array<{ key: OpenItemsTabKey; label: string }>
   chargeGrid: OpenItemsGridDefinition
   creditGrid: OpenItemsGridDefinition
+  chargePage?: OpenItemsPageState
+  creditPage?: OpenItemsPageState
+  appliedPage?: OpenItemsPageState
   appliedRows: OpenItemsAppliedAllocationView[]
   appliedSubtitle: string
   appliedEmptyMessage: string
@@ -50,10 +54,30 @@ const emit = defineEmits<{
   (e: 'apply'): void
   (e: 'dismissPageResult'): void
   (e: 'update:activeTab', value: OpenItemsTabKey): void
+  (e: 'page', value: { tab: OpenItemsTabKey; offset: number }): void
 }>()
 
+const highlightedApplyIdSet = computed(() => new Set(props.highlightedApplyIds))
+
+function rowRange(page: OpenItemsPageState): string {
+  return `Rows ${page.offset + 1}\u2013${Math.min(page.total, page.offset + page.limit)} of ${page.total}`
+}
+
+function pageNumber(page: OpenItemsPageState): number {
+  return Math.floor(page.offset / page.limit) + 1
+}
+
+function pageCount(page: OpenItemsPageState): number {
+  return Math.max(1, Math.ceil(page.total / page.limit))
+}
+
+function requestPage(tab: OpenItemsTabKey, page: OpenItemsPageState, direction: -1 | 1): void {
+  const offset = Math.max(0, page.offset + direction * page.limit)
+  emit('page', { tab, offset })
+}
+
 function isHighlightedApplyId(applyId: string): boolean {
-  return props.highlightedApplyIds.includes(applyId)
+  return highlightedApplyIdSet.value.has(applyId)
 }
 
 function updateActiveTab(value: string): void {
@@ -221,31 +245,49 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
         >
           <template #default="{ active }">
             <div class="flex h-full min-h-0 min-w-0 flex-col">
-              <NgbRegisterGrid
-                v-if="active === 'charges'"
-                class="flex-1 min-h-0"
-                fill-height
-                :show-panel="false"
-                :show-totals="false"
-                :columns="chargeGrid.columns"
-                :rows="chargeGrid.rows"
-                :storage-key="chargeGrid.storageKey"
-                activate-on-row-click
-                @rowActivate="(id) => void chargeGrid.onActivate(String(id))"
-              />
+              <div v-if="active === 'charges'" class="flex flex-1 min-h-0 flex-col">
+                <NgbRegisterGrid
+                  class="flex-1 min-h-0"
+                  fill-height
+                  :show-panel="false"
+                  :show-totals="false"
+                  :columns="chargeGrid.columns"
+                  :rows="chargeGrid.rows"
+                  :storage-key="chargeGrid.storageKey"
+                  activate-on-row-click
+                  @rowActivate="(id) => void chargeGrid.onActivate(String(id))"
+                />
+                <div v-if="chargePage && chargePage.total > chargePage.limit" class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted">
+                  <span>{{ rowRange(chargePage) }}</span>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50" :disabled="loading || chargePage.offset === 0" @click="requestPage('charges', chargePage, -1)">Previous</button>
+                    <span>Page {{ pageNumber(chargePage) }} of {{ pageCount(chargePage) }}</span>
+                    <button type="button" class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50" :disabled="loading || !chargePage.hasMore" @click="requestPage('charges', chargePage, 1)">Next</button>
+                  </div>
+                </div>
+              </div>
 
-              <NgbRegisterGrid
-                v-else-if="active === 'credits'"
-                class="flex-1 min-h-0"
-                fill-height
-                :show-panel="false"
-                :show-totals="false"
-                :columns="creditGrid.columns"
-                :rows="creditGrid.rows"
-                :storage-key="creditGrid.storageKey"
-                activate-on-row-click
-                @rowActivate="(id) => void creditGrid.onActivate(String(id))"
-              />
+              <div v-else-if="active === 'credits'" class="flex flex-1 min-h-0 flex-col">
+                <NgbRegisterGrid
+                  class="flex-1 min-h-0"
+                  fill-height
+                  :show-panel="false"
+                  :show-totals="false"
+                  :columns="creditGrid.columns"
+                  :rows="creditGrid.rows"
+                  :storage-key="creditGrid.storageKey"
+                  activate-on-row-click
+                  @rowActivate="(id) => void creditGrid.onActivate(String(id))"
+                />
+                <div v-if="creditPage && creditPage.total > creditPage.limit" class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted">
+                  <span>{{ rowRange(creditPage) }}</span>
+                  <div class="flex items-center gap-2">
+                    <button type="button" class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50" :disabled="loading || creditPage.offset === 0" @click="requestPage('credits', creditPage, -1)">Previous</button>
+                    <span>Page {{ pageNumber(creditPage) }} of {{ pageCount(creditPage) }}</span>
+                    <button type="button" class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50" :disabled="loading || !creditPage.hasMore" @click="requestPage('credits', creditPage, 1)">Next</button>
+                  </div>
+                </div>
+              </div>
 
               <div
                 v-else
@@ -315,6 +357,31 @@ function buildUnapplyLine(allocation: OpenItemsAppliedAllocationView): OpenItems
                         </div>
                       </div>
                     </div>
+                  </div>
+                </div>
+                <div
+                  v-if="appliedPage && appliedPage.total > appliedPage.limit"
+                  class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted"
+                >
+                  <span>{{ rowRange(appliedPage) }}</span>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="loading || appliedPage.offset === 0"
+                      @click="requestPage('applied', appliedPage, -1)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ pageNumber(appliedPage) }} of {{ pageCount(appliedPage) }}</span>
+                    <button
+                      type="button"
+                      class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="loading || !appliedPage.hasMore"
+                      @click="requestPage('applied', appliedPage, 1)"
+                    >
+                      Next
+                    </button>
                   </div>
                 </div>
               </div>

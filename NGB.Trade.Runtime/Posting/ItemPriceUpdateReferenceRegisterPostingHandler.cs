@@ -34,23 +34,24 @@ public sealed class ItemPriceUpdateReferenceRegisterPostingHandler(
         var lines = await readers.ReadItemPriceUpdateLinesAsync(document.Id, ct);
         var updatedAtUtc = DateTime.UtcNow;
 
-        foreach (var line in lines)
+        var bags = lines.Select(static line => new DimensionBag(
+        [
+            new DimensionValue(DeterministicGuid.Create($"Dimension|{TradeCodes.Item}"), line.ItemId),
+            new DimensionValue(DeterministicGuid.Create($"Dimension|{TradeCodes.PriceType}"), line.PriceTypeId)
+        ])).ToArray();
+        var dimensionSetIds = await dimensionSets.GetOrCreateIdsAsync(bags, ct);
+
+        for (var i = 0; i < lines.Count; i++)
         {
+            var line = lines[i];
             var currency = string.IsNullOrWhiteSpace(line.Currency)
                 ? TradeCodes.DefaultCurrency
                 : line.Currency.Trim().ToUpperInvariant();
-            var bag = new DimensionBag(
-            [
-                new DimensionValue(DeterministicGuid.Create($"Dimension|{TradeCodes.Item}"), line.ItemId),
-                new DimensionValue(DeterministicGuid.Create($"Dimension|{TradeCodes.PriceType}"), line.PriceTypeId)
-            ]);
-
-            var dimensionSetId = await dimensionSets.GetOrCreateIdAsync(bag, ct);
 
             builder.Add(
                 TradeCodes.ItemPricesRegisterCode,
                 new ReferenceRegisterRecordWrite(
-                    DimensionSetId: dimensionSetId,
+                    DimensionSetId: dimensionSetIds[i],
                     PeriodUtc: null,
                     RecorderDocumentId: null,
                     Values: new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)

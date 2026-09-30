@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Metadata.Base;
@@ -12,6 +13,7 @@ using NGB.Persistence.Documents;
 using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.Readers.Accounts;
+using NGB.Persistence.Ui;
 using NGB.Tools;
 using NGB.Tools.Exceptions;
 
@@ -54,7 +56,9 @@ public sealed class ReferencePayloadEnricher(
     ICatalogEnrichmentReader catalogEnrichmentReader,
     IDocumentDisplayReader documentDisplayReader,
     IAccountLookupReader accountLookupReader,
-    IOperationalRegisterRepository opregRepo)
+    IOperationalRegisterRepository opregRepo,
+    IReferencePayloadBatchEnrichmentReader? batchEnrichmentReader = null,
+    IMemoryCache? planCache = null)
     : IReferencePayloadEnricher
 {
     private sealed record RefSource(RefKind Kind, IReadOnlyList<string>? TypeCodes);
@@ -77,6 +81,8 @@ public sealed class ReferencePayloadEnricher(
         ChartOfAccounts = 3,
         OperationalRegister = 4
     }
+
+    private sealed record PlanCacheKey(string OwnerKind, string OwnerTypeCode);
 
     public async Task<IReadOnlyList<CatalogItemDto>> EnrichCatalogItemsAsync(
         CatalogHeadDescriptor ownerHead,
@@ -115,6 +121,22 @@ public sealed class ReferencePayloadEnricher(
     private PayloadEnrichmentPlan BuildCatalogPlan(CatalogHeadDescriptor ownerHead, string ownerTypeCode)
     {
         catalogTypes.TryGet(ownerTypeCode, out var catalogMeta);
+        if (catalogMeta is not null && planCache is not null)
+        {
+            return planCache.GetOrCreate(
+                new PlanCacheKey("catalog", catalogMeta.CatalogCode),
+                entry =>
+                {
+                    entry.Priority = CacheItemPriority.NeverRemove;
+                    return BuildCatalogPlanCore(ownerHead, catalogMeta);
+                })!;
+        }
+
+        return BuildCatalogPlanCore(ownerHead, catalogMeta);
+    }
+
+    private PayloadEnrichmentPlan BuildCatalogPlanCore(CatalogHeadDescriptor ownerHead, CatalogTypeMetadata? catalogMeta)
+    {
         var headColumns = BuildCatalogHeadColumns(ownerHead, catalogMeta);
         var partColumns = catalogMeta is null
             ? new Dictionary<string, IReadOnlyList<EnrichmentColumn>>(StringComparer.OrdinalIgnoreCase)
@@ -126,6 +148,24 @@ public sealed class ReferencePayloadEnricher(
     private PayloadEnrichmentPlan BuildDocumentPlan(DocumentHeadDescriptor ownerHead, string ownerTypeCode)
     {
         var documentMeta = documentTypes.TryGet(ownerTypeCode);
+        if (documentMeta is not null && planCache is not null)
+        {
+            return planCache.GetOrCreate(
+                new PlanCacheKey("document", documentMeta.TypeCode),
+                entry =>
+                {
+                    entry.Priority = CacheItemPriority.NeverRemove;
+                    return BuildDocumentPlanCore(ownerHead, documentMeta);
+                })!;
+        }
+
+        return BuildDocumentPlanCore(ownerHead, documentMeta);
+    }
+
+    private PayloadEnrichmentPlan BuildDocumentPlanCore(
+        DocumentHeadDescriptor ownerHead,
+        DocumentTypeMetadata? documentMeta)
+    {
         var headColumns = BuildDocumentHeadColumns(ownerHead, documentMeta);
         var partColumns = documentMeta is null
             ? new Dictionary<string, IReadOnlyList<EnrichmentColumn>>(StringComparer.OrdinalIgnoreCase)
@@ -229,9 +269,6 @@ public sealed class ReferencePayloadEnricher(
         foreach (var t in meta.Tables.Where(x => x.Kind == TableKind.Part))
         {
             var code = t.GetRequiredPartCode(meta.CatalogCode);
-            if (string.IsNullOrWhiteSpace(code))
-                continue;
-
             dict[code] = t.Columns
                 .Where(c => !string.Equals(c.ColumnName, "catalog_id", StringComparison.OrdinalIgnoreCase) && c.ColumnType != ColumnType.Json)
                 .Select(c => new EnrichmentColumn(c.ColumnName, c.ColumnType, c.Lookup))
@@ -248,9 +285,6 @@ public sealed class ReferencePayloadEnricher(
         foreach (var t in meta.Tables.Where(x => x.Kind == TableKind.Part))
         {
             var code = t.GetRequiredPartCode(meta.TypeCode);
-            if (string.IsNullOrWhiteSpace(code))
-                continue;
-
             dict[code] = t.Columns
                 .Where(c => !string.Equals(c.ColumnName, "document_id", StringComparison.OrdinalIgnoreCase) && c.Type != ColumnType.Json)
                 .Select(c => new EnrichmentColumn(c.ColumnName, c.Type, c.Lookup))
@@ -265,17 +299,14 @@ public sealed class ReferencePayloadEnricher(
         IReadOnlyList<RecordPayload> payloads,
         CancellationToken ct)
     {
-        if (!plan.HasWork)
-            return payloads;
-
         var coaIds = new HashSet<Guid>();
         var opregIds = new HashSet<Guid>();
         var catalogTypeToIds = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
-        var documentIds = new HashSet<Guid>();
+        var documentTypeToIds = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var payload in payloads)
         {
-            CollectIds(payload.Fields, plan.HeadFields, coaIds, opregIds, catalogTypeToIds, documentIds);
+            CollectIds(payload.Fields, plan.HeadFields, coaIds, opregIds, catalogTypeToIds, documentTypeToIds);
 
             if (payload.Parts is null || payload.Parts.Count == 0 || plan.PartFields.Count == 0)
                 continue;
@@ -287,22 +318,64 @@ public sealed class ReferencePayloadEnricher(
 
                 foreach (var row in part.Rows)
                 {
-                    CollectIds(row, fields, coaIds, opregIds, catalogTypeToIds, documentIds);
+                    CollectIds(row, fields, coaIds, opregIds, catalogTypeToIds, documentTypeToIds);
                 }
             }
         }
 
-        var coaLabels = await ResolveChartOfAccountsAsync(coaIds, ct);
-        var opregLabels = await ResolveOperationalRegistersAsync(opregIds, ct);
-        var catalogLabelsByType = catalogTypeToIds.Count == 0
-            ? new Dictionary<string, IReadOnlyDictionary<Guid, string>>(StringComparer.OrdinalIgnoreCase)
-            : await catalogEnrichmentReader.ResolveManyAsync(
-                catalogTypeToIds.ToDictionary(
-                    x => x.Key,
-                    x => (IReadOnlyCollection<Guid>)x.Value,
-                    StringComparer.OrdinalIgnoreCase),
+        IReadOnlyDictionary<Guid, string> coaLabels;
+        IReadOnlyDictionary<Guid, string> opregLabels;
+        IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, string>> catalogLabelsByType;
+        IReadOnlyDictionary<Guid, string> documentLabels;
+
+        var catalogBatch = catalogTypeToIds.ToDictionary(
+            x => x.Key,
+            x => (IReadOnlyCollection<Guid>)x.Value,
+            StringComparer.OrdinalIgnoreCase);
+        var documentBatch = documentTypeToIds.ToDictionary(
+            x => x.Key,
+            x => (IReadOnlyCollection<Guid>)x.Value,
+            StringComparer.OrdinalIgnoreCase);
+        var documentIds = documentTypeToIds.Values
+            .SelectMany(static ids => ids)
+            .Distinct()
+            .ToArray();
+
+        if (batchEnrichmentReader is IReferencePayloadTypedBatchEnrichmentReader typedBatchEnrichmentReader)
+        {
+            var batch = await typedBatchEnrichmentReader.ResolveAsync(
+                coaIds,
+                opregIds,
+                catalogBatch,
+                documentBatch,
                 ct);
-        var documentLabels = await ResolveDocumentsAsync(documentIds, ct);
+            coaLabels = batch.AccountLabels;
+            opregLabels = batch.OperationalRegisterLabels;
+            catalogLabelsByType = batch.CatalogLabelsByType;
+            documentLabels = batch.DocumentLabels;
+        }
+        else if (batchEnrichmentReader is not null)
+        {
+            var batch = await batchEnrichmentReader.ResolveAsync(
+                coaIds,
+                opregIds,
+                catalogBatch,
+                documentIds,
+                ct);
+            coaLabels = batch.AccountLabels;
+            opregLabels = batch.OperationalRegisterLabels;
+            catalogLabelsByType = batch.CatalogLabelsByType;
+            documentLabels = batch.DocumentLabels;
+        }
+        else
+        {
+            coaLabels = await ResolveChartOfAccountsAsync(coaIds, ct);
+            opregLabels = await ResolveOperationalRegistersAsync(opregIds, ct);
+            catalogLabelsByType = catalogBatch.Count == 0
+                ? new Dictionary<string, IReadOnlyDictionary<Guid, string>>(StringComparer.OrdinalIgnoreCase)
+                : await catalogEnrichmentReader.ResolveManyAsync(catalogBatch, ct);
+            documentLabels = await ResolveDocumentsAsync(documentIds, ct);
+        }
 
         var result = new List<RecordPayload>(payloads.Count);
 
@@ -330,7 +403,7 @@ public sealed class ReferencePayloadEnricher(
             {
                 foreach (var (partCode, part) in payload.Parts)
                 {
-                    if (!plan.PartFields.TryGetValue(partCode, out var partFields) || partFields.Count == 0)
+                    if (!plan.PartFields.TryGetValue(partCode, out var partFields))
                         continue;
 
                     List<IReadOnlyDictionary<string, JsonElement>>? rows = null;
@@ -382,7 +455,7 @@ public sealed class ReferencePayloadEnricher(
         HashSet<Guid> coaIds,
         HashSet<Guid> opregIds,
         IDictionary<string, HashSet<Guid>> catalogTypeToIds,
-        ISet<Guid> documentIds)
+        IDictionary<string, HashSet<Guid>> documentTypeToIds)
     {
         if (values is null || values.Count == 0 || fields.Count == 0)
             return;
@@ -404,10 +477,7 @@ public sealed class ReferencePayloadEnricher(
                     opregIds.Add(id);
                     break;
                 case RefKind.Catalog:
-                    if (field.Source.TypeCodes is null)
-                        break;
-
-                    foreach (var typeCode in field.Source.TypeCodes)
+                    foreach (var typeCode in field.Source.TypeCodes!)
                     {
                         if (!catalogTypeToIds.TryGetValue(typeCode, out var set))
                             catalogTypeToIds[typeCode] = set = [];
@@ -417,7 +487,13 @@ public sealed class ReferencePayloadEnricher(
 
                     break;
                 case RefKind.Document:
-                    documentIds.Add(id);
+                    foreach (var typeCode in field.Source.TypeCodes!)
+                    {
+                        if (!documentTypeToIds.TryGetValue(typeCode, out var set))
+                            documentTypeToIds[typeCode] = set = [];
+
+                        set.Add(id);
+                    }
                     break;
             }
         }
@@ -465,9 +541,6 @@ public sealed class ReferencePayloadEnricher(
             source = new RefSource(RefKind.OperationalRegister, null);
             return true;
         }
-
-        if (!fieldKey.EndsWith("_id", StringComparison.OrdinalIgnoreCase))
-            return false;
 
         var tail = fieldKey[..^3]; // remove _id
         if (string.IsNullOrWhiteSpace(tail))
@@ -576,15 +649,16 @@ public sealed class ReferencePayloadEnricher(
         IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, string>> catalogLabelsByType,
         IReadOnlyDictionary<Guid, string> documentLabels)
     {
-        return source.Kind switch
-        {
-            RefKind.ChartOfAccounts => coaLabels.TryGetValue(id, out var c) ? c : id.ToString(),
-            RefKind.OperationalRegister => opregLabels.TryGetValue(id, out var r) ? r : id.ToString(),
-            RefKind.Catalog when source.TypeCodes is not null && source.TypeCodes.Count > 0
-                => ResolveFromAny(source.TypeCodes, id, catalogLabelsByType),
-            RefKind.Document => documentLabels.TryGetValue(id, out var display) ? display : id.ToString(),
-            _ => id.ToString()
-        };
+        if (source.Kind == RefKind.ChartOfAccounts)
+            return coaLabels[id];
+
+        if (source.Kind == RefKind.OperationalRegister)
+            return opregLabels[id];
+
+        if (source.Kind == RefKind.Catalog)
+            return ResolveFromAny(source.TypeCodes!, id, catalogLabelsByType);
+
+        return documentLabels.TryGetValue(id, out var display) ? display : id.ToString();
     }
 
     private static string ResolveFromAny(

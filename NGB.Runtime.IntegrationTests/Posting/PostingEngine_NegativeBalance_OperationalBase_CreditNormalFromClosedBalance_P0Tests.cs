@@ -24,7 +24,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// credit balance is NEGATIVE and must be converted to a positive 'presented' balance
 /// before comparing against NegativeBalancePolicy.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_NegativeBalance_OperationalBase_CreditNormalFromClosedBalance_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

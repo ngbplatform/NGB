@@ -5,7 +5,6 @@ import NgbDatePicker from '../primitives/NgbDatePicker.vue'
 import NgbInput from '../primitives/NgbInput.vue'
 import NgbSelect from '../primitives/NgbSelect.vue'
 import { dataTypeKind } from './dataTypes'
-import { isReferenceValue } from './entityModel'
 import { toDateTimeLocalInputValue } from './entityForm'
 import { resolveFieldRendererState } from './fieldRendererState'
 import type { EntityFormModel, FieldMetadata, MetadataFormBehavior } from './types'
@@ -37,9 +36,6 @@ function update(value: unknown) {
   emit('update:modelValue', value)
 }
 
-const hasRef = computed(() => isReferenceValue(props.modelValue))
-const refDisplay = computed(() => (isReferenceValue(props.modelValue) ? props.modelValue.display : null))
-
 type ControlValue = string | number | boolean | object | null | undefined
 
 function normalizeControlValue(value: unknown): ControlValue {
@@ -58,7 +54,7 @@ function normalizeSelectValue(value: unknown): ControlValue {
 }
 
 const selectOptions = computed(() =>
-  (rendererState.value.fieldOptions ?? []).map((option) => ({
+  rendererState.value.fieldOptions!.map((option) => ({
     ...option,
     value: normalizeSelectValue(option.value),
   })),
@@ -110,10 +106,10 @@ const textareaValue = computed(() => props.modelValue == null ? '' : String(prop
     />
 
     <NgbInput
-      v-else-if="rendererState.mode === 'reference-display' && hasRef"
+      v-else-if="rendererState.mode === 'reference-display'"
       type="text"
-      :model-value="refDisplay ?? ''"
-      :title="refDisplay ?? ''"
+      :model-value="(modelValue as { display: string }).display"
+      :title="(modelValue as { display: string }).display"
       :disabled="true"
       :readonly="true"
     />

@@ -3,8 +3,10 @@ import { expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h, nextTick, ref } from 'vue'
 
-vi.mock('../../../../../src/ngb/primitives/NgbStatusIcon.vue', () => ({
-  default: {
+vi.mock('../../../../../src/ngb/primitives/NgbStatusIcon.vue', async () => {
+  const { defineComponent: defineMockComponent, h: renderMockElement } = await import('vue')
+  return {
+    default: defineMockComponent({
     props: {
       status: {
         type: String,
@@ -15,21 +17,29 @@ vi.mock('../../../../../src/ngb/primitives/NgbStatusIcon.vue', () => ({
         default: '',
       },
     },
-    template: '<span :data-testid="`status-${status}`">status:{{ status }}</span>',
-  },
-}))
+    setup(props) {
+      return () => renderMockElement('span', { 'data-testid': `status-${props.status}` }, `status:${props.status}`)
+    },
+    }),
+  }
+})
 
-vi.mock('../../../../../src/ngb/primitives/NgbIcon.vue', () => ({
-  default: {
+vi.mock('../../../../../src/ngb/primitives/NgbIcon.vue', async () => {
+  const { defineComponent: defineMockComponent, h: renderMockElement } = await import('vue')
+  return {
+    default: defineMockComponent({
     props: {
       name: {
         type: String,
         default: '',
       },
     },
-    template: '<span :data-testid="`icon-${name}`">icon:{{ name }}</span>',
-  },
-}))
+    setup(props) {
+      return () => renderMockElement('span', { 'data-testid': `icon-${props.name}` }, `icon:${props.name}`)
+    },
+    }),
+  }
+})
 
 import NgbRegisterGrid from '../../../../../src/ngb/components/register/NgbRegisterGrid.vue'
 import type {
@@ -347,9 +357,19 @@ test('updates sort state and mouse-driven selection without over-activating modi
   await nameHeader.click()
   expect(view.getByTestId('sort-state').element().textContent).toBe('name:asc')
 
+  await nameHeader.click()
+  expect(view.getByTestId('sort-state').element().textContent).toBe('name:desc')
+
   dispatchMouse(amountHeader.element() as HTMLElement, { shiftKey: true })
   await flushUi()
-  expect(view.getByTestId('sort-state').element().textContent).toBe('name:asc|amount:asc')
+  expect(view.getByTestId('sort-state').element().textContent).toBe('name:desc|amount:asc')
+
+  dispatchMouse(amountHeader.element() as HTMLElement, { shiftKey: true })
+  await flushUi()
+  expect(view.getByTestId('sort-state').element().textContent).toBe('name:desc|amount:desc')
+
+  await nameHeader.click()
+  expect(view.getByTestId('sort-state').element().textContent).toBe('name:asc')
 
   await view.getByText('Alpha lease').click()
   expect(view.getByTestId('selected-state').element().textContent).toBe('row-2')
@@ -359,6 +379,16 @@ test('updates sort state and mouse-driven selection without over-activating modi
   await flushUi()
   expect(view.getByTestId('selected-state').element().textContent).toBe('row-2|row-3')
   expect(view.getByTestId('activated-state').element().textContent).toBe('row-2')
+
+  dispatchMouse(view.getByText('Gamma lease').element() as HTMLElement, { ctrlKey: true })
+  await flushUi()
+  expect(view.getByTestId('selected-state').element().textContent).toBe('row-2')
+
+  dispatchMouse(view.getByText('Gamma lease').element() as HTMLElement, { metaKey: true })
+  await flushUi()
+  dispatchMouse(view.getByText('Beta lease').element() as HTMLElement, { shiftKey: true })
+  await flushUi()
+  expect((view.getByTestId('selected-state').element().textContent ?? '').split('|').sort()).toEqual(['row-1', 'row-2', 'row-3'])
 })
 
 test('supports keyboard navigation, selection, and activation through the viewport', async () => {
@@ -370,13 +400,83 @@ test('supports keyboard navigation, selection, and activation through the viewpo
   expect(viewport).not.toBeNull()
   viewport?.focus()
 
+  Object.defineProperty(viewport!, 'clientHeight', { configurable: true, value: 36 })
+  Object.defineProperty(viewport!, 'scrollTop', { configurable: true, value: 72, writable: true })
+  dispatchKey(viewport!, 'ArrowUp', 'ArrowUp')
   dispatchKey(viewport!, 'ArrowDown', 'ArrowDown')
   dispatchKey(viewport!, ' ', 'Space')
+  await flushUi()
+  dispatchKey(viewport!, ' ', 'Space')
+  await flushUi()
+  dispatchKey(viewport!, 'Spacebar', 'Space')
+  await flushUi()
+  dispatchKey(viewport!, 'Escape', 'Escape')
   dispatchKey(viewport!, 'Enter', 'Enter')
   await flushUi()
 
   expect(view.getByTestId('selected-state').element().textContent).toBe('row-2')
   expect(view.getByTestId('activated-state').element().textContent).toBe('row-2')
+})
+
+test('ignores activation and selection after a reactive row list shrinks past the active index', async () => {
+  await page.viewport(1280, 900)
+
+  const ShrinkingHarness = defineComponent({
+    setup() {
+      const rows = ref(interactiveRows)
+      const activated = ref<string[]>([])
+      const selected = ref<string[]>([])
+      return () => h('div', [
+        h('button', { type: 'button', onClick: () => { rows.value = interactiveRows.slice(0, 1) } }, 'Shrink rows'),
+        h(NgbRegisterGrid, {
+          showPanel: false,
+          showTotals: false,
+          columns: baseColumns,
+          rows: rows.value,
+          selectedKeys: selected.value,
+          'onUpdate:selectedKeys': (value: string[]) => { selected.value = value },
+          onRowActivate: (key: string) => { activated.value = [...activated.value, key] },
+        }),
+        h('div', { 'data-testid': 'shrinking-activated' }, activated.value.join('|') || 'none'),
+        h('div', { 'data-testid': 'shrinking-selected' }, selected.value.join('|') || 'none'),
+      ])
+    },
+  })
+  const view = await render(ShrinkingHarness)
+  const viewport = document.querySelector('[tabindex="0"]') as HTMLElement
+
+  dispatchKey(viewport, 'ArrowDown', 'ArrowDown')
+  dispatchKey(viewport, 'ArrowDown', 'ArrowDown')
+  await view.getByRole('button', { name: 'Shrink rows' }).click()
+  dispatchKey(viewport, 'Enter', 'Enter')
+  dispatchKey(viewport, ' ', 'Space')
+  await flushUi()
+
+  expect(view.getByTestId('shrinking-activated').element().textContent).toBe('none')
+  expect(view.getByTestId('shrinking-selected').element().textContent).toBe('none')
+})
+
+test('ignores keyboard commands when the register contains no data rows', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(defineComponent({
+    setup() {
+      return () => h(NgbRegisterGrid, {
+        showPanel: false,
+        showTotals: false,
+        columns: baseColumns,
+        rows: [],
+      })
+    },
+  }))
+  const viewport = document.querySelector('[tabindex="0"]') as HTMLElement
+
+  dispatchKey(viewport, 'Enter', 'Enter')
+  dispatchKey(viewport, ' ', 'Space')
+  await flushUi()
+
+  expect(viewport).toBeTruthy()
+  expect(view.container.textContent).not.toContain('Beta lease')
 })
 
 test('toggles grouped rows, renders status icons, and shows total summaries', async () => {
@@ -404,6 +504,100 @@ test('toggles grouped rows, renders status icons, and shows total summaries', as
   await view.getByRole('button', { name: /Riverfront \(2\)/i }).click()
   expect(document.body.textContent).not.toContain('INV-001')
   expect(document.body.textContent).toContain('INV-003')
+})
+
+test('renders default panel text, compact group options, array cells, formatters, and boolean boundary values', async () => {
+  await page.viewport(1440, 1000)
+
+  const booleanValues: unknown[] = [true, 'true', 1, '1', false]
+  const view = await render(defineComponent({
+    setup() {
+      return () => h(NgbRegisterGrid, {
+        fillHeight: true,
+        columns: [
+          { key: 'items', title: 'Items', width: 180, sortable: false },
+          { key: 'wrappedItems', title: 'Wrapped items', width: 180, wrap: true },
+          { key: 'formatted', title: 'Formatted', width: 150, align: 'center', wrap: true, format: (value) => `custom:${String(value)}` },
+          { key: 'plainNumber', title: 'Plain number', width: 120 },
+          { key: 'zeroAmount', title: 'Zero amount', width: 120, align: 'right' },
+          { key: 'empty', title: 'Empty', width: 100 },
+          { key: 'enabled', title: 'Enabled', width: 100, type: 'checkbox' },
+        ],
+        rows: booleanValues.map((enabled, index) => ({
+          key: `boundary-${index}`,
+          category: 'A',
+          items: index === 0 ? [null, '', 'alpha'] : index === 1 ? [null, ''] : [`item-${index}`],
+          wrappedItems: [`wrapped-${index}`],
+          formatted: index,
+          plainNumber: index + 1,
+          zeroAmount: 0,
+          empty: index === 0 ? null : '',
+          enabled,
+          debit: 0,
+          credit: 0,
+        })),
+        groupBy: ['category'],
+        defaultExpanded: true,
+        showTotals: false,
+        showStatusColumn: false,
+        showGroupCounts: false,
+        showRowStatusIcons: false,
+      })
+    },
+  }))
+
+  await expect.element(view.getByText('Register', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('A', { exact: true })).toBeVisible()
+  expect(document.body.textContent).not.toContain('A (5)')
+  await expect.element(view.getByText('alpha', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('custom:0', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('1', { exact: true })).toBeVisible()
+  expect(document.body.textContent).toContain('—')
+
+  const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[]
+  expect(checkboxes.map((checkbox) => checkbox.checked)).toEqual([true, true, true, true, false])
+
+  await view.getByText('alpha', { exact: true }).click()
+})
+
+test('passes meaningful and empty status titles to row status icons', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(defineComponent({
+    setup() {
+      return () => h(NgbRegisterGrid, {
+        showPanel: false,
+        showTotals: false,
+        columns: [{ key: 'name', title: 'Name', width: 180 }],
+        rows: [
+          { key: 'status-1', name: 'Titled status', __statusTitle: 'Posted by automation' },
+          { key: 'status-2', name: 'Blank status', __statusTitle: '   ' },
+        ],
+      })
+    },
+  }))
+
+  await expect.element(view.getByText('Titled status')).toBeVisible()
+  await expect.element(view.getByText('Blank status')).toBeVisible()
+})
+
+test('can hide row status icons while retaining the status column', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(defineComponent({
+    setup() {
+      return () => h(NgbRegisterGrid, {
+        showPanel: false,
+        showTotals: false,
+        showRowStatusIcons: false,
+        columns: [{ key: 'name', title: 'Name', width: 180 }],
+        rows: [{ key: 'status-hidden', name: 'Hidden status icon' }],
+      })
+    },
+  }))
+
+  await expect.element(view.getByText('Hidden status icon')).toBeVisible()
+  expect(document.querySelector('[data-testid^="status-"]')).toBeNull()
 })
 
 test('reorders headers by drag and persists resized widths into the grid template', async () => {
@@ -441,6 +635,51 @@ test('reorders headers by drag and persists resized widths into the grid templat
   await flushUi()
 
   expect(gridHeader().style.gridTemplateColumns).toContain('300px')
+})
+
+test('ignores incomplete, same-column, and stale drag-and-drop operations', async () => {
+  await page.viewport(1280, 900)
+
+  const DynamicHarness = defineComponent({
+    setup() {
+      const columns = ref<RegisterColumn[]>(baseColumns.map((column) => ({ ...column })))
+      return () => h('div', [
+        h('button', {
+          type: 'button',
+          onClick: () => {
+            columns.value = [...columns.value, { key: 'status', title: 'Status', width: 120 }]
+          },
+        }, 'Add dynamic column'),
+        h(NgbRegisterGrid, {
+          showPanel: false,
+          showTotals: false,
+          columns: columns.value,
+          rows: [{ key: 'row-1', name: 'Lease', amount: 10, status: 'Open' }],
+        }),
+      ])
+    },
+  })
+
+  const view = await render(DynamicHarness)
+  const nameHeader = draggableHeader('Name')
+  const amountHeader = draggableHeader('Amount')
+
+  amountHeader.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true }))
+  dispatchDrag(amountHeader, 'drop')
+  dispatchDrag(nameHeader, 'dragstart')
+  dispatchDrag(nameHeader, 'drop')
+  await flushUi()
+  expect(headerOrder()).toEqual(['Name', 'Amount'])
+
+  await view.getByRole('button', { name: 'Add dynamic column' }).click()
+  const statusHeader = draggableHeader('Status')
+  dispatchDrag(nameHeader, 'dragstart')
+  dispatchDrag(statusHeader, 'drop')
+  dispatchDrag(statusHeader, 'dragstart')
+  dispatchDrag(amountHeader, 'drop')
+  await flushUi()
+
+  expect(headerOrder()).toEqual(['Name', 'Amount', 'Status'])
 })
 
 test('keeps pinned left cells anchored while horizontally scrolling wide registers', async () => {

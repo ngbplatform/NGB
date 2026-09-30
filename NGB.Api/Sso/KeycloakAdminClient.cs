@@ -1,7 +1,8 @@
-using System.Collections.Concurrent;
+using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.WebUtilities;
@@ -13,8 +14,10 @@ namespace NGB.Api.Sso;
 public sealed class KeycloakAdminClient(
     HttpClient httpClient,
     TokenCacheService tokenCache,
-    KeycloakAdminClientSettings settings)
-    : IIdentityProviderUserAdminClient
+    KeycloakUserLookupCache lookupCache,
+    KeycloakAdminClientSettings settings,
+    KeycloakAdminRequestGate requestGate)
+    : IIdentityProviderUserAdminClient, IIdentityProviderBulkUserReader, IIdentityProviderUserPageSnapshotReader
 {
     private const int MinAdminBatchConcurrency = 1;
     private const int MaxAdminBatchConcurrency = 32;
@@ -50,12 +53,14 @@ public sealed class KeycloakAdminClient(
             RequiredActions: request.RequirePasswordUpdate ? ["UPDATE_PASSWORD"] : [],
             Attributes: BuildAttributes(request.DisplayName));
 
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Post,
             AdminPath("users"),
             payload,
             operation: UsersCreateOperation,
             ct);
+
+        lookupCache.InvalidateEmail(email);
 
         if (response.StatusCode == HttpStatusCode.Conflict)
         {
@@ -103,7 +108,7 @@ public sealed class KeycloakAdminClient(
             RequiredActions: null,
             Attributes: BuildAttributes(request.DisplayName));
 
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Put,
             AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId.Trim())}"),
             payload,
@@ -111,6 +116,7 @@ public sealed class KeycloakAdminClient(
             ct);
 
         await EnsureSuccessAsync(response, UsersUpdateOperation, ct);
+        lookupCache.InvalidateUser(identityProviderUserId.Trim(), email);
     }
 
     public async Task SetUserEnabledAsync(string identityProviderUserId, bool enabled, CancellationToken ct)
@@ -118,7 +124,7 @@ public sealed class KeycloakAdminClient(
         if (string.IsNullOrWhiteSpace(identityProviderUserId))
             throw new NgbArgumentRequiredException(nameof(identityProviderUserId));
 
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Put,
             AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId.Trim())}"),
             new { enabled },
@@ -126,6 +132,7 @@ public sealed class KeycloakAdminClient(
             ct);
 
         await EnsureSuccessAsync(response, UsersSetEnabledOperation, ct);
+        lookupCache.InvalidateUser(identityProviderUserId.Trim());
     }
 
     public async Task<IdentityProviderUserDto?> GetUserByIdAsync(string identityProviderUserId, CancellationToken ct)
@@ -133,9 +140,19 @@ public sealed class KeycloakAdminClient(
         if (string.IsNullOrWhiteSpace(identityProviderUserId))
             throw new NgbArgumentRequiredException(nameof(identityProviderUserId));
 
-        var response = await SendAsync(
+        var normalizedId = identityProviderUserId.Trim();
+
+        return await lookupCache.GetByIdAsync(
+            normalizedId,
+            innerCt => GetUserByIdCoreAsync(normalizedId, innerCt),
+            ct);
+    }
+
+    private async Task<IdentityProviderUserDto?> GetUserByIdCoreAsync(string identityProviderUserId, CancellationToken ct)
+    {
+        using var response = await SendAsync(
             HttpMethod.Get,
-            AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId.Trim())}"),
+            AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId)}"),
             body: null,
             operation: UsersGetOperation,
             ct);
@@ -164,22 +181,103 @@ public sealed class KeycloakAdminClient(
         if (ids.Length == 0)
             return new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
 
-        var result = new ConcurrentDictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
-        await Parallel.ForEachAsync(
-            ids,
-            new ParallelOptions
-            {
-                CancellationToken = ct,
-                MaxDegreeOfParallelism = ResolveBatchConcurrency()
-            },
-            async (id, innerCt) =>
-            {
-                var user = await GetUserByIdAsync(id, innerCt);
-                if (user is not null)
-                    result.TryAdd(id, user);
-            });
+        var rows = await ExecuteBoundedBatchAsync(ids, GetUserByIdAsync, ct);
+        var result = new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
+        for (var i = 0; i < ids.Length; i++)
+        {
+            if (rows[i] is { } row)
+                result[ids[i]] = row;
+        }
 
-        return new Dictionary<string, IdentityProviderUserDto>(result, StringComparer.Ordinal);
+        return result;
+    }
+
+    public async Task<IdentityProviderUserBatch> GetUsersAsync(
+        IReadOnlyList<string> identityProviderUserIds,
+        IReadOnlyList<string> emails,
+        CancellationToken ct)
+    {
+        if (identityProviderUserIds is null)
+            throw new NgbArgumentRequiredException(nameof(identityProviderUserIds));
+
+        if (emails is null)
+            throw new NgbArgumentRequiredException(nameof(emails));
+
+        var ids = identityProviderUserIds
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var normalizedEmails = emails
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (ids.Length == 0 && normalizedEmails.Length == 0)
+        {
+            return new IdentityProviderUserBatch(
+                new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal),
+                new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        // A realm-wide paged scan has unbounded cost as the realm grows and can make a single
+        // platform-user page read traverse every Keycloak user. Resolve known subjects directly,
+        // then issue exact lookups only for emails that were not already supplied by those users.
+        var byId = ids.Length == 0
+            ? new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal)
+            : new Dictionary<string, IdentityProviderUserDto>(await GetUsersByIdsAsync(ids, ct), StringComparer.Ordinal);
+        var byEmail = new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+        var requestedEmails = normalizedEmails.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var user in byId.Values)
+        {
+            if (string.IsNullOrWhiteSpace(user.Email) || !requestedEmails.Remove(user.Email))
+                continue;
+
+            byEmail[user.Email] = user;
+        }
+
+        if (requestedEmails.Count > 0)
+        {
+            var foundByEmail = await FindUsersByEmailsAsync(requestedEmails.ToArray(), ct);
+            foreach (var (email, user) in foundByEmail)
+            {
+                byEmail[email] = user;
+            }
+        }
+
+        return new IdentityProviderUserBatch(byId, byEmail);
+    }
+
+    public IdentityProviderUserBatch GetCachedUsers(
+        IReadOnlyList<string> identityProviderUserIds,
+        IReadOnlyList<string> emails)
+    {
+        ArgumentNullException.ThrowIfNull(identityProviderUserIds);
+        ArgumentNullException.ThrowIfNull(emails);
+
+        var byId = new Dictionary<string, IdentityProviderUserDto>(StringComparer.Ordinal);
+        foreach (var id in identityProviderUserIds
+                     .Where(static value => !string.IsNullOrWhiteSpace(value))
+                     .Select(static value => value.Trim())
+                     .Distinct(StringComparer.Ordinal))
+        {
+            if (lookupCache.TryGetById(id, out var user) && user is not null)
+                byId[id] = user;
+        }
+
+        var byEmail = new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var email in emails
+                     .Where(static value => !string.IsNullOrWhiteSpace(value))
+                     .Select(static value => value.Trim())
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (lookupCache.TryGetByEmail(email, out var user) && user is not null)
+                byEmail[email] = user;
+        }
+
+        return new IdentityProviderUserBatch(byId, byEmail);
     }
 
     public async Task<IdentityProviderUserDto?> FindUserByEmailAsync(string email, CancellationToken ct)
@@ -188,6 +286,15 @@ public sealed class KeycloakAdminClient(
             throw new NgbArgumentRequiredException(nameof(email));
 
         var normalizedEmail = email.Trim();
+
+        return await lookupCache.GetByEmailAsync(
+            normalizedEmail,
+            innerCt => FindUserByEmailCoreAsync(normalizedEmail, innerCt),
+            ct);
+    }
+
+    private async Task<IdentityProviderUserDto?> FindUserByEmailCoreAsync(string normalizedEmail, CancellationToken ct)
+    {
         var query = QueryHelpers.AddQueryString(
             AdminPath("users"),
             new Dictionary<string, string?>
@@ -196,7 +303,7 @@ public sealed class KeycloakAdminClient(
                 ["exact"] = "true"
             });
 
-        var response = await SendAsync(HttpMethod.Get, query, body: null, operation: UsersFindByEmailOperation, ct);
+        using var response = await SendAsync(HttpMethod.Get, query, body: null, operation: UsersFindByEmailOperation, ct);
         await EnsureSuccessAsync(response, UsersFindByEmailOperation, ct);
 
         var rows = await response.Content.ReadFromJsonAsync<KeycloakUserDto[]>(Json, ct) ?? [];
@@ -212,11 +319,12 @@ public sealed class KeycloakAdminClient(
                 ["exact"] = "true"
             });
 
-        var usernameResponse = await SendAsync(HttpMethod.Get, usernameQuery, body: null, operation: UsersFindByUsernameOperation, ct);
+        using var usernameResponse = await SendAsync(HttpMethod.Get, usernameQuery, body: null, operation: UsersFindByUsernameOperation, ct);
         await EnsureSuccessAsync(usernameResponse, UsersFindByUsernameOperation, ct);
 
         var usernameRows = await usernameResponse.Content.ReadFromJsonAsync<KeycloakUserDto[]>(Json, ct) ?? [];
         var usernameMatch = FindUserByEmailOrUsername(usernameRows, normalizedEmail);
+
         return usernameMatch is null ? null : Map(usernameMatch);
     }
 
@@ -236,22 +344,35 @@ public sealed class KeycloakAdminClient(
         if (normalizedEmails.Length == 0)
             return new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
 
-        var result = new ConcurrentDictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+        var rows = await ExecuteBoundedBatchAsync(normalizedEmails, FindUserByEmailAsync, ct);
+        var result = new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < normalizedEmails.Length; i++)
+        {
+            if (rows[i] is { } row)
+                result[normalizedEmails[i]] = row;
+        }
+
+        return result;
+    }
+
+    private async Task<TResult?[]> ExecuteBoundedBatchAsync<TInput, TResult>(
+        IReadOnlyList<TInput> inputs,
+        Func<TInput, CancellationToken, Task<TResult?>> action,
+        CancellationToken ct)
+        where TResult : class
+    {
+        var result = new TResult?[inputs.Count];
         await Parallel.ForEachAsync(
-            normalizedEmails,
+            Enumerable.Range(0, inputs.Count),
             new ParallelOptions
             {
                 CancellationToken = ct,
                 MaxDegreeOfParallelism = ResolveBatchConcurrency()
             },
-            async (email, innerCt) =>
-            {
-                var user = await FindUserByEmailAsync(email, innerCt);
-                if (user is not null)
-                    result.TryAdd(email, user);
-            });
+            async (index, innerCt) => result[index] = await action(inputs[index], innerCt));
 
-        return new Dictionary<string, IdentityProviderUserDto>(result, StringComparer.OrdinalIgnoreCase);
+        return result;
     }
 
     public async Task SetTemporaryPasswordAsync(
@@ -273,7 +394,7 @@ public sealed class KeycloakAdminClient(
             temporary = requireUpdate
         };
 
-        var response = await SendAsync(
+        using var response = await SendAsync(
             HttpMethod.Put,
             AdminPath($"users/{Uri.EscapeDataString(identityProviderUserId.Trim())}/reset-password"),
             payload,
@@ -293,13 +414,27 @@ public sealed class KeycloakAdminClient(
         ValidateSettings();
 
         var token = await tokenCache.GetTokenAsync(ct);
+        using var lease = await requestGate.AcquireAsync(ct);
+        if (!lease.IsAcquired)
+        {
+            throw new KeycloakAdminClientException(
+                operation,
+                (int)HttpStatusCode.ServiceUnavailable,
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["reason"] = "admin_request_queue_full",
+                    ["maxConcurrentAdminRequests"] = settings.MaxConcurrentAdminRequests,
+                    ["maxQueuedAdminRequests"] = settings.MaxQueuedAdminRequests
+                });
+        }
+
         using var request = new HttpRequestMessage(method, BuildUri(pathOrUri));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         if (body is not null)
             request.Content = JsonContent.Create(body, options: Json);
 
-        return await httpClient.SendAsync(request, ct);
+        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, ct);
     }
 
     private async Task EnsureSuccessAsync(HttpResponseMessage response, string operation, CancellationToken ct)
@@ -311,36 +446,69 @@ public sealed class KeycloakAdminClient(
         string? errorCode = null;
         string? errorBody = null;
 
-        try
+        var text = await ReadBoundedErrorBodyAsync(response.Content, ct);
+        if (!string.IsNullOrWhiteSpace(text))
         {
-            var text = await response.Content.ReadAsStringAsync(ct);
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                errorCode = "keycloak_error_body_present";
-                errorBody = text.Length > 512 ? text[..512] : text;
-            }
-        }
-        catch
-        {
-            errorCode = "keycloak_error_body_unreadable";
+            errorCode = "keycloak_error_body_present";
+            errorBody = text;
         }
 
         var context = new Dictionary<string, object?>();
         if (errorCode is not null)
             context["keycloakError"] = errorCode;
+
         if (!string.IsNullOrWhiteSpace(errorBody))
             context["keycloakErrorBody"] = errorBody;
 
-        throw new KeycloakAdminClientException(
-            operation,
-            statusCode,
-            context.Count == 0 ? null : context);
+        throw new KeycloakAdminClientException(operation, statusCode, context.Count == 0 ? null : context);
+    }
+
+    private static async Task<string> ReadBoundedErrorBodyAsync(HttpContent content, CancellationToken ct)
+    {
+        const int maxChars = 512;
+        var buffer = ArrayPool<char>.Shared.Rent(maxChars + 1);
+        string result;
+
+        try
+        {
+            await using var stream = await content.ReadAsStreamAsync(ct);
+            using var reader = new StreamReader(
+                stream,
+                Encoding.UTF8,
+                detectEncodingFromByteOrderMarks: true,
+                bufferSize: maxChars + 1,
+                leaveOpen: false);
+
+            var total = 0;
+            while (total < maxChars)
+            {
+                var read = await reader.ReadAsync(buffer.AsMemory(total, maxChars - total), ct);
+                if (read == 0)
+                    break;
+
+                total += read;
+            }
+
+            result = new string(buffer, 0, total);
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(buffer);
+        }
+
+        return result;
     }
 
     private string BuildUri(string pathOrUri)
     {
-        if (Uri.TryCreate(pathOrUri, UriKind.Absolute, out var absolute))
+        if (Uri.TryCreate(pathOrUri, UriKind.Absolute, out var absolute)
+            && (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
+        {
             return absolute.ToString();
+        }
+
+        if (pathOrUri.Contains("://", StringComparison.Ordinal))
+            throw new NgbConfigurationViolationException("Keycloak Admin URI must use the http or https scheme.");
 
         return $"{settings.BaseUrl.TrimEnd('/')}/{pathOrUri.TrimStart('/')}";
     }
@@ -385,7 +553,12 @@ public sealed class KeycloakAdminClient(
             return displayName.Trim();
         }
 
-        var fullName = string.Join(" ", new[] { dto.FirstName, dto.LastName }.Where(static x => !string.IsNullOrWhiteSpace(x)));
+        var fullName = string.Join(
+            " ",
+            new[] { dto.FirstName, dto.LastName }
+                .Where(static x => !string.IsNullOrWhiteSpace(x))
+                .Select(static x => x!.Trim()));
+
         return string.IsNullOrWhiteSpace(fullName) ? dto.Email ?? dto.Username : fullName.Trim();
     }
 
@@ -393,7 +566,7 @@ public sealed class KeycloakAdminClient(
     {
         var list = rows.ToList();
         return list.FirstOrDefault(x => string.Equals(x.Email, email, StringComparison.OrdinalIgnoreCase))
-               ?? list.FirstOrDefault(x => string.Equals(x.Username, email, StringComparison.OrdinalIgnoreCase));
+            ?? list.FirstOrDefault(x => string.Equals(x.Username, email, StringComparison.OrdinalIgnoreCase));
     }
 
     private sealed record KeycloakUserDto(

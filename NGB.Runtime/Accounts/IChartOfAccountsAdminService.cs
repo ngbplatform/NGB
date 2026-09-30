@@ -1,4 +1,5 @@
 using NGB.Accounting.Accounts;
+using NGB.Persistence.Accounts;
 
 namespace NGB.Runtime.Accounts;
 
@@ -12,6 +13,10 @@ namespace NGB.Runtime.Accounts;
 public interface IChartOfAccountsAdminService
 {
     Task<IReadOnlyList<ChartOfAccountsAdminItem>> GetAsync(bool includeDeleted = false, CancellationToken ct = default);
+
+    Task<ChartOfAccountsAdminPage> GetPageAsync(ChartOfAccountsAdminPageQuery query, CancellationToken ct = default);
+
+    Task<ChartOfAccountsAdminItem?> GetByIdAsync(Guid accountId, CancellationToken ct = default);
 
     Task<IReadOnlyList<ChartOfAccountsAdminItem>> GetByIdsAsync(
         IReadOnlyCollection<Guid> accountIds,

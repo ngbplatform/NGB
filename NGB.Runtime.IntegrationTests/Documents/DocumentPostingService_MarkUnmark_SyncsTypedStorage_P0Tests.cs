@@ -14,8 +14,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentPostingService_MarkUnmark_SyncsTypedStorage_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentPostingService_MarkUnmark_SyncsTypedStorage_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string TypeCode = "it_doc_mark_sync";

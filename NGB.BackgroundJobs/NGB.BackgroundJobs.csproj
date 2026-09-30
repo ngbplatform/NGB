@@ -7,28 +7,29 @@
         <IsPublishable>false</IsPublishable>
         <PackageId>NGB.Platform.BackgroundJobs</PackageId>
         <Description>Hangfire-based background job contracts, scheduling, hosting, health reporting, and recurring platform jobs for NGB Platform.</Description>
-        <InterceptorsNamespaces>$(InterceptorsNamespaces);Dapper.AOT</InterceptorsNamespaces>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="AspNetCore.HealthChecks.Hangfire" Version="9.0.0" />
-        <PackageReference Include="Hangfire.AspNetCore" Version="1.8.24" />
-        <PackageReference Include="Hangfire.PostgreSql" Version="1.21.1" />
-        <PackageReference Include="Dapper" Version="2.1.79" />
-        <PackageReference Include="Dapper.AOT" Version="1.0.52" />
-        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
-        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
-        <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
-        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
+        <PackageReference Include="Hangfire.AspNetCore" Version="1.8.25" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.12" />
+        <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.12" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NGB.Api\NGB.Api.csproj" />
+        <ProjectReference Include="..\NGB.Accounting\NGB.Accounting.csproj" />
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj" />
+        <ProjectReference Include="..\NGB.Hosting.AspNetCore\NGB.Hosting.AspNetCore.csproj" />
+        <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj" />
         <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj" />
+        <ProjectReference Include="..\NGB.ReferenceRegisters\NGB.ReferenceRegisters.csproj" />
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj" />
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
     </ItemGroup>
 
     <ItemGroup>

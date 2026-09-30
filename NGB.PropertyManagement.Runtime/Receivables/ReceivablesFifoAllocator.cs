@@ -31,14 +31,13 @@ internal static class ReceivablesFifoAllocator
 
         var lines = new List<ReceivablesFifoAllocationLine>();
         var limitReached = false;
+        var chargeIndex = 0;
 
         foreach (var cr in orderedCredits)
         {
             var creditLeft = remainingCredit[cr.CreditDocumentId];
-            if (creditLeft <= 0m)
-                continue;
 
-            foreach (var ch in orderedCharges)
+            while (chargeIndex < orderedCharges.Length)
             {
                 if (creditLeft <= 0m)
                     break;
@@ -49,14 +48,9 @@ internal static class ReceivablesFifoAllocator
                     break;
                 }
 
+                var ch = orderedCharges[chargeIndex];
                 var chLeft = outstanding[ch.ChargeDocumentId];
-                if (chLeft <= 0m)
-                    continue;
-
                 var amount = Math.Min(chLeft, creditLeft);
-                if (amount <= 0m)
-                    continue;
-
                 var creditBefore = creditLeft;
                 var chargeBefore = chLeft;
 
@@ -65,6 +59,8 @@ internal static class ReceivablesFifoAllocator
 
                 remainingCredit[cr.CreditDocumentId] = creditLeft;
                 outstanding[ch.ChargeDocumentId] = chLeft;
+                if (chLeft <= 0m)
+                    chargeIndex++;
 
                 lines.Add(new ReceivablesFifoAllocationLine(
                     CreditDocumentId: cr.CreditDocumentId,
@@ -81,6 +77,9 @@ internal static class ReceivablesFifoAllocator
             }
 
             if (limitReached)
+                break;
+
+            if (chargeIndex >= orderedCharges.Length)
                 break;
         }
 

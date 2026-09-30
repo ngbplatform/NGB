@@ -8,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_P5_3_Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_P5_3_Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenSchemaIsIntact_Succeeds()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await using var scope = host.Services.CreateAsyncScope();
@@ -28,7 +27,6 @@ public sealed class AccountingCoreSchemaValidation_P5_3_Tests(PostgresTestFixtur
     [Fact]
     public async Task ValidateAsync_WhenCriticalIndexMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(Fixture.ConnectionString, "ix_acc_reg_period_month");
@@ -44,7 +42,6 @@ public sealed class AccountingCoreSchemaValidation_P5_3_Tests(PostgresTestFixtur
     [Fact]
     public async Task ValidateAsync_WhenClosedPeriodGuardTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTriggerAsync(Fixture.ConnectionString, "accounting_register_main", "trg_acc_reg_no_closed_period");

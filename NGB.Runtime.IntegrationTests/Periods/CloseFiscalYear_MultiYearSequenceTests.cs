@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_MultiYearSequenceTests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly YearStart = new(2025, 1, 1);
@@ -22,7 +22,6 @@ public sealed class CloseFiscalYear_MultiYearSequenceTests(PostgresTestFixture f
     [Fact]
     public async Task CloseFiscalYear_posts_closing_entries_and_is_idempotent_for_end_period()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var ids = await SeedCoaAsync(host);

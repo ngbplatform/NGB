@@ -17,15 +17,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// 3) re-apply platform migrations (bootstrapper),
 /// 4) validate again (OK).
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenPlatformDimensionsUniqueIndexDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropIndexAsync(Fixture.ConnectionString, "ux_platform_dimensions_code_norm_not_deleted");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -45,8 +43,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Te
     [Fact]
     public async Task ValidateAsync_WhenDocumentsTypeNumberUniqueIndexDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropIndexAsync(Fixture.ConnectionString, "ux_documents_type_number_not_null");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -66,8 +62,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Te
     [Fact]
     public async Task ValidateAsync_WhenTurnoversClosedPeriodDeleteTriggerDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropTriggerAsync(Fixture.ConnectionString, "accounting_turnovers", "trg_acc_turnovers_no_closed_period_delete");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -87,8 +81,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Te
     [Fact]
     public async Task ValidateAsync_WhenBalancesClosedPeriodDeleteTriggerDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropTriggerAsync(Fixture.ConnectionString, "accounting_balances", "trg_acc_balances_no_closed_period_delete");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -108,8 +100,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Te
     [Fact]
     public async Task ValidateAsync_WhenPostedDocumentImmutabilityGuardFunctionMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // The validator checks both: (a) existence of ngb_forbid_mutation_of_posted_document()
         // and (b) presence of trg_posted_immutable on all typed doc_* tables.
         //
@@ -154,8 +144,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Te
     [Fact]
     public async Task ValidateAsync_WhenTypedDocumentImmutabilityInstallerFunctionMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropFunctionAsync(Fixture.ConnectionString, "ngb_install_typed_document_immutability_guards");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -175,8 +163,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Te
     [Fact]
     public async Task ValidateAsync_WhenAppendOnlyGuardFunctionMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // To isolate "function missing", keep the expected trigger names present,
         // but temporarily point them to a harmless stub trigger function.
         const string stub = "ngb_test_allow_update_delete";
@@ -218,8 +204,6 @@ public sealed class AccountingCoreSchemaValidation_DriftRepair_RuleByRule_P0_4Te
     [Fact]
     public async Task ValidateAsync_WhenDimensionSetAppendOnlyTriggerDropped_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropTriggerAsync(Fixture.ConnectionString, "platform_dimension_set_items", "trg_platform_dimension_set_items_append_only");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);

@@ -78,7 +78,7 @@ internal sealed class DefinitionsCatalogValidatorResolver(
                     {
                         ["typeCode"] = def.TypeCode,
                         ["validatorType"] = validatorType.FullName,
-                        ["matches"] = matches.Select(validator => validator.GetType().FullName ?? validator.GetType().Name).ToArray()
+                        ["matches"] = matches.Select(validator => validator.GetType().ToString()).ToArray()
                     });
             }
 

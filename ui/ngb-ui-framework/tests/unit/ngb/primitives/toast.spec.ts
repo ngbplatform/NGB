@@ -12,7 +12,7 @@ vi.mock('vue', () => ({
   reactive: vueMocks.reactive,
 }))
 
-import { provideToasts, useToasts } from '../../../../src/ngb/primitives/toast'
+import { provideToasts, useOptionalToasts, useToasts } from '../../../../src/ngb/primitives/toast'
 
 describe('toast api helpers', () => {
   beforeEach(() => {
@@ -36,6 +36,7 @@ describe('toast api helpers', () => {
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
     vi.unstubAllGlobals()
+    vi.restoreAllMocks()
   })
 
   it('provides a bounded toast queue with defaults and timed removal', () => {
@@ -86,5 +87,24 @@ describe('toast api helpers', () => {
 
     vueMocks.inject.mockReturnValueOnce(undefined)
     expect(() => useToasts()).toThrow('useToasts(): missing provideToasts()')
+
+    vueMocks.inject
+      .mockReturnValueOnce(api)
+      .mockImplementationOnce((_key, defaultValue) => defaultValue)
+    expect(useOptionalToasts()).toBe(api)
+    expect(useOptionalToasts()).toBeNull()
+    expect(vueMocks.inject.mock.calls.at(-1)?.[1]).toBeNull()
+  })
+
+  it('falls back to a local id when randomUUID is unavailable', () => {
+    vi.stubGlobal('crypto', {})
+    vi.spyOn(Date, 'now').mockReturnValue(100)
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+
+    const api = provideToasts()
+    api.push({ title: 'Fallback id', timeoutMs: 0 })
+    api.push({ title: 'Explicitly absent timeout', timeoutMs: undefined })
+
+    expect(api.toasts.map((toast) => toast.id)).toEqual(['100.5', '100.5'])
   })
 })

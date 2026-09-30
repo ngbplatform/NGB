@@ -385,15 +385,11 @@ public sealed class PeriodClosingUiService(
                 ? MonthOpenState
                 : MonthReadyToCloseState;
         }
-        else if (chain.NextClosablePeriod is not null && period > chain.NextClosablePeriod.Value)
+        else
         {
             state = MonthBlockedByEarlierOpenMonthState;
             blockingPeriod = chain.NextClosablePeriod;
             blockingReason = BlockingEarlierOpenMonth;
-        }
-        else
-        {
-            state = MonthOpenState;
         }
 
         return new PeriodCloseStatusDto(
@@ -417,7 +413,7 @@ public sealed class PeriodClosingUiService(
         if (latestClosedPeriod is null)
             return PeriodClosingChainEvaluator.Build(earliestActivityPeriod, latestClosedPeriod, []);
 
-        var chainStartPeriod = earliestActivityPeriod ?? latestClosedPeriod.Value;
+        var chainStartPeriod = earliestActivityPeriod.GetValueOrDefault(latestClosedPeriod.Value);
         if (chainStartPeriod > latestClosedPeriod.Value)
             return PeriodClosingChainEvaluator.Build(earliestActivityPeriod, latestClosedPeriod, []);
 

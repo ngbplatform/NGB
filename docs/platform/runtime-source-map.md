@@ -79,9 +79,11 @@ Posting, deletion guards, derivation, and effective effects are surfaced as runt
 
 `GetRelationshipGraphAsync` and `GetEffectsAsync` show that Runtime is not only a domain layer. It is also the place where domain state gets transformed into explainable, UI-consumable platform responses.
 
-## Start with ReportEngine when reading reporting flow
+## Start with ReportQueryService and ReportEngine when reading reporting flow
 
-`NGB.Runtime/Reporting/ReportEngine.cs` is the best anchor for reporting execution inside Runtime.
+`NGB.Runtime/Reporting/ReportQueryService.cs` is the registered `IReportEngine` entry point. It
+opens the read session and validates/protects public cursors, then delegates to
+`NGB.Runtime/Reporting/ReportEngine.cs` for planning and rendering.
 
 It shows the actual runtime reporting pipeline:
 
@@ -90,9 +92,9 @@ It shows the actual runtime reporting pipeline:
 3. validate layout and request;
 4. expand filter scope;
 5. build execution plan;
-6. execute plan through `IReportPlanExecutor`;
+6. dispatch to a specialized page executor or `IReportPlanExecutor`;
 7. build the sheet through `ReportSheetBuilder`;
-8. optionally use rendered-sheet paging snapshots for grouped/composable results.
+8. read grouped/composable branches through `ReportPagedQueryExecutor`.
 
 ## Why ReportEngine and ReportExecutionPlanner matter together
 
@@ -102,7 +104,9 @@ The engine works from definition + planner + executor + sheet builder instead of
 
 ### Paging behavior is intentional
 
-`ReportEngine.cs` contains rendered-sheet snapshot logic, cursor decoding, fingerprinting, and diagnostics enrichment. That makes it the right place to understand why grouped/composable paging behaves differently from simpler result paging.
+`ReportQueryService` handles cursor fingerprinting and protection; `ReportPagedQueryExecutor`
+composes bounded branch pages. No rendered-sheet snapshot store is used. Full downloads use
+`ReportDownloadService`. See [Report Browsing and Direct Downloads](/architecture/report-execution-results).
 
 ### Layout becomes an explicit query plan
 

@@ -12,3 +12,20 @@ public sealed record ReceivablesOpenItemDto(
     string? ItemDisplay,
     decimal Amount,
     string? DocumentType = null);
+
+public sealed record ReceivablesOpenItemPageRow(
+    bool IsCharge,
+    Guid ItemId,
+    string? ItemDisplay,
+    decimal Amount,
+    string? DocumentType = null);
+
+public sealed record ReceivablesOpenItemsPageResponse(
+    Guid RegisterId,
+    IReadOnlyList<ReceivablesOpenItemPageRow> Rows,
+    int Total,
+    decimal TotalOutstanding,
+    decimal TotalCredit,
+    int Offset = 0,
+    bool HasMore = false,
+    string? NextCursor = null);

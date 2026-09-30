@@ -10,7 +10,7 @@ using NGB.Runtime.Security;
 namespace NGB.Runtime.Documents;
 
 public sealed class PermissionAwareDocumentService(
-    DocumentService inner,
+    IDocumentService inner,
     INgbAccessChecker access,
     NgbSecurityCache cache)
     : IDocumentService
@@ -159,7 +159,7 @@ public sealed class PermissionAwareDocumentService(
         return result;
     }
 
-    private static DocumentTypeMetadataDto ApplyCapabilities(
+    internal static DocumentTypeMetadataDto ApplyCapabilities(
         DocumentTypeMetadataDto metadata,
         PermissionSnapshot snapshot)
     {

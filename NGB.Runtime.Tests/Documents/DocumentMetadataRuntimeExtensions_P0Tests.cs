@@ -10,6 +10,41 @@ namespace NGB.Runtime.Tests.Documents;
 public sealed class DocumentMetadataRuntimeExtensions_P0Tests
 {
     [Fact]
+    public void CreateHeadDescriptor_WhenMetadataIsNull_ThrowsArgumentRequired()
+    {
+        var act = () => DocumentMetadataRuntimeExtensions.CreateHeadDescriptor(null!);
+
+        act.Should().Throw<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public void CreateHeadDescriptor_WhenHeadTableIsMissing_ThrowsConfigurationViolation()
+    {
+        var meta = Metadata(
+            new DocumentTableMetadata("it_doc_meta__lines", TableKind.Part, [], PartCode: "lines"));
+
+        var act = () => meta.CreateHeadDescriptor();
+
+        act.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*has no head table*");
+    }
+
+    [Fact]
+    public void CreateHeadDescriptor_WhenDisplayColumnIsMissing_ThrowsConfigurationViolation()
+    {
+        var meta = Metadata(
+            new DocumentTableMetadata(
+                "it_doc_meta_head",
+                TableKind.Head,
+                [new DocumentColumnMetadata("memo", ColumnType.String)]));
+
+        var act = () => meta.CreateHeadDescriptor();
+
+        act.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*must define a display column*");
+    }
+
+    [Fact]
     public void CreateHeadDescriptor_UsesExplicitHeadMetadata()
     {
         var meta = new DocumentTypeMetadata(
@@ -109,4 +144,42 @@ public sealed class DocumentMetadataRuntimeExtensions_P0Tests
         act.Should().Throw<NgbConfigurationViolationException>()
             .WithMessage("*must declare a non-empty PartCode*");
     }
+
+    [Fact]
+    public void GetRequiredPartTable_WhenMetadataIsNull_ThrowsArgumentRequired()
+    {
+        var act = () => DocumentMetadataRuntimeExtensions.GetRequiredPartTable(null!, "lines");
+
+        act.Should().Throw<NgbArgumentRequiredException>();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void GetRequiredPartTable_WhenRequestedCodeIsBlank_ThrowsArgumentRequired(string? partCode)
+    {
+        var act = () => Metadata().GetRequiredPartTable(partCode!);
+
+        act.Should().Throw<NgbArgumentRequiredException>();
+    }
+
+    [Fact]
+    public void GetRequiredPartTable_WhenRequestedPartDoesNotExist_ThrowsConfigurationViolation()
+    {
+        var meta = Metadata(
+            new DocumentTableMetadata("it_doc_meta_head", TableKind.Head, []),
+            new DocumentTableMetadata("it_doc_meta__items", TableKind.Part, [], PartCode: "items"));
+
+        var act = () => meta.GetRequiredPartTable(" lines ");
+
+        act.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*does not define part 'lines'*");
+    }
+
+    private static DocumentTypeMetadata Metadata(params DocumentTableMetadata[] tables)
+        => new(
+            TypeCode: "it.doc.meta",
+            Tables: tables,
+            Presentation: new DocumentPresentationMetadata("Test"));
 }

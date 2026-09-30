@@ -5,7 +5,7 @@ Reusable Vue UI building blocks for NGB Platform vertical applications.
 ## Install
 
 ```bash
-npm install @ngbplatform/ui@2.0.0
+npm install --save-exact @ngbplatform/ui@3.0.0
 ```
 
 Applications must provide the Vue runtime peers:
@@ -28,8 +28,16 @@ import { ngbUiFrameworkPublicAssetsPlugin } from '@ngbplatform/ui/vite-public-as
 
 export default defineConfig({
   plugins: [vue(), ngbUiFrameworkPublicAssetsPlugin()],
+  optimizeDeps: {
+    exclude: ['@ngbplatform/ui'],
+  },
 })
 ```
+
+The package ships TypeScript modules and Vue SFCs. Exclude it from Vite dependency
+pre-bundling so application configuration and components use the same module
+instances. Apply this exclusion to separate Vitest browser configurations as well,
+and do not add the package to `optimizeDeps.include`.
 
 ## Tailwind
 

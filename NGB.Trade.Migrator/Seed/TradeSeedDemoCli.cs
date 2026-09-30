@@ -69,11 +69,11 @@ internal static class TradeSeedDemoCli
                 seedScope.ServiceProvider.GetRequiredService<IChartOfAccountsManagementService>(),
                 seedScope.ServiceProvider.GetRequiredService<IPeriodClosingService>(),
                 seedScope.ServiceProvider.GetRequiredService<IClosedPeriodReader>(),
-                effectiveTimeProvider);
+                effectiveTimeProvider,
+                provider.GetRequiredService<IServiceScopeFactory>());
 
             var summary = await seeder.RunAsync();
             PrintSummary(summary);
-            return 0;
         }
         catch (TradeSeedActivityAlreadyExistsException) when (options?.SkipIfActivityExists == true)
         {
@@ -86,6 +86,8 @@ internal static class TradeSeedDemoCli
             Console.Error.WriteLine(ex);
             return 1;
         }
+
+        return 0;
     }
 
     private static void PrintSummary(TradeDemoSeedSummary summary)
@@ -249,8 +251,10 @@ internal sealed class TradeDemoSeeder(
     IChartOfAccountsManagementService chartOfAccountsManagement,
     IPeriodClosingService periodClosing,
     IClosedPeriodReader closedPeriodReader,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider,
+    IServiceScopeFactory? scopeFactory = null)
 {
+    private const int SeedCatalogConcurrency = 4;
     private readonly Random _random = new(options.Seed);
     private readonly Dictionary<(Guid WarehouseId, Guid ItemId), SortedDictionary<DateOnly, decimal>> _inventory = [];
     private readonly Dictionary<Guid, decimal> _currentRetailPrices = [];
@@ -466,14 +470,27 @@ internal sealed class TradeDemoSeeder(
     }
 
     private async Task<TradeSeedLookups> LoadLookupsAsync(CancellationToken ct)
-        => new(
-            UnitOfMeasureId: await GetCatalogIdByDisplayAsync(TradeCodes.UnitOfMeasure, "Each", ct),
-            RetailPriceTypeId: await GetCatalogIdByDisplayAsync(TradeCodes.PriceType, "Retail", ct),
-            Net30TermsId: await GetCatalogIdByDisplayAsync(TradeCodes.PaymentTerms, "Net 30", ct),
-            DueOnReceiptTermsId: await GetCatalogIdByDisplayAsync(TradeCodes.PaymentTerms, "Due on Receipt", ct),
-            CountCorrectionReasonId: await GetCatalogIdByDisplayAsync(TradeCodes.InventoryAdjustmentReason, "Count Correction", ct));
+    {
+        var units = await GetCatalogIdsByDisplayAsync(TradeCodes.UnitOfMeasure, ["Each"], ct);
+        var priceTypes = await GetCatalogIdsByDisplayAsync(TradeCodes.PriceType, ["Retail"], ct);
+        var paymentTerms = await GetCatalogIdsByDisplayAsync(
+            TradeCodes.PaymentTerms,
+            ["Net 30", "Due on Receipt"],
+            ct);
+        var adjustmentReasons = await GetCatalogIdsByDisplayAsync(
+            TradeCodes.InventoryAdjustmentReason,
+            ["Count Correction"],
+            ct);
 
-    private async Task<Guid> EnsureRetainedEarningsAccountAsync(CancellationToken ct)
+        return new TradeSeedLookups(
+            UnitOfMeasureId: units["Each"],
+            RetailPriceTypeId: priceTypes["Retail"],
+            Net30TermsId: paymentTerms["Net 30"],
+            DueOnReceiptTermsId: paymentTerms["Due on Receipt"],
+            CountCorrectionReasonId: adjustmentReasons["Count Correction"]);
+    }
+
+    internal async Task<Guid> EnsureRetainedEarningsAccountAsync(CancellationToken ct)
     {
         const string retainedEarningsCode = "3200";
         const string retainedEarningsName = "Retained Earnings";
@@ -503,9 +520,9 @@ internal sealed class TradeDemoSeeder(
             ct);
     }
 
-    private async Task<List<WarehouseSeedResult>> SeedWarehousesAsync(CancellationToken ct)
+    internal async Task<List<WarehouseSeedResult>> SeedWarehousesAsync(CancellationToken ct)
     {
-        var results = new List<WarehouseSeedResult>(options.Warehouses);
+        var plans = new List<(string Display, string Code, string Address, RecordPayload Payload)>(options.Warehouses);
 
         for (var i = 0; i < options.Warehouses; i++)
         {
@@ -517,22 +534,21 @@ internal sealed class TradeDemoSeeder(
                 ? template.Code
                 : $"{template.Code}{i / WarehouseTemplates.Length + 1}";
 
-            var created = await catalogs.CreateAsync(
-                TradeCodes.Warehouse,
-                Payload(new
+            plans.Add((display, code, template.Address, Payload(new
                 {
                     display,
                     warehouse_code = code,
                     name = display,
                     address = template.Address,
                     is_active = true
-                }),
-                ct);
-
-            results.Add(new WarehouseSeedResult(created.Id, display, code, template.Address));
+                })));
         }
 
-        return results;
+        var created = await CreateCatalogsAsync(TradeCodes.Warehouse, plans.Select(x => x.Payload).ToArray(), ct);
+
+        return plans
+            .Select((plan, index) => new WarehouseSeedResult(created[index].Id, plan.Display, plan.Code, plan.Address))
+            .ToList();
     }
 
     private async Task<List<PartySeedResult>> SeedPartiesAsync(
@@ -545,7 +561,7 @@ internal sealed class TradeDemoSeeder(
     {
         var prefixes = isCustomer ? CustomerPrefixes : VendorPrefixes;
         var suffixes = isCustomer ? CustomerSuffixes : VendorSuffixes;
-        var results = new List<PartySeedResult>(count);
+        var plans = new List<(string Display, RecordPayload Payload)>(count);
         var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < count; i++)
@@ -560,9 +576,7 @@ internal sealed class TradeDemoSeeder(
             var address = $"{streetNo} {streetName} Ave, {city.City}, {city.State}";
             var phone = $"+1-{200 + (i % 500):000}-555-{1000 + (i % 9000):0000}";
 
-            var created = await catalogs.CreateAsync(
-                TradeCodes.Party,
-                Payload(new
+            plans.Add((display, Payload(new
                 {
                     display,
                     party_number = $"{numberPrefix}-{1000 + i}",
@@ -576,21 +590,22 @@ internal sealed class TradeDemoSeeder(
                     is_customer = isCustomer,
                     is_vendor = isVendor,
                     is_active = true
-                }),
-                ct);
-
-            results.Add(new PartySeedResult(created.Id, display));
+                })));
         }
 
-        return results;
+        var created = await CreateCatalogsAsync(TradeCodes.Party, plans.Select(x => x.Payload).ToArray(), ct);
+
+        return plans
+            .Select((plan, index) => new PartySeedResult(created[index].Id, plan.Display))
+            .ToList();
     }
 
-    private async Task<List<ItemSeedResult>> SeedItemsAsync(
+    internal async Task<List<ItemSeedResult>> SeedItemsAsync(
         Guid unitOfMeasureId,
         Guid retailPriceTypeId,
         CancellationToken ct)
     {
-        var results = new List<ItemSeedResult>(options.Items);
+        var plans = new List<(decimal BaseCost, decimal InitialPrice, RecordPayload Payload)>(options.Items);
 
         for (var i = 0; i < options.Items; i++)
         {
@@ -602,9 +617,7 @@ internal sealed class TradeDemoSeeder(
             var sku = $"{template.SkuPrefix}-{1000 + i}";
             var baseCost = RoundMoney(template.BaseCost + (series * 1.75m));
 
-            var created = await catalogs.CreateAsync(
-                TradeCodes.Item,
-                Payload(new
+            plans.Add((baseCost, RoundMoney(baseCost * template.Markup), Payload(new
                 {
                     display,
                     name = display,
@@ -614,14 +627,69 @@ internal sealed class TradeDemoSeeder(
                     is_inventory_item = true,
                     default_sales_price_type_id = retailPriceTypeId,
                     is_active = true
-                }),
-                ct);
-
-            results.Add(new ItemSeedResult(created.Id, display, sku, baseCost, RoundMoney(baseCost * template.Markup)));
+                })));
         }
+
+        var created = await CreateCatalogsAsync(TradeCodes.Item, plans.Select(x => x.Payload).ToArray(), ct);
+
+        return plans
+            .Select((plan, index) => new ItemSeedResult(created[index].Id, plan.BaseCost, plan.InitialPrice))
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<CatalogItemDto>> CreateCatalogsAsync(
+        string catalogType,
+        IReadOnlyList<RecordPayload> payloads,
+        CancellationToken ct)
+    {
+        if (scopeFactory is null || payloads.Count <= 1)
+        {
+            var sequential = new CatalogItemDto[payloads.Count];
+            for (var i = 0; i < payloads.Count; i++)
+            {
+                sequential[i] = await catalogs.CreateAsync(catalogType, payloads[i], ct);
+            }
+
+            return sequential;
+        }
+
+        var results = new CatalogItemDto[payloads.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, payloads.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = SeedCatalogConcurrency,
+                CancellationToken = ct
+            },
+            async (index, token) =>
+            {
+                results[index] = await ExecuteInNewScopeAsync(
+                    scopeFactory,
+                    (services, innerToken) => services.GetRequiredService<ICatalogService>()
+                        .CreateAsync(catalogType, payloads[index], innerToken),
+                    token);
+            });
 
         return results;
     }
+
+    internal static async Task<T> ExecuteInNewScopeAsync<T>(
+        IServiceScopeFactory scopeFactory,
+        Func<IServiceProvider, CancellationToken, Task<T>> action,
+        CancellationToken ct)
+    {
+        var scope = scopeFactory.CreateAsyncScope();
+        try
+        {
+            return await action(scope.ServiceProvider, ct);
+        }
+        finally
+        {
+            await DisposeScopeAsync(scope);
+        }
+    }
+
+    private static Task DisposeScopeAsync(AsyncServiceScope scope) => scope.DisposeAsync().AsTask();
 
     private async Task<int> SeedPriceUpdatesAsync(
         IReadOnlyList<ItemSeedResult> items,
@@ -765,7 +833,7 @@ internal sealed class TradeDemoSeeder(
         return receipts.OrderBy(x => x.Date).ToList();
     }
 
-    private async Task<List<SalesInvoiceSeedResult>> SeedSalesInvoicesAsync(
+    internal async Task<List<SalesInvoiceSeedResult>> SeedSalesInvoicesAsync(
         IReadOnlyList<ItemSeedResult> items,
         IReadOnlyList<PartySeedResult> customers,
         IReadOnlyList<WarehouseSeedResult> warehouses,
@@ -803,22 +871,14 @@ internal sealed class TradeDemoSeeder(
                 var item = selectedItems[lineNo];
                 var availableQty = GetInventory(warehouse.Id, item.Id, date);
                 var quantity = Math.Min(availableQty, 2m + _random.Next(1, 12));
-                if (quantity <= 0m)
-                    continue;
-
                 var unitCost = RoundMoney(item.BaseCost * RandomFactor(0.98m, 1.02m));
-                var unitPrice = _currentRetailPrices.TryGetValue(item.Id, out var currentPrice)
-                    ? currentPrice
-                    : item.InitialRetailPrice;
+                var unitPrice = _currentRetailPrices[item.Id];
                 var lineAmount = RoundMoney(quantity * unitPrice);
 
                 rows.Add(new SalesInvoiceSeedLine(lineNo + 1, item.Id, quantity, unitPrice, unitCost, lineAmount));
                 RemoveInventory(warehouse.Id, item.Id, quantity, date);
                 total += lineAmount;
             }
-
-            if (rows.Count == 0)
-                continue;
 
             var posted = await CreateAndPostAsync(
                 TradeCodes.SalesInvoice,
@@ -847,7 +907,7 @@ internal sealed class TradeDemoSeeder(
         return invoices.OrderBy(x => x.Date).ToList();
     }
 
-    private async Task<int> SeedInventoryTransfersAsync(
+    internal async Task<int> SeedInventoryTransfersAsync(
         IReadOnlyList<ItemSeedResult> items,
         IReadOnlyList<WarehouseSeedResult> warehouses,
         CancellationToken ct)
@@ -886,16 +946,11 @@ internal sealed class TradeDemoSeeder(
                 var item = selectedItems[lineNo];
                 var availableQty = GetInventory(fromWarehouse.Id, item.Id, date);
                 var quantity = Math.Min(availableQty, 1m + _random.Next(1, 10));
-                if (quantity <= 0m)
-                    continue;
 
                 rows.Add(new InventoryTransferSeedLine(rows.Count + 1, item.Id, quantity));
                 RemoveInventory(fromWarehouse.Id, item.Id, quantity, date);
                 AddInventory(toWarehouse.Id, item.Id, quantity, date);
             }
-
-            if (rows.Count == 0)
-                continue;
 
             await CreateAndPostAsync(
                 TradeCodes.InventoryTransfer,
@@ -917,7 +972,7 @@ internal sealed class TradeDemoSeeder(
         return posted;
     }
 
-    private async Task<int> SeedInventoryAdjustmentsAsync(
+    internal async Task<int> SeedInventoryAdjustmentsAsync(
         IReadOnlyList<ItemSeedResult> items,
         IReadOnlyList<WarehouseSeedResult> warehouses,
         Guid countCorrectionReasonId,
@@ -944,9 +999,6 @@ internal sealed class TradeDemoSeeder(
                     quantityDelta = 1m + _random.Next(1, 6);
                 else
                     quantityDelta = -Math.Min(currentQty, 1m + _random.Next(1, 4));
-
-                if (quantityDelta == 0m)
-                    quantityDelta = 1m;
 
                 var unitCost = RoundMoney(item.BaseCost * RandomFactor(0.97m, 1.03m));
                 var lineAmount = RoundMoney(Math.Abs(quantityDelta) * unitCost);
@@ -978,7 +1030,7 @@ internal sealed class TradeDemoSeeder(
         return posted;
     }
 
-    private async Task<int> SeedCustomerReturnsAsync(IReadOnlyList<SalesInvoiceSeedResult> sales, CancellationToken ct)
+    internal async Task<int> SeedCustomerReturnsAsync(IReadOnlyList<SalesInvoiceSeedResult> sales, CancellationToken ct)
     {
         var posted = 0;
 
@@ -1059,7 +1111,7 @@ internal sealed class TradeDemoSeeder(
         return posted;
     }
 
-    private async Task<int> SeedVendorReturnsAsync(
+    internal async Task<int> SeedVendorReturnsAsync(
         IReadOnlyList<PurchaseReceiptSeedResult> receipts,
         CancellationToken ct)
     {
@@ -1107,8 +1159,6 @@ internal sealed class TradeDemoSeeder(
                     var line = selectedLines[lineNo];
                     var onHand = GetInventory(warehouseId, line.ItemId, date);
                     var quantity = Math.Min(Math.Min(line.RemainingQuantity > 0m ? line.RemainingQuantity : 1m, onHand), 1m + _random.Next(1, 3));
-                    if (quantity <= 0m)
-                        continue;
 
                     line.RemainingQuantity -= quantity;
                     var lineAmount = RoundMoney(quantity * line.UnitCost);
@@ -1132,9 +1182,6 @@ internal sealed class TradeDemoSeeder(
                 RemoveInventory(warehouseId, line.ItemId, quantity, date);
             }
 
-            if (rows.Count == 0)
-                continue;
-
             await CreateAndPostAsync(
                 TradeCodes.VendorReturn,
                 date,
@@ -1156,7 +1203,7 @@ internal sealed class TradeDemoSeeder(
         return posted;
     }
 
-    private async Task<int> SeedCustomerPaymentsAsync(
+    internal async Task<int> SeedCustomerPaymentsAsync(
         IReadOnlyList<SalesInvoiceSeedResult> sales,
         CancellationToken ct)
     {
@@ -1212,7 +1259,7 @@ internal sealed class TradeDemoSeeder(
         return posted;
     }
 
-    private async Task<int> SeedVendorPaymentsAsync(
+    internal async Task<int> SeedVendorPaymentsAsync(
         IReadOnlyList<PurchaseReceiptSeedResult> receipts,
         CancellationToken ct)
     {
@@ -1268,7 +1315,7 @@ internal sealed class TradeDemoSeeder(
         return posted;
     }
 
-    private async Task<PeriodClosingSummary> SeedPeriodClosingsAsync(
+    internal async Task<PeriodClosingSummary> SeedPeriodClosingsAsync(
         Guid retainedEarningsAccountId,
         CancellationToken ct)
     {
@@ -1276,9 +1323,12 @@ internal sealed class TradeDemoSeeder(
         var firstMonth = new DateOnly(options.FromDate.Year, options.FromDate.Month, 1);
         var lastMonth = new DateOnly(options.ToDate.Year, options.ToDate.Month, 1);
         var firstTrackedMonth = new DateOnly(firstMonth.Year, 1, 1);
-        var closedPeriods = (await closedPeriodReader.GetClosedAsync(firstTrackedMonth, lastMonth, ct))
-            .Select(x => x.Period)
-            .ToHashSet();
+        var closedPeriods = new HashSet<DateOnly>();
+
+        foreach (var closedPeriod in await closedPeriodReader.GetClosedAsync(firstTrackedMonth, lastMonth, ct))
+        {
+            closedPeriods.Add(closedPeriod.Period);
+        }
 
         var monthsClosed = 0;
         var fiscalYearsClosed = 0;
@@ -1331,7 +1381,7 @@ internal sealed class TradeDemoSeeder(
         return 1;
     }
 
-    private async Task<Guid> GetCatalogIdByDisplayAsync(string catalogType, string display, CancellationToken ct)
+    internal async Task<Guid> GetCatalogIdByDisplayAsync(string catalogType, string display, CancellationToken ct)
     {
         var page = await catalogs.GetPageAsync(
             catalogType,
@@ -1350,7 +1400,37 @@ internal sealed class TradeDemoSeeder(
         };
     }
 
-    private async Task<DocumentDto> CreateAndPostAsync(
+    internal async Task<IReadOnlyDictionary<string, Guid>> GetCatalogIdsByDisplayAsync(
+        string catalogType,
+        IReadOnlyCollection<string> displays,
+        CancellationToken ct)
+    {
+        var requested = displays.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var page = await catalogs.GetPageAsync(
+            catalogType,
+            new PageRequestDto(Offset: 0, Limit: PagingLimits.MaxPageSize, Search: null),
+            ct);
+        var grouped = page.Items
+            .Where(item => item.Display is not null && requested.Contains(item.Display))
+            .GroupBy(item => item.Display!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var display in requested)
+        {
+            if (!grouped.TryGetValue(display, out var matches) || matches.Length == 0)
+                throw new NgbConfigurationViolationException($"Default '{catalogType}' record '{display}' was not found.");
+
+            if (matches.Length > 1)
+                throw new NgbConfigurationViolationException($"Multiple '{catalogType}' records exist for display '{display}'.");
+
+            result[display] = matches[0].Id;
+        }
+
+        return result;
+    }
+
+    internal async Task<DocumentDto> CreateAndPostAsync(
         string typeCode,
         DateOnly businessDate,
         RecordPayload payload,
@@ -1367,7 +1447,7 @@ internal sealed class TradeDemoSeeder(
         return await lifecycle.PostAsync(typeCode, created.Id, ct);
     }
 
-    private static RecordPayload Payload(object fields, IReadOnlyDictionary<string, RecordPartPayload>? parts = null)
+    internal static RecordPayload Payload(object fields, IReadOnlyDictionary<string, RecordPartPayload>? parts = null)
     {
         var element = JsonSerializer.SerializeToElement(fields);
         var dict = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
@@ -1487,7 +1567,7 @@ internal sealed class TradeDemoSeeder(
         };
     }
 
-    private string BuildCompanyName(
+    internal string BuildCompanyName(
         IReadOnlyList<string> prefixes,
         IReadOnlyList<string> suffixes,
         int index,
@@ -1505,7 +1585,7 @@ internal sealed class TradeDemoSeeder(
         return $"{prefixes[index % prefixes.Count]} {suffixes[index % suffixes.Count]} {index + 1}";
     }
 
-    private List<T> PickDistinctItems<T>(IReadOnlyList<T> source, int count)
+    internal List<T> PickDistinctItems<T>(IReadOnlyList<T> source, int count)
     {
         if (count >= source.Count)
             return source.ToList();
@@ -1520,7 +1600,7 @@ internal sealed class TradeDemoSeeder(
     private List<ItemSeedResult> GetAvailableItems(Guid warehouseId, IReadOnlyList<ItemSeedResult> allItems, DateOnly asOf)
         => allItems.Where(x => GetInventory(warehouseId, x.Id, asOf) > 0m).ToList();
 
-    private decimal GetInventory(Guid warehouseId, Guid itemId, DateOnly asOf)
+    internal decimal GetInventory(Guid warehouseId, Guid itemId, DateOnly asOf)
     {
         if (!_inventory.TryGetValue((warehouseId, itemId), out var timeline))
             return 0m;
@@ -1537,13 +1617,13 @@ internal sealed class TradeDemoSeeder(
         return total;
     }
 
-    private void AddInventory(Guid warehouseId, Guid itemId, decimal quantity, DateOnly asOf)
+    internal void AddInventory(Guid warehouseId, Guid itemId, decimal quantity, DateOnly asOf)
         => AddInventoryDelta(warehouseId, itemId, quantity, asOf);
 
-    private void RemoveInventory(Guid warehouseId, Guid itemId, decimal quantity, DateOnly asOf)
+    internal void RemoveInventory(Guid warehouseId, Guid itemId, decimal quantity, DateOnly asOf)
         => AddInventoryDelta(warehouseId, itemId, -Math.Min(quantity, GetInventory(warehouseId, itemId, asOf)), asOf);
 
-    private void AddInventoryDelta(Guid warehouseId, Guid itemId, decimal delta, DateOnly asOf)
+    internal void AddInventoryDelta(Guid warehouseId, Guid itemId, decimal delta, DateOnly asOf)
     {
         if (delta == 0m)
             return;
@@ -1564,7 +1644,7 @@ internal sealed class TradeDemoSeeder(
             timeline.Remove(asOf);
     }
 
-    private List<DateOnly> BuildSpreadDates(int count, DateOnly fromInclusive, DateOnly toInclusive)
+    internal List<DateOnly> BuildSpreadDates(int count, DateOnly fromInclusive, DateOnly toInclusive)
     {
         var list = new List<DateOnly>(count);
         if (count <= 0)
@@ -1594,13 +1674,13 @@ internal sealed class TradeDemoSeeder(
         return list;
     }
 
-    private DateOnly RandomDate(DateOnly fromInclusive, DateOnly toInclusive)
+    internal DateOnly RandomDate(DateOnly fromInclusive, DateOnly toInclusive)
     {
         var range = Math.Max(0, toInclusive.DayNumber - fromInclusive.DayNumber);
         return fromInclusive.AddDays(range == 0 ? 0 : _random.Next(range + 1));
     }
 
-    private DateOnly RandomLaterDate(DateOnly afterInclusive, DateOnly toInclusive)
+    internal DateOnly RandomLaterDate(DateOnly afterInclusive, DateOnly toInclusive)
     {
         var start = afterInclusive < toInclusive ? afterInclusive.AddDays(1) : afterInclusive;
         if (start > toInclusive)
@@ -1609,22 +1689,20 @@ internal sealed class TradeDemoSeeder(
         return RandomDate(start, toInclusive);
     }
 
-    private decimal RandomFactor(decimal minInclusive, decimal maxInclusive)
+    internal decimal RandomFactor(decimal minInclusive, decimal maxInclusive)
     {
         var ratio = (decimal)_random.NextDouble();
         return minInclusive + ((maxInclusive - minInclusive) * ratio);
     }
 
-    private static decimal RoundMoney(decimal value)
+    internal static decimal RoundMoney(decimal value)
         => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 
-    private string? MaybeNote(IReadOnlyList<string> variants)
+    internal string? MaybeNote(IReadOnlyList<string> variants)
         => _random.NextDouble() < 0.45d
             ? variants[_random.Next(variants.Count)]
             : null;
 
-    private List<T> Shuffle<T>(IReadOnlyList<T> source)
-        => source.OrderBy(_ => _random.Next()).ToList();
     private sealed record TradeSeedLookups(
         Guid UnitOfMeasureId,
         Guid RetailPriceTypeId,
@@ -1636,16 +1714,11 @@ internal sealed class TradeDemoSeeder(
 
     private sealed record ItemTemplate(string Display, string SkuPrefix, decimal BaseCost, decimal Markup);
 
-    private sealed record WarehouseSeedResult(Guid Id, string Display, string Code, string Address);
+    internal sealed record WarehouseSeedResult(Guid Id, string Display, string Code, string Address);
 
-    private sealed record PartySeedResult(Guid Id, string Display);
+    internal sealed record PartySeedResult(Guid Id, string Display);
 
-    private sealed record ItemSeedResult(
-        Guid Id,
-        string Display,
-        string Sku,
-        decimal BaseCost,
-        decimal InitialRetailPrice);
+    internal sealed record ItemSeedResult(Guid Id, decimal BaseCost, decimal InitialRetailPrice);
 
     private sealed record ItemPriceUpdateSeedLine(
         int Ordinal,
@@ -1693,12 +1766,12 @@ internal sealed class TradeDemoSeeder(
         decimal UnitCost,
         decimal LineAmount);
 
-    private sealed record PurchaseReceiptLineState(Guid ItemId, decimal UnitCost, decimal OriginalQuantity)
+    internal sealed record PurchaseReceiptLineState(Guid ItemId, decimal UnitCost, decimal OriginalQuantity)
     {
         public decimal RemainingQuantity { get; set; } = OriginalQuantity;
     }
 
-    private sealed record SalesInvoiceLineState(
+    internal sealed record SalesInvoiceLineState(
         Guid ItemId,
         decimal UnitPrice,
         decimal UnitCost,
@@ -1707,7 +1780,7 @@ internal sealed class TradeDemoSeeder(
         public decimal RemainingQuantity { get; set; } = OriginalQuantity;
     }
 
-    private sealed record PurchaseReceiptSeedResult(
+    internal sealed record PurchaseReceiptSeedResult(
         Guid Id,
         Guid VendorId,
         Guid WarehouseId,
@@ -1718,7 +1791,7 @@ internal sealed class TradeDemoSeeder(
         public decimal OutstandingAmount { get; set; } = TotalAmount;
     }
 
-    private sealed record SalesInvoiceSeedResult(
+    internal sealed record SalesInvoiceSeedResult(
         Guid Id,
         Guid CustomerId,
         Guid WarehouseId,
@@ -1729,7 +1802,7 @@ internal sealed class TradeDemoSeeder(
         public decimal OutstandingAmount { get; set; } = TotalAmount;
     }
 
-    private sealed record PeriodClosingSummary(int MonthsClosed, int FiscalYearsClosed);
+    internal sealed record PeriodClosingSummary(int MonthsClosed, int FiscalYearsClosed);
 
     private static readonly string[] TradeDocumentTypes =
     [

@@ -9,6 +9,9 @@ namespace NGB.PostgreSql.Documents;
 
 internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPartsWriter
 {
+    private const int MaxParametersPerBatch = 2000;
+    private const int MaxRowsPerBatch = 500;
+
     public async Task ReplacePartsAsync(
         IReadOnlyList<DocumentTableMetadata> partTables,
         Guid documentId,
@@ -30,8 +33,12 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
         uow.EnsureActiveTransaction();
         await uow.EnsureConnectionOpenAsync(ct);
 
+        var preparedParts = new List<PreparedPart>();
         foreach (var t in partTables)
         {
+            if (t is null)
+                continue;
+
             if (t.Kind != TableKind.Part)
                 continue;
 
@@ -39,19 +46,14 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
             if (string.IsNullOrWhiteSpace(tableName))
                 throw new NgbArgumentInvalidException(nameof(partTables), "Part table name is required.");
 
-            // Replace semantics: wipe rows for document_id, then insert.
-            var deleteSql = $"DELETE FROM {Qi(tableName)} WHERE document_id = @documentId;";
-            await uow.Connection.ExecuteAsync(new CommandDefinition(
-                deleteSql,
-                new { documentId },
-                transaction: uow.Transaction,
-                cancellationToken: ct));
-
             rowsByTable.TryGetValue(tableName, out var rows);
             rows ??= Array.Empty<IReadOnlyDictionary<string, object?>>();
 
             if (rows.Count == 0)
+            {
+                preparedParts.Add(new PreparedPart(tableName, rows, []));
                 continue;
+            }
 
             var allowed = t.Columns
                 .Where(c => !IsDocumentId(c.ColumnName) && c.Type != ColumnType.Json)
@@ -85,41 +87,90 @@ internal sealed class PostgresDocumentPartsWriter(IUnitOfWork uow) : IDocumentPa
             if (orderedColumns.Count == 0)
                 throw new NgbArgumentInvalidException(nameof(rowsByTable), $"No insertable columns provided for '{tableName}'.");
 
-            var insertColumnsSql = new List<string> { "document_id" };
-            insertColumnsSql.AddRange(orderedColumns.Select(Qi));
+            preparedParts.Add(new PreparedPart(tableName, rows, orderedColumns));
+        }
 
-            var p = new DynamicParameters();
-            p.Add("documentId", documentId);
+        if (preparedParts.Count == 0)
+            return;
 
-            var valuesSql = new List<string>(rows.Count);
-            for (var i = 0; i < rows.Count; i++)
-            {
-                var r = rows[i];
-                var rowParams = new List<string> { "@documentId" };
+        var deleteSql = string.Join(
+            Environment.NewLine,
+            preparedParts.Select(part => $"DELETE FROM {Qi(part.TableName)} WHERE document_id = @documentId;"));
+        var pendingSql = new List<string> { deleteSql };
+        var pendingParameters = new DynamicParameters();
+        pendingParameters.Add("documentId", documentId);
+        var pendingParameterCount = 0;
+        var statementIndex = 0;
 
-                foreach (var col in orderedColumns)
-                {
-                    var paramName = $"p_{col}_{i}";
-                    r.TryGetValue(col, out var value);
-                    p.Add(paramName, value);
-                    rowParams.Add("@" + paramName);
-                }
-
-                valuesSql.Add("(" + string.Join(", ", rowParams) + ")");
-            }
-
-            var insertSql = $"""
-                            INSERT INTO {Qi(tableName)} ({string.Join(", ", insertColumnsSql)})
-                            VALUES {string.Join(", ", valuesSql)};
-                            """;
-
+        async Task FlushAsync()
+        {
             await uow.Connection.ExecuteAsync(new CommandDefinition(
-                insertSql,
-                p,
+                string.Join(Environment.NewLine, pendingSql),
+                pendingParameters,
                 transaction: uow.Transaction,
                 cancellationToken: ct));
+
+            pendingSql = [];
+            pendingParameters = new DynamicParameters();
+            pendingParameters.Add("documentId", documentId);
+            pendingParameterCount = 0;
         }
+
+        foreach (var part in preparedParts)
+        {
+            if (part.Rows.Count == 0)
+                continue;
+
+            var insertColumnsSql = new List<string> { "document_id" };
+            insertColumnsSql.AddRange(part.OrderedColumns.Select(Qi));
+
+            var batchSize = Math.Clamp(MaxParametersPerBatch / part.OrderedColumns.Count, 1, MaxRowsPerBatch);
+
+            for (var offset = 0; offset < part.Rows.Count; offset += batchSize)
+            {
+                var take = Math.Min(batchSize, part.Rows.Count - offset);
+                var requiredParameters = take * part.OrderedColumns.Count;
+                if (pendingParameterCount > 0
+                    && pendingParameterCount + requiredParameters > MaxParametersPerBatch)
+                {
+                    await FlushAsync();
+                }
+
+                var valuesSql = new List<string>(take);
+                var currentStatementIndex = statementIndex++;
+
+                for (var batchIndex = 0; batchIndex < take; batchIndex++)
+                {
+                    var row = part.Rows[offset + batchIndex];
+                    var rowParams = new List<string> { "@documentId" };
+
+                    for (var columnIndex = 0; columnIndex < part.OrderedColumns.Count; columnIndex++)
+                    {
+                        var col = part.OrderedColumns[columnIndex];
+                        var paramName = $"p_{currentStatementIndex}_{batchIndex}_{columnIndex}";
+                        row.TryGetValue(col, out var value);
+                        pendingParameters.Add(paramName, value);
+                        rowParams.Add("@" + paramName);
+                    }
+
+                    valuesSql.Add("(" + string.Join(", ", rowParams) + ")");
+                }
+
+                pendingSql.Add($"""
+                                INSERT INTO {Qi(part.TableName)} ({string.Join(", ", insertColumnsSql)})
+                                VALUES {string.Join(", ", valuesSql)};
+                                """);
+                pendingParameterCount += requiredParameters;
+            }
+        }
+
+        await FlushAsync();
     }
+
+    private sealed record PreparedPart(
+        string TableName,
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows,
+        IReadOnlyList<string> OrderedColumns);
 
     private static bool IsDocumentId(string name)
         => string.Equals(name, "document_id", StringComparison.OrdinalIgnoreCase);

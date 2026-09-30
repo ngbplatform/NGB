@@ -12,14 +12,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentRelationships_PhysicalSchemaHealth_Mirroring_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentRelationships_PhysicalSchemaHealth_Mirroring_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task GetAsync_WhenDeclaredMirroredBindingIsInstalled_ReportsNoMissingBindings()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = CreateMirroredHost();
 
         await CreateMirroredTableAsync(Fixture.ConnectionString);
@@ -36,7 +35,6 @@ public sealed class DocumentRelationships_PhysicalSchemaHealth_Mirroring_P0Tests
     [Fact]
     public async Task GetAsync_WhenDeclaredMirroredBindingTriggerIsMissing_ReportsHelpfulDescriptor()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = CreateMirroredHost();
 
         await CreateMirroredTableAsync(Fixture.ConnectionString);

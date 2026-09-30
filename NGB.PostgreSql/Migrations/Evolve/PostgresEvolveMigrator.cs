@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Reflection;
 using Npgsql;
 using NGB.Persistence.Migrations;
@@ -10,7 +11,7 @@ namespace NGB.PostgreSql.Migrations.Evolve;
 /// </summary>
 public static class PostgresEvolveMigrator
 {
-    public static Task MigrateAsync(
+    public static async Task MigrateAsync(
         string connectionString,
         IReadOnlyCollection<Assembly> migrationAssemblies,
         MigrationExecutionOptions? options = null,
@@ -27,12 +28,32 @@ public static class PostgresEvolveMigrator
 
         ct.ThrowIfCancellationRequested();
 
-        using var conn = new NpgsqlConnection(connectionString);
-        conn.Open();
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(ct);
 
-        ApplySessionDefaults(conn, options);
+        await ApplySessionDefaultsAsync(conn, options, ct);
 
-        return MigrateAsync(conn, migrationAssemblies, log, metadataTableName, metadataTableSchema, ct);
+        // PostgreSQL's IF NOT EXISTS DDL is not sufficient to serialize concurrent
+        // catalog writes. In particular, two fresh Evolve runs can race while
+        // creating the metadata table's underlying composite type. Hold the same
+        // database-wide session lock used by SchemaMigrator and repair operations
+        // for the complete Evolve run.
+        await SchemaMigrationAdvisoryLock.AcquireOrThrowAsync(
+            conn,
+            SchemaMigrationLockMode.Wait,
+            waitTimeout: null,
+            log,
+            ct);
+
+        try
+        {
+            await MigrateAsync(conn, migrationAssemblies, log, metadataTableName, metadataTableSchema, ct);
+        }
+        finally
+        {
+            await SchemaMigrator.ReleaseLockBestEffortAsync(
+                () => SchemaMigrationAdvisoryLock.ReleaseAsync(conn, CancellationToken.None));
+        }
     }
 
     /// <summary>
@@ -60,7 +81,7 @@ public static class PostgresEvolveMigrator
         // Evolve is synchronous. Keep this wrapper deterministic and dependency-free.
         // NOTE: Evolve is in namespace EvolveDb, but this file lives under our own *.Migrations.Evolve namespace.
         // Use global:: to avoid ambiguous reference resolution.
-        var evolve = new global::EvolveDb.Evolve(connection, message => log?.Invoke(message))
+        var evolve = new global::EvolveDb.Evolve(connection, BuildLogForwarder(log))
         {
             // Never allow schema erase from application code.
             IsEraseDisabled = true,
@@ -69,8 +90,8 @@ public static class PostgresEvolveMigrator
             EnableClusterMode = false,
 
             // Changelog contract.
-            MetadataTableSchema = string.IsNullOrWhiteSpace(metadataTableSchema) ? "public" : metadataTableSchema,
-            MetadataTableName = string.IsNullOrWhiteSpace(metadataTableName) ? "migration_changelog" : metadataTableName,
+            MetadataTableSchema = ResolveMetadataIdentifier(metadataTableSchema, "public"),
+            MetadataTableName = ResolveMetadataIdentifier(metadataTableName, "migration_changelog"),
 
             Schemas = ["public"],
 
@@ -91,7 +112,12 @@ public static class PostgresEvolveMigrator
         return Task.CompletedTask;
     }
 
-    private static string[] BuildEmbeddedResourceFilters(IReadOnlyCollection<Assembly> migrationAssemblies)
+    internal static string ResolveMetadataIdentifier(string? value, string fallback)
+        => string.IsNullOrWhiteSpace(value) ? fallback : value;
+
+    internal static Action<string> BuildLogForwarder(Action<string>? log) => message => log?.Invoke(message);
+
+    internal static string[] BuildEmbeddedResourceFilters(IReadOnlyCollection<Assembly> migrationAssemblies)
     {
         // Evolve embedded resource loader uses StartsWith(filter, OrdinalIgnoreCase).
         // Embedded resource names use the default namespace prefix, which typically matches assembly name.
@@ -110,7 +136,7 @@ public static class PostgresEvolveMigrator
             .ToArray();
     }
 
-    private static void EnsureEmbeddedMigrationsDiscovered(
+    internal static void EnsureEmbeddedMigrationsDiscovered(
         IReadOnlyCollection<Assembly> migrationAssemblies,
         IReadOnlyList<string> embeddedFilters)
     {
@@ -154,7 +180,7 @@ public static class PostgresEvolveMigrator
         }
     }
 
-    private static IReadOnlyList<string> SafeGetManifestResourceNames(Assembly asm)
+    internal static IReadOnlyList<string> SafeGetManifestResourceNames(Assembly asm)
     {
         try
         {
@@ -166,13 +192,16 @@ public static class PostgresEvolveMigrator
         }
     }
 
-    private static void ApplySessionDefaults(NpgsqlConnection connection, MigrationExecutionOptions? options)
+    internal static async Task ApplySessionDefaultsAsync(
+        DbConnection connection,
+        MigrationExecutionOptions? options,
+        CancellationToken ct = default)
     {
         // Deterministic UTC semantics.
-        using (var cmd = connection.CreateCommand())
+        await using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = "SET TIME ZONE 'UTC';";
-            cmd.ExecuteNonQuery();
+            await cmd.ExecuteNonQueryAsync(ct);
         }
 
         if (options is null)
@@ -181,17 +210,17 @@ public static class PostgresEvolveMigrator
         if (options.LockTimeout is not null)
         {
             var ms = (long)Math.Max(0, options.LockTimeout.Value.TotalMilliseconds);
-            using var cmd = connection.CreateCommand();
+            await using var cmd = connection.CreateCommand();
             cmd.CommandText = $"SET lock_timeout = '{ms}ms';";
-            cmd.ExecuteNonQuery();
+            await cmd.ExecuteNonQueryAsync(ct);
         }
 
         if (options.StatementTimeout is not null)
         {
             var ms = (long)Math.Max(0, options.StatementTimeout.Value.TotalMilliseconds);
-            using var cmd = connection.CreateCommand();
+            await using var cmd = connection.CreateCommand();
             cmd.CommandText = $"SET statement_timeout = '{ms}ms';";
-            cmd.ExecuteNonQuery();
+            await cmd.ExecuteNonQueryAsync(ct);
         }
     }
 }

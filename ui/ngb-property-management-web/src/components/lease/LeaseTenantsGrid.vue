@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { NgbIcon, NgbLookup, NgbSelect, buildLookupFieldTargetUrl, isReferenceValue, type ReferenceValue, useLookupStore, useValidationFocus } from '@ngbplatform/ui'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -40,7 +40,7 @@ const emit = defineEmits<{
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
-const rows = computed(() => props.modelValue ?? [])
+const rows = computed(() => props.modelValue)
 const lookupStore = useLookupStore()
 const router = useRouter()
 const route = useRoute()
@@ -54,7 +54,7 @@ const roleOptions = [
 ]
 
 const canEdit = computed(() => !props.readonly)
-const tenantErrors = computed(() => (props.errors?.summary ?? []).filter((x) => String(x ?? '').trim().length > 0))
+const tenantErrors = computed(() => (props.errors?.summary ?? []).filter((x) => String(x).trim().length > 0))
 
 function rowErrorMap(rowIndex: number): LeaseTenantRowErrors {
   return props.errors?.rowErrors?.[rowIndex] ?? {}
@@ -62,7 +62,7 @@ function rowErrorMap(rowIndex: number): LeaseTenantRowErrors {
 
 function rowFieldErrors(rowIndex: number, field: LeasePartyFieldKey): string[] {
   const values = rowErrorMap(rowIndex)[field] ?? []
-  return values.filter((x) => String(x ?? '').trim().length > 0)
+  return values.filter((x) => String(x).trim().length > 0)
 }
 
 function firstRowFieldError(rowIndex: number, field: LeasePartyFieldKey): string | undefined {
@@ -71,7 +71,7 @@ function firstRowFieldError(rowIndex: number, field: LeasePartyFieldKey): string
 
 function rowHasErrors(rowIndex: number): boolean {
   const entry = rowErrorMap(rowIndex)
-  return Object.values(entry).some((messages) => Array.isArray(messages) && messages.some((x) => String(x ?? '').trim().length > 0))
+  return Object.values(entry).some((messages) => Array.isArray(messages) && messages.some((x) => String(x).trim().length > 0))
 }
 
 function cellKey(rowIndex: number, field: LeasePartyFieldKey): string {
@@ -96,7 +96,7 @@ function focusFirstError(validation?: LeaseTenantValidation | null): boolean {
 
   for (const entry of rowEntries) {
     for (const field of ['party_id', 'role', 'is_primary', 'ordinal'] as LeasePartyFieldKey[]) {
-      const messages = entry.value?.[field] ?? []
+      const messages = entry.value[field] ?? []
       if (messages.length > 0 && focusRowField(entry.rowIndex, field)) return true
     }
   }
@@ -116,21 +116,37 @@ defineExpose({
 
 // Per-row lookup cache (items shown in the dropdown)
 const lookupItemsByRow = ref<Record<number, LookupItem[]>>({})
+const lookupControllers = new Map<number, AbortController>()
 
 async function onPartyQuery(rowIndex: number, q: string) {
+  lookupControllers.get(rowIndex)?.abort()
   const query = (q ?? '').trim()
   if (query.length === 0) {
     lookupItemsByRow.value[rowIndex] = []
     return
   }
 
-  const items = await lookupStore.searchCatalog('pm.party', query, { filters: { is_tenant: 'true' } })
-  lookupItemsByRow.value[rowIndex] = (items ?? []).map((x) => ({
-    id: x.id,
-    label: x.label,
-    meta: x.meta ?? undefined,
-  }))
+  const controller = new AbortController()
+  lookupControllers.set(rowIndex, controller)
+  try {
+    const items = await lookupStore.searchCatalog('pm.party', query, {
+      filters: { is_tenant: 'true' },
+      signal: controller.signal,
+    })
+    if (lookupControllers.get(rowIndex) !== controller) return
+    lookupItemsByRow.value[rowIndex] = (items ?? []).map((x) => ({ id: x.id, label: x.label, meta: x.meta ?? undefined }))
+  } catch (error) {
+    if (lookupControllers.get(rowIndex) !== controller) return
+    throw error
+  } finally {
+    if (lookupControllers.get(rowIndex) === controller) lookupControllers.delete(rowIndex)
+  }
 }
+
+onBeforeUnmount(() => {
+  lookupControllers.forEach((controller) => controller.abort())
+  lookupControllers.clear()
+})
 
 function toLookupValue(v: LeasePartyRow['party_id'] | null): LookupItem | null {
   if (!v) return null
@@ -203,31 +219,20 @@ async function openParty(rowIndex: number) {
 }
 
 function addRow() {
-  if (!canEdit.value) return
-
   const next = rows.value.map((r) => ({ ...r }))
 
   const hasPrimary = next.some((r) => r.is_primary)
   next.push({
     party_id: null,
-    role: 'CoTenant',
+    role: hasPrimary ? 'CoTenant' : 'PrimaryTenant',
     is_primary: !hasPrimary,
     ordinal: next.length + 1,
   })
-
-  // Ensure we always have a primary.
-  if (!hasPrimary) {
-    emit('update:modelValue', renumber(next))
-    setPrimary(next.length - 1)
-    return
-  }
 
   emit('update:modelValue', renumber(next))
 }
 
 function removeRow(rowIndex: number) {
-  if (!canEdit.value) return
-
   const next = rows.value.map((r) => ({ ...r }))
   const removedWasPrimary = !!next[rowIndex]?.is_primary
 

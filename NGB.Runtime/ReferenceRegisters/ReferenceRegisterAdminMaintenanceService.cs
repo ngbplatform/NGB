@@ -14,7 +14,7 @@ internal sealed class ReferenceRegisterAdminMaintenanceService(
     IReferenceRegisterRepository registers,
     IReferenceRegisterRecordsStore recordsStore,
     IReferenceRegisterPhysicalSchemaHealthReader healthReader)
-    : IReferenceRegisterAdminMaintenanceService
+    : IReferenceRegisterAdminBatchMaintenanceService
 {
     public async Task<ReferenceRegisterPhysicalSchemaHealth?> EnsurePhysicalSchemaByIdAsync(
         Guid registerId,
@@ -33,23 +33,56 @@ internal sealed class ReferenceRegisterAdminMaintenanceService(
         return await healthReader.GetByRegisterIdAsync(reg.RegisterId, ct);
     }
 
+    public async Task EnsurePhysicalSchemasByIdsAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        CancellationToken ct = default)
+    {
+        if (registerIds is null)
+            throw new ArgumentNullException(nameof(registerIds));
+
+        var ids = registerIds
+            .Where(static id => id != Guid.Empty)
+            .Distinct()
+            .OrderBy(static id => id)
+            .ToArray();
+
+        if (ids.Length == 0)
+            return;
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var existing = await registers.GetByIdsAsync(ids, ct);
+        if (existing.Count == 0)
+            return;
+
+        await uow.ExecuteInUowTransactionAsync(
+            async token =>
+            {
+                foreach (var reg in existing.OrderBy(static item => item.RegisterId))
+                {
+                    await recordsStore.EnsureSchemaAsync(reg.RegisterId, token);
+                }
+            },
+            ct);
+    }
+
     public async Task<ReferenceRegisterPhysicalSchemaHealthReport> EnsurePhysicalSchemaForAllAsync(
         CancellationToken ct = default)
     {
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var list = await registers.GetAllAsync(ct);
-        if (list.Count == 0)
-            return new ReferenceRegisterPhysicalSchemaHealthReport([]);
+        var before = await healthReader.GetReportAsync(ct);
+        var unhealthy = before.Items.Where(static item => !item.IsOk).ToArray();
+        if (unhealthy.Length == 0)
+            return before;
 
-        // Ensure each register in its own transaction to keep transactions small.
-        foreach (var r in list)
+        // Healthy schemas are intentionally skipped: EnsureSchema performs DDL
+        // discovery and locking even when there is nothing to repair.
+        foreach (var item in unhealthy)
         {
-            var registerId = r.RegisterId;
+            var registerId = item.Register.RegisterId;
 
-            await uow.ExecuteInUowTransactionAsync(
-                token => recordsStore.EnsureSchemaAsync(registerId, token),
-                ct);
+            await uow.ExecuteInUowTransactionAsync(token => recordsStore.EnsureSchemaAsync(registerId, token), ct);
         }
 
         return await healthReader.GetReportAsync(ct);

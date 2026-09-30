@@ -17,8 +17,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// - app-level guards are necessary but not sufficient (direct SQL is always possible)
 /// - auditability: submitted/approved/rejected content must not be silently changed
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ManualGeneralJournalEntryImmutabilityAfterSubmit_DatabaseGuards_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ManualGeneralJournalEntryImmutabilityAfterSubmit_DatabaseGuards_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateTime T0 = new(2026, 1, 18, 0, 0, 0, DateTimeKind.Utc);

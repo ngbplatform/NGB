@@ -13,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.Documents;
 /// P2: The platform-level documents table must persist audit timestamps and
 /// allow explicit, transaction-serialized state transitions.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRepository_AuditTimestamps_AndStateTransitions_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

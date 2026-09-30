@@ -15,3 +15,12 @@ public interface IDocumentNumberSequenceRepository
     /// </summary>
     Task<long> NextAsync(string typeCode, int fiscalYear, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Provider capability for reserving a contiguous sequence range in one transactional command.
+/// The returned value is the first number in the reserved range.
+/// </summary>
+public interface IDocumentNumberSequenceBatchRepository : IDocumentNumberSequenceRepository
+{
+    Task<long> ReserveAsync(string typeCode, int fiscalYear, int count, CancellationToken ct = default);
+}

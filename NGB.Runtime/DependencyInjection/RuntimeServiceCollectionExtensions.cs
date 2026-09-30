@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Balances;
@@ -15,6 +15,11 @@ using NGB.Metadata.Documents.Storage;
 using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.Documents.Storage;
+using NGB.Persistence.Documents;
+using NGB.Persistence.Documents.GeneralJournalEntry;
+using NGB.Persistence.Locks;
+using NGB.Persistence.OperationalRegisters;
+using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.Admin;
 using NGB.Runtime.AuditLog;
@@ -70,9 +75,9 @@ public static class RuntimeServiceCollectionExtensions
         // Platform relationship type definitions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDefinitionsContributor, DocumentRelationshipsDefinitionsContributor>());
 
-        // Definitions startup validation (fail-fast)
+        // Validation logic is Runtime-owned; a host opts into fail-fast startup execution
+        // through NGB.Platform.Runtime.Hosting.
         services.TryAddSingleton<IDefinitionsValidationService, DefinitionsValidationService>();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, DefinitionsStartupValidatorHostedService>());
 
         // Metadata registries (schema validation). Built from Definitions.
         // NOTE: use TryAdd to allow tests/hosts to override with custom registries.
@@ -157,6 +162,7 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IAccountByIdResolver, AccountByIdResolver>();
 
         // Chart of Accounts (loaded from persistence)
+        services.TryAddSingleton<ChartOfAccountsSnapshotCache>();
         services.TryAddScoped<IChartOfAccountsProvider, ChartOfAccountsProvider>();
         services.TryAddScoped<IChartOfAccountsAdminService, ChartOfAccountsAdminService>();
         services.TryAddScoped<IChartOfAccountsManagementService, ChartOfAccountsManagementService>();
@@ -190,7 +196,9 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IDocumentService, DocumentService>();
         services.TryAddScoped<IDocumentSystemLifecycleService>(sp => sp.GetRequiredService<DocumentService>());
         services.TryAddScoped<IDocumentEffectsQueryService, DocumentEffectsQueryService>();
-        services.TryAddScoped<IDocumentRelationshipService, DocumentRelationshipService>();
+        services.TryAddScoped<DocumentRelationshipService>();
+        services.TryAddScoped<IDocumentRelationshipService>(sp => sp.GetRequiredService<DocumentRelationshipService>());
+        services.TryAddScoped<IDocumentRelationshipBatchService>(sp => sp.GetRequiredService<DocumentRelationshipService>());
         services.TryAddScoped<IDocumentRelationshipGraphReadService, DocumentRelationshipGraphReadService>();
         services.TryAddScoped<IDocumentDerivationService, DocumentDerivationService>();
         services.TryAddSingleton<DocumentActionRegistry>();
@@ -205,6 +213,7 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IDocumentNumberingPolicyResolver, DefinitionsDocumentNumberingPolicyResolver>();
         services.TryAddScoped<IDocumentApprovalPolicyResolver, DefinitionsDocumentApprovalPolicyResolver>();
         services.TryAddScoped<IDocumentWorkflowExecutor, DocumentWorkflowExecutor>();
+        services.TryAddScoped<IDocumentPostingReadCache, DocumentPostingReadCache>();
 
         // Platform policies
         services.TryAddScoped<GeneralJournalEntryNumberingPolicy>();
@@ -228,6 +237,8 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IWorkCenterTaskService, WorkCenterTaskService>();
         services.TryAddScoped<INotificationService, NotificationService>();
         services.TryAddScoped<IWorkCenterQueryService, WorkCenterQueryService>();
+        services.TryAddSingleton<IWorkCenterOutboxPartitionProcessorFactory, WorkCenterOutboxPartitionProcessorFactory>();
+        services.TryAddScoped<WorkCenterOutboxPartitionProcessor>();
         services.TryAddScoped<IOutboxProcessor, OutboxProcessor>();
         services.TryAddScoped<IWorkCenterOperationalHealthReader, WorkCenterOperationalHealthReader>();
         services.TryAddScoped<IWorkCenterMaintenanceService, WorkCenterMaintenanceService>();
@@ -235,6 +246,7 @@ public static class RuntimeServiceCollectionExtensions
 
         // Document numbering (platform-wide)
         services.TryAddSingleton<IDocumentNumberFormatter, DefaultDocumentNumberFormatter>();
+        services.TryAddScoped<IDocumentNumberBatchAllocator, DocumentNumberBatchAllocator>();
         services.TryAddScoped<IDocumentNumberingService, DocumentNumberingService>();
         services.TryAddScoped<IDocumentNumberingAndTypedSyncService, DocumentNumberingAndTypedSyncService>();
 
@@ -242,7 +254,14 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IGeneralJournalEntryDocumentService, GeneralJournalEntryDocumentService>();
         services.TryAddScoped<IGeneralJournalEntryFacade, GeneralJournalEntryFacade>();
         services.TryAddScoped<IGeneralJournalEntryUiService, GeneralJournalEntryUiService>();
-        services.TryAddScoped<IGeneralJournalEntrySystemReversalRunner, GeneralJournalEntrySystemReversalRunner>();
+        services.TryAddSingleton<IGeneralJournalEntrySystemReversalBatchProcessor, GeneralJournalEntrySystemReversalBatchProcessor>();
+        services.TryAddScoped<GeneralJournalEntrySystemReversalRunner>(sp => new GeneralJournalEntrySystemReversalRunner(
+            sp.GetRequiredService<IGeneralJournalEntryRepository>(),
+            sp.GetRequiredService<IGeneralJournalEntryDocumentService>(),
+            sp.GetRequiredService<ILogger<GeneralJournalEntrySystemReversalRunner>>(),
+            sp.GetRequiredService<IGeneralJournalEntrySystemReversalBatchProcessor>()));
+        services.TryAddScoped<IGeneralJournalEntrySystemReversalRunner>(sp =>
+            sp.GetRequiredService<GeneralJournalEntrySystemReversalRunner>());
 
         // Periods
         services.TryAddScoped<IPeriodClosingService, PeriodClosingService>();
@@ -257,7 +276,21 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IOperationalRegisterFinalizationService, OperationalRegisterFinalizationService>();
         services.TryAddScoped<IOperationalRegisterMovementsApplier, OperationalRegisterMovementsApplier>();
         services.TryAddScoped<IOperationalRegisterDefaultMonthProjector, DefaultOperationalRegisterMonthProjector>();
-        services.TryAddScoped<IOperationalRegisterFinalizationRunner, OperationalRegisterFinalizationRunner>();
+        services.TryAddSingleton<IOperationalRegisterFinalizationPartitionProcessorFactory, OperationalRegisterFinalizationPartitionProcessorFactory>();
+        services.TryAddScoped<OperationalRegisterFinalizationRunner>(sp => new OperationalRegisterFinalizationRunner(
+            sp.GetRequiredService<IUnitOfWork>(),
+            sp.GetRequiredService<IAdvisoryLockManager>(),
+            sp.GetRequiredService<IOperationalRegisterRepository>(),
+            sp.GetRequiredService<IOperationalRegisterFinalizationRepository>(),
+            sp.GetRequiredService<IOperationalRegisterMovementsReader>(),
+            sp.GetServices<IOperationalRegisterMonthProjector>(),
+            sp.GetServices<IOperationalRegisterDefaultMonthProjector>(),
+            sp.GetServices<IOperationalRegisterMonthFinalizer>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<OperationalRegisterFinalizationRunner>>(),
+            sp.GetRequiredService<IOperationalRegisterFinalizationPartitionProcessorFactory>()));
+        services.TryAddScoped<IOperationalRegisterFinalizationRunner>(sp =>
+            sp.GetRequiredService<OperationalRegisterFinalizationRunner>());
         
         // Operational Registers read-side (UI/report facade)
         services.TryAddScoped<IOperationalRegisterReadService, OperationalRegisterReadService>();
@@ -303,16 +336,25 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<IReportVariantAccessContext, NullReportVariantAccessContext>();
         services.TryAddScoped<IReportVariantService, ReportVariantService>();
         services.TryAddSingleton<IReportExportService, ReportXlsxExportService>();
-        services.TryAddSingleton<IRenderedReportSnapshotStore>(sp =>
-        {
-            var cache = sp.GetService<IMemoryCache>();
-            return cache is null
-                ? NullRenderedReportSnapshotStore.Instance
-                : new MemoryCacheRenderedReportSnapshotStore(cache);
-        });
+        services.TryAddSingleton<IStreamingReportExportService, ReportXlsxExportService>();
+        services.TryAddScoped<IReportDownloadService, ReportDownloadService>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Streaming.IStreamingReportExecutor, Reporting.Streaming.TrialBalanceStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Streaming.IStreamingReportExecutor, Reporting.Streaming.PlannedReportStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Streaming.IStreamingReportExecutor, Reporting.Streaming.AccountCardStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Streaming.IStreamingReportExecutor, Reporting.Streaming.GeneralLedgerAggregatedStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Streaming.IStreamingReportExecutor, Reporting.Streaming.AccountingConsistencyStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Streaming.IStreamingReportExecutor, Reporting.Streaming.BalanceSheetStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Streaming.IStreamingReportExecutor, Reporting.Streaming.IncomeStatementStreamingExecutor>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<Reporting.Streaming.IStreamingReportExecutor, Reporting.Streaming.EquityStatementStreamingExecutor>());
         services.TryAddScoped<ReportVariantRequestResolver>();
         services.TryAddScoped<IReportPlanExecutor, CompositeReportPlanExecutor>();
-        services.TryAddScoped<IReportEngine, ReportEngine>();
+        services.TryAddScoped<ReportEngine>();
+        services.TryAddScoped<ReportPagedQueryExecutor>();
+        services.TryAddScoped<AccountingSummaryPagedExecutor>();
+        services.TryAddScoped<AccountingConsistencyPagedExecutor>();
+        services.AddOptions<ReportCursorProtectionOptions>();
+        services.TryAddSingleton<ReportCursorProtector>();
+        services.TryAddScoped<IReportEngine, ReportQueryService>();
         services.TryAddScoped<ReportFilterScopeExpander>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IReportDefinitionSource, AccountingLedgerAnalysisDefinitionSource>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IReportDefinitionSource, CanonicalAccountingReportDefinitionSource>());

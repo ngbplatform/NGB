@@ -13,6 +13,7 @@ describe('query params helpers', () => {
     expect(normalizeTrashMode('deleted')).toBe('deleted')
     expect(normalizeTrashMode('all')).toBe('all')
     expect(normalizeTrashMode('unexpected')).toBe('active')
+    expect(normalizeTrashMode(null)).toBe('active')
 
     expect(normalizeBooleanQueryFlag('true')).toBe(true)
     expect(normalizeBooleanQueryFlag('1')).toBe(true)
@@ -20,6 +21,7 @@ describe('query params helpers', () => {
 
     expect(normalizeAllowedQueryValue('Balance', ['Movement', 'Balance'] as const)).toBe('Balance')
     expect(normalizeAllowedQueryValue('Other', ['Movement', 'Balance'] as const)).toBeNull()
+    expect(normalizeAllowedQueryValue('  ', ['Movement', 'Balance'] as const)).toBeNull()
 
     expect(normalizeDateOnlyQueryValue('2026-04-07')).toBe('2026-04-07')
     expect(normalizeDateOnlyQueryValue('2026-02-31')).toBeNull()

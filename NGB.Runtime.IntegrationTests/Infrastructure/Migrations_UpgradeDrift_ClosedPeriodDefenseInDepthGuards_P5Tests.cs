@@ -8,15 +8,13 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P5: Drift recovery for defense-in-depth closed-period guards on turnovers and balances.
 /// This is intentionally redundant with the operational write-path and blocks SQL bypass.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class Migrations_UpgradeDrift_ClosedPeriodDefenseInDepthGuards_P5Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Migrations_UpgradeDrift_ClosedPeriodDefenseInDepthGuards_P5Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ApplyPlatformMigrationsAsync_RecreatesClosedPeriodGuards_WhenDropped_FromTurnoversAndBalances()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Baseline: triggers exist.
         (await TriggerExistsAsync(Fixture.ConnectionString, "accounting_turnovers", "trg_acc_turnovers_no_closed_period"))
             .Should().BeTrue();

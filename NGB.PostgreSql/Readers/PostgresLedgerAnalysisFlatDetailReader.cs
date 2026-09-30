@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Dapper;
 using NGB.Accounting.Reports.LedgerAnalysis;
@@ -187,7 +188,7 @@ ORDER BY {CursorPeriodAlias}, {CursorEntryAlias}, {CursorPostingSideAlias}
         return $"{expression} = @{parameterName}";
     }
 
-    private static Array ConvertJsonArray(JsonElement value)
+    internal static Array ConvertJsonArray(JsonElement value)
     {
         var items = value.EnumerateArray().Select(ConvertJsonElement).ToList();
         if (items.Count == 0)
@@ -211,7 +212,7 @@ ORDER BY {CursorPeriodAlias}, {CursorEntryAlias}, {CursorPostingSideAlias}
         return items.ToArray();
     }
 
-    private static object? ConvertJsonElement(JsonElement value)
+    internal static object? ConvertJsonElement(JsonElement value)
         => value.ValueKind switch
         {
             JsonValueKind.Null => null,
@@ -235,7 +236,7 @@ ORDER BY {CursorPeriodAlias}, {CursorEntryAlias}, {CursorPostingSideAlias}
         IReadOnlyList<Dictionary<string, object?>> rows,
         bool hasMore)
     {
-        if (!hasMore || rows.Count == 0)
+        if (!hasMore)
             return null;
 
         var last = rows[^1];
@@ -254,7 +255,7 @@ ORDER BY {CursorPeriodAlias}, {CursorEntryAlias}, {CursorPostingSideAlias}
         return materialized;
     }
 
-    private static DateTime ReadDateTimeUtc(IReadOnlyDictionary<string, object?> values, string key)
+    internal static DateTime ReadDateTimeUtc(IReadOnlyDictionary<string, object?> values, string key)
     {
         if (!values.TryGetValue(key, out var raw) || raw is null)
             throw new NgbInvariantViolationException($"Ledger analysis flat detail cursor requires value '{key}'.");
@@ -263,12 +264,16 @@ ORDER BY {CursorPeriodAlias}, {CursorEntryAlias}, {CursorPostingSideAlias}
         {
             DateTime dateTime => dateTime.Kind == DateTimeKind.Utc ? dateTime : DateTime.SpecifyKind(dateTime, DateTimeKind.Utc),
             DateTimeOffset dto => dto.UtcDateTime,
-            string text when DateTime.TryParse(text, out var parsed) => DateTime.SpecifyKind(parsed, DateTimeKind.Utc),
+            string text when DateTimeOffset.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed) => parsed.UtcDateTime,
             _ => throw new NgbInvariantViolationException($"Ledger analysis flat detail cursor value '{key}' must be a timestamp.")
         };
     }
 
-    private static long ReadInt64(IReadOnlyDictionary<string, object?> values, string key)
+    internal static long ReadInt64(IReadOnlyDictionary<string, object?> values, string key)
     {
         if (!values.TryGetValue(key, out var raw) || raw is null)
             throw new NgbInvariantViolationException($"Ledger analysis flat detail cursor requires value '{key}'.");
@@ -283,7 +288,7 @@ ORDER BY {CursorPeriodAlias}, {CursorEntryAlias}, {CursorPostingSideAlias}
         };
     }
 
-    private static string ReadString(IReadOnlyDictionary<string, object?> values, string key)
+    internal static string ReadString(IReadOnlyDictionary<string, object?> values, string key)
     {
         if (!values.TryGetValue(key, out var raw) || raw is null)
             throw new NgbInvariantViolationException($"Ledger analysis flat detail cursor requires value '{key}'.");
@@ -295,13 +300,10 @@ ORDER BY {CursorPeriodAlias}, {CursorEntryAlias}, {CursorPostingSideAlias}
         };
     }
 
-    private static Dictionary<string, object?> MaterializeRow(dynamic row)
+    internal static Dictionary<string, object?> MaterializeRow(object row)
     {
         if (row is IDictionary<string, object?> typed)
             return new Dictionary<string, object?>(typed, StringComparer.OrdinalIgnoreCase);
-
-        if (row is IDictionary<string, object> boxed)
-            return boxed.ToDictionary(x => x.Key, object? (x) => x.Value, StringComparer.OrdinalIgnoreCase);
 
         throw new NgbInvariantViolationException("Ledger analysis flat detail reader expected Dapper row materialization to provide a dictionary payload.");
     }

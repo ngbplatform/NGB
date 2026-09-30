@@ -25,6 +25,7 @@ describe('metadata referenceHydration', () => {
         display: 'Already loaded',
       },
       invalid_ref: 'not-a-guid',
+      unresolved_ref: '55555555-5555-5555-5555-555555555555',
     }
 
     await hydrateEntityReferenceFieldsForEditing({
@@ -81,6 +82,14 @@ describe('metadata referenceHydration', () => {
                     isReadOnly: false,
                     lookup: { kind: 'catalog', catalogType: 'pm.property' },
                   },
+                  {
+                    key: 'unresolved_ref',
+                    label: 'Unresolved ref',
+                    dataType: 'Guid',
+                    uiControl: 0,
+                    isRequired: false,
+                    isReadOnly: false,
+                  },
                 ],
               },
             ],
@@ -111,6 +120,7 @@ describe('metadata referenceHydration', () => {
       display: 'Already loaded',
     })
     expect(model.invalid_ref).toBe('not-a-guid')
+    expect(model.unresolved_ref).toBe('55555555-5555-5555-5555-555555555555')
   })
 
   it('uses behavior overrides and falls back to the raw id when a label is blank', async () => {
@@ -165,5 +175,24 @@ describe('metadata referenceHydration', () => {
       id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
       display: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
     })
+  })
+
+  it('returns without lookup work when the form has no guid-backed references', async () => {
+    const lookupStore = {
+      ensureCatalogLabels: vi.fn(),
+      ensureCoaLabels: vi.fn(),
+      ensureAnyDocumentLabels: vi.fn(),
+    }
+
+    await hydrateEntityReferenceFieldsForEditing({
+      entityTypeCode: 'pm.invoice',
+      form: null,
+      model: {},
+      lookupStore: lookupStore as never,
+    })
+
+    expect(lookupStore.ensureCatalogLabels).not.toHaveBeenCalled()
+    expect(lookupStore.ensureCoaLabels).not.toHaveBeenCalled()
+    expect(lookupStore.ensureAnyDocumentLabels).not.toHaveBeenCalled()
   })
 })

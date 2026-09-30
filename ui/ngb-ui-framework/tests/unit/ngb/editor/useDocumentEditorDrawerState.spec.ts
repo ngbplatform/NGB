@@ -124,6 +124,10 @@ describe('document editor drawer state', () => {
   it('resets local drawer state when the document type changes without drawer query params', async () => {
     const { documentType, drawer } = createHarness()
 
+    expect(drawer.expandTo.value).toBeNull()
+    drawer.openEditDrawer('   ')
+    expect(drawer.drawerMode.value).toBe('closed')
+
     drawer.openEditDrawer('doc-9')
     expect(drawer.drawerMode.value).toBe('edit')
 
@@ -132,5 +136,19 @@ describe('document editor drawer state', () => {
 
     expect(drawer.drawerMode.value).toBe('closed')
     expect(drawer.currentEditorId.value).toBeNull()
+  })
+
+  it('has no expansion target without a document type and preserves route-driven state while query keys remain', async () => {
+    const withoutType = createHarness()
+    withoutType.documentType.value = ''
+    await nextTick()
+    expect(withoutType.drawer.expandTo.value).toBeNull()
+
+    const routeDriven = createHarness({ panel: 'new' })
+    await nextTick()
+    routeDriven.documentType.value = 'pm.credit_note'
+    await nextTick()
+
+    expect(routeDriven.drawer.drawerMode.value).toBe('new')
   })
 })

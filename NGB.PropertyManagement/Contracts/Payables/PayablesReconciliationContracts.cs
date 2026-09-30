@@ -20,7 +20,11 @@ namespace NGB.PropertyManagement.Contracts.Payables;
 public sealed record PayablesReconciliationRequest(
     DateOnly FromMonthInclusive,
     DateOnly ToMonthInclusive,
-    PayablesReconciliationMode Mode = PayablesReconciliationMode.Movement);
+    PayablesReconciliationMode Mode = PayablesReconciliationMode.Movement,
+    int Offset = 0,
+    int Limit = 200,
+    string? Cursor = null,
+    PayablesReconciliationStatusFilter Status = PayablesReconciliationStatusFilter.All);
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum PayablesReconciliationMode
@@ -38,6 +42,16 @@ public enum PayablesReconciliationRowKind
     OpenItemsOnly = 4,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum PayablesReconciliationStatusFilter
+{
+    All = 0,
+    Matched = 1,
+    Mismatch = 2,
+    GlOnly = 3,
+    OpenItemsOnly = 4,
+}
+
 public sealed record PayablesReconciliationReport(
     DateOnly FromMonthInclusive,
     DateOnly ToMonthInclusive,
@@ -49,7 +63,14 @@ public sealed record PayablesReconciliationReport(
     decimal TotalDiff,
     int RowCount,
     int MismatchRowCount,
-    IReadOnlyList<PayablesReconciliationRow> Rows);
+    IReadOnlyList<PayablesReconciliationRow> Rows,
+    int Offset = 0,
+    int Limit = 200,
+    bool HasMore = false,
+    string? NextCursor = null,
+    int FilteredRowCount = 0,
+    int GlOnlyRowCount = 0,
+    int OpenItemsOnlyRowCount = 0);
 
 public sealed record PayablesReconciliationRow(
     Guid VendorId,

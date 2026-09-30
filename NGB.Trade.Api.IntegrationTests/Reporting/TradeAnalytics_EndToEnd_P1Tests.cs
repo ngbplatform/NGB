@@ -1,11 +1,15 @@
 using System.Text.Json;
+using System.IO.Compression;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
+using NGB.OperationalRegisters;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.Api.IntegrationTests.Support;
+using NGB.Trade.PostgreSql.Reporting;
+using NGB.Trade.Reporting;
 using NGB.Trade.Runtime;
 using Xunit;
 
@@ -201,6 +205,63 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
 
         await documents.PostAsync(TradeCodes.CustomerReturn, customerReturn.Id, CancellationToken.None);
 
+        var downloads = scope.ServiceProvider.GetRequiredService<IReportDownloadService>();
+        foreach (var code in new[] { TradeCodes.SalesByItemReport, TradeCodes.SalesByCustomerReport, TradeCodes.PurchasesByVendorReport,
+                     TradeCodes.InventoryBalancesReport, TradeCodes.InventoryMovementsReport, TradeCodes.CurrentItemPricesReport, TradeCodes.DashboardOverviewReport })
+        {
+            var parameters = code is TradeCodes.CurrentItemPricesReport ? null
+                : code is TradeCodes.InventoryBalancesReport or TradeCodes.DashboardOverviewReport
+                    ? new Dictionary<string, string> { ["as_of_utc"] = "2026-04-30" }
+                    : BuildPeriod("2026-04-01", "2026-04-30");
+            var input = new ReportExecutionRequestDto(Parameters: parameters, DisablePaging: true);
+            if (Testing.Reporting.ReportPerformanceProbe.Enabled)
+            using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "page-200"))
+            {
+                var sample = await reports.ExecuteAsync(code, input with { DisablePaging = false, Limit = 200 }, default);
+                if (audit is not null) audit.Rows = sample.Sheet.Rows.Count;
+            }
+            var expected = await reports.ExecuteAsync(code, input, default);
+            var all = new List<ReportSheetRowDto>();
+            ReportSheetDto? rootSheet = null;
+            await ReadLevelAsync(null);
+            async Task ReadLevelAsync(IReadOnlyList<JsonElement>? path)
+            {
+                string? cursor = null;
+                ReportExecutionResponseDto page;
+                do
+                {
+                    using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, $"page-2-depth-{path?.Count ?? 0}"))
+                    {
+                        page = await reports.ExecuteAsync(code, input with { DisablePaging = false, Limit = 2, Cursor = cursor, GroupPath = path }, default);
+                        if (audit is not null) audit.Rows = page.Sheet.Rows.Count;
+                    }
+                    rootSheet ??= page.Sheet;
+                    page.Sheet.Columns.Should().Equal(rootSheet.Columns,
+                        "root pages and expanded groups share one table schema in {0}", code);
+                    JsonSerializer.Serialize(page.Sheet.HeaderRows).Should().Be(JsonSerializer.Serialize(rootSheet.HeaderRows));
+                    if (path is not null)
+                        page.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total,
+                            "expanded groups must not repeat their parent totals in {0}", code);
+                    foreach (var row in page.Sheet.Rows)
+                    {
+                        all.Add(row);
+                        if (row.ChildrenPath is not null) await ReadLevelAsync(row.ChildrenPath);
+                    }
+                    cursor = page.NextCursor;
+                    if (page.HasMore) cursor.Should().NotBeNullOrEmpty();
+                } while (page.HasMore);
+            }
+            all.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display).Where(value => !string.IsNullOrEmpty(value)))))
+                .Should().Equal(expected.Sheet.Rows.Select(r => (r.RowKind, Cells: string.Join("|", r.Cells.Select(c => c.Display).Where(value => !string.IsNullOrEmpty(value))))), code);
+            using var exportAudit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "export");
+            await using var download = await downloads.PrepareAsync(code, new ReportExportRequestDto(Parameters: parameters), default);
+            using var file = new MemoryStream();
+            await download.WriteAsync(file, default);
+            file.Position = 0;
+            await using var zip = new ZipArchive(file, ZipArchiveMode.Read);
+            zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
+        }
+
         var salesByItem = await reports.ExecuteAsync(
             TradeCodes.SalesByItemReport,
             new ReportExecutionRequestDto(
@@ -328,40 +389,299 @@ public sealed class TradeAnalytics_EndToEnd_P1Tests(TradePostgresFixture fixture
             && row.Cells[0].Display == "Recent Document"
             && row.Cells[4].Display!.Contains("Sales Invoice", StringComparison.Ordinal));
 
-        var groupedBalancesFirstPage = await reports.ExecuteAsync(
-            TradeCodes.InventoryBalancesReport,
-            new ReportExecutionRequestDto(
-                Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["as_of_utc"] = "2026-04-30"
-                },
-                Limit: 2),
-            CancellationToken.None);
+        var balancesRequest = new ReportExecutionRequestDto(
+            Parameters: new Dictionary<string, string> { ["as_of_utc"] = "2026-04-30" }, Limit: 1);
+        var warehouseGroups = await reports.ExecuteAsync(TradeCodes.InventoryBalancesReport, balancesRequest, default);
+        warehouseGroups.HasMore.Should().BeFalse();
+        var warehouseGroup = warehouseGroups.Sheet.Rows.Single(row => row.RowKind == ReportRowKind.Group);
+        warehouseGroup.ChildrenPath.Should().NotBeNull();
+        warehouseGroup.Cells[1].Display.Should().Be("20");
+        warehouseGroups.Sheet.Rows.Single(row => row.RowKind == ReportRowKind.Total)
+            .Cells[1].Value!.Value.GetDecimal().Should().Be(20m);
 
-        groupedBalancesFirstPage.Total.Should().Be(3);
+        var groupedBalancesFirstPage = await reports.ExecuteAsync(TradeCodes.InventoryBalancesReport,
+            balancesRequest with { GroupPath = warehouseGroup.ChildrenPath }, default);
+        groupedBalancesFirstPage.Total.Should().BeNull();
         groupedBalancesFirstPage.HasMore.Should().BeTrue();
         groupedBalancesFirstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
-        groupedBalancesFirstPage.Sheet.Rows.Should().HaveCount(2);
+        groupedBalancesFirstPage.Sheet.Rows.Should().ContainSingle();
+        groupedBalancesFirstPage.Sheet.Rows[0].Cells[0].Display.Should().Be("Alpha Widget");
+        groupedBalancesFirstPage.Sheet.Rows[0].Cells[1].Value!.Value.GetDecimal().Should().Be(7m);
         groupedBalancesFirstPage.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total);
 
-        var groupedBalancesSecondPage = await reports.ExecuteAsync(
-            TradeCodes.InventoryBalancesReport,
-            new ReportExecutionRequestDto(
-                Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["as_of_utc"] = "2026-04-30"
-                },
-                Limit: 2,
-                Cursor: groupedBalancesFirstPage.NextCursor),
-            CancellationToken.None);
-
-        groupedBalancesSecondPage.Total.Should().Be(3);
+        var groupedBalancesSecondPage = await reports.ExecuteAsync(TradeCodes.InventoryBalancesReport,
+            balancesRequest with { GroupPath = warehouseGroup.ChildrenPath, Cursor = groupedBalancesFirstPage.NextCursor }, default);
+        groupedBalancesSecondPage.Total.Should().BeNull();
         groupedBalancesSecondPage.HasMore.Should().BeFalse();
         groupedBalancesSecondPage.NextCursor.Should().BeNull();
-        groupedBalancesSecondPage.Sheet.Rows.Should().HaveCount(2);
+        groupedBalancesSecondPage.Sheet.Rows.Should().ContainSingle();
         groupedBalancesSecondPage.Sheet.Rows[0].Cells[0].Display.Should().Be("Bravo Gadget");
-        groupedBalancesSecondPage.Sheet.Rows[1].RowKind.Should().Be(ReportRowKind.Total);
-        groupedBalancesSecondPage.Sheet.Rows[1].Cells[1].Display.Should().Be("20");
+        groupedBalancesSecondPage.Sheet.Rows[0].Cells[1].Value!.Value.GetDecimal().Should().Be(13m);
+        groupedBalancesSecondPage.Sheet.Rows.Should().NotContain(row => row.RowKind == ReportRowKind.Total);
+        groupedBalancesFirstPage.Sheet.Rows.Concat(groupedBalancesSecondPage.Sheet.Rows)
+            .Sum(row => row.Cells[1].Value!.Value.GetDecimal())
+            .Should().Be(warehouseGroup.Cells[1].Value!.Value.GetDecimal(),
+                "paging must preserve all inventory quantities without repeating the warehouse total");
+
+        var analytics = scope.ServiceProvider.GetRequiredService<ITradeAnalyticsReader>();
+        var from = new DateOnly(2026, 4, 1);
+        var to = new DateOnly(2026, 4, 30);
+
+        var emptyDashboard = await analytics.GetDashboardOverviewAsync(
+            new DateOnly(2025, 1, 1),
+            new DateOnly(2025, 1, 31),
+            topItemLimit: 1,
+            recentDocumentLimit: 1);
+        emptyDashboard.SalesByItem.Rows.Should().BeEmpty();
+        emptyDashboard.SalesByItem.Total.Should().Be(0);
+        emptyDashboard.SalesByItem.Totals.Should().Be(new SalesByItemTotals(0m, 0m, 0m, 0m, 0m, 0m));
+        emptyDashboard.SalesByCustomer!.Rows.Should().BeEmpty();
+        emptyDashboard.SalesByCustomer.Total.Should().Be(0);
+        emptyDashboard.SalesByCustomer.Totals.Should().Be(new SalesByCustomerTotals(0, 0, 0m, 0m, 0m, 0m));
+        emptyDashboard.PurchasesByVendor!.Rows.Should().BeEmpty();
+        emptyDashboard.PurchasesByVendor.Total.Should().Be(0);
+        emptyDashboard.PurchasesByVendor.Totals.Should().Be(new PurchasesByVendorTotals(0, 0, 0m, 0m, 0m));
+        emptyDashboard.RecentDocuments.Should().BeEmpty();
+
+        var emptyFrom = new DateOnly(2025, 1, 1);
+        var emptyTo = new DateOnly(2025, 1, 31);
+        var emptyItems = await analytics.GetSalesByItemPageAsync(
+            emptyFrom, emptyTo, null, null, null, offset: 0, limit: 1);
+        emptyItems.Rows.Should().BeEmpty();
+        emptyItems.Total.Should().Be(0);
+        emptyItems.Totals.Should().Be(new SalesByItemTotals(0m, 0m, 0m, 0m, 0m, 0m));
+
+        var emptyCustomers = await analytics.GetSalesByCustomerPageAsync(
+            emptyFrom, emptyTo, null, null, null, offset: 0, limit: 1);
+        emptyCustomers.Rows.Should().BeEmpty();
+        emptyCustomers.Total.Should().Be(0);
+        emptyCustomers.Totals.Should().Be(new SalesByCustomerTotals(0, 0, 0m, 0m, 0m, 0m));
+
+        var emptyVendors = await analytics.GetPurchasesByVendorPageAsync(
+            emptyFrom, emptyTo, null, null, null, offset: 0, limit: 1);
+        emptyVendors.Rows.Should().BeEmpty();
+        emptyVendors.Total.Should().Be(0);
+        emptyVendors.Totals.Should().Be(new PurchasesByVendorTotals(0, 0, 0m, 0m, 0m));
+
+        var secondVendor = await catalogs.CreateAsync(
+            TradeCodes.Party,
+            TradePayloads.Payload(new
+            {
+                display = "Backup Supply",
+                name = "Backup Supply",
+                is_customer = false,
+                is_vendor = true,
+                is_active = true,
+                default_currency = "USD"
+            }),
+            CancellationToken.None);
+        var secondCustomer = await catalogs.CreateAsync(
+            TradeCodes.Party,
+            TradePayloads.Payload(new
+            {
+                display = "Contoso Retail",
+                name = "Contoso Retail",
+                is_customer = true,
+                is_vendor = false,
+                is_active = true,
+                default_currency = "USD"
+            }),
+            CancellationToken.None);
+        var secondPurchaseReceipt = await documents.CreateDraftAsync(
+            TradeCodes.PurchaseReceipt,
+            TradePayloads.Payload(
+                new
+                {
+                    document_date_utc = "2026-04-15",
+                    vendor_id = secondVendor.Id,
+                    warehouse_id = warehouse.Id
+                },
+                TradePayloads.PurchaseReceiptLines(new TradePayloads.PurchaseReceiptLineRow(
+                    Ordinal: 1,
+                    ItemId: alphaItem.Id,
+                    Quantity: 10m,
+                    UnitCost: 5m,
+                    LineAmount: 50m))),
+            CancellationToken.None);
+        await documents.PostAsync(TradeCodes.PurchaseReceipt, secondPurchaseReceipt.Id, CancellationToken.None);
+        var secondSalesInvoice = await documents.CreateDraftAsync(
+            TradeCodes.SalesInvoice,
+            TradePayloads.Payload(
+                new
+                {
+                    document_date_utc = "2026-04-16",
+                    customer_id = secondCustomer.Id,
+                    warehouse_id = warehouse.Id,
+                    price_type_id = retailPriceTypeId
+                },
+                TradePayloads.SalesInvoiceLines(new TradePayloads.SalesInvoiceLineRow(
+                    Ordinal: 1,
+                    ItemId: alphaItem.Id,
+                    Quantity: 2m,
+                    UnitPrice: 10m,
+                    UnitCost: 5m,
+                    LineAmount: 20m))),
+            CancellationToken.None);
+        await documents.PostAsync(TradeCodes.SalesInvoice, secondSalesInvoice.Id, CancellationToken.None);
+
+        var directItems = await analytics.GetSalesByItemAsync(
+            from, to,
+            [Guid.Empty, alphaItem.Id, alphaItem.Id, bravoItem.Id],
+            [Guid.Empty, customer.Id, customer.Id],
+            [Guid.Empty, warehouse.Id, warehouse.Id]);
+        directItems.Should().HaveCount(2);
+
+        var itemOffsetPage = await analytics.GetSalesByItemPageAsync(
+            from, to, null, null, null, offset: 0, limit: 1);
+        itemOffsetPage.Rows.Should().ContainSingle();
+        var itemCursorPage = await analytics.GetSalesByItemCursorPageAsync(
+            from, to, null, null, null, cursor: null, limit: 1);
+        itemCursorPage.HasMore.Should().BeTrue();
+        var itemCursorTail = await analytics.GetSalesByItemCursorPageAsync(
+            from, to, null, null, null,
+            new TradeAnalyticsPageCursor<SalesByItemTotals>(
+                1,
+                itemCursorPage.Total,
+                itemCursorPage.Totals,
+                itemCursorPage.NextAfterAmount,
+                itemCursorPage.NextAfterDisplay,
+                itemCursorPage.NextAfterId),
+            limit: 1);
+        itemCursorTail.Rows.Should().ContainSingle();
+        itemCursorTail.HasMore.Should().BeFalse();
+
+        var directCustomers = await analytics.GetSalesByCustomerAsync(
+            from, to, [customer.Id], [alphaItem.Id, bravoItem.Id], [warehouse.Id]);
+        directCustomers.Should().ContainSingle();
+        var customerOffsetPage = await analytics.GetSalesByCustomerPageAsync(
+            from, to, null, null, null, offset: 0, limit: 1);
+        customerOffsetPage.Rows.Should().ContainSingle();
+        var customerCursorPage = await analytics.GetSalesByCustomerCursorPageAsync(
+            from, to, null, null, null, cursor: null, limit: 1);
+        customerCursorPage.HasMore.Should().BeTrue();
+        var customerCursorTail = await analytics.GetSalesByCustomerCursorPageAsync(
+            from, to, null, null, null,
+            new TradeAnalyticsPageCursor<SalesByCustomerTotals>(
+                1,
+                customerCursorPage.Total,
+                customerCursorPage.Totals,
+                customerCursorPage.NextAfterAmount,
+                customerCursorPage.NextAfterDisplay,
+                customerCursorPage.NextAfterId),
+            limit: 1);
+        customerCursorTail.Rows.Should().ContainSingle();
+        customerCursorTail.HasMore.Should().BeFalse();
+        customerCursorTail.Total.Should().Be(customerCursorPage.Total);
+
+        var directVendors = await analytics.GetPurchasesByVendorAsync(
+            from, to, [vendor.Id], [alphaItem.Id, bravoItem.Id], [warehouse.Id]);
+        directVendors.Should().ContainSingle();
+        var vendorOffsetPage = await analytics.GetPurchasesByVendorPageAsync(
+            from, to, null, null, null, offset: 0, limit: 1);
+        vendorOffsetPage.Rows.Should().ContainSingle();
+        var vendorCursorPage = await analytics.GetPurchasesByVendorCursorPageAsync(
+            from, to, null, null, null, cursor: null, limit: 1);
+        vendorCursorPage.HasMore.Should().BeTrue();
+        var vendorCursorTail = await analytics.GetPurchasesByVendorCursorPageAsync(
+            from, to, null, null, null,
+            new TradeAnalyticsPageCursor<PurchasesByVendorTotals>(
+                1,
+                vendorCursorPage.Total,
+                vendorCursorPage.Totals,
+                vendorCursorPage.NextAfterAmount,
+                vendorCursorPage.NextAfterDisplay,
+                vendorCursorPage.NextAfterId),
+            limit: 1);
+        vendorCursorTail.Rows.Should().ContainSingle();
+        vendorCursorTail.HasMore.Should().BeFalse();
+        vendorCursorTail.Total.Should().Be(vendorCursorPage.Total);
+
+        (await analytics.GetRecentDocumentsAsync(to, limit: 0)).Should().ContainSingle();
+
+        await ((Func<Task>)(() => analytics.GetDashboardOverviewAsync(from, to, 0, 1)))
+            .Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => analytics.GetDashboardOverviewAsync(from, to, 1, 0)))
+            .Should().ThrowAsync<ArgumentOutOfRangeException>();
+
+        PostgresTradeAnalyticsReader.EnsureLegacyMaterializationBound(
+            PagingLimits.MaxMaterializedRows);
+        ((Action)(() => PostgresTradeAnalyticsReader.EnsureLegacyMaterializationBound(
+                PagingLimits.MaxMaterializedRows + 1)))
+            .Should().Throw<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+
+        var inventoryBalances = scope.ServiceProvider.GetRequiredService<ITradeInventoryBalanceReader>();
+        var inventoryRegisterId = OperationalRegisterId.FromCode(TradeCodes.InventoryMovementsRegisterCode);
+        var inventoryFirst = await inventoryBalances.GetCursorPageAsync(
+            inventoryRegisterId,
+            to,
+            [Guid.Empty, alphaItem.Id, alphaItem.Id, bravoItem.Id],
+            [Guid.Empty, warehouse.Id, warehouse.Id],
+            TradeInventoryBalanceSort.ItemWarehouse,
+            cursor: null,
+            limit: 1);
+        inventoryFirst.Rows.Should().ContainSingle();
+        inventoryFirst.HasMore.Should().BeTrue();
+        var inventoryTail = await inventoryBalances.GetCursorPageAsync(
+            inventoryRegisterId,
+            to,
+            null,
+            null,
+            TradeInventoryBalanceSort.ItemWarehouse,
+            new TradeInventoryBalancePageCursor(
+                1,
+                inventoryFirst.Total,
+                inventoryFirst.TotalQuantity,
+                inventoryFirst.NextAfterAbsoluteQuantity,
+                inventoryFirst.NextAfterItemDisplay,
+                inventoryFirst.NextAfterWarehouseDisplay,
+                inventoryFirst.NextAfterItemId,
+                inventoryFirst.NextAfterWarehouseId),
+            limit: 1);
+        inventoryTail.Rows.Should().ContainSingle();
+        inventoryTail.HasMore.Should().BeFalse();
+
+        var absoluteFirst = await inventoryBalances.GetCursorPageAsync(
+            inventoryRegisterId,
+            DateOnly.MaxValue,
+            null,
+            null,
+            TradeInventoryBalanceSort.AbsoluteQuantityDescending,
+            cursor: null,
+            limit: 1);
+        var absoluteTail = await inventoryBalances.GetCursorPageAsync(
+            inventoryRegisterId,
+            DateOnly.MaxValue,
+            null,
+            null,
+            TradeInventoryBalanceSort.AbsoluteQuantityDescending,
+            new TradeInventoryBalancePageCursor(
+                1,
+                absoluteFirst.Total,
+                absoluteFirst.TotalQuantity,
+                absoluteFirst.NextAfterAbsoluteQuantity,
+                absoluteFirst.NextAfterItemDisplay,
+                absoluteFirst.NextAfterWarehouseDisplay,
+                absoluteFirst.NextAfterItemId,
+                absoluteFirst.NextAfterWarehouseId),
+            limit: int.MaxValue);
+        absoluteTail.Total.Should().Be(absoluteFirst.Total);
+
+        var invalidInventoryReader = new PostgresTradeInventoryBalanceReader(null!, null!);
+        await ((Func<Task>)(() => invalidInventoryReader.GetPageAsync(
+                Guid.Empty, to, null, null, TradeInventoryBalanceSort.ItemWarehouse, 0, 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentInvalidException>();
+        await ((Func<Task>)(() => invalidInventoryReader.GetPageAsync(
+                inventoryRegisterId, to, null, null, (TradeInventoryBalanceSort)999, 0, 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => invalidInventoryReader.GetPageAsync(
+                inventoryRegisterId, to, null, null, TradeInventoryBalanceSort.ItemWarehouse, -1, 1)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => invalidInventoryReader.GetPageAsync(
+                inventoryRegisterId, to, null, null, TradeInventoryBalanceSort.ItemWarehouse, 0, 0)))
+            .Should().ThrowAsync<NGB.Tools.Exceptions.NgbArgumentOutOfRangeException>();
+        await ((Func<Task>)(() => inventoryBalances.GetPageAsync(
+                Guid.NewGuid(), to, null, null, TradeInventoryBalanceSort.ItemWarehouse, 0, 1)))
+            .Should().ThrowAsync<NGB.OperationalRegisters.Exceptions.OperationalRegisterNotFoundException>();
     }
 
     private static Dictionary<string, string> BuildPeriod(string fromUtc, string toUtc)

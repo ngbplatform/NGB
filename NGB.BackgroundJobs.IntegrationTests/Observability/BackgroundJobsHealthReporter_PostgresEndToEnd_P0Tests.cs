@@ -8,6 +8,7 @@ using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.Infrastructure;
 using NGB.BackgroundJobs.IntegrationTests.Infrastructure;
+using NGB.BackgroundJobs.PostgreSql.DependencyInjection;
 using Xunit;
 
 namespace NGB.BackgroundJobs.IntegrationTests.Observability;
@@ -126,14 +127,14 @@ public sealed class BackgroundJobsHealthReporter_PostgresEndToEnd_P0Tests(Hangfi
 
         services.AddLogging(b => b.SetMinimumLevel(LogLevel.None));
         services.AddSingleton<JobStorage>(fixture.JobStorage);
+        services.AddNgbPostgresBackgroundJobsAdapter();
 
         // Override NullJobScheduleProvider.
         services.AddSingleton<IJobScheduleProvider>(schedules);
 
-        services.AddPlatformBackgroundJobsHangfire(o =>
+        services.AddPlatformBackgroundJobsHangfire(fixture.JobStorage, o =>
         {
             o.ConnectionString = fixture.ConnectionString;
-            o.PrepareSchemaIfNecessary = true;
             o.WorkerCount = 1;
             o.DistributedLockTimeoutSeconds = 1;
         });

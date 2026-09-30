@@ -261,7 +261,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
       subtitle: item.subtitle ?? null,
       icon: item.icon ?? null,
       badge: item.badge ?? null,
-      route: item.route ?? null,
+      route: item.route!,
       status: item.status ?? null,
       openInNewTabSupported: Boolean(item.openInNewTabSupported),
       timestamp: new Date().toISOString(),
@@ -296,7 +296,8 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
     const seq = ++remoteSequence
 
     remoteTimer = setTimeout(async () => {
-      remoteAbortController = new AbortController()
+      const controller = new AbortController()
+      remoteAbortController = controller
       try {
         const response = await config.searchRemote!({
           query: cleanQuery.value,
@@ -304,7 +305,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
           limit: REMOTE_LIMIT,
           currentRoute: currentRoute.value,
           context: buildSearchContext(explicitContext.value),
-        }, remoteAbortController.signal)
+        }, controller.signal)
 
         if (seq !== remoteSequence) return
 
@@ -334,9 +335,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
             })),
           }))
       } catch (error) {
-        if (remoteAbortController?.signal.aborted) return
-        if (seq !== remoteSequence) return
-
+        if (controller.signal.aborted) return
         remoteGroups.value = []
         remoteError.value = error instanceof Error && error.message.trim()
           ? error.message
@@ -394,7 +393,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
 
     const items = groups
       .flatMap((group, groupIndex) => group.items.map((item, itemIndex) => ({ group, item, groupIndex, itemIndex })))
-      .filter(({ item }) => !String(item.route ?? '').startsWith('/reports/'))
+      .filter(({ item }) => !item.route.startsWith('/reports/'))
       .map(({ group, item, groupIndex, itemIndex }) => ({
         key: `page:${item.code}`,
         group: 'go-to' as const,
@@ -445,7 +444,7 @@ export const useCommandPaletteStore = defineStore('commandPalette', () => {
         icon: resolveIconName(entry.icon, entry.scope === 'reports' ? 'bar-chart' : 'file-text'),
         badge: entry.badge ?? null,
         hint: null,
-        route: entry.route ?? null,
+        route: entry.route!,
         commandCode: null,
         status: entry.status ?? null,
         openInNewTabSupported: entry.openInNewTabSupported,
@@ -534,7 +533,7 @@ function dedupeSeedsByKey(items: CommandPaletteItemSeed[]): CommandPaletteItemSe
   const result: CommandPaletteItemSeed[] = []
 
   for (const item of items) {
-    if (!item || seen.has(item.key)) continue
+    if (seen.has(item.key)) continue
     seen.add(item.key)
     result.push(item)
   }
@@ -562,18 +561,15 @@ function resolveGroupLabel(code: CommandPaletteGroupCode): string {
 function visibleLimitForGroup(code: CommandPaletteGroupCode, query: string): number {
   if (query.trim().length > 0) return 8
 
-  switch (code) {
-    case 'actions':
-      return 10
-    case 'go-to':
-      return 6
-    case 'reports':
-      return 6
-    case 'recent':
-      return 5
-    default:
-      return 6
+  const emptyQueryLimits: Record<CommandPaletteGroupCode, number> = {
+    actions: 10,
+    'go-to': 6,
+    documents: 6,
+    catalogs: 6,
+    reports: 6,
+    recent: 5,
   }
+  return emptyQueryLimits[code]
 }
 
 function limitGroupItems(code: CommandPaletteGroupCode, items: CommandPaletteItem[], query: string): CommandPaletteItem[] {
@@ -583,7 +579,7 @@ function limitGroupItems(code: CommandPaletteGroupCode, items: CommandPaletteIte
 }
 
 function normalizeRouteForPermissionFiltering(route: string | null | undefined): string {
-  return normalizeNgbRouteAliasPath(route).split(/[?#]/, 1)[0] ?? ''
+  return normalizeNgbRouteAliasPath(route).split(/[?#]/, 1)[0]!
 }
 
 function scoreItems(items: CommandPaletteItem[], query: string, scope: CommandPaletteScope | null): CommandPaletteItem[] {
@@ -625,7 +621,7 @@ function dedupeItemsByKey(items: CommandPaletteItem[]): CommandPaletteItem[] {
   const result: CommandPaletteItem[] = []
 
   for (const item of items) {
-    if (!item || seen.has(item.key)) continue
+    if (seen.has(item.key)) continue
     seen.add(item.key)
     result.push(item)
   }
@@ -685,26 +681,6 @@ function resolveIconName(icon: string | null | undefined, fallback: NgbIconName)
   if (isNgbIconName(value)) return value
 
   switch (value) {
-    case 'list':
-    case 'receipt':
-    case 'book-open':
-    case 'calculator':
-    case 'users':
-    case 'building-2':
-    case 'coins':
-    case 'wallet':
-    case 'wrench':
-    case 'clipboard-list':
-    case 'check-square':
-    case 'tag':
-    case 'landmark':
-    case 'calendar-check':
-    case 'scale':
-    case 'git-merge':
-    case 'shield-check':
-    case 'heart-pulse':
-    case 'cogs':
-      return value
     case 'chart':
       return 'bar-chart'
     case 'file':

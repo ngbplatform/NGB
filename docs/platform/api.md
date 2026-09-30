@@ -24,18 +24,23 @@ description: "How NGB.Api and vertical API hosts expose the platform through ASP
 
 - ASP.NET Core
 - contracts/application abstractions/runtime
-- authentication/OpenAPI/Serilog-related packages
+- JWT authentication, OpenAPI, Swagger, and HTTP resilience packages
+- `NGB.Hosting.AspNetCore` for reusable web-host integration
 
 ### Vertical API host composition
 `NGB.PropertyManagement.Api/Program.cs` shows how a vertical host composes the platform:
 
 - shared infrastructure and logging
 - health checks
-- runtime registration
+- runtime registration and explicit `AddNgbRuntimeStartupValidation()`
 - PostgreSQL provider registration
 - vertical module registration
 - controller mapping
 - auth/cors/exception pipeline
+
+Authentication, branding, CORS, health responses, and global error handling are owned by
+`NGB.Hosting.AspNetCore`. PostgreSQL exception mapping and health checks are owned by
+`NGB.PostgreSql.AspNetCore` and must be registered explicitly by the host.
 
 ## Practical interpretation
 

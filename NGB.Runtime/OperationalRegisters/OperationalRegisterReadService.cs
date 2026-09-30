@@ -56,7 +56,8 @@ public sealed class OperationalRegisterReadService(
             ? rows.Take(pageSize).ToList()
             : rows.ToList();
 
-        var nextCursor = hasMore && lines.Count > 0
+        // NormalizePageSize guarantees at least one returned line whenever hasMore is true.
+        var nextCursor = hasMore
             ? new OperationalRegisterMovementsPageCursor(lines[^1].MovementId)
             : null;
 
@@ -129,7 +130,8 @@ public sealed class OperationalRegisterReadService(
         if (hasMore)
             page = page.Take(pageSize).ToList();
 
-        var nextCursor = hasMore && page.Count > 0
+        // NormalizePageSize guarantees at least one returned row whenever hasMore is true.
+        var nextCursor = hasMore
             ? new OperationalRegisterMonthlyProjectionPageCursor(page[^1].PeriodMonth, page[^1].DimensionSetId)
             : null;
 

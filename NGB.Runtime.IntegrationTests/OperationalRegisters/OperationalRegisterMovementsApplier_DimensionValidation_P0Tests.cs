@@ -24,7 +24,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - missing required dimensions are rejected
 /// And importantly: validation happens BEFORE the write engine begins (no DDL, no write_log, no dirty markers).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovementsApplier_DimensionValidation_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -99,7 +99,7 @@ public sealed class PmSecurityRepositories_P0Tests(PmIntegrationFixture fixture)
             .BeEquivalentTo([activeRoleId, inactiveRoleId]);
         rolesForUsers[userId].Should().ContainSingle(role => role.RoleId == inactiveRoleId && role.IsActive == false);
 
-        var activeRoleUsers = await userRoles.GetUserIdsForRoleAsync(activeRoleId);
+        var activeRoleUsers = await userRoles.GetUserIdsForRoleAsync(activeRoleId, 500);
         activeRoleUsers.Should().ContainSingle(id => id == userId);
 
         var storedActivePermissions = await permissions.GetRolePermissionsAsync(activeRoleId);
@@ -116,6 +116,14 @@ public sealed class PmSecurityRepositories_P0Tests(PmIntegrationFixture fixture)
         var version = await versions.GetAsync(userId);
         version.Should().NotBeNull();
         version!.Version.Should().BeGreaterThanOrEqualTo(1);
+
+        await uow.ExecuteInUowTransactionAsync(
+            ct => versions.IncrementForRoleAsync(activeRoleId, ct),
+            CancellationToken.None);
+
+        var versionAfterRoleIncrement = await versions.GetAsync(userId);
+        versionAfterRoleIncrement.Should().NotBeNull();
+        versionAfterRoleIncrement!.Version.Should().Be(version.Version + 1);
 
         await uow.ExecuteInUowTransactionAsync(
             ct => users.SetActiveAsync(userId, isActive: false, ct),

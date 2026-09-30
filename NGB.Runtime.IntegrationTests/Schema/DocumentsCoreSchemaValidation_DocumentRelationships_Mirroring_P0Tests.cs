@@ -13,14 +13,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_Mirroring_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_Mirroring_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenMirroringInstallerFunctionMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropFunctionAsync(Fixture.ConnectionString, "ngb_install_mirrored_document_relationship_trigger(text,text,text)");
@@ -36,7 +35,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_Mirrorin
     [Fact]
     public async Task ValidateAsync_WhenDeclaredMirroredBindingTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = CreateMirroredHost();
 
         await CreateMirroredTableAsync(Fixture.ConnectionString);
@@ -54,7 +52,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_Mirrorin
     [Fact]
     public async Task ValidateAsync_WhenDeclaredMirroredBindingTriggerInstalled_Succeeds()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = CreateMirroredHost();
 
         await CreateMirroredTableAsync(Fixture.ConnectionString);

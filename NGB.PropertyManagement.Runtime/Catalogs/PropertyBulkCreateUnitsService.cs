@@ -7,9 +7,9 @@ using NGB.Metadata.Base;
 using NGB.Metadata.Catalogs.Storage;
 using NGB.Persistence.Catalogs;
 using NGB.Persistence.Catalogs.Universal;
-using NGB.Persistence.Common;
 using NGB.Persistence.Locks;
 using NGB.Persistence.UnitOfWork;
+using NGB.PropertyManagement.Catalogs;
 using NGB.PropertyManagement.Contracts.Catalogs;
 using NGB.PropertyManagement.Runtime.Exceptions;
 using NGB.Runtime.AuditLog;
@@ -32,7 +32,7 @@ public sealed class PropertyBulkCreateUnitsService(
     IAdvisoryLockManager locks,
     ICatalogTypeRegistry catalogTypes,
     ICatalogRepository catalogs,
-    ICatalogReader reader,
+    IPropertyUnitNumberReader unitNumbers,
     ICatalogWriter writer,
     ICatalogValidatorResolver validators,
     TimeProvider timeProvider,
@@ -81,6 +81,15 @@ public sealed class PropertyBulkCreateUnitsService(
         if (request.FloorSize is not null && request.FloorSize <= 0)
             throw PropertyBulkCreateUnitsValidationException.FloorSizeMustBePositive(request.FloorSize.Value);
 
+        var requestedRangeCount = GetRequestedRangeCount(request);
+        if (requestedRangeCount > MaxUnitsPerRequest)
+            throw PropertyBulkCreateUnitsValidationException.TooManyUnitsRequested(requestedRangeCount, MaxUnitsPerRequest);
+
+        // Generate before opening the transaction and taking the building lock. Besides keeping
+        // formatting work out of the critical section, the prevalidated bound guarantees that
+        // this operation cannot consume unbounded CPU or memory from a crafted numeric range.
+        var requestedNos = GenerateUnitNos(request);
+
         return await uow.ExecuteInUowTransactionAsync(
             manageTransaction: true,
             async innerCt =>
@@ -114,14 +123,13 @@ public sealed class PropertyBulkCreateUnitsService(
                     await v.ValidateUpsertAsync(probeContext, innerCt);
                 }
 
-                // Preload existing active unit_nos under the building.
-                var existing = await LoadExistingUnitNosAsync(head, request.BuildingId, innerCt);
-
-                // Generate requested unit_nos.
-                var requestedNos = GenerateUnitNos(request);
-
-                if (requestedNos.Count > MaxUnitsPerRequest)
-                    throw PropertyBulkCreateUnitsValidationException.TooManyUnitsRequested(requestedNos.Count, MaxUnitsPerRequest);
+                // Probe only values requested by this operation. The old implementation
+                // paged through every unit in the building and became progressively slower
+                // as the building grew.
+                var existing = await unitNumbers.GetExistingAsync(
+                    request.BuildingId,
+                    requestedNos,
+                    innerCt);
 
                 var preview = requestedNos.Take(PreviewSampleLimit).ToList();
                 var duplicateNos = requestedNos
@@ -237,11 +245,15 @@ public sealed class PropertyBulkCreateUnitsService(
 
     private static List<string> GenerateUnitNos(PropertyBulkCreateUnitsRequest request)
     {
-        var list = new List<string>();
+        var rangeCount = checked((int)GetRequestedRangeCount(request));
+        var list = new List<string>(rangeCount);
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        for (var n = request.FromInclusive; n <= request.ToInclusive; n += request.Step)
+        for (long current = request.FromInclusive; current <= request.ToInclusive; current += request.Step)
         {
+            // The request boundaries are Int32 and current is range-checked above, while the
+            // Int64 induction variable prevents wraparound at Int32.MaxValue.
+            var n = checked((int)current);
             var floor = request.FloorSize is null
                 ? 0
                 : (n - request.FromInclusive) / request.FloorSize.Value + 1;
@@ -267,51 +279,8 @@ public sealed class PropertyBulkCreateUnitsService(
         return list;
     }
 
-    private static async Task<HashSet<string>> LoadExistingUnitNosAsync(
-        CatalogHeadDescriptor head,
-        Guid buildingId,
-        ICatalogReader reader,
-        CancellationToken ct)
-    {
-        var q = new CatalogQuery(
-            Search: null,
-            Filters: new List<CatalogFilter>
-            {
-                new("kind", "Unit"),
-                new("parent_property_id", buildingId.ToString())
-            })
-        {
-            SoftDeleteFilterMode = SoftDeleteFilterMode.Active
-        };
-
-        var result = new HashSet<string>(StringComparer.Ordinal);
-        const int pageSize = 2000;
-
-        for (var offset = 0; ; offset += pageSize)
-        {
-            var rows = await reader.GetPageAsync(head, q, offset, pageSize, ct);
-            if (rows.Count == 0)
-                break;
-
-            foreach (var r in rows)
-            {
-                if (!r.Fields.TryGetValue("unit_no", out var raw) || raw is null)
-                    continue;
-
-                var s = raw.ToString();
-                if (!string.IsNullOrWhiteSpace(s))
-                    result.Add(s.Trim());
-            }
-
-            if (rows.Count < pageSize)
-                break;
-        }
-
-        return result;
-    }
-
-    private Task<HashSet<string>> LoadExistingUnitNosAsync(CatalogHeadDescriptor head, Guid buildingId, CancellationToken ct)
-        => LoadExistingUnitNosAsync(head, buildingId, reader, ct);
+    private static long GetRequestedRangeCount(PropertyBulkCreateUnitsRequest request)
+        => ((long)request.ToInclusive - request.FromInclusive) / request.Step + 1L;
 
     private static AuditFieldChange CreateAuditChange(string fieldPath, object? oldValue, object? newValue)
         => new(

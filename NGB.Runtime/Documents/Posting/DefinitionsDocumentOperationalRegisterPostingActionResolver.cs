@@ -57,8 +57,7 @@ public sealed class DefinitionsDocumentOperationalRegisterPostingActionResolver(
 
     private IDocumentOperationalRegisterPostingHandler BuildHandler(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        var postingHandlerType = def.OperationalRegisterPostingHandlerType
-            ?? throw new NgbInvariantViolationException($"Document type '{def.TypeCode}' has no operational register posting handler binding.");
+        var postingHandlerType = def.OperationalRegisterPostingHandlerType!;
         var postingHandlerTypeName = postingHandlerType.FullName ?? postingHandlerType.Name;
 
         if (!typeof(IDocumentOperationalRegisterPostingHandler).IsAssignableFrom(postingHandlerType))
@@ -94,7 +93,7 @@ public sealed class DefinitionsDocumentOperationalRegisterPostingActionResolver(
                 {
                     documentTypeCode = def.TypeCode,
                     postingHandlerType = postingHandlerTypeName,
-                    matches = matches.Select(handler => handler.GetType().FullName ?? handler.GetType().Name).ToArray()
+                    matches = matches.Select(handler => handler.GetType().Name).ToArray()
                 });
         }
 

@@ -13,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// <summary>
 /// P2: Row-level locking for catalogs is required to serialize deletions/updates.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class CatalogRepository_RowLevelLocking_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

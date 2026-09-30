@@ -21,6 +21,9 @@ type OpenItemsDataLike<
   charges?: TCharge[] | null
   credits?: TCredit[] | null
   allocations?: TAllocation[] | null
+  chargeCount?: number | null
+  creditCount?: number | null
+  allocationCount?: number | null
 }
 
 type UseOpenItemsPagePresentationArgs<
@@ -52,9 +55,9 @@ export function useOpenItemsPagePresentation<
   const summary = computed<OpenItemsSummary>(() => ({
     totalOutstanding: args.data.value?.totalOutstanding ?? 0,
     totalCredit: args.data.value?.totalCredit ?? 0,
-    chargesCount: args.data.value?.charges?.length ?? 0,
-    creditsCount: args.data.value?.credits?.length ?? 0,
-    allocationsCount: args.data.value?.allocations?.length ?? 0,
+    chargesCount: args.data.value?.chargeCount ?? args.data.value?.charges?.length ?? 0,
+    creditsCount: args.data.value?.creditCount ?? args.data.value?.credits?.length ?? 0,
+    allocationsCount: args.data.value?.allocationCount ?? args.data.value?.allocations?.length ?? 0,
   }))
 
   const focusedCharge = computed(() => {

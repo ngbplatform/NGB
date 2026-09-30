@@ -1,0 +1,69 @@
+# Performance Tests Changelog
+
+This changelog covers the private performance test workspace, shared framework, and
+vertical scenario packages. Platform releases are documented in the
+[repository changelog](../CHANGELOG.md).
+
+## [Unreleased]
+
+No changes yet.
+
+## [3.0.0] - 2026-09-29
+
+### Added
+
+- Restructured shared framework with separate vertical scenarios, runners, diagnostics,
+  offline analysis, and reusable performance runbooks.
+- Versioned PM diagnostic runners, a fixed-query read-only Postgres MCP sampler,
+  offline time-series/resource analysis and explicit before/after comparison tools.
+- English performance runbooks and comparison methodology. Run-specific reports,
+  evidence indexes and generated output remain under ignored `artifacts/`.
+- Offline tooling contract tests; diagnostic tooling no longer depends on artifacts,
+  personal filesystem paths or an npm cache installation.
+- Focused posting-contract, reporting, and read-regression diagnostic probes.
+- Report diagnostics by report ID, period, and status; document-operation diagnostics
+  and counters for executed lifecycle/posting branches.
+- Resolved k6 run options in summaries and run manifests from the macOS/Linux runner,
+  including the Git revision, change fingerprint, tool versions, non-secret settings,
+  capacity/breakpoint overrides, and optional dataset/API image identities.
+
+### Fixed
+
+- Preallocate the breakpoint profile's 500-VU pool before load starts and allow
+  75 seconds for final iterations to complete after authentication jitter. Keep
+  the arrival schedule and zero-dropped-iterations gate unchanged; validate VU
+  limits and expose `NGB_BREAKPOINT_GRACEFUL_STOP` for explicit overrides.
+- Group k6 HTTP metrics by stable operation names to prevent dynamic document IDs
+  and query values from creating unbounded URL metric series during write-heavy
+  runs. Preserve request routing, status/error metrics, and diagnostic tags.
+- Check dropped iterations globally in multi-scenario workloads and breakpoint so
+  unmatched tagged submetrics cannot hide skipped load.
+- Count nested lifecycle operation failures and require actual write/posting branch
+  execution in write-heavy validation.
+
+### Changed
+
+- Align the root workspace, framework, Property Management, Trade, and Agency Billing
+  package versions with the NGB Platform 3.0 release line. This coordinated version
+  replaces the previous 1.1.1 package metadata.
+- Measure fresh rent-charge posting through the versioned document-action API by
+  default. The configured fixture supplies the payload template; each iteration
+  creates and posts a new document. An explicit idempotent-replay mode reuses the
+  same command and key, with separate counters for fresh postings and replays.
+- Require zero HTTP failures for posting and XLSX export in the standard thresholds.
+  HTTP 429 responses count as failures.
+
+### Migration and comparisons
+
+- Target NGB Platform 3.0.x. Trade and Agency Billing still provide smoke scaffolds.
+- For posting, select an open period within the template's lease term using
+  `NGB_PM_POSTING_FROM_UTC`, `NGB_PM_POSTING_TO_UTC`, and
+  `NGB_PM_POSTING_DUE_ON_UTC`. The test aborts if the selected period is closed or
+  unavailable; it does not reopen periods.
+- Fresh posting creates persistent test data. Restore the same dataset between
+  comparable write benchmarks. Legacy runs that repeatedly posted an already-posted
+  fixture are not equivalent to the fresh-posting workload.
+- Stricter gates can turn a previously passing run into a failure without a new
+  application regression. Compare error counts and dropped iterations explicitly.
+- Keep historical summaries and manifests unchanged; do not relabel earlier runs as
+  version 3.0.0.

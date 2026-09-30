@@ -61,6 +61,7 @@ public sealed class WorkCenterServicesTests
             .ReturnsAsync(Role("sales", active: true));
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
                 It.IsAny<Guid>(),
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([roleRecipient]);
         var service = new WorkCenterTaskService(
@@ -159,6 +160,7 @@ public sealed class WorkCenterServicesTests
             .ReturnsAsync(role);
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
                 role.RoleId,
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([firstRecipient, secondRecipient]);
         userRoles.Setup(repository => repository.GetRolesForUsersAsync(
@@ -214,6 +216,7 @@ public sealed class WorkCenterServicesTests
             .ReturnsAsync(role);
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
                 role.RoleId,
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([enabledRecipient, disabledRecipient]);
         userRoles.Setup(repository => repository.GetRolesForUsersAsync(
@@ -396,6 +399,50 @@ public sealed class WorkCenterServicesTests
         cancelledUsers.Should().Equal(cancelledRecipient);
         uow.CommitCount.Should().Be(2);
         tasks.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Task_service_completes_multiple_deduplication_keys_in_one_transaction()
+    {
+        var uow = new RecordingUnitOfWork();
+        var tasks = new Mock<IWorkCenterTaskRepository>(MockBehavior.Strict);
+        var recipient = Guid.NewGuid();
+        var keys = new[] { "task:1", "task:2" };
+        tasks.Setup(repository => repository.CompleteByDeduplicationKeysAsync(
+                "task.code", keys, Now, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkCenterTaskMutationResult(true, [recipient]));
+        var service = new WorkCenterTaskService(
+            uow,
+            tasks.Object,
+            RecipientResolver(),
+            new FixedTimeProvider(Now));
+
+        var completedUsers = await service.CompleteByDeduplicationKeysAsync(
+            "task.code",
+            keys,
+            CancellationToken.None);
+
+        completedUsers.Should().Equal(recipient);
+        uow.CommitCount.Should().Be(1);
+        tasks.VerifyAll();
+    }
+
+    [Fact]
+    public async Task Task_service_skips_repository_for_empty_deduplication_key_batch()
+    {
+        var uow = new RecordingUnitOfWork();
+        var tasks = new Mock<IWorkCenterTaskRepository>(MockBehavior.Strict);
+        var service = new WorkCenterTaskService(
+            uow,
+            tasks.Object,
+            RecipientResolver(),
+            new FixedTimeProvider(Now));
+
+        (await service.CompleteByDeduplicationKeysAsync("task.code", [], CancellationToken.None))
+            .Should().BeEmpty();
+
+        uow.CommitCount.Should().Be(0);
+        tasks.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -616,6 +663,7 @@ public sealed class WorkCenterServicesTests
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         userRoles.Setup(repository => repository.GetUserIdsForRoleAsync(
                 role.RoleId,
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync([recipient]);
         var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
@@ -1110,6 +1158,16 @@ public sealed class WorkCenterServicesTests
                 null!,
                 CancellationToken.None))
             .Should().ThrowAsync<ArgumentNullException>();
+        var tooManyPreferences = Enumerable.Range(0, WorkCenterQueryService.MaxPreferenceUpdates + 1)
+            .Select(_ => new UpdateNotificationPreferenceDto(
+                "test.optional",
+                NGB.Contracts.WorkCenter.NotificationChannel.InApp,
+                true))
+            .ToArray();
+        await FluentActions.Awaiting(() => harness.Service.UpdateNotificationPreferencesAsync(
+                new UpdateNotificationPreferencesRequestDto(tooManyPreferences),
+                CancellationToken.None))
+            .Should().ThrowAsync<NgbArgumentOutOfRangeException>();
 
         harness.UserRoles
             .Setup(repository => repository.GetRolesForUserAsync(

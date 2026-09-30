@@ -12,8 +12,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Catalogs;
 
-[Collection(PostgresCollection.Name)]
-public sealed class CatalogDraftService_ExternalTransactionMode_TypedStorageFailure_RollsBack_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class CatalogDraftService_ExternalTransactionMode_TypedStorageFailure_RollsBack_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string CatalogCode = "it_cat_ts_ext";

@@ -45,6 +45,38 @@ public sealed class PostgresReferenceRegisterFieldRepository(IUnitOfWork uow) : 
         return rows.Select(x => x.ToModel()).ToArray();
     }
 
+    public async Task<IReadOnlyDictionary<Guid, int>> CountByRegisterIdsAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(registerIds);
+
+        var ids = registerIds.Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, int>();
+
+        if (ids.Any(static id => id == Guid.Empty))
+            throw new NgbArgumentInvalidException(nameof(registerIds), "Register ids must not contain an empty identifier.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+SELECT register_id AS "RegisterId",
+       COUNT(*)::integer AS "Count"
+  FROM reference_register_fields
+ WHERE register_id = ANY(@RegisterIds)
+ GROUP BY register_id;
+""";
+
+        var rows = await uow.Connection.QueryAsync<CountRow>(new CommandDefinition(
+            sql,
+            new { RegisterIds = ids },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        return rows.ToDictionary(static row => row.RegisterId, static row => row.Count);
+    }
+
     public async Task ReplaceAsync(
         Guid registerId,
         IReadOnlyList<ReferenceRegisterFieldDefinition> fields,
@@ -164,5 +196,11 @@ public sealed class PostgresReferenceRegisterFieldRepository(IUnitOfWork uow) : 
             IsNullable,
             CreatedAtUtc,
             UpdatedAtUtc);
+    }
+
+    private sealed class CountRow
+    {
+        public Guid RegisterId { get; init; }
+        public int Count { get; init; }
     }
 }

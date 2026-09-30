@@ -40,6 +40,7 @@ public static class AgencyBillingDatabaseBootstrapper
             SELECT ngb_install_mirrored_document_relationship_trigger('doc_ab_sales_invoice__lines', 'source_timesheet_id', 'based_on');
             SELECT ngb_install_mirrored_document_relationship_trigger('doc_ab_customer_payment__applies', 'sales_invoice_id', 'based_on');
             SELECT ngb_install_typed_document_immutability_guards();
+            SELECT ngb_install_search_trigram_indexes(ARRAY['cat_ab_', 'doc_ab_']);
             """,
             cancellationToken: ct));
     }

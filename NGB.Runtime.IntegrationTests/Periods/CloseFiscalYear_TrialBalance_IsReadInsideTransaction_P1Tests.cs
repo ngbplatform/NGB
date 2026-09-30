@@ -17,15 +17,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_TrialBalance_IsReadInsideTransaction_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CloseFiscalYearAsync_ReadsTrialBalanceInsideUowTransaction()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var probe = new TrialBalanceTransactionProbe();
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString, services =>

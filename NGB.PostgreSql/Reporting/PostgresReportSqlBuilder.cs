@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Dapper;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.PostgreSql.Internal;
 using NGB.Tools.Exceptions;
@@ -9,21 +10,34 @@ namespace NGB.PostgreSql.Reporting;
 
 public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datasets)
 {
+    internal const int MaxCursorlessOffset = PagingLimits.MaxOffset;
     private const string DisplayFieldSuffix = "_display";
     private const string IdFieldSuffix = "_id";
 
     private readonly PostgresReportDatasetCatalog _datasets = datasets
         ?? throw new NgbConfigurationViolationException("PostgreSQL reporting SQL builder requires a dataset catalog registration.");
 
-    public PostgresReportSqlStatement Build(PostgresReportExecutionRequest request)
+    public PostgresReportSqlStatement Build(PostgresReportExecutionRequest request) => BuildCore(request, false);
+
+    internal PostgresReportSqlStatement BuildStreaming(PostgresReportExecutionRequest request)
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        // A server cursor fetches batches; the SQL itself must not have a page limit.
+        return BuildCore(request with { Paging = new(0, 0, DisablePaging: true) }, true);
+    }
+
+    private PostgresReportSqlStatement BuildCore(PostgresReportExecutionRequest request, bool streaming)
     {
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
         var dataset = _datasets.GetDataset(request.DatasetCodeNorm);
+        var source = dataset.ResolveSource(request);
         var selectSql = new List<string>();
         var groupBySql = new List<string>();
-        var orderBySql = new List<string>();
+        var orderColumns = new List<PostgresReportCursorColumn>();
         var whereSql = new List<string>();
         var parameters = new DynamicParameters();
         var columns = new List<PostgresReportOutputColumn>();
@@ -62,13 +76,14 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
             AddProjectedColumn(selectSql, groupBySql, columns, usedAliases, expression, alias, measure.Label, measure.DataType, "measure", includeInGroupBy: false);
         }
 
-        AppendInteractiveSupportFields(request, dataset, selectSql, groupBySql, columns, usedAliases);
+        var aggregated = request.Measures.Count > 0 || request.DistinctGroups;
+        AppendInteractiveSupportFields(request, dataset, selectSql, groupBySql, columns, usedAliases, aggregated);
 
         if (selectSql.Count == 0)
             throw new NgbConfigurationViolationException($"PostgreSQL reporting request for dataset '{dataset.DatasetCodeNorm}' must select at least one row group, column group, detail field, or measure.");
 
-        if (!string.IsNullOrWhiteSpace(dataset.BaseWhereSql))
-            whereSql.Add($"({dataset.BaseWhereSql})");
+        if (!string.IsNullOrWhiteSpace(source.BaseWhereSql))
+            whereSql.Add($"({source.BaseWhereSql})");
 
         foreach (var pair in request.Parameters)
         {
@@ -78,63 +93,382 @@ public sealed class PostgresReportSqlBuilder(PostgresReportDatasetCatalog datase
         foreach (var predicate in request.Predicates)
         {
             var fieldBinding = dataset.GetField(predicate.FieldCode);
-            var expression = fieldBinding.ResolveExpression(null);
+            var expression = fieldBinding.ResolveExpression(predicate.TimeGrain);
             var parameterName = $"p_{predicateIndex++}";
             whereSql.Add(BuildPredicateSql(expression, parameterName, predicate.Filter, parameters));
         }
 
+        if (request.Selection is { } selection)
+        {
+            ValidateSelection(selection);
+
+            var expressions = selection.Fields
+                .Select(field => dataset.GetField(field.FieldCode).ResolveExpression(field.TimeGrain))
+                .ToArray();
+
+            var alternatives = new List<string>(selection.Keys.Count);
+            foreach (var key in selection.Keys)
+            {
+                var terms = new List<string>(key.Count);
+                for (var i = 0; i < key.Count; i++)
+                {
+                    terms.Add(BuildPredicateSql(expressions[i], $"p_{predicateIndex++}", new(key[i]), parameters));
+                }
+
+                alternatives.Add($"({string.Join(" AND ", terms)})");
+            }
+
+            whereSql.Add(alternatives.Count == 0 ? "FALSE" : $"({string.Join(" OR ", alternatives)})");
+        }
+
+        if (streaming)
+        {
+            // Keep each hierarchy/leaf contiguous so rendering never buffers an entire group.
+            foreach (var group in request.RowGroups)
+            {
+                var sort = request.Sorts.FirstOrDefault(s => s.MeasureCode is null
+                    && !s.AppliesToColumnAxis
+                    && ResolveSortAlias(request, s) == group.OutputCode);
+                AddOrderColumn(orderColumns, columns, group.OutputCode, sort?.Direction ?? ReportSortDirection.Asc);
+            }
+        }
+
         foreach (var sort in request.Sorts)
         {
+            if (streaming && sort.AppliesToColumnAxis && (request.RowGroups.Count > 0 || request.DetailFields.Count > 0))
+                continue;
+
             var sortAlias = ResolveSortAlias(request, sort);
-            var directionSql = sort.Direction == ReportSortDirection.Desc ? "DESC" : "ASC";
-            orderBySql.Add($"{sortAlias} {directionSql}");
+            AddOrderColumn(orderColumns, columns, sortAlias, sort.Direction);
         }
 
-        if (orderBySql.Count == 0)
+        if (streaming)
+            foreach (var detail in request.DetailFields)
+            {
+                AddOrderColumn(orderColumns, columns, detail.OutputCode, ReportSortDirection.Asc);
+            }
+
+        if (orderColumns.Count == 0)
         {
             if (request.RowGroups.Count > 0)
-                orderBySql.AddRange(request.RowGroups.Select(x => EnsureSafeAlias(x.OutputCode, $"order-row-group:{x.FieldCode}")));
+            {
+                foreach (var rowGroup in request.RowGroups)
+                {
+                    AddOrderColumn(orderColumns, columns, EnsureSafeAlias(rowGroup.OutputCode, $"order-row-group:{rowGroup.FieldCode}"), ReportSortDirection.Asc);
+                }
+            }
 
             if (request.ColumnGroups.Count > 0)
-                orderBySql.AddRange(request.ColumnGroups.Select(x => EnsureSafeAlias(x.OutputCode, $"order-column-group:{x.FieldCode}")));
+            {
+                foreach (var columnGroup in request.ColumnGroups)
+                {
+                    AddOrderColumn(orderColumns, columns, EnsureSafeAlias(columnGroup.OutputCode, $"order-column-group:{columnGroup.FieldCode}"), ReportSortDirection.Asc);
+                }
+            }
 
-            if (orderBySql.Count == 0 && request.DetailFields.Count > 0)
-                orderBySql.AddRange(request.DetailFields.Select(x => EnsureSafeAlias(x.OutputCode, $"order-detail:{x.FieldCode}")));
+            if (orderColumns.Count == 0 && request.DetailFields.Count > 0)
+            {
+                foreach (var detail in request.DetailFields)
+                {
+                    AddOrderColumn(orderColumns, columns, EnsureSafeAlias(detail.OutputCode, $"order-detail:{detail.FieldCode}"), ReportSortDirection.Asc);
+                }
+            }
 
-            if (orderBySql.Count == 0)
-                orderBySql.AddRange(request.Measures.Select(x => EnsureSafeAlias(x.OutputCode, $"order-measure:{x.MeasureCode}")));
+            if (orderColumns.Count == 0)
+            {
+                foreach (var measure in request.Measures)
+                {
+                    AddOrderColumn(orderColumns, columns, EnsureSafeAlias(measure.OutputCode, $"order-measure:{measure.MeasureCode}"), ReportSortDirection.Asc);
+                }
+            }
         }
 
-        if (!request.Paging.DisablePaging)
+        var cursorColumns = BuildCursorColumns(
+            request,
+            dataset,
+            selectSql,
+            columns,
+            usedAliases,
+            orderColumns);
+
+        ValidateCursorlessOffset(request.Paging, cursorColumns.Count > 0);
+
+        if (!request.Paging.DisablePaging && !string.IsNullOrWhiteSpace(request.Paging.Cursor) && cursorColumns.Count == 0)
         {
-            parameters.Add("offset", request.Paging.Offset);
-            parameters.Add("limit_plus_one", request.Paging.Limit + 1);
+            throw new NgbArgumentInvalidException(
+                "cursor",
+                "This composable dataset does not define a stable keyset cursor. Omit cursor paging or configure stable cursor key fields for the dataset.");
         }
 
-        var pagingSql = request.Paging.DisablePaging
-            ? string.Empty
-            : """
-OFFSET @offset
-LIMIT @limit_plus_one
-""";
+        var cursorValues = !request.Paging.DisablePaging && !string.IsNullOrWhiteSpace(request.Paging.Cursor)
+            ? PostgresReportCursorCodec.Decode(request.Paging.Cursor, dataset.DatasetCodeNorm, cursorColumns)
+            : null;
 
-        var sql = $"""
+        if (request.Paging.DisablePaging && !streaming)
+        {
+            parameters.Add("materialization_limit_plus_one", PagingLimits.MaxMaterializedRows + 1);
+        }
+        else if (!request.Paging.DisablePaging)
+        {
+            parameters.Add("limit_plus_one", request.Paging.Limit + 1);
+            if (cursorValues is null && request.Paging.Offset > 0)
+                parameters.Add("offset", PagingLimits.BoundOffset(request.Paging.Offset));
+        }
+
+        var innerSql = $"""
 SELECT
     {string.Join(",", selectSql)}
-FROM {dataset.FromSql}
+FROM {source.FromSql}
 {BuildWhereClause(whereSql)}
-{BuildGroupByClause(groupBySql, request.Measures.Count > 0)}
-ORDER BY {string.Join(", ", orderBySql)}
+{BuildGroupByClause(groupBySql, aggregated)}
+""";
+
+        var orderBySql = BuildOrderBySql(orderColumns, cursorColumns.Count > 0);
+        string sql;
+        var pivotMeasureSort = streaming && request.ColumnGroups.Count > 0 && request.Sorts.Any(s => s.MeasureCode is not null && !s.AppliesToColumnAxis);
+
+        if (pivotMeasureSort)
+        {
+            // Sort an entire pivot row by its aggregate across columns, preserving leaf contiguity.
+            // The separate aggregate also preserves weighted averages and distinct counts.
+            List<PostgresReportSortSelection> list = new List<PostgresReportSortSelection>();
+            foreach (var s in request.Sorts)
+            {
+                if (!s.AppliesToColumnAxis) list.Add(s);
+            }
+
+            var totals = BuildCore(request with { ColumnGroups = [], Sorts = [.. list] }, true);
+
+            var axis = request.RowGroups
+                .Select(g => g.OutputCode)
+                .Concat(request.DetailFields.Select(f => f.OutputCode))
+                .Distinct()
+                .ToArray();
+
+            var join = axis.Length == 0
+                ? "TRUE"
+                : string.Join(" AND ", axis.Select(a => $"report_rows.\"{a}\" IS NOT DISTINCT FROM sort_rows.\"{a}\""));
+
+            var measureAliases = request.Measures
+                .Select(m => m.OutputCode)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            orderBySql = string.Join(", ", orderColumns.Select(c =>
+                $"{(measureAliases.Contains(c.Alias) ? "sort_rows" : "report_rows")}.{c.Alias} {(c.Direction == ReportSortDirection.Desc ? "DESC" : "ASC")} NULLS LAST"));
+            sql = $"WITH report_rows AS ({innerSql}), sort_rows AS ({totals.Sql.TrimEnd().TrimEnd(';')}) SELECT report_rows.* FROM report_rows JOIN sort_rows ON {join} ORDER BY {orderBySql};";
+        }
+        else if (cursorValues is not null)
+        {
+            var cursorPredicate = BuildCursorPredicate(cursorColumns, cursorValues, parameters);
+            sql = $"""
+SELECT *
+FROM (
+{Indent(innerSql, 4)}
+) report_rows
+WHERE {cursorPredicate}
+ORDER BY {orderBySql}
+LIMIT @limit_plus_one;
+""";
+        }
+        else
+        {
+            var pagingSql = streaming ? "" : request.Paging.DisablePaging
+                ? "LIMIT @materialization_limit_plus_one"
+                : request.Paging.Offset > 0
+                    ? "OFFSET @offset\nLIMIT @limit_plus_one"
+                    : "LIMIT @limit_plus_one";
+            sql = $"""
+{innerSql}
+ORDER BY {orderBySql}
 {pagingSql};
 """;
+        }
+
+        PostgresReportSqlLimits.Validate(sql, parameters.ParameterNames.Count());
 
         return new PostgresReportSqlStatement(
             Sql: sql,
             Parameters: parameters,
             Columns: columns,
-            IsAggregated: request.Measures.Count > 0,
-            Offset: request.Paging.DisablePaging ? 0 : request.Paging.Offset,
-            Limit: request.Paging.DisablePaging ? 0 : request.Paging.Limit);
+            IsAggregated: aggregated,
+            Offset: request.Paging.DisablePaging || cursorValues is not null ? 0 : PagingLimits.BoundOffset(request.Paging.Offset),
+            Limit: request.Paging.DisablePaging ? 0 : request.Paging.Limit,
+            DatasetCode: dataset.DatasetCodeNorm,
+            CursorColumns: cursorColumns);
+    }
+
+    private static void ValidateSelection(ReportRowSelection selection)
+    {
+        var maxKeys = ReportRowSelectionLimits.GetMaxKeyCount(selection.Fields.Count);
+        if (maxKeys == 0)
+            throw new NgbArgumentInvalidException("selection", $"Report row keys must contain between 1 and {ReportRowSelectionLimits.MaxFields} fields.");
+
+        if (selection.Keys.Count > maxKeys)
+            throw new NgbArgumentInvalidException("selection", $"Report row selection exceeds {ReportRowSelectionLimits.MaxKeys} keys or {ReportRowSelectionLimits.MaxValues} scalar values. Request a smaller page.");
+
+        foreach (var key in selection.Keys)
+        {
+            if (key.Count != selection.Fields.Count)
+                throw new NgbArgumentInvalidException("selection", "Report key does not match its fields.");
+
+            if (key.Any(value => value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Array or JsonValueKind.Object))
+                throw new NgbArgumentInvalidException("selection", "Report row keys must contain scalar values or null.");
+        }
+    }
+
+    private static void ValidateCursorlessOffset(PostgresReportPaging paging, bool hasStableCursor)
+    {
+        if (paging.DisablePaging)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(paging.Cursor) || paging.Offset <= 0)
+            return;
+
+        if (hasStableCursor)
+        {
+            throw new NgbArgumentInvalidException(
+                "offset",
+                "This composable dataset uses keyset paging. Request the first page with offset 0 and use nextCursor for subsequent pages.");
+        }
+
+        if (paging.Offset > MaxCursorlessOffset)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                "offset",
+                paging.Offset,
+                $"A dataset without stable cursor keys supports offsets only between 0 and {MaxCursorlessOffset}. Narrow the filters or configure stable cursor key fields.");
+        }
+    }
+
+    private static IReadOnlyList<PostgresReportCursorColumn> BuildCursorColumns(
+        PostgresReportExecutionRequest request,
+        PostgresReportDatasetBinding dataset,
+        ICollection<string> selectSql,
+        IReadOnlyList<PostgresReportOutputColumn> columns,
+        ISet<string> usedAliases,
+        List<PostgresReportCursorColumn> orderColumns)
+    {
+        if (request.Paging.DisablePaging)
+            return [];
+
+        if (request.Measures.Count > 0 || request.DistinctGroups)
+        {
+            var groupingColumns = columns
+                .Where(x => x.SemanticRole is not "measure" and not "support")
+                .ToArray();
+
+            if (groupingColumns.Length == 0)
+                return [];
+
+            foreach (var column in groupingColumns)
+            {
+                AddOrderColumn(orderColumns, columns, column.OutputCode, ReportSortDirection.Asc);
+            }
+
+            return orderColumns;
+        }
+
+        if (dataset.CursorKeyFields.Count == 0)
+            return [];
+
+        for (var i = 0; i < dataset.CursorKeyFields.Count; i++)
+        {
+            var keyField = dataset.CursorKeyFields[i];
+            var visibleAlias = ResolveSelectedRawFieldAlias(request, columns, keyField.FieldCodeNorm);
+            if (visibleAlias is not null)
+            {
+                AddOrderColumn(orderColumns, columns, visibleAlias, ReportSortDirection.Asc);
+                continue;
+            }
+
+            var hiddenAlias = EnsureSafeAlias($"__cursor_key_{i}", $"cursor-key:{keyField.FieldCodeNorm}");
+            if (!usedAliases.Add(hiddenAlias))
+                throw new NgbInvariantViolationException($"PostgreSQL reporting duplicate cursor alias '{hiddenAlias}'.");
+
+            selectSql.Add($"{keyField.ResolveExpression(null)} AS {hiddenAlias}");
+            orderColumns.Add(new PostgresReportCursorColumn(hiddenAlias, keyField.DataType, ReportSortDirection.Asc, IsHidden: true));
+        }
+
+        return orderColumns;
+    }
+
+    private static string? ResolveSelectedRawFieldAlias(
+        PostgresReportExecutionRequest request,
+        IReadOnlyList<PostgresReportOutputColumn> columns,
+        string fieldCode)
+    {
+        var grouping = request.RowGroups
+            .Concat(request.ColumnGroups)
+            .FirstOrDefault(x => x.TimeGrain is null && x.FieldCode.Equals(fieldCode, StringComparison.OrdinalIgnoreCase));
+
+        if (grouping is not null)
+            return grouping.OutputCode;
+
+        var detail = request.DetailFields.FirstOrDefault(x => x.FieldCode.Equals(fieldCode, StringComparison.OrdinalIgnoreCase));
+        if (detail is not null)
+            return detail.OutputCode;
+
+        return columns.Any(x => x.OutputCode.Equals(fieldCode, StringComparison.OrdinalIgnoreCase))
+            ? fieldCode
+            : null;
+    }
+
+    private static void AddOrderColumn(
+        ICollection<PostgresReportCursorColumn> orderColumns,
+        IReadOnlyList<PostgresReportOutputColumn> columns,
+        string alias,
+        ReportSortDirection direction)
+    {
+        if (orderColumns.Any(x => x.Alias.Equals(alias, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        var output = columns.FirstOrDefault(x => x.OutputCode.Equals(alias, StringComparison.OrdinalIgnoreCase))
+            ?? throw new NgbInvariantViolationException($"PostgreSQL reporting order alias '{alias}' is not projected.");
+        orderColumns.Add(new PostgresReportCursorColumn(alias, output.DataType, direction, IsHidden: false));
+    }
+
+    private static string BuildOrderBySql(
+        IReadOnlyList<PostgresReportCursorColumn> orderColumns,
+        bool deterministicNullOrder)
+        => string.Join(", ", orderColumns.Select(x =>
+            $"{x.Alias} {(x.Direction == ReportSortDirection.Desc ? "DESC" : "ASC")}{(deterministicNullOrder ? " NULLS LAST" : string.Empty)}"));
+
+    private static string BuildCursorPredicate(
+        IReadOnlyList<PostgresReportCursorColumn> columns,
+        IReadOnlyList<object?> values,
+        DynamicParameters parameters)
+    {
+        // Factor the lexicographic comparison so SQL grows linearly with key width.
+        // NULLS LAST has no successor at this position when the cursor value is null;
+        // only equal-null rows can continue through the remaining key fields.
+        string? predicate = null;
+        for (var i = columns.Count - 1; i >= 0; i--)
+        {
+            var alias = columns[i].Alias;
+            if (values[i] is null)
+            {
+                if (predicate is not null)
+                    predicate = $"({alias} IS NULL AND {predicate})";
+
+                continue;
+            }
+
+            var parameterName = $"cursor_{i}";
+            parameters.Add(parameterName, values[i]);
+            var comparison = columns[i].Direction == ReportSortDirection.Desc ? "<" : ">";
+            var current = $"({alias} IS NULL OR {alias} {comparison} @{parameterName})";
+            predicate = predicate is null
+                ? current
+                : $"({current} OR ({alias} IS NOT DISTINCT FROM @{parameterName} AND {predicate}))";
+        }
+
+        return predicate ?? "FALSE";
+    }
+
+    private static string Indent(string value, int spaces)
+    {
+        var prefix = new string(' ', spaces);
+        return string.Join(Environment.NewLine, value.TrimEnd().Split('\n').Select(line => prefix + line.TrimEnd('\r')));
     }
 
     private static void AppendInteractiveSupportFields(
@@ -143,7 +477,8 @@ ORDER BY {string.Join(", ", orderBySql)}
         ICollection<string> selectSql,
         ICollection<string> groupBySql,
         ICollection<PostgresReportOutputColumn> columns,
-        ISet<string> usedAliases)
+        ISet<string> usedAliases,
+        bool aggregate)
     {
         if (ShouldIncludeSupportField(request, "account_display") && dataset.Fields.TryGetValue("account_id", out var accountIdField))
         {
@@ -154,7 +489,7 @@ ORDER BY {string.Join(", ", orderBySql)}
                 usedAliases,
                 accountIdField.ResolveExpression(null),
                 ReportInteractiveSupport.SupportAccountId,
-                "uuid");
+                "uuid", aggregate);
         }
 
         if (ShouldIncludeSupportField(request, "document_display") && dataset.Fields.TryGetValue("document_id", out var documentIdField))
@@ -166,7 +501,7 @@ ORDER BY {string.Join(", ", orderBySql)}
                 usedAliases,
                 documentIdField.ResolveExpression(null),
                 ReportInteractiveSupport.SupportDocumentId, 
-                "uuid");
+                "uuid", aggregate);
         }
 
         foreach (var supportFieldCode in ResolveCatalogSupportFieldCodes(request, dataset))
@@ -179,7 +514,7 @@ ORDER BY {string.Join(", ", orderBySql)}
                 usedAliases,
                 supportField.ResolveExpression(null),
                 supportFieldCode,
-                supportField.DataType);
+                supportField.DataType, aggregate);
         }
     }
 
@@ -227,10 +562,18 @@ ORDER BY {string.Join(", ", orderBySql)}
         ISet<string> usedAliases,
         string expression,
         string alias,
-        string dataType)
+        string dataType,
+        bool aggregate)
     {
         var safeAlias = EnsureSafeAlias(alias, $"support:{alias}");
-        AddProjectedColumn(selectSql, groupBySql, columns, usedAliases, expression, safeAlias, safeAlias, dataType, "support", includeInGroupBy: true);
+        if (aggregate)
+        {
+            // Hidden drilldown IDs must not change the selected aggregation grain.
+            // A combined label can open a record only when every observation refers to that same record.
+            var value = dataType == "uuid" ? $"MIN(({expression})::text)::uuid" : $"MIN({expression})";
+            expression = $"CASE WHEN COUNT(DISTINCT {expression})=1 AND COUNT({expression})=COUNT(*) THEN {value} END";
+        }
+        AddProjectedColumn(selectSql, groupBySql, columns, usedAliases, expression, safeAlias, safeAlias, dataType, "support", includeInGroupBy: !aggregate);
     }
 
     private static void AddProjectedColumn(

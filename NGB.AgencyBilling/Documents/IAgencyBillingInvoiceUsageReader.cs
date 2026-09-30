@@ -6,6 +6,11 @@ public interface IAgencyBillingInvoiceUsageReader
         Guid sourceTimesheetId,
         Guid? excludingSalesInvoiceId = null,
         CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>> GetPostedInvoiceUsageForTimesheetsAsync(
+        IReadOnlyCollection<Guid> sourceTimesheetIds,
+        Guid? excludingSalesInvoiceId = null,
+        CancellationToken ct = default);
 }
 
 public sealed record AgencyBillingTimesheetInvoiceUsage(decimal InvoicedHours, decimal InvoicedAmount);

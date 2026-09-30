@@ -18,6 +18,13 @@ export type OpenItemsGridDefinition = {
   onActivate: (id: string) => void | Promise<void>
 }
 
+export type OpenItemsPageState = {
+  offset: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
 export type OpenItemsAppliedAllocationView = {
   applyId: string
   applyDisplay?: string | null

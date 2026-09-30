@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_ChartOfAccounts_DimensionRules_And_Immutability_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -29,8 +29,6 @@ public sealed class AuditLog_ChartOfAccounts_DimensionRules_And_Immutability_P2T
     [Fact]
     public async Task UpdateAsync_WhenClientChangesOrdinals_TreatsAsExplicit_AndAuditsRules()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(
             Fixture.ConnectionString,
             services => services.AddSingleton<ICurrentActorContext>(new FixedCurrentActorContext(Actor)));
@@ -83,8 +81,6 @@ public sealed class AuditLog_ChartOfAccounts_DimensionRules_And_Immutability_P2T
     [Fact]
     public async Task UpdateAsync_WhenClientOnlyReordersRules_DoesNotWriteAuditEvent()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(
             Fixture.ConnectionString,
             services => services.AddSingleton<ICurrentActorContext>(new FixedCurrentActorContext(Actor)));
@@ -125,8 +121,6 @@ public sealed class AuditLog_ChartOfAccounts_DimensionRules_And_Immutability_P2T
     [Fact]
     public async Task UpdateAsync_WhenAccountHasMovements_ChangingDimensionRulesThrows_AndDoesNotWriteAuditEvent()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(
             Fixture.ConnectionString,
             services => services.AddSingleton<ICurrentActorContext>(new FixedCurrentActorContext(Actor)));

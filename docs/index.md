@@ -13,7 +13,13 @@ This site is the consolidated platform documentation for <strong>NGB Platform</s
 - [Host composition](/start-here/host-composition)
 - [Reading path](/start-here/reading-path)
 
-## What's new in 2.0
+## What's new in 3.0
+
+- [Migration from 2.0.0 to 3.0.0](/guides/migrating-to-3.0)
+- [Platform projects and adapter ownership](/reference/platform-projects)
+- [Layering rules](/reference/layering-rules)
+
+## Previous 2.0 feature migration
 
 - [Document Actions and Work Center](/guides/document-actions-and-work-center)
 - [Migration from 1.3.1 to 2.0.0](/guides/migrating-to-2.0)

@@ -17,8 +17,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 ///
 /// Operational Registers use append-only movements + storno semantics; Update/Delete must be forbidden.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseGuards_OperationalRegisters_MovementsTables_AppendOnly_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseGuards_OperationalRegisters_MovementsTables_AppendOnly_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

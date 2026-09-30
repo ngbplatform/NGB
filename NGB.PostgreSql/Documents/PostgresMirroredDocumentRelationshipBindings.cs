@@ -102,14 +102,24 @@ internal static class PostgresMirroredDocumentRelationshipBindings
             return [];
 
         var missing = new List<string>();
+        var existingByBinding = existing
+            .GroupBy(
+                row => BindingKey(row.TableName, row.TriggerName, row.FunctionName),
+                StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(row => row.TriggerDefinition).ToArray(),
+                StringComparer.Ordinal);
 
         foreach (var item in expected)
         {
-            var found = existing.Any(x =>
-                x.TableName.Equals(item.TableName, StringComparison.OrdinalIgnoreCase)
-                && x.TriggerName.Equals(item.ExpectedTriggerName, StringComparison.OrdinalIgnoreCase)
-                && x.FunctionName.Equals("ngb_sync_mirrored_document_relationship", StringComparison.OrdinalIgnoreCase)
-                && x.TriggerDefinition.Contains(item.ExpectedTriggerCallSnippet, StringComparison.Ordinal));
+            var key = BindingKey(
+                item.TableName,
+                item.ExpectedTriggerName,
+                "ngb_sync_mirrored_document_relationship");
+            var found = existingByBinding.TryGetValue(key, out var definitions)
+                        && definitions.Any(definition =>
+                            definition.Contains(item.ExpectedTriggerCallSnippet, StringComparison.Ordinal));
 
             if (!found)
                 missing.Add($"{item.Descriptor} is missing trigger binding '{item.ExpectedTriggerName}' on table '{item.TableName}'.");
@@ -117,4 +127,10 @@ internal static class PostgresMirroredDocumentRelationshipBindings
 
         return missing;
     }
+
+    private static string BindingKey(string tableName, string triggerName, string functionName)
+        => string.Join('\u001f',
+            tableName.ToUpperInvariant(),
+            triggerName.ToUpperInvariant(),
+            functionName.ToUpperInvariant());
 }

@@ -113,6 +113,37 @@ public sealed class SalesInvoicePostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_When_Contract_Client_Does_Not_Match_Throws()
+    {
+        var contractId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: contractId);
+        var serviceItemId = Guid.NewGuid();
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(documentId: head.DocumentId, serviceItemId: serviceItemId);
+        var contract = AgencyBillingTestData.ValidClientContractHead(
+            documentId: contractId,
+            clientId: Guid.NewGuid(),
+            projectId: head.ProjectId);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (contractId, AgencyBillingTestData.CreateDocument(
+                    AgencyBillingCodes.ClientContract,
+                    DocumentStatus.Posted,
+                    id: contractId))),
+            contractsById: Map((contractId, contract)));
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice),
+                CancellationToken.None));
+
+        ex.ParamName.Should().Be("contract_id");
+        ex.Reason.Should().Be("Referenced client contract must belong to the same client and project as the invoice.");
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_When_Lines_Are_Missing_Throws()
     {
         var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null);
@@ -214,6 +245,120 @@ public sealed class SalesInvoicePostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_When_Line_Amount_Is_Zero_ThrowsItsSpecificError()
+    {
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null, amount: 0m);
+        var serviceItemId = Guid.NewGuid();
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(
+            documentId: head.DocumentId,
+            serviceItemId: serviceItemId,
+            quantityHours: 1m,
+            rate: 160m,
+            lineAmount: 0m);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId));
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice), CancellationToken.None));
+
+        ex.ParamName.Should().Be("lines[0].line_amount");
+        ex.Reason.Should().Be("Line Amount must be greater than zero.");
+    }
+
+    [Fact]
+    public async Task ValidateBeforePostAsync_When_Contract_Is_Draft_Throws()
+    {
+        var contractId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: contractId);
+        var serviceItemId = Guid.NewGuid();
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [AgencyBillingTestData.ValidSalesInvoiceLine(head.DocumentId, serviceItemId: serviceItemId)],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (contractId, AgencyBillingTestData.CreateDocument(AgencyBillingCodes.ClientContract, DocumentStatus.Draft, id: contractId))));
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice), CancellationToken.None));
+
+        ex.Reason.Should().Be("Referenced client contract must be posted.");
+    }
+
+    [Fact]
+    public async Task ValidateBeforePostAsync_When_Contract_Is_Inactive_Throws()
+    {
+        var contractId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: contractId);
+        var serviceItemId = Guid.NewGuid();
+        var contract = AgencyBillingTestData.ValidClientContractHead(
+            contractId, head.ClientId, head.ProjectId, isActive: false);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [AgencyBillingTestData.ValidSalesInvoiceLine(head.DocumentId, serviceItemId: serviceItemId)],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (contractId, AgencyBillingTestData.CreateDocument(AgencyBillingCodes.ClientContract, DocumentStatus.Posted, id: contractId))),
+            contractsById: Map((contractId, contract)));
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice), CancellationToken.None));
+
+        ex.Reason.Should().Be("Referenced client contract must be active.");
+    }
+
+    [Fact]
+    public async Task ValidateBeforePostAsync_ValidatesBothContractDateBoundariesAndInclusiveRange()
+    {
+        var contractId = Guid.NewGuid();
+        var clientId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var serviceItemId = Guid.NewGuid();
+        var contract = AgencyBillingTestData.ValidClientContractHead(
+            contractId,
+            clientId,
+            projectId,
+            isActive: true,
+            effectiveFrom: new DateOnly(2026, 4, 1),
+            effectiveTo: new DateOnly(2026, 4, 30));
+        var contractDocument = AgencyBillingTestData.CreateDocument(
+            AgencyBillingCodes.ClientContract, DocumentStatus.Posted, id: contractId);
+
+        foreach (var invalidDate in new[] { new DateOnly(2026, 3, 31), new DateOnly(2026, 5, 1) })
+        {
+            var head = AgencyBillingTestData.ValidSalesInvoiceHead(
+                clientId: clientId, projectId: projectId, contractId: contractId, documentDateUtc: invalidDate);
+            var harness = CreateSalesInvoiceHarness(
+                head: head,
+                lines: [AgencyBillingTestData.ValidSalesInvoiceLine(head.DocumentId, serviceItemId: serviceItemId)],
+                refs: ValidInvoiceReferences(clientId, projectId, serviceItemId),
+                documentsById: Map((contractId, contractDocument)),
+                contractsById: Map((contractId, contract)));
+
+            var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+                harness.Sut.ValidateBeforePostAsync(
+                    AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice), CancellationToken.None));
+            ex.Reason.Should().Contain("effective period");
+        }
+
+        var validHead = AgencyBillingTestData.ValidSalesInvoiceHead(
+            clientId: clientId, projectId: projectId, contractId: contractId, documentDateUtc: new DateOnly(2026, 4, 30));
+        var validHarness = CreateSalesInvoiceHarness(
+            head: validHead,
+            lines: [AgencyBillingTestData.ValidSalesInvoiceLine(validHead.DocumentId, serviceItemId: serviceItemId)],
+            refs: ValidInvoiceReferences(clientId, projectId, serviceItemId),
+            documentsById: Map((contractId, contractDocument)),
+            contractsById: Map((contractId, contract)));
+
+        await validHarness.Sut.ValidateBeforePostAsync(
+            AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice), CancellationToken.None);
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_When_Source_Timesheet_Is_Missing_Throws()
     {
         var timesheetId = Guid.NewGuid();
@@ -260,6 +405,33 @@ public sealed class SalesInvoicePostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_When_Posted_Source_Timesheet_Has_No_AgencyBilling_Head_Throws()
+    {
+        var timesheetId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null);
+        var serviceItemId = Guid.NewGuid();
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(
+            documentId: head.DocumentId,
+            serviceItemId: serviceItemId,
+            sourceTimesheetId: timesheetId);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (timesheetId, AgencyBillingTestData.CreateDocument(
+                    AgencyBillingCodes.Timesheet, DocumentStatus.Posted, id: timesheetId))),
+            timesheetHeadsById: new Dictionary<Guid, AgencyBillingTimesheetHead>(),
+            omitUnconfiguredTimesheetHeads: true);
+
+        await ((Func<Task>)(() => harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice),
+                CancellationToken.None)))
+            .Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*missing its Agency Billing head row*");
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_When_Source_Timesheet_Does_Not_Match_Client_And_Project_Throws()
     {
         var timesheetId = Guid.NewGuid();
@@ -283,6 +455,40 @@ public sealed class SalesInvoicePostValidator_P0Tests
 
         var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
             harness.Sut.ValidateBeforePostAsync(AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice), CancellationToken.None));
+
+        ex.ParamName.Should().Be("lines[0].source_timesheet_id");
+        ex.Reason.Should().Be("Referenced source timesheet must belong to the same client and project as the invoice.");
+    }
+
+    [Fact]
+    public async Task ValidateBeforePostAsync_When_Source_Timesheet_Client_Does_Not_Match_Throws()
+    {
+        var timesheetId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null);
+        var serviceItemId = Guid.NewGuid();
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(
+            documentId: head.DocumentId,
+            serviceItemId: serviceItemId,
+            sourceTimesheetId: timesheetId);
+        var timesheetHead = AgencyBillingTestData.ValidTimesheetHead(
+            documentId: timesheetId,
+            clientId: Guid.NewGuid(),
+            projectId: head.ProjectId);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (timesheetId, AgencyBillingTestData.CreateDocument(
+                    AgencyBillingCodes.Timesheet,
+                    DocumentStatus.Posted,
+                    id: timesheetId))),
+            timesheetHeadsById: Map((timesheetId, timesheetHead)));
+
+        var ex = await Assert.ThrowsAsync<NgbArgumentInvalidException>(() =>
+            harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice),
+                CancellationToken.None));
 
         ex.ParamName.Should().Be("lines[0].source_timesheet_id");
         ex.Reason.Should().Be("Referenced source timesheet must belong to the same client and project as the invoice.");
@@ -344,6 +550,38 @@ public sealed class SalesInvoicePostValidator_P0Tests
 
         ex.ParamName.Should().Be("lines");
         ex.Reason.Should().Contain("remaining billable hours");
+    }
+
+    [Fact]
+    public async Task ValidateBeforePostAsync_When_Batched_Source_Details_Are_Missing_Uses_Zero_Defaults()
+    {
+        var timesheetId = Guid.NewGuid();
+        var serviceItemId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null, amount: 160m);
+        var line = AgencyBillingTestData.ValidSalesInvoiceLine(
+            documentId: head.DocumentId,
+            serviceItemId: serviceItemId,
+            sourceTimesheetId: timesheetId,
+            quantityHours: 1m,
+            rate: 160m,
+            lineAmount: 160m);
+        var harness = CreateSalesInvoiceHarness(
+            head: head,
+            lines: [line],
+            refs: ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documentsById: Map(
+                (timesheetId, AgencyBillingTestData.CreateDocument(
+                    AgencyBillingCodes.Timesheet, DocumentStatus.Posted, id: timesheetId))),
+            timesheetHeadsById: Map((timesheetId, AgencyBillingTestData.ValidTimesheetHead(
+                timesheetId, clientId: head.ClientId, projectId: head.ProjectId))),
+            omitUnconfiguredTimesheetLines: true,
+            omitUnconfiguredUsage: true);
+
+        var error = await ((Func<Task>)(() => harness.Sut.ValidateBeforePostAsync(
+                AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice),
+                CancellationToken.None)))
+            .Should().ThrowAsync<NgbArgumentInvalidException>();
+        error.Which.Reason.Should().Contain("remaining billable hours");
     }
 
     [Fact]
@@ -451,6 +689,37 @@ public sealed class SalesInvoicePostValidator_P0Tests
         harness.LockedDocumentIds.Should().Equal(timesheetId);
     }
 
+    [Fact]
+    public async Task ValidateBeforePostAsync_LocksTwoDistinctTimesheetsInSortedOrder()
+    {
+        var firstTimesheetId = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        var secondTimesheetId = Guid.Parse("22222222-2222-4222-8222-222222222222");
+        var serviceItemId = Guid.NewGuid();
+        var head = AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null, amount: 320m);
+        var lines = new[]
+        {
+            AgencyBillingTestData.ValidSalesInvoiceLine(head.DocumentId, 1, serviceItemId, secondTimesheetId, 1m, 160m, 160m),
+            AgencyBillingTestData.ValidSalesInvoiceLine(head.DocumentId, 2, serviceItemId, firstTimesheetId, 1m, 160m, 160m)
+        };
+        var documents = Map(
+            (firstTimesheetId, AgencyBillingTestData.CreateDocument(AgencyBillingCodes.Timesheet, DocumentStatus.Posted, id: firstTimesheetId)),
+            (secondTimesheetId, AgencyBillingTestData.CreateDocument(AgencyBillingCodes.Timesheet, DocumentStatus.Posted, id: secondTimesheetId)));
+        var heads = Map(
+            (firstTimesheetId, AgencyBillingTestData.ValidTimesheetHead(firstTimesheetId, clientId: head.ClientId, projectId: head.ProjectId)),
+            (secondTimesheetId, AgencyBillingTestData.ValidTimesheetHead(secondTimesheetId, clientId: head.ClientId, projectId: head.ProjectId)));
+        var sourceLines = Map<IReadOnlyList<AgencyBillingTimesheetLine>>(
+            (firstTimesheetId, [AgencyBillingTestData.ValidTimesheetLine(firstTimesheetId, hours: 1m, lineAmount: 160m)]),
+            (secondTimesheetId, [AgencyBillingTestData.ValidTimesheetLine(secondTimesheetId, hours: 1m, lineAmount: 160m)]));
+        var harness = CreateSalesInvoiceHarness(
+            head, lines, ValidInvoiceReferences(head.ClientId, head.ProjectId, serviceItemId),
+            documents, timesheetHeadsById: heads, timesheetLinesById: sourceLines);
+
+        await harness.Sut.ValidateBeforePostAsync(
+            AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice), CancellationToken.None);
+
+        harness.LockedDocumentIds.Should().Equal(firstTimesheetId, secondTimesheetId);
+    }
+
     private static SalesInvoiceHarness CreateSalesInvoiceHarness(
         AgencyBillingSalesInvoiceHead? head = null,
         IReadOnlyList<AgencyBillingSalesInvoiceLine>? lines = null,
@@ -459,7 +728,10 @@ public sealed class SalesInvoicePostValidator_P0Tests
         IReadOnlyDictionary<Guid, AgencyBillingClientContractHead>? contractsById = null,
         IReadOnlyDictionary<Guid, AgencyBillingTimesheetHead>? timesheetHeadsById = null,
         IReadOnlyDictionary<Guid, IReadOnlyList<AgencyBillingTimesheetLine>>? timesheetLinesById = null,
-        IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>? usageByTimesheetId = null)
+        IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>? usageByTimesheetId = null,
+        bool omitUnconfiguredTimesheetHeads = false,
+        bool omitUnconfiguredTimesheetLines = false,
+        bool omitUnconfiguredUsage = false)
     {
         head ??= AgencyBillingTestData.ValidSalesInvoiceHead(contractId: null);
         lines ??= [AgencyBillingTestData.ValidSalesInvoiceLine(documentId: head.DocumentId)];
@@ -493,6 +765,19 @@ public sealed class SalesInvoicePostValidator_P0Tests
                     clientId: head.ClientId,
                     projectId: head.ProjectId);
             });
+        readers.Setup(x => x.ReadTimesheetHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.Distinct()
+                    .Where(id => !omitUnconfiguredTimesheetHeads
+                                 || timesheetHeadsById is not null && timesheetHeadsById.ContainsKey(id))
+                    .ToDictionary(
+                    static id => id,
+                    id => timesheetHeadsById is not null && timesheetHeadsById.TryGetValue(id, out var timesheetHead)
+                        ? timesheetHead
+                        : AgencyBillingTestData.ValidTimesheetHead(
+                            documentId: id,
+                            clientId: head.ClientId,
+                            projectId: head.ProjectId)));
         readers.Setup(x => x.ReadTimesheetLinesAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) =>
             {
@@ -504,6 +789,19 @@ public sealed class SalesInvoicePostValidator_P0Tests
                     AgencyBillingTestData.ValidTimesheetLine(documentId: id)
                 ];
             });
+        readers.Setup(x => x.ReadTimesheetLinesAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.Distinct()
+                    .Where(id => !omitUnconfiguredTimesheetLines
+                                 || timesheetLinesById is not null && timesheetLinesById.ContainsKey(id))
+                    .ToDictionary(
+                    static id => id,
+                    id => timesheetLinesById is not null && timesheetLinesById.TryGetValue(id, out var timesheetLines)
+                        ? timesheetLines
+                        : (IReadOnlyList<AgencyBillingTimesheetLine>)
+                        [
+                            AgencyBillingTestData.ValidTimesheetLine(documentId: id)
+                        ]));
 
         var usageReader = new Mock<IAgencyBillingInvoiceUsageReader>(MockBehavior.Strict);
         usageReader.Setup(x => x.GetPostedInvoiceUsageForTimesheetAsync(It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
@@ -514,11 +812,30 @@ public sealed class SalesInvoicePostValidator_P0Tests
 
                 return new AgencyBillingTimesheetInvoiceUsage(0m, 0m);
             });
+        usageReader.Setup(x => x.GetPostedInvoiceUsageForTimesheetsAsync(
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                It.IsAny<Guid?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, Guid? _, CancellationToken _) =>
+                (IReadOnlyDictionary<Guid, AgencyBillingTimesheetInvoiceUsage>)ids.Distinct()
+                    .Where(id => !omitUnconfiguredUsage
+                                 || usageByTimesheetId is not null && usageByTimesheetId.ContainsKey(id))
+                    .ToDictionary(
+                    static id => id,
+                    id => usageByTimesheetId is not null && usageByTimesheetId.TryGetValue(id, out var usage)
+                        ? usage
+                        : new AgencyBillingTimesheetInvoiceUsage(0m, 0m)));
 
         var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
         documents.Setup(x => x.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) =>
                 documentsById is not null && documentsById.TryGetValue(id, out var record) ? record : null);
+        documents.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids
+                    .Where(id => documentsById is not null && documentsById.ContainsKey(id))
+                    .Distinct()
+                    .ToDictionary(static id => id, id => documentsById![id]));
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);
         var lockedDocumentIds = new List<Guid>();
@@ -695,6 +1012,30 @@ public sealed class CustomerPaymentPostValidator_P0Tests
     }
 
     [Fact]
+    public async Task ValidateBeforePostAsync_When_Posted_Invoice_Has_No_AgencyBilling_Head_Throws()
+    {
+        var payment = AgencyBillingTestData.ValidCustomerPaymentHead();
+        var invoiceId = Guid.NewGuid();
+        var apply = AgencyBillingTestData.ValidCustomerPaymentApply(
+            documentId: payment.DocumentId,
+            salesInvoiceId: invoiceId);
+        var harness = CreateCustomerPaymentHarness(
+            payment: payment,
+            applies: [apply],
+            refs: ValidPaymentReferences(payment.ClientId),
+            documentsById: Map((invoiceId, AgencyBillingTestData.CreateDocument(
+                AgencyBillingCodes.SalesInvoice, DocumentStatus.Posted, id: invoiceId))),
+            invoicesById: new Dictionary<Guid, AgencyBillingSalesInvoiceHead>(),
+            omitUnconfiguredInvoiceHeads: true);
+
+        var act = () => harness.Sut.ValidateBeforePostAsync(
+            AgencyBillingTestData.CreateDocument(AgencyBillingCodes.CustomerPayment), default);
+
+        await act.Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*missing its Agency Billing head row*");
+    }
+
+    [Fact]
     public async Task ValidateBeforePostAsync_When_Applied_Invoice_Client_Differs_Throws()
     {
         var payment = AgencyBillingTestData.ValidCustomerPaymentHead();
@@ -848,6 +1189,35 @@ public sealed class CustomerPaymentPostValidator_P0Tests
         harness.LockedDocumentIds.Should().Equal(invoiceId);
     }
 
+    [Fact]
+    public async Task ValidateBeforePostAsync_LocksTwoDistinctInvoicesInSortedOrder()
+    {
+        var firstInvoiceId = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        var secondInvoiceId = Guid.Parse("22222222-2222-4222-8222-222222222222");
+        var payment = AgencyBillingTestData.ValidCustomerPaymentHead(amount: 500m);
+        var applies = new[]
+        {
+            AgencyBillingTestData.ValidCustomerPaymentApply(payment.DocumentId, 1, secondInvoiceId, 300m),
+            AgencyBillingTestData.ValidCustomerPaymentApply(payment.DocumentId, 2, firstInvoiceId, 200m)
+        };
+        var firstInvoice = AgencyBillingTestData.ValidSalesInvoiceHead(firstInvoiceId, payment.ClientId, amount: 200m);
+        var secondInvoice = AgencyBillingTestData.ValidSalesInvoiceHead(secondInvoiceId, payment.ClientId, amount: 300m);
+        var harness = CreateCustomerPaymentHarness(
+            payment,
+            applies,
+            ValidPaymentReferences(payment.ClientId),
+            Map(
+                (firstInvoiceId, AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice, DocumentStatus.Posted, id: firstInvoiceId)),
+                (secondInvoiceId, AgencyBillingTestData.CreateDocument(AgencyBillingCodes.SalesInvoice, DocumentStatus.Posted, id: secondInvoiceId))),
+            Map((firstInvoiceId, firstInvoice), (secondInvoiceId, secondInvoice)),
+            Map((firstInvoiceId, 200m), (secondInvoiceId, 300m)));
+
+        await harness.Sut.ValidateBeforePostAsync(
+            AgencyBillingTestData.CreateDocument(AgencyBillingCodes.CustomerPayment), CancellationToken.None);
+
+        harness.LockedDocumentIds.Should().Equal(firstInvoiceId, secondInvoiceId);
+    }
+
     private static CustomerPaymentHarness CreateCustomerPaymentHarness(
         AgencyBillingCustomerPaymentHead? payment = null,
         IReadOnlyList<AgencyBillingCustomerPaymentApply>? applies = null,
@@ -858,7 +1228,8 @@ public sealed class CustomerPaymentPostValidator_P0Tests
         ChartOfAccounts? chart = null,
         AgencyBillingAccountingPolicy? policy = null,
         OperationalRegisterAdminItem? register = null,
-        bool registerExists = true)
+        bool registerExists = true,
+        bool omitUnconfiguredInvoiceHeads = false)
     {
         payment ??= AgencyBillingTestData.ValidCustomerPaymentHead();
         applies ??= [AgencyBillingTestData.ValidCustomerPaymentApply(documentId: payment.DocumentId)];
@@ -880,11 +1251,28 @@ public sealed class CustomerPaymentPostValidator_P0Tests
 
                 return AgencyBillingTestData.ValidSalesInvoiceHead(documentId: id, clientId: payment.ClientId, amount: 0m);
             });
+        readers.Setup(x => x.ReadSalesInvoiceHeadsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids.Where(id => !omitUnconfiguredInvoiceHeads || (invoicesById?.ContainsKey(id) ?? false))
+                    .Distinct().ToDictionary(
+                    static id => id,
+                    id => invoicesById is not null && invoicesById.TryGetValue(id, out var invoice)
+                        ? invoice
+                        : AgencyBillingTestData.ValidSalesInvoiceHead(
+                            documentId: id,
+                            clientId: payment.ClientId,
+                            amount: 0m)));
 
         var documents = new Mock<IDocumentRepository>(MockBehavior.Strict);
         documents.Setup(x => x.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((Guid id, CancellationToken _) =>
                 documentsById is not null && documentsById.TryGetValue(id, out var document) ? document : null);
+        documents.Setup(x => x.GetByIdsAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
+                ids
+                    .Where(id => documentsById is not null && documentsById.ContainsKey(id))
+                    .Distinct()
+                    .ToDictionary(static id => id, id => documentsById![id]));
 
         var charts = new Mock<IChartOfAccountsProvider>(MockBehavior.Strict);
         charts.Setup(x => x.GetAsync(It.IsAny<CancellationToken>()))
@@ -921,6 +1309,30 @@ public sealed class CustomerPaymentPostValidator_P0Tests
                 }
 
                 return 0m;
+            });
+        netReader.Setup(x => x.GetNetByDimensionSetsAsync(
+                policy.ArOpenItemsOperationalRegisterId,
+                It.IsAny<IReadOnlyCollection<Guid>>(),
+                "amount",
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid _, IReadOnlyCollection<Guid> dimensionSetIds, string _, CancellationToken _) =>
+            {
+                var result = dimensionSetIds.Distinct().ToDictionary(static id => id, static _ => 0m);
+                if (openAmountsByInvoiceId is null || invoicesById is null)
+                    return (IReadOnlyDictionary<Guid, decimal>)result;
+
+                foreach (var (invoiceId, invoice) in invoicesById)
+                {
+                    var dimensionSetId = DeterministicDimensionSetId.FromBag(
+                        AgencyBillingPostingCommon.ArOpenItemBag(invoice.ClientId, invoice.ProjectId, invoice.DocumentId));
+                    if (result.ContainsKey(dimensionSetId)
+                        && openAmountsByInvoiceId.TryGetValue(invoiceId, out var openAmount))
+                    {
+                        result[dimensionSetId] = openAmount;
+                    }
+                }
+
+                return result;
             });
 
         var locks = new Mock<IAdvisoryLockManager>(MockBehavior.Strict);

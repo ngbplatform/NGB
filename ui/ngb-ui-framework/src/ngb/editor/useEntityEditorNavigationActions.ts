@@ -76,14 +76,12 @@ export function useEntityEditorNavigationActions(args: UseEntityEditorNavigation
     return buildDocumentCompactPageUrl(args.typeCode.value, args.currentId.value);
   });
 
-  const drawerBackTarget = computed(() => {
-    if (args.mode.value !== 'drawer') return currentRouteTarget.value;
-
-    return buildPathWithQuery(currentRouteTarget.value, {
+  const drawerBackTarget = computed(() =>
+    buildPathWithQuery(currentRouteTarget.value, {
       panel: args.currentId.value ? 'edit' : 'new',
       id: args.currentId.value,
-    });
-  });
+    }),
+  );
 
   const relatedViewBackTarget = computed(() => {
     if (args.kind.value !== 'document') {
@@ -107,11 +105,11 @@ export function useEntityEditorNavigationActions(args: UseEntityEditorNavigation
   function buildDocumentCopyFields(): RecordFields {
     const result: RecordFields = {};
     const formFields = args.metadata.value?.form
-      ? listFormFields(args.metadata.value.form).filter((field) => !field?.isReadOnly)
+      ? listFormFields(args.metadata.value.form).filter((field) => !field.isReadOnly)
       : Object.keys(args.model.value).map((key) => ({ key, isReadOnly: false }));
 
     for (const field of formFields) {
-      const key = String(field?.key ?? '').trim();
+      const key = String(field.key ?? '').trim();
       if (!key || key === 'display' || key === 'number') continue;
       if (!(key in args.model.value)) continue;
       result[key] = clonePlainData(args.model.value[key]) as RecordFields[string];

@@ -18,8 +18,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentDraftService_Cancellation_Rollback_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentDraftService_Cancellation_Rollback_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string ActorSubject = "it_cancel_draft_sub";
@@ -33,7 +33,6 @@ public sealed class DocumentDraftService_Cancellation_Rollback_P0Tests(PostgresT
     [Fact]
     public async Task CreateDraftAsync_WhenCancellationDuringAuditWrite_RollsBack_Document_Typed_Audit_And_Actor()
     {
-        await Fixture.ResetDatabaseAsync();
         await EnsureTypedTableExistsAsync(Fixture.ConnectionString);
 
         using var host = CreateHostWithCancelableAuditWriter();
@@ -71,7 +70,6 @@ public sealed class DocumentDraftService_Cancellation_Rollback_P0Tests(PostgresT
     [Fact]
     public async Task UpdateDraftAsync_WhenCancellationDuringAuditWrite_RollsBack_Document_Typed_Audit_And_Actor()
     {
-        await Fixture.ResetDatabaseAsync();
         await EnsureTypedTableExistsAsync(Fixture.ConnectionString);
 
         Guid id;
@@ -119,7 +117,6 @@ public sealed class DocumentDraftService_Cancellation_Rollback_P0Tests(PostgresT
     [Fact]
     public async Task DeleteDraftAsync_WhenCancellationDuringAuditWrite_RollsBack_Document_Typed_Audit_And_Actor()
     {
-        await Fixture.ResetDatabaseAsync();
         await EnsureTypedTableExistsAsync(Fixture.ConnectionString);
 
         Guid id;

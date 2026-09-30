@@ -19,7 +19,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// this test verifies the *enforcement* behavior: UPDATE/DELETE are rejected by the shared
 /// guard function ngb_forbid_mutation_of_append_only_table().
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovementsTable_AppendOnly_Enforced_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

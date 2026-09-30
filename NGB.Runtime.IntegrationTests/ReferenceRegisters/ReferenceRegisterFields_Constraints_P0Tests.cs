@@ -10,7 +10,7 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// P0: metadata tables must enforce identifier invariants at the DB level
 /// (defense-in-depth against accidental raw SQL inserts / buggy writers).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterFields_Constraints_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

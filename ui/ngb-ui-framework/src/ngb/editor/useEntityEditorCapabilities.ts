@@ -104,8 +104,6 @@ export function useEntityEditorCapabilities<
   });
 
   const documentDisplayTitle = computed(() => {
-    if (args.kind.value !== 'document') return '';
-
     const display = String(args.model.value.display ?? '').trim();
     if (display) return display;
 
@@ -142,7 +140,7 @@ export function useEntityEditorCapabilities<
 
   const auditEntityKind = computed(() => (args.kind.value === 'catalog' ? 2 : 1));
   const auditEntityId = computed(() => args.currentId.value);
-  const auditEntityTitle = computed(() => String(args.model.value.display ?? title.value ?? '').trim());
+  const auditEntityTitle = computed(() => String(args.model.value.display ?? title.value).trim());
 
   const isReadOnly = computed(() =>
     (!args.isNew.value && args.isMarkedForDeletion.value)

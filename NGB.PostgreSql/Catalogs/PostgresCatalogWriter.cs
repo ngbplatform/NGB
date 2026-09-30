@@ -149,7 +149,7 @@ internal sealed class PostgresCatalogWriter(IUnitOfWork uow) : ICatalogWriter
         return new NormalizedCatalogHeadRows(catalogIds, columns, columnArrays);
     }
 
-    private static Array CreateColumnArray(ColumnType columnType, int length)
+    internal static Array CreateColumnArray(ColumnType columnType, int length)
         => columnType switch
         {
             ColumnType.String => new string?[length],
@@ -164,7 +164,7 @@ internal sealed class PostgresCatalogWriter(IUnitOfWork uow) : ICatalogWriter
             _ => throw new NgbArgumentInvalidException(nameof(columnType), $"Unsupported catalog column type '{columnType}'.")
         };
 
-    private static void SetArrayValue(Array array, int index, object? value, ColumnType columnType)
+    internal static void SetArrayValue(Array array, int index, object? value, ColumnType columnType)
     {
         switch (columnType)
         {
@@ -198,7 +198,7 @@ internal sealed class PostgresCatalogWriter(IUnitOfWork uow) : ICatalogWriter
         }
     }
 
-    private static string ToArraySqlType(ColumnType columnType)
+    internal static string ToArraySqlType(ColumnType columnType)
         => columnType switch
         {
             ColumnType.String => "text[]",
@@ -218,7 +218,7 @@ internal sealed class PostgresCatalogWriter(IUnitOfWork uow) : ICatalogWriter
         IReadOnlyList<CatalogHeadColumn> Columns,
         IReadOnlyDictionary<string, Array> ColumnArrays);
 
-    private static string Qi(string ident)
+    internal static string Qi(string ident)
     {
         if (string.IsNullOrWhiteSpace(ident))
             throw new NgbArgumentInvalidException(nameof(ident), "Identifier is required.");

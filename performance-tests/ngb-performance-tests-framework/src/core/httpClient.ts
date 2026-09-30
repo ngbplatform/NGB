@@ -23,6 +23,7 @@ export interface NgbRequestOptions {
   readonly expectedStatuses?: readonly number[];
   readonly query?: Record<string, QueryValue>;
   readonly body?: unknown;
+  readonly idempotencyKey?: string;
 }
 
 export type QueryValue = string | number | boolean | null | undefined;
@@ -81,10 +82,11 @@ export class NgbHttpClient {
         firstToken,
         tags,
         canRetryUnauthorized ? [...expectedStatusCodes, 401] : expectedStatusCodes,
+        options.idempotencyKey,
       ),
     );
     const response = this.shouldRetryUnauthorized(firstResponse)
-      ? this.retryAfterUnauthorized(method, url, requestBody, tags, expectedStatusCodes, firstToken)
+      ? this.retryAfterUnauthorized(method, url, requestBody, tags, expectedStatusCodes, firstToken, options.idempotencyKey)
       : firstResponse;
     const resultTags = { ...tags, status: String(response.status) };
     const ok = operationSucceeded(response, expectedStatusCodes, tags);
@@ -104,14 +106,17 @@ export class NgbHttpClient {
     accessToken: string,
     tags: Record<string, string>,
     expectedStatusCodes: readonly number[],
+    idempotencyKey?: string,
   ): Params {
     return {
       headers: {
         Accept: 'application/json',
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
         Authorization: `Bearer ${accessToken}`,
         ...(method === 'GET' || method === 'DELETE' ? {} : { 'Content-Type': 'application/json' }),
       },
-      tags,
+      // Group dynamic URLs by operation so document IDs do not create new metric series.
+      tags: tags.operation ? { ...tags, name: tags.operation } : tags,
       timeout: this.timeout,
       responseCallback: expectedStatuses(...expectedStatusCodes),
     };
@@ -128,6 +133,7 @@ export class NgbHttpClient {
     tags: Record<string, string>,
     expectedStatusCodes: readonly number[],
     failedAccessToken: string,
+    idempotencyKey?: string,
   ): NgbHttpResponse {
     this.tokenProvider.invalidateAccessToken?.(failedAccessToken);
     const retryToken = this.tokenProvider.getAccessToken();
@@ -137,7 +143,7 @@ export class NgbHttpClient {
         method,
         url,
         requestBody,
-        this.buildParams(method, retryToken, tags, expectedStatusCodes),
+        this.buildParams(method, retryToken, tags, expectedStatusCodes, idempotencyKey),
       );
     }
 
@@ -145,7 +151,7 @@ export class NgbHttpClient {
       method,
       url,
       requestBody,
-      this.buildParams(method, retryToken, { ...tags, auth_retry: 'true' }, expectedStatusCodes),
+      this.buildParams(method, retryToken, { ...tags, auth_retry: 'true' }, expectedStatusCodes, idempotencyKey),
     );
   }
 

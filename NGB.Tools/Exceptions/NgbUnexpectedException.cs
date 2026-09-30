@@ -21,7 +21,7 @@ public sealed class NgbUnexpectedException(
 
     public string Operation { get; } = operation;
 
-    public string ExceptionType { get; } = innerException.GetType().FullName ?? innerException.GetType().Name;
+    public string ExceptionType { get; } = innerException.GetType().ToString();
 
     private static IReadOnlyDictionary<string, object?> BuildContext(
         string operation,
@@ -40,7 +40,7 @@ public sealed class NgbUnexpectedException(
         }
 
         ctx["operation"] = operation;
-        ctx["exceptionType"] = innerException.GetType().FullName ?? innerException.GetType().Name;
+        ctx["exceptionType"] = innerException.GetType().ToString();
 
         // Intentionally do NOT include innerException.Message.
         // It can contain secrets (SQL, connection strings, file paths, etc.).

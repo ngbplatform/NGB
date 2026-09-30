@@ -5,12 +5,29 @@ using NGB.Definitions;
 using NGB.Definitions.Documents.Approval;
 using NGB.Metadata.Documents.Hybrid;
 using NGB.Runtime.Documents.Policies;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Documents.Policies;
 
 public sealed class DefinitionsDocumentApprovalPolicyResolverTests
 {
+    [Fact]
+    public void Constructor_when_required_dependency_is_null_throws()
+    {
+        var definitions = new DefinitionsBuilder().Build();
+
+        Action nullDefinitions = () => new DefinitionsDocumentApprovalPolicyResolver(
+            null!,
+            Array.Empty<IDocumentApprovalPolicy>());
+        Action nullPolicies = () => new DefinitionsDocumentApprovalPolicyResolver(definitions, null!);
+
+        nullDefinitions.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("definitions");
+        nullPolicies.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("policies");
+    }
+
     [Fact]
     public void Resolve_returns_null_when_document_type_not_defined()
     {
@@ -63,6 +80,33 @@ public sealed class DefinitionsDocumentApprovalPolicyResolverTests
         var policy = resolver.Resolve("doc.test");
         policy.Should().NotBeNull();
         policy!.TypeCode.Should().Be("doc.test");
+        resolver.Resolve("DOC.TEST").Should().BeSameAs(policy);
+    }
+
+    [Fact]
+    public void Resolve_when_policy_is_not_registered_throws()
+    {
+        var resolver = new DefinitionsDocumentApprovalPolicyResolver(
+            DefinitionsWithPolicy<TestApprovalPolicy>(),
+            Array.Empty<IDocumentApprovalPolicy>());
+
+        Action action = () => resolver.Resolve("doc.test");
+
+        action.Should().Throw<DocumentPolicyConfigurationException>()
+            .Which.Reason.Should().Contain("not registered");
+    }
+
+    [Fact]
+    public void Resolve_when_policy_has_duplicate_registrations_throws()
+    {
+        var resolver = new DefinitionsDocumentApprovalPolicyResolver(
+            DefinitionsWithPolicy<TestApprovalPolicy>(),
+            new IDocumentApprovalPolicy[] { new TestApprovalPolicy(), new TestApprovalPolicy() });
+
+        Action action = () => resolver.Resolve("doc.test");
+
+        action.Should().Throw<DocumentPolicyConfigurationException>()
+            .Which.Reason.Should().Contain("Multiple policy registrations");
     }
 
     [Fact]
@@ -141,4 +185,16 @@ public sealed class DefinitionsDocumentApprovalPolicyResolverTests
     }
 
     private sealed class NotAPolicy;
+
+    private static DefinitionsRegistry DefinitionsWithPolicy<TPolicy>()
+        where TPolicy : class, IDocumentApprovalPolicy
+    {
+        var builder = new DefinitionsBuilder();
+        builder.AddDocument("doc.test", definition =>
+        {
+            definition.Metadata(new DocumentTypeMetadata("doc.test", []));
+            definition.ApprovalPolicy<TPolicy>();
+        });
+        return builder.Build();
+    }
 }

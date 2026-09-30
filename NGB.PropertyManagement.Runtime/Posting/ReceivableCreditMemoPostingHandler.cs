@@ -37,7 +37,8 @@ public sealed class ReceivableCreditMemoPostingHandler(
             throw ReceivableCreditMemoValidationException.ClassificationRequired(memo.DocumentId);
 
         var chargeType = await readers.ReadChargeTypeHeadAsync(memo.ChargeTypeId.Value, ct);
-        if (chargeType.CreditAccountId is null || chargeType.CreditAccountId == Guid.Empty)
+        var debitAccountId = chargeType.CreditAccountId.GetValueOrDefault();
+        if (debitAccountId == Guid.Empty)
         {
             throw new NgbConfigurationViolationException(
                 $"Charge type '{chargeType.ChargeTypeId}' is missing credit_account_id.",
@@ -49,7 +50,7 @@ public sealed class ReceivableCreditMemoPostingHandler(
                 });
         }
 
-        var debit = coa.Get(chargeType.CreditAccountId.Value);
+        var debit = coa.Get(debitAccountId);
         var period = new DateTime(memo.CreditedOnUtc.Year, memo.CreditedOnUtc.Month, memo.CreditedOnUtc.Day, 0, 0, 0, DateTimeKind.Utc);
 
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");

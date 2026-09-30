@@ -163,7 +163,14 @@ public sealed class PmReporting_CanonicalAccounting_Drilldown_P0Tests : IAsyncLi
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var dto = await resp.Content.ReadFromJsonAsync<ReportExecutionResponseDto>(Json);
         dto.Should().NotBeNull();
-        return dto!;
+        var rows = dto!.Sheet.Rows.ToList();
+        foreach (var group in dto.Sheet.Rows.Where(r => r.ChildrenPath is not null))
+        {
+            var children = await ExecuteAsync(client, reportCode, request with { GroupPath = group.ChildrenPath });
+            rows.AddRange(children.Sheet.Rows.Where(r => r.RowKind != ReportRowKind.Total)
+                .Select(r => r with { OutlineLevel = r.OutlineLevel + 1 }));
+        }
+        return dto with { Sheet = dto.Sheet with { Rows = rows } };
     }
 
     private static ReportCellDto GetCell(ReportExecutionResponseDto report, ReportSheetRowDto row, string columnCode)

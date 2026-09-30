@@ -9,15 +9,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Accounts;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsManagement_DimensionRules_PatchEdgeCases_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task UpdateAsync_WhenDimensionRulesIsNull_DoesNotChangeExistingRules()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         Guid accountId;
@@ -56,8 +54,6 @@ public sealed class ChartOfAccountsManagement_DimensionRules_PatchEdgeCases_P0Te
     [Fact]
     public async Task UpdateAsync_WhenDimensionRulesIsWhitespaceOnly_Throws()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await using var scope = host.Services.CreateAsyncScope();
@@ -86,8 +82,6 @@ public sealed class ChartOfAccountsManagement_DimensionRules_PatchEdgeCases_P0Te
     [Fact]
     public async Task UpdateAsync_WhenDimensionRulesIsEmpty_ClearsAllRules()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         Guid accountId;

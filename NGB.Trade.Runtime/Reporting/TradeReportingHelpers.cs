@@ -1,4 +1,5 @@
 using NGB.Contracts.Reporting;
+using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.OperationalRegisters;
@@ -20,14 +21,14 @@ internal static class TradeReportingHelpers
         var itemId = CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "item_id");
         var warehouseId = CanonicalReportExecutionHelper.GetOptionalGuidFilter(definition, request, "warehouse_id");
 
-        if (itemId is { } actualItemId && actualItemId != Guid.Empty)
+        if (itemId is { } actualItemId)
         {
             filters.Add(new DimensionValue(
                 DeterministicGuid.Create($"Dimension|{TradeCodes.Item}"),
                 actualItemId));
         }
 
-        if (warehouseId is { } actualWarehouseId && actualWarehouseId != Guid.Empty)
+        if (warehouseId is { } actualWarehouseId)
         {
             filters.Add(new DimensionValue(
                 DeterministicGuid.Create($"Dimension|{TradeCodes.Warehouse}"),
@@ -123,6 +124,8 @@ internal static class TradeReportingHelpers
                     }
                 }
 
+                EnsureMaterializationBound(accumulators.Count);
+
                 if (!page.HasMore || page.NextCursor is null)
                     break;
 
@@ -162,6 +165,7 @@ internal static class TradeReportingHelpers
                     movement.Dimensions,
                     movement.DimensionValueDisplays,
                     movement.PeriodMonth);
+                EnsureMaterializationBound(accumulators.Count);
                 continue;
             }
 
@@ -202,6 +206,7 @@ internal static class TradeReportingHelpers
                 break;
 
             rows.AddRange(page);
+            EnsureMaterializationBound(rows.Count);
             afterMovementId = page[^1].MovementId;
 
             if (page.Count < 1000)
@@ -209,6 +214,17 @@ internal static class TradeReportingHelpers
         }
 
         return rows;
+    }
+
+    private static void EnsureMaterializationBound(int count)
+    {
+        if (count <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new Tools.Exceptions.NgbArgumentOutOfRangeException(
+            "filters",
+            count,
+            $"Inventory reporting can materialize up to {PagingLimits.MaxMaterializedRows} rows. Narrow the filters and try again.");
     }
 
     private static Exception Invalid(

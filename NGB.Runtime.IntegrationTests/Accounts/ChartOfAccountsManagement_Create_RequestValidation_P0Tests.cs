@@ -12,7 +12,7 @@ namespace NGB.Runtime.IntegrationTests.Accounts;
 /// <summary>
 /// P0: CreateAccountRequest must be validated fail-fast to prevent writing invalid CoA rows.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsManagement_Create_RequestValidation_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

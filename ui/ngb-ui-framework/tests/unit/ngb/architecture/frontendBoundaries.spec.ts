@@ -38,10 +38,23 @@ function relative(path: string): string {
 }
 
 describe('frontend architecture boundaries', () => {
+  it('keeps platform source and tests independent from vertical application imports', () => {
+    const platformFiles = [
+      ...sourceFiles(frameworkSource),
+      ...sourceFiles(resolve(uiRoot, 'ngb-ui-framework/tests')),
+    ]
+    const violations = platformFiles.flatMap((file) => imports(readFileSync(file, 'utf8'))
+      .filter((specifier) => /(?:^|\/)ngb-(?!ui-framework(?:\/|$))[^/]+-web(?:\/|$)/.test(specifier))
+      .map((specifier) => `${relative(file)} -> ${specifier}`))
+
+    expect(violations, 'Platform tests must use platform fixtures; application integration tests belong to their vertical.').toEqual([])
+  })
+
   it('keeps every vertical and cross-vertical test on the public platform package surface', () => {
     const consumers = [
       ...verticalRoots.flatMap(sourceFiles),
       ...sourceFiles(resolve(uiRoot, 'tests/e2e')),
+      ...sourceFiles(resolve(uiRoot, 'tests/browser')),
     ]
     const violations = consumers.flatMap((file) => imports(readFileSync(file, 'utf8'))
       .filter((specifier) => specifier.includes('ngb-ui-framework/src'))

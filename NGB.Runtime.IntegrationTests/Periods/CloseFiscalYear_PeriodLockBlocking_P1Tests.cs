@@ -15,15 +15,13 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// P1: CloseFiscalYear must take an advisory lock on the fiscal year end period.
 /// If the period lock is held by another transaction, CloseFiscalYear must block until it is released.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_PeriodLockBlocking_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CloseFiscalYearAsync_WhenEndPeriodLockIsHeld_Blocks_UntilReleased()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var endPeriod = new DateOnly(2041, 1, 1); // January -> no "prior months closed" precondition.
         const string closedBy = "test";
 

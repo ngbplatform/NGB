@@ -19,8 +19,8 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// - This endpoint is intended to be used directly by Web API / UI.
 /// - We want a stable, provider-backed contract: list counts, details shape, and bulk remediation.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegisterAdminEndpoint_ListDetails_And_EnsureForAll_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegisterAdminEndpoint_ListDetails_And_EnsureForAll_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

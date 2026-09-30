@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
+using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Dimensions.Enrichment;
@@ -10,6 +12,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
 using NGB.PostgreSql.OperationalRegisters.Internal;
 using NGB.PostgreSql.Readers;
+using NGB.PostgreSql.Schema;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -29,12 +32,607 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
     IOperationalRegisterRepository registers,
     IOperationalRegisterResourceRepository resources,
     IDimensionSetReader dimensionSetReader,
-    IDimensionValueEnrichmentReader dimensionValueEnrichmentReader)
+    IDimensionValueEnrichmentReader dimensionValueEnrichmentReader,
+    OperationalRegisterMetadataCache? metadataCache = null,
+    PostgresRelationPresenceCache? relationPresenceCache = null)
     : IOperationalRegisterMovementsQueryReader
 {
+    private readonly OperationalRegisterMetadataCache _metadataCache = metadataCache
+        ?? new OperationalRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
+        ?? new PostgresRelationPresenceCache(TimeProvider.System);
     // IMPORTANT: identifiers are used unquoted in dynamic SQL; Postgres requires unquoted identifiers
     // to start with a letter or underscore.
     private readonly ConcurrentDictionary<Guid, RegisterQueryContext> _registerContexts = new();
+    private readonly ConcurrentDictionary<string, TableReadiness> _existingTables = new(StringComparer.Ordinal);
+
+    public async Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByOccurredAtCursorAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions = null,
+        OperationalRegisterOccurredAtCursor? cursor = null,
+        int limit = 101,
+        CancellationToken ct = default)
+    {
+        if (registerId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(registerId));
+
+        if (toInclusive < fromInclusive)
+            throw new NgbArgumentOutOfRangeException(nameof(toInclusive), toInclusive, "To must be on or after From.");
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
+
+        if (cursor is not null)
+        {
+            cursor.AfterOccurredAtUtc.EnsureUtc(nameof(cursor.AfterOccurredAtUtc));
+            if (cursor.AfterMovementId <= 0)
+                throw new NgbArgumentOutOfRangeException(nameof(cursor.AfterMovementId), cursor.AfterMovementId, "Cursor movement id must be greater than zero.");
+        }
+
+        await uow.EnsureConnectionOpenAsync(ct);
+        var context = await GetRegisterQueryContextAsync(registerId, ct);
+        if (context is null)
+            return [];
+
+        var (dimIds, dimValueIds, dimCount) = SqlDimensionFilter.Normalize(dimensions);
+        var dimensionFilterSql = BuildDimensionFilterSql("t", dimCount);
+        var resourcesSelect = context.ResourceColumns.Count == 0
+            ? string.Empty
+            : ", " + string.Join(", ", context.ResourceColumns.Select(c => $"{c} AS \"{c}\""));
+        var occurredFromUtc = DateTime.SpecifyKind(fromInclusive.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var occurredToExclusiveUtc = toInclusive == DateOnly.MaxValue
+            ? DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc)
+            : DateTime.SpecifyKind(toInclusive.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+
+        var sql = $"""
+{BuildDimensionFilterCte(dimCount)}
+SELECT
+    movement_id AS "MovementId",
+    document_id AS "DocumentId",
+    occurred_at_utc AS "OccurredAtUtc",
+    period_month AS "PeriodMonth",
+    dimension_set_id AS "DimensionSetId",
+    is_storno AS "IsStorno"{resourcesSelect}
+FROM {context.TableName} t
+WHERE t.occurred_at_utc >= @OccurredFromUtc
+  AND t.occurred_at_utc < @OccurredToExclusiveUtc
+  AND (
+      @AfterOccurredAtUtc IS NULL
+      OR (t.occurred_at_utc, t.movement_id) > (@AfterOccurredAtUtc, @AfterMovementId)
+  )
+  {dimensionFilterSql}
+ORDER BY t.occurred_at_utc, t.movement_id
+LIMIT @Limit;
+""";
+
+        var rows = await uow.Connection.QueryAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                OccurredFromUtc = occurredFromUtc,
+                OccurredToExclusiveUtc = occurredToExclusiveUtc,
+                AfterOccurredAtUtc = cursor?.AfterOccurredAtUtc,
+                AfterMovementId = cursor?.AfterMovementId,
+                Limit = limit,
+                DimCount = dimCount,
+                DimIds = dimIds,
+                DimValueIds = dimValueIds
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+
+        var result = MaterializeRows(rows, context);
+
+        await ResolveDimensionsAsync(result, ct);
+        await ResolveDimensionValueDisplaysAsync(result, ct);
+
+        return result;
+    }
+
+    public async Task<OperationalRegisterMovementQueryPage> GetByOccurredAtPageAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions = null,
+        int offset = 0,
+        int? limit = 100,
+        CancellationToken ct = default)
+    {
+        if (registerId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(registerId));
+
+        if (toInclusive < fromInclusive)
+            throw new NgbArgumentOutOfRangeException(nameof(toInclusive), toInclusive, "To must be on or after From.");
+
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be zero or greater.");
+
+        if (limit is <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero when specified.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var context = await GetRegisterQueryContextAsync(registerId, ct);
+        if (context is null)
+            return new OperationalRegisterMovementQueryPage([], 0);
+
+        var (dimIds, dimValueIds, dimCount) = SqlDimensionFilter.Normalize(dimensions);
+        var dimensionFilterSql = BuildDimensionFilterSql("t", dimCount);
+        var resourcesSelect = context.ResourceColumns.Count == 0
+            ? string.Empty
+            : ", " + string.Join(", ", context.ResourceColumns.Select(c => $"{c} AS \"{c}\""));
+        var occurredFromUtc = DateTime.SpecifyKind(fromInclusive.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var occurredToExclusiveUtc = toInclusive == DateOnly.MaxValue
+            ? DateTime.SpecifyKind(DateTime.MaxValue, DateTimeKind.Utc)
+            : DateTime.SpecifyKind(toInclusive.AddDays(1).ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
+        var filterSql = $"""
+t.period_month >= @FromMonth::date
+AND t.period_month <= @ToMonth::date
+AND t.occurred_at_utc >= @OccurredFromUtc
+AND t.occurred_at_utc < @OccurredToExclusiveUtc
+{dimensionFilterSql}
+""";
+        var cte = BuildDimensionFilterCte(dimCount);
+        var sql = $"""
+{cte}
+SELECT
+    movement_id AS "MovementId",
+    document_id AS "DocumentId",
+    occurred_at_utc AS "OccurredAtUtc",
+    period_month AS "PeriodMonth",
+    dimension_set_id AS "DimensionSetId",
+    is_storno AS "IsStorno",
+    COUNT(*) OVER() AS "TotalCount"{resourcesSelect}
+FROM {context.TableName} t
+WHERE {filterSql}
+ORDER BY t.occurred_at_utc, t.movement_id
+OFFSET @Offset
+LIMIT @Limit;
+""";
+
+        var parameters = new
+        {
+            FromMonth = new DateOnly(fromInclusive.Year, fromInclusive.Month, 1),
+            ToMonth = new DateOnly(toInclusive.Year, toInclusive.Month, 1),
+            OccurredFromUtc = occurredFromUtc,
+            OccurredToExclusiveUtc = occurredToExclusiveUtc,
+            Offset = PagingLimits.BoundOffset(offset),
+            Limit = limit,
+            DimCount = dimCount,
+            DimIds = dimIds,
+            DimValueIds = dimValueIds
+        };
+        var command = new CommandDefinition(
+            sql,
+            parameters,
+            transaction: uow.Transaction,
+            cancellationToken: ct);
+
+        var rows = (await uow.Connection.QueryAsync(command)).AsList();
+        var total = rows.Count == 0
+            ? 0
+            : Convert.ToInt64(((IDictionary<string, object?>)rows[0])["TotalCount"]!);
+
+        // COUNT(*) OVER() cannot carry a total when OFFSET points beyond the final row.
+        // Preserve the exact-total API contract with a fallback only for that uncommon request shape.
+        if (rows.Count == 0 && parameters.Offset > 0)
+        {
+            var countSql = $"""
+{cte}
+SELECT COUNT(*)
+FROM {context.TableName} t
+WHERE {filterSql};
+""";
+            total = await uow.Connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                countSql,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+        }
+
+        var result = MaterializeRows(rows, context);
+        await ResolveDimensionsAsync(result, ct);
+        await ResolveDimensionValueDisplaysAsync(result, ct);
+        return new OperationalRegisterMovementQueryPage(result, total);
+    }
+
+    public async Task<IReadOnlyList<OperationalRegisterDimensionResourceNetRow>> GetResourceNetsByDimensionAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        CancellationToken ct = default)
+    {
+        var page = await GetResourceNetsByDimensionPageAsync(
+            registerId,
+            fromInclusive,
+            toInclusive,
+            dimensions,
+            groupDimensionId,
+            resourceColumnCode,
+            offset: 0,
+            limit: PagingLimits.MaxMaterializedRows + 1,
+            ct);
+
+        EnsureLegacyMaterializationBound(page.Total);
+
+        return page.Rows;
+    }
+
+    public async Task<OperationalRegisterDimensionResourceNetPage> GetResourceNetsByDimensionPageAsync(
+        Guid registerId,
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        int offset,
+        int limit,
+        CancellationToken ct = default)
+    {
+        if (registerId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(registerId));
+
+        if (groupDimensionId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(groupDimensionId));
+
+        if (string.IsNullOrWhiteSpace(resourceColumnCode))
+            throw new NgbArgumentRequiredException(nameof(resourceColumnCode));
+
+        if (toInclusive < fromInclusive)
+            throw new NgbArgumentOutOfRangeException(nameof(toInclusive), toInclusive, "To must be on or after From.");
+
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be zero or greater.");
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
+
+        fromInclusive.EnsureMonthStart(nameof(fromInclusive));
+        toInclusive.EnsureMonthStart(nameof(toInclusive));
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var context = await GetRegisterQueryContextAsync(registerId, ct);
+        if (context is null)
+            return new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m);
+
+        if (!context.ResourceColumns.Contains(resourceColumnCode, StringComparer.Ordinal))
+        {
+            throw new NgbConfigurationViolationException(
+                $"Operational register '{registerId}' does not define resource column '{resourceColumnCode}'.");
+        }
+
+        var (dimIds, dimValueIds, dimCount) = SqlDimensionFilter.Normalize(dimensions);
+        var dimensionFilterSql = BuildDimensionFilterSql("movement", dimCount);
+        var dimensionCte = BuildDimensionFilterCte(dimCount);
+        var withClause = string.IsNullOrWhiteSpace(dimensionCte)
+            ? "WITH"
+            : $"{dimensionCte.TrimEnd()},";
+        var sql = $"""
+{withClause}
+nets AS (
+SELECT
+    grouped.value_id AS ValueId,
+    SUM(CASE WHEN movement.is_storno
+        THEN -movement.{resourceColumnCode}
+        ELSE movement.{resourceColumnCode}
+    END) AS NetAmount
+FROM {context.TableName} movement
+JOIN platform_dimension_set_items grouped
+  ON grouped.dimension_set_id = movement.dimension_set_id
+ AND grouped.dimension_id = @GroupDimensionId
+WHERE movement.period_month >= @FromMonth::date
+  AND movement.period_month <= @ToMonth::date
+  {dimensionFilterSql}
+GROUP BY grouped.value_id
+HAVING SUM(CASE WHEN movement.is_storno
+    THEN -movement.{resourceColumnCode}
+    ELSE movement.{resourceColumnCode}
+END) <> 0
+)
+SELECT
+    ValueId,
+    NetAmount,
+    COUNT(*) OVER()::integer AS TotalCount,
+    COALESCE(SUM(CASE WHEN NetAmount > 0 THEN NetAmount ELSE 0 END) OVER(), 0) AS TotalPositive,
+    COALESCE(SUM(CASE WHEN NetAmount < 0 THEN -NetAmount ELSE 0 END) OVER(), 0) AS TotalNegativeAbsolute
+FROM nets
+ORDER BY CASE WHEN NetAmount > 0 THEN 0 ELSE 1 END, ValueId
+OFFSET @Offset
+LIMIT @Limit;
+""";
+
+        var rows = (await uow.Connection.QueryAsync<GroupNetSqlRow>(new CommandDefinition(
+            sql,
+            new
+            {
+                FromMonth = fromInclusive,
+                ToMonth = toInclusive,
+                GroupDimensionId = groupDimensionId,
+                DimCount = dimCount,
+                DimIds = dimIds,
+                DimValueIds = dimValueIds,
+                Offset = PagingLimits.BoundOffset(offset),
+                Limit = limit
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct))).AsList();
+
+        if (rows.Count == 0)
+            return new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m);
+
+        var keys = rows.Select(row => new DimensionValueKey(groupDimensionId, row.ValueId)).ToArray();
+        var displays = await dimensionValueEnrichmentReader.ResolveAsync(keys, ct);
+
+        return new OperationalRegisterDimensionResourceNetPage(
+            rows.Select(row => new OperationalRegisterDimensionResourceNetRow(
+                row.ValueId,
+                row.NetAmount,
+                displays.GetValueOrDefault(new DimensionValueKey(groupDimensionId, row.ValueId)))).ToArray(),
+            rows[0].TotalCount,
+            rows[0].TotalPositive,
+            rows[0].TotalNegativeAbsolute);
+    }
+
+    public async Task<IReadOnlyList<OperationalRegisterDimensionResourceNetRow>> GetResourceBalancesByDimensionAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        CancellationToken ct = default)
+    {
+        var page = await GetResourceBalancesByDimensionPageAsync(
+            registerId,
+            asOfMonthInclusive,
+            dimensions,
+            groupDimensionId,
+            resourceColumnCode,
+            offset: 0,
+            limit: PagingLimits.MaxMaterializedRows + 1,
+            ct);
+
+        EnsureLegacyMaterializationBound(page.Total);
+
+        return page.Rows;
+    }
+
+    private static void EnsureLegacyMaterializationBound(int total)
+    {
+        if (total <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new NgbArgumentOutOfRangeException(
+            "resultCount",
+            total,
+            $"The unpaged operational-register result exceeds {PagingLimits.MaxMaterializedRows:N0} rows. Use the paged API.");
+    }
+
+    public async Task<OperationalRegisterDimensionResourceNetPage> GetResourceBalancesByDimensionPageAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        int offset,
+        int limit,
+        CancellationToken ct = default)
+    {
+        if (registerId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(registerId));
+
+        if (groupDimensionId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(groupDimensionId));
+
+        if (string.IsNullOrWhiteSpace(resourceColumnCode))
+            throw new NgbArgumentRequiredException(nameof(resourceColumnCode));
+
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Offset must be zero or greater.");
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
+
+        asOfMonthInclusive.EnsureMonthStart(nameof(asOfMonthInclusive));
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var context = await GetRegisterQueryContextAsync(registerId, ct);
+        if (context is null)
+            return new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m);
+
+        if (!context.ResourceColumns.Contains(resourceColumnCode, StringComparer.Ordinal))
+            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column '{resourceColumnCode}'.");
+
+        var balancesTable = ResolveBalancesTableName(context.TableName);
+        var balancesExist = await TableExistsAsync(balancesTable, ct);
+        var (dimIds, dimValueIds, dimCount) = SqlDimensionFilter.Normalize(dimensions);
+        var dimensionCte = BuildDimensionFilterCte(dimCount);
+        var withClause = string.IsNullOrWhiteSpace(dimensionCte)
+            ? "WITH"
+            : $"{dimensionCte.TrimEnd()},";
+        var sourceSql = balancesExist
+            ? BuildSnapshotBackedBalanceSourceSql(context.TableName, balancesTable, resourceColumnCode, dimCount)
+            : BuildMovementOnlyBalanceSourceSql(context.TableName, resourceColumnCode, dimCount);
+        var sql = $"""
+{withClause}
+{sourceSql}
+SELECT
+    ValueId,
+    NetAmount,
+    COUNT(*) OVER()::integer AS TotalCount,
+    COALESCE(SUM(CASE WHEN NetAmount > 0 THEN NetAmount ELSE 0 END) OVER(), 0) AS TotalPositive,
+    COALESCE(SUM(CASE WHEN NetAmount < 0 THEN -NetAmount ELSE 0 END) OVER(), 0) AS TotalNegativeAbsolute
+FROM nets
+WHERE NetAmount <> 0
+ORDER BY CASE WHEN NetAmount > 0 THEN 0 ELSE 1 END, ValueId
+OFFSET @Offset
+LIMIT @Limit;
+""";
+
+        var rows = (await uow.Connection.QueryAsync<GroupNetSqlRow>(new CommandDefinition(
+            sql,
+            new
+            {
+                RegisterId = registerId,
+                AsOfMonth = asOfMonthInclusive,
+                GroupDimensionId = groupDimensionId,
+                DimCount = dimCount,
+                DimIds = dimIds,
+                DimValueIds = dimValueIds,
+                Offset = PagingLimits.BoundOffset(offset),
+                Limit = limit
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct))).AsList();
+
+        if (rows.Count == 0)
+            return new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m);
+
+        var keys = rows.Select(row => new DimensionValueKey(groupDimensionId, row.ValueId)).ToArray();
+        var displays = await dimensionValueEnrichmentReader.ResolveAsync(keys, ct);
+
+        return new OperationalRegisterDimensionResourceNetPage(
+            rows.Select(row => new OperationalRegisterDimensionResourceNetRow(
+                row.ValueId,
+                row.NetAmount,
+                displays.GetValueOrDefault(new DimensionValueKey(groupDimensionId, row.ValueId)))).ToArray(),
+            rows[0].TotalCount,
+            rows[0].TotalPositive,
+            rows[0].TotalNegativeAbsolute);
+    }
+
+    public async Task<OperationalRegisterDimensionResourceNetPage> GetResourceBalancesByDimensionCursorAsync(
+        Guid registerId,
+        DateOnly asOfMonthInclusive,
+        IReadOnlyList<DimensionValue>? dimensions,
+        Guid groupDimensionId,
+        string resourceColumnCode,
+        OperationalRegisterDimensionResourceNetCursor? cursor,
+        int limit,
+        CancellationToken ct = default)
+    {
+        if (registerId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(registerId));
+
+        if (groupDimensionId == Guid.Empty)
+            throw new NgbArgumentRequiredException(nameof(groupDimensionId));
+
+        if (string.IsNullOrWhiteSpace(resourceColumnCode))
+            throw new NgbArgumentRequiredException(nameof(resourceColumnCode));
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
+
+        asOfMonthInclusive.EnsureMonthStart(nameof(asOfMonthInclusive));
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var context = await GetRegisterQueryContextAsync(registerId, ct);
+        if (context is null)
+            return new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m);
+
+        if (!context.ResourceColumns.Contains(resourceColumnCode, StringComparer.Ordinal))
+            throw new NgbConfigurationViolationException($"Operational register '{registerId}' does not define resource column '{resourceColumnCode}'.");
+
+        var balancesTable = ResolveBalancesTableName(context.TableName);
+        var balancesExist = await TableExistsAsync(balancesTable, ct);
+        var (dimIds, dimValueIds, dimCount) = SqlDimensionFilter.Normalize(dimensions);
+        var dimensionCte = BuildDimensionFilterCte(dimCount);
+        var withClause = string.IsNullOrWhiteSpace(dimensionCte)
+            ? "WITH"
+            : $"{dimensionCte.TrimEnd()},";
+        var sourceSql = balancesExist
+            ? BuildSnapshotBackedBalanceSourceSql(context.TableName, balancesTable, resourceColumnCode, dimCount)
+            : BuildMovementOnlyBalanceSourceSql(context.TableName, resourceColumnCode, dimCount);
+        var totalsSelect = cursor is null
+            ? """
+                  COUNT(*) OVER()::integer AS TotalCount,
+                  COALESCE(SUM(CASE WHEN NetAmount > 0 THEN NetAmount ELSE 0 END) OVER(), 0) AS TotalPositive,
+                  COALESCE(SUM(CASE WHEN NetAmount < 0 THEN -NetAmount ELSE 0 END) OVER(), 0) AS TotalNegativeAbsolute
+              """
+            : """
+                  @KnownTotal::integer AS TotalCount,
+                  @KnownTotalPositive::numeric AS TotalPositive,
+                  @KnownTotalNegativeAbsolute::numeric AS TotalNegativeAbsolute
+              """;
+        var seekPredicate = cursor is null
+            ? string.Empty
+            : """
+              AND (
+                  CASE WHEN NetAmount > 0 THEN 0 ELSE 1 END,
+                  ValueId
+              ) > (@AfterGroupRank::integer, @AfterValueId::uuid)
+              """;
+        var sql = $"""
+{withClause}
+{sourceSql}
+SELECT
+    ValueId,
+    NetAmount,
+{totalsSelect}
+FROM nets
+WHERE NetAmount <> 0
+{seekPredicate}
+ORDER BY CASE WHEN NetAmount > 0 THEN 0 ELSE 1 END, ValueId
+LIMIT @LimitPlusOne;
+""";
+
+        var rows = (await uow.Connection.QueryAsync<GroupNetSqlRow>(new CommandDefinition(
+            sql,
+            new
+            {
+                RegisterId = registerId,
+                AsOfMonth = asOfMonthInclusive,
+                GroupDimensionId = groupDimensionId,
+                DimCount = dimCount,
+                DimIds = dimIds,
+                DimValueIds = dimValueIds,
+                AfterGroupRank = cursor?.AfterPositiveGroup == true ? 0 : 1,
+                AfterValueId = cursor?.AfterValueId,
+                KnownTotal = cursor?.Total,
+                KnownTotalPositive = cursor?.TotalPositive,
+                KnownTotalNegativeAbsolute = cursor?.TotalNegativeAbsolute,
+                LimitPlusOne = checked(limit + 1)
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct))).AsList();
+
+        if (rows.Count == 0)
+        {
+            return cursor is null
+                ? new OperationalRegisterDimensionResourceNetPage([], 0, 0m, 0m)
+                : new OperationalRegisterDimensionResourceNetPage(
+                    [],
+                    cursor.Total,
+                    cursor.TotalPositive,
+                    cursor.TotalNegativeAbsolute);
+        }
+
+        var total = rows[0].TotalCount;
+        var totalPositive = rows[0].TotalPositive;
+        var totalNegativeAbsolute = rows[0].TotalNegativeAbsolute;
+        var hasMore = rows.Count > limit;
+
+        if (hasMore)
+            rows.RemoveAt(rows.Count - 1);
+
+        var keys = rows.Select(row => new DimensionValueKey(groupDimensionId, row.ValueId)).ToArray();
+        var displays = await dimensionValueEnrichmentReader.ResolveAsync(keys, ct);
+
+        return new OperationalRegisterDimensionResourceNetPage(
+            rows.Select(row => new OperationalRegisterDimensionResourceNetRow(
+                row.ValueId,
+                row.NetAmount,
+                displays.GetValueOrDefault(new DimensionValueKey(groupDimensionId, row.ValueId)))).ToArray(),
+            total,
+            totalPositive,
+            totalNegativeAbsolute,
+            hasMore);
+    }
 
     public Task<IReadOnlyList<OperationalRegisterMovementQueryReadRow>> GetByMonthsAsync(
         Guid registerId,
@@ -105,6 +703,11 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
 
         var scalar = await uow.Connection.ExecuteScalarAsync(cmd);
 
+        return ConvertMaxPeriodMonthScalar(scalar);
+    }
+
+    internal static DateOnly? ConvertMaxPeriodMonthScalar(object? scalar)
+    {
         if (scalar is null or DBNull)
             return null;
 
@@ -239,18 +842,52 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
         return result;
     }
 
+    private static List<OperationalRegisterMovementQueryReadRow> MaterializeRows(
+        IEnumerable<dynamic> rows,
+        RegisterQueryContext context)
+    {
+        var result = new List<OperationalRegisterMovementQueryReadRow>();
+        foreach (var row in rows)
+        {
+            var valuesByColumn = (IDictionary<string, object?>)row;
+            var values = new Dictionary<string, decimal>(StringComparer.Ordinal);
+
+            foreach (var column in context.ResourceColumns)
+            {
+                var value = valuesByColumn.TryGetValue(column, out var raw) ? raw : null;
+                values[column] = value is null or DBNull ? 0m : Convert.ToDecimal(value);
+            }
+
+            result.Add(new OperationalRegisterMovementQueryReadRow
+            {
+                MovementId = Convert.ToInt64(valuesByColumn["MovementId"]!),
+                DocumentId = (Guid)valuesByColumn["DocumentId"]!,
+                OccurredAtUtc = (DateTime)valuesByColumn["OccurredAtUtc"]!,
+                PeriodMonth = (DateOnly)valuesByColumn["PeriodMonth"]!,
+                DimensionSetId = (Guid)valuesByColumn["DimensionSetId"]!,
+                IsStorno = (bool)valuesByColumn["IsStorno"]!,
+                Values = values
+            });
+        }
+
+        return result;
+    }
+
     private async Task<RegisterQueryContext?> GetRegisterQueryContextAsync(Guid registerId, CancellationToken ct)
     {
         if (_registerContexts.TryGetValue(registerId, out var cached))
-            return cached;
+            return await TableExistsAsync(cached.TableName, ct) ? cached : null;
 
-        var (tableName, resourceColumns) = await OperationalRegisterMovementsTableResolver.ResolveOrThrowAsync(
-            registers,
-            resources,
+        var metadata = await _metadataCache.GetOrCreateAsync(
             registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
             ct);
+        var tableName = metadata.MovementsTable;
+        var resourceColumns = metadata.Resources
+            .Select(static resource => resource.ColumnCode)
+            .ToArray();
 
-        if (!await PostgresTableExistence.ExistsAsync(uow, tableName, ct))
+        if (!await TableExistsAsync(tableName, ct))
             return null;
 
         var context = new RegisterQueryContext(tableName, resourceColumns);
@@ -258,7 +895,41 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
         return context;
     }
 
-    private static string BuildDimensionFilterCte(int dimCount)
+    private async Task<bool> TableExistsAsync(string tableName, CancellationToken ct)
+    {
+        if (_existingTables.TryGetValue(tableName, out var readiness) && ReferenceEquals(readiness.Transaction, uow.Transaction))
+            return true;
+
+        if (!await _relationPresenceCache.ExistsAsync(
+                tableName,
+                probeCt => PostgresTableExistence.ExistsAsync(uow, tableName, probeCt),
+                ct))
+            return false;
+
+        _existingTables[tableName] = new TableReadiness(uow.Transaction);
+
+        return true;
+    }
+
+    private async Task<OperationalRegisterMetadataContext> LoadMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new NGB.OperationalRegisters.Exceptions.OperationalRegisterNotFoundException(registerId);
+        var tableName = OperationalRegisterNaming.MovementsTable(register.TableCode);
+        OperationalRegisterSqlIdentifiers.EnsureOrThrow(tableName, "opreg movements table name");
+
+        var resourceDefinitions = (await resources.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(static resource => resource.Ordinal)
+            .ToArray();
+        foreach (var resource in resourceDefinitions)
+            OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
+
+        return new OperationalRegisterMetadataContext(register, resourceDefinitions, tableName);
+    }
+
+    internal static string BuildDimensionFilterCte(int dimCount)
         => dimCount == 0
             ? string.Empty
             : """
@@ -274,10 +945,97 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
               )
               """;
 
-    private static string BuildDimensionFilterSql(string tableAlias, int dimCount)
+    internal static string BuildDimensionFilterSql(string tableAlias, int dimCount)
         => dimCount == 0
             ? string.Empty
             : $"AND {tableAlias}.dimension_set_id IN (SELECT dimension_set_id FROM matching_dimension_sets)";
+
+    private static string BuildMovementOnlyBalanceSourceSql(
+        string movementsTable,
+        string resourceColumnCode,
+        int dimCount)
+    {
+        var dimensionFilter = BuildDimensionFilterSql("movement", dimCount);
+        return $"""
+nets AS (
+    SELECT
+        grouped.value_id AS ValueId,
+        SUM(CASE WHEN movement.is_storno
+            THEN -movement.{resourceColumnCode}
+            ELSE movement.{resourceColumnCode}
+        END) AS NetAmount
+    FROM {movementsTable} movement
+    JOIN platform_dimension_set_items grouped
+      ON grouped.dimension_set_id = movement.dimension_set_id
+     AND grouped.dimension_id = @GroupDimensionId
+    WHERE movement.period_month <= @AsOfMonth::date
+      {dimensionFilter}
+    GROUP BY grouped.value_id
+)
+""";
+    }
+
+    private static string BuildSnapshotBackedBalanceSourceSql(
+        string movementsTable,
+        string balancesTable,
+        string resourceColumnCode,
+        int dimCount)
+    {
+        var balanceDimensionFilter = BuildDimensionFilterSql("balance", dimCount);
+        var movementDimensionFilter = BuildDimensionFilterSql("movement", dimCount);
+        return $"""
+latest_snapshot AS (
+    {OperationalRegisterSnapshotSql.LatestFinalizedPeriod("finalized.period <= @AsOfMonth::date")}
+),
+snapshot_values AS (
+    SELECT balance.dimension_set_id, balance.{resourceColumnCode} AS net_amount
+    FROM {balancesTable} balance
+    CROSS JOIN latest_snapshot latest
+    WHERE balance.period_month = latest.period_month
+      {balanceDimensionFilter}
+),
+movement_values AS (
+    SELECT
+        movement.dimension_set_id,
+        SUM(CASE WHEN movement.is_storno
+            THEN -movement.{resourceColumnCode}
+            ELSE movement.{resourceColumnCode}
+        END) AS net_amount
+    FROM {movementsTable} movement
+    CROSS JOIN latest_snapshot latest
+    WHERE (latest.period_month IS NULL OR movement.period_month > latest.period_month)
+      AND movement.period_month <= @AsOfMonth::date
+      {movementDimensionFilter}
+    GROUP BY movement.dimension_set_id
+),
+dimension_values AS (
+    SELECT
+        keys.dimension_set_id,
+        COALESCE(snapshot.net_amount, 0) + COALESCE(delta.net_amount, 0) AS net_amount
+    FROM (
+        SELECT dimension_set_id FROM snapshot_values
+        UNION
+        SELECT dimension_set_id FROM movement_values
+    ) keys
+    LEFT JOIN snapshot_values snapshot ON snapshot.dimension_set_id = keys.dimension_set_id
+    LEFT JOIN movement_values delta ON delta.dimension_set_id = keys.dimension_set_id
+),
+nets AS (
+    SELECT grouped.value_id AS ValueId, SUM(value.net_amount) AS NetAmount
+    FROM dimension_values value
+    JOIN platform_dimension_set_items grouped
+      ON grouped.dimension_set_id = value.dimension_set_id
+     AND grouped.dimension_id = @GroupDimensionId
+    GROUP BY grouped.value_id
+)
+""";
+    }
+
+    private static string ResolveBalancesTableName(string movementsTable)
+    {
+        const string movementsSuffix = "__movements";
+        return $"{movementsTable[..^movementsSuffix.Length]}__balances";
+    }
 
     private async Task ResolveDimensionsAsync(
         IReadOnlyList<OperationalRegisterMovementQueryReadRow> rows,
@@ -319,4 +1077,12 @@ public sealed class PostgresOperationalRegisterMovementsQueryReader(
     }
 
     private sealed record RegisterQueryContext(string TableName, IReadOnlyList<string> ResourceColumns);
+    private sealed record TableReadiness(object? Transaction);
+
+    private sealed record GroupNetSqlRow(
+        Guid ValueId,
+        decimal NetAmount,
+        int TotalCount,
+        decimal TotalPositive,
+        decimal TotalNegativeAbsolute);
 }

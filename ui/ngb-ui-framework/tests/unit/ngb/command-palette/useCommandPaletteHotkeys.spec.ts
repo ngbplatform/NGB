@@ -170,6 +170,16 @@ describe('useCommandPaletteHotkeys', () => {
       ctrlKey: true,
       metaKey: false,
       altKey: false,
+      shiftKey: true,
+      key: 'k',
+      target: null,
+      preventDefault,
+    } as unknown as KeyboardEvent)
+
+    listeners.keydown?.({
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
       shiftKey: false,
       key: 'p',
       target: new FakeElement(),
@@ -178,5 +188,35 @@ describe('useCommandPaletteHotkeys', () => {
 
     expect(preventDefault).not.toHaveBeenCalled()
     expect(hotkeyStore.open).not.toHaveBeenCalled()
+  })
+
+  it('recognizes directly content-editable elements and ignores unrelated event targets', () => {
+    useCommandPaletteHotkeys()
+    runMountedHooks()
+
+    const preventDefault = vi.fn()
+    const editable = new FakeElement()
+    editable.isContentEditable = true
+    listeners.keydown?.({
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      key: 'k',
+      target: editable,
+      preventDefault,
+    } as unknown as KeyboardEvent)
+    listeners.keydown?.({
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: false,
+      key: 'k',
+      target: {},
+      preventDefault,
+    } as unknown as KeyboardEvent)
+
+    expect(preventDefault).toHaveBeenCalledOnce()
+    expect(hotkeyStore.open).toHaveBeenCalledOnce()
   })
 })

@@ -44,7 +44,7 @@ public interface IOperationalRegisterAdminReadService
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyFinalizationsAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
@@ -52,20 +52,20 @@ public interface IOperationalRegisterAdminReadService
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedFinalizationsAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
     /// Lists dirty finalization markers across all registers.
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyFinalizationsAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
     /// Lists blocked finalization markers across all registers.
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedFinalizationsAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 }

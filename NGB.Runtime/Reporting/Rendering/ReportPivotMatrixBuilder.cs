@@ -5,7 +5,7 @@ using NGB.Tools.Exceptions;
 
 namespace NGB.Runtime.Reporting.Rendering;
 
-internal sealed class ReportPivotMatrixBuilder(
+internal sealed partial class ReportPivotMatrixBuilder(
     ReportCellFormatter cellFormatter,
     ReportPivotHeaderBuilder headerBuilder,
     ReportComposableCellActionResolver actionResolver)
@@ -87,12 +87,25 @@ internal sealed class ReportPivotMatrixBuilder(
             }
         }
 
+        var projectedValueColumnCount = checked(
+            (long)columnLeafOrder.Count * plan.Measures.Count
+            + (includeTotals ? plan.Measures.Count : 0));
+        var projectedColumnCount = checked((long)rowAxisColumns.Count + projectedValueColumnCount);
+        var projectedHeaderRowCount = checked((long)plan.ColumnGroups.Count + 1);
+        var projectedBodyRowCount = CountBodyRows(plan, leafRowOrder);
+
+        // The cardinality gate must run before value columns, headers, body rows and their cells are allocated.
+        // Otherwise an invalid row/column Cartesian product can exhaust the process before it is rejected.
+        EnsureCaps(
+            definition,
+            plan,
+            projectedColumnCount,
+            checked(projectedBodyRowCount + projectedHeaderRowCount));
+
         var valueColumns = BuildValueColumns(plan, columnLeafOrder, includeTotals);
         var allColumns = rowAxisColumns.Concat(valueColumns.Select(x => x.Column)).ToList();
         var headerRows = _headerBuilder.Build(rowAxisColumns, plan.ColumnGroups, columnLeafOrder, plan.Measures, includeTotals);
-        var bodyRows = BuildBodyRows(plan, rowAxisColumns, valueColumns, leafRowOrder, includeTotals);
-
-        EnsureCaps(definition, plan, allColumns.Count, bodyRows.Count + headerRows.Count, columnLeafOrder.Count, includeTotals);
+        var bodyRows = BuildBodyRows(plan, rowAxisColumns, valueColumns, leafRowOrder);
 
         var diagnostics = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -109,8 +122,7 @@ internal sealed class ReportPivotMatrixBuilder(
         ReportQueryPlan plan,
         IReadOnlyList<ReportSheetColumnDto> rowAxisColumns,
         IReadOnlyList<PivotValueColumn> valueColumns,
-        IReadOnlyList<PivotLeafRow> leafRows,
-        bool includeTotals)
+        IReadOnlyList<PivotLeafRow> leafRows)
     {
         var rows = new List<ReportSheetRowDto>();
         var hasDetailRows = plan.DetailFields.Count > 0;
@@ -120,15 +132,24 @@ internal sealed class ReportPivotMatrixBuilder(
 
         if (plan.RowGroups.Count == 0)
         {
-            rows.AddRange(leafRows.Select(row => BuildLeafRow(plan, rowAxisColumns, valueColumns, row, includeTotals, hasDetailRows: false)));
+            rows.AddRange(leafRows.Select(row => BuildLeafRow(plan, rowAxisColumns, valueColumns, row, hasDetailRows: false)));
         }
         else
         {
-            EmitGroupLevel(rows, plan, rowAxisColumns, valueColumns, leafRows, includeTotals, level: 0, hasDetailRows: hasDetailRows);
+            EmitGroupLevel(
+                rows,
+                plan,
+                rowAxisColumns,
+                valueColumns,
+                leafRows,
+                start: 0,
+                count: leafRows.Count,
+                level: 0,
+                hasDetailRows: hasDetailRows);
         }
 
         if (plan.Measures.Count > 0 && plan.Shape.ShowGrandTotals)
-            rows.Add(BuildGrandTotalRow(plan, rowAxisColumns, valueColumns, leafRows, includeTotals));
+            rows.Add(BuildGrandTotalRow(plan, rowAxisColumns, valueColumns, leafRows));
 
         return rows;
     }
@@ -139,35 +160,71 @@ internal sealed class ReportPivotMatrixBuilder(
         IReadOnlyList<ReportSheetColumnDto> rowAxisColumns,
         IReadOnlyList<PivotValueColumn> valueColumns,
         IReadOnlyList<PivotLeafRow> groupRows,
-        bool includeTotals,
+        int start,
+        int count,
         int level,
         bool hasDetailRows)
     {
-        var index = 0;
-        while (index < groupRows.Count)
+        var index = start;
+        var endExclusive = checked(start + count);
+        while (index < endExclusive)
         {
             var prefixValue = groupRows[index].RowGroupValues[level];
             var end = index + 1;
 
-            while (end < groupRows.Count && Equals(groupRows[end].RowGroupValues[level], prefixValue))
+            while (end < endExclusive && Equals(groupRows[end].RowGroupValues[level], prefixValue))
             {
                 end++;
             }
 
-            var slice = groupRows.Skip(index).Take(end - index).ToList();
-            rows.Add(BuildGroupRow(plan, rowAxisColumns, valueColumns, slice, level, includeTotals, hasDetailRows));
+            var groupCount = end - index;
+            rows.Add(BuildGroupRow(
+                plan,
+                rowAxisColumns,
+                valueColumns,
+                groupRows,
+                index,
+                groupCount,
+                level,
+                hasDetailRows));
 
             if (level < plan.RowGroups.Count - 1)
             {
-                EmitGroupLevel(rows, plan, rowAxisColumns, valueColumns, slice, includeTotals, level + 1, hasDetailRows);
+                EmitGroupLevel(
+                    rows,
+                    plan,
+                    rowAxisColumns,
+                    valueColumns,
+                    groupRows,
+                    index,
+                    groupCount,
+                    level + 1,
+                    hasDetailRows);
             }
             else if (hasDetailRows)
             {
-                rows.AddRange(slice.Select(row => BuildLeafRow(plan, rowAxisColumns, valueColumns, row, includeTotals, hasDetailRows: true)));
+                for (var rowIndex = index; rowIndex < end; rowIndex++)
+                {
+                    rows.Add(BuildLeafRow(
+                        plan,
+                        rowAxisColumns,
+                        valueColumns,
+                        groupRows[rowIndex],
+                        hasDetailRows: true));
+                }
             }
 
             if (ShouldEmitSeparateSubtotal(plan, level))
-                rows.Add(BuildSubtotalRow(plan, rowAxisColumns, valueColumns, slice, level, includeTotals));
+            {
+                rows.Add(BuildSubtotalRow(
+                    plan,
+                    rowAxisColumns,
+                    valueColumns,
+                    groupRows,
+                    index,
+                    groupCount,
+                    level));
+            }
 
             index = end;
         }
@@ -178,7 +235,6 @@ internal sealed class ReportPivotMatrixBuilder(
         IReadOnlyList<ReportSheetColumnDto> rowAxisColumns,
         IReadOnlyList<PivotValueColumn> valueColumns,
         PivotLeafRow leafRow,
-        bool includeTotals,
         bool hasDetailRows)
     {
         var cells = new List<ReportCellDto>(rowAxisColumns.Count + valueColumns.Count);
@@ -186,18 +242,15 @@ internal sealed class ReportPivotMatrixBuilder(
         {
             if (ReportRowHierarchy.IsHierarchyColumn(rowAxisColumn))
             {
-                cells.Add(hasDetailRows
-                    ? _cellFormatter.BuildBlankCell(rowAxisColumn, semanticRole: rowAxisColumn.SemanticRole)
-                    : _cellFormatter.BuildLabelCell(
-                        ReportRowHierarchy.FormatLeafLabel(_cellFormatter, plan.RowGroups, leafRow.RowGroupValues),
-                        semanticRole: rowAxisColumn.SemanticRole,
-                        action: plan.RowGroups.Count == 0 
-                            ? null 
-                            : _actionResolver.ResolveForGroup(plan.RowGroups[^1], leafRow.SourceValues)));
+                cells.Add(_cellFormatter.BuildBlankCell(rowAxisColumn, semanticRole: rowAxisColumn.SemanticRole));
                 continue;
             }
 
-            cells.Add(_cellFormatter.BuildCell(leafRow.RowAxisValues.GetValueOrDefault(rowAxisColumn.Code), rowAxisColumn, semanticRole: rowAxisColumn.SemanticRole, action: _actionResolver.ResolveForDetailColumn(rowAxisColumn.Code, leafRow.SourceValues)));
+            cells.Add(_cellFormatter.BuildCell(
+                leafRow.SourceValues.GetValueOrDefault(rowAxisColumn.Code),
+                rowAxisColumn,
+                semanticRole: rowAxisColumn.SemanticRole,
+                action: _actionResolver.ResolveForDetailColumn(rowAxisColumn.Code, leafRow.SourceValues)));
         }
 
         foreach (var valueColumn in valueColumns)
@@ -225,12 +278,14 @@ internal sealed class ReportPivotMatrixBuilder(
         IReadOnlyList<ReportSheetColumnDto> rowAxisColumns,
         IReadOnlyList<PivotValueColumn> valueColumns,
         IReadOnlyList<PivotLeafRow> leafRows,
+        int start,
+        int count,
         int level,
-        bool includeTotals,
         bool hasDetailRows)
     {
         var cells = new List<ReportCellDto>(rowAxisColumns.Count + valueColumns.Count);
-        var currentValue = leafRows[0].RowGroupValues[level];
+        var firstLeaf = leafRows[start];
+        var currentValue = firstLeaf.SourceValues.GetValueOrDefault(plan.RowGroups[level].OutputCode);
         var currentLabel = _cellFormatter.FormatGroupLabel(currentValue, plan.RowGroups[level].TimeGrain);
         var inlineGroupTotals = ShouldInlineGroupTotals(plan, level, hasDetailRows);
 
@@ -238,7 +293,7 @@ internal sealed class ReportPivotMatrixBuilder(
         {
             if (ReportRowHierarchy.IsHierarchyColumn(rowAxisColumn))
             {
-                cells.Add(_cellFormatter.BuildLabelCell(currentLabel, styleKey: "group", semanticRole: "group", action: _actionResolver.ResolveForGroup(plan.RowGroups[level], leafRows[0].SourceValues)));
+                cells.Add(_cellFormatter.BuildLabelCell(currentLabel, styleKey: "group", semanticRole: "group", action: _actionResolver.ResolveForGroup(plan.RowGroups[level], firstLeaf.SourceValues)));
                 continue;
             }
 
@@ -254,8 +309,8 @@ internal sealed class ReportPivotMatrixBuilder(
             }
 
             var value = valueColumn.IsTotal
-                ? SumLeafRows(leafRows, valueColumn.Measure, columnLeaf: null)
-                : SumLeafRows(leafRows, valueColumn.Measure, valueColumn.Leaf);
+                ? SumLeafRows(leafRows, start, count, valueColumn.Measure, columnLeaf: null)
+                : SumLeafRows(leafRows, start, count, valueColumn.Measure, valueColumn.Leaf);
             cells.Add(_cellFormatter.BuildCell(value, valueColumn.Column, styleKey: "group", semanticRole: "group-measure"));
         }
 
@@ -263,7 +318,7 @@ internal sealed class ReportPivotMatrixBuilder(
             RowKind: ReportRowKind.Group,
             Cells: cells,
             OutlineLevel: level,
-            GroupKey: $"group:{level}:{leafRows[0].Key}",
+            GroupKey: $"group:{level}:{firstLeaf.Key}",
             SemanticRole: "group");
     }
 
@@ -271,8 +326,7 @@ internal sealed class ReportPivotMatrixBuilder(
         ReportQueryPlan plan,
         IReadOnlyList<ReportSheetColumnDto> rowAxisColumns,
         IReadOnlyList<PivotValueColumn> valueColumns,
-        IReadOnlyList<PivotLeafRow> leafRows,
-        bool includeTotals)
+        IReadOnlyList<PivotLeafRow> leafRows)
     {
         var cells = new List<ReportCellDto>(rowAxisColumns.Count + valueColumns.Count);
         for (var columnIndex = 0; columnIndex < rowAxisColumns.Count; columnIndex++)
@@ -286,8 +340,8 @@ internal sealed class ReportPivotMatrixBuilder(
         foreach (var valueColumn in valueColumns)
         {
             var value = valueColumn.IsTotal
-                ? SumLeafRows(leafRows, valueColumn.Measure, columnLeaf: null)
-                : SumLeafRows(leafRows, valueColumn.Measure, valueColumn.Leaf);
+                ? SumLeafRows(leafRows, 0, leafRows.Count, valueColumn.Measure, columnLeaf: null)
+                : SumLeafRows(leafRows, 0, leafRows.Count, valueColumn.Measure, valueColumn.Leaf);
             cells.Add(_cellFormatter.BuildCell(value, valueColumn.Column, styleKey: "grand-total", semanticRole: "grand-total"));
         }
 
@@ -367,10 +421,8 @@ internal sealed class ReportPivotMatrixBuilder(
     private void EnsureCaps(
         ReportDefinitionRuntimeModel definition,
         ReportQueryPlan plan,
-        int totalColumns,
-        int totalRowsIncludingHeaders,
-        int pivotLeafCount,
-        bool includeTotals)
+        long totalColumns,
+        long totalRowsIncludingHeaders)
     {
         var caps = definition.Capabilities;
         if (caps.MaxVisibleColumns is { } maxColumns && totalColumns > maxColumns)
@@ -389,7 +441,7 @@ internal sealed class ReportPivotMatrixBuilder(
                 $"This report would display {totalRowsIncludingHeaders} rows, which exceeds the limit of {maxRows}. Narrow the filters or reduce the number of groups and try again.");
         }
 
-        var renderedCells = totalColumns * totalRowsIncludingHeaders;
+        var renderedCells = checked(totalColumns * totalRowsIncludingHeaders);
         if (caps.MaxRenderedCells is { } maxCells && renderedCells > maxCells)
         {
             throw Invalid(
@@ -397,42 +449,104 @@ internal sealed class ReportPivotMatrixBuilder(
                 "layout.columnGroups",
                 $"This report would display {renderedCells} cells, which exceeds the limit of {maxCells}. Narrow the filters or reduce the number of groups and try again.");
         }
+    }
 
-        if (caps.MaxVisibleColumns is { } pivotCap)
+    private static long CountBodyRows(ReportQueryPlan plan, IReadOnlyList<PivotLeafRow> leafRows)
+    {
+        if (leafRows.Count == 0)
+            return 0;
+
+        long count;
+        if (plan.RowGroups.Count == 0)
         {
-            var pivotValueColumns = pivotLeafCount * Math.Max(1, plan.Measures.Count) + (includeTotals ? plan.Measures.Count : 0);
-            if (pivotValueColumns > pivotCap)
-            {
-                throw Invalid(
-                    definition,
-                    "layout.columnGroups",
-                    $"This report would display {pivotValueColumns} pivot value columns, which exceeds the limit of {pivotCap}. Reduce the number of column groups, measures, or filters and try again.");
-            }
+            count = leafRows.Count;
         }
+        else
+        {
+            count = CountGroupLevel(
+                plan,
+                leafRows,
+                level: 0,
+                start: 0,
+                count: leafRows.Count,
+                hasDetailRows: plan.DetailFields.Count > 0);
+        }
+
+        if (plan.Measures.Count > 0 && plan.Shape.ShowGrandTotals)
+            count = checked(count + 1);
+
+        return count;
+    }
+
+    private static long CountGroupLevel(
+        ReportQueryPlan plan,
+        IReadOnlyList<PivotLeafRow> rows,
+        int level,
+        int start,
+        int count,
+        bool hasDetailRows)
+    {
+        long result = 0;
+        var index = start;
+        var endExclusive = checked(start + count);
+
+        while (index < endExclusive)
+        {
+            var prefixValue = rows[index].RowGroupValues[level];
+            var groupEnd = index + 1;
+
+            while (groupEnd < endExclusive && Equals(rows[groupEnd].RowGroupValues[level], prefixValue))
+            {
+                groupEnd++;
+            }
+
+            result = checked(result + 1); // group row
+            if (level < plan.RowGroups.Count - 1)
+            {
+                result = checked(result + CountGroupLevel(
+                    plan,
+                    rows,
+                    level + 1,
+                    index,
+                    groupEnd - index,
+                    hasDetailRows));
+            }
+            else if (hasDetailRows)
+            {
+                result = checked(result + (groupEnd - index));
+            }
+
+            if (ShouldEmitSeparateSubtotal(plan, level))
+                result = checked(result + 1);
+
+            index = groupEnd;
+        }
+
+        return result;
     }
 
     private static string ResolveVisibleRowFieldPath(ReportQueryPlan plan)
         => plan.RowGroups.Count > 0 || plan.DetailFields.Count > 0
             ? "layout.rowGroups"
-            : plan.ColumnGroups.Count > 0
-                ? "layout.columnGroups"
-                : "layout.measures";
+            : "layout.columnGroups";
 
     private static string BuildTupleKey(IReadOnlyList<string> codes, IReadOnlyDictionary<string, object?> values)
         => codes.Count == 0
             ? "(all)"
-            : string.Join("|", codes.Select(code => $"{code}={values.GetValueOrDefault(code) ?? "<null>"}"));
+            : System.Text.Json.JsonSerializer.Serialize(codes.Select(code => values.GetValueOrDefault(code)).ToArray());
 
     private ReportSheetRowDto BuildSubtotalRow(
         ReportQueryPlan plan,
         IReadOnlyList<ReportSheetColumnDto> rowAxisColumns,
         IReadOnlyList<PivotValueColumn> valueColumns,
         IReadOnlyList<PivotLeafRow> leafRows,
-        int level,
-        bool includeTotals)
+        int start,
+        int count,
+        int level)
     {
         var cells = new List<ReportCellDto>(rowAxisColumns.Count + valueColumns.Count);
-        var currentValue = leafRows[0].RowGroupValues[level];
+        var firstLeaf = leafRows[start];
+        var currentValue = firstLeaf.SourceValues.GetValueOrDefault(plan.RowGroups[level].OutputCode);
         var currentLabel = _cellFormatter.FormatGroupLabel(currentValue, plan.RowGroups[level].TimeGrain) + " subtotal";
 
         foreach (var rowAxisColumn in rowAxisColumns)
@@ -445,8 +559,8 @@ internal sealed class ReportPivotMatrixBuilder(
         foreach (var valueColumn in valueColumns)
         {
             var value = valueColumn.IsTotal
-                ? SumLeafRows(leafRows, valueColumn.Measure, columnLeaf: null)
-                : SumLeafRows(leafRows, valueColumn.Measure, valueColumn.Leaf);
+                ? SumLeafRows(leafRows, start, count, valueColumn.Measure, columnLeaf: null)
+                : SumLeafRows(leafRows, start, count, valueColumn.Measure, valueColumn.Leaf);
             cells.Add(_cellFormatter.BuildCell(value, valueColumn.Column, styleKey: "subtotal", semanticRole: "subtotal"));
         }
 
@@ -454,7 +568,7 @@ internal sealed class ReportPivotMatrixBuilder(
             RowKind: ReportRowKind.Subtotal,
             Cells: cells,
             OutlineLevel: level,
-            GroupKey: $"subtotal:{level}:{leafRows[0].Key}",
+            GroupKey: $"subtotal:{level}:{firstLeaf.Key}",
             SemanticRole: "subtotal");
     }
 
@@ -476,60 +590,25 @@ internal sealed class ReportPivotMatrixBuilder(
 
     private static object? SumLeafRows(
         IReadOnlyList<PivotLeafRow> leafRows,
+        int start,
+        int count,
         Planning.ReportPlanMeasure measure,
         PivotColumnLeaf? columnLeaf)
     {
         object? total = null;
-        foreach (var leafRow in leafRows)
+        var endExclusive = checked(start + count);
+
+        for (var index = start; index < endExclusive; index++)
         {
+            var leafRow = leafRows[index];
             var value = columnLeaf is null
                 ? leafRow.GetTotal(measure)
                 : leafRow.GetValue(columnLeaf.Key, measure.OutputCode);
-            total = AddValues(measure, total, value);
+            total = ReportPivotMatrixBuilderHelper.AddValues(measure, total, value);
         }
 
         return total;
     }
-
-    private static object? AddValues(Planning.ReportPlanMeasure measure, object? existing, object? raw)
-    {
-        if (raw is null)
-            return existing;
-
-        return measure.DataType switch
-        {
-            "int64" => ConvertToInt64(existing) + ConvertToInt64(raw),
-            _ => ConvertToDecimal(existing) + ConvertToDecimal(raw)
-        };
-    }
-
-    private static long ConvertToInt64(object? value)
-        => value switch
-        {
-            null => 0L,
-            long l => l,
-            int i => i,
-            short s => s,
-            byte b => b,
-            decimal dec => decimal.ToInt64(dec),
-            double dbl => Convert.ToInt64(dbl),
-            float flt => Convert.ToInt64(flt),
-            _ => Convert.ToInt64(value)
-        };
-
-    private static decimal ConvertToDecimal(object? value)
-        => value switch
-        {
-            null => 0m,
-            decimal dec => dec,
-            long l => l,
-            int i => i,
-            short s => s,
-            byte b => b,
-            double dbl => Convert.ToDecimal(dbl),
-            float flt => Convert.ToDecimal(flt),
-            _ => Convert.ToDecimal(value)
-        };
 
     private static ReportLayoutValidationException Invalid(
         ReportDefinitionRuntimeModel runtime,
@@ -564,14 +643,19 @@ internal sealed class PivotLeafRow(
     string key,
     IReadOnlyDictionary<string, object?> rowAxisValues,
     IReadOnlyList<object?> rowGroupValues,
-    IReadOnlyDictionary<string, object?> sourceValues)
+    IReadOnlyDictionary<string, object?> sourceValues,
+    IReadOnlyDictionary<string, object?>? rawValues = null)
 {
-    private readonly Dictionary<string, object?> _valuesByKey = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, object?> _valuesByKey = new(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, object?>? _totals;
+
+    public void SetTotals(IReadOnlyDictionary<string, object?> totals) => _totals = totals;
 
     public string Key { get; } = key;
     public IReadOnlyDictionary<string, object?> RowAxisValues { get; } = rowAxisValues;
     public IReadOnlyList<object?> RowGroupValues { get; } = rowGroupValues;
-    public IReadOnlyDictionary<string, object?> SourceValues { get; } = sourceValues;
+    public IReadOnlyDictionary<string, object?> SourceValues => _totals ?? sourceValues;
+    public IReadOnlyDictionary<string, object?> RawValues { get; } = rawValues ?? sourceValues;
 
     public void AddValue(string columnLeafKey, Planning.ReportPlanMeasure measure, object? value)
     {
@@ -584,9 +668,17 @@ internal sealed class PivotLeafRow(
 
     public object? GetTotal(Planning.ReportPlanMeasure measure)
     {
+        if (_totals is not null)
+            return _totals.GetValueOrDefault(measure.OutputCode);
+
         object? total = null;
-        foreach (var pair in _valuesByKey.Where(x => x.Key.EndsWith("|" + measure.OutputCode, StringComparison.OrdinalIgnoreCase)))
+        var suffix = "|" + measure.OutputCode;
+
+        foreach (var pair in _valuesByKey)
         {
+            if (!pair.Key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             total = AddValues(measure, total, pair.Value);
         }
 
@@ -604,7 +696,7 @@ internal sealed record ReportPivotSheetBuildResult(
     IReadOnlyList<ReportSheetColumnDto> Columns,
     IReadOnlyList<ReportSheetRowDto> HeaderRows,
     IReadOnlyList<ReportSheetRowDto> Rows,
-    IReadOnlyDictionary<string, string>? Diagnostics = null);
+    IReadOnlyDictionary<string, string> Diagnostics);
 
 internal static class ReportPivotMatrixBuilderHelper
 {

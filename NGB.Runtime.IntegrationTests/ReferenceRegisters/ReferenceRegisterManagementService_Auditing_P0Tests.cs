@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// <summary>
 /// P0: ReferenceRegisterManagementService writes Business AuditLog events and is strictly no-op when unchanged.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterManagementService_Auditing_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -9,8 +9,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// <summary>
 /// P0: DB-level constraints must protect the audit log even if application validation is bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseGuards_PlatformAuditLog_DbConstraints_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseGuards_PlatformAuditLog_DbConstraints_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateTime T0 = new(2026, 1, 19, 0, 0, 0, DateTimeKind.Utc);

@@ -32,7 +32,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - Operational Registers: one movement + one write_log row + dirty month
 /// - AuditLog: exactly one document.post event (no duplicates), actor upsert is performed once
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class DocumentPostingService_Post_Concurrency_WithOpRegs_AndAudit_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -19,6 +19,10 @@ public interface ICatalogRepository
 
     Task<CatalogRecord?> GetAsync(Guid catalogId, CancellationToken ct = default);
 
+    Task<IReadOnlyDictionary<Guid, CatalogRecord>> GetByIdsAsync(
+        IReadOnlyList<Guid> catalogIds,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Loads and locks the catalog row until the current transaction completes (SELECT ... FOR UPDATE).
     /// Requires an active transaction.

@@ -15,10 +15,12 @@ public sealed class PostgresAdvisoryLockManager(
     IOptions<PostgresOptions> options,
     ILogger<PostgresAdvisoryLockManager> logger,
     TimeProvider timeProvider)
-    : IAdvisoryLockManager
+    : IAdvisoryLockBatchManager, IOperationalRegisterFinalizationLockManager
 {
     private const uint FnvOffset = 2166136261u;
     private const uint FnvPrime = 16777619u;
+    private object? _trackedTransaction;
+    private readonly HashSet<int> _heldDocumentKey2Values = [];
 
     private static uint Avalanche(uint h)
     {
@@ -35,12 +37,7 @@ public sealed class PostgresAdvisoryLockManager(
     {
         // We intentionally mix all 16 bytes; this is fast, stable, and allocation-free.
         Span<byte> bytes = stackalloc byte[16];
-        if (!id.TryWriteBytes(bytes))
-        {
-            throw new NgbInvariantViolationException(
-                "Failed to write Guid bytes.",
-                new Dictionary<string, object?> { ["id"] = id });
-        }
+        _ = id.TryWriteBytes(bytes);
 
         uint h1 = FnvOffset;
         uint h2 = FnvOffset ^ 0x9E3779B9u; // different seed
@@ -57,27 +54,26 @@ public sealed class PostgresAdvisoryLockManager(
         h1 = Avalanche(h1);
         h2 = Avalanche(h2 ^ 0x85EBCA6Bu); // small post-mix tweak
 
-        var k1 = unchecked((int)h1);
-        var k2 = unchecked((int)h2);
+        return NormalizeGuidLockKeys(unchecked((int)h1), unchecked((int)h2));
+    }
 
-        // Avoid obvious hotspot keys.
-        if (k1 == 0) k1 = 1;
-        if (k2 == 0) k2 = 2;
+    internal static (int Key2A, int Key2B) NormalizeGuidLockKeys(int key2A, int key2B)
+    {
+        key2A = key2A == 0 ? 1 : key2A;
+        key2B = key2B == 0 ? 2 : key2B;
 
-        // Guarantee distinct payload keys so callers can always take two locks per Guid.
-        // (This makes tests deterministic and removes reliance on astronomically rare hash collisions.)
-        if (k2 == k1)
+        if (key2B == key2A)
         {
-            // Make a deterministic, stable alternate key.
-            k2 = unchecked((int)Avalanche(unchecked((uint)k2) ^ 0x9E3779B9u));
-            if (k2 == 0) k2 = 2;
-            if (k2 == k1) k2 ^= unchecked((int)0xA5A5A5A5);
-            if (k2 == 0) k2 = 2;
-            if (k2 == k1) k2 = unchecked(k1 + 1);
+            key2B = unchecked(key2A + 1);
+            if (key2B == 0)
+                key2B = 1;
         }
 
-        return (k1, k2);
+        return (key2A, key2B);
     }
+
+    internal static (int First, int Second) OrderGuidLockKeys(int key2A, int key2B)
+        => key2A <= key2B ? (key2A, key2B) : (key2B, key2A);
 
     private async Task LockTwoIntAsync(int key1, int key2, CancellationToken ct)
     {
@@ -133,7 +129,7 @@ public sealed class PostgresAdvisoryLockManager(
             }
 
             attempt++;
-            if (attempt == 1 || attempt % 50 == 0)
+            if (ShouldLogWaitAttempt(attempt))
             {
                 logger.LogDebug(
                     "Waiting for advisory lock ({Key1},{Key2}); attempt={Attempt}, remaining={RemainingMs}ms.",
@@ -145,10 +141,16 @@ public sealed class PostgresAdvisoryLockManager(
 
             // Small bounded backoff to reduce hot spinning while still being responsive.
             await Task.Delay(backoff, ct);
-            if (backoff < backoffMax)
-                backoff = TimeSpan.FromMilliseconds(Math.Min(backoffMax.TotalMilliseconds, backoff.TotalMilliseconds * 2));
+            backoff = NextBackoff(backoff, backoffMax);
         }
     }
+
+    internal static bool ShouldLogWaitAttempt(int attempt) => attempt == 1 || attempt % 50 == 0;
+
+    internal static TimeSpan NextBackoff(TimeSpan current, TimeSpan maximum)
+        => current < maximum
+            ? TimeSpan.FromMilliseconds(Math.Min(maximum.TotalMilliseconds, current.TotalMilliseconds * 2))
+            : current;
 
     public Task LockPeriodAsync(DateOnly period, CancellationToken ct = default)
         => LockPeriodAsync(period, AdvisoryLockPeriodScope.Accounting, ct);
@@ -197,15 +199,170 @@ public sealed class PostgresAdvisoryLockManager(
 
         var key1 = AdvisoryLockNamespaces.Document;
         var (a, b) = GetGuidLockKeys(documentId);
-        var first = a <= b ? a : b;
-        var second = a <= b ? b : a;
+        var (first, second) = OrderGuidLockKeys(a, b);
+        ResetDocumentLockCacheWhenTransactionChanges();
+
+        if (_heldDocumentKey2Values.Contains(first) && _heldDocumentKey2Values.Contains(second))
+            return;
 
         var ns = AdvisoryLockNamespaces.Format(key1);
         logger.LogDebug("Acquiring document advisory locks {Namespace}: {Key2A} and {Key2B}.", ns, first,  second);
-        await LockTwoIntAsync(key1, first, ct);
-        await LockTwoIntAsync(key1, second, ct);
+        if (!_heldDocumentKey2Values.Contains(first))
+        {
+            await LockTwoIntAsync(key1, first, ct);
+            _heldDocumentKey2Values.Add(first);
+        }
+
+        if (!_heldDocumentKey2Values.Contains(second))
+        {
+            await LockTwoIntAsync(key1, second, ct);
+            _heldDocumentKey2Values.Add(second);
+        }
 
         logger.LogDebug("Document advisory locks acquired {Namespace}: {Key2A} and {Key2B}.", ns, first, second);
+    }
+
+    public async Task LockDocumentsAsync(IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+
+        if (!uow.HasActiveTransaction || uow.Transaction is null)
+            throw new NgbInvariantViolationException("Advisory locks require an active transaction. Call BeginTransactionAsync() first.");
+
+        ResetDocumentLockCacheWhenTransactionChanges();
+        var keys = documentIds
+            .Where(static id => id != Guid.Empty)
+            .Distinct()
+            .OrderBy(static id => id)
+            .SelectMany(static id =>
+            {
+                var (a, b) = GetGuidLockKeys(id);
+                var (first, second) = OrderGuidLockKeys(a, b);
+                return new[] { first, second };
+            })
+            .Distinct()
+            .Where(key => !_heldDocumentKey2Values.Contains(key))
+            .ToArray();
+
+        if (keys.Length == 0)
+            return;
+
+        await LockKeySetAsync(AdvisoryLockNamespaces.Document, keys, ct);
+        _heldDocumentKey2Values.UnionWith(keys);
+    }
+
+    public Task LockPeriodsAsync(
+        IReadOnlyCollection<DateOnly> periods,
+        AdvisoryLockPeriodScope scope,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(periods);
+
+        if (!uow.HasActiveTransaction || uow.Transaction is null)
+            throw new NgbInvariantViolationException("Advisory locks require an active transaction. Call BeginTransactionAsync() first.");
+
+        var key1 = scope switch
+        {
+            AdvisoryLockPeriodScope.Accounting => AdvisoryLockNamespaces.Period,
+            AdvisoryLockPeriodScope.OperationalRegister => AdvisoryLockNamespaces.OperationalRegisterPeriod,
+            _ => throw new NgbArgumentOutOfRangeException(nameof(scope), scope, "Unknown period advisory lock scope.")
+        };
+        var keys = NormalizePeriodLockKeys(periods);
+
+        return LockKeySetAsync(key1, keys, ct);
+    }
+
+    internal static int[] NormalizePeriodLockKeys(IEnumerable<DateOnly> periods)
+        => periods
+            .Select(static period => new DateOnly(period.Year, period.Month, 1))
+            .Distinct()
+            .OrderBy(static period => period)
+            .Select(static period => checked(period.Year * 100 + period.Month))
+            .ToArray();
+
+    private async Task LockKeySetAsync(int key1, int[] keys, CancellationToken ct)
+    {
+        if (keys.Length == 0)
+            return;
+
+        var timeoutSeconds = options.Value.AdvisoryLockWaitTimeoutSeconds;
+        if (timeoutSeconds <= 0)
+        {
+            throw new NgbConfigurationViolationException(
+                $"{nameof(PostgresOptions.AdvisoryLockWaitTimeoutSeconds)} must be > 0.",
+                new Dictionary<string, object?> { ["value"] = timeoutSeconds });
+        }
+
+        var timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        var deadline = timeProvider.GetUtcNowDateTime() + timeout;
+        var attempt = 0;
+        var backoff = TimeSpan.FromMilliseconds(20);
+        var backoffMax = TimeSpan.FromMilliseconds(250);
+
+        const string sql = """
+WITH RECURSIVE requested AS MATERIALIZED (
+    SELECT key2, ordinal
+    FROM UNNEST(@Key2Values::integer[]) WITH ORDINALITY AS requested(key2, ordinal)
+    ORDER BY ordinal
+), attempts(ordinal, acquired) AS (
+    SELECT requested.ordinal,
+           pg_try_advisory_xact_lock(@Key1, requested.key2)
+    FROM requested
+    WHERE requested.ordinal = 1
+    UNION ALL
+    SELECT requested.ordinal,
+           CASE WHEN attempts.acquired
+               THEN pg_try_advisory_xact_lock(@Key1, requested.key2)
+               ELSE FALSE
+           END
+    FROM attempts
+    JOIN requested ON requested.ordinal = attempts.ordinal + 1
+)
+SELECT COALESCE(BOOL_AND(acquired), TRUE)
+FROM attempts;
+""";
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            await uow.EnsureConnectionOpenAsync(ct);
+            var acquired = await uow.Connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+                sql,
+                new { Key1 = key1, Key2Values = keys },
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+            if (acquired)
+                return;
+
+            if (timeProvider.GetUtcNowDateTime() >= deadline)
+            {
+                throw new NgbTimeoutException(
+                    operation: "postgres.advisory_lock_batch",
+                    innerException: new TimeoutException(
+                        $"Timed out waiting for {keys.Length} advisory lock keys after {timeout.TotalSeconds:0} seconds."),
+                    additionalContext: new Dictionary<string, object?>
+                    {
+                        ["key1"] = key1,
+                        ["keyCount"] = keys.Length,
+                        ["timeoutSeconds"] = timeoutSeconds,
+                        ["attempt"] = attempt
+                    });
+            }
+
+            attempt++;
+            await Task.Delay(backoff, ct);
+            backoff = NextBackoff(backoff, backoffMax);
+        }
+    }
+
+    private void ResetDocumentLockCacheWhenTransactionChanges()
+    {
+        var transaction = uow.Transaction;
+        if (ReferenceEquals(_trackedTransaction, transaction))
+            return;
+
+        _trackedTransaction = transaction;
+        _heldDocumentKey2Values.Clear();
     }
 
     public async Task LockCatalogAsync(Guid catalogId, CancellationToken ct = default)
@@ -215,8 +372,7 @@ public sealed class PostgresAdvisoryLockManager(
 
         var key1 = AdvisoryLockNamespaces.Catalog;
         var (a, b) = GetGuidLockKeys(catalogId);
-        var first = a <= b ? a : b;
-        var second = a <= b ? b : a;
+        var (first, second) = OrderGuidLockKeys(a, b);
 
         var ns = AdvisoryLockNamespaces.Format(key1);
         logger.LogDebug("Acquiring catalog advisory locks {Namespace}: {Key2A} and {Key2B}.", ns, first, second);
@@ -226,6 +382,60 @@ public sealed class PostgresAdvisoryLockManager(
         logger.LogDebug("Catalog advisory locks acquired {Namespace}: {Key2A} and {Key2B}.", ns, first, second);
     }
 
+    public async Task LockOperationalRegisterFinalizationAsync(Guid registerId, CancellationToken ct = default)
+    {
+        uow.EnsureActiveTransaction();
+
+        var (a, b) = GetGuidLockKeys(registerId);
+        var (first, second) = OrderGuidLockKeys(a, b);
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(options.Value.AdvisoryLockWaitTimeoutSeconds));
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            """
+SELECT pg_advisory_xact_lock(@Namespace, @First);
+SELECT pg_advisory_xact_lock(@Namespace, @Second);
+""",
+            new
+            {
+                Namespace = AdvisoryLockNamespaces.OperationalRegisterFinalization,
+                First = first,
+                Second = second
+            },
+            transaction: uow.Transaction,
+            cancellationToken: deadline.Token));
+    }
+
+    public async Task LockOperationalRegisterPublicationAsync(
+        Guid registerId,
+        DateOnly periodMonth,
+        CancellationToken ct)
+    {
+        uow.EnsureActiveTransaction();
+
+        var (a, b) = GetGuidLockKeys(registerId);
+        var (first, second) = OrderGuidLockKeys(a, b);
+
+        // Separate statements enforce lock ordering; blocking locks participate in the
+        // server wait queue and deadlock detector. The caller supplies a bounded token.
+        const string sql = """
+SELECT pg_advisory_xact_lock(@RegisterNamespace, @First);
+SELECT pg_advisory_xact_lock(@RegisterNamespace, @Second);
+SELECT pg_advisory_xact_lock(@MonthNamespace, @Month);
+""";
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new
+            {
+                RegisterNamespace = AdvisoryLockNamespaces.OperationalRegister,
+                First = first, Second = second,
+                MonthNamespace = AdvisoryLockNamespaces.OperationalRegisterPeriod,
+                Month = checked(periodMonth.Year * 100 + periodMonth.Month)
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+    }
+
     public async Task LockOperationalRegisterAsync(Guid registerId, CancellationToken ct = default)
     {
         if (!uow.HasActiveTransaction || uow.Transaction is null)
@@ -233,8 +443,7 @@ public sealed class PostgresAdvisoryLockManager(
 
         var key1 = AdvisoryLockNamespaces.OperationalRegister;
         var (a, b) = GetGuidLockKeys(registerId);
-        var first = a <= b ? a : b;
-        var second = a <= b ? b : a;
+        var (first, second) = OrderGuidLockKeys(a, b);
 
         var ns = AdvisoryLockNamespaces.Format(key1);
         logger.LogDebug("Acquiring operational register advisory locks {Namespace}: {Key2A} and {Key2B}.", ns, first, second);

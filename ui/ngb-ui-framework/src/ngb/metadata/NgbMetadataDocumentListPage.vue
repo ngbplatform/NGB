@@ -43,6 +43,7 @@ const route = useRoute()
 const router = useRouter()
 const metaStore = useMetadataStore()
 const lookupStore = useLookupStore()
+const pageLookupResolver = props.resolveLookupHint
 
 const resolvedBackTarget = computed(() => String(props.backTarget ?? '').trim() || '/')
 const canBack = computed(() => route.path !== resolvedBackTarget.value)
@@ -84,7 +85,7 @@ const {
   entityTypeCode: documentType,
   reloadKey: routeReloadKey,
   loadMetadata: (entityTypeCode) => metaStore.ensureDocumentType(entityTypeCode),
-  loadPage: async ({ entityTypeCode, metadata }) => {
+  loadPage: async ({ entityTypeCode, metadata, signal }) => {
     const listFilterParams = Object.fromEntries(
       (metadata.list?.filters ?? [])
         .map((field) => [field.key, normalizeSingleQueryValue(route.query[field.key])] as const)
@@ -101,11 +102,12 @@ const {
       periodFrom: monthValueToDateOnlyStart(periodFromMonth.value) ?? null,
       periodTo: monthValueToDateOnlyEnd(periodToMonth.value) ?? null,
       listFilters: listFilterParams,
+      signal,
     })
   },
   lookupStore,
-  resolveLookupHint: props.resolveLookupHint
-    ? ({ entityTypeCode, fieldKey, lookup }) => props.resolveLookupHint?.({ entityTypeCode, fieldKey, lookup }) ?? null
+  resolveLookupHint: pageLookupResolver
+    ? ({ entityTypeCode, fieldKey, lookup }) => pageLookupResolver({ entityTypeCode, fieldKey, lookup })
     : undefined,
 })
 
@@ -285,7 +287,7 @@ async function createNew() {
     @prev="prevPage"
     @next="nextPage"
     @rowActivate="openEdit"
-    @update:drawerOpen="(value) => (!value ? closeDrawer() : null)"
+    @update:drawerOpen="void closeDrawer()"
   >
     <template #filters>
       <NgbDocumentPeriodFilter

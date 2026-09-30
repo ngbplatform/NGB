@@ -36,6 +36,7 @@ public sealed class PostgresStatementOfChangesInEquitySnapshotReader(IUnitOfWork
         public string AccountCode { get; init; } = null!;
         public string AccountName { get; init; } = null!;
         public StatementSection StatementSection { get; init; }
+        public decimal OpeningBalance { get; init; }
         public decimal ClosingBalance { get; init; }
     }
 
@@ -53,31 +54,49 @@ public sealed class PostgresStatementOfChangesInEquitySnapshotReader(IUnitOfWork
         var openingAsOfPeriod = fromInclusive.AddMonths(-1);
         var latestClosed = await GetLatestClosedPeriodsAsync(openingAsOfPeriod, toInclusive, ct);
 
-        var openingRows = await LoadStateRowsAsync(openingAsOfPeriod, latestClosed.OpeningLatestClosedPeriod, ct);
-        var closingRows = await LoadStateRowsAsync(toInclusive, latestClosed.ClosingLatestClosedPeriod, ct);
-
         var combined = new Dictionary<Guid, MutableRow>();
-
-        foreach (var row in openingRows)
+        if (latestClosed.OpeningLatestClosedPeriod is null && latestClosed.ClosingLatestClosedPeriod is null)
         {
-            if (!combined.TryGetValue(row.AccountId, out var current))
+            var endpointRows = await LoadInceptionToDateEndpointRowsAsync(openingAsOfPeriod, toInclusive, ct);
+            foreach (var row in endpointRows)
             {
-                current = new MutableRow(row.AccountId, row.AccountCode, row.AccountName, row.StatementSection);
-                combined[row.AccountId] = current;
+                combined[row.AccountId] = new MutableRow(
+                    row.AccountId,
+                    row.AccountCode,
+                    row.AccountName,
+                    row.StatementSection)
+                {
+                    OpeningBalance = row.OpeningBalance,
+                    ClosingBalance = row.ClosingBalance
+                };
             }
-
-            current.OpeningBalance += row.ClosingBalance;
         }
-
-        foreach (var row in closingRows)
+        else
         {
-            if (!combined.TryGetValue(row.AccountId, out var current))
+            var openingRows = await LoadStateRowsAsync(openingAsOfPeriod, latestClosed.OpeningLatestClosedPeriod, ct);
+            var closingRows = await LoadStateRowsAsync(toInclusive, latestClosed.ClosingLatestClosedPeriod, ct);
+
+            foreach (var row in openingRows)
             {
-                current = new MutableRow(row.AccountId, row.AccountCode, row.AccountName, row.StatementSection);
-                combined[row.AccountId] = current;
+                if (!combined.TryGetValue(row.AccountId, out var current))
+                {
+                    current = new MutableRow(row.AccountId, row.AccountCode, row.AccountName, row.StatementSection);
+                    combined[row.AccountId] = current;
+                }
+
+                current.OpeningBalance += row.ClosingBalance;
             }
 
-            current.ClosingBalance += row.ClosingBalance;
+            foreach (var row in closingRows)
+            {
+                if (!combined.TryGetValue(row.AccountId, out var current))
+                {
+                    current = new MutableRow(row.AccountId, row.AccountCode, row.AccountName, row.StatementSection);
+                    combined[row.AccountId] = current;
+                }
+
+                current.ClosingBalance += row.ClosingBalance;
+            }
         }
 
         return new StatementOfChangesInEquitySnapshot(
@@ -165,6 +184,44 @@ public sealed class PostgresStatementOfChangesInEquitySnapshotReader(IUnitOfWork
             new
             {
                 AsOfPeriod = asOfPeriod,
+                RelevantSections
+            },
+            ct);
+    }
+
+    private async Task<IReadOnlyList<StateRow>> LoadInceptionToDateEndpointRowsAsync(
+        DateOnly openingAsOfPeriod,
+        DateOnly closingAsOfPeriod,
+        CancellationToken ct)
+    {
+        const string sql = """
+                           SELECT
+                               t.account_id AS AccountId,
+                               a.code AS AccountCode,
+                               a.name AS AccountName,
+                               a.statement_section AS StatementSection,
+                               SUM(CASE
+                                   WHEN t.period <= @OpeningAsOfPeriod::date
+                                       THEN t.debit_amount - t.credit_amount
+                                   ELSE 0::numeric
+                               END) AS OpeningBalance,
+                               SUM(t.debit_amount - t.credit_amount) AS ClosingBalance
+                           FROM accounting_turnovers t
+                           JOIN accounting_accounts a
+                             ON a.account_id = t.account_id
+                            AND a.is_deleted = FALSE
+                           WHERE t.period <= @ClosingAsOfPeriod::date
+                             AND a.statement_section = ANY(@RelevantSections::smallint[])
+                           GROUP BY t.account_id, a.code, a.name, a.statement_section
+                           ORDER BY a.code;
+                           """;
+
+        return await QueryRowsAsync(
+            sql,
+            new
+            {
+                OpeningAsOfPeriod = openingAsOfPeriod,
+                ClosingAsOfPeriod = closingAsOfPeriod,
                 RelevantSections
             },
             ct);

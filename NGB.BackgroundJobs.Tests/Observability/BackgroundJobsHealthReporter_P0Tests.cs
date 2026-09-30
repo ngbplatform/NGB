@@ -132,10 +132,15 @@ public sealed class BackgroundJobsHealthReporter_P0Tests
             _states = states;
         }
 
-        public ValueTask<RecurringJobState?> TryGetAsync(string jobId, CancellationToken cancellationToken)
+        public ValueTask<IReadOnlyDictionary<string, RecurringJobState>> GetManyAsync(
+            IReadOnlyCollection<string> jobIds,
+            CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(_states.TryGetValue(jobId, out var s) ? s : null);
+            return ValueTask.FromResult<IReadOnlyDictionary<string, RecurringJobState>>(
+                _states
+                    .Where(pair => pair.Value is not null && jobIds.Contains(pair.Key, StringComparer.Ordinal))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value!, StringComparer.Ordinal));
         }
     }
 }

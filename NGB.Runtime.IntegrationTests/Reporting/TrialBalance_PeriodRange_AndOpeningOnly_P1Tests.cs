@@ -6,7 +6,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class TrialBalance_PeriodRange_AndOpeningOnly_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

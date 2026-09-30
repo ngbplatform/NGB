@@ -300,8 +300,8 @@ public sealed class UserAccessManagementServiceTests
 
         var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
         users
-            .Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([platformUser]);
+            .Setup(x => x.GetPageAsync(0, 50, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([platformUser], 1));
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         userRoles
@@ -328,10 +328,10 @@ public sealed class UserAccessManagementServiceTests
             new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
             identityProvider.Object);
 
-        var result = await service.GetUsersAsync(CancellationToken.None);
+        var result = await service.GetUsersAsync(new UserPageRequestDto(), CancellationToken.None);
 
-        result.Should().ContainSingle();
-        result[0].KeycloakEnabled.Should().BeFalse();
+        result.Items.Should().ContainSingle();
+        result.Items[0].KeycloakEnabled.Should().BeFalse();
 
         users.VerifyAll();
         userRoles.VerifyAll();
@@ -366,8 +366,8 @@ public sealed class UserAccessManagementServiceTests
 
         var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
         users
-            .Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(platformUsers);
+            .Setup(x => x.GetPageAsync(0, 50, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage(platformUsers, platformUsers.Length));
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         userRoles
@@ -400,16 +400,113 @@ public sealed class UserAccessManagementServiceTests
             new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
             identityProvider.Object);
 
-        var result = await service.GetUsersAsync(CancellationToken.None);
+        var result = await service.GetUsersAsync(new UserPageRequestDto(), CancellationToken.None);
 
-        result.Should().HaveCount(2);
-        result.Single(x => x.UserId == firstUserId).KeycloakEnabled.Should().BeTrue();
-        result.Single(x => x.UserId == secondUserId).KeycloakEnabled.Should().BeFalse();
+        result.Items.Should().HaveCount(2);
+        result.Items.Single(x => x.UserId == firstUserId).KeycloakEnabled.Should().BeTrue();
+        result.Items.Single(x => x.UserId == secondUserId).KeycloakEnabled.Should().BeFalse();
 
         identityProvider.Verify(x => x.GetUserByIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         identityProvider.Verify(x => x.FindUserByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         users.VerifyAll();
         userRoles.VerifyAll();
+        identityProvider.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetUsersAsync_UsesSingleBulkIdentityProviderScanWhenSupported()
+    {
+        var userId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var platformUser = new PlatformUser(
+            userId,
+            "kc-user",
+            "user@example.com",
+            "User",
+            IsActive: true,
+            now,
+            now);
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        users.Setup(x => x.GetPageAsync(0, 50, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage([platformUser], 1));
+        var roles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        roles.Setup(x => x.GetRolesForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { userId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+        var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
+        identityProvider.As<IIdentityProviderBulkUserReader>()
+            .Setup(x => x.GetUsersAsync(
+                It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "kc-user" })),
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "user@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new IdentityProviderUserBatch(
+                new Dictionary<string, IdentityProviderUserDto>
+                {
+                    ["kc-user"] = new("kc-user", "user@example.com", null, null, "User", true)
+                },
+                new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)));
+
+        var service = CreateService(
+            users.Object,
+            roles.Object,
+            new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
+            identityProvider.Object);
+
+        var result = await service.GetUsersAsync(new UserPageRequestDto(), default);
+
+        result.Items.Should().ContainSingle().Which.KeycloakEnabled.Should().BeTrue();
+        identityProvider.Verify(x => x.GetUsersByIdsAsync(
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+        identityProvider.Verify(x => x.FindUsersByEmailsAsync(
+            It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Never);
+        users.VerifyAll();
+        roles.VerifyAll();
+        identityProvider.VerifyAll();
+    }
+
+    [Fact]
+    public async Task GetUsersAsync_UsesNonBlockingSnapshotAndFallsBackToLocalStatusOnCacheMiss()
+    {
+        var firstId = Guid.NewGuid();
+        var secondId = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var platformUsers = new[]
+        {
+            new PlatformUser(firstId, "cached", "cached@example.com", "Cached", true, now, now),
+            new PlatformUser(secondId, "cold", "cold@example.com", "Cold", true, now, now)
+        };
+        var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
+        users.Setup(x => x.GetPageAsync(0, 50, null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserPage(platformUsers, platformUsers.Length));
+        var roles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
+        roles.Setup(x => x.GetRolesForUsersAsync(
+                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { firstId, secondId })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, IReadOnlyList<PlatformRole>>());
+        var identityProvider = new Mock<IIdentityProviderUserAdminClient>(MockBehavior.Strict);
+        identityProvider.As<IIdentityProviderUserPageSnapshotReader>()
+            .Setup(x => x.GetCachedUsers(
+                It.Is<IReadOnlyList<string>>(ids => ids.SequenceEqual(new[] { "cached", "cold" })),
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "cached@example.com", "cold@example.com" }))))
+            .Returns(new IdentityProviderUserBatch(
+                new Dictionary<string, IdentityProviderUserDto>
+                {
+                    ["cached"] = new("cached", "cached@example.com", null, null, "Cached", false)
+                },
+                new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)));
+        var service = CreateService(
+            users.Object,
+            roles.Object,
+            new Mock<IUserAccessVersionRepository>(MockBehavior.Strict).Object,
+            identityProvider.Object);
+
+        var result = await service.GetUsersAsync(new UserPageRequestDto(), default);
+
+        result.Items.Single(item => item.UserId == firstId).KeycloakEnabled.Should().BeFalse();
+        result.Items.Single(item => item.UserId == secondId).KeycloakEnabled.Should().BeTrue();
+        users.VerifyAll();
+        roles.VerifyAll();
         identityProvider.VerifyAll();
     }
 
@@ -782,8 +879,13 @@ public sealed class UserAccessManagementServiceTests
             .Setup(x => x.GetUserByIdAsync("stale-kc-user", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IdentityProviderUserDto?)null);
         identityProvider
-            .Setup(x => x.FindUserByEmailAsync("clerk@example.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(idpUser);
+            .Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "clerk@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["clerk@example.com"] = idpUser
+            });
         identityProvider
             .Setup(x => x.UpdateUserAsync(
                 "actual-kc-user",
@@ -910,8 +1012,10 @@ public sealed class UserAccessManagementServiceTests
             .Setup(x => x.GetUserByIdAsync("stale-kc-user", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IdentityProviderUserDto?)null);
         identityProvider
-            .Setup(x => x.FindUserByEmailAsync("clerk@example.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IdentityProviderUserDto?)null);
+            .Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "clerk@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase));
         identityProvider
             .Setup(x => x.CreateUserAsync(
                 It.Is<CreateIdentityProviderUserRequest>(request =>
@@ -1038,6 +1142,16 @@ public sealed class UserAccessManagementServiceTests
                 It.IsAny<CancellationToken>()))
             .Callback<AuditEntityKind, Guid, string, IReadOnlyList<AuditFieldChange>?, object?, Guid?, CancellationToken>((kind, entityId, actionCode, changes, _, _, _) =>
                 auditCalls.Add(new AuditCall(kind, entityId, actionCode, changes ?? Array.Empty<AuditFieldChange>())))
+            .Returns(Task.CompletedTask);
+        audit
+            .Setup(x => x.WriteBatchAsync(
+                It.IsAny<IReadOnlyList<AuditLogWriteRequest>>(), It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<AuditLogWriteRequest>, CancellationToken>((requests, _) =>
+                auditCalls.AddRange(requests.Select(request => new AuditCall(
+                    request.EntityKind,
+                    request.EntityId,
+                    request.ActionCode,
+                    request.Changes ?? Array.Empty<AuditFieldChange>()))))
             .Returns(Task.CompletedTask);
 
         var service = CreateService(
@@ -1185,8 +1299,13 @@ public sealed class UserAccessManagementServiceTests
             .Setup(x => x.GetUserByIdAsync("stale-kc-user", It.IsAny<CancellationToken>()))
             .ReturnsAsync((IdentityProviderUserDto?)null);
         identityProvider
-            .Setup(x => x.FindUserByEmailAsync("clerk@example.com", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(idpUser);
+            .Setup(x => x.FindUsersByEmailsAsync(
+                It.Is<IReadOnlyList<string>>(emails => emails.SequenceEqual(new[] { "clerk@example.com" })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, IdentityProviderUserDto>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["clerk@example.com"] = idpUser
+            });
         identityProvider
             .Setup(x => x.SetUserEnabledAsync("actual-kc-user", false, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -1233,6 +1352,10 @@ public sealed class UserAccessManagementServiceTests
                 It.IsAny<object?>(),
                 It.IsAny<Guid?>(),
                 It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        defaultAudit
+            .Setup(x => x.WriteBatchAsync(
+                It.IsAny<IReadOnlyList<AuditLogWriteRequest>>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         return new UserAccessManagementService(

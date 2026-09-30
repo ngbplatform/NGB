@@ -14,3 +14,16 @@ public interface IPayableApplyHeadWriter
         string? memo,
         CancellationToken ct = default);
 }
+
+public interface IPayableApplyHeadBatchWriter : IPayableApplyHeadWriter
+{
+    Task UpsertManyAsync(IReadOnlyList<PayableApplyHeadWrite> items, CancellationToken ct = default);
+}
+
+public sealed record PayableApplyHeadWrite(
+    Guid DocumentId,
+    Guid CreditDocumentId,
+    Guid ChargeDocumentId,
+    DateOnly AppliedOnUtc,
+    decimal Amount,
+    string? Memo);

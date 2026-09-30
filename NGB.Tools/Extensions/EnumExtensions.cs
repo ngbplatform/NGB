@@ -14,7 +14,7 @@ public static class EnumExtensions
             return null;
 
         var member = FastEnum.GetMember(value);
-        return member?.FieldInfo.GetCustomAttribute<TAttribute>(inherit: false);
+        return member!.FieldInfo.GetCustomAttribute<TAttribute>(inherit: false);
     }
     
     public static string ToCode<TEnum>(this TEnum value)

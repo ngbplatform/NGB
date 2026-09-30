@@ -41,7 +41,13 @@ public sealed class SalesInvoiceOperationalRegisterPostingHandler(
 
         var occurredAtUtc = AgencyBillingPostingCommon.ToOccurredAtUtc(head.DocumentDateUtc);
         var totalAmount = 0m;
-        var timesheetHeads = new Dictionary<Guid, AgencyBillingTimesheetHead>();
+        var sourceTimesheetIds = lines
+            .Where(static line => line.SourceTimesheetId is { } id && id != Guid.Empty)
+            .Select(static line => line.SourceTimesheetId!.Value)
+            .Distinct()
+            .ToArray();
+        var timesheetHeads = await readers.ReadTimesheetHeadsAsync(sourceTimesheetIds, ct);
+        var unbilledDrafts = new List<(decimal Hours, decimal Amount, NGB.Core.Dimensions.DimensionBag Bag)>();
 
         foreach (var line in lines)
         {
@@ -52,56 +58,64 @@ public sealed class SalesInvoiceOperationalRegisterPostingHandler(
                 continue;
 
             if (!timesheetHeads.TryGetValue(sourceTimesheetId, out var sourceTimesheet))
-            {
-                sourceTimesheet = await readers.ReadTimesheetHeadAsync(sourceTimesheetId, ct);
-                timesheetHeads[sourceTimesheetId] = sourceTimesheet;
-            }
+                throw new NgbInvariantViolationException($"Timesheet '{sourceTimesheetId}' is missing its Agency Billing head row.");
 
-            var dimensionSetId = await dimensionSets.GetOrCreateIdAsync(
+            unbilledDrafts.Add((
+                line.QuantityHours,
+                lineAmount,
                 AgencyBillingPostingCommon.TimeLedgerBag(
                     head.ClientId,
                     head.ProjectId,
                     sourceTimesheet.TeamMemberId,
-                    line.ServiceItemId),
-                ct);
+                    line.ServiceItemId)));
+        }
 
+        var bags = unbilledDrafts.Select(static x => x.Bag).ToList();
+        var projectDimensionSetIndex = -1;
+        var arOpenItemDimensionSetIndex = -1;
+
+        if (totalAmount > 0m)
+        {
+            projectDimensionSetIndex = bags.Count;
+            bags.Add(AgencyBillingPostingCommon.ProjectBag(head.ClientId, head.ProjectId));
+            arOpenItemDimensionSetIndex = bags.Count;
+            bags.Add(AgencyBillingPostingCommon.ArOpenItemBag(head.ClientId, head.ProjectId, document.Id));
+        }
+
+        var dimensionSetIds = await dimensionSets.GetOrCreateIdsAsync(bags, ct);
+
+        for (var i = 0; i < unbilledDrafts.Count; i++)
+        {
+            var draft = unbilledDrafts[i];
             builder.Add(
                 unbilledRegister.Code,
                 new OperationalRegisterMovement(
                     DocumentId: document.Id,
                     OccurredAtUtc: occurredAtUtc,
-                    DimensionSetId: dimensionSetId,
-                    Resources: AgencyBillingPostingCommon.BuildUnbilledResources(-line.QuantityHours, -lineAmount)));
+                    DimensionSetId: dimensionSetIds[i],
+                    Resources: AgencyBillingPostingCommon.BuildUnbilledResources(-draft.Hours, -draft.Amount)));
         }
 
         if (totalAmount <= 0m)
             return;
-
-        var projectDimensionSetId = await dimensionSets.GetOrCreateIdAsync(
-            AgencyBillingPostingCommon.ProjectBag(head.ClientId, head.ProjectId),
-            ct);
 
         builder.Add(
             projectBillingStatusRegister.Code,
             new OperationalRegisterMovement(
                 DocumentId: document.Id,
                 OccurredAtUtc: occurredAtUtc,
-                DimensionSetId: projectDimensionSetId,
+                DimensionSetId: dimensionSetIds[projectDimensionSetIndex],
                 Resources: AgencyBillingPostingCommon.BuildProjectBillingStatusResources(
                     billedAmountDelta: totalAmount,
                     collectedAmountDelta: 0m,
                     outstandingArAmountDelta: totalAmount)));
-
-        var arOpenItemDimensionSetId = await dimensionSets.GetOrCreateIdAsync(
-            AgencyBillingPostingCommon.ArOpenItemBag(head.ClientId, head.ProjectId, document.Id),
-            ct);
 
         builder.Add(
             arOpenItemsRegister.Code,
             new OperationalRegisterMovement(
                 DocumentId: document.Id,
                 OccurredAtUtc: occurredAtUtc,
-                DimensionSetId: arOpenItemDimensionSetId,
+                DimensionSetId: dimensionSetIds[arOpenItemDimensionSetIndex],
                 Resources: new Dictionary<string, decimal> { ["amount"] = AgencyBillingPostingCommon.RoundScale4(totalAmount) }));
     }
 }

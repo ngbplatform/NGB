@@ -4,8 +4,7 @@ type UseValidationFocusOptions = {
   attribute: string
 }
 
-function focusableElement(container: HTMLElement | null): HTMLElement | null {
-  if (!container) return null
+function focusableElement(container: HTMLElement): HTMLElement | null {
   return (
     container.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])') ??
     null

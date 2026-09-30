@@ -14,8 +14,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 
-[Collection(PostgresCollection.Name)]
-public sealed class PostedDocumentHeaderImmutabilityGuard_AllowsUnpostAndRepost_NumberIsStable_P4Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class PostedDocumentHeaderImmutabilityGuard_AllowsUnpostAndRepost_NumberIsStable_P4Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

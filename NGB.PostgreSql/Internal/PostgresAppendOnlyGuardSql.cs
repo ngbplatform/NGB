@@ -26,7 +26,13 @@ internal static class PostgresAppendOnlyGuardSql
         if (string.IsNullOrWhiteSpace(triggerName))
             throw new NgbArgumentRequiredException(nameof(triggerName));
 
-        var sql = $"""
+        var sql = BuildUpdateDeleteForbiddenTriggerSql(table, triggerName);
+
+        return uow.Connection.ExecuteAsync(new CommandDefinition(sql, transaction: uow.Transaction, cancellationToken: ct));
+    }
+
+    internal static string BuildUpdateDeleteForbiddenTriggerSql(string table, string triggerName)
+        => $"""
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -43,7 +49,4 @@ BEGIN
     END IF;
 END $$;
 """;
-
-        return uow.Connection.ExecuteAsync(new CommandDefinition(sql, transaction: uow.Transaction, cancellationToken: ct));
-    }
 }

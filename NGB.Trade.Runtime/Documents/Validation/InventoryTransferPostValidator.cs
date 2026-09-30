@@ -3,12 +3,14 @@ using NGB.Core.Documents;
 using NGB.Definitions.Documents.Validation;
 using NGB.Tools.Exceptions;
 using NGB.Trade.Documents;
+using NGB.Trade.References;
 
 namespace NGB.Trade.Runtime.Documents.Validation;
 
 public sealed class InventoryTransferPostValidator(
     ITradeDocumentReaders readers,
     ICatalogService catalogs,
+    ITradeCatalogValidationReader catalogValidation,
     TradeInventoryAvailabilityService inventoryAvailability)
     : IDocumentPostValidator
 {
@@ -34,12 +36,15 @@ public sealed class InventoryTransferPostValidator(
                 "From Warehouse and To Warehouse must be different.");
         }
 
+        var inventoryItems = await TradeCatalogValidationGuards.LoadInventoryItemsAsync(
+            lines.Select(static line => line.ItemId).ToArray(), catalogValidation, ct);
+
         for (var i = 0; i < lines.Count; i++)
         {
             var line = lines[i];
             var prefix = $"lines[{i}]";
 
-            await TradeCatalogValidationGuards.EnsureInventoryItemAsync(line.ItemId, $"{prefix}.item_id", catalogs, ct);
+            TradeCatalogValidationGuards.EnsureInventoryItem(line.ItemId, $"{prefix}.item_id", inventoryItems);
 
             if (line.Quantity <= 0m)
                 throw new NgbArgumentInvalidException($"{prefix}.quantity", "Quantity must be greater than zero.");

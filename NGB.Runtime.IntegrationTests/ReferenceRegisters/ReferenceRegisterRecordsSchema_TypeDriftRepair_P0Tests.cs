@@ -13,14 +13,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
-public sealed class ReferenceRegisterRecordsSchema_TypeDriftRepair_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class ReferenceRegisterRecordsSchema_TypeDriftRepair_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task EnsureSchema_WhenNoRecords_DriftRepairsInt32ColumnType()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         const string code = "RR_TYPE_DRIFT_NO_RECORDS";
@@ -97,7 +96,6 @@ public sealed class ReferenceRegisterRecordsSchema_TypeDriftRepair_P0Tests(Postg
     [Fact]
     public async Task EnsureSchema_WhenRecordsExist_ThrowsOnInt32ColumnTypeDrift()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         const string code = "RR_TYPE_DRIFT_HAS_RECORDS";

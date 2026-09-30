@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError } from '../api/http'
 import NgbDrawer from '../components/NgbDrawer.vue'
@@ -32,6 +32,9 @@ type RoleForm = {
   name: string
   description: string
 }
+
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const AUDIT_ENTITY_KIND_SECURITY_ROLE = 9
 
@@ -92,6 +95,12 @@ function applyRole(next: RoleDetailsDto): void {
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
+  const targetRoleId = roleId.value
+  const creating = isNew.value
   loading.value = true
   error.value = null
   accessDenied.value = false
@@ -99,26 +108,35 @@ async function load(): Promise<void> {
 
   try {
     await access.load()
-    if (isNew.value && !access.canManageRoles) {
+    if (sequence !== loadSequence) return
+    if (creating && !access.canManageRoles) {
       accessDenied.value = true
       return
     }
 
-    definitions.value = await getPermissionDefinitions()
-    if (!isNew.value) {
-      applyRole(await getRole(roleId.value))
+    if (creating) {
+      definitions.value = await getPermissionDefinitions({ signal: controller.signal })
+    } else {
+      const [nextDefinitions, nextRole] = await Promise.all([
+        getPermissionDefinitions({ signal: controller.signal }),
+        getRole(targetRoleId, { signal: controller.signal }),
+      ])
+      if (sequence !== loadSequence) return
+      definitions.value = nextDefinitions
+      applyRole(nextRole)
     }
   } catch (cause) {
-    accessDenied.value = cause instanceof ApiError && cause.status === 403
+    if (sequence !== loadSequence) return
+    accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
+      && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load role')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
 async function save(): Promise<void> {
-  if (!canEdit.value || saving.value) return
-
   saving.value = true
   error.value = null
 
@@ -140,7 +158,7 @@ async function save(): Promise<void> {
       code: form.value.code,
       name: form.value.name,
       description: form.value.description || null,
-      isActive: role.value?.isActive ?? true,
+      isActive: role.value!.isActive,
       permissions: permissions.value,
     })
     applyRole(updated)
@@ -153,14 +171,12 @@ async function save(): Promise<void> {
 }
 
 async function confirmActivationChange(): Promise<void> {
-  if (!role.value || !confirmMode.value) return
-
   activating.value = true
   error.value = null
 
   try {
-    if (confirmMode.value === 'deactivate') await deactivateRole(role.value.roleId)
-    else await reactivateRole(role.value.roleId)
+    if (confirmMode.value === 'deactivate') await deactivateRole(role.value!.roleId)
+    else await reactivateRole(role.value!.roleId)
     confirmMode.value = null
     await load()
   } catch (cause) {
@@ -175,7 +191,6 @@ function goBack(): void {
 }
 
 function openAuditLog(): void {
-  if (!canOpenAudit.value) return
   auditOpen.value = true
 }
 
@@ -190,6 +205,12 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
+})
 </script>
 
 <template>
@@ -300,7 +321,7 @@ watch(
       :confirm-text="confirmMode === 'reactivate' ? 'Reactivate' : 'Deactivate'"
       :danger="confirmMode === 'deactivate'"
       :confirm-loading="activating"
-      @update:open="(value) => { if (!value) confirmMode = null }"
+      @update:open="confirmMode = null"
       @confirm="confirmActivationChange"
     />
 
@@ -308,7 +329,7 @@ watch(
       <NgbEntityAuditSidebar
         :open="auditOpen"
         :entity-kind="AUDIT_ENTITY_KIND_SECURITY_ROLE"
-        :entity-id="role?.roleId ?? null"
+        :entity-id="role!.roleId"
         :entity-title="auditEntityTitle"
         :behavior="ROLE_AUDIT_BEHAVIOR"
         @back="closeAuditLog"

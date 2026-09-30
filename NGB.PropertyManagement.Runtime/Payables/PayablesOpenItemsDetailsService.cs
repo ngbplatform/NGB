@@ -1,9 +1,11 @@
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Core.Catalogs.Exceptions;
 using NGB.PropertyManagement.Contracts.Payables;
 using NGB.PropertyManagement.Documents;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.UnitOfWork;
+using NGB.Tools.Exceptions;
 
 namespace NGB.PropertyManagement.Runtime.Payables;
 
@@ -14,6 +16,42 @@ public sealed class PayablesOpenItemsDetailsService(
     IUnitOfWork uow)
     : IPayablesOpenItemsDetailsService
 {
+    public async Task<PayablesOpenItemsDetailsResponse> GetOpenItemsDetailsPageAsync(
+        Guid partyId,
+        Guid propertyId,
+        DateOnly? asOfMonth,
+        DateOnly? toMonth,
+        int chargeOffset,
+        int creditOffset,
+        int allocationOffset,
+        int limit,
+        CancellationToken ct = default)
+    {
+        ValidateOffset(chargeOffset, nameof(chargeOffset));
+        ValidateOffset(creditOffset, nameof(creditOffset));
+        ValidateOffset(allocationOffset, nameof(allocationOffset));
+        ValidateLimit(limit);
+
+        var full = await GetOpenItemsDetailsAsync(partyId, propertyId, asOfMonth, toMonth, ct);
+
+        return full with
+        {
+            Charges = full.Charges.Skip(chargeOffset).Take(limit).ToArray(),
+            Credits = full.Credits.Skip(creditOffset).Take(limit).ToArray(),
+            Allocations = full.Allocations.AsEnumerable().Reverse().Skip(allocationOffset).Take(limit).ToArray(),
+            ChargeCount = full.Charges.Count,
+            CreditCount = full.Credits.Count,
+            AllocationCount = full.Allocations.Count,
+            ChargeOffset = chargeOffset,
+            CreditOffset = creditOffset,
+            AllocationOffset = allocationOffset,
+            Limit = limit,
+            ChargesHaveMore = chargeOffset + limit < full.Charges.Count,
+            CreditsHaveMore = creditOffset + limit < full.Credits.Count,
+            AllocationsHaveMore = allocationOffset + limit < full.Allocations.Count,
+        };
+    }
+
     public async Task<PayablesOpenItemsDetailsResponse> GetOpenItemsDetailsAsync(
         Guid partyId,
         Guid propertyId,
@@ -79,5 +117,17 @@ public sealed class PayablesOpenItemsDetailsService(
             allocations,
             open.TotalOutstanding,
             open.TotalCredit);
+    }
+
+    private static void ValidateOffset(int offset, string offsetName)
+    {
+        if (offset is < 0 or > PagingLimits.MaxOffset)
+            throw new NgbArgumentOutOfRangeException(offsetName, offset, $"Offset must be between 0 and {PagingLimits.MaxOffset}.");
+    }
+
+    private static void ValidateLimit(int limit)
+    {
+        if (limit is <= 0 or > PagingLimits.MaxPageSize)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, $"Limit must be between 1 and {PagingLimits.MaxPageSize}.");
     }
 }

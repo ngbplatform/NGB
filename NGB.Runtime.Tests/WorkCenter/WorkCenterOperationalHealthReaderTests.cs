@@ -2,11 +2,13 @@ using FluentAssertions;
 using Moq;
 using NGB.Persistence.Outbox;
 using NGB.Persistence.WorkCenter;
+using NGB.Runtime.Tests.Observability;
 using NGB.Runtime.WorkCenter;
 using Xunit;
 
 namespace NGB.Runtime.Tests.WorkCenter;
 
+[Collection(TelemetrySerialCollection.Name)]
 public sealed class WorkCenterOperationalHealthReaderTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 8, 12, 0, 0, TimeSpan.Zero);

@@ -14,8 +14,8 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// This test proves that if the append-only triggers (and even the shared guard function) are dropped,
 /// re-applying platform migrations restores them.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class Migrations_UpgradeDrift_PlatformAppendOnlyGuards_AuditAndDimensions_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class Migrations_UpgradeDrift_PlatformAppendOnlyGuards_AuditAndDimensions_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

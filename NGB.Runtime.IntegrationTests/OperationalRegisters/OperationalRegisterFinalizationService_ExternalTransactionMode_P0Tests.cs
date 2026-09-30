@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - manageTransaction=false without an ambient transaction must fail fast with canonical message,
 /// - manageTransaction=false with an ambient transaction must not commit/rollback implicitly.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterFinalizationService_ExternalTransactionMode_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

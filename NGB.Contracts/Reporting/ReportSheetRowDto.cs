@@ -6,4 +6,5 @@ public sealed record ReportSheetRowDto(
     int OutlineLevel = 0,
     bool IsExpanded = true,
     string? GroupKey = null,
-    string? SemanticRole = null);
+    string? SemanticRole = null,
+    IReadOnlyList<System.Text.Json.JsonElement>? ChildrenPath = null);

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Accounts;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ChartOfAccountsManagement_NoMovements_AllowsFullEditTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

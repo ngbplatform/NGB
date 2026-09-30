@@ -216,16 +216,16 @@ public sealed class PostgresBalanceSheetSnapshotReader(IUnitOfWork uow) : IBalan
         => $"""
                    AND (
                        @ScopeDimensionCount::int = 0
-                       OR (
-                           SELECT COUNT(DISTINCT req.dimension_id)
+                       OR {alias}.dimension_set_id IN (
+                           SELECT di.dimension_set_id
                            FROM platform_dimension_set_items di
-                           JOIN (
-                               SELECT
-                                   unnest(@ScopeDimIds::uuid[]) AS dimension_id,
-                                   unnest(@ScopeValueIds::uuid[]) AS value_id
-                           ) req ON req.dimension_id = di.dimension_id AND req.value_id = di.value_id
-                           WHERE di.dimension_set_id = {alias}.dimension_set_id
-                       ) = @ScopeDimensionCount::int
+                           JOIN unnest(@ScopeDimIds::uuid[], @ScopeValueIds::uuid[])
+                               AS req(dimension_id, value_id)
+                             ON req.dimension_id = di.dimension_id
+                            AND req.value_id = di.value_id
+                           GROUP BY di.dimension_set_id
+                           HAVING COUNT(DISTINCT di.dimension_id) = @ScopeDimensionCount::int
+                       )
                    )
                    """;
 

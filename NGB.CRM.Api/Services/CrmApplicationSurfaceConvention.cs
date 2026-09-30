@@ -3,7 +3,7 @@ using NGB.Api.Controllers;
 
 namespace NGB.CRM.Api.Services;
 
-internal sealed class CrmApplicationSurfaceConvention : IApplicationModelConvention
+public sealed class CrmApplicationSurfaceConvention : IApplicationModelConvention
 {
     private static readonly HashSet<Type> DisabledControllerTypes =
     [

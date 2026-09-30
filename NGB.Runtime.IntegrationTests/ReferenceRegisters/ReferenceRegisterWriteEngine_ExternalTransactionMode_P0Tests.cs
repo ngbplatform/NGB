@@ -20,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 /// - fails fast when used without an active transaction
 /// - respects the outer transaction commit/rollback semantics for BOTH the idempotency log and the write action
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterWriteEngine_ExternalTransactionMode_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -29,8 +29,6 @@ public sealed class ReferenceRegisterWriteEngine_ExternalTransactionMode_P0Tests
     [Fact]
     public async Task ExecuteAsync_ManageTransactionFalse_WithoutActiveTransaction_Throws()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (registerId, _) = await ArrangeIndependentNonPeriodicRegisterAsync(host, "rr_we_ext_no_tx");
@@ -63,8 +61,6 @@ public sealed class ReferenceRegisterWriteEngine_ExternalTransactionMode_P0Tests
     [Fact]
     public async Task ExecuteAsync_ManageTransactionFalse_WhenOuterTransactionRollsBack_DoesNotPersistWriteLogOrRecords()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (registerId, recordsTable) = await ArrangeIndependentNonPeriodicRegisterAsync(host, "rr_we_ext_rb");
@@ -152,8 +148,6 @@ public sealed class ReferenceRegisterWriteEngine_ExternalTransactionMode_P0Tests
     [Fact]
     public async Task ExecuteAsync_ManageTransactionFalse_WhenOuterTransactionCommits_PersistsWriteLogAndRecords()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         var (registerId, recordsTable) = await ArrangeIndependentNonPeriodicRegisterAsync(host, "rr_we_ext_commit");

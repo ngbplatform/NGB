@@ -27,7 +27,7 @@ namespace NGB.Runtime.IntegrationTests.FaultInjection;
 /// Goal: catch regressions where cancellation leaves an "aborted" connection/transaction state that poisons
 /// subsequent postings or database resets.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingRecoveryAfterCancellation_SqlSleepTests(PostgresTestFixture fixture)
 {
     [Fact(Timeout = 30_000)]

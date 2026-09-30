@@ -36,13 +36,20 @@ type CreateReconciliationPageDefinitionArgs<TRow, TReport> = {
   glOnlyExplanation: string
   openItemsOnlyExplanation: string
   toRow: (row: TRow) => ReconciliationRow
-  loadReport: (request: ReconciliationLoadRequest) => Promise<TReport>
+  loadReport: (request: ReconciliationLoadRequest, options?: { signal?: AbortSignal }) => Promise<TReport>
   getRows: (report: TReport) => TRow[]
   getTotalLedgerNet: (report: TReport) => number
   getTotalOpenItemsNet: (report: TReport) => number
   getTotalDiff: (report: TReport) => number
   getRowCount: (report: TReport) => number
   getMismatchRowCount: (report: TReport) => number
+  getFilteredRowCount?: (report: TReport) => number | null | undefined
+  getGlOnlyRowCount?: (report: TReport) => number | null | undefined
+  getOpenItemsOnlyRowCount?: (report: TReport) => number | null | undefined
+  getOffset?: (report: TReport) => number | null | undefined
+  getLimit?: (report: TReport) => number | null | undefined
+  getHasMore?: (report: TReport) => boolean | null | undefined
+  getNextCursor?: (report: TReport) => string | null | undefined
 }
 
 export function createReconciliationPageDefinition<TRow, TReport>(
@@ -79,15 +86,23 @@ export function createReconciliationPageDefinition<TRow, TReport>(
           return 'Investigate the row.'
       }
     },
-    load: async (request): Promise<ReconciliationReport> => {
-      const report = await args.loadReport(request)
+    load: async (request, options): Promise<ReconciliationReport> => {
+      const report = await args.loadReport(request, options)
+      const rows = args.getRows(report)
       return {
         totalLedgerNet: args.getTotalLedgerNet(report),
         totalOpenItemsNet: args.getTotalOpenItemsNet(report),
         totalDiff: args.getTotalDiff(report),
         rowCount: args.getRowCount(report),
         mismatchRowCount: args.getMismatchRowCount(report),
-        rows: args.getRows(report).map(args.toRow),
+        filteredRowCount: args.getFilteredRowCount?.(report) ?? rows.length,
+        glOnlyRowCount: args.getGlOnlyRowCount?.(report) ?? 0,
+        openItemsOnlyRowCount: args.getOpenItemsOnlyRowCount?.(report) ?? 0,
+        rows: rows.map(args.toRow),
+        offset: args.getOffset?.(report) ?? 0,
+        limit: args.getLimit?.(report) ?? request.limit ?? 100,
+        hasMore: args.getHasMore?.(report) ?? false,
+        nextCursor: args.getNextCursor?.(report)?.trim() || null,
       }
     },
   }

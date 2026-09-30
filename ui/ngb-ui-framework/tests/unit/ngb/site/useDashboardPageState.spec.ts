@@ -117,9 +117,11 @@ describe('useDashboardPageState', () => {
 
     const first = createDeferred<{ warnings: string[] }>()
     const second = createDeferred<{ warnings: string[] }>()
+    const third = createDeferred<{ warnings: string[] }>()
     const load = vi.fn()
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise)
+      .mockImplementationOnce(() => third.promise)
       .mockRejectedValueOnce(new Error('Dashboard exploded'))
 
     const state = useDashboardPageState({
@@ -135,7 +137,7 @@ describe('useDashboardPageState', () => {
     second.resolve({ warnings: ['Fresh warning'] })
     await flushUi()
 
-    first.resolve({ warnings: ['Stale warning'] })
+    first.reject(new Error('Stale dashboard failure'))
     await flushUi()
 
     expect(state.warnings.value).toEqual(['Fresh warning'])
@@ -143,10 +145,40 @@ describe('useDashboardPageState', () => {
 
     state.refresh()
     await flushUi()
+
+    state.refresh()
+    await flushUi()
+    await flushUi()
+
+    third.resolve({ warnings: ['Another stale warning'] })
     await flushUi()
 
     expect(state.dashboard.value).toBeNull()
     expect(state.error.value).toBe('Dashboard exploded')
     expect(state.loading.value).toBe(false)
+  })
+
+  it('uses safe defaults for missing dates and malformed dashboard warnings', async () => {
+    const route = reactive({ path: '/dashboard', query: {} })
+    const router = { replace: vi.fn() }
+    const load = vi.fn()
+      .mockResolvedValueOnce({ warnings: 'not-an-array' })
+      .mockResolvedValueOnce({ warnings: [null, '  Delayed snapshot  ', ''] })
+
+    const state = useDashboardPageState({
+      load,
+      route: route as never,
+      router: router as never,
+      queryKey: ' ',
+    })
+
+    expect(state.warnings.value).toEqual([])
+    await flushUi()
+    expect(state.asOf.value).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(state.warnings.value).toEqual([])
+
+    state.refresh()
+    await flushUi()
+    expect(state.warnings.value).toEqual(['Delayed snapshot'])
   })
 })

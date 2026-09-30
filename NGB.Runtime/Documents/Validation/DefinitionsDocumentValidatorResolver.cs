@@ -42,46 +42,48 @@ internal sealed class DefinitionsDocumentValidatorResolver(
 
     private IReadOnlyList<IDocumentDraftValidator> ResolveDraftValidators(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        if (_draftValidatorsByTypeCode.TryGetValue(def.TypeCode, out var cached))
-            return cached;
-
         lock (_draftValidatorsGate)
         {
-            if (_draftValidatorsByTypeCode.TryGetValue(def.TypeCode, out cached))
-                return cached;
+            if (!_draftValidatorsByTypeCode.TryGetValue(def.TypeCode, out var cached))
+            {
+                cached = BuildValidators(
+                    def,
+                    _allDraftValidators,
+                    static x => x.DraftValidatorTypes,
+                    static validator => validator.TypeCode);
+                _draftValidatorsByTypeCode[def.TypeCode] = cached;
+            }
 
-            var resolved = BuildValidators(def, _allDraftValidators, static x => x.DraftValidatorTypes);
-            _draftValidatorsByTypeCode[def.TypeCode] = resolved;
-            return resolved;
+            return cached;
         }
     }
 
     private IReadOnlyList<IDocumentPostValidator> ResolvePostValidators(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        if (_postValidatorsByTypeCode.TryGetValue(def.TypeCode, out var cached))
-            return cached;
-
         lock (_postValidatorsGate)
         {
-            if (_postValidatorsByTypeCode.TryGetValue(def.TypeCode, out cached))
-                return cached;
+            if (!_postValidatorsByTypeCode.TryGetValue(def.TypeCode, out var cached))
+            {
+                cached = BuildValidators(
+                    def,
+                    _allPostValidators,
+                    static x => x.PostValidatorTypes,
+                    static validator => validator.TypeCode);
+                _postValidatorsByTypeCode[def.TypeCode] = cached;
+            }
 
-            var resolved = BuildValidators(def, _allPostValidators, static x => x.PostValidatorTypes);
-            _postValidatorsByTypeCode[def.TypeCode] = resolved;
-            return resolved;
+            return cached;
         }
     }
 
     private static IReadOnlyList<TValidator> BuildValidators<TValidator>(
         NGB.Definitions.Documents.DocumentTypeDefinition def,
         IReadOnlyList<TValidator> validators,
-        Func<NGB.Definitions.Documents.DocumentTypeDefinition, IReadOnlyList<Type>> bindingSelector)
+        Func<NGB.Definitions.Documents.DocumentTypeDefinition, IReadOnlyList<Type>> bindingSelector,
+        Func<TValidator, string> typeCodeSelector)
         where TValidator : class
     {
         var boundTypes = bindingSelector(def);
-        if (boundTypes.Count == 0)
-            return [];
-
         var resolved = new List<TValidator>(boundTypes.Count);
         foreach (var validatorType in boundTypes)
         {
@@ -120,19 +122,12 @@ internal sealed class DefinitionsDocumentValidatorResolver(
                         ["typeCode"] = def.TypeCode,
                         ["validatorType"] = validatorType.FullName,
                         ["validatorContract"] = typeof(TValidator).FullName,
-                        ["matches"] = matches.Select(validator => validator.GetType().FullName ?? validator.GetType().Name).ToArray()
+                        ["matches"] = matches.Select(validator => validator.GetType().ToString()).ToArray()
                     });
             }
 
             var typed = matches[0];
-            var actualTypeCode = typed switch
-            {
-                IDocumentDraftValidator draftValidator => draftValidator.TypeCode,
-                IDocumentPostValidator postValidator => postValidator.TypeCode,
-                _ => throw new NgbInvariantViolationException(
-                    $"Unsupported validator contract '{typeof(TValidator).FullName}'.",
-                    new Dictionary<string, object?> { ["validatorContract"] = typeof(TValidator).FullName })
-            };
+            var actualTypeCode = typeCodeSelector(typed);
 
             if (!string.Equals(actualTypeCode, def.TypeCode, StringComparison.Ordinal))
             {

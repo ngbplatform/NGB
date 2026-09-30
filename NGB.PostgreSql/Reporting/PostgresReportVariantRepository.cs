@@ -13,10 +13,14 @@ public sealed class PostgresReportVariantRepository(IUnitOfWork uow, TimeProvide
     public async Task<IReadOnlyList<ReportVariantRecord>> ListVisibleAsync(
         string reportCodeNorm,
         Guid? currentUserId,
+        int limit,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(reportCodeNorm))
             throw new NgbArgumentRequiredException(nameof(reportCodeNorm));
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Limit must be greater than zero.");
 
         await uow.EnsureConnectionOpenAsync(ct);
 
@@ -39,17 +43,49 @@ public sealed class PostgresReportVariantRepository(IUnitOfWork uow, TimeProvide
                            FROM report_variants
                            WHERE report_code_norm = @ReportCodeNorm
                              AND (is_shared = TRUE OR (@CurrentUserId IS NOT NULL AND owner_platform_user_id = @CurrentUserId))
-                           ORDER BY is_default DESC, is_shared DESC, name, variant_code;
+                           ORDER BY is_default DESC, is_shared DESC, name, variant_code
+                           LIMIT @Limit;
                            """;
 
         var rows = await uow.Connection.QueryAsync<ReportVariantRecord>(
             new CommandDefinition(
                 sql,
-                new { ReportCodeNorm = reportCodeNorm.Trim(), CurrentUserId = currentUserId },
+                new { ReportCodeNorm = reportCodeNorm.Trim(), CurrentUserId = currentUserId, Limit = limit },
                 transaction: uow.Transaction,
                 cancellationToken: ct));
 
         return rows.AsList();
+    }
+
+    public async Task<int> CountInScopeAsync(
+        string reportCodeNorm,
+        Guid? ownerPlatformUserId,
+        bool isShared,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(reportCodeNorm))
+            throw new NgbArgumentRequiredException(nameof(reportCodeNorm));
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        const string sql = """
+                           SELECT COUNT(*)::int
+                           FROM report_variants
+                           WHERE report_code_norm = @ReportCodeNorm
+                             AND is_shared = @IsShared
+                             AND (@IsShared = TRUE OR owner_platform_user_id = @OwnerPlatformUserId);
+                           """;
+
+        return await uow.Connection.QuerySingleAsync<int>(new CommandDefinition(
+            sql,
+            new
+            {
+                ReportCodeNorm = reportCodeNorm.Trim(),
+                OwnerPlatformUserId = ownerPlatformUserId,
+                IsShared = isShared
+            },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
     }
 
     public async Task<ReportVariantRecord?> GetVisibleAsync(

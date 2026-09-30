@@ -130,5 +130,9 @@ describe('entity editor outputs', () => {
         showPreview: true,
       },
     })
+
+    state.extraFlags.value = null
+    await nextTick()
+    expect(emit).toHaveBeenLastCalledWith('flags', expect.objectContaining({ extras: undefined }))
   })
 })

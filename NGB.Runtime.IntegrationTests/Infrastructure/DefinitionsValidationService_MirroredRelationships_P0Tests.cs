@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 public sealed class DefinitionsValidationService_MirroredRelationships_P0Tests
 {
     [Fact]
-    public void ValidateOrThrow_WhenMirroredRelationshipFieldShapeIsInvalid_ReportsFieldErrors()
+    public async Task ValidateOrThrow_WhenMirroredRelationshipFieldShapeIsInvalid_ReportsFieldErrors()
     {
         var metadata = new DocumentTypeMetadata(
             TypeCode: "doc.source",
@@ -76,9 +76,9 @@ public sealed class DefinitionsValidationService_MirroredRelationships_P0Tests
 
         var validator = CreateInternalValidator(registry, new AlwaysTrueIsService());
 
-        var act = () => validator.ValidateOrThrow();
+        var act = () => validator.ValidateOrThrowAsync();
 
-        var ex = act.Should().Throw<DefinitionsValidationException>().Which;
+        var ex = (await act.Should().ThrowAsync<DefinitionsValidationException>()).Which;
         ex.Errors.Should().HaveCount(4);
         ex.Errors.Should().Contain(e => e.Contains("doc_source.relation_as_text") && e.Contains("ColumnType.Guid"));
         ex.Errors.Should().Contain(e => e.Contains("doc_source.relation_catalog_id") && e.Contains("document lookup field"));
@@ -87,7 +87,7 @@ public sealed class DefinitionsValidationService_MirroredRelationships_P0Tests
     }
 
     [Fact]
-    public void ValidateOrThrow_WhenMirroredRelationshipCodeIsBlankOrUntrimmed_ReportsConfigurationError()
+    public async Task ValidateOrThrow_WhenMirroredRelationshipCodeIsBlankOrUntrimmed_ReportsConfigurationError()
     {
         var registry = BuildRegistry(
             documents:
@@ -126,14 +126,14 @@ public sealed class DefinitionsValidationService_MirroredRelationships_P0Tests
 
         var validator = CreateInternalValidator(registry, new AlwaysTrueIsService());
 
-        var act = () => validator.ValidateOrThrow();
+        var act = () => validator.ValidateOrThrowAsync();
 
-        var ex = act.Should().Throw<DefinitionsValidationException>().Which;
+        var ex = (await act.Should().ThrowAsync<DefinitionsValidationException>()).Which;
         ex.Errors.Should().ContainSingle(e => e.Contains("doc_source.related_document_id") && e.Contains("non-empty trimmed relationship code"));
     }
 
     [Fact]
-    public void ValidateOrThrow_WhenMirroredRelationshipUsesUnknownOrIncompatibleRelationshipType_ReportsCompatibilityErrors()
+    public async Task ValidateOrThrow_WhenMirroredRelationshipUsesUnknownOrIncompatibleRelationshipType_ReportsCompatibilityErrors()
     {
         var unknownRelRegistry = BuildRegistry(
             documents:
@@ -151,7 +151,7 @@ public sealed class DefinitionsValidationService_MirroredRelationships_P0Tests
             ]);
 
         var unknownRelValidator = CreateInternalValidator(unknownRelRegistry, new AlwaysTrueIsService());
-        var unknownEx = Assert.Throws<DefinitionsValidationException>(() => unknownRelValidator.ValidateOrThrow());
+        var unknownEx = await Assert.ThrowsAsync<DefinitionsValidationException>(() => unknownRelValidator.ValidateOrThrowAsync());
         unknownEx.Errors.Should().ContainSingle(e => e.Contains("unknown relationship type 'unknown.rel'"));
 
         var incompatibleRegistry = BuildRegistry(
@@ -183,16 +183,16 @@ public sealed class DefinitionsValidationService_MirroredRelationships_P0Tests
 
         var incompatibleValidator = CreateInternalValidator(incompatibleRegistry, new AlwaysTrueIsService());
 
-        var act = () => incompatibleValidator.ValidateOrThrow();
+        var act = () => incompatibleValidator.ValidateOrThrowAsync();
 
-        var incompatibleEx = act.Should().Throw<DefinitionsValidationException>().Which;
+        var incompatibleEx = (await act.Should().ThrowAsync<DefinitionsValidationException>()).Which;
         incompatibleEx.Errors.Should().HaveCount(2);
         incompatibleEx.Errors.Should().Contain(e => e.Contains("does not allow from-document type 'doc.source'"));
         incompatibleEx.Errors.Should().Contain(e => e.Contains("does not allow target document type 'doc.target'"));
     }
 
     [Fact]
-    public void ValidateOrThrow_WhenMirroredRelationshipFieldIsValid_DoesNotAddErrors()
+    public async Task ValidateOrThrow_WhenMirroredRelationshipFieldIsValid_DoesNotAddErrors()
     {
         var registry = BuildRegistry(
             documents:
@@ -221,7 +221,7 @@ public sealed class DefinitionsValidationService_MirroredRelationships_P0Tests
 
         var validator = CreateInternalValidator(registry, new AlwaysTrueIsService());
 
-        validator.Invoking(x => x.ValidateOrThrow()).Should().NotThrow();
+        await validator.Awaiting(x => x.ValidateOrThrowAsync()).Should().NotThrowAsync();
     }
 
     private static DefinitionsRegistry BuildRegistry(

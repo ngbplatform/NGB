@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "package": "@ngbplatform/ui",
-  "majorVersion": 2,
+  "majorVersion": 3,
   "exports": [
     "AccountingEntryEffect",
     "AccountingEntryEffectDto",

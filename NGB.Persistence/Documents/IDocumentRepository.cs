@@ -16,11 +16,20 @@ public interface IDocumentRepository
 
     Task<DocumentRecord?> GetAsync(Guid documentId, CancellationToken ct = default);
 
+    Task<IReadOnlyDictionary<Guid, DocumentRecord>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default);
+
     /// <summary>
-    /// Loads and locks the document row until the current transaction completes (SELECT ... FOR UPDATE).
+    /// Loads and locks the document row until the current transaction completes, serializing writers.
+    /// The immutable document key remains available to concurrent foreign-key references (FOR NO KEY UPDATE).
     /// Requires an active transaction.
     /// </summary>
     Task<DocumentRecord?> GetForUpdateAsync(Guid documentId, CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, DocumentRecord>> GetForUpdateByIdsAsync(
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct = default);
 
     Task UpdateStatusAsync(
         Guid documentId,
@@ -60,4 +69,10 @@ public interface IDocumentRepository
         CancellationToken ct = default);
     
     Task<bool> TryDeleteAsync(Guid documentId, CancellationToken ct = default);
+}
+
+/// <summary>Provider capability for inserting validated Draft registry rows in one command.</summary>
+public interface IDocumentDraftBatchRepository : IDocumentRepository
+{
+    Task CreateDraftsAsync(IReadOnlyList<DocumentRecord> drafts, CancellationToken ct = default);
 }

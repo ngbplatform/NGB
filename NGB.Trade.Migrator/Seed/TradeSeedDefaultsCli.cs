@@ -8,7 +8,7 @@ using NGB.Trade.Runtime.DependencyInjection;
 
 namespace NGB.Trade.Migrator.Seed;
 
-internal static class TradeSeedDefaultsCli
+public static class TradeSeedDefaultsCli
 {
     private const string CommandName = "seed-defaults";
 
@@ -17,10 +17,11 @@ internal static class TradeSeedDefaultsCli
 
     public static string[] TrimCommand(string[] args) => args.Length <= 1 ? [] : args[1..];
 
-    public static async Task<int> RunAsync(string[] args)
+    public static Task<int> RunAsync(string[] args) => RunAsync(args, Environment.GetEnvironmentVariable);
+
+    internal static async Task<int> RunAsync(string[] args, Func<string, string?> getEnvironmentVariable)
     {
-        var connectionString = GetArgValue(args, "--connection")
-            ?? Environment.GetEnvironmentVariable("NGB_CONNECTION_STRING");
+        var connectionString = GetArgValue(args, "--connection") ?? getEnvironmentVariable("NGB_CONNECTION_STRING");
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -71,7 +72,7 @@ internal static class TradeSeedDefaultsCli
         return 0;
     }
 
-    private static string? GetArgValue(string[] args, string name)
+    internal static string? GetArgValue(string[] args, string name)
     {
         for (var i = 0; i < args.Length; i++)
         {

@@ -1,9 +1,11 @@
 using Dapper;
 using NGB.OperationalRegisters.Contracts;
+using NGB.OperationalRegisters;
+using NGB.OperationalRegisters.Exceptions;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Internal;
-using NGB.PostgreSql.OperationalRegisters.Internal;
+using NGB.PostgreSql.Schema;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -15,9 +17,15 @@ namespace NGB.PostgreSql.OperationalRegisters;
 public sealed class PostgresOperationalRegisterMonthlyProjectionAggregator(
     IUnitOfWork uow,
     IOperationalRegisterRepository registers,
-    IOperationalRegisterResourceRepository resources)
+    IOperationalRegisterResourceRepository resources,
+    OperationalRegisterMetadataCache? metadataCache = null,
+    PostgresRelationPresenceCache? relationPresenceCache = null)
     : IOperationalRegisterMonthlyProjectionAggregator
 {
+    private readonly OperationalRegisterMetadataCache _metadataCache = metadataCache
+        ?? new OperationalRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationPresenceCache _relationPresenceCache = relationPresenceCache
+        ?? new PostgresRelationPresenceCache(TimeProvider.System);
     public async Task<IReadOnlyList<OperationalRegisterMonthlyProjectionRow>> AggregateMonthAsync(
         Guid registerId,
         DateOnly periodMonth,
@@ -30,18 +38,27 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionAggregator(
 
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var (tableName, resourceColumns) =
-            await OperationalRegisterMovementsTableResolver.ResolveOrThrowAsync(registers, resources, registerId, ct);
+        var metadata = await _metadataCache.GetOrCreateAsync(
+            registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
+            ct);
+        var tableName = metadata.MovementsTable;
+        var resourceColumns = metadata.Resources
+            .Select(static resource => resource.ColumnCode)
+            .ToArray();
 
-        if (!await PostgresTableExistence.ExistsAsync(uow, tableName, ct))
+        if (!await _relationPresenceCache.ExistsAsync(
+                tableName,
+                probeCt => PostgresTableExistence.ExistsAsync(uow, tableName, probeCt),
+                ct))
             return [];
 
-        var resourceSelect = resourceColumns.Count == 0
+        var resourceSelect = resourceColumns.Length == 0
             ? string.Empty
             : ", " + string.Join(", ", resourceColumns.Select(column =>
                 $"COALESCE(SUM(CASE WHEN is_storno THEN -{column} ELSE {column} END), 0) AS \"{column}\""));
 
-        var sql = resourceColumns.Count == 0
+        var sql = resourceColumns.Length == 0
             ? $"""
                SELECT
                    dimension_set_id AS "DimensionSetId"
@@ -80,12 +97,32 @@ public sealed class PostgresOperationalRegisterMonthlyProjectionAggregator(
                 values[column] = raw is null or DBNull ? 0m : Convert.ToDecimal(raw);
             }
 
-            if (resourceColumns.Count > 0 && values.Values.All(v => v == 0m))
+            if (resourceColumns.Length > 0 && values.Values.All(v => v == 0m))
                 continue;
 
             result.Add(new OperationalRegisterMonthlyProjectionRow(dimensionSetId, values));
         }
 
         return result;
+    }
+
+    private async Task<OperationalRegisterMetadataContext> LoadMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new OperationalRegisterNotFoundException(registerId);
+        var tableName = OperationalRegisterNaming.MovementsTable(register.TableCode);
+
+        OperationalRegisterSqlIdentifiers.EnsureOrThrow(tableName, "opreg movements table name");
+
+        var resourceDefinitions = (await resources.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(static resource => resource.Ordinal)
+            .ToArray();
+
+        foreach (var resource in resourceDefinitions)
+        {
+            OperationalRegisterSqlIdentifiers.EnsureOrThrow(resource.ColumnCode, "opreg resource column_code");
+        }
+
+        return new OperationalRegisterMetadataContext(register, resourceDefinitions, tableName);
     }
 }

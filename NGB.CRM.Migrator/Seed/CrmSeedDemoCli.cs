@@ -3,7 +3,7 @@ using NGB.CRM.Runtime;
 
 namespace NGB.CRM.Migrator.Seed;
 
-internal static class CrmSeedDemoCli
+public static class CrmSeedDemoCli
 {
     private const string CommandName = "seed-demo";
 
@@ -12,12 +12,14 @@ internal static class CrmSeedDemoCli
 
     public static string[] TrimCommand(string[] args) => args.Length <= 1 ? [] : args[1..];
 
-    public static async Task<int> RunAsync(string[] args)
+    public static Task<int> RunAsync(string[] args) => RunAsync(args, CrmSeedDefaultsCli.CreateServices);
+
+    internal static async Task<int> RunAsync(string[] args, Func<string, ServiceCollection> createServices)
     {
         try
         {
             var connectionString = CrmSeedCliArgs.RequireConnectionString(args);
-            var services = CrmSeedDefaultsCli.CreateServices(connectionString);
+            var services = createServices(connectionString);
 
             await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
             {
@@ -36,7 +38,6 @@ internal static class CrmSeedDemoCli
             Console.WriteLine($"- Stages ensured: {result.StagesEnsured}");
             Console.WriteLine($"- Documents created: {result.DocumentsCreated}");
             Console.WriteLine($"- Operational data seeded: {result.SeededOperationalData}");
-            return 0;
         }
         catch (Exception ex)
         {
@@ -44,5 +45,7 @@ internal static class CrmSeedDemoCli
             Console.Error.WriteLine(ex);
             return 1;
         }
+
+        return 0;
     }
 }

@@ -5,15 +5,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PlatformSchema_CoreTablesExistTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CoreTablesExist_AfterPlatformMigrations()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // IDbSchemaInspector is registered as Scoped (by design), so always resolve it from a scope.

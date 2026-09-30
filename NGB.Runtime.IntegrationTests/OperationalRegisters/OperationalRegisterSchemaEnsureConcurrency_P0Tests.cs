@@ -14,8 +14,8 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: EnsureSchemaAsync uses dynamic DDL + a CREATE TRIGGER DO-block (no IF NOT EXISTS).
 /// This must be serialized per register to avoid races when multiple writers hit a new register concurrently.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegisterSchemaEnsureConcurrency_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegisterSchemaEnsureConcurrency_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

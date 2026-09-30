@@ -15,6 +15,48 @@ public sealed class CompositeDocumentTypeStorageResolverTests
         new(typeCode, new List<DocumentTableMetadata>());
 
     [Fact]
+    public void Constructor_WhenRequiredDependencyIsNull_ThrowsArgumentRequired()
+    {
+        var definitions = new DefinitionsBuilder().Build();
+
+        Action nullDefinitions = () => new CompositeDocumentTypeStorageResolver(
+            null!,
+            Array.Empty<IDocumentTypeStorage>());
+        Action nullStorages = () => new CompositeDocumentTypeStorageResolver(definitions, null!);
+
+        nullDefinitions.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("definitions");
+        nullStorages.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("storages");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void TryResolve_WhenTypeCodeIsBlank_ThrowsArgumentRequired(string? typeCode)
+    {
+        var resolver = new CompositeDocumentTypeStorageResolver(
+            new DefinitionsBuilder().Build(),
+            Array.Empty<IDocumentTypeStorage>());
+
+        Action action = () => resolver.TryResolve(typeCode!);
+
+        action.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("typeCode");
+    }
+
+    [Fact]
+    public void TryResolve_WhenDefinitionAndFallbackAreMissing_ReturnsNull()
+    {
+        var resolver = new CompositeDocumentTypeStorageResolver(
+            new DefinitionsBuilder().Build(),
+            Array.Empty<IDocumentTypeStorage>());
+
+        resolver.TryResolve("MISSING").Should().BeNull();
+    }
+
+    [Fact]
     public void TryResolve_WhenDefinitionBindsTypedStorage_ResolvesByTypeFromDi()
     {
         var builder = new DefinitionsBuilder();
@@ -37,6 +79,54 @@ public sealed class CompositeDocumentTypeStorageResolverTests
         var storage = resolver.TryResolve("DOC");
         storage.Should().NotBeNull();
         storage.Should().BeOfType<FakeDocStorage>();
+        resolver.TryResolve("doc").Should().BeSameAs(storage);
+    }
+
+    [Fact]
+    public void TryResolve_WhenBoundStorageDoesNotImplementContract_Throws()
+    {
+        var builder = new DefinitionsBuilder();
+        builder.AddDocument("DOC", definition => definition
+            .Metadata(MinimalMetadata("DOC"))
+            .TypedStorage(typeof(NotAStorage)));
+        var resolver = new CompositeDocumentTypeStorageResolver(
+            builder.Build(),
+            Array.Empty<IDocumentTypeStorage>());
+
+        Action action = () => resolver.TryResolve("DOC");
+
+        action.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*must implement IDocumentTypeStorage*");
+    }
+
+    [Fact]
+    public void TryResolve_WhenBoundStorageHasDuplicateRegistrations_Throws()
+    {
+        var builder = new DefinitionsBuilder();
+        builder.AddDocument("DOC", definition => definition
+            .Metadata(MinimalMetadata("DOC"))
+            .TypedStorage<FakeDocStorage>());
+        var resolver = new CompositeDocumentTypeStorageResolver(
+            builder.Build(),
+            new IDocumentTypeStorage[] { new FakeDocStorage(), new FakeDocStorage() });
+
+        Action action = () => resolver.TryResolve("DOC");
+
+        action.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*multiple registrations match*");
+    }
+
+    [Fact]
+    public void Constructor_WhenFallbackStoragesHaveDuplicateTypeCode_Throws()
+    {
+        var definitions = new DefinitionsBuilder().Build();
+
+        Action action = () => new CompositeDocumentTypeStorageResolver(
+            definitions,
+            new IDocumentTypeStorage[] { new FallbackDocStorage(), new SecondFallbackDocStorage() });
+
+        action.Should().Throw<NgbConfigurationViolationException>()
+            .WithMessage("*duplicate same key*");
     }
 
     [Fact]
@@ -137,4 +227,13 @@ public sealed class CompositeDocumentTypeStorageResolverTests
         public Task CreateDraftAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
         public Task DeleteDraftAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
     }
+
+    private sealed class SecondFallbackDocStorage : IDocumentTypeStorage
+    {
+        public string TypeCode => "DOC";
+        public Task CreateDraftAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task DeleteDraftAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    private sealed class NotAStorage;
 }

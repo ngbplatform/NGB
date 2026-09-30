@@ -23,15 +23,13 @@ namespace NGB.Runtime.IntegrationTests.Concurrency;
 /// We simulate a long DB I/O inside the posting transaction via pg_sleep.
 /// PostingEngine acquires its period lock before entry writer runs, so sleep holds the lock.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class AdvisoryLocks_PeriodGranularity_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact(Timeout = 30_000)]
     public async Task TwoPosts_DifferentPeriods_CanCompleteWhileFirstIsSleeping()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var probe = new SleepProbe();
 
         using var host = IntegrationHostFactory.Create(
@@ -74,8 +72,6 @@ public sealed class AdvisoryLocks_PeriodGranularity_EndToEndTests(PostgresTestFi
     [Fact(Timeout = 30_000)]
     public async Task TwoPosts_SamePeriod_AreSerialized_SecondDoesNotCompleteUntilFirstReleasesLock()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var probe = new SleepProbe();
 
         using var host = IntegrationHostFactory.Create(

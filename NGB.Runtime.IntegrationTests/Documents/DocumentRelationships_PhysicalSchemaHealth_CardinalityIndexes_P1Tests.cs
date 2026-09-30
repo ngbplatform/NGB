@@ -11,8 +11,8 @@ namespace NGB.Runtime.IntegrationTests.Documents;
 /// P1: Schema health must detect drift for built-in cardinality guard indexes.
 /// These partial unique indexes enforce relationship type cardinalities at the DB level.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentRelationships_PhysicalSchemaHealth_CardinalityIndexes_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentRelationships_PhysicalSchemaHealth_CardinalityIndexes_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Theory]

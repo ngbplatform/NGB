@@ -15,13 +15,14 @@ function text(locator: { element(): Element }): string {
 }
 
 const sidebarNodes: SiteNavNode[] = [
-  { id: 'dashboard', label: 'Dashboard', route: '/dashboard', icon: 'home' },
+  { id: 'dashboard', label: 'Dashboard', route: '/dashboard', icon: 'home', badge: '2' },
+  { id: 'unavailable', label: 'Unavailable', icon: 'file-text' },
   {
     id: 'receivables',
     label: 'Receivables',
     icon: 'coins',
     children: [
-      { id: 'payments', label: 'Payments', route: '/receivables/payments', icon: 'credit-card' },
+      { id: 'payments', label: 'Payments', route: '/receivables/payments', icon: 'credit-card', badge: 'New' },
       { id: 'returns', label: 'Returns', route: '/receivables/returns', icon: 'rotate-ccw' },
     ],
   },
@@ -115,6 +116,66 @@ const AsyncNodesSidebarHarness = defineComponent({
   },
 })
 
+const MinimalSidebarHarness = defineComponent({
+  setup() {
+    return () => h('div', { class: 'flex h-[400px]' }, [
+      h(NgbSiteSidebar, {
+        productTitle: 'NGB',
+        brandSubtitle: '',
+        pinned: [],
+        recent: [],
+        nodes: [],
+        selectedId: null,
+        collapsed: false,
+        allowCollapse: false,
+      }),
+      h(NgbSiteSidebar, {
+        productTitle: 'NGB',
+        brandSubtitle: '',
+        pinned: [],
+        recent: [],
+        nodes: [],
+        selectedId: null,
+        collapsed: true,
+        allowCollapse: false,
+      }),
+    ])
+  },
+})
+
+const ChangingFlyoutSidebarHarness = defineComponent({
+  setup() {
+    const nodes = ref<SiteNavNode[]>([
+      {
+        id: 'setup',
+        label: 'Setup',
+        children: [
+          { id: 'users', label: 'Users', route: '/users' },
+        ],
+      },
+    ])
+
+    return () => h('div', [
+      h('button', {
+        type: 'button',
+        onClick: () => {
+          nodes.value = [{ id: 'setup', label: 'Setup' }]
+        },
+      }, 'Remove flyout children'),
+      h('div', { class: 'h-[400px] w-[72px]' }, [
+        h(NgbSiteSidebar, {
+          productTitle: 'NGB',
+          pinned: [],
+          recent: [],
+          nodes: nodes.value,
+          selectedId: null,
+          collapsed: true,
+        }),
+      ]),
+    ])
+  },
+})
+
 test('collapses into icon mode and opens a flyout for section children', async () => {
   await page.viewport(1280, 900)
 
@@ -131,17 +192,26 @@ test('collapses into icon mode and opens a flyout for section children', async (
   await expect.element(view.getByTitle('Expand sidebar')).toBeVisible()
   expect(text(view.getByTestId('sidebar-collapsed-state'))).toBe('collapsed')
   expect(Math.round(rect(sidebar).width)).toBe(72)
+  expect(document.querySelector('.bg-red-500')).not.toBeNull()
+
+  await view.getByTitle('Dashboard').click()
+  expect(text(view.getByTestId('sidebar-last-selected'))).toBe('dashboard:/dashboard')
+  expect(text(view.getByTestId('sidebar-last-route'))).toBe('/dashboard')
 
   await view.getByTitle('Receivables').click()
 
   await expect.element(view.getByTestId('site-sidebar-flyout')).toBeVisible()
   await expect.element(view.getByText('Payments', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('New', { exact: true })).toBeVisible()
 
   await view.getByText('Payments', { exact: true }).click()
 
   expect(text(view.getByTestId('sidebar-last-selected'))).toBe('payments:/receivables/payments')
   expect(text(view.getByTestId('sidebar-last-route'))).toBe('/receivables/payments')
   expect(document.querySelector('[data-testid="site-sidebar-flyout"]')).toBeNull()
+
+  await view.getByTitle('Expand sidebar').click()
+  expect(text(view.getByTestId('sidebar-collapsed-state'))).toBe('expanded')
 })
 
 test('toggles expanded sections and emits navigation for visible leaf entries', async () => {
@@ -210,4 +280,33 @@ test('does not emit selection or navigation for disabled leaf entries', async ()
 
   expect(text(view.getByTestId('sidebar-last-selected'))).toBe('none')
   expect(text(view.getByTestId('sidebar-last-route'))).toBe('none')
+
+  await view.getByText('Unavailable', { exact: true }).click()
+  expect(text(view.getByTestId('sidebar-last-selected'))).toBe('none')
+  expect(text(view.getByTestId('sidebar-last-route'))).toBe('none')
+})
+
+test('hides collapse controls and brand subtitles when configured', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(MinimalSidebarHarness)
+
+  await expect.element(view.getByText('powered by:', { exact: false })).toBeVisible()
+  expect(document.querySelector('button[title="Collapse sidebar"]')).toBeNull()
+  expect(document.querySelector('button[title="Expand sidebar"]')).toBeNull()
+  expect(document.body.textContent).not.toContain('Property Management')
+})
+
+test('keeps an opened flyout safe when its children disappear asynchronously', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(ChangingFlyoutSidebarHarness)
+
+  await view.getByTitle('Setup').click()
+  await expect.element(view.getByText('Users', { exact: true })).toBeVisible()
+
+  await view.getByRole('button', { name: 'Remove flyout children' }).click()
+
+  await expect.element(view.getByTestId('site-sidebar-flyout')).toBeVisible()
+  expect(document.body.textContent).not.toContain('Users')
 })

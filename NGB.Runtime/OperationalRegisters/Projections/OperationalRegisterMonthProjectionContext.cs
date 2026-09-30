@@ -1,5 +1,4 @@
 using NGB.Persistence.OperationalRegisters;
-using NGB.Persistence.UnitOfWork;
 
 namespace NGB.Runtime.OperationalRegisters.Projections;
 
@@ -9,7 +8,7 @@ namespace NGB.Runtime.OperationalRegisters.Projections;
 /// Notes:
 /// - A transaction is guaranteed to be active while the projector is called.
 /// - Use <see cref="Movements"/> to read source movements for the month.
-/// - Use <see cref="UnitOfWork"/> for provider-specific writes (Dapper/SQL) to derived tables.
+/// - Write projections through provider-neutral persistence ports injected into the projector.
 /// </summary>
 public sealed record OperationalRegisterMonthProjectionContext(
     Guid RegisterId,
@@ -17,5 +16,4 @@ public sealed record OperationalRegisterMonthProjectionContext(
     string RegisterCodeNorm,
     DateOnly PeriodMonth,
     DateTime NowUtc,
-    IOperationalRegisterMovementsReader Movements,
-    IUnitOfWork UnitOfWork);
+    IOperationalRegisterMovementsReader Movements);

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
@@ -37,7 +37,7 @@ import { buildOpenItemsTabs, type OpenItemsTabKey } from '../features/open-items
 import OpenItemsWorkflowShell from '../features/open-items/OpenItemsWorkflowShell.vue'
 import { useOpenItemsNavigationRefresh } from '../features/open-items/useOpenItemsNavigationRefresh'
 import { useOpenItemsRouteContext } from '../features/open-items/useOpenItemsRouteContext'
-import { docLabel, fmtDateOnly, fmtMoney, formatApplyCount } from '../features/open-items/shared'
+import { OPEN_ITEMS_APPLY_BATCH_LIMIT, docLabel, fmtDateOnly, fmtMoney, formatApplyCount } from '../features/open-items/shared'
 import { useOpenItemsWorkflow } from '../features/open-items/workflow'
 
 const route = useRoute()
@@ -49,6 +49,10 @@ const error = ref<string | null>(null)
 
 const data = ref<PayablesOpenItemsDetailsResponseDto | null>(null)
 const activeTab = ref<OpenItemsTabKey>('charges')
+const OPEN_ITEMS_PAGE_SIZE = 100
+const pageOffsets = ref<Record<OpenItemsTabKey, number>>({ charges: 0, credits: 0, applied: 0 })
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const PAYABLE_CHARGE_SOURCE_TYPES = ['pm.payable_charge'] as const
 const PAYABLE_CREDIT_SOURCE_TYPES = ['pm.payable_payment', 'pm.payable_credit_memo'] as const
@@ -74,9 +78,11 @@ const {
   route,
   router,
   queryKey: 'partyId',
-  lookupById: async (partyId) => (await getCatalogById('pm.party', partyId)).display ?? partyId,
-  search: async (query) => {
-    const response = await getCatalogPage('pm.party', {
+  lookupById: async (partyId, options) => (
+    await (options ? getCatalogById('pm.party', partyId, options) : getCatalogById('pm.party', partyId))
+  ).display ?? partyId,
+  search: async (query, options) => {
+    const request = {
       offset: 0,
       limit: 20,
       search: query,
@@ -84,7 +90,10 @@ const {
         deleted: 'active',
         is_vendor: 'true',
       },
-    })
+    }
+    const response = options
+      ? await getCatalogPage('pm.party', request, options)
+      : await getCatalogPage('pm.party', request)
     return (response.items ?? []).map((item) => ({ id: item.id, label: item.display ?? item.id }))
   },
   openTarget: async (value) => buildLookupFieldTargetUrl({
@@ -106,16 +115,21 @@ const {
   route,
   router,
   queryKey: 'propertyId',
-  lookupById: async (propertyId) => (await getCatalogById('pm.property', propertyId)).display ?? propertyId,
-  search: async (query) => {
-    const response = await getCatalogPage('pm.property', {
+  lookupById: async (propertyId, options) => (
+    await (options ? getCatalogById('pm.property', propertyId, options) : getCatalogById('pm.property', propertyId))
+  ).display ?? propertyId,
+  search: async (query, options) => {
+    const request = {
       offset: 0,
       limit: 20,
       search: query,
       filters: {
         deleted: 'active',
       },
-    })
+    }
+    const response = options
+      ? await getCatalogPage('pm.property', request, options)
+      : await getCatalogPage('pm.property', request)
     return (response.items ?? []).map((item) => ({ id: item.id, label: item.display ?? item.id }))
   },
   openTarget: async (value) => buildLookupFieldTargetUrl({
@@ -153,7 +167,9 @@ async function hydrateContextFromRoute(): Promise<void> {
 }
 
 function clearAutoOpenApplyInRoute(): void {
-  omitRouteQueryKeys(route, router, ['openApply', 'source'])
+  // Consume the document action flags in one navigation. Separate replacements
+  // race on the same query and can restore openApply, resetting its in-flight suggestion.
+  omitRouteQueryKeys(route, router, ['openApply', 'source', 'refresh'])
 }
 
 function clearRefreshFlagInRoute(): void {
@@ -255,6 +271,27 @@ const creditGrid = computed(() => ({
   onActivate: (id: string) => openDocument(resolveCreditDocumentType(id), id),
 }))
 
+const chargePage = computed(() => ({
+  offset: data.value?.chargeOffset ?? pageOffsets.value.charges,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.chargeCount ?? data.value?.charges.length ?? 0,
+  hasMore: data.value?.chargesHaveMore ?? false,
+}))
+
+const creditPage = computed(() => ({
+  offset: data.value?.creditOffset ?? pageOffsets.value.credits,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.creditCount ?? data.value?.credits.length ?? 0,
+  hasMore: data.value?.creditsHaveMore ?? false,
+}))
+
+const appliedPage = computed(() => ({
+  offset: data.value?.allocationOffset ?? pageOffsets.value.applied,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.allocationCount ?? data.value?.allocations.length ?? 0,
+  hasMore: data.value?.allocationsHaveMore ?? false,
+}))
+
 const { markNeedsRefresh } = useOpenItemsNavigationRefresh({
   enabled: hasContextSelected,
   load,
@@ -287,25 +324,51 @@ function creditDocumentTypeLabel(documentType: string | null | undefined): strin
   return 'Payment'
 }
 
-async function load(): Promise<void> {
+async function loadCurrentPage(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
   const partyId = partyIdFromRoute.value
   const propId = propertyIdFromRoute.value
   if (!partyId || !propId) {
     data.value = null
     error.value = null
+    loading.value = false
     return
   }
 
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   try {
-    data.value = await getPayablesOpenItemsDetails({ partyId, propertyId: propId })
+    const nextData = await getPayablesOpenItemsDetails({
+      partyId,
+      propertyId: propId,
+      chargeOffset: pageOffsets.value.charges,
+      creditOffset: pageOffsets.value.credits,
+      allocationOffset: pageOffsets.value.applied,
+      limit: OPEN_ITEMS_PAGE_SIZE,
+    }, { signal: controller.signal })
+    if (sequence !== loadSequence) return
+    data.value = nextData
   } catch (cause) {
+    if (sequence !== loadSequence) return
     error.value = cause instanceof Error ? cause.message : String(cause)
     data.value = null
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
+}
+
+async function load(): Promise<void> {
+  pageOffsets.value = { charges: 0, credits: 0, applied: 0 }
+  await loadCurrentPage()
+}
+
+async function changePage(request: { tab: OpenItemsTabKey; offset: number }): Promise<void> {
+  pageOffsets.value = { ...pageOffsets.value, [request.tab]: request.offset }
+  await loadCurrentPage()
 }
 
 async function refresh(): Promise<void> {
@@ -366,17 +429,20 @@ const {
   summary,
   activeTab,
   toasts,
-  suggestFactory: async (): Promise<PayablesSuggestFifoApplyResponseDto> => {
+  suggestFactory: async (options): Promise<PayablesSuggestFifoApplyResponseDto> => {
     const partyId = partyIdFromRoute.value
     const propId = propertyIdFromRoute.value
     if (!partyId || !propId) throw new Error('Select a vendor and property first.')
 
-    return suggestPayablesFifoApply({
+    const request = {
       partyId,
       propertyId: propId,
       createDrafts: false,
-      limit: 500,
-    })
+      limit: OPEN_ITEMS_APPLY_BATCH_LIMIT,
+    }
+    return options
+      ? suggestPayablesFifoApply(request, options)
+      : suggestPayablesFifoApply(request)
   },
   executeFactory: (suggestion): Promise<PayablesApplyBatchResponseDto> =>
     applyPayablesBatch({
@@ -410,13 +476,11 @@ const suggestedApplyItems = computed(() => {
 const suggestedSummary = computed(() => {
   const items = suggestedApplyItems.value
   const count = items.length
-  if (count === 0) return { count: 0, creditLabel: 'credit sources', chargeLabel: 'charges' }
-
-  const first = items[0]
+  const first = items[0]!
   return {
     count,
-    creditLabel: docLabel(null, first?.creditDocumentDisplay, first?.creditDocumentId),
-    chargeLabel: docLabel(null, first?.chargeDisplay, first?.chargeDocumentId),
+    creditLabel: docLabel(null, first.creditDocumentDisplay, first.creditDocumentId),
+    chargeLabel: docLabel(null, first.chargeDisplay, first.chargeDocumentId),
   }
 })
 
@@ -428,7 +492,7 @@ const applyWizardTitle = computed(() => {
 
 const formattedSuggestWarnings = computed(() => {
   return (suggestData.value?.warnings ?? []).map((warning) => {
-    switch (String(warning.code ?? '').trim()) {
+    switch (warning.code.trim()) {
       case 'no_charges':
         return { title: 'No open charges', message: 'There are no outstanding payable charges to apply right now for this vendor/property.' }
       case 'no_credits':
@@ -436,9 +500,9 @@ const formattedSuggestWarnings = computed(() => {
       case 'limit_reached':
         return { title: 'Suggestion limit reached', message: 'The wizard stopped early because the current suggestion limit was reached. Review the remaining items before continuing.' }
       case 'outstanding_remaining':
-        return { title: 'Some charges will remain open', message: String(warning.message ?? '').replace('Outstanding charges remain', 'Open payable balance will remain after this apply') }
+        return { title: 'Some charges will remain open', message: warning.message.replace('Outstanding charges remain', 'Open payable balance will remain after this apply') }
       case 'credit_remaining':
-        return { title: 'Some credit will remain', message: String(warning.message ?? '').replace('Unapplied credits remain', 'Available credit source balance will remain after this apply') }
+        return { title: 'Some credit will remain', message: warning.message.replace('Unapplied credits remain', 'Available credit source balance will remain after this apply') }
       default:
         return { title: 'Review before posting', message: warning.message }
     }
@@ -476,10 +540,7 @@ useOpenItemsRouteContext({
   currentError: error,
   syncAfterContextLoad,
   autoOpenApply: (current) => current[2],
-  clearAutoOpenApplyInRoute: (current) => {
-    clearAutoOpenApplyInRoute()
-    if (current[3]) clearRefreshFlagInRoute()
-  },
+  clearAutoOpenApplyInRoute,
   shouldSkip: (current, previous) => {
     const [partyId, propertyId, shouldOpenApply, shouldRefresh] = current
     const [prevPartyId, prevPropertyId, prevShouldOpenApply, prevShouldRefresh] = previous ?? [null, null, false, false]
@@ -494,6 +555,12 @@ useOpenItemsRouteContext({
   afterSync: async (current) => {
     if (current[3] && !current[2]) clearRefreshFlagInRoute()
   },
+})
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
 })
 
 watch(
@@ -528,6 +595,9 @@ const tabs = computed(() => buildOpenItemsTabs(summary.value))
     :active-tab="activeTab"
     :charge-grid="chargeGrid"
     :credit-grid="creditGrid"
+    :charge-page="chargePage"
+    :credit-page="creditPage"
+    :applied-page="appliedPage"
     :applied-rows="appliedAllocations"
     applied-subtitle="Current active allocations for this vendor/property. Reversed applies are hidden."
     applied-empty-message="No applied allocations yet for this vendor/property. Once a credit source is applied to a charge, it will appear here."
@@ -557,6 +627,7 @@ const tabs = computed(() => buildOpenItemsTabs(summary.value))
     @apply="openApplyWizard"
     @dismissPageResult="dismissPageApplyResult"
     @update:activeTab="activeTab = $event"
+    @page="changePage"
     @update:applyWizardOpen="applyWizardOpen = $event"
     @applyWizardAction="applyWizardView === 'result' ? showApplyPlanAgain() : suggest()"
     @update:unapplyConfirmOpen="onUnapplyConfirmOpenChanged"

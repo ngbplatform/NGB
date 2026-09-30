@@ -18,8 +18,8 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// <summary>
 /// P0: Admin endpoint can "ensure" (create/repair) per-register physical tables and returns health after remediation.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegisterAdminEndpoint_EnsurePhysicalSchema_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegisterAdminEndpoint_EnsurePhysicalSchema_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

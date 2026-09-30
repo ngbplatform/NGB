@@ -29,6 +29,10 @@ public interface IChartOfAccountsRepository
         bool includeDeleted = false,
         CancellationToken ct = default);
 
+    Task<ChartOfAccountsAdminPage> GetAdminPageAsync(
+        ChartOfAccountsAdminPageQuery query,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Returns an admin-facing projection by account id, or null if not found.
     /// </summary>
@@ -81,3 +85,23 @@ public interface IChartOfAccountsRepository
     /// </summary>
     Task UnmarkForDeletionAsync(Guid accountId, CancellationToken ct = default);
 }
+
+public sealed record ChartOfAccountsAdminPageQuery(
+    bool IncludeDeleted,
+    bool? OnlyDeleted,
+    bool? OnlyActive,
+    IReadOnlyCollection<AccountType> AccountTypes,
+    string? Search,
+    IReadOnlyCollection<AccountType> SearchAccountTypes,
+    int Offset,
+    int Limit,
+    int? KnownTotal = null,
+    string? AfterCode = null,
+    Guid? AfterAccountId = null);
+
+public sealed record ChartOfAccountsAdminPage(
+    IReadOnlyList<ChartOfAccountsAdminItem> Items,
+    int Total,
+    bool HasMore = false,
+    string? NextAfterCode = null,
+    Guid? NextAfterAccountId = null);

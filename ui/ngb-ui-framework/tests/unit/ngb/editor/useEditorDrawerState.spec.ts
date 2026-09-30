@@ -49,6 +49,7 @@ describe('editor drawer state', () => {
 
     const confirmPromise = drawer.requestDiscard()
     expect(drawer.discardOpen.value).toBe(true)
+    expect(drawer.requestDiscard()).toBe(confirmPromise)
     drawer.discardConfirm()
     await expect(confirmPromise).resolves.toBe(true)
     expect(drawer.discardOpen.value).toBe(false)
@@ -72,6 +73,7 @@ describe('editor drawer state', () => {
 
     const beforeClose = drawer.beforeCloseDrawer()
     expect(drawer.discardOpen.value).toBe(true)
+    await expect(drawer.beforeCloseDrawer()).resolves.toBe(false)
     drawer.discardCancel()
     await expect(beforeClose).resolves.toBe(false)
   })

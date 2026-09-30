@@ -18,6 +18,7 @@ using NGB.Runtime.Catalogs.Validation;
 using NGB.Runtime.Ui;
 using NGB.Runtime.Validation;
 using NGB.Runtime.UnitOfWork;
+using NGB.Runtime.Common;
 using NGB.Tools;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
@@ -69,18 +70,66 @@ public sealed class CatalogService(
         PageRequestDto request,
         CancellationToken ct)
     {
+        request = NormalizePageRequest(request);
         var model = GetModel(catalogType);
         var (softDeleteMode, scalarFilters) = ExtractSoftDeleteFilter(request.Filters);
         var query = BuildQuery(model, request.Search, scalarFilters) with { SoftDeleteFilterMode = softDeleteMode };
 
-        var total = await reader.CountAsync(model.Head, query, ct);
-        var rows = await reader.GetPageAsync(model.Head, query, request.Offset, request.Limit, ct);
+        IReadOnlyList<CatalogHeadRow> rows;
+        long? total;
+        var hasMore = false;
+        string? nextCursor = null;
+
+        if (request.Offset == 0 && reader is ICatalogSeekPageReader seekPageReader)
+        {
+            var cursor = string.IsNullOrWhiteSpace(request.Cursor)
+                ? null
+                : ListPageCursorCodec.Decode(request.Cursor);
+
+            var page = await seekPageReader.GetSeekPageAsync(
+                model.Head,
+                query,
+                cursor?.AfterDisplay,
+                cursor?.AfterId,
+                request.Limit,
+                includeTotal: request.IncludeTotal && cursor is null,
+                ct);
+
+            rows = page.Rows;
+            total = page.Total;
+            hasMore = page.HasMore;
+
+            if (hasMore && page.NextAfterId is { } nextId)
+                nextCursor = ListPageCursorCodec.Encode(page.NextAfterDisplay, nextId);
+        }
+        else if (request.IncludeTotal && reader is ICatalogCombinedPageReader combinedPageReader)
+        {
+            var page = await combinedPageReader.GetPageWithTotalAsync(model.Head, query, request.Offset, request.Limit, ct);
+            rows = page.Rows;
+            total = page.Total;
+        }
+        else
+        {
+            var fallbackTotal = request.IncludeTotal
+                ? await reader.CountAsync(model.Head, query, ct)
+                : (long?)null;
+            var fallbackRows = await reader.GetPageAsync(model.Head, query, request.Offset, request.Limit, ct);
+            rows = fallbackRows;
+            total = fallbackTotal;
+        }
+
         IReadOnlyList<CatalogItemDto> items = rows.Select(r => ToItemDto(model, r, parts: null)).ToList();
 
         if (items.Count > 0)
             items = await refEnricher.EnrichCatalogItemsAsync(model.Head, model.Meta.CatalogCode, items, ct);
 
-        return new PageResponseDto<CatalogItemDto>(items, request.Offset, request.Limit, (int)total);
+        return new PageResponseDto<CatalogItemDto>(
+            items,
+            request.Offset,
+            request.Limit,
+            total is null ? null : checked((int)total.Value),
+            hasMore,
+            nextCursor);
     }
 
     public async Task<CatalogItemDto> GetByIdAsync(string catalogType, Guid id, CancellationToken ct)
@@ -98,6 +147,35 @@ public sealed class CatalogService(
         return enriched[0];
     }
 
+    public async Task<IReadOnlyList<CatalogItemDto>> GetHeadItemsByIdsAsync(
+        string catalogType,
+        IReadOnlyList<Guid> ids,
+        CancellationToken ct)
+    {
+        if (ids is null)
+            throw new NgbArgumentRequiredException(nameof(ids));
+
+        if (ids.Count == 0)
+            return [];
+
+        var model = GetModel(catalogType);
+        var distinctIds = ids.Where(static id => id != Guid.Empty).Distinct().ToArray();
+
+        if (distinctIds.Length == 0)
+            return [];
+
+        EnsureLookupIdLimit(distinctIds.Length);
+
+        var rows = await reader.GetByIdsWithFieldsAsync(model.Head, distinctIds, ct);
+        IReadOnlyList<CatalogItemDto> items = rows
+            .Select(row => ToItemDto(model, row, parts: null))
+            .ToArray();
+
+        return items.Count == 0
+            ? items
+            : await refEnricher.EnrichCatalogItemsAsync(model.Head, model.Meta.CatalogCode, items, ct);
+    }
+
     public async Task<IReadOnlyList<CatalogLookupDto>> LookupAcrossTypesAsync(
         IReadOnlyList<string> catalogTypes,
         string? query,
@@ -108,8 +186,12 @@ public sealed class CatalogService(
         if (catalogTypes is null)
             throw new NgbArgumentRequiredException(nameof(catalogTypes));
 
+        query = InputTextLimits.NormalizeSearch(query, nameof(query));
+
         if (perTypeLimit <= 0 || catalogTypes.Count == 0)
             return [];
+
+        perTypeLimit = Math.Min(perTypeLimit, PagingLimits.MaxPerTypeLookupLimit);
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var heads = new List<CatalogHeadDescriptor>(catalogTypes.Count);
@@ -124,6 +206,8 @@ public sealed class CatalogService(
 
         if (heads.Count == 0)
             return [];
+
+        EnsureLookupTypeLimit(heads.Count);
 
         var rows = await reader.LookupAcrossTypesAsync(heads, query, perTypeLimit, activeOnly, ct);
 
@@ -378,10 +462,12 @@ public sealed class CatalogService(
         CancellationToken ct)
     {
         var model = GetModel(catalogType);
+        query = InputTextLimits.NormalizeSearch(query, nameof(query));
 
         if (limit <= 0)
             return [];
 
+        limit = Math.Min(limit, PagingLimits.MaxPerTypeLookupLimit);
         var rows = await reader.LookupAsync(model.Head, query, limit, ct);
         return rows.Select(x => new LookupItemDto(x.Id, x.Label)).ToList();
     }
@@ -392,12 +478,74 @@ public sealed class CatalogService(
         CancellationToken ct)
     {
         var model = GetModel(catalogType);
+
+        if (ids is null)
+            throw new NgbArgumentRequiredException(nameof(ids));
+
         if (ids.Count == 0)
             return [];
 
-        var rows = await reader.GetByIdsAsync(model.Head, ids, ct);
+        var distinctIds = ids.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (distinctIds.Length == 0)
+            return [];
 
-        return rows.Select(x => new LookupItemDto(x.Id, x.Label)).ToList();
+        EnsureLookupIdLimit(distinctIds.Length);
+
+        var rows = await reader.GetByIdsAsync(model.Head, distinctIds, ct);
+        if (rows.Count == 0)
+            return [];
+
+        // Keep the database lookup bounded and de-duplicated, but preserve the
+        // public service contract: caller order and repeated IDs are significant.
+        var rowsById = rows.ToDictionary(static row => row.Id);
+
+        return ids
+            .Where(static id => id != Guid.Empty)
+            .Where(rowsById.ContainsKey)
+            .Select(id =>
+            {
+                var row = rowsById[id];
+                return new LookupItemDto(row.Id, row.Label);
+            })
+            .ToList();
+    }
+
+    private static PageRequestDto NormalizePageRequest(PageRequestDto request)
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        if (request.Offset < 0)
+            throw new NgbArgumentOutOfRangeException("offset", request.Offset, "Offset must be zero or greater.");
+
+        if (request.Limit <= 0)
+            throw new NgbArgumentOutOfRangeException("limit", request.Limit, "Limit must be greater than zero.");
+
+        if (!string.IsNullOrWhiteSpace(request.Cursor) && request.Offset != 0)
+            throw new NgbArgumentInvalidException("cursor", "Cursor paging requires offset=0.");
+
+        var offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset);
+        var limit = Math.Min(request.Limit, PagingLimits.MaxPageSize);
+
+        return request with
+        {
+            Offset = offset,
+            Limit = limit,
+            Search = InputTextLimits.NormalizeSearch(request.Search),
+            Cursor = string.IsNullOrWhiteSpace(request.Cursor) ? null : request.Cursor.Trim()
+        };
+    }
+
+    private static void EnsureLookupIdLimit(int count)
+    {
+        if (count > PagingLimits.MaxLookupIds)
+            throw new NgbArgumentOutOfRangeException("ids", count, $"At most {PagingLimits.MaxLookupIds} distinct IDs are allowed.");
+    }
+
+    private static void EnsureLookupTypeLimit(int count)
+    {
+        if (count > PagingLimits.MaxLookupTypes)
+            throw new NgbArgumentOutOfRangeException("catalogTypes", count, $"At most {PagingLimits.MaxLookupTypes} distinct catalog types are allowed.");
     }
 
     private CatalogModel GetModel(string catalogType)
@@ -439,6 +587,8 @@ public sealed class CatalogService(
             return ([],
                 new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase));
         }
+
+        RecordPayloadLimits.EnsureWithinLimits(parts);
 
         var partTables = model.Meta.Tables
             .Where(t => t.Kind == TableKind.Part)
@@ -522,11 +672,6 @@ public sealed class CatalogService(
 
                     var fieldPath = $"{rowPath}.{name}";
                     var val = ConvertJsonValue(el, col.ColumnType, fieldPath, GetLabel(col));
-
-                    if (col.Required && val is null)
-                        throw new NgbArgumentInvalidException(fieldPath,
-                            $"{GetLabel(col)} is required in {partLabel} row {rowNumber}.");
-
                     typed[name] = val;
                 }
 
@@ -601,14 +746,7 @@ public sealed class CatalogService(
         => key.StartsWith("filters.", StringComparison.OrdinalIgnoreCase) ? key["filters.".Length..] : key;
 
     private static string ToUserFilterLabel(string key)
-    {
-        var normalized = NormalizeFilterKey(key);
-        return normalized switch
-        {
-            "deleted" or "trash" => "Deleted",
-            _ => ValidationMessageFormatter.ToLabel(normalized, ColumnType.String)
-        };
-    }
+        => ValidationMessageFormatter.ToLabel(NormalizeFilterKey(key), ColumnType.String);
 
     private static SoftDeleteFilterMode ParseSoftDeleteMode(string? value, string keyName)
     {
@@ -696,23 +834,23 @@ public sealed class CatalogService(
 
                 ColumnType.Int32 => el.ValueKind == JsonValueKind.Number
                     ? el.GetInt32()
-                    : int.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                    : int.Parse(el.GetString()!, CultureInfo.InvariantCulture),
 
                 ColumnType.Int64 => el.ValueKind == JsonValueKind.Number
                     ? el.GetInt64()
-                    : long.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                    : long.Parse(el.GetString()!, CultureInfo.InvariantCulture),
 
                 ColumnType.Decimal => el.ValueKind == JsonValueKind.Number
                     ? el.GetDecimal()
-                    : ParseDecimalInvariantStrict(el.GetString() ?? el.ToString()),
+                    : ParseDecimalInvariantStrict(el.GetString()!),
 
                 ColumnType.Boolean => el.ValueKind == JsonValueKind.True || el.ValueKind == JsonValueKind.False
                     ? el.GetBoolean()
-                    : bool.Parse(el.GetString() ?? el.ToString()),
+                    : bool.Parse(el.GetString()!),
 
                 ColumnType.Guid => el.ParseGuidOrRef(),
 
-                ColumnType.Date => DateOnly.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                ColumnType.Date => DateOnly.Parse(el.GetString()!, CultureInfo.InvariantCulture),
 
                 ColumnType.DateTimeUtc => ParseUtc(el, name),
 
@@ -729,7 +867,7 @@ public sealed class CatalogService(
 
     private static DateTime ParseUtc(JsonElement el, string name)
     {
-        var s = el.GetString() ?? el.ToString();
+        var s = el.GetString()!;
         var dt = DateTime.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
         dt.EnsureUtc(name);
         return dt;

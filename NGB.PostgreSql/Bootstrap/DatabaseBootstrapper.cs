@@ -141,6 +141,9 @@ public static class DatabaseBootstrapper
         // Documents (guards/triggers)
         new PostedDocumentImmutabilityGuardMigration(),
         new PostedDocumentHeaderImmutabilityGuardMigration(),
+
+        // Current read-path delta, applied after the released DDL objects.
+        new PlatformReadPathIndexesMigration(),
     ];
 
     /// <summary>
@@ -257,6 +260,7 @@ public static class DatabaseBootstrapper
         new GeneralJournalEntryIndexesMigration(),
         new PostedDocumentImmutabilityGuardMigration(),
         new PostedDocumentHeaderImmutabilityGuardMigration(),
+        new PlatformReadPathIndexesMigration(),
     ];
 
     public static async Task InitializeAsync(string connectionString, CancellationToken ct = default)

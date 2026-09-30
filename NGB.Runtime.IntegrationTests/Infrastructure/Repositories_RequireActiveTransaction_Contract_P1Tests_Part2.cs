@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// P1: The platform enforces transaction boundaries for all write operations.
 /// This file complements <see cref="Repositories_RequireActiveTransaction_Contract_P1Tests"/>.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Repositories_RequireActiveTransaction_Contract_P1Tests_Part2(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -12,7 +12,17 @@ public sealed record ReceivablesOpenItemsDetailsResponse(
     IReadOnlyList<ReceivablesOpenCreditItemDetailsDto> Credits,
     IReadOnlyList<ReceivablesAllocationDetailsDto> Allocations,
     decimal TotalOutstanding,
-    decimal TotalCredit);
+    decimal TotalCredit,
+    int? ChargeCount = null,
+    int? CreditCount = null,
+    int? AllocationCount = null,
+    int? ChargeOffset = null,
+    int? CreditOffset = null,
+    int? AllocationOffset = null,
+    int? Limit = null,
+    bool? ChargesHaveMore = null,
+    bool? CreditsHaveMore = null,
+    bool? AllocationsHaveMore = null);
 
 public sealed record ReceivablesOpenChargeItemDetailsDto(
     Guid ChargeDocumentId,

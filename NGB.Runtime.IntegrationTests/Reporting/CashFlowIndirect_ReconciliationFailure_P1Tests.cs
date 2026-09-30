@@ -10,15 +10,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CashFlowIndirect_ReconciliationFailure_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Report_WhenSnapshotDoesNotReconcile_ThrowsConfigurationViolation()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(
             Fixture.ConnectionString,
             services =>

@@ -19,15 +19,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_Prerequisites_AreReadInsideLockedWindow_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CloseFiscalYearAsync_DoesNotReadChainOrPriorMonthPrerequisites_WhilePriorMonthLockIsHeld()
     {
-        await Fixture.ResetDatabaseAsync();
-
         var endPeriod = new DateOnly(2042, 12, 1);
         var priorMonth = endPeriod.AddMonths(-1);
         var dec15Utc = new DateTime(2042, 12, 15, 0, 0, 0, DateTimeKind.Utc);
@@ -177,6 +175,7 @@ public sealed class CloseFiscalYear_Prerequisites_AreReadInsideLockedWindow_P1Te
         public bool SawPriorMonthCheckWhileLockHeld => Volatile.Read(ref sawPriorMonthCheckWhileLockHeld) == 1;
         public int TotalChainReads => Volatile.Read(ref totalChainReads);
         public int TotalPriorMonthChecks => Volatile.Read(ref totalPriorMonthChecks);
+        public DateOnly WatchedPriorMonth => watchedPriorMonth;
 
         public void SetPriorMonthLockHeld(bool value)
             => Volatile.Write(ref priorMonthLockHeld, value ? 1 : 0);
@@ -218,16 +217,16 @@ public sealed class CloseFiscalYear_Prerequisites_AreReadInsideLockedWindow_P1Te
             return await inner.IsClosedAsync(period, ct);
         }
 
+        public Task<DateOnly?> FindFirstClosedAsync(IReadOnlyCollection<DateOnly> periods, CancellationToken ct = default)
+            => inner.FindFirstClosedAsync(periods, ct);
+
         public Task MarkClosedAsync(DateOnly period, string closedBy, DateTime closedAtUtc, CancellationToken ct = default)
             => inner.MarkClosedAsync(period, closedBy, closedAtUtc, ct);
 
-        public Task ReopenAsync(DateOnly period, CancellationToken ct = default)
-            => inner.ReopenAsync(period, ct);
+        public Task ReopenAsync(DateOnly period, CancellationToken ct = default) => inner.ReopenAsync(period, ct);
     }
 
-    private sealed class ProbingClosedPeriodReader(
-        IClosedPeriodReader inner,
-        FiscalYearPrerequisiteReadProbe probe)
+    private sealed class ProbingClosedPeriodReader(IClosedPeriodReader inner, FiscalYearPrerequisiteReadProbe probe)
         : IClosedPeriodReader
     {
         public async Task<IReadOnlyList<ClosedPeriodRecord>> GetClosedAsync(
@@ -236,6 +235,8 @@ public sealed class CloseFiscalYear_Prerequisites_AreReadInsideLockedWindow_P1Te
             CancellationToken ct = default)
         {
             probe.RecordChainRead();
+            if (fromInclusive <= probe.WatchedPriorMonth && toInclusive >= probe.WatchedPriorMonth)
+                probe.RecordPriorMonthCheck(probe.WatchedPriorMonth);
             return await inner.GetClosedAsync(fromInclusive, toInclusive, ct);
         }
 

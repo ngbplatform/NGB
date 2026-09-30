@@ -10,7 +10,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentDraftService_UnknownTypeCode_FailFast_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

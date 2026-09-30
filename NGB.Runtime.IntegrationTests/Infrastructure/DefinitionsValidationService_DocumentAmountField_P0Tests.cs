@@ -14,7 +14,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 public sealed class DefinitionsValidationService_DocumentAmountField_P0Tests
 {
     [Fact]
-    public void ValidateOrThrow_WhenAmountFieldIsInvalid_ReportsConfigurationErrors()
+    public async Task ValidateOrThrow_WhenAmountFieldIsInvalid_ReportsConfigurationErrors()
     {
         var registry = BuildRegistry(
             documents:
@@ -60,9 +60,9 @@ public sealed class DefinitionsValidationService_DocumentAmountField_P0Tests
 
         var validator = CreateInternalValidator(registry, new AlwaysTrueIsService());
 
-        var act = () => validator.ValidateOrThrow();
+        var act = () => validator.ValidateOrThrowAsync();
 
-        var ex = act.Should().Throw<DefinitionsValidationException>().Which;
+        var ex = (await act.Should().ThrowAsync<DefinitionsValidationException>()).Which;
         ex.Errors.Should().HaveCount(3);
         ex.Errors.Should().Contain(e => e.Contains("Document 'doc.bad_string_amount': Presentation.AmountField 'total_due'") && e.Contains("Decimal, Int32, or Int64"));
         ex.Errors.Should().Contain(e => e.Contains("Document 'doc.bad_part_amount': Presentation.AmountField 'amount'") && e.Contains("existing numeric head-table column"));
@@ -70,7 +70,7 @@ public sealed class DefinitionsValidationService_DocumentAmountField_P0Tests
     }
 
     [Fact]
-    public void ValidateOrThrow_WhenAmountFieldIsValid_DoesNotAddErrors()
+    public async Task ValidateOrThrow_WhenAmountFieldIsValid_DoesNotAddErrors()
     {
         var registry = BuildRegistry(
             documents:
@@ -86,7 +86,7 @@ public sealed class DefinitionsValidationService_DocumentAmountField_P0Tests
 
         var validator = CreateInternalValidator(registry, new AlwaysTrueIsService());
 
-        validator.Invoking(x => x.ValidateOrThrow()).Should().NotThrow();
+        await validator.Awaiting(x => x.ValidateOrThrowAsync()).Should().NotThrowAsync();
     }
 
     private static DefinitionsRegistry BuildRegistry(

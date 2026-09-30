@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_AutoReversal_Numbering_YearBoundary_P4Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

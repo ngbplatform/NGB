@@ -422,3 +422,105 @@ test('ignores stale audit responses when the sidebar switches to another entity 
   expect(document.body.textContent).toContain('New receivable')
   expect(document.body.textContent).not.toContain('New cash')
 })
+
+test('formats every supported audit JSON shape, actor fallback, date boundary, and workflow action title', async () => {
+  await page.viewport(1280, 1100)
+
+  const actions = [
+    'document.create',
+    'document.reject',
+    'document.post',
+    'document.unpost',
+    'document.repost',
+    'document.mark_for_deletion',
+    'document.set_active',
+    'custom_action_code',
+  ]
+  const richChanges = [
+    { fieldPath: 'blankValue', oldValueJson: null, newValueJson: '' },
+    { fieldPath: 'invalidDateValue', oldValueJson: JSON.stringify(' '), newValueJson: JSON.stringify('2026-99-99') },
+    { fieldPath: 'booleanValue', oldValueJson: JSON.stringify(false), newValueJson: JSON.stringify(true) },
+    { fieldPath: 'numberValue', oldValueJson: JSON.stringify(12), newValueJson: JSON.stringify(13) },
+    { fieldPath: 'timestampUtc', oldValueJson: JSON.stringify('2026-04-08T10:15:00Z'), newValueJson: JSON.stringify('2026-04-09T11:20:00Z') },
+    { fieldPath: 'businessDate', oldValueJson: JSON.stringify('2026-04-08'), newValueJson: JSON.stringify('2026-04-09') },
+    { fieldPath: 'booleanText', oldValueJson: JSON.stringify('true'), newValueJson: JSON.stringify('false') },
+    { fieldPath: 'looseText', oldValueJson: 'camelCaseValue', newValueJson: 'snake_case_value' },
+    { fieldPath: 'arrayValue', oldValueJson: JSON.stringify([]), newValueJson: JSON.stringify([1, false, 'line_item']) },
+    { fieldPath: 'displayObject', oldValueJson: JSON.stringify({ display: 'Display value' }), newValueJson: JSON.stringify({ label: 'Label value' }) },
+    { fieldPath: 'nameObject', oldValueJson: JSON.stringify({ name: 'Name value' }), newValueJson: JSON.stringify({ email: 'audit@example.com' }) },
+    { fieldPath: 'idObject', oldValueJson: JSON.stringify({ id: 'object-id' }), newValueJson: JSON.stringify({ resource: 'pm_invoice', action: 'view_items' }) },
+    { fieldPath: 'stableObject', oldValueJson: JSON.stringify({ display: 10, label: ' ', nested: true }), newValueJson: JSON.stringify({ resourceCode: '', actionCode: 'view' }) },
+    { fieldPath: 'sameText', oldValueJson: ' same ', newValueJson: 'same' },
+  ]
+
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({
+    limit: 100,
+    items: actions.map((actionCode, index) => ({
+      auditEventId: `evt-boundary-${index}`,
+      entityKind: 3,
+      entityId: 'coa-1',
+      actionCode,
+      actor: index === 0
+        ? { displayName: ' ', email: 'actor@example.com' }
+        : index === 1
+          ? { displayName: ' ', email: ' ' }
+          : null,
+      occurredAtUtc: index === 0 ? 'not-a-date' : '2026-04-08T12:00:00Z',
+      changes: index === 0 ? richChanges : [],
+    })),
+  })
+
+  const view = await render(NgbEntityAuditSidebar, {
+    props: {
+      open: true,
+      entityKind: 3,
+      entityId: 'coa-1',
+      entityTitle: '   ',
+      behavior: {
+        explicitFieldLabels: { businessdate: 'Business date' },
+      },
+    },
+  })
+
+  await expect.element(view.getByText('Created by actor@example.com', { exact: true })).toBeVisible()
+  await expect.element(view.getByText('Rejected by System', { exact: true })).toBeVisible()
+  for (const summary of ['Posted by System', 'Unposted by System', 'Reposted by System', 'Marked for deletion by System', 'Status changed by System', 'Custom Action Code by System']) {
+    await expect.element(view.getByText(summary, { exact: true })).toBeVisible()
+  }
+  expect(document.body.textContent).toContain('not-a-date')
+  expect(document.body.textContent).toContain('Business date')
+  expect(document.body.textContent).toContain('Pm Invoice: View Items')
+  expect(document.body.textContent).toContain('Display value')
+  expect(document.body.textContent).toContain('Label value')
+  expect(document.body.textContent).toContain('object-id')
+})
+
+test('ignores a stale audit failure after another entity has loaded', async () => {
+  await page.viewport(1280, 900)
+
+  const first = createDeferred<{ limit: number; items: Array<Record<string, unknown>> }>()
+  auditSidebarMocks.loadEntityAuditLog
+    .mockReturnValueOnce(first.promise)
+    .mockResolvedValueOnce({
+      limit: 100,
+      items: [{
+        auditEventId: 'evt-current',
+        entityKind: 3,
+        entityId: 'coa-2',
+        actionCode: 'coa_account.update',
+        actor: { displayName: 'Current actor' },
+        occurredAtUtc: '2026-04-08T12:00:00Z',
+        changes: [],
+      }],
+    })
+
+  const view = await render(AuditSidebarStatefulHarness)
+  await view.getByRole('button', { name: 'Switch entity' }).click()
+  await flushUi()
+  await expect.element(view.getByText('Updated by Current actor', { exact: true })).toBeVisible()
+
+  first.reject(new Error('stale audit failure'))
+  await flushUi()
+  expect(document.body.textContent).not.toContain('stale audit failure')
+  await expect.element(view.getByText('Updated by Current actor', { exact: true })).toBeVisible()
+})

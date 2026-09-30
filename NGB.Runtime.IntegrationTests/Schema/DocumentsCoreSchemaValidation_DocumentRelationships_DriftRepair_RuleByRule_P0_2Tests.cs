@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
-using NGB.Core.Documents;
 using NGB.Core.Documents.Exceptions;
 using NGB.Persistence.Schema;
 using NGB.Runtime.IntegrationTests.Infrastructure;
@@ -9,15 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRepair_RuleByRule_P0_2Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRepair_RuleByRule_P0_2Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenCardinalityIndexMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropIndexAsync(Fixture.ConnectionString, "ux_docrel_from_supersedes");
 
         await AssertDocumentsCoreValidationFailsAsync("*ux_docrel_from_supersedes*");
@@ -30,8 +27,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRep
     [Fact]
     public async Task ValidateAsync_WhenCriticalCheckConstraintMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropConstraintAsync(Fixture.ConnectionString, "document_relationships", "ck_document_relationships_not_self");
 
         await AssertDocumentsCoreValidationFailsAsync("*ck_document_relationships_not_self*");
@@ -44,8 +39,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRep
     [Fact]
     public async Task ValidateAsync_WhenTripletUniquenessConstraintMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // NOTE: dropping the UNIQUE constraint also drops the underlying unique index.
         await DropConstraintAsync(Fixture.ConnectionString, "document_relationships", "ux_document_relationships_triplet");
 

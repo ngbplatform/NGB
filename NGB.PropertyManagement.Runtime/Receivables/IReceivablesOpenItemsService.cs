@@ -9,4 +9,20 @@ public interface IReceivablesOpenItemsService
         Guid propertyId,
         Guid leaseId,
         CancellationToken ct = default);
+
+    Task<ReceivablesOpenItemsPageResponse> GetOpenItemsPageAsync(
+        Guid partyId,
+        Guid propertyId,
+        Guid leaseId,
+        int offset,
+        int limit,
+        CancellationToken ct = default);
+
+    Task<ReceivablesOpenItemsPageResponse> GetOpenItemsCursorPageAsync(
+        Guid partyId,
+        Guid propertyId,
+        Guid leaseId,
+        string? cursor,
+        int limit,
+        CancellationToken ct = default);
 }

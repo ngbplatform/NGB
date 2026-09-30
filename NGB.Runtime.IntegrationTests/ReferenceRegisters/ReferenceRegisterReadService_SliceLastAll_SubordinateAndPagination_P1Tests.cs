@@ -16,7 +16,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.ReferenceRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class ReferenceRegisterReadService_SliceLastAll_SubordinateAndPagination_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -1,14 +1,17 @@
+using Dapper;
 using FluentAssertions;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Migrations.Evolve;
+using NGB.Persistence.Migrations;
+using NGB.PropertyManagement.PostgreSql.Bootstrap;
 using NGB.PropertyManagement.PostgreSql.Migrations;
 using Npgsql;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 
-[Collection(PmIntegrationCollection.Name)]
-public sealed class PmSchemaMigrator_NoRepair_P0Tests(PmIntegrationFixture fixture)
+[Collection(PmSchemaIntegrationCollection.Name)]
+public sealed class PmSchemaMigrator_NoRepair_P0Tests(PmSchemaIntegrationFixture fixture)
 {
     [Fact]
     public async Task Migrate_WithoutRepair_Installs_TrgPostedImmutable_ForPmTypedDocumentTables()
@@ -36,6 +39,48 @@ public sealed class PmSchemaMigrator_NoRepair_P0Tests(PmIntegrationFixture fixtu
             .Should().BeTrue();
         (await TriggerExistsAsync(fixture.ConnectionString, "doc_pm_work_order_completion", "trg_posted_immutable"))
             .Should().BeTrue();
+
+        await using var conn = new NpgsqlConnection(fixture.ConnectionString);
+        await conn.OpenAsync();
+        var indexes = (await conn.QueryAsync<string>(
+            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public';")).ToArray();
+        indexes.Should().Contain("ix_doc_pm_lease__start_document")
+            .And.Contain("ix_doc_pm_maintenance_request__queue_seek");
+        var searchTables = (await conn.QueryAsync<string>(
+            """
+            SELECT tablename FROM pg_indexes WHERE schemaname = 'public'
+              AND tablename IN ('cat_pm_property', 'doc_pm_rent_charge')
+              AND indexdef LIKE '%USING gin (display %gin_trgm_ops)%';
+            """)).ToArray();
+        searchTables.Should().BeEquivalentTo("cat_pm_property", "doc_pm_rent_charge");
+    }
+
+    [Fact]
+    public async Task Repair_WithoutExplicitOptions_CompletesAgainstMigratedSchema()
+    {
+        await fixture.ResetDatabaseAsync();
+
+        var act = () => PropertyManagementDatabaseBootstrapper.RepairModuleAsync(fixture.ConnectionString);
+
+        await act.Should().NotThrowAsync();
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(60_000)]
+    public async Task Repair_WithExplicitTimeoutBoundaries_CompletesAgainstMigratedSchema(int milliseconds)
+    {
+        await fixture.ResetDatabaseAsync();
+        var options = new MigrationExecutionOptions(
+            LockTimeout: TimeSpan.FromMilliseconds(milliseconds),
+            StatementTimeout: TimeSpan.FromMilliseconds(milliseconds));
+
+        var act = () => PropertyManagementDatabaseBootstrapper.RepairModuleAsync(
+            fixture.ConnectionString,
+            options,
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     private static async Task RecreatePublicSchemaAsync(string cs)

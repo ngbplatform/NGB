@@ -21,7 +21,7 @@ namespace NGB.Runtime.IntegrationTests.Documents;
 /// P5: Observability contract for document lifecycle operations.
 /// We treat logs as part of the platform API for ops/diagnostics.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPostingService_LifecycleLogs_P5Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

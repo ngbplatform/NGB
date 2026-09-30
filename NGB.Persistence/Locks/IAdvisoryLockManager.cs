@@ -49,3 +49,17 @@ public interface IAdvisoryLockManager
     /// </summary>
     Task LockOperationalRegisterAsync(Guid registerId, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Provider capability for acquiring a deterministic document-lock set with one database
+/// roundtrip per attempt. Callers may fall back to <see cref="IAdvisoryLockManager"/>.
+/// </summary>
+public interface IAdvisoryLockBatchManager : IAdvisoryLockManager
+{
+    Task LockDocumentsAsync(IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default);
+
+    Task LockPeriodsAsync(
+        IReadOnlyCollection<DateOnly> periods,
+        AdvisoryLockPeriodScope scope,
+        CancellationToken ct = default);
+}

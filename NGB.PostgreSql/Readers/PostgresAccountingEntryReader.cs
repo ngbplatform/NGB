@@ -2,10 +2,12 @@ using Dapper;
 using NGB.Accounting.Accounts;
 using NGB.Accounting.Dimensions;
 using NGB.Accounting.Registers;
+using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Persistence.Dimensions;
 using NGB.Persistence.Readers;
 using NGB.Persistence.UnitOfWork;
+using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Readers;
 
@@ -20,8 +22,20 @@ namespace NGB.PostgreSql.Readers;
 public sealed class PostgresAccountingEntryReader(IUnitOfWork uow, IDimensionSetReader dimensionSets)
     : IAccountingEntryReader
 {
-    public Task<IReadOnlyList<AccountingEntry>> GetByDocumentAsync(Guid documentId, CancellationToken ct = default)
-        => GetByDocumentAsync(documentId, limit: int.MaxValue, ct);
+    public async Task<IReadOnlyList<AccountingEntry>> GetByDocumentAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var rows = await GetByDocumentAsync(documentId, PagingLimits.MaxMaterializedRows + 1, ct);
+        EnsureMaterializationBound(documentId, rows.Count);
+        return rows;
+    }
+
+    internal static void EnsureMaterializationBound(Guid documentId, int rowCount)
+    {
+        if (rowCount <= PagingLimits.MaxMaterializedRows)
+            return;
+
+        throw new NgbInvariantViolationException($"Document '{documentId}' has more than {PagingLimits.MaxMaterializedRows:N0} accounting entries and cannot be materialized safely.");
+    }
 
     public async Task<IReadOnlyList<AccountingEntry>> GetByDocumentAsync(
         Guid documentId,
@@ -67,7 +81,11 @@ public sealed class PostgresAccountingEntryReader(IUnitOfWork uow, IDimensionSet
 
         var cmd = new CommandDefinition(
             sql,
-            new { DocumentId = documentId, Limit = limit <= 0 ? 2147483647 : limit },
+            new
+            {
+                DocumentId = documentId,
+                Limit = limit <= 0 ? PagingLimits.MaxMaterializedRows + 1 : limit
+            },
             transaction: uow.Transaction,
             cancellationToken: ct);
 
@@ -147,9 +165,6 @@ public sealed class PostgresAccountingEntryReader(IUnitOfWork uow, IDimensionSet
             .SelectMany(r => new[] { r.DebitAccountId, r.CreditAccountId })
             .Distinct()
             .ToArray();
-
-        if (accountIds.Length == 0)
-            return new Dictionary<Guid, IReadOnlyList<AccountDimensionRule>>();
 
         const string sql = """
                            SELECT

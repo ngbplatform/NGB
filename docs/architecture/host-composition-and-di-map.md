@@ -22,7 +22,8 @@ The validated responsibilities in `Program.cs` are:
 - add Serilog;
 - add health checks;
 - resolve the PostgreSQL connection string;
-- register platform runtime;
+- register platform runtime and explicit startup validation;
+- register PostgreSQL HTTP exception mapping and health checks;
 - register PostgreSQL provider;
 - register vertical platform module layers;
 - register controllers, swagger, global error handling, external links, auth;
@@ -36,7 +37,8 @@ const flowchart = String.raw`flowchart TB
     A[WebApplication builder] --> B[Health checks]
     B --> C[Infrastructure]
     C --> D[AddNgbRuntime]
-    D --> E[AddNgbPostgres]
+    D --> V[AddNgbRuntimeStartupValidation]
+    V --> E[AddNgbPostgres]
     E --> F[Add vertical module]
     F --> G[Controllers API]
     G --> H[Error handling]
@@ -61,11 +63,14 @@ This composition style keeps the host thin and stable:
 `Program.cs` confirms imports from:
 
 - `NGB.Api`
-- `NGB.Api.GlobalErrorHandling`
+- `NGB.Hosting.AspNetCore`
+- `NGB.Hosting.AspNetCore.ErrorHandling`
 - `NGB.Api.Reporting`
-- `NGB.Api.Sso`
+- `NGB.Hosting.AspNetCore.Identity`
+- `NGB.PostgreSql.AspNetCore.DependencyInjection`
 - `NGB.PostgreSql.DependencyInjection`
 - `NGB.Runtime.DependencyInjection`
+- `NGB.Runtime.Hosting`
 - vertical dependency injection namespaces
 
 Even where the exact extension file path was not asserted in the current verified anchor set, the host composition pattern is explicit from the program file.
@@ -89,6 +94,9 @@ That is the stable mental model for understanding how new verticals should be as
 NGB.Api/NGB.Api.csproj
 NGB.Runtime/NGB.Runtime.csproj
 NGB.PostgreSql/NGB.PostgreSql.csproj
+NGB.Hosting.AspNetCore/NGB.Hosting.AspNetCore.csproj
+NGB.PostgreSql.AspNetCore/NGB.PostgreSql.AspNetCore.csproj
+NGB.Runtime.Hosting/NGB.Runtime.Hosting.csproj
 ```
 
 These project files confirm the expected dependency directions around the host.

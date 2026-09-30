@@ -108,7 +108,10 @@ Its responsibilities include:
 - executing the plan;
 - enriching interactive fields such as document display values;
 - building the final sheet response;
-- handling rendered-sheet snapshot paging for composable reports.
+- dispatching bounded composable branches to `ReportPagedQueryExecutor`.
+
+`ReportQueryService` is the registered public engine wrapper for read sessions and protected
+cursors. Full downloads use `ReportDownloadService` and streaming exporters.
 
 This confirms that `ReportEngine` is not the SQL layer and not merely a formatter. It is the orchestration seam between report definition, planner, execution backend, enrichment, and returned UI sheet.
 

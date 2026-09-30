@@ -16,7 +16,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.FaultInjection;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingCancellationTests(PostgresTestFixture fixture)
 {
     [Fact]

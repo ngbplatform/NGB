@@ -20,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 ///
 /// Without this, a single document containing multiple lines can bypass Forbid policies.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class NegativeBalancePolicy_MultiLineAggregation_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -6,7 +6,7 @@ on:
       version:
         description: Exact NGB.Platform package version to publish
         required: true
-        default: 2.0.0
+        default: 3.0.0
         type: string
 
 permissions:
@@ -63,9 +63,13 @@ jobs:
             NGB.Platform.Persistence
             NGB.Platform.Definitions
             NGB.Platform.PostgreSql
+            NGB.Platform.PostgreSql.AspNetCore
             NGB.Platform.Runtime
+            NGB.Platform.Runtime.Hosting
+            NGB.Platform.Hosting.AspNetCore
             NGB.Platform.Api
             NGB.Platform.BackgroundJobs
+            NGB.Platform.BackgroundJobs.PostgreSql
             NGB.Platform.Migrator.Core
             NGB.Platform.Watchdog
           )

@@ -15,7 +15,7 @@ namespace NGB.Runtime.Tests.Security;
 public sealed class RoleManagementServiceTests
 {
     [Fact]
-    public async Task GetRolesAsync_UsesBulkAssignedUserCountsWithoutPerRoleLookups()
+    public async Task GetRolesAsync_UsesSingleBoundedRoleListQueryWithAssignedCounts()
     {
         var firstRoleId = Guid.NewGuid();
         var secondRoleId = Guid.NewGuid();
@@ -23,17 +23,15 @@ public sealed class RoleManagementServiceTests
 
         var roles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
         roles
-            .Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetListAsync(500, It.IsAny<CancellationToken>()))
             .ReturnsAsync([
-                new PlatformRole(firstRoleId, "pm-ap-clerk", "PM AP Clerk", null, IsSystem: true, IsActive: true, now, now),
-                new PlatformRole(secondRoleId, "pm-test", "PM Test", "Test access", IsSystem: false, IsActive: false, now, now)
+                new PlatformRoleListRecord(
+                    new PlatformRole(firstRoleId, "pm-ap-clerk", "PM AP Clerk", null, IsSystem: true, IsActive: true, now, now),
+                    AssignedUserCount: 2),
+                new PlatformRoleListRecord(
+                    new PlatformRole(secondRoleId, "pm-test", "PM Test", "Test access", IsSystem: false, IsActive: false, now, now),
+                    AssignedUserCount: 0)
             ]);
-        roles
-            .Setup(x => x.GetAssignedUserCountsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new Dictionary<Guid, int>
-            {
-                [firstRoleId] = 2
-            });
 
         var service = CreateService(roles.Object);
 
@@ -76,7 +74,7 @@ public sealed class RoleManagementServiceTests
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
         userRoles
-            .Setup(x => x.GetUserIdsForRoleAsync(roleId, It.IsAny<CancellationToken>()))
+            .Setup(x => x.GetUserIdsForRoleAsync(roleId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([zedUserId, alphaUserId, emailOnlyUserId]);
 
         var users = new Mock<IPlatformUserRepository>(MockBehavior.Strict);
@@ -142,14 +140,11 @@ public sealed class RoleManagementServiceTests
             .Returns(Task.CompletedTask);
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
-        userRoles
-            .Setup(x => x.GetUserIdsForRoleAsync(roleId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([firstUserId, secondUserId]);
 
         var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
         versions
-            .Setup(x => x.IncrementManyAsync(
-                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { firstUserId, secondUserId })),
+            .Setup(x => x.IncrementForRoleAsync(
+                roleId,
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
@@ -204,14 +199,11 @@ public sealed class RoleManagementServiceTests
             .Returns(Task.CompletedTask);
 
         var userRoles = new Mock<IPlatformUserRoleRepository>(MockBehavior.Strict);
-        userRoles
-            .Setup(x => x.GetUserIdsForRoleAsync(roleId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([userId]);
 
         var versions = new Mock<IUserAccessVersionRepository>(MockBehavior.Strict);
         versions
-            .Setup(x => x.IncrementManyAsync(
-                It.Is<IReadOnlyList<Guid>>(ids => ids.SequenceEqual(new[] { userId })),
+            .Setup(x => x.IncrementForRoleAsync(
+                roleId,
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 

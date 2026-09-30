@@ -60,8 +60,6 @@ internal static class WorkOrderCompletionValidationGuards
             "COMPLETED" => "Completed",
             "CANCELLED" => "Cancelled",
             "UNABLETOCOMPLETE" => "UnableToComplete",
-            "UNABLE_TO_COMPLETE" => "UnableToComplete",
-            "UNABLE-TO-COMPLETE" => "UnableToComplete",
             _ => null
         };
     }

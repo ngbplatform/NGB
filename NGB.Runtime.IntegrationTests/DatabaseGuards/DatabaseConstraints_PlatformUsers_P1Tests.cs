@@ -10,8 +10,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P1: Database-level constraints for platform_users (identity projection).
 /// Ensures core CHECK/UNIQUE invariants are enforced even if application services are bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_PlatformUsers_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_PlatformUsers_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static async Task<Guid> InsertValidUserAsync(NpgsqlConnection conn, string? authSubject = null)

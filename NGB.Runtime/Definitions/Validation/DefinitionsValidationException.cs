@@ -6,14 +6,15 @@ namespace NGB.Runtime.Definitions.Validation;
 /// Thrown when module-provided Definitions are inconsistent with runtime invariants
 /// (wrong interfaces, missing DI registrations, metadata/type mismatches).
 /// </summary>
-public sealed class DefinitionsValidationException(IReadOnlyList<string>? errors) : NgbConfigurationException(
-    BuildMessage(errors ?? throw new NgbArgumentRequiredException(nameof(errors))),
-    Code,
-    CreateContext(errors ?? throw new NgbArgumentRequiredException(nameof(errors))))
+public sealed class DefinitionsValidationException(IReadOnlyList<string>? errors) 
+    : NgbConfigurationException(BuildMessage(RequireErrors(errors)), Code, CreateContext(errors!))
 {
     public const string Code = "ngb.definitions.validation_failed";
 
-    public IReadOnlyList<string> Errors { get; } = errors ?? throw new NgbArgumentRequiredException(nameof(errors));
+    public IReadOnlyList<string> Errors { get; } = errors!;
+
+    private static IReadOnlyList<string> RequireErrors(IReadOnlyList<string>? errors)
+        => errors ?? throw new NgbArgumentRequiredException(nameof(errors));
 
     private static IReadOnlyDictionary<string, object?> CreateContext(IReadOnlyList<string> errors)
     {
@@ -24,9 +25,9 @@ public sealed class DefinitionsValidationException(IReadOnlyList<string>? errors
         };
     }
 
-    private static string BuildMessage(IReadOnlyList<string>? errors)
+    private static string BuildMessage(IReadOnlyList<string> errors)
     {
-        if (errors is null || errors.Count == 0)
+        if (errors.Count == 0)
             return "Definitions validation failed.";
 
         var lines = new List<string>(errors.Count + 1)

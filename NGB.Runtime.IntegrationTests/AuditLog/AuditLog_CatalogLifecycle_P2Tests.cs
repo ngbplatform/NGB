@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_CatalogLifecycle_P2Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private const string CatalogCodeCreate = "it_cat_audit_create";

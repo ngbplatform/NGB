@@ -9,5 +9,5 @@ public interface IDefinitionsValidationService
     /// <summary>
     /// Validates Definitions and throws <see cref="DefinitionsValidationException"/> on failures.
     /// </summary>
-    void ValidateOrThrow();
+    Task ValidateOrThrowAsync(CancellationToken ct = default);
 }

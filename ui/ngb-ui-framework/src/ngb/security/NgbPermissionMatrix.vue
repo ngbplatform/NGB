@@ -85,12 +85,12 @@ const emit = defineEmits<{
 
 const query = ref('')
 
-const selectedKeys = computed(() => new Set((props.modelValue ?? []).map((entry) => buildPermissionKey(entry))))
+const selectedKeys = computed(() => new Set(props.modelValue.map((entry) => buildPermissionKey(entry))))
 const selectedCount = computed(() => selectedKeys.value.size)
 
 const filteredDefinitions = computed(() => {
   const text = query.value.trim().toLowerCase()
-  const definitions = props.definitions ?? []
+  const definitions = props.definitions
   if (!text) return definitions
 
   return definitions.filter((permission) => [
@@ -135,7 +135,7 @@ function setPermission(permission: PermissionAssignmentDto, checked: boolean): v
 }
 
 function isGroupFullySelected(permissions: PermissionDefinitionDto[]): boolean {
-  return permissions.length > 0 && permissions.every((permission) => selectedKeys.value.has(permissionKey(permission)))
+  return permissions.every((permission) => selectedKeys.value.has(permissionKey(permission)))
 }
 
 function selectedInGroup(permissions: PermissionDefinitionDto[]): number {
@@ -157,4 +157,3 @@ function toggleGroup(permissions: PermissionDefinitionDto[]): void {
   emit('update:modelValue', normalizeAssignments(keys))
 }
 </script>
-

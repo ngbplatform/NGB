@@ -20,6 +20,23 @@ public sealed class InventoryMovementsCanonicalReportExecutor(
 {
     public string ReportCode => TradeCodes.InventoryMovementsReport;
 
+    public ReportExecutionRequestDto PrepareExecution(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        DateTimeOffset utcNow)
+    {
+        var parameters = new Dictionary<string, string>(request.Parameters ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        var to = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "to_utc")
+            ?? DateOnly.FromDateTime(utcNow.UtcDateTime);
+        parameters["to_utc"] = to.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var date = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "from_utc")
+            ?? new DateOnly(to.Year, to.Month, 1);
+        parameters["from_utc"] = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        return request with { Parameters = parameters };
+    }
+
+
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,
         ReportExecutionRequestDto request,
@@ -38,40 +55,67 @@ public sealed class InventoryMovementsCanonicalReportExecutor(
                 $"{CanonicalReportExecutionHelper.GetParameterLabel(definition, "to_utc")} must be on or after {CanonicalReportExecutionHelper.GetParameterLabel(definition, "from_utc")}.");
         }
 
-        var monthFrom = CanonicalReportExecutionHelper.NormalizeToPeriodMonth(rawFrom);
-        var monthTo = CanonicalReportExecutionHelper.NormalizeToPeriodMonth(rawTo);
         var dimensions = TradeReportingHelpers.BuildItemWarehouseFilters(definition, request);
         var policy = await policyReader.GetRequiredAsync(ct);
 
-        var rows = await TradeReportingHelpers.ReadAllMovementsAsync(
-            movementsQueryReader,
-            policy.InventoryMovementsRegisterId,
-            monthFrom,
-            monthTo,
-            dimensions.Count == 0 ? null : dimensions,
-            ct);
+        var offset = Math.Max(0, request.Offset);
+        var requestedLimit = request.Limit <= 0 ? 100 : request.Limit;
+        var useLegacyOffset = offset > 0 && string.IsNullOrWhiteSpace(request.Cursor);
+        IReadOnlyList<OperationalRegisterMovementQueryReadRow> movementRows;
+        int? total;
+        bool hasMore;
+        string? nextCursor;
 
-        var ordered = rows
-            .Where(x =>
-            {
-                var occurredOn = DateOnly.FromDateTime(x.OccurredAtUtc);
-                return occurredOn >= rawFrom && occurredOn <= rawTo;
-            })
-            .OrderBy(static x => x.OccurredAtUtc)
-            .ThenBy(static x => x.MovementId)
-            .ToArray();
-
-        var documentMap = new Dictionary<Guid, DocumentRecord?>();
-        foreach (var documentId in ordered.Select(static x => x.DocumentId).Distinct())
+        if (useLegacyOffset)
         {
-            documentMap[documentId] = await documents.GetAsync(documentId, ct);
+            var legacyPage = await movementsQueryReader.GetByOccurredAtPageAsync(
+                policy.InventoryMovementsRegisterId,
+                rawFrom,
+                rawTo,
+                dimensions.Count == 0 ? null : dimensions,
+                offset,
+                request.DisablePaging ? null : requestedLimit,
+                ct);
+
+            if (legacyPage.Total > int.MaxValue)
+                throw new InvalidOperationException("Inventory Movements report exceeds the supported row-count range.");
+
+            movementRows = legacyPage.Rows;
+            total = (int)legacyPage.Total;
+            hasMore = offset + movementRows.Count < total;
+            nextCursor = null;
+        }
+        else
+        {
+            var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+                ? null
+                : InventoryMovementCursorCodec.Decode(request.Cursor);
+            var rows = await movementsQueryReader.GetByOccurredAtCursorAsync(
+                policy.InventoryMovementsRegisterId,
+                rawFrom,
+                rawTo,
+                dimensions.Count == 0 ? null : dimensions,
+                cursor,
+                checked(requestedLimit + 1),
+                ct);
+
+            hasMore = !request.DisablePaging && rows.Count > requestedLimit;
+            movementRows = hasMore ? rows.Take(requestedLimit).ToArray() : rows;
+            total = request.DisablePaging ? movementRows.Count : null;
+            nextCursor = hasMore
+                ? InventoryMovementCursorCodec.Encode(new OperationalRegisterOccurredAtCursor(
+                    movementRows[^1].OccurredAtUtc,
+                    movementRows[^1].MovementId))
+                : null;
+            offset = 0;
         }
 
-        var offset = Math.Max(0, request.Offset);
-        var limit = request.DisablePaging ? ordered.Length : (request.Limit <= 0 ? 100 : request.Limit);
-        var pageRows = ordered.Skip(offset).Take(limit).ToArray();
+        var limit = request.DisablePaging ? movementRows.Count : requestedLimit;
+        var documentMap = await documents.GetByIdsAsync(
+            movementRows.Select(static row => row.DocumentId).Distinct().ToArray(),
+            ct);
 
-        var renderedRows = pageRows
+        var renderedRows = movementRows
             .Select(row => ToRow(row, documentMap.GetValueOrDefault(row.DocumentId)))
             .ToArray();
 
@@ -100,9 +144,9 @@ public sealed class InventoryMovementsCanonicalReportExecutor(
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: ordered.Length,
-            hasMore: offset + pageRows.Length < ordered.Length,
-            nextCursor: null,
+            total: total,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-trd-inventory-movements",

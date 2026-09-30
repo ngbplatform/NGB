@@ -21,6 +21,20 @@ public sealed class PropertyManagementPartyReader(ICatalogService catalogs) : IP
         }
     }
 
+    public async Task<IReadOnlyDictionary<Guid, PropertyManagementParty>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> partyIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(partyIds);
+
+        var ids = partyIds.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (ids.Length == 0)
+            return new Dictionary<Guid, PropertyManagementParty>();
+
+        var items = await catalogs.GetHeadItemsByIdsAsync(PropertyManagementCodes.Party, ids, ct);
+        return items.ToDictionary(static item => item.Id, ToModel);
+    }
+
     public async Task<PropertyManagementParty> GetRequiredAsync(Guid partyId, CancellationToken ct = default)
         => await TryGetAsync(partyId, ct)
            ?? throw new NgbConfigurationViolationException(
@@ -51,7 +65,7 @@ public sealed class PropertyManagementPartyReader(ICatalogService catalogs) : IP
             {
                 JsonValueKind.True => true,
                 JsonValueKind.False => false,
-                JsonValueKind.String => bool.Parse(el.GetString() ?? string.Empty),
+                JsonValueKind.String => bool.Parse(el.GetString()!),
                 _ => throw new NgbConfigurationViolationException($"Unexpected JSON value kind '{el.ValueKind}' for '{field}'.")
             };
         }

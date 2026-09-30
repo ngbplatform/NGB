@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ExoticMatrix_FiscalYearClose_ByDimensionSet_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

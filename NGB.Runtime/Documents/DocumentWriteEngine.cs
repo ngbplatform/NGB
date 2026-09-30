@@ -3,6 +3,7 @@ using NGB.Persistence.Locks;
 using NGB.Persistence.UnitOfWork;
 using NGB.Core.Documents;
 using NGB.Tools.Exceptions;
+using NGB.Runtime.Locks;
 
 namespace NGB.Runtime.Documents;
 
@@ -34,6 +35,37 @@ public sealed class DocumentWriteEngine(
             return;
 
         await storage.CreateDraftAsync(documentId, ct);
+    }
+
+    public async Task EnsureDraftStorageCreatedManyAsync(
+        IReadOnlyList<Guid> documentIds,
+        string typeCode,
+        bool acquireLocks,
+        CancellationToken ct = default)
+    {
+        uow.EnsureActiveTransaction();
+        ArgumentNullException.ThrowIfNull(documentIds);
+
+        if (documentIds.Count == 0)
+            return;
+
+        if (acquireLocks)
+            await advisoryLocks.LockDocumentsDeterministicallyAsync(documentIds, ct);
+
+        var storage = storageResolver.TryResolve(typeCode);
+        if (storage is null)
+            return;
+
+        if (storage is IDocumentTypeDraftBatchStorage batchStorage)
+        {
+            await batchStorage.CreateDraftsAsync(documentIds, ct);
+            return;
+        }
+
+        foreach (var documentId in documentIds)
+        {
+            await storage.CreateDraftAsync(documentId, ct);
+        }
     }
 
     public async Task DeleteDraftStorageAsync(

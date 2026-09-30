@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 /// Ensures that limits (line count, amount constraints, auto-reversal header rules) and Dimension guard rails
 /// are enforced early (before any writes) with clear error messages.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_Validation_Bounds_P0Tests(PostgresTestFixture fixture)
 {
     private PostgresTestFixture Fixture { get; } = fixture;

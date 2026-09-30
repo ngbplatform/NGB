@@ -25,7 +25,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - dirty markers (operational_register_finalizations)
 /// - has_movements flip (for the first ever movement)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovements_Cancellation_Rollback_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

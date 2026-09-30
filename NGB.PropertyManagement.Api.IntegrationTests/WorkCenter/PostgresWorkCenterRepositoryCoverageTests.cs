@@ -11,7 +11,7 @@ using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.WorkCenter;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.Security;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -199,8 +199,8 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
             .Should().ThrowAsync<NgbArgumentInvalidException>();
 
         await scope.ServiceProvider
-            .GetRequiredService<PropertyManagementSecuritySeeder>()
-            .EnsureSeededAsync(CancellationToken.None);
+            .GetRequiredService<IPropertyManagementSecuritySetupService>()
+            .EnsureDefaultsAsync(CancellationToken.None);
         var role = await scope.ServiceProvider
             .GetRequiredService<IPlatformRoleRepository>()
             .GetByCodeAsync("pm-ar-clerk", CancellationToken.None);
@@ -361,6 +361,33 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
             var result = await reads.GetItemsAsync(query, CancellationToken.None);
             result.Should().BeEmpty();
         }
+
+        var emptyBatch = await tasks.CompleteByDeduplicationKeysAsync(
+            task.TaskCode,
+            [],
+            now,
+            CancellationToken.None);
+        emptyBatch.Should().Be(new WorkCenterTaskMutationResult(false, []));
+        await FluentActions.Awaiting(() => tasks.CompleteByDeduplicationKeysAsync(
+                task.TaskCode,
+                null!,
+                now,
+                CancellationToken.None))
+            .Should().ThrowAsync<ArgumentNullException>();
+
+        var secondTask = ValidTask(now.AddSeconds(6), role.RoleId);
+        await uow.ExecuteInUowTransactionAsync(
+            ct => tasks.CreateAsync(secondTask, null, null, [recipientId], ct),
+            CancellationToken.None);
+        var batchCompletion = await uow.ExecuteInUowTransactionAsync(
+            ct => tasks.CompleteByDeduplicationKeysAsync(
+                task.TaskCode,
+                [task.DeduplicationKey, secondTask.DeduplicationKey, task.DeduplicationKey],
+                now.AddSeconds(7),
+                ct),
+            CancellationToken.None);
+        batchCompletion.Changed.Should().BeTrue();
+        batchCompletion.RecipientUserIds.Should().Equal(recipientId);
 
         await uow.ExecuteInUowTransactionAsync(
             ct => tasks.CancelByDeduplicationKeyAsync(task.TaskCode, "missing-task", now, ct),

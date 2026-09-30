@@ -11,18 +11,21 @@ using NGB.Contracts.Metadata;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Contracts.Receivables;
+using NGB.PropertyManagement.PostgreSql.Receivables;
+using NGB.PropertyManagement.Receivables;
 using NGB.PropertyManagement.Runtime;
+using NGB.Tools.Exceptions;
 using Npgsql;
 using Xunit;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Receivables;
 
-[Collection(PmIntegrationCollection.Name)]
+[Collection(PmSchemaIntegrationCollection.Name)]
 public sealed class PmReceivablesReconciliation_Endpoint_P0Tests : IAsyncLifetime
 {
-    private readonly PmIntegrationFixture _fixture;
+    private readonly PmSchemaIntegrationFixture _fixture;
 
-    public PmReceivablesReconciliation_Endpoint_P0Tests(PmIntegrationFixture fixture) => _fixture = fixture;
+    public PmReceivablesReconciliation_Endpoint_P0Tests(PmSchemaIntegrationFixture fixture) => _fixture = fixture;
 
     public async Task InitializeAsync() => await _fixture.ResetDatabaseAsync();
     public Task DisposeAsync() => Task.CompletedTask;
@@ -112,6 +115,47 @@ public sealed class PmReceivablesReconciliation_Endpoint_P0Tests : IAsyncLifetim
                 r.Diff == 0m &&
                 r.RowKind == ReceivablesReconciliationRowKind.Matched &&
                 r.HasDiff == false);
+
+            var secondParty = await catalogs.CreateAsync(
+                PropertyManagementCodes.Party,
+                Payload(new { display = "Tenant Two" }),
+                CancellationToken.None);
+            var secondLease = await documents.CreateDraftAsync(PropertyManagementCodes.Lease, Payload(new
+            {
+                display = "Second lease",
+                property_id = property.Id,
+                start_on_utc = "2026-02-01",
+                rent_amount = "500.00"
+            }, LeaseParts.PrimaryTenant(secondParty.Id)), CancellationToken.None);
+            var secondCharge = await documents.CreateDraftAsync(PropertyManagementCodes.ReceivableCharge, Payload(new
+            {
+                display = "RC-2",
+                lease_id = secondLease.Id,
+                charge_type_id = rentType.Id,
+                due_on_utc = "2026-02-08",
+                amount = "25.00"
+            }), CancellationToken.None);
+            (await documents.PostAsync(PropertyManagementCodes.ReceivableCharge, secondCharge.Id, CancellationToken.None))
+                .Status.Should().Be(DocumentStatus.Posted);
+
+            var firstPage = await client.GetFromJsonAsync<ReceivablesReconciliationReport>(url + "&limit=1");
+            firstPage.Should().NotBeNull();
+            firstPage!.Rows.Should().ContainSingle();
+            firstPage.RowCount.Should().Be(2);
+            firstPage.HasMore.Should().BeTrue();
+            firstPage.NextCursor.Should().NotBeNullOrWhiteSpace();
+
+            var nextPage = await client.GetFromJsonAsync<ReceivablesReconciliationReport>(
+                url + "&limit=1&cursor=" + Uri.EscapeDataString(firstPage.NextCursor!));
+            nextPage.Should().NotBeNull();
+            nextPage!.Rows.Should().ContainSingle();
+            nextPage.Rows[0].PartyId.Should().NotBe(firstPage.Rows[0].PartyId);
+            nextPage.RowCount.Should().Be(firstPage.RowCount);
+            nextPage.TotalArNet.Should().Be(firstPage.TotalArNet);
+            nextPage.TotalOpenItemsNet.Should().Be(firstPage.TotalOpenItemsNet);
+            nextPage.Offset.Should().Be(1);
+            nextPage.HasMore.Should().BeFalse();
+            nextPage.NextCursor.Should().BeNull();
         }
         finally
         {
@@ -592,6 +636,82 @@ public sealed class PmReceivablesReconciliation_Endpoint_P0Tests : IAsyncLifetim
                 r.Diff == 40m &&
                 r.RowKind == ReceivablesReconciliationRowKind.GlOnly &&
                 r.HasDiff);
+        }
+        finally
+        {
+            await DisposeFactoryAsync(factory);
+        }
+    }
+
+    [Fact]
+    public async Task Reconciliation_configuration_validation_covers_missing_invalid_null_and_duplicate_dependencies()
+    {
+        var factory = new PmApiFactory(_fixture);
+        try
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            var setup = scope.ServiceProvider.GetRequiredService<IPropertyManagementSetupService>();
+            var catalogs = scope.ServiceProvider.GetRequiredService<ICatalogService>();
+            var reconciliation = (PostgresReceivablesReconciliationService)scope.ServiceProvider
+                .GetRequiredService<IReceivablesReconciliationService>();
+            var request = new ReceivablesReconciliationRequest(
+                new DateOnly(2026, 2, 1),
+                new DateOnly(2026, 2, 1));
+
+            Func<Task> missingPolicy = async () => await reconciliation.GetAsync(request);
+            await missingPolicy.Should().ThrowAsync<NgbConfigurationViolationException>()
+                .WithMessage("*accounting policy is missing*");
+
+            var defaults = await setup.EnsureDefaultsAsync(CancellationToken.None);
+
+            Func<Task> invalidMode = async () => await reconciliation.GetAsync(
+                request with { Mode = (ReceivablesReconciliationMode)int.MaxValue });
+            await invalidMode.Should().ThrowAsync<NgbArgumentInvalidException>();
+
+            await catalogs.UpdateAsync(
+                PropertyManagementCodes.AccountingPolicy,
+                defaults.AccountingPolicyCatalogId,
+                Payload(new { ar_tenants_account_id = (Guid?)null }),
+                CancellationToken.None);
+            Func<Task> missingArAccount = async () => await reconciliation.GetAsync(request);
+            await missingArAccount.Should().ThrowAsync<NgbConfigurationViolationException>()
+                .WithMessage("*no ar_tenants_account_id*");
+
+            await catalogs.UpdateAsync(
+                PropertyManagementCodes.AccountingPolicy,
+                defaults.AccountingPolicyCatalogId,
+                Payload(new
+                {
+                    ar_tenants_account_id = defaults.AccountsReceivableTenantsAccountId,
+                    receivables_open_items_register_id = (Guid?)null
+                }),
+                CancellationToken.None);
+            Func<Task> missingOpenItemsRegister = async () => await reconciliation.GetAsync(request);
+            await missingOpenItemsRegister.Should().ThrowAsync<NgbConfigurationViolationException>()
+                .WithMessage("*no receivables_open_items_register_id*");
+
+            await catalogs.UpdateAsync(
+                PropertyManagementCodes.AccountingPolicy,
+                defaults.AccountingPolicyCatalogId,
+                Payload(new
+                {
+                    ar_tenants_account_id = defaults.AccountsReceivableTenantsAccountId,
+                    receivables_open_items_register_id = defaults.ReceivablesOpenItemsOperationalRegisterId
+                }),
+                CancellationToken.None);
+
+            await catalogs.CreateAsync(
+                PropertyManagementCodes.AccountingPolicy,
+                Payload(new
+                {
+                    display = "Duplicate receivables policy for configuration validation",
+                    ar_tenants_account_id = defaults.AccountsReceivableTenantsAccountId,
+                    receivables_open_items_register_id = defaults.ReceivablesOpenItemsOperationalRegisterId
+                }),
+                CancellationToken.None);
+            Func<Task> duplicatePolicy = async () => await reconciliation.GetAsync(request);
+            await duplicatePolicy.Should().ThrowAsync<NgbConfigurationViolationException>()
+                .WithMessage("*Multiple pm.accounting_policy records*");
         }
         finally
         {

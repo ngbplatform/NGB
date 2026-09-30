@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import NgbRegisterGrid from '../components/register/NgbRegisterGrid.vue'
@@ -102,6 +102,7 @@ const error = ref<string | null>(null)
 const page = ref<ChartOfAccountsPageDto | null>(null)
 const metadata = ref<ChartOfAccountsMetadataDto | null>(null)
 let loadSequence = 0
+let loadController: AbortController | null = null
 
 const columns = computed(() => [
   { key: 'code', title: 'Code', width: 120, align: 'left' as const, sortable: true },
@@ -145,18 +146,21 @@ const coaGridKey = computed(() => [
   String(page.value?.items?.length ?? 0),
 ].join('|'))
 
-async function ensureMetadataLoaded(): Promise<void> {
+async function ensureMetadataLoaded(options?: { signal?: AbortSignal }): Promise<void> {
   if (metadata.value) return
-  metadata.value = await getChartOfAccountsMetadata()
+  metadata.value = await getChartOfAccountsMetadata(options)
 }
 
 async function load(): Promise<boolean> {
   const seq = ++loadSequence
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
 
   try {
-    await ensureMetadataLoaded()
+    await ensureMetadataLoaded({ signal: controller.signal })
 
     const mode = trashMode.value
     const includeDeleted = mode !== 'active'
@@ -169,18 +173,19 @@ async function load(): Promise<boolean> {
       onlyActive: null,
       includeDeleted,
       onlyDeleted,
-    })
-    if (seq !== loadSequence) return false
+    }, { signal: controller.signal })
+    if (seq !== loadSequence || controller.signal.aborted) return false
 
     page.value = nextPage
 
     return true
   } catch (cause) {
-    if (seq !== loadSequence) return false
+    if (seq !== loadSequence || controller.signal.aborted) return false
     error.value = toErrorMessage(cause, 'Failed to load the chart of accounts.')
     return false
   } finally {
     if (seq === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -191,6 +196,12 @@ watch(
   },
   { immediate: true },
 )
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
+})
 
 function nextPage() {
   void pushCleanRouteQuery(route, router, { offset: offset.value + limit.value })

@@ -3,10 +3,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.CRM.Documents;
 using NGB.CRM.PostgreSql.Documents;
 using NGB.CRM.PostgreSql.Reporting;
+using NGB.CRM.Reporting;
+using NGB.CRM.Seeding;
 using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.Catalogs;
 using NGB.PostgreSql.Reporting;
+using NGB.CRM.PostgreSql.Seeding;
 
 namespace NGB.CRM.PostgreSql.DependencyInjection;
 
@@ -43,6 +46,9 @@ public static class CrmPostgresModuleServiceCollectionExtensions
                 [PostgresHeadCatalogTypeStorage.Column.DraftString("display", "display")]));
 
         services.AddScoped<ICrmDocumentReaders, CrmDocumentReaders>();
+        services.AddScoped<ICrmPostedDocumentReader, CrmPostedDocumentReader>();
+        services.AddScoped<ICrmDemoSeedStateReader, PostgresCrmDemoSeedStateReader>();
+        services.TryAddScoped<ICrmDashboardReader, PostgresCrmDashboardReader>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostgresReportDatasetSource, CrmOperationalReportsPostgresDatasetSource>());
 
         return services;

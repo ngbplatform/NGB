@@ -3,6 +3,7 @@ import type { Options } from 'k6/options';
 import { readK6HostAliases, readK6InsecureSkipTlsVerify, readNgbPerfEnv } from './env.ts';
 
 export type SummaryOutput = Record<string, string>;
+let runConfigurationJson = '{}';
 
 interface K6SummaryData {
   readonly state?: {
@@ -91,7 +92,10 @@ export function defaultHandleSummary(data: unknown): SummaryOutput {
   };
 
   if (env.summaryExportPath) {
-    output[env.summaryExportPath] = JSON.stringify(sanitizeSummaryData(data), null, 2);
+    output[env.summaryExportPath] = JSON.stringify({
+      ...sanitizeSummaryData(data) as Record<string, unknown>,
+      runConfiguration: JSON.parse(runConfigurationJson),
+    }, null, 2);
     output[deriveMarkdownPath(env.summaryExportPath)] = markdown;
   }
 
@@ -109,7 +113,7 @@ function sanitizeSummaryData(value: unknown): unknown {
 
   const output: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
-    output[key] = sensitiveSummaryKeys.has(normalizeSensitiveKey(key))
+    output[key] = (sensitiveSummaryKeys.has(normalizeSensitiveKey(key)) || /(password|secret|token|authorization)$/.test(normalizeSensitiveKey(key)))
       ? '[redacted]'
       : sanitizeSummaryData(child);
   }
@@ -124,12 +128,15 @@ function normalizeSensitiveKey(key: string): string {
 export function withSummaryTrendStats(options: Options): Options {
   const hosts = mergeHosts(options.hosts, readK6HostAliases());
 
-  return {
+  const configured: Options = {
     ...options,
     ...(Object.keys(hosts).length > 0 ? { hosts } : {}),
     insecureSkipTLSVerify: readK6InsecureSkipTlsVerify(),
     summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
   };
+  // k6 normalizes/mutates exported options; preserve the plain init-time configuration.
+  runConfigurationJson = JSON.stringify(sanitizeSummaryData(configured));
+  return configured;
 }
 
 function mergeHosts(
@@ -189,6 +196,9 @@ function buildTextSummary(data: K6SummaryData): string {
       latencyLines(metrics, reportExecutionLatencyRows(metrics)),
       '  no report-id samples (configure reportBreakdownIds in the vertical test profile)',
     ),
+    '',
+    'Executed Branches',
+    ...branchLines(metrics),
     '',
     'Thresholds',
     ...nonEmptyOrFallback(thresholdLines(metrics), '  no thresholds configured'),
@@ -258,6 +268,10 @@ function buildMarkdownSummary(data: K6SummaryData): string {
     '## Report Execution By Id',
     '',
     markdownLatencyTable(metrics, reportExecutionLatencyRows(metrics), 'Report ID'),
+    '',
+    '## Executed Branches',
+    '',
+    ...branchLines(metrics).map(line => `- ${line.trim()}`),
     '',
     '## Thresholds',
     '',
@@ -392,6 +406,7 @@ function operationBreakdownLabel(tags: Record<string, string>): string {
     tags.entityKind ? `entity=${tags.entityKind}` : '',
     tags.periodProfile ? `period=${tags.periodProfile}` : '',
     tags.status ? `status=${tags.status}` : '',
+    tags.postingMode ? `posting=${tags.postingMode}` : '',
   ].filter(Boolean);
 
   return qualifiers.length > 0
@@ -457,6 +472,11 @@ function sameTags(left: Record<string, string>, right: Record<string, string>): 
     });
 }
 
+function branchLines(metrics: Record<string, K6Metric>): string[] {
+  const rows = Object.entries(metrics).filter(([name]) => /^ngb_pm_(posting|lifecycle)_/.test(name));
+  return rows.length ? rows.map(([name, metric]) => `  ${name}: ${formatInteger(metric.values?.count ?? 0)}`) : ['  no branch counters'];
+}
+
 function thresholdLines(metrics: Record<string, K6Metric>): string[] {
   const lines: string[] = [];
 
@@ -475,8 +495,7 @@ function thresholdLines(metrics: Record<string, K6Metric>): string[] {
 
 function isDiagnosticMaterializationThreshold(expression: string): boolean {
   return expression === 'max<600000'
-    || expression === 'rate<1.01'
-    || expression === 'rate<1';
+    || expression === 'rate<1.01';
 }
 
 function checkLines(rootGroup: K6Group | undefined): string[] {

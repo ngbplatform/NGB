@@ -1,3 +1,5 @@
+using NGB.OperationalRegisters.Contracts;
+
 namespace NGB.Runtime.OperationalRegisters;
 
 /// <summary>
@@ -54,20 +56,20 @@ public interface IOperationalRegisterAdminEndpoint
 
     Task<IReadOnlyList<OperationalRegisterAdminEndpointContracts.FinalizationDto>> GetDirtyFinalizationsByIdAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<OperationalRegisterAdminEndpointContracts.FinalizationDto>> GetBlockedFinalizationsByIdAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<OperationalRegisterAdminEndpointContracts.FinalizationDto>> GetDirtyFinalizationsAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     Task<IReadOnlyList<OperationalRegisterAdminEndpointContracts.FinalizationDto>> GetBlockedFinalizationsAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
@@ -80,11 +82,16 @@ public interface IOperationalRegisterAdminEndpoint
     /// Finalizes up to <paramref name="maxItems"/> dirty months across all registers.
     /// Returns the number of months finalized.
     /// </summary>
-    Task<int> FinalizeDirtyAsync(int maxItems = 50, CancellationToken ct = default);
+    Task<int> FinalizeDirtyAsync(
+        int maxItems = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default);
 
     /// <summary>
     /// Finalizes up to <paramref name="maxPeriods"/> dirty months for the given register.
     /// Returns the number of months finalized.
     /// </summary>
-    Task<int> FinalizeRegisterDirtyAsync(Guid registerId, int maxPeriods = 50, CancellationToken ct = default);
+    Task<int> FinalizeRegisterDirtyAsync(
+        Guid registerId,
+        int maxPeriods = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default);
 }

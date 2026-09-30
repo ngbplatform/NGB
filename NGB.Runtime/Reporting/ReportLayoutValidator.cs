@@ -27,6 +27,23 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         var detailFields = layout.DetailFields ?? [];
         var sorts = layout.Sorts ?? [];
 
+        ValidateCount(runtime, "layout.rowGroups", rowGroups.Count, ReportLayoutLimits.MaxRowGroups, "row groupings");
+        ValidateCount(runtime, "layout.columnGroups", columnGroups.Count, ReportLayoutLimits.MaxColumnGroups, "column groupings");
+        ValidateCount(runtime, "layout.measures", measures.Count, ReportLayoutLimits.MaxMeasures, "measures");
+        ValidateCount(runtime, "layout.detailFields", detailFields.Count, ReportLayoutLimits.MaxDetailFields, "detail fields");
+
+        if (sorts.Count > ReportLayoutLimits.MaxSorts)
+        {
+            throw Invalid(
+                runtime,
+                "layout.sorts",
+                $"You can select up to {ReportLayoutLimits.MaxSorts} sort fields.");
+        }
+
+        var normalizedFilters = NormalizeAndValidateFilters(runtime, request.Filters);
+        var normalizedFilterCodes = normalizedFilters.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var normalizedParameters = NormalizeAndValidateParameters(runtime, request.Parameters);
+
         var parameterMetadata = (definition.Parameters ?? [])
             .ToDictionary(x => CodeNormalizer.NormalizeCodeNorm(x.Code, nameof(x.Code)), StringComparer.OrdinalIgnoreCase);
         var filterMetadata = (definition.Filters ?? [])
@@ -34,24 +51,20 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
         foreach (var parameter in parameterMetadata.Values.Where(x => x.IsRequired))
         {
-            if (request.Parameters is not null
-                && request.Parameters.TryGetValue(parameter.Code, out var raw)
-                && !string.IsNullOrWhiteSpace(raw))
-            {
+            var parameterCodeNorm = CodeNormalizer.NormalizeCodeNorm(parameter.Code, nameof(parameter.Code));
+            if (normalizedParameters.TryGetValue(parameterCodeNorm, out var raw) && !string.IsNullOrWhiteSpace(raw))
                 continue;
-            }
 
             throw Invalid(runtime, $"parameters.{parameter.Code}", $"'{ResolveParameterLabel(parameter)}' is required.");
         }
 
-        foreach (var filter in request.Filters ?? new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase))
+        foreach (var filter in normalizedFilters)
         {
-            var codeNorm = CodeNormalizer.NormalizeCodeNorm(filter.Key, nameof(filter.Key));
-            if (filterMetadata.TryGetValue(codeNorm, out var filterDefinition)
+            if (filterMetadata.TryGetValue(filter.Key, out var filterDefinition)
                 && filter.Value.IncludeDescendants
                 && !filterDefinition.SupportsIncludeDescendants)
             {
-                throw Invalid(runtime, $"filters.{codeNorm}", $"'{ResolveFilterLabel(filterDefinition)}' does not support including child items.");
+                throw Invalid(runtime, $"filters.{filter.Key}", $"'{ResolveFilterLabel(filterDefinition)}' does not support including child items.");
             }
         }
 
@@ -93,33 +106,21 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
         if (dataset is null)
         {
-            foreach (var filter in request.Filters ?? new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase))
+            foreach (var filter in normalizedFilters)
             {
-                var codeNorm = CodeNormalizer.NormalizeCodeNorm(filter.Key, nameof(filter.Key));
-                if (!filterMetadata.TryGetValue(codeNorm, out var filterDefinition))
+                if (!filterMetadata.TryGetValue(filter.Key, out var filterDefinition))
                 {
                     throw Invalid(
                         runtime,
-                        $"filters.{codeNorm}",
+                        $"filters.{filter.Key}",
                         $"'{ToFriendlyLabel(filter.Key)}' is not available as a filter in this report.");
-                }
-
-                if (filter.Value.IncludeDescendants && !filterDefinition.SupportsIncludeDescendants)
-                {
-                    throw Invalid(
-                        runtime,
-                        $"filters.{codeNorm}",
-                        $"'{ResolveFilterLabel(filterDefinition)}' does not support including child items.");
                 }
             }
 
             foreach (var filter in filterMetadata.Values.Where(x => x.IsRequired))
             {
-                if (request.Filters is not null
-                    && request.Filters.Keys.Any(key => string.Equals(CodeNormalizer.NormalizeCodeNorm(key, nameof(key)), CodeNormalizer.NormalizeCodeNorm(filter.FieldCode, nameof(filter.FieldCode)), StringComparison.OrdinalIgnoreCase)))
-                {
+                if (normalizedFilterCodes.Contains(CodeNormalizer.NormalizeCodeNorm(filter.FieldCode, nameof(filter.FieldCode))))
                     continue;
-                }
 
                 throw Invalid(runtime, $"filters.{filter.FieldCode}", $"'{ResolveFilterLabel(filter)}' is required.");
             }
@@ -127,14 +128,13 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
             return;
         }
 
-        foreach (var filter in request.Filters ?? new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase))
+        foreach (var filter in normalizedFilters)
         {
-            var codeNorm = CodeNormalizer.NormalizeCodeNorm(filter.Key, nameof(filter.Key));
             if (!dataset.IsFilterableField(filter.Key))
             {
                 throw Invalid(
                     runtime,
-                    $"filters.{codeNorm}",
+                    $"filters.{filter.Key}",
                     $"'{ResolveFieldLabel(filter.Key, dataset, filterMetadata)}' cannot be used as a filter in this report.");
             }
         }
@@ -167,17 +167,27 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
         ValidateProjectedOutputUniqueness(runtime, dataset, normalizedRowGroups, normalizedColumnGroups, detailFields, measures);
 
+        var usedSorts = new HashSet<ReportSortIdentity>();
         for (var i = 0; i < sorts.Count; i++)
         {
             var sort = sorts[i];
             var codeNorm = CodeNormalizer.NormalizeCodeNorm(sort.FieldCode, nameof(sort.FieldCode));
+            var identity = new ReportSortIdentity(
+                codeNorm,
+                sort.TimeGrain,
+                sort.AppliesToColumnAxis,
+                string.IsNullOrWhiteSpace(sort.GroupKey) ? null : sort.GroupKey.Trim().ToUpperInvariant());
+
+            if (!usedSorts.Add(identity))
+                throw Invalid(runtime, $"layout.sorts[{i}]", "The same sort field can be selected only once.");
+
             if (dataset.TryGetField(codeNorm, out var field))
             {
                 if (!dataset.IsSortableField(codeNorm))
                     throw Invalid(runtime, $"layout.sorts[{i}].fieldCode", $"'{field.Field.Label}' cannot be used for sorting in this report.");
 
                 if (!dataset.SupportsTimeGrain(codeNorm, sort.TimeGrain))
-                    throw Invalid(runtime, $"layout.sorts[{i}].timeGrain", $"'{field.Field.Label}' cannot be sorted by {FormatTimeGrain(sort.TimeGrain)}.");
+                    throw Invalid(runtime, $"layout.sorts[{i}].timeGrain", $"'{field.Field.Label}' cannot be sorted by {FormatTimeGrain(sort.TimeGrain!.Value)}.");
 
                 ValidateFieldSortSelection(runtime, dataset, normalizedRowGroups, normalizedColumnGroups, detailFields, sort, codeNorm, i);
                 continue;
@@ -193,6 +203,88 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
             throw Invalid(runtime, $"layout.sorts[{i}].fieldCode", "The selected sort field is no longer available in this report.");
         }
+    }
+
+    private static IReadOnlyDictionary<string, ReportFilterValueDto> NormalizeAndValidateFilters(
+        ReportDefinitionRuntimeModel runtime,
+        IReadOnlyDictionary<string, ReportFilterValueDto>? filters)
+    {
+        if (filters is null || filters.Count == 0)
+            return new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase);
+
+        ValidateCount(runtime, "filters", filters.Count, ReportLayoutLimits.MaxFilters, "filters");
+
+        var normalized = new Dictionary<string, ReportFilterValueDto>(filters.Count, StringComparer.OrdinalIgnoreCase);
+        var totalValues = 0;
+
+        foreach (var pair in filters)
+        {
+            var codeNorm = CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(pair.Key));
+            if (!normalized.TryAdd(codeNorm, pair.Value))
+                throw Invalid(runtime, $"filters.{codeNorm}", "The same filter can be specified only once.");
+
+            var valueCount = pair.Value.Value.ValueKind == System.Text.Json.JsonValueKind.Array
+                ? pair.Value.Value.GetArrayLength()
+                : 1;
+
+            if (valueCount > ReportLayoutLimits.MaxValuesPerFilter)
+            {
+                throw Invalid(
+                    runtime,
+                    $"filters.{codeNorm}",
+                    $"A filter can contain up to {ReportLayoutLimits.MaxValuesPerFilter} values.");
+            }
+
+            totalValues = checked(totalValues + valueCount);
+            if (totalValues > ReportLayoutLimits.MaxTotalFilterValues)
+            {
+                throw Invalid(
+                    runtime,
+                    "filters",
+                    $"Filters can contain up to {ReportLayoutLimits.MaxTotalFilterValues} values in total.");
+            }
+        }
+
+        return normalized;
+    }
+
+    private static IReadOnlyDictionary<string, string> NormalizeAndValidateParameters(
+        ReportDefinitionRuntimeModel runtime,
+        IReadOnlyDictionary<string, string>? parameters)
+    {
+        if (parameters is null || parameters.Count == 0)
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        ValidateCount(runtime, "parameters", parameters.Count, ReportLayoutLimits.MaxParameters, "parameters");
+
+        var normalized = new Dictionary<string, string>(parameters.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in parameters)
+        {
+            var codeNorm = CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(pair.Key));
+            if (!normalized.TryAdd(codeNorm, pair.Value))
+                throw Invalid(runtime, $"parameters.{codeNorm}", "The same parameter can be specified only once.");
+
+            if (pair.Value is { Length: > ReportLayoutLimits.MaxParameterValueLength })
+            {
+                throw Invalid(
+                    runtime,
+                    $"parameters.{codeNorm}",
+                    $"A parameter value can contain up to {ReportLayoutLimits.MaxParameterValueLength} characters.");
+            }
+        }
+
+        return normalized;
+    }
+
+    private static void ValidateCount(
+        ReportDefinitionRuntimeModel runtime,
+        string fieldPath,
+        int count,
+        int maximum,
+        string noun)
+    {
+        if (count > maximum)
+            throw Invalid(runtime, fieldPath, $"You can select up to {maximum} {noun}.");
     }
 
     private static IReadOnlyList<NormalizedGrouping> ValidateGroups(
@@ -217,7 +309,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                 throw Invalid(runtime, $"{layoutPath}[{i}].fieldCode", $"'{field.Field.Label}' cannot be used as a {FormatAxisGroupingNoun(isColumnAxis)} in this report.");
 
             if (!dataset.SupportsTimeGrain(fieldCodeNorm, grouping.TimeGrain))
-                throw Invalid(runtime, $"{layoutPath}[{i}].timeGrain", $"'{field.Field.Label}' cannot be grouped by {FormatTimeGrain(grouping.TimeGrain)}.");
+                throw Invalid(runtime, $"{layoutPath}[{i}].timeGrain", $"'{field.Field.Label}' cannot be grouped by {FormatTimeGrain(grouping.TimeGrain!.Value)}.");
 
             normalized.Add(new NormalizedGrouping(
                 FieldCodeNorm: fieldCodeNorm,
@@ -250,7 +342,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                 used,
                 BuildOutputCode(group.FieldCodeNorm, group.TimeGrain),
                 $"layout.rowGroups[{i}].fieldCode",
-                SelectionKind.RowGrouping,
+                "row grouping",
                 FormatGroupedFieldLabel(group.Label, group.TimeGrain));
         }
 
@@ -262,7 +354,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
                 used,
                 BuildOutputCode(group.FieldCodeNorm, group.TimeGrain),
                 $"layout.columnGroups[{i}].fieldCode",
-                SelectionKind.ColumnGrouping,
+                "column grouping",
                 FormatGroupedFieldLabel(group.Label, group.TimeGrain));
         }
 
@@ -270,31 +362,29 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         {
             var fieldCode = detailFields[i];
             var codeNorm = CodeNormalizer.NormalizeCodeNorm(fieldCode, nameof(fieldCode));
-            var label = dataset.TryGetField(codeNorm, out var field) ? field.Field.Label : ToFriendlyLabel(codeNorm);
+            var field = dataset.Fields[codeNorm];
             RegisterProjectedOutput(
                 runtime,
                 used,
                 codeNorm,
                 $"layout.detailFields[{i}]",
-                SelectionKind.DetailField,
-                label);
+                "detail field",
+                field.Field.Label);
         }
 
         for (var i = 0; i < measures.Count; i++)
         {
             var measure = measures[i];
             var codeNorm = CodeNormalizer.NormalizeCodeNorm(measure.MeasureCode, nameof(measure.MeasureCode));
-            var label = dataset.TryGetMeasure(codeNorm, out var datasetMeasure)
-                ? ResolveMeasureLabel(measure, datasetMeasure)
-                : ToFriendlyLabel(codeNorm);
+            var datasetMeasure = dataset.Measures[codeNorm];
 
             RegisterProjectedOutput(
                 runtime,
                 used,
                 BuildOutputCode(codeNorm, measure.Aggregation),
                 $"layout.measures[{i}].measureCode",
-                SelectionKind.Measure,
-                label);
+                "measure",
+                ResolveMeasureLabel(measure, datasetMeasure));
         }
     }
 
@@ -303,7 +393,7 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         IDictionary<string, ProjectedOutputSelection> used,
         string outputCode,
         string fieldPath,
-        SelectionKind selectionKind,
+        string selectionKind,
         string label)
     {
         if (used.TryGetValue(outputCode, out var existing))
@@ -311,10 +401,10 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
             throw Invalid(
                 runtime,
                 fieldPath,
-                $"'{label}' is already selected as a {FormatSelectionKind(existing.SelectionKind)} in the current layout. Choose it only once.");
+                $"'{label}' is already selected as a {existing.SelectionKind} in the current layout. Choose it only once.");
         }
 
-        used[outputCode] = new ProjectedOutputSelection(selectionKind, label);
+        used[outputCode] = new ProjectedOutputSelection(selectionKind);
     }
 
     private static string BuildOutputCode(string codeNorm, ReportTimeGrain? timeGrain)
@@ -386,7 +476,8 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
     {
         var groups = sort.AppliesToColumnAxis ? columnGroups : rowGroups;
         var axisLabel = sort.AppliesToColumnAxis ? "column" : "row";
-        var fieldLabel = dataset.TryGetField(fieldCodeNorm, out var field) ? field.Field.Label : ToFriendlyLabel(fieldCodeNorm);
+        var field = dataset.Fields[fieldCodeNorm];
+        var fieldLabel = field.Field.Label;
         var explicitGroupKey = NormalizeOptional(sort.GroupKey);
 
         if (explicitGroupKey is not null)
@@ -490,10 +581,10 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
     private static string ResolveFieldLabel(
         string fieldCode,
         ReportDatasetDefinition dataset,
-        IReadOnlyDictionary<string, ReportFilterFieldDto>? filterMetadata = null)
+        IReadOnlyDictionary<string, ReportFilterFieldDto> filterMetadata)
     {
         var codeNorm = CodeNormalizer.NormalizeCodeNorm(fieldCode, nameof(fieldCode));
-        if (filterMetadata is not null && filterMetadata.TryGetValue(codeNorm, out var filter))
+        if (filterMetadata.TryGetValue(codeNorm, out var filter))
             return ResolveFilterLabel(filter);
 
         if (dataset.TryGetField(codeNorm, out var field))
@@ -511,31 +602,15 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         => isColumnAxis ? "column grouping" : "row grouping";
 
     private static string FormatGroupedFieldLabel(string fieldLabel, ReportTimeGrain? timeGrain)
-        => timeGrain is null ? fieldLabel : $"{fieldLabel} ({FormatTimeGrain(timeGrain)})";
+        => timeGrain is null ? fieldLabel : $"{fieldLabel} ({FormatTimeGrain(timeGrain.Value)})";
 
-    private static string FormatTimeGrain(ReportTimeGrain? timeGrain)
-        => timeGrain?.ToString() ?? "this time bucket";
+    private static string FormatTimeGrain(ReportTimeGrain timeGrain) => timeGrain.ToString();
 
-    private static string FormatAggregation(ReportAggregationKind aggregation)
-        => aggregation.ToString();
-
-    private static string FormatSelectionKind(SelectionKind selectionKind)
-        => selectionKind switch
-        {
-            SelectionKind.RowGrouping => "row grouping",
-            SelectionKind.ColumnGrouping => "column grouping",
-            SelectionKind.DetailField => "detail field",
-            SelectionKind.Measure => "measure",
-            _ => "selection"
-        };
+    private static string FormatAggregation(ReportAggregationKind aggregation) => aggregation.ToString();
 
     private static string ToFriendlyLabel(string code)
     {
-        var trimmed = code?.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed))
-            return "Value";
-
-        var parts = trimmed
+        var parts = code.Trim()
             .Replace("__", "_", StringComparison.Ordinal)
             .Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
@@ -548,7 +623,6 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
 
         return string.Join(' ', parts.Select(part => part.Length switch
         {
-            0 => string.Empty,
             1 => char.ToUpperInvariant(part[0]).ToString(),
             _ => char.ToUpperInvariant(part[0]) + part[1..]
         }));
@@ -587,13 +661,11 @@ public sealed class ReportLayoutValidator : IReportLayoutValidator
         int OriginalIndex,
         bool IsColumnAxis);
 
-    private sealed record ProjectedOutputSelection(SelectionKind SelectionKind, string Label);
+    private sealed record ProjectedOutputSelection(string SelectionKind);
 
-    private enum SelectionKind
-    {
-        RowGrouping = 1,
-        ColumnGrouping = 2,
-        DetailField = 3,
-        Measure = 4
-    }
+    private sealed record ReportSortIdentity(
+        string FieldCodeNorm,
+        ReportTimeGrain? TimeGrain,
+        bool AppliesToColumnAxis,
+        string? GroupKeyNorm);
 }

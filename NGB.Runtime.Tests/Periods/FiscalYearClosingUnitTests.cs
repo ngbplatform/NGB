@@ -88,6 +88,18 @@ public sealed class FiscalYearClosingUnitTests
         var closedPeriodReader = new Mock<IClosedPeriodReader>(MockBehavior.Strict);
         closedPeriodReader.Setup(x => x.GetLatestClosedPeriodAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((DateOnly?)null);
+        closedPeriodReader.Setup(x => x.GetClosedAsync(
+                new DateOnly(2026, 1, 1),
+                new DateOnly(2026, 11, 1),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Range(1, 11)
+                .Select(month => new ClosedPeriodRecord
+                {
+                    Period = new DateOnly(2026, month, 1),
+                    ClosedBy = "tester",
+                    ClosedAtUtc = DateTime.UtcNow
+                })
+                .ToArray());
 
         var activityReader = new Mock<IAccountingPeriodActivityReader>(MockBehavior.Strict);
         activityReader.Setup(x => x.GetEarliestActivityPeriodAsync(It.IsAny<CancellationToken>()))
@@ -219,6 +231,18 @@ public sealed class FiscalYearClosingUnitTests
         var closedPeriodReader = new Mock<IClosedPeriodReader>(MockBehavior.Strict);
         closedPeriodReader.Setup(x => x.GetLatestClosedPeriodAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((DateOnly?)null);
+        closedPeriodReader.Setup(x => x.GetClosedAsync(
+                new DateOnly(2026, 1, 1),
+                new DateOnly(2026, 11, 1),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Enumerable.Range(1, 11)
+                .Select(month => new ClosedPeriodRecord
+                {
+                    Period = new DateOnly(2026, month, 1),
+                    ClosedBy = "tester",
+                    ClosedAtUtc = DateTime.UtcNow
+                })
+                .ToArray());
 
         var activityReader = new Mock<IAccountingPeriodActivityReader>(MockBehavior.Strict);
         activityReader.Setup(x => x.GetEarliestActivityPeriodAsync(It.IsAny<CancellationToken>()))
@@ -369,8 +393,11 @@ public sealed class FiscalYearClosingUnitTests
         var engineTurnoverWriter = new Mock<IAccountingTurnoverWriter>(MockBehavior.Loose);
         var engineDimensionSetService = new Mock<NGB.Runtime.Dimensions.IDimensionSetService>(MockBehavior.Loose);
         engineDimensionSetService
-            .Setup(x => x.GetOrCreateIdAsync(It.IsAny<NGB.Core.Dimensions.DimensionBag>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.Empty);
+            .Setup(x => x.GetOrCreateIdsAsync(
+                It.IsAny<IReadOnlyList<NGB.Core.Dimensions.DimensionBag>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<NGB.Core.Dimensions.DimensionBag> bags, CancellationToken _) =>
+                bags.Select(static _ => Guid.Empty).ToArray());
         var engineOpBal = new Mock<IAccountingOperationalBalanceReader>(MockBehavior.Loose);
         var engineClosed = new Mock<IClosedPeriodRepository>(MockBehavior.Loose);
         var engineValidator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Loose);

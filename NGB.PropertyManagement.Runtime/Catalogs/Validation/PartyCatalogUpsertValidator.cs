@@ -31,19 +31,11 @@ public sealed class PartyCatalogUpsertValidator : ICatalogUpsertValidator
         var hasTenant = TryReadBool(context.Fields, "is_tenant", out var isTenant);
         var hasVendor = TryReadBool(context.Fields, "is_vendor", out var isVendor);
 
-        if (!hasTenant && !hasVendor)
-        {
-            isTenant = true;
-            isVendor = false;
-        }
-        else
-        {
-            isTenant ??= true;
-            isVendor ??= false;
-        }
+        var resolvedTenant = !hasTenant && !hasVendor || (isTenant ?? true);
+        var resolvedVendor = (hasTenant || hasVendor) && (isVendor ?? false);
 
-        if (isTenant is not true && isVendor is not true)
-            throw PartyValidationException.AtLeastOneRoleRequired(context.CatalogId, isTenant, isVendor);
+        if (!resolvedTenant && !resolvedVendor)
+            throw PartyValidationException.AtLeastOneRoleRequired(context.CatalogId, resolvedTenant, resolvedVendor);
 
         return Task.CompletedTask;
     }

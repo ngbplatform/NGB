@@ -14,14 +14,13 @@ namespace NGB.Runtime.IntegrationTests.Schema;
 /// These tests intentionally break a single contract invariant and ensure the validator
 /// reports the exact missing contract element.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_MoreRules_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_MoreRules_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenFromDocumentFkConstraintIsRenamed_ThrowsMissingExpectedConstraintName()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Keep the FK semantics, but drift the constraint name.
@@ -47,7 +46,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_MoreRule
     [Fact]
     public async Task ValidateAsync_WhenTripletUniqueConstraintIsMissingButIndexExists_ThrowsMissingConstraintName()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Drop the UNIQUE CONSTRAINT, but re-create the UNIQUE INDEX with the same contract name
@@ -74,7 +72,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_MoreRule
     [Fact]
     public async Task ValidateAsync_WhenBuiltInCardinalityPartialUniqueIndexMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await ExecuteSqlAsync(

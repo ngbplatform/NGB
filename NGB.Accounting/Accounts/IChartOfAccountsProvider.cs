@@ -1,8 +1,9 @@
 namespace NGB.Accounting.Accounts;
 
 /// <summary>
-/// Provides a per-scope snapshot of the Chart of Accounts loaded from persistence.
-/// New scopes see new snapshots (so changes become visible).
+/// Provides a Chart of Accounts snapshot pinned for the lifetime of the current scope.
+/// Persisted snapshots may be shared between scopes and are invalidated by successful
+/// Chart of Accounts management mutations.
 /// </summary>
 public interface IChartOfAccountsProvider
 {

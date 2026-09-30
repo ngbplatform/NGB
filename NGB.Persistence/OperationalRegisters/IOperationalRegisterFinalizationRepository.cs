@@ -42,6 +42,17 @@ public interface IOperationalRegisterFinalizationRepository
         CancellationToken ct = default);
 
     /// <summary>
+    /// Marks multiple register-periods dirty in one persistence operation.
+    /// Requires an active transaction.
+    /// </summary>
+    Task MarkDirtyPeriodsAsync(
+        Guid registerId,
+        IReadOnlyCollection<DateOnly> periods,
+        DateTime dirtySinceUtc,
+        DateTime nowUtc,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Marks a register-period as blocked because no projector is registered for this register.
     /// Requires an active transaction.
     /// </summary>
@@ -59,7 +70,7 @@ public interface IOperationalRegisterFinalizationRepository
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
@@ -68,7 +79,7 @@ public interface IOperationalRegisterFinalizationRepository
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedAsync(
         Guid registerId,
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
@@ -76,7 +87,7 @@ public interface IOperationalRegisterFinalizationRepository
     /// Does not require an active transaction.
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetDirtyAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>
@@ -84,7 +95,7 @@ public interface IOperationalRegisterFinalizationRepository
     /// Does not require an active transaction.
     /// </summary>
     Task<IReadOnlyList<OperationalRegisterFinalization>> GetBlockedAcrossAllAsync(
-        int limit = 100,
+        int limit = OperationalRegisterFinalizationLimits.DefaultReadPageSize,
         CancellationToken ct = default);
 
     /// <summary>

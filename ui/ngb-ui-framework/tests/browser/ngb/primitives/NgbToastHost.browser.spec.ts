@@ -152,14 +152,14 @@ test('exposes a polite live region for toast announcements', async () => {
     {
       id: 'status-toast',
       title: 'Saved',
-      message: 'The record was saved successfully.',
-      tone: 'success',
+      tone: undefined,
       timeoutMs: 0,
     },
   ])
 
   const view = await render(ToastHostHarness)
   await expect.element(view.getByText('Saved', { exact: true })).toBeVisible()
+  expect(document.body.textContent?.includes('The record was saved successfully.')).toBe(false)
 
   const region = document.querySelector('[aria-label="Notifications"]') as HTMLElement | null
   expect(region).not.toBeNull()

@@ -24,7 +24,8 @@ For architects, ERP/accounting software teams, ISV teams, consultants, and exter
 2. [Document Actions architecture](/architecture/document-actions)
 3. [Work Center architecture](/architecture/work-center)
 4. [Document Actions and Work Center API reference](/reference/document-actions-work-center-api)
-5. For an existing solution, follow [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0)
+5. For an existing 2.x solution, follow [Migration 2.0.0 → 3.0.0](/guides/migrating-to-3.0)
+6. For an older solution, first follow [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0)
 
 ## Core onboarding path
 

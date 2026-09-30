@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.PostgreSql.AspNetCore</PackageId>
+        <Description>ASP.NET Core health checks and canonical HTTP exception mapping for the NGB PostgreSQL provider.</Description>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Npgsql" Version="10.0.3" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Hosting.AspNetCore\NGB.Hosting.AspNetCore.csproj" />
+        <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj" />
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj" />
+    </ItemGroup>
+
+</Project>

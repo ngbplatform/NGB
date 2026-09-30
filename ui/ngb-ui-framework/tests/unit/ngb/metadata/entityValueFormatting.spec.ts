@@ -13,6 +13,7 @@ describe('metadata entityValueFormatting', () => {
   it('formats date-only and date-time strings while preserving invalid raw values', () => {
     expect(formatDateOnlyValue('2026-04-08')).not.toBe('2026-04-08')
     expect(formatDateOnlyValue('not-a-date')).toBe('not-a-date')
+    expect(formatDateOnlyValue('2026-02-30')).toBe('2026-02-30')
     expect(formatDateTimeValue('2026-04-08T13:45:00Z')).not.toBe('2026-04-08T13:45:00Z')
     expect(formatDateTimeValue('still-not-a-date')).toBe('still-not-a-date')
   })
@@ -22,22 +23,30 @@ describe('metadata entityValueFormatting', () => {
     expect(formatNumberValue('Money', 1250)).toBe('1,250.00')
     expect(formatNumberValue('Decimal', 12.3456)).toBe('12.3456')
     expect(formatNumberValue('Money', 'oops')).toBe('oops')
+    expect(formatNumberValue('Money', undefined)).toBe('—')
   })
 
   it('formats loose entity values across booleans, arrays, references, and objects', () => {
     expect(formatLooseEntityValue(null)).toBe('—')
     expect(formatLooseEntityValue(true)).toBe('Yes')
+    expect(formatLooseEntityValue(Number.POSITIVE_INFINITY)).toBe('Infinity')
+    expect(formatLooseEntityValue('   ')).toBe('—')
     expect(formatLooseEntityValue(['A', 2, false])).toBe('A · 2 · No')
     expect(formatLooseEntityValue({ id: 'property-1', display: 'Riverfront Tower' })).toBe('Riverfront Tower')
+    expect(formatLooseEntityValue({ id: 'property-1', display: '   ' })).toBe('property-1')
+    expect(formatLooseEntityValue({ ignored: undefined })).toBe('—')
     expect(formatLooseEntityValue({
       status_code: 'open',
       count: 3,
       ignored: undefined,
     })).toBe('Status Code: open · Count: 3')
+    expect(formatLooseEntityValue(Symbol.for('entity'))).toBe('Symbol(entity)')
   })
 
   it('formats typed entity values and humanizes field keys', () => {
     expect(formatTypedEntityValue('Boolean', 1)).toBe('Yes')
+    expect(formatTypedEntityValue('Boolean', 0)).toBe('No')
+    expect(formatTypedEntityValue('String', null)).toBe('—')
     expect(formatTypedEntityValue('Date', '2026-04-08')).not.toBe('2026-04-08')
     expect(formatTypedEntityValue('DateTime', '2026-04-08T13:45:00Z')).not.toBe('2026-04-08T13:45:00Z')
     expect(formatTypedEntityValue('Money', 1250)).toBe('1,250.00')
@@ -45,5 +54,6 @@ describe('metadata entityValueFormatting', () => {
     expect(humanizeEntityKey('property_id')).toBe('Property Id')
     expect(humanizeEntityKey('posted.at')).toBe('Posted At')
     expect(humanizeEntityKey('')).toBe('Field')
+    expect(humanizeEntityKey(null as never)).toBe('Field')
   })
 })

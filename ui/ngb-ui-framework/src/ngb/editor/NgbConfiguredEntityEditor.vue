@@ -191,9 +191,9 @@ const fieldLabels = computed<Record<string, string>>(() => {
   const labels: Record<string, string> = {}
 
   for (const section of metadata.value?.form?.sections ?? []) {
-    for (const row of section.rows ?? []) {
-      for (const field of row.fields ?? []) {
-        if (field?.key && typeof field.label === 'string' && field.label.trim().length > 0) {
+    for (const row of section.rows) {
+      for (const field of row.fields) {
+        if (field.key && typeof field.label === 'string' && field.label.trim().length > 0) {
           labels[field.key] = field.label
         }
       }
@@ -206,7 +206,7 @@ const fieldLabels = computed<Record<string, string>>(() => {
 const error = ref<EditorErrorState | null>(null)
 
 function resolveIssueLabel(path: string): string {
-  const raw = String(path ?? '').trim()
+  const raw = path.trim()
   if (isEntityEditorFormIssuePath(raw)) return 'Validation'
   return fieldLabels.value[raw] ?? humanizeEntityEditorFieldKey(raw)
 }
@@ -255,9 +255,7 @@ const partErrors = computed<ConfiguredEntityEditorDocumentPartErrors>(() => {
 
 const bannerIssues = computed<EditorErrorIssue[]>(() => displayedError.value?.issues ?? [])
 
-function focusFirstValidationError(state: EditorErrorState | null) {
-  if (!state) return
-
+function focusFirstValidationError(state: EditorErrorState) {
   for (const issue of state.issues) {
     if (isEntityEditorFormIssuePath(issue.path)) continue
     if (editorShellRef.value?.focusField?.(issue.path)) return

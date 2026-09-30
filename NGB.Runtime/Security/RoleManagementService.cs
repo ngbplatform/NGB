@@ -20,22 +20,25 @@ public sealed class RoleManagementService(
     IAuditLogService audit)
     : IRoleManagementService
 {
+    private const int MaxRoleListSize = 500;
+    private const int MaxAssignedUsersInDetails = 500;
+    internal const int MaxPermissionsPerRole = 5_000;
+
     public async Task<IReadOnlyList<RoleListItemDto>> GetRolesAsync(CancellationToken ct)
     {
-        var all = await roles.GetAllAsync(ct);
-        var counts = await roles.GetAssignedUserCountsAsync(ct);
+        var all = await roles.GetListAsync(MaxRoleListSize, ct);
 
         return all
-            .Select(role => new RoleListItemDto(
-                role.RoleId,
-                role.Code,
-                role.Name,
-                role.Description,
-                role.IsSystem,
-                role.IsActive,
-                counts.GetValueOrDefault(role.RoleId),
-                role.CreatedAtUtc,
-                role.UpdatedAtUtc))
+            .Select(item => new RoleListItemDto(
+                item.Role.RoleId,
+                item.Role.Code,
+                item.Role.Name,
+                item.Role.Description,
+                item.Role.IsSystem,
+                item.Role.IsActive,
+                item.AssignedUserCount,
+                item.Role.CreatedAtUtc,
+                item.Role.UpdatedAtUtc))
             .ToArray();
     }
 
@@ -43,7 +46,15 @@ public sealed class RoleManagementService(
     {
         var role = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
         var perms = await permissions.GetRolePermissionsAsync(roleId, ct);
-        var userIds = await userRoles.GetUserIdsForRoleAsync(roleId, ct);
+        var userIds = await userRoles.GetUserIdsForRoleAsync(roleId, MaxAssignedUsersInDetails + 1, ct);
+
+        if (userIds.Count > MaxAssignedUsersInDetails)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(roleId),
+                userIds.Count,
+                $"Role details can include up to {MaxAssignedUsersInDetails} assigned users.");
+        }
         var usersById = await users.GetByIdsAsync(userIds, ct);
 
         return new RoleDetailsDto(
@@ -67,10 +78,11 @@ public sealed class RoleManagementService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
+        var normalizedPermissions = Normalize(request.Permissions);
         var roleId = Guid.CreateVersion7();
+
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            var normalizedPermissions = Normalize(request.Permissions);
             await roles.UpsertAsync(roleId, request.Code, request.Name, request.Description, isSystem: false, isActive: true, innerCt);
             await permissions.ReplaceRolePermissionsAsync(roleId, normalizedPermissions, innerCt);
             await audit.WriteAsync(
@@ -98,12 +110,12 @@ public sealed class RoleManagementService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
+        var normalizedPermissions = Normalize(request.Permissions);
         var existing = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
         var oldPermissions = await permissions.GetRolePermissionsAsync(roleId, ct);
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            var normalizedPermissions = Normalize(request.Permissions);
             await roles.UpsertAsync(roleId, request.Code, request.Name, request.Description, existing.IsSystem, request.IsActive, innerCt);
             await permissions.ReplaceRolePermissionsAsync(roleId, normalizedPermissions, innerCt);
             await IncrementRoleUsersAsync(roleId, innerCt);
@@ -138,12 +150,12 @@ public sealed class RoleManagementService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
+        var normalizedPermissions = Normalize(request.Permissions);
         _ = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
         var oldPermissions = await permissions.GetRolePermissionsAsync(roleId, ct);
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            var normalizedPermissions = Normalize(request.Permissions);
             await permissions.ReplaceRolePermissionsAsync(roleId, normalizedPermissions, innerCt);
             await IncrementRoleUsersAsync(roleId, innerCt);
             await audit.WriteAsync(
@@ -182,14 +194,21 @@ public sealed class RoleManagementService(
 
     private async Task IncrementRoleUsersAsync(Guid roleId, CancellationToken ct)
     {
-        var affectedUsers = await userRoles.GetUserIdsForRoleAsync(roleId, ct);
-        await versions.IncrementManyAsync(affectedUsers, ct);
+        await versions.IncrementForRoleAsync(roleId, ct);
     }
 
     private static IReadOnlyList<NgbPermissionKey> Normalize(IReadOnlyList<PermissionAssignmentDto> assignments)
     {
         if (assignments is null)
             throw new NgbArgumentRequiredException(nameof(assignments));
+
+        if (assignments.Count > MaxPermissionsPerRole)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(assignments),
+                assignments.Count,
+                $"At most {MaxPermissionsPerRole:N0} permissions are allowed per role.");
+        }
 
         return assignments
             .Select(static x => new NgbPermissionKey(x.ResourceKind, x.ResourceCode, x.ActionCode))
@@ -241,9 +260,6 @@ public sealed class RoleManagementService(
             .Replace('.', ' ')
             .Replace('_', ' ')
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        if (words.Length == 0)
-            return value;
 
         return string.Join(' ', words.Select(static word => word.Length switch
         {

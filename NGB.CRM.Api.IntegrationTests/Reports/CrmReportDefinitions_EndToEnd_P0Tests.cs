@@ -6,7 +6,7 @@ using Xunit;
 
 namespace NGB.CRM.Api.IntegrationTests.Reports;
 
-[Collection(CrmPostgresCollection.Name)]
+[Collection(CrmDocumentsPostgresCollection.Name)]
 public sealed class CrmReportDefinitions_EndToEnd_P0Tests(CrmPostgresFixture fixture)
 {
     [Fact]

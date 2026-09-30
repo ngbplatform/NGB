@@ -5,6 +5,7 @@ import {
   chooseAvailableVariantCode,
   hasFilterStateValue,
   isInlineDateParameterDataType,
+  normalizeCode,
   normalizeParameterDataType,
   normalizeReportDateValue,
   parameterLabel,
@@ -130,6 +131,7 @@ describe('reporting page helpers', () => {
         },
       },
     }))).toBe(true)
+    expect(hasFilterStateValue({ fieldCode: 'missing' } as never, draft())).toBe(false)
   })
 
   it('allows auto-run only when required parameters and filters are present', () => {
@@ -147,6 +149,13 @@ describe('reporting page helpers', () => {
         },
       },
     }))).toBe(true)
+
+    expect(canAutoRunReport({ ...definition, parameters: undefined, filters: undefined }, draft())).toBe(true)
+    expect(canAutoRunReport({
+      ...definition,
+      parameters: [{ code: 'missing', dataType: 'String', isRequired: true }],
+      filters: undefined,
+    }, draft())).toBe(false)
   })
 
   it('normalizes date-oriented parameter metadata and values', () => {
@@ -154,13 +163,22 @@ describe('reporting page helpers', () => {
     expect(isInlineDateParameterDataType('Date Only')).toBe(true)
     expect(isInlineDateParameterDataType('String')).toBe(false)
     expect(normalizeReportDateValue('2026-04-08')).toBe('2026-04-08')
+    expect(normalizeReportDateValue(null)).toBeNull()
+    expect(normalizeCode(' General Journal ')).toBe('general_journal')
     expect(parameterLabel({ code: 'as_of_utc', label: 'As of' })).toBe('As of')
     expect(parameterLabel({ code: 'as_of_utc', label: '' })).toBe('as_of_utc')
+    expect(parameterLabel({ code: 'fallback', label: null })).toBe('fallback')
+    expect(parameterLabel({ code: null as never, label: '' })).toBe('')
   })
 
   it('resolves option labels and generates unique variant codes', () => {
     expect(tryResolveOptionLabel(definition.filters![1], 'open')).toBe('Open')
     expect(tryResolveOptionLabel(definition.filters![1], 'unknown')).toBe('unknown')
+    expect(tryResolveOptionLabel({
+      ...definition.filters![1],
+      options: [{ value: 'empty', label: '' }],
+    }, 'empty')).toBe('empty')
+    expect(tryResolveOptionLabel(definition.filters![1], '   ')).toBe('')
     expect(chooseAvailableVariantCode('Desk View', [
       { variantCode: 'desk-view' },
       { variantCode: 'desk-view-2' },

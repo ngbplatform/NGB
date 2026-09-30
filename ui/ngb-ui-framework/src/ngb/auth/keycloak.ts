@@ -38,8 +38,8 @@ function requiredEnv(name: string): string {
   return value
 }
 
-function normalizeUrl(value: string | null | undefined, fallbackPath: string): string {
-  const raw = String(value ?? '').trim()
+function normalizeUrl(value: string, fallbackPath: string): string {
+  const raw = value.trim()
   if (!raw) return new URL(fallbackPath, window.location.origin).toString()
 
   const next = new URL(raw, window.location.origin)
@@ -51,26 +51,22 @@ function normalizeUrl(value: string | null | undefined, fallbackPath: string): s
 }
 
 function resolveAppBaseUrl(): string {
-  const rawBase = String(import.meta.env.BASE_URL ?? '/').trim()
-  const normalizedBase = rawBase
-    ? (rawBase.endsWith('/') ? rawBase : `${rawBase}/`)
-    : '/'
+  const rawBase = String(import.meta.env.BASE_URL).trim()
+  const normalizedBase = `${rawBase.replace(/\/+$/, '')}/`
 
   return new URL(normalizedBase, window.location.origin).toString()
 }
 
 function resolveAppPublicUrl(path: string): string {
-  const normalizedPath = String(path ?? '').trim().replace(/^\/+/, '')
+  const normalizedPath = path.trim().replace(/^\/+/, '')
   return new URL(normalizedPath, resolveAppBaseUrl()).toString()
 }
 
-function parseBoolean(value: string | boolean | null | undefined, defaultValue: boolean): boolean {
-  if (typeof value === 'boolean') return value
-
-  const normalized = String(value ?? '').trim().toLowerCase()
+function parseBoolean(value: string, defaultValue: boolean): boolean {
+  const normalized = value.trim().toLowerCase()
   if (!normalized) return defaultValue
-  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') return true
-  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') return false
+  if (['true', '1', 'yes', 'on'].includes(normalized)) return true
+  if (['false', '0', 'no', 'off'].includes(normalized)) return false
   return defaultValue
 }
 
@@ -103,7 +99,7 @@ function resolveAdminConsoleLocalLogoutEndpoints(): string[] {
   return Array.from(
     new Set(
       configuredUrls
-        .map((value) => String(value ?? '').trim())
+        .map((value) => value.trim())
         .filter((value) => value.length > 0)
         .map((value) => new URL(value, window.location.origin))
         .map((url) => `${url.origin}/account/local-logout`),

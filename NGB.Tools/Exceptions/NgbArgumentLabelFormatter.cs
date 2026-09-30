@@ -10,7 +10,10 @@ public static class NgbArgumentLabelFormatter
         var raw = paramName.Trim();
 
         if (raw.Contains('.'))
-            raw = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[^1];
+        {
+            var segments = raw.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            raw = segments.Length == 0 ? string.Empty : segments[^1];
+        }
 
         raw = raw
             .Replace("[]", " ", StringComparison.Ordinal)
@@ -73,9 +76,6 @@ public static class NgbArgumentLabelFormatter
 
     private static string FormatToken(string token)
     {
-        if (string.IsNullOrWhiteSpace(token))
-            return token;
-
         return token.Length == 1
             ? token.ToUpperInvariant()
             : char.ToUpperInvariant(token[0]) + token[1..].ToLowerInvariant();

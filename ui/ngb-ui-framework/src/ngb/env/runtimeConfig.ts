@@ -21,5 +21,7 @@ export function readAppEnv(name: string): string {
     return String(runtimeConfig[name] ?? '').trim()
   }
 
-  return String(import.meta.env[name as keyof ImportMetaEnv] ?? '').trim()
+  const buildEnv = import.meta.env as Record<string, string | boolean>
+  if (!Object.prototype.hasOwnProperty.call(buildEnv, name)) return ''
+  return String(buildEnv[name]).trim()
 }

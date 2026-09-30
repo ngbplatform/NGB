@@ -14,8 +14,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Catalogs;
 
-[Collection(PostgresCollection.Name)]
-public sealed class CatalogService_Lifecycle_P4Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class CatalogService_Lifecycle_P4Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private const string CatalogCode = "it_cat_universal";

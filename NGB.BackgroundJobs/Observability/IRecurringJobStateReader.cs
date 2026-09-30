@@ -2,5 +2,7 @@ namespace NGB.BackgroundJobs.Observability;
 
 internal interface IRecurringJobStateReader
 {
-    ValueTask<RecurringJobState?> TryGetAsync(string jobId, CancellationToken cancellationToken);
+    ValueTask<IReadOnlyDictionary<string, RecurringJobState>> GetManyAsync(
+        IReadOnlyCollection<string> jobIds,
+        CancellationToken cancellationToken);
 }

@@ -10,6 +10,7 @@ using NGB.Metadata.Documents.Storage;
 using NGB.Persistence.Documents.Storage;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
@@ -19,7 +20,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// It validates that the host can start and that the platform document (GJE) is discoverable
 /// and its configured strategies are resolvable.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Definitions_Smoke_Invariants_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -67,7 +68,7 @@ public sealed class Definitions_Smoke_Invariants_P1Tests(PostgresTestFixture fix
         return Host.CreateDefaultBuilder()
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(connectionString);
 
                 // PostingEngine requires the accounting validator even when tests focus on other subsystems.

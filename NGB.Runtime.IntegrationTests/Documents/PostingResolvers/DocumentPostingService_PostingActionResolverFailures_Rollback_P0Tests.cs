@@ -19,7 +19,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents.PostingResolvers;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentPostingService_PostingActionResolverFailures_Rollback_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

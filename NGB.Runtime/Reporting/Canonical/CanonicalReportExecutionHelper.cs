@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using NGB.Contracts.Metadata;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Core.Dimensions;
 using NGB.Core.Reporting.Exceptions;
@@ -87,7 +88,7 @@ public static class CanonicalReportExecutionHelper
             JsonValueKind.Null or JsonValueKind.Undefined => null,
             JsonValueKind.String when value.TryGetGuid(out var guid) && guid != Guid.Empty => guid,
             JsonValueKind.String => throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}."),
-            JsonValueKind.Array => ReadGuidList(definition, filterCode, value, allowMultiple: false).SingleOrDefault(),
+            JsonValueKind.Array => ReadOptionalSingleGuid(definition, filterCode, value),
             _ => throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.")
         };
     }
@@ -114,7 +115,7 @@ public static class CanonicalReportExecutionHelper
         string filterCode)
     {
         var value = GetOptionalGuidFilter(definition, request, filterCode);
-        if (value is { } guid && guid != Guid.Empty)
+        if (value is { } guid)
             return guid;
 
         throw Invalid(definition, $"filters.{filterCode}", $"{GetFilterLabel(definition, filterCode)} is required.");
@@ -180,6 +181,38 @@ public static class CanonicalReportExecutionHelper
         return scopes.Count == 0 ? null : new DimensionScopeBag(scopes);
     }
 
+    /// <summary>
+    /// Limits source rows before querying so a canonical page has room for its opening/total rows.
+    /// The requested limit and cursor offsets continue to count source rows, not rendered rows.
+    /// </summary>
+    public static int ResolvePageDataLimit(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        int defaultLimit,
+        int reservedRows)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(defaultLimit);
+        ArgumentOutOfRangeException.ThrowIfNegative(reservedRows);
+
+        // Materialized execution must retain the overflow probe; it cannot silently return a page.
+        if (request.DisablePaging)
+            return PagingLimits.MaxMaterializedRows + 1;
+
+        var requestedLimit = request.Limit <= 0 ? defaultLimit : request.Limit;
+        if (definition.Capabilities?.MaxVisibleRows is not { } maxRows)
+            return requestedLimit;
+
+        if (maxRows <= reservedRows)
+        {
+            throw Invalid(
+                definition,
+                "layout",
+                $"The report row limit of {maxRows} must allow room for {reservedRows} summary rows and at least one data row.");
+        }
+
+        return Math.Min(requestedLimit, maxRows - reservedRows);
+    }
+
     public static ReportDataPage CreatePrebuiltPage(
         ReportSheetDto sheet,
         int offset,
@@ -198,6 +231,29 @@ public static class CanonicalReportExecutionHelper
             NextCursor: nextCursor,
             Diagnostics: diagnostics,
             PrebuiltSheet: sheet);
+
+    public static ReportDataPage CreateBoundedPrebuiltPage(
+        ReportDefinitionDto definition,
+        ReportSheetDto sheet,
+        IReadOnlyDictionary<string, string>? diagnostics = null)
+    {
+        var total = sheet.Rows.Count;
+        if (total > PagingLimits.MaxMaterializedRows)
+        {
+            throw Invalid(
+                definition,
+                "filters",
+                $"This report contains more than {PagingLimits.MaxMaterializedRows} rows. Narrow the filters and try again.");
+        }
+
+        return CreatePrebuiltPage(
+            sheet,
+            offset: 0,
+            limit: total,
+            total,
+            hasMore: false,
+            diagnostics: diagnostics);
+    }
 
     public static JsonElement JsonValue<T>(T value) => JsonSerializer.SerializeToElement(value);
 
@@ -250,43 +306,54 @@ public static class CanonicalReportExecutionHelper
         JsonElement value,
         bool allowMultiple)
     {
-        try
+        if (value.ValueKind == JsonValueKind.String)
         {
-            if (value.ValueKind == JsonValueKind.String)
-            {
-                if (!value.TryGetGuid(out var guid) || guid == Guid.Empty)
-                    throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
-
-                return [guid];
-            }
-
-            if (value.ValueKind != JsonValueKind.Array)
+            if (!value.TryGetGuid(out var guid) || guid == Guid.Empty)
                 throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
 
-            var list = new List<Guid>();
-            foreach (var item in value.EnumerateArray())
-            {
-                if (!item.TryGetGuid(out var itemGuid) || itemGuid == Guid.Empty)
-                    throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
-
-                list.Add(itemGuid);
-            }
-
-            var distinct = list.Distinct().ToArray();
-            if (!allowMultiple && distinct.Length > 1)
-            {
-                throw Invalid(
-                    definition,
-                    $"filters.{filterCode}",
-                    $"Select a single {GetFilterLabel(definition, filterCode)}.");
-            }
-
-            return distinct;
+            return [guid];
         }
-        catch (InvalidOperationException)
-        {
+
+        if (value.ValueKind != JsonValueKind.Array)
             throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
+
+        var arrayLength = value.GetArrayLength();
+        if (arrayLength > ReportLayoutLimits.MaxValuesPerFilter)
+        {
+            throw Invalid(
+                definition,
+                $"filters.{filterCode}",
+                $"Select up to {ReportLayoutLimits.MaxValuesPerFilter} {GetFilterLabel(definition, filterCode)} values.");
         }
+
+        var list = new List<Guid>(arrayLength);
+        foreach (var item in value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String || !item.TryGetGuid(out var itemGuid) || itemGuid == Guid.Empty)
+                throw Invalid(definition, $"filters.{filterCode}", $"Select a valid {GetFilterLabel(definition, filterCode)}.");
+
+            list.Add(itemGuid);
+        }
+
+        var distinct = list.Distinct().ToArray();
+        if (!allowMultiple && distinct.Length > 1)
+        {
+            throw Invalid(
+                definition,
+                $"filters.{filterCode}",
+                $"Select a single {GetFilterLabel(definition, filterCode)}.");
+        }
+
+        return distinct;
+    }
+
+    private static Guid? ReadOptionalSingleGuid(
+        ReportDefinitionDto definition,
+        string filterCode,
+        JsonElement value)
+    {
+        var values = ReadGuidList(definition, filterCode, value, allowMultiple: false);
+        return values.Count == 0 ? null : values[0];
     }
 
     private static bool TryGetFilterValue(ReportExecutionRequestDto request, string filterCode, out JsonElement value)
@@ -309,10 +376,23 @@ public static class CanonicalReportExecutionHelper
         if (request.Filters is null)
             return false;
 
+        if (request.Filters.TryGetValue(filterCode, out var exactFilterValue) && exactFilterValue is not null)
+        {
+            filterValue = exactFilterValue;
+            value = filterValue.Value;
+            return true;
+        }
+
+        var filterCodeNorm = CodeNormalizer.NormalizeCodeNorm(filterCode, nameof(filterCode));
+
         foreach (var pair in request.Filters)
         {
-            if (!string.Equals(CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(filterCode)), CodeNormalizer.NormalizeCodeNorm(filterCode, nameof(filterCode)), StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(pair.Key, filterCode, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(filterCode)), filterCodeNorm,
+                    StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
             filterValue = pair.Value;
             value = pair.Value.Value;

@@ -58,6 +58,11 @@ public sealed class AgencyBillingSetupService(
         var (unbilledTimeId, createdUnbilledTime) = await EnsureUnbilledTimeOperationalRegisterAsync(ct);
         var (projectBillingStatusId, createdProjectBillingStatus) = await EnsureProjectBillingStatusOperationalRegisterAsync(ct);
         var (arOpenItemsId, createdArOpenItems) = await EnsureArOpenItemsOperationalRegisterAsync(ct);
+
+        await opregMaintenance.EnsurePhysicalSchemasByIdsAsync(
+            [projectTimeLedgerId, unbilledTimeId, projectBillingStatusId, arOpenItemsId],
+            ct);
+
         var (policyId, createdPolicy) = await EnsureAccountingPolicyAsync(
             cashId,
             arId,
@@ -131,7 +136,6 @@ public sealed class AgencyBillingSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 
@@ -174,7 +178,6 @@ public sealed class AgencyBillingSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 
@@ -208,7 +211,6 @@ public sealed class AgencyBillingSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 
@@ -245,7 +247,6 @@ public sealed class AgencyBillingSetupService(
             ],
             ct);
 
-        await opregMaintenance.EnsurePhysicalSchemaByIdAsync(id, ct);
         return (id, existed is null);
     }
 
@@ -311,7 +312,7 @@ public sealed class AgencyBillingSetupService(
 
         foreach (var payload in payloads)
         {
-            var display = payload.Fields!["display"].GetString() ?? string.Empty;
+            var display = payload.Fields!["display"].GetString()!;
             var existing = page.Items.FirstOrDefault(x => string.Equals(x.Display, display, StringComparison.OrdinalIgnoreCase));
 
             if (existing is not null)
@@ -335,9 +336,6 @@ public sealed class AgencyBillingSetupService(
         CashFlowRole cashFlowRole = CashFlowRole.None,
         string? cashFlowLineCode = null)
     {
-        if (string.IsNullOrWhiteSpace(code))
-            throw new NgbArgumentRequiredException(nameof(code));
-
         var existing = coa.FirstOrDefault(x => string.Equals(x.Account.Code, code, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
@@ -381,9 +379,6 @@ public sealed class AgencyBillingSetupService(
         string name,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(code))
-            throw new NgbArgumentRequiredException(nameof(code));
-
         var existing = coa.FirstOrDefault(x => string.Equals(x.Account.Code, code, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {

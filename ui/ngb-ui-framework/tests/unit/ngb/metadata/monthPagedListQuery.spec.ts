@@ -18,7 +18,7 @@ import {
   useMonthPagedListQuery,
 } from '../../../../src/ngb/metadata/monthPagedListQuery'
 
-function createHarness(initialQuery: Record<string, unknown> = {}) {
+function createHarness(initialQuery: Record<string, unknown> = {}, includeDefaultLimit = true) {
   const route = reactive({
     path: '/documents/pm.invoice',
     query: { ...initialQuery } as Record<string, unknown>,
@@ -31,7 +31,7 @@ function createHarness(initialQuery: Record<string, unknown> = {}) {
   const query = useMonthPagedListQuery({
     route: route as never,
     router,
-    defaultLimit: 25,
+    ...(includeDefaultLimit ? { defaultLimit: 25 } : {}),
   })
 
   return {
@@ -71,6 +71,9 @@ describe('month paged list query', () => {
 
     query.trashMode.value = 'deleted'
     query.periodFromMonth.value = '2026-04'
+    query.periodFromMonth.value = ''
+    query.periodToMonth.value = '2026-05'
+    query.periodToMonth.value = ''
     query.updateListQuery({ search: 'rent' })
     query.updateListQuery({ search: 'lease' }, { preserveOffset: true })
     query.nextPage()
@@ -85,17 +88,43 @@ describe('month paged list query', () => {
       offset: 0,
     })
     expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(3, route, router, {
-      search: 'rent',
+      periodFrom: undefined,
       offset: 0,
     })
     expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(4, route, router, {
-      search: 'lease',
-    })
-    expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(5, route, router, {
-      offset: 50,
-    })
-    expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(6, route, router, {
+      periodTo: '2026-05',
       offset: 0,
     })
+    expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(5, route, router, {
+      periodTo: undefined,
+      offset: 0,
+    })
+    expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(6, route, router, {
+      search: 'rent',
+      offset: 0,
+    })
+    expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(7, route, router, {
+      search: 'lease',
+    })
+    expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(8, route, router, {
+      offset: 50,
+    })
+    expect(pushCleanRouteQueryMock).toHaveBeenNthCalledWith(9, route, router, {
+      offset: 0,
+    })
+  })
+
+  it('uses numeric fallbacks and the default page size for malformed route values', () => {
+    const { query } = createHarness({
+      offset: '-1',
+      limit: '0',
+      periodFrom: 'invalid',
+      periodTo: '2026-05',
+    }, false)
+
+    expect(query.offset.value).toBe(0)
+    expect(query.limit.value).toBe(50)
+    expect(query.periodFromMonth.value).toBe('')
+    expect(query.periodToMonth.value).toBe('2026-05')
   })
 })

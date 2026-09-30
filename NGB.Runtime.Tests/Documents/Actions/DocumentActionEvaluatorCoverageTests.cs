@@ -300,6 +300,16 @@ public sealed class DocumentActionEvaluatorCoverageTests
     }
 
     [Fact]
+    public void Registry_accepts_a_pure_custom_availability_evaluator()
+    {
+        var action = () => new DocumentActionRegistry(
+            BaseDefinitions(),
+            [new PureAvailabilityContributor()]);
+
+        action.Should().NotThrow();
+    }
+
+    [Fact]
     public void Target_tokens_support_fields_documents_created_documents_and_null_values()
     {
         var document = Document();
@@ -554,5 +564,20 @@ public sealed class DocumentActionEvaluatorCoverageTests
                     1),
                 handlerType: typeof(NoOpHandler),
                 authorizationEvaluatorType: typeof(AllowAuthorizationEvaluator));
+    }
+
+    private sealed class PureAvailabilityContributor : IDocumentActionDefinitionsContributor
+    {
+        public void Contribute(DocumentActionDefinitionsBuilder builder)
+            => builder.Add(
+                SourceType,
+                new DocumentActionMetadata(
+                    new DocumentActionCode("test.pure-availability"),
+                    new DocumentActionPresentation("Pure availability"),
+                    DocumentActionKind.Secondary,
+                    DocumentActionExecutionKind.Command,
+                    1),
+                handlerType: typeof(NoOpHandler),
+                availabilityEvaluatorType: typeof(SortedAvailabilityEvaluator));
     }
 }

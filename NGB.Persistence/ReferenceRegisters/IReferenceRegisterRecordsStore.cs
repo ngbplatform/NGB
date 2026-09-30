@@ -19,6 +19,13 @@ public interface IReferenceRegisterRecordsStore
     Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default);
 
     /// <summary>
+    /// Ensures write readiness without performing drift-repair DDL when the committed metadata proves
+    /// that the physical shape is already immutable.
+    /// </summary>
+    Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
+        => EnsureSchemaAsync(registerId, ct);
+
+    /// <summary>
     /// Appends new record versions.
     ///
     /// IMPORTANT: implementation may mark <c>reference_registers.has_records=true</c> when the first record is appended.

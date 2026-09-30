@@ -16,7 +16,6 @@
         <ProjectReference Include="..\NGB.Accounting\NGB.Accounting.csproj" />
         <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj" />
         <ProjectReference Include="..\NGB.ReferenceRegisters\NGB.ReferenceRegisters.csproj" />
-        <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj" />
     </ItemGroup>
 
 </Project>

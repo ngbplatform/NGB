@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Chaos;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Platform_ChaosMonkey_SeededDocumentLifecycle_WithRelationships_AndPosting_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

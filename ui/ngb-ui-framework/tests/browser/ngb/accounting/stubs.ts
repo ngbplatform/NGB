@@ -84,6 +84,16 @@ export const StubRegisterGrid = defineComponent({
         allGroupsExpanded: true,
         toggleAllGroups,
       })),
+      h('div', { 'data-testid': 'stub-register-grid-status-header-collapsed' }, slots.statusHeader?.({
+        hasGroups: props.groupBy.length > 0,
+        allGroupsExpanded: false,
+        toggleAllGroups,
+      })),
+      h('div', { 'data-testid': 'stub-register-grid-status-header-empty' }, slots.statusHeader?.({
+        hasGroups: false,
+        allGroupsExpanded: false,
+        toggleAllGroups,
+      })),
       ...props.rows.map((row) =>
         h(
           'button',
@@ -152,6 +162,10 @@ export const StubButton = defineComponent({
 
 export const StubInput = defineComponent({
   props: {
+    type: {
+      type: String,
+      default: 'text',
+    },
     modelValue: {
       type: String,
       default: '',
@@ -171,14 +185,21 @@ export const StubInput = defineComponent({
   },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
-    return () => h('input', {
-      type: 'text',
-      value: props.modelValue,
-      placeholder: props.placeholder,
-      disabled: props.disabled,
-      readOnly: props.readonly,
-      onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value),
-    })
+    return () => h('div', [
+      h('input', {
+        type: props.type,
+        value: props.modelValue,
+        placeholder: props.placeholder,
+        disabled: props.disabled,
+        readOnly: props.readonly,
+        onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLInputElement).value),
+      }),
+      h('button', {
+        type: 'button',
+        'data-testid': `input-null-${props.placeholder}`,
+        onClick: () => emit('update:modelValue', null),
+      }, `Input emit null:${props.placeholder}`),
+    ])
   },
 })
 
@@ -201,11 +222,18 @@ export const StubMonthPicker = defineComponent({
   },
   emits: ['update:modelValue'],
   setup(props, { emit }) {
-    return () => h('button', {
-      type: 'button',
-      'data-testid': `month-picker-${props.modelValue || 'empty'}`,
-      onClick: () => emit('update:modelValue', shiftStubMonth(props.modelValue)),
-    }, `month-picker:${props.modelValue || 'none'}`)
+    return () => h('span', [
+      h('button', {
+        type: 'button',
+        'data-testid': `month-picker-${props.modelValue || 'empty'}`,
+        onClick: () => emit('update:modelValue', shiftStubMonth(props.modelValue)),
+      }, `month-picker:${props.modelValue || 'none'}`),
+      h('button', {
+        type: 'button',
+        'data-testid': `month-picker-invalid-${props.modelValue || 'empty'}`,
+        onClick: () => emit('update:modelValue', 'invalid-month'),
+      }, `month-picker-invalid:${props.modelValue || 'none'}`),
+    ])
   },
 })
 
@@ -264,6 +292,11 @@ export const StubLookup = defineComponent({
         disabled: props.disabled || props.readonly || props.items.length === 0,
         onClick: () => emit('update:modelValue', props.items[0] ?? null),
       }, 'Lookup select first'),
+      h('button', {
+        type: 'button',
+        'data-action': 'emit-null',
+        onClick: () => emit('update:modelValue', null),
+      }, 'Lookup emit null'),
       props.showClear
         ? h('button', {
           type: 'button',
@@ -332,6 +365,7 @@ export const StubConfirmDialog = defineComponent({
       ? h('div', { 'data-testid': 'confirm-dialog' }, [
         h('div', props.title),
         h('div', props.message),
+        h('button', { type: 'button', onClick: () => emit('update:open', true) }, 'Dialog keep open'),
         h('button', { type: 'button', onClick: () => emit('update:open', false) }, 'Dialog cancel'),
         h('button', { type: 'button', onClick: () => emit('confirm') }, `Dialog confirm:${props.confirmText}`),
       ])
@@ -421,8 +455,14 @@ export const StubSelect = defineComponent({
       {
         value: String(props.modelValue ?? ''),
         disabled: props.disabled,
-        onInput: (event: Event) => emit('update:modelValue', (event.target as HTMLSelectElement).value),
-        onChange: (event: Event) => emit('update:modelValue', (event.target as HTMLSelectElement).value),
+        onInput: (event: Event) => {
+          const value = (event.target as HTMLSelectElement).value
+          emit('update:modelValue', value === '' ? null : value)
+        },
+        onChange: (event: Event) => {
+          const value = (event.target as HTMLSelectElement).value
+          emit('update:modelValue', value === '' ? null : value)
+        },
       },
       props.options.map((option) =>
         h('option', { key: String(option.value), value: String(option.value) }, option.label),
@@ -561,6 +601,28 @@ export const StubGeneralJournalEntryLinesEditor = defineComponent({
       },
     ]
 
+    const boundaryLines = (): GjeLine[] => [
+      {
+        clientKey: 'boundary-empty-account',
+        side: 1,
+        account: null,
+        amount: '99',
+        memo: 'Excluded line',
+        dimensions: {},
+      },
+      {
+        clientKey: 'boundary-valid-account',
+        side: 0,
+        account: { id: 'cash-id', label: '1100 Cash' },
+        amount: '',
+        memo: '   ',
+        dimensions: {
+          empty: null,
+          department: { id: 'department-1', label: 'Department 1' },
+        },
+      },
+    ]
+
     return () => h('div', { 'data-testid': 'gje-lines-editor', 'data-readonly': String(props.readonly) }, [
       ...props.modelValue.map((line, index) =>
         h(
@@ -580,6 +642,15 @@ export const StubGeneralJournalEntryLinesEditor = defineComponent({
           onClick: () => emit('update:modelValue', sampleLines()),
         },
         'Set sample lines',
+      ),
+      h(
+        'button',
+        {
+          type: 'button',
+          disabled: props.readonly,
+          onClick: () => emit('update:modelValue', boundaryLines()),
+        },
+        'Set boundary lines',
       ),
     ])
   },

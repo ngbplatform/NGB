@@ -82,6 +82,26 @@ public sealed class CrmDefinitions_P0Tests
     }
 
     [Fact]
+    public void LeadConversion_Metadata_Allows_Incomplete_Drafts_And_Binds_Post_Validation()
+    {
+        var conversion = Registry.GetDocument(CrmCodes.LeadConversion);
+        var head = conversion.Metadata.Tables.Single(x => x.Kind == TableKind.Head);
+        var account = head.Columns.Single(x => x.ColumnName == "account_id");
+        var contact = head.Columns.Single(x => x.ColumnName == "contact_id");
+
+        account.Required.Should().BeFalse(
+            "a conversion derived from a qualified lead is saved before its account is selected");
+        contact.Required.Should().BeFalse(
+            "a conversion derived from a qualified lead is saved before its contact is selected");
+        account.Lookup.Should().BeOfType<CatalogLookupSourceMetadata>()
+            .Which.CatalogType.Should().Be(CrmCodes.Account);
+        contact.Lookup.Should().BeOfType<CatalogLookupSourceMetadata>()
+            .Which.CatalogType.Should().Be(CrmCodes.Contact);
+        conversion.PostValidatorTypes.Should().Contain(typeof(LeadConversionPostValidator),
+            "account and contact are mandatory at the Draft-to-Posted boundary");
+    }
+
+    [Fact]
     public void Canonical_Report_Definitions_Expose_Crm_Surfaces()
     {
         var reports = new CrmCanonicalReportDefinitionSource().GetDefinitions();

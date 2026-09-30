@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import {
@@ -33,6 +33,7 @@ import { buildOpenItemsTabs, type OpenItemsTabKey } from '../features/open-items
 import OpenItemsWorkflowShell from '../features/open-items/OpenItemsWorkflowShell.vue'
 import { useOpenItemsRouteContext } from '../features/open-items/useOpenItemsRouteContext'
 import {
+  OPEN_ITEMS_APPLY_BATCH_LIMIT,
   docLabel,
   fmtMoney,
   fmtDateOnly,
@@ -51,6 +52,10 @@ const error = ref<string | null>(null)
 const data = ref<ReceivablesOpenItemsDetailsResponseDto | null>(null)
 const activeTab = ref<OpenItemsTabKey>('charges')
 const wizardSelectedKeys = ref<string[]>([])
+const OPEN_ITEMS_PAGE_SIZE = 100
+const pageOffsets = ref<Record<OpenItemsTabKey, number>>({ charges: 0, credits: 0, applied: 0 })
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const RECEIVABLE_CHARGE_SOURCE_TYPES = [
   'pm.receivable_charge',
@@ -87,9 +92,14 @@ const {
   route,
   router,
   queryKey: 'leaseId',
-  lookupById: async (leaseId) => (await getDocumentById('pm.lease', leaseId)).display ?? leaseId,
-  search: async (query) => {
-    const response = await getDocumentPage('pm.lease', { search: query, offset: 0, limit: 20 })
+  lookupById: async (leaseId, options) => (
+    await (options ? getDocumentById('pm.lease', leaseId, options) : getDocumentById('pm.lease', leaseId))
+  ).display ?? leaseId,
+  search: async (query, options) => {
+    const request = { search: query, offset: 0, limit: 20 }
+    const response = options
+      ? await getDocumentPage('pm.lease', request, options)
+      : await getDocumentPage('pm.lease', request)
     return (response.items ?? []).map((item) => ({ id: item.id, label: item.display ?? item.id }))
   },
   openTarget: async (value) => buildLookupFieldTargetUrl({
@@ -234,28 +244,74 @@ const creditGrid = computed(() => ({
   onActivate: (id: string) => openDocument(resolveCreditDocumentType(id), id),
 }))
 
+const chargePage = computed(() => ({
+  offset: data.value?.chargeOffset ?? pageOffsets.value.charges,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.chargeCount ?? data.value?.charges.length ?? 0,
+  hasMore: data.value?.chargesHaveMore ?? false,
+}))
+
+const creditPage = computed(() => ({
+  offset: data.value?.creditOffset ?? pageOffsets.value.credits,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.creditCount ?? data.value?.credits.length ?? 0,
+  hasMore: data.value?.creditsHaveMore ?? false,
+}))
+
+const appliedPage = computed(() => ({
+  offset: data.value?.allocationOffset ?? pageOffsets.value.applied,
+  limit: data.value?.limit ?? OPEN_ITEMS_PAGE_SIZE,
+  total: data.value?.allocationCount ?? data.value?.allocations.length ?? 0,
+  hasMore: data.value?.allocationsHaveMore ?? false,
+}))
+
 async function openDocument(documentType: string, id: string): Promise<void> {
   await router.push(`/documents/${documentType}/${id}`)
 }
 
-async function load(): Promise<void> {
+async function loadCurrentPage(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
   const leaseId = leaseIdFromRoute.value
   if (!leaseId) {
     data.value = null
     error.value = null
+    loading.value = false
     return
   }
 
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   try {
-    data.value = await getReceivablesOpenItemsDetails({ leaseId })
+    const nextData = await getReceivablesOpenItemsDetails({
+      leaseId,
+      chargeOffset: pageOffsets.value.charges,
+      creditOffset: pageOffsets.value.credits,
+      allocationOffset: pageOffsets.value.applied,
+      limit: OPEN_ITEMS_PAGE_SIZE,
+    }, { signal: controller.signal })
+    if (sequence !== loadSequence) return
+    data.value = nextData
   } catch (cause) {
+    if (sequence !== loadSequence) return
     error.value = cause instanceof Error ? cause.message : String(cause)
     data.value = null
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
+}
+
+async function load(): Promise<void> {
+  pageOffsets.value = { charges: 0, credits: 0, applied: 0 }
+  await loadCurrentPage()
+}
+
+async function changePage(request: { tab: OpenItemsTabKey; offset: number }): Promise<void> {
+  pageOffsets.value = { ...pageOffsets.value, [request.tab]: request.offset }
+  await loadCurrentPage()
 }
 
 async function refresh() {
@@ -317,14 +373,17 @@ const {
   summary,
   activeTab,
   toasts,
-  suggestFactory: async () => {
+  suggestFactory: async (options) => {
     const leaseId = leaseIdFromRoute.value
     if (!leaseId) throw new Error('Select a lease first.')
-    return suggestLeaseFifoApply({
+    const request = {
       leaseId,
       createDrafts: false,
-      limit: 500,
-    })
+      limit: OPEN_ITEMS_APPLY_BATCH_LIMIT,
+    }
+    return options
+      ? suggestLeaseFifoApply(request, options)
+      : suggestLeaseFifoApply(request)
   },
   executeFactory: (suggestion) =>
     applyReceivablesBatch({
@@ -380,18 +439,18 @@ const selectedSuggestedApplies = computed(() => {
 
 const selectedSuggestedSummary = computed(() => {
   const items = selectedSuggestedApplies.value
-  const first = items[0]
+  const first = items[0]!
   return {
     count: items.length,
     paymentCount: new Set(items.map((item) => item.creditDocumentId)).size,
     chargeCount: new Set(items.map((item) => item.chargeDocumentId)).size,
-    creditLabel: first ? docLabel(null, first.creditDocumentDisplay, first.creditDocumentId) : '—',
-    chargeLabel: first ? docLabel(null, first.chargeDisplay, first.chargeDocumentId) : '—',
-    chargeOutstandingBefore: items.reduce((sum, item) => sum + Number(item.chargeOutstandingBefore ?? 0), 0),
-    chargeOutstandingAfter: items.reduce((sum, item) => sum + Number(item.chargeOutstandingAfter ?? 0), 0),
-    creditAmountBefore: items.reduce((sum, item) => sum + Number(item.creditAmountBefore ?? 0), 0),
-    creditAmountAfter: items.reduce((sum, item) => sum + Number(item.creditAmountAfter ?? 0), 0),
-    applyAmount: items.reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
+    creditLabel: docLabel(null, first.creditDocumentDisplay, first.creditDocumentId),
+    chargeLabel: docLabel(null, first.chargeDisplay, first.chargeDocumentId),
+    chargeOutstandingBefore: items.reduce((sum, item) => sum + Number(item.chargeOutstandingBefore), 0),
+    chargeOutstandingAfter: items.reduce((sum, item) => sum + Number(item.chargeOutstandingAfter), 0),
+    creditAmountBefore: items.reduce((sum, item) => sum + Number(item.creditAmountBefore), 0),
+    creditAmountAfter: items.reduce((sum, item) => sum + Number(item.creditAmountAfter), 0),
+    applyAmount: items.reduce((sum, item) => sum + Number(item.amount), 0),
   }
 })
 
@@ -403,7 +462,7 @@ const wizardSelectionTitle = computed(() => {
 
 const formattedSuggestWarnings = computed(() => {
   return (suggestData.value?.warnings ?? []).map((warning) => {
-    switch (String(warning.code ?? '').trim()) {
+    switch (warning.code.trim()) {
       case 'no_charges':
         return { title: 'No open charges', message: 'There are no outstanding charges to apply right now for this lease.' }
       case 'no_credits':
@@ -411,9 +470,9 @@ const formattedSuggestWarnings = computed(() => {
       case 'limit_reached':
         return { title: 'Suggestion limit reached', message: 'The wizard stopped early because the current suggestion limit was reached. Review the remaining items before continuing.' }
       case 'outstanding_remaining':
-        return { title: 'Some charges will remain open', message: String(warning.message ?? '').replace('Outstanding charges remain', 'Open charge balance will remain after this apply') }
+        return { title: 'Some charges will remain open', message: warning.message.replace('Outstanding charges remain', 'Open charge balance will remain after this apply') }
       case 'credit_remaining':
-        return { title: 'Some credit will remain', message: String(warning.message ?? '').replace('Unapplied credits remain', 'Available credit will remain after this apply') }
+        return { title: 'Some credit will remain', message: warning.message.replace('Unapplied credits remain', 'Available credit will remain after this apply') }
       default:
         return { title: 'Review before posting', message: warning.message }
     }
@@ -452,6 +511,17 @@ useOpenItemsRouteContext({
   syncAfterContextLoad,
   autoOpenApply: (current) => current[1],
   clearAutoOpenApplyInRoute: () => clearAutoOpenApplyInRoute(),
+  shouldSkip: (current, previous) => {
+    const [leaseId, shouldOpenApply] = current
+    const [previousLeaseId, previousShouldOpenApply] = previous ?? [null, false]
+    return leaseId === previousLeaseId && !shouldOpenApply && previousShouldOpenApply === true
+  },
+})
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
 })
 
 watch(
@@ -496,6 +566,9 @@ const tabs = computed(() => buildOpenItemsTabs(summary.value))
     :active-tab="activeTab"
     :charge-grid="chargeGrid"
     :credit-grid="creditGrid"
+    :charge-page="chargePage"
+    :credit-page="creditPage"
+    :applied-page="appliedPage"
     :applied-rows="appliedAllocations"
     applied-subtitle="Current active allocations for this lease. Reversed applies are hidden."
     applied-empty-message="No applied allocations yet for this lease. Once a credit source is applied to a charge, it will appear here."
@@ -523,6 +596,7 @@ const tabs = computed(() => buildOpenItemsTabs(summary.value))
     @apply="openApplyWizard"
     @dismissPageResult="dismissPageApplyResult"
     @update:activeTab="activeTab = $event"
+    @page="changePage"
     @update:applyWizardOpen="applyWizardOpen = $event"
     @applyWizardAction="applyWizardView === 'result' ? showApplyPlanAgain() : suggest()"
     @update:unapplyConfirmOpen="onUnapplyConfirmOpenChanged"

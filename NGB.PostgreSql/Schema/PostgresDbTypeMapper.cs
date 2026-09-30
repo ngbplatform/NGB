@@ -43,7 +43,6 @@ public sealed class PostgresDbTypeMapper : IDbTypeMapper
             "numeric" => actualDbType.StartsWith("numeric", StringComparison.OrdinalIgnoreCase)
                          || actualDbType.StartsWith("decimal", StringComparison.OrdinalIgnoreCase),
             "timestamp with time zone" => actualDbType.Equals("timestamptz", StringComparison.OrdinalIgnoreCase),
-            "jsonb" => actualDbType.Equals("jsonb", StringComparison.OrdinalIgnoreCase),
             _ => false
         };
     }

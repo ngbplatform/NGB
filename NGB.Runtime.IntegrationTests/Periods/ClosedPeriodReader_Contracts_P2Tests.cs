@@ -8,7 +8,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ClosedPeriodReader_Contracts_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

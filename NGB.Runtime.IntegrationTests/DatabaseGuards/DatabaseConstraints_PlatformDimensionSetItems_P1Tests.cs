@@ -10,8 +10,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P1: Database-level hard constraints for platform_dimension_set_items.
 /// Ensures PK/FK/check invariants are enforced even if higher-level services are bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_PlatformDimensionSetItems_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_PlatformDimensionSetItems_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static async Task<Guid> InsertDimensionAsync(NpgsqlConnection conn, Guid? explicitId = null)
@@ -217,8 +217,14 @@ public sealed class DatabaseConstraints_PlatformDimensionSetItems_P1Tests(Postgr
             new { Id = dimId });
 
         var ex = await act.Should().ThrowAsync<PostgresException>();
-        ex.Which.SqlState.Should().Be(PostgresErrorCodes.ForeignKeyViolation);
+        // PostgreSQL 18 distinguishes RESTRICT from NO ACTION with SQLSTATE 23001.
+        ex.Which.SqlState.Should().Be(conn.PostgreSqlVersion.Major >= 18
+            ? PostgresErrorCodes.RestrictViolation : PostgresErrorCodes.ForeignKeyViolation);
         ex.Which.ConstraintName.Should().Be("fk_platform_dimset_items_dimension");
+        (await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM platform_dimensions WHERE dimension_id = @Id", new { Id = dimId }))
+            .Should().Be(1, "the rejected deletion must leave the parent intact");
+        (await conn.ExecuteScalarAsync<int>("SELECT count(*) FROM platform_dimension_set_items WHERE dimension_id = @Id", new { Id = dimId }))
+            .Should().Be(1, "the referencing item must remain intact");
     }
 
     [Fact]

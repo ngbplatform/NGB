@@ -118,16 +118,27 @@ NGB_CAPACITY_RAMP_DOWN_DURATION=5m
 ```
 
 The breakpoint profile defaults to `2,4,8,12,16,24,32` iterations/second with
-`2m` ramps, `5m` holds, `80` pre-allocated VUs, and `500` max VUs. Override it
-without changing test code:
+`2m` ramps, `5m` holds, a `3m` ramp down, and `500` VUs allocated before measurement
+(`maxVUs=500`). The schedule lasts 52 minutes, with up to `75s` of graceful completion
+for iterations still running after the schedule ends. This allows for the profile's
+initial authentication jitter of up to 45 seconds plus the remaining iteration work.
+Graceful completion does not schedule additional arrivals or relax thresholds.
+
+Preallocation avoids dropped arrivals caused by initializing extra VUs during load.
+It does not guarantee zero drops: if every allocated VU is busy, arrivals can still be
+missed and the global `dropped_iterations: count<1` gate fails. For higher rates or
+longer iterations, size the pool before the run and monitor load-generator resources.
+Keep `maxVUs >= preAllocatedVUs`; set both to the same value to avoid runtime expansion.
+Override the settings without changing test code:
 
 ```env
 NGB_BREAKPOINT_RATES=2,4,8,12,16,24,32
 NGB_BREAKPOINT_RAMP_DURATION=2m
 NGB_BREAKPOINT_HOLD_DURATION=5m
 NGB_BREAKPOINT_RAMP_DOWN_DURATION=3m
-NGB_BREAKPOINT_PRE_ALLOCATED_VUS=80
+NGB_BREAKPOINT_PRE_ALLOCATED_VUS=500
 NGB_BREAKPOINT_MAX_VUS=500
+NGB_BREAKPOINT_GRACEFUL_STOP=75s
 ```
 
 ## Metrics and Tags
@@ -159,6 +170,14 @@ Standard tags:
 - `status`
 
 Do not add high-cardinality tags such as document IDs, user IDs, random suffixes, or tenant-specific identifiers.
+
+`NgbHttpClient` sets the k6 HTTP `name` tag to the stable `operation` tag, including
+on authentication retries. k6 groups the HTTP `name` and `url` metric tags under
+that name, so document IDs and query values do not create a separate series for
+each request URL. The actual request URL and HTTP method remain unchanged, and
+status, document type, report ID, and other diagnostic tags still distinguish
+their respective metrics. Requests without an `operation` retain k6's default
+URL naming; always supply a stable operation for custom dynamic routes.
 
 Vertical packages can pass stable report codes to profile builders through `reportBreakdownIds`. The framework then creates diagnostic k6 submetrics for `platform.reports.execute` by `reportId`, so exported summaries show per-report latency without the shared framework knowing vertical-specific report catalogs. When verticals add `periodProfile`, summary rows include that label as well.
 

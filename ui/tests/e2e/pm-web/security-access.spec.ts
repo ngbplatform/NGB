@@ -212,9 +212,8 @@ async function mockSecurityApis(page: Page, canManageUsers: boolean): Promise<vo
     )
   })
 
-  await page.route('**/api/security/users', async (route) => {
-    await fulfillJson(route, [
-      {
+  await page.route('**/api/security/users**', async (route) => {
+    const item = {
         userId: '11111111-1111-4111-8111-111111111111',
         authSubject: 'kc-casey',
         email: 'casey@example.test',
@@ -226,8 +225,13 @@ async function mockSecurityApis(page: Page, canManageUsers: boolean): Promise<vo
         ],
         createdAtUtc: '2026-06-01T00:00:00Z',
         updatedAtUtc: '2026-06-01T00:00:00Z',
-      },
-    ])
+      }
+    await fulfillJson(route, {
+      items: [item],
+      offset: 0,
+      limit: 100,
+      total: 1,
+    })
   })
 
   await page.route('**/api/security/roles', async (route) => {
@@ -292,7 +296,19 @@ async function mockSecurityManagementApis(page: Page): Promise<{
     const method = request.method()
 
     if (pathname === '/api/security/users' && method === 'GET') {
-      await fulfillJson(route, users.map(userListItem))
+      const url = new URL(request.url())
+      const isActive = url.searchParams.get('isActive')
+      const matchingUsers = isActive == null
+        ? users
+        : users.filter((user) => user.isActive === (isActive === 'true'))
+      const offset = Math.max(0, Number.parseInt(url.searchParams.get('offset') ?? '0', 10) || 0)
+      const limit = Math.max(1, Number.parseInt(url.searchParams.get('limit') ?? '100', 10) || 100)
+      await fulfillJson(route, {
+        items: matchingUsers.slice(offset, offset + limit).map(userListItem),
+        offset,
+        limit,
+        total: matchingUsers.length,
+      })
       return
     }
 

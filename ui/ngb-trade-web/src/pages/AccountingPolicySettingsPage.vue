@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NgbButton,
@@ -42,10 +42,12 @@ const uiForm = ref<FormMetadataDto | null>(null)
 const policy = ref<CatalogItemDto | null>(null)
 const model = ref<EntityFormModel>({})
 const auditOpen = ref(false)
+let loadSequence = 0
+let loadController: AbortController | null = null
 
 const auditEntityKind = 2
 const auditEntityId = computed(() => policy.value?.id ?? null)
-const auditEntityTitle = computed(() => String(model.value.display ?? policy.value?.display ?? 'Accounting Policy').trim() || 'Accounting Policy')
+const auditEntityTitle = computed(() => String(model.value.display ?? policy.value?.display ?? 'Accounting Policy').trim())
 
 const initialSnapshot = ref('')
 const isDirty = computed(() => initialSnapshot.value !== '' && initialSnapshot.value !== stableStringify(model.value))
@@ -112,9 +114,9 @@ function buildUiFormFrom(full: FormMetadataDto): FormMetadataDto {
   out.sections = (out.sections ?? [])
     .map((section) => ({
       ...section,
-      rows: (section.rows ?? []).filter((row) => (row.fields ?? []).length > 0),
+      rows: (section.rows ?? []).filter((row) => row.fields!.length > 0),
     }))
-    .filter((section) => (section.rows ?? []).length > 0)
+    .filter((section) => section.rows!.length > 0)
 
   if (out.sections.length === 1 && (out.sections[0].title ?? '').toLowerCase() === 'main') {
     out.sections[0].title = 'Settings'
@@ -143,18 +145,26 @@ function closeAuditLog(): void {
 }
 
 async function load(): Promise<void> {
+  const seq = ++loadSequence
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
 
   try {
-    fullMeta.value = await metaStore.ensureCatalogType(catalogType)
-    uiForm.value = fullMeta.value.form ? buildUiFormFrom(fullMeta.value.form) : null
+    const [nextMeta, page] = await Promise.all([
+      metaStore.ensureCatalogType(catalogType),
+      getCatalogPage(catalogType, {
+        offset: 0,
+        limit: 1,
+        filters: { deleted: 'active' },
+      }, { signal: controller.signal }),
+    ])
+    if (seq !== loadSequence) return
 
-    const page = await getCatalogPage(catalogType, {
-      offset: 0,
-      limit: 1,
-      filters: { deleted: 'active' },
-    })
+    fullMeta.value = nextMeta
+    uiForm.value = nextMeta.form ? buildUiFormFrom(nextMeta.form) : null
 
     policy.value = page.items?.[0] ?? null
     model.value = { ...((policy.value?.payload?.fields ?? {}) as EntityFormModel) }
@@ -164,11 +174,19 @@ async function load(): Promise<void> {
 
     initialSnapshot.value = stableStringify(model.value)
   } catch (cause) {
+    if (seq !== loadSequence) return
     error.value = toErrorMessage(cause, 'Failed to load the accounting policy.')
   } finally {
-    loading.value = false
+    if (seq === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
+})
 
 async function save(): Promise<void> {
   if (!policy.value || !fullMeta.value?.form || saving.value) return

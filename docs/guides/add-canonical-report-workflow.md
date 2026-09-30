@@ -54,13 +54,16 @@ Define:
 - paging policy;
 - typed drilldown or interaction expectations.
 
-Because `ReportEngine` always starts by resolving the definition and validating the request, the definition is the front door of the report.
+`ReportQueryService` and `ReportEngine` resolve the definition and validate the effective request
+before dispatch, so the definition is the front door of the report.
 
 ## 3. Implement the canonical execution path
 
 **Template guidance grounded by verified runtime flow**
 
-The verified `ReportEngine` anchor proves that runtime always delegates execution through a plan executor. For canonical reports, the execution path should therefore be registered as part of the shared reporting engine, not implemented as a parallel API endpoint.
+Register canonical executors in the shared reporting pipeline. `ReportEngine` dispatches to
+specialized accounting page executors where supported and otherwise uses `IReportPlanExecutor`.
+`ReportQueryService` wraps the execution in a read session and protects continuation cursors.
 
 Recommended structure:
 
@@ -73,14 +76,13 @@ Recommended structure:
 
 Canonical reports often fail when paging is bolted on too late.
 
-Decide early whether the report should be:
+The interactive HTTP endpoint requires bounded cursor pages; it rejects nonzero offsets and
+`disablePaging=true`. Define deterministic ordering, a continuation cursor, `hasMore`, and any
+opening/running-balance semantics. Treat a nullable total as unavailable, not as zero.
 
-- bounded and non-paged;
-- offset-paged;
-- cursor-paged;
-- opening-balance aware.
-
-The verified `ReportEngine` source shows that paging behavior is a first-class concept in report execution, not an afterthought. Use that intentionally.
+Complete downloads use `IReportDownloadService` and streaming executors rather than the bounded
+`ExecuteExportSheetAsync` helper. Test the page and download paths separately. See
+[Report Browsing and Direct Downloads](/architecture/report-execution-results).
 
 ## 5. Prefer purpose-built reads over generic overreach
 

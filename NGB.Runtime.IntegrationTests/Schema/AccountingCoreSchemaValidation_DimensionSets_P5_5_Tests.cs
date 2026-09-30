@@ -8,15 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_DimensionSets_P5_5_Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_DimensionSets_P5_5_Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenReservedEmptyDimensionSetRowMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Dimension sets are append-only, but TRUNCATE bypasses row-level triggers and removes the reserved Guid.Empty row.
         await TruncateTableCascadeAsync(Fixture.ConnectionString, "platform_dimension_sets");
 

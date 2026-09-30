@@ -11,7 +11,7 @@ using NGB.Contracts.Services;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Contracts.Receivables;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.Security;
 using NGB.PropertyManagement.Runtime;
 using Xunit;
 
@@ -38,8 +38,8 @@ public sealed class PmReceivablesUnapply_Endpoint_P0Tests : IAsyncLifetime
         var catalogs = scope.ServiceProvider.GetRequiredService<ICatalogService>();
         var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
         await scope.ServiceProvider
-            .GetRequiredService<PropertyManagementSecuritySeeder>()
-            .EnsureSeededAsync(CancellationToken.None);
+            .GetRequiredService<IPropertyManagementSecuritySetupService>()
+            .EnsureDefaultsAsync(CancellationToken.None);
 
         var ctx = await CreateLeaseChargeAndPaymentAsync(setup, catalogs, documents, suffix: "unapply", unitNo: "301", chargeAmount: 100m, paymentAmount: 120m);
         var applyId = await ExecuteCustomApplyAsync(client, ctx.Payment.Id, ctx.Charge.Id, 70m);
@@ -80,8 +80,8 @@ public sealed class PmReceivablesUnapply_Endpoint_P0Tests : IAsyncLifetime
         var catalogs = scope.ServiceProvider.GetRequiredService<ICatalogService>();
         var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
         await scope.ServiceProvider
-            .GetRequiredService<PropertyManagementSecuritySeeder>()
-            .EnsureSeededAsync(CancellationToken.None);
+            .GetRequiredService<IPropertyManagementSecuritySetupService>()
+            .EnsureDefaultsAsync(CancellationToken.None);
 
         var ctx = await CreateLeaseChargeAndPaymentAsync(setup, catalogs, documents, suffix: "repeat", unitNo: "302", chargeAmount: 80m, paymentAmount: 80m);
         var applyId = await ExecuteCustomApplyAsync(client, ctx.Payment.Id, ctx.Charge.Id, 80m);

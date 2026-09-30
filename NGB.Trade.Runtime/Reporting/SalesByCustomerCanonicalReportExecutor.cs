@@ -1,6 +1,7 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Trade.Reporting;
@@ -14,6 +15,22 @@ public sealed class SalesByCustomerCanonicalReportExecutor(
 {
     public string ReportCode => TradeCodes.SalesByCustomerReport;
 
+    public ReportExecutionRequestDto PrepareExecution(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        DateTimeOffset utcNow)
+    {
+        var parameters = new Dictionary<string, string>(request.Parameters ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        var to = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "to_utc")
+            ?? DateOnly.FromDateTime(utcNow.UtcDateTime);
+        parameters["to_utc"] = to.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        var date = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "from_utc")
+            ?? new DateOnly(to.Year, to.Month, 1);
+        parameters["from_utc"] = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        return request with { Parameters = parameters };
+    }
+
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,
         ReportExecutionRequestDto request,
@@ -23,23 +40,31 @@ public sealed class SalesByCustomerCanonicalReportExecutor(
         var customerIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "customer_id");
         var itemIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "item_id");
         var warehouseIds = CanonicalReportExecutionHelper.GetOptionalGuidFilters(definition, request, "warehouse_id");
+        var cursorKind = BuildCursorKind(fromInclusive, toInclusive, customerIds, itemIds, warehouseIds);
 
-        var ordered = (await analytics.GetSalesByCustomerAsync(fromInclusive, toInclusive, customerIds, itemIds, warehouseIds, ct))
-            .Where(static x => x.SalesDocumentCount != 0 || x.ReturnDocumentCount != 0)
-            .ToArray();
-
-        var offset = Math.Max(0, request.Offset);
-        var limit = request.DisablePaging
-            ? ordered.Length
-            : (request.Limit <= 0 ? 100 : request.Limit);
-        var pageRows = ordered.Skip(offset).Take(limit).ToArray();
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<TradeAnalyticsPageCursor<SalesByCustomerTotals>>(
+                cursorKind, request.Cursor);
+        var offset = cursor?.Offset ?? Math.Max(0, request.Offset);
+        var limit = CanonicalReportExecutionHelper.ResolvePageDataLimit(
+            definition,
+            request,
+            defaultLimit: 100,
+            reservedRows: request.Layout?.ShowGrandTotals != false ? 1 : 0);
+        var page = cursor is not null || (!request.DisablePaging && offset == 0)
+            ? await analytics.GetSalesByCustomerCursorPageAsync(
+                fromInclusive, toInclusive, customerIds, itemIds, warehouseIds, cursor, limit, ct)
+            : await analytics.GetSalesByCustomerPageAsync(
+                fromInclusive, toInclusive, customerIds, itemIds, warehouseIds, offset, limit, ct);
+        var pageRows = page.Rows;
 
         var rows = pageRows
             .Select(row => ToDetailRow(row, fromInclusive, toInclusive))
             .ToList();
 
-        if (request.Layout?.ShowGrandTotals != false && ordered.Length > 0)
-            rows.Add(ToTotalRow(ordered));
+        if (request.Layout?.ShowGrandTotals != false && page.Total > 0)
+            rows.Add(ToTotalRow(page.Totals));
 
         var sheet = new ReportSheetDto(
             Columns:
@@ -63,13 +88,26 @@ public sealed class SalesByCustomerCanonicalReportExecutor(
                     ["executor"] = "canonical-trd-sales-by-customer"
                 }));
 
+        var hasMore = page.HasMore || cursor is null && offset + pageRows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new TradeAnalyticsPageCursor<SalesByCustomerTotals>(
+                    offset + pageRows.Count,
+                    page.Total,
+                    page.Totals,
+                    page.NextAfterAmount,
+                    page.NextAfterDisplay,
+                    page.NextAfterId))
+            : null;
+
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
             sheet: sheet,
             offset: offset,
             limit: limit,
-            total: ordered.Length,
-            hasMore: offset + pageRows.Length < ordered.Length,
-            nextCursor: null,
+            total: page.Total,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-trd-sales-by-customer",
@@ -77,6 +115,20 @@ public sealed class SalesByCustomerCanonicalReportExecutor(
                 ["to_utc"] = toInclusive.ToString("yyyy-MM-dd")
             });
     }
+
+    private string BuildCursorKind(
+        DateOnly fromInclusive,
+        DateOnly toInclusive,
+        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyCollection<Guid> itemIds,
+        IReadOnlyCollection<Guid> warehouseIds)
+        => SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            fromInclusive.ToString("yyyy-MM-dd"),
+            toInclusive.ToString("yyyy-MM-dd"),
+            string.Join(',', customerIds.Order()),
+            string.Join(',', itemIds.Order()),
+            string.Join(',', warehouseIds.Order()));
 
     private static ReportSheetRowDto ToDetailRow(
         SalesByCustomerSummaryRow row,
@@ -115,32 +167,21 @@ public sealed class SalesByCustomerCanonicalReportExecutor(
                 DecimalCell(row.MarginPercent)
             ]);
 
-    private static ReportSheetRowDto ToTotalRow(IReadOnlyList<SalesByCustomerSummaryRow> rows)
+    private static ReportSheetRowDto ToTotalRow(SalesByCustomerTotals totals)
     {
-        var salesDocumentCount = rows.Sum(static x => x.SalesDocumentCount);
-        var returnDocumentCount = rows.Sum(static x => x.ReturnDocumentCount);
-        var grossSales = rows.Sum(static x => x.GrossSales);
-        var returnedAmount = rows.Sum(static x => x.ReturnedAmount);
-        var netSales = rows.Sum(static x => x.NetSales);
-        var netCogs = rows.Sum(static x => x.NetCogs);
-        var grossMargin = rows.Sum(static x => x.GrossMargin);
-        var marginPercent = netSales == 0m
-            ? 0m
-            : Math.Round((grossMargin / netSales) * 100m, 2, MidpointRounding.AwayFromZero);
-
         return new ReportSheetRowDto(
             ReportRowKind.Total,
             Cells:
             [
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue("Total"), "Total", "string", SemanticRole: "label"),
-                IntCell(salesDocumentCount, "total"),
-                IntCell(returnDocumentCount, "total"),
-                DecimalCell(grossSales, "total"),
-                DecimalCell(returnedAmount, "total"),
-                DecimalCell(netSales, "total"),
-                DecimalCell(netCogs, "total"),
-                DecimalCell(grossMargin, "total"),
-                DecimalCell(marginPercent, "total")
+                IntCell(totals.SalesDocumentCount, "total"),
+                IntCell(totals.ReturnDocumentCount, "total"),
+                DecimalCell(totals.GrossSales, "total"),
+                DecimalCell(totals.ReturnedAmount, "total"),
+                DecimalCell(totals.NetSales, "total"),
+                DecimalCell(totals.NetCogs, "total"),
+                DecimalCell(totals.GrossMargin, "total"),
+                DecimalCell(totals.MarginPercent, "total")
             ],
             SemanticRole: "grand_total");
     }

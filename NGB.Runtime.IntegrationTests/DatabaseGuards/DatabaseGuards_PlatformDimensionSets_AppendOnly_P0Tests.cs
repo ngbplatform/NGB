@@ -10,14 +10,13 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P0: platform_dimension_sets is append-only at the database level.
 /// A DimensionSetId represents an immutable snapshot; once materialized it must never change.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseGuards_PlatformDimensionSets_AppendOnly_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseGuards_PlatformDimensionSets_AppendOnly_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PlatformDimensionSets_IsAppendOnly_UpdateAndDeleteThrow()
     {
-        await Fixture.ResetDatabaseAsync();
         await using var conn = new NpgsqlConnection(Fixture.ConnectionString);
         await conn.OpenAsync();
 

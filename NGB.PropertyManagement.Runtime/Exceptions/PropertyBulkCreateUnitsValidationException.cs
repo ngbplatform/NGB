@@ -103,7 +103,7 @@ public sealed class PropertyBulkCreateUnitsValidationException(
                 new Dictionary<string, object?> { ["floorSize"] = floorSize }));
     }
 
-    public static PropertyBulkCreateUnitsValidationException TooManyUnitsRequested(int count, int max)
+    public static PropertyBulkCreateUnitsValidationException TooManyUnitsRequested(long count, int max)
     {
         var message = $"You can create up to {max:N0} units in one run.";
         return new(

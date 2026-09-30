@@ -131,10 +131,10 @@ public static class PlatformMigratorCli
         }
     }
 
-    private static bool HasFlag(string[] args, string name)
+    internal static bool HasFlag(string[] args, string name)
         => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
 
-    private static string? GetArgValue(string[] args, string name)
+    internal static string? GetArgValue(string[] args, string name)
     {
         for (var i = 0; i < args.Length; i++)
         {
@@ -150,7 +150,7 @@ public static class PlatformMigratorCli
         return null;
     }
 
-    private static IReadOnlyCollection<string>? ParseModules(string[] args)
+    internal static IReadOnlyCollection<string>? ParseModules(string[] args)
     {
         // --modules platform,demo.trade
         var raw = GetArgValue(args, "--modules");
@@ -176,7 +176,7 @@ public static class PlatformMigratorCli
         return list.Count == 0 ? null : list;
     }
 
-    private static MigrationExecutionOptions? BuildExecutionOptions(string[] args)
+    internal static MigrationExecutionOptions? BuildExecutionOptions(string[] args)
     {
         static int? ReadInt(string[] args, string name)
         {
@@ -200,30 +200,35 @@ public static class PlatformMigratorCli
         return new MigrationExecutionOptions(lockTimeout, stmtTimeout);
     }
 
-    private static SchemaMigrationExecutionOptions BuildSchemaExecutionOptions(string[] args, bool k8s)
+    internal static SchemaMigrationExecutionOptions BuildSchemaExecutionOptions(
+        string[] args,
+        bool k8s,
+        Func<string, string?>? getEnvironmentVariable = null)
     {
+        getEnvironmentVariable ??= Environment.GetEnvironmentVariable;
+
         var appName =
             GetArgValue(args, "--application-name") ??
             GetArgValue(args, "--app-name") ??
-            Environment.GetEnvironmentVariable("NGB_APPLICATION_NAME");
+            getEnvironmentVariable("NGB_APPLICATION_NAME");
 
         if (string.IsNullOrWhiteSpace(appName) && k8s)
         {
-            var pod = Environment.GetEnvironmentVariable("HOSTNAME");
+            var pod = getEnvironmentVariable("HOSTNAME");
             appName = string.IsNullOrWhiteSpace(pod)
                 ? "ngb-migrator"
                 : $"ngb-migrator:{TrimMax(pod, 32)}";
         }
 
-        var modeRaw = GetArgValue(args, "--schema-lock-mode") ??
-                      Environment.GetEnvironmentVariable("NGB_SCHEMA_LOCK_MODE");
+        var modeRaw = GetArgValue(args, "--schema-lock-mode")
+            ?? getEnvironmentVariable("NGB_SCHEMA_LOCK_MODE");
 
         var lockMode = ParseLockMode(modeRaw, defaultMode: SchemaMigrationLockMode.Wait);
 
         var waitSecondsRaw =
             GetArgValue(args, "--schema-lock-wait-seconds") ??
             GetArgValue(args, "--schema-lock-wait") ??
-            Environment.GetEnvironmentVariable("NGB_SCHEMA_LOCK_WAIT_SECONDS");
+            getEnvironmentVariable("NGB_SCHEMA_LOCK_WAIT_SECONDS");
 
         TimeSpan? waitTimeout = null;
         if (int.TryParse(waitSecondsRaw, out var ws) && ws > 0)
@@ -239,7 +244,7 @@ public static class PlatformMigratorCli
         return new SchemaMigrationExecutionOptions(appName, lockMode, waitTimeout);
     }
 
-    private static SchemaMigrationLockMode ParseLockMode(string? raw, SchemaMigrationLockMode defaultMode)
+    internal static SchemaMigrationLockMode ParseLockMode(string? raw, SchemaMigrationLockMode defaultMode)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return defaultMode;
@@ -253,10 +258,10 @@ public static class PlatformMigratorCli
         };
     }
 
-    private static string TrimMax(string s, int max)
+    internal static string TrimMax(string s, int max)
         => s.Length <= max ? s : s.Substring(0, max);
 
-    private static void PrintEmbeddedScripts(IReadOnlyCollection<System.Reflection.Assembly> assemblies, bool showScripts)
+    internal static void PrintEmbeddedScripts(IReadOnlyCollection<System.Reflection.Assembly> assemblies, bool showScripts)
     {
         var all = new List<string>();
 

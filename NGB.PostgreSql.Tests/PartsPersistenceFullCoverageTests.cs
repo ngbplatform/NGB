@@ -1,0 +1,424 @@
+using FluentAssertions;
+using System.Data;
+using NGB.Metadata.Base;
+using NGB.Metadata.Catalogs.Hybrid;
+using NGB.Metadata.Documents.Hybrid;
+using NGB.PostgreSql.Catalogs;
+using NGB.PostgreSql.Documents;
+using NGB.PostgreSql.Tests.TestDoubles;
+using NGB.Tools.Exceptions;
+using Xunit;
+
+namespace NGB.PostgreSql.Tests;
+
+public sealed class PartsPersistenceFullCoverageTests
+{
+    [Fact]
+    public async Task Readers_validate_required_arguments_before_opening_a_connection()
+    {
+        var catalog = new PostgresCatalogPartsReader(null!);
+        var document = new PostgresDocumentPartsReader(null!);
+
+        await AssertRequired(() => catalog.GetPartsAsync(null!, Guid.NewGuid()), "partTables");
+        await AssertRequired(() => catalog.GetPartsAsync([], Guid.Empty), "catalogId");
+        await AssertRequired(() => document.GetPartsAsync(null!, Guid.NewGuid()), "partTables");
+        await AssertRequired(() => document.GetPartsAsync([], Guid.Empty), "documentId");
+        (await catalog.GetPartsAsync([], Guid.NewGuid())).Should().BeEmpty();
+        (await document.GetPartsAsync([], Guid.NewGuid())).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Readers_skip_null_head_and_technical_only_metadata_and_reject_blank_identifiers()
+    {
+        var catalogConnection = new RecordingDbConnection();
+        var catalog = new PostgresCatalogPartsReader(new RecordingUnitOfWork(catalogConnection));
+        var catalogResult = await catalog.GetPartsAsync(
+            [
+                null!,
+                CatalogTable("head", TableKind.Head, CatalogColumn("value")),
+                CatalogTable("technical", TableKind.Part,
+                    CatalogColumn("catalog_id"), CatalogColumn("payload", ColumnType.Json))
+            ],
+            Guid.NewGuid());
+        catalogResult.Should().ContainKey("technical").WhoseValue.Should().BeEmpty();
+        catalogConnection.Commands.Should().BeEmpty();
+
+        var documentConnection = new RecordingDbConnection();
+        var document = new PostgresDocumentPartsReader(new RecordingUnitOfWork(documentConnection));
+        var documentResult = await document.GetPartsAsync(
+            [
+                null!,
+                DocumentTable("head", TableKind.Head, DocumentColumn("value")),
+                DocumentTable("technical", TableKind.Part,
+                    DocumentColumn("document_id"), DocumentColumn("payload", ColumnType.Json))
+            ],
+            Guid.NewGuid());
+        documentResult.Should().ContainKey("technical").WhoseValue.Should().BeEmpty();
+        documentConnection.Commands.Should().BeEmpty();
+
+        await AssertRequired(
+            () => catalog.GetPartsAsync([CatalogTable(" ", TableKind.Part, CatalogColumn("value"))], Guid.NewGuid()),
+            "TableName");
+        await AssertRequired(
+            () => document.GetPartsAsync([DocumentTable(" ", TableKind.Part, DocumentColumn("value"))], Guid.NewGuid()),
+            "TableName");
+        await AssertInvalid(
+            () => catalog.GetPartsAsync([CatalogTable("part", TableKind.Part, CatalogColumn(""))], Guid.NewGuid()));
+        await AssertInvalid(
+            () => document.GetPartsAsync([DocumentTable("part", TableKind.Part, DocumentColumn(""))], Guid.NewGuid()));
+    }
+
+    [Theory]
+    [InlineData("ordinal", "ORDER BY p.\"ordinal\"")]
+    [InlineData("line_no", "ORDER BY p.\"line_no\"")]
+    [InlineData("entry_no", "ORDER BY p.\"entry_no\"")]
+    [InlineData("id", "ORDER BY p.\"id\"")]
+    [InlineData("value", "")]
+    public async Task Readers_apply_each_supported_ordering_heuristic(string column, string expectedOrderBy)
+    {
+        var emptyRows = new DataTable();
+        emptyRows.Columns.Add(column, typeof(object));
+        var catalogConnection = new RecordingDbConnection(_ => emptyRows.CreateDataReader());
+        var catalog = new PostgresCatalogPartsReader(new RecordingUnitOfWork(catalogConnection));
+        await catalog.GetPartsAsync(
+            [CatalogTable("catalog_part", TableKind.Part, CatalogColumn(column))],
+            Guid.NewGuid());
+        catalogConnection.Commands.Should().ContainSingle();
+        if (expectedOrderBy.Length == 0)
+            catalogConnection.Commands[0].CommandText.Should().NotContain("ORDER BY");
+        else
+            catalogConnection.Commands[0].CommandText.Should().Contain(expectedOrderBy);
+
+        var documentConnection = new RecordingDbConnection(_ => emptyRows.CreateDataReader());
+        var document = new PostgresDocumentPartsReader(new RecordingUnitOfWork(documentConnection));
+        await document.GetPartsAsync(
+            [DocumentTable("document_part", TableKind.Part, DocumentColumn(column))],
+            Guid.NewGuid());
+        documentConnection.Commands.Should().ContainSingle();
+        if (expectedOrderBy.Length == 0)
+            documentConnection.Commands[0].CommandText.Should().NotContain("ORDER BY");
+        else
+            documentConnection.Commands[0].CommandText.Should().Contain(expectedOrderBy);
+    }
+
+    [Fact]
+    public async Task Readers_materialize_rows_as_case_insensitive_dictionaries()
+    {
+        var catalogRows = new DataTable();
+        catalogRows.Columns.Add("value", typeof(string));
+        catalogRows.Rows.Add("catalog-value");
+        var catalog = new PostgresCatalogPartsReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(_ => catalogRows.CreateDataReader())));
+        var catalogResult = await catalog.GetPartsAsync(
+            [CatalogTable("catalog_part", TableKind.Part, CatalogColumn("value"))],
+            Guid.NewGuid());
+        catalogResult["catalog_part"].Should().ContainSingle()
+            .Which.Should().Contain("VALUE", "catalog-value");
+
+        var documentRows = new DataTable();
+        documentRows.Columns.Add("value", typeof(string));
+        documentRows.Rows.Add("document-value");
+        var document = new PostgresDocumentPartsReader(
+            new RecordingUnitOfWork(new RecordingDbConnection(_ => documentRows.CreateDataReader())));
+        var documentResult = await document.GetPartsAsync(
+            [DocumentTable("document_part", TableKind.Part, DocumentColumn("value"))],
+            Guid.NewGuid());
+        documentResult["document_part"].Should().ContainSingle()
+            .Which.Should().Contain("VALUE", "document-value");
+    }
+
+    [Fact]
+    public async Task Readers_fetch_all_physical_parts_in_one_database_command()
+    {
+        static DataSet Results(string first, string second)
+        {
+            var dataSet = new DataSet();
+            var firstTable = new DataTable();
+            firstTable.Columns.Add("value", typeof(string));
+            firstTable.Rows.Add(first);
+            dataSet.Tables.Add(firstTable);
+            var secondTable = new DataTable();
+            secondTable.Columns.Add("value", typeof(string));
+            secondTable.Rows.Add(second);
+            dataSet.Tables.Add(secondTable);
+            return dataSet;
+        }
+
+        var catalogResults = Results("catalog-a", "catalog-b");
+        var catalogConnection = new RecordingDbConnection(_ => catalogResults.CreateDataReader());
+        var catalog = new PostgresCatalogPartsReader(new RecordingUnitOfWork(catalogConnection));
+        var catalogParts = await catalog.GetPartsAsync(
+            [
+                CatalogTable("catalog_part_a", TableKind.Part, CatalogColumn("value")),
+                CatalogTable("catalog_part_b", TableKind.Part, CatalogColumn("value"))
+            ],
+            Guid.NewGuid());
+
+        catalogConnection.Commands.Should().ContainSingle();
+        catalogParts["catalog_part_a"].Should().ContainSingle().Which.Should().Contain("value", "catalog-a");
+        catalogParts["catalog_part_b"].Should().ContainSingle().Which.Should().Contain("value", "catalog-b");
+
+        var documentResults = Results("document-a", "document-b");
+        var documentConnection = new RecordingDbConnection(_ => documentResults.CreateDataReader());
+        var document = new PostgresDocumentPartsReader(new RecordingUnitOfWork(documentConnection));
+        var documentParts = await document.GetPartsAsync(
+            [
+                DocumentTable("document_part_a", TableKind.Part, DocumentColumn("value")),
+                DocumentTable("document_part_b", TableKind.Part, DocumentColumn("value"))
+            ],
+            Guid.NewGuid());
+
+        documentConnection.Commands.Should().ContainSingle();
+        documentParts["document_part_a"].Should().ContainSingle().Which.Should().Contain("value", "document-a");
+        documentParts["document_part_b"].Should().ContainSingle().Which.Should().Contain("value", "document-b");
+    }
+
+    [Fact]
+    public async Task Writers_validate_required_arguments_and_empty_metadata_without_a_transaction()
+    {
+        var catalog = new PostgresCatalogPartsWriter(null!);
+        var document = new PostgresDocumentPartsWriter(null!);
+        var catalogRows = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>();
+        var documentRows = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>();
+
+        await AssertRequired(() => catalog.ReplacePartsAsync([], Guid.Empty, catalogRows), "catalogId");
+        await AssertRequired(() => catalog.ReplacePartsAsync(null!, Guid.NewGuid(), catalogRows), "partTables");
+        await AssertRequired(() => catalog.ReplacePartsAsync([], Guid.NewGuid(), null!), "rowsByTable");
+        await catalog.ReplacePartsAsync([], Guid.NewGuid(), catalogRows);
+
+        await AssertRequired(() => document.ReplacePartsAsync([], Guid.Empty, documentRows), "documentId");
+        await AssertRequired(() => document.ReplacePartsAsync(null!, Guid.NewGuid(), documentRows), "partTables");
+        await AssertRequired(() => document.ReplacePartsAsync([], Guid.NewGuid(), null!), "rowsByTable");
+        await document.ReplacePartsAsync([], Guid.NewGuid(), documentRows);
+    }
+
+    [Fact]
+    public async Task Catalog_writer_covers_skip_empty_invalid_and_successful_rows()
+    {
+        var connection = new RecordingDbConnection();
+        var sut = new PostgresCatalogPartsWriter(new RecordingUnitOfWork(connection, hasActiveTransaction: true));
+        var id = Guid.NewGuid();
+        var part = CatalogTable("catalog_part", TableKind.Part, CatalogColumn("value"));
+
+        await sut.ReplacePartsAsync([null!, CatalogTable("head", TableKind.Head, CatalogColumn("value"))], id, EmptyRows());
+        connection.Commands.Should().BeEmpty();
+        await AssertInvalid(() => sut.ReplacePartsAsync(
+            [CatalogTable(" ", TableKind.Part, CatalogColumn("value"))], id, EmptyRows()));
+
+        await sut.ReplacePartsAsync([part], id, EmptyRows());
+        await sut.ReplacePartsAsync([part], id, Rows(("catalog_part", null!)));
+
+        await AssertInvalid(() => sut.ReplacePartsAsync([part], id, Rows(("catalog_part", [null!]))));
+        await AssertInvalid(() => sut.ReplacePartsAsync([part], id, Rows(("catalog_part", [Row(("catalog_id", id))]))));
+        await AssertInvalid(() => sut.ReplacePartsAsync([part], id, Rows(("catalog_part", [Row(("unknown", 1))]))));
+        await AssertInvalid(() => sut.ReplacePartsAsync([part], id, Rows(("catalog_part", [Row()]))));
+        await AssertInvalid(() => sut.ReplacePartsAsync(
+            [CatalogTable("catalog_part", TableKind.Part, CatalogColumn(""))],
+            id,
+            Rows(("catalog_part", [Row(("", 1))]))));
+
+        await sut.ReplacePartsAsync(
+            [part],
+            id,
+            Rows(("catalog_part", [Row(("value", 1)), Row()])));
+        await sut.ReplacePartsAsync(
+            [CatalogTable(
+                "catalog_part_filtered",
+                TableKind.Part,
+                CatalogColumn("catalog_id"),
+                CatalogColumn("payload", ColumnType.Json),
+                CatalogColumn("value"))],
+            id,
+            Rows(("catalog_part_filtered", [Row(("value", 2))])));
+        connection.Commands.Should().Contain(x => x.CommandText.Contains("INSERT INTO \"catalog_part\""));
+
+        var largeRows = Enumerable.Range(0, 501)
+            .Select(index => Row(("value", index)))
+            .ToArray();
+        var beforeLargeWrite = connection.Commands.Count;
+        await sut.ReplacePartsAsync([part], id, Rows(("catalog_part", largeRows)));
+        var largeWriteCommands = connection.Commands.Skip(beforeLargeWrite).ToArray();
+        largeWriteCommands.Should().ContainSingle("the delete and bounded insert statements should share one round trip");
+        largeWriteCommands[0].CommandText
+            .Split("INSERT INTO \"catalog_part\"", StringSplitOptions.None)
+            .Length.Should().Be(3, "501 rows are emitted as two statements capped at 500 rows each");
+    }
+
+    [Fact]
+    public async Task Document_writer_covers_skip_empty_invalid_and_successful_rows()
+    {
+        var connection = new RecordingDbConnection();
+        var sut = new PostgresDocumentPartsWriter(new RecordingUnitOfWork(connection, hasActiveTransaction: true));
+        var id = Guid.NewGuid();
+        var part = DocumentTable("document_part", TableKind.Part, DocumentColumn("value"));
+
+        await sut.ReplacePartsAsync([null!, DocumentTable("head", TableKind.Head, DocumentColumn("value"))], id, EmptyRows());
+        connection.Commands.Should().BeEmpty();
+        await AssertInvalid(() => sut.ReplacePartsAsync(
+            [DocumentTable(" ", TableKind.Part, DocumentColumn("value"))], id, EmptyRows()));
+
+        await sut.ReplacePartsAsync([part], id, EmptyRows());
+        await sut.ReplacePartsAsync([part], id, Rows(("document_part", null!)));
+
+        await AssertInvalid(() => sut.ReplacePartsAsync([part], id, Rows(("document_part", [null!]))));
+        await AssertInvalid(() => sut.ReplacePartsAsync([part], id, Rows(("document_part", [Row(("document_id", id))]))));
+        await AssertInvalid(() => sut.ReplacePartsAsync([part], id, Rows(("document_part", [Row(("unknown", 1))]))));
+        await AssertInvalid(() => sut.ReplacePartsAsync([part], id, Rows(("document_part", [Row()]))));
+        await AssertInvalid(() => sut.ReplacePartsAsync(
+            [DocumentTable("document_part", TableKind.Part, DocumentColumn(""))],
+            id,
+            Rows(("document_part", [Row(("", 1))]))));
+
+        await sut.ReplacePartsAsync(
+            [part],
+            id,
+            Rows(("document_part", [Row(("value", 1)), Row()])));
+        await sut.ReplacePartsAsync(
+            [DocumentTable(
+                "document_part_filtered",
+                TableKind.Part,
+                DocumentColumn("document_id"),
+                DocumentColumn("payload", ColumnType.Json),
+                DocumentColumn("value"))],
+            id,
+            Rows(("document_part_filtered", [Row(("value", 2))])));
+        connection.Commands.Should().Contain(x => x.CommandText.Contains("INSERT INTO \"document_part\""));
+
+        var largeRows = Enumerable.Range(0, 501)
+            .Select(index => Row(("value", index)))
+            .ToArray();
+        var beforeLargeWrite = connection.Commands.Count;
+        await sut.ReplacePartsAsync([part], id, Rows(("document_part", largeRows)));
+        var largeWriteCommands = connection.Commands.Skip(beforeLargeWrite).ToArray();
+        largeWriteCommands.Should().ContainSingle("the delete and bounded insert statements should share one round trip");
+        largeWriteCommands[0].CommandText
+            .Split("INSERT INTO \"document_part\"", StringSplitOptions.None)
+            .Length.Should().Be(3, "501 rows are emitted as two statements capped at 500 rows each");
+    }
+
+    [Fact]
+    public async Task Writers_validate_every_part_before_one_batched_delete_command()
+    {
+        var catalogConnection = new RecordingDbConnection();
+        var catalog = new PostgresCatalogPartsWriter(
+            new RecordingUnitOfWork(catalogConnection, hasActiveTransaction: true));
+        var catalogId = Guid.NewGuid();
+        await catalog.ReplacePartsAsync(
+            [
+                CatalogTable("catalog_part_a", TableKind.Part, CatalogColumn("value")),
+                CatalogTable("catalog_part_b", TableKind.Part, CatalogColumn("value"))
+            ],
+            catalogId,
+            EmptyRows());
+        catalogConnection.Commands.Should().ContainSingle();
+        catalogConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"catalog_part_a\"")
+            .And.Contain("DELETE FROM \"catalog_part_b\"");
+
+        var invalidCatalogConnection = new RecordingDbConnection();
+        var invalidCatalog = new PostgresCatalogPartsWriter(
+            new RecordingUnitOfWork(invalidCatalogConnection, hasActiveTransaction: true));
+        await AssertInvalid(() => invalidCatalog.ReplacePartsAsync(
+            [
+                CatalogTable("catalog_part_a", TableKind.Part, CatalogColumn("value")),
+                CatalogTable("catalog_part_b", TableKind.Part, CatalogColumn("value"))
+            ],
+            catalogId,
+            Rows(("catalog_part_b", [Row(("unknown", 1))]))));
+        invalidCatalogConnection.Commands.Should().BeEmpty();
+
+        var documentConnection = new RecordingDbConnection();
+        var document = new PostgresDocumentPartsWriter(
+            new RecordingUnitOfWork(documentConnection, hasActiveTransaction: true));
+        await document.ReplacePartsAsync(
+            [
+                DocumentTable("document_part_a", TableKind.Part, DocumentColumn("value")),
+                DocumentTable("document_part_b", TableKind.Part, DocumentColumn("value"))
+            ],
+            Guid.NewGuid(),
+            EmptyRows());
+        documentConnection.Commands.Should().ContainSingle();
+        documentConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"document_part_a\"")
+            .And.Contain("DELETE FROM \"document_part_b\"");
+    }
+
+    [Fact]
+    public async Task Writers_flush_before_exceeding_the_postgresql_parameter_budget()
+    {
+        var catalogColumns = Enumerable.Range(0, 61)
+            .Select(index => CatalogColumn($"value_{index}"))
+            .ToArray();
+        var documentColumns = Enumerable.Range(0, 61)
+            .Select(index => DocumentColumn($"value_{index}"))
+            .ToArray();
+        var row = Row(Enumerable.Range(0, 61)
+            .Select(index => ($"value_{index}", (object?)index))
+            .ToArray());
+        var manyRows = Enumerable.Repeat(row, 500).ToArray();
+
+        var catalogConnection = new RecordingDbConnection();
+        var catalog = new PostgresCatalogPartsWriter(
+            new RecordingUnitOfWork(catalogConnection, hasActiveTransaction: true));
+        await catalog.ReplacePartsAsync(
+            [
+                CatalogTable("catalog_part_a", TableKind.Part, catalogColumns),
+                CatalogTable("catalog_part_b", TableKind.Part, catalogColumns)
+            ],
+            Guid.NewGuid(),
+            Rows(("catalog_part_a", manyRows), ("catalog_part_b", manyRows)));
+        catalogConnection.Commands.Should().HaveCount(32);
+        catalogConnection.Commands.Should().OnlyContain(command => command.Parameters.Count <= 2001);
+        catalogConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"catalog_part_a\"")
+            .And.Contain("DELETE FROM \"catalog_part_b\"");
+        catalogConnection.Commands.Skip(1).Should().OnlyContain(command => !command.CommandText.Contains("DELETE FROM", StringComparison.Ordinal));
+
+        var documentConnection = new RecordingDbConnection();
+        var document = new PostgresDocumentPartsWriter(
+            new RecordingUnitOfWork(documentConnection, hasActiveTransaction: true));
+        await document.ReplacePartsAsync(
+            [
+                DocumentTable("document_part_a", TableKind.Part, documentColumns),
+                DocumentTable("document_part_b", TableKind.Part, documentColumns)
+            ],
+            Guid.NewGuid(),
+            Rows(("document_part_a", manyRows), ("document_part_b", manyRows)));
+        documentConnection.Commands.Should().HaveCount(32);
+        documentConnection.Commands.Should().OnlyContain(command => command.Parameters.Count <= 2001);
+        documentConnection.Commands[0].CommandText.Should().Contain("DELETE FROM \"document_part_a\"")
+            .And.Contain("DELETE FROM \"document_part_b\"");
+        documentConnection.Commands.Skip(1).Should().OnlyContain(command => !command.CommandText.Contains("DELETE FROM", StringComparison.Ordinal));
+    }
+
+    private static CatalogTableMetadata CatalogTable(
+        string name,
+        TableKind kind,
+        params CatalogColumnMetadata[] columns)
+        => new(name, kind, columns, []);
+
+    private static CatalogColumnMetadata CatalogColumn(string name, ColumnType type = ColumnType.String)
+        => new(name, type);
+
+    private static DocumentTableMetadata DocumentTable(
+        string name,
+        TableKind kind,
+        params DocumentColumnMetadata[] columns)
+        => new(name, kind, columns);
+
+    private static DocumentColumnMetadata DocumentColumn(string name, ColumnType type = ColumnType.String)
+        => new(name, type);
+
+    private static IReadOnlyDictionary<string, object?> Row(params (string Key, object? Value)[] values)
+        => values.ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
+
+    private static Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> EmptyRows()
+        => new(StringComparer.OrdinalIgnoreCase);
+
+    private static Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> Rows(
+        params (string Table, IReadOnlyList<IReadOnlyDictionary<string, object?>> Values)[] rows)
+        => rows.ToDictionary(x => x.Table, x => x.Values, StringComparer.OrdinalIgnoreCase);
+
+    private static async Task AssertRequired(Func<Task> action, string paramName)
+        => (await action.Should().ThrowAsync<NgbArgumentRequiredException>()).Which.ParamName.Should().Be(paramName);
+
+    private static async Task AssertInvalid(Func<Task> action)
+        => await action.Should().ThrowAsync<NgbArgumentInvalidException>();
+}

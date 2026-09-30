@@ -20,7 +20,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_DocumentPost_Concurrency_And_ValidatorFailure_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

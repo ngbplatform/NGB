@@ -124,17 +124,31 @@ export async function searchResolvedLookupItems<TItem extends FilterLookupItem>(
   lookupStore: LookupStoreApi<TItem>,
   lookup: ResolvedLookupSource,
   query: string,
+  options?: { signal?: AbortSignal },
 ): Promise<TItem[]> {
   if (lookup.kind === 'catalog') {
+    const catalogOptions = {
+      ...('filters' in lookup && lookup.filters ? { filters: lookup.filters } : {}),
+      ...(options?.signal ? { signal: options.signal } : {}),
+    }
+    if (Object.keys(catalogOptions).length === 0) {
+      return await lookupStore.searchCatalog(lookup.catalogType, query)
+    }
     return await lookupStore.searchCatalog(
       lookup.catalogType,
       query,
-      'filters' in lookup && lookup.filters ? { filters: lookup.filters } : undefined,
+      catalogOptions,
     )
   }
 
-  if (lookup.kind === 'coa') return await lookupStore.searchCoa(query)
-  return await lookupStore.searchDocuments(lookup.documentTypes, query)
+  if (lookup.kind === 'coa') {
+    return options?.signal
+      ? await lookupStore.searchCoa(query, { signal: options.signal })
+      : await lookupStore.searchCoa(query)
+  }
+  return options?.signal
+    ? await lookupStore.searchDocuments(lookup.documentTypes, query, { signal: options.signal })
+    : await lookupStore.searchDocuments(lookup.documentTypes, query)
 }
 
 export async function hydrateResolvedLookupItems<TItem extends FilterLookupItem>(

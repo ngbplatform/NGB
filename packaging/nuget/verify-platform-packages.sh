@@ -57,9 +57,23 @@ if [[ "${package_count}" != "${#projects[@]}" || "${symbol_count}" != "${#projec
   exit 1
 fi
 
-unzip -Z1 "${output_directory}/NGB.Platform.BackgroundJobs.${version}.nupkg" \
-  | grep -Fxq contentFiles/any/any/hangfire-dashboard.css
-unzip -Z1 "${output_directory}/NGB.Platform.Watchdog.${version}.nupkg" \
-  | grep -Fxq contentFiles/any/any/dashboard.css
+assert_package_entry() {
+  local archive="$1"
+  local entry="$2"
+  local resolved_entry
+
+  resolved_entry="$(unzip -Z1 "${archive}" "${entry}")"
+  if [[ "${resolved_entry}" != "${entry}" ]]; then
+    echo "Package $(basename "${archive}") is missing required entry: ${entry}" >&2
+    exit 1
+  fi
+}
+
+assert_package_entry \
+  "${output_directory}/NGB.Platform.BackgroundJobs.${version}.nupkg" \
+  "contentFiles/any/any/hangfire-dashboard.css"
+assert_package_entry \
+  "${output_directory}/NGB.Platform.Watchdog.${version}.nupkg" \
+  "contentFiles/any/any/dashboard.css"
 
 echo "Verified ${package_count} NGB.Platform ${version} packages, API compatibility configuration, and required content assets."

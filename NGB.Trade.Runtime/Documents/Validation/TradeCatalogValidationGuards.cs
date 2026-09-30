@@ -1,12 +1,24 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Services;
+using NGB.Core.Catalogs.Exceptions;
 using NGB.Tools.Exceptions;
+using NGB.Trade.References;
 
 namespace NGB.Trade.Runtime.Documents.Validation;
 
 internal static class TradeCatalogValidationGuards
 {
+    private static readonly IReadOnlyDictionary<string, string> CatalogDescriptions =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [TradeCodes.Party] = "business partner",
+            [TradeCodes.Item] = "item",
+            [TradeCodes.Warehouse] = "warehouse",
+            [TradeCodes.PriceType] = "price type",
+            [TradeCodes.InventoryAdjustmentReason] = "inventory adjustment reason"
+        };
+
     public static Task EnsureVendorAsync(
         Guid partyId,
         string fieldPath,
@@ -36,6 +48,33 @@ internal static class TradeCatalogValidationGuards
     {
         var item = await GetRequiredActiveCatalogAsync(TradeCodes.Item, itemId, fieldPath, catalogs, ct);
         if (!GetBooleanField(item, "is_inventory_item"))
+            throw new NgbArgumentInvalidException(fieldPath, "Selected item must be marked as an inventory item.");
+    }
+
+    public static Task<IReadOnlyDictionary<Guid, TradeInventoryItemValidationSnapshot>> LoadInventoryItemsAsync(
+        IReadOnlyCollection<Guid> itemIds,
+        ITradeCatalogValidationReader reader,
+        CancellationToken ct)
+        => reader.GetInventoryItemsAsync(itemIds.Where(static id => id != Guid.Empty).Distinct().ToArray(), ct);
+
+    public static void EnsureInventoryItem(
+        Guid itemId,
+        string fieldPath,
+        IReadOnlyDictionary<Guid, TradeInventoryItemValidationSnapshot> snapshots)
+    {
+        if (itemId == Guid.Empty)
+            throw new NgbArgumentInvalidException(fieldPath, $"{fieldPath} is required.");
+
+        if (!snapshots.TryGetValue(itemId, out var item))
+            throw new CatalogNotFoundException(itemId);
+
+        if (item.IsDeleted)
+            throw new NgbArgumentInvalidException(fieldPath, "Referenced item is not available.");
+
+        if (item.IsActive == false)
+            throw new NgbArgumentInvalidException(fieldPath, "Referenced item is inactive.");
+
+        if (item.IsInventoryItem != true)
             throw new NgbArgumentInvalidException(fieldPath, "Selected item must be marked as an inventory item.");
     }
 
@@ -104,14 +143,5 @@ internal static class TradeCatalogValidationGuards
         };
     }
 
-    private static string DescribeCatalog(string catalogType)
-        => catalogType switch
-        {
-            TradeCodes.Party => "business partner",
-            TradeCodes.Item => "item",
-            TradeCodes.Warehouse => "warehouse",
-            TradeCodes.PriceType => "price type",
-            TradeCodes.InventoryAdjustmentReason => "inventory adjustment reason",
-            _ => "catalog item"
-        };
+    private static string DescribeCatalog(string catalogType) => CatalogDescriptions[catalogType];
 }

@@ -6,7 +6,6 @@ using NGB.OperationalRegisters;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.AuditLog;
 using NGB.PostgreSql.AuditLog;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using NGB.Runtime.OperationalRegisters;
 using Npgsql;
@@ -14,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_Atomicity_Rollback_OperationalRegisterManagement_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

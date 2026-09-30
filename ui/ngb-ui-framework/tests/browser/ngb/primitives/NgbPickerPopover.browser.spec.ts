@@ -96,3 +96,23 @@ test('supports grouped styling and keeps readonly or disabled triggers inactive'
   const disabledButton = disabledView.getByRole('button', { name: /Choose month/i }).element() as HTMLButtonElement
   expect(disabledButton.disabled).toBe(true)
 })
+
+test('uses the default panel width when optional header and footer slots are omitted', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(NgbPickerPopover, {
+    props: {
+      displayValue: '',
+      placeholder: 'Choose date',
+    },
+    slots: {
+      default: () => h('div', { 'data-testid': 'plain-popover-body' }, 'Plain body'),
+    },
+  })
+
+  await view.getByRole('button', { name: /Choose date/i }).click()
+  const panel = view.getByTestId('plain-popover-body').element().closest('.w-\\[320px\\]')
+  expect(panel).not.toBeNull()
+  expect(document.body.textContent?.includes('Popover header')).toBe(false)
+  expect(document.body.textContent?.includes('Close from footer')).toBe(false)
+})

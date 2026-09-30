@@ -4,12 +4,29 @@ using NGB.Definitions;
 using NGB.Definitions.Documents.Numbering;
 using NGB.Metadata.Documents.Hybrid;
 using NGB.Runtime.Documents.Policies;
+using NGB.Tools.Exceptions;
 using Xunit;
 
 namespace NGB.Runtime.Tests.Documents.Policies;
 
 public sealed class DefinitionsDocumentNumberingPolicyResolverTests
 {
+    [Fact]
+    public void Constructor_when_required_dependency_is_null_throws()
+    {
+        var definitions = new DefinitionsBuilder().Build();
+
+        Action nullDefinitions = () => new DefinitionsDocumentNumberingPolicyResolver(
+            null!,
+            Array.Empty<IDocumentNumberingPolicy>());
+        Action nullPolicies = () => new DefinitionsDocumentNumberingPolicyResolver(definitions, null!);
+
+        nullDefinitions.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("definitions");
+        nullPolicies.Should().Throw<NgbArgumentRequiredException>()
+            .Which.ParamName.Should().Be("policies");
+    }
+
     [Fact]
     public void Resolve_returns_null_when_document_type_not_defined()
     {
@@ -64,6 +81,33 @@ public sealed class DefinitionsDocumentNumberingPolicyResolverTests
         policy!.TypeCode.Should().Be("doc.test");
         policy.EnsureNumberOnCreateDraft.Should().BeTrue();
         policy.EnsureNumberOnPost.Should().BeFalse();
+        resolver.Resolve("DOC.TEST").Should().BeSameAs(policy);
+    }
+
+    [Fact]
+    public void Resolve_when_policy_is_not_registered_throws()
+    {
+        var resolver = new DefinitionsDocumentNumberingPolicyResolver(
+            DefinitionsWithPolicy<TestNumberingPolicy>(),
+            Array.Empty<IDocumentNumberingPolicy>());
+
+        Action action = () => resolver.Resolve("doc.test");
+
+        action.Should().Throw<DocumentPolicyConfigurationException>()
+            .Which.Reason.Should().Contain("not registered");
+    }
+
+    [Fact]
+    public void Resolve_when_policy_has_duplicate_registrations_throws()
+    {
+        var resolver = new DefinitionsDocumentNumberingPolicyResolver(
+            DefinitionsWithPolicy<TestNumberingPolicy>(),
+            new IDocumentNumberingPolicy[] { new TestNumberingPolicy(), new TestNumberingPolicy() });
+
+        Action action = () => resolver.Resolve("doc.test");
+
+        action.Should().Throw<DocumentPolicyConfigurationException>()
+            .Which.Reason.Should().Contain("Multiple policy registrations");
     }
 
     [Fact]
@@ -140,4 +184,16 @@ public sealed class DefinitionsDocumentNumberingPolicyResolverTests
     }
 
     private sealed class NotAPolicy;
+
+    private static DefinitionsRegistry DefinitionsWithPolicy<TPolicy>()
+        where TPolicy : class, IDocumentNumberingPolicy
+    {
+        var builder = new DefinitionsBuilder();
+        builder.AddDocument("doc.test", definition =>
+        {
+            definition.Metadata(new DocumentTypeMetadata("doc.test", []));
+            definition.NumberingPolicy<TPolicy>();
+        });
+        return builder.Build();
+    }
 }

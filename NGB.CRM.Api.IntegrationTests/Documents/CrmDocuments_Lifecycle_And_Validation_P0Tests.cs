@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.CRM.Api.IntegrationTests.Documents;
 
-[Collection(CrmPostgresCollection.Name)]
+[Collection(CrmDocumentsPostgresCollection.Name)]
 public sealed class CrmDocuments_Lifecycle_And_Validation_P0Tests(CrmPostgresFixture fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() => fixture.ResetDatabaseAsync();
@@ -290,7 +290,19 @@ public sealed class CrmDocuments_Lifecycle_And_Validation_P0Tests(CrmPostgresFix
 
         conversion = await documents.UpdateDraftAsync(CrmCodes.LeadConversion, conversion.Id, CrmIntegrationTestHelpers.Payload(new
         {
-            account_id = account.Id,
+            account_id = account.Id
+        }), CancellationToken.None);
+
+        await FluentActions.Awaiting(() => documents.PostAsync(
+                CrmCodes.LeadConversion,
+                conversion.Id,
+                CancellationToken.None))
+            .Should()
+            .ThrowAsync<NgbArgumentInvalidException>()
+            .WithMessage("*Contact is required*");
+
+        conversion = await documents.UpdateDraftAsync(CrmCodes.LeadConversion, conversion.Id, CrmIntegrationTestHelpers.Payload(new
+        {
             contact_id = contact.Id
         }), CancellationToken.None);
         conversion = await documents.PostAsync(CrmCodes.LeadConversion, conversion.Id, CancellationToken.None);

@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_ExternalTransactionMode_UnpostRepostTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

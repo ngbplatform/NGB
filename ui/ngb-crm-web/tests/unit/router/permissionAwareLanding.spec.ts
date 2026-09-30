@@ -45,4 +45,25 @@ describe('CRM permission-aware landing', () => {
     expect(menuContainsRoute(groups, '/admin/security/users/123')).toBe(true)
     expect(resolvePermissionAwareLanding(groups, '/admin/security/users/123')).toBeNull()
   })
+
+  it('rejects external and empty routes and reports exact and missing menu matches', () => {
+    const groups = [
+      group(10, [['https://example.test/external', 1], ['   ', 2], ['/catalogs/crm.account', 3]]),
+    ]
+
+    expect(findFirstPermittedMenuRoute(groups)).toBe('/catalogs/crm.account')
+    expect(menuContainsRoute(groups, '/catalogs/crm.account')).toBe(true)
+    expect(menuContainsRoute(groups, '/catalogs/crm.contact')).toBe(false)
+    expect(menuContainsRoute(groups, 'https://example.test/external')).toBe(false)
+    expect(menuContainsRoute(groups, null as never)).toBe(false)
+    expect(menuContainsRoute([group(1, [['https://example.test/external', 1]])], '/home')).toBe(false)
+    expect(findFirstPermittedMenuRoute([])).toBeNull()
+  })
+
+  it('handles root, already-selected, empty, and external landing targets', () => {
+    expect(resolvePermissionAwareLanding([group(1, [['/catalogs/crm.account', 1]])], '/')).toBe('/catalogs/crm.account')
+    expect(resolvePermissionAwareLanding([group(1, [['/', 1]])], '/')).toBeNull()
+    expect(resolvePermissionAwareLanding([], '/')).toBeNull()
+    expect(resolvePermissionAwareLanding([], 'https://example.test')).toBeNull()
+  })
 })

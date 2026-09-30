@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  clonePlainData,
   dataTypeKind,
   isReferenceValue,
   normalizeJsonValue,
@@ -74,6 +73,9 @@ const route = useRoute()
 const router = useRouter()
 const lookupItemsByCell = ref<Record<string, LookupItem[]>>({})
 const dragState = ref<{ partCode: string; rowIndex: number } | null>(null)
+const lookupControllers = new Map<string, AbortController>()
+const PART_ROW_PAGE_SIZE = 100
+const partPageByCode = ref<Record<string, number>>({})
 
 const partFields = computed(() =>
   new Map(props.parts.map((part) => [part.partCode, listCRMDocumentPartFields(part)] as const)),
@@ -88,10 +90,48 @@ const partColumns = computed(() =>
   ),
 )
 
+const normalizedRowsByPart = computed(() =>
+  new Map(
+    props.parts.map((part) => [
+      part.partCode,
+      normalizeCRMDocumentPartRows(props.modelValue?.[part.partCode]?.rows),
+    ] as const),
+  ),
+)
+
 const documentAmount = computed(() => calculateCRMDocumentAmount(props.parts, props.modelValue))
 
 function partRows(partCode: string): RecordPartRow[] {
-  return normalizeCRMDocumentPartRows(props.modelValue?.[partCode]?.rows)
+  return normalizedRowsByPart.value.get(partCode) ?? []
+}
+
+function partPageCount(partCode: string): number {
+  return Math.max(1, Math.ceil(partRows(partCode).length / PART_ROW_PAGE_SIZE))
+}
+
+function partPage(partCode: string): number {
+  return Math.min(partPageByCode.value[partCode] ?? 0, partPageCount(partCode) - 1)
+}
+
+function visiblePartRows(partCode: string): Array<{ row: RecordPartRow; rowIndex: number }> {
+  const rows = partRows(partCode)
+  const start = partPage(partCode) * PART_ROW_PAGE_SIZE
+  return rows.slice(start, start + PART_ROW_PAGE_SIZE)
+    .map((row, index) => ({ row, rowIndex: start + index }))
+}
+
+function setPartPage(partCode: string, page: number): void {
+  partPageByCode.value = {
+    ...partPageByCode.value,
+    [partCode]: Math.max(0, Math.min(page, partPageCount(partCode) - 1)),
+  }
+}
+
+function partRowRange(partCode: string): string {
+  const total = partRows(partCode).length
+  const start = partPage(partCode) * PART_ROW_PAGE_SIZE
+  const end = Math.min(total, start + PART_ROW_PAGE_SIZE)
+  return `Rows ${start + 1}\u2013${end} of ${total}`
 }
 
 watch(
@@ -107,38 +147,12 @@ watch(
   { immediate: true },
 )
 
-function cloneParts(): RecordParts {
-  return clonePlainData(props.modelValue ?? {}) as RecordParts
-}
-
-function cloneNormalizedParts(): RecordParts {
-  const next = cloneParts()
-
-  for (const part of props.parts) {
-    next[part.partCode] = {
-      rows: partRows(part.partCode).map((row) => ({ ...row })),
-    }
-  }
-
-  return next
-}
-
-function emitParts(parts: RecordParts): void {
-  const next: RecordParts = {}
-  for (const part of props.parts) {
-    next[part.partCode] = {
-      rows: normalizeCRMDocumentPartRows(parts[part.partCode]?.rows),
-    }
-  }
-  emit('update:modelValue', next)
-}
-
 function emitRows(partCode: string, rows: RecordPartRow[]): void {
-  const next = cloneNormalizedParts()
+  const next: RecordParts = { ...props.modelValue }
   next[partCode] = {
     rows: normalizeCRMDocumentPartRows(rows),
   }
-  emitParts(next)
+  emit('update:modelValue', next)
 }
 
 function createEmptyRow(partCode: string): RecordPartRow {
@@ -160,7 +174,12 @@ function canManageRows(partCode: string): boolean {
 
 function addRow(partCode: string): void {
   if (!canManageRows(partCode)) return
-  emitRows(partCode, [...partRows(partCode), createEmptyRow(partCode)])
+  const rows = partRows(partCode)
+  partPageByCode.value = {
+    ...partPageByCode.value,
+    [partCode]: Math.floor(rows.length / PART_ROW_PAGE_SIZE),
+  }
+  emitRows(partCode, [...rows, createEmptyRow(partCode)])
 }
 
 function removeRow(partCode: string, rowIndex: number): void {
@@ -283,6 +302,7 @@ function recomputeDerivedFields(documentType: string, row: RecordPartRow): Recor
 
 async function onLookupQuery(partCode: string, rowIndex: number, field: FieldMetadata, row: RecordPartRow, query: string): Promise<void> {
   const key = lookupCellKey(partCode, rowIndex, field.key)
+  lookupControllers.get(key)?.abort()
   const search = props.behavior?.searchLookup
   const hint = resolveFieldState(field, row).hint
   const normalizedQuery = String(query ?? '').trim()
@@ -292,9 +312,24 @@ async function onLookupQuery(partCode: string, rowIndex: number, field: FieldMet
     return
   }
 
-  const items = await Promise.resolve(search({ hint, query: normalizedQuery }))
-  lookupItemsByCell.value = { ...lookupItemsByCell.value, [key]: items }
+  const controller = new AbortController()
+  lookupControllers.set(key, controller)
+  try {
+    const items = await Promise.resolve(search({ hint, query: normalizedQuery, signal: controller.signal }))
+    if (lookupControllers.get(key) === controller)
+      lookupItemsByCell.value = { ...lookupItemsByCell.value, [key]: items }
+  } catch {
+    if (lookupControllers.get(key) !== controller) return
+    lookupItemsByCell.value = { ...lookupItemsByCell.value, [key]: [] }
+  } finally {
+    if (lookupControllers.get(key) === controller) lookupControllers.delete(key)
+  }
 }
+
+onBeforeUnmount(() => {
+  lookupControllers.forEach((controller) => controller.abort())
+  lookupControllers.clear()
+})
 
 function onLookupSelect(partCode: string, rowIndex: number, fieldKey: string, item: LookupItem | null): void {
   updateCell(
@@ -429,7 +464,8 @@ function formatAmount(value: number | null): string {
 
       <tbody>
         <tr
-          v-for="(row, rowIndex) in partRows(part.partCode)"
+          v-for="{ row, rowIndex } in visiblePartRows(part.partCode)"
+          style="content-visibility: auto; contain-intrinsic-block-size: 54px"
           :key="`${part.partCode}:${String(row.__row_key)}`"
           class="border-t border-ngb-border align-top transition-colors hover:bg-ngb-bg"
           :class="rowHasErrors(part.partCode, rowIndex) ? 'bg-red-50/40 dark:bg-red-950/10' : ''"
@@ -535,6 +571,32 @@ function formatAmount(value: number | null): string {
         </tr>
       </tbody>
     </table>
+
+    <div
+      v-if="partPageCount(part.partCode) > 1"
+      class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted"
+    >
+      <span>{{ partRowRange(part.partCode) }}</span>
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="partPage(part.partCode) === 0"
+          @click="setPartPage(part.partCode, partPage(part.partCode) - 1)"
+        >
+          Previous
+        </button>
+        <span>Page {{ partPage(part.partCode) + 1 }} of {{ partPageCount(part.partCode) }}</span>
+        <button
+          type="button"
+          class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="partPage(part.partCode) + 1 >= partPageCount(part.partCode)"
+          @click="setPartPage(part.partCode, partPage(part.partCode) + 1)"
+        >
+          Next
+        </button>
+      </div>
+    </div>
 
     <div v-else class="px-4 py-6 text-sm text-ngb-muted">
       No rows yet.

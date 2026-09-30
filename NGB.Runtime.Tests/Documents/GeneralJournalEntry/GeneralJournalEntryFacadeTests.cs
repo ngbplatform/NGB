@@ -9,6 +9,55 @@ namespace NGB.Runtime.Tests.Documents.GeneralJournalEntry;
 public sealed class GeneralJournalEntryFacadeTests
 {
     [Fact]
+    public async Task DelegatingMembers_ForwardAllArguments()
+    {
+        var documentId = Guid.CreateVersion7();
+        var sourceDocumentId = Guid.CreateVersion7();
+        var basedOnDocumentIds = new[] { Guid.CreateVersion7() };
+        var dateUtc = new DateTime(2026, 1, 21, 0, 0, 0, DateTimeKind.Utc);
+        var header = new GeneralJournalEntryDraftHeaderUpdate(null, null, null, null, null, null);
+        IReadOnlyList<GeneralJournalEntryDraftLineInput> lines = [];
+        using var cancellation = new CancellationTokenSource();
+        var service = new Mock<IGeneralJournalEntryDocumentService>();
+        var facade = new GeneralJournalEntryFacade(service.Object);
+
+        await facade.CreateDraftAsync(dateUtc, "creator", cancellation.Token, sourceDocumentId, basedOnDocumentIds);
+        await facade.UpdateDraftHeaderAsync(documentId, header, "updater", cancellation.Token);
+        await facade.ReplaceDraftLinesAsync(documentId, lines, "updater", cancellation.Token);
+        await facade.SubmitAsync(documentId, "submitter", cancellation.Token);
+        await facade.ApproveAsync(documentId, "approver", cancellation.Token);
+        await facade.RejectAsync(documentId, "rejecter", "reason", cancellation.Token);
+        await facade.PostApprovedAsync(documentId, "poster", cancellation.Token);
+        await facade.ReversePostedAsync(documentId, dateUtc, "reverser", false, cancellation.Token);
+
+        service.Verify(x => x.CreateDraftAsync(dateUtc, "creator", cancellation.Token, sourceDocumentId, basedOnDocumentIds), Times.Once);
+        service.Verify(x => x.UpdateDraftHeaderAsync(documentId, header, "updater", cancellation.Token), Times.Once);
+        service.Verify(x => x.ReplaceDraftLinesAsync(documentId, lines, "updater", cancellation.Token), Times.Once);
+        service.Verify(x => x.SubmitAsync(documentId, "submitter", cancellation.Token), Times.Once);
+        service.Verify(x => x.ApproveAsync(documentId, "approver", cancellation.Token), Times.Once);
+        service.Verify(x => x.RejectAsync(documentId, "rejecter", "reason", cancellation.Token), Times.Once);
+        service.Verify(x => x.PostApprovedAsync(documentId, "poster", cancellation.Token), Times.Once);
+        service.Verify(x => x.ReversePostedAsync(documentId, dateUtc, "reverser", false, cancellation.Token), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetDraftAsync_DelegatesAndReturnsExactSnapshot()
+    {
+        var documentId = Guid.CreateVersion7();
+        var snapshot = new GeneralJournalEntryDraftSnapshot(null!, null!, []);
+        using var cancellation = new CancellationTokenSource();
+        var service = new Mock<IGeneralJournalEntryDocumentService>(MockBehavior.Strict);
+        service.Setup(x => x.GetDraftAsync(documentId, cancellation.Token))
+            .ReturnsAsync(snapshot);
+
+        var result = await new GeneralJournalEntryFacade(service.Object)
+            .GetDraftAsync(documentId, cancellation.Token);
+
+        result.Should().BeSameAs(snapshot);
+        service.VerifyAll();
+    }
+
+    [Fact]
     public async Task CreateAndPostApprovedAsync_Composes_Workflow_InOrder()
     {
         var dateUtc = new DateTime(2026, 01, 21, 0, 0, 0, DateTimeKind.Utc);

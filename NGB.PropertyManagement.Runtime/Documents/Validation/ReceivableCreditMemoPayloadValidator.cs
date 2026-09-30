@@ -136,7 +136,7 @@ internal sealed class ReceivableCreditMemoPayloadValidator(
         {
             value = el.ValueKind == JsonValueKind.Number
                 ? el.GetDecimal()
-                : decimal.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture);
+                : decimal.Parse(el.GetString()!, CultureInfo.InvariantCulture);
             return true;
         }
         catch

@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: Ordinals define ordering of resources and dimension rules.
 /// They must be unique within a register to avoid unstable UX/physical ordering.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterOrdinals_Unique_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

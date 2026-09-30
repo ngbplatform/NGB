@@ -13,14 +13,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class StatementOfChangesInEquity_Semantics_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task OpenYear_Report_Shows_Real_Equity_And_CurrentEarnings()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
         var sp = scope.ServiceProvider;
@@ -55,7 +54,6 @@ public sealed class StatementOfChangesInEquity_Semantics_P1Tests(PostgresTestFix
     [Fact]
     public async Task AfterCloseFiscalYear_Report_Moves_Profit_Into_RetainedEarnings_And_Drops_CurrentEarnings()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
         var sp = scope.ServiceProvider;

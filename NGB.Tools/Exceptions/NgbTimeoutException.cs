@@ -20,7 +20,7 @@ public sealed class NgbTimeoutException(
 
     public string Operation { get; } = string.IsNullOrWhiteSpace(operation) ? "(unknown)" : operation;
 
-    public string ExceptionType { get; } = innerException.GetType().FullName ?? innerException.GetType().Name;
+    public string ExceptionType { get; } = innerException.GetType().ToString();
 
     private static IReadOnlyDictionary<string, object?> BuildContext(
         string operation,
@@ -41,7 +41,7 @@ public sealed class NgbTimeoutException(
         }
 
         ctx["operation"] = operation;
-        ctx["exceptionType"] = innerException.GetType().FullName ?? innerException.GetType().Name;
+        ctx["exceptionType"] = innerException.GetType().ToString();
 
         return ctx;
     }

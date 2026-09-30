@@ -20,8 +20,10 @@ public sealed class AdminService_ChartOfAccountsPage_Filtering_P0Tests
 
         var coaAdmin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
         coaAdmin
-            .Setup(x => x.GetAsync(false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([])
+            .Setup(x => x.GetPageAsync(
+                It.Is<ChartOfAccountsAdminPageQuery>(query => !query.IncludeDeleted),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([], 0))
             .Verifiable();
 
         var coaMgmt = new Mock<IChartOfAccountsManagementService>(MockBehavior.Strict);
@@ -46,8 +48,10 @@ public sealed class AdminService_ChartOfAccountsPage_Filtering_P0Tests
 
         var coaAdmin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
         coaAdmin
-            .Setup(x => x.GetAsync(false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(items)
+            .Setup(x => x.GetPageAsync(
+                It.Is<ChartOfAccountsAdminPageQuery>(query => query.OnlyActive == true),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([items[0], items[2]], 2))
             .Verifiable();
 
         var coaMgmt = new Mock<IChartOfAccountsManagementService>(MockBehavior.Strict);
@@ -74,8 +78,10 @@ public sealed class AdminService_ChartOfAccountsPage_Filtering_P0Tests
 
         var coaAdmin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
         coaAdmin
-            .Setup(x => x.GetAsync(false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(items)
+            .Setup(x => x.GetPageAsync(
+                It.Is<ChartOfAccountsAdminPageQuery>(query => query.OnlyActive == false),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([items[1]], 1))
             .Verifiable();
 
         var coaMgmt = new Mock<IChartOfAccountsManagementService>(MockBehavior.Strict);
@@ -103,8 +109,12 @@ public sealed class AdminService_ChartOfAccountsPage_Filtering_P0Tests
 
         var coaAdmin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
         coaAdmin
-            .Setup(x => x.GetAsync(false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(items)
+            .Setup(x => x.GetPageAsync(
+                It.Is<ChartOfAccountsAdminPageQuery>(query =>
+                    query.Search == "rent"
+                    && query.AccountTypes.SequenceEqual(new[] { AccountType.Income })),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ChartOfAccountsAdminPage([items[2]], 1))
             .Verifiable();
 
         var coaMgmt = new Mock<IChartOfAccountsManagementService>(MockBehavior.Strict);
@@ -127,10 +137,6 @@ public sealed class AdminService_ChartOfAccountsPage_Filtering_P0Tests
         var menu = StubMenu();
 
         var coaAdmin = new Mock<IChartOfAccountsAdminService>(MockBehavior.Strict);
-        coaAdmin
-            .Setup(x => x.GetAsync(false, It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
-
         var coaMgmt = new Mock<IChartOfAccountsManagementService>(MockBehavior.Strict);
         var cashFlowLines = StubCashFlowLines();
         var svc = new AdminService(menu, coaAdmin.Object, coaMgmt.Object, cashFlowLines.Object);

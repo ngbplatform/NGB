@@ -231,9 +231,9 @@ internal static class ReportingTestHelpers
             FromInclusive = lastPage.FromInclusive,
             ToInclusive = lastPage.ToInclusive,
             OpeningBalance = firstPage!.OpeningBalance,
-            TotalDebit = lastPage.TotalDebit,
-            TotalCredit = lastPage.TotalCredit,
-            ClosingBalance = lastPage.ClosingBalance,
+            TotalDebit = lastPage.TotalDebit!.Value,
+            TotalCredit = lastPage.TotalCredit!.Value,
+            ClosingBalance = lastPage.ClosingBalance!.Value,
             Lines = lines
         };
     }

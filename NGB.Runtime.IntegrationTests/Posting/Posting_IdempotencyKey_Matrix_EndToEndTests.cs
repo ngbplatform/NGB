@@ -13,7 +13,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Posting_IdempotencyKey_Matrix_EndToEndTests(PostgresTestFixture fixture)
 {
     private const string Cash = "50";

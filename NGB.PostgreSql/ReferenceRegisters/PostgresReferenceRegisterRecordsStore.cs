@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using Dapper;
 using NGB.Metadata.Base;
@@ -5,6 +6,7 @@ using NGB.Persistence.ReferenceRegisters;
 using NGB.Persistence.UnitOfWork;
 using NGB.PostgreSql.UnitOfWork;
 using NGB.PostgreSql.Internal;
+using NGB.PostgreSql.Schema;
 using NGB.ReferenceRegisters;
 using NGB.ReferenceRegisters.Contracts;
 using NGB.ReferenceRegisters.Exceptions;
@@ -33,9 +35,19 @@ namespace NGB.PostgreSql.ReferenceRegisters;
 public sealed class PostgresReferenceRegisterRecordsStore(
     IUnitOfWork uow,
     IReferenceRegisterRepository registers,
-    IReferenceRegisterFieldRepository fieldsRepo)
+    IReferenceRegisterFieldRepository fieldsRepo,
+    ReferenceRegisterMetadataCache? metadataCache = null,
+    PostgresRelationShapeCache? relationShapeCache = null)
     : IReferenceRegisterRecordsStore, IReferenceRegisterRecorderTombstoneWriter
 {
+    private readonly ReferenceRegisterMetadataCache _metadataCache = metadataCache
+        ?? new ReferenceRegisterMetadataCache(TimeProvider.System);
+    private readonly PostgresRelationShapeCache _relationShapeCache = relationShapeCache
+        ?? new PostgresRelationShapeCache(TimeProvider.System);
+    private readonly ConcurrentDictionary<Guid, SchemaReadiness> _schemasReadyForWrite = new();
+    private readonly ConcurrentDictionary<Guid, SchemaReadiness> _hasRecordsEnsured = new();
+    private readonly ConcurrentDictionary<Guid, ScopedMetadata> _scopedMetadata = new();
+
     public async Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default)
     {
         registerId.EnsureNonEmpty(nameof(registerId));
@@ -43,11 +55,20 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
         await using var _ = await PostgresReferenceRegisterSchemaLock.AcquireAsync(uow, registerId, ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        // Schema ensure is also the synchronization point after mutable metadata changes
+        // (for example ReplaceFields before the first record). Always refresh here so a
+        // transaction-scoped pre-change snapshot cannot suppress new physical columns.
+        var context = await RefreshMetadataAsync(registerId, ct);
+        await EnsureSchemaCoreAsync(registerId, context, ct);
+    }
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
+    private async Task EnsureSchemaCoreAsync(
+        Guid registerId,
+        ReferenceRegisterMetadataContext context,
+        CancellationToken ct)
+    {
+        var reg = context.Register;
+        var table = context.RecordsTable;
 
         // Create base table.
         await EnsureRecordsTableAsync(table, ct);
@@ -56,12 +77,88 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         await EnsureBaseColumnConstraintsAsync(table, reg, ct);
 
         // Ensure field columns.
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
+        var fields = context.Fields;
         await EnsureFieldColumnsAsync(table, fields, reg.HasRecords, ct);
 
         // Ensure append-only guards + indexes.
         await PostgresAppendOnlyGuardSql.EnsureUpdateDeleteForbiddenTriggerAsync(uow, table, Trg("trg_refreg_append_only_", table), ct);
         await EnsureIndexesAsync(table, reg, ct);
+        _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
+
+        if (uow.Transaction is null)
+            _relationShapeCache.MarkVerified(table, ShapeFingerprint(fields));
+    }
+
+    public async Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
+    {
+        registerId.EnsureNonEmpty(nameof(registerId));
+        if (IsSchemaReadyInCurrentTransaction(registerId))
+            return;
+
+        var context = await GetMetadataAsync(registerId, ct);
+        var register = context.Register;
+
+        if (register.HasRecords)
+        {
+            var ready = uow.Transaction is null
+                ? await _relationShapeCache.IsVerifiedAsync(
+                    context.RecordsTable,
+                    ShapeFingerprint(context.Fields),
+                    probeCt => HasCurrentFieldShapeAsync(context.RecordsTable, context.Fields, probeCt),
+                    ct)
+                : await HasCurrentFieldShapeAsync(context.RecordsTable, context.Fields, ct);
+
+            if (ready)
+            {
+                _schemasReadyForWrite[registerId] = new SchemaReadiness(uow.Transaction);
+                return;
+            }
+        }
+
+        await uow.EnsureConnectionOpenAsync(ct);
+        await using var schemaLock = await PostgresReferenceRegisterSchemaLock.AcquireAsync(uow, registerId, ct);
+        await EnsureSchemaCoreAsync(registerId, context, ct);
+    }
+
+    private async Task<bool> HasCurrentFieldShapeAsync(
+        string table,
+        IReadOnlyList<ReferenceRegisterField> fields,
+        CancellationToken ct)
+    {
+        await uow.EnsureConnectionOpenAsync(ct);
+        var existing = (await uow.Connection.QueryAsync<ColumnMeta>(new CommandDefinition(
+                """
+                SELECT
+                    column_name       AS "ColumnName",
+                    is_nullable       AS "IsNullable",
+                    udt_name          AS "UdtName",
+                    numeric_precision AS "NumericPrecision",
+                    numeric_scale     AS "NumericScale"
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = @Table;
+                """,
+                new { Table = table },
+                transaction: uow.Transaction,
+                cancellationToken: ct)))
+            .ToDictionary(column => column.ColumnName, StringComparer.Ordinal);
+
+        if (!existing.ContainsKey("record_id"))
+            return false;
+
+        foreach (var field in fields)
+        {
+            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(field.ColumnCode, "field column_code");
+
+            if (!existing.TryGetValue(field.ColumnCode, out var column)
+                || !ColumnTypeMatches(column, field.ColumnType)
+                || string.Equals(column.IsNullable, "YES", StringComparison.OrdinalIgnoreCase) != field.IsNullable)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public async Task AppendAsync(
@@ -78,26 +175,22 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
         await uow.EnsureOpenForTransactionAsync(ct);
 
-        // Ensure physical schema before inserting.
-        await EnsureSchemaAsync(registerId, ct);
+        // A scoped readiness result is reused for the rest of the transaction. Healthy shapes are
+        // verified read-only; drift repair completes before the records table is accessed.
+        if (!IsSchemaReadyInCurrentTransaction(registerId))
+            await EnsureReadyForWriteAsync(registerId, ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
-
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
+        var table = context.RecordsTable;
+        var fields = context.Fields;
         var fieldByCodeNorm = fields.ToDictionary(x => x.CodeNorm, x => x, StringComparer.Ordinal);
 
         ValidateRecords(registerId, reg, records, fieldByCodeNorm);
 
         // Mark registry as having records (enables metadata guards).
         // Safe idempotent update.
-        {
-            const string sql = "UPDATE reference_registers SET has_records = TRUE, updated_at_utc = NOW() WHERE register_id = @Id AND has_records = FALSE;";
-            var cmd = new CommandDefinition(sql, new { Id = registerId }, transaction: uow.Transaction, cancellationToken: ct);
-            await uow.Connection.ExecuteAsync(cmd);
-        }
+        await EnsureHasRecordsFlagAsync(context, ct);
 
         var insertPrefix = BuildInsertPrefix(table, fields);
 
@@ -123,7 +216,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                 var r = records[offset + i];
                 var bucketUtc = ReferenceRegisterPeriodBucket.ComputeUtc(r.PeriodUtc, reg.Periodicity);
 
-                p.Add(P("DimensionSetId", i), r.DimensionSetId == Guid.Empty ? Guid.Empty : r.DimensionSetId);
+                p.Add(P("DimensionSetId", i), r.DimensionSetId);
                 p.Add(P("PeriodUtc", i), r.PeriodUtc);
                 p.Add(P("PeriodBucketUtc", i), bucketUtc);
                 p.Add(P("RecorderDocumentId", i), r.RecorderDocumentId);
@@ -181,32 +274,22 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         recorderDocumentId.EnsureNonEmpty(nameof(recorderDocumentId));
         await uow.EnsureOpenForTransactionAsync(ct);
 
-        // Ensure physical schema before inserting.
-        await EnsureSchemaAsync(registerId, ct);
+        if (!IsSchemaReadyInCurrentTransaction(registerId))
+            await EnsureSchemaAsync(registerId, ct);
 
-        var reg = await registers.GetByIdAsync(registerId, ct)
-                  ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var context = await GetMetadataAsync(registerId, ct);
+        var reg = context.Register;
 
         // Only SubordinateToRecorder registers support recorder tombstones.
         if (reg.RecordMode != ReferenceRegisterRecordMode.SubordinateToRecorder)
             return;
 
-        var table = ReferenceRegisterNaming.RecordsTable(reg.TableCode);
-        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
-
-        var fields = await fieldsRepo.GetByRegisterIdAsync(registerId, ct);
-        foreach (var f in fields)
-        {
-            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
-        }
+        var table = context.RecordsTable;
+        var fields = context.Fields;
 
         // Mark registry as having records (enables metadata guards).
         // Safe idempotent update.
-        {
-            const string sql = "UPDATE reference_registers SET has_records = TRUE, updated_at_utc = NOW() WHERE register_id = @Id AND has_records = FALSE;";
-            var cmd = new CommandDefinition(sql, new { Id = registerId }, transaction: uow.Transaction, cancellationToken: ct);
-            await uow.Connection.ExecuteAsync(cmd);
-        }
+        await EnsureHasRecordsFlagAsync(context, ct);
 
         var fieldCols = fields.Count == 0
             ? string.Empty
@@ -281,6 +364,89 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
         await uow.Connection.ExecuteAsync(cmdInsert);
     }
+
+    private bool IsSchemaReadyInCurrentTransaction(Guid registerId)
+        => _schemasReadyForWrite.TryGetValue(registerId, out var readiness)
+           && ReferenceEquals(readiness.Transaction, uow.Transaction);
+
+    private Task<ReferenceRegisterMetadataContext> GetMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        if (_scopedMetadata.TryGetValue(registerId, out var cached)
+            && (cached.Context.Register.HasRecords || ReferenceEquals(cached.Transaction, uow.Transaction)))
+        {
+            return Task.FromResult(cached.Context);
+        }
+
+        return LoadAndRememberMetadataAsync(registerId, ct);
+    }
+
+    private async Task<ReferenceRegisterMetadataContext> LoadAndRememberMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var context = await _metadataCache.GetOrCreateAsync(
+            registerId,
+            loadCt => LoadMetadataAsync(registerId, loadCt),
+            ct);
+        _scopedMetadata[registerId] = new ScopedMetadata(context, uow.Transaction);
+        return context;
+    }
+
+    private async Task<ReferenceRegisterMetadataContext> RefreshMetadataAsync(Guid registerId, CancellationToken ct)
+    {
+        var context = await LoadMetadataAsync(registerId, ct);
+        _metadataCache.Remember(context);
+        _scopedMetadata[registerId] = new ScopedMetadata(context, uow.Transaction);
+        return context;
+    }
+
+    private async Task<ReferenceRegisterMetadataContext> LoadMetadataAsync(
+        Guid registerId,
+        CancellationToken ct)
+    {
+        var register = await registers.GetByIdAsync(registerId, ct)
+            ?? throw new ReferenceRegisterNotFoundException(registerId);
+        var table = ReferenceRegisterNaming.RecordsTable(register.TableCode);
+
+        ReferenceRegisterSqlIdentifiers.EnsureOrThrow(table, "records table");
+
+        var fields = (await fieldsRepo.GetByRegisterIdAsync(registerId, ct))
+            .OrderBy(static field => field.Ordinal)
+            .ToArray();
+
+        foreach (var field in fields)
+        {
+            ReferenceRegisterSqlIdentifiers.EnsureOrThrow(field.ColumnCode, "field column_code");
+        }
+
+        return new ReferenceRegisterMetadataContext(register, fields, table);
+    }
+
+    private async Task EnsureHasRecordsFlagAsync(ReferenceRegisterMetadataContext context, CancellationToken ct)
+    {
+        if (context.Register.HasRecords
+            || (_hasRecordsEnsured.TryGetValue(context.Register.RegisterId, out var readiness)
+                && ReferenceEquals(readiness.Transaction, uow.Transaction)))
+        {
+            return;
+        }
+
+        const string sql = "UPDATE reference_registers SET has_records = TRUE, updated_at_utc = NOW() WHERE register_id = @Id AND has_records = FALSE;";
+        await uow.Connection.ExecuteAsync(new CommandDefinition(
+            sql,
+            new { Id = context.Register.RegisterId },
+            transaction: uow.Transaction,
+            cancellationToken: ct));
+        _hasRecordsEnsured[context.Register.RegisterId] = new SchemaReadiness(uow.Transaction);
+    }
+
+    private static string ShapeFingerprint(IEnumerable<ReferenceRegisterField> fields)
+        => string.Join(
+            '|',
+            fields.Select(static field => $"{field.ColumnCode}:{field.ColumnType}:{field.IsNullable}"));
+
+    private sealed record SchemaReadiness(object? Transaction);
+    private sealed record ScopedMetadata(ReferenceRegisterMetadataContext Context, object? Transaction);
 
     private static void ValidateRecords(
         Guid registerId,
@@ -401,11 +567,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         else
             sb.AppendLine($"ALTER TABLE {table} ALTER COLUMN recorder_document_id DROP NOT NULL;");
 
-        if (sb.Length > 0)
-        {
-            var cmd = new CommandDefinition(sb.ToString(), transaction: uow.Transaction, cancellationToken: ct);
-            await uow.Connection.ExecuteAsync(cmd);
-        }
+        var cmd = new CommandDefinition(sb.ToString(), transaction: uow.Transaction, cancellationToken: ct);
+        await uow.Connection.ExecuteAsync(cmd);
 
         // Semantic drift repair (enforce NULL where NULL is required).
         await EnsureSemanticCheckConstraintsAsync(table, reg, ct);
@@ -514,6 +677,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                     cancellationToken: ct)))
             .ToDictionary(x => x.ColumnName, StringComparer.Ordinal);
 
+        var ddl = new StringBuilder();
+
         foreach (var f in fields)
         {
             ReferenceRegisterSqlIdentifiers.EnsureOrThrow(f.ColumnCode, "field column_code");
@@ -530,9 +695,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                 }
 
                 var nullable = f.IsNullable ? "NULL" : "NOT NULL";
-
-                var sqlAdd = $"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {f.ColumnCode} {sqlType} {nullable};";
-                await uow.Connection.ExecuteAsync(new CommandDefinition(sqlAdd, transaction: uow.Transaction, cancellationToken: ct));
+                ddl.AppendLine(
+                    $"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {f.ColumnCode} {sqlType} {nullable};");
                 continue;
             }
 
@@ -546,8 +710,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                         details: new { column = f.ColumnCode, expectedSqlType = sqlType, actualUdtName = col.UdtName });
                 }
 
-                var sqlAlterType = $"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} TYPE {sqlType} USING {f.ColumnCode}::{sqlType};";
-                await uow.Connection.ExecuteAsync(new CommandDefinition(sqlAlterType, transaction: uow.Transaction, cancellationToken: ct));
+                ddl.AppendLine(
+                    $"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} TYPE {sqlType} USING {f.ColumnCode}::{sqlType};");
             }
 
             // Nullability drift repair.
@@ -561,8 +725,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                         details: new { column = f.ColumnCode, expectedNullable = true, actualNullable = false });
                 }
 
-                var sqlDropNotNull = $"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} DROP NOT NULL;";
-                await uow.Connection.ExecuteAsync(new CommandDefinition(sqlDropNotNull, transaction: uow.Transaction, cancellationToken: ct));
+                ddl.AppendLine($"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} DROP NOT NULL;");
             }
             else if (!f.IsNullable && isNullable)
             {
@@ -573,10 +736,14 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                         details: new { column = f.ColumnCode, expectedNullable = false, actualNullable = true });
                 }
 
-                var sqlSetNotNull = $"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} SET NOT NULL;";
-                await uow.Connection.ExecuteAsync(new CommandDefinition(sqlSetNotNull, transaction: uow.Transaction, cancellationToken: ct));
+                ddl.AppendLine($"ALTER TABLE {table} ALTER COLUMN {f.ColumnCode} SET NOT NULL;");
             }
         }
+
+        if (ddl.Length == 0)
+            return;
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(ddl.ToString(), transaction: uow.Transaction, cancellationToken: ct));
     }
 
     private async Task EnsureIndexesAsync(string table, ReferenceRegisterAdminItem reg, CancellationToken ct)
@@ -594,8 +761,8 @@ public sealed class PostgresReferenceRegisterRecordsStore(
             ? "(dimension_set_id, recorder_document_id, recorded_at_utc DESC, record_id DESC)"
             : "(dimension_set_id, recorder_document_id, period_bucket_utc DESC, period_utc DESC, recorded_at_utc DESC, record_id DESC)";
 
-        var sqlKeyV2 = $"CREATE INDEX IF NOT EXISTS {ixKeyV2} ON {table} {keyCols};";
-        await uow.Connection.ExecuteAsync(new CommandDefinition(sqlKeyV2, transaction: uow.Transaction, cancellationToken: ct));
+        var ddl = new StringBuilder();
+        ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixKeyV2} ON {table} {keyCols};");
 
         // 2) Recorder scan index: optimized for tombstone generation (Unpost/Repost) and recorder-scoped slices.
         //    We only create it for SubordinateToRecorder registers.
@@ -607,9 +774,10 @@ public sealed class PostgresReferenceRegisterRecordsStore(
                 ? "(recorder_document_id, dimension_set_id, recorded_at_utc DESC, record_id DESC)"
                 : "(recorder_document_id, dimension_set_id, period_bucket_utc DESC, period_utc DESC, recorded_at_utc DESC, record_id DESC)";
 
-            var sqlRecorderKeyV2 = $"CREATE INDEX IF NOT EXISTS {ixRecorderKeyV2} ON {table} {recorderCols};";
-            await uow.Connection.ExecuteAsync(new CommandDefinition(sqlRecorderKeyV2, transaction: uow.Transaction, cancellationToken: ct));
+            ddl.AppendLine($"CREATE INDEX IF NOT EXISTS {ixRecorderKeyV2} ON {table} {recorderCols};");
         }
+
+        await uow.Connection.ExecuteAsync(new CommandDefinition(ddl.ToString(), transaction: uow.Transaction, cancellationToken: ct));
     }
 
     private sealed record ColumnMeta(
@@ -621,20 +789,7 @@ public sealed class PostgresReferenceRegisterRecordsStore(
 
     private static bool ColumnTypeMatches(ColumnMeta meta, ColumnType t)
     {
-        var expectedUdt = t switch
-        {
-            ColumnType.String => "text",
-            ColumnType.Int32 => "int4",
-            ColumnType.Int64 => "int8",
-            ColumnType.Decimal => "numeric",
-            ColumnType.Boolean => "bool",
-            ColumnType.Guid => "uuid",
-            ColumnType.Date => "date",
-            ColumnType.DateTimeUtc => "timestamptz",
-            ColumnType.Json => "jsonb",
-            _ => throw new NgbInvariantViolationException($"Unsupported ColumnType '{t}'.",
-                new Dictionary<string, object?> { ["columnType"] = t.ToString() })
-        };
+        var expectedUdt = GetSqlType(t).UdtName;
 
         if (!string.Equals(meta.UdtName, expectedUdt, StringComparison.OrdinalIgnoreCase))
             return false;
@@ -655,17 +810,19 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         return true;
     }
 
-    private static string ToSqlType(ColumnType t) => t switch
+    private static string ToSqlType(ColumnType t) => GetSqlType(t).SqlType;
+
+    private static (string UdtName, string SqlType) GetSqlType(ColumnType t) => t switch
     {
-        ColumnType.String => "TEXT",
-        ColumnType.Int32 => "INTEGER",
-        ColumnType.Int64 => "BIGINT",
-        ColumnType.Decimal => "NUMERIC(28,8)",
-        ColumnType.Boolean => "BOOLEAN",
-        ColumnType.Guid => "UUID",
-        ColumnType.Date => "DATE",
-        ColumnType.DateTimeUtc => "TIMESTAMPTZ",
-        ColumnType.Json => "JSONB",
+        ColumnType.String => ("text", "TEXT"),
+        ColumnType.Int32 => ("int4", "INTEGER"),
+        ColumnType.Int64 => ("int8", "BIGINT"),
+        ColumnType.Decimal => ("numeric", "NUMERIC(28,8)"),
+        ColumnType.Boolean => ("bool", "BOOLEAN"),
+        ColumnType.Guid => ("uuid", "UUID"),
+        ColumnType.Date => ("date", "DATE"),
+        ColumnType.DateTimeUtc => ("timestamptz", "TIMESTAMPTZ"),
+        ColumnType.Json => ("jsonb", "JSONB"),
         _ => throw new NgbInvariantViolationException($"Unsupported ColumnType '{t}'.",
             new Dictionary<string, object?> { ["columnType"] = t.ToString() })
     };
@@ -719,8 +876,6 @@ public sealed class PostgresReferenceRegisterRecordsStore(
         // We hash the table name to avoid collisions across different registers.
         var token = DeterministicGuid.Create($"Ix|{prefix}|{table}").ToString("N")[..12];
         var name = prefix + token;
-        if (name.Length > ReferenceRegisterSqlIdentifiers.MaxIdentifierLength)
-            name = name[..ReferenceRegisterSqlIdentifiers.MaxIdentifierLength];
 
         ReferenceRegisterSqlIdentifiers.EnsureOrThrow(name, "index name");
         return name;
@@ -730,8 +885,6 @@ public sealed class PostgresReferenceRegisterRecordsStore(
     {
         var token = DeterministicGuid.Create($"Trg|{prefix}|{table}").ToString("N")[..12];
         var name = prefix + token;
-        if (name.Length > ReferenceRegisterSqlIdentifiers.MaxIdentifierLength)
-            name = name[..ReferenceRegisterSqlIdentifiers.MaxIdentifierLength];
 
         ReferenceRegisterSqlIdentifiers.EnsureOrThrow(name, "trigger name");
         return name;
@@ -741,8 +894,6 @@ public sealed class PostgresReferenceRegisterRecordsStore(
     {
         var token = DeterministicGuid.Create($"Ck|{prefix}|{table}").ToString("N")[..12];
         var name = prefix + token;
-        if (name.Length > ReferenceRegisterSqlIdentifiers.MaxIdentifierLength)
-            name = name[..ReferenceRegisterSqlIdentifiers.MaxIdentifierLength];
 
         ReferenceRegisterSqlIdentifiers.EnsureOrThrow(name, "constraint name");
         return name;

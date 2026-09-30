@@ -89,7 +89,8 @@ function makeStressSheet(rows: number, measureCount = 10): ReportSheetDto {
   }
 }
 
-const mobileSheet = makeSheet(12)
+// Keep enough rows to require vertical scrolling without relying on narrow-column wrapping.
+const mobileSheet = makeSheet(24)
 
 const ReportSheetMobileHarness = defineComponent({
   setup() {
@@ -142,6 +143,20 @@ const ReportSheetLoadMoreHarness = defineComponent({
         ),
       ],
     )
+  },
+})
+
+const ReportSheetLargeWindowHarness = defineComponent({
+  setup() {
+    return () => h('div', { style: 'width: 480px; height: 680px; display: flex;' }, [
+      h(NgbReportSheet, {
+        sheet: makeSheet(6),
+        loadedCount: 2_495,
+        totalCount: 5_000,
+        rowNoun: 'property',
+        canLoadMore: true,
+      }),
+    ])
   },
 })
 
@@ -299,6 +314,23 @@ const ReportSheetStressHarness = defineComponent({
   },
 })
 
+const ReportSheetVirtualizedHarness = defineComponent({
+  setup() {
+    return () => h(
+      'div',
+      {
+        style: 'width: 680px; max-width: 680px; height: 720px; display: flex; min-width: 0; min-height: 0; overflow: hidden;',
+      },
+      [h(NgbReportSheet, {
+        sheet: makeStressSheet(600, 12),
+        loadedCount: 600,
+        totalCount: 600,
+        rowNoun: 'property',
+      })],
+    )
+  },
+})
+
 function mockIntersectionObserver() {
   const previous = globalThis.IntersectionObserver
   const state = {
@@ -409,6 +441,15 @@ test('shows a load-more footer without breaking the report shell contract', asyn
   expect(document.documentElement.scrollWidth <= window.innerWidth + 1).toBe(true)
 })
 
+test('continues incremental loading beyond two thousand visited rows', async () => {
+  const view = await renderWithRouter(ReportSheetLargeWindowHarness)
+  await expect.element(view.getByText(
+    'Loaded 2,495 properties. Scroll to continue loading.',
+    { exact: true },
+  )).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'Load more', exact: true })).toBeEnabled()
+})
+
 test('emits scroll state, restores scroll position, and requests more rows through the observer contract', async () => {
   await page.viewport(480, 800)
   const observer = mockIntersectionObserver()
@@ -460,6 +501,55 @@ test('handles wide appendable report datasets without leaking page overflow', as
   expect(document.documentElement.scrollWidth <= window.innerWidth + 1).toBe(true)
 })
 
+test('virtualizes large report sheets while preserving full scroll height', async () => {
+  await page.viewport(680, 900)
+  const view = await renderWithRouter(ReportSheetVirtualizedHarness)
+  const scrollHost = view.getByTestId('report-sheet-scroll').element() as HTMLElement
+
+  await expect.element(view.getByText('Stress Property 1', { exact: true })).toBeVisible()
+  expect(document.querySelectorAll('tbody tr').length).toBeLessThan(600)
+  expect(scrollHost.scrollHeight).toBeGreaterThan(scrollHost.clientHeight * 10)
+
+  scrollHost.scrollTop = scrollHost.scrollHeight
+  scrollHost.dispatchEvent(new Event('scroll'))
+  await expect.poll(() => document.body.textContent ?? '').toContain('Stress Property 600')
+  expect(document.querySelectorAll('tbody tr').length).toBeLessThan(600)
+})
+
+test('updates virtual row measurements from resize observations and ignores irrelevant entries', async () => {
+  const original = globalThis.ResizeObserver
+  const callbacks: ResizeObserverCallback[] = []
+  const observed: Element[] = []
+  class ResizeObserverMock {
+    constructor(callback: ResizeObserverCallback) {
+      callbacks.push(callback)
+    }
+    observe(element: Element) { observed.push(element) }
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: ResizeObserverMock })
+
+  try {
+    await renderWithRouter(ReportSheetVirtualizedHarness)
+    await expect.poll(() => callbacks.length).toBe(2)
+    const row = observed.find((element) => element.tagName === 'TR')!
+    expect(row).toBeTruthy()
+    const irrelevant = document.createElement('div')
+
+    callbacks[1]!([
+      { target: irrelevant, contentRect: { height: 20 } },
+      { target: row, contentRect: { height: 0 } },
+      { target: row, borderBoxSize: [{ blockSize: 42 }] },
+    ] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+    callbacks[1]!([
+      { target: row, contentRect: { height: 42 } },
+    ] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+  } finally {
+    Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: original })
+  }
+})
+
 test('suppresses duplicate observer load-more signals until the sheet changes and keeps scroll restoration working after replacement', async () => {
   await page.viewport(480, 800)
   const observer = mockIntersectionObserver()
@@ -499,11 +589,15 @@ test('disconnects the load-more observer when the report sheet unmounts', async 
 
   try {
     const view = await renderWithRouter(ReportSheetObserverLifecycleHarness)
+    const scrollHost = view.getByTestId('report-sheet-scroll').element() as HTMLDivElement
 
     expect(observer.state.observed.length).toBeGreaterThan(0)
     expect(observer.state.disconnectCount).toBe(0)
 
+    scrollHost.scrollTop = 32
+    scrollHost.dispatchEvent(new Event('scroll'))
     await view.getByRole('button', { name: 'Unmount sheet' }).click()
+    scrollHost.dispatchEvent(new Event('scroll'))
 
     await expect.poll(() => observer.state.disconnectCount).toBe(1)
   } finally {

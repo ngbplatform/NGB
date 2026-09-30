@@ -8,6 +8,10 @@ using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.DependencyInjection;
 using NGB.BackgroundJobs.Infrastructure;
 using NGB.BackgroundJobs.IntegrationTests.Infrastructure;
+using NGB.BackgroundJobs.PostgreSql;
+using NGB.BackgroundJobs.PostgreSql.DependencyInjection;
+using NGB.Persistence.AuditLog;
+using NGB.Persistence.BackgroundJobs;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
 using Xunit;
@@ -31,6 +35,9 @@ public sealed class NgbBackgroundJobsHangfire_DiWiring_UsesPostgresStorage_P0Tes
         var storage = sp.GetRequiredService<JobStorage>();
 
         storage.Should().BeOfType<PostgreSqlStorage>("AddNgbBackgroundJobsHangfire must configure Hangfire.PostgreSql storage");
+        sp.GetRequiredService<IRecurringJobHashBatchReader>().Should().NotBeNull();
+        await using (var scope = sp.CreateAsyncScope())
+            scope.ServiceProvider.GetRequiredService<IAuditHealthReader>().Should().NotBeNull();
 
         // Hold the same distributed lock resource used by the runner.
         using (var conn = storage.GetConnection())
@@ -75,6 +82,7 @@ public sealed class NgbBackgroundJobsHangfire_DiWiring_UsesPostgresStorage_P0Tes
 
         // Platform services needed to resolve the default job implementations registered by AddNgbBackgroundJobsHangfire.
         services.AddNgbPostgres(connectionString);
+        services.AddNgbPostgresBackgroundJobsAdapter();
         services.AddNgbRuntime();
 
         // Override notifier before AddNgbBackgroundJobsHangfire registers defaults (TryAdd).
@@ -85,10 +93,11 @@ public sealed class NgbBackgroundJobsHangfire_DiWiring_UsesPostgresStorage_P0Tes
         services.AddTransient<IPlatformBackgroundJob>(_ => new CountingJob("test.di.lock", counter));
         services.AddTransient<IPlatformBackgroundJob>(_ => new CountingJob("test.di.free", counter));
 
-        services.AddPlatformBackgroundJobsHangfire(o =>
+        services.AddPlatformBackgroundJobsHangfire(
+            PostgresHangfireJobStorageFactory.Create(connectionString, "hangfire", true),
+            o =>
         {
             o.ConnectionString = connectionString;
-            o.PrepareSchemaIfNecessary = true;
             o.WorkerCount = 1;
             o.DistributedLockTimeoutSeconds = 1;
         });

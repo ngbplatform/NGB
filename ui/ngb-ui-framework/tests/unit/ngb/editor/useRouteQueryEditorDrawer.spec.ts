@@ -89,7 +89,7 @@ describe('route query editor drawer', () => {
 
   it('blocks open requests when onBeforeOpen rejects and closes by replacing query state', async () => {
     const onCommit = vi.fn()
-    const harness = createHarness({ panel: 'new' })
+    const harness = createHarness({ panel: 'edit', id: 'property-1' })
     harness.onBeforeOpen.mockResolvedValueOnce(false)
 
     expect(await harness.drawer.openCreateDrawer()).toBe(false)
@@ -104,5 +104,18 @@ describe('route query editor drawer', () => {
       id: undefined,
       keep: '1',
     })
+  })
+
+  it('accepts an absent open guard and rejects invalid or already-open edit targets', async () => {
+    const withoutGuard = createHarness({}, { onBeforeOpen: undefined })
+
+    expect(await withoutGuard.drawer.openCreateDrawer()).toBe(true)
+
+    const activeEdit = createHarness({ panel: 'edit', id: 'property-9' })
+    expect(await activeEdit.drawer.openEditDrawer('property-9')).toBe(false)
+    expect(await activeEdit.drawer.openEditDrawer(null as never)).toBe(false)
+
+    const activeCreate = createHarness({ panel: 'new' })
+    expect(await activeCreate.drawer.openCreateDrawer()).toBe(false)
   })
 })

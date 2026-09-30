@@ -23,6 +23,7 @@ public abstract class AdminControllerBase(IAdminService service) : ControllerBas
         [FromQuery] bool includeDeleted = false,
         [FromQuery] bool? onlyActive = null,
         [FromQuery] bool? onlyDeleted = null,
+        [FromQuery] string? cursor = null,
         CancellationToken ct = default)
         => service.GetChartOfAccountsPageAsync(new ChartOfAccountsPageRequestDto(
             Offset: offset,
@@ -31,7 +32,8 @@ public abstract class AdminControllerBase(IAdminService service) : ControllerBas
             AccountTypes: accountTypes,
             IncludeDeleted: includeDeleted,
             OnlyActive: onlyActive,
-            OnlyDeleted: onlyDeleted), ct);
+            OnlyDeleted: onlyDeleted,
+            Cursor: cursor), ct);
 
     [HttpGet("~/api/chart-of-accounts/{accountId:guid}")]
     public Task<ChartOfAccountsAccountDto> GetChartOfAccount([FromRoute] Guid accountId, CancellationToken ct)

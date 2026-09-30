@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using NGB.AgencyBilling.Documents;
 using NGB.AgencyBilling.Api.IntegrationTests.Infrastructure;
 using NGB.AgencyBilling.Api.IntegrationTests.Support;
 using NGB.AgencyBilling.Enums;
@@ -8,6 +9,8 @@ using NGB.AgencyBilling.Runtime;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
+using NGB.Persistence.UnitOfWork;
+using NGB.Runtime.UnitOfWork;
 using Xunit;
 
 namespace NGB.AgencyBilling.Api.IntegrationTests.Documents;
@@ -204,6 +207,28 @@ public sealed class AgencyBillingDocuments_DraftLifecycle_P0Tests(AgencyBillingP
         timesheet = await documents.PostAsync(AgencyBillingCodes.Timesheet, timesheet.Id, CancellationToken.None);
         invoice = await documents.PostAsync(AgencyBillingCodes.SalesInvoice, invoice.Id, CancellationToken.None);
         payment = await documents.PostAsync(AgencyBillingCodes.CustomerPayment, payment.Id, CancellationToken.None);
+
+        var usageReader = scope.ServiceProvider.GetRequiredService<IAgencyBillingInvoiceUsageReader>();
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var typedReaders = scope.ServiceProvider.GetRequiredService<IAgencyBillingDocumentReaders>();
+        await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        {
+            (await typedReaders.ReadTimesheetHeadsAsync([], innerCt)).Should().BeEmpty();
+            (await typedReaders.ReadTimesheetLinesAsync([], innerCt)).Should().BeEmpty();
+            (await typedReaders.ReadSalesInvoiceHeadsAsync([], innerCt)).Should().BeEmpty();
+        });
+        var usage = await uow.ExecuteInUowTransactionAsync(
+            innerCt => usageReader.GetPostedInvoiceUsageForTimesheetAsync(timesheet.Id, ct: innerCt));
+        usage.Should().Be(new AgencyBillingTimesheetInvoiceUsage(8m, 1280m));
+
+        var excludedUsage = await uow.ExecuteInUowTransactionAsync(
+            innerCt => usageReader.GetPostedInvoiceUsageForTimesheetAsync(timesheet.Id, invoice.Id, innerCt));
+        excludedUsage.Should().Be(new AgencyBillingTimesheetInvoiceUsage(0m, 0m));
+
+        var emptyBatch = await usageReader.GetPostedInvoiceUsageForTimesheetsAsync(
+            [Guid.Empty, Guid.Empty],
+            ct: CancellationToken.None);
+        emptyBatch.Should().BeEmpty();
 
         contract.Status.Should().Be(DocumentStatus.Posted);
         timesheet.Status.Should().Be(DocumentStatus.Posted);

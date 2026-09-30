@@ -8,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingCoreSchemaValidation_DimensionSetAppendOnlyGuards_P5_11_Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingCoreSchemaValidation_DimensionSetAppendOnlyGuards_P5_11_Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenAppendOnlyGuardFunctionMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
 
         // The guard function is shared (AuditLog + DimensionSets). We drop it with CASCADE for this test.
         await DropFunctionCascadeAsync(Fixture.ConnectionString, "ngb_forbid_mutation_of_append_only_table");
@@ -33,8 +32,6 @@ public sealed class AccountingCoreSchemaValidation_DimensionSetAppendOnlyGuards_
     [Fact]
     public async Task ValidateAsync_WhenDimensionSetsAppendOnlyTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropTriggerAsync(Fixture.ConnectionString, "platform_dimension_sets", "trg_platform_dimension_sets_append_only");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
@@ -51,8 +48,6 @@ public sealed class AccountingCoreSchemaValidation_DimensionSetAppendOnlyGuards_
     [Fact]
     public async Task ValidateAsync_WhenDimensionSetItemsAppendOnlyTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
-
         await DropTriggerAsync(Fixture.ConnectionString, "platform_dimension_set_items", "trg_platform_dimension_set_items_append_only");
 
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);

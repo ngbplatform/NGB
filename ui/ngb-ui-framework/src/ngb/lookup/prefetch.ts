@@ -20,7 +20,7 @@ export async function prefetchLookupsForPage(args: {
   lookupStore: LookupStoreApi
   resolveLookupHint: (entityTypeCode: string, fieldKey: string, lookup?: LookupSource | null) => LookupHint | null
 }) {
-  const tasks: Promise<void>[] = []
+  const groups = new Map<string, { hint: LookupHint; ids: Set<string> }>()
 
   for (const column of args.columns) {
     const hint = args.resolveLookupHint(args.entityTypeCode, column.key, column.lookup)
@@ -31,10 +31,18 @@ export async function prefetchLookupsForPage(args: {
       .filter(isNonEmptyGuid)
 
     if (ids.length === 0) continue
-    tasks.push(Promise.resolve().then(() => ensureResolvedLookupLabels(args.lookupStore, hint, ids)))
+    const key = hint.kind === 'catalog'
+      ? `catalog:${hint.catalogType}`
+      : hint.kind === 'document'
+        ? `document:${hint.documentTypes.map((entry) => entry.trim()).filter(Boolean).join('|')}`
+        : 'coa'
+    const group = groups.get(key) ?? { hint, ids: new Set<string>() }
+    ids.forEach((id) => group.ids.add(id))
+    groups.set(key, group)
   }
 
-  if (tasks.length > 0) {
-    await Promise.allSettled(tasks)
-  }
+  await Promise.allSettled(
+    Array.from(groups.values(), ({ hint, ids }) =>
+      Promise.resolve().then(() => ensureResolvedLookupLabels(args.lookupStore, hint, Array.from(ids)))),
+  )
 }

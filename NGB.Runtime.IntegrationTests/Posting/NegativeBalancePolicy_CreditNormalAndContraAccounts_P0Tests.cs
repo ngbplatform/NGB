@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class NegativeBalancePolicy_CreditNormalAndContraAccounts_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

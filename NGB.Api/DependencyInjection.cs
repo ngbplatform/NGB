@@ -1,20 +1,23 @@
 using System.Text.Json.Serialization;
-using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.OpenApi;
-using Serilog;
 using Swashbuckle.AspNetCore.SwaggerUI;
 using NGB.Api.CurrentUser;
 using NGB.Api.Models;
 using NGB.Api.Sso;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.Health;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 
@@ -22,14 +25,6 @@ namespace NGB.Api;
 
 public static class DependencyInjection
 {
-    private const string CompletelyAllowedCorsPolicyName = "CompletelyAllowedCorsPolicy";
-
-    public static void AddSerilog(this ConfigureHostBuilder host)
-    {
-        host.UseSerilog((ctx, cfg)
-            => cfg.ReadFrom.Configuration(ctx.Configuration));
-    }
-
     #region IServiceCollection
 
     public static IServiceCollection AddInfrastructure(this IServiceCollection services,
@@ -37,6 +32,31 @@ public static class DependencyInjection
         string projectName)
     {
         services.TryAddSingleton(TimeProvider.System);
+        services.AddMetrics();
+        services.AddOptions<Reporting.ReportRequestLimits>()
+            .Bind(configuration.GetSection("Reporting:Requests"))
+            .Validate(o => o.ConcurrentPages > 0 && o is
+            {
+                ConcurrentDownloads: > 0,
+                PageTimeoutSeconds: > 0,
+                PageQueueTimeoutSeconds: > 0,
+                DownloadTimeoutSeconds: > 0,
+                DownloadQueueTimeoutSeconds: > 0
+            }, "Report request limits must be positive.")
+            .Validate(o => o.PageTimeoutSeconds <= 4_294_967 && o is
+                {
+                    DownloadTimeoutSeconds: <= 4_294_967,
+                    PageQueueTimeoutSeconds: <= 4_294_967,
+                    DownloadQueueTimeoutSeconds: <= 4_294_967
+                }, "Report timeouts must be within the cancellation timer range.")
+            .Validate(o => o is
+            {
+                QueuedDownloads: >= 0,
+                QueuedPages: >= 0
+            }, "Report queue limits must not be negative.")
+            .ValidateOnStart();
+        services.TryAddSingleton<Reporting.ReportRequestBudget>();
+        services.Configure<NGB.Runtime.Reporting.ReportCursorProtectionOptions>(configuration.GetSection("Reporting:Cursor"));
 
         services
             .AddCompletelyAllowedCorsPolicy()
@@ -61,10 +81,9 @@ public static class DependencyInjection
     public static IServiceCollection AddKeycloakAdminClient(this IServiceCollection services, IConfiguration configuration)
     {
         var section = configuration.GetSection(nameof(KeycloakAdminClientSettings));
-        var settings = section.Exists()
-            ? section.Get<KeycloakAdminClientSettings>() ?? new KeycloakAdminClientSettings()
-            : new KeycloakAdminClientSettings();
+        var settings = section.Get<KeycloakAdminClientSettings>() ?? new KeycloakAdminClientSettings();
 
+        services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton(settings);
         services.TryAddSingleton(new KeycloakApiClientSettings(
             settings.BaseUrl,
@@ -72,10 +91,79 @@ public static class DependencyInjection
             settings.ClientId,
             settings.ClientSecret));
 
-        services.AddHttpClient<TokenCacheService>();
-        services.AddHttpClient<IIdentityProviderUserAdminClient, KeycloakAdminClient>();
+        ValidateKeycloakClientSettings(settings);
+
+        services
+            .AddHttpClient(KeycloakHttpClientNames.Token, client =>
+            {
+                client.Timeout = Timeout.InfiniteTimeSpan;
+                client.MaxResponseContentBufferSize = settings.MaxResponseContentBytes;
+            })
+            .AddStandardResilienceHandler(options => ConfigureKeycloakResilience(options, settings, retryUnsafeMethods: true));
+
+        services.TryAddSingleton<TokenCacheService>();
+        services.TryAddSingleton<KeycloakUserLookupCache>();
+        services.TryAddSingleton<KeycloakAdminRequestGate>();
+
+        services
+            .AddHttpClient<IIdentityProviderUserAdminClient, KeycloakAdminClient>(
+                client =>
+                {
+                    client.Timeout = Timeout.InfiniteTimeSpan;
+                    client.MaxResponseContentBufferSize = settings.MaxResponseContentBytes;
+                })
+            .AddStandardResilienceHandler(options => ConfigureKeycloakResilience(options, settings, retryUnsafeMethods: false));
 
         return services;
+    }
+
+    private static void ConfigureKeycloakResilience(
+        HttpStandardResilienceOptions options,
+        KeycloakAdminClientSettings settings,
+        bool retryUnsafeMethods)
+    {
+        options.TotalRequestTimeout.Timeout = settings.TotalRequestTimeout;
+        options.AttemptTimeout.Timeout = settings.AttemptTimeout;
+        options.Retry.MaxRetryAttempts = 2;
+
+        if (!retryUnsafeMethods)
+            options.Retry.DisableForUnsafeHttpMethods();
+    }
+
+    private static void ValidateKeycloakClientSettings(KeycloakAdminClientSettings settings)
+    {
+        if (settings.TotalRequestTimeout <= TimeSpan.Zero)
+            throw new NgbConfigurationViolationException("Keycloak total request timeout must be positive.");
+
+        if (settings.AttemptTimeout <= TimeSpan.Zero || settings.AttemptTimeout > settings.TotalRequestTimeout)
+            throw new NgbConfigurationViolationException("Keycloak attempt timeout must be positive and not exceed the total request timeout.");
+
+        if (settings.UserLookupCacheTtl <= TimeSpan.Zero || settings.MissingUserCacheTtl <= TimeSpan.Zero)
+            throw new NgbConfigurationViolationException("Keycloak user lookup cache TTL values must be positive.");
+
+        if (settings.MaxCachedUserLookups is < 100 or > 200_000)
+            throw new NgbConfigurationViolationException("Keycloak user lookup cache size must be between 100 and 200000.");
+
+        if (settings.AdminBatchConcurrency is < 1 or > 32)
+            throw new NgbConfigurationViolationException("Keycloak admin batch concurrency must be between 1 and 32.");
+
+        if (settings.MaxConcurrentAdminRequests is < 1 or > 256)
+            throw new NgbConfigurationViolationException("Keycloak maximum concurrent admin requests must be between 1 and 256.");
+
+        if (settings.MaxQueuedAdminRequests is < 0 or > 10_000)
+            throw new NgbConfigurationViolationException("Keycloak maximum queued admin requests must be between 0 and 10000.");
+
+        if (settings.MaxPendingUserLookups is < 1 or > 10_000)
+            throw new NgbConfigurationViolationException("Keycloak maximum pending user lookups must be between 1 and 10000.");
+
+        if (settings.MaxResponseContentBytes is < 1_024 or > 16_777_216)
+            throw new NgbConfigurationViolationException("Keycloak maximum response content size must be between 1024 and 16777216 bytes.");
+
+        if (settings.AdminBatchConcurrency > settings.MaxConcurrentAdminRequests)
+            throw new NgbConfigurationViolationException("Keycloak admin batch concurrency must not exceed the process-wide concurrent admin request limit.");
+
+        if (settings.MaxPendingUserLookups > settings.MaxConcurrentAdminRequests + settings.MaxQueuedAdminRequests)
+            throw new NgbConfigurationViolationException("Keycloak maximum pending user lookups must not exceed total Admin API bulkhead capacity.");
     }
 
     public static IServiceCollection AddExternalLinks(this IServiceCollection services, IConfiguration configuration)
@@ -94,18 +182,6 @@ public static class DependencyInjection
             })
             .AddApplicationPart(typeof(DependencyInjection).Assembly)
             .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-
-        return services;
-    }
-
-    public static IServiceCollection AddCompletelyAllowedCorsPolicy(this IServiceCollection services)
-    {
-        services.AddCors(o => o.AddPolicy(CompletelyAllowedCorsPolicyName, b =>
-        {
-            b.AllowAnyOrigin()
-                .AllowAnyMethod()
-                .AllowAnyHeader();
-        }));
 
         return services;
     }
@@ -137,16 +213,7 @@ public static class DependencyInjection
                 Type = SecuritySchemeType.ApiKey,
                 Scheme = JwtBearerDefaults.AuthenticationScheme
             });
-            c.TagActionsBy(api =>
-            {
-                if (api.GroupName != null)
-                    return [api.GroupName];
-
-                if (api.ActionDescriptor is ControllerActionDescriptor controllerActionDescriptor)
-                    return [controllerActionDescriptor.ControllerName];
-
-                throw new NgbInvariantViolationException("Unable to determine tag for endpoint.");
-            });
+            c.TagActionsBy(ResolveSwaggerTags);
             c.DocInclusionPredicate((name, api) => true);
 
             c.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
@@ -167,10 +234,9 @@ public static class DependencyInjection
             return SanitizeSwaggerSchemaId(type.FullName ?? type.Name);
 
         var genericRoot = type.GetGenericTypeDefinition();
-        var genericName = genericRoot.FullName ?? genericRoot.Name;
+        var genericName = genericRoot.FullName!;
         var tickIndex = genericName.IndexOf('`');
-        if (tickIndex >= 0)
-            genericName = genericName[..tickIndex];
+        genericName = genericName[..tickIndex];
 
         var args = string.Join("_", type.GetGenericArguments().Select(BuildSwaggerSchemaId));
         return SanitizeSwaggerSchemaId($"{genericName}_{args}");
@@ -184,14 +250,20 @@ public static class DependencyInjection
             .Replace(']', '_')
             .Replace(',', '_');
 
+    private static IList<string> ResolveSwaggerTags(ApiDescription api)
+    {
+        if (api.GroupName is not null)
+            return [api.GroupName];
+
+        if (api.ActionDescriptor is ControllerActionDescriptor controllerActionDescriptor)
+            return [controllerActionDescriptor.ControllerName];
+
+        throw new NgbInvariantViolationException("Unable to determine tag for endpoint.");
+    }
+
     #endregion
 
     #region IApplicationBuilder
-
-    public static IApplicationBuilder UseCompletelyAllowedCorsPolicy(this IApplicationBuilder app)
-    {
-        return app.UseCors(CompletelyAllowedCorsPolicyName);
-    }
 
     public static IApplicationBuilder UseSwagger(this IApplicationBuilder app, string projectName)
     {
@@ -217,41 +289,21 @@ public static class DependencyInjection
 
     #region HealthHeckers
 
-    public static IServiceCollection AddHealthCheckHttpClient(this IServiceCollection services)
-    {
-        services
-            .AddHttpClient("HealthCheckHttpClient")
-            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-            {
-#if DEBUG // Disable SSL Validation (Development Only)
-                ServerCertificateCustomValidationCallback = (_, _, _, _) => true
-#endif
-            });
-
-        return services;
-    }
-
     public static IApplicationBuilder UseHealthChecks(this IApplicationBuilder app, string path = "/health")
     {
         return app.UseHealthChecks(path, new HealthCheckOptions
         {
-            Predicate = _ => true,
-            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+            Predicate = IncludeEveryHealthCheck,
+            ResponseWriter = NgbHealthCheckResponseWriter.WriteAsync
         });
     }
+
+    private static bool IncludeEveryHealthCheck(HealthCheckRegistration _) => true;
 
     public static IHealthChecksBuilder AddWebApplication(this IHealthChecksBuilder builder,
         string name = "Web Application")
     {
         return builder.AddCheck(name, () => HealthCheckResult.Healthy());
-    }
-
-    public static IHealthChecksBuilder AddPostgres(this IHealthChecksBuilder builder,
-        IConfiguration configuration,
-        string name = "PostgreSQL Server")
-    {
-        var connectionString = configuration.GetConnectionString("DefaultConnection")!;
-        return builder.AddNpgSql(connectionString, name: name);
     }
 
     #endregion

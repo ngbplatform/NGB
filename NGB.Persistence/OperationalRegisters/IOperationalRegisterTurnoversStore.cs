@@ -14,6 +14,9 @@ public interface IOperationalRegisterTurnoversStore
     /// </summary>
     Task EnsureSchemaAsync(Guid registerId, CancellationToken ct = default);
 
+    Task EnsureReadyForWriteAsync(Guid registerId, CancellationToken ct = default)
+        => EnsureSchemaAsync(registerId, ct);
+
     /// <summary>
     /// Replaces turnovers for a specific month (YYYY-MM-01).
     /// Requires an active transaction.

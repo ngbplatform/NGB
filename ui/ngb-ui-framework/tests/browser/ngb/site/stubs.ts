@@ -42,31 +42,3 @@ export const StubDatePicker = defineComponent({
     })
   },
 })
-
-export const StubVChart = defineComponent({
-  props: {
-    option: {
-      type: Object,
-      default: () => ({}),
-    },
-    initOptions: {
-      type: Object,
-      default: () => ({}),
-    },
-    autoresize: {
-      type: Boolean,
-      default: false,
-    },
-  },
-  setup(props) {
-    const serialize = (value: unknown) => JSON.stringify(value, (_key, entry) => (
-      typeof entry === 'function' ? '[fn]' : entry
-    ))
-
-    return () => h('div', { 'data-testid': 'stub-vchart' }, [
-      h('pre', { 'data-testid': 'stub-vchart-option' }, serialize(props.option ?? {})),
-      h('pre', { 'data-testid': 'stub-vchart-init-options' }, serialize(props.initOptions ?? {})),
-      h('span', { 'data-testid': 'stub-vchart-autoresize' }, String(props.autoresize)),
-    ])
-  },
-})

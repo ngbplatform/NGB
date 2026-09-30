@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
-using NGB.Core.Documents;
 using NGB.Core.Documents.Exceptions;
 using NGB.Persistence.Schema;
 using NGB.Runtime.IntegrationTests.Infrastructure;
@@ -9,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenSchemaIsIntact_Succeeds()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await using var scope = host.Services.CreateAsyncScope();
@@ -29,7 +27,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_P0Tests(
     [Fact]
     public async Task ValidateAsync_WhenDraftGuardTriggerMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTriggerAsync(
@@ -49,7 +46,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_P0Tests(
     [Fact]
     public async Task ValidateAsync_WhenCriticalCheckConstraintMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropConstraintAsync(
@@ -69,7 +65,6 @@ public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_P0Tests(
     [Fact]
     public async Task ValidateAsync_WhenCodeNormIndexMissing_ThrowsWithHelpfulMessage()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(

@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// <summary>
 /// P0: CloseMonth contract around period normalization and DimensionSet-based aggregation.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseMonth_Contract_DimensionSets_AndNormalization_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

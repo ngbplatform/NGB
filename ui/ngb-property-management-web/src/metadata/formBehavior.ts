@@ -87,8 +87,7 @@ export function isFieldHidden(args: {
   if (field.key === 'kind') return kind !== null
   if (!kind) return buildingOnly.has(field.key) || unitOnly.has(field.key)
   if (kind === 'Building') return unitOnly.has(field.key)
-  if (kind === 'Unit') return buildingOnly.has(field.key)
-  return false
+  return buildingOnly.has(field.key)
 }
 
 export function findDisplayField(form: FormMetadata): FieldMetadata | null {

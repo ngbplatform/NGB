@@ -70,13 +70,14 @@ const {
   entityTypeCode: catalogType,
   reloadKey: routeReloadKey,
   loadMetadata: (entityTypeCode) => metaStore.ensureCatalogType(entityTypeCode),
-  loadPage: ({ entityTypeCode }) =>
+  loadPage: ({ entityTypeCode, signal }) =>
     props.loadPage({
       catalogType: entityTypeCode,
       offset: offset.value,
       limit: limit.value,
       search: String(route.query.search ?? '') || undefined,
       trashMode: trashMode.value,
+      signal,
     }),
 })
 
@@ -104,6 +105,11 @@ const {
   beforeCloseDrawer,
 } = useEditorDrawerState()
 
+async function allowDrawerTransition(): Promise<boolean> {
+  if (!editorFlags.value.isDirty) return true
+  return await requestDiscard()
+}
+
 const {
   panelMode,
   currentId,
@@ -115,13 +121,10 @@ const {
   route,
   router,
   onBeforeOpen: async (_next, current) => {
-    if (current.mode === null || !editorFlags.value.isDirty) return true
-    return await requestDiscard()
+    if (current.mode === null) return true
+    return await allowDrawerTransition()
   },
-  onBeforeClose: async (current) => {
-    if (current.mode === null || !editorFlags.value.isDirty) return true
-    return await requestDiscard()
-  },
+  onBeforeClose: allowDrawerTransition,
 })
 
 async function openCreateDrawer() {
@@ -195,8 +198,7 @@ async function handleDrawerAction(action: string) {
 
 const expandTo = computed(() => {
   if (panelMode.value === 'new') return buildCatalogFullPageUrl(catalogType.value)
-  if (currentId.value) return buildCatalogFullPageUrl(catalogType.value, currentId.value)
-  return null
+  return buildCatalogFullPageUrl(catalogType.value, currentId.value as string)
 })
 </script>
 
@@ -225,7 +227,7 @@ const expandTo = computed(() => {
     @prev="prevPage"
     @next="nextPage"
     @rowActivate="(id) => void openEditDrawer(String(id))"
-    @update:drawerOpen="(value) => (!value ? void closeDrawer() : null)"
+    @update:drawerOpen="void closeDrawer()"
   >
     <template #filters>
       <NgbRecycleBinFilter v-model="trashMode" :disabled="loading" />

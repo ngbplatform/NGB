@@ -12,8 +12,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegisterCumulativeBalances_DefaultProjector_P0Tests(PostgresTestFixture fixture)
+[Collection(RegistersPostgresCollection.Name)]
+public sealed partial class OperationalRegisterCumulativeBalances_DefaultProjector_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

@@ -24,6 +24,31 @@ public sealed record UpdateIdentityProviderUserRequest(
     string? DisplayName,
     bool Enabled);
 
+public sealed record IdentityProviderUserBatch(
+    IReadOnlyDictionary<string, IdentityProviderUserDto> ById,
+    IReadOnlyDictionary<string, IdentityProviderUserDto> ByEmail);
+
+/// <summary>
+/// Optional optimized read boundary for providers that can resolve a mixed page of subjects and emails
+/// with provider-specific bounded concurrency and without an unbounded directory scan.
+/// </summary>
+public interface IIdentityProviderBulkUserReader
+{
+    Task<IdentityProviderUserBatch> GetUsersAsync(
+        IReadOnlyList<string> identityProviderUserIds,
+        IReadOnlyList<string> emails,
+        CancellationToken ct);
+}
+
+/// <summary>
+/// Non-blocking page enrichment boundary. Implementations must only read an in-process projection or cache;
+/// a list request must never turn into one remote identity-provider call per row.
+/// </summary>
+public interface IIdentityProviderUserPageSnapshotReader
+{
+    IdentityProviderUserBatch GetCachedUsers(IReadOnlyList<string> identityProviderUserIds, IReadOnlyList<string> emails);
+}
+
 public interface IIdentityProviderUserAdminClient
 {
     Task<IdentityProviderUserDto> CreateUserAsync(CreateIdentityProviderUserRequest request, CancellationToken ct);

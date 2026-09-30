@@ -20,15 +20,13 @@ namespace NGB.Runtime.IntegrationTests.FaultInjection;
 /// P3 coverage: cancellation token must stop platform operations and leave no partial writes.
 /// Includes: cancellation before start, and cancellation while waiting for period lock (simulated by sleeping writer).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Cancellation_Propagation_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task Post_WhenCancellationAlreadyRequested_DoesNotWriteAnything()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 
@@ -58,8 +56,6 @@ public sealed class Cancellation_Propagation_EndToEndTests(PostgresTestFixture f
     [Fact]
     public async Task Post_WhenCancelledWhileWaitingForLock_DoesNotWriteAnything()
     {
-        await Fixture.ResetDatabaseAsync();
-
         // Sleep inside entry writer to hold the transaction+locks long enough.
         using var host = IntegrationHostFactory.Create(
             Fixture.ConnectionString,

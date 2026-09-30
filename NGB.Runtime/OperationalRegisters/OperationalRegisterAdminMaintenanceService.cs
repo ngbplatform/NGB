@@ -19,7 +19,7 @@ public sealed class OperationalRegisterAdminMaintenanceService(
     IOperationalRegisterPhysicalSchemaHealthReader health,
     IOperationalRegisterFinalizationService finalizations,
     IOperationalRegisterFinalizationRunner finalizationRunner)
-    : IOperationalRegisterAdminMaintenanceService
+    : IOperationalRegisterAdminBatchMaintenanceService
 {
     public async Task<OperationalRegisterPhysicalSchemaHealth?> EnsurePhysicalSchemaByIdAsync(
         Guid registerId,
@@ -46,19 +46,54 @@ public sealed class OperationalRegisterAdminMaintenanceService(
         return await health.GetByRegisterIdAsync(registerId, ct);
     }
 
+    public async Task EnsurePhysicalSchemasByIdsAsync(
+        IReadOnlyCollection<Guid> registerIds,
+        CancellationToken ct = default)
+    {
+        if (registerIds is null)
+            throw new NgbArgumentRequiredException(nameof(registerIds));
+
+        var ids = registerIds
+            .Where(static id => id != Guid.Empty)
+            .Distinct()
+            .OrderBy(static id => id)
+            .ToArray();
+        if (ids.Length == 0)
+            return;
+
+        await uow.EnsureConnectionOpenAsync(ct);
+        var existing = await registers.GetByIdsAsync(ids, ct);
+        if (existing.Count == 0)
+            return;
+
+        await uow.ExecuteInUowTransactionAsync(
+            async token =>
+            {
+                foreach (var reg in existing.OrderBy(static item => item.RegisterId))
+                {
+                    await movements.EnsureSchemaAsync(reg.RegisterId, token);
+                    await turnovers.EnsureSchemaAsync(reg.RegisterId, token);
+                    await balances.EnsureSchemaAsync(reg.RegisterId, token);
+                }
+            },
+            ct);
+    }
+
     public async Task<OperationalRegisterPhysicalSchemaHealthReport> EnsurePhysicalSchemaForAllAsync(
         CancellationToken ct = default)
     {
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var all = await registers.GetAllAsync(ct);
-        if (all.Count == 0)
-            return await health.GetReportAsync(ct);
+        var before = await health.GetReportAsync(ct);
+        var unhealthy = before.Items.Where(static item => !item.IsOk).ToArray();
+        if (unhealthy.Length == 0)
+            return before;
 
-        // Ensure each register in its own transaction to keep transactions small.
-        foreach (var r in all)
+        // Healthy schemas are intentionally skipped: EnsureSchema performs DDL
+        // discovery and locking even when there is nothing to repair.
+        foreach (var item in unhealthy)
         {
-            var registerId = r.RegisterId;
+            var registerId = item.Register.RegisterId;
 
             await uow.ExecuteInUowTransactionAsync(
                 async token =>
@@ -87,9 +122,14 @@ public sealed class OperationalRegisterAdminMaintenanceService(
         await finalizations.MarkDirtyAsync(registerId, periodMonth, manageTransaction: true, ct);
     }
 
-    public Task<int> FinalizeDirtyAsync(int maxItems = 50, CancellationToken ct = default)
+    public Task<int> FinalizeDirtyAsync(
+        int maxItems = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default)
         => finalizationRunner.FinalizeDirtyAsync(maxItems, manageTransaction: true, ct);
 
-    public Task<int> FinalizeRegisterDirtyAsync(Guid registerId, int maxPeriods = 50, CancellationToken ct = default)
+    public Task<int> FinalizeRegisterDirtyAsync(
+        Guid registerId,
+        int maxPeriods = OperationalRegisterFinalizationLimits.DefaultProcessingBatchSize,
+        CancellationToken ct = default)
         => finalizationRunner.FinalizeRegisterDirtyAsync(registerId, maxPeriods, manageTransaction: true, ct);
 }

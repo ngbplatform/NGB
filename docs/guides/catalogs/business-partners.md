@@ -55,7 +55,7 @@ NGB.Trade.Runtime/
     BusinessPartnerRules.cs
 
 NGB.Trade.PostgreSql/
-  Bootstrap/db/migrations/
+  db/migrations/
     V2026_04_18_0001__add_trd_business_partner.sql
 ```
 

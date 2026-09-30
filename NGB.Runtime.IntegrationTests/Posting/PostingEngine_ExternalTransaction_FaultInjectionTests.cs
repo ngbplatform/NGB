@@ -19,15 +19,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_ExternalTransaction_FaultInjectionTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PostAsync_ExternalTransaction_WhenEntryWriterThrowsAfterWriting_CallerRollback_RemovesAllSideEffects()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(
             Fixture.ConnectionString,
             services => ReplaceAccountingEntryWriterWithThrowAfterWrite(services));
@@ -75,8 +73,6 @@ public sealed class PostingEngine_ExternalTransaction_FaultInjectionTests(Postgr
     [Fact]
     public async Task PostAsync_ExternalTransaction_WhenTurnoverWriterThrowsAfterWriting_CallerRollback_RemovesAllSideEffects()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(
             Fixture.ConnectionString,
             services => ReplaceAccountingTurnoverWriterWithThrowAfterWrite(services));

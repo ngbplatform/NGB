@@ -25,7 +25,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - After finalization, readers return rows enriched with DimensionBag + DimensionValueDisplays.
 /// - Dimension filters (DimensionValue and/or DimensionSetId) are applied.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterProjectionReaders_TurnoversBalances_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

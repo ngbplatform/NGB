@@ -44,11 +44,11 @@ const TRADE_PARTY_FALLBACK_COLUMNS: Record<string, ColumnMetadata> = {
 }
 
 function pickColumns(
-  columns: readonly ColumnMetadata[] | null | undefined,
+  columns: readonly ColumnMetadata[],
   keys: readonly string[],
   fallbacks?: Record<string, ColumnMetadata>,
 ): ColumnMetadata[] {
-  const available = new Map((columns ?? []).map((column) => [column.key, column] as const))
+  const available = new Map(columns.map((column) => [column.key, column] as const))
   return keys
     .map((key) => available.get(key) ?? fallbacks?.[key] ?? null)
     .filter((column): column is ColumnMetadata => column !== null)
@@ -106,9 +106,11 @@ export const tradeMetadataFormBehavior: MetadataFormBehavior = {
   isFieldHidden,
   isFieldReadonly,
   resolveLookupHint: ({ entityTypeCode, field }) => getTradeLookupHint(entityTypeCode, field.key, field.lookup),
-  searchLookup: async ({ hint, query }) => {
+  searchLookup: async ({ hint, query, signal }) => {
     const lookupStore = useLookupStore()
-    return await searchResolvedLookupItems(lookupStore, hint, query)
+    return signal
+      ? await searchResolvedLookupItems(lookupStore, hint, query, { signal })
+      : await searchResolvedLookupItems(lookupStore, hint, query)
   },
   buildLookupTargetUrl: async ({ hint, value, routeFullPath }) =>
     await buildLookupFieldTargetUrl({

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 const uiRoot = new URL('../../../../', import.meta.url)
 const platformPackage = '@ngbplatform/ui'
-const platformVersion = '2.0.0'
+const platformVersion = '3.0.0'
 const verticals = [
   'ngb-agency-billing-web',
   'ngb-crm-web',

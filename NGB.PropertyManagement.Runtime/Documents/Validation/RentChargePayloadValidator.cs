@@ -49,10 +49,7 @@ internal sealed class RentChargePayloadValidator(
             return;
 
         var snapshot = await ResolveSnapshotAsync(documentId, payload, ct);
-        if (snapshot is null)
-            return;
-
-        ValidateBusinessRules(snapshot.Value);
+        ValidateBusinessRules(snapshot!.Value);
     }
 
     private async Task<Snapshot?> ResolveSnapshotAsync(Guid? documentId, RecordPayload payload, CancellationToken ct)
@@ -151,7 +148,7 @@ internal sealed class RentChargePayloadValidator(
 
         try
         {
-            value = DateOnly.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture);
+            value = DateOnly.Parse(el.GetString()!, CultureInfo.InvariantCulture);
             return true;
         }
         catch
@@ -173,7 +170,7 @@ internal sealed class RentChargePayloadValidator(
         {
             value = el.ValueKind == JsonValueKind.Number
                 ? el.GetDecimal()
-                : decimal.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture);
+                : decimal.Parse(el.GetString()!, CultureInfo.InvariantCulture);
             
             return true;
         }

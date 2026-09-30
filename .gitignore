@@ -16,3 +16,6 @@ NGB.sln.DotSettings.user
 *.nupkg
 *.snupkg
 *.symbols.nupkg
+
+# Local .NET test runner output
+TestResults/

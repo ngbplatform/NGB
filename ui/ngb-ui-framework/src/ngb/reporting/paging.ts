@@ -26,7 +26,7 @@ function cloneSheetWithRows(sheet: ReportSheetDto, rows: ReportSheetDto['rows'])
   }
 }
 
-function areSheetsAppendCompatible(left: ReportSheetDto, right: ReportSheetDto): boolean {
+export function areSheetsAppendCompatible(left: ReportSheetDto, right: ReportSheetDto): boolean {
   return stableEquals(left.columns ?? [], right.columns ?? [])
     && stableEquals(left.headerRows ?? [], right.headerRows ?? [])
 }
@@ -58,7 +58,7 @@ export function mergePagedReportResponses(
     sheet: cloneSheetWithRows(current.sheet, mergedRows),
     offset: current.offset,
     limit: current.limit,
-    total: next.total ?? current.total ?? mergedRows.length,
+    total: next.total ?? current.total ?? null,
     hasMore: next.hasMore,
     nextCursor: normalizeCursor(next.nextCursor),
     diagnostics: next.diagnostics ?? current.diagnostics,

@@ -12,38 +12,44 @@ namespace NGB.PostgreSql.Migrations.Evolve;
 public static class MigrationAssemblyDiscovery
 {
     public static IReadOnlyCollection<Assembly> LoadForPackDiscovery(Assembly? entryAssembly = null)
+        => LoadForPackDiscoveryCore(
+            entryAssembly ?? Assembly.GetEntryAssembly(),
+            AppDomain.CurrentDomain.GetAssemblies(),
+            Assembly.Load);
+
+    internal static IReadOnlyCollection<Assembly> LoadForPackDiscoveryCore(
+        Assembly? entryAssembly,
+        IEnumerable<Assembly> initiallyLoadedAssemblies,
+        Func<AssemblyName, Assembly> assemblyLoader)
     {
         var loaded = new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+        foreach (var asm in initiallyLoadedAssemblies)
         {
-            var name = asm.GetName().Name;
-            if (!string.IsNullOrWhiteSpace(name))
-                loaded.TryAdd(name, asm);
+            loaded.TryAdd(asm.GetName().Name!, asm);
         }
 
-        var entry = entryAssembly ?? Assembly.GetEntryAssembly();
-        if (entry is null)
+        if (entryAssembly is null)
             return loaded.Values.ToArray();
 
         var queue = new Queue<Assembly>();
-        queue.Enqueue(entry);
+        queue.Enqueue(entryAssembly);
 
         while (queue.Count > 0)
         {
             var asm = queue.Dequeue();
             foreach (var reference in asm.GetReferencedAssemblies())
             {
-                var key = reference.Name ?? reference.FullName;
-                if (string.IsNullOrWhiteSpace(key) || loaded.ContainsKey(key))
+                var key = reference.Name!;
+                if (loaded.ContainsKey(key))
                     continue;
 
                 try
                 {
-                    var refAsm = Assembly.Load(reference);
-                    var refName = refAsm.GetName().Name;
-                    
-                    if (!string.IsNullOrWhiteSpace(refName) && loaded.TryAdd(refName, refAsm))
+                    var refAsm = assemblyLoader(reference);
+                    var refName = refAsm.GetName().Name!;
+
+                    if (loaded.TryAdd(refName, refAsm))
                         queue.Enqueue(refAsm);
                 }
                 catch

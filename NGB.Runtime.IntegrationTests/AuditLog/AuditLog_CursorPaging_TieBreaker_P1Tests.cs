@@ -8,7 +8,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_CursorPaging_TieBreaker_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

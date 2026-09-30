@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NgbBadge, NgbDocumentPeriodFilter as DocumentPeriodFilter, NgbIcon, NgbPageHeader, monthValueToDateOnly, relativeMonthValue } from '@ngbplatform/ui'
 
@@ -16,6 +16,7 @@ import {
 } from './queryState'
 import type {
   ReconciliationMode,
+  ReconciliationLoadRequest,
   ReconciliationPageDefinition,
   ReconciliationReport,
   ReconciliationRow,
@@ -33,6 +34,11 @@ useReconciliationLegacyQueryCompat(route, router)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<ReconciliationReport | null>(null)
+let loadSequence = 0
+let loadController: AbortController | null = null
+const ROW_PAGE_SIZE = 100
+const rowPage = ref(0)
+const cursorByPage = ref<Array<string | null>>([null])
 
 function updateQuery(patch: QueryPatch) {
   void replaceCleanRouteQuery(route, router, patch)
@@ -68,12 +74,12 @@ const statusFilter = computed<ReconciliationStatusFilter>({
 const hasInvalidRange = computed(() => fromMonth.value > toMonth.value)
 
 function fmtMoney(v: number): string {
-  const n = Math.round((v ?? 0) * 100) / 100
+  const n = Math.round(v * 100) / 100
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function absMoney(v: number): number {
-  return Math.abs(Math.round((v ?? 0) * 100) / 100)
+  return Math.abs(Math.round(v * 100) / 100)
 }
 
 function rowKindTone(row: ReconciliationRow): 'success' | 'warn' | 'danger' | 'neutral' {
@@ -105,19 +111,12 @@ function rowKindLabel(row: ReconciliationRow): string {
   }
 }
 
-function matchesStatusFilter(row: ReconciliationRow, filter: ReconciliationStatusFilter): boolean {
-  switch (filter) {
-    case 'matched':
-      return row.rowKind === 'Matched'
-    case 'mismatch':
-      return row.rowKind === 'Mismatch' || row.rowKind === 'GlOnly' || row.rowKind === 'OpenItemsOnly'
-    case 'glOnly':
-      return row.rowKind === 'GlOnly'
-    case 'openItemsOnly':
-      return row.rowKind === 'OpenItemsOnly'
-    default:
-      return true
-  }
+function statusRequestValue(filter: ReconciliationStatusFilter): ReconciliationLoadRequest['status'] {
+  if (filter === 'matched') return 'Matched'
+  if (filter === 'mismatch') return 'Mismatch'
+  if (filter === 'glOnly') return 'GlOnly'
+  if (filter === 'openItemsOnly') return 'OpenItemsOnly'
+  return 'All'
 }
 
 const modeDescription = computed(() => props.definition.describeMode({
@@ -133,54 +132,48 @@ const calculationNotes = computed(() => {
 const allRows = computed(() => data.value?.rows ?? [])
 
 const counts = computed(() => {
-  const summary = {
-    all: allRows.value.length,
-    matched: 0,
-    mismatch: 0,
-    glOnly: 0,
-    openItemsOnly: 0,
+  const all = data.value?.rowCount ?? 0
+  const mismatch = data.value?.mismatchRowCount ?? 0
+  return {
+    all,
+    matched: Math.max(0, all - mismatch),
+    mismatch,
+    glOnly: data.value?.glOnlyRowCount ?? 0,
+    openItemsOnly: data.value?.openItemsOnlyRowCount ?? 0,
   }
-
-  for (const row of allRows.value) {
-    switch (row.rowKind) {
-      case 'Matched':
-        summary.matched += 1
-        break
-      case 'Mismatch':
-        summary.mismatch += 1
-        break
-      case 'GlOnly':
-        summary.glOnly += 1
-        break
-      case 'OpenItemsOnly':
-        summary.openItemsOnly += 1
-        break
-    }
-  }
-
-  return summary
 })
 
-const filteredRows = computed(() => allRows.value.filter((row) => matchesStatusFilter(row, statusFilter.value)))
-
-const visibleRows = computed(() => {
-  return [...filteredRows.value].sort((a, b) => {
-    if (a.hasDiff !== b.hasDiff) return a.hasDiff ? -1 : 1
-
-    const diffCompare = absMoney(b.diff) - absMoney(a.diff)
-    if (diffCompare !== 0) return diffCompare
-
-    const primaryCompare = a.primaryLabel.localeCompare(b.primaryLabel)
-    if (primaryCompare !== 0) return primaryCompare
-
-    const secondaryCompare = a.secondaryLabel.localeCompare(b.secondaryLabel)
-    if (secondaryCompare !== 0) return secondaryCompare
-
-    return String(a.tertiaryLabel ?? '').localeCompare(String(b.tertiaryLabel ?? ''))
-  })
+const visibleRows = computed(() => [...allRows.value].sort((a, b) => {
+  if (a.hasDiff !== b.hasDiff) return a.hasDiff ? -1 : 1
+  const diffCompare = absMoney(b.diff) - absMoney(a.diff)
+  if (diffCompare !== 0) return diffCompare
+  const primaryCompare = a.primaryLabel.localeCompare(b.primaryLabel)
+  if (primaryCompare !== 0) return primaryCompare
+  const secondaryCompare = a.secondaryLabel.localeCompare(b.secondaryLabel)
+  if (secondaryCompare !== 0) return secondaryCompare
+  return String(a.tertiaryLabel ?? '').localeCompare(String(b.tertiaryLabel ?? ''))
+}))
+const filteredRowCount = computed(() => data.value?.filteredRowCount ?? visibleRows.value.length)
+const rowPageCount = computed(() => Math.max(1, Math.ceil(filteredRowCount.value / ROW_PAGE_SIZE)))
+const currentRowPage = computed(() => Math.min(rowPage.value, rowPageCount.value - 1))
+const hasNextRowPage = computed(() => !!data.value?.hasMore && !!data.value.nextCursor?.trim())
+const pagedRows = visibleRows
+const visibleRowRange = computed(() => {
+  const total = filteredRowCount.value
+  const start = data.value?.offset ?? currentRowPage.value * ROW_PAGE_SIZE
+  return `Rows ${start + 1}\u2013${Math.min(total, start + visibleRows.value.length)} of ${total}`
 })
 
-const visibleRowCount = computed(() => visibleRows.value.length)
+async function setRowPage(page: number): Promise<void> {
+  const target = Math.max(0, Math.min(page, rowPageCount.value - 1))
+  if (target === currentRowPage.value + 1) {
+    cursorByPage.value[target] = data.value!.nextCursor!.trim()
+  }
+  const cursor = cursorByPage.value[target]
+  await loadPage(target, cursor ?? null)
+}
+
+const visibleRowCount = filteredRowCount
 const mismatchCount = computed(() => data.value?.mismatchRowCount ?? 0)
 const allRowCount = computed(() => data.value?.rowCount ?? 0)
 const visibleDiffCount = computed(() => visibleRows.value.filter((row) => row.hasDiff).length)
@@ -224,34 +217,62 @@ function canOpenRow(row: ReconciliationRow): boolean {
 }
 
 async function openRow(row: ReconciliationRow) {
-  if (!row.openTarget) return
-  await router.push(row.openTarget)
+  await router.push(row.openTarget!)
 }
 
-async function load() {
+async function loadPage(page: number, cursor: string | null) {
+  const seq = ++loadSequence
+  loadController?.abort()
   if (hasInvalidRange.value) {
     error.value = 'From month must be earlier than or equal to To month.'
     data.value = null
+    loading.value = false
     return
   }
 
+  const requestedFromMonth = fromMonth.value
+  const requestedToMonth = toMonth.value
+  const requestedMode = mode.value
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   try {
-    data.value = await props.definition.load({
-        fromMonthInclusive: monthValueToDateOnly(fromMonth.value) ?? `${fromMonth.value}-01`,
-        toMonthInclusive: monthValueToDateOnly(toMonth.value) ?? `${toMonth.value}-01`,
-      mode: mode.value,
-    })
+    const nextData = await props.definition.load({
+      fromMonthInclusive: monthValueToDateOnly(requestedFromMonth) ?? `${requestedFromMonth}-01`,
+      toMonthInclusive: monthValueToDateOnly(requestedToMonth) ?? `${requestedToMonth}-01`,
+      mode: requestedMode,
+      status: statusRequestValue(statusFilter.value),
+      offset: page * ROW_PAGE_SIZE,
+      limit: ROW_PAGE_SIZE,
+      cursor,
+    }, { signal: controller.signal })
+    if (seq !== loadSequence) return
+    data.value = nextData
+    rowPage.value = page
   } catch (e: unknown) {
+    if (seq !== loadSequence) return
     error.value = e instanceof Error ? e.message : String(e)
     data.value = null
   } finally {
-    loading.value = false
+    if (seq === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
-watch(() => [fromMonth.value, toMonth.value, mode.value], () => void load(), { immediate: true })
+async function load() {
+  cursorByPage.value = [null]
+  rowPage.value = 0
+  await loadPage(0, null)
+}
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
+})
+
+watch(() => [fromMonth.value, toMonth.value, mode.value, statusFilter.value], () => void load(), { immediate: true })
 </script>
 
 <template>
@@ -417,7 +438,7 @@ watch(() => [fromMonth.value, toMonth.value, mode.value], () => void load(), { i
             </thead>
             <tbody>
               <tr
-                v-for="row in visibleRows"
+                v-for="row in pagedRows"
                 :key="row.key"
                 class="border-b border-ngb-border last:border-b-0"
               >
@@ -447,6 +468,31 @@ watch(() => [fromMonth.value, toMonth.value, mode.value], () => void load(), { i
               </tr>
             </tbody>
           </table>
+        </div>
+        <div
+          v-if="!loading && rowPageCount > 1"
+          class="flex items-center justify-between border-t border-ngb-border px-4 py-2 text-xs text-ngb-muted"
+        >
+          <span>{{ visibleRowRange }}</span>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="currentRowPage === 0"
+              @click="void setRowPage(currentRowPage - 1)"
+            >
+              Previous
+            </button>
+            <span>Page {{ currentRowPage + 1 }} of {{ rowPageCount }}</span>
+            <button
+              type="button"
+              class="rounded-[var(--ngb-radius)] border border-ngb-border px-3 py-1 hover:bg-ngb-bg disabled:cursor-not-allowed disabled:opacity-50"
+              :disabled="!hasNextRowPage"
+              @click="void setRowPage(currentRowPage + 1)"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

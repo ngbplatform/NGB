@@ -150,7 +150,9 @@ public sealed class PostgresOperationalRegisterResourceRepository(IUnitOfWork uo
         if (existing.Count > 0)
         {
             var maxExistingOrdinal = existing.Max(x => x.Ordinal);
-            var maxTargetOrdinal = ordinals.Length == 0 ? 0 : ordinals.Max();
+            // Once movements exist, removing every resource is rejected above. Therefore
+            // a non-empty existing set always has at least one target ordinal here.
+            var maxTargetOrdinal = ordinals.Max();
             var tempBase = (long)Math.Max(maxExistingOrdinal, maxTargetOrdinal) + 1000;
             var tempCount = existing.Count;
             
@@ -259,7 +261,7 @@ public sealed class PostgresOperationalRegisterResourceRepository(IUnitOfWork uo
         }
     }
 
-    private static void EnforceResourceImmutabilityWhenHasMovements(
+    internal static void EnforceResourceImmutabilityWhenHasMovements(
         Guid registerId,
         IReadOnlyList<OperationalRegisterResource> existing,
         bool hasMovements,
@@ -332,7 +334,7 @@ public sealed class PostgresOperationalRegisterResourceRepository(IUnitOfWork uo
         return flag.Value;
     }
 
-    private static void ValidateNoDuplicates(
+    internal static void ValidateNoDuplicates(
         Guid registerId,
         IReadOnlyList<OperationalRegisterResourceDefinition> resources,
         IReadOnlyList<string> tableCodes,
@@ -410,7 +412,7 @@ public sealed class PostgresOperationalRegisterResourceRepository(IUnitOfWork uo
         }
     }
 
-    private static void ValidateNoReservedColumnConflicts(Guid registerId, IReadOnlyList<string> columnCodes)
+    internal static void ValidateNoReservedColumnConflicts(Guid registerId, IReadOnlyList<string> columnCodes)
     {
         // These columns exist in per-register fact tables and cannot be used by resources.
         // (Otherwise INSERT column lists would become ambiguous or invalid.)

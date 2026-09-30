@@ -18,7 +18,7 @@ public sealed class RateCardCatalogUpsertValidator(IAgencyBillingReferenceReader
         }
 
         var billingRate = AgencyBillingValidationValueReaders.ReadDecimal(context.Fields, "billing_rate");
-        if (billingRate is null || billingRate <= 0m)
+        if (billingRate.GetValueOrDefault() <= 0m)
             throw new NgbArgumentInvalidException("billing_rate", "Billing Rate must be greater than zero.");
 
         var costRate = AgencyBillingValidationValueReaders.ReadDecimal(context.Fields, "cost_rate");
@@ -27,8 +27,11 @@ public sealed class RateCardCatalogUpsertValidator(IAgencyBillingReferenceReader
 
         var effectiveFrom = AgencyBillingValidationValueReaders.ReadDate(context.Fields, "effective_from");
         var effectiveTo = AgencyBillingValidationValueReaders.ReadDate(context.Fields, "effective_to");
-        if (effectiveFrom is not null && effectiveTo is not null && effectiveTo < effectiveFrom)
-            throw new NgbArgumentInvalidException("effective_to", "Effective To must be on or after Effective From.");
+        if (effectiveFrom.HasValue && effectiveTo.HasValue)
+        {
+            if (effectiveTo.Value < effectiveFrom.Value)
+                throw new NgbArgumentInvalidException("effective_to", "Effective To must be on or after Effective From.");
+        }
 
         var clientId = AgencyBillingValidationValueReaders.ReadGuid(context.Fields, "client_id");
         var projectId = AgencyBillingValidationValueReaders.ReadGuid(context.Fields, "project_id");
@@ -41,7 +44,8 @@ public sealed class RateCardCatalogUpsertValidator(IAgencyBillingReferenceReader
         if (projectId is { } resolvedProjectId && resolvedProjectId != Guid.Empty)
         {
             var project = await AgencyBillingCatalogValidationGuards.EnsureProjectAsync(resolvedProjectId, "project_id", references, ct);
-            if (clientId is { } resolvedScopedClientId && resolvedScopedClientId != Guid.Empty)
+            var resolvedScopedClientId = clientId.GetValueOrDefault();
+            if (resolvedScopedClientId != Guid.Empty)
                 AgencyBillingCatalogValidationGuards.EnsureProjectBelongsToClient(project, resolvedScopedClientId, "project_id", "client_id");
         }
 

@@ -78,13 +78,9 @@ public sealed class IncomeStatementCanonicalReportExecutor(IIncomeStatementRepor
                     ["executor"] = "canonical-income-statement"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: 0,
-            limit: rows.Count,
-            total: rows.Count,
-            hasMore: false,
-            nextCursor: null,
+        return CanonicalReportExecutionHelper.CreateBoundedPrebuiltPage(
+            definition,
+            sheet,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-income-statement"
@@ -113,7 +109,7 @@ public sealed class IncomeStatementCanonicalReportExecutor(IIncomeStatementRepor
             GroupKey: $"detail:{line.AccountId}");
     }
 
-    private static IReadOnlyList<ReportSheetRowDto> ToGrandTotalRows(IncomeStatementReport report)
+    internal static IReadOnlyList<ReportSheetRowDto> ToGrandTotalRows(IncomeStatementReport report)
         =>
         [
             TotalRow("Total Income", report.TotalIncome),
@@ -133,7 +129,7 @@ public sealed class IncomeStatementCanonicalReportExecutor(IIncomeStatementRepor
             ],
             SemanticRole: "grand_total");
 
-    private static string HumanizeSection(StatementSection section)
+    internal static string HumanizeSection(StatementSection section)
         => section switch
         {
             StatementSection.Income => "Income",

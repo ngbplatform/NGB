@@ -44,12 +44,9 @@ public sealed class DefinitionsDocumentPostingActionResolver(
 
     private IDocumentPostingHandler ResolveHandler(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        if (_handlersByTypeCode.TryGetValue(def.TypeCode, out var cached))
-            return cached;
-
         lock (_handlersGate)
         {
-            if (_handlersByTypeCode.TryGetValue(def.TypeCode, out cached))
+            if (_handlersByTypeCode.TryGetValue(def.TypeCode, out var cached))
                 return cached;
 
             var resolved = BuildHandler(def);
@@ -60,9 +57,8 @@ public sealed class DefinitionsDocumentPostingActionResolver(
 
     private IDocumentPostingHandler BuildHandler(NGB.Definitions.Documents.DocumentTypeDefinition def)
     {
-        var postingHandlerType = def.PostingHandlerType
-            ?? throw new NgbInvariantViolationException($"Document type '{def.TypeCode}' has no accounting posting handler binding.");
-        var postingHandlerTypeName = postingHandlerType.FullName ?? postingHandlerType.Name;
+        var postingHandlerType = def.PostingHandlerType!;
+        var postingHandlerTypeName = postingHandlerType.ToString();
 
         if (!typeof(IDocumentPostingHandler).IsAssignableFrom(postingHandlerType))
         {
@@ -97,7 +93,7 @@ public sealed class DefinitionsDocumentPostingActionResolver(
                 {
                     documentTypeCode = def.TypeCode,
                     postingHandlerType = postingHandlerTypeName,
-                    matches = matches.Select(handler => handler.GetType().FullName ?? handler.GetType().Name).ToArray()
+                    matches = matches.Select(handler => handler.GetType().ToString()).ToArray()
                 });
         }
 

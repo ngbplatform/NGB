@@ -11,8 +11,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P0: Database-level hard constraints for accounting_account_dimension_rules.
 /// Ensures PK/FK/check/cascade invariants are enforced even if application validators are bypassed.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_AccountingAccountDimensionRules_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_AccountingAccountDimensionRules_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static async Task<Guid> InsertAccountAsync(NpgsqlConnection conn)

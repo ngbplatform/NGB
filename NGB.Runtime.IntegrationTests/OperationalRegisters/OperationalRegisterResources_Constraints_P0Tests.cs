@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: Resources are used to create physical columns in per-register tables,
 /// so we must defend against collisions and reserved names.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_Constraints_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

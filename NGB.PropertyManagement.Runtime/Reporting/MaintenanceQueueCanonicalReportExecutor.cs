@@ -1,8 +1,10 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
 using NGB.Core.Reporting.Exceptions;
 using NGB.PropertyManagement.Reporting;
+using NGB.Runtime.Reporting;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Tools.Exceptions;
@@ -15,10 +17,69 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
 {
     public string ReportCode => PropertyManagementCodes.MaintenanceQueue;
 
+    public ReportExecutionRequestDto PrepareExecution(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        DateTimeOffset utcNow)
+    {
+        var parameters = new Dictionary<string, string>(request.Parameters ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+        var date = CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc")
+            ?? DateOnly.FromDateTime(utcNow.UtcDateTime);
+        parameters["as_of_utc"] = date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+        return request with { Parameters = parameters };
+    }
+
+
     public async Task<ReportDataPage> ExecuteAsync(
         ReportDefinitionDto definition,
         ReportExecutionRequestDto request,
         CancellationToken ct)
+    {
+        var query = CreateQuery(definition, request);
+
+        var cursorKind = BuildCursorKind(query);
+        var cursor = request.DisablePaging || string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : SpecializedReportCursorCodec.Decode<MaintenanceQueuePageCursor>(cursorKind, request.Cursor);
+        query = query with
+        {
+            Offset = cursor?.Offset ?? query.Offset,
+            Limit = request.DisablePaging ? PagingLimits.MaxMaterializedRows + 1 : query.Limit
+        };
+        var page = cursor is not null
+            ? await reader.GetCursorPageAsync(query, cursor, ct)
+            : await reader.GetPageAsync(query, ct);
+        page.EnsureInvariant();
+
+        var sheet = CreateSheet(definition, query.AsOfUtc, page.Rows);
+
+        var hasMore = page.HasMore || cursor is null && query.Offset + page.Rows.Count < page.Total;
+        var nextCursor = !request.DisablePaging && hasMore
+            ? SpecializedReportCursorCodec.Encode(
+                cursorKind,
+                new MaintenanceQueuePageCursor(
+                    query.Offset + page.Rows.Count,
+                    page.Total,
+                    page.NextAfterRequestedAtUtc,
+                    page.NextAfterRequestId,
+                    page.NextAfterWorkOrderId))
+            : null;
+
+        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
+            sheet: sheet,
+            offset: query.Offset,
+            limit: query.Limit,
+            total: page.Total,
+            hasMore: hasMore,
+            nextCursor: nextCursor,
+            diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executor"] = "canonical-pm-maintenance-queue"
+            });
+    }
+
+    internal static MaintenanceQueueQuery CreateQuery(ReportDefinitionDto definition, ReportExecutionRequestDto request)
     {
         var query = new MaintenanceQueueQuery(
             AsOfUtc: CanonicalReportExecutionHelper.GetOptionalDateOnlyParameter(definition, request, "as_of_utc")
@@ -30,13 +91,16 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
             Priority: GetOptionalPriorityFilter(definition, request, "priority"),
             QueueState: GetOptionalQueueStateFilter(definition, request, "queue_state"),
             Offset: Math.Max(0, request.Offset),
-            Limit: request.Limit <= 0 ? 100 : request.Limit);
+            Limit: request.Limit <= 0 ? 100 : request.Limit,
+            IncludeTotal: false);
 
         query.EnsureInvariant();
 
-        var page = await reader.GetPageAsync(query, ct);
-        page.EnsureInvariant();
+        return query;
+    }
 
+    internal static ReportSheetDto CreateSheet(ReportDefinitionDto definition, DateOnly asOf, IReadOnlyList<MaintenanceQueueRow> rows)
+    {
         var sheet = new ReportSheetDto(
             Columns:
             [
@@ -54,27 +118,28 @@ public sealed class MaintenanceQueueCanonicalReportExecutor(IMaintenanceQueueRea
                 new ReportSheetColumnDto("assigned_to", "Assigned To", "string", Width: 180),
                 new ReportSheetColumnDto("due_by_utc", "Due By", "date", Width: 120)
             ],
-            Rows: page.Rows.Select(ToRow).ToArray(),
+            Rows: rows.Select(ToRow).ToArray(),
             Meta: new ReportSheetMetaDto(
                 Title: definition.Name,
-                Subtitle: $"As of {query.AsOfUtc:yyyy-MM-dd}",
+                Subtitle: $"As of {asOf:yyyy-MM-dd}",
                 Diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["executor"] = "canonical-pm-maintenance-queue"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: query.Offset,
-            limit: query.Limit,
-            total: page.Total,
-            hasMore: query.Offset + page.Rows.Count < page.Total,
-            nextCursor: null,
-            diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["executor"] = "canonical-pm-maintenance-queue"
-            });
+        return sheet;
     }
+
+    private string BuildCursorKind(MaintenanceQueueQuery query)
+        => SpecializedReportCursorCodec.BuildKind(
+            ReportCode,
+            query.AsOfUtc.ToString("yyyy-MM-dd"),
+            query.BuildingId?.ToString("D"),
+            query.PropertyId?.ToString("D"),
+            query.CategoryId?.ToString("D"),
+            query.AssignedPartyId?.ToString("D"),
+            query.Priority,
+            query.QueueState?.ToString());
 
     private static ReportSheetRowDto ToRow(MaintenanceQueueRow row)
         => new(

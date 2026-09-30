@@ -8,3 +8,7 @@ results/
 .env
 .env.*
 !.env.example
+
+# Python diagnostic and analysis tools
+__pycache__/
+*.py[cod]

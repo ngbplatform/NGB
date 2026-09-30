@@ -70,8 +70,9 @@ public sealed class PostingEngine_DimensionBags_ResolvedToSets_Tests
             .Returns(Task.CompletedTask);
 
         var closedPeriods = new Mock<IClosedPeriodRepository>(MockBehavior.Strict);
-        closedPeriods.Setup(x => x.IsClosedAsync(It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
+        closedPeriods.Setup(x => x.FindFirstClosedAsync(
+                It.IsAny<IReadOnlyCollection<DateOnly>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DateOnly?)null);
 
         var validator = new Mock<NGB.Accounting.Posting.Validators.IAccountingPostingValidator>(MockBehavior.Strict);
         validator.Setup(x => x.Validate(It.IsAny<IReadOnlyList<AccountingEntry>>()));
@@ -108,9 +109,10 @@ public sealed class PostingEngine_DimensionBags_ResolvedToSets_Tests
 
         var dimensionSetService = new Mock<NGB.Runtime.Dimensions.IDimensionSetService>(MockBehavior.Strict);
         dimensionSetService
-            .Setup(x => x.GetOrCreateIdAsync(It.IsAny<DimensionBag>(), It.IsAny<CancellationToken>()))
-            .Callback<DimensionBag, CancellationToken>((bag, _) => capturedBags.Add(bag))
-            .ReturnsAsync(Guid.CreateVersion7());
+            .Setup(x => x.GetOrCreateIdsAsync(It.IsAny<IReadOnlyList<DimensionBag>>(), It.IsAny<CancellationToken>()))
+            .Callback<IReadOnlyList<DimensionBag>, CancellationToken>((bags, _) => capturedBags.AddRange(bags))
+            .ReturnsAsync((IReadOnlyList<DimensionBag> bags, CancellationToken _) =>
+                bags.Select(static _ => Guid.CreateVersion7()).ToArray());
 
         var logger = Mock.Of<ILogger<PostingEngine>>();
 
@@ -169,7 +171,7 @@ public sealed class PostingEngine_DimensionBags_ResolvedToSets_Tests
 
         result.Should().Be(PostingResult.Executed);
 
-        // Two distinct bags -> two GetOrCreate calls.
+        // Both bags are persisted through one batch call.
         capturedBags.Should().HaveCount(2);
 
         capturedBags[0].Items.Should().Contain(new DimensionValue(r1.DimensionId, dv1));

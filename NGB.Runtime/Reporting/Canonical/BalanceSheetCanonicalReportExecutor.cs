@@ -78,13 +78,9 @@ public sealed class BalanceSheetCanonicalReportExecutor(IBalanceSheetReportReade
                     ["executor"] = "canonical-balance-sheet"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: 0,
-            limit: rows.Count,
-            total: rows.Count,
-            hasMore: false,
-            nextCursor: null,
+        return CanonicalReportExecutionHelper.CreateBoundedPrebuiltPage(
+            definition,
+            sheet,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-balance-sheet"
@@ -113,7 +109,7 @@ public sealed class BalanceSheetCanonicalReportExecutor(IBalanceSheetReportReade
             GroupKey: $"detail:{line.AccountId}");
     }
 
-    private static IReadOnlyList<ReportSheetRowDto> ToGrandTotalRows(BalanceSheetReport report)
+    internal static IReadOnlyList<ReportSheetRowDto> ToGrandTotalRows(BalanceSheetReport report)
         =>
         [
             TotalRow("Total Assets", report.TotalAssets),

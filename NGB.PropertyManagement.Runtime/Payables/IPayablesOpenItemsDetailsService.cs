@@ -10,4 +10,15 @@ public interface IPayablesOpenItemsDetailsService
         DateOnly? asOfMonth = null,
         DateOnly? toMonth = null,
         CancellationToken ct = default);
+
+    Task<PayablesOpenItemsDetailsResponse> GetOpenItemsDetailsPageAsync(
+        Guid partyId,
+        Guid propertyId,
+        DateOnly? asOfMonth,
+        DateOnly? toMonth,
+        int chargeOffset,
+        int creditOffset,
+        int allocationOffset,
+        int limit,
+        CancellationToken ct = default);
 }

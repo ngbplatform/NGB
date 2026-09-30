@@ -578,3 +578,30 @@ test('ignores drawer-only query keys for reloads but reloads on search changes',
     })
   })
 })
+
+test('falls back safely when route params, back target, and paging values are absent or invalid', async () => {
+  await page.viewport(1280, 900)
+
+  const loadPage = vi.fn().mockResolvedValue({ items: [], total: 0 })
+  const { view } = await renderCatalogPage('/home?limit=0', {
+    backTarget: null,
+    loadPage,
+    resolveStorageKey: null,
+    resolveTitle: null,
+  })
+
+  await vi.waitFor(() => {
+    expect(loadPage).toHaveBeenCalledWith({
+      catalogType: '',
+      offset: 0,
+      limit: 50,
+      search: undefined,
+      trashMode: 'active',
+    })
+  })
+  await expect.element(view.getByText('title:Properties')).toBeVisible()
+  await expect.element(view.getByText('storage:ngb:catalog:')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Layout back' }).click()
+  expect(catalogMocks.navigateBack.mock.calls[0]?.[2]).toBe('/')
+})

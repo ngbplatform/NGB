@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// P0: Resource column_code becomes an unquoted SQL identifier in dynamic DDL/DML.
 /// We must ensure it is always a valid unquoted PostgreSQL identifier.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterResources_ColumnCodeIdentifiers_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

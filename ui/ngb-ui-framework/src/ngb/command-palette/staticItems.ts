@@ -18,7 +18,7 @@ function createRouteAction(
   key: string,
   title: string,
   route: string,
-  options?: Partial<CommandPaletteItemSeed>,
+  options: Partial<CommandPaletteItemSeed> & Required<Pick<CommandPaletteItemSeed, 'subtitle' | 'icon' | 'badge' | 'keywords'>>,
 ): CommandPaletteItemSeed {
   return {
     key,
@@ -26,16 +26,16 @@ function createRouteAction(
     kind: 'command',
     scope: 'commands',
     title,
-    subtitle: options?.subtitle ?? null,
-    icon: options?.icon ?? 'arrow-right',
-    badge: options?.badge ?? 'Action',
-    hint: options?.hint ?? null,
+    subtitle: options.subtitle,
+    icon: options.icon,
+    badge: options.badge,
+    hint: options.hint ?? null,
     route,
-    commandCode: options?.commandCode ?? null,
-    status: options?.status ?? null,
-    openInNewTabSupported: options?.openInNewTabSupported ?? true,
-    keywords: options?.keywords ?? [],
-    defaultRank: options?.defaultRank ?? 980,
+    commandCode: options.commandCode ?? null,
+    status: options.status ?? null,
+    openInNewTabSupported: options.openInNewTabSupported ?? true,
+    keywords: options.keywords,
+    defaultRank: options.defaultRank ?? 980,
     isCurrentContext: true,
   }
 }
@@ -137,7 +137,7 @@ export function buildNgbHeuristicCurrentActions(
   }
 
   if (/^\/documents\/[^/]+$/.test(path)) {
-    const documentType = path.split('/')[2] ?? ''
+    const documentType = path.split('/')[2]!
     items.push(
       createRouteAction(`current:create:${documentType}`, 'Create new', buildDocumentFullPageUrl(documentType), {
         icon: 'plus',
@@ -150,7 +150,7 @@ export function buildNgbHeuristicCurrentActions(
   }
 
   if (/^\/catalogs\/[^/]+$/.test(path)) {
-    const catalogType = path.split('/')[2] ?? ''
+    const catalogType = path.split('/')[2]!
     if (!excludedCatalogTypes.has(catalogType)) {
       items.push(
         createRouteAction(`current:create-catalog:${catalogType}`, 'Create new', buildCatalogFullPageUrl(catalogType), {

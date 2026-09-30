@@ -62,5 +62,5 @@ export function useToasts(): ToastApi {
 }
 
 export function useOptionalToasts(): ToastApi | null {
-  return inject(KEY) ?? null;
+  return inject(KEY, null);
 }

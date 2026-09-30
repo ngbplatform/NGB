@@ -1,7 +1,6 @@
 using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using NGB.Accounting.Posting;
 using NGB.Core.Documents;
 using NGB.Definitions;
 using NGB.Definitions.Documents.Numbering;
@@ -16,8 +15,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentPostingService_NumberingOnPost_FullHookFailure_RollsBack_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentPostingService_NumberingOnPost_FullHookFailure_RollsBack_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     // IMPORTANT:

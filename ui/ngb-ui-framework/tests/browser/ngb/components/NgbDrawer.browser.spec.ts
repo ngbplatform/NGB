@@ -67,6 +67,32 @@ const HiddenHeaderDrawerHarness = defineComponent({
   },
 })
 
+const NoCloseDrawerHarness = defineComponent({
+  setup() {
+    const open = ref(true)
+
+    return () => h('div', [
+      h(
+        NgbDrawer,
+        {
+          open: open.value,
+          title: 'Persistent drawer',
+          showClose: false,
+          flushBody: true,
+          panelClass: 'max-w-[640px]',
+          'onUpdate:open': (value: boolean) => {
+            open.value = value
+          },
+        },
+        {
+          default: () => h('button', { type: 'button' }, 'Persistent action'),
+        },
+      ),
+      h('div', { 'data-testid': 'persistent-drawer-state' }, `open:${String(open.value)}`),
+    ])
+  },
+})
+
 const DrawerCloseHarness = defineComponent({
   props: {
     blockClose: {
@@ -232,6 +258,22 @@ test('retains an accessible dialog title when the visual header is hidden', asyn
   expect(document.querySelector('[data-testid="drawer-header"]')).toBeNull()
 })
 
+test('renders a visual header without a close action and rejects external close requests', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(NoCloseDrawerHarness)
+
+  await expect.element(view.getByTestId('drawer-header')).toBeVisible()
+  expect(view.getByTestId('drawer-panel').element().classList.contains('max-w-[640px]')).toBe(true)
+  expect(view.getByTestId('drawer-body').element().classList.contains('p-0')).toBe(true)
+  expect(document.querySelector('button[title="Close"]')).toBeNull()
+
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+
+  await expect.element(view.getByTestId('persistent-drawer-state')).toHaveTextContent('open:true')
+  await expect.element(view.getByTestId('drawer-panel')).toBeVisible()
+})
+
 test('closes when the close button is pressed and beforeClose allows it', async () => {
   await page.viewport(1280, 900)
 
@@ -332,6 +374,31 @@ test('restores launcher focus after Escape closes an interactive drawer', async 
   await vi.waitFor(() => {
     expect(document.activeElement).toBe(opener.element())
   })
+})
+
+test('ignores invalid focus targets and safely closes without a remembered launcher', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(DrawerInteractiveHarness)
+  const opener = view.getByTestId('drawer-opener').element() as HTMLButtonElement
+
+  document.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+  document.body.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+
+  const previousTabIndex = document.body.getAttribute('tabindex')
+  document.body.tabIndex = -1
+  document.body.focus()
+  opener.click()
+
+  await expect.element(view.getByTestId('drawer-panel')).toBeVisible()
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+
+  await vi.waitFor(() => {
+    expect(text(view.getByTestId('drawer-state'))).toBe('open:false;closeCount:1')
+  })
+
+  if (previousTabIndex === null) document.body.removeAttribute('tabindex')
+  else document.body.setAttribute('tabindex', previousTabIndex)
 })
 
 test('keeps keyboard tab navigation trapped inside the drawer panel', async () => {

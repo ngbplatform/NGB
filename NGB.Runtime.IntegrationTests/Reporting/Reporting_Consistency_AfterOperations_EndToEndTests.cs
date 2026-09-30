@@ -17,15 +17,13 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// We verify TrialBalance amounts (debits/credits/closing) match the underlying entries,
 /// and remain consistent after Unpost.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class Reporting_Consistency_AfterOperations_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task TrialBalance_MatchesSumOfEntries_ThenAfterUnpostUpdatesConsistently()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 

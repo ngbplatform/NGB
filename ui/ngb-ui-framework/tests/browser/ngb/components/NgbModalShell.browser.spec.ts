@@ -130,3 +130,21 @@ test('restores launcher focus after Escape closes the modal', async () => {
     expect(document.activeElement).toBe(opener.element())
   })
 })
+
+test('ignores non-element and body focus events and opens without a focused launcher', async () => {
+  await page.viewport(1280, 900)
+
+  const view = await render(InteractiveModalShellHarness)
+  document.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+  document.body.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+
+  const opener = view.getByTestId('modal-opener').element() as HTMLButtonElement
+  opener.blur()
+  opener.click()
+
+  await expect.element(view.getByTestId('modal-primary-action')).toBeVisible()
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await vi.waitFor(() => {
+    expect(view.getByTestId('modal-state').element().textContent).toBe('open:false;closeCount:1')
+  })
+})

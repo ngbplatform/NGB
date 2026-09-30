@@ -72,8 +72,8 @@ This page complements the dense source map by focusing on **responsibility bound
 - background jobs host composition root
 
 **Collaborates with**
-- `AddNgbBackgroundJobs(...)`
-- `EnsureInfrastructureAsync()`
+- `AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create)`
+- `EnsureInfrastructureAsync(new PostgresDatabaseProvisioner())`
 - `AddNgbRuntime()`
 - `AddNgbPostgres(...)`
 - PM module registrations

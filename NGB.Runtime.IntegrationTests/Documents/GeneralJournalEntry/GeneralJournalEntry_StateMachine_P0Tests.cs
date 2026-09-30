@@ -24,7 +24,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 /// P0: General Journal Entry (GJE) workflow/state machine must be regression-proof.
 /// Covers forbidden transitions and verifies "no side effects" on failure.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_StateMachine_P0Tests(PostgresTestFixture fixture)
 {
     private PostgresTestFixture Fixture { get; } = fixture;

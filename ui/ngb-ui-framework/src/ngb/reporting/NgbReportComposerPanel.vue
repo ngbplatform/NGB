@@ -204,6 +204,8 @@ const availableSortTargets = computed<SortTarget[]>(() => {
 })
 const measureOptions = computed(() => measures.value.map((measure) => ({ value: measure.code, label: measure.label })))
 const selectableFieldOptions = computed(() => selectableFields.value.map((field) => ({ value: field.code, label: field.label, meta: field.description ?? undefined })))
+const parameters = computed(() => props.definition.parameters ?? [])
+const filters = computed(() => props.definition.filters ?? [])
 const sortingHelpLines = computed(() => {
   if (!allowsSorting.value || sortableFields.value.length === 0) return []
 
@@ -221,9 +223,9 @@ const sortingHelpLines = computed(() => {
   return lines
 })
 
-const hasGeneralTab = computed(() => (props.definition.parameters?.length ?? 0) > 0 || hasFormattingContent.value)
+const hasGeneralTab = computed(() => parameters.value.length > 0 || hasFormattingContent.value)
 const hasGroupingTab = computed(() => (allowsRowGroups.value || allowsColumnGroups.value) && groupableFields.value.length > 0)
-const hasFiltersTab = computed(() => (props.definition.filters?.length ?? 0) > 0)
+const hasFiltersTab = computed(() => filters.value.length > 0)
 const hasFieldsTab = computed(() => (allowsMeasures.value && measureOptions.value.length > 0) || (allowsDetailFields.value && selectableFieldOptions.value.length > 0))
 const hasSortingTab = computed(() => allowsSorting.value && sortableFields.value.length > 0)
 const hasFormattingContent = computed(() => allowsShowDetails.value || allowsSubtotals.value || allowsGrandTotals.value)
@@ -455,15 +457,6 @@ function addGrouping(axis: 'rowGroups' | 'columnGroups') {
   })
 }
 
-function moveGrouping(axis: 'rowGroups' | 'columnGroups', index: number, delta: number) {
-  updateDraft((draft) => {
-    const target = index + delta
-    if (target < 0 || target >= draft[axis].length) return
-    const [entry] = draft[axis].splice(index, 1)
-    draft[axis].splice(target, 0, entry!)
-  })
-}
-
 function removeGrouping(axis: 'rowGroups' | 'columnGroups', index: number) {
   updateDraft((draft) => {
     draft[axis].splice(index, 1)
@@ -519,15 +512,6 @@ function addSort() {
       direction: ReportSortDirection.Asc,
       timeGrain: chosen.timeGrain,
     })
-  })
-}
-
-function moveSort(index: number, delta: number) {
-  updateDraft((draft) => {
-    const target = index + delta
-    if (target < 0 || target >= draft.sorts.length) return
-    const [entry] = draft.sorts.splice(index, 1)
-    draft.sorts.splice(target, 0, entry!)
   })
 }
 
@@ -614,7 +598,7 @@ function setMeasureLabel(index: number, value: string) {
     const entry = draft.measures[index]
     if (!entry) return
 
-    const trimmed = String(value ?? '').trim()
+    const trimmed = value.trim()
     const autoLabel = resolveMeasureLabel(props.definition, { ...entry, labelOverride: null })
     entry.labelOverride = trimmed.length === 0 || trimmed === autoLabel ? null : trimmed
   })
@@ -789,9 +773,9 @@ function setFlag(flag: 'showDetails' | 'showSubtotals' | 'showSubtotalsOnSeparat
         <template #default="{ active }">
           <div class="space-y-6">
             <section v-if="active === 'general' && hasGeneralTab" class="space-y-6">
-              <NgbFormLayout v-if="(definition.parameters?.length ?? 0) > 0">
+              <NgbFormLayout v-if="parameters.length > 0">
                 <NgbFormRow
-                  v-for="parameter in definition.parameters ?? []"
+                  v-for="parameter in parameters"
                   :key="parameter.code"
                   :label="parameter.label ?? parameter.code"
                   :hint="parameter.description ?? undefined"
@@ -941,7 +925,7 @@ function setFlag(flag: 'showDetails' | 'showSubtotals' | 'showSubtotalsOnSeparat
             <section v-if="active === 'filters' && hasFiltersTab" class="space-y-4">
               <NgbFormLayout>
                 <NgbFormRow
-                  v-for="field in definition.filters ?? []"
+                  v-for="field in filters"
                   :key="field.fieldCode"
                   :label="field.label"
                   :hint="field.description ?? undefined"

@@ -6,6 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Npgsql;
 using NGB.BackgroundJobs.Hosting;
 using NGB.BackgroundJobs.IntegrationTests.Infrastructure;
+using NGB.BackgroundJobs.PostgreSql;
+using NGB.PostgreSql.Bootstrap;
 using Xunit;
 
 namespace NGB.BackgroundJobs.IntegrationTests.Hosting;
@@ -39,7 +41,7 @@ public sealed class BackgroundJobsHostingBootstrap_EnsureInfrastructure_Creates_
             ["BackgroundJobs:Enabled"] = bool.FalseString,
         });
 
-        var bootstrap = builder.AddNgbBackgroundJobs(options =>
+        var bootstrap = builder.AddNgbBackgroundJobs(PostgresHangfireJobStorageFactory.Create, options =>
         {
             options.HangfireConnectionStringName = "Hangfire";
             options.RequireDashboardAuthorization = false;
@@ -47,8 +49,10 @@ public sealed class BackgroundJobsHostingBootstrap_EnsureInfrastructure_Creates_
             options.DashboardStylesheetPaths.Clear();
         });
 
-        await bootstrap.EnsureInfrastructureAsync();
-        await bootstrap.EnsureInfrastructureAsync();
+        var provisioner = new PostgresDatabaseProvisioner();
+        await Task.WhenAll(Enumerable.Range(0, 4)
+            .Select(_ => bootstrap.EnsureInfrastructureAsync(provisioner)));
+        await bootstrap.EnsureInfrastructureAsync(provisioner);
 
         await using var conn = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(_fixture.ConnectionString)
         {

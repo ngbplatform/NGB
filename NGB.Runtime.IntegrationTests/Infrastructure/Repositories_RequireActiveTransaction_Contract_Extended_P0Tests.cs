@@ -16,7 +16,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Repositories_RequireActiveTransaction_Contract_Extended_P0Tests(PostgresTestFixture fixture)
 {
     private const string TxnRequired = "This operation requires an active transaction.";

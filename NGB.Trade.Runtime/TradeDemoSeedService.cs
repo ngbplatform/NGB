@@ -449,13 +449,13 @@ public sealed class TradeDemoSeedService(
         string? field,
         string? expected)
     {
-        if (string.IsNullOrWhiteSpace(field) || string.IsNullOrWhiteSpace(expected))
+        if (field is null)
             return false;
 
         if (item.Payload.Fields is null || !item.Payload.Fields.TryGetValue(field, out var value))
             return false;
 
-        return string.Equals(value.ToString(), expected, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(value.ToString(), expected!, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<Guid> GetCatalogIdByDisplayAsync(string catalogType, string display, CancellationToken ct)
@@ -488,7 +488,7 @@ public sealed class TradeDemoSeedService(
 
     private static DateOnly InCurrentMonth(DateOnly todayUtc, int preferredDay)
     {
-        var day = Math.Max(1, Math.Min(preferredDay, todayUtc.Day));
+        var day = Math.Min(preferredDay, todayUtc.Day);
         return new DateOnly(todayUtc.Year, todayUtc.Month, day);
     }
 

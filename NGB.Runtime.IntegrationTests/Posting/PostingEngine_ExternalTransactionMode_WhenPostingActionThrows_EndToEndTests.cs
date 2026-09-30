@@ -18,15 +18,13 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// P1 coverage: in external transaction mode (manageTransaction=false), PostingEngine must not auto-commit
 /// nor auto-rollback. If postingAction throws, the transaction must remain active and the caller decides.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingEngine_ExternalTransactionMode_WhenPostingActionThrows_EndToEndTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task PostAsync_ManageTransactionFalse_WhenPostingActionThrows_LeavesTransactionActive_AndRollbackCleansAll()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await SeedMinimalCoaAsync(host);
 

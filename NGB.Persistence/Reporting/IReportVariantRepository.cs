@@ -5,6 +5,13 @@ public interface IReportVariantRepository
     Task<IReadOnlyList<ReportVariantRecord>> ListVisibleAsync(
         string reportCodeNorm,
         Guid? currentUserId,
+        int limit,
+        CancellationToken ct);
+
+    Task<int> CountInScopeAsync(
+        string reportCodeNorm,
+        Guid? ownerPlatformUserId,
+        bool isShared,
         CancellationToken ct);
     
     Task<ReportVariantRecord?> GetVisibleAsync(

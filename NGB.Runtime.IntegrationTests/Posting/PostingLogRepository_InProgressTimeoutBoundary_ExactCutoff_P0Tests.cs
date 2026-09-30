@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.Posting;
 /// - Stale takeover is allowed only if: existing.started_at_utc &lt; (attempt.started_at_utc - timeout)
 /// - When existing.started_at_utc == cutoff exactly, it must remain InProgress.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class PostingLogRepository_InProgressTimeoutBoundary_ExactCutoff_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

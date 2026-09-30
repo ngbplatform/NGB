@@ -13,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.StorageResolvers;
 /// InMemory*StorageResolver builds a dictionary over registered storages by code.
 /// Duplicate codes must throw early and deterministically.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class TypedStorageResolvers_FailFast_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -149,9 +149,7 @@ public sealed class GenerateInvoiceDraftFromTimesheetDerivationHandler(
 
             var rate = line.BillingRate.HasValue
                 ? AgencyBillingPostingCommon.RoundScale4(line.BillingRate.Value)
-                : quantityHours == 0m
-                    ? 0m
-                    : AgencyBillingPostingCommon.RoundScale4(lineAmount / quantityHours);
+                : AgencyBillingPostingCommon.RoundScale4(lineAmount / quantityHours);
 
             var description = string.IsNullOrWhiteSpace(line.Description)
                 ? $"Billable time {timesheetHead.WorkDate:M/d/yyyy}"

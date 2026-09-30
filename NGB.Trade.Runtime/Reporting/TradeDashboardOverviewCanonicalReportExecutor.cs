@@ -1,8 +1,6 @@
 using System.Text.Json;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
-using NGB.Persistence.OperationalRegisters;
-using NGB.Runtime.OperationalRegisters;
 using NGB.Runtime.Reporting.Canonical;
 using NGB.Runtime.Reporting.Internal;
 using NGB.Trade.Runtime.Policy;
@@ -13,8 +11,7 @@ namespace NGB.Trade.Runtime.Reporting;
 public sealed class TradeDashboardOverviewCanonicalReportExecutor(
     ITradeAnalyticsReader analytics,
     ITradeAccountingPolicyReader policyReader,
-    IOperationalRegisterReadService readService,
-    IOperationalRegisterMovementsQueryReader movementsQueryReader,
+    ITradeInventoryBalanceReader balanceReader,
     TimeProvider timeProvider)
     : IReportSpecializedPlanExecutor
 {
@@ -29,47 +26,36 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
             ?? DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
         var fromInclusive = new DateOnly(asOf.Year, asOf.Month, 1);
 
-        var salesByItem = await analytics.GetSalesByItemAsync(
+        var analyticsSnapshot = await analytics.GetDashboardOverviewAsync(
             fromInclusive,
             asOf,
-            itemIds: null,
-            customerIds: null,
-            warehouseIds: null,
+            topItemLimit: TradeDashboardLimits.Top,
+            recentDocumentLimit: TradeDashboardLimits.RecentDocuments,
             ct);
-
-        var purchasesByVendor = await analytics.GetPurchasesByVendorAsync(
-            fromInclusive,
-            asOf,
-            vendorIds: null,
-            itemIds: null,
-            warehouseIds: null,
-            ct);
-
-        var recentDocuments = await analytics.GetRecentDocumentsAsync(asOf, limit: 8, ct);
+        var salesByItem = analyticsSnapshot.SalesByItem;
+        var salesByCustomer = analyticsSnapshot.SalesByCustomer;
+        var purchasesByVendor = analyticsSnapshot.PurchasesByVendor;
+        var recentDocuments = analyticsSnapshot.RecentDocuments;
         var policy = await policyReader.GetRequiredAsync(ct);
-        var balances = await TradeReportingHelpers.ReadInventoryBalancesAsync(
-            readService,
-            movementsQueryReader,
+        var balances = await balanceReader.GetPageAsync(
             policy.InventoryMovementsRegisterId,
             asOf,
-            dimensions: null,
+            itemIds: null,
+            warehouseIds: null,
+            TradeInventoryBalanceSort.AbsoluteQuantityDescending,
+            offset: 0,
+            limit: TradeDashboardLimits.Inventory,
             ct);
-        var inventoryPositions = balances
-            .Where(static x => x.Quantity != 0m)
-            .OrderByDescending(static x => Math.Abs(x.Quantity))
-            .ThenBy(static x => TradeReportingHelpers.GetDisplay(x.Bag, x.Displays, TradeCodes.Item), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(static x => TradeReportingHelpers.GetDisplay(x.Bag, x.Displays, TradeCodes.Warehouse), StringComparer.OrdinalIgnoreCase)
-            .Take(8)
-            .ToArray();
-        var inventoryPositionCount = balances.Count(static x => x.Quantity != 0m);
+        var inventoryPositions = balances.Rows;
+        var inventoryPositionCount = balances.Total;
 
-        var salesThisMonth = salesByItem.Sum(static x => x.NetSales);
-        var purchasesThisMonth = purchasesByVendor.Sum(static x => x.NetPurchases);
-        var grossMargin = salesByItem.Sum(static x => x.GrossMargin);
-        var inventoryOnHand = balances.Sum(static x => x.Quantity);
-        var topItems = salesByItem
+        var salesThisMonth = salesByItem.Totals.NetSales;
+        var purchasesThisMonth = analyticsSnapshot.NetPurchases;
+        var grossMargin = salesByItem.Totals.GrossMargin;
+        var inventoryOnHand = balances.TotalQuantity;
+        var topItems = salesByItem.Rows
             .Where(static x => x.NetSales != 0m || x.SoldQuantity != 0m || x.ReturnedQuantity != 0m)
-            .Take(5)
+            .Take(TradeDashboardLimits.Top)
             .ToArray();
 
         var rows = new List<ReportSheetRowDto>
@@ -134,8 +120,32 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
             rows.AddRange(topItems.Select(item => TopItemRow(item, fromInclusive, asOf)));
         }
 
+        rows.Add(HeaderRow("Top Customers"));
+        if (salesByCustomer is null || salesByCustomer.Rows.Count == 0)
+        {
+            rows.Add(EmptyRow("No posted customer sales in the selected month."));
+        }
+        else
+        {
+            rows.AddRange(salesByCustomer.Rows
+                .Take(TradeDashboardLimits.Top)
+                .Select(row => TopCustomerRow(row, fromInclusive, asOf)));
+        }
+
+        rows.Add(HeaderRow("Top Vendors"));
+        if (purchasesByVendor is null || purchasesByVendor.Rows.Count == 0)
+        {
+            rows.Add(EmptyRow("No posted vendor purchases in the selected month."));
+        }
+        else
+        {
+            rows.AddRange(purchasesByVendor.Rows
+                .Take(TradeDashboardLimits.Top)
+                .Select(row => TopVendorRow(row, fromInclusive, asOf)));
+        }
+
         rows.Add(HeaderRow("Largest Inventory Positions"));
-        if (inventoryPositions.Length == 0)
+        if (inventoryPositions.Count == 0)
         {
             rows.Add(EmptyRow("No inventory balance positions are available yet."));
         }
@@ -170,7 +180,10 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
                 Diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["executor"] = "canonical-trd-dashboard-overview",
-                    ["inventory_position_count"] = inventoryPositionCount.ToString()
+                    ["inventory_position_count"] = inventoryPositionCount.ToString(),
+                    ["active_sales_item_count"] = salesByItem.Total.ToString(),
+                    ["active_customer_count"] = (salesByCustomer?.Total ?? 0).ToString(),
+                    ["active_vendor_count"] = (purchasesByVendor?.Total ?? 0).ToString()
                 }));
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
@@ -184,7 +197,10 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
             {
                 ["executor"] = "canonical-trd-dashboard-overview",
                 ["as_of_utc"] = asOf.ToString("yyyy-MM-dd"),
-                ["inventory_position_count"] = inventoryPositionCount.ToString()
+                ["inventory_position_count"] = inventoryPositionCount.ToString(),
+                ["active_sales_item_count"] = salesByItem.Total.ToString(),
+                ["active_customer_count"] = (salesByCustomer?.Total ?? 0).ToString(),
+                ["active_vendor_count"] = (purchasesByVendor?.Total ?? 0).ToString()
             });
     }
 
@@ -262,17 +278,9 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
                     "string")
             ]);
 
-    private static ReportSheetRowDto InventoryPositionRow(InventoryBalanceSnapshot row, DateOnly asOf)
+    private static ReportSheetRowDto InventoryPositionRow(TradeInventoryBalanceRow row, DateOnly asOf)
     {
-        var itemDisplay = TradeReportingHelpers.GetDisplay(row.Bag, row.Displays, TradeCodes.Item);
-        var warehouseDisplay = TradeReportingHelpers.GetDisplay(row.Bag, row.Displays, TradeCodes.Warehouse);
-        var itemId = TradeReportingHelpers.TryGetValueId(row.Bag, TradeCodes.Item);
-        var warehouseId = TradeReportingHelpers.TryGetValueId(row.Bag, TradeCodes.Warehouse);
-
-        ReportCellActionDto? quantityAction = null;
-        if (itemId is { } actualItemId && warehouseId is { } actualWarehouseId)
-        {
-            quantityAction = ReportCellActions.BuildReportAction(
+        var quantityAction = ReportCellActions.BuildReportAction(
                 TradeCodes.InventoryBalancesReport,
                 parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
@@ -280,10 +288,9 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
                 },
                 filters: new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["item_id"] = new(JsonSerializer.SerializeToElement(actualItemId)),
-                    ["warehouse_id"] = new(JsonSerializer.SerializeToElement(actualWarehouseId))
+                    ["item_id"] = new(JsonSerializer.SerializeToElement(row.ItemId)),
+                    ["warehouse_id"] = new(JsonSerializer.SerializeToElement(row.WarehouseId))
                 });
-        }
 
         return new ReportSheetRowDto(
             ReportRowKind.Detail,
@@ -291,30 +298,101 @@ public sealed class TradeDashboardOverviewCanonicalReportExecutor(
             [
                 new ReportCellDto(CanonicalReportExecutionHelper.JsonValue("Inventory Position"), "Inventory Position", "string"),
                 new ReportCellDto(
-                    CanonicalReportExecutionHelper.JsonValue(itemDisplay),
-                    itemDisplay,
+                    CanonicalReportExecutionHelper.JsonValue(row.ItemDisplay),
+                    row.ItemDisplay,
                     "string",
-                    Action: itemId is { } catalogItemId
-                        ? ReportCellActions.BuildCatalogAction(TradeCodes.Item, catalogItemId)
-                        : null),
+                    Action: ReportCellActions.BuildCatalogAction(TradeCodes.Item, row.ItemId)),
                 new ReportCellDto(
                     CanonicalReportExecutionHelper.JsonValue(row.Quantity),
                     row.Quantity.ToString("0.####"),
                     "decimal",
                     Action: quantityAction),
                 new ReportCellDto(
-                    CanonicalReportExecutionHelper.JsonValue(warehouseDisplay),
-                    warehouseDisplay,
+                    CanonicalReportExecutionHelper.JsonValue(row.WarehouseDisplay),
+                    row.WarehouseDisplay,
                     "string",
-                    Action: warehouseId is { } catalogWarehouseId
-                        ? ReportCellActions.BuildCatalogAction(TradeCodes.Warehouse, catalogWarehouseId)
-                        : null),
+                    Action: ReportCellActions.BuildCatalogAction(TradeCodes.Warehouse, row.WarehouseId)),
                 new ReportCellDto(
                     CanonicalReportExecutionHelper.JsonValue("On hand"),
                     "On hand",
                     "string")
             ]);
     }
+
+    private static ReportSheetRowDto TopCustomerRow(
+        SalesByCustomerSummaryRow row,
+        DateOnly fromInclusive,
+        DateOnly asOf)
+        => new(
+            ReportRowKind.Detail,
+            Cells:
+            [
+                new ReportCellDto(CanonicalReportExecutionHelper.JsonValue("Top Customer"), "Top Customer", "string"),
+                new ReportCellDto(
+                    CanonicalReportExecutionHelper.JsonValue(row.CustomerDisplay),
+                    row.CustomerDisplay,
+                    "string",
+                    Action: ReportCellActions.BuildCatalogAction(TradeCodes.Party, row.CustomerId)),
+                new ReportCellDto(
+                    CanonicalReportExecutionHelper.JsonValue(row.NetSales),
+                    row.NetSales.ToString("0.##"),
+                    "decimal",
+                    Action: ReportCellActions.BuildReportAction(
+                        TradeCodes.SalesByCustomerReport,
+                        parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["from_utc"] = fromInclusive.ToString("yyyy-MM-dd"),
+                            ["to_utc"] = asOf.ToString("yyyy-MM-dd")
+                        },
+                        filters: new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["customer_id"] = new(JsonSerializer.SerializeToElement(row.CustomerId))
+                        })),
+                new ReportCellDto(
+                    CanonicalReportExecutionHelper.JsonValue($"{row.SalesDocumentCount} sales / {row.ReturnDocumentCount} returns"),
+                    $"{row.SalesDocumentCount} sales / {row.ReturnDocumentCount} returns",
+                    "string"),
+                new ReportCellDto(
+                    CanonicalReportExecutionHelper.JsonValue($"Gross Margin {row.GrossMargin:0.##} ({row.MarginPercent:0.##}%)"),
+                    $"Gross Margin {row.GrossMargin:0.##} ({row.MarginPercent:0.##}%)",
+                    "string")
+            ]);
+
+    private static ReportSheetRowDto TopVendorRow(
+        PurchasesByVendorSummaryRow row,
+        DateOnly fromInclusive,
+        DateOnly asOf)
+        => new(
+            ReportRowKind.Detail,
+            Cells:
+            [
+                new ReportCellDto(CanonicalReportExecutionHelper.JsonValue("Top Vendor"), "Top Vendor", "string"),
+                new ReportCellDto(
+                    CanonicalReportExecutionHelper.JsonValue(row.VendorDisplay),
+                    row.VendorDisplay,
+                    "string",
+                    Action: ReportCellActions.BuildCatalogAction(TradeCodes.Party, row.VendorId)),
+                new ReportCellDto(
+                    CanonicalReportExecutionHelper.JsonValue(row.NetPurchases),
+                    row.NetPurchases.ToString("0.##"),
+                    "decimal",
+                    Action: ReportCellActions.BuildReportAction(
+                        TradeCodes.PurchasesByVendorReport,
+                        parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["from_utc"] = fromInclusive.ToString("yyyy-MM-dd"),
+                            ["to_utc"] = asOf.ToString("yyyy-MM-dd")
+                        },
+                        filters: new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["vendor_id"] = new(JsonSerializer.SerializeToElement(row.VendorId))
+                        })),
+                new ReportCellDto(
+                    CanonicalReportExecutionHelper.JsonValue($"{row.PurchaseDocumentCount} purchases / {row.ReturnDocumentCount} returns"),
+                    $"{row.PurchaseDocumentCount} purchases / {row.ReturnDocumentCount} returns",
+                    "string"),
+                new ReportCellDto(CanonicalReportExecutionHelper.JsonValue("Net purchases"), "Net purchases", "string")
+            ]);
 
     private static ReportSheetRowDto RecentDocumentRow(RecentTradeDocumentSummaryRow row)
     {

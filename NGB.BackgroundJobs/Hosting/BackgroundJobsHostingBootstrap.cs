@@ -1,3 +1,4 @@
+using NGB.Persistence.Databases;
 using NGB.Tools.Exceptions;
 
 namespace NGB.BackgroundJobs.Hosting;
@@ -17,6 +18,11 @@ public sealed class BackgroundJobsHostingBootstrap(
         ? throw new NgbArgumentRequiredException(nameof(hangfireConnectionString))
         : hangfireConnectionString.Trim();
 
-    public Task EnsureInfrastructureAsync()
-        => Infrastructure.HangfireTools.EnsureDatabaseExistsAsync(HangfireConnectionString);
+    public Task EnsureInfrastructureAsync(IDatabaseProvisioner databaseProvisioner, CancellationToken ct = default)
+    {
+        if (databaseProvisioner is null)
+            throw new NgbArgumentRequiredException(nameof(databaseProvisioner));
+
+        return databaseProvisioner.EnsureDatabaseExistsAsync(HangfireConnectionString, ct);
+    }
 }

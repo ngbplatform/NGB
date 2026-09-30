@@ -12,15 +12,13 @@ namespace NGB.Runtime.IntegrationTests.Documents;
 /// P1: DocumentRelationshipsMigration declares ON DELETE CASCADE for both from_document_id and to_document_id.
 /// We must prove that deleting a Draft document does not leave orphan relationship rows.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentRelationships_CascadeDelete_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task DeleteDraft_Cascades_DocumentRelationships_WhenDeletingFromDocument()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
 
@@ -58,8 +56,6 @@ public sealed class DocumentRelationships_CascadeDelete_P1Tests(PostgresTestFixt
     [Fact]
     public async Task DeleteDraft_Cascades_DocumentRelationships_WhenDeletingToDocument()
     {
-        await Fixture.ResetDatabaseAsync();
-
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
 

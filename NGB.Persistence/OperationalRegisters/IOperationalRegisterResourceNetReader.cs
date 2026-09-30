@@ -27,6 +27,16 @@ public interface IOperationalRegisterResourceNetReader
         CancellationToken ct = default);
 
     /// <summary>
+    /// Computes resource net amounts for several DimensionSets in one database query.
+    /// Missing DimensionSets are returned with a zero net amount.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, decimal>> GetNetByDimensionSetsAsync(
+        Guid registerId,
+        IReadOnlyCollection<Guid> dimensionSetIds,
+        string resourceColumnCode,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Computes the current net amount for movements whose dimension set contains every
     /// requested dimension/value pair. The aggregation must execute completely in the database;
     /// implementations must not materialize movement rows or dimension display metadata.
@@ -35,5 +45,17 @@ public interface IOperationalRegisterResourceNetReader
         Guid registerId,
         IReadOnlyList<DimensionValue> dimensions,
         string resourceColumnCode,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Computes point-in-time resource nets for several independent dimension filters in one
+    /// database query. The result order matches <paramref name="dimensionGroups"/> and missing
+    /// matches are returned as zeroes.
+    /// </summary>
+    Task<IReadOnlyList<decimal>> GetNetsByDimensionsAsync(
+        Guid registerId,
+        IReadOnlyList<IReadOnlyList<DimensionValue>> dimensionGroups,
+        string resourceColumnCode,
+        DateOnly asOfInclusive,
         CancellationToken ct = default);
 }

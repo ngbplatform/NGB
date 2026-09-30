@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
-using NGB.Core.Documents;
 using NGB.Core.Documents.Exceptions;
 using NGB.Persistence.Schema;
 using NGB.Runtime.IntegrationTests.Infrastructure;
@@ -9,8 +8,8 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRepair_RuleByRule_P0_3Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DocumentsCoreSchemaValidation_DocumentRelationships_DriftRepair_RuleByRule_P0_3Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]

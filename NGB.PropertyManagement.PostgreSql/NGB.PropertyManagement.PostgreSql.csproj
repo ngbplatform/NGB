@@ -8,6 +8,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj"/>
+        <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj"/>
         <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj"/>
         <ProjectReference Include="..\NGB.PostgreSql\NGB.PostgreSql.csproj"/>
         <ProjectReference Include="..\NGB.PropertyManagement\NGB.PropertyManagement.csproj"/>
@@ -15,8 +18,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Dapper" Version="2.1.79" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
+        <PackageReference Include="Dapper" Version="2.1.89" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
     </ItemGroup>
 
     <ItemGroup>

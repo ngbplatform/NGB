@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NGB.BackgroundJobs.Contracts;
 using NGB.BackgroundJobs.IntegrationTests.Infrastructure;
 using NGB.BackgroundJobs.Jobs;
+using NGB.PostgreSql.AuditLog;
 using NGB.PostgreSql.UnitOfWork;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -18,8 +19,7 @@ public sealed class AuditHealthJob_PostgresEndToEnd_P0Tests(HangfirePostgresFixt
     {
         await using var uow = new PostgresUnitOfWork(fixture.ConnectionString, NullLogger<PostgresUnitOfWork>.Instance);
         var metrics = new TestJobRunMetrics();
-
-        var job = new AuditHealthJob(uow, NullLogger<AuditHealthJob>.Instance, metrics);
+        var job = new AuditHealthJob(new PostgresAuditHealthReader(uow), NullLogger<AuditHealthJob>.Instance, metrics);
 
         await job.RunAsync(CancellationToken.None);
 
@@ -36,7 +36,7 @@ public sealed class AuditHealthJob_PostgresEndToEnd_P0Tests(HangfirePostgresFixt
     {
         await using var uow = new PostgresUnitOfWork(fixture.ConnectionString, NullLogger<PostgresUnitOfWork>.Instance);
         var metrics = new TestJobRunMetrics();
-        var job = new AuditHealthJob(uow, NullLogger<AuditHealthJob>.Instance, metrics);
+        var job = new AuditHealthJob(new PostgresAuditHealthReader(uow), NullLogger<AuditHealthJob>.Instance, metrics);
 
         await uow.BeginTransactionAsync();
         try
@@ -62,7 +62,7 @@ public sealed class AuditHealthJob_PostgresEndToEnd_P0Tests(HangfirePostgresFixt
     {
         await using var uow = new PostgresUnitOfWork(fixture.ConnectionString, NullLogger<PostgresUnitOfWork>.Instance);
         var metrics = new TestJobRunMetrics();
-        var job = new AuditHealthJob(uow, NullLogger<AuditHealthJob>.Instance, metrics);
+        var job = new AuditHealthJob(new PostgresAuditHealthReader(uow), NullLogger<AuditHealthJob>.Instance, metrics);
 
         await uow.BeginTransactionAsync();
         try

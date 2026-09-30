@@ -11,7 +11,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_RuntimeService_Disabled_IgnoresInvalidArgs_AndDoesNotUpsert_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

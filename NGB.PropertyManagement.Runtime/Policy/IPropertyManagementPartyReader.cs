@@ -3,6 +3,11 @@ namespace NGB.PropertyManagement.Runtime.Policy;
 public interface IPropertyManagementPartyReader
 {
     Task<PropertyManagementParty?> TryGetAsync(Guid partyId, CancellationToken ct = default);
+
+    Task<IReadOnlyDictionary<Guid, PropertyManagementParty>> GetByIdsAsync(
+        IReadOnlyCollection<Guid> partyIds,
+        CancellationToken ct = default);
+
     Task<PropertyManagementParty> GetRequiredAsync(Guid partyId, CancellationToken ct = default);
 }
 

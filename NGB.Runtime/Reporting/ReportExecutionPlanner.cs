@@ -18,6 +18,9 @@ public sealed class ReportExecutionPlanner
         var layout = context.EffectiveLayout
                      ?? throw new NgbInvariantViolationException("Reporting planner requires an effective layout.");
 
+        var request = context.Request
+            ?? throw new NgbInvariantViolationException("Reporting planner requires an execution request.");
+
         var dataset = definition.Dataset;
 
         var rowGroups = BuildGroups(dataset, layout.RowGroups, isColumnAxis: false);
@@ -25,17 +28,17 @@ public sealed class ReportExecutionPlanner
         var measures = BuildMeasures(dataset, layout.Measures);
         var detailFields = BuildDetailFields(dataset, layout.DetailFields);
         var predicates = dataset is null
-            ? BuildCanonicalPredicates(definition, context.Request.Filters)
-            : BuildPredicates(dataset, context.Request.Filters);
-        var parameters = BuildParameters(context.Request.Parameters);
-        var sorts = BuildSorts(dataset, rowGroups, columnGroups, detailFields, layout.Sorts);
+            ? BuildCanonicalPredicates(definition, request.Filters)
+            : BuildPredicates(dataset, request.Filters);
+        var parameters = BuildParameters(request.Parameters);
+        var sorts = BuildSorts(dataset, rowGroups, columnGroups, layout.Sorts);
         var shape = new ReportPlanShape(
             ShowDetails: layout.ShowDetails,
             ShowSubtotals: layout.ShowSubtotals,
             ShowSubtotalsOnSeparateRows: layout.ShowSubtotalsOnSeparateRows,
             ShowGrandTotals: layout.ShowGrandTotals,
             IsPivot: columnGroups.Count > 0);
-        var paging = new ReportPlanPaging(context.Request.Offset, context.Request.Limit, context.Request.Cursor);
+        var paging = new ReportPlanPaging(request.Offset, request.Limit, request.Cursor);
 
         return new ReportQueryPlan(
             ReportCode: definition.ReportCodeNorm,
@@ -62,7 +65,7 @@ public sealed class ReportExecutionPlanner
         foreach (var group in groups ?? [])
         {
             var fieldCodeNorm = CodeNormalizer.NormalizeCodeNorm(group.FieldCode, nameof(group.FieldCode));
-            var field = ResolveField(dataset, fieldCodeNorm, isRequired: true);
+            var field = ResolveField(dataset, fieldCodeNorm);
             var label = string.IsNullOrWhiteSpace(group.LabelOverride) ? field.Field.Label : group.LabelOverride!;
 
             result.Add(new ReportPlanGrouping(
@@ -89,8 +92,8 @@ public sealed class ReportExecutionPlanner
         foreach (var measure in measures ?? [])
         {
             var measureCodeNorm = CodeNormalizer.NormalizeCodeNorm(measure.MeasureCode, nameof(measure.MeasureCode));
-            var runtime = ResolveMeasure(dataset, measureCodeNorm, isRequired: true);
-            var aggregation = dataset?.ResolveAggregation(measureCodeNorm, measure.Aggregation) ?? measure.Aggregation;
+            var runtime = ResolveMeasure(dataset, measureCodeNorm);
+            var aggregation = dataset!.ResolveAggregation(measureCodeNorm, measure.Aggregation);
             var label = string.IsNullOrWhiteSpace(measure.LabelOverride) ? runtime.Measure.Label : measure.LabelOverride!;
 
             result.Add(new ReportPlanMeasure(
@@ -113,7 +116,7 @@ public sealed class ReportExecutionPlanner
         foreach (var detailField in detailFields ?? [])
         {
             var fieldCodeNorm = CodeNormalizer.NormalizeCodeNorm(detailField, nameof(detailField));
-            var runtime = ResolveField(dataset, fieldCodeNorm, isRequired: true);
+            var runtime = ResolveField(dataset, fieldCodeNorm);
             result.Add(new ReportPlanFieldSelection(
                 FieldCode: fieldCodeNorm,
                 OutputCode: fieldCodeNorm,
@@ -156,7 +159,7 @@ public sealed class ReportExecutionPlanner
         foreach (var pair in filters ?? new Dictionary<string, ReportFilterValueDto>(StringComparer.OrdinalIgnoreCase))
         {
             var fieldCodeNorm = CodeNormalizer.NormalizeCodeNorm(pair.Key, nameof(pair.Key));
-            var runtime = ResolveField(dataset, fieldCodeNorm, isRequired: true);
+            var runtime = ResolveField(dataset, fieldCodeNorm);
             result.Add(new ReportPlanPredicate(
                 FieldCode: fieldCodeNorm,
                 OutputCode: fieldCodeNorm,
@@ -184,7 +187,6 @@ public sealed class ReportExecutionPlanner
         ReportDatasetDefinition? dataset,
         IReadOnlyList<ReportPlanGrouping> rowGroups,
         IReadOnlyList<ReportPlanGrouping> columnGroups,
-        IReadOnlyList<ReportPlanFieldSelection> detailFields,
         IReadOnlyList<ReportSortDto>? sorts)
     {
         var result = new List<ReportPlanSort>();
@@ -211,18 +213,6 @@ public sealed class ReportExecutionPlanner
                     MeasureCode: codeNorm,
                     Direction: sort.Direction,
                     TimeGrain: sort.TimeGrain,
-                    AppliesToColumnAxis: sort.AppliesToColumnAxis,
-                    GroupKey: null));
-                continue;
-            }
-
-            if (detailFields.Any(x => x.FieldCode.Equals(codeNorm, StringComparison.OrdinalIgnoreCase)))
-            {
-                result.Add(new ReportPlanSort(
-                    FieldCode: codeNorm,
-                    MeasureCode: null,
-                    Direction: sort.Direction,
-                    TimeGrain: null,
                     AppliesToColumnAxis: sort.AppliesToColumnAxis,
                     GroupKey: null));
                 continue;
@@ -268,30 +258,20 @@ public sealed class ReportExecutionPlanner
         return null;
     }
 
-    private static ReportDatasetFieldDefinition ResolveField(
-        ReportDatasetDefinition? dataset,
-        string fieldCodeNorm,
-        bool isRequired)
+    private static ReportDatasetFieldDefinition ResolveField(ReportDatasetDefinition? dataset, string fieldCodeNorm)
     {
         if (dataset is not null && dataset.TryGetField(fieldCodeNorm, out var field))
             return field;
-
-        if (!isRequired)
-            return null!;
 
         throw new NgbInvariantViolationException($"Reporting planner cannot resolve dataset field '{fieldCodeNorm}'. Validation should have prevented this state.");
     }
 
     private static ReportDatasetMeasureDefinition ResolveMeasure(
         ReportDatasetDefinition? dataset,
-        string measureCodeNorm,
-        bool isRequired)
+        string measureCodeNorm)
     {
         if (dataset is not null && dataset.TryGetMeasure(measureCodeNorm, out var measure))
             return measure;
-
-        if (!isRequired)
-            return null!;
 
         throw new NgbInvariantViolationException($"Reporting planner cannot resolve dataset measure '{measureCodeNorm}'. Validation should have prevented this state.");
     }

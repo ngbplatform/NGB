@@ -1,10 +1,13 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Contracts.Receivables;
 using NGB.PropertyManagement.Receivables;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
+using NGB.Tools.Paging;
 
 namespace NGB.PropertyManagement.PostgreSql.Receivables;
 
@@ -30,38 +33,78 @@ public sealed class PostgresReceivablesReconciliationService(IUnitOfWork uow) : 
         if (request.ToMonthInclusive < request.FromMonthInclusive)
             throw new NgbArgumentOutOfRangeException(nameof(request.ToMonthInclusive), request.ToMonthInclusive, "To month must be on or after From month.");
 
+        if (request.Offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(request.Offset), request.Offset, "Offset must be zero or greater.");
+
+        if (request.Limit is <= 0 or > 500)
+            throw new NgbArgumentOutOfRangeException(nameof(request.Limit), request.Limit, "Limit must be between 1 and 500.");
+
+        if (!Enum.IsDefined(request.Status))
+            throw new NgbArgumentInvalidException(nameof(request.Status), "Select a valid reconciliation status filter.");
+
+        var requestedOffset = PagingLimits.BoundOffset(request.Offset);
+
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var policy = await ReadRequiredPolicyAsync(ct);
-        var tableCode = await ReadOperationalRegisterTableCodeOrThrowAsync(policy.OpenItemsRegisterId, ct);
-
-        if (!SafeTableCode.IsMatch(tableCode))
-        {
-            throw new NgbConfigurationViolationException(
-                "Operational register table_code is not safe.",
-                new Dictionary<string, object?> { ["registerId"] = policy.OpenItemsRegisterId, ["tableCode"] = tableCode });
-        }
+        var context = await ReadQueryContextAsync(ct);
+        var policy = (context.ArAccountId, context.OpenItemsRegisterId);
+        var tableCode = context.TableCode;
+        var cursorKind = OpaqueCursorCodec.BuildKind(
+            "pm.receivables.reconciliation",
+            request.FromMonthInclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            request.ToMonthInclusive.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ((int)request.Mode).ToString(CultureInfo.InvariantCulture),
+            ((int)request.Status).ToString(CultureInfo.InvariantCulture),
+            policy.ArAccountId.ToString("N"),
+            policy.OpenItemsRegisterId.ToString("N"));
+        var pageCursor = string.IsNullOrWhiteSpace(request.Cursor)
+            ? null
+            : OpaqueCursorCodec.Decode<ReceivablesPageCursor>(cursorKind, request.Cursor);
+        var effectiveOffset = pageCursor?.NextOffset ?? requestedOffset;
 
         var movementsTable = $"opreg_{tableCode}__movements";
-        var movementsTableExists = await TableExistsAsync(movementsTable, ct);
+        var balancesTable = $"opreg_{tableCode}__balances";
+        var movementsTableExists = context.MovementsTableExists;
+        var balancesTableExists = context.BalancesTableExists;
 
         var partyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Party}");
         var propertyDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Property}");
         var leaseDimId = DeterministicGuid.Create($"Dimension|{PropertyManagementCodes.Lease}");
 
-        var glSourceSql = request.Mode switch
+        var (glSourceSql, oiSourceSql) = request.Mode switch
         {
-            ReceivablesReconciliationMode.Movement => BuildMovementGlSourceSql(),
-            ReceivablesReconciliationMode.Balance => BuildBalanceGlSourceSql(),
+            ReceivablesReconciliationMode.Movement => (
+                BuildMovementGlSourceSql(),
+                BuildMovementOiSourceSql(movementsTable, movementsTableExists)),
+            ReceivablesReconciliationMode.Balance => (
+                BuildBalanceGlSourceSql(),
+                BuildBalanceOiSourceSql(movementsTable, movementsTableExists, balancesTable, balancesTableExists)),
             _ => throw new NgbArgumentInvalidException(nameof(request.Mode), "Select a valid reconciliation mode.")
         };
-
-        var oiSourceSql = request.Mode switch
-        {
-            ReceivablesReconciliationMode.Movement => BuildMovementOiSourceSql(movementsTable, movementsTableExists),
-            ReceivablesReconciliationMode.Balance => BuildBalanceOiSourceSql(movementsTable, movementsTableExists),
-            _ => throw new NgbArgumentInvalidException(nameof(request.Mode), "Select a valid reconciliation mode.")
-        };
+        var statsSql = pageCursor is null
+            ? """
+              SELECT
+                  COUNT(*)::integer AS total_row_count,
+                  COUNT(*) FILTER (WHERE ar_net <> open_items_net)::integer AS total_mismatch_row_count,
+                  COUNT(*) FILTER (WHERE ar_net <> 0 AND open_items_net = 0)::integer AS total_gl_only_row_count,
+                  COUNT(*) FILTER (WHERE ar_net = 0 AND open_items_net <> 0)::integer AS total_open_items_only_row_count,
+                  COALESCE(SUM(ar_net), 0) AS total_ar_net,
+                  COALESCE(SUM(open_items_net), 0) AS total_open_items_net
+              FROM reconciliation
+              """
+            : """
+              SELECT
+                  @KnownRowCount::integer AS total_row_count,
+                  @KnownMismatchRowCount::integer AS total_mismatch_row_count,
+                  @KnownGlOnlyRowCount::integer AS total_gl_only_row_count,
+                  @KnownOpenItemsOnlyRowCount::integer AS total_open_items_only_row_count,
+                  @KnownArNet::numeric AS total_ar_net,
+                  @KnownOpenItemsNet::numeric AS total_open_items_net
+              """;
+        var seekPredicateSql = pageCursor is null
+            ? string.Empty
+            : "WHERE (party_id, property_id, lease_id) > (@AfterPartyId::uuid, @AfterPropertyId::uuid, @AfterLeaseId::uuid)";
+        var offsetSql = pageCursor is null ? "OFFSET @Offset" : string.Empty;
 
         // IMPORTANT: movementsTable is interpolated (PostgreSQL doesn't allow binding identifiers).
         // It is safe because table_code is a generated column guarded by DB constraints (safe chars + length).
@@ -98,21 +141,70 @@ oi_agg AS (
     LEFT JOIN platform_dimension_set_items l
         ON l.dimension_set_id = oi_source.dimension_set_id AND l.dimension_id = @LeaseDimId::uuid
     GROUP BY 1,2,3
+),
+reconciliation AS (
+    SELECT
+        COALESCE(gl_agg.party_id, oi_agg.party_id)        AS party_id,
+        COALESCE(gl_agg.property_id, oi_agg.property_id)  AS property_id,
+        COALESCE(gl_agg.lease_id, oi_agg.lease_id)        AS lease_id,
+        COALESCE(gl_agg.ar_net, 0)                        AS ar_net,
+        COALESCE(oi_agg.open_items_net, 0)                AS open_items_net
+    FROM gl_agg
+    FULL OUTER JOIN oi_agg
+        ON gl_agg.party_id = oi_agg.party_id
+       AND gl_agg.property_id = oi_agg.property_id
+       AND gl_agg.lease_id = oi_agg.lease_id
+    WHERE COALESCE(gl_agg.ar_net, 0) <> 0
+       OR COALESCE(oi_agg.open_items_net, 0) <> 0
+),
+filtered_reconciliation AS (
+    SELECT *
+    FROM reconciliation
+    WHERE @Status = 0
+       OR (@Status = 1 AND ar_net = open_items_net)
+       OR (@Status = 2 AND ar_net <> open_items_net)
+       OR (@Status = 3 AND ar_net <> 0 AND open_items_net = 0)
+       OR (@Status = 4 AND ar_net = 0 AND open_items_net <> 0)
+),
+stats AS (
+    {statsSql}
+),
+paged AS (
+    SELECT *
+    FROM filtered_reconciliation
+    {seekPredicateSql}
+    ORDER BY party_id, property_id, lease_id
+    {offsetSql}
+    LIMIT @LimitPlusOne
 )
 SELECT
-    COALESCE(gl_agg.party_id, oi_agg.party_id)        AS PartyId,
-    COALESCE(gl_agg.property_id, oi_agg.property_id)  AS PropertyId,
-    COALESCE(gl_agg.lease_id, oi_agg.lease_id)        AS LeaseId,
-    COALESCE(gl_agg.ar_net, 0)                        AS ArNet,
-    COALESCE(oi_agg.open_items_net, 0)                AS OpenItemsNet
-FROM gl_agg
-FULL OUTER JOIN oi_agg
-    ON gl_agg.party_id = oi_agg.party_id
-   AND gl_agg.property_id = oi_agg.property_id
-   AND gl_agg.lease_id = oi_agg.lease_id
-WHERE COALESCE(gl_agg.ar_net, 0) <> 0
-   OR COALESCE(oi_agg.open_items_net, 0) <> 0
-ORDER BY 1,2,3;
+    paged.party_id AS PartyId,
+    paged.property_id AS PropertyId,
+    paged.lease_id AS LeaseId,
+    COALESCE(paged.ar_net, 0) AS ArNet,
+    COALESCE(paged.open_items_net, 0) AS OpenItemsNet,
+    party_head.display AS PartyDisplay,
+    property_head.display AS PropertyDisplay,
+    lease_head.display AS LeaseDisplay,
+    (paged.party_id IS NOT NULL) AS HasRow,
+    stats.total_row_count AS TotalRowCount,
+    stats.total_mismatch_row_count AS TotalMismatchRowCount,
+    stats.total_gl_only_row_count AS TotalGlOnlyRowCount,
+    stats.total_open_items_only_row_count AS TotalOpenItemsOnlyRowCount,
+    stats.total_ar_net AS TotalArNet,
+    stats.total_open_items_net AS TotalOpenItemsNet
+FROM stats
+LEFT JOIN paged ON TRUE
+LEFT JOIN catalogs party_catalog
+    ON party_catalog.id = paged.party_id AND party_catalog.catalog_code = @PartyCatalogCode
+LEFT JOIN cat_pm_party party_head ON party_head.catalog_id = party_catalog.id
+LEFT JOIN catalogs property_catalog
+    ON property_catalog.id = paged.property_id AND property_catalog.catalog_code = @PropertyCatalogCode
+LEFT JOIN cat_pm_property property_head ON property_head.catalog_id = property_catalog.id
+LEFT JOIN documents lease_document
+    ON lease_document.id = paged.lease_id AND lease_document.type_code = @LeaseDocumentTypeCode
+LEFT JOIN doc_pm_lease lease_head ON lease_head.document_id = lease_document.id
+ORDER BY paged.party_id, paged.property_id, paged.lease_id;
 """;
 
         var cmd = new CommandDefinition(
@@ -125,6 +217,21 @@ ORDER BY 1,2,3;
                 PartyDimId = partyDimId,
                 PropertyDimId = propertyDimId,
                 LeaseDimId = leaseDimId,
+                PartyCatalogCode = PropertyManagementCodes.Party,
+                PropertyCatalogCode = PropertyManagementCodes.Property,
+                LeaseDocumentTypeCode = PropertyManagementCodes.Lease,
+                Offset = requestedOffset,
+                Status = (int)request.Status,
+                LimitPlusOne = request.Limit + 1,
+                AfterPartyId = pageCursor?.AfterPartyId,
+                AfterPropertyId = pageCursor?.AfterPropertyId,
+                AfterLeaseId = pageCursor?.AfterLeaseId,
+                KnownRowCount = pageCursor?.TotalRowCount,
+                KnownMismatchRowCount = pageCursor?.TotalMismatchRowCount,
+                KnownGlOnlyRowCount = pageCursor?.TotalGlOnlyRowCount,
+                KnownOpenItemsOnlyRowCount = pageCursor?.TotalOpenItemsOnlyRowCount,
+                KnownArNet = pageCursor?.TotalArNet,
+                KnownOpenItemsNet = pageCursor?.TotalOpenItemsNet,
                 Guid.Empty
             },
             transaction: uow.Transaction,
@@ -132,38 +239,53 @@ ORDER BY 1,2,3;
 
         var rows = (await uow.Connection.QueryAsync<RawRow>(cmd)).AsList();
 
-        var partyDisplays = await ReadCatalogDisplaysAsync(PropertyManagementCodes.Party, "cat_pm_party", rows.Select(x => x.PartyId), ct);
-        var propertyDisplays = await ReadCatalogDisplaysAsync(PropertyManagementCodes.Property, "cat_pm_property", rows.Select(x => x.PropertyId), ct);
-        var leaseDisplays = await ReadDocumentDisplaysAsync(PropertyManagementCodes.Lease, "doc_pm_lease", rows.Select(x => x.LeaseId), ct);
+        var stats = rows[0];
+        var filteredRowCount = ResolveFilteredRowCount(
+            request.Status,
+            stats.TotalRowCount,
+            stats.TotalMismatchRowCount,
+            stats.TotalGlOnlyRowCount,
+            stats.TotalOpenItemsOnlyRowCount);
+        var pageRows = rows.Where(static row => row.HasRow).ToList();
+        var hasMore = pageRows.Count > request.Limit;
+        if (hasMore)
+            pageRows.RemoveAt(pageRows.Count - 1);
 
-        var resultRows = new List<ReceivablesReconciliationRow>(rows.Count);
-        decimal totalAr = 0m;
-        decimal totalOi = 0m;
-        var mismatchRowCount = 0;
+        var nextCursor = hasMore && pageRows.Count > 0
+            ? OpaqueCursorCodec.Encode(
+                cursorKind,
+                new ReceivablesPageCursor(
+                    pageRows[^1].PartyId,
+                    pageRows[^1].PropertyId,
+                    pageRows[^1].LeaseId,
+                    effectiveOffset + pageRows.Count,
+                    stats.TotalRowCount,
+                    stats.TotalMismatchRowCount,
+                    stats.TotalGlOnlyRowCount,
+                    stats.TotalOpenItemsOnlyRowCount,
+                    stats.TotalArNet,
+                    stats.TotalOpenItemsNet))
+            : null;
 
-        foreach (var r in rows)
+        var resultRows = new List<ReceivablesReconciliationRow>(pageRows.Count);
+
+        foreach (var r in pageRows)
         {
             var diff = r.ArNet - r.OpenItemsNet;
             var hasDiff = diff != 0m;
             var rowKind = ResolveRowKind(r.ArNet, r.OpenItemsNet, hasDiff);
-            if (hasDiff)
-                mismatchRowCount++;
-
             resultRows.Add(new ReceivablesReconciliationRow(
                 PartyId: r.PartyId,
-                PartyDisplay: ResolveDisplay(partyDisplays, r.PartyId),
+                PartyDisplay: r.PartyDisplay,
                 PropertyId: r.PropertyId,
-                PropertyDisplay: ResolveDisplay(propertyDisplays, r.PropertyId),
+                PropertyDisplay: r.PropertyDisplay,
                 LeaseId: r.LeaseId,
-                LeaseDisplay: ResolveDisplay(leaseDisplays, r.LeaseId),
+                LeaseDisplay: r.LeaseDisplay,
                 ArNet: r.ArNet,
                 OpenItemsNet: r.OpenItemsNet,
                 Diff: diff,
                 RowKind: rowKind,
                 HasDiff: hasDiff));
-
-            totalAr += r.ArNet;
-            totalOi += r.OpenItemsNet;
         }
 
         return new ReceivablesReconciliationReport(
@@ -172,82 +294,19 @@ ORDER BY 1,2,3;
             request.Mode,
             policy.ArAccountId,
             policy.OpenItemsRegisterId,
-            TotalArNet: totalAr,
-            TotalOpenItemsNet: totalOi,
-            TotalDiff: totalAr - totalOi,
-            RowCount: resultRows.Count,
-            MismatchRowCount: mismatchRowCount,
-            Rows: resultRows);
-    }
-
-    private async Task<IReadOnlyDictionary<Guid, string?>> ReadCatalogDisplaysAsync(
-        string expectedCatalogCode,
-        string typedHeadTable,
-        IEnumerable<Guid> ids,
-        CancellationToken ct)
-    {
-        var materialized = ids.Where(x => x != Guid.Empty).Distinct().ToArray();
-        if (materialized.Length == 0)
-            return new Dictionary<Guid, string?>();
-
-        var sql = $"""
-SELECT
-    c.id      AS Id,
-    h.display AS Display
-FROM catalogs c
-JOIN {typedHeadTable} h
-  ON h.catalog_id = c.id
-WHERE c.catalog_code = @CatalogCode
-  AND c.id = ANY(@Ids);
-""";
-
-        var cmd = new CommandDefinition(
-            sql,
-            new { CatalogCode = expectedCatalogCode, Ids = materialized },
-            transaction: uow.Transaction,
-            cancellationToken: ct);
-
-        var rows = await uow.Connection.QueryAsync<DisplayRow>(cmd);
-        return rows.ToDictionary(x => x.Id, x => x.Display);
-    }
-
-    private async Task<IReadOnlyDictionary<Guid, string?>> ReadDocumentDisplaysAsync(
-        string expectedTypeCode,
-        string typedHeadTable,
-        IEnumerable<Guid> ids,
-        CancellationToken ct)
-    {
-        var materialized = ids.Where(x => x != Guid.Empty).Distinct().ToArray();
-        if (materialized.Length == 0)
-            return new Dictionary<Guid, string?>();
-
-        var sql = $"""
-SELECT
-    d.id      AS Id,
-    h.display AS Display
-FROM documents d
-JOIN {typedHeadTable} h
-  ON h.document_id = d.id
-WHERE d.type_code = @TypeCode
-  AND d.id = ANY(@Ids);
-""";
-
-        var cmd = new CommandDefinition(
-            sql,
-            new { TypeCode = expectedTypeCode, Ids = materialized },
-            transaction: uow.Transaction,
-            cancellationToken: ct);
-
-        var rows = await uow.Connection.QueryAsync<DisplayRow>(cmd);
-        return rows.ToDictionary(x => x.Id, x => x.Display);
-    }
-
-    private static string? ResolveDisplay(IReadOnlyDictionary<Guid, string?> displays, Guid id)
-    {
-        if (id == Guid.Empty)
-            return null;
-
-        return displays.GetValueOrDefault(id);
+            TotalArNet: stats.TotalArNet,
+            TotalOpenItemsNet: stats.TotalOpenItemsNet,
+            TotalDiff: stats.TotalArNet - stats.TotalOpenItemsNet,
+            RowCount: stats.TotalRowCount,
+            MismatchRowCount: stats.TotalMismatchRowCount,
+            Rows: resultRows,
+            Offset: effectiveOffset,
+            Limit: request.Limit,
+            HasMore: hasMore,
+            NextCursor: nextCursor,
+            FilteredRowCount: filteredRowCount,
+            GlOnlyRowCount: stats.TotalGlOnlyRowCount,
+            OpenItemsOnlyRowCount: stats.TotalOpenItemsOnlyRowCount);
     }
 
     private static string BuildMovementGlSourceSql() =>
@@ -264,7 +323,7 @@ gl_source AS (
 )
 """;
 
-    private static string BuildBalanceGlSourceSql() =>
+    internal static string BuildBalanceGlSourceSql() =>
         """
 latest_closed AS (
     SELECT MAX(b.period) AS period
@@ -306,7 +365,7 @@ gl_source AS (
 )
 """;
 
-    private static string BuildMovementOiSourceSql(string movementsTable, bool movementsTableExists)
+    internal static string BuildMovementOiSourceSql(string movementsTable, bool movementsTableExists)
         => movementsTableExists
             ? $"""
 oi_source AS (
@@ -321,9 +380,49 @@ oi_source AS (
 """
             : BuildEmptyOiSourceSql();
 
-    private static string BuildBalanceOiSourceSql(string movementsTable, bool movementsTableExists)
+    internal static string BuildBalanceOiSourceSql(string movementsTable, bool movementsTableExists)
+        => BuildBalanceOiSourceSql(movementsTable, movementsTableExists, string.Empty, balancesTableExists: false);
+
+    internal static string BuildBalanceOiSourceSql(
+        string movementsTable,
+        bool movementsTableExists,
+        string balancesTable,
+        bool balancesTableExists)
         => movementsTableExists
-            ? $"""
+            ? balancesTableExists
+                ? $"""
+oi_latest_snapshot AS (
+    SELECT MAX(period_month) AS period_month
+    FROM {balancesTable}
+    WHERE period_month <= @ToMonth::date
+),
+oi_seed AS (
+    SELECT b.dimension_set_id, b.amount AS net
+    FROM {balancesTable} b
+    CROSS JOIN oi_latest_snapshot latest
+    WHERE b.period_month = latest.period_month
+),
+oi_roll AS (
+    SELECT
+        m.dimension_set_id,
+        SUM(CASE WHEN m.is_storno THEN -m.amount ELSE m.amount END) AS net
+    FROM {movementsTable} m
+    CROSS JOIN oi_latest_snapshot latest
+    WHERE m.period_month <= @ToMonth::date
+      AND (latest.period_month IS NULL OR m.period_month > latest.period_month)
+    GROUP BY m.dimension_set_id
+),
+oi_source AS (
+    SELECT source.dimension_set_id, SUM(source.net) AS net
+    FROM (
+        SELECT dimension_set_id, net FROM oi_seed
+        UNION ALL
+        SELECT dimension_set_id, net FROM oi_roll
+    ) source
+    GROUP BY source.dimension_set_id
+)
+"""
+                : $"""
 oi_source AS (
     SELECT
         m.dimension_set_id,
@@ -335,7 +434,7 @@ oi_source AS (
 """
             : BuildEmptyOiSourceSql();
 
-    private static string BuildEmptyOiSourceSql() =>
+    internal static string BuildEmptyOiSourceSql() =>
         """
 oi_source AS (
     SELECT
@@ -345,11 +444,36 @@ oi_source AS (
 )
 """;
 
-    private sealed record DisplayRow(Guid Id, string? Display);
+    private sealed record RawRow(
+        Guid PartyId,
+        Guid PropertyId,
+        Guid LeaseId,
+        decimal ArNet,
+        decimal OpenItemsNet,
+        string? PartyDisplay,
+        string? PropertyDisplay,
+        string? LeaseDisplay,
+        bool HasRow,
+        int TotalRowCount,
+        int TotalMismatchRowCount,
+        int TotalGlOnlyRowCount,
+        int TotalOpenItemsOnlyRowCount,
+        decimal TotalArNet,
+        decimal TotalOpenItemsNet);
 
-    private sealed record RawRow(Guid PartyId, Guid PropertyId, Guid LeaseId, decimal ArNet, decimal OpenItemsNet);
+    private sealed record ReceivablesPageCursor(
+        Guid AfterPartyId,
+        Guid AfterPropertyId,
+        Guid AfterLeaseId,
+        int NextOffset,
+        int TotalRowCount,
+        int TotalMismatchRowCount,
+        int TotalGlOnlyRowCount,
+        int TotalOpenItemsOnlyRowCount,
+        decimal TotalArNet,
+        decimal TotalOpenItemsNet);
 
-    private static ReceivablesReconciliationRowKind ResolveRowKind(decimal arNet, decimal openItemsNet, bool hasDiff)
+    internal static ReceivablesReconciliationRowKind ResolveRowKind(decimal arNet, decimal openItemsNet, bool hasDiff)
     {
         if (arNet != 0m && openItemsNet == 0m)
             return ReceivablesReconciliationRowKind.GlOnly;
@@ -362,23 +486,84 @@ oi_source AS (
             : ReceivablesReconciliationRowKind.Matched;
     }
 
+    internal static int ResolveFilteredRowCount(
+        ReceivablesReconciliationStatusFilter status,
+        int rowCount,
+        int mismatchRowCount,
+        int glOnlyRowCount,
+        int openItemsOnlyRowCount)
+        => status switch
+        {
+            ReceivablesReconciliationStatusFilter.All => rowCount,
+            ReceivablesReconciliationStatusFilter.Matched => rowCount - mismatchRowCount,
+            ReceivablesReconciliationStatusFilter.Mismatch => mismatchRowCount,
+            ReceivablesReconciliationStatusFilter.GlOnly => glOnlyRowCount,
+            ReceivablesReconciliationStatusFilter.OpenItemsOnly => openItemsOnlyRowCount,
+            _ => throw new NgbArgumentInvalidException(nameof(status), "Select a valid reconciliation status filter.")
+        };
+
     private static void EnsureMonthStart(DateOnly month, string paramName, string label)
     {
         if (month.Day != 1)
             throw new NgbArgumentOutOfRangeException(paramName, month, $"{label} must be the first day of a month.");
     }
 
-    private async Task<(Guid ArAccountId, Guid OpenItemsRegisterId)> ReadRequiredPolicyAsync(CancellationToken ct)
+    internal static (Guid ArAccountId, Guid OpenItemsRegisterId) EnsureRequiredPolicyValues(
+        Guid? arAccountId,
+        Guid? openItemsRegisterId)
+    {
+        var requiredArAccountId = arAccountId.GetValueOrDefault();
+        if (requiredArAccountId == Guid.Empty)
+        {
+            throw new NgbConfigurationViolationException(
+                "PM accounting policy has no ar_tenants_account_id configured.",
+                new Dictionary<string, object?>
+                {
+                    ["catalogCode"] = PropertyManagementCodes.AccountingPolicy,
+                    ["headTable"] = "cat_pm_accounting_policy",
+                    ["field"] = "ar_tenants_account_id"
+                });
+        }
+
+        var requiredOpenItemsRegisterId = openItemsRegisterId.GetValueOrDefault();
+        if (requiredOpenItemsRegisterId == Guid.Empty)
+        {
+            throw new NgbConfigurationViolationException(
+                "PM accounting policy has no receivables_open_items_register_id configured.",
+                new Dictionary<string, object?>
+                {
+                    ["catalogCode"] = PropertyManagementCodes.AccountingPolicy,
+                    ["headTable"] = "cat_pm_accounting_policy",
+                    ["field"] = "receivables_open_items_register_id"
+                });
+        }
+
+        return (requiredArAccountId, requiredOpenItemsRegisterId);
+    }
+
+    private async Task<QueryContext> ReadQueryContextAsync(CancellationToken ct)
     {
         const string sql = """
+WITH policy AS (
+    SELECT
+        ar_tenants_account_id AS "ArAccountId",
+        receivables_open_items_register_id AS "OpenItemsRegisterId"
+    FROM cat_pm_accounting_policy
+    LIMIT 2
+)
 SELECT
-    ar_tenants_account_id AS ArAccountId,
-    receivables_open_items_register_id AS OpenItemsRegisterId
-FROM cat_pm_accounting_policy
-LIMIT 2;
+    policy."ArAccountId" AS "ArAccountId",
+    policy."OpenItemsRegisterId" AS "OpenItemsRegisterId",
+    registers.register_id AS "ResolvedRegisterId",
+    registers.table_code AS "TableCode",
+    to_regclass('opreg_' || registers.table_code || '__movements') IS NOT NULL AS "MovementsTableExists",
+    to_regclass('opreg_' || registers.table_code || '__balances') IS NOT NULL AS "BalancesTableExists"
+FROM policy
+LEFT JOIN operational_registers registers
+  ON registers.register_id = policy."OpenItemsRegisterId";
 """;
 
-        var rows = (await uow.Connection.QueryAsync<PolicyRow>(
+        var rows = (await uow.Connection.QueryAsync<QueryContextRow>(
             new CommandDefinition(sql, transaction: uow.Transaction, cancellationToken: ct))).AsList();
 
         if (rows.Count == 0)
@@ -404,84 +589,56 @@ LIMIT 2;
                 });
         }
 
-        var r = rows[0];
+        var row = rows[0];
+        var (arAccountId, registerId) = EnsureRequiredPolicyValues(row.ArAccountId, row.OpenItemsRegisterId);
 
-        if (r.ArAccountId is null || r.ArAccountId == Guid.Empty)
+        if (!row.ResolvedRegisterId.HasValue)
         {
-            throw new NgbConfigurationViolationException(
-                "PM accounting policy has no ar_tenants_account_id configured.",
-                new Dictionary<string, object?>
-                {
-                    ["catalogCode"] = PropertyManagementCodes.AccountingPolicy,
-                    ["headTable"] = "cat_pm_accounting_policy",
-                    ["field"] = "ar_tenants_account_id"
-                });
-        }
-
-        if (r.OpenItemsRegisterId is null || r.OpenItemsRegisterId == Guid.Empty)
-        {
-            throw new NgbConfigurationViolationException(
-                "PM accounting policy has no receivables_open_items_register_id configured.",
-                new Dictionary<string, object?>
-                {
-                    ["catalogCode"] = PropertyManagementCodes.AccountingPolicy,
-                    ["headTable"] = "cat_pm_accounting_policy",
-                    ["field"] = "receivables_open_items_register_id"
-                });
-        }
-
-        return (r.ArAccountId.Value, r.OpenItemsRegisterId.Value);
-    }
-
-    private sealed record PolicyRow(Guid? ArAccountId, Guid? OpenItemsRegisterId);
-
-    private async Task<string> ReadOperationalRegisterTableCodeOrThrowAsync(Guid registerId, CancellationToken ct)
-    {
-        const string sql = """
-SELECT table_code AS TableCode
-FROM operational_registers
-WHERE register_id = @RegisterId::uuid
-LIMIT 2;
-""";
-
-        var rows = (await uow.Connection.QueryAsync<TableCodeRow>(
-            new CommandDefinition(sql, new { RegisterId = registerId }, transaction: uow.Transaction, cancellationToken: ct))).AsList();
-
-        if (rows.Count == 0)
             throw new NgbConfigurationViolationException(
                 "Receivables open-items operational register does not exist.",
                 new Dictionary<string, object?> { ["registerId"] = registerId });
+        }
 
-        if (rows.Count > 1)
-            throw new NgbConfigurationViolationException(
-                "Multiple operational register rows found for a single register_id.",
-                new Dictionary<string, object?> { ["registerId"] = registerId });
+        return new QueryContext(
+            arAccountId,
+            registerId,
+            EnsureSafeTableCode(row.TableCode, registerId),
+            row.MovementsTableExists,
+            row.BalancesTableExists);
+    }
 
-        var tableCode = rows[0].TableCode?.Trim();
+    private sealed record QueryContext(
+        Guid ArAccountId,
+        Guid OpenItemsRegisterId,
+        string TableCode,
+        bool MovementsTableExists,
+        bool BalancesTableExists);
+
+    private sealed record QueryContextRow(
+        Guid? ArAccountId,
+        Guid? OpenItemsRegisterId,
+        Guid? ResolvedRegisterId,
+        string? TableCode,
+        bool MovementsTableExists,
+        bool BalancesTableExists);
+
+    internal static string EnsureSafeTableCode(string? rawTableCode, Guid registerId)
+    {
+        var tableCode = rawTableCode?.Trim();
         if (string.IsNullOrWhiteSpace(tableCode))
         {
             throw new NgbConfigurationViolationException(
-                "Operational register has no table_code.",
+                "Receivables open-items operational register has empty table_code.",
                 new Dictionary<string, object?> { ["registerId"] = registerId });
         }
 
+        if (!SafeTableCode.IsMatch(tableCode))
+        {
+            throw new NgbConfigurationViolationException(
+                "Operational register table_code is not safe.",
+                new Dictionary<string, object?> { ["registerId"] = registerId, ["tableCode"] = tableCode });
+        }
+
         return tableCode;
-    }
-
-    private sealed record TableCodeRow(string? TableCode);
-
-    private async Task<bool> TableExistsAsync(string tableName, CancellationToken ct)
-    {
-        const string sql = """
-SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-      AND table_name = @TableName
-);
-""";
-
-        return await uow.Connection.QuerySingleAsync<bool>(
-            new CommandDefinition(sql, new { TableName = tableName }, transaction: uow.Transaction, cancellationToken: ct));
     }
 }

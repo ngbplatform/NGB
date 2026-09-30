@@ -15,7 +15,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 using NGB.PropertyManagement.Api.IntegrationTests.Support;
 using NGB.PropertyManagement.Contracts.Receivables;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.Security;
 using NGB.PropertyManagement.Runtime;
 using NGB.PropertyManagement.Runtime.WorkCenter;
 using NGB.PropertyManagement.WorkCenter;
@@ -50,8 +50,8 @@ public sealed class PmReceivablesApplyBatch_Endpoint_P0Tests : IAsyncLifetime
 
             await setup.EnsureDefaultsAsync(CancellationToken.None);
             await scope.ServiceProvider
-                .GetRequiredService<PropertyManagementSecuritySeeder>()
-                .EnsureSeededAsync(CancellationToken.None);
+                .GetRequiredService<IPropertyManagementSecuritySetupService>()
+                .EnsureDefaultsAsync(CancellationToken.None);
 
             // Work Center tasks are created only when the assigned role has at least one
             // active, opted-in recipient. Model that production invariant explicitly;

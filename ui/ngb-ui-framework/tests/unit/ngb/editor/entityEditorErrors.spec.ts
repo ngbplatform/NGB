@@ -44,6 +44,7 @@ import {
   humanizeEntityEditorFieldKey,
   isEntityEditorFormIssuePath,
   normalizeEntityEditorError,
+  resolveEntityEditorErrorSummary,
 } from '../../../../src/ngb/editor/entityEditorErrors'
 
 describe('entity editor error helpers', () => {
@@ -55,9 +56,15 @@ describe('entity editor error helpers', () => {
     expect(humanizeEntityEditorFieldKey('posted_at_utc')).toBe('Posted At')
     expect(humanizeEntityEditorFieldKey('property_id')).toBe('Property')
     expect(humanizeEntityEditorFieldKey('line12')).toBe('Line 12')
+    expect(humanizeEntityEditorFieldKey('reference.no')).toBe('Reference No')
+    expect(humanizeEntityEditorFieldKey('tax.id.value')).toBe('Tax ID Value')
+    expect(humanizeEntityEditorFieldKey('___')).toBe('Field')
+    expect(humanizeEntityEditorFieldKey(null as never)).toBe('Field')
+    expect(dedupeEntityEditorMessages([null as never])).toEqual([])
     expect(isEntityEditorFormIssuePath('')).toBe(true)
     expect(isEntityEditorFormIssuePath('_form')).toBe(true)
     expect(isEntityEditorFormIssuePath('customer_id')).toBe(false)
+    expect(isEntityEditorFormIssuePath(null as never)).toBe(true)
   })
 
   it('normalizes api validation issues into grouped editor issues with highlight summary', () => {
@@ -160,6 +167,64 @@ describe('entity editor error helpers', () => {
       issues: [],
       errorCode: null,
       status: null,
+      context: null,
+    })
+
+    expect(resolveEntityEditorErrorSummary('', [])).toBe('Request failed.')
+    expect(normalizeEntityEditorError(new Error('')).summary).toBe('Request failed.')
+    expect(normalizeEntityEditorError('Plain failure').summary).toBe('Plain failure')
+    expect(normalizeEntityEditorError(null).summary).toBe('Request failed.')
+  })
+
+  it('skips blank issues, fills a later issue code, and normalizes legacy field errors', () => {
+    const issueError = new ApiError({
+      message: 'Invalid',
+      status: 422,
+      url: '/api/entity',
+      body: {
+        error: {
+          issues: [
+            { path: 'amount', message: 'Too small', scope: '', code: null },
+            { path: 'amount', message: 'Must be positive', scope: '', code: 'positive' },
+            { path: 'ignored', message: ' ', scope: 'field' },
+            { path: null, message: null, scope: null } as never,
+          ],
+        },
+      },
+    })
+    expect(normalizeEntityEditorError(issueError).issues).toEqual([{
+      path: 'amount',
+      label: 'Amount',
+      scope: 'field',
+      messages: ['Too small', 'Must be positive'],
+      code: 'positive',
+    }])
+
+    const legacyError = new ApiError({
+      message: 'Legacy validation',
+      status: 400,
+      url: '/api/entity',
+      body: {
+        errors: {
+          customer_id: 'Required' as never,
+          ignored: [],
+        },
+      },
+    })
+    expect(normalizeEntityEditorError(legacyError).issues).toEqual([{
+      path: 'customer_id',
+      label: 'Customer',
+      scope: 'field',
+      messages: ['Required'],
+      code: null,
+    }])
+
+    const emptyApiError = new ApiError({ message: ' ', status: 500, url: '/api/entity' })
+    emptyApiError.message = undefined as never
+    expect(normalizeEntityEditorError(emptyApiError)).toMatchObject({
+      summary: 'Request failed.',
+      issues: [],
+      errorCode: null,
       context: null,
     })
   })

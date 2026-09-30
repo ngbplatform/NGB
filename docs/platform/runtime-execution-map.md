@@ -82,7 +82,8 @@ const flowchart1 = String.raw`flowchart TB
     B --> J[audit log service]`
 
 const flowchart2 = String.raw`flowchart TB
-    A[report execute request] --> B[ReportEngine]
+    A[report execute request] --> Q[ReportQueryService]
+    Q --> B[ReportEngine]
     B --> C[definition provider]
     B --> D[layout validator]
     B --> E[execution planner]
@@ -91,7 +92,7 @@ const flowchart2 = String.raw`flowchart TB
     B --> H[variant resolver]
     B --> I[filter scope expander]
     B --> J[interactive enrichment]
-    B --> K[snapshot store]`
+    B --> K[bounded page executors]`
 </script>
 
 <MermaidDiagram :chart="flowchart1" />
@@ -122,8 +123,11 @@ From constructor dependencies and method flow, `ReportEngine` owns:
 - variant resolution;
 - filter scope expansion;
 - interactive field enrichment;
-- rendered-sheet snapshot caching/paging;
-- export-sheet execution path.
+- bounded grouped and specialized accounting page execution;
+- bounded export-sheet helper.
+
+`ReportQueryService` owns read sessions and protected cursors. Complete downloads use
+`ReportDownloadService` and streaming exporters.
 
 ## Reporting execution map
 
@@ -138,7 +142,7 @@ The engine decides:
 - the effective request;
 - the runtime model;
 - the plan;
-- whether grouped paging must use rendered-sheet snapshots;
+- which bounded page or plan executor handles the request;
 - how diagnostics are surfaced.
 
 ### 2. Runtime owns interactive enrichment
@@ -147,7 +151,9 @@ The file explicitly enriches document-related report fields with display text an
 
 ### 3. Runtime owns composable grouped paging behavior
 
-The file has explicit snapshot-based logic for grouped/pivoted composable reports, which is a higher-level concern than raw SQL paging.
+`ReportPagedQueryExecutor` reads one row-group branch at a time and preserves pivot columns
+within each page. There is no rendered-sheet snapshot store. See
+[Report Browsing and Direct Downloads](/architecture/report-execution-results).
 
 ## Honest boundary statement
 

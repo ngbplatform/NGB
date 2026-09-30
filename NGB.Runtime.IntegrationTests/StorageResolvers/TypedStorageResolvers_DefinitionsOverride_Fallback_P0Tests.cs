@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.StorageResolvers;
 /// This test ensures a module can override an existing fallback storage without triggering
 /// the duplicate-type-code fail-fast behavior in the fallback dictionary.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class TypedStorageResolvers_DefinitionsOverride_Fallback_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

@@ -30,7 +30,7 @@ public sealed class PostgresAccountingTurnoverWriter(IUnitOfWork uow) : IAccount
 
     public async Task WriteAsync(IEnumerable<AccountingTurnover> turnovers, CancellationToken ct = default)
     {
-        var list = turnovers as IList<AccountingTurnover> ?? turnovers.ToList();
+        var list = turnovers.ToList();
         if (list.Count == 0)
             return;
 

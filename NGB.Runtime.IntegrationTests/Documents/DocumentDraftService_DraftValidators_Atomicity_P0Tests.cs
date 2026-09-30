@@ -14,7 +14,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentDraftService_DraftValidators_Atomicity_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

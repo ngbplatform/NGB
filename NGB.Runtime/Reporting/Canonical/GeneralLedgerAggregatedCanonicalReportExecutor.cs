@@ -40,9 +40,34 @@ public sealed class GeneralLedgerAggregatedCanonicalReportExecutor(
             },
             ct);
 
+        var sheet = await RenderAsync(definition, request, report, documentDisplayReader, accountByIdResolver, ct);
+
+        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
+            sheet: sheet,
+            offset: 0,
+            limit: request.DisablePaging ? sheet.Rows.Count : request.Limit,
+            total: null,
+            hasMore: report.HasMore,
+            nextCursor: report.NextCursor is null ? null : GeneralLedgerAggregatedCursorCodec.Encode(report.NextCursor),
+            diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["executor"] = "canonical-general-ledger-aggregated"
+            });
+    }
+
+    internal static async Task<ReportSheetDto> RenderAsync(
+        ReportDefinitionDto definition,
+        ReportExecutionRequestDto request,
+        GeneralLedgerAggregatedReportPage report,
+        IDocumentDisplayReader documentDisplayReader,
+        IAccountByIdResolver accountByIdResolver,
+        CancellationToken ct)
+    {
+        var (rawFrom, rawTo, from, to) = CanonicalReportExecutionHelper.GetRequiredDateRange(definition, request);
+        var accountId = report.AccountId;
         var documentRefs = await documentDisplayReader.ResolveRefsAsync(report.Lines.Select(x => x.DocumentId).Distinct().ToArray(), ct);
-        var counterAccounts = await accountByIdResolver.GetByIdsAsync(report.Lines.Select(x => x.CounterAccountId).Distinct().ToArray(), ct);
-        var selectedAccount = await accountByIdResolver.GetByIdAsync(accountId, ct);
+        var counterAccounts = await accountByIdResolver.GetByIdsAsync(report.Lines.Select(x => x.CounterAccountId).Append(accountId).Distinct().ToArray(), ct);
+        var selectedAccount = counterAccounts.GetValueOrDefault(accountId);
         var accountDisplay = selectedAccount is null
             ? report.AccountCode
             : ReportDisplayHelpers.BuildAccountDisplay(selectedAccount.Code, selectedAccount.Name);
@@ -77,17 +102,7 @@ public sealed class GeneralLedgerAggregatedCanonicalReportExecutor(
                     ["executor"] = "canonical-general-ledger-aggregated"
                 }));
 
-        return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
-            offset: 0,
-            limit: request.DisablePaging ? rows.Count : request.Limit,
-            total: null,
-            hasMore: report.HasMore,
-            nextCursor: report.NextCursor is null ? null : GeneralLedgerAggregatedCursorCodec.Encode(report.NextCursor),
-            diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["executor"] = "canonical-general-ledger-aggregated"
-            });
+        return sheet;
     }
 
     private static ReportSheetRowDto ToDetailRow(
@@ -130,7 +145,7 @@ public sealed class GeneralLedgerAggregatedCanonicalReportExecutor(
             ]);
     }
 
-    private static ReportSheetRowDto ToTotalRow(GeneralLedgerAggregatedReportPage report)
+    internal static ReportSheetRowDto ToTotalRow(GeneralLedgerAggregatedReportPage report)
     {
         var delta = report.TotalDebit - report.TotalCredit;
         return new ReportSheetRowDto(

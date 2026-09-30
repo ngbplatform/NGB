@@ -1,36 +1,45 @@
 using FluentAssertions;
+using System.IO.Compression;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Api.IntegrationTests.Infrastructure;
 using NGB.CRM.Api.IntegrationTests.Support;
-using NGB.CRM.Runtime;
 using NGB.Contracts.Common;
 using NGB.Contracts.Reporting;
+using Npgsql;
 using Xunit;
 
 namespace NGB.CRM.Api.IntegrationTests.Reports;
 
-[Collection(CrmPostgresCollection.Name)]
-public sealed class CrmReporting_Data_EndToEnd_P0Tests(CrmPostgresFixture fixture) : IAsyncLifetime
+[Collection(CrmSeededReportingCollection.Name)]
+public sealed class CrmReporting_Data_EndToEnd_P0Tests(CrmSeededReportingFixture fixture)
 {
-    public Task InitializeAsync() => fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    [Fact]
+    public async Task Seeded_Demo_Baseline_Rejects_Writes()
+    {
+        await using var connection = new NpgsqlConnection(fixture.ReadOnlyConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "UPDATE public.cat_crm_account SET display = display WHERE FALSE;",
+            connection);
+
+        var write = async () => await command.ExecuteNonQueryAsync();
+
+        var exception = await write.Should().ThrowAsync<PostgresException>();
+        exception.Which.SqlState.Should().Be("25006");
+    }
 
     [Theory]
-    [InlineData(CrmCodes.SalesPipelineReport, "amount", 41927750)]
-    [InlineData(CrmCodes.OpportunityHistoryReport, "amount", 81896750)]
-    [InlineData(CrmCodes.LeadConversionFunnelReport, "lead_count", 1568)]
-    [InlineData(CrmCodes.ActivitySummaryReport, "activity_count", 523)]
-    [InlineData(CrmCodes.QuoteRegisterReport, "amount", 23869752.5)]
+    [InlineData(CrmCodes.SalesPipelineReport, "amount", 2421500)]
+    [InlineData(CrmCodes.OpportunityHistoryReport, "amount", 4721750)]
+    [InlineData(CrmCodes.LeadConversionFunnelReport, "lead_count", 98)]
+    [InlineData(CrmCodes.ActivitySummaryReport, "activity_count", 33)]
+    [InlineData(CrmCodes.QuoteRegisterReport, "amount", 1490977.5)]
     public async Task Seeded_Demo_Data_Executes_Canonical_Reports(string reportCode, string measureCode, decimal expectedSum)
     {
-        using var host = CrmHostFactory.Create(fixture.ConnectionString);
-        await using var scope = host.Services.CreateAsyncScope();
+        await using var scope = fixture.Services.CreateAsyncScope();
 
-        var demoSeed = scope.ServiceProvider.GetRequiredService<ICrmDemoSeedService>();
         var reports = scope.ServiceProvider.GetRequiredService<IReportEngine>();
-
-        await demoSeed.EnsureDemoAsync(CancellationToken.None);
 
         var response = await reports.ExecuteAsync(
             reportCode,
@@ -41,17 +50,55 @@ public sealed class CrmReporting_Data_EndToEnd_P0Tests(CrmPostgresFixture fixtur
         CrmIntegrationTestHelpers.SumMeasure(response, measureCode).Should().Be(expectedSum);
     }
 
+    [Theory]
+    [InlineData(CrmCodes.SalesPipelineReport, "amount", 2421500)]
+    [InlineData(CrmCodes.OpportunityHistoryReport, "amount", 4721750)]
+    [InlineData(CrmCodes.LeadConversionFunnelReport, "lead_count", 98)]
+    [InlineData(CrmCodes.ActivitySummaryReport, "activity_count", 33)]
+    [InlineData(CrmCodes.QuoteRegisterReport, "amount", 1490977.5)]
+    public async Task Packaged_platform_executes_complete_paged_CRM_reports_and_exports(string code, string measure, decimal expected)
+    {
+        using var host = fixture.CreateReportHost();
+        await using var scope = host.Services.CreateAsyncScope();
+        var reports = scope.ServiceProvider.GetRequiredService<IReportEngine>();
+        if (Testing.Reporting.ReportPerformanceProbe.Enabled)
+        using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "page-200"))
+        {
+            var sample = await reports.ExecuteAsync(code, new ReportExecutionRequestDto(Limit: 200), default);
+            if (audit is not null) audit.Rows = sample.Sheet.Rows.Count;
+        }
+        string? cursor = null;
+        var rows = new List<ReportSheetRowDto>();
+        ReportExecutionResponseDto page;
+        do
+        {
+            using (var audit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "page-7"))
+            {
+                page = await reports.ExecuteAsync(code, new ReportExecutionRequestDto(Limit: 7, Cursor: cursor), default);
+                if (audit is not null) audit.Rows = page.Sheet.Rows.Count;
+            }
+            cursor = page.NextCursor;
+            if (page.HasMore) cursor.Should().NotBeNullOrEmpty();
+            rows.AddRange(page.Sheet.Rows);
+        } while (page.HasMore);
+        rows.Should().NotBeEmpty();
+        CrmIntegrationTestHelpers.SumMeasure(page with { Sheet = page.Sheet with { Rows = rows } }, measure).Should().Be(expected);
+        using var exportAudit = Testing.Reporting.ReportPerformanceProbe.Begin(code, "export");
+        await using var download = await scope.ServiceProvider.GetRequiredService<IReportDownloadService>().PrepareAsync(code, new(), default);
+        using var file = new MemoryStream();
+        await download.WriteAsync(file, default);
+        file.Position = 0;
+        using var zip = new ZipArchive(file, ZipArchiveMode.Read);
+        zip.GetEntry("xl/worksheets/sheet1.xml").Should().NotBeNull();
+    }
+
     [Fact]
     public async Task Seeded_Demo_Displays_Documents_And_Report_Row_Groups_With_Business_Names()
     {
-        using var host = CrmHostFactory.Create(fixture.ConnectionString);
-        await using var scope = host.Services.CreateAsyncScope();
+        await using var scope = fixture.Services.CreateAsyncScope();
 
-        var demoSeed = scope.ServiceProvider.GetRequiredService<ICrmDemoSeedService>();
         var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
         var reports = scope.ServiceProvider.GetRequiredService<IReportEngine>();
-
-        await demoSeed.EnsureDemoAsync(CancellationToken.None);
 
         var quotes = await documents.GetPageAsync(
             CrmCodes.Quote,
@@ -89,13 +136,9 @@ public sealed class CrmReporting_Data_EndToEnd_P0Tests(CrmPostgresFixture fixtur
     [Fact]
     public async Task Seeded_Demo_Report_Group_Cells_Expose_Drilldown_Actions()
     {
-        using var host = CrmHostFactory.Create(fixture.ConnectionString);
-        await using var scope = host.Services.CreateAsyncScope();
+        await using var scope = fixture.Services.CreateAsyncScope();
 
-        var demoSeed = scope.ServiceProvider.GetRequiredService<ICrmDemoSeedService>();
         var reports = scope.ServiceProvider.GetRequiredService<IReportEngine>();
-
-        await demoSeed.EnsureDemoAsync(CancellationToken.None);
 
         var sales = await ExecuteGroupedAsync(
             reports,

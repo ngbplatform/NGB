@@ -7,7 +7,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class Reports_ReadOnlyAfterClosing_Contract_P2Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

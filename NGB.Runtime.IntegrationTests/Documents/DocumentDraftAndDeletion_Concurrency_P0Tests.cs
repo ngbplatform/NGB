@@ -18,7 +18,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Documents;
 
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class DocumentDraftAndDeletion_Concurrency_P0Tests(PostgresTestFixture fixture)
 {
     private const string Cash = "50";

@@ -9,14 +9,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_RequiresPriorMonthsClosedTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task CloseFiscalYearAsync_WhenAnyPriorMonthIsNotClosed_ShouldThrow()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // FY close posts entries into the OPEN end month; all prior months of that fiscal year must be closed.

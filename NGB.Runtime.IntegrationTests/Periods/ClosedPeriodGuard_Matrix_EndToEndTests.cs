@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Periods;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ClosedPeriodGuard_Matrix_EndToEndTests(PostgresTestFixture fixture)
 {
     private const string Cash = "50";

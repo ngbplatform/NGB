@@ -18,7 +18,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// <summary>
 /// P0: strict resource mapping. A single unknown resource key must fail-fast and roll back the whole write.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovements_UnknownResourceKey_Rollback_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

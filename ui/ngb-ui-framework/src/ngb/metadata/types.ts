@@ -221,10 +221,10 @@ export type LookupStoreApi<TItem extends LookupItem = LookupItem> = {
   searchCatalog: (
     catalogType: string,
     query: string,
-    options?: { filters?: Record<string, string> },
+    options?: { filters?: Record<string, string>; signal?: AbortSignal },
   ) => Promise<TItem[]>
-  searchCoa: (query: string) => Promise<TItem[]>
-  searchDocuments: (documentTypes: string[], query: string) => Promise<TItem[]>
+  searchCoa: (query: string, options?: { signal?: AbortSignal }) => Promise<TItem[]>
+  searchDocuments: (documentTypes: string[], query: string, options?: { signal?: AbortSignal }) => Promise<TItem[]>
   ensureCatalogLabels: (catalogType: string, ids: string[]) => Promise<void>
   ensureCoaLabels: (ids: string[]) => Promise<void>
   ensureAnyDocumentLabels: (documentTypes: string[], ids: string[]) => Promise<void>
@@ -255,6 +255,7 @@ export type LookupHintArgs = FieldResolverArgs
 export type LookupSearchArgs = {
   hint: LookupHint
   query: string
+  signal?: AbortSignal
 }
 
 export type LookupTargetArgs = {

@@ -24,7 +24,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// Note: IDimensionSetReader is defensive and may resolve unknown ids to an empty bag;
 /// therefore this test focuses on DB-level FK enforcement + transactional rollback.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovements_UnknownDimensionSetId_Rollback_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

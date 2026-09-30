@@ -23,7 +23,7 @@ namespace NGB.Runtime.IntegrationTests.Concurrency;
 /// P1: Stress composed posting pipeline (Accounting + Operational Registers + AuditLog) under concurrency.
 /// Goal: ensure lock ordering across subsystems does not deadlock and idempotency remains correct.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Composed_Posting_Accounting_Opreg_Audit_Concurrency_NoDeadlocks_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

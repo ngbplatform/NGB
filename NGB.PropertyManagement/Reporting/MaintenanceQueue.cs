@@ -52,7 +52,8 @@ public sealed record MaintenanceQueueQuery(
     string? Priority,
     MaintenanceQueueState? QueueState,
     int Offset,
-    int Limit)
+    int Limit,
+    bool IncludeTotal = true)
 {
     public void EnsureInvariant()
     {
@@ -137,7 +138,13 @@ public sealed record MaintenanceQueueRow(
     }
 }
 
-public sealed record MaintenanceQueuePage(IReadOnlyList<MaintenanceQueueRow> Rows, int Total)
+public sealed record MaintenanceQueuePage(
+    IReadOnlyList<MaintenanceQueueRow> Rows,
+    int? Total,
+    bool HasMore = false,
+    DateOnly? NextAfterRequestedAtUtc = null,
+    Guid? NextAfterRequestId = null,
+    Guid? NextAfterWorkOrderId = null)
 {
     public void EnsureInvariant()
     {
@@ -153,3 +160,19 @@ public sealed record MaintenanceQueuePage(IReadOnlyList<MaintenanceQueueRow> Row
         }
     }
 }
+
+public sealed record MaintenanceQueuePageCursor(
+    int Offset,
+    int? Total,
+    DateOnly? AfterRequestedAtUtc = null,
+    Guid? AfterRequestId = null,
+    Guid? AfterWorkOrderId = null);
+
+public sealed record MaintenanceQueueDashboard(
+    int Total,
+    int Overdue,
+    int Days0To3,
+    int Days4To7,
+    int Days8To14,
+    int Days15Plus,
+    IReadOnlyList<MaintenanceQueueRow> Rows);

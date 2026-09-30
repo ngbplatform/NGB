@@ -12,7 +12,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// <summary>
 /// P0: PostgreSQL roundtrip for operational register persistence contracts.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisters_Persistence_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

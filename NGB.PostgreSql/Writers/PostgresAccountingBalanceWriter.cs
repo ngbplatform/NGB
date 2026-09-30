@@ -37,7 +37,7 @@ public sealed class PostgresAccountingBalanceWriter(IUnitOfWork uow) : IAccounti
     // Backward-compat helper: some internal maintenance tools previously used "WriteAsync" naming.
     public async Task WriteAsync(IEnumerable<AccountingBalance> balances, CancellationToken ct = default)
     {
-        var list = balances as IList<AccountingBalance> ?? balances.ToList();
+        var list = balances.ToList();
         if (list.Count == 0)
             return;
 

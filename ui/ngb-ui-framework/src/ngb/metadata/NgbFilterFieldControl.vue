@@ -86,7 +86,7 @@ const inputType = computed(() => filterInputType(props.field.dataType))
       :type="inputType"
       :disabled="disabled"
       :placeholder="placeholder"
-      @update:model-value="emit('update:raw', String($event ?? ''))"
+      @update:model-value="emit('update:raw', String($event))"
     />
 
     <div

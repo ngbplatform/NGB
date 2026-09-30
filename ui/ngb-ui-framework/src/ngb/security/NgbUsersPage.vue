@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError } from '../api/http'
+import type { PageResponseDto } from '../api/contracts'
 import type { RegisterColumn, RegisterDataRow } from '../components/register/registerTypes'
 import NgbRecycleBinFilter from '../metadata/NgbRecycleBinFilter.vue'
 import NgbRegisterPageLayout from '../metadata/NgbRegisterPageLayout.vue'
@@ -18,8 +19,14 @@ const access = useAccessStore()
 const loading = ref(false)
 const error = ref<string | null>(null)
 const accessDenied = ref(false)
-const users = ref<UserListItemDto[]>([])
+const page = ref<PageResponseDto<UserListItemDto> | null>(null)
 const status = ref<QueryTrashMode>('active')
+const offset = ref(0)
+const limit = 100
+let loadSequence = 0
+let loadController: AbortController | null = null
+
+const users = computed(() => page.value?.items ?? [])
 
 const columns: RegisterColumn[] = [
   {
@@ -34,15 +41,7 @@ const columns: RegisterColumn[] = [
   { key: 'keycloakLabel', title: 'Keycloak', width: 120, minWidth: 100, align: 'center', sortable: false },
 ]
 
-const filteredUsers = computed(() => {
-  return users.value
-    .filter((user) => {
-      if (status.value === 'active') return user.isActive
-      if (status.value === 'deleted') return !user.isActive
-      return true
-    })
-    .sort((a, b) => (a.displayName ?? a.email ?? '').localeCompare(b.displayName ?? b.email ?? ''))
-})
+const filteredUsers = computed(() => users.value)
 
 const rows = computed<RegisterDataRow[]>(() => filteredUsers.value.map((user) => ({
   key: user.userId,
@@ -63,19 +62,36 @@ function roleSummary(user: UserListItemDto): string {
 }
 
 async function load(): Promise<void> {
+  const sequence = ++loadSequence
+  loadController?.abort()
+  const controller = new AbortController()
+  loadController = controller
   loading.value = true
   error.value = null
   accessDenied.value = false
 
   try {
-    await access.load()
-    users.value = await getUsers()
+    const requestedOffset = offset.value
+    const requestedStatus = status.value
+    const [, nextPage] = await Promise.all([
+      access.load(),
+      getUsers({
+      offset: requestedOffset,
+      limit,
+      isActive: requestedStatus === 'active' ? true : requestedStatus === 'deleted' ? false : null,
+      }, { signal: controller.signal }),
+    ])
+    if (sequence !== loadSequence) return
+    page.value = nextPage
   } catch (cause) {
-    users.value = []
-    accessDenied.value = cause instanceof ApiError && cause.status === 403
+    if (sequence !== loadSequence) return
+    page.value = null
+    accessDenied.value = (cause instanceof ApiError || (typeof cause === 'object' && cause !== null))
+      && Number((cause as { status?: unknown }).status) === 403
     error.value = accessDenied.value ? null : toErrorMessage(cause, 'Failed to load users')
   } finally {
-    loading.value = false
+    if (sequence === loadSequence) loading.value = false
+    if (loadController === controller) loadController = null
   }
 }
 
@@ -91,8 +107,29 @@ function goBack(): void {
   void router.push('/home')
 }
 
+function previousPage(): void {
+  offset.value = Math.max(0, offset.value - limit)
+  void load()
+}
+
+function nextPage(): void {
+  offset.value += limit
+  void load()
+}
+
+watch(status, () => {
+  offset.value = 0
+  void load()
+})
+
 onMounted(() => {
   void load()
+})
+
+onBeforeUnmount(() => {
+  loadSequence += 1
+  loadController?.abort()
+  loadController = null
 })
 </script>
 
@@ -103,19 +140,21 @@ onMounted(() => {
     v-else
     title="Users"
     :items-count="filteredUsers.length"
-    :total="users.length"
+    :total="page?.total ?? null"
     :loading="loading"
     :error="error"
     :show-filter="false"
     :disable-create="!access.canManageUsers"
-    :disable-prev="true"
-    :disable-next="true"
+    :disable-prev="offset === 0"
+    :disable-next="users.length < limit"
     :columns="columns"
     :rows="rows"
     storage-key="ngb:security:users"
     @back="goBack"
     @refresh="load"
     @create="createUser"
+    @prev="previousPage"
+    @next="nextPage"
     @rowActivate="openUser"
   >
     <template #filters>

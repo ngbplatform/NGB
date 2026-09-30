@@ -32,11 +32,23 @@ public sealed class ReceivablesRequestValidationException(
             message: "Max applications must be greater than zero.",
             errorCode: "pm.validation.receivables.max_applications_invalid");
 
+    public static ReceivablesRequestValidationException MaxApplicationsTooLarge(int max)
+        => SingleField(
+            field: "maxApplications",
+            message: $"Max applications must not exceed {max}.",
+            errorCode: "pm.validation.receivables.max_applications_too_large");
+
     public static ReceivablesRequestValidationException LimitInvalid()
         => SingleField(
             field: "limit",
             message: "Limit must be greater than zero.",
             errorCode: "pm.validation.receivables.limit_invalid");
+
+    public static ReceivablesRequestValidationException LimitTooLarge(int max)
+        => SingleField(
+            field: "limit",
+            message: $"Limit must not exceed {max}.",
+            errorCode: "pm.validation.receivables.limit_too_large");
 
     public static ReceivablesRequestValidationException ApplicationsRequired()
         => SingleField(

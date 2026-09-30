@@ -1,13 +1,13 @@
-using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Serilog;
-using NGB.Api;
-using NGB.Api.Branding;
-using NGB.Api.Sso;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.Branding;
+using NGB.Hosting.AspNetCore.Health;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.Tools.Exceptions;
 using NGB.Watchdog.HealthChecks;
 
@@ -89,7 +89,7 @@ public static class WatchdogHostingExtensions
         app.MapHealthChecks(options.HealthPath, new HealthCheckOptions
         {
             Predicate = _ => true,
-            ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+            ResponseWriter = NgbHealthCheckResponseWriter.WriteAsync
         });
 
         var uiEndpoint = app.MapHealthChecksUI(uiOptions =>

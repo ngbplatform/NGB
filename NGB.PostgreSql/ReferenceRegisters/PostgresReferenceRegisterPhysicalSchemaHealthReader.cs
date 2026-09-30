@@ -23,42 +23,59 @@ public sealed class PostgresReferenceRegisterPhysicalSchemaHealthReader(
     : IReferenceRegisterPhysicalSchemaHealthReader
 {
     public async Task<ReferenceRegisterPhysicalSchemaHealthReport> GetReportAsync(CancellationToken ct = default)
+        => await GetReportCoreAsync(registerId: null, ct);
+
+    public async Task<ReferenceRegisterPhysicalSchemaHealth?> GetByRegisterIdAsync(
+        Guid registerId,
+        CancellationToken ct = default)
+    {
+        registerId.EnsureNonEmpty(nameof(registerId));
+        var report = await GetReportCoreAsync(registerId, ct);
+        return report.Items.FirstOrDefault();
+    }
+
+    private async Task<ReferenceRegisterPhysicalSchemaHealthReport> GetReportCoreAsync(
+        Guid? registerId,
+        CancellationToken ct)
     {
         await uow.EnsureConnectionOpenAsync(ct);
 
-        var registers = (await uow.Connection.QueryAsync<ReferenceRegisterRow>(
+        const string metadataSql =
+            """
+            SELECT
+                register_id     AS "RegisterId",
+                code            AS "Code",
+                code_norm       AS "CodeNorm",
+                table_code      AS "TableCode",
+                name            AS "Name",
+                periodicity     AS "Periodicity",
+                record_mode     AS "RecordMode",
+                has_records     AS "HasRecords",
+                created_at_utc  AS "CreatedAtUtc",
+                updated_at_utc  AS "UpdatedAtUtc"
+            FROM reference_registers
+            WHERE @RegisterId::uuid IS NULL OR register_id = @RegisterId::uuid
+            ORDER BY code_norm;
+
+            SELECT
+                register_id AS "RegisterId",
+                column_code AS "ColumnCode"
+            FROM reference_register_fields
+            WHERE @RegisterId::uuid IS NULL OR register_id = @RegisterId::uuid;
+            """;
+
+        await using var grid = await uow.Connection.QueryMultipleAsync(
             new CommandDefinition(
-                """
-                SELECT
-                    register_id     AS "RegisterId",
-                    code            AS "Code",
-                    code_norm       AS "CodeNorm",
-                    table_code      AS "TableCode",
-                    name            AS "Name",
-                    periodicity     AS "Periodicity",
-                    record_mode     AS "RecordMode",
-                    has_records     AS "HasRecords",
-                    created_at_utc  AS "CreatedAtUtc",
-                    updated_at_utc  AS "UpdatedAtUtc"
-                FROM reference_registers
-                ORDER BY code_norm;
-                """,
+                metadataSql,
+                new { RegisterId = registerId },
                 transaction: uow.Transaction,
-                cancellationToken: ct))).AsList();
+                cancellationToken: ct));
+
+        var registers = (await grid.ReadAsync<ReferenceRegisterRow>()).AsList();
+        var fieldRows = (await grid.ReadAsync<FieldRow>()).AsList();
 
         if (registers.Count == 0)
             return new ReferenceRegisterPhysicalSchemaHealthReport([]);
-
-        var fieldRows = (await uow.Connection.QueryAsync<FieldRow>(
-            new CommandDefinition(
-                """
-                SELECT
-                    register_id AS "RegisterId",
-                    column_code AS "ColumnCode"
-                FROM reference_register_fields;
-                """,
-                transaction: uow.Transaction,
-                cancellationToken: ct))).AsList();
 
         var expectedFieldColsByRegister = fieldRows
             .GroupBy(r => r.RegisterId)
@@ -99,15 +116,6 @@ public sealed class PostgresReferenceRegisterPhysicalSchemaHealthReader(
         }
 
         return new ReferenceRegisterPhysicalSchemaHealthReport(result);
-    }
-
-    public async Task<ReferenceRegisterPhysicalSchemaHealth?> GetByRegisterIdAsync(
-        Guid registerId,
-        CancellationToken ct = default)
-    {
-        registerId.EnsureNonEmpty(nameof(registerId));
-        var report = await GetReportAsync(ct);
-        return report.Items.FirstOrDefault(x => x.Register.RegisterId == registerId);
     }
 
     private static ReferenceRegisterPhysicalTableHealth BuildRecordsHealth(

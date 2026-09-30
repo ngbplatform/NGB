@@ -4,12 +4,13 @@ using NGB.CRM.DependencyInjection;
 using NGB.CRM.PostgreSql.DependencyInjection;
 using NGB.CRM.Runtime;
 using NGB.CRM.Runtime.DependencyInjection;
+using NGB.CRM.Security;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
 
 namespace NGB.CRM.Migrator.Seed;
 
-internal static class CrmSeedDefaultsCli
+public static class CrmSeedDefaultsCli
 {
     private const string CommandName = "seed-defaults";
 
@@ -37,7 +38,6 @@ internal static class CrmSeedDefaultsCli
             Console.WriteLine("OK: CRM defaults ensured.");
             Console.WriteLine($"- Opportunity stages ensured: {result.OpportunityStagesEnsured}");
             Console.WriteLine($"- Products ensured: {result.ProductsEnsured}");
-            return 0;
         }
         catch (Exception ex)
         {
@@ -45,6 +45,8 @@ internal static class CrmSeedDefaultsCli
             Console.Error.WriteLine(ex);
             return 1;
         }
+
+        return 0;
     }
 
     internal static ServiceCollection CreateServices(string connectionString)
@@ -52,6 +54,11 @@ internal static class CrmSeedDefaultsCli
         var services = new ServiceCollection();
         services.AddLogging();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton(new CrmDemoAdministratorOptions(
+            Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_ID"),
+            Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_EMAIL"),
+            Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_FIRST_NAME"),
+            Environment.GetEnvironmentVariable("KEYCLOAK_DEMO_ADMIN_LAST_NAME")));
 
         services
             .AddNgbRuntime()

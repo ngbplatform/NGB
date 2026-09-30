@@ -68,7 +68,7 @@ public sealed class TrialBalanceCanonicalReportExecutor(ITrialBalanceReportReade
             });
     }
 
-    private static ReportSheetRowDto ToSheetRow(
+    internal static ReportSheetRowDto ToSheetRow(
         TrialBalanceReportRow row,
         DateOnly rawFrom,
         DateOnly rawTo,
@@ -112,7 +112,7 @@ public sealed class TrialBalanceCanonicalReportExecutor(ITrialBalanceReportReade
                 GroupKey: row.GroupKey)
         };
 
-    private static ReportSheetRowDto ToTotalRow(TrialBalanceReportTotals totals)
+    internal static ReportSheetRowDto ToTotalRow(TrialBalanceReportTotals totals)
         => new(
             ReportRowKind.Total,
             Cells:

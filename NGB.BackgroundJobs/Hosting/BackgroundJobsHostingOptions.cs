@@ -22,6 +22,8 @@ public sealed class BackgroundJobsHostingOptions
 
     public string HangfireConnectionStringName { get; set; } = "Hangfire";
 
+    public string HangfireStorageNamespace { get; set; } = "hangfire";
+
     public string PostgresHealthCheckName { get; set; } = "PostgreSQL Server";
 
     public string HangfireHealthCheckName { get; set; } = "Jobs";
@@ -63,6 +65,7 @@ public sealed class BackgroundJobsHostingOptions
         BackgroundJobsSectionName = NormalizeRequiredText(BackgroundJobsSectionName, nameof(BackgroundJobsSectionName));
         ApplicationConnectionStringName = NormalizeRequiredText(ApplicationConnectionStringName, nameof(ApplicationConnectionStringName));
         HangfireConnectionStringName = NormalizeRequiredText(HangfireConnectionStringName, nameof(HangfireConnectionStringName));
+        HangfireStorageNamespace = NormalizeRequiredText(HangfireStorageNamespace, nameof(HangfireStorageNamespace));
         PostgresHealthCheckName = NormalizeRequiredText(PostgresHealthCheckName, nameof(PostgresHealthCheckName));
         HangfireHealthCheckName = NormalizeRequiredText(HangfireHealthCheckName, nameof(HangfireHealthCheckName));
 

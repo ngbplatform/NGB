@@ -321,8 +321,12 @@ describe('documents api', () => {
       .mockResolvedValueOnce({ accountingEntries: [], operationalRegisterMovements: [], referenceRegisterWrites: [] })
       .mockResolvedValueOnce({ nodes: [], edges: [] })
 
+    const options = { signal: new AbortController().signal }
+
     await getDocumentEffects('pm.invoice', 'doc/1', 750)
     await getDocumentGraph('pm.invoice', 'doc/1', 6, 150)
+    await getDocumentEffects('pm.invoice', 'doc/1', 500, options)
+    await getDocumentGraph('pm.invoice', 'doc/1', 5, 100, options)
 
     expect(httpMocks.httpGet).toHaveBeenNthCalledWith(
       1,
@@ -334,5 +338,27 @@ describe('documents api', () => {
       '/api/documents/pm.invoice/doc%2F1/graph',
       { depth: 6, maxNodes: 150 },
     )
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(3, '/api/documents/pm.invoice/doc%2F1/effects', { limit: 500 }, options)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(4, '/api/documents/pm.invoice/doc%2F1/graph', { depth: 5, maxNodes: 100 }, options)
+  })
+
+  it('forwards request options across document reads and cross-type lookups', async () => {
+    const options = { signal: new AbortController().signal }
+    httpMocks.httpGet
+      .mockResolvedValueOnce({ items: [], offset: 0, limit: 1 })
+      .mockResolvedValueOnce(createDocument('draft'))
+    httpMocks.httpPost.mockResolvedValueOnce([])
+
+    await getDocumentPage('pm.invoice', { offset: 0, limit: 1 }, options)
+    await getDocumentById('pm.invoice', 'doc-1', options)
+    await lookupDocumentsAcrossTypes({ documentTypes: ['pm.invoice'] }, options)
+
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(1, '/api/documents/pm.invoice', {
+      offset: 0,
+      limit: 1,
+      search: undefined,
+    }, options)
+    expect(httpMocks.httpGet).toHaveBeenNthCalledWith(2, '/api/documents/pm.invoice/doc-1', undefined, options)
+    expect(httpMocks.httpPost).toHaveBeenCalledWith('/api/documents/lookup', { documentTypes: ['pm.invoice'] }, options)
   })
 })

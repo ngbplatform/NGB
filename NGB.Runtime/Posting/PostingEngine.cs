@@ -8,6 +8,7 @@ using NGB.Accounting.PostingState;
 using NGB.Accounting.Registers;
 using NGB.Accounting.Turnovers;
 using NGB.Core.Dimensions;
+using NGB.Core.Locks;
 using NGB.Persistence.Periods;
 using NGB.Persistence.Locks;
 using NGB.Persistence.PostingState;
@@ -16,6 +17,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.Writers;
 using NGB.Runtime.Accounting;
 using NGB.Runtime.Dimensions;
+using NGB.Runtime.Locks;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
 
@@ -165,18 +167,23 @@ public sealed class PostingEngine(
             logger.LogInformation("Posting {Operation} started (entries={EntryCount}).", operation, context.Entries.Count);
             logger.LogDebug("Posting {Operation}: firstDocumentId={DocumentId}.", operation, documentId);
 
+            // Build the period partition once. Re-filtering the full entry list for every period
+            // makes large multi-period postings O(periods * entries).
+            var entriesByPeriod = GroupEntriesByPeriod(context.Entries);
+            var periods = entriesByPeriod.Select(static x => x.Period).ToArray();
+
             // 4.5 Concurrency guard: lock all affected accounting periods (prevents ClosePeriod vs Posting races)
-            await LockPeriodsAsync(context.Entries, ct);
+            await LockPeriodsAsync(periods, ct);
             logger.LogDebug("Posting {Operation}: period locks acquired.", operation);
 
             // 5. Guard: closed periods are forbidden
-            await EnsurePeriodsNotClosedAsync(operation, context.Entries, ct);
+            await EnsurePeriodsNotClosedAsync(operation, periods, ct);
 
             // 5.5 Resolve & persist Dimension Set IDs for both sides (DimensionBag -> DimensionSetId).
             await ResolveDimensionSetIdsAsync(context.Entries, ct);
 
             // 5.6 Guard: NegativeBalancePolicy (operational enforcement)
-            await EnsureNegativeBalancePolicyAsync(context.Entries, ct);
+            await EnsureNegativeBalancePolicyAsync(entriesByPeriod, ct);
 
             // 6. Persist register
             await entryWriter.WriteAsync(context.Entries, ct);
@@ -205,79 +212,58 @@ public sealed class PostingEngine(
 
     private async Task ResolveDimensionSetIdsAsync(IReadOnlyList<AccountingEntry> entries, CancellationToken ct)
     {
-        if (entries.Count == 0)
-            return;
-
-        // Multiple entries often share the same analytical dimension bag (e.g., symmetric postings).
-        // Cache by canonical string to avoid duplicate GetOrCreateIdAsync calls and DB round-trips.
-        var cache = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var pending = new List<(AccountingEntry Entry, bool IsDebit, DimensionBag Bag)>(entries.Count * 2);
 
         foreach (var e in entries)
         {
             // Posting handlers may set DimensionSetId explicitly (e.g., when dimensions are stored out-of-band).
             // PostingEngine must not overwrite non-empty IDs.
             if (e.DebitDimensionSetId == Guid.Empty)
-                e.DebitDimensionSetId = await GetOrCreateSetIdAsync(e.DebitDimensions, cache, ct);
+                pending.Add((e, IsDebit: true, e.DebitDimensions));
 
             if (e.CreditDimensionSetId == Guid.Empty)
-                e.CreditDimensionSetId = await GetOrCreateSetIdAsync(e.CreditDimensions, cache, ct);
+                pending.Add((e, IsDebit: false, e.CreditDimensions));
         }
-    }
 
-    private async Task<Guid> GetOrCreateSetIdAsync(DimensionBag bag, Dictionary<string, Guid> cache, CancellationToken ct)
-    {
-        if (bag.IsEmpty)
-            return Guid.Empty;
+        if (pending.Count == 0)
+            return;
 
-        var canonical = Canonical(bag);
-        if (cache.TryGetValue(canonical, out var existing))
-            return existing;
+        // The service deduplicates deterministic set ids and persists all unique bags with one
+        // three-command batch (sets, items, verification) instead of three commands per bag.
+        var ids = await dimensionSetService.GetOrCreateIdsAsync(
+            pending.Select(static x => x.Bag).ToArray(),
+            ct);
 
-        var id = await dimensionSetService.GetOrCreateIdAsync(bag, ct);
-        cache.Add(canonical, id);
-        return id;
-    }
+        if (ids is null || ids.Count != pending.Count)
+            throw new NgbInvariantViolationException($"Dimension set batch resolver returned {ids?.Count ?? 0} id(s) for {pending.Count} bag(s).");
 
-    private static string Canonical(DimensionBag bag)
-        => string.Join(';', bag.Items.Select(x => $"{x.DimensionId:N}={x.ValueId:N}"));
-
-
-    private async Task LockPeriodsAsync(IReadOnlyList<AccountingEntry> entries, CancellationToken ct)
-    {
-        var periods = entries
-            .Select(e => AccountingPeriod.FromDateTime(e.Period))
-            .Distinct()
-            .OrderBy(p => p) // deterministic order => avoids deadlocks when multiple periods are involved
-            .ToList();
-
-        foreach (var p in periods)
+        for (var i = 0; i < pending.Count; i++)
         {
-            await advisoryLocks.LockPeriodAsync(p, ct);
+            var target = pending[i];
+            if (target.IsDebit)
+                target.Entry.DebitDimensionSetId = ids[i];
+            else
+                target.Entry.CreditDimensionSetId = ids[i];
         }
     }
 
 
-    private async Task EnsureNegativeBalancePolicyAsync(IReadOnlyList<AccountingEntry> entries, CancellationToken ct)
+    private async Task LockPeriodsAsync(IReadOnlyList<DateOnly> periods, CancellationToken ct)
+    {
+        await advisoryLocks.LockPeriodsDeterministicallyAsync(periods, AdvisoryLockPeriodScope.Accounting, ct);
+    }
+
+    private async Task EnsureNegativeBalancePolicyAsync(IReadOnlyList<PeriodEntryGroup> entriesByPeriod, CancellationToken ct)
     {
         // Operational enforcement:
         // base = latest closed balance (<= month) + current month turnovers (to-date).
         // Then we add current posting deltas and ensure projected balance does not go negative
         // for accounts with NegativeBalancePolicy Warn/Forbid.
-        if (entries.Count == 0)
-            return;
-
         // Posting validator currently enforces a single UTC day, but we keep this generic.
-        var periods = entries
-            .Select(e => AccountingPeriod.FromDateTime(e.Period))
-            .Distinct()
-            .OrderBy(p => p)
-            .ToList();
-
-        foreach (var period in periods)
+        foreach (var group in entriesByPeriod)
         {
-            var periodEntries = entries
-                .Where(e => AccountingPeriod.FromDateTime(e.Period) == period)
-                .ToList();
+            var period = group.Period;
+            var periodEntries = group.Entries;
 
             var keys = new List<AccountingBalanceKey>(periodEntries.Count * 2);
             var accountsByKey = new Dictionary<AccountingBalanceKey, Account>();
@@ -408,19 +394,20 @@ public sealed class PostingEngine(
 
     private async Task EnsurePeriodsNotClosedAsync(
         PostingOperation operation,
-        IReadOnlyList<AccountingEntry> entries,
+        IReadOnlyList<DateOnly> periods,
         CancellationToken ct)
     {
-        var periods = entries
-            .Select(e => AccountingPeriod.FromDateTime(e.Period))
-            .Distinct()
-            .OrderBy(p => p) // keep deterministic order for diagnostics/predictability
-            .ToList();
-
-        foreach (var p in periods)
-        {
-            if (await closedPeriodRepository.IsClosedAsync(p, ct))
-                throw new PostingPeriodClosedException(operation.ToString(), p);
-        }
+        var firstClosed = await closedPeriodRepository.FindFirstClosedAsync(periods, ct);
+        if (firstClosed is not null)
+            throw new PostingPeriodClosedException(operation.ToString(), firstClosed.Value);
     }
+
+    private static IReadOnlyList<PeriodEntryGroup> GroupEntriesByPeriod(IReadOnlyList<AccountingEntry> entries)
+        => entries
+            .GroupBy(entry => AccountingPeriod.FromDateTime(entry.Period))
+            .OrderBy(group => group.Key)
+            .Select(group => new PeriodEntryGroup(group.Key, group.ToArray()))
+            .ToArray();
+
+    private sealed record PeriodEntryGroup(DateOnly Period, IReadOnlyList<AccountingEntry> Entries);
 }

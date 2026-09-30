@@ -1,6 +1,7 @@
 using NGB.Accounting.Reports.AccountingConsistency;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
+using NGB.Contracts.Common;
 using NGB.Core.Dimensions;
 using NGB.Core.Dimensions.Enrichment;
 using NGB.Core.Reporting;
@@ -30,6 +31,15 @@ public sealed class AccountingConsistencyCanonicalReportExecutor(
         DateOnly? previous = rawPrevious.HasValue ? CanonicalReportExecutionHelper.NormalizeToPeriodMonth(rawPrevious.Value) : null;
 
         var report = await reader.RunForPeriodAsync(period, previous, ct);
+
+        var totalRows = report.Issues.Count + (request.Layout?.ShowGrandTotals != false ? 5 : 0);
+        if (totalRows > PagingLimits.MaxMaterializedRows)
+        {
+            throw new NGB.Tools.Exceptions.NgbArgumentOutOfRangeException(
+                "filters",
+                totalRows,
+                $"Accounting consistency can materialize up to {PagingLimits.MaxMaterializedRows} rows. Narrow the period and try again.");
+        }
 
         var dimensionSetIds = report.Issues
             .Where(x => x.DimensionSetId.HasValue && x.DimensionSetId.Value != Guid.Empty)
@@ -74,19 +84,18 @@ public sealed class AccountingConsistencyCanonicalReportExecutor(
                 }));
 
         return CanonicalReportExecutionHelper.CreatePrebuiltPage(
-            sheet: sheet,
+            sheet,
             offset: 0,
             limit: rows.Count,
             total: rows.Count,
             hasMore: false,
-            nextCursor: null,
             diagnostics: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["executor"] = "canonical-accounting-consistency"
             });
     }
 
-    private static ReportSheetRowDto ToDetailRow(
+    internal static ReportSheetRowDto ToDetailRow(
         AccountingConsistencyIssue issue,
         IReadOnlyDictionary<Guid, DimensionBag> bagsById,
         IReadOnlyDictionary<DimensionValueKey, string> enriched)
@@ -120,7 +129,7 @@ public sealed class AccountingConsistencyCanonicalReportExecutor(
             TotalRow("Issue count", report.Issues.Count)
         ];
 
-    private static ReportSheetRowDto TotalRow(string label, long value)
+    internal static ReportSheetRowDto TotalRow(string label, long value)
         => new(
             ReportRowKind.Total,
             Cells:

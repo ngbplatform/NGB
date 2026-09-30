@@ -7,7 +7,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Infrastructure;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class Dapper_DateOnly_Roundtrip_P2Tests(PostgresTestFixture fixture)
 {
     [Fact]

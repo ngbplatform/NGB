@@ -23,7 +23,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// Focus: US-style semantics (profit/loss -> retained earnings), sign correctness, P&L section coverage,
 /// balance-sheet isolation, contra behavior, dates, and dimension policy.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_AccountingAudit_TopP0P1_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
@@ -379,7 +379,7 @@ public sealed class CloseFiscalYear_AccountingAudit_TopP0P1_P0Tests(PostgresTest
     }
 }
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class CloseFiscalYear_AccountingAudit_TopP0P1_P1Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

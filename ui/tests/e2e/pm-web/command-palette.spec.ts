@@ -9,6 +9,7 @@ test.describe('pm-web command palette', () => {
     await mockCommandPaletteApis(page)
     await rejectUnhandledApiRequests(page, [
       '/api/main-menu',
+      '/api/dashboard',
       '/api/report-definitions',
       '/api/reports/pm.occupancy.summary/execute',
       '/api/reports/pm.maintenance.queue/execute',
@@ -54,6 +55,7 @@ test.describe('pm-web command palette', () => {
     await mockCommandPaletteApis(page)
     await rejectUnhandledApiRequests(page, [
       '/api/main-menu',
+      '/api/dashboard',
       '/api/report-definitions',
       '/api/reports/pm.occupancy.summary/execute',
       '/api/reports/pm.maintenance.queue/execute',

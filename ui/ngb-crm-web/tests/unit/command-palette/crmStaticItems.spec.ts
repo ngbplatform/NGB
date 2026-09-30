@@ -1,13 +1,26 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@ngbplatform/ui', () => ({
+  buildDocumentFullPageUrl: (documentType: string) => `/documents/${documentType}/new`,
+  buildNgbHeuristicCurrentActions: (fullRoute: string) => [{ key: `heuristic:${fullRoute}` }],
+  buildReportPageUrl: (reportCode: string) => `/reports/${reportCode}`,
+}))
 
 import {
   CRM_CREATE_COMMAND_ITEMS,
   CRM_FAVORITE_ITEMS,
   CRM_SPECIAL_PAGE_ITEMS,
+  buildCRMHeuristicCurrentActions,
   resolveCRMReportPaletteIcon,
 } from '../../../src/command-palette/crmStaticItems'
 
 describe('CRM command palette static items', () => {
+  it('delegates heuristic discovery for CRM routes', () => {
+    expect(buildCRMHeuristicCurrentActions('/documents/crm.quote')).toEqual([
+      { key: 'heuristic:/documents/crm.quote' },
+    ])
+  })
+
   it('contains CRM-native create actions only', () => {
     const routes = CRM_CREATE_COMMAND_ITEMS.map((item) => item.route)
 
@@ -27,7 +40,11 @@ describe('CRM command palette static items', () => {
 
   it('maps CRM report icons by report purpose', () => {
     expect(resolveCRMReportPaletteIcon({ reportCode: 'crm.sales_pipeline' })).toBe('bar-chart')
+    expect(resolveCRMReportPaletteIcon({ reportCode: 'crm.lead_conversion_funnel' })).toBe('filter')
     expect(resolveCRMReportPaletteIcon({ reportCode: 'crm.quote_register' })).toBe('file-text')
     expect(resolveCRMReportPaletteIcon({ reportCode: 'crm.activity_summary' })).toBe('calendar-check')
+    expect(resolveCRMReportPaletteIcon({ reportCode: 'crm.opportunity_history' })).toBe('history')
+    expect(resolveCRMReportPaletteIcon({ reportCode: 'unknown' })).toBe('bar-chart')
+    expect(resolveCRMReportPaletteIcon({ reportCode: null })).toBe('bar-chart')
   })
 })

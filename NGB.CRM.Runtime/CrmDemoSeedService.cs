@@ -1,7 +1,10 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
 using NGB.CRM.Contracts;
+using NGB.CRM.Documents;
+using NGB.CRM.Seeding;
 using NGB.Contracts.Common;
 using NGB.Contracts.Services;
 using NGB.Core.Documents;
@@ -13,7 +16,6 @@ using NGB.Runtime.ReferenceRegisters;
 using NGB.Runtime.UnitOfWork;
 using NGB.Tools.Exceptions;
 using CoreDocumentStatus = NGB.Core.Documents.DocumentStatus;
-using ContractDocumentStatus = NGB.Contracts.Metadata.DocumentStatus;
 
 namespace NGB.CRM.Runtime;
 
@@ -25,9 +27,16 @@ public sealed class CrmDemoSeedService(
     TimeProvider timeProvider,
     IDocumentReferenceRegisterPostingActionResolver refregPostingActionResolver,
     IReferenceRegisterRecordsApplier refregRecordsApplier,
-    IUnitOfWork uow)
+    ICrmPostedDocumentReader postedDocumentReader,
+    ICrmDemoSeedStateReader seedStateReader,
+    IUnitOfWork uow,
+    CrmDemoSeedOptions options,
+    IServiceScopeFactory? scopeFactory = null)
     : ICrmDemoSeedService
 {
+    private const int CatalogScanPageSize = 500;
+    private readonly CrmDemoSeedOptions _options = ValidateOptions(options);
+
     public async Task<CrmDemoSeedResult> EnsureDemoAsync(CancellationToken ct = default)
     {
         await setup.EnsureDefaultsAsync(ct);
@@ -170,7 +179,7 @@ public sealed class CrmDemoSeedService(
             matchField: "email",
             matchValue: "maya.chen@contoso-health.example");
 
-        if (await CountOperationalCrmDocumentsAsync(ct) > 0)
+        if (await HasOperationalCrmDocumentsAsync(ct))
         {
             var generatedDocuments = await EnsureGeneratedDemoDocumentsAsync(
                 todayUtc,
@@ -186,8 +195,8 @@ public sealed class CrmDemoSeedService(
 
             return new CrmDemoSeedResult(
                 AsOfUtc: todayUtc,
-                AccountsEnsured: generatedDocuments > 0 ? 3 + GeneratedAccountCount : 3,
-                ContactsEnsured: generatedDocuments > 0 ? 3 + GeneratedAccountCount : 3,
+                AccountsEnsured: generatedDocuments > 0 ? 3 + _options.GeneratedAccountCount : 3,
+                ContactsEnsured: generatedDocuments > 0 ? 3 + _options.GeneratedAccountCount : 3,
                 ProductsEnsured: 2,
                 StagesEnsured: 6,
                 DocumentsCreated: generatedDocuments,
@@ -460,17 +469,16 @@ public sealed class CrmDemoSeedService(
 
         return new CrmDemoSeedResult(
             AsOfUtc: todayUtc,
-            AccountsEnsured: 3 + GeneratedAccountCount,
-            ContactsEnsured: 3 + GeneratedAccountCount,
+            AccountsEnsured: 3 + _options.GeneratedAccountCount,
+            ContactsEnsured: 3 + _options.GeneratedAccountCount,
             ProductsEnsured: 2,
             StagesEnsured: 6,
             DocumentsCreated: documentsCreated,
             SeededOperationalData: true);
     }
 
-    private async Task<int> CountOperationalCrmDocumentsAsync(CancellationToken ct)
+    private async Task<bool> HasOperationalCrmDocumentsAsync(CancellationToken ct)
     {
-        var total = 0;
         foreach (var documentType in DemoDocumentTypes)
         {
             var page = await documents.GetPageAsync(
@@ -478,10 +486,11 @@ public sealed class CrmDemoSeedService(
                 new PageRequestDto(Offset: 0, Limit: 1, Search: null),
                 ct);
 
-            total += page.Total.GetValueOrDefault(page.Items.Count);
+            if (page.Total.GetValueOrDefault(page.Items.Count) > 0)
+                return true;
         }
 
-        return total;
+        return false;
     }
 
     private async Task<int> EnsureGeneratedDemoDocumentsAsync(
@@ -495,15 +504,30 @@ public sealed class CrmDemoSeedService(
         Guid implementationPackageId,
         CancellationToken ct)
     {
-        var existingGeneratedLeads = await CountGeneratedDemoLeadIntakesAsync(ct);
-        if (existingGeneratedLeads >= GeneratedOpportunityCycleCount)
+        var existingGeneratedLeads = await seedStateReader.CountLeadIntakesByNamePrefixAsync(
+            GeneratedLeadSearch,
+            ct);
+
+        if (existingGeneratedLeads >= _options.GeneratedOpportunityCycleCount)
             return 0;
 
         var generatedAccounts = await EnsureGeneratedAccountsAsync(ct);
         var generatedContacts = await EnsureGeneratedContactsAsync(generatedAccounts, ct);
         var documentsCreated = 0;
+        const int postingBatchSize = 25;
+        var batchCapacity = Math.Min(
+            postingBatchSize,
+            _options.GeneratedOpportunityCycleCount - existingGeneratedLeads);
+        var leads = new List<Guid>(batchCapacity);
+        var qualifications = new List<Guid>(batchCapacity);
+        var conversions = new List<Guid>(batchCapacity);
+        var updates = new List<Guid>(batchCapacity);
+        var quotes = new List<Guid>(batchCapacity);
+        var activities = new List<Guid>(batchCapacity);
 
-        for (var sequence = existingGeneratedLeads + 1; sequence <= GeneratedOpportunityCycleCount; sequence++)
+        for (var sequence = existingGeneratedLeads + 1;
+             sequence <= _options.GeneratedOpportunityCycleCount;
+             sequence++)
         {
             var accountIndex = (sequence - 1) % generatedAccounts.Count;
             var account = generatedAccounts[accountIndex];
@@ -545,7 +569,8 @@ public sealed class CrmDemoSeedService(
             var dealName = $"NGB Demo Deal {sequence:0000}";
             var email = $"lead{sequence:0000}@demo-crm.example";
 
-            var lead = await CreateAndPostAsync(
+            var lead = await CreateDraftForBatchAsync(
+                leads,
                 CrmCodes.LeadIntake,
                 Payload(new
                 {
@@ -564,59 +589,61 @@ public sealed class CrmDemoSeedService(
                 ct);
             documentsCreated++;
 
-            await CreateAndPostAsync(
-                CrmCodes.LeadQualification,
-                Payload(new
-                {
-                    document_date_utc = qualificationDate.ToString("yyyy-MM-dd"),
-                    lead_intake_id = lead.Id,
-                    qualification_state = "Qualified",
-                    score = 50 + sequence % 45,
-                    notes = $"Generated qualification score for {dealName}."
-                }),
-                ct);
-            documentsCreated++;
+            var qualificationAndConversion = await CreateDraftGroupAsync(
+            [
+                new GeneratedDraftRequest(
+                    CrmCodes.LeadQualification,
+                    Payload(new
+                    {
+                        document_date_utc = qualificationDate.ToString("yyyy-MM-dd"),
+                        lead_intake_id = lead.Id,
+                        qualification_state = "Qualified",
+                        score = 50 + sequence % 45,
+                        notes = $"Generated qualification score for {dealName}."
+                    })),
+                new GeneratedDraftRequest(
+                    CrmCodes.LeadConversion,
+                    Payload(new
+                    {
+                        document_date_utc = conversionDate.ToString("yyyy-MM-dd"),
+                        lead_intake_id = lead.Id,
+                        account_id = account.Id,
+                        contact_id = contact.Id,
+                        create_opportunity = true,
+                        opportunity_name = $"{dealName}: {DemoOpportunityThemes[sequence % DemoOpportunityThemes.Length]}",
+                        stage_id = stageId,
+                        amount,
+                        probability = Math.Min(probability, 80m),
+                        expected_close_date = todayUtc.AddDays(15 + sequence % 75).ToString("yyyy-MM-dd"),
+                        currency = CrmCodes.DefaultCurrency,
+                        notes = $"Generated conversion for {dealName}."
+                    }))
+            ],
+            ct);
+            qualifications.Add(qualificationAndConversion[0].Id);
+            var opportunity = qualificationAndConversion[1];
+            conversions.Add(opportunity.Id);
+            documentsCreated += 2;
 
-            var opportunity = await CreateAndPostAsync(
-                CrmCodes.LeadConversion,
-                Payload(new
-                {
-                    document_date_utc = conversionDate.ToString("yyyy-MM-dd"),
-                    lead_intake_id = lead.Id,
-                    account_id = account.Id,
-                    contact_id = contact.Id,
-                    create_opportunity = true,
-                    opportunity_name = $"{dealName}: {DemoOpportunityThemes[sequence % DemoOpportunityThemes.Length]}",
-                    stage_id = stageId,
-                    amount,
-                    probability = Math.Min(probability, 80m),
-                    expected_close_date = todayUtc.AddDays(15 + sequence % 75).ToString("yyyy-MM-dd"),
-                    currency = CrmCodes.DefaultCurrency,
-                    notes = $"Generated conversion for {dealName}."
-                }),
-                ct);
-            documentsCreated++;
-
-            await CreateAndPostAsync(
-                CrmCodes.OpportunityUpdate,
-                Payload(new
-                {
-                    document_date_utc = updateDate.ToString("yyyy-MM-dd"),
-                    opportunity_id = opportunity.Id,
-                    stage_id = stageId,
-                    amount = amount + (sequence % 7) * 1_250m,
-                    probability,
-                    expected_close_date = todayUtc.AddDays(10 + sequence % 90).ToString("yyyy-MM-dd"),
-                    status,
-                    loss_reason = isLost ? DemoLossReasons[sequence % DemoLossReasons.Length] : null,
-                    notes = $"Generated opportunity status update for {dealName}."
-                }),
-                ct);
-            documentsCreated++;
-
-            await CreateAndPostAsync(
-                CrmCodes.Quote,
-                Payload(
+            var updateQuoteAndActivity = await CreateDraftGroupAsync(
+            [
+                new GeneratedDraftRequest(
+                    CrmCodes.OpportunityUpdate,
+                    Payload(new
+                    {
+                        document_date_utc = updateDate.ToString("yyyy-MM-dd"),
+                        opportunity_id = opportunity.Id,
+                        stage_id = stageId,
+                        amount = amount + (sequence % 7) * 1_250m,
+                        probability,
+                        expected_close_date = todayUtc.AddDays(10 + sequence % 90).ToString("yyyy-MM-dd"),
+                        status,
+                        loss_reason = isLost ? DemoLossReasons[sequence % DemoLossReasons.Length] : null,
+                        notes = $"Generated opportunity status update for {dealName}."
+                    })),
+                new GeneratedDraftRequest(
+                    CrmCodes.Quote,
+                    Payload(
                     new
                     {
                         document_date_utc = quoteDate.ToString("yyyy-MM-dd"),
@@ -643,29 +670,51 @@ public sealed class CrmDemoSeedService(
                             "CRM implementation and enablement package",
                             1m,
                             12_000m + (sequence % 6) * 2_500m,
-                            sequence % 9 == 0 ? 7.5m : 0m))),
-                ct);
-            documentsCreated++;
+                            sequence % 9 == 0 ? 7.5m : 0m)))),
+                new GeneratedDraftRequest(
+                    CrmCodes.ActivityLog,
+                    Payload(new
+                    {
+                        document_date_utc = activityDate.ToString("yyyy-MM-dd"),
+                        activity_type = DemoActivityTypes[sequence % DemoActivityTypes.Length],
+                        subject = $"{dealName}: {DemoActivitySubjects[sequence % DemoActivitySubjects.Length]}",
+                        lead_intake_id = lead.Id,
+                        account_id = account.Id,
+                        contact_id = contact.Id,
+                        opportunity_id = opportunity.Id,
+                        due_at_utc = activityDate.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.FromHours(9 + sequence % 8)), DateTimeKind.Utc),
+                        completed_at_utc = activityDate.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.FromHours(10 + sequence % 8)), DateTimeKind.Utc),
+                        outcome = DemoActivityOutcomes[sequence % DemoActivityOutcomes.Length],
+                        notes = $"Generated activity for {dealName}."
+                    }))
+            ],
+            ct);
+            updates.Add(updateQuoteAndActivity[0].Id);
+            quotes.Add(updateQuoteAndActivity[1].Id);
+            activities.Add(updateQuoteAndActivity[2].Id);
+            documentsCreated += 3;
 
-            await CreateAndPostAsync(
-                CrmCodes.ActivityLog,
-                Payload(new
-                {
-                    document_date_utc = activityDate.ToString("yyyy-MM-dd"),
-                    activity_type = DemoActivityTypes[sequence % DemoActivityTypes.Length],
-                    subject = $"{dealName}: {DemoActivitySubjects[sequence % DemoActivitySubjects.Length]}",
-                    lead_intake_id = lead.Id,
-                    account_id = account.Id,
-                    contact_id = contact.Id,
-                    opportunity_id = opportunity.Id,
-                    due_at_utc = activityDate.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.FromHours(9 + sequence % 8)), DateTimeKind.Utc),
-                    completed_at_utc = activityDate.ToDateTime(TimeOnly.FromTimeSpan(TimeSpan.FromHours(10 + sequence % 8)), DateTimeKind.Utc),
-                    outcome = DemoActivityOutcomes[sequence % DemoActivityOutcomes.Length],
-                    notes = $"Generated activity for {dealName}."
-                }),
-                ct);
-            documentsCreated++;
+            if (activities.Count == postingBatchSize)
+            {
+                await PostGeneratedBatchAsync(
+                    leads,
+                    qualifications,
+                    conversions,
+                    updates,
+                    quotes,
+                    activities,
+                    ct);
+            }
         }
+
+        await PostGeneratedBatchAsync(
+            leads,
+            qualifications,
+            conversions,
+            updates,
+            quotes,
+            activities,
+            ct);
 
         return documentsCreated;
     }
@@ -677,28 +726,43 @@ public sealed class CrmDemoSeedService(
         foreach (var documentType in DemoDocumentTypes)
         {
             const int pageSize = 200;
-            var offset = 0;
+            const int transactionBatchSize = 25;
+            Guid? afterId = null;
+            var (primaryRegisterId, createOpportunityRegisterId) = ResolveBackfillRegisters(documentType);
 
             while (true)
             {
-                var page = await documents.GetPageAsync(
+                var documentIds = await postedDocumentReader.GetIdsMissingReferenceRegisterPostPageAfterAsync(
                     documentType,
-                    new PageRequestDto(Offset: offset, Limit: pageSize, Search: null),
+                    primaryRegisterId,
+                    createOpportunityRegisterId,
+                    afterId,
+                    pageSize,
                     ct);
 
-                if (page.Items.Count == 0)
+                if (documentIds.Count == 0)
                     break;
 
-                foreach (var item in page.Items)
+                foreach (var documentBatch in documentIds.Chunk(transactionBatchSize))
                 {
-                    if (item.Status != ContractDocumentStatus.Posted)
-                        continue;
+                    recordsApplied += await uow.ExecuteInUowTransactionAsync(async innerCt =>
+                    {
+                        var batchRecordsApplied = 0;
+                        foreach (var documentId in documentBatch)
+                        {
+                            batchRecordsApplied += await BackfillDocumentReferenceRegistersAsync(
+                                documentType,
+                                documentId,
+                                innerCt);
+                        }
 
-                    recordsApplied += await BackfillDocumentReferenceRegistersAsync(documentType, item.Id, ct);
+                        return batchRecordsApplied;
+                    }, ct);
                 }
 
-                offset += page.Items.Count;
-                if (page.Items.Count < pageSize)
+                afterId = documentIds[^1];
+
+                if (documentIds.Count < pageSize)
                     break;
             }
         }
@@ -706,65 +770,81 @@ public sealed class CrmDemoSeedService(
         return recordsApplied;
     }
 
+    internal static (Guid PrimaryRegisterId, Guid? CreateOpportunityRegisterId) ResolveBackfillRegisters(
+        string documentType)
+        => documentType switch
+        {
+            CrmCodes.LeadIntake or CrmCodes.LeadQualification =>
+                (ReferenceRegisterId.FromCode(CrmCodes.LeadFunnelRegisterCode), null),
+            CrmCodes.LeadConversion =>
+                (ReferenceRegisterId.FromCode(CrmCodes.LeadFunnelRegisterCode),
+                    ReferenceRegisterId.FromCode(CrmCodes.OpportunitiesRegisterCode)),
+            CrmCodes.OpportunityUpdate =>
+                (ReferenceRegisterId.FromCode(CrmCodes.OpportunitiesRegisterCode), null),
+            CrmCodes.Quote =>
+                (ReferenceRegisterId.FromCode(CrmCodes.QuotesRegisterCode), null),
+            CrmCodes.ActivityLog =>
+                (ReferenceRegisterId.FromCode(CrmCodes.ActivitiesRegisterCode), null),
+            _ => throw new NgbConfigurationViolationException(
+                $"CRM reference-register backfill does not define a target register for document type '{documentType}'.")
+        };
+
     private async Task<int> BackfillDocumentReferenceRegistersAsync(
         string documentType,
         Guid documentId,
         CancellationToken ct)
     {
-        return await uow.ExecuteInUowTransactionAsync(async innerCt =>
+        var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var record = new DocumentRecord
         {
-            var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
-            var record = new DocumentRecord
-            {
-                Id = documentId,
-                TypeCode = documentType,
-                DateUtc = nowUtc,
-                Status = CoreDocumentStatus.Posted,
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                PostedAtUtc = nowUtc
-            };
+            Id = documentId,
+            TypeCode = documentType,
+            DateUtc = nowUtc,
+            Status = CoreDocumentStatus.Posted,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            PostedAtUtc = nowUtc
+        };
 
-            var action = refregPostingActionResolver.TryResolve(record);
-            if (action is null)
-                return 0;
+        var action = refregPostingActionResolver.TryResolve(record);
+        if (action is null)
+            return 0;
 
-            var builder = new CrmReferenceRegisterRecordsBuilder(documentId);
-            await action(builder, ReferenceRegisterWriteOperation.Post, innerCt);
+        var builder = new CrmReferenceRegisterRecordsBuilder(documentId);
+        await action(builder, ReferenceRegisterWriteOperation.Post, ct);
 
-            var appliedRecords = 0;
-            foreach (var (registerCode, records) in builder.RecordsByRegisterCode)
-            {
-                if (records.Count == 0)
-                    continue;
+        var appliedRecords = 0;
+        foreach (var (registerCode, records) in builder.RecordsByRegisterCode)
+        {
+            var result = await refregRecordsApplier.ApplyRecordsForDocumentAsync(
+                ReferenceRegisterId.FromCode(registerCode),
+                documentId,
+                ReferenceRegisterWriteOperation.Post,
+                records,
+                manageTransaction: false,
+                ct: ct);
 
-                var result = await refregRecordsApplier.ApplyRecordsForDocumentAsync(
-                    ReferenceRegisterId.FromCode(registerCode),
-                    documentId,
-                    ReferenceRegisterWriteOperation.Post,
-                    records,
-                    manageTransaction: false,
-                    ct: innerCt);
+            if (result == ReferenceRegisterWriteResult.Executed)
+                appliedRecords += records.Count;
+        }
 
-                if (result == ReferenceRegisterWriteResult.Executed)
-                    appliedRecords += records.Count;
-            }
-
-            return appliedRecords;
-        }, ct);
+        return appliedRecords;
     }
 
     private async Task<IReadOnlyList<CatalogItemDto>> EnsureGeneratedAccountsAsync(CancellationToken ct)
     {
-        var result = new List<CatalogItemDto>(GeneratedAccountCount);
-        for (var i = 1; i <= GeneratedAccountCount; i++)
+        var result = new List<CatalogItemDto>(_options.GeneratedAccountCount);
+        var existingByNumber = await LoadCatalogsByFieldAsync(
+            CrmCodes.Account, "account_number", ct);
+
+        for (var i = 1; i <= _options.GeneratedAccountCount; i++)
         {
             var industry = DemoIndustries[i % DemoIndustries.Length];
             var region = DemoRegions[i % DemoRegions.Length];
             var accountNumber = $"CRM-D{i:000}";
             var display = $"{region} {industry} Group {i:000}";
 
-            result.Add(await EnsureCatalogAsync(
+            result.Add(await UpsertCatalogFromIndexAsync(
                 CrmCodes.Account,
                 display,
                 Payload(new
@@ -782,9 +862,10 @@ public sealed class CrmDemoSeedService(
                     is_active = true,
                     notes = "Generated CRM demo account for local package validation."
                 }),
-                ct,
-                matchField: "account_number",
-                matchValue: accountNumber));
+                "account_number",
+                accountNumber,
+                existingByNumber,
+                ct));
         }
 
         return result;
@@ -795,6 +876,8 @@ public sealed class CrmDemoSeedService(
         CancellationToken ct)
     {
         var result = new List<CatalogItemDto>(accounts.Count);
+        var existingByEmail = await LoadCatalogsByFieldAsync(CrmCodes.Contact, "email", ct);
+
         for (var i = 0; i < accounts.Count; i++)
         {
             var sequence = i + 1;
@@ -803,7 +886,7 @@ public sealed class CrmDemoSeedService(
             var email = $"contact{sequence:000}@demo-crm.example";
             var display = $"{firstName} {lastName}";
 
-            result.Add(await EnsureCatalogAsync(
+            result.Add(await UpsertCatalogFromIndexAsync(
                 CrmCodes.Contact,
                 display,
                 Payload(new
@@ -820,33 +903,74 @@ public sealed class CrmDemoSeedService(
                     is_active = true,
                     notes = "Generated CRM demo buying-contact record."
                 }),
-                ct,
-                matchField: "email",
-                matchValue: email));
+                "email",
+                email,
+                existingByEmail,
+                ct));
         }
 
         return result;
     }
 
-    private async Task<int> CountGeneratedDemoLeadIntakesAsync(CancellationToken ct)
+    private async Task<Dictionary<string, List<CatalogItemDto>>> LoadCatalogsByFieldAsync(
+        string catalogType,
+        string field,
+        CancellationToken ct)
     {
-        await uow.EnsureConnectionOpenAsync(ct);
+        var result = new Dictionary<string, List<CatalogItemDto>>(StringComparer.OrdinalIgnoreCase);
 
-        await using var command = uow.Connection.CreateCommand();
-        command.Transaction = uow.Transaction;
-        command.CommandText = """
-                              SELECT COUNT(*)::int
-                              FROM doc_crm_lead_intake
-                              WHERE lead_name LIKE @prefix;
-                              """;
+        for (var offset = 0; ; offset += CatalogScanPageSize)
+        {
+            var page = await catalogs.GetPageAsync(
+                catalogType,
+                new PageRequestDto(Offset: offset, Limit: CatalogScanPageSize, Search: null),
+                ct);
 
-        var prefix = command.CreateParameter();
-        prefix.ParameterName = "prefix";
-        prefix.Value = GeneratedLeadSearch + "%";
-        command.Parameters.Add(prefix);
+            foreach (var item in page.Items)
+            {
+                if (item.Payload.Fields is null
+                    || !item.Payload.Fields.TryGetValue(field, out var value)
+                    || string.IsNullOrWhiteSpace(value.ToString()))
+                {
+                    continue;
+                }
 
-        var value = await command.ExecuteScalarAsync(ct);
-        return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+                var key = value.ToString();
+                if (!result.TryGetValue(key, out var matches))
+                    result[key] = matches = [];
+
+                matches.Add(item);
+            }
+
+            var total = page.Total.GetValueOrDefault(offset + page.Items.Count);
+            if (page.Items.Count < CatalogScanPageSize || offset + page.Items.Count >= total)
+                break;
+        }
+
+        return result;
+    }
+
+    private async Task<CatalogItemDto> UpsertCatalogFromIndexAsync(
+        string catalogType,
+        string display,
+        RecordPayload payload,
+        string matchField,
+        string matchValue,
+        IDictionary<string, List<CatalogItemDto>> index,
+        CancellationToken ct)
+    {
+        index.TryGetValue(matchValue, out var matches);
+        if (matches is { Count: > 1 })
+            throw new NgbConfigurationViolationException($"Multiple '{catalogType}' records exist for {matchField} '{matchValue}'.");
+
+        CatalogItemDto saved;
+        if (matches is { Count: 1 })
+            saved = await catalogs.UpdateAsync(catalogType, matches[0].Id, payload, ct);
+        else
+            saved = await catalogs.CreateAsync(catalogType, payload, ct);
+
+        index[matchValue] = [saved];
+        return saved;
     }
 
     private async Task<CatalogItemDto> EnsureCatalogAsync(
@@ -854,15 +978,19 @@ public sealed class CrmDemoSeedService(
         string display,
         RecordPayload payload,
         CancellationToken ct,
-        string? matchField = null,
-        string? matchValue = null)
+        string matchField,
+        string matchValue)
     {
         var page = await catalogs.GetPageAsync(
             catalogType,
             new PageRequestDto(
                 Offset: 0,
-                Limit: 200,
-                Search: string.IsNullOrWhiteSpace(matchField) ? display : null),
+                Limit: 2,
+                Search: null,
+                Filters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [matchField] = matchValue
+                }),
             ct);
 
         var matches = page.Items
@@ -882,12 +1010,9 @@ public sealed class CrmDemoSeedService(
 
     private static bool CatalogPayloadFieldEquals(
         CatalogItemDto item,
-        string? field,
-        string? expected)
+        string field,
+        string expected)
     {
-        if (string.IsNullOrWhiteSpace(field) || string.IsNullOrWhiteSpace(expected))
-            return false;
-
         if (item.Payload.Fields is null || !item.Payload.Fields.TryGetValue(field, out var value))
             return false;
 
@@ -921,66 +1046,222 @@ public sealed class CrmDemoSeedService(
         var draft = await documents.CreateDraftAsync(documentType, payload, ct);
         var display = BuildDocumentDisplay(documentType, draft.Number, payload);
 
-        if (!string.IsNullOrWhiteSpace(display))
-            await documents.UpdateDraftAsync(documentType, draft.Id, WithDisplay(payload, display), ct);
+        await documents.UpdateDraftAsync(documentType, draft.Id, WithDisplay(payload, display), ct);
 
         return await lifecycle.PostAsync(documentType, draft.Id, ct);
+    }
+
+    private async Task<DocumentDto> CreateDraftForBatchAsync(
+        ICollection<Guid> stage,
+        string documentType,
+        RecordPayload payload,
+        CancellationToken ct)
+    {
+        var updated = await CreateGeneratedDraftAsync(documents, documentType, payload, ct);
+        stage.Add(updated.Id);
+
+        return updated;
+    }
+
+    private async Task<IReadOnlyList<DocumentDto>> CreateDraftGroupAsync(
+        IReadOnlyList<GeneratedDraftRequest> requests,
+        CancellationToken ct)
+    {
+        if (requests.Count == 0)
+            return [];
+
+        var result = new DocumentDto[requests.Count];
+        if (scopeFactory is null || requests.Count == 1)
+        {
+            for (var i = 0; i < requests.Count; i++)
+            {
+                var request = requests[i];
+                result[i] = await CreateGeneratedDraftAsync(
+                    documents, request.DocumentType, request.Payload, ct);
+            }
+
+            return result;
+        }
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, requests.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Min(4, requests.Count),
+                CancellationToken = ct
+            },
+            async (index, innerCt) =>
+            {
+                var scope = scopeFactory.CreateAsyncScope();
+                try
+                {
+                    var scopedDocuments = scope.ServiceProvider.GetRequiredService<IDocumentService>();
+                    var request = requests[index];
+                    var created = await CreateGeneratedDraftAsync(
+                        scopedDocuments, request.DocumentType, request.Payload, innerCt);
+                    result[index] = created;
+                }
+                finally
+                {
+                    await DisposeScopeAsync(scope);
+                }
+            });
+
+        return result;
+    }
+
+    private static Task DisposeScopeAsync(AsyncServiceScope scope) => scope.DisposeAsync().AsTask();
+
+    private static async Task<DocumentDto> CreateGeneratedDraftAsync(
+        IDocumentService documentService,
+        string documentType,
+        RecordPayload payload,
+        CancellationToken ct)
+    {
+        var draft = await documentService.CreateDraftAsync(documentType, payload, ct);
+        var display = BuildDocumentDisplay(documentType, draft.Number, payload);
+
+        return await documentService.UpdateDraftAsync(
+            documentType,
+            draft.Id,
+            WithDisplay(payload, display),
+            ct);
+    }
+
+    private async Task PostGeneratedStageAsync(
+        string documentType,
+        IReadOnlyCollection<Guid> documentIds,
+        CancellationToken ct)
+    {
+        if (scopeFactory is null)
+        {
+            foreach (var documentId in documentIds)
+            {
+                await lifecycle.PostAsync(documentType, documentId, ct);
+            }
+
+            return;
+        }
+
+        await Parallel.ForEachAsync(
+            documentIds,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = 4,
+                CancellationToken = ct
+            },
+            async (documentId, innerCt) =>
+            {
+                var scope = scopeFactory.CreateAsyncScope();
+                try
+                {
+                    var scopedLifecycle = scope.ServiceProvider.GetRequiredService<IDocumentSystemLifecycleService>();
+                    await scopedLifecycle.PostAsync(documentType, documentId, innerCt);
+                }
+                finally
+                {
+                    await scope.DisposeAsync();
+                }
+            });
+    }
+
+    private async Task PostGeneratedBatchAsync(
+        List<Guid> leads,
+        List<Guid> qualifications,
+        List<Guid> conversions,
+        List<Guid> updates,
+        List<Guid> quotes,
+        List<Guid> activities,
+        CancellationToken ct)
+    {
+        if (leads.Count == 0)
+            return;
+
+        await PostGeneratedStageAsync(CrmCodes.LeadIntake, leads, ct);
+        await PostGeneratedStageAsync(CrmCodes.LeadQualification, qualifications, ct);
+        await PostGeneratedStageAsync(CrmCodes.LeadConversion, conversions, ct);
+        await PostGeneratedStageAsync(CrmCodes.OpportunityUpdate, updates, ct);
+        await PostGeneratedStageAsync(CrmCodes.Quote, quotes, ct);
+        await PostGeneratedStageAsync(CrmCodes.ActivityLog, activities, ct);
+
+        leads.Clear();
+        qualifications.Clear();
+        conversions.Clear();
+        updates.Clear();
+        quotes.Clear();
+        activities.Clear();
     }
 
     private static RecordPayload WithDisplay(RecordPayload payload, string display)
     {
         var fields = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
-        if (payload.Fields is not null)
+        foreach (var (key, value) in payload.Fields!)
         {
-            foreach (var (key, value) in payload.Fields)
-            {
-                fields[key] = value.Clone();
-            }
+            fields[key] = value.Clone();
         }
 
         fields["display"] = JsonSerializer.SerializeToElement(display);
         return new RecordPayload(fields, payload.Parts);
     }
 
-    private static string? BuildDocumentDisplay(string documentType, string? number, RecordPayload payload)
-    {
-        if (!DocumentDisplayNames.TryGetValue(documentType, out var documentDisplayName))
-            return null;
+    private sealed record GeneratedDraftRequest(string DocumentType, RecordPayload Payload);
 
+    private static string BuildDocumentDisplay(string documentType, string? number, RecordPayload payload)
+    {
+        var documentDisplayName = DocumentDisplayNames[documentType];
         var parts = new List<string>(3) { documentDisplayName };
 
         if (!string.IsNullOrWhiteSpace(number))
             parts.Add(number.Trim());
 
-        if (payload.Fields is not null
-            && payload.Fields.TryGetValue("document_date_utc", out var rawDate)
-            && TryFormatDocumentDate(rawDate, out var formattedDate))
-        {
-            parts.Add(formattedDate);
-        }
+        var date = DateOnly.ParseExact(
+            payload.Fields!["document_date_utc"].GetString()!,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture);
+
+        parts.Add(date.ToString("M/d/yyyy", CultureInfo.InvariantCulture));
 
         return string.Join(' ', parts);
     }
 
-    private static bool TryFormatDocumentDate(JsonElement rawDate, out string formattedDate)
+    private static CrmDemoSeedOptions ValidateOptions(CrmDemoSeedOptions options)
     {
-        formattedDate = string.Empty;
+        if (options is null)
+            throw new NgbArgumentRequiredException(nameof(options));
 
-        if (rawDate.ValueKind != JsonValueKind.String)
-            return false;
-
-        var value = rawDate.GetString();
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        if (!DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-            && !DateOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out date))
+        if (options.GeneratedAccountCount <= 0)
         {
-            return false;
+            throw new NgbArgumentOutOfRangeException(
+                nameof(options.GeneratedAccountCount),
+                options.GeneratedAccountCount,
+                "GeneratedAccountCount must be positive.");
         }
 
-        formattedDate = date.ToString("M/d/yyyy", CultureInfo.InvariantCulture);
-        return true;
+        if (options.GeneratedAccountCount > CrmDemoSeedOptions.MaxGeneratedAccountCount)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(options.GeneratedAccountCount),
+                options.GeneratedAccountCount,
+                $"GeneratedAccountCount cannot exceed {CrmDemoSeedOptions.MaxGeneratedAccountCount}.");
+        }
+
+        if (options.GeneratedOpportunityCycleCount <= 0)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(options.GeneratedOpportunityCycleCount),
+                options.GeneratedOpportunityCycleCount,
+                "GeneratedOpportunityCycleCount must be positive.");
+        }
+
+        if (options.GeneratedOpportunityCycleCount > CrmDemoSeedOptions.MaxGeneratedOpportunityCycleCount)
+        {
+            throw new NgbArgumentOutOfRangeException(
+                nameof(options.GeneratedOpportunityCycleCount),
+                options.GeneratedOpportunityCycleCount,
+                $"GeneratedOpportunityCycleCount cannot exceed {CrmDemoSeedOptions.MaxGeneratedOpportunityCycleCount}.");
+        }
+
+        return options;
     }
 
     private static DateOnly InCurrentMonth(DateOnly todayUtc, int preferredDay)
@@ -1057,8 +1338,6 @@ public sealed class CrmDemoSeedService(
         [CrmCodes.ActivityLog] = "Activity Log"
     };
 
-    private const int GeneratedAccountCount = 80;
-    private const int GeneratedOpportunityCycleCount = 520;
     private const string GeneratedLeadSearch = "NGB Demo Deal";
 
     private static readonly string[] DemoIndustries =

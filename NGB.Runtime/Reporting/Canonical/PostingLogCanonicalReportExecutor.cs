@@ -150,18 +150,14 @@ public sealed class PostingLogCanonicalReportExecutor(
                 if (string.IsNullOrWhiteSpace(raw))
                     return null;
 
-                if (Enum.TryParse<TEnum>(raw.Trim(), true, out var parsedByName))
-                    return parsedByName;
-
-                if (int.TryParse(raw.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedInt)
-                    && Enum.IsDefined(typeof(TEnum), parsedInt))
-                {
-                    return (TEnum)Enum.ToObject(typeof(TEnum), parsedInt);
-                }
+                if (TryParseDefinedEnum(raw, out TEnum parsed))
+                    return parsed;
             }
-            else if (value.ValueKind == System.Text.Json.JsonValueKind.Number && value.TryGetInt32(out var number) && Enum.IsDefined(typeof(TEnum), number))
+            else if (value.ValueKind == System.Text.Json.JsonValueKind.Number
+                && value.TryGetInt64(out var number)
+                && TryParseDefinedEnum(number.ToString(CultureInfo.InvariantCulture), out TEnum parsed))
             {
-                return (TEnum)Enum.ToObject(typeof(TEnum), number);
+                return parsed;
             }
 
             throw Invalid(definition, $"filters.{filterCode}", BuildInvalidEnumMessage(definition, filterCode));
@@ -169,6 +165,10 @@ public sealed class PostingLogCanonicalReportExecutor(
 
         return null;
     }
+
+    private static bool TryParseDefinedEnum<TEnum>(string raw, out TEnum parsed)
+        where TEnum : struct, Enum
+        => Enum.TryParse(raw.Trim(), ignoreCase: true, out parsed) && Enum.IsDefined(parsed);
 
     private static DateTime? GetOptionalUtcParameter(
         ReportDefinitionDto definition,

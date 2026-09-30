@@ -20,16 +20,18 @@ public sealed class ReceivablesCustomApplyExecuteService(
     IReceivablesOpenItemsService openItems,
     IDocumentDraftService drafts,
     IDocumentPostingService posting,
-    IDocumentRelationshipService relationships,
     IReceivableApplyHeadWriter applyHeadWriter,
     IPropertyManagementDocumentReaders readers,
     IDocumentRepository documents,
     IAdvisoryLockManager advisoryLocks,
     IUnitOfWork uow,
-    IReceivablePaymentWorkCenterSynchronizer workCenter)
+    IReceivablePaymentWorkCenterSynchronizer workCenter,
+    IDocumentPostingReadCache? postingReadCache = null)
     : IReceivablesCustomApplyExecuteService
 {
-    private const int MaxLines = 500;
+    // Each allocation posts a document inside one atomic transaction. Bounding the
+    // request keeps advisory locks and row locks from being held for too long.
+    private const int MaxLines = 25;
 
     public async Task<ReceivablesCustomApplyExecuteResponse> ExecuteAsync(
         ReceivablesCustomApplyExecuteRequest request,
@@ -43,6 +45,8 @@ public sealed class ReceivablesCustomApplyExecuteService(
 
         if (request.Applies.Count > MaxLines)
             throw ReceivablesRequestValidationException.ApplicationsTooLarge(request.Applies.Count, MaxLines);
+
+        using var postingReadScope = postingReadCache?.BeginScope();
 
         // Canonicalize lines before going to the DB.
         var grouped = new Dictionary<Guid, decimal>();
@@ -112,34 +116,39 @@ public sealed class ReceivablesCustomApplyExecuteService(
                     throw ReceivableApplyValidationException.OverApplyCharge(a.ChargeDocumentId, a.Amount, outstanding);
             }
 
-            foreach (var a in allocations)
+            var applyIds = await ReceivablesApplyExecutionHelpers.CreateApplyDraftsAndUpsertHeadsAsync(
+                drafts,
+                relationships: null,
+                applyHeadWriter,
+                allocations.Select(allocation => new ReceivablesApplyExecutionHelpers.ApplyDraftRequest(
+                        PropertyManagementCodes.ReceivableApply,
+                        dateUtc,
+                        request.CreditDocumentId,
+                        allocation.ChargeDocumentId,
+                        creditSource.CreditDateUtc,
+                        allocation.Amount,
+                        Memo: null))
+                    .ToArray(),
+                innerCt);
+
+            if (posting is IDocumentPostingBatchService batchPosting)
             {
-                var applyId = await drafts.CreateDraftAsync(
-                    typeCode: PropertyManagementCodes.ReceivableApply,
-                    number: null,
-                    dateUtc: dateUtc,
-                    manageTransaction: false,
-                    ct: innerCt);
+                await batchPosting.PostManyAsync(applyIds, manageTransaction: false, ct: innerCt);
+            }
+            else
+            {
+                foreach (var applyId in applyIds)
+                {
+                    await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
+                }
+            }
 
-                await applyHeadWriter.UpsertAsync(
-                    documentId: applyId,
-                    creditDocumentId: request.CreditDocumentId,
-                    chargeDocumentId: a.ChargeDocumentId,
-                    appliedOnUtc: creditSource.CreditDateUtc,
-                    amount: a.Amount,
-                    memo: null,
-                    ct: innerCt);
+            for (var index = 0; index < allocations.Length; index++)
+            {
+                var allocation = allocations[index];
+                var applyId = applyIds[index];
 
-                await ReceivablesApplyExecutionHelpers.EnsureApplyRelationshipsAsync(
-                    relationships,
-                    applyId,
-                    creditDocumentId: request.CreditDocumentId,
-                    chargeDocumentId: a.ChargeDocumentId,
-                    ct: innerCt);
-
-                await posting.PostAsync(applyId, manageTransaction: false, ct: innerCt);
-
-                executed.Add(new ReceivablesExecutedApplyDto(applyId, a.ChargeDocumentId, a.Amount));
+                executed.Add(new ReceivablesExecutedApplyDto(applyId, allocation.ChargeDocumentId, allocation.Amount));
             }
 
             return (IReadOnlyCollection<Guid>)(await workCenter.CompleteIfExhaustedAsync(request.CreditDocumentId, innerCt));
@@ -148,7 +157,7 @@ public sealed class ReceivablesCustomApplyExecuteService(
         await workCenter.NotifyChangedAsync(changedUsers, ct);
 
         var totalApplied = executed.Sum(x => x.Amount);
-        var remaining = Math.Max(0m, availableCredit - totalApplied);
+        var remaining = availableCredit - totalApplied;
 
         return new ReceivablesCustomApplyExecuteResponse(
             CreditDocumentId: request.CreditDocumentId,

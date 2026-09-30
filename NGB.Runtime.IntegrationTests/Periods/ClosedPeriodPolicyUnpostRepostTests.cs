@@ -23,7 +23,7 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 /// - MUST NOT create posting_log records for the forbidden operation
 /// - MUST NOT change any persisted state (entries / turnovers / balances)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class ClosedPeriodPolicyUnpostRepostTests(PostgresTestFixture fixture)
 {
     [Fact]

@@ -30,7 +30,8 @@ public sealed class PayableChargePostingHandler(
         var chargeType = await readers.ReadPayableChargeTypeHeadAsync(charge.ChargeTypeId, ct);
         var policy = await policyReader.GetRequiredAsync(ct);
 
-        if (chargeType.DebitAccountId is null || chargeType.DebitAccountId == Guid.Empty)
+        var debitAccountId = chargeType.DebitAccountId.GetValueOrDefault();
+        if (debitAccountId == Guid.Empty)
         {
             throw new NgbConfigurationViolationException(
                 $"Payable charge type '{charge.ChargeTypeId}' is missing debit_account_id.",
@@ -43,7 +44,7 @@ public sealed class PayableChargePostingHandler(
         }
 
         var coa = await ctx.GetChartOfAccountsAsync(ct);
-        var debit = coa.Get(chargeType.DebitAccountId.Value);
+        var debit = coa.Get(debitAccountId);
         var credit = coa.Get(policy.AccountsPayableVendorsAccountId);
 
         var period = new DateTime(charge.DueOnUtc.Year, charge.DueOnUtc.Month, charge.DueOnUtc.Day, 0, 0, 0, DateTimeKind.Utc);

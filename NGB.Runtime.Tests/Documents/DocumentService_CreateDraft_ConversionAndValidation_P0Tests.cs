@@ -314,6 +314,82 @@ public sealed class DocumentService_CreateDraft_ConversionAndValidation_P0Tests
     }
 
     [Fact]
+    public async Task CreateDraftAsync_WhenPartRowIsNull_ThrowsFriendlyMessage()
+    {
+        var svc = CreateSutForCreateDraft(BuildDocMetaWithLinesPart());
+        var payload = new RecordPayload(
+            Fields: new Dictionary<string, JsonElement>
+            {
+                ["display"] = JsonSerializer.SerializeToElement("x")
+            },
+            Parts: new Dictionary<string, RecordPartPayload>
+            {
+                ["lines"] = new RecordPartPayload([null!])
+            });
+
+        Func<Task> act = async () => await svc.CreateDraftAsync(TypeCode, payload, default);
+
+        var exception = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
+        exception.Which.ParamName.Should().Be("lines[0]");
+        exception.Which.Message.Should().Contain("row 1 is invalid");
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenRequiredPartValueIsNull_ThrowsFriendlyMessage()
+    {
+        var svc = CreateSutForCreateDraft(BuildDocMetaWithLinesPart());
+        var payload = new RecordPayload(
+            Fields: new Dictionary<string, JsonElement>
+            {
+                ["display"] = JsonSerializer.SerializeToElement("x")
+            },
+            Parts: new Dictionary<string, RecordPartPayload>
+            {
+                ["lines"] = new RecordPartPayload([
+                    new Dictionary<string, JsonElement>
+                    {
+                        ["line_no"] = JsonSerializer.SerializeToElement(1),
+                        ["amount"] = JsonSerializer.SerializeToElement<object?>(null)
+                    }
+                ])
+            });
+
+        Func<Task> act = async () => await svc.CreateDraftAsync(TypeCode, payload, default);
+
+        var exception = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
+        exception.Which.ParamName.Should().Be("lines[0].amount");
+        exception.Which.Message.Should().Be("Amount is required in Lines row 1.");
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenMetadataRepeatsPartCode_ReportsConfigurationError()
+    {
+        var head = new DocumentTableMetadata(
+            "doc_test_doc",
+            TableKind.Head,
+            [Col("document_id", ColumnType.Guid, true), Col("display", ColumnType.String, true)]);
+        DocumentTableMetadata Part(string tableName) => new(
+            tableName,
+            TableKind.Part,
+            [Col("document_id", ColumnType.Guid, true), Col("line_no", ColumnType.Int32, true)],
+            PartCode: "lines");
+        var meta = new DocumentTypeMetadata(
+            TypeCode,
+            [head, Part("doc_test_doc__lines_a"), Part("doc_test_doc__lines_b")],
+            new DocumentPresentationMetadata(TypeCode),
+            new DocumentMetadataVersion(1, "tests"));
+        var svc = CreateSutForCreateDraft(meta);
+        var payload = new RecordPayload(
+            Fields: new Dictionary<string, JsonElement> { ["display"] = JsonSerializer.SerializeToElement("x") },
+            Parts: new Dictionary<string, RecordPartPayload> { ["lines"] = new RecordPartPayload([]) });
+
+        Func<Task> act = async () => await svc.CreateDraftAsync(TypeCode, payload, default);
+
+        await act.Should().ThrowAsync<NgbConfigurationViolationException>()
+            .WithMessage("*duplicate part code 'lines'*");
+    }
+
+    [Fact]
     public async Task CreateDraftAsync_WhenUnknownFieldProvided_Throws()
     {
         // Arrange
@@ -391,6 +467,31 @@ public sealed class DocumentService_CreateDraft_ConversionAndValidation_P0Tests
         var ex = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
         ex.Which.ParamName.Should().Be("payload.Fields.req");
         ex.Which.Message.Should().Be("Req is required.");
+    }
+
+    [Fact]
+    public async Task CreateDraftAsync_WhenRequiredHeadFieldIsExplicitNull_Throws()
+    {
+        var meta = BuildDocMeta(
+            TypeCode,
+            "doc_test_doc",
+            [
+                Col("document_id", ColumnType.Guid, required: true),
+                Col("display", ColumnType.String, required: true),
+                Col("req", ColumnType.Int32, required: true)
+            ]);
+        var svc = CreateSutForCreateDraft(meta);
+        var payload = new RecordPayload(new Dictionary<string, JsonElement>
+        {
+            ["display"] = JsonSerializer.SerializeToElement("x"),
+            ["req"] = JsonSerializer.SerializeToElement<object?>(null)
+        });
+
+        Func<Task> act = async () => await svc.CreateDraftAsync(TypeCode, payload, default);
+
+        var exception = await act.Should().ThrowAsync<NgbArgumentInvalidException>();
+        exception.Which.ParamName.Should().Be("payload.Fields.req");
+        exception.Which.Message.Should().Be("Req is required.");
     }
 
     [Theory]

@@ -76,6 +76,7 @@ describe('useFloatingDropdownPosition', () => {
     const state = useFloatingDropdownPosition(anchorRef, [overlayRef])
 
     state.updatePosition()
+    state.updatePosition()
     expect(state.floatingStyle.value).toEqual({
       left: '10px',
       top: '38px',
@@ -117,11 +118,75 @@ describe('useFloatingDropdownPosition', () => {
       width: 0,
     } as DOMRect)
 
-    useFloatingDropdownPosition(ref(anchor as HTMLElement), [ref<HTMLElement | null>(new globalThis.HTMLElement() as HTMLElement)])
+    const state = useFloatingDropdownPosition(ref(anchor as HTMLElement), [ref<HTMLElement | null>(new globalThis.HTMLElement() as HTMLElement)])
+    state.updatePosition()
     runMountedHooks()
     runBeforeUnmountHooks()
 
     expect(removeEventListenerMock).toHaveBeenCalledWith('resize', expect.any(Function))
     expect(removeEventListenerMock).toHaveBeenCalledWith('scroll', expect.any(Function), true)
+  })
+
+  it('keeps the default position when no anchor element is available', () => {
+    const state = useFloatingDropdownPosition(ref(null), [ref(null)])
+
+    state.updatePosition()
+
+    expect(state.floatingStyle.value).toEqual({
+      left: '0px',
+      top: '0px',
+      width: '0px',
+      maxHeight: '288px',
+    })
+  })
+
+  it('computes bounded coordinates and skips animation scheduling without a browser window', () => {
+    const anchor = new globalThis.HTMLElement()
+    ;(anchor as HTMLElement).getBoundingClientRect = () => ({
+      left: 20,
+      top: 0,
+      right: 140,
+      bottom: 0,
+      width: 120,
+      height: 36,
+    } as DOMRect)
+    const state = useFloatingDropdownPosition(ref(anchor as HTMLElement), [ref(null)])
+    globalThis.window = undefined as never
+
+    state.updatePosition()
+
+    expect(state.floatingStyle.value).toEqual({
+      left: '8px',
+      top: '8px',
+      width: '0px',
+      maxHeight: '0px',
+    })
+    runMountedHooks()
+    runBeforeUnmountHooks()
+    expect(addEventListenerMock).not.toHaveBeenCalled()
+    expect(removeEventListenerMock).not.toHaveBeenCalled()
+  })
+
+  it('recomputes synchronously when requestAnimationFrame is unavailable', () => {
+    const anchor = new globalThis.HTMLElement()
+    ;(anchor as HTMLElement).getBoundingClientRect = () => ({
+      left: 12,
+      top: 20,
+      right: 112,
+      bottom: 56,
+      width: 100,
+      height: 36,
+    } as DOMRect)
+    Object.defineProperty(globalThis.window, 'requestAnimationFrame', {
+      configurable: true,
+      value: undefined,
+    })
+    const state = useFloatingDropdownPosition(ref(anchor as HTMLElement), [ref(null)])
+
+    state.updatePosition()
+
+    expect(state.floatingStyle.value.left).toBe('12px')
+    expect(state.floatingStyle.value.top).toBe('64px')
+    expect(state.floatingStyle.value.width).toBe('100px')
   })
 })

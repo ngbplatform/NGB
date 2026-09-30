@@ -16,7 +16,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// Reporting Core — golden tests for Balance Sheet "synthetic Net Income" behavior.
 /// These tests use far-future periods to avoid collisions with other tests that may close periods.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class BalanceSheetSyntheticNetIncomeGoldenTests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

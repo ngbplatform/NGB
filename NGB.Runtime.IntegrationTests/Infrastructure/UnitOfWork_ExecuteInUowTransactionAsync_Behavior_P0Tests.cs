@@ -12,7 +12,7 @@ namespace NGB.Runtime.IntegrationTests.Infrastructure;
 /// - when there is no ambient transaction, it must commit work,
 /// - when there is an ambient transaction, it must not commit/rollback implicitly (outer transaction controls the outcome).
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class UnitOfWork_ExecuteInUowTransactionAsync_Behavior_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

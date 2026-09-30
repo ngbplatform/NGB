@@ -26,6 +26,7 @@ using NGB.Runtime.Ui;
 using NGB.Runtime.Validation;
 using NGB.Runtime.AuditLog;
 using NGB.Runtime.UnitOfWork;
+using NGB.Runtime.Common;
 using NGB.Tools;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
@@ -63,7 +64,7 @@ public sealed class DocumentService(
     IDocumentEffectsQueryService? effectsQuery = null)
     : IDocumentService, IDocumentSystemLifecycleService
 {
-    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly TimeProvider _timeProvider = ResolveTimeProvider(timeProvider);
     public Task<IReadOnlyList<DocumentTypeMetadataDto>> GetAllMetadataAsync(CancellationToken ct)
     {
         var list = documentTypes.GetAll()
@@ -82,18 +83,67 @@ public sealed class DocumentService(
         PageRequestDto request,
         CancellationToken ct)
     {
+        request = NormalizePageRequest(request);
         var model = GetModel(documentType);
         var (softDeleteMode, scalarFilters) = ExtractSoftDeleteFilter(request.Filters);
         var query = BuildQuery(model, request.Search, scalarFilters) with { SoftDeleteFilterMode = softDeleteMode };
 
-        var total = await reader.CountAsync(model.Head, query, ct);
-        var rows = await reader.GetPageAsync(model.Head, query, request.Offset, request.Limit, ct);
+        IReadOnlyList<DocumentHeadRow> rows;
+        long? total;
+        var hasMore = false;
+        string? nextCursor = null;
+
+        if (request.Offset == 0 && reader is IDocumentSeekPageReader seekPageReader)
+        {
+            var cursor = string.IsNullOrWhiteSpace(request.Cursor)
+                ? null
+                : ListPageCursorCodec.Decode(request.Cursor);
+
+            var page = await seekPageReader.GetSeekPageAsync(
+                model.Head,
+                query,
+                cursor?.AfterDisplay,
+                cursor?.AfterId,
+                request.Limit,
+                includeTotal: request.IncludeTotal && cursor is null,
+                ct);
+
+            rows = page.Rows;
+            total = page.Total;
+            hasMore = page.HasMore;
+
+            if (hasMore && page.NextAfterId is { } nextId)
+                nextCursor = ListPageCursorCodec.Encode(page.NextAfterDisplay, nextId);
+        }
+        else if (request.IncludeTotal && reader is IDocumentCombinedPageReader combinedPageReader)
+        {
+            var page = await combinedPageReader.GetPageWithTotalAsync(model.Head, query, request.Offset, request.Limit, ct);
+            rows = page.Rows;
+            total = page.Total;
+        }
+        else
+        {
+            var fallbackTotal = request.IncludeTotal
+                ? await reader.CountAsync(model.Head, query, ct)
+                : (long?)null;
+            var fallbackRows = await reader.GetPageAsync(
+                model.Head, query, request.Offset, request.Limit, ct);
+            rows = fallbackRows;
+            total = fallbackTotal;
+        }
+
         IReadOnlyList<DocumentDto> items = rows.Select(r => ToDto(model, r, parts: null)).ToList();
 
         if (items.Count > 0)
             items = await refEnricher.EnrichDocumentItemsAsync(model.Head, model.Meta.TypeCode, items, ct);
 
-        return new PageResponseDto<DocumentDto>(items, request.Offset, request.Limit, (int)total);
+        return new PageResponseDto<DocumentDto>(
+            items,
+            request.Offset,
+            request.Limit,
+            total is null ? null : checked((int)total.Value),
+            hasMore,
+            nextCursor);
     }
 
     public async Task<DocumentDto> GetByIdAsync(string documentType, Guid id, CancellationToken ct)
@@ -121,12 +171,18 @@ public sealed class DocumentService(
         if (docTypes is null)
             throw new NgbArgumentRequiredException(nameof(docTypes));
 
+        query = InputTextLimits.NormalizeSearch(query, nameof(query));
+
         if (perTypeLimit <= 0 || docTypes.Count == 0)
             return [];
+
+        perTypeLimit = Math.Min(perTypeLimit, PagingLimits.MaxPerTypeLookupLimit);
 
         var heads = ResolveDistinctLookupHeads(docTypes);
         if (heads.Count == 0)
             return [];
+
+        EnsureLookupTypeLimit(heads.Count);
 
         var rows = await reader.LookupAcrossTypesAsync(heads, query, perTypeLimit, activeOnly, ct);
         return MapDocumentLookups(rows);
@@ -150,8 +206,45 @@ public sealed class DocumentService(
         if (heads.Count == 0)
             return [];
 
-        var rows = await reader.GetByIdsAcrossTypesAsync(heads, ids, ct);
+        EnsureLookupTypeLimit(heads.Count);
+
+        var distinctIds = ids.Where(static id => id != Guid.Empty).Distinct().ToArray();
+        if (distinctIds.Length == 0)
+            return [];
+
+        if (distinctIds.Length > PagingLimits.MaxLookupIds)
+            throw new NgbArgumentOutOfRangeException(nameof(ids), distinctIds.Length, $"At most {PagingLimits.MaxLookupIds} distinct IDs are allowed.");
+
+        var rows = await reader.GetByIdsAcrossTypesAsync(heads, distinctIds, ct);
         return MapDocumentLookups(rows);
+    }
+
+    internal static PageRequestDto NormalizePageRequest(PageRequestDto request)
+    {
+        if (request is null)
+            throw new NgbArgumentRequiredException(nameof(request));
+
+        if (!string.IsNullOrWhiteSpace(request.Cursor) && request.Offset != 0)
+            throw new NgbArgumentInvalidException("cursor", "Cursor paging requires offset=0.");
+
+        var offset = Math.Clamp(request.Offset, 0, PagingLimits.MaxOffset);
+        var limit = request.Limit <= 0
+            ? PagingLimits.DefaultPageSize
+            : Math.Min(request.Limit, PagingLimits.MaxPageSize);
+
+        return request with
+        {
+            Offset = offset,
+            Limit = limit,
+            Search = InputTextLimits.NormalizeSearch(request.Search),
+            Cursor = string.IsNullOrWhiteSpace(request.Cursor) ? null : request.Cursor.Trim()
+        };
+    }
+
+    private static void EnsureLookupTypeLimit(int count)
+    {
+        if (count > PagingLimits.MaxLookupTypes)
+            throw new NgbArgumentOutOfRangeException("docTypes", count, $"At most {PagingLimits.MaxLookupTypes} distinct document types are allowed.");
     }
 
     private IReadOnlyList<DocumentHeadDescriptor> ResolveDistinctLookupHeads(IReadOnlyList<string> docTypes)
@@ -188,7 +281,7 @@ public sealed class DocumentService(
 
         var id = await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            await ValidateDraftPayloadAsync(model, documentId: null, isCreate: true, payload, partRowsByPartCode, innerCt);
+            await ValidateCreateDraftPayloadAsync(model, payload, partRowsByPartCode, innerCt);
             var fieldValues = ParseAndValidateFields(model, payload, requireAllRequired: true);
 
             // Generic documents don't expose number/date in the HTTP contract yet.
@@ -238,20 +331,19 @@ public sealed class DocumentService(
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
-            var locked = await documents.GetForUpdateAsync(id, innerCt)
-                         ?? throw new DocumentNotFoundException(id);
+            var locked = DocumentPostingService.RequireDocument(
+                await documents.GetForUpdateAsync(id, innerCt),
+                id);
 
             // Guard: the request URL (documentType) must match the actual document type stored in the header row.
-            if (!string.Equals(locked.TypeCode, model.Meta.TypeCode, StringComparison.OrdinalIgnoreCase))
-                throw new NgbArgumentInvalidException(nameof(documentType),
-                    $"Document '{id}' belongs to '{locked.TypeCode}', not '{model.Meta.TypeCode}'.");
+            EnsureRouteOwnsDocument(documentType, model.Meta.TypeCode, locked);
 
             if (locked.Status == Core.Documents.DocumentStatus.MarkedForDeletion)
             {
                 throw new DocumentMarkedForDeletionException(
                     operation: "Document.UpdateDraft",
                     documentId: id,
-                    markedForDeletionAtUtc: locked.MarkedForDeletionAtUtc ?? _timeProvider.GetUtcNowDateTime());
+                    markedForDeletionAtUtc: ResolveDeletionMarkTimestamp(locked, _timeProvider));
             }
 
             if (locked.Status != Core.Documents.DocumentStatus.Draft)
@@ -267,7 +359,7 @@ public sealed class DocumentService(
             if (audit is not null)
                 beforeAudit = await GetByIdAsync(documentType, id, innerCt);
 
-            await ValidateDraftPayloadAsync(model, documentId: id, isCreate: false, payload, partRowsByPartCode, innerCt);
+            await ValidateUpdateDraftPayloadAsync(model, id, payload, partRowsByPartCode, innerCt);
 
             // Partial update: only provided fields are updated.
             // IMPORTANT: to keep NOT NULL invariants stable and to make UPSERT resilient,
@@ -353,9 +445,7 @@ public sealed class DocumentService(
             if (locked is null)
                 return;
 
-            if (!string.Equals(locked.TypeCode, model.Meta.TypeCode, StringComparison.OrdinalIgnoreCase))
-                throw new NgbArgumentInvalidException(nameof(documentType),
-                    $"Document '{id}' belongs to '{locked.TypeCode}', not '{model.Meta.TypeCode}'.");
+            EnsureRouteOwnsDocument(documentType, model.Meta.TypeCode, locked);
 
             await drafts.DeleteDraftAsync(id, manageTransaction: false, ct: innerCt);
         }, ct);
@@ -414,15 +504,50 @@ public sealed class DocumentService(
 
     private async Task EnsureLifecycleTargetAsync(string documentType, Guid id, CancellationToken ct)
     {
-        var document = await documents.GetAsync(id, ct) ?? throw new DocumentNotFoundException(id);
+        var document = DocumentPostingService.RequireDocument(await documents.GetAsync(id, ct), id);
         EnsureDocumentType(documentType, document);
     }
 
-    private static void EnsureDocumentType(string expectedType, DocumentRecord document)
+    internal static void EnsureDocumentType(string? expectedType, DocumentRecord document)
     {
         if (!string.Equals(expectedType?.Trim(), document.TypeCode, StringComparison.OrdinalIgnoreCase))
             throw new DocumentTypeMismatchException(document.Id, expectedType ?? string.Empty, document.TypeCode);
     }
+
+    internal static TimeProvider ResolveTimeProvider(TimeProvider? timeProvider) => timeProvider ?? TimeProvider.System;
+
+    internal static DateTime ResolveDeletionMarkTimestamp(DocumentRecord document, TimeProvider timeProvider)
+        => document.MarkedForDeletionAtUtc ?? timeProvider.GetUtcNowDateTime();
+
+    internal static void EnsureRouteOwnsDocument(string documentType, string modelTypeCode, DocumentRecord document)
+    {
+        if (!string.Equals(document.TypeCode, modelTypeCode, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NgbArgumentInvalidException(
+                nameof(documentType),
+                $"Document '{document.Id}' belongs to '{document.TypeCode}', not '{modelTypeCode}'.");
+        }
+    }
+
+    internal static DocumentHeadRow RequireHeadRow(DocumentHeadRow? row, Guid documentId)
+        => row ?? throw new DocumentNotFoundException(documentId);
+
+    internal static string ResolveGraphNodeTitle(DocumentHeadRow? headRow, string fallbackTitle)
+        => !string.IsNullOrWhiteSpace(headRow?.Display) ? headRow.Display! : fallbackTitle;
+
+    internal static NGB.Contracts.Metadata.DocumentStatus ResolveGraphNodeStatus(
+        DocumentHeadRow? headRow,
+        Core.Documents.DocumentStatus fallbackStatus)
+        => ToContractStatus(headRow?.Status ?? fallbackStatus);
+
+    internal static Task<DocumentEffectsQueryResult> ResolveEffectsAsync(
+        IDocumentEffectsQueryService? effectsQuery,
+        DocumentRecord document,
+        int limit,
+        CancellationToken ct)
+        => effectsQuery is null
+            ? Task.FromResult(new DocumentEffectsQueryResult([], [], []))
+            : effectsQuery.GetAsync(document, limit, ct);
 
     public async Task<RelationshipGraphDto> GetRelationshipGraphAsync(
         string documentType,
@@ -434,8 +559,7 @@ public sealed class DocumentService(
         // Document Flow UI must render from a single API request.
         // Backend must also avoid N+1 typed-head fetches, so we batch non-root head rows in one multi-type read.
         var rootModel = GetModel(documentType);
-        var rootHead = await reader.GetByIdAsync(rootModel.Head, id, ct)
-            ?? throw new DocumentNotFoundException(id);
+        var rootHead = RequireHeadRow(await reader.GetByIdAsync(rootModel.Head, id, ct), id);
 
         var graph = await relationshipGraph.GetGraphAsync(
             new DocumentRelationshipGraphRequest(
@@ -475,17 +599,11 @@ public sealed class DocumentService(
                 ? $"{n.TypeCode} {n.Number}"
                 : $"{n.TypeCode} {shortId}";
 
-            var title = !string.IsNullOrWhiteSpace(headRow?.Display)
-                ? headRow.Display!
-                : fallbackTitle;
+            var title = ResolveGraphNodeTitle(headRow, fallbackTitle);
 
             var subtitle = n.DateUtc.ToString("yyyy-MM-dd");
-            var status = headRow is not null
-                ? ToContractStatus(headRow.Status)
-                : ToContractStatus(n.Status);
-            var amountField = modelsByType.TryGetValue(n.TypeCode, out var model)
-                ? model.AmountField
-                : null;
+            var status = ResolveGraphNodeStatus(headRow, n.Status);
+            var amountField = modelsByType[n.TypeCode].AmountField;
             var amount = TryExtractDocumentAmount(headRow, amountField);
 
             nodes.Add(new GraphNodeDto(
@@ -566,7 +684,7 @@ public sealed class DocumentService(
         return result;
     }
 
-    private static decimal? TryExtractDocumentAmount(DocumentHeadRow? document, string? amountField)
+    internal static decimal? TryExtractDocumentAmount(DocumentHeadRow? document, string? amountField)
     {
         if (document?.Fields is null || string.IsNullOrWhiteSpace(amountField))
             return null;
@@ -580,7 +698,7 @@ public sealed class DocumentService(
         return null;
     }
 
-    private static bool TryGetDecimal(object? value, out decimal amount)
+    internal static bool TryGetDecimal(object? value, out decimal amount)
     {
         switch (value)
         {
@@ -609,8 +727,7 @@ public sealed class DocumentService(
                 return true;
             case string raw when !string.IsNullOrWhiteSpace(raw):
                 raw = raw.Replace(",", string.Empty, StringComparison.Ordinal).Trim();
-                if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out amount)
-                    || decimal.TryParse(raw, NumberStyles.Number, CultureInfo.CurrentCulture, out amount))
+                if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out amount))
                 {
                     return true;
                 }
@@ -633,7 +750,7 @@ public sealed class DocumentService(
         return false;
     }
 
-    private static bool TryGetDecimal(JsonElement value, out decimal amount)
+    internal static bool TryGetDecimal(JsonElement value, out decimal amount)
     {
         switch (value.ValueKind)
         {
@@ -646,8 +763,7 @@ public sealed class DocumentService(
                     break;
 
                 raw = raw.Replace(",", string.Empty, StringComparison.Ordinal).Trim();
-                return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out amount)
-                    || decimal.TryParse(raw, NumberStyles.Number, CultureInfo.CurrentCulture, out amount);
+                return decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out amount);
             }
         }
 
@@ -684,9 +800,7 @@ public sealed class DocumentService(
                 if (record is null)
                     throw new DocumentNotFoundException(id);
 
-                var sections = effectsQuery is null
-                    ? new DocumentEffectsQueryResult([], [], [])
-                    : await effectsQuery.GetAsync(record, limit, innerCt);
+                var sections = await ResolveEffectsAsync(effectsQuery, record, limit, innerCt);
 
                 return new DocumentEffectsDto(
                     sections.AccountingEntries,
@@ -838,7 +952,7 @@ public sealed class DocumentService(
 
     private static DateOnly ParseDateOnlyFilter(string? value, string keyName)
     {
-        var s = (value ?? string.Empty).Trim();
+        var s = NormalizeOptionalText(value);
         if (s.Length == 0)
             throw new NgbArgumentInvalidException(keyName, $"'{keyName}' is required.");
 
@@ -918,7 +1032,7 @@ public sealed class DocumentService(
         return directColumn?.ColumnName;
     }
 
-    private static IReadOnlyList<string> ParseFilterValues(string? rawValue, string keyName, bool isMulti)
+    internal static IReadOnlyList<string> ParseFilterValues(string? rawValue, string keyName, bool isMulti)
     {
         var values = isMulti
             ? (rawValue ?? string.Empty)
@@ -966,9 +1080,11 @@ public sealed class DocumentService(
     private static string NormalizeFilterKey(string key)
         => key.StartsWith("filters.", StringComparison.OrdinalIgnoreCase) ? key["filters.".Length..] : key;
 
+    internal static string NormalizeOptionalText(string? value) => (value ?? string.Empty).Trim();
+
     private static SoftDeleteFilterMode ParseSoftDeleteMode(string? value, string keyName)
     {
-        var s = (value ?? string.Empty).Trim();
+        var s = NormalizeOptionalText(value);
 
         if (s.Length == 0 || string.Equals(s, "all", StringComparison.OrdinalIgnoreCase))
             return SoftDeleteFilterMode.All;
@@ -1002,6 +1118,8 @@ public sealed class DocumentService(
                 new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase),
                 new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>>(StringComparer.OrdinalIgnoreCase));
         }
+
+        RecordPayloadLimits.EnsureWithinLimits(parts);
 
         var partTables = model.Meta.Tables
             .Where(t => t.Kind == TableKind.Part)
@@ -1042,7 +1160,7 @@ public sealed class DocumentService(
                 .Where(c => !IsDocumentId(c.ColumnName) && c.Type != ColumnType.Json && c.Required)
                 .ToList();
 
-            var rows = partPayload?.Rows ?? [];
+            var rows = ResolvePartRows(partPayload);
             var typedRows = new List<IReadOnlyDictionary<string, object?>>(rows.Count);
             var partLabel = GetPartLabel(partCode);
 
@@ -1087,11 +1205,6 @@ public sealed class DocumentService(
 
                     var fieldPath = $"{rowPath}.{name}";
                     var val = ConvertJsonValue(el, col.Type, fieldPath, GetLabel(col));
-
-                    if (col.Required && val is null)
-                        throw new NgbArgumentInvalidException(fieldPath,
-                            $"{GetLabel(col)} is required in {partLabel} row {rowNumber}.");
-
                     typed[name] = val;
                 }
 
@@ -1105,30 +1218,34 @@ public sealed class DocumentService(
         return (tablesToWrite, rowsByTable, rowsByPartCode);
     }
 
-    private async Task ValidateDraftPayloadAsync(
+    private async Task ValidateCreateDraftPayloadAsync(
         DocumentModel model,
-        Guid? documentId,
-        bool isCreate,
         RecordPayload payload,
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> typedPartRowsByPartCode,
         CancellationToken ct)
     {
-        // Validators are optional. When none are registered, this is a cheap no-op.
         foreach (var v in draftPayloadValidators)
         {
             if (!string.Equals(v.TypeCode, model.Meta.TypeCode, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            if (isCreate)
-            {
-                await v.ValidateCreateDraftPayloadAsync(payload, typedPartRowsByPartCode, ct);
+            await v.ValidateCreateDraftPayloadAsync(payload, typedPartRowsByPartCode, ct);
+        }
+    }
+
+    private async Task ValidateUpdateDraftPayloadAsync(
+        DocumentModel model,
+        Guid documentId,
+        RecordPayload payload,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> typedPartRowsByPartCode,
+        CancellationToken ct)
+    {
+        foreach (var v in draftPayloadValidators)
+        {
+            if (!string.Equals(v.TypeCode, model.Meta.TypeCode, StringComparison.OrdinalIgnoreCase))
                 continue;
-            }
 
-            if (documentId is null)
-                throw new NgbInvariantViolationException("Draft payload validation for update requires documentId.");
-
-            await v.ValidateUpdateDraftPayloadAsync(documentId.Value, payload, typedPartRowsByPartCode, ct);
+            await v.ValidateUpdateDraftPayloadAsync(documentId, payload, typedPartRowsByPartCode, ct);
         }
     }
 
@@ -1218,10 +1335,10 @@ public sealed class DocumentService(
         return result;
     }
 
-    private static object? ConvertJsonValue(JsonElement el, ColumnType type, string name)
+    internal static object? ConvertJsonValue(JsonElement el, ColumnType type, string name)
         => ConvertJsonValue(el, type, name, ValidationMessageFormatter.ToLabel(ExtractFieldKey(name), type));
 
-    private static object? ConvertJsonValue(JsonElement el, ColumnType type, string name, string label)
+    internal static object? ConvertJsonValue(JsonElement el, ColumnType type, string name, string label)
     {
         if (el.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             return null;
@@ -1236,23 +1353,23 @@ public sealed class DocumentService(
 
                 ColumnType.Int32 => el.ValueKind == JsonValueKind.Number
                     ? el.GetInt32()
-                    : int.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                    : int.Parse(GetJsonScalarText(el), CultureInfo.InvariantCulture),
 
                 ColumnType.Int64 => el.ValueKind == JsonValueKind.Number
                     ? el.GetInt64()
-                    : long.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                    : long.Parse(GetJsonScalarText(el), CultureInfo.InvariantCulture),
 
                 ColumnType.Decimal => el.ValueKind == JsonValueKind.Number
                     ? el.GetDecimal()
-                    : ParseDecimalInvariantStrict(el.GetString() ?? el.ToString()),
+                    : ParseDecimalInvariantStrict(GetJsonScalarText(el)),
 
                 ColumnType.Boolean => el.ValueKind == JsonValueKind.True || el.ValueKind == JsonValueKind.False
                     ? el.GetBoolean()
-                    : bool.Parse(el.GetString() ?? el.ToString()),
+                    : bool.Parse(GetJsonScalarText(el)),
 
                 ColumnType.Guid => el.ParseGuidOrRef(),
 
-                ColumnType.Date => DateOnly.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture),
+                ColumnType.Date => DateOnly.Parse(GetJsonScalarText(el), CultureInfo.InvariantCulture),
 
                 ColumnType.DateTimeUtc => ParseUtc(el, name),
 
@@ -1267,7 +1384,7 @@ public sealed class DocumentService(
         }
     }
 
-    private static string ExtractFieldKey(string path)
+    internal static string ExtractFieldKey(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
             return path;
@@ -1278,9 +1395,12 @@ public sealed class DocumentService(
             : path;
     }
 
+    internal static string GetJsonScalarText(JsonElement element)
+        => element.ValueKind == JsonValueKind.String ? element.GetString()! : element.ToString();
+
     private static DateTime ParseUtc(JsonElement el, string name)
     {
-        var s = el.GetString() ?? el.ToString();
+        var s = GetJsonScalarText(el);
         var dt = DateTime.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
         dt.EnsureUtc(name);
         return dt;
@@ -1324,7 +1444,7 @@ public sealed class DocumentService(
             Number: row.Number);
     }
 
-    private static DocumentStatus ToContractStatus(Core.Documents.DocumentStatus status)
+    internal static DocumentStatus ToContractStatus(Core.Documents.DocumentStatus status)
         => status switch
         {
             Core.Documents.DocumentStatus.Draft => DocumentStatus.Draft,
@@ -1336,22 +1456,20 @@ public sealed class DocumentService(
     private static bool IsDocumentId(string name)
         => string.Equals(name, "document_id", StringComparison.OrdinalIgnoreCase);
 
-    private static DocumentTypeMetadataDto ToDto(DocumentTypeMetadata meta)
+    internal static IReadOnlyList<IReadOnlyDictionary<string, JsonElement>> ResolvePartRows(RecordPartPayload? payload)
+        => payload?.Rows ?? [];
+
+    internal static IReadOnlyList<IReadOnlyDictionary<string, object?>> ResolveStoredPartRows(
+        IReadOnlyList<IReadOnlyDictionary<string, object?>>? rows)
+        => rows ?? [];
+
+    internal static DocumentTypeMetadataDto ToDto(DocumentTypeMetadata meta)
     {
         var head = meta.Tables.FirstOrDefault(x => x.Kind == TableKind.Head);
         var columns = head?.Columns
             .Where(x => !string.Equals(x.ColumnName, "document_id", StringComparison.OrdinalIgnoreCase))
             .ToList() ?? [];
         var amountField = NormalizeOptionalMetadataField(meta.Presentation?.AmountField);
-
-        static string ToTitle(string code)
-        {
-            if (string.IsNullOrWhiteSpace(code))
-                return code;
-
-            var parts = code.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            return string.Join(' ', parts.Select(p => char.ToUpperInvariant(p[0]) + p[1..]));
-        }
 
         var listColumnDefs = columns
             .Where(x => x.Type != ColumnType.Json)
@@ -1458,6 +1576,15 @@ public sealed class DocumentService(
             Capabilities: new DocumentCapabilitiesDto(SupportsActions: false));
     }
 
+    internal static string ToTitle(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return code;
+
+        var parts = code.Split('_', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return string.Join(' ', parts.Select(p => char.ToUpperInvariant(p[0]) + p[1..]));
+    }
+
     private static void AppendPreferredListColumnIfMissing(
         List<DocumentColumnMetadata> listColumnDefs,
         IReadOnlyList<DocumentColumnMetadata> allColumns,
@@ -1474,7 +1601,7 @@ public sealed class DocumentService(
             listColumnDefs.Add(preferredColumn);
     }
 
-    private static LookupSourceDto? ToLookupDto(LookupSourceMetadata? lookup)
+    internal static LookupSourceDto? ToLookupDto(LookupSourceMetadata? lookup)
         => lookup switch
         {
             CatalogLookupSourceMetadata catalog => new CatalogLookupSourceDto(catalog.CatalogType),
@@ -1493,7 +1620,7 @@ public sealed class DocumentService(
             ? null
             : new MirroredDocumentRelationshipDto(mirroredRelationship.RelationshipCode);
 
-    private static DataType ToDataType(ColumnType type)
+    internal static DataType ToDataType(ColumnType type)
         => type switch
         {
             ColumnType.String => DataType.String,
@@ -1574,7 +1701,7 @@ public sealed class DocumentService(
         {
             var partCode = t.GetRequiredPartCode(model.Meta.TypeCode);
             rowsByTable.TryGetValue(t.TableName, out var rows);
-            rows ??= Array.Empty<IReadOnlyDictionary<string, object?>>();
+            rows = ResolveStoredPartRows(rows);
 
             var partRows = new List<IReadOnlyDictionary<string, JsonElement>>(rows.Count);
 

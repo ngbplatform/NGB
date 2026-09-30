@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Accounting.Documents;
 using NGB.Core.AuditLog;
 using NGB.Persistence.AuditLog;
-using NGB.Runtime.AuditLog;
 using NGB.Runtime.Documents;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using Xunit;
@@ -14,7 +13,7 @@ namespace NGB.Runtime.IntegrationTests.AuditLog;
 /// P0: No-op operations must not call AuditLogService, therefore must not touch platform_users.
 /// Additional coverage for deletion-marking no-op paths.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_NoOpOperations_DoesNotTouchPlatformUsers_P0Tests_Part2(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

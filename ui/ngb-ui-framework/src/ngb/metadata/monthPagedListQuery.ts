@@ -28,7 +28,6 @@ export function monthValueToDateOnlyEnd(monthValue: string): string | undefined 
   if (!/^\d{4}-\d{2}$/.test(monthValue)) return undefined
 
   const [year, month] = monthValue.split('-').map((part) => Number(part))
-  if (!Number.isFinite(year) || !Number.isFinite(month)) return undefined
 
   const lastDay = new Date(year, month, 0).getDate()
   return `${monthValue}-${String(lastDay).padStart(2, '0')}`

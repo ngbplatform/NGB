@@ -85,7 +85,7 @@
 
             <div v-if="expanded.has(n.id)" class="mt-1 pl-8 space-y-1">
               <button
-                v-for="c in (n.children ?? [])"
+                v-for="c in n.children"
                 :key="c.id"
                 class="w-full h-9 rounded-[var(--ngb-radius)] px-2 border flex items-center gap-2 text-left"
                 :class="leafClass(c)"
@@ -237,10 +237,10 @@ function isDisabled(n: SiteNavNode) {
 }
 
 function onLeafClick(n: SiteNavNode) {
-  if (isDisabled(n) || !n.route) return;
+  if (isDisabled(n)) return;
   // leaf click selects and navigates
-  emit('select', n.id, n.route);
-  emit('navigate', n.route);
+  emit('select', n.id, n.route!);
+  emit('navigate', n.route!);
 }
 
 function leafClass(n: SiteNavNode) {

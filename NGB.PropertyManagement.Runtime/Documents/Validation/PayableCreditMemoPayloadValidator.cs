@@ -40,10 +40,7 @@ internal sealed class PayableCreditMemoPayloadValidator(
             return;
 
         var snapshot = await ResolveSnapshotAsync(documentId, payload, ct);
-        if (snapshot is null)
-            return;
-
-        await ValidateBusinessRulesAsync(snapshot.Value, ct);
+        await ValidateBusinessRulesAsync(snapshot!.Value, ct);
     }
 
     private async Task<Snapshot?> ResolveSnapshotAsync(Guid? documentId, RecordPayload payload, CancellationToken ct)
@@ -148,7 +145,7 @@ internal sealed class PayableCreditMemoPayloadValidator(
         {
             value = el.ValueKind == JsonValueKind.Number
                 ? el.GetDecimal()
-                : decimal.Parse(el.GetString() ?? el.ToString(), CultureInfo.InvariantCulture);
+                : decimal.Parse(el.GetString()!, CultureInfo.InvariantCulture);
             return true;
         }
         catch

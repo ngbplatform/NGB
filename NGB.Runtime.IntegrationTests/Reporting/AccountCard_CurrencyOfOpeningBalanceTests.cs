@@ -15,7 +15,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AccountCard_CurrencyOfOpeningBalanceTests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly Dec = new(2025, 12, 1);
@@ -91,8 +91,8 @@ public sealed class AccountCard_CurrencyOfOpeningBalanceTests(PostgresTestFixtur
             // Totals must be independent of paging (but we don't hardcode the amount here).
             expectedTotalDebit ??= page.TotalDebit;
             expectedTotalCredit ??= page.TotalCredit;
-            page.TotalDebit.Should().Be(expectedTotalDebit.Value);
-            page.TotalCredit.Should().Be(expectedTotalCredit.Value);
+            page.TotalDebit.Should().Be(expectedTotalDebit!.Value);
+            page.TotalCredit.Should().Be(expectedTotalCredit!.Value);
 
             // The page opening is the running balance right before the first line of this page.
             page.OpeningBalance.Should().Be(expectedOpening);

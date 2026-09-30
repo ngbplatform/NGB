@@ -47,6 +47,7 @@ describe('trade static command palette items', () => {
     ['trd.purchases_by_vendor', 'bar-chart'],
     ['accounting.general_journal', 'receipt'],
     ['unknown.report', 'bar-chart'],
+    [null, 'bar-chart'],
   ])('resolves report icon for %s', (reportCode, expectedIcon) => {
     expect(resolveTradeReportPaletteIcon({ reportCode })).toBe(expectedIcon)
   })

@@ -17,7 +17,7 @@ using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.Persistence.WorkCenter;
 using NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
-using NGB.PropertyManagement.PostgreSql.Bootstrap;
+using NGB.PropertyManagement.Security;
 using NGB.PropertyManagement.Runtime.DocumentActions;
 using NGB.PropertyManagement.WorkCenter;
 using NGB.Runtime.UnitOfWork;
@@ -495,8 +495,8 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
     {
         await using var scope = factory.Services.CreateAsyncScope();
         await scope.ServiceProvider
-            .GetRequiredService<PropertyManagementSecuritySeeder>()
-            .EnsureSeededAsync(CancellationToken.None);
+            .GetRequiredService<IPropertyManagementSecuritySetupService>()
+            .EnsureDefaultsAsync(CancellationToken.None);
 
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         var users = scope.ServiceProvider.GetRequiredService<IPlatformUserRepository>();

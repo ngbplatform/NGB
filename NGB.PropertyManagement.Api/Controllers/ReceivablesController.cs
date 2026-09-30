@@ -66,6 +66,35 @@ public sealed class ReceivablesController(INgbAccessChecker access) : Controller
             ct);
     }
 
+    [HttpGet("open-items/details/page")]
+    public async Task<ReceivablesOpenItemsDetailsResponse> GetOpenItemsDetailsPage(
+        [FromServices] IReceivablesOpenItemsDetailsService service,
+        [FromQuery] Guid leaseId,
+        [FromQuery] Guid? partyId,
+        [FromQuery] Guid? propertyId,
+        [FromQuery] DateOnly? asOfMonth,
+        [FromQuery] DateOnly? toMonth,
+        [FromQuery] int? chargeOffset,
+        [FromQuery] int? creditOffset,
+        [FromQuery] int? allocationOffset,
+        [FromQuery] int? limit,
+        CancellationToken ct)
+    {
+        await RequirePageAsync(PropertyManagementSecurityDefaults.ReceivablesOpenItemsPage, ct);
+
+        return await service.GetOpenItemsDetailsPageAsync(
+            partyId ?? Guid.Empty,
+            propertyId ?? Guid.Empty,
+            leaseId,
+            asOfMonth,
+            toMonth,
+            chargeOffset ?? 0,
+            creditOffset ?? 0,
+            allocationOffset ?? 0,
+            limit ?? 100,
+            ct);
+    }
+
     [HttpPost("apply/fifo/suggest")]
     public async Task<ReceivablesFifoApplySuggestResponse> SuggestFifoApply(
         [FromServices] IReceivablesFifoApplySuggestService service,
@@ -132,6 +161,10 @@ public sealed class ReceivablesController(INgbAccessChecker access) : Controller
         [FromQuery] DateOnly fromMonthInclusive,
         [FromQuery] DateOnly toMonthInclusive,
         [FromQuery] ReceivablesReconciliationMode? mode,
+        [FromQuery] int? offset,
+        [FromQuery] int? limit,
+        [FromQuery] string? cursor,
+        [FromQuery] ReceivablesReconciliationStatusFilter? status,
         CancellationToken ct)
     {
         await RequirePageAsync(PropertyManagementSecurityDefaults.ReceivablesReconciliationPage, ct);
@@ -139,7 +172,11 @@ public sealed class ReceivablesController(INgbAccessChecker access) : Controller
             new ReceivablesReconciliationRequest(
                 fromMonthInclusive,
                 toMonthInclusive,
-                mode ?? ReceivablesReconciliationMode.Movement),
+                mode ?? ReceivablesReconciliationMode.Movement,
+                offset ?? 0,
+                limit ?? 200,
+                cursor,
+                status ?? ReceivablesReconciliationStatusFilter.All),
             ct);
     }
 

@@ -37,7 +37,9 @@ public sealed class WorkCenterHub(IPermissionSnapshotProvider snapshots) : Hub
 internal sealed class SignalRWorkCenterRealtimeNotifier(IHubContext<WorkCenterHub> hub)
     : IWorkCenterRealtimeNotifier
 {
-    public Task NotifyUsersChangedAsync(long version, IReadOnlyCollection<Guid> userIds, CancellationToken ct)
+    private const int GroupBatchSize = 500;
+
+    public async Task NotifyUsersChangedAsync(long version, IReadOnlyCollection<Guid> userIds, CancellationToken ct)
     {
         var groups = userIds
             .Where(static x => x != Guid.Empty)
@@ -45,9 +47,10 @@ internal sealed class SignalRWorkCenterRealtimeNotifier(IHubContext<WorkCenterHu
             .Select(WorkCenterHub.GroupName)
             .ToArray();
 
-        return groups.Length == 0
-            ? Task.CompletedTask
-            : hub.Clients.Groups(groups).SendAsync("workCenterChanged", version, ct);
+        foreach (var batch in groups.Chunk(GroupBatchSize))
+        {
+            await hub.Clients.Groups(batch).SendAsync("workCenterChanged", version, ct);
+        }
     }
 }
 

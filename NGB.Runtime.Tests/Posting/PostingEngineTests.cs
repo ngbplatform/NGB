@@ -28,8 +28,11 @@ public sealed class PostingEngineTests
 
         var dimensionSetService = new Mock<NGB.Runtime.Dimensions.IDimensionSetService>(MockBehavior.Loose);
         dimensionSetService
-            .Setup(x => x.GetOrCreateIdAsync(It.IsAny<NGB.Core.Dimensions.DimensionBag>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.Empty);
+            .Setup(x => x.GetOrCreateIdsAsync(
+                It.IsAny<IReadOnlyList<NGB.Core.Dimensions.DimensionBag>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<NGB.Core.Dimensions.DimensionBag> bags, CancellationToken _) =>
+                bags.Select(static _ => Guid.Empty).ToArray());
 
         var engine = new PostingEngine(
             contextFactory: contextFactory.Object,

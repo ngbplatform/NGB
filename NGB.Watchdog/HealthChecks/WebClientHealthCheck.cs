@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Configuration;
-using NGB.Api;
+using NGB.Hosting.AspNetCore.Health;
 
 namespace NGB.Watchdog.HealthChecks;
 

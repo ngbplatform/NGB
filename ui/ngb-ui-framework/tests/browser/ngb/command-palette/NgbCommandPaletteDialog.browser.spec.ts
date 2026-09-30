@@ -2,7 +2,7 @@ import { page } from 'vitest/browser'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { createPinia } from 'pinia'
-import { defineComponent, h, ref, watch } from 'vue'
+import { defineComponent, h, nextTick, ref, watch } from 'vue'
 import { RouterView, createMemoryHistory, createRouter, useRoute } from 'vue-router'
 
 import NgbCommandPaletteDialog from '../../../../src/ngb/command-palette/NgbCommandPaletteDialog.vue'
@@ -218,18 +218,26 @@ function optionByItemKey(itemKey: string): HTMLElement {
   return option as HTMLElement
 }
 
+function renderedScopeBadge(): string | null {
+  const input = document.querySelector('[data-testid="command-palette-input"]')
+  const header = input?.closest('.border-b')
+  return header?.querySelector<HTMLElement>('.mt-2 span')?.textContent?.trim() ?? null
+}
+
 async function renderPaletteHarness(
   initialRoute = '/home',
   options: {
     searchRemote?: CommandPaletteStoreConfig['searchRemote']
+    menuGroups?: readonly CommandPaletteMenuGroup[]
+    specialPageItems?: CommandPaletteStoreConfig['specialPageItems']
   } = {},
 ) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/home', component: { template: '<div>Home route</div>' } },
-      { path: '/payables/open-items', component: { template: '<div>Payables route</div>' } },
-      { path: '/settings', component: { template: '<div>Settings route</div>' } },
+      { path: '/home', component: { render: () => h('div', 'Home route') } },
+      { path: '/payables/open-items', component: { render: () => h('div', 'Payables route') } },
+      { path: '/settings', component: { render: () => h('div', 'Settings route') } },
       { path: '/documents/pm.invoice/:id', component: InvoiceRouteWithContext },
     ],
   })
@@ -237,23 +245,25 @@ async function renderPaletteHarness(
   configureNgbCommandPalette({
     router,
     recentStorageKey,
-    getMenuGroups: () => menuGroups,
+    getMenuGroups: () => options.menuGroups ?? menuGroups,
     loadReportItems: async () => [],
-    specialPageItems,
+    specialPageItems: options.specialPageItems ?? specialPageItems,
     searchRemote: options.searchRemote,
   })
 
   await router.push(initialRoute)
   await router.isReady()
 
+  const pinia = createPinia()
   const view = await render(PaletteHarness, {
     global: {
-      plugins: [createPinia(), router],
+      plugins: [pinia, router],
     },
   })
 
   return {
     router,
+    palette: useCommandPaletteStore(pinia),
     ...view,
   }
 }
@@ -262,7 +272,7 @@ async function renderHotkeyRemountHarness() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/home', component: { template: '<div>Home route</div>' } },
+      { path: '/home', component: { render: () => h('div', 'Home route') } },
     ],
   })
 
@@ -338,6 +348,64 @@ test('filters local menu items and navigates on Enter', async () => {
   expect(document.querySelector('[data-testid=\"command-palette-dialog\"]')).toBeNull()
 })
 
+test('renders every scoped-query badge and both empty-state announcements', async () => {
+  await page.viewport(1024, 900)
+
+  const view = await renderPaletteHarness('/home', {
+    menuGroups: [],
+    specialPageItems: [],
+  })
+  await view.getByTestId('palette-opener').click()
+
+  await expect.element(view.getByText('Search pages, records, reports, or run a command')).toBeVisible()
+  expect(document.querySelector('[aria-live="polite"]')?.textContent).toContain('Showing command palette shortcuts.')
+
+  const input = view.getByTestId('command-palette-input')
+  const scopes = [
+    ['>', 'Commands'],
+    ['/', 'Pages'],
+    ['#', 'Reports'],
+    [':', 'Documents'],
+    ['@', 'Catalogs'],
+  ] as const
+
+  for (const [query, label] of scopes) {
+    await input.fill(query)
+    await expect.poll(renderedScopeBadge).toBe(label)
+  }
+
+  await input.fill('nothing-matches-this-query')
+  await expect.element(view.getByText('No results for “nothing-matches-this-query”')).toBeVisible()
+  expect(document.querySelector('[aria-live="polite"]')?.textContent).toContain('No results for nothing-matches-this-query.')
+})
+
+test('announces remote loading and failure while keeping the dialog usable', async () => {
+  await page.viewport(1024, 900)
+
+  let rejectSearch!: (reason: unknown) => void
+  const searchRemote: NonNullable<CommandPaletteStoreConfig['searchRemote']> = () => new Promise((_, reject) => {
+    rejectSearch = reject
+  })
+  const view = await renderPaletteHarness('/home', { searchRemote })
+  await view.getByTestId('palette-opener').click()
+
+  const input = view.getByTestId('command-palette-input')
+  await input.fill('home')
+  await expect.poll(() => document.body.textContent).toContain('Updating remote results…')
+  expect(document.querySelector('[aria-live="polite"]')?.textContent).toContain('Updating remote results.')
+
+  await wait(180)
+  rejectSearch(new Error('Remote endpoint unavailable'))
+
+  await expect.poll(() => document.querySelector('#ngb-command-palette-listbox')?.textContent).toContain('Remote endpoint unavailable')
+  expect(document.querySelector('[aria-live="polite"]')?.textContent).toContain('Remote endpoint unavailable')
+
+  await input.fill('nothing-matches-remotely')
+  await wait(180)
+  rejectSearch(new Error('No remote results available'))
+  await expect.element(view.getByRole('alert')).toHaveTextContent('No remote results available')
+})
+
 test('navigates local results using only the keyboard after opening from the global shortcut', async () => {
   await page.viewport(1024, 900)
 
@@ -350,6 +418,8 @@ test('navigates local results using only the keyboard after opening from the glo
   await input.fill('payables')
   await expect.element(view.getByRole('option', { name: /Payables/i })).toBeVisible()
 
+  dispatchKey(input.element() as HTMLElement, 'ArrowUp')
+  dispatchKey(input.element() as HTMLElement, 'Unidentified')
   dispatchKey(input.element() as HTMLElement, 'ArrowDown')
   await wait()
   expect(String((input.element() as HTMLInputElement).getAttribute('aria-activedescendant') ?? '')).toContain('ngb-command-palette-option-')
@@ -397,6 +467,46 @@ test('clears the previous query when reopened after Escape', async () => {
   dispatchShortcut(window)
   await expect.element(view.getByTestId('command-palette-dialog')).toBeVisible()
   expect((view.getByTestId('command-palette-input').element() as HTMLInputElement).value).toBe('')
+})
+
+test('keeps the combobox focused when the palette is reopened immediately', async () => {
+  await page.viewport(1024, 900)
+
+  const view = await renderPaletteHarness()
+  await view.getByTestId('palette-opener').click()
+  view.palette.close()
+  await nextTick()
+  view.palette.open()
+
+  await expect.element(view.getByTestId('command-palette-dialog')).toBeVisible()
+  expect(document.activeElement).toBe(view.getByTestId('command-palette-input').element())
+})
+
+test('ignores focus requests while closed and non-element document focus targets', async () => {
+  const view = await renderPaletteHarness()
+
+  document.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+  document.body.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+  view.palette.focusRequestKey += 1
+  await nextTick()
+
+  expect(view.palette.isOpen).toBe(false)
+  expect(document.querySelector('[data-testid="command-palette-dialog"]')).toBeNull()
+})
+
+test('bounds focus retries when the browser refuses to focus the combobox', async () => {
+  await page.viewport(1024, 900)
+
+  const focusSpy = vi.spyOn(HTMLInputElement.prototype, 'focus').mockImplementation(() => {})
+  try {
+    const view = await renderPaletteHarness()
+    await view.getByTestId('palette-opener').click()
+    await wait(220)
+
+    expect(focusSpy.mock.calls.length).toBeGreaterThanOrEqual(4)
+  } finally {
+    focusSpy.mockRestore()
+  }
 })
 
 test('closes cleanly after Escape when opened from an external launcher button', async () => {
@@ -559,6 +669,27 @@ test('opens the active item in a new tab when Ctrl/Cmd+Enter is pressed', async 
   await expect.poll(() => document.querySelector('[data-testid="command-palette-dialog"]')).toBeNull()
 })
 
+test('opens a supported clicked item in a new tab when the primary modifier is held', async () => {
+  await page.viewport(1024, 900)
+
+  const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+  const view = await renderPaletteHarness()
+  await view.getByTestId('palette-opener').click()
+  const input = view.getByTestId('command-palette-input')
+  await input.fill('payables')
+
+  const option = view.getByRole('option', { name: /Payables/i }).element()
+  option.dispatchEvent(new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+    metaKey: isMacPlatform(),
+    ctrlKey: !isMacPlatform(),
+  }))
+
+  await wait(220)
+  expect(openSpy).toHaveBeenCalledWith('/payables/open-items', '_blank', 'noopener,noreferrer')
+})
+
 test('renders authorized pages and persists them as recents across store instances', async () => {
   await page.viewport(1024, 900)
 
@@ -618,8 +749,12 @@ test('shows explicit page-context actions in the dialog and executes them from t
 
   const approveOption = view.getByRole('option', { name: /Approve invoice/i })
   await expect.element(approveOption).toBeVisible()
-  ;(approveOption.element() as HTMLElement).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
-  dispatchKey(input.element() as HTMLElement, 'Enter')
+  approveOption.element().dispatchEvent(new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+    metaKey: isMacPlatform(),
+    ctrlKey: !isMacPlatform(),
+  }))
 
   await wait(180)
 

@@ -5,6 +5,7 @@ using NGB.Accounting.Posting.Validators;
 using NGB.Definitions;
 using NGB.Metadata.Documents.Hybrid;
 using NGB.Runtime.DependencyInjection;
+using NGB.Runtime.Hosting;
 using NGB.PostgreSql.DependencyInjection;
 using Xunit;
 
@@ -45,7 +46,7 @@ public sealed class Definitions_StartupValidation_FailsFast_DocumentRelationship
             })
             .ConfigureServices(services =>
             {
-                services.AddNgbRuntime();
+                services.AddNgbRuntime().AddNgbRuntimeStartupValidation();
                 services.AddNgbPostgres(fixture.ConnectionString);
                 services.AddScoped<IAccountingPostingValidator, BasicAccountingPostingValidator>();
 

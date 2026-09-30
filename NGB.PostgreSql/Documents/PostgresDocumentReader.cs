@@ -2,11 +2,13 @@ using System.Data;
 using System.Globalization;
 using System.Text.Json;
 using Dapper;
+using NGB.Contracts.Common;
 using NGB.Core.Documents;
 using NGB.Metadata.Base;
 using NGB.Persistence.Common;
 using NGB.Persistence.Documents.Universal;
 using NGB.Persistence.UnitOfWork;
+using NGB.PostgreSql.Search;
 using NGB.Tools.Exceptions;
 
 namespace NGB.PostgreSql.Documents;
@@ -14,7 +16,7 @@ namespace NGB.PostgreSql.Documents;
 internal sealed class PostgresDocumentReader(
     IUnitOfWork uow,
     IEnumerable<IPostgresDocumentListFilterSqlContributor> filterSqlContributors)
-    : IDocumentReader
+    : IDocumentSeekPageReader
 {
     public async Task<long> CountAsync(DocumentHeadDescriptor head, DocumentQuery query, CancellationToken ct = default)
     {
@@ -62,6 +64,8 @@ internal sealed class PostgresDocumentReader(
         if (limit <= 0)
             throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
 
+        offset = PagingLimits.BoundOffset(offset);
+
         await uow.EnsureConnectionOpenAsync(ct);
 
         var where = BuildWhere(head, query);
@@ -94,9 +98,285 @@ internal sealed class PostgresDocumentReader(
             transaction: uow.Transaction,
             cancellationToken: ct));
 
-        return rows
-            .Select(r => ToRow(head, (IDictionary<string, object?>)r))
-            .ToList();
+        var result = new List<DocumentHeadRow>();
+        foreach (var row in rows)
+        {
+            result.Add(ToRow(head, (IDictionary<string, object?>)row));
+        }
+
+        return result;
+    }
+
+    public async Task<DocumentHeadQueryPage> GetPageWithTotalAsync(
+        DocumentHeadDescriptor head,
+        DocumentQuery query,
+        int offset,
+        int limit,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+
+        if (offset < 0)
+            throw new NgbArgumentOutOfRangeException(nameof(offset), offset, "Argument is out of range.");
+
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        offset = PagingLimits.BoundOffset(offset);
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var where = BuildWhere(head, query);
+        var parameters = where.Params;
+        parameters.Add("typeCode", head.TypeCode);
+        parameters.Add("offset", offset);
+        parameters.Add("limit", limit);
+
+        var countSql = where.HasHeadCriteria
+            ? $"""
+               SELECT COUNT(*)
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql});
+               """
+            : $"""
+               SELECT COUNT(*)
+                 FROM documents d
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql});
+               """;
+
+        var pageSql = where.HasHeadCriteria
+            ? $"""
+               SELECT d.id     AS "Id",
+                      d.status AS "Status",
+                      d.number AS "Number",
+                      COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display"{BuildSelectFields(head)},
+                      COUNT(*) OVER() AS "TotalCount"
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql})
+                ORDER BY h.{Qi(head.DisplayColumn)} NULLS LAST, d.id
+                OFFSET @offset
+                 LIMIT @limit;
+               """
+            : $"""
+               SELECT rows.*,
+                      COUNT(*) OVER() AS "TotalCount"
+                 FROM (
+                     SELECT d.id     AS "Id",
+                            d.status AS "Status",
+                            d.number AS "Number",
+                            COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display",
+                            h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                       FROM {Qi(head.HeadTableName)} h
+                       JOIN documents d ON d.id = h.document_id
+                      WHERE d.type_code = @typeCode
+                        AND ({where.Sql})
+                     UNION ALL
+                     SELECT d.id     AS "Id",
+                            d.status AS "Status",
+                            d.number AS "Number",
+                            d.id::text AS "Display",
+                            NULL::text AS "SortDisplay"{BuildNullSelectFields(head)}
+                       FROM documents d
+                      WHERE d.type_code = @typeCode
+                        AND ({where.Sql})
+                        AND NOT EXISTS (
+                            SELECT 1
+                              FROM {Qi(head.HeadTableName)} h
+                             WHERE h.document_id = d.id
+                        )
+                 ) rows
+                ORDER BY "SortDisplay" NULLS LAST, "Id"
+                OFFSET @offset
+                 LIMIT @limit;
+               """;
+
+        var rows = (await uow.Connection.QueryAsync(new CommandDefinition(
+            pageSql,
+            parameters,
+            transaction: uow.Transaction,
+            cancellationToken: ct))).AsList();
+        var total = rows.Count == 0
+            ? 0
+            : Convert.ToInt64(((IDictionary<string, object?>)rows[0])["TotalCount"]!);
+
+        if (rows.Count == 0 && offset > 0)
+        {
+            total = await uow.Connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                countSql,
+                parameters,
+                transaction: uow.Transaction,
+                cancellationToken: ct));
+        }
+
+        return new DocumentHeadQueryPage(
+            rows.Select(row => ToRow(head, (IDictionary<string, object?>)row)).ToArray(),
+            total);
+    }
+
+    public async Task<DocumentHeadSeekPage> GetSeekPageAsync(
+        DocumentHeadDescriptor head,
+        DocumentQuery query,
+        string? afterDisplay,
+        Guid? afterId,
+        int limit,
+        bool includeTotal,
+        CancellationToken ct = default)
+    {
+        EnsureValid(head);
+        if (limit <= 0)
+            throw new NgbArgumentOutOfRangeException(nameof(limit), limit, "Argument is out of range.");
+
+        if (afterId == Guid.Empty)
+            throw new NgbArgumentInvalidException(nameof(afterId), "Cursor ID must not be empty.");
+
+        await uow.EnsureConnectionOpenAsync(ct);
+
+        var where = BuildWhere(head, query);
+        var parameters = where.Params;
+
+        parameters.Add("typeCode", head.TypeCode);
+        parameters.Add("afterDisplay", afterDisplay);
+        parameters.Add("afterId", afterId);
+        parameters.Add("limitPlusOne", checked(limit + 1));
+
+        var countSql = where.HasHeadCriteria
+            ? $"""
+               SELECT COUNT(*)
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql});
+               """
+            : $"""
+               SELECT COUNT(*)
+                 FROM documents d
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql});
+               """;
+
+        var sourceSql = where.HasHeadCriteria
+            ? $"""
+               SELECT d.id AS "Id",
+                      d.status AS "Status",
+                      d.number AS "Number",
+                      COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display",
+                      h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql})
+               """
+            : $"""
+               SELECT d.id AS "Id",
+                      d.status AS "Status",
+                      d.number AS "Number",
+                      COALESCE(h.{Qi(head.DisplayColumn)}, d.id::text) AS "Display",
+                      h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                 FROM {Qi(head.HeadTableName)} h
+                 JOIN documents d ON d.id = h.document_id
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql})
+               UNION ALL
+               SELECT d.id AS "Id",
+                      d.status AS "Status",
+                      d.number AS "Number",
+                      d.id::text AS "Display",
+                      NULL::text AS "SortDisplay"{BuildNullSelectFields(head)}
+                 FROM documents d
+                WHERE d.type_code = @typeCode
+                  AND ({where.Sql})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM {Qi(head.HeadTableName)} h WHERE h.document_id = d.id)
+               """;
+
+        var pageSql = $"""
+SELECT *
+FROM (
+{sourceSql}
+) rows
+WHERE @afterId::uuid IS NULL
+   OR (
+        @afterDisplay::text IS NULL
+        AND "SortDisplay" IS NULL
+        AND "Id" > @afterId)
+   OR (
+        @afterDisplay::text IS NOT NULL
+        AND (
+            "SortDisplay" > @afterDisplay
+            OR ("SortDisplay" = @afterDisplay AND "Id" > @afterId)
+            OR "SortDisplay" IS NULL))
+ORDER BY "SortDisplay" NULLS LAST, "Id"
+LIMIT @limitPlusOne;
+""";
+
+        long? total = null;
+        async Task<IReadOnlyList<IDictionary<string, object?>>> ReadPageAsync(string sql, bool readTotal)
+        {
+            if (readTotal)
+            {
+                await using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                    $"{countSql}\n{sql}",
+                    parameters,
+                    transaction: uow.Transaction,
+                    cancellationToken: ct));
+                total = await results.ReadSingleAsync<long>();
+
+                return (await results.ReadAsync())
+                    .Select(static row => (IDictionary<string, object?>)row)
+                    .ToArray();
+            }
+
+            return (await uow.Connection.QueryAsync(new CommandDefinition(
+                    sql,
+                    parameters,
+                    transaction: uow.Transaction,
+                    cancellationToken: ct)))
+                .Select(static row => (IDictionary<string, object?>)row)
+                .ToArray();
+        }
+
+        IReadOnlyList<IDictionary<string, object?>> materialized;
+        if (!where.HasHeadCriteria && afterId is null)
+        {
+            // A full first page of non-null displays precedes every null/missing head.
+            // Avoid scanning the missing-head anti-join on ordinary list opens.
+            var firstPageSql = $"""
+                SELECT d.id AS "Id", d.status AS "Status", d.number AS "Number",
+                       h.{Qi(head.DisplayColumn)} AS "Display",
+                       h.{Qi(head.DisplayColumn)} AS "SortDisplay"{BuildSelectFields(head)}
+                  FROM {Qi(head.HeadTableName)} h
+                  JOIN documents d ON d.id = h.document_id
+                 WHERE d.type_code = @typeCode
+                   AND ({where.Sql})
+                   AND h.{Qi(head.DisplayColumn)} IS NOT NULL
+                 ORDER BY h.{Qi(head.DisplayColumn)}, d.id
+                 LIMIT @limitPlusOne;
+                """;
+
+            materialized = await ReadPageAsync(firstPageSql, includeTotal);
+            if (materialized.Count < limit + 1)
+                materialized = await ReadPageAsync(pageSql, readTotal: false);
+        }
+        else
+        {
+            materialized = await ReadPageAsync(pageSql, includeTotal);
+        }
+
+        var hasMore = materialized.Count > limit;
+        var visible = materialized.Take(limit).ToArray();
+        var last = visible.LastOrDefault();
+
+        return new DocumentHeadSeekPage(
+            visible.Select(row => ToRow(head, row)).ToArray(),
+            total,
+            hasMore,
+            last?["SortDisplay"] as string,
+            (Guid?)last?["Id"]);
     }
 
     private async Task<IReadOnlyList<DocumentHeadRow>> GetPageWithoutHeadCriteriaAsync(
@@ -134,9 +414,12 @@ internal sealed class PostgresDocumentReader(
             transaction: uow.Transaction,
             cancellationToken: ct));
 
-        rows.AddRange(nonNullRows.Select(r => ToRow(head, (IDictionary<string, object?>)r)));
+        foreach (var row in nonNullRows)
+        {
+            rows.Add(ToRow(head, (IDictionary<string, object?>)row));
+        }
 
-        if (rows.Count == limit)
+        if (rows.Count >= limit)
             return rows;
 
         var nonNullCountSql = $"""
@@ -156,8 +439,6 @@ internal sealed class PostgresDocumentReader(
 
         var nullOffset = Math.Max(0L, offset - nonNullCount);
         var remaining = limit - rows.Count;
-        if (remaining <= 0)
-            return rows;
 
         p.Add("nullOffset", nullOffset);
         p.Add("remaining", remaining);
@@ -268,9 +549,13 @@ internal sealed class PostgresDocumentReader(
             transaction: uow.Transaction,
             cancellationToken: ct));
 
-        return rows
-            .Select(r => ToRow(head, (IDictionary<string, object?>)r))
-            .ToList();
+        var result = new List<DocumentHeadRow>();
+        foreach (var row in rows)
+        {
+            result.Add(ToRow(head, (IDictionary<string, object?>)row));
+        }
+
+        return result;
     }
 
     public async Task<IReadOnlyList<DocumentHeadRow>> GetHeadRowsByIdsAcrossTypesAsync(
@@ -381,12 +666,22 @@ internal sealed class PostgresDocumentReader(
 
         var normalizedQuery = (query ?? string.Empty).Trim();
         var hasQuery = normalizedQuery.Length > 0;
+        var queryId = Guid.TryParse(normalizedQuery, out var parsedQueryId) ? parsedQueryId : (Guid?)null;
+        var queryIdRange = default(GuidSearchRange);
+        var hasQueryIdPrefix = queryId is null && GuidSearchRange.TryCreate(normalizedQuery, out queryIdRange);
 
         var p = new DynamicParameters();
         p.Add("perTypeLimit", perTypeLimit, dbType: DbType.Int32);
         p.Add("deletedStatus", (short)DocumentStatus.MarkedForDeletion, dbType: DbType.Int16);
+
         if (hasQuery)
+        {
             p.Add("q", normalizedQuery, dbType: DbType.String);
+            p.Add("queryId", queryId, dbType: DbType.Guid);
+            p.Add("hasQueryIdPrefix", hasQueryIdPrefix, dbType: DbType.Boolean);
+            p.Add("queryIdPrefixLower", hasQueryIdPrefix ? queryIdRange.Lower : Guid.Empty, dbType: DbType.Guid);
+            p.Add("queryIdPrefixUpper", hasQueryIdPrefix ? queryIdRange.Upper : Guid.Empty, dbType: DbType.Guid);
+        }
 
         var subqueries = new List<string>(distinctHeads.Length);
 
@@ -399,33 +694,65 @@ internal sealed class PostgresDocumentReader(
             var activeFilterSql = activeOnly ? "AND d.status <> @deletedStatus" : string.Empty;
             var headDisplaySql = $"h.{Qi(head.DisplayColumn)}";
             var labelSql = $"COALESCE({headDisplaySql}, d.id::text)";
-            var fromSql = hasQuery
-                ? $"documents d LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id"
-                : $"{Qi(head.HeadTableName)} h JOIN documents d ON d.id = h.document_id";
-            var searchFilterSql = hasQuery
-                ? $"""
-                  AND (
-                      d.number ILIKE ('%' || @q::text || '%')
-                      OR {labelSql} ILIKE ('%' || @q::text || '%')
-                  )
-                  """
-                : string.Empty;
-            var orderBySql = hasQuery
-                ? $"""
-                  CASE
-                      WHEN d.number IS NOT NULL AND d.number ILIKE ('%' || @q::text || '%') THEN 0
-                      WHEN {labelSql} ILIKE ('%' || @q::text || '%') THEN 1
-                      ELSE 2
-                  END,
-                  {labelSql},
-                  d.id
-                  """
-                : $"""
-                  {headDisplaySql} NULLS LAST,
-                  d.id
-                  """;
 
-            subqueries.Add($"""
+            if (hasQuery)
+            {
+                subqueries.Add($"""
+                            (
+                                WITH candidates AS (
+                                    SELECT d.id, 0 AS rank
+                                      FROM documents d
+                                     WHERE d.type_code = @{typeCodeParam}
+                                       {activeFilterSql}
+                                       AND d.number ILIKE ('%' || @q::text || '%')
+                                    UNION ALL
+                                    SELECT h.document_id, 1 AS rank
+                                      FROM {Qi(head.HeadTableName)} h
+                                      JOIN documents d ON d.id = h.document_id
+                                     WHERE d.type_code = @{typeCodeParam}
+                                       {activeFilterSql}
+                                       AND {headDisplaySql} ILIKE ('%' || @q::text || '%')
+                                    UNION ALL
+                                    SELECT d.id, 2 AS rank
+                                      FROM documents d
+                                     WHERE d.type_code = @{typeCodeParam}
+                                       {activeFilterSql}
+                                       AND (
+                                           (@queryId IS NOT NULL AND d.id = @queryId)
+                                           OR (@hasQueryIdPrefix AND d.id BETWEEN @queryIdPrefixLower AND @queryIdPrefixUpper)
+                                       )
+                                       AND NOT EXISTS (
+                                           SELECT 1
+                                             FROM {Qi(head.HeadTableName)} missing_head
+                                            WHERE missing_head.document_id = d.id
+                                       )
+                                ),
+                                ranked_candidates AS (
+                                    SELECT id, MIN(rank) AS rank
+                                      FROM candidates
+                                     GROUP BY id
+                                )
+                                SELECT
+                                    d.id AS "Id",
+                                    @{typeCodeParam} AS "TypeCode",
+                                    d.status AS "Status",
+                                    d.status = @deletedStatus AS "IsMarkedForDeletion",
+                                    d.number AS "Number",
+                                    {labelSql} AS "Label"
+                                FROM ranked_candidates candidate
+                                JOIN documents d ON d.id = candidate.id
+                                LEFT JOIN {Qi(head.HeadTableName)} h ON h.document_id = d.id
+                                ORDER BY
+                                    candidate.rank,
+                                    {labelSql},
+                                    d.id
+                                LIMIT @perTypeLimit
+                            )
+                            """);
+            }
+            else
+            {
+                subqueries.Add($"""
                             (
                                 SELECT
                                     d.id AS "Id",
@@ -434,15 +761,17 @@ internal sealed class PostgresDocumentReader(
                                     d.status = @deletedStatus AS "IsMarkedForDeletion",
                                     d.number AS "Number",
                                     {labelSql} AS "Label"
-                                FROM {fromSql}
+                                FROM {Qi(head.HeadTableName)} h
+                                JOIN documents d ON d.id = h.document_id
                                 WHERE d.type_code = @{typeCodeParam}
                                   {activeFilterSql}
-                                  {searchFilterSql}
                                 ORDER BY
-                                    {orderBySql}
+                                    {headDisplaySql} NULLS LAST,
+                                    d.id
                                 LIMIT @perTypeLimit
                             )
                             """);
+            }
         }
 
         var sql = string.Join("\nUNION ALL\n", subqueries);
@@ -601,15 +930,16 @@ internal sealed class PostgresDocumentReader(
 
         if (query.PeriodFilter is not null)
         {
-            hasHeadCriteria = true;
             if (query.PeriodFilter.FromInclusive is not null)
             {
+                hasHeadCriteria = true;
                 p.Add("periodFrom", query.PeriodFilter.FromInclusive.Value.ToDateTime(TimeOnly.MinValue), dbType: DbType.Date);
                 clauses.Add($"{PostgresDocumentFilterSql.Qualify("h", query.PeriodFilter.ColumnName)} IS NOT NULL AND {PostgresDocumentFilterSql.Qualify("h", query.PeriodFilter.ColumnName)}::date >= @periodFrom");
             }
 
             if (query.PeriodFilter.ToInclusive is not null)
             {
+                hasHeadCriteria = true;
                 p.Add("periodTo", query.PeriodFilter.ToInclusive.Value.ToDateTime(TimeOnly.MinValue), dbType: DbType.Date);
                 clauses.Add($"{PostgresDocumentFilterSql.Qualify("h", query.PeriodFilter.ColumnName)} IS NOT NULL AND {PostgresDocumentFilterSql.Qualify("h", query.PeriodFilter.ColumnName)}::date <= @periodTo");
             }
@@ -772,22 +1102,18 @@ internal sealed class PostgresDocumentReader(
             ColumnType.Int64 => value.GetInt64(),
             ColumnType.Decimal => value.GetDecimal(),
             ColumnType.Boolean => value.GetBoolean(),
-            ColumnType.Guid => Guid.Parse(value.GetString() ?? value.ToString()),
-            ColumnType.Date => DateOnly.Parse(value.GetString() ?? value.ToString(), CultureInfo.InvariantCulture),
+            ColumnType.Guid => Guid.Parse(value.GetString()!),
+            ColumnType.Date => DateOnly.Parse(value.GetString()!, CultureInfo.InvariantCulture),
             ColumnType.DateTimeUtc => ParseUtc(value),
             _ => value.GetRawText()
         };
 
     private static DateTime ParseUtc(JsonElement value)
     {
-        var parsed = DateTime.Parse(
-            value.GetString() ?? value.ToString(),
+        return DateTime.Parse(
+            value.GetString()!,
             CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-
-        return parsed.Kind == DateTimeKind.Utc
-            ? parsed
-            : DateTime.SpecifyKind(parsed.ToUniversalTime(), DateTimeKind.Utc);
     }
 
     private static string Qi(string ident) => PostgresDocumentFilterSql.QuoteIdentifier(ident);

@@ -148,7 +148,10 @@ test('switches shell drawers, navigates from settings, toggles theme, and forwar
   await expect.element(view.getByText('Preferences', { exact: true })).toBeVisible()
   await expect.element(view.getByText('Rules', { exact: true })).toBeVisible()
 
-  await view.getByText('Preferences', { exact: true }).click()
+  await vi.waitFor(() => {
+    expect(visibleButtonContainingText('Preferences')).toBeTruthy()
+  })
+  await visibleButtonContainingText('Preferences').click()
 
   await expect.element(view.getByTestId('site-shell-last-navigate')).toHaveTextContent('/settings/preferences')
   await vi.waitFor(() => {

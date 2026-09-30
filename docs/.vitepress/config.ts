@@ -75,6 +75,7 @@ export default defineConfig({
           page('Document Actions', '/architecture/document-actions'),
           page('Accounting Effects', '/architecture/accounting-effects'),
           page('Reporting: Canonical and Composable', '/architecture/reporting'),
+          page('Report Browsing and Direct Downloads', '/architecture/report-execution-results'),
           page('Accounting and Posting', '/architecture/accounting-posting'),
           page('Closing Period', '/architecture/closing-period'),
           page('Operational Registers', '/architecture/operational-registers'),
@@ -173,6 +174,7 @@ export default defineConfig({
           page('Add a Composable Report', '/guides/add-composable-report-workflow')
         ]),
         section('Upgrade and Migration', [
+          page('Migrate 2.0.0 to 3.0.0', '/guides/migrating-to-3.0'),
           page('Migrate 1.3.1 to 2.0.0', '/guides/migrating-to-2.0')
         ]),
         section('Scenario Guides', [

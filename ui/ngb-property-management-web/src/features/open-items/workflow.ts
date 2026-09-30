@@ -1,4 +1,4 @@
-import { computed, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, getCurrentScope, onScopeDispose, ref, type ComputedRef, type Ref } from 'vue'
 
 import { buildApplyResultSubtitle, buildApplyResultTitle, type OpenItemsPageResultView, type OpenItemsTabKey } from './presentation'
 import { docLabel, fmtMoney, type ApplyWizardView, type OpenItemsApplyResultLine } from './shared'
@@ -70,7 +70,7 @@ type UseOpenItemsWorkflowArgs<
   summary: ComputedRef<OpenItemsSummaryLike>
   activeTab: Ref<OpenItemsTabKey>
   toasts: ToastApi
-  suggestFactory: () => Promise<TSuggestResponse>
+  suggestFactory: (options?: { signal?: AbortSignal }) => Promise<TSuggestResponse>
   executeFactory: (suggestData: TSuggestResponse) => Promise<TApplyResult>
   unapplyFactory: (applyId: string) => Promise<void>
   load: () => Promise<void>
@@ -101,8 +101,18 @@ export function useOpenItemsWorkflow<
   const unapplyConfirmOpen = ref(false)
   const pendingUnapplyLine = ref<OpenItemsApplyResultLine | null>(null)
   const highlightedApplyIds = ref<string[]>([])
+  let suggestSequence = 0
+  let suggestController: AbortController | null = null
+
+  function cancelSuggestion(): void {
+    suggestSequence += 1
+    suggestController?.abort()
+    suggestController = null
+    suggestLoading.value = false
+  }
 
   function resetApplyFlowState() {
+    cancelSuggestion()
     applyWizardView.value = 'suggest'
     suggestData.value = null
     suggestError.value = null
@@ -169,19 +179,11 @@ export function useOpenItemsWorkflow<
   const pageApplyResultSubtitle = computed(() => applyResultSubtitleFor(pageApplyResult.value))
 
   const applyResultActionLabel = computed(() => {
-    if ((args.summary.value.totalOutstanding ?? 0) > 0 && (args.summary.value.totalCredit ?? 0) > 0) return 'Suggest remaining'
+    if (args.summary.value.totalOutstanding > 0 && args.summary.value.totalCredit > 0) return 'Suggest remaining'
     return 'Review remaining'
   })
 
   const pageApplyResultVisible = computed(() => !!pageApplyResult.value && !pageApplyResultDismissed.value)
-  const pageApplyResultInconsistent = computed(() => {
-    const result = pageApplyResult.value
-    if (!result) return false
-    const executedCount = result.executedApplies?.length ?? 0
-    if (executedCount === 0) return false
-    return pageApplyResultLines.value.length === 0
-  })
-
   const pageResult = computed<OpenItemsPageResultView>(() => ({
     visible: pageApplyResultVisible.value,
     title: pageApplyResultTitle.value,
@@ -189,16 +191,17 @@ export function useOpenItemsWorkflow<
     lines: pageApplyResultLines.value,
     outstandingNow: args.summary.value.totalOutstanding,
     creditNow: args.summary.value.totalCredit,
-    inconsistent: pageApplyResultInconsistent.value,
+    inconsistent: false,
   }))
 
   const appliedAllocations = computed(() => {
     const items = [...(args.data.value?.allocations ?? [])]
+    const highlighted = new Set(highlightedApplyIds.value)
     items.sort((left, right) => {
-      const leftPriority = (highlightedApplyIds.value.includes(left.applyId) ? 4 : 0) + (args.allocationMatchesContext(left) ? 2 : 0) + (left.isPosted ? 1 : 0)
-      const rightPriority = (highlightedApplyIds.value.includes(right.applyId) ? 4 : 0) + (args.allocationMatchesContext(right) ? 2 : 0) + (right.isPosted ? 1 : 0)
+      const leftPriority = (highlighted.has(left.applyId) ? 4 : 0) + (args.allocationMatchesContext(left) ? 2 : 0) + (left.isPosted ? 1 : 0)
+      const rightPriority = (highlighted.has(right.applyId) ? 4 : 0) + (args.allocationMatchesContext(right) ? 2 : 0) + (right.isPosted ? 1 : 0)
       if (leftPriority !== rightPriority) return rightPriority - leftPriority
-      return String(right.appliedOnUtc ?? '').localeCompare(String(left.appliedOnUtc ?? ''))
+      return right.appliedOnUtc.localeCompare(left.appliedOnUtc)
     })
     return items
   })
@@ -215,21 +218,29 @@ export function useOpenItemsWorkflow<
 
   const previewAfterCredit = computed(() => {
     if (!suggestData.value) return args.summary.value.totalCredit
-    return Math.max(0, (args.summary.value.totalCredit ?? 0) - (suggestData.value.totalApplied ?? 0))
+    return Math.max(0, args.summary.value.totalCredit - (suggestData.value.totalApplied ?? 0))
   })
 
   async function suggest(): Promise<void> {
+    const sequence = ++suggestSequence
+    suggestController?.abort()
+    const controller = new AbortController()
+    suggestController = controller
     suggestLoading.value = true
     suggestError.value = null
     applyExecError.value = null
 
     try {
-      suggestData.value = await args.suggestFactory()
+      const result = await args.suggestFactory({ signal: controller.signal })
+      if (sequence !== suggestSequence) return
+      suggestData.value = result
     } catch (cause) {
+      if (sequence !== suggestSequence) return
       suggestData.value = null
       suggestError.value = cause instanceof Error ? cause.message : String(cause)
     } finally {
-      suggestLoading.value = false
+      if (sequence === suggestSequence) suggestLoading.value = false
+      if (suggestController === controller) suggestController = null
     }
   }
 
@@ -374,6 +385,8 @@ export function useOpenItemsWorkflow<
 
     if (args.contextReady.value) await suggest()
   }
+
+  if (getCurrentScope()) onScopeDispose(cancelSuggestion)
 
   return {
     applyWizardOpen,

@@ -24,7 +24,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - filters: dimension_set_id, dimension values (AND), document_id, is_storno
 /// - enrichment: DimensionBag and DimensionValueDisplays for non-empty sets
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovementsQueryReader_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

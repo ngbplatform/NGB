@@ -8,14 +8,13 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Schema;
 
-[Collection(PostgresCollection.Name)]
-public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByRule_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByRule_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     [Fact]
     public async Task ValidateAsync_WhenWriteLogDocumentIndexMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropIndexAsync(Fixture.ConnectionString, "ix_opreg_write_log_document");
@@ -43,7 +42,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenWriteLogDocumentForeignKeyMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropConstraintAsync(
@@ -74,7 +72,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenResourcesImmutabilityTriggerMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTriggerAsync(
@@ -105,7 +102,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenRegisterImmutabilityFunctionMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         // Make the trigger name exist (validator requires it), but redirect it to a known existing function.
@@ -151,7 +147,6 @@ public sealed class OperationalRegistersCoreSchemaValidation_DriftRepair_RuleByR
     [Fact]
     public async Task ValidateAsync_WhenDimensionRulesTableMissing_FailsThenBootstrapperRepairs()
     {
-        await Fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
 
         await DropTableAsync(Fixture.ConnectionString, "operational_register_dimension_rules");

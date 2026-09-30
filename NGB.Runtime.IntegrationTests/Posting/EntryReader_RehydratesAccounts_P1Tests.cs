@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Posting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(PlatformPostgresCollection.Name)]
 public sealed class EntryReader_RehydratesAccountsAndDimensionRules_P1Tests(PostgresTestFixture fixture)
 {
     private const string Receivable = "62";

@@ -7,4 +7,5 @@ public sealed record ReportPlanPredicate(
     string OutputCode,
     string Label,
     string DataType,
-    ReportFilterValueDto Filter);
+    ReportFilterValueDto Filter,
+    ReportTimeGrain? TimeGrain = null);

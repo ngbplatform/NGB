@@ -10,8 +10,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// P0: Closed-period guard trigger must evaluate month boundaries in UTC,
 /// not in the current PostgreSQL session time zone.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class AccountingRegisterClosedPeriodTrigger_TimeZoneBoundary_UsesUtc_P0Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class AccountingRegisterClosedPeriodTrigger_TimeZoneBoundary_UsesUtc_P0Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateOnly Jan = ReportingTestHelpers.Period; // 2026-01-01

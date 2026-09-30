@@ -59,6 +59,10 @@ describe('command palette static items', () => {
         badge: 'Create',
       }),
     ])
+
+    expect(buildNgbHeuristicCurrentActions('/documents/pm.invoice/new')).toEqual([])
+    expect(buildNgbHeuristicCurrentActions('/unrelated')).toEqual([])
+    expect(buildNgbHeuristicCurrentActions('')).toEqual([])
   })
 
   it('exposes the default favorite, create, and special accounting items', () => {

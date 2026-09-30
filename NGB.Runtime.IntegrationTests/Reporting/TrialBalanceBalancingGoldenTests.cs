@@ -15,7 +15,7 @@ namespace NGB.Runtime.IntegrationTests.Reporting;
 /// Reporting Core — golden tests for Trial Balance integrity & balancing invariants.
 /// Uses far-future periods to avoid collisions with other tests.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class TrialBalanceBalancingGoldenTests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     [Fact]

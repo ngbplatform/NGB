@@ -10,7 +10,7 @@ public interface IPlatformUserRoleRepository
         IReadOnlyList<Guid> userIds,
         CancellationToken ct = default);
 
-    Task<IReadOnlyList<Guid>> GetUserIdsForRoleAsync(Guid roleId, CancellationToken ct = default);
+    Task<IReadOnlyList<Guid>> GetUserIdsForRoleAsync(Guid roleId, int limit, CancellationToken ct = default);
 
     Task ReplaceUserRolesAsync(
         Guid userId,

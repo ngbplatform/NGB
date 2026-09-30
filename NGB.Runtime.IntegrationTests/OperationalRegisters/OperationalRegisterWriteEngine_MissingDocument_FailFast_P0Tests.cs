@@ -12,7 +12,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterWriteEngine_MissingDocument_FailFast_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

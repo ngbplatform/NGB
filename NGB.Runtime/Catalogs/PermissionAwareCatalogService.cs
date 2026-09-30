@@ -8,7 +8,7 @@ using NGB.Runtime.Security;
 namespace NGB.Runtime.Catalogs;
 
 public sealed class PermissionAwareCatalogService(
-    CatalogService inner,
+    ICatalogService inner,
     INgbAccessChecker access,
     NgbSecurityCache cache)
     : ICatalogService
@@ -58,6 +58,15 @@ public sealed class PermissionAwareCatalogService(
     {
         await RequireAsync(catalogType, NgbPermissionActions.View, ct);
         return await inner.GetByIdAsync(catalogType, id, ct);
+    }
+
+    public async Task<IReadOnlyList<CatalogItemDto>> GetHeadItemsByIdsAsync(
+        string catalogType,
+        IReadOnlyList<Guid> ids,
+        CancellationToken ct)
+    {
+        await RequireAsync(catalogType, NgbPermissionActions.View, ct);
+        return await inner.GetHeadItemsByIdsAsync(catalogType, ids, ct);
     }
 
     public async Task<IReadOnlyList<CatalogLookupDto>> LookupAcrossTypesAsync(
@@ -137,7 +146,7 @@ public sealed class PermissionAwareCatalogService(
         return result;
     }
 
-    private static CatalogTypeMetadataDto ApplyCapabilities(
+    internal static CatalogTypeMetadataDto ApplyCapabilities(
         CatalogTypeMetadataDto metadata,
         PermissionSnapshot snapshot)
     {

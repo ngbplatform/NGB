@@ -4,6 +4,7 @@ using NGB.Accounting.Accounts;
 using NGB.Accounting.Reports.GeneralJournal;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.Core.Dimensions;
 using NGB.Persistence.Documents;
 using NGB.Persistence.Readers.Reports;
 using NGB.Runtime.Reporting.Canonical;
@@ -166,6 +167,69 @@ public sealed class GeneralJournalCanonicalReportExecutor_P0Tests
         reader.LastRequest.Cursor.Should().BeNull();
         response.Limit.Should().Be(response.PrebuiltSheet!.Rows.Count);
         response.HasMore.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenDisplayLookupsMiss_UsesRawCodesShortDocumentIdAndDimensionFallbacks()
+    {
+        var documentId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var debitAccountId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var creditAccountId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+        var dimensionId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        var dimensionValueId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+        var reader = new StubGeneralJournalReportReader(
+            new GeneralJournalPage(
+                Lines:
+                [
+                    new GeneralJournalLine
+                    {
+                        EntryId = 1,
+                        PeriodUtc = new DateTime(2026, 3, 20, 0, 0, 0, DateTimeKind.Utc),
+                        DocumentId = documentId,
+                        DebitAccountId = debitAccountId,
+                        DebitAccountCode = "raw-debit",
+                        DebitDimensions = new DimensionBag([new DimensionValue(dimensionId, dimensionValueId)]),
+                        DebitDimensionValueDisplays = new Dictionary<Guid, string> { [dimensionId] = "Customer" },
+                        CreditAccountId = creditAccountId,
+                        CreditAccountCode = "raw-credit",
+                        CreditDimensions = DimensionBag.Empty,
+                        Amount = 5m,
+                        IsStorno = true
+                    }
+                ],
+                HasMore: false,
+                NextCursor: null));
+        var executor = new GeneralJournalCanonicalReportExecutor(
+            reader,
+            new StubDocumentDisplayReader(),
+            new StubAccountByIdResolver());
+        var definition = new ReportDefinitionDto(
+            ReportCode: "accounting.general_journal",
+            Name: "General Journal",
+            Parameters:
+            [
+                new ReportParameterMetadataDto("from_utc", "date", true),
+                new ReportParameterMetadataDto("to_utc", "date", true)
+            ]);
+
+        var response = await executor.ExecuteAsync(
+            definition,
+            new ReportExecutionRequestDto(
+                Parameters: new Dictionary<string, string>
+                {
+                    ["from_utc"] = "2026-03-01",
+                    ["to_utc"] = "2026-03-31"
+                }),
+            CancellationToken.None);
+
+        var cells = response.PrebuiltSheet!.Rows.Single().Cells;
+        cells[1].Display.Should().Be(documentId.ToString("N")[..8]);
+        cells[1].Action.Should().BeNull();
+        cells[2].Display.Should().Be("raw-debit");
+        cells[3].Display.Should().Be("Customer");
+        cells[4].Display.Should().Be("raw-credit");
+        cells[5].Display.Should().BeEmpty();
+        cells[7].Display.Should().Be("Yes");
     }
 
     private sealed class StubGeneralJournalReportReader(GeneralJournalPage page) : IGeneralJournalReportReader

@@ -1,18 +1,22 @@
+using Dapper;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using NGB.Persistence.Migrations;
 using NGB.CRM.PostgreSql.Bootstrap;
 using NGB.CRM.PostgreSql.Migrations;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Migrations.Evolve;
+using NGB.Runtime.Documents;
 using Npgsql;
 using Xunit;
 
 namespace NGB.CRM.Api.IntegrationTests.Infrastructure;
 
-[Collection(CrmPostgresCollection.Name)]
-public sealed class CrmSchemaMigrator_NoRepair_P0Tests(CrmPostgresFixture fixture)
+[Collection(CrmSchemaPostgresCollection.Name)]
+public sealed class CrmSchemaMigrator_NoRepair_P0Tests(CrmSchemaPostgresFixture fixture)
 {
     [Fact]
-    public async Task Migrate_WithoutRepair_Installs_Critical_Crm_Tables_Views_And_Guards()
+    public async Task Migrate_WithoutRepair_Installs_And_Validates_The_Complete_Crm_Schema()
     {
         await fixture.ResetDatabaseAsync();
         await RecreatePublicSchemaAsync(fixture.ConnectionString);
@@ -37,6 +41,23 @@ public sealed class CrmSchemaMigrator_NoRepair_P0Tests(CrmPostgresFixture fixtur
         (await TriggerExistsAsync(fixture.ConnectionString, "doc_crm_quote", "trg_posted_immutable")).Should().BeTrue();
         (await TriggerExistsAsync(fixture.ConnectionString, "doc_crm_quote__lines", "trg_posted_immutable")).Should().BeTrue();
         (await IndexExistsAsync(fixture.ConnectionString, "doc_crm_quote__lines", "ix_doc_crm_quote__lines__product_id")).Should().BeTrue();
+
+        await using var conn = new NpgsqlConnection(fixture.ConnectionString);
+        await conn.OpenAsync();
+        (await conn.QueryAsync<string>(
+            """
+            SELECT tablename FROM pg_indexes WHERE schemaname = 'public'
+              AND tablename IN ('cat_crm_account', 'doc_crm_quote')
+              AND indexdef LIKE '%USING gin (display %gin_trgm_ops)%';
+            """)).Should().BeEquivalentTo("cat_crm_account", "doc_crm_quote");
+
+        using var host = CrmHostFactory.Create(fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var validator = scope.ServiceProvider.GetRequiredService<IDocumentSchemaValidationService>();
+
+        await validator.Invoking(x => x.ValidateAllAsync(CancellationToken.None))
+            .Should().NotThrowAsync(
+                "the document-schema phase of platform.schema.validate must accept a freshly migrated CRM database");
     }
 
     [Fact]
@@ -50,6 +71,24 @@ public sealed class CrmSchemaMigrator_NoRepair_P0Tests(CrmPostgresFixture fixtur
         await CrmDatabaseBootstrapper.RepairModuleAsync(fixture.ConnectionString);
 
         (await IndexExistsAsync(fixture.ConnectionString, "doc_crm_quote__lines", "ix_doc_crm_quote__lines__product_id")).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(60_000)]
+    public async Task Repair_WithExplicitTimeoutBoundaries_CompletesAgainstMigratedSchema(int milliseconds)
+    {
+        await fixture.ResetDatabaseAsync();
+        var options = new MigrationExecutionOptions(
+            LockTimeout: TimeSpan.FromMilliseconds(milliseconds),
+            StatementTimeout: TimeSpan.FromMilliseconds(milliseconds));
+
+        var act = () => CrmDatabaseBootstrapper.RepairModuleAsync(
+            fixture.ConnectionString,
+            options,
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
     }
 
     private static async Task RecreatePublicSchemaAsync(string cs)

@@ -8,8 +8,15 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\NGB.Accounting\NGB.Accounting.csproj"/>
         <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj"/>
         <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj"/>
+        <ProjectReference Include="..\NGB.Definitions\NGB.Definitions.csproj"/>
+        <ProjectReference Include="..\NGB.Metadata\NGB.Metadata.csproj"/>
+        <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj"/>
+        <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj"/>
+        <ProjectReference Include="..\NGB.ReferenceRegisters\NGB.ReferenceRegisters.csproj"/>
         <ProjectReference Include="..\NGB.PropertyManagement\NGB.PropertyManagement.csproj"/>
         <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj"/>
         <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj"/>

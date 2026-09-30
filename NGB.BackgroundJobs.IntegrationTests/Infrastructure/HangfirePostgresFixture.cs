@@ -3,6 +3,7 @@ using Hangfire.PostgreSql;
 using Hangfire.PostgreSql.Factories;
 using NGB.PostgreSql.Bootstrap;
 using NGB.PostgreSql.Dapper;
+using NGB.Testing.Containers;
 using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -29,12 +30,15 @@ public sealed class HangfirePostgresFixture : IAsyncLifetime
             .WithPassword("postgres")
             .Build();
 
-        await _container.StartAsync();
+        await using (var startupLease = await TestcontainerStartupGate.AcquireAsync())
+            await _container.StartAsync();
 
         var csb = new NpgsqlConnectionStringBuilder(_container.GetConnectionString())
         {
             Options = "-c TimeZone=UTC",
-            Pooling = false
+            Pooling = true,
+            MaxPoolSize = 32,
+            NoResetOnClose = false
         };
 
         ConnectionString = csb.ToString();
@@ -62,6 +66,15 @@ public sealed class HangfirePostgresFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        if (JobStorage is IDisposable disposableStorage)
+            disposableStorage.Dispose();
+
+        if (!string.IsNullOrWhiteSpace(ConnectionString))
+        {
+            await using var connection = new NpgsqlConnection(ConnectionString);
+            NpgsqlConnection.ClearPool(connection);
+        }
+
         if (_container is not null)
             await _container.DisposeAsync();
     }

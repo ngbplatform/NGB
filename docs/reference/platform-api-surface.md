@@ -16,7 +16,8 @@ description: Verified API-host shape for NGB, including authentication, health c
 NGB.Api/NGB.Api.csproj
 NGB.PropertyManagement.Api/Program.cs
 NGB.Application.Abstractions/Services/IDocumentService.cs
-NGB.Api/Sso/DependencyInjection.cs
+NGB.Hosting.AspNetCore/Identity/DependencyInjection.cs
+NGB.PostgreSql.AspNetCore/DependencyInjection/PostgresAspNetCoreServiceCollectionExtensions.cs
 ```
 
 ## What is directly visible
@@ -50,13 +51,17 @@ The verified `IDocumentService` contract shows that the platform API surface is 
 - paging and point reads;
 - cross-type lookup;
 - draft create, update, and delete;
-- post, unpost, and repost;
-- mark and unmark for deletion;
-- derivation discovery and draft derivation;
+- action execution and trusted draft derivation;
 - relationship graph access;
 - document effects access.
 
 That is the strongest direct evidence that the reusable API layer is built around business operations, not only generic row mutation.
+
+Interactive lifecycle and derivation actions go through `IDocumentActionQueryService` and
+`IDocumentActionDispatcher`, including authorization, idempotency, and concurrency checks.
+`IDocumentSystemLifecycleService` exposes post/unpost/repost and deletion-marking operations for
+trusted seeders, migrators, and background workflows. See
+[Document Actions and Work Center API](/reference/document-actions-work-center-api).
 
 ## Host-level integrations visible in PM
 

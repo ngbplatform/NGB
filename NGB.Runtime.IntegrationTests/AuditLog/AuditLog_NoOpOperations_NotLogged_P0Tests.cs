@@ -17,7 +17,7 @@ using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.AuditLog;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class AuditLog_NoOpOperations_NotLogged_P0Tests(PostgresTestFixture fixture) : IntegrationTestBase(fixture)
 {
     [Fact]

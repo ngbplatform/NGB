@@ -19,14 +19,16 @@ public sealed class PermissionAwareAdminService(
         if (!snapshot.IsAuthenticated || !snapshot.IsActive)
             return new MainMenuDto([]);
 
-        return await cache.GetOrCreateMainMenuAsync(
+        var filteredMenu = await cache.GetOrCreateMainMenuAsync(
             snapshot,
             async token =>
             {
                 var menu = await inner.GetMainMenuAsync(token);
                 return FilterMainMenu(menu, snapshot);
             },
-            ct) ?? new MainMenuDto([]);
+            ct);
+
+        return filteredMenu!;
     }
 
     public async Task<ChartOfAccountsMetadataDto> GetChartOfAccountsMetadataAsync(CancellationToken ct)

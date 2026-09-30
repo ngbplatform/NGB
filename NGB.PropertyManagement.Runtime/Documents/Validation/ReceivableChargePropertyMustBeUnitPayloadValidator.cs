@@ -23,7 +23,7 @@ internal sealed class ReceivableChargePropertyMustBeUnitPayloadValidator(IProper
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, object?>>> typedPartRowsByPartCode,
         CancellationToken ct)
     {
-        await ValidateAsync(payload, requirePropertyId: true, ct);
+        await ValidateAsync(payload, ct);
     }
 
     public async Task ValidateUpdateDraftPayloadAsync(
@@ -38,18 +38,13 @@ internal sealed class ReceivableChargePropertyMustBeUnitPayloadValidator(IProper
         if (!payload.Fields.ContainsKey("property_id"))
             return;
 
-        await ValidateAsync(payload, requirePropertyId: false, ct);
+        await ValidateAsync(payload, ct);
     }
 
-    private async Task ValidateAsync(RecordPayload payload, bool requirePropertyId, CancellationToken ct)
+    private async Task ValidateAsync(RecordPayload payload, CancellationToken ct)
     {
         if (payload.Fields is null || !payload.Fields.TryGetValue("property_id", out var el))
-        {
-            if (requirePropertyId)
-                throw DocumentPropertyPayloadValidationException.Required(TypeCode);
-
-            return;
-        }
+            throw DocumentPropertyPayloadValidationException.Required(TypeCode);
 
         var propertyId = ExtractGuid(el);
         if (propertyId == Guid.Empty)
@@ -88,7 +83,7 @@ internal sealed class ReceivableChargePropertyMustBeUnitPayloadValidator(IProper
             if (!el.TryGetProperty("id", out var idEl) && !el.TryGetProperty("Id", out idEl))
                 throw DocumentPropertyPayloadValidationException.Invalid(TypeCode);
 
-            if (idEl.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            if (idEl.ValueKind == JsonValueKind.Null)
                 return Guid.Empty;
 
             var s = idEl.ValueKind == JsonValueKind.String ? idEl.GetString() : idEl.ToString();

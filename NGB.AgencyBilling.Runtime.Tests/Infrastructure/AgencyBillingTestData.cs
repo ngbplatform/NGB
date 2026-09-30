@@ -354,8 +354,38 @@ public static class AgencyBillingTestData
         public Task<AgencyBillingTeamMemberReference?> ReadTeamMemberAsync(Guid teamMemberId, CancellationToken ct = default)
             => ReadTeamMemberAsyncFunc(teamMemberId, ct);
 
+        public async Task<IReadOnlyDictionary<Guid, AgencyBillingTeamMemberReference>> ReadTeamMembersAsync(
+            IReadOnlyCollection<Guid> teamMemberIds,
+            CancellationToken ct = default)
+        {
+            var result = new Dictionary<Guid, AgencyBillingTeamMemberReference>();
+            foreach (var id in teamMemberIds.Distinct())
+            {
+                var item = await ReadTeamMemberAsyncFunc(id, ct);
+                if (item is not null)
+                    result[id] = item;
+            }
+
+            return result;
+        }
+
         public Task<AgencyBillingServiceItemReference?> ReadServiceItemAsync(Guid serviceItemId, CancellationToken ct = default)
             => ReadServiceItemAsyncFunc(serviceItemId, ct);
+
+        public async Task<IReadOnlyDictionary<Guid, AgencyBillingServiceItemReference>> ReadServiceItemsAsync(
+            IReadOnlyCollection<Guid> serviceItemIds,
+            CancellationToken ct = default)
+        {
+            var result = new Dictionary<Guid, AgencyBillingServiceItemReference>();
+            foreach (var id in serviceItemIds.Distinct())
+            {
+                var item = await ReadServiceItemAsyncFunc(id, ct);
+                if (item is not null)
+                    result[id] = item;
+            }
+
+            return result;
+        }
 
         public Task<AgencyBillingPaymentTermsReference?> ReadPaymentTermsAsync(Guid paymentTermsId, CancellationToken ct = default)
             => ReadPaymentTermsAsyncFunc(paymentTermsId, ct);
@@ -366,8 +396,10 @@ public static class AgencyBillingTestData
         public AgencyBillingClientContractHead ClientContractHead { get; init; } = ValidClientContractHead();
         public IReadOnlyList<AgencyBillingClientContractLine> ClientContractLines { get; init; } = [ValidClientContractLine()];
         public AgencyBillingTimesheetHead TimesheetHead { get; init; } = ValidTimesheetHead();
+        public bool OmitBatchTimesheetHeads { get; init; }
         public IReadOnlyList<AgencyBillingTimesheetLine> TimesheetLines { get; init; } = [ValidTimesheetLine()];
         public AgencyBillingSalesInvoiceHead SalesInvoiceHead { get; init; } = ValidSalesInvoiceHead();
+        public bool OmitBatchSalesInvoiceHeads { get; init; }
         public IReadOnlyList<AgencyBillingSalesInvoiceLine> SalesInvoiceLines { get; init; } = [ValidSalesInvoiceLine()];
         public AgencyBillingCustomerPaymentHead CustomerPaymentHead { get; init; } = ValidCustomerPaymentHead();
         public IReadOnlyList<AgencyBillingCustomerPaymentApply> CustomerPaymentApplies { get; init; } = [ValidCustomerPaymentApply()];
@@ -381,11 +413,37 @@ public static class AgencyBillingTestData
         public Task<AgencyBillingTimesheetHead> ReadTimesheetHeadAsync(Guid documentId, CancellationToken ct = default)
             => Task.FromResult(TimesheetHead);
 
+        public Task<IReadOnlyDictionary<Guid, AgencyBillingTimesheetHead>> ReadTimesheetHeadsAsync(
+            IReadOnlyCollection<Guid> documentIds,
+            CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, AgencyBillingTimesheetHead>>(
+                (OmitBatchTimesheetHeads ? [] : documentIds).Distinct().ToDictionary(
+                    static id => id,
+                    id => TimesheetHead with { DocumentId = id }));
+
         public Task<IReadOnlyList<AgencyBillingTimesheetLine>> ReadTimesheetLinesAsync(Guid documentId, CancellationToken ct = default)
             => Task.FromResult(TimesheetLines);
 
+        public Task<IReadOnlyDictionary<Guid, IReadOnlyList<AgencyBillingTimesheetLine>>> ReadTimesheetLinesAsync(
+            IReadOnlyCollection<Guid> documentIds,
+            CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, IReadOnlyList<AgencyBillingTimesheetLine>>>(
+                documentIds.Distinct().ToDictionary(
+                    static id => id,
+                    id => (IReadOnlyList<AgencyBillingTimesheetLine>)TimesheetLines
+                        .Select(line => line with { DocumentId = id })
+                        .ToArray()));
+
         public Task<AgencyBillingSalesInvoiceHead> ReadSalesInvoiceHeadAsync(Guid documentId, CancellationToken ct = default)
             => Task.FromResult(SalesInvoiceHead);
+
+        public Task<IReadOnlyDictionary<Guid, AgencyBillingSalesInvoiceHead>> ReadSalesInvoiceHeadsAsync(
+            IReadOnlyCollection<Guid> documentIds,
+            CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyDictionary<Guid, AgencyBillingSalesInvoiceHead>>(
+                (OmitBatchSalesInvoiceHeads ? [] : documentIds).Distinct().ToDictionary(
+                    static id => id,
+                    id => SalesInvoiceHead with { DocumentId = id }));
 
         public Task<IReadOnlyList<AgencyBillingSalesInvoiceLine>> ReadSalesInvoiceLinesAsync(Guid documentId, CancellationToken ct = default)
             => Task.FromResult(SalesInvoiceLines);

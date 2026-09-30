@@ -22,7 +22,7 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 /// - dirty months are derived when affectedPeriods is null
 /// - idempotency and atomicity (rollback undoes log + dirty markers + rows)
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(RegistersPostgresCollection.Name)]
 public sealed class OperationalRegisterMovementsApplier_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {

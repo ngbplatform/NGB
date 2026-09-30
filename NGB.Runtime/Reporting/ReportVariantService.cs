@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Reporting;
 using NGB.Core.Reporting.Exceptions;
@@ -35,7 +36,11 @@ public sealed class ReportVariantService(
             createIfMissing: false,
             requirePlatformProjection: false,
             ct);
-        var rows = await _repository.ListVisibleAsync(reportCodeNorm, currentUserId, ct);
+        var rows = await _repository.ListVisibleAsync(
+            reportCodeNorm,
+            currentUserId,
+            ReportVariantLimits.MaxVisibleVariants,
+            ct);
         return rows.Select(Map).ToList();
     }
 
@@ -71,6 +76,27 @@ public sealed class ReportVariantService(
                 });
         }
 
+        if (variant.Name.Trim().Length > ReportVariantLimits.MaxNameLength)
+            throw TooLarge("name", $"Name can contain up to {ReportVariantLimits.MaxNameLength} characters.");
+
+        if (string.IsNullOrWhiteSpace(variant.VariantCode))
+            throw new NgbArgumentRequiredException(nameof(variant.VariantCode));
+
+        if (variant.VariantCode.Trim().Length > ReportVariantLimits.MaxVariantCodeLength)
+            throw TooLarge("variantCode", $"Variant code can contain up to {ReportVariantLimits.MaxVariantCodeLength} characters.");
+
+        var layoutJson = SerializeOrNull(variant.Layout);
+        var filtersJson = SerializeOrNull(variant.Filters);
+        var parametersJson = SerializeOrNull(variant.Parameters);
+        var serializedPayloadBytes = Utf8Size(layoutJson) + Utf8Size(filtersJson) + Utf8Size(parametersJson);
+
+        if (serializedPayloadBytes > ReportVariantLimits.MaxSerializedPayloadBytes)
+        {
+            throw TooLarge(
+                "variant",
+                $"Serialized variant data can contain up to {ReportVariantLimits.MaxSerializedPayloadBytes} bytes.");
+        }
+
         var definition = await _definitions.GetDefinitionAsync(variant.ReportCode, ct);
         var reportCodeNorm = CodeNormalizer.NormalizeCodeNorm(definition.ReportCode, nameof(variant.ReportCode));
         var variantCodeNorm = CodeNormalizer.NormalizeCodeNorm(variant.VariantCode, nameof(variant.VariantCode));
@@ -104,17 +130,6 @@ public sealed class ReportVariantService(
                 requirePlatformProjection: hasCurrentActor,
                 innerCt);
 
-            if (!variant.IsShared && currentPlatformUserId is null)
-            {
-                throw new ReportVariantValidationException(
-                    message: "Private report variants require a platform user context.",
-                    reason: "private_requires_user",
-                    errors: new Dictionary<string, string[]>(StringComparer.Ordinal)
-                    {
-                        ["isShared"] = ["Private variants require a platform user context."]
-                    });
-            }
-
             var existingByCode = await _repository.ListByCodeAsync(reportCodeNorm, variantCodeNorm, innerCt);
             var existingShared = existingByCode.SingleOrDefault(x => x.IsShared);
             var existingOwnedPrivate = currentPlatformUserId is { } currentOwnerPlatformUserId
@@ -125,17 +140,33 @@ public sealed class ReportVariantService(
             if (variant.IsShared)
             {
                 targetRecord = existingShared;
-                if (existingByCode.Any(x => x.ReportVariantId != targetRecord?.ReportVariantId))
+                if (existingByCode.Any(x => !x.IsShared))
                     throw new ReportVariantCodeConflictException(definition.ReportCode, variant.VariantCode);
             }
             else
             {
                 targetRecord = existingOwnedPrivate;
-                if (existingShared is not null && existingShared.ReportVariantId != targetRecord?.ReportVariantId)
+                if (existingShared is not null)
                     throw new ReportVariantCodeConflictException(definition.ReportCode, variant.VariantCode);
             }
 
             var ownerPlatformUserId = targetRecord?.OwnerPlatformUserId ?? currentPlatformUserId;
+
+            if (targetRecord is null)
+            {
+                var count = await _repository.CountInScopeAsync(
+                    reportCodeNorm,
+                    variant.IsShared ? null : ownerPlatformUserId,
+                    variant.IsShared,
+                    innerCt);
+
+                if (count >= ReportVariantLimits.MaxVariantsPerScope)
+                {
+                    throw TooLarge(
+                        "variantCode",
+                        $"A report can contain up to {ReportVariantLimits.MaxVariantsPerScope} variants in this scope.");
+                }
+            }
 
             var record = new ReportVariantRecord(
                 ReportVariantId: targetRecord?.ReportVariantId ?? Guid.CreateVersion7(),
@@ -145,9 +176,9 @@ public sealed class ReportVariantService(
                 VariantCodeNorm: variantCodeNorm,
                 OwnerPlatformUserId: ownerPlatformUserId,
                 Name: variant.Name.Trim(),
-                LayoutJson: SerializeOrNull(variant.Layout),
-                FiltersJson: SerializeOrNull(variant.Filters),
-                ParametersJson: SerializeOrNull(variant.Parameters),
+                LayoutJson: layoutJson,
+                FiltersJson: filtersJson,
+                ParametersJson: parametersJson,
                 IsDefault: variant.IsDefault,
                 IsShared: variant.IsShared,
                 CreatedAtUtc: targetRecord?.CreatedAtUtc ?? nowUtc,
@@ -255,6 +286,17 @@ public sealed class ReportVariantService(
 
     private static string? SerializeOrNull<T>(T? value)
         => value is null ? null : JsonSerializer.Serialize(value, Json);
+
+    private static int Utf8Size(string? value) => value is null ? 0 : Encoding.UTF8.GetByteCount(value);
+
+    private static ReportVariantValidationException TooLarge(string field, string message)
+        => new(
+            message,
+            reason: "limit_exceeded",
+            errors: new Dictionary<string, string[]>(StringComparer.Ordinal)
+            {
+                [field] = [message]
+            });
 
     private static T? DeserializeOrNull<T>(string? json)
         => string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json, Json);

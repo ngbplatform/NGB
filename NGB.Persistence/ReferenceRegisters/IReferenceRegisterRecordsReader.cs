@@ -30,8 +30,7 @@ public interface IReferenceRegisterRecordsReader
     /// Returns the last record version for the specified key that is EFFECTIVE as of <paramref name="effectiveAsOfUtc"/>,
     /// while considering only versions RECORDED not after <paramref name="recordedAsOfUtc"/>.
     ///
-    /// This is used by independent-mode writes to compute the previous value at an effective moment even when a write is backdated
-    /// (i.e. <c>PeriodUtc</c> is in the past, but the row is recorded now).
+    /// The effective and recorded boundaries are independent, allowing historical queries of backdated versions.
     ///
     /// For non-periodic registers, <paramref name="effectiveAsOfUtc"/> is ignored and the method behaves like
     /// <see cref="SliceLastAsync"/> with <paramref name="recordedAsOfUtc"/>.
@@ -41,6 +40,20 @@ public interface IReferenceRegisterRecordsReader
         Guid dimensionSetId,
         DateTime effectiveAsOfUtc,
         DateTime recordedAsOfUtc,
+        Guid? recorderDocumentId = null,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the latest transaction-visible version effective at <paramref name="effectiveAsOfUtc"/>,
+    /// including tombstones, without a recorded-time cutoff. Non-periodic registers ignore effective time.
+    /// Requires an active transaction; the caller must hold the register key lock before reading and writing.
+    /// Use this for read-before-write decisions so application/database clock skew cannot hide committed
+    /// versions or this transaction's own writes. Use the as-of methods for historical reads.
+    /// </summary>
+    Task<ReferenceRegisterRecordRead?> SliceLastForWriteAsync(
+        Guid registerId,
+        Guid dimensionSetId,
+        DateTime effectiveAsOfUtc,
         Guid? recorderDocumentId = null,
         CancellationToken ct = default);
 
@@ -62,6 +75,30 @@ public interface IReferenceRegisterRecordsReader
         int limit = 200,
         CancellationToken ct = default);
 
+    Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllPageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        Guid? recorderDocumentId = null,
+        Guid? afterDimensionSetId = null,
+        int limit = 200,
+        bool includeDeleted = false,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns the raw latest rows that a visible page must examine, including
+    /// tombstones. The scan stops at the end of the logical key page containing
+    /// the <paramref name="pageSize"/>-th visible row, or at the safety cap.
+    /// This preserves cursor-by-last-examined-key semantics in one database query.
+    /// </summary>
+    Task<IReadOnlyList<ReferenceRegisterRecordRead>> ScanSliceLastAllForVisiblePageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        Guid? recorderDocumentId,
+        Guid? afterDimensionSetId,
+        int pageSize,
+        int maxScanPages,
+        CancellationToken ct = default);
+
     /// <summary>
     /// Same as <see cref="SliceLastAllAsync"/>, but filters the keys by requiring that DimensionSet contains ALL provided pairs
     /// (DimensionId -&gt; ValueId). This enables selections by dimensions without knowing DimensionSetId upfront.
@@ -77,6 +114,31 @@ public interface IReferenceRegisterRecordsReader
         Guid? recorderDocumentId = null,
         Guid? afterDimensionSetId = null,
         int limit = 200,
+        CancellationToken ct = default);
+
+    Task<IReadOnlyList<ReferenceRegisterRecordRead>> SliceLastAllFilteredPageByDimensionsAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        IReadOnlyList<DimensionValue> requiredDimensions,
+        Guid? recorderDocumentId = null,
+        Guid? afterDimensionSetId = null,
+        int limit = 200,
+        bool includeDeleted = false,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Dimension-filtered counterpart of <see cref="ScanSliceLastAllForVisiblePageAsync"/>.
+    /// Tombstones are intentionally returned so the runtime can retain the public
+    /// last-examined-key cursor contract without issuing N paging queries.
+    /// </summary>
+    Task<IReadOnlyList<ReferenceRegisterRecordRead>> ScanSliceLastAllFilteredForVisiblePageAsync(
+        Guid registerId,
+        DateTime asOfUtc,
+        IReadOnlyList<DimensionValue> requiredDimensions,
+        Guid? recorderDocumentId,
+        Guid? afterDimensionSetId,
+        int pageSize,
+        int maxScanPages,
         CancellationToken ct = default);
 
     /// <summary>

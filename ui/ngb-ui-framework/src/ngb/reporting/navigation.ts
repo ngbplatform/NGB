@@ -84,6 +84,7 @@ function normalizeExecutionRequest(value: unknown): ReportExecutionRequestDto | 
     offset,
     limit,
     cursor,
+    ...(Array.isArray(value.groupPath) ? { groupPath: value.groupPath.filter(entry => entry == null || ["string", "number", "boolean"].includes(typeof entry)).slice(0, 32) } : {}),
   }
 }
 

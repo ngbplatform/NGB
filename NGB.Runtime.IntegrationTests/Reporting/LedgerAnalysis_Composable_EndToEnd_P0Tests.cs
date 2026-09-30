@@ -1,15 +1,35 @@
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using NGB.Contracts.Reporting;
 using NGB.Core.Reporting.Exceptions;
+using NGB.PostgreSql.Reporting;
 using NGB.Runtime.IntegrationTests.Infrastructure;
 using Xunit;
 
 namespace NGB.Runtime.IntegrationTests.Reporting;
 
-[Collection(PostgresCollection.Name)]
+[Collection(AccountingPostgresCollection.Name)]
 public sealed class LedgerAnalysis_Composable_EndToEnd_P0Tests(PostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
+    [Fact]
+    public async Task Complete_account_summary_aggregates_narrow_postings_once_without_document_display_joins()
+    {
+        using var host = ComposableReportingIntegrationTestHelpers.CreateHost(Fixture.ConnectionString);
+        await ComposableReportingIntegrationTestHelpers.SeedMinimalCoAAsync(host);
+        await ComposableReportingIntegrationTestHelpers.CreatePostedAccountingDocumentAsync(host, "IT-SUMMARY",
+            new DateTime(2026, 2, 5, 0, 0, 0, DateTimeKind.Utc), "50", "90.1", 100m);
+        await using var scope = host.Services.CreateAsyncScope();
+        using var probe = new NGB.Testing.Reporting.ReportPerformanceProbe("accounting.ledger.analysis", "complete-account-summary");
+        var page = await scope.ServiceProvider.GetRequiredService<NGB.Application.Abstractions.Services.IReportEngine>()
+            .ExecuteAsync("accounting.ledger.analysis", new(Parameters: new Dictionary<string, string>
+                { ["from_utc"] = "2026-02-01", ["to_utc"] = "2026-02-28" }, Limit: 200), default);
+        page.HasMore.Should().BeFalse();
+        probe.SqlCommands.Count(sql => sql.Contains("FROM accounting_register_main", StringComparison.OrdinalIgnoreCase)).Should().Be(1);
+        probe.SqlCommands.Should().NotContain(sql => sql.Contains("JOIN documents", StringComparison.OrdinalIgnoreCase));
+        page.Sheet.Rows.Single(r => r.RowKind == ReportRowKind.Total).Cells[^1].Value!.Value.GetDecimal().Should().Be(0);
+    }
+
     [Fact]
     public async Task ExecuteAsync_FlatHierarchy_RendersSingleHierarchyColumn_AndClickableDocumentAndAccountCells()
     {
@@ -24,9 +44,7 @@ public sealed class LedgerAnalysis_Composable_EndToEnd_P0Tests(PostgresTestFixtu
             creditCode: "90.1",
             amount: 100m);
 
-        var response = await ComposableReportingIntegrationTestHelpers.ExecuteLedgerAnalysisAsync(
-            host,
-            new ReportExecutionRequestDto(
+        var request = new ReportExecutionRequestDto(
                 Parameters: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["from_utc"] = "2026-02-01",
@@ -51,7 +69,8 @@ public sealed class LedgerAnalysis_Composable_EndToEnd_P0Tests(PostgresTestFixtu
                     ShowSubtotalsOnSeparateRows: false,
                     ShowGrandTotals: true),
                 Offset: 0,
-                Limit: 200));
+                Limit: 200);
+        var response = await ComposableReportingIntegrationTestHelpers.ExecuteLedgerAnalysisAsync(host, request);
 
         response.Diagnostics.Should().ContainKey("engine").WhoseValue.Should().Be("runtime");
         response.Diagnostics.Should().ContainKey("executor").WhoseValue.Should().Be("postgres-foundation");
@@ -69,20 +88,16 @@ public sealed class LedgerAnalysis_Composable_EndToEnd_P0Tests(PostgresTestFixtu
         accountGroup.Cells[0].Action!.Report!.Filters.Should().ContainKey("account_id");
         ComposableReportingIntegrationTestHelpers.ReadDecimalCell(accountGroup.Cells[1]).Should().Be(100m);
 
-        response.Sheet.Rows.Should().Contain(
-            x => x.RowKind == ReportRowKind.Group
-                 && x.OutlineLevel == 1
-                 && x.Cells[0].Display == "February 2026");
-
-        response.Sheet.Rows.Should().Contain(
-            x => x.RowKind == ReportRowKind.Group
-                 && x.OutlineLevel == 2
-                 && x.Cells[0].Display != null
-                 && x.Cells[0].Display!.StartsWith("IT Document A IT-LA-001", StringComparison.OrdinalIgnoreCase)
-                 && x.Cells[0].Action != null
-                 && x.Cells[0].Action!.Kind == ReportCellActionKinds.OpenDocument
-                 && x.Cells[0].Action!.DocumentType == "it_doc_a"
-                 && x.Cells[0].Action!.DocumentId != Guid.Empty);
+        accountGroup.ChildrenPath.Should().NotBeNull();
+        var periods = await ComposableReportingIntegrationTestHelpers.ExecuteLedgerAnalysisAsync(host, request with { GroupPath = accountGroup.ChildrenPath });
+        periods.Sheet.Columns.Should().BeEquivalentTo(response.Sheet.Columns, options => options.WithStrictOrdering());
+        var month = periods.Sheet.Rows.Single(x => x.RowKind == ReportRowKind.Group && x.Cells[0].Display == "February 2026");
+        var documents = await ComposableReportingIntegrationTestHelpers.ExecuteLedgerAnalysisAsync(host, request with { GroupPath = month.ChildrenPath });
+        documents.Sheet.Columns.Should().BeEquivalentTo(response.Sheet.Columns, options => options.WithStrictOrdering());
+        documents.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Group
+            && x.Cells[0].Display != null && x.Cells[0].Display!.StartsWith("IT Document A IT-LA-001", StringComparison.OrdinalIgnoreCase)
+            && x.Cells[0].Action != null && x.Cells[0].Action!.Kind == ReportCellActionKinds.OpenDocument
+            && x.Cells[0].Action!.DocumentType == "it_doc_a" && x.Cells[0].Action!.DocumentId != Guid.Empty);
 
         response.Sheet.Rows.Should().NotContain(x => x.RowKind == ReportRowKind.Subtotal);
         response.Sheet.Rows.Should().Contain(x => x.RowKind == ReportRowKind.Total && x.Cells[0].Display == "Total");
@@ -175,4 +190,79 @@ public sealed class LedgerAnalysis_Composable_EndToEnd_P0Tests(PostgresTestFixtu
         ex.Which.Context.Should().ContainKey("fieldPath");
         ex.Which.Context["fieldPath"].Should().Be("layout.columnGroups[0].fieldCode");
     }
+
+    [Fact]
+    public async Task DatasetExecutor_DetailCursor_UsesStableSeekPaging_WithoutDuplicates()
+    {
+        using var host = ComposableReportingIntegrationTestHelpers.CreateHost(Fixture.ConnectionString);
+        await ComposableReportingIntegrationTestHelpers.SeedMinimalCoAAsync(host);
+        await ComposableReportingIntegrationTestHelpers.CreatePostedAccountingDocumentAsync(
+            host,
+            number: "IT-LA-CURSOR-001",
+            dateUtc: new DateTime(2026, 2, 5, 0, 0, 0, DateTimeKind.Utc),
+            debitCode: "50",
+            creditCode: "90.1",
+            amount: 100m);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var executor = scope.ServiceProvider.GetRequiredService<PostgresReportDatasetExecutor>();
+        var first = await executor.ExecuteAsync(CursorRequest(cursor: null), CancellationToken.None);
+        var second = await executor.ExecuteAsync(CursorRequest(first.NextCursor), CancellationToken.None);
+
+        first.Rows.Should().ContainSingle();
+        first.HasMore.Should().BeTrue();
+        first.NextCursor.Should().NotBeNullOrWhiteSpace();
+        second.Rows.Should().ContainSingle();
+        second.HasMore.Should().BeFalse();
+        second.NextCursor.Should().BeNull();
+        first.Rows.Concat(second.Rows)
+            .Select(row => row.Values["account_code"])
+            .Should().BeEquivalentTo(new object?[] { "50", "90.1" });
+        first.Rows.Concat(second.Rows)
+            .SelectMany(row => row.Values.Keys)
+            .Should().NotContain(key => key.StartsWith("__cursor_key_", StringComparison.Ordinal));
+
+        var firstAggregate = await executor.ExecuteAsync(AggregateCursorRequest(cursor: null), CancellationToken.None);
+        var secondAggregate = await executor.ExecuteAsync(AggregateCursorRequest(firstAggregate.NextCursor), CancellationToken.None);
+        firstAggregate.Rows.Should().ContainSingle();
+        firstAggregate.HasMore.Should().BeTrue();
+        firstAggregate.NextCursor.Should().NotBeNullOrWhiteSpace();
+        secondAggregate.Rows.Should().ContainSingle();
+        secondAggregate.HasMore.Should().BeFalse();
+        firstAggregate.Rows.Concat(secondAggregate.Rows)
+            .Select(row => row.Values["account_code"])
+            .Should().BeEquivalentTo(new object?[] { "50", "90.1" });
+    }
+
+    private static PostgresReportExecutionRequest CursorRequest(string? cursor)
+        => new(
+            DatasetCode: "accounting.ledger.analysis",
+            RowGroups: [],
+            ColumnGroups: [],
+            DetailFields: [new("account_code", "account_code", "Account", "string")],
+            Measures: [],
+            Sorts: [new("account_code", null, ReportSortDirection.Asc)],
+            Predicates: [],
+            Parameters: new Dictionary<string, object?>
+            {
+                ["from_utc"] = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc),
+                ["to_utc_exclusive"] = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            Paging: new PostgresReportPaging(0, 1, cursor));
+
+    private static PostgresReportExecutionRequest AggregateCursorRequest(string? cursor)
+        => new(
+            DatasetCode: "accounting.ledger.analysis",
+            RowGroups: [new("account_code", "account_code", "Account", "string")],
+            ColumnGroups: [],
+            DetailFields: [],
+            Measures: [new("debit_amount", "debit_amount__sum", "Debit", "decimal", ReportAggregationKind.Sum)],
+            Sorts: [new("account_code", null, ReportSortDirection.Asc)],
+            Predicates: [],
+            Parameters: new Dictionary<string, object?>
+            {
+                ["from_utc"] = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc),
+                ["to_utc_exclusive"] = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc)
+            },
+            Paging: new PostgresReportPaging(0, 1, cursor));
 }

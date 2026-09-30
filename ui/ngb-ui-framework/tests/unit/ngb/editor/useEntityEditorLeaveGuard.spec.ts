@@ -52,6 +52,9 @@ describe('entity editor leave guard', () => {
     expect(router.push).toHaveBeenCalledWith('/documents/pm.invoice/doc-2')
     expect(onClose).toHaveBeenCalledTimes(2)
     expect(guard.leaveOpen.value).toBe(false)
+
+    guard.requestNavigate(null)
+    expect(router.push).toHaveBeenCalledTimes(2)
   })
 
   it('opens a leave confirmation before navigation when dirty and resumes on confirm', () => {
@@ -82,6 +85,9 @@ describe('entity editor leave guard', () => {
 
     guard.cancelLeave()
     expect(guard.leaveOpen.value).toBe(false)
+
+    guard.confirmLeave()
+    expect(onClose).not.toHaveBeenCalled()
 
     guard.requestClose()
     guard.confirmLeave()

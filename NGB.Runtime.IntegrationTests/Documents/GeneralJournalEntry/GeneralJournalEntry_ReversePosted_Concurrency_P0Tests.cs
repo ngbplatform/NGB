@@ -17,7 +17,7 @@ namespace NGB.Runtime.IntegrationTests.Documents.GeneralJournalEntry;
 /// P0: ReversePostedAsync must be concurrency-safe and idempotent.
 /// Two concurrent callers must end up with exactly one reversal document and exactly one set of movements.
 /// </summary>
-[Collection(PostgresCollection.Name)]
+[Collection(DocumentsPostgresCollection.Name)]
 public sealed class GeneralJournalEntry_ReversePosted_Concurrency_P0Tests(PostgresTestFixture fixture)
 {
     private PostgresTestFixture Fixture { get; } = fixture;

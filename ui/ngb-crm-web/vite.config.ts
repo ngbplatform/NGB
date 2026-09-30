@@ -10,6 +10,22 @@ const e2eKeycloakAlias = fileURLToPath(new URL('../tests/e2e/support/fakeKeycloa
 export default defineConfig(({ mode }) => {
   return {
     plugins: [vue(), ngbUiFrameworkPublicAssetsPlugin()],
+    optimizeDeps: {
+      // The source package mixes TS entry points with Vue SFCs. Keep their
+      // configuration modules in the same graph instead of duplicating state.
+      exclude: ['@ngbplatform/ui'],
+      // Excluding the source package also hides its dependencies from the scan.
+      // Bundle them up front so concurrent browsers do not load outdated chunks
+      // while Vite discovers the framework's imports on the first page load.
+      include: [
+        'vue',
+        'pinia',
+        'vue-router',
+        '@headlessui/vue',
+        '@microsoft/signalr',
+        ...(mode === 'e2e' ? [] : ['keycloak-js']),
+      ],
+    },
     resolve: mode === 'e2e'
       ? {
           alias: {
@@ -17,21 +33,6 @@ export default defineConfig(({ mode }) => {
           },
         }
       : undefined,
-    build: {
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (
-              id.includes('node_modules/echarts')
-              || id.includes('node_modules/zrender')
-              || id.includes('node_modules/vue-echarts')
-            ) {
-              return 'charts'
-            }
-          },
-        },
-      },
-    },
     server: {
       host: CRM_WEB_DEV_HOST,
       port: CRM_WEB_DEV_PORT,

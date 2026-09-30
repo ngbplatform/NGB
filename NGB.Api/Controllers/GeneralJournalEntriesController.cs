@@ -22,10 +22,14 @@ public sealed class GeneralJournalEntriesController(IGeneralJournalEntryUiServic
         [FromQuery] DateOnly? dateFrom = null,
         [FromQuery] DateOnly? dateTo = null,
         [FromQuery] string? trash = null,
+        [FromQuery] string? cursor = null,
         CancellationToken ct = default)
     {
         await RequireAsync(NgbPermissionActions.View, ct);
-        return await service.GetPageAsync(offset, limit, search, dateFrom, dateTo, trash, ct);
+
+        return string.IsNullOrWhiteSpace(cursor)
+            ? await service.GetPageAsync(offset, limit, search, dateFrom, dateTo, trash, ct)
+            : await service.GetCursorPageAsync(cursor, limit, search, dateFrom, dateTo, trash, ct);
     }
 
     [HttpGet("{id:guid}")]

@@ -7,3 +7,9 @@ public sealed class PmIntegrationCollection : ICollectionFixture<PmIntegrationFi
 {
     public const string Name = "pm-integration";
 }
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class PmSchemaIntegrationCollection : ICollectionFixture<PmSchemaIntegrationFixture>
+{
+    public const string Name = "pm-integration-schema-changes";
+}

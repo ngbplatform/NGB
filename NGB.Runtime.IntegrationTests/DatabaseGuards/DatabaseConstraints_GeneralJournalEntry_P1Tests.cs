@@ -13,8 +13,8 @@ namespace NGB.Runtime.IntegrationTests.DatabaseGuards;
 /// These tests intentionally bypass application validators and write directly to the typed tables,
 /// asserting that DB CHECK/FK constraints prevent invalid platform states.
 /// </summary>
-[Collection(PostgresCollection.Name)]
-public sealed class DatabaseConstraints_GeneralJournalEntry_P1Tests(PostgresTestFixture fixture)
+[Collection(SchemaPostgresCollection.Name)]
+public sealed class DatabaseConstraints_GeneralJournalEntry_P1Tests(SchemaPostgresTestFixture fixture)
     : IntegrationTestBase(fixture)
 {
     private static readonly DateTime T0 = new(2026, 1, 18, 0, 0, 0, DateTimeKind.Utc);
