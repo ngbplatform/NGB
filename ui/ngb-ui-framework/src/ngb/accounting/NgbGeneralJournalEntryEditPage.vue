@@ -19,6 +19,7 @@ import NgbInput from '../primitives/NgbInput.vue'
 import NgbTabs from '../primitives/NgbTabs.vue'
 import NgbSelect from '../primitives/NgbSelect.vue'
 import { useToasts } from '../primitives/toast'
+import NgbObjectContent from '../business-objects/NgbObjectContent.vue'
 import NgbPageHeader from '../layout/NgbPageHeader.vue'
 import { navigateBack } from '../router/backNavigation'
 import { copyAppLink } from '../router/shareLink'
@@ -535,6 +536,8 @@ function extractErrorMessages(error: unknown): string[] {
       </template>
 
       <template #actions>
+        <NgbObjectContent v-if="currentId" :key="currentId"
+          :target="{ kind: 'GeneralJournalEntry', typeCode: 'general_journal_entry', id: currentId }" />
         <button
           v-if="canShareLink"
           class="ngb-iconbtn"

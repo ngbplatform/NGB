@@ -13,6 +13,7 @@
         <ProjectReference Include="..\NGB.AgencyBilling.Runtime\NGB.AgencyBilling.Runtime.csproj"/>
         <ProjectReference Include="..\NGB.Api\NGB.Api.csproj"/>
         <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj"/>
+        <ProjectReference Include="..\NGB.Attachments.MinIO\NGB.Attachments.MinIO.csproj"/>
         <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
         <ProjectReference Include="..\NGB.Core\NGB.Core.csproj"/>
         <ProjectReference Include="..\NGB.Hosting.AspNetCore\NGB.Hosting.AspNetCore.csproj"/>

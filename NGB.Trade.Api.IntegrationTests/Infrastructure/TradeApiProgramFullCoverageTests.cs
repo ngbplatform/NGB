@@ -57,6 +57,10 @@ public sealed class TradeApiProgramFullCoverageTests
         ["DOTNET_ENVIRONMENT"] = environmentName,
         ["ConnectionStrings__DefaultConnection"] =
             "Host=127.0.0.1;Port=1;Database=ngb_program_test;Username=postgres;Password=postgres;Timeout=1;Command Timeout=1;Pooling=false",
+        ["Attachments__MinIO__InternalEndpoint"] = "https://storage.example.test",
+        ["Attachments__MinIO__PublicEndpoint"] = "https://storage.example.test",
+        ["Attachments__MinIO__AccessKey"] = "test-access",
+        ["Attachments__MinIO__SecretKey"] = "test-secret",
         ["KeycloakSettings__Issuer"] = "https://example.invalid/realms/ngb",
         ["KeycloakSettings__RequireHttpsMetadata"] = bool.FalseString,
         ["KeycloakSettings__ClientIds__0"] = "ngb-api-tests",

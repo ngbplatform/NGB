@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import NgbObjectContent from '../business-objects/NgbObjectContent.vue';
 
 import NgbConfirmDialog from '../components/NgbConfirmDialog.vue';
 import NgbDrawer from '../components/NgbDrawer.vue';
@@ -148,7 +149,12 @@ function normalizeBannerText(value: string | null | undefined): string {
       @back="emit('back')"
       @close="emit('close')"
       @action="(action) => emit('action', action)"
-    />
+    >
+      <template #content-actions>
+        <NgbObjectContent v-if="!isNew && auditEntityId" :key="`${entityTypeCode}:${auditEntityId}`"
+          :target="{ kind: kind === 'catalog' ? 'CatalogItem' : 'Document', typeCode: entityTypeCode, id: auditEntityId }" />
+      </template>
+    </NgbEntityEditorHeader>
 
     <div :class="mode === 'page' ? 'min-h-0 flex-1 overflow-auto p-6' : 'px-5 py-4'">
       <div

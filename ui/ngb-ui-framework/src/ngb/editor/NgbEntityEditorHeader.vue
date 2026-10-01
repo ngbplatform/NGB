@@ -48,6 +48,7 @@ const emit = defineEmits<{
         </template>
 
         <template #actions>
+          <slot name="content-actions" />
           <NgbHeaderActionCluster
             :primary-actions="documentPrimaryActions"
             :more-groups="documentMoreActionGroups"
@@ -72,6 +73,7 @@ const emit = defineEmits<{
         </div>
 
         <div class="flex shrink-0 items-center gap-2">
+          <slot name="content-actions" />
           <NgbHeaderActionCluster
             :primary-actions="documentPrimaryActions"
             :more-groups="documentMoreActionGroups"
@@ -95,6 +97,7 @@ const emit = defineEmits<{
     </template>
 
     <template #actions>
+      <slot name="content-actions" />
       <button
         v-for="item in pageActions"
         :key="item.key"
@@ -111,4 +114,5 @@ const emit = defineEmits<{
       </button>
     </template>
   </NgbPageHeader>
+  <div v-else class="flex justify-end gap-2 px-5 pt-3"><slot name="content-actions" /></div>
 </template>

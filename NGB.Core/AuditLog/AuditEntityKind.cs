@@ -19,4 +19,6 @@ public enum AuditEntityKind : short
     SecurityUser = 8,
     SecurityRole = 9,
     SecurityProvisioningOperation = 10,
+    Attachment = 11,
+    Note = 12,
 }

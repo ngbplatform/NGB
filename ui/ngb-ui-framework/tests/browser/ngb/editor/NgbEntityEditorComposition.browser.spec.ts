@@ -1,5 +1,6 @@
+import { createPinia } from 'pinia'
 import { page } from 'vitest/browser'
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { computed, defineComponent, h, reactive, ref } from 'vue'
 
@@ -212,7 +213,7 @@ beforeEach(() => {
 test('composes the real editor header, form, discard dialog, mark dialog, and audit sidebar together', async () => {
   await page.viewport(1440, 900)
 
-  const view = await render(EditorCompositionHarness)
+  const view = await render(EditorCompositionHarness, { global: { plugins: [createPinia()] } })
 
   await expect.element(view.getByText('Invoice INV-001', { exact: true })).toBeVisible()
 
@@ -261,4 +262,17 @@ test('composes the real editor header, form, discard dialog, mark dialog, and au
   await view.getByRole('button', { name: 'Close' }).click()
   await view.getByRole('button', { name: 'Leave', exact: true }).click()
   await expect.element(view.getByTestId('editor-close-count')).toHaveTextContent('1')
+})
+
+vi.mock('../../../../src/ngb/business-objects/api', () => ({ contentApi: { summary: async () => ({ attachments: 0, notes: 0 }) }, startAttachmentDownload: vi.fn(), uploadBytes: vi.fn() }))
+
+
+test('saved catalog editors use the canonical catalog identity in shared content actions', async () => {
+  const view = render(NgbEntityEditor, {
+    props: { kind: 'catalog', mode: 'drawer', title: 'Catalog record', loading: false, saving: false, isNew: false, isMarkedForDeletion: false,
+      form: { sections: [] }, model: {}, entityTypeCode: 'catalog', auditEntityId: 'catalog-id' },
+    global: { plugins: [createPinia()] },
+  })
+  await expect.element(view.getByRole('button', { name: 'Attachments (0)' })).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'Notes (0)' })).toBeVisible()
 })

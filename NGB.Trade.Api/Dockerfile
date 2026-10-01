@@ -1,4 +1,4 @@
-﻿FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 USER $APP_UID
 WORKDIR /app
 EXPOSE 80
@@ -19,6 +19,9 @@ COPY ["NGB.Definitions/NGB.Definitions.csproj", "NGB.Definitions/"]
 COPY ["NGB.Metadata/NGB.Metadata.csproj", "NGB.Metadata/"]
 COPY ["NGB.OperationalRegisters/NGB.OperationalRegisters.csproj", "NGB.OperationalRegisters/"]
 COPY ["NGB.ReferenceRegisters/NGB.ReferenceRegisters.csproj", "NGB.ReferenceRegisters/"]
+COPY ["NGB.Attachments/NGB.Attachments.csproj", "NGB.Attachments/"]
+COPY ["NGB.Notes/NGB.Notes.csproj", "NGB.Notes/"]
+COPY ["NGB.Attachments.MinIO/NGB.Attachments.MinIO.csproj", "NGB.Attachments.MinIO/"]
 COPY ["NGB.Persistence/NGB.Persistence.csproj", "NGB.Persistence/"]
 COPY ["NGB.Trade/NGB.Trade.csproj", "NGB.Trade/"]
 COPY ["NGB.Trade.PostgreSql/NGB.Trade.PostgreSql.csproj", "NGB.Trade.PostgreSql/"]

@@ -541,6 +541,7 @@ function unapplyPayablesAllocation(details: PayablesOpenItemsDetailsResponseDto,
 }
 
 export async function mockCommonPmApis(page: Page): Promise<void> {
+  await page.route('**/api/business-objects/content-summary**', route => fulfillJson(route, { attachments: 0, notes: 0 }))
   await page.route('**/api/security/me/access', async (route) => {
     await fulfillJson(route, {
       userId: 'ngb-e2e-user',
@@ -1766,6 +1767,7 @@ export async function mockChartOfAccountsApis(page: Page): Promise<void> {
 export async function rejectUnhandledApiRequests(page: Page, allowedPathPrefixes: readonly string[]): Promise<void> {
   const implicitAllowedPathPrefixes = [
     '/api/security/me/access',
+    '/api/business-objects/content-summary',
     '/api/work-center',
   ]
   const effectiveAllowedPathPrefixes = [

@@ -17,6 +17,7 @@
     <ItemGroup>
         <PackageReference Include="NGB.Platform.Api" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Application.Abstractions" Version="$(NgbPlatformPackageVersion)" />
+        <PackageReference Include="NGB.Platform.Attachments.MinIO" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Contracts" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Core" Version="$(NgbPlatformPackageVersion)" />
         <PackageReference Include="NGB.Platform.Hosting.AspNetCore" Version="$(NgbPlatformPackageVersion)" />

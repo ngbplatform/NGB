@@ -137,6 +137,9 @@ jobs:
           packages=(
             NGB.Platform.Tools
             NGB.Platform.Core
+            NGB.Platform.Attachments
+            NGB.Platform.Notes
+            NGB.Platform.Attachments.MinIO
             NGB.Platform.Contracts
             NGB.Platform.Accounting
             NGB.Platform.Metadata

@@ -17,6 +17,17 @@
       <path d="M4 12h16" />
     </template>
 
+    <!-- Paperclip -->
+    <template v-else-if="name === 'paperclip'">
+      <path d="m21 11-9 9a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9 9a2 2 0 0 1-2.9-2.9l8.5-8.5" />
+    </template>
+
+    <!-- Sticky note -->    
+    <template v-else-if="name === 'sticky-note'">
+      <path d="M14 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v9Z" />
+      <path d="M14 21v-5a2 2 0 0 1 2-2h5M7 8h10M7 12h4" />
+    </template>
+
     <!-- Arrow right -->
     <template v-else-if="name === 'arrow-right'">
       <path d="M14 6l6 6-6 6" />

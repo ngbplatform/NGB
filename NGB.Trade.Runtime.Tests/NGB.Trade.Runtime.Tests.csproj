@@ -7,28 +7,32 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NGB.Trade.Runtime\NGB.Trade.Runtime.csproj" />
-        <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj" />
-        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj" />
-        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj" />
-        <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj" />
-        <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj" />
-        <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj" />
-        <ProjectReference Include="..\NGB.Trade\NGB.Trade.csproj" />
+        <ProjectReference Include="..\NGB.Trade.Runtime\NGB.Trade.Runtime.csproj"/>
+        <ProjectReference Include="..\NGB.Application.Abstractions\NGB.Application.Abstractions.csproj"/>
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
+        <ProjectReference Include="..\NGB.Core\NGB.Core.csproj"/>
+        <ProjectReference Include="..\NGB.OperationalRegisters\NGB.OperationalRegisters.csproj"/>
+        <ProjectReference Include="..\NGB.Persistence\NGB.Persistence.csproj"/>
+        <ProjectReference Include="..\NGB.Runtime\NGB.Runtime.csproj"/>
+        <ProjectReference Include="..\NGB.Trade\NGB.Trade.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="..\quality\coverage\ContractSurfaceExercise.cs" Link="Coverage\ContractSurfaceExercise.cs" />
+        <Compile Include="..\quality\coverage\ContractSurfaceExercise.cs" Link="Coverage\ContractSurfaceExercise.cs"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1"/>
+        <PackageReference Include="xunit" Version="2.9.3"/>
         <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="FluentAssertions" Version="8.11.0" />
-        <PackageReference Include="Moq" Version="4.21.0" />
+        <PackageReference Include="FluentAssertions" Version="8.11.0"/>
+        <PackageReference Include="Moq" Version="4.21.0"/>
+        <PackageReference Update="coverlet.collector" Version="10.1.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
     </ItemGroup>
 </Project>

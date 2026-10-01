@@ -1,12 +1,14 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Serilog;
 using NGB.Api;
-using NGB.Hosting.AspNetCore;
-using NGB.Hosting.AspNetCore.ErrorHandling;
+using NGB.Api.Attachments;
 using NGB.Api.Reporting;
-using NGB.Hosting.AspNetCore.Identity;
 using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
+using NGB.Attachments.MinIO;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.ErrorHandling;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.PropertyManagement.Api.Services;
@@ -60,6 +62,8 @@ builder.Services.AddExternalLinks(builder.Configuration);
 builder.Services.AddGlobalErrorHandling();
 builder.Services.AddNgbWorkCenterRealtime();
 builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
+builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration);
+builder.Services.AddNgbMinioAttachments(options => builder.Configuration.GetSection("Attachments:MinIO").Bind(options));
 
 builder.Services.AddScoped<IMainMenuContributor, PropertyManagementMainMenuContributor>();
 builder.Services.AddScoped<ICommandPaletteSearchService, CommandPaletteSearchService>();

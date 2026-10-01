@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Attachments</PackageId>
+        <Description>NGB Platform Attachments capability.</Description>
+        <NgbPlatformHasApiBaseline>false</NgbPlatformHasApiBaseline>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Contracts\NGB.Contracts.csproj"/>
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj"/>
+    </ItemGroup>
+
+</Project>

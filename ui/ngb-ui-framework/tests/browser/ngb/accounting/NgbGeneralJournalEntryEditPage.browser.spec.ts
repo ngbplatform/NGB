@@ -1,3 +1,4 @@
+import { createPinia } from 'pinia'
 import { page } from 'vitest/browser'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
@@ -391,7 +392,7 @@ async function renderPage(initialUrl: string, props: { listPath?: string | null 
   const view = await render(NgbGeneralJournalEntryEditPage, {
     props,
     global: {
-      plugins: [router],
+      plugins: [createPinia(), router],
     },
   })
 
@@ -1144,3 +1145,5 @@ test('ignores successful and failed journal loads that settle after unmount', as
   rejectEntry(new Error('late journal failure'))
   await flushUi()
 })
+
+vi.mock('../../../../src/ngb/business-objects/api', () => ({ contentApi: { summary: async () => ({ attachments: 0, notes: 0 }) }, startAttachmentDownload: vi.fn(), uploadBytes: vi.fn() }))

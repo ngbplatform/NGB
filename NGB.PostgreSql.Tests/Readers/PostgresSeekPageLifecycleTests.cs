@@ -16,6 +16,53 @@ namespace NGB.PostgreSql.Tests.Readers;
 public sealed class PostgresSeekPageLifecycleTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Successful_page_waits_for_asynchronous_cleanup_of_remaining_results(bool document)
+    {
+        var disposeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseDispose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = new Mock<DbDataReader>();
+        var reads = 0;
+
+        reader.SetupGet(x => x.FieldCount).Returns(1);
+        reader.Setup(x => x.GetName(0)).Returns("Total");
+        reader.Setup(x => x.GetFieldType(0)).Returns(typeof(long));
+        reader.Setup(x => x.GetValue(0)).Returns(0L);
+        reader.Setup(x => x.ReadAsync(It.IsAny<CancellationToken>())).Returns(() => Task.FromResult(++reads == 1));
+        // Leave a trailing result to be disposed by the reader's await-using scope.
+        reader.Setup(x => x.NextResultAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        reader.Setup(x => x.DisposeAsync()).Returns(() =>
+        {
+            disposeStarted.TrySetResult();
+            return new ValueTask(releaseDispose.Task);
+        });
+
+        var connection = new RecordingDbConnection(readerFactory: _ => reader.Object);
+        var uow = new RecordingUnitOfWork(connection);
+
+        Task operation = document
+            ? new PostgresDocumentReader(uow, []).GetSeekPageAsync(
+                new("invoice", "doc_invoice", "name", []), new("Alpha", []), null, null, 10, true)
+            : new PostgresCatalogReader(uow).GetSeekPageAsync(
+                new("customers", "cat_customers", "name", []), new("Alpha", []), null, null, 10, true);
+
+        try
+        {
+            await disposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            operation.IsCompleted.Should().BeFalse("the connection must not be reused before cleanup completes");
+        }
+        finally
+        {
+            releaseDispose.TrySetResult();
+        }
+
+        await operation;
+        reader.Verify(x => x.DisposeAsync(), Times.Once);
+        connection.Commands.Should().ContainSingle();
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

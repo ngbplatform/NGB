@@ -1080,3 +1080,5 @@ export {
   normalizeRequiredRouteParam,
   normalizeRouteParam,
 } from './ngb/router/routeParams';
+
+export { default as NgbObjectContent } from './ngb/business-objects/NgbObjectContent.vue'

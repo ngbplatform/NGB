@@ -1,11 +1,15 @@
+using System.Net.Http.Json;
 using System.Text.Json;
 using Dapper;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.Attachments;
+using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
+using NGB.Contracts.Notes;
 using NGB.Contracts.Services;
 using NGB.OperationalRegisters.Contracts;
 using NGB.Persistence.Readers.Reports;
@@ -34,7 +38,7 @@ public sealed class PmRentCharge_PostAfterUnpost_PostsAgain_P0Tests : IAsyncLife
         var factory = new PmApiFactory(_fixture);
         try
         {
-            using var _ = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
+            using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
             await using var scope = factory.Services.CreateAsyncScope();
 
             var documents = scope.ServiceProvider.GetRequiredService<IDocumentService>();
@@ -43,9 +47,26 @@ public sealed class PmRentCharge_PostAfterUnpost_PostsAgain_P0Tests : IAsyncLife
             var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
             var seeded = await SeedDraftRentChargeAsync(scope.ServiceProvider);
+            var target = new BusinessObjectRef(BusinessObjectKind.Document, PropertyManagementCodes.RentCharge, seeded.RentCharge.Id);
+            var parentPath = $"/api/documents/{target.TypeCode}/{target.Id}";
+            var beforeContent = await client.GetStringAsync(parentPath);
+            using var noteResponse = await client.PostAsJsonAsync("/api/notes", new CreateNoteRequest(target, "Independent of posting"));
+            noteResponse.EnsureSuccessStatusCode();
+            var note = (await noteResponse.Content.ReadFromJsonAsync<NoteDto>())!;
+            using var uploadResponse = await client.PostAsJsonAsync("/api/attachments/uploads", new CreateAttachmentUploadRequest(target, "posting-evidence.txt", "text/plain", 3));
+            uploadResponse.EnsureSuccessStatusCode();
+            var upload = (await uploadResponse.Content.ReadFromJsonAsync<AttachmentUploadDto>())!;
+            (await client.GetStringAsync(parentPath)).Should().Be(beforeContent);
 
             (await documents.PostAsync(PropertyManagementCodes.RentCharge, seeded.RentCharge.Id, CancellationToken.None))
                 .Status.Should().Be(DocumentStatus.Posted);
+
+            var postedBeforeContent = await client.GetStringAsync(parentPath);
+            using var editedNote = await client.PutAsJsonAsync($"/api/notes/{note.Id}", new UpdateNoteRequest("Edited while posted", note.Version));
+            editedNote.EnsureSuccessStatusCode();
+            using var deletedUpload = await client.DeleteAsync($"/api/attachments/{upload.AttachmentId}");
+            deletedUpload.EnsureSuccessStatusCode();
+            (await client.GetStringAsync(parentPath)).Should().Be(postedBeforeContent);
 
             (await documents.UnpostAsync(PropertyManagementCodes.RentCharge, seeded.RentCharge.Id, CancellationToken.None))
                 .Status.Should().Be(DocumentStatus.Draft);

@@ -42,6 +42,10 @@ public sealed class PmApiProgramConfigurationFullCoverageTests
             ["DOTNET_ENVIRONMENT"] = "Production",
             ["ConnectionStrings__DefaultConnection"] =
                 "Host=localhost;Port=5432;Database=ngb_coverage;Username=ngb;Password=ngb",
+            ["Attachments__MinIO__InternalEndpoint"] = "https://storage.example.test",
+            ["Attachments__MinIO__PublicEndpoint"] = "https://storage.example.test",
+            ["Attachments__MinIO__AccessKey"] = "test-access",
+            ["Attachments__MinIO__SecretKey"] = "test-secret",
             ["KeycloakSettings__Issuer"] = "https://identity.example.test/realms/ngb",
             ["KeycloakSettings__ClientIds__0"] = "ngb-pm-api",
             ["ExternalLinksSettings__HealthUiUrl"] = "https://health.example.test",

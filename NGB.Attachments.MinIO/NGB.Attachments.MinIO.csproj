@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPublishable>false</IsPublishable>
+        <PackageId>NGB.Platform.Attachments.MinIO</PackageId>
+        <Description>NGB Platform Attachments.MinIO capability.</Description>
+        <NgbPlatformHasApiBaseline>false</NgbPlatformHasApiBaseline>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\NGB.Attachments\NGB.Attachments.csproj"/>
+        <ProjectReference Include="..\NGB.Tools\NGB.Tools.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Minio" Version="7.0.0"/>
+        <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.12"/>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12"/>
+    </ItemGroup>
+
+</Project>

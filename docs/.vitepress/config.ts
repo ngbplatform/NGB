@@ -169,6 +169,7 @@ export default defineConfig({
           page('Developer Workflows', '/guides/developer-workflows'),
           page('Platform Extension Points', '/guides/platform-extension-points'),
           page('Document Actions and Work Center', '/guides/document-actions-and-work-center'),
+          page('Attachments and Notes', '/guides/attachments-and-notes'),
           page('Add a Document with Accounting and Registers', '/guides/add-document-with-accounting-and-registers'),
           page('Add a Canonical Report', '/guides/add-canonical-report-workflow'),
           page('Add a Composable Report', '/guides/add-composable-report-workflow')

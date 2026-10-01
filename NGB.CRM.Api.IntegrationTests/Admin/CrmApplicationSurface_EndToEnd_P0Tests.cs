@@ -90,6 +90,10 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
             && definition.ActionCode == NgbPermissionActions.View
             && definition.DisplayName == "View CRM dashboard");
 
+        definitions.Where(d => d.ResourceKind == NgbResourceKinds.System && (d.ResourceCode == "attachments" || d.ResourceCode == "notes"))
+            .Select(d => $"{d.ResourceCode}.{d.ActionCode}").Should().BeEquivalentTo(
+                "attachments.read", "attachments.create", "attachments.delete", "notes.read", "notes.create", "notes.update", "notes.delete");
+
         var sales = await roles.GetRoleAsync(
             roleList.Single(static role => role.Code == "crm.sales_rep").RoleId,
             CancellationToken.None);

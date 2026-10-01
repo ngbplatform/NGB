@@ -24,3 +24,5 @@ export type {
   EntityEditorFlags,
   EntityEditorHandle,
 } from './ngb/editor/types'
+
+export { default as NgbObjectContent } from './ngb/business-objects/NgbObjectContent.vue'

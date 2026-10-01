@@ -156,7 +156,9 @@ public sealed class SecuritySurfaceFullCoverageTests
         metadata.Should().Contain(x => x.DisplayName == "Z catalog: View Audit");
 
         var platform = await new PlatformPermissionDefinitionSource().GetDefinitionsAsync(default);
-        platform.Should().HaveCount(15);
+        platform.Should().HaveCount(22);
+        platform.Count(x => x.ResourceCode == "attachments").Should().Be(3);
+        platform.Count(x => x.ResourceCode == "notes").Should().Be(4);
         platform.Should().OnlyContain(x => !string.IsNullOrWhiteSpace(x.Group));
 
         var reportProvider = new Mock<IReportDefinitionProvider>(MockBehavior.Strict);
