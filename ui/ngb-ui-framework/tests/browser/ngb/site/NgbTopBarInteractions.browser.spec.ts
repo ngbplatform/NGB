@@ -1,5 +1,5 @@
 import { page } from 'vitest/browser'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { render } from 'vitest-browser-vue'
 import { defineComponent, h, ref } from 'vue'
 
@@ -109,7 +109,15 @@ const MobileTopBarHarness = defineComponent({
   },
 })
 
-test('emits desktop actions and exposes the full user menu state', async () => {
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+test.each([
+  { platform: 'MacIntel', modifier: '⌘' },
+  { platform: 'Linux x86_64', modifier: 'Ctrl' },
+])('emits desktop actions and exposes the full user menu state on $platform', async ({ platform, modifier }) => {
+  vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform)
   await page.viewport(1440, 900)
 
   const view = await render(TopBarEventHarness)
@@ -117,7 +125,7 @@ test('emits desktop actions and exposes the full user menu state', async () => {
   expect(hasVisibleText('99+')).toBe(true)
   await expect.element(view.getByRole('button', { name: /Search pages, records, reports, or run a command/i })).toBeVisible()
   expect(visibleUserButton().textContent?.trim()).toBe('AC')
-  expect(hasVisibleText('⌘')).toBe(true)
+  expect(hasVisibleText(modifier)).toBe(true)
 
   await view.getByRole('button', { name: /Search pages, records, reports, or run a command/i }).click()
   await visibleButtonByTitle('Work Center').click()

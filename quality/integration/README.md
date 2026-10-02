@@ -14,6 +14,12 @@ NGB_RUN_VOLUME_TESTS=true dotnet test NGB.CRM.Api.IntegrationTests/NGB.CRM.Api.I
 
 The full backend coverage runner enables volume tests automatically.
 
+## Object storage and browser integration
+
+`MinioIntegrationFixture.cs` uses `Testcontainers.Minio` with isolated credentials and the same bucket bootstrap as local Compose. Its default is the available third-party build `ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z`, pinned to multi-platform digest `sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9`. Rider and `dotnet test` need no image override. Set `NGB_TEST_MINIO_IMAGE` only when explicitly testing another available image; the fixture never builds MinIO from source or silently substitutes a release.
+
+Real Attachments & Notes browser scenarios run in the frontend gate. Playwright owns `NGB.PropertyManagement.TestHost`, which reuses the PM PostgreSQL/Keycloak fixtures and the shared MinIO fixture. The backend gate does not start Node or browsers. See the [Attachments & Notes guide](../../docs/guides/attachments-and-notes.md#validation) for prerequisites and production-version validation requirements.
+
 ## Report performance regressions
 
 `ReportPerformanceProbe.cs` and `ReportScaleAssertions.cs` support automated report tests. Explicit probes count Npgsql commands without requiring diagnostic output. Scale tests compare query counts across page sizes and validate complete XLSX exports; they do not depend on files produced by a local audit.

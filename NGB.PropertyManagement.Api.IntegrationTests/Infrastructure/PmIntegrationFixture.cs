@@ -14,6 +14,8 @@ public class PmIntegrationFixture : PostgreSqlIntegrationFixtureBase
 
     protected override string DatabaseName => "ngb_pm_tests";
 
+    public string? BrowserOrigin { get; init; }
+
     public PmKeycloakFixture Keycloak => _keycloak
         ?? throw new NotSupportedException("Keycloak fixture is not initialized.");
 
@@ -24,7 +26,7 @@ public class PmIntegrationFixture : PostgreSqlIntegrationFixtureBase
 
     protected override Task InitializeAuxiliaryResourcesAsync()
     {
-        _keycloak = new PmKeycloakFixture();
+        _keycloak = new PmKeycloakFixture(BrowserOrigin);
         return _keycloak.InitializeAsync();
     }
 

@@ -16,10 +16,15 @@ namespace NGB.PostgreSql.Tests.Readers;
 public sealed class PostgresSeekPageLifecycleTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Successful_page_waits_for_asynchronous_cleanup_of_remaining_results(bool document)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Successful_page_waits_for_asynchronous_cleanup_and_propagates_cleanup_failure(
+        bool document,
+        bool disposalFails)
     {
+        var disposalError = new InvalidOperationException("Injected reader disposal failure");
         var disposeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseDispose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reader = new Mock<DbDataReader>();
@@ -54,10 +59,22 @@ public sealed class PostgresSeekPageLifecycleTests
         }
         finally
         {
-            releaseDispose.TrySetResult();
+            if (disposalFails)
+                releaseDispose.TrySetException(disposalError);
+            else
+                releaseDispose.TrySetResult();
         }
 
-        await operation;
+        if (disposalFails)
+        {
+            var error = await ((Func<Task>)(() => operation)).Should().ThrowAsync<InvalidOperationException>();
+            error.Which.Should().BeSameAs(disposalError);
+        }
+        else
+        {
+            await operation;
+        }
+
         reader.Verify(x => x.DisposeAsync(), Times.Once);
         connection.Commands.Should().ContainSingle();
     }

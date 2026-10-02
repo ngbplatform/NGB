@@ -16,10 +16,15 @@
         <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" PrivateAssets="all"/>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12"/>
         <PackageReference Include="Moq" Version="4.21.0"/>
-        <PackageReference Include="Testcontainers" Version="4.15.0"/>
+        <PackageReference Include="Testcontainers.Minio" Version="4.15.0"/>
         <PackageReference Update="coverlet.collector" Version="10.1.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="../quality/integration/MinioIntegrationFixture.cs" Link="Infrastructure/MinioIntegrationFixture.cs"/>
+        <None Include="../docker/minio/init.sh" Link="Infrastructure/minio-init.sh" CopyToOutputDirectory="PreserveNewest"/>
     </ItemGroup>
 </Project>

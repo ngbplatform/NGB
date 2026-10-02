@@ -23,8 +23,10 @@ for (const workspace of manifest.workspaces) {
       if (await exists(resolve(workspaceRoot, workspace, config))) console.log(`${workspace}|${config}|${kind}`)
     }
   }
-  if (requestedKind !== 'vitest' && await exists(resolve(workspaceRoot, workspace, 'playwright.config.ts'))) {
-    console.log(`${workspace}|playwright.config.ts|e2e`)
+  if (requestedKind !== 'vitest') {
+    for (const [config, kind] of [['playwright.config.ts', 'e2e'], ['playwright.content.config.ts', 'e2e-content']]) {
+      if (await exists(resolve(workspaceRoot, workspace, config))) console.log(`${workspace}|${config}|${kind}`)
+    }
   }
 }
 

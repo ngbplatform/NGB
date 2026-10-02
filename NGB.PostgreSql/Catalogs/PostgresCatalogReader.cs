@@ -300,16 +300,22 @@ LIMIT @limitPlusOne;
         {
             if (readTotal)
             {
-                await using var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
+                IReadOnlyList<IDictionary<string, object?>> rows;
+
+                await using (var results = await uow.Connection.QueryMultipleAsync(new CommandDefinition(
                     $"{countSql}\n{sql}",
                     parameters,
                     transaction: uow.Transaction,
-                    cancellationToken: ct));
-                total = await results.ReadSingleAsync<long>();
+                    cancellationToken: ct)))
+                {
+                    total = await results.ReadSingleAsync<long>();
 
-                return (await results.ReadAsync())
-                    .Select(static row => (IDictionary<string, object?>)row)
-                    .ToArray();
+                    rows = (await results.ReadAsync())
+                        .Select(static row => (IDictionary<string, object?>)row)
+                        .ToArray();
+                }
+
+                return rows;
             }
 
             return (await uow.Connection.QueryAsync(new CommandDefinition(
