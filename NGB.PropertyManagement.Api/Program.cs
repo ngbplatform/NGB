@@ -62,8 +62,8 @@ builder.Services.AddExternalLinks(builder.Configuration);
 builder.Services.AddGlobalErrorHandling();
 builder.Services.AddNgbWorkCenterRealtime();
 builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
-builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration);
-builder.Services.AddNgbMinioAttachments(options => builder.Configuration.GetSection("Attachments:MinIO").Bind(options));
+builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration, services =>
+    services.AddNgbMinioAttachments(builder.Configuration.GetSection("Attachments:MinIO").Bind));
 
 builder.Services.AddScoped<IMainMenuContributor, PropertyManagementMainMenuContributor>();
 builder.Services.AddScoped<ICommandPaletteSearchService, CommandPaletteSearchService>();

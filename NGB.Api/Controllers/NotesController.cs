@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NGB.Api.Features;
 using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Notes;
+using NGB.Core.Features;
 using NGB.Notes;
 
 namespace NGB.Api.Controllers;
 
 [Authorize, ApiController, Route("api/notes")]
+[NgbFeature(NgbFeatures.Notes)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class NotesController(INoteService service) : ControllerBase
 {

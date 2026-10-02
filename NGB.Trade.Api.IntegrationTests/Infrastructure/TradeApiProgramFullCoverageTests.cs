@@ -1,6 +1,10 @@
 using System.Net;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using NGB.Application.Abstractions.Features;
+using NGB.Attachments;
+using NGB.Core.Features;
 using Xunit;
 
 namespace NGB.Trade.Api.IntegrationTests.Infrastructure;
@@ -32,6 +36,33 @@ public sealed class TradeApiProgramFullCoverageTests
         var response = await client.GetAsync("/swagger/index.html");
 
         response.StatusCode.Should().Be(expectedStatusCode);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Program_RegistersStorageOnlyForEnabledAttachments(bool attachments, bool notes)
+    {
+        var configuration = ValidConfiguration("Production");
+        configuration["FeatureManagement__Attachments"] = attachments.ToString();
+        configuration["FeatureManagement__Notes"] = notes.ToString();
+        configuration["Attachments__MaintenanceEnabled"] = bool.FalseString;
+        if (!attachments)
+        {
+            configuration["Attachments__MinIO__AccessKey"] = "";
+            configuration["Attachments__MinIO__SecretKey"] = "";
+        }
+
+        using var environment = new EnvironmentVariableScope(configuration);
+        await using var factory = new WebApplicationFactory<Program>();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var features = scope.ServiceProvider.GetRequiredService<INgbFeatureService>();
+
+        (await features.IsEnabledAsync(NgbFeatures.Attachments, default)).Should().Be(attachments);
+        (await features.IsEnabledAsync(NgbFeatures.Notes, default)).Should().Be(notes);
+        (scope.ServiceProvider.GetService<IAttachmentObjectStorage>() is not null).Should().Be(attachments);
     }
 
     [Theory]

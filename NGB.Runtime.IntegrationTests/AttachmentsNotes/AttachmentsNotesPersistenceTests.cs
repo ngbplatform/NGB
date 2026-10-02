@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using NGB.Application.Abstractions.BusinessObjects;
@@ -175,6 +176,11 @@ public sealed class AttachmentsNotesPersistenceTests(PostgresTestFixture fixture
 
     private IHost Host(int maxAttachments = 100) => IntegrationHostFactory.Create(Fixture.ConnectionString, services =>
     {
+        services.AddNgbFeatureManagement(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["FeatureManagement:Attachments"] = bool.TrueString,
+            ["FeatureManagement:Notes"] = bool.TrueString
+        }).Build());
         services.AddNgbAttachmentsAndNotes(options => options.MaxActivePerObject = maxAttachments);
         services.AddSingleton<IAttachmentObjectStorage, VerifiedTestStorage>();
         services.AddScoped<IBusinessObjectResolver, TestResolver>();

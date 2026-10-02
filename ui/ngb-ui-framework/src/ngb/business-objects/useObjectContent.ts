@@ -3,9 +3,12 @@ import { toErrorMessage } from '../utils/errorMessage'
 import { contentApi, startAttachmentDownload, uploadBytes } from './api'
 import type { Attachment, BusinessObjectRef, ContentSummary, Note } from './types'
 
-export function useObjectContent(target: Ref<BusinessObjectRef>) {
+type ContentCapabilities = { attachments: boolean; notes: boolean }
+type ContentCapability = keyof ContentCapabilities
+
+export function useObjectContent(target: Ref<BusinessObjectRef>, capabilities: Ref<ContentCapabilities>) {
   const summary = ref<ContentSummary>({ attachments: null, notes: null })
-  const drawer = ref<'attachments' | 'notes' | null>(null)
+  const drawer = ref<ContentCapability | null>(null)
   const attachments = ref<Attachment[]>([])
   const notes = ref<Note[]>([])
   const cursor = ref<string | null>(null)
@@ -23,13 +26,24 @@ export function useObjectContent(target: Ref<BusinessObjectRef>) {
 
   async function refreshSummary() {
     const current = ++summaryGeneration
+    if (!capabilities.value.attachments && !capabilities.value.notes) return
+
     try {
       const result = await contentApi.summary(target.value, lifetime.signal)
-      if (current === summaryGeneration) { summary.value = result; summaryError.value = '' }
+      if (current === summaryGeneration) {
+        summary.value = {
+          attachments: capabilities.value.attachments ? result.attachments : null,
+          notes: capabilities.value.notes ? result.notes : null,
+        }
+        summaryError.value = ''
+      }
     } catch (cause) {
-      if (!lifetime.signal.aborted && current === summaryGeneration) summaryError.value = toErrorMessage(cause, 'Could not load counts')
+      if (!lifetime.signal.aborted && current === summaryGeneration) {
+        summaryError.value = toErrorMessage(cause, 'Could not load counts')
+      }
     }
   }
+
   async function load(more = false) {
     if (!drawer.value) return
     listRequest?.abort()
@@ -39,6 +53,7 @@ export function useObjectContent(target: Ref<BusinessObjectRef>) {
     const active = drawer.value
     loading.value = true
     error.value = ''
+
     try {
       const after = more ? cursor.value : null
       if (active === 'attachments') {
@@ -58,29 +73,52 @@ export function useObjectContent(target: Ref<BusinessObjectRef>) {
       if (listRequest === controller) loading.value = false
     }
   }
-  function open(value: 'attachments' | 'notes') { drawer.value = value; cursor.value = null; void load() }
-  function close() { listRequest?.abort(); drawer.value = null }
-  async function mutate(action: (signal: AbortSignal) => Promise<void>, refresh = true) {
-    if (busy.value) return false
+
+  function open(value: ContentCapability) {
+    if (!capabilities.value[value]) return
+    drawer.value = value
+    cursor.value = null
+    void load()
+  }
+
+  function close() {
+    listRequest?.abort()
+    drawer.value = null
+  }
+
+  async function mutate(
+    capability: ContentCapability,
+    action: (signal: AbortSignal) => Promise<void>,
+    refresh = true,
+  ) {
+    if (busy.value || !capabilities.value[capability]) return false
     const current = generation
     operation = new AbortController()
     const signal = AbortSignal.any([operation.signal, lifetime.signal])
     busy.value = true
     error.value = ''
+
     try {
       await action(signal)
       if (signal.aborted) return false
-      if (refresh) { await refreshSummary(); await load() }
+      if (refresh) {
+        await refreshSummary()
+        await load()
+      }
       return true
     } catch (cause) {
       if (!signal.aborted) error.value = toErrorMessage(cause, 'Operation failed. Please retry.')
       return false
     } finally {
-      if (current === generation) { busy.value = false; uploadPhase.value = '' }
+      if (current === generation) {
+        busy.value = false
+        uploadPhase.value = ''
+      }
     }
   }
+
   async function upload(file: File) {
-    await mutate(async signal => {
+    await mutate('attachments', async signal => {
       completionId.value = null
       uploadPhase.value = 'Preparing upload…'
       const uploadTarget = await contentApi.requestUpload(target.value, file, signal)
@@ -94,33 +132,84 @@ export function useObjectContent(target: Ref<BusinessObjectRef>) {
       if (!signal.aborted) completionId.value = null
     })
   }
+
   async function retryCompletion() {
     const id = completionId.value
     if (!id) return
-    await mutate(async signal => { await contentApi.complete(id, signal); if (!signal.aborted) completionId.value = null })
+    await mutate('attachments', async signal => {
+      await contentApi.complete(id, signal)
+      if (!signal.aborted) completionId.value = null
+    })
   }
-  function cancelUpload() { operation?.abort(); uploadPhase.value = ''; error.value = 'Upload cancelled. Only verified files appear in the list.' }
-  const deleteAttachment = (id: string) => mutate(async signal => { await contentApi.deleteAttachment(id, signal) })
-  const download = (id: string) => mutate(async signal => {
-    const result = await contentApi.download(id, signal)
-    if (!signal.aborted) startAttachmentDownload(result.url)
-  }, false)
-  const saveNote = (text: string, note: Note | null) => mutate(async signal => {
-    if (note) await contentApi.updateNote(note, text, signal)
-    else await contentApi.createNote(target.value, text, signal)
-  })
-  const deleteNote = (note: Note) => mutate(async signal => { await contentApi.deleteNote(note, signal) })
 
-  watch(() => `${target.value.kind}:${target.value.typeCode}:${target.value.id}`, () => {
-    lifetime.abort(); listRequest?.abort(); operation?.abort()
-    lifetime = new AbortController(); generation++
-    attachments.value = []; notes.value = []; cursor.value = null; drawer.value = null
-    summary.value = { attachments: null, notes: null }; error.value = ''; summaryError.value = ''
-    busy.value = false; loading.value = false; uploadPhase.value = ''; completionId.value = null
+  function cancelUpload() {
+    operation?.abort()
+    uploadPhase.value = ''
+    error.value = 'Upload cancelled. Only verified files appear in the list.'
+  }
+
+  function deleteAttachment(id: string) {
+    return mutate('attachments', async signal => {
+      await contentApi.deleteAttachment(id, signal)
+    })
+  }
+
+  function download(id: string) {
+    return mutate('attachments', async signal => {
+      const result = await contentApi.download(id, signal)
+      if (!signal.aborted) startAttachmentDownload(result.url)
+    }, false)
+  }
+
+  function saveNote(text: string, note: Note | null) {
+    return mutate('notes', async signal => {
+      if (note) await contentApi.updateNote(note, text, signal)
+      else await contentApi.createNote(target.value, text, signal)
+    })
+  }
+
+  function deleteNote(note: Note) {
+    return mutate('notes', async signal => {
+      await contentApi.deleteNote(note, signal)
+    })
+  }
+
+  watch([
+    () => `${target.value.kind}:${target.value.typeCode}:${target.value.id}`,
+    () => capabilities.value.attachments,
+    () => capabilities.value.notes,
+  ], () => {
+    lifetime.abort()
+    listRequest?.abort()
+    operation?.abort()
+    lifetime = new AbortController()
+    generation++
+    summaryGeneration++
+    attachments.value = []
+    notes.value = []
+    cursor.value = null
+    drawer.value = null
+    summary.value = { attachments: null, notes: null }
+    error.value = ''
+    summaryError.value = ''
+    busy.value = false
+    loading.value = false
+    uploadPhase.value = ''
+    completionId.value = null
     void refreshSummary()
   }, { immediate: true })
-  onBeforeUnmount(() => { generation++; summaryGeneration++; lifetime.abort(); listRequest?.abort(); operation?.abort() })
-  return { summary, drawer, attachments, notes, cursor, loading, busy, error, summaryError,
+
+  onBeforeUnmount(() => {
+    generation++
+    summaryGeneration++
+    lifetime.abort()
+    listRequest?.abort()
+    operation?.abort()
+  })
+
+  return {
+    summary, drawer, attachments, notes, cursor, loading, busy, error, summaryError,
     completionId, uploadPhase, open, close, load, upload, retryCompletion, cancelUpload,
-    deleteAttachment, download, saveNote, deleteNote, refreshSummary }
+    deleteAttachment, download, saveNote, deleteNote, refreshSummary,
+  }
 }

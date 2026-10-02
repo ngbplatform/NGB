@@ -5,6 +5,9 @@ import NgbObjectContent from '../../../../src/ngb/business-objects/NgbObjectCont
 import { contentApi, uploadBytes, startAttachmentDownload } from '../../../../src/ngb/business-objects/api'
 import type { Attachment, Note } from '../../../../src/ngb/business-objects/types'
 
+const features = vi.hoisted(() => ({ isEnabled: vi.fn((_code: string) => true), load: vi.fn(), error: '' }))
+vi.mock('../../../../src/ngb/features/useFeatureStore', () => ({ useFeatureStore: () => features }))
+
 const access = vi.hoisted(() => ({ current: { isActive: true, isBootstrapAdmin: true }, hasPermission: vi.fn(() => false) }))
 vi.mock('../../../../src/ngb/security/useAccessStore', () => ({ useAccessStore: () => access }))
 vi.mock('../../../../src/ngb/business-objects/api', () => ({
@@ -15,7 +18,11 @@ const target = { kind: 'Document', typeCode: 'invoice', id: 'object-id' } as con
 const attachment: Attachment = { id: 'attachment-id', fileName: 'invoice.txt', sizeBytes: 1024, contentType: 'text/plain', createdAtUtc: '2026-10-01T12:00:00Z', createdByUserId: 'author-id', createdByDisplayName: 'Alice' }
 const note: Note = { id: 'note-id', text: '<b>Plain text</b>', version: 1, createdAtUtc: '2026-10-01T12:00:00Z', createdByUserId: 'author-id', createdByDisplayName: 'Alice', updatedAtUtc: null, updatedByUserId: null }
 beforeEach(() => {
-  vi.resetAllMocks(); access.current.isBootstrapAdmin = true; access.current.isActive = true
+  vi.resetAllMocks()
+  features.isEnabled.mockReturnValue(true)
+  features.error = ''
+  access.current.isBootstrapAdmin = true
+  access.current.isActive = true
   vi.mocked(contentApi.summary).mockResolvedValue({ attachments: 0, notes: 0 })
   vi.mocked(contentApi.attachments).mockResolvedValue({ items: [], nextCursor: null })
   vi.mocked(contentApi.notes).mockResolvedValue({ items: [], nextCursor: null })
@@ -164,4 +171,36 @@ test('mobile dark drawer contains long plain text and closes with Escape', async
     document.documentElement.classList.remove('dark')
     await page.viewport(1440, 900)
   }
+})
+
+test('disabled features hide all actions and make no content requests even for administrators', async () => {
+  features.isEnabled.mockReturnValue(false)
+  const screen = render(NgbObjectContent, { props: { target } })
+  await expect.element(screen.getByTestId('object-content-actions')).not.toBeInTheDocument()
+  expect(contentApi.summary).not.toHaveBeenCalled()
+  expect(contentApi.attachments).not.toHaveBeenCalled()
+  expect(contentApi.notes).not.toHaveBeenCalled()
+})
+
+test('notes can be enabled independently of attachments', async () => {
+  features.isEnabled.mockImplementation(code => code === 'Notes')
+  const screen = render(NgbObjectContent, { props: { target } })
+  await expect.element(screen.getByRole('button', { name: 'Notes (0)' })).toBeVisible()
+  await expect.element(screen.getByRole('button', { name: 'Attachments (0)' })).not.toBeInTheDocument()
+  await screen.getByRole('button', { name: 'Notes (0)' }).click()
+  await expect.element(page.getByText('No notes yet.')).toBeVisible()
+  expect(contentApi.attachments).not.toHaveBeenCalled()
+})
+
+test('failed feature discovery offers an explicit retry without content requests', async () => {
+  features.isEnabled.mockReturnValue(false)
+  features.error = 'Discovery unavailable'
+  const screen = render(NgbObjectContent, { props: { target } })
+
+  await screen.getByRole('button', { name: 'Retry available features' }).click()
+
+  expect(features.load).toHaveBeenLastCalledWith(true)
+  expect(contentApi.summary).not.toHaveBeenCalled()
+  expect(contentApi.attachments).not.toHaveBeenCalled()
+  expect(contentApi.notes).not.toHaveBeenCalled()
 })

@@ -184,6 +184,9 @@ export { default as NgbPermissionMatrix } from './ngb/security/NgbPermissionMatr
 export { default as NgbEffectiveAccessPanel } from './ngb/security/NgbEffectiveAccessPanel.vue';
 export { default as NgbAccessAuditPanel } from './ngb/security/NgbAccessAuditPanel.vue';
 export { useAccessStore } from './ngb/security/useAccessStore';
+export { useFeatureStore } from './ngb/features/useFeatureStore';
+export { NGB_FEATURES } from './ngb/features/types';
+export type { FeatureState } from './ngb/features/types';
 export {
   SYSTEM_PERMISSIONS,
   buildPermissionAssignment,

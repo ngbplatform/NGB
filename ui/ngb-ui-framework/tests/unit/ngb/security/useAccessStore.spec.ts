@@ -9,6 +9,9 @@ vi.mock('../../../../src/ngb/security/api', () => ({
   getCurrentAccess: mocks.getCurrentAccess,
 }))
 
+vi.mock('../../../../src/ngb/features/api', () => ({ getFeatures: vi.fn() }))
+
+import { useFeatureStore } from '../../../../src/ngb/features/useFeatureStore'
 import { useAccessStore } from '../../../../src/ngb/security/useAccessStore'
 
 describe('useAccessStore', () => {
@@ -153,7 +156,12 @@ describe('useAccessStore', () => {
     await expect(store.load(true)).resolves.toEqual(snapshot)
     expect(mocks.getCurrentAccess).not.toHaveBeenCalled()
 
+    const features = useFeatureStore()
+    features.current = [{ code: 'Notes', displayName: 'Notes', group: 'Content', enabled: true }]
+    expect(features.isEnabled('Notes')).toBe(true)
+
     store.reset()
+    expect(features.isEnabled('Notes')).toBe(false)
     expect(store.current).toBeNull()
     expect(store.permissionKeys.size).toBe(0)
     expect(store.error).toBeNull()

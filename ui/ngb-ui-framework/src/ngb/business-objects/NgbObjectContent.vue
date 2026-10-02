@@ -1,14 +1,25 @@
 <script setup lang="ts">
-import { ref, toRef, useId, watch } from 'vue'
+import { computed, ref, toRef, useId, watch } from 'vue'
 import NgbDrawer from '../components/NgbDrawer.vue'
 import NgbIcon from '../primitives/NgbIcon.vue'
 import { useAccessStore } from '../security/useAccessStore'
+import { NGB_FEATURES } from '../features/types'
+import { useFeatureStore } from '../features/useFeatureStore'
 import { useObjectContent } from './useObjectContent'
 import type { BusinessObjectRef, Note } from './types'
 
 const props = defineProps<{ target: BusinessObjectRef }>()
 const access = useAccessStore()
-const state = useObjectContent(toRef(props, 'target'))
+const features = useFeatureStore()
+const capabilities = computed(() => ({
+  attachments: features.isEnabled(NGB_FEATURES.attachments),
+  notes: features.isEnabled(NGB_FEATURES.notes),
+}))
+const visibleCapabilities = computed(() => (['attachments', 'notes'] as const).filter(code => capabilities.value[code]))
+const state = useObjectContent(toRef(props, 'target'), capabilities)
+watch(() => props.target, () => {
+  void features.load()
+}, { immediate: true })
 const { summary, drawer, attachments, notes, cursor, loading, busy, error, summaryError, completionId, uploadPhase } = state
 const noteTextId = useId()
 const text = ref('')
@@ -34,8 +45,8 @@ const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? 
 </script>
 
 <template>
-  <div class="flex shrink-0 items-center gap-2" data-testid="object-content-actions">
-    <button v-for="capability in (['attachments', 'notes'] as const)" :key="capability"
+  <div v-if="visibleCapabilities.length || features.error" class="flex shrink-0 items-center gap-2" data-testid="object-content-actions">
+    <button v-for="capability in visibleCapabilities" :key="capability"
       class="ngb-iconbtn relative" :disabled="!allowed(capability, 'read')"
       :aria-label="`${capability === 'attachments' ? 'Attachments' : 'Notes'} (${summary[capability] ?? 0})`"
       :title="capability === 'attachments' ? 'Attachments' : 'Notes'" @click="state.open(capability)">
@@ -43,6 +54,7 @@ const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? 
       <span v-if="(summary[capability] ?? 0) > 0" class="absolute -right-1 -top-1 min-w-4 rounded-full bg-ngb-primary px-1 text-center text-[10px] leading-4 text-white" aria-hidden="true">{{ summary[capability] }}</span>
     </button>
     <button v-if="summaryError" class="text-xs text-ngb-danger" :title="summaryError" aria-label="Retry content counts" @click="state.refreshSummary()">Retry counts</button>
+    <button v-if="features.error" class="text-xs text-ngb-danger" :title="features.error" aria-label="Retry available features" @click="features.load(true)">Retry features</button>
   </div>
   <NgbDrawer :open="drawer !== null" :title="drawer === 'attachments' ? 'Attachments' : 'Notes'" @update:open="state.close()">
     <div class="space-y-4 text-sm text-ngb-text">

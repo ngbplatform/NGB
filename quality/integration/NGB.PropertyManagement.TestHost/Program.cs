@@ -19,6 +19,8 @@ try
 
     await using var factory = new PmApiFactory(fixture, new Dictionary<string, string?>
     {
+        ["FeatureManagement:Attachments"] = bool.TrueString,
+        ["FeatureManagement:Notes"] = bool.TrueString,
         ["Attachments:MinIO:InternalEndpoint"] = storage.Endpoint,
         ["Attachments:MinIO:PublicEndpoint"] = storage.Endpoint,
         ["Attachments:MinIO:AccessKey"] = storage.AccessKey,

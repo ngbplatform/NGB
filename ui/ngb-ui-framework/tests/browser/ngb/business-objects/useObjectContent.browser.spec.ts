@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { defineComponent, h, ref } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import { render } from 'vitest-browser-vue'
 import { useObjectContent } from '../../../../src/ngb/business-objects/useObjectContent'
 import { contentApi, uploadBytes, startAttachmentDownload } from '../../../../src/ngb/business-objects/api'
@@ -11,11 +11,17 @@ vi.mock('../../../../src/ngb/business-objects/api', () => ({
 const targetValue: BusinessObjectRef = { kind: 'CatalogItem', typeCode: 'catalog', id: 'id' }
 const attachment = { id: 'uploaded' } as Attachment
 const note = { id: 'note', version: 1, text: 'text' } as Note
-function setup() {
+function setup(initialCapabilities = { attachments: true, notes: true }) {
   const target = ref(targetValue)
+  const capabilities = ref(initialCapabilities)
   let state!: ReturnType<typeof useObjectContent>
-  const component = render(defineComponent({ setup() { state = useObjectContent(target); return () => h('div') } }))
-  return { state, target, component }
+  const component = render(defineComponent({
+    setup() {
+      state = useObjectContent(target, capabilities)
+      return () => h('div')
+    },
+  }))
+  return { state, target, capabilities, component }
 }
 function deferred<T>() {
   let resolve!: (value: T) => void; let reject!: (reason: unknown) => void
@@ -181,4 +187,48 @@ test('aborted requests ignore late errors and old summaries cannot leak across p
   const deletingTask = state.deleteAttachment('file'); state.cancelUpload()
   deleting.reject(new Error('aborted delete')); await deletingTask
   expect(state.error.value).toContain('Upload cancelled')
+})
+
+test('disabled capabilities reject direct UI operations without fetching content', async () => {
+  const { state } = setup({ attachments: false, notes: false })
+  state.open('attachments')
+  state.open('notes')
+  await state.refreshSummary()
+  await state.upload(new File(['x'], 'file.txt'))
+  await state.download('file')
+  await state.deleteAttachment('file')
+  await state.saveNote('new', null)
+  await state.deleteNote(note)
+
+  expect(state.drawer.value).toBeNull()
+  expect(state.summary.value).toEqual({ attachments: null, notes: null })
+  for (const operation of Object.values(contentApi)) {
+    expect(operation).not.toHaveBeenCalled()
+  }
+})
+
+test('disabling a capability cancels outstanding work and clears its visible state', async () => {
+  const { state, capabilities } = setup()
+  const pending = deferred<void>()
+  vi.mocked(uploadBytes).mockReturnValueOnce(pending.promise)
+  state.open('attachments')
+  const upload = state.upload(new File(['x'], 'file.txt'))
+  await expect.poll(() => vi.mocked(uploadBytes).mock.calls.length).toBe(1)
+  const signal = vi.mocked(uploadBytes).mock.calls[0]![2]
+
+  capabilities.value = { attachments: false, notes: true }
+  await nextTick()
+  expect(signal.aborted).toBe(true)
+  expect(state.drawer.value).toBeNull()
+  expect(state.attachments.value).toEqual([])
+  pending.resolve()
+  await upload
+  expect(contentApi.complete).not.toHaveBeenCalled()
+  await state.refreshSummary()
+  expect(state.summary.value).toEqual({ attachments: null, notes: 0 })
+
+  capabilities.value = { attachments: true, notes: false }
+  await nextTick()
+  await state.refreshSummary()
+  expect(state.summary.value).toEqual({ attachments: 0, notes: null })
 })

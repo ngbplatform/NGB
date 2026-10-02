@@ -13,14 +13,21 @@ internal sealed class BusinessObjectContentSummaryService(
     : IBusinessObjectContentSummaryService
 {
     public async Task<BusinessObjectContentSummary> GetAsync(BusinessObjectRef target, CancellationToken ct)
+        => await GetAsync(target, true, true, ct);
+
+    public async Task<BusinessObjectContentSummary> GetAsync(
+        BusinessObjectRef target,
+        bool attachmentsEnabled,
+        bool notesEnabled,
+        CancellationToken ct)
     {
         await resolver.ResolveAsync(target, ct);
         var permissions = await access.GetSnapshotAsync(ct);
         
         return await reader.GetAsync(
             target,
-            permissions.Has(NgbSystemPermissions.AttachmentsRead),
-            permissions.Has(NgbSystemPermissions.NotesRead),
+            attachmentsEnabled && permissions.Has(NgbSystemPermissions.AttachmentsRead),
+            notesEnabled && permissions.Has(NgbSystemPermissions.NotesRead),
             ct);
     }
 }

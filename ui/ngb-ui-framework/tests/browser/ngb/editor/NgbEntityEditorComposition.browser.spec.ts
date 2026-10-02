@@ -264,6 +264,13 @@ test('composes the real editor header, form, discard dialog, mark dialog, and au
   await expect.element(view.getByTestId('editor-close-count')).toHaveTextContent('1')
 })
 
+vi.mock('../../../../src/ngb/features/api', () => ({
+  getFeatures: async () => [
+    { code: 'Attachments', displayName: 'Attachments', group: 'Content', enabled: true },
+    { code: 'Notes', displayName: 'Notes', group: 'Content', enabled: true },
+  ],
+}))
+
 vi.mock('../../../../src/ngb/business-objects/api', () => ({ contentApi: { summary: async () => ({ attachments: 0, notes: 0 }) }, startAttachmentDownload: vi.fn(), uploadBytes: vi.fn() }))
 
 

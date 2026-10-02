@@ -18,6 +18,19 @@ internal static class ExceptionExtensions
         if (ex is INgbError ngb)
         {
             var status = MapNgbKindToStatusCode(ngb.Kind, ex);
+            if (ngb.Kind == NgbErrorKind.Infrastructure && exceptionMappers is not null)
+            {
+                foreach (var mapper in exceptionMappers)
+                {
+                    var mapping = mapper.TryMap(ex);
+                    if (mapping is null)
+                        continue;
+
+                    status = mapping.StatusCode;
+                    break;
+                }
+            }
+
             var builder = new ProblemDetailsBuilder(status);
 
             // Only include the message for non-5xx responses to reduce accidental leakage.

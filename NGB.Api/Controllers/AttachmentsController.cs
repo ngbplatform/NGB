@@ -1,12 +1,15 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using NGB.Api.Features;
 using NGB.Attachments;
 using NGB.Contracts.Attachments;
 using NGB.Contracts.BusinessObjects;
+using NGB.Core.Features;
 
 namespace NGB.Api.Controllers;
 
 [Authorize, ApiController, Route("api/attachments")]
+[NgbFeature(NgbFeatures.Attachments)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class AttachmentsController(IAttachmentService service) : ControllerBase
 {

@@ -35,7 +35,11 @@ public sealed class PmRentCharge_PostAfterUnpost_PostsAgain_P0Tests : IAsyncLife
     [Fact]
     public async Task PostAsync_AfterUnpost_PostsAgain_AndSecondUnpost_IsAlsoAllowed()
     {
-        var factory = new PmApiFactory(_fixture);
+        var factory = new PmApiFactory(_fixture, new Dictionary<string, string?>
+        {
+            ["FeatureManagement:Attachments"] = "true",
+            ["FeatureManagement:Notes"] = "true"
+        });
         try
         {
             using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });

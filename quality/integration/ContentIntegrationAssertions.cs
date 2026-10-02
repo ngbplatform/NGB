@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.BusinessObjects;
 using NGB.Application.Abstractions.Services;
@@ -17,6 +18,11 @@ internal static class ContentIntegrationAssertions
 {
     public static void Configure(IServiceCollection services)
     {
+        services.AddNgbFeatureManagement(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["FeatureManagement:Attachments"] = bool.TrueString,
+            ["FeatureManagement:Notes"] = bool.TrueString
+        }).Build());
         services.AddNgbAttachmentsAndNotes();
         services.AddSingleton<IAttachmentObjectStorage, VerifiedStorage>();
         services.AddSingleton<ContentAccess>();
