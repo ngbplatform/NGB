@@ -7,8 +7,14 @@ import { NGB_FEATURES } from '../features/types'
 import { useFeatureStore } from '../features/useFeatureStore'
 import { useObjectContent } from './useObjectContent'
 import type { BusinessObjectRef, Note } from './types'
+import type { DocumentHeaderActionGroup } from '../editor/types'
 
-const props = defineProps<{ target: BusinessObjectRef }>()
+const props = withDefaults(defineProps<{
+  target: BusinessObjectRef
+  showActions?: boolean
+}>(), {
+  showActions: true,
+})
 const access = useAccessStore()
 const features = useFeatureStore()
 const capabilities = computed(() => ({
@@ -27,25 +33,87 @@ const editing = ref<Note | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const allowed = (capability: string, action: string) => access.current?.isActive === true
   && (access.current.isBootstrapAdmin || access.hasPermission(`system.${capability}.${action}`))
+
+const actionGroups = computed<DocumentHeaderActionGroup[]>(() => {
+  const items: DocumentHeaderActionGroup['items'] = visibleCapabilities.value.map(capability => ({
+    key: `content.${capability}`,
+    title: capability === 'attachments' ? 'Attachments' : 'Notes',
+    icon: capability === 'attachments' ? 'paperclip' : 'sticky-note',
+    disabled: !allowed(capability, 'read'),
+    badge: summary.value[capability],
+    ariaLabel: `${capability === 'attachments' ? 'Attachments' : 'Notes'} (${summary.value[capability] ?? 0})`,
+  }))
+
+  if (summaryError.value) {
+    items.push({ key: 'content.retrySummary', title: 'Retry content counts', icon: 'refresh' })
+  }
+
+  if (features.error) {
+    items.push({ key: 'content.retryFeatures', title: 'Retry available features', icon: 'refresh' })
+  }
+
+  return items.length ? [{ key: 'attachments-and-notes', label: 'Attachments & Notes', items }] : []
+})
+
+function handleAction(action: string): boolean {
+  switch (action) {
+    case 'content.attachments':
+    case 'content.notes': {
+      const capability = action === 'content.attachments' ? 'attachments' : 'notes'
+      if (allowed(capability, 'read')) state.open(capability)
+      return true
+    }
+    case 'content.retrySummary':
+      void state.refreshSummary()
+      return true
+    case 'content.retryFeatures':
+      void features.load(true)
+      return true
+    default:
+      return false
+  }
+}
+
+defineExpose({ actionGroups, handleAction })
+
 function selectFile(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = ''
   if (file) void state.upload(file)
 }
+
 async function saveNote() {
   const saved = await state.saveNote(text.value, editing.value)
-  if (saved) { text.value = ''; editing.value = null }
+  if (saved) {
+    text.value = ''
+    editing.value = null
+  }
 }
-function edit(note: Note) { editing.value = note; text.value = note.text }
-function cancelEdit() { editing.value = null; text.value = '' }
+
+function edit(note: Note) {
+  editing.value = note
+  text.value = note.text
+}
+
+function cancelEdit() {
+  editing.value = null
+  text.value = ''
+}
+
 watch(() => `${props.target.kind}:${props.target.typeCode}:${props.target.id}`, cancelEdit)
+
 const date = (value: string) => new Date(value).toLocaleString()
-const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`
+
+function size(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1048576).toFixed(1)} MB`
+}
 </script>
 
 <template>
-  <div v-if="visibleCapabilities.length || features.error" class="flex shrink-0 items-center gap-2" data-testid="object-content-actions">
+  <div v-if="showActions && (visibleCapabilities.length || features.error)" class="flex shrink-0 items-center gap-2" data-testid="object-content-actions">
     <button v-for="capability in visibleCapabilities" :key="capability"
       class="ngb-iconbtn relative" :disabled="!allowed(capability, 'read')"
       :aria-label="`${capability === 'attachments' ? 'Attachments' : 'Notes'} (${summary[capability] ?? 0})`"

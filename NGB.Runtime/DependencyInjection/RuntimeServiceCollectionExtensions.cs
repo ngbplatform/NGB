@@ -135,6 +135,7 @@ public static class RuntimeServiceCollectionExtensions
 
         // Security / access management
         services.TryAddSingleton<IMemoryCache, MemoryCache>();
+        services.AddOptions<NgbAdministratorOptions>();
         services.AddOptions<NgbSecurityCacheOptions>().ValidateOnStart();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IValidateOptions<NgbSecurityCacheOptions>, NgbSecurityCacheOptionsValidator>());
         services.TryAddSingleton<NgbSecurityCache>();
@@ -143,6 +144,7 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<ICurrentAccessService, CurrentAccessService>();
         services.TryAddScoped<IRoleManagementService, RoleManagementService>();
         services.TryAddScoped<IEffectiveAccessService, EffectiveAccessService>();
+        services.TryAddScoped<EffectivePermissionService>();
         services.TryAddScoped<PermissionDefinitionRegistry>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, PlatformPermissionDefinitionSource>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<INgbPermissionDefinitionSource, MetadataPermissionDefinitionSource>());

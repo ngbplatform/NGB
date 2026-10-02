@@ -14,10 +14,20 @@ public sealed class EffectiveAccessService(
 {
     public async Task<EffectiveAccessDto> GetEffectiveAccessAsync(Guid userId, CancellationToken ct)
     {
-        _ = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
+        var user = await users.GetByIdAsync(userId, ct) ?? throw new SecurityUserNotFoundException(userId);
 
         var version = await versions.GetAsync(userId, ct);
-        var granted = (await permissions.GetEffectivePermissionsAsync(userId, ct)).ToHashSet();
+        var granted = new HashSet<NgbPermissionKey>();
+
+        if (user.IsActive)
+        {
+            var effective = _effectivePermissions is null
+                ? await permissions.GetEffectivePermissionsAsync(userId, ct)
+                : await _effectivePermissions.GetAsync(userId, ct);
+
+            granted.UnionWith(effective);
+        }
+
         var allDefinitions = await definitions.GetAllAsync(ct);
 
         var groups = allDefinitions
@@ -60,5 +70,19 @@ public sealed class EffectiveAccessService(
         return marker > 0
             ? first.DisplayName[..marker]
             : first.ResourceCode;
+    }
+
+    // Additive members follow the existing methods to preserve compiler-generated async metadata.
+    private readonly EffectivePermissionService? _effectivePermissions;
+
+    public EffectiveAccessService(
+        IPlatformUserRepository users,
+        IUserAccessVersionRepository versions,
+        IPermissionSnapshotRepository permissions,
+        PermissionDefinitionRegistry definitions,
+        EffectivePermissionService effectivePermissions)
+        : this(users, versions, permissions, definitions)
+    {
+        _effectivePermissions = effectivePermissions;
     }
 }

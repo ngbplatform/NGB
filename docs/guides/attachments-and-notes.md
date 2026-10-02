@@ -1,6 +1,6 @@
 # Attachments & Notes
 
-Attachments and plain-text notes belong to a stable business object identity, independently of the object's payload, document version, workflow and posting state. The shared editor toolbar shows paperclip and note buttons for enabled features, with positive-count badges and on-demand right drawers. Missing read permission disables the corresponding button. New, unsaved objects have no content actions. Catalogs, ordinary documents and General Journal Entries use the same implementation in Property Management, Trade, Agency Billing and CRM.
+Attachments and plain-text notes belong to a stable business object identity, independently of the object's payload, document version, workflow and posting state. The editor header exposes enabled features under **More → Attachments & Notes**, with paperclip/note icons, positive-count badges and on-demand right drawers. In documents, this group follows Output and History & share. Catalog page and drawer headers use the same group. Missing read permission disables the corresponding menu item. New, unsaved objects have no content actions. Catalogs, ordinary documents and General Journal Entries use the same implementation in Property Management, Trade, Agency Billing and CRM.
 
 ## Identity and access
 
@@ -8,14 +8,14 @@ Attachments and plain-text notes belong to a stable business object identity, in
 
 Every operation checks the feature, resource permission and parent access through existing platform services. Knowing a resource ID grants no access. A summary returns `null` for a disabled feature or missing read permission. Soft-deleted and posted parents retain content as long as normal parent read access permits it. Hard-deleted parents cannot be resolved, so their content becomes inaccessible; do not hard-delete business objects without a separate retention policy.
 
-Grant role permissions explicitly; an upgrade does not broaden existing roles:
+Administrator roles receive all registered permissions automatically. Grant the following permissions explicitly to other roles:
 
 | Resource | Actions |
 | --- | --- |
 | `system.attachments` | `read`, `create`, `delete` |
 | `system.notes` | `read`, `create`, `update`, `delete` |
 
-Bootstrap administrators retain the existing permission bypass but cannot bypass a disabled feature. Mutations require an active authenticated actor. Audit events record the target, resource ID, actor, timestamps and safe metadata. Note bodies, storage keys, credentials and signed URLs are not included in audit payloads.
+The trusted Keycloak role `ngb-admin` grants full permissions with or without a pre-existing platform user record. Application administrator roles registered through `NgbAdministratorOptions.ApplicationRoleCodes` receive every registered permission; PM registers `pm-administrator` and CRM registers `crm.administrator`. Administrator identity is determined by trusted role codes, never by editable display names. Inactive accounts remain blocked, and administrator permissions do not enable a disabled deployment feature. Mutations require an active authenticated actor. Audit events record the target, resource ID, actor, timestamps and safe metadata. Note bodies, storage keys, credentials and signed URLs are not included in audit payloads.
 
 ## Package and host composition
 
@@ -103,6 +103,8 @@ Each vertical has its own server, network and persistent volume. The default hos
 | Trade | 9200 | 9201 |
 | Agency Billing | 9300 | 9301 |
 | CRM | 9400 | 9401 |
+
+`MINIO_CORS_ORIGINS` lists both `http://localhost:<web-port>` and `http://127.0.0.1:<web-port>` for that vertical. These are different browser origins, so both must be allowed even though they reach the same local application. Use a comma-separated list of exact origins; add any custom development hostname explicitly. When this value changes, recreate the MinIO service with Compose so it receives the new environment. A container restart alone does not apply environment changes.
 
 Start the desired stack using its normal Compose command, for example:
 

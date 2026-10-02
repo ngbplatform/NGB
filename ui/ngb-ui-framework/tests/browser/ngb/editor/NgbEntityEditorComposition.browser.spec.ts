@@ -276,10 +276,11 @@ vi.mock('../../../../src/ngb/business-objects/api', () => ({ contentApi: { summa
 
 test('saved catalog editors use the canonical catalog identity in shared content actions', async () => {
   const view = render(NgbEntityEditor, {
-    props: { kind: 'catalog', mode: 'drawer', title: 'Catalog record', loading: false, saving: false, isNew: false, isMarkedForDeletion: false,
+    props: { kind: 'catalog', mode: 'page', title: 'Catalog record', loading: false, saving: false, isNew: false, isMarkedForDeletion: false,
       form: { sections: [] }, model: {}, entityTypeCode: 'catalog', auditEntityId: 'catalog-id' },
     global: { plugins: [createPinia()] },
   })
-  await expect.element(view.getByRole('button', { name: 'Attachments (0)' })).toBeVisible()
-  await expect.element(view.getByRole('button', { name: 'Notes (0)' })).toBeVisible()
+  await view.getByRole('button', { name: 'More actions' }).click()
+  await expect.element(view.getByRole('menuitem', { name: 'Attachments (0)' })).toBeVisible()
+  await expect.element(view.getByRole('menuitem', { name: 'Notes (0)' })).toBeVisible()
 })

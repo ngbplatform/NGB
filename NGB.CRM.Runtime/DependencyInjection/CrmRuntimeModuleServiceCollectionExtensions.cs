@@ -17,6 +17,7 @@ using NGB.Definitions;
 using NGB.Definitions.Documents.Posting;
 using NGB.Definitions.Documents.Validation;
 using NGB.Runtime.Documents.Derivations;
+using NGB.Runtime.Security;
 
 namespace NGB.CRM.Runtime.DependencyInjection;
 
@@ -24,6 +25,7 @@ public static class CrmRuntimeModuleServiceCollectionExtensions
 {
     public static IServiceCollection AddCrmRuntimeModule(this IServiceCollection services)
     {
+        services.Configure<NgbAdministratorOptions>(options => options.ApplicationRoleCodes.Add("crm.administrator"));
         services.TryAddSingleton(new CrmDemoSeedOptions());
         services.TryAddSingleton(new CrmDemoAdministratorOptions());
         services.TryAddScoped<ICrmSetupService, CrmSetupService>();
@@ -51,10 +53,7 @@ public static class CrmRuntimeModuleServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDefinitionsContributor, CrmDocumentDerivationDefinitionsContributor>());
         services.TryAddScoped<CrmWorkCenterPolicy>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<IDocumentActionCompletedWorkCenterPolicy, CrmWorkCenterPolicy>());
-        services.TryAddEnumerable(
-            ServiceDescriptor.Singleton<
-                IWorkCenterPreferenceDefinitionSource,
-                CrmWorkCenterPreferenceDefinitionSource>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IWorkCenterPreferenceDefinitionSource, CrmWorkCenterPreferenceDefinitionSource>());
 
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDefinitionsContributor, CrmPostingDefinitionsContributor>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IReportDefinitionSource, CrmCanonicalReportDefinitionSource>());

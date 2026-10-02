@@ -32,6 +32,7 @@ public static class PropertyManagementRuntimeModuleServiceCollectionExtensions
 {
     public static IServiceCollection AddPropertyManagementRuntimeModule(this IServiceCollection services)
     {
+        services.Configure<NgbAdministratorOptions>(options => options.ApplicationRoleCodes.Add("pm-administrator"));
         services.TryAddSingleton(new PropertyManagementDemoAdministratorOptions());
         services.TryAddScoped<IPropertyManagementSetupService, PropertyManagementSetupService>();
         services.TryAddScoped<IPropertyManagementSecuritySetupService, PropertyManagementSecuritySetupService>();

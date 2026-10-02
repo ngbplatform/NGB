@@ -77,7 +77,7 @@ Authenticated `GET /api/features` returns registered feature codes, display name
 
 The UI package exports `useFeatureStore`, `NGB_FEATURES` and `FeatureState`. The store deduplicates concurrent discovery requests and caches successful results for up to 30 seconds when loaded again; it does not poll. `load(true)` explicitly refreshes and `reset()` clears its state. Failed discovery closes access to feature-specific UI, and an old server's missing discovery endpoint means no enabled features. Reload the browser after deploying new flag values.
 
-Attachments and Notes toolbar buttons appear independently when their features are enabled; a missing read permission disables the corresponding button. A disabled feature makes no list or mutation requests. The shared content summary is requested when at least one feature is enabled; the API returns `null` for counts whose feature is disabled or read permission is missing. Disabling a capability in the UI state closes its drawer and cancels outstanding requests; the backend remains authoritative for every operation.
+Attachments and Notes appear independently in **More → Attachments & Notes** when their features are enabled; a missing read permission disables the corresponding menu item. Administrator roles have all content permissions, while deployment feature flags still control availability. A disabled feature makes no list or mutation requests. The shared content summary is requested when at least one feature is enabled; the API returns `null` for counts whose feature is disabled or read permission is missing. Disabling a capability in the UI state closes its drawer and cancels outstanding requests; the backend remains authoritative for every operation.
 
 ## Upgrade verification
 

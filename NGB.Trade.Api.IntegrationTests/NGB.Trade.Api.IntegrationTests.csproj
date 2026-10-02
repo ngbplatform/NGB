@@ -33,6 +33,7 @@
         </PackageReference>
     </ItemGroup>
     <ItemGroup>
+        <Compile Include="..\quality\integration\CurrentAccessHttpAssertions.cs" Link="Infrastructure\CurrentAccessHttpAssertions.cs"/>
         <Compile Include="..\quality\integration\ContentIntegrationAssertions.cs" Link="Infrastructure\ContentIntegrationAssertions.cs"/>
         <Compile Include="..\quality\integration\ReportScaleAssertions.cs" Link="Infrastructure\ReportScaleAssertions.cs"/>
         <Compile Include="..\quality\integration\ReportPerformanceProbe.cs" Link="Infrastructure\ReportPerformanceProbe.cs"/>

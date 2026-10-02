@@ -71,3 +71,25 @@ test('resolves the current editor after mount and replacement without capturing 
   editor.value = null
   expect(() => forwarded.getFlags()).toThrow('Entity editor is not mounted.')
 })
+
+test('forwards content actions across editor wrappers and tolerates older handles', () => {
+  const editor = shallowRef<EntityEditorHandle | null>(null)
+  const forwarded = forwardEntityEditorHandle(editor)
+
+  expect(forwarded.getContentActionGroups?.()).toEqual([])
+  expect(forwarded.handleContentAction?.('content.notes')).toBe(false)
+
+  editor.value = createHandle()
+  expect(forwarded.getContentActionGroups?.()).toEqual([])
+  expect(forwarded.handleContentAction?.('content.notes')).toBe(false)
+
+  const getContentActionGroups = vi.fn().mockReturnValue([
+    { key: 'attachments-and-notes', label: 'Attachments & Notes', items: [] },
+  ])
+  const handleContentAction = vi.fn().mockReturnValue(true)
+  editor.value = { ...createHandle(), getContentActionGroups, handleContentAction }
+
+  expect(forwarded.getContentActionGroups?.()).toBe(getContentActionGroups.mock.results[0]!.value)
+  expect(forwarded.handleContentAction?.('content.notes')).toBe(true)
+  expect(handleContentAction).toHaveBeenCalledWith('content.notes')
+})

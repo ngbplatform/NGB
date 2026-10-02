@@ -1,4 +1,5 @@
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { render } from 'vitest-browser-vue'
 import { computed, defineComponent, h, ref } from 'vue'
 import { createMemoryHistory, createRouter, RouterView, useRoute, useRouter } from 'vue-router'
@@ -42,6 +43,8 @@ vi.mock('../../../../src/ngb/editor/NgbEntityEditorHeader.vue', () => ({
 }))
 
 import NgbEntityEditor from '../../../../src/ngb/editor/NgbEntityEditor.vue'
+
+beforeEach(() => setActivePinia(createPinia()))
 import { useEntityEditorLeaveGuard } from '../../../../src/ngb/editor/useEntityEditorLeaveGuard'
 
 const ExtensionBlock = defineComponent({

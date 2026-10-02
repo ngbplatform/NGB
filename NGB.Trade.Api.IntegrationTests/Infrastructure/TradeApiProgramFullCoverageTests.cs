@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Features;
 using NGB.Attachments;
 using NGB.Core.Features;
+using NGB.IntegrationTests.Security;
 using Xunit;
 
 namespace NGB.Trade.Api.IntegrationTests.Infrastructure;
@@ -18,6 +19,23 @@ public sealed class TradeApiProgramEnvironmentCollection
 [Collection(TradeApiProgramEnvironmentCollection.Name)]
 public sealed class TradeApiProgramFullCoverageTests
 {
+    [Theory]
+    [InlineData(false, true, "ngb-admin")]
+    [InlineData(true, true, "ngb-admin")]
+    [InlineData(true, false, "ngb-admin")]
+    [InlineData(false, true, "Administrator")]
+    [InlineData(true, true, "ngb-user")]
+    public async Task Program_CurrentAccess_UsesAuthenticatedAdministratorRoleAndAccountStatus(
+        bool platformUserExists,
+        bool accountActive,
+        string role)
+    {
+        using var environment = new EnvironmentVariableScope(ValidConfiguration("Production"));
+        await using var factory = new WebApplicationFactory<Program>();
+
+        await CurrentAccessHttpAssertions.VerifyAsync(factory, platformUserExists, accountActive, role);
+    }
+
     [Theory]
     [InlineData("Development", HttpStatusCode.OK)]
     [InlineData("Production", HttpStatusCode.NotFound)]

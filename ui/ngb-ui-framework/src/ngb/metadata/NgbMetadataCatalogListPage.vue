@@ -172,6 +172,8 @@ const resolvedDrawerExtraActions = computed(() =>
 )
 
 async function handleDrawerAction(action: string) {
+  if (editorRef.value?.handleContentAction?.(action)) return
+
   switch (action) {
     case 'expand':
       editorRef.value?.openFullPage()
@@ -237,6 +239,7 @@ const expandTo = computed(() => {
       <NgbEntityEditorDrawerActions
         :flags="editorFlags"
         :extra-actions="resolvedDrawerExtraActions"
+        :more-groups="editorRef?.getContentActionGroups?.() ?? []"
         @action="(action) => void handleDrawerAction(action)"
       />
     </template>

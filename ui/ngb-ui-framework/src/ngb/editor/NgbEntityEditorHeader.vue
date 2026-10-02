@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import NgbHeaderActionCluster from '../components/NgbHeaderActionCluster.vue';
+import NgbMoreActionsMenu from '../components/NgbMoreActionsMenu.vue';
 import NgbBadge from '../primitives/NgbBadge.vue';
 import NgbIcon from '../primitives/NgbIcon.vue';
 import NgbPageHeader from '../layout/NgbPageHeader.vue';
@@ -109,10 +110,12 @@ const emit = defineEmits<{
         <NgbIcon :name="item.icon" />
       </button>
 
+      <NgbMoreActionsMenu :groups="documentMoreActionGroups" @action="(action) => emit('action', action)" />
+
       <button class="ngb-iconbtn" :disabled="loading || saving" title="Close" @click="emit('close')">
         <NgbIcon name="x" />
       </button>
     </template>
   </NgbPageHeader>
-  <div v-else class="flex justify-end gap-2 px-5 pt-3"><slot name="content-actions" /></div>
+  <slot v-else name="content-actions" />
 </template>

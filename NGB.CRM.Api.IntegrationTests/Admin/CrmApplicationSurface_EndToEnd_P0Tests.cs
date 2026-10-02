@@ -80,6 +80,18 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
             && permission.ResourceCode == CrmCodes.BackgroundJobs
             && permission.ActionCode == NgbPermissionActions.View);
 
+        var administratorAccess = await scope.ServiceProvider
+            .GetRequiredService<IEffectiveAccessService>()
+            .GetEffectiveAccessAsync(admin.AssignedUsers.Single().UserId, CancellationToken.None);
+        var contentAccess = administratorAccess.Groups
+            .SelectMany(static group => group.Resources)
+            .Where(static resource => resource is { ResourceKind: NgbResourceKinds.System, ResourceCode: "attachments" or "notes" })
+            .SelectMany(static resource => resource.Actions.Select(action => $"{resource.ResourceCode}.{action}"));
+
+        contentAccess.Should().BeEquivalentTo(
+            "attachments.read", "attachments.create", "attachments.delete",
+            "notes.read", "notes.create", "notes.update", "notes.delete");
+
         var definitions = await scope.ServiceProvider
             .GetRequiredService<PermissionDefinitionRegistry>()
             .GetAllAsync(CancellationToken.None);

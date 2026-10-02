@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Moq;
+using NGB.Contracts.Security;
 using NGB.Core.Security;
 using NGB.Persistence.Security;
 using NGB.Runtime.CurrentActor;
@@ -43,6 +44,8 @@ public sealed class PermissionSnapshotProviderTests
         snapshot.IsBootstrapAdmin.Should().BeTrue();
         snapshot.IsActive.Should().BeTrue();
         snapshot.Has(new NgbPermissionKey("system", "roles", "manage")).Should().BeTrue();
+        snapshot.Has(NgbSystemPermissions.AttachmentsCreate).Should().BeTrue();
+        snapshot.Has(NgbSystemPermissions.NotesUpdate).Should().BeTrue();
     }
 
     [Fact]
@@ -145,6 +148,66 @@ public sealed class PermissionSnapshotProviderTests
         refreshed.Has("document", "pm.lease", "view").Should().BeFalse();
         refreshed.Has("document", "pm.lease", "post").Should().BeTrue();
         refreshed.AccessVersion.Should().Be(8);
+    }
+
+    [Fact]
+    public async Task GetCurrentAsync_KeycloakAdministratorChangesDoNotReuseCachedPrivilegeState()
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var userId = Guid.NewGuid();
+        var permissions = new Mock<IPermissionSnapshotRepository>();
+        permissions.Setup(x => x.GetUserAccessStateByAuthSubjectAsync("subject", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserAccessState(userId, "subject", null, "User", true, 1));
+        permissions.Setup(x => x.GetEffectivePermissionsAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([NgbSystemPermissions.NotesRead]);
+        var user = new ActorIdentity("subject", null, "User");
+        var administrator = user with { AuthRoles = new HashSet<string> { "ngb-admin" } };
+
+        var before = await CreateProvider(user, cache, permissions).GetCurrentAsync(CancellationToken.None);
+        var elevated = await CreateProvider(administrator, cache, permissions).GetCurrentAsync(CancellationToken.None);
+        var after = await CreateProvider(user, cache, permissions).GetCurrentAsync(CancellationToken.None);
+
+        before.Has(NgbSystemPermissions.AttachmentsCreate).Should().BeFalse();
+        elevated.Has(NgbSystemPermissions.AttachmentsCreate).Should().BeTrue();
+        after.Has(NgbSystemPermissions.AttachmentsCreate).Should().BeFalse();
+        after.Has(NgbSystemPermissions.NotesRead).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetCurrentAsync_DatabaseAdministratorUsesRegisteredPermissionsAndHonorsAccountStatus(bool active)
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var userId = Guid.NewGuid();
+        var permissions = new Mock<IPermissionSnapshotRepository>(MockBehavior.Strict);
+        permissions.Setup(x => x.GetUserAccessStateByAuthSubjectAsync("subject", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserAccessState(userId, "subject", null, "Administrator", active, 1));
+        var roles = new Mock<IPlatformUserRoleRepository>();
+        roles.Setup(x => x.GetRolesForUserAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new PlatformRole(
+                Guid.NewGuid(), "pm-administrator", "Administrator", null, true, true, DateTime.UtcNow, DateTime.UtcNow)]);
+        var source = new Mock<INgbPermissionDefinitionSource>();
+        source.Setup(x => x.GetDefinitionsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new PermissionDefinitionDto("system", "attachments", "create", "Create attachments", "Content"),
+                new PermissionDefinitionDto("system", "notes", "update", "Update notes", "Content")
+            ]);
+        using var definitions = new PermissionDefinitionRegistry([source.Object]);
+        var options = new NgbAdministratorOptions();
+        options.ApplicationRoleCodes.Add("pm-administrator");
+        var effective = new EffectivePermissionService(permissions.Object, roles.Object, definitions, Options.Create(options));
+        var provider = new PermissionSnapshotProvider(
+            new TestCurrentActorContext(new ActorIdentity("subject", null, "Administrator")),
+            permissions.Object,
+            CreateSecurityCache(cache),
+            effective);
+
+        var snapshot = await provider.GetCurrentAsync(CancellationToken.None);
+
+        snapshot.IsBootstrapAdmin.Should().BeFalse();
+        snapshot.Has(NgbSystemPermissions.AttachmentsCreate).Should().Be(active);
+        snapshot.Has(NgbSystemPermissions.NotesUpdate).Should().Be(active);
     }
 
     private static PermissionSnapshotProvider CreateProvider(

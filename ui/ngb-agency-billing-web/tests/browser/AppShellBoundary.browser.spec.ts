@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => ({
   paletteStore: null as PaletteStore | null,
   route: null as RouteState | null,
   routerPush: vi.fn(),
+  accessStore: { load: vi.fn(), reset: vi.fn() },
 }))
 
 vi.mock('vue-router', async () => {
@@ -118,6 +119,7 @@ vi.mock('@ngbplatform/ui', async () => {
       },
     },
     normalizeNgbRouteAliasPath: (value: string | null | undefined) => String(value ?? '').trim(),
+    useAccessStore: () => mocks.accessStore,
     useAuthStore: () => mocks.authStore,
     useCommandPaletteHotkeys: () => undefined,
     useCommandPaletteStore: () => mocks.paletteStore,
@@ -355,4 +357,16 @@ test('rehydrates menu and palette after logout and login', async () => {
   await expect.poll(() => mocks.menuStore?.load.mock.calls.length ?? 0).toBe(2)
   expect(mocks.paletteStore?.hydrate).toHaveBeenCalledTimes(2)
   expect(view.getByTestId('ab-shell').element()).not.toBeNull()
+})
+
+test('loads server permissions at sign-in and clears them when the session ends', async () => {
+  mocks.authStore!.authenticated = true
+  await renderApp()
+  await nextTick()
+  expect(mocks.accessStore.load).toHaveBeenCalledWith(true)
+
+  mocks.accessStore.reset.mockClear()
+  mocks.authStore!.authenticated = false
+  await nextTick()
+  expect(mocks.accessStore.reset).toHaveBeenCalledOnce()
 })

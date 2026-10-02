@@ -462,6 +462,8 @@ const drawerExtraActions = computed<EntityHeaderIconAction[]>(() =>
 )
 
 function handleDrawerAction(action: string) {
+  if (editorRef.value?.handleContentAction?.(action)) return
+
   switch (action) {
     case 'expand':
       editorRef.value?.openFullPage()
@@ -682,6 +684,7 @@ const propertySummaryCards = computed(() => {
       <template #actions>
         <EntityEditorDrawerActions
           :flags="editorFlags"
+          :more-groups="editorRef?.getContentActionGroups?.() ?? []"
           :extra-actions="drawerExtraActions"
           @action="handleDrawerAction"
         />

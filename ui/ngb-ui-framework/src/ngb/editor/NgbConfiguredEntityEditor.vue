@@ -118,7 +118,12 @@ watch(
 const isNew = computed(() => !currentId.value)
 const loading = ref(false)
 const saving = ref(false)
-const editorShellRef = ref<{ focusField?: (path: string) => boolean; focusFirstError?: (keys: string[]) => boolean } | null>(null)
+const editorShellRef = ref<{
+  focusField?: (path: string) => boolean
+  focusFirstError?: (keys: string[]) => boolean
+  getContentActionGroups?: EntityEditorHandle['getContentActionGroups']
+  handleContentAction?: EntityEditorHandle['handleContentAction']
+} | null>(null)
 
 const catalogMeta = ref<CatalogTypeMetadataDto | null>(null)
 const docMeta = ref<DocumentTypeMetadataDto | null>(null)
@@ -658,6 +663,8 @@ const exposedHandle = {
   getIsDirty: () => isDirty.value,
   getCanSave: () => canSave.value,
   getFlags: () => flags.value,
+  getContentActionGroups: () => editorShellRef.value?.getContentActionGroups?.() ?? [],
+  handleContentAction: (action: string) => editorShellRef.value?.handleContentAction?.(action) ?? false,
 } satisfies EntityEditorHandle<DocumentEffectsDto | null>
 
 defineExpose(exposedHandle)
