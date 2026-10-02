@@ -6,6 +6,7 @@ using NGB.Attachments;
 using NGB.Contracts.Attachments;
 using NGB.Contracts.BusinessObjects;
 using NGB.Core.AuditLog;
+using NGB.Core.Security;
 using NGB.Persistence.Attachments;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.AuditLog;
@@ -35,7 +36,7 @@ internal sealed class AttachmentService(
     {
         BusinessObjectContentAccess.ValidatePage(limit, cursor);
 
-        await access.RequireAsync(target, "attachments", "read", ct);
+        await access.RequireAsync(target, NgbSystemPermissions.AttachmentsRead, ct);
         var rows = await repository.ListAsync(target, limit + 1, cursor, ct);
 
         return new(
@@ -53,7 +54,7 @@ internal sealed class AttachmentService(
         if (request.SizeBytes < 0 || request.SizeBytes > options.Value.MaxSizeBytes)
             throw Error("file_too_large", "Declared size exceeds the configured attachment limit.");
 
-        await access.RequireAsync(request.Target, "attachments", "create", ct);
+        await access.RequireAsync(request.Target, NgbSystemPermissions.AttachmentsCreate, ct);
 
         return await uow.ExecuteInUowTransactionAsync(async token =>
         {
@@ -93,7 +94,7 @@ internal sealed class AttachmentService(
     public Task<AttachmentDto> CompleteAsync(Guid id, CancellationToken ct)
         => uow.ExecuteInUowTransactionAsync(async token =>
         {
-            var row = await LoadAsync(id, "create", token);
+            var row = await LoadAsync(id, NgbSystemPermissions.AttachmentsCreate, token);
             if (row.Status == AttachmentStatus.Ready)
                 return ToDto(row);
 
@@ -141,7 +142,7 @@ internal sealed class AttachmentService(
         => uow.ExecuteInUowTransactionAsync(async token =>
         {
             // Row lock serializes URL issuance with logical deletion.
-            var row = await LoadAsync(id, "read", token);
+            var row = await LoadAsync(id, NgbSystemPermissions.AttachmentsRead, token);
 
             RequireNotDeleted(row);
 
@@ -160,7 +161,7 @@ internal sealed class AttachmentService(
     public Task DeleteAsync(Guid id, CancellationToken ct)
         => uow.ExecuteInUowTransactionAsync(async token =>
         {
-            var row = await LoadAsync(id, "delete", token);
+            var row = await LoadAsync(id, NgbSystemPermissions.AttachmentsDelete, token);
             if (row.Status == AttachmentStatus.Deleted)
                 return;
 
@@ -175,12 +176,12 @@ internal sealed class AttachmentService(
             await AuditAsync(row, "attachments.deleted", token);
         }, ct);
 
-    private async Task<AttachmentRecord> LoadAsync(Guid id, string action, CancellationToken ct)
+    private async Task<AttachmentRecord> LoadAsync(Guid id, NgbPermissionKey permission, CancellationToken ct)
     {
         var row = await repository.GetAsync(id, true, ct)
             ?? throw Error("not_found", "Attachment was not found.", NgbErrorKind.NotFound);
 
-        await access.RequireAsync(row.Target, "attachments", action, ct);
+        await access.RequireAsync(row.Target, permission, ct);
 
         return row;
     }

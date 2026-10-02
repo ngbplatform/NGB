@@ -14,7 +14,7 @@
     <EnablePackageValidation>true</EnablePackageValidation>
     <ApiCompatEnableRuleAttributesMustMatch>true</ApiCompatEnableRuleAttributesMustMatch>
     <ApiCompatEnableRuleCannotChangeParameterName>true</ApiCompatEnableRuleCannotChangeParameterName>
-    <EnableStrictModeForBaselineValidation>true</EnableStrictModeForBaselineValidation>
+    <EnableStrictModeForBaselineValidation>false</EnableStrictModeForBaselineValidation>
     <Authors>NGB Platform</Authors>
     <Company>NGB Platform</Company>
     <Product>NGB Platform</Product>

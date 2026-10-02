@@ -10,9 +10,18 @@ public sealed class PlatformPermissionDefinitionSource : INgbPermissionDefinitio
         const string systemGroup = "System";
         const string accountingGroup = "Accounting";
         const string adminGroup = "Admin";
-        
+        const string attachmentsNotesGroup = "Attachments & Notes";
+
         IReadOnlyList<PermissionDefinitionDto> definitions =
         [
+            Def(NgbSystemPermissions.AttachmentsRead, "Read attachments", attachmentsNotesGroup),
+            Def(NgbSystemPermissions.AttachmentsCreate, "Create attachments", attachmentsNotesGroup),
+            Def(NgbSystemPermissions.AttachmentsDelete, "Delete attachments", attachmentsNotesGroup),
+            Def(NgbSystemPermissions.NotesRead, "Read notes", attachmentsNotesGroup),
+            Def(NgbSystemPermissions.NotesCreate, "Create notes", attachmentsNotesGroup),
+            Def(NgbSystemPermissions.NotesUpdate, "Update notes", attachmentsNotesGroup),
+            Def(NgbSystemPermissions.NotesDelete, "Delete notes", attachmentsNotesGroup),
+
             Def(NgbSystemPermissions.UsersView, "View users", systemGroup),
             Def(NgbSystemPermissions.UsersManage, "Manage users", systemGroup),
             Def(NgbSystemPermissions.RolesView, "View roles", systemGroup),

@@ -157,8 +157,18 @@ public sealed class SecuritySurfaceFullCoverageTests
 
         var platform = await new PlatformPermissionDefinitionSource().GetDefinitionsAsync(default);
         platform.Should().HaveCount(22);
-        platform.Count(x => x.ResourceCode == "attachments").Should().Be(3);
-        platform.Count(x => x.ResourceCode == "notes").Should().Be(4);
+        platform.Select(x => new NgbPermissionKey(x.ResourceKind, x.ResourceCode, x.ActionCode))
+            .Should().OnlyHaveUniqueItems().And.BeEquivalentTo(NgbSystemPermissions.All);
+        platform.Where(x => x.Group == "Attachments & Notes")
+            .Select(x => $"{x.ResourceKind}.{x.ResourceCode}.{x.ActionCode}")
+            .Should().BeEquivalentTo(
+                "system.attachments.read",
+                "system.attachments.create",
+                "system.attachments.delete",
+                "system.notes.read",
+                "system.notes.create",
+                "system.notes.update",
+                "system.notes.delete");
         platform.Should().OnlyContain(x => !string.IsNullOrWhiteSpace(x.Group));
 
         var reportProvider = new Mock<IReportDefinitionProvider>(MockBehavior.Strict);

@@ -112,6 +112,23 @@ public sealed class AttachmentsNotesTests
     }
 
     [Fact]
+    public async Task Every_note_operation_rechecks_parent_and_capability_access()
+    {
+        var f = new ContentFixture();
+        var note = await f.NoteService.CreateAsync(new(f.Target, "Initial note"), default);
+
+        await f.NoteService.ListAsync(f.Target, 50, null, default);
+        var updated = await f.NoteService.UpdateAsync(note.Id, new("Updated note", note.Version), default);
+        await f.NoteService.DeleteAsync(note.Id, updated.Version, default);
+
+        f.Resolver.Verify(x => x.ResolveAsync(f.Target, default), Times.Exactly(4));
+        f.Access.Verify(x => x.RequireAsync("system", "notes", "create", default), Times.Once);
+        f.Access.Verify(x => x.RequireAsync("system", "notes", "read", default), Times.Once);
+        f.Access.Verify(x => x.RequireAsync("system", "notes", "update", default), Times.Once);
+        f.Access.Verify(x => x.RequireAsync("system", "notes", "delete", default), Times.Once);
+    }
+
+    [Fact]
     public async Task Lists_use_bounded_seek_pages_and_hide_deleted_or_pending_resources()
     {
         var f = new ContentFixture();

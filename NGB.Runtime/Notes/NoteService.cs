@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Notes;
 using NGB.Core.AuditLog;
+using NGB.Core.Security;
 using NGB.Notes;
 using NGB.Persistence.Notes;
 using NGB.Persistence.UnitOfWork;
@@ -29,7 +30,7 @@ internal sealed class NoteService(
     {
         BusinessObjectContentAccess.ValidatePage(limit, cursor);
 
-        await access.RequireAsync(target, "notes", "read", ct);
+        await access.RequireAsync(target, NgbSystemPermissions.NotesRead, ct);
         var rows = await repository.ListAsync(target, limit + 1, cursor, ct);
 
         return new(
@@ -40,7 +41,7 @@ internal sealed class NoteService(
     public async Task<NoteDto> CreateAsync(CreateNoteRequest request, CancellationToken ct)
     {
         var text = ValidateText(request.Text);
-        await access.RequireAsync(request.Target, "notes", "create", ct);
+        await access.RequireAsync(request.Target, NgbSystemPermissions.NotesCreate, ct);
 
         return await uow.ExecuteInUowTransactionAsync(async token =>
         {
@@ -64,7 +65,7 @@ internal sealed class NoteService(
 
         return await uow.ExecuteInUowTransactionAsync(async token =>
         {
-            var row = await LoadAsync(id, "update", token);
+            var row = await LoadAsync(id, NgbSystemPermissions.NotesUpdate, token);
             RequireVersion(row, request.Version);
 
             row = row with
@@ -85,7 +86,7 @@ internal sealed class NoteService(
     public Task DeleteAsync(Guid id, long version, CancellationToken ct)
         => uow.ExecuteInUowTransactionAsync(async token =>
         {
-            var row = await LoadAsync(id, "delete", token);
+            var row = await LoadAsync(id, NgbSystemPermissions.NotesDelete, token);
             if (row.IsDeleted)
                 return;
 
@@ -103,12 +104,12 @@ internal sealed class NoteService(
             await AuditAsync(row, "notes.deleted", token);
         }, ct);
 
-    private async Task<NoteRecord> LoadAsync(Guid id, string action, CancellationToken ct)
+    private async Task<NoteRecord> LoadAsync(Guid id, NgbPermissionKey permission, CancellationToken ct)
     {
         var row = await repository.GetAsync(id, true, ct)
             ?? throw new NoteException("notes.not_found", "Note was not found.", NgbErrorKind.NotFound);
 
-        await access.RequireAsync(row.Target, "notes", action, ct);
+        await access.RequireAsync(row.Target, permission, ct);
 
         return row;
     }

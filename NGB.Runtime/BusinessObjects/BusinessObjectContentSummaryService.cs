@@ -19,8 +19,8 @@ internal sealed class BusinessObjectContentSummaryService(
         
         return await reader.GetAsync(
             target,
-            permissions.Has(NgbResourceKinds.System, "attachments", "read"),
-            permissions.Has(NgbResourceKinds.System, "notes", "read"),
+            permissions.Has(NgbSystemPermissions.AttachmentsRead),
+            permissions.Has(NgbSystemPermissions.NotesRead),
             ct);
     }
 }

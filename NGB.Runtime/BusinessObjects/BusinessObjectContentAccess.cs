@@ -13,9 +13,9 @@ internal sealed class BusinessObjectContentAccess(
     ICurrentActorContext actorContext,
     IPlatformUserRepository users)
 {
-    public async Task RequireAsync(BusinessObjectRef target, string capability, string action, CancellationToken ct)
+    public async Task RequireAsync(BusinessObjectRef target, NgbPermissionKey permission, CancellationToken ct)
     {
-        await access.RequireAsync(NgbResourceKinds.System, capability, action, ct);
+        await access.RequireAsync(permission.ResourceKind, permission.ResourceCode, permission.ActionCode, ct);
         await resolver.ResolveAsync(target, ct);
     }
 
