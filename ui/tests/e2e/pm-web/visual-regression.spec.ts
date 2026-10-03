@@ -98,10 +98,20 @@ test.describe('pm-web visual regression', () => {
 
     await page.goto(existingPaymentPath)
 
-    await expect(page.getByTestId('site-main')).toHaveScreenshot('receivable-payment-posted-readonly-desktop.png', {
+    const main = page.getByTestId('site-main')
+    await expect(main.getByRole('heading', { name: 'Receivable Payment RP-2026-0007', exact: true })).toBeVisible()
+    await expect(main.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+    await expect(main.getByRole('button', { name: 'Attachments (0)', exact: true })).toHaveCount(0)
+    await expect(main.getByRole('button', { name: 'Notes (0)', exact: true })).toHaveCount(0)
+
+    await expect(main).toHaveScreenshot('receivable-payment-posted-readonly-desktop.png', {
       animations: 'disabled',
       caret: 'hide',
     })
+
+    await main.getByRole('button', { name: 'More actions', exact: true }).click()
+    await expect(page.getByRole('menuitem', { name: 'Attachments (0)', exact: true })).toBeEnabled()
+    await expect(page.getByRole('menuitem', { name: 'Notes (0)', exact: true })).toBeEnabled()
   })
 
   test('captures the Work Center drawer and full workspace', async ({ page }) => {

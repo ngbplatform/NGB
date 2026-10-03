@@ -24,7 +24,11 @@ const capabilities = computed(() => ({
 }))
 const visibleCapabilities = computed(() => (['attachments', 'notes'] as const).filter(code => capabilities.value[code]))
 const state = useObjectContent(toRef(props, 'target'), capabilities)
-watch(() => props.target, () => {
+watch([
+  () => props.target.kind,
+  () => props.target.typeCode,
+  () => props.target.id,
+], () => {
   void features.load()
 }, { immediate: true })
 const { summary, drawer, attachments, notes, cursor, loading, busy, error, summaryError, completionId, uploadPhase } = state

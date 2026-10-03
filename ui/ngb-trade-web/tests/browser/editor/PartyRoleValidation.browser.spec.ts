@@ -39,6 +39,7 @@ test('Party drawer explains missing roles, retains edits and saves after selecti
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : String(input))
     const method = init?.method ?? 'GET'
+    if (url.pathname === '/api/features' && method === 'GET') return Response.json([])
     if (url.pathname === recordPath && method === 'GET') return Response.json(item())
     if (url.pathname === recordPath && method === 'PUT') {
       const body = JSON.parse(String(init!.body)) as { fields: RecordFields }

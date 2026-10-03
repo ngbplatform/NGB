@@ -133,3 +133,32 @@ test('new objects and disabled features have no content menu or content requests
   await expect.element(disabled.getByRole('button', { name: 'More actions' })).not.toBeInTheDocument()
   expect(contentApi.summary).not.toHaveBeenCalled()
 })
+
+test.each(['catalog', 'document'] as const)('%s keeps feature-discovery errors until an explicit retry', async kind => {
+  const features = useFeatureStore()
+  features.reset()
+  vi.mocked(getFeatures).mockReset()
+  vi.mocked(getFeatures)
+    .mockRejectedValueOnce(new Error('Feature discovery unavailable'))
+    .mockResolvedValue([{ code: 'Notes', displayName: 'Notes', group: 'Attachments & Notes', enabled: true }])
+
+  const screen = render(NgbEntityEditor, { props: { ...editorProps, kind, mode: 'page' } })
+
+  await screen.getByRole('button', { name: 'More actions' }).click()
+  await expect.element(page.getByRole('menuitem', { name: 'Retry available features' })).toBeVisible()
+  expect(getFeatures).toHaveBeenCalledOnce()
+  expect(features.error).toBe('Feature discovery unavailable')
+  expect(contentApi.summary).not.toHaveBeenCalled()
+
+  await screen.rerender({ title: 'Updated title' })
+  await expect.element(screen.getByText('Updated title', { exact: true })).toBeVisible()
+  expect(getFeatures).toHaveBeenCalledOnce()
+
+  await page.getByRole('menuitem', { name: 'Retry available features' }).click()
+  await expect.poll(() => features.isEnabled('Notes')).toBe(true)
+  expect(getFeatures).toHaveBeenCalledTimes(2)
+  expect(features.error).toBe('')
+
+  await screen.getByRole('button', { name: 'More actions' }).click()
+  await expect.element(page.getByRole('menuitem', { name: 'Notes (3)' })).toBeEnabled()
+})
