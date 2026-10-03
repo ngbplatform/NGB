@@ -42,6 +42,8 @@ const mocks = vi.hoisted(() => ({
   confirmDocumentAction: vi.fn(),
   focusField: vi.fn(),
   focusFirstError: vi.fn(),
+  getContentActionGroups: vi.fn(),
+  handleContentAction: vi.fn(),
   persistenceArgs: null as Record<string, any> | null,
   persistenceContext: null as Record<string, any> | null,
   configuredArgs: null as Record<string, any> | null,
@@ -252,7 +254,12 @@ vi.mock('../../../../src/ngb/editor/NgbEntityEditor.vue', async () => {
         'cancelMarkForDeletion', 'confirmMarkForDeletion', 'cancelDocumentAction', 'confirmDocumentAction',
       ],
       setup(props, { attrs, emit, expose }) {
-        expose({ focusField: mocks.focusField, focusFirstError: mocks.focusFirstError })
+        expose({
+          focusField: mocks.focusField,
+          focusFirstError: mocks.focusFirstError,
+          getContentActionGroups: mocks.getContentActionGroups,
+          handleContentAction: mocks.handleContentAction,
+        })
         return () => {
           mocks.shellProps = {
             ...attrs,
@@ -307,6 +314,8 @@ function configuration(): ConfiguredEntityEditorConfiguration {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.getContentActionGroups.mockReset()
+  mocks.handleContentAction.mockReset()
   mocks.persistenceArgs = null
   mocks.persistenceContext = null
   mocks.configuredArgs = null
@@ -731,5 +740,28 @@ test('covers every shell event, lifecycle branch, creation route, and exposed ha
   await wrapper.setProps({ id: null })
   await nextTick()
   expect(await handle.reloadDocumentEffects()).toBeNull()
+  wrapper.unmount()
+})
+
+test('forwards content groups and actions to the editor shell with safe empty fallbacks', async () => {
+  const wrapper = mount(NgbConfiguredEntityEditor, {
+    props: { kind: 'catalog', typeCode: 'demo.customer', id: 'customer-id', configuration: configuration() },
+  })
+  await nextTick()
+  const handle = wrapper.vm as unknown as {
+    getContentActionGroups: () => unknown[]
+    handleContentAction: (action: string) => boolean
+  }
+
+  expect(handle.getContentActionGroups()).toEqual([])
+  expect(handle.handleContentAction('save')).toBe(false)
+
+  const groups = [{ key: 'content', label: 'Attachments & Notes', items: [{ key: 'content.notes', title: 'Notes' }] }]
+  mocks.getContentActionGroups.mockReturnValue(groups)
+  mocks.handleContentAction.mockReturnValue(true)
+
+  expect(handle.getContentActionGroups()).toBe(groups)
+  expect(handle.handleContentAction('content.notes')).toBe(true)
+  expect(mocks.handleContentAction).toHaveBeenLastCalledWith('content.notes')
   wrapper.unmount()
 })

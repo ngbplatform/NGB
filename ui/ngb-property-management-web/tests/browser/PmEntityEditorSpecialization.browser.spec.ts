@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   ensureCatalogType: vi.fn(),
   ensureDocumentType: vi.fn(),
   runEntityEditorAction: vi.fn(),
+  getContentActionGroups: vi.fn(),
+  handleContentAction: vi.fn(),
   resolveNavigateOnCreate: vi.fn((value: boolean | undefined) => value !== false),
   toastPush: vi.fn(),
   catalogContext: null as Record<string, any> | null,
@@ -61,7 +63,11 @@ vi.mock('@ngbplatform/ui', async () => {
   return {
     NgbEntityEditor: defineComponent({
       name: 'NgbEntityEditor',
-      setup() {
+      setup(_props, { expose }) {
+        expose({
+          getContentActionGroups: mocks.getContentActionGroups,
+          handleContentAction: mocks.handleContentAction,
+        })
         const attrs = useAttrs()
         return () => {
           const normalized = {
@@ -337,6 +343,8 @@ function resetCapturedState() {
 }
 
 beforeEach(() => {
+  mocks.getContentActionGroups.mockReset()
+  mocks.handleContentAction.mockReset()
   vi.clearAllMocks()
   resetCapturedState()
   mocks.ensureCatalogType.mockResolvedValue({
@@ -745,6 +753,29 @@ describe('PM configured editor specialization', () => {
     expect(await (wrapper.vm as any).reloadDocumentEffects()).toBeNull()
     await wrapper.setProps({ kind: 'catalog', id: 'catalog-id' })
     expect(await (wrapper.vm as any).reloadDocumentEffects()).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('forwards content groups and actions to the editor shell with safe empty fallbacks', async () => {
+    const wrapper = mount(PmEntityEditor, {
+      props: { kind: 'catalog', typeCode: 'pm.property', id: 'property-id' },
+    })
+    await nextTick()
+    const handle = wrapper.vm as unknown as {
+      getContentActionGroups: () => unknown[]
+      handleContentAction: (action: string) => boolean
+    }
+
+    expect(handle.getContentActionGroups()).toEqual([])
+    expect(handle.handleContentAction('save')).toBe(false)
+
+    const groups = [{ key: 'content', label: 'Attachments & Notes', items: [{ key: 'content.notes', title: 'Notes' }] }]
+    mocks.getContentActionGroups.mockReturnValue(groups)
+    mocks.handleContentAction.mockReturnValue(true)
+
+    expect(handle.getContentActionGroups()).toBe(groups)
+    expect(handle.handleContentAction('content.notes')).toBe(true)
+    expect(mocks.handleContentAction).toHaveBeenLastCalledWith('content.notes')
     wrapper.unmount()
   })
 })

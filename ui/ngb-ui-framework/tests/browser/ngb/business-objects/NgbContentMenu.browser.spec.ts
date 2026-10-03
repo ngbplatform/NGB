@@ -93,6 +93,56 @@ test('catalog page uses More and disables content for a user without read permis
   expect(contentApi.notes).not.toHaveBeenCalled()
 })
 
+test.each(['actions', 'danger-zone'])('keeps content before the trailing %s group', async key => {
+  const screen = render(NgbEntityEditor, {
+    props: {
+      ...editorProps,
+      kind: 'document',
+      mode: 'page',
+      documentMoreActionGroups: [
+        { key: 'history-and-share', label: 'History & share', items: [{ key: 'audit', title: 'Audit log' }] },
+        { key, label: 'Actions', items: [{ key: 'mark', title: 'Mark for deletion' }] },
+      ],
+    },
+  })
+
+  await screen.getByRole('button', { name: 'More actions' }).click()
+  await expect.element(page.getByRole('menu')).toHaveTextContent(
+    /History & share.*Audit log.*Attachments & Notes.*Attachments.*Notes.*Actions.*Mark for deletion/s,
+  )
+})
+
+test('retries failed content counts from More and updates the menu counts', async () => {
+  vi.mocked(contentApi.summary).mockRejectedValueOnce(new Error('Counts unavailable'))
+  const screen = render(NgbEntityEditor, { props: { ...editorProps, kind: 'catalog', mode: 'page' } })
+
+  await screen.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('menuitem', { name: 'Retry content counts' }).click()
+  await expect.poll(() => vi.mocked(contentApi.summary).mock.calls.length).toBe(2)
+
+  await screen.getByRole('button', { name: 'More actions' }).click()
+  await expect.element(page.getByRole('menuitem', { name: 'Attachments (2)' })).toBeEnabled()
+  await expect.element(page.getByRole('menuitem', { name: 'Notes (3)' })).toBeEnabled()
+  await expect.element(page.getByRole('menuitem', { name: 'Retry content counts' })).not.toBeInTheDocument()
+})
+
+test('rejects a content action when read permissions are revoked after the menu loads', async () => {
+  const editor = ref<InstanceType<typeof NgbEntityEditor> | null>(null)
+  const Harness = defineComponent({
+    setup: () => () => h(NgbEntityEditor, { ...editorProps, kind: 'catalog', mode: 'page', ref: editor }),
+  })
+  const screen = render(Harness)
+
+  await screen.getByRole('button', { name: 'More actions' }).click()
+  await expect.element(page.getByRole('menuitem', { name: 'Notes (3)' })).toBeEnabled()
+  useAccessStore().current!.isBootstrapAdmin = false
+
+  expect(editor.value!.handleContentAction('content.notes')).toBe(true)
+  await expect.element(page.getByRole('menuitem', { name: 'Notes (3)' })).toBeDisabled()
+  await expect.element(page.getByRole('textbox', { name: 'Add note' })).not.toBeInTheDocument()
+  expect(contentApi.notes).not.toHaveBeenCalled()
+})
+
 test('catalog drawer exposes reactive content actions to its outer header', async () => {
   const Harness = defineComponent({
     setup() {

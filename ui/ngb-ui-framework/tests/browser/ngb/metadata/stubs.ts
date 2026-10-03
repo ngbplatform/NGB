@@ -611,6 +611,10 @@ export const StubBadge = defineComponent({
 
 export const StubEntityEditorDrawerActions = defineComponent({
   props: {
+    moreGroups: {
+      type: Array as PropType<Array<{ items: Array<{ key: string; title: string }> }>>,
+      default: () => [],
+    },
     extraActions: {
       type: Array as PropType<Array<{ key: string; title?: string }>>,
       default: () => [],
@@ -632,7 +636,7 @@ export const StubEntityEditorDrawerActions = defineComponent({
           `Drawer action:${action}`,
         ),
       ),
-      ...props.extraActions.map((action) =>
+      ...[...props.extraActions, ...props.moreGroups.flatMap(group => group.items)].map((action) =>
         h(
           'button',
           {

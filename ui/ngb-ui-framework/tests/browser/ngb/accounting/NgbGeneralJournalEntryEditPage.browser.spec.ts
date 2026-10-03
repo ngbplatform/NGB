@@ -5,6 +5,9 @@ import { render } from 'vitest-browser-vue'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { ApiError } from '../../../../src/ngb/api/http'
+import { contentApi } from '../../../../src/ngb/business-objects/api'
+import { useFeatureStore } from '../../../../src/ngb/features/useFeatureStore'
+import { useAccessStore } from '../../../../src/ngb/security/useAccessStore'
 import {
   StubBadge,
   StubCheckbox,
@@ -362,6 +365,7 @@ function setSelect(index: number, value: string) {
 }
 
 async function renderPage(initialUrl: string, props: { listPath?: string | null } = {}) {
+  const pinia = createPinia()
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -392,13 +396,14 @@ async function renderPage(initialUrl: string, props: { listPath?: string | null 
   const view = await render(NgbGeneralJournalEntryEditPage, {
     props,
     global: {
-      plugins: [createPinia(), router],
+      plugins: [pinia, router],
     },
   })
 
   await flushUi()
 
   return {
+    pinia,
     router,
     view,
   }
@@ -1146,4 +1151,37 @@ test('ignores successful and failed journal loads that settle after unmount', as
   await flushUi()
 })
 
-vi.mock('../../../../src/ngb/business-objects/api', () => ({ contentApi: { summary: async () => ({ attachments: 0, notes: 0 }) }, startAttachmentDownload: vi.fn(), uploadBytes: vi.fn() }))
+vi.mock('../../../../src/ngb/business-objects/api', () => ({
+  contentApi: {
+    summary: async () => ({ attachments: 0, notes: 0 }),
+    notes: vi.fn(),
+  },
+  startAttachmentDownload: vi.fn(),
+  uploadBytes: vi.fn(),
+}))
+
+test('opens notes for the current journal entry through More', async () => {
+  const { pinia, view } = await renderPage('/accounting/general-journal-entries/gje-content')
+  useFeatureStore(pinia).current = [{ code: 'Notes', displayName: 'Notes', group: 'Attachments & Notes', enabled: true }]
+  useAccessStore(pinia).current = {
+    userId: null,
+    authSubject: 'keycloak-administrator',
+    isAuthenticated: true,
+    isActive: true,
+    isBootstrapAdmin: true,
+    accessVersion: 0,
+    roles: [],
+    permissions: [],
+  }
+  vi.mocked(contentApi.notes).mockResolvedValue({ items: [], nextCursor: null })
+
+  await view.getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('menuitem', { name: 'Notes (0)' }).click()
+
+  await expect.element(page.getByRole('textbox', { name: 'Add note' })).toBeVisible()
+  expect(contentApi.notes).toHaveBeenCalledWith(
+    { kind: 'GeneralJournalEntry', typeCode: 'general_journal_entry', id: 'gje-content' },
+    null,
+    expect.any(AbortSignal),
+  )
+})

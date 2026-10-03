@@ -54,6 +54,7 @@ async function flushUi() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  auditSidebarMocks.downloadAuditAttachment.mockReset()
 })
 
 const AuditSidebarHarness = defineComponent({
@@ -604,4 +605,87 @@ test('downloads a retained attachment through the audit endpoint and cancels sta
   pending.resolve({ url: 'https://storage.test/stale' })
   await flushUi()
   expect(auditSidebarMocks.startAttachmentDownload).toHaveBeenCalledTimes(1)
+})
+
+function attachmentAuditEvent(metadata: unknown) {
+  return {
+    auditEventId: 'attachment-event',
+    entityKind: 3,
+    entityId: 'coa-1',
+    actionCode: 'attachments.mark_for_deletion',
+    actor: null,
+    occurredAtUtc: '2026-10-02T10:00:00Z',
+    metadataJson: JSON.stringify(metadata),
+    changes: [],
+  }
+}
+
+test.each([
+  null,
+  'unavailable',
+  [],
+  {},
+  { attachmentId: '019ba24b-458b-7009-b186-000000000001', downloadAvailable: false },
+  { attachmentId: 42, downloadAvailable: true },
+  { attachmentId: '../another-file', downloadAvailable: true },
+])('hides attachment downloads for invalid or unavailable metadata: %j', async metadata => {
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({
+    items: [attachmentAuditEvent(metadata)], nextCursor: null, limit: 25,
+  })
+  const view = await render(AuditSidebarHarness)
+
+  await expect.element(view.getByText('Attachment marked for deletion by System', { exact: true })).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'Download attachment' })).not.toBeInTheDocument()
+  expect(auditSidebarMocks.downloadAuditAttachment).not.toHaveBeenCalled()
+})
+
+test('prevents duplicate downloads, shows a failed download, and allows a successful retry', async () => {
+  const id = '019ba24b-458b-7009-b186-000000000001'
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({
+    items: [attachmentAuditEvent({ attachmentId: id, downloadAvailable: true })], nextCursor: null, limit: 25,
+  })
+  const pending = createDeferred<{ url: string }>()
+  auditSidebarMocks.downloadAuditAttachment
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce({ url: 'https://storage.test/retried' })
+  const view = await render(AuditSidebarHarness)
+  const download = view.getByRole('button', { name: 'Download attachment' })
+  await expect.element(download).toBeEnabled()
+
+  const button = download.element() as HTMLButtonElement
+  button.click()
+  button.click()
+  await expect.element(view.getByRole('button', { name: 'Preparing download…' })).toBeDisabled()
+  expect(auditSidebarMocks.downloadAuditAttachment).toHaveBeenCalledOnce()
+
+  pending.reject(new Error('Storage unavailable'))
+  await expect.element(view.getByRole('alert')).toHaveTextContent('Storage unavailable')
+  await expect.element(download).toBeEnabled()
+  expect(auditSidebarMocks.startAttachmentDownload).not.toHaveBeenCalled()
+
+  await download.click()
+  await expect.element(view.getByRole('alert')).not.toBeInTheDocument()
+  expect(auditSidebarMocks.downloadAuditAttachment).toHaveBeenCalledTimes(2)
+  expect(auditSidebarMocks.startAttachmentDownload).toHaveBeenCalledWith('https://storage.test/retried')
+})
+
+test('ignores download failures after switching to another entity', async () => {
+  const id = '019ba24b-458b-7009-b186-000000000001'
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({
+    items: [attachmentAuditEvent({ attachmentId: id, downloadAvailable: true })], nextCursor: null, limit: 25,
+  })
+  const pending = createDeferred<{ url: string }>()
+  auditSidebarMocks.downloadAuditAttachment.mockReturnValueOnce(pending.promise)
+  const view = await render(AuditSidebarStatefulHarness)
+
+  await view.getByRole('button', { name: 'Download attachment' }).click()
+  const signal = auditSidebarMocks.downloadAuditAttachment.mock.calls[0]![1] as AbortSignal
+  await view.getByRole('button', { name: 'Switch entity' }).click()
+  expect(signal.aborted).toBe(true)
+
+  pending.reject(new Error('Previous download failed'))
+  await flushUi()
+  await expect.element(view.getByTestId('audit-entity-id')).toHaveTextContent('coa-2')
+  await expect.element(view.getByRole('alert')).not.toBeInTheDocument()
+  expect(auditSidebarMocks.startAttachmentDownload).not.toHaveBeenCalled()
 })

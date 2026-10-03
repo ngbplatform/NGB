@@ -59,6 +59,10 @@ vi.mock('../../../src/editor/pm/PmEntityEditor.vue', () => ({
     emits: ['state', 'flags', 'created', 'saved', 'changed', 'deleted', 'close'],
     setup(props, { emit, expose }) {
       const methods = {
+        getContentActionGroups: vi.fn(() => [
+          { key: 'content', label: 'Attachments & Notes', items: [{ key: 'content.notes', title: 'Notes' }] },
+        ]),
+        handleContentAction: vi.fn((action: string) => action === 'content.notes'),
         openFullPage: vi.fn(),
         copyShareLink: vi.fn(async () => undefined),
         openAuditLog: vi.fn(),
@@ -182,12 +186,18 @@ vi.mock('@ngbplatform/ui', () => {
     },
   })
   const DrawerActions = defineComponent({
-    props: { extraActions: { type: Array as PropType<any[]>, default: () => [] } },
+    props: {
+      extraActions: { type: Array as PropType<any[]>, default: () => [] },
+      moreGroups: { type: Array as PropType<any[]>, default: () => [] },
+    },
     emits: ['action'],
     setup(props, { emit }) {
       return () => h('div', [
         ...['expand', 'share', 'audit', 'mark', 'bulkCreateUnits', 'save', 'unknown'].map((action) =>
           h('button', { type: 'button', onClick: () => emit('action', action) }, `Action ${action}`),
+        ),
+        ...props.moreGroups.flatMap(group => group.items).map(action =>
+          h('button', { type: 'button', onClick: () => emit('action', action.key) }, action.title),
         ),
         h('span', `extras:${props.extraActions.length}`),
       ])
@@ -443,6 +453,11 @@ test('opens create and edit drawers, derives initial fields, and dispatches ever
   expect(await mocks.routeDrawerConfig.onBeforeOpen({ mode: 'edit' }, { mode: 'edit' })).toBe(true)
   expect(mocks.requestDiscard).toHaveBeenCalledOnce()
   await expect.element(view.getByText('extras:1')).toBeVisible()
+
+  await view.getByRole('button', { name: 'Notes', exact: true }).click()
+  expect(mocks.editorMethods.handleContentAction).toHaveBeenCalledWith('content.notes')
+  expect(mocks.editorMethods.save).not.toHaveBeenCalled()
+  expect(mocks.closeRouteDrawer).not.toHaveBeenCalled()
 
   for (const action of ['expand', 'share', 'audit', 'mark', 'bulkCreateUnits', 'save', 'unknown']) {
     await view.getByRole('button', { name: `Action ${action}` }).click()
