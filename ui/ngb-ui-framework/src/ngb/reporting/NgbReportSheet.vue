@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, type CSSProperties } from 'vue'
 import { useRouter } from 'vue-router'
 import NgbBadge from '../primitives/NgbBadge.vue'
+import NgbButton from '../primitives/NgbButton.vue'
 
 import { resolveReportCellActionUrl } from './config'
 import { ReportRowKind, type ReportCellDto, type ReportSheetDto, type ReportSheetRowDto } from './types'
@@ -579,10 +580,14 @@ onBeforeUnmount(() => {
               :style="{ paddingLeft: `${16 + (entry.row.outlineLevel ?? 0) * 16}px` }"
               :role="entry.row.control.error ? 'alert' : 'status'">
               <span v-if="!entry.row.control.action || entry.row.control.error">{{ entry.row.control.text }}</span>
-              <button v-if="entry.row.control.action" type="button" class="ngb-btn ml-3 px-3 py-1"
-                @click="emit('group-action', entry.row.control.id, entry.row.control.action)">
+              <NgbButton
+                v-if="entry.row.control.action"
+                class="ml-3"
+                size="sm"
+                @click="emit('group-action', entry.row.control.id, entry.row.control.action)"
+              >
                 {{ entry.row.control.error ? 'Retry' : entry.row.control.text }}
-              </button>
+              </NgbButton>
             </td>
             <template v-else>
             <td
@@ -597,10 +602,16 @@ onBeforeUnmount(() => {
                 :style="cellIndex === 0 ? { paddingLeft: `${(entry.row.outlineLevel ?? 0) * 16}px` } : undefined"
               >
                 <NgbBadge v-if="cellIndex === 0 && rowKindLabel(entry.row)" tone="neutral">{{ rowKindLabel(entry.row) }}</NgbBadge>
-                <button v-if="cellIndex === 0 && entry.row.group" type="button" class="ngb-btn px-2 py-0"
+                <button
+                  v-if="cellIndex === 0 && entry.row.group"
+                  type="button"
+                  class="px-2 py-0 cursor-pointer ngb-focus"
                   :aria-label="`${entry.row.group.expanded ? 'Collapse' : 'Expand'} group ${cellText(cell)}`"
                   :aria-expanded="entry.row.group.expanded"
-                  @click="emit('group-action', entry.row.group.id, 'toggle')">{{ entry.row.group.expanded ? '⌄' : '›' }}</button>
+                  @click="emit('group-action', entry.row.group.id, 'toggle')"
+                >
+                  <span aria-hidden="true">{{ entry.row.group.expanded ? '⌄' : '›' }}</span>
+                </button>
                 <button
                   v-if="drilldownRoute(cell)"
                   type="button"

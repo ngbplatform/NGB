@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import NgbBadge from '../primitives/NgbBadge.vue'
+import NgbButton from '../primitives/NgbButton.vue'
 import NgbDatePicker from '../primitives/NgbDatePicker.vue'
 import NgbDialog from '../components/NgbDialog.vue'
 import NgbDrawer from '../components/NgbDrawer.vue'
@@ -1210,7 +1211,9 @@ onBeforeUnmount(() => {
     <div class="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden p-6" data-testid="report-page-content">
       <div v-if="error" class="rounded-[var(--ngb-radius)] border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100">
         {{ error }}
-        <button v-if="response?.hasMore && !loadingMore && !running" class="ngb-btn ml-3" type="button" @click="appendReportPage">Retry loading rows</button>
+        <NgbButton v-if="response?.hasMore && !loadingMore && !running" class="ml-3" size="sm" @click="appendReportPage">
+          Retry loading rows
+        </NgbButton>
       </div>
 
       <div v-if="activeBadges.length > 0" class="-mb-1 flex flex-wrap items-center gap-2" data-testid="report-page-active-badges">
@@ -1226,16 +1229,16 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="definition && (!error || response)" class="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div v-if="running" role="status" class="flex items-center gap-3 p-4">
+        <div v-if="running" role="status" class="flex flex-wrap items-center gap-3 p-4">
           <span>Preparing report…</span>
-          <button type="button" class="ngb-btn" @click="cancelReport">Cancel</button>
+          <NgbButton size="sm" @click="cancelReport">Cancel</NgbButton>
         </div>
-        <div v-if="downloading" role="status" class="flex items-center gap-3 p-4">
+        <div v-if="downloading" role="status" class="flex flex-wrap items-center gap-3 p-4">
           <span>Preparing download…</span>
-          <button type="button" class="ngb-btn" @click="cancelDownload">Cancel download</button>
+          <NgbButton size="sm" @click="cancelDownload">Cancel download</NgbButton>
         </div>
         <div v-if="historyTruncated" class="px-3 py-2">
-          <button type="button" class="ngb-btn" :disabled="running || loadingMore" @click="runCurrentReport">Back to beginning</button>
+          <NgbButton size="sm" :disabled="running || loadingMore" @click="runCurrentReport">Back to beginning</NgbButton>
         </div>
         <ReportSheet
           ref="reportSheetRef"

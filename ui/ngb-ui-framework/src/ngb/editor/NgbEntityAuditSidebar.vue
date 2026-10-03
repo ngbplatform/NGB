@@ -5,6 +5,7 @@ import { downloadAuditAttachment } from '../api/audit';
 import { startAttachmentDownload } from '../business-objects/api';
 import { toErrorMessage } from '../utils/errorMessage';
 import { stableStringify } from '../utils/stableValue';
+import NgbButton from '../primitives/NgbButton.vue';
 import NgbIcon from '../primitives/NgbIcon.vue';
 
 import { getConfiguredNgbEditor, resolveNgbEditorAuditBehavior } from './config';
@@ -314,7 +315,7 @@ onBeforeUnmount(() => {
     <div class="flex-1 min-h-0 overflow-auto">
       <div v-if="error" role="alert" class="px-5 py-4 text-sm text-red-700">
         <span>{{ error }}</span>
-        <button class="ngb-btn ml-2" :disabled="loading" @click="load(!!nextCursor)">Retry</button>
+        <NgbButton class="ml-2" size="sm" :loading="loading" @click="load(!!nextCursor)">Retry</NgbButton>
       </div>
       <div v-if="downloadError" role="alert" class="px-5 py-4 text-sm text-red-700">{{ downloadError }}</div>
       <div v-if="!canLoad" class="px-5 py-4 text-sm text-ngb-muted">Save the record first to see its history.</div>
@@ -346,13 +347,24 @@ onBeforeUnmount(() => {
               </tbody>
             </table>
           </div>
-          <button v-if="attachmentDownloadId(item)" class="ngb-btn mt-2" :disabled="!!downloadingId" @click="download(item)">
+          <NgbButton
+            v-if="attachmentDownloadId(item)"
+            class="mt-2"
+            size="sm"
+            :disabled="!!downloadingId"
+            :loading="downloadingId === item.auditEventId"
+            :aria-busy="downloadingId === item.auditEventId"
+            @click="download(item)"
+          >
+            <NgbIcon v-if="downloadingId !== item.auditEventId" name="download" />
             {{ downloadingId === item.auditEventId ? 'Preparing download…' : 'Download attachment' }}
-          </button>
+          </NgbButton>
         </section>
       </div>
       <div v-if="nextCursor" class="px-5 py-4">
-        <button class="ngb-btn" :disabled="loading" @click="load(true)">{{ loading ? 'Loading…' : 'Load older events' }}</button>
+        <NgbButton size="sm" :loading="loading" @click="load(true)">
+          {{ loading ? 'Loading…' : 'Load older events' }}
+        </NgbButton>
       </div>
     </div>
   </div>
