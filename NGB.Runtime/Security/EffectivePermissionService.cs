@@ -15,7 +15,7 @@ public sealed class EffectivePermissionService(
         if (options.Value.ApplicationRoleCodes.Count > 0)
         {
             var roles = await userRoles.GetRolesForUserAsync(userId, ct);
-            if (roles.Any(role => role.IsActive && options.Value.ApplicationRoleCodes.Contains(role.Code)))
+            if (roles.Any(role => role.IsActive && options.Value.IsAdministratorRoleCode(role.Code)))
             {
                 return (await definitions.GetAllAsync(ct))
                     .Select(static permission => new NgbPermissionKey(

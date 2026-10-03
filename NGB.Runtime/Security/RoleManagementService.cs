@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using NGB.Contracts.Security;
 using NGB.Core.AuditLog;
 using NGB.Core.Security;
@@ -45,7 +46,10 @@ public sealed class RoleManagementService(
     public async Task<RoleDetailsDto> GetRoleAsync(Guid roleId, CancellationToken ct)
     {
         var role = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
-        var perms = await permissions.GetRolePermissionsAsync(roleId, ct);
+        var hasFullAccess = _administratorOptions.IsAdministratorRoleCode(role.Code);
+        var perms = hasFullAccess
+            ? await GetAdministratorPermissionsAsync(ct)
+            : await permissions.GetRolePermissionsAsync(roleId, ct);
         var userIds = await userRoles.GetUserIdsForRoleAsync(roleId, MaxAssignedUsersInDetails + 1, ct);
 
         if (userIds.Count > MaxAssignedUsersInDetails)
@@ -70,7 +74,10 @@ public sealed class RoleManagementService(
                 .Select(static x => new UserBadgeDto(x.UserId, x.Email, x.DisplayName, x.IsActive))
                 .ToArray(),
             role.CreatedAtUtc,
-            role.UpdatedAtUtc);
+            role.UpdatedAtUtc)
+        {
+            HasFullAccess = hasFullAccess
+        };
     }
 
     public async Task<RoleDetailsDto> CreateRoleAsync(CreateRoleRequestDto request, CancellationToken ct)
@@ -78,6 +85,7 @@ public sealed class RoleManagementService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
+        RequireUnreservedCode(request.Code);
         var normalizedPermissions = Normalize(request.Permissions);
         var roleId = Guid.CreateVersion7();
 
@@ -110,14 +118,44 @@ public sealed class RoleManagementService(
         if (request is null)
             throw new NgbArgumentRequiredException(nameof(request));
 
-        var normalizedPermissions = Normalize(request.Permissions);
+        if (string.IsNullOrWhiteSpace(request.Code))
+            throw new NgbArgumentRequiredException(nameof(request.Code));
+
         var existing = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
+
+        var isAdministrator = _administratorOptions.IsAdministratorRoleCode(existing.Code);
+        if (isAdministrator)
+        {
+            if (!string.Equals(existing.Code, request.Code.Trim(), StringComparison.OrdinalIgnoreCase))
+                throw new SecurityAdministratorRoleProtectedException(existing.Code, "code");
+
+            if (!request.IsActive)
+                throw new SecurityAdministratorRoleProtectedException(existing.Code, "active status");
+
+            if (request.Permissions is not null)
+            {
+                var effectivePermissions = await GetAdministratorPermissionsAsync(ct);
+                if (!effectivePermissions.ToHashSet().SetEquals(Normalize(request.Permissions)))
+                    throw new SecurityAdministratorRoleProtectedException(existing.Code, "permissions");
+            }
+        }
+        else
+        {
+            RequireUnreservedCode(request.Code);
+        }
+
         var oldPermissions = await permissions.GetRolePermissionsAsync(roleId, ct);
+        var normalizedPermissions = isAdministrator
+            ? oldPermissions
+            : Normalize(request.Permissions);
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
             await roles.UpsertAsync(roleId, request.Code, request.Name, request.Description, existing.IsSystem, request.IsActive, innerCt);
-            await permissions.ReplaceRolePermissionsAsync(roleId, normalizedPermissions, innerCt);
+
+            if (!isAdministrator)
+                await permissions.ReplaceRolePermissionsAsync(roleId, normalizedPermissions, innerCt);
+
             await IncrementRoleUsersAsync(roleId, innerCt);
             await audit.WriteAsync(
                 AuditEntityKind.SecurityRole,
@@ -151,7 +189,10 @@ public sealed class RoleManagementService(
             throw new NgbArgumentRequiredException(nameof(request));
 
         var normalizedPermissions = Normalize(request.Permissions);
-        _ = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
+        var role = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
+        if (_administratorOptions.IsAdministratorRoleCode(role.Code))
+            throw new SecurityAdministratorRoleProtectedException(role.Code, "permissions");
+
         var oldPermissions = await permissions.GetRolePermissionsAsync(roleId, ct);
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
@@ -174,6 +215,8 @@ public sealed class RoleManagementService(
     private async Task SetRoleActiveAsync(Guid roleId, bool isActive, string auditAction, CancellationToken ct)
     {
         var role = await roles.GetByIdAsync(roleId, ct) ?? throw new SecurityRoleNotFoundException(roleId);
+        if (!isActive && _administratorOptions.IsAdministratorRoleCode(role.Code))
+            throw new SecurityAdministratorRoleProtectedException(role.Code, "active status");
 
         await uow.ExecuteInUowTransactionAsync(async innerCt =>
         {
@@ -197,7 +240,7 @@ public sealed class RoleManagementService(
         await versions.IncrementForRoleAsync(roleId, ct);
     }
 
-    private static IReadOnlyList<NgbPermissionKey> Normalize(IReadOnlyList<PermissionAssignmentDto> assignments)
+    private static IReadOnlyList<NgbPermissionKey> Normalize(IReadOnlyList<PermissionAssignmentDto>? assignments)
     {
         if (assignments is null)
             throw new NgbArgumentRequiredException(nameof(assignments));
@@ -271,4 +314,34 @@ public sealed class RoleManagementService(
     private static string ToAuditStatus(bool isActive) => isActive ? "Active" : "Inactive";
 
     private static string ToAuditYesNo(bool value) => value ? "Yes" : "No";
+
+    private readonly NgbAdministratorOptions _administratorOptions = new();
+    private readonly PermissionDefinitionRegistry? _definitions;
+
+    public RoleManagementService(
+        IUnitOfWork uow,
+        IPlatformRoleRepository roles,
+        IPlatformUserRoleRepository userRoles,
+        IPermissionSnapshotRepository permissions,
+        IUserAccessVersionRepository versions,
+        IPlatformUserRepository users,
+        IAuditLogService audit,
+        IOptions<NgbAdministratorOptions> administratorOptions,
+        PermissionDefinitionRegistry definitions)
+        : this(uow, roles, userRoles, permissions, versions, users, audit)
+    {
+        _administratorOptions = administratorOptions.Value;
+        _definitions = definitions;
+    }
+
+    private void RequireUnreservedCode(string code)
+    {
+        if (_administratorOptions.IsAdministratorRoleCode(code))
+            throw new SecurityAdministratorRoleProtectedException(code, "reserved code ownership");
+    }
+
+    private async Task<IReadOnlyList<NgbPermissionKey>> GetAdministratorPermissionsAsync(CancellationToken ct)
+        => (await _definitions!.GetAllAsync(ct))
+            .Select(static definition => new NgbPermissionKey(definition.ResourceKind, definition.ResourceCode, definition.ActionCode))
+            .ToArray();
 }

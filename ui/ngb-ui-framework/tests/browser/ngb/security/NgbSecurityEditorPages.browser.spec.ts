@@ -742,6 +742,56 @@ test('opens role audit log with the security role entity context', async () => {
   await expect.element(view.getByTestId('security-audit-sidebar')).toHaveTextContent('Audit 9 role-1 PM AR Clerk')
 })
 
+test('protects full-access roles using server metadata while allowing profile changes', async () => {
+  await page.viewport(1280, 900)
+
+  const permission = permissionDefinition()
+  const administrator = roleDetails({
+    code: 'custom.canonical-administrator',
+    name: 'Administrators',
+    isSystem: false,
+    hasFullAccess: true,
+    permissions: [{ resourceKind: permission.resourceKind, resourceCode: permission.resourceCode, actionCode: permission.actionCode }],
+  })
+  mocks.getPermissionDefinitions.mockResolvedValue([permission])
+  mocks.getRole.mockResolvedValue(administrator)
+  mocks.updateRole.mockResolvedValue({ ...administrator, name: 'Platform administrators' })
+
+  const view = await render(NgbRoleEditorPage)
+
+  await expect.element(view.getByText('Full access to all current and future permissions.', { exact: false })).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument()
+  await expect.element(view.getByRole('checkbox')).toBeChecked()
+  await expect.element(view.getByRole('checkbox')).toBeDisabled()
+  await expect.element(view.getByRole('button', { name: 'Clear', exact: true })).toBeDisabled()
+  expect((await inputByLabel('Code')).disabled).toBe(true)
+  expect((await inputByLabel('Name')).disabled).toBe(false)
+  expect((await inputByLabel('Description')).disabled).toBe(false)
+
+  await setInputValue('Name', 'Platform administrators')
+  await view.getByRole('button', { name: 'Save' }).click()
+
+  expect(mocks.updateRole).toHaveBeenCalledWith('role-1', {
+    code: administrator.code,
+    name: 'Platform administrators',
+    description: administrator.description,
+    isActive: true,
+    permissions: undefined,
+  })
+  expect(mocks.deactivateRole).not.toHaveBeenCalled()
+})
+
+test('does not infer full access from an Administrator display name', async () => {
+  mocks.getPermissionDefinitions.mockResolvedValue([permissionDefinition()])
+  mocks.getRole.mockResolvedValue(roleDetails({ name: 'Administrator', isSystem: false, hasFullAccess: false }))
+
+  const view = await render(NgbRoleEditorPage)
+
+  await expect.element(view.getByRole('button', { name: 'Deactivate' })).toBeVisible()
+  await expect.element(view.getByRole('checkbox')).toBeEnabled()
+  expect((await inputByLabel('Code')).disabled).toBe(false)
+})
+
 test('saves role permission changes from the permissions tab with active status preserved', async () => {
   await page.viewport(1280, 900)
 

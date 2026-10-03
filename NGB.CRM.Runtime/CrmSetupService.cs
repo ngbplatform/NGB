@@ -5,6 +5,7 @@ using NGB.CRM.Security;
 using NGB.Contracts.Common;
 using NGB.Contracts.Security;
 using NGB.Contracts.Services;
+using NGB.Core.AuditLog;
 using NGB.Core.Security;
 using NGB.Metadata.Base;
 using NGB.Persistence.AuditLog;
@@ -12,6 +13,7 @@ using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.ReferenceRegisters;
 using NGB.ReferenceRegisters.Contracts;
+using NGB.Runtime.AuditLog;
 using NGB.Runtime.ReferenceRegisters;
 using NGB.Runtime.Security;
 using NGB.Runtime.UnitOfWork;
@@ -28,7 +30,9 @@ public sealed class CrmSetupService(
     IPlatformUserRepository platformUsers,
     IPlatformUserRoleRepository userRoles,
     IUserAccessVersionRepository userAccessVersions,
-    CrmDemoAdministratorOptions demoAdministrator)
+    CrmDemoAdministratorOptions demoAdministrator,
+    IPlatformRoleRepository platformRoles,
+    IAuditLogService audit)
     : ICrmSetupService
 {
     public async Task<CrmSetupResult> EnsureDefaultsAsync(CancellationToken ct = default)
@@ -276,13 +280,27 @@ public sealed class CrmSetupService(
         var existingRoles = (await roles.GetRolesAsync(ct))
             .ToDictionary(static x => x.Code, StringComparer.OrdinalIgnoreCase);
 
-        await EnsureRoleAsync(
-            existingRoles,
-            "crm.administrator",
-            "CRM Administrator",
-            "Full CRM operations, setup, reports, users, roles, health, and background jobs.",
-            CrmAdministratorPermissions(),
-            ct);
+        if (!existingRoles.ContainsKey("crm.administrator"))
+        {
+            await uow.ExecuteInUowTransactionAsync(async innerCt =>
+            {
+                var role = await platformRoles.UpsertAsync(
+                    DeterministicGuid.Create("Role|crm.administrator"),
+                    "crm.administrator",
+                    "CRM Administrator",
+                    "Full access to all current and future permissions.",
+                    isSystem: true,
+                    isActive: true,
+                    innerCt);
+
+                await audit.WriteAsync(
+                    AuditEntityKind.SecurityRole,
+                    role.RoleId,
+                    AuditActionCodes.SecurityRoleCreate,
+                    metadata: new { role.Code, role.Name, hasFullAccess = true },
+                    ct: innerCt);
+            }, ct);
+        }
 
         await EnsureRoleAsync(
             existingRoles,
@@ -378,25 +396,6 @@ public sealed class CrmSetupService(
             DimensionCode: code,
             Ordinal: ordinal,
             IsRequired: isRequired);
-
-    private static IReadOnlyList<PermissionAssignmentDto> CrmAdministratorPermissions()
-    {
-        var permissions = new List<PermissionAssignmentDto>();
-        AddSystemPermissions(
-            permissions,
-            NgbSystemPermissions.UsersView,
-            NgbSystemPermissions.UsersManage,
-            NgbSystemPermissions.RolesView,
-            NgbSystemPermissions.RolesManage,
-            NgbSystemPermissions.PermissionsView,
-            NgbSystemPermissions.AuditView);
-        AddResourceActions(permissions, NgbResourceKinds.Catalog, CrmCatalogTypes, CatalogAdministratorActions);
-        AddResourceActions(permissions, NgbResourceKinds.Document, CrmDocumentTypes, DocumentAdministratorActions);
-        AddResourceActions(permissions, NgbResourceKinds.Report, CrmReportCodes, ReportAdministratorActions);
-        AddPagePermissions(permissions);
-        AddExternalPermissions(permissions);
-        return DistinctPermissions(permissions);
-    }
 
     private static IReadOnlyList<PermissionAssignmentDto> CrmManagerPermissions()
     {
@@ -550,17 +549,6 @@ public sealed class CrmSetupService(
         CrmCodes.QuoteRegisterReport
     ];
 
-    private static readonly string[] CatalogAdministratorActions =
-    [
-        NgbPermissionActions.View,
-        NgbPermissionActions.Lookup,
-        NgbPermissionActions.Create,
-        NgbPermissionActions.Edit,
-        NgbPermissionActions.MarkForDeletion,
-        NgbPermissionActions.UnmarkForDeletion,
-        NgbPermissionActions.ViewAudit
-    ];
-
     private static readonly string[] CatalogManagerActions =
     [
         NgbPermissionActions.View,
@@ -574,24 +562,6 @@ public sealed class CrmSetupService(
     [
         NgbPermissionActions.View,
         NgbPermissionActions.Lookup
-    ];
-
-    private static readonly string[] DocumentAdministratorActions =
-    [
-        NgbPermissionActions.View,
-        NgbPermissionActions.Lookup,
-        NgbPermissionActions.Create,
-        NgbPermissionActions.EditDraft,
-        NgbPermissionActions.DeleteDraft,
-        NgbPermissionActions.MarkForDeletion,
-        NgbPermissionActions.UnmarkForDeletion,
-        NgbPermissionActions.Post,
-        NgbPermissionActions.Unpost,
-        NgbPermissionActions.Repost,
-        NgbPermissionActions.ViewEffects,
-        NgbPermissionActions.ViewFlow,
-        NgbPermissionActions.ViewAudit,
-        NgbPermissionActions.Print
     ];
 
     private static readonly string[] DocumentManagerActions =
@@ -624,16 +594,6 @@ public sealed class CrmSetupService(
         NgbPermissionActions.ViewEffects,
         NgbPermissionActions.ViewFlow,
         NgbPermissionActions.Print
-    ];
-
-    private static readonly string[] ReportAdministratorActions =
-    [
-        NgbPermissionActions.View,
-        NgbPermissionActions.Execute,
-        NgbPermissionActions.Export,
-        NgbPermissionActions.SavePrivateVariant,
-        NgbPermissionActions.ManageSharedVariants,
-        NgbPermissionActions.DeleteVariant
     ];
 
     private static readonly string[] ReportManagerActions =

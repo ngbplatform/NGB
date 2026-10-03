@@ -18,6 +18,42 @@ public sealed class CrmApplicationSurface_EndToEnd_P0Tests(CrmPostgresFixture fi
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task Canonical_Administrator_Is_Protected_Through_The_Registered_Runtime_Service()
+    {
+        using var host = CrmHostFactory.Create(fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var setup = scope.ServiceProvider.GetRequiredService<ICrmSetupService>();
+        await setup.EnsureDefaultsAsync();
+        var roles = scope.ServiceProvider.GetRequiredService<IRoleManagementService>();
+        var roleList = await roles.GetRolesAsync(default);
+        var id = roleList.Single(role => role.Code == "crm.administrator").RoleId;
+        var before = await roles.GetRoleAsync(id, default);
+
+        before.HasFullAccess.Should().BeTrue();
+        await Assert.ThrowsAsync<SecurityAdministratorRoleProtectedException>(() =>
+            roles.UpdateRoleAsync(id, new("renamed", before.Name, null, true, before.Permissions), default));
+        await Assert.ThrowsAsync<SecurityAdministratorRoleProtectedException>(() =>
+            roles.UpdateRoleAsync(id, new(before.Code, before.Name, null, false, before.Permissions), default));
+        await Assert.ThrowsAsync<SecurityAdministratorRoleProtectedException>(() =>
+            roles.DeactivateRoleAsync(id, default));
+        await Assert.ThrowsAsync<SecurityAdministratorRoleProtectedException>(() =>
+            roles.ReplaceRolePermissionsAsync(id, new([]), default));
+        await Assert.ThrowsAsync<SecurityAdministratorRoleProtectedException>(() =>
+            roles.CreateRoleAsync(new(" CRM.ADMINISTRATOR ", "Replacement", null, []), default));
+
+        (await roles.GetRoleAsync(id, default)).Should().BeEquivalentTo(before);
+        var updated = await roles.UpdateRoleAsync(
+            id, new(before.Code, "CRM platform administrators", "Full access", true, null), default);
+        updated.Name.Should().Be("CRM platform administrators");
+        updated.HasFullAccess.Should().BeTrue();
+        updated.Permissions.Should().BeEquivalentTo(before.Permissions);
+
+        await setup.EnsureDefaultsAsync();
+
+        (await roles.GetRoleAsync(id, default)).Should().BeEquivalentTo(updated);
+    }
+
+    [Fact]
     public async Task Main_Menu_Exposes_Crm_And_System_Security_Surface_Without_Accounting()
     {
         using var host = CrmHostFactory.Create(fixture.ConnectionString);
