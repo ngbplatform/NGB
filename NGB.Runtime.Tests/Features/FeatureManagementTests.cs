@@ -217,6 +217,42 @@ public sealed class FeatureManagementTests
         error.Message.Should().Contain("storage provider");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Enabled_attachments_start_with_preconfigured_or_callback_registered_storage(bool useCallback)
+    {
+        var storage = new Mock<IAttachmentObjectStorage>(MockBehavior.Strict);
+        var expiration = new Mock<IAttachmentUploadExpirationService>();
+        expiration.Setup(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0);
+        var configuration = Configuration(true, false);
+        var configured = false;
+        using var host = new HostBuilder().ConfigureServices(services =>
+        {
+            services.AddSingleton(expiration.Object);
+            if (useCallback)
+            {
+                services.AddNgbAttachmentsNotesApi(configuration, registrations =>
+                {
+                    configured = true;
+                    registrations.AddSingleton(storage.Object);
+                });
+            }
+            else
+            {
+                services.AddSingleton(storage.Object);
+                services.AddNgbAttachmentsNotesApi(configuration);
+            }
+        }).Build();
+
+        await host.StartAsync();
+
+        configured.Should().Be(useCallback);
+        host.Services.GetRequiredService<IAttachmentObjectStorage>().Should().BeSameAs(storage.Object);
+        storage.VerifyNoOtherCalls();
+        await host.StopAsync();
+    }
+
     [Fact]
     public async Task Upload_expiration_continues_without_storage_when_user_features_are_disabled()
     {

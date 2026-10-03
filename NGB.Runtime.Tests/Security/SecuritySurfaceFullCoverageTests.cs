@@ -135,6 +135,38 @@ public sealed class SecuritySurfaceFullCoverageTests
             .Should().Equal("execute", "view");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task EffectiveAccess_UsesRegisteredAdministratorPermissionsOnlyForActiveUsers(bool active)
+    {
+        var userId = Guid.NewGuid();
+        var users = new Mock<IPlatformUserRepository>();
+        users.Setup(x => x.GetByIdAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(User(userId) with { IsActive = active });
+        var permissions = new Mock<IPermissionSnapshotRepository>(MockBehavior.Strict);
+        var roles = new Mock<IPlatformUserRoleRepository>();
+        roles.Setup(x => x.GetRolesForUserAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new PlatformRole(
+                Guid.NewGuid(), "pm-administrator", "Administrator", null, true, true, DateTime.UtcNow, DateTime.UtcNow)]);
+        using var definitions = new PermissionDefinitionRegistry([new PlatformPermissionDefinitionSource()]);
+        var options = new NgbAdministratorOptions();
+        options.ApplicationRoleCodes.Add("pm-administrator");
+        var effective = new EffectivePermissionService(permissions.Object, roles.Object, definitions, Options.Create(options));
+        var service = new EffectiveAccessService(
+            users.Object, Mock.Of<IUserAccessVersionRepository>(), permissions.Object, definitions, effective);
+
+        var result = await service.GetEffectiveAccessAsync(userId, CancellationToken.None);
+        var granted = result.Groups.SelectMany(group => group.Resources)
+            .SelectMany(resource => resource.Actions.Select(action =>
+                new NgbPermissionKey(resource.ResourceKind, resource.ResourceCode, action)));
+
+        granted.Should().BeEquivalentTo(active ? NgbSystemPermissions.All : []);
+        permissions.VerifyNoOtherCalls();
+        roles.Verify(x => x.GetRolesForUserAsync(userId, It.IsAny<CancellationToken>()),
+            active ? Times.Once() : Times.Never());
+    }
+
     [Fact]
     public async Task PermissionDefinitionSources_CoverMetadataPlatformReportsSortingLabelsAndFallbackGroups()
     {

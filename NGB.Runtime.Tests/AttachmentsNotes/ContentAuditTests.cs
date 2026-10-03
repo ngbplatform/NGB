@@ -8,7 +8,11 @@ using NGB.Contracts.Audit;
 using NGB.Contracts.BusinessObjects;
 using NGB.Core.AuditLog;
 using NGB.Core.Features;
+using NGB.Persistence.AuditLog;
+using NGB.Persistence.Catalogs;
+using NGB.Persistence.Documents;
 using NGB.Runtime.Attachments;
+using NGB.Runtime.AuditLog;
 using NGB.Runtime.BusinessObjects;
 using NGB.Runtime.Security;
 using Xunit;
@@ -121,6 +125,50 @@ public sealed class ContentAuditTests
 
         (await filter.FilterAsync(new([item], null, 25), default)).Items.Should().BeEmpty();
         f.Resolver.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Catalog_attachment_audit_download_requires_catalog_audit_permission()
+    {
+        var fixture = new ContentFixture();
+        var target = fixture.Target with { Kind = BusinessObjectKind.CatalogItem, TypeCode = "customer" };
+        var access = new ContentAuditAccess(EnabledFeatures().Object, fixture.Access.Object, fixture.ContentAccess);
+
+        await access.RequireAttachmentAsync(target, CancellationToken.None);
+
+        fixture.Resolver.Verify(x => x.ResolveAsync(target, CancellationToken.None), Times.Once);
+        fixture.Access.Verify(x => x.RequireAsync("system", "attachments", "read", CancellationToken.None), Times.Once);
+        fixture.Access.Verify(x => x.RequireAsync("catalog", "customer", "view_audit", CancellationToken.None), Times.Once);
+        fixture.Access.Setup(x => x.RequireAsync("catalog", "customer", "view_audit", CancellationToken.None))
+            .ThrowsAsync(new NgbPermissionDeniedException(new("catalog", "customer", "view_audit")));
+
+        await Assert.ThrowsAsync<NgbPermissionDeniedException>(() =>
+            access.RequireAttachmentAsync(target, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Permission_aware_query_filters_content_even_when_system_audit_access_is_granted()
+    {
+        var fixture = new ContentFixture();
+        fixture.Access.Setup(x => x.HasAsync("system", "audit", "view", CancellationToken.None)).ReturnsAsync(true);
+        var content = new ContentAuditAccess(EnabledFeatures().Object, fixture.Access.Object, fixture.ContentAccess);
+        var reader = new Mock<IAuditEventReader>();
+        var hidden = new AuditEvent(
+            Guid.CreateVersion7(), AuditEntityKind.Document, fixture.Target.Id, "notes.created", null,
+            fixture.Time.Now.UtcDateTime, null, null, [new("note.text", null, "\"private note\"")]);
+        var visible = hidden with { AuditEventId = Guid.CreateVersion7(), ActionCode = "document.create", Changes = [] };
+        reader.Setup(x => x.QueryAsync(It.IsAny<AuditLogQuery>(), CancellationToken.None))
+            .ReturnsAsync([visible, hidden]);
+        var service = new PermissionAwareAuditLogQueryService(
+            new AuditLogQueryService(reader.Object), fixture.Access.Object,
+            Mock.Of<IDocumentRepository>(), Mock.Of<ICatalogRepository>(), content);
+
+        var page = await service.GetEntityAuditLogAsync(
+            AuditEntityKind.Document, fixture.Target.Id, null, null, 2, CancellationToken.None);
+
+        page.Items.Should().ContainSingle(item => item.AuditEventId == visible.AuditEventId);
+        page.NextCursor!.AuditEventId.Should().Be(hidden.AuditEventId);
+        fixture.Resolver.VerifyNoOtherCalls();
     }
 
     private static Mock<INgbFeatureService> EnabledFeatures()

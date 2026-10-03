@@ -210,6 +210,28 @@ public sealed class PermissionSnapshotProviderTests
         snapshot.Has(NgbSystemPermissions.NotesUpdate).Should().Be(active);
     }
 
+    [Fact]
+    public async Task GetCurrentAsync_CachedNullPermissionsFailClosedWithoutGrantingAdministratorAccess()
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var userId = Guid.NewGuid();
+        cache.Set<IReadOnlyList<NgbPermissionKey>?>($"ngb:security:snapshot:{userId:N}:7", null);
+        var permissions = new Mock<IPermissionSnapshotRepository>(MockBehavior.Strict);
+        permissions.Setup(x => x.GetUserAccessStateByAuthSubjectAsync("subject", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PlatformUserAccessState(userId, "subject", null, "User", true, 7));
+        var provider = CreateProvider(new ActorIdentity("subject", null, "User"), cache, permissions);
+
+        var snapshot = await provider.GetCurrentAsync(CancellationToken.None);
+
+        snapshot.IsAuthenticated.Should().BeTrue();
+        snapshot.IsActive.Should().BeTrue();
+        snapshot.IsBootstrapAdmin.Should().BeFalse();
+        snapshot.Permissions.Should().BeEmpty();
+        snapshot.Has(NgbSystemPermissions.AttachmentsRead).Should().BeFalse();
+        snapshot.Has(NgbSystemPermissions.NotesUpdate).Should().BeFalse();
+        permissions.Verify(x => x.GetEffectivePermissionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     private static PermissionSnapshotProvider CreateProvider(
         ActorIdentity? currentActor,
         IMemoryCache cache,

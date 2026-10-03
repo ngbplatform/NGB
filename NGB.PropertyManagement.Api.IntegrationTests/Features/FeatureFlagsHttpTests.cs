@@ -2,7 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Moq;
 using NGB.Attachments;
 using NGB.Contracts.Attachments;
 using NGB.Contracts.Audit;
@@ -151,6 +154,69 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
             note.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         (await client.GetAsync("/api/security/me/access")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Deleted_attachment_is_hidden_from_the_list_but_downloadable_from_parent_audit()
+    {
+        var storage = new Mock<IAttachmentObjectStorage>(MockBehavior.Strict);
+        storage.Setup(x => x.CreateUploadTargetAsync(
+                It.IsAny<string>(), "text/plain", It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttachmentUploadTarget("https://storage.test/upload", new Dictionary<string, string>()));
+        storage.Setup(x => x.GetObjectInfoAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AttachmentStoredObject(3, "text/plain", "retained-etag"));
+        storage.Setup(x => x.SealUploadAsync(
+                It.IsAny<string>(), It.IsAny<string>(), "retained-etag", It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        storage.Setup(x => x.CreateDownloadTargetAsync(
+                It.IsAny<string>(), "retained.txt", It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("https://storage.test/retained-download");
+        await using var root = new PmApiFactory(fixture, new Dictionary<string, string?>
+        {
+            ["FeatureManagement:Attachments"] = "true",
+            ["FeatureManagement:Notes"] = "false",
+            ["Attachments:UploadExpirationEnabled"] = "false"
+        });
+        await using var app = root.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IAttachmentObjectStorage>();
+            services.AddSingleton(storage.Object);
+        }));
+        using var identity = root.CreateClient();
+        using var client = app.CreateClient();
+        client.DefaultRequestHeaders.Authorization = identity.DefaultRequestHeaders.Authorization;
+        var target = await CreatePartyAsync(client);
+
+        using var upload = await client.PostAsJsonAsync("/api/attachments/uploads",
+            new CreateAttachmentUploadRequest(target, "retained.txt", "text/plain", 3));
+        upload.EnsureSuccessStatusCode();
+        var pending = (await upload.Content.ReadFromJsonAsync<AttachmentUploadDto>())!;
+        using var complete = await client.PostAsync($"/api/attachments/{pending.AttachmentId}/complete", null);
+        complete.EnsureSuccessStatusCode();
+        using var deleted = await client.DeleteAsync($"/api/attachments/{pending.AttachmentId}");
+        deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var list = await client.GetFromJsonAsync<BusinessObjectPage<AttachmentDto>>(
+            $"/api/attachments?kind=CatalogItem&typeCode=pm.party&objectId={target.Id}");
+        list!.Items.Should().BeEmpty();
+        using var directDownload = await client.PostAsync($"/api/attachments/{pending.AttachmentId}/download", null);
+        directDownload.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await directDownload.Content.ReadAsStringAsync()).Should().Contain("attachments.deleted");
+        var audit = await client.GetFromJsonAsync<AuditLogPageDto>($"/api/audit/entities/2/{target.Id}");
+        var deletion = audit!.Items.Single(item => item.ActionCode == "attachments.mark_for_deletion");
+        using var metadata = JsonDocument.Parse(deletion.MetadataJson!);
+        metadata.RootElement.GetProperty("attachmentId").GetGuid().Should().Be(pending.AttachmentId);
+        metadata.RootElement.GetProperty("downloadAvailable").GetBoolean().Should().BeTrue();
+
+        using var download = await client.PostAsync($"/api/attachments/{pending.AttachmentId}/audit-download", null);
+        download.EnsureSuccessStatusCode();
+        download.Headers.CacheControl!.NoStore.Should().BeTrue();
+        var result = (await download.Content.ReadFromJsonAsync<AttachmentDownloadDto>())!;
+        result.Url.Should().Be("https://storage.test/retained-download");
+        result.ExpiresAtUtc.Should().BeAfter(DateTime.UtcNow);
+        storage.Verify(x => x.CreateDownloadTargetAsync(
+            $"attachments/{pending.AttachmentId:N}", "retained.txt", It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()), Times.Once);
+        storage.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     private static Dictionary<string, string?> DisabledStorage() => new()

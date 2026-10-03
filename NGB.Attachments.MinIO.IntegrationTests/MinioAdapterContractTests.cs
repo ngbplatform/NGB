@@ -100,6 +100,22 @@ public sealed class MinioAdapterContractTests
     }
 
     [Fact]
+    public async Task Legacy_delete_contract_completes_when_storage_confirms_removal()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var client = new Mock<IMinioClient>(MockBehavior.Strict);
+        client.Setup(x => x.RemoveObjectAsync(It.IsAny<RemoveObjectArgs>(), cancellation.Token))
+            .Returns(Task.CompletedTask);
+        client.Setup(x => x.Dispose());
+        using var storage = new MinioAttachmentObjectStorage(Valid(), client.Object, client.Object);
+
+        await storage.DeleteObjectAsync("legacy/object", cancellation.Token);
+
+        client.Verify(x => x.RemoveObjectAsync(It.IsAny<RemoveObjectArgs>(), cancellation.Token), Times.Once);
+        client.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task Missing_deletes_are_idempotent_and_cancellation_propagates_without_translation()
     {
         var client = new Mock<IMinioClient>();
