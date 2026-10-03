@@ -292,7 +292,7 @@ services:
     environment:
       FeatureManagement__Attachments: ${FEATURE_ATTACHMENTS:-false}
       FeatureManagement__Notes: ${FEATURE_NOTES:-false}
-      Attachments__MaintenanceEnabled: ${ATTACHMENTS_MAINTENANCE_ENABLED:-false}
+      Attachments__UploadExpirationEnabled: ${ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED:-false}
       Attachments__MinIO__InternalEndpoint: ${MINIO_INTERNAL_ENDPOINT}
       Attachments__MinIO__PublicEndpoint: ${MINIO_PUBLIC_ENDPOINT}
       Attachments__MinIO__Bucket: ${MINIO_BUCKET}

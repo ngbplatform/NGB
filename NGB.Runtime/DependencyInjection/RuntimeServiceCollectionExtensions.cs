@@ -13,6 +13,7 @@ using NGB.Definitions.Documents.Numbering;
 using NGB.Metadata.Catalogs.Storage;
 using NGB.Metadata.Documents.Storage;
 using NGB.Persistence.Readers.Reports;
+using NGB.Persistence.Catalogs;
 using NGB.Persistence.Catalogs.Storage;
 using NGB.Persistence.Documents.Storage;
 using NGB.Persistence.Documents;
@@ -23,6 +24,7 @@ using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.Admin;
 using NGB.Runtime.AuditLog;
+using NGB.Runtime.BusinessObjects;
 using NGB.Runtime.Catalogs;
 using NGB.Runtime.Catalogs.Validation;
 using NGB.Runtime.Catalogs.Storage;
@@ -391,7 +393,13 @@ public static class RuntimeServiceCollectionExtensions
         services.TryAddScoped<PermissionAwareAdminService>();
         services.TryAddScoped<PermissionAwareCatalogService>();
         services.TryAddScoped<PermissionAwareDocumentService>();
-        services.TryAddScoped<PermissionAwareAuditLogQueryService>();
+        services.TryAddScoped<PermissionAwareAuditLogQueryService>(sp => new PermissionAwareAuditLogQueryService(
+            sp.GetRequiredService<AuditLogQueryService>(),
+            sp.GetRequiredService<INgbAccessChecker>(),
+            sp.GetRequiredService<IDocumentRepository>(),
+            sp.GetRequiredService<ICatalogRepository>(),
+            sp.GetService<ContentAuditAccess>()));
+        services.Replace(ServiceDescriptor.Scoped<IAuditLogQueryService>(sp => sp.GetRequiredService<PermissionAwareAuditLogQueryService>()));
 
         return services;
     }

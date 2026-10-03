@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
+import { downloadAuditAttachment } from '../api/audit';
+import { startAttachmentDownload } from '../business-objects/api';
 import { toErrorMessage } from '../utils/errorMessage';
 import { stableStringify } from '../utils/stableValue';
 import NgbIcon from '../primitives/NgbIcon.vue';
 
 import { getConfiguredNgbEditor, resolveNgbEditorAuditBehavior } from './config';
 import type { EditorAuditBehavior } from './types';
-import type { AuditEvent } from './types';
+import type { AuditCursor, AuditEvent } from './types';
 
 const props = defineProps<{
   open: boolean;
@@ -25,6 +27,10 @@ const emit = defineEmits<{
 const loading = ref(false);
 const error = ref<string | null>(null);
 const items = ref<AuditEvent[]>([]);
+const nextCursor = ref<AuditCursor | null>(null);
+const downloadingId = ref<string | null>(null);
+const downloadError = ref<string | null>(null);
+let downloadController: AbortController | null = null;
 let loadSequence = 0;
 let loadController: AbortController | null = null;
 
@@ -41,6 +47,15 @@ const explicitActionTitles = computed(() => {
   return Object.fromEntries(entries.map(([key, value]) => [key.toLowerCase(), value]));
 });
 type AuditRow = { field: string; before: string; after: string };
+const contentActionTitles: Record<string, string> = {
+  'attachments.upload_requested': 'Attachment upload requested',
+  'attachments.upload_completed': 'Attachment added',
+  'attachments.upload_expired': 'Attachment upload expired',
+  'attachments.mark_for_deletion': 'Attachment marked for deletion',
+  'notes.created': 'Note added',
+  'notes.updated': 'Note edited',
+  'notes.mark_for_deletion': 'Note marked for deletion',
+};
 
 function formatDateTime(v: string): string {
   const d = new Date(v);
@@ -51,6 +66,7 @@ function formatDateTime(v: string): string {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
   });
 }
 
@@ -139,14 +155,16 @@ function formatAuditValue(parsed: AuditJsonValue): string {
   return stableStringify(parsed);
 }
 
-function valueText(v?: string | null): string {
-  return formatAuditValue(parseJsonLoose(v));
+function valueText(v?: string | null, literal = false): string {
+  const parsed = parseJsonLoose(v);
+  return literal && typeof parsed === 'string' ? parsed : formatAuditValue(parsed);
 }
 
 function actionTitle(actionCode: string): string {
   const code = actionCode.toLowerCase();
   const explicitTitle = explicitActionTitles.value[code];
   if (explicitTitle) return explicitTitle;
+  if (contentActionTitles[code]) return contentActionTitles[code];
   if (code.endsWith('.create') || code.includes('.create_')) return 'Created';
   if (code.endsWith('.update') || code.includes('.update_') || code.includes('.replace_')) return 'Updated';
   if (code.endsWith('.submit')) return 'Submitted';
@@ -167,22 +185,20 @@ function eventSummary(item: AuditEvent): string {
   return `${actionTitle(item.actionCode)} by ${actorLabel(item)}`;
 }
 
-function sameText(a: string, b: string): boolean {
-  return a.trim() === b.trim();
-}
-
 function eventRows(item: AuditEvent): AuditRow[] {
   const rows = item.changes
     .filter((change) => {
       const key = change.fieldPath.split('.').pop()!.toLowerCase();
       return !hiddenFieldNames.value.has(key);
     })
-    .map((change) => ({
-      field: humanizeField(change.fieldPath),
-      before: valueText(change.oldValueJson),
-      after: valueText(change.newValueJson),
-    }))
-    .filter((row) => !sameText(row.before, row.after));
+    .flatMap((change) => {
+      const noteText = change.fieldPath === 'note.text';
+      const literal = noteText || change.fieldPath === 'attachment.file_name';
+      const before = valueText(change.oldValueJson, literal);
+      const after = valueText(change.newValueJson, literal);
+      if (!noteText && before.trim() === after.trim()) return [];
+      return [{ field: humanizeField(change.fieldPath), before, after }];
+    });
 
   if (rows.length > 0) return rows;
   return [{ field: 'Details', before: '—', after: 'No business-field changes recorded.' }];
@@ -200,7 +216,36 @@ function getString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-async function load() {
+function attachmentDownloadId(item: AuditEvent): string | null {
+  if (!item.actionCode.startsWith('attachments.')) return null;
+  const metadata = parseJsonLoose(item.metadataJson);
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  const id = metadata.attachmentId;
+  return metadata.downloadAvailable === true && typeof id === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
+}
+
+async function download(item: AuditEvent) {
+  const id = attachmentDownloadId(item);
+  if (!id || downloadingId.value) return;
+  const controller = new AbortController();
+  downloadController = controller;
+  downloadingId.value = item.auditEventId;
+  downloadError.value = null;
+  try {
+    const result = await downloadAuditAttachment(id, controller.signal);
+    if (!controller.signal.aborted) startAttachmentDownload(result.url);
+  } catch (cause) {
+    if (!controller.signal.aborted) downloadError.value = toErrorMessage(cause, 'Failed to download the attachment.');
+  } finally {
+    if (downloadController === controller) {
+      downloadController = null;
+      downloadingId.value = null;
+    }
+  }
+}
+
+async function load(more = false) {
   const seq = ++loadSequence;
   loadController?.abort();
   const controller = new AbortController();
@@ -209,11 +254,14 @@ async function load() {
   error.value = null;
   try {
     const page = await getConfiguredNgbEditor().loadEntityAuditLog(props.entityKind, props.entityId!, {
-      limit: 100,
+      limit: 25,
+      afterOccurredAtUtc: more ? nextCursor.value?.occurredAtUtc : undefined,
+      afterAuditEventId: more ? nextCursor.value?.auditEventId : undefined,
       signal: controller.signal,
     });
     if (seq !== loadSequence || controller.signal.aborted) return;
-    items.value = page.items;
+    items.value = more ? [...items.value, ...page.items] : page.items;
+    nextCursor.value = page.nextCursor ?? null;
   } catch (cause) {
     if (seq !== loadSequence || controller.signal.aborted) return;
     error.value = toErrorMessage(cause, 'Failed to load the audit log.');
@@ -229,6 +277,11 @@ watch(
     loadSequence += 1;
     loadController?.abort();
     loadController = null;
+    downloadController?.abort();
+    downloadController = null;
+    downloadingId.value = null;
+    downloadError.value = null;
+    nextCursor.value = null;
     items.value = [];
     error.value = null;
     loading.value = false;
@@ -238,6 +291,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  downloadController?.abort();
   loadSequence += 1;
   loadController?.abort();
   loadController = null;
@@ -258,15 +312,19 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="flex-1 min-h-0 overflow-auto">
-      <div v-if="error" class="px-5 py-4 text-sm text-red-700">{{ error }}</div>
-      <div v-else-if="!canLoad" class="px-5 py-4 text-sm text-ngb-muted">Save the record first to see its history.</div>
+      <div v-if="error" role="alert" class="px-5 py-4 text-sm text-red-700">
+        <span>{{ error }}</span>
+        <button class="ngb-btn ml-2" :disabled="loading" @click="load(!!nextCursor)">Retry</button>
+      </div>
+      <div v-if="downloadError" role="alert" class="px-5 py-4 text-sm text-red-700">{{ downloadError }}</div>
+      <div v-if="!canLoad" class="px-5 py-4 text-sm text-ngb-muted">Save the record first to see its history.</div>
       <div v-else-if="loading && items.length === 0" class="px-5 py-4 text-sm text-ngb-muted">Loading…</div>
-      <div v-else-if="items.length === 0" class="px-5 py-4 text-sm text-ngb-muted">No history yet.</div>
+      <div v-else-if="items.length === 0 && !error && !nextCursor" class="px-5 py-4 text-sm text-ngb-muted">No history yet.</div>
 
-      <div v-else class="py-3">
+      <div v-if="items.length > 0" class="py-3">
         <section v-for="item in items" :key="item.auditEventId" class="bg-ngb-card px-4 mb-4 last:mb-0">
           <div class="py-3 border-b border-ngb-border flex items-center justify-between gap-4">
-            <div class="min-w-0 text-sm font-semibold text-ngb-text truncate">{{ eventSummary(item) }}</div>
+            <div class="min-w-0 text-sm font-semibold text-ngb-text break-words">{{ eventSummary(item) }}</div>
             <div class="shrink-0 text-sm text-ngb-text whitespace-nowrap">{{ formatDateTime(item.occurredAtUtc) }}</div>
           </div>
 
@@ -282,13 +340,19 @@ onBeforeUnmount(() => {
               <tbody>
                 <tr v-for="row in eventRows(item)" :key="`${item.auditEventId}:${row.field}`" class="border-t border-ngb-border">
                   <td class="px-4 py-3 align-top border-r border-ngb-border break-words text-ngb-text">{{ row.field }}</td>
-                  <td class="px-4 py-3 align-top border-r border-ngb-border break-words text-ngb-text">{{ row.before }}</td>
-                  <td class="px-4 py-3 align-top break-words text-ngb-text">{{ row.after }}</td>
+                  <td class="px-4 py-3 align-top border-r border-ngb-border break-words whitespace-pre-wrap text-ngb-text">{{ row.before }}</td>
+                  <td class="px-4 py-3 align-top break-words whitespace-pre-wrap text-ngb-text">{{ row.after }}</td>
                 </tr>
               </tbody>
             </table>
           </div>
+          <button v-if="attachmentDownloadId(item)" class="ngb-btn mt-2" :disabled="!!downloadingId" @click="download(item)">
+            {{ downloadingId === item.auditEventId ? 'Preparing download…' : 'Download attachment' }}
+          </button>
         </section>
+      </div>
+      <div v-if="nextCursor" class="px-5 py-4">
+        <button class="ngb-btn" :disabled="loading" @click="load(true)">{{ loading ? 'Loading…' : 'Load older events' }}</button>
       </div>
     </div>
   </div>

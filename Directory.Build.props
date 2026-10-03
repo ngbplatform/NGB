@@ -25,7 +25,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>NGB;NGB Platform;.NET;PostgreSQL;business applications</PackageTags>
-    <PackageReleaseNotes>Attachments and plain-text Notes for catalogs, documents and general journal entries, with private object storage, direct uploads, authorization, audit and asynchronous cleanup. Upgrade: https://docs.ngbplatform.com/guides/attachments-and-notes</PackageReleaseNotes>
+    <PackageReleaseNotes>Attachments and plain-text Notes for catalogs, documents and general journal entries, with private object storage, direct uploads, authorization, parent audit history and indefinite file retention. Upgrade: https://docs.ngbplatform.com/guides/attachments-and-notes</PackageReleaseNotes>
     <Copyright>Copyright (c) NGB Platform 2026</Copyright>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

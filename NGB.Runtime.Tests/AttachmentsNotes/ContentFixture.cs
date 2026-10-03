@@ -8,7 +8,6 @@ using NGB.Notes;
 using NGB.Persistence.Attachments;
 using NGB.Persistence.AuditLog;
 using NGB.Persistence.Notes;
-using NGB.Persistence.Outbox;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Attachments;
 using NGB.Runtime.AuditLog;
@@ -33,17 +32,14 @@ internal sealed class ContentFixture
     public readonly Mock<IPlatformUserRepository> Users = new();
     public readonly Mock<IUnitOfWork> Uow = new();
     public readonly Mock<IAuditLogService> Audit = new();
-    public readonly Mock<IOutboxEventRepository> Outbox = new();
     public readonly AttachmentOptions Limits = new();
     public readonly NoteOptions NoteLimits = new();
     public readonly Dictionary<Guid, AttachmentRecord> AttachmentRows = [];
     public readonly Dictionary<Guid, NoteRecord> NoteRows = [];
-    public readonly List<OutboxEventEnvelope> Events = [];
     public BusinessObjectContentAccess ContentAccess { get; }
-    public AttachmentCleanupQueue Queue { get; }
     public AttachmentService AttachmentService { get; }
     public NoteService NoteService { get; }
-    public AttachmentMaintenance Maintenance { get; }
+    public AttachmentUploadExpirationService Expiration { get; }
 
     public ContentFixture()
     {
@@ -92,21 +88,12 @@ internal sealed class ContentFixture
             .ReturnsAsync((BusinessObjectRef _, int take, Guid? cursor, CancellationToken _) => NoteRows.Values
                 .Where(x => !x.IsDeleted && (cursor == null || x.Id.CompareTo(cursor.Value) < 0))
                 .OrderByDescending(x => x.Id).Take(take).ToArray());
-        Outbox.Setup(x => x.AppendAsync(It.IsAny<OutboxEventEnvelope>(), It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<CancellationToken>()))
-            .Callback((OutboxEventEnvelope item, IReadOnlyList<string> _, CancellationToken _) => Events.Add(item));
-        Outbox.Setup(x =>
-                x.ClaimBatchAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<DateTime>(),
-                    It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-                Events.Select(x => new OutboxConsumerWorkItem(x, AttachmentCleanupQueue.ConsumerCode, 1)).ToArray());
         ContentAccess = new(Resolver.Object, Access.Object, Actor.Object, Users.Object);
-        Queue = new(Outbox.Object, Time);
         AttachmentService = new(Attachments.Object, Storage.Object, ContentAccess, Uow.Object, Audit.Object,
-            Queue, Time, Options.Create(Limits), NullLogger<AttachmentService>.Instance);
+            Time, Options.Create(Limits), NullLogger<AttachmentService>.Instance);
         NoteService = new(Notes.Object, ContentAccess, Uow.Object, Audit.Object, Time, Options.Create(NoteLimits));
-        Maintenance = new(Attachments.Object, Storage.Object, Uow.Object, Outbox.Object, Queue, Audit.Object,
-            Time, Options.Create(Limits), NullLogger<AttachmentMaintenance>.Instance);
+        Expiration = new(Attachments.Object, Uow.Object, Audit.Object,
+            Time, Options.Create(Limits), NullLogger<AttachmentUploadExpirationService>.Instance);
     }
 
     public Task<NGB.Contracts.Attachments.AttachmentUploadDto> Upload() =>

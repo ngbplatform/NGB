@@ -46,7 +46,7 @@ export async function verifyAttachmentsAndNotes(page: Page, scenario: ContentSce
     expect(download.suggestedFilename().normalize('NFC')).toBe('résumé.txt')
     expect(await readFile((await download.path())!, 'utf8')).toBe('NGB real storage fixture\n')
 
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.getByRole('button', { name: 'Mark for deletion', exact: true }).click()
     await expect(page.getByText('No attachments yet.')).toBeVisible()
     await page.getByRole('button', { name: 'Close', exact: true }).last().click()
     await page.getByRole('button', { name: 'More actions', exact: true }).click()
@@ -72,11 +72,24 @@ export async function verifyAttachmentsAndNotes(page: Page, scenario: ContentSce
     await page.getByRole('menuitem', { name: 'Notes (1)', exact: true }).click()
     await expect(page.getByText('Updated plain note', { exact: true })).toBeVisible()
 
-    await page.getByRole('button', { name: 'Delete', exact: true }).click()
+    await page.getByRole('button', { name: 'Mark for deletion', exact: true }).click()
     await expect(page.getByText('No notes yet.')).toBeVisible()
     await page.getByRole('button', { name: 'Close', exact: true }).last().click()
     await page.getByRole('button', { name: 'More actions', exact: true }).click()
     await expect(page.getByRole('menuitem', { name: 'Notes (0)', exact: true })).toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: 'Audit log', exact: true }).click()
+    await expect(page.getByText(/Note marked for deletion by/)).toBeVisible()
+    await expect(page.getByText(/Note edited by/)).toBeVisible()
+    await expect(page.getByText(/Attachment marked for deletion by/)).toBeVisible()
+    await expect(page.getByRole('cell', { name: 'Updated plain note', exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('cell', { name: '<b>Plain text</b> Second line', exact: true }).first()).toBeVisible()
+    const [retainedDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Download attachment', exact: true }).first().click(),
+    ])
+    expect(await readFile((await retainedDownload.path())!, 'utf8')).toBe('NGB real storage fixture\n')
 
     expect(uploads).toHaveLength(1)
     const headers = await uploads[0]!.allHeaders()

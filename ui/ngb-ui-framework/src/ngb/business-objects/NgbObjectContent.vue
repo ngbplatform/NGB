@@ -142,7 +142,7 @@ function size(bytes: number): string {
             <div class="mt-1 text-xs text-ngb-muted">{{ attachment.createdByDisplayName || attachment.createdByUserId }} · {{ date(attachment.createdAtUtc) }}</div>
             <div class="mt-3 flex gap-3">
               <button class="ngb-btn" :disabled="busy" @click="state.download(attachment.id)">Download</button>
-              <button class="ngb-btn text-ngb-danger" :disabled="busy || !allowed('attachments', 'delete')" @click="state.deleteAttachment(attachment.id)">Delete</button>
+              <button class="ngb-btn text-ngb-danger" :disabled="busy || !allowed('attachments', 'delete')" @click="state.deleteAttachment(attachment.id)">Mark for deletion</button>
             </div>
           </li>
         </ul>
@@ -165,7 +165,7 @@ function size(bytes: number): string {
             <div v-if="note.updatedAtUtc" class="mb-2 text-xs text-ngb-muted">Edited {{ date(note.updatedAtUtc) }}</div>
             <div class="flex gap-3">
               <button class="ngb-btn" :disabled="busy || !allowed('notes', 'update')" @click="edit(note)">Edit</button>
-              <button class="ngb-btn text-ngb-danger" :disabled="busy || !allowed('notes', 'delete')" @click="state.deleteNote(note)">Delete</button>
+              <button class="ngb-btn text-ngb-danger" :disabled="busy || !allowed('notes', 'delete')" @click="state.deleteNote(note)">Mark for deletion</button>
             </div>
           </li>
         </ul>

@@ -48,7 +48,7 @@ public sealed class CrmApiProgramFullCoverageTests
         var configuration = ValidConfiguration("Production");
         configuration["FeatureManagement__Attachments"] = attachments.ToString();
         configuration["FeatureManagement__Notes"] = notes.ToString();
-        configuration["Attachments__MaintenanceEnabled"] = bool.FalseString;
+        configuration["Attachments__UploadExpirationEnabled"] = bool.FalseString;
         if (!attachments)
         {
             configuration["Attachments__MinIO__AccessKey"] = "";

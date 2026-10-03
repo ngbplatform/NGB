@@ -90,6 +90,25 @@ public sealed class ContentApiAndOptionsTests
         }
     }
 
+    [Fact]
+    public async Task Upload_expiration_resolves_without_storage_or_outbox_services()
+    {
+        var f = new ContentFixture();
+        var services = new ServiceCollection()
+            .AddLogging()
+            .AddSingleton<TimeProvider>(f.Time)
+            .AddSingleton(f.Attachments.Object)
+            .AddSingleton(f.Uow.Object)
+            .AddSingleton(f.Audit.Object)
+            .AddNgbAttachmentsAndNotes();
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var expiration = scope.ServiceProvider.GetRequiredService<IAttachmentUploadExpirationService>();
+
+        (await expiration.ExpirePendingAsync(default)).Should().Be(0);
+        scope.ServiceProvider.GetService<IAttachmentObjectStorage>().Should().BeNull();
+    }
+
     [Theory]
     [InlineData("MaxSizeBytes", 0)]
     [InlineData("MaxSizeBytes", 5368709121)]
@@ -101,8 +120,8 @@ public sealed class ContentApiAndOptionsTests
     [InlineData("DownloadLifetime", 901)]
     [InlineData("PendingStaleAge", 899)]
     [InlineData("PendingStaleAge", 604801)]
-    [InlineData("CleanupBatchSize", 0)]
-    [InlineData("CleanupBatchSize", 101)]
+    [InlineData("ExpirationBatchSize", 0)]
+    [InlineData("ExpirationBatchSize", 101)]
     public void Unsafe_limits_are_rejected(string property, long value)
     {
         var options = new AttachmentOptions();
@@ -118,58 +137,56 @@ public sealed class ContentApiAndOptionsTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Hosted_maintenance_processes_work_and_stops_during_delay(bool failure)
+    public async Task Hosted_expiration_processes_work_and_stops_during_delay(bool failure)
     {
-        var maintenance = new Mock<IAttachmentMaintenance>();
+        var expiration = new Mock<IAttachmentUploadExpirationService>();
         var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        maintenance.Setup(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>())).ReturnsAsync(2);
-        maintenance.Setup(x => x.ProcessCleanupAsync(It.IsAny<CancellationToken>())).Returns(() =>
+        expiration.Setup(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>())).Returns(() =>
         {
             invoked.TrySetResult();
             return failure
-                ? Task.FromException<int>(new InvalidOperationException("storage unavailable"))
+                ? Task.FromException<int>(new InvalidOperationException("database unavailable"))
                 : Task.FromResult(1);
         });
-        await using var provider = new ServiceCollection().AddSingleton(maintenance.Object).BuildServiceProvider();
-        using var worker = new AttachmentMaintenanceHostedService(provider.GetRequiredService<IServiceScopeFactory>(),
-            TimeProvider.System, NullLogger<AttachmentMaintenanceHostedService>.Instance);
+        await using var provider = new ServiceCollection().AddSingleton(expiration.Object).BuildServiceProvider();
+        using var worker = new AttachmentUploadExpirationHostedService(provider.GetRequiredService<IServiceScopeFactory>(),
+            TimeProvider.System, NullLogger<AttachmentUploadExpirationHostedService>.Instance);
         await worker.StartAsync(default);
         await invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await worker.StopAsync(default);
-        maintenance.Verify(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>()), Times.Once);
-        maintenance.Verify(x => x.ProcessCleanupAsync(It.IsAny<CancellationToken>()), Times.Once);
+        expiration.Verify(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Already_stopped_maintenance_does_not_create_a_scope()
+    public async Task Already_stopped_expiration_does_not_create_a_scope()
     {
         var scopes = new Mock<IServiceScopeFactory>(MockBehavior.Strict);
-        using var worker = new AttachmentMaintenanceHostedService(scopes.Object, TimeProvider.System,
-            NullLogger<AttachmentMaintenanceHostedService>.Instance);
-        var execute = typeof(AttachmentMaintenanceHostedService).GetMethod("ExecuteAsync",
+        using var worker = new AttachmentUploadExpirationHostedService(scopes.Object, TimeProvider.System,
+            NullLogger<AttachmentUploadExpirationHostedService>.Instance);
+        var execute = typeof(AttachmentUploadExpirationHostedService).GetMethod("ExecuteAsync",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         await (Task)execute.Invoke(worker, [new CancellationToken(true)])!;
         scopes.VerifyNoOtherCalls();
     }
 
     [Fact]
-    public async Task Hosted_maintenance_propagates_shutdown_inside_a_storage_call()
+    public async Task Hosted_expiration_propagates_shutdown_inside_a_database_call()
     {
-        var maintenance = new Mock<IAttachmentMaintenance>();
+        var expiration = new Mock<IAttachmentUploadExpirationService>();
         var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        maintenance.Setup(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>()))
+        expiration.Setup(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>()))
             .Returns(async (CancellationToken ct) =>
             {
                 invoked.TrySetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, ct);
                 return 0;
             });
-        await using var provider = new ServiceCollection().AddSingleton(maintenance.Object).BuildServiceProvider();
-        using var worker = new AttachmentMaintenanceHostedService(provider.GetRequiredService<IServiceScopeFactory>(),
-            TimeProvider.System, NullLogger<AttachmentMaintenanceHostedService>.Instance);
+        await using var provider = new ServiceCollection().AddSingleton(expiration.Object).BuildServiceProvider();
+        using var worker = new AttachmentUploadExpirationHostedService(provider.GetRequiredService<IServiceScopeFactory>(),
+            TimeProvider.System, NullLogger<AttachmentUploadExpirationHostedService>.Instance);
         await worker.StartAsync(default);
         await invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await worker.StopAsync(default);
-        maintenance.Verify(x => x.ProcessCleanupAsync(It.IsAny<CancellationToken>()), Times.Never);
+        expiration.Verify(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }

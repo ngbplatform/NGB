@@ -35,6 +35,13 @@ public sealed class AttachmentsController(IAttachmentService service) : Controll
     [HttpPost("{id:guid}/download")]
     public Task<AttachmentDownloadDto> Download(Guid id, CancellationToken ct) => service.DownloadAsync(id, ct);
 
+    [HttpPost("{id:guid}/audit-download")]
+    public Task<AttachmentDownloadDto> DownloadFromAudit(
+        Guid id,
+        [FromServices] IAttachmentAuditService audit,
+        CancellationToken ct)
+        => audit.DownloadAsync(id, ct);
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

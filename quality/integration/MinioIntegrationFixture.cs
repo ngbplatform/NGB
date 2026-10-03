@@ -65,5 +65,27 @@ public sealed class MinioIntegrationFixture : IAsyncDisposable
             throw new InvalidOperationException($"MinIO test bootstrap failed: {result.Stderr}");
     }
 
+    public async Task AddLegacyStagingExpiryAsync()
+    {
+        const string command = """
+            mc alias set retention-test "$MINIO_ENDPOINT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null
+            mc ilm rule import "retention-test/$MINIO_BUCKET" <<'LIFECYCLE'
+            {"Rules":[{"ID":"ngb-upload-staging","Status":"Enabled","Filter":{"Prefix":"uploads/"},"Expiration":{"Days":2}}]}
+            LIFECYCLE
+            """;
+        var result = await _container.ExecAsync(["sh", "-eu", "-c", command]);
+        if (result.ExitCode != 0)
+            throw new InvalidOperationException("Could not prepare the legacy MinIO lifecycle rule.");
+    }
+
+    public async Task<bool> HasLegacyStagingExpiryAsync()
+    {
+        var result = await _container.ExecAsync(["sh", "-c", "mc --json ilm rule ls retention-test/$MINIO_BUCKET"]);
+        if (result.ExitCode != 0 && !result.Stdout.Contains("NoSuchLifecycleConfiguration", StringComparison.Ordinal))
+            throw new InvalidOperationException("Could not inspect the MinIO lifecycle configuration.");
+
+        return result.Stdout.Contains("ngb-upload-staging", StringComparison.Ordinal);
+    }
+
     public ValueTask DisposeAsync() => _container.DisposeAsync();
 }

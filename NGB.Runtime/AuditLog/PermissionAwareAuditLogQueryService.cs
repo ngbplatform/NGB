@@ -4,6 +4,7 @@ using NGB.Core.AuditLog;
 using NGB.Core.Security;
 using NGB.Persistence.Catalogs;
 using NGB.Persistence.Documents;
+using NGB.Runtime.BusinessObjects;
 using NGB.Runtime.Security;
 
 namespace NGB.Runtime.AuditLog;
@@ -25,13 +26,17 @@ public sealed class PermissionAwareAuditLogQueryService(
     {
         await RequireViewAsync(entityKind, entityId, ct);
 
-        return await inner.GetEntityAuditLogAsync(
+        var page = await inner.GetEntityAuditLogAsync(
             entityKind,
             entityId,
             afterOccurredAtUtc,
             afterAuditEventId,
             limit,
             ct);
+
+        return _contentAuditAccess is null
+            ? page
+            : await _contentAuditAccess.FilterAsync(page, ct);
     }
 
     private async Task RequireViewAsync(AuditEntityKind entityKind, Guid entityId, CancellationToken ct)
@@ -98,5 +103,19 @@ public sealed class PermissionAwareAuditLogQueryService(
             NgbPermissionResources.Audit,
             NgbPermissionActions.View,
             ct);
+    }
+
+    // Keep the existing public constructor for consumers of the platform package.
+    private readonly ContentAuditAccess? _contentAuditAccess;
+
+    internal PermissionAwareAuditLogQueryService(
+        AuditLogQueryService inner,
+        INgbAccessChecker access,
+        IDocumentRepository documents,
+        ICatalogRepository catalogs,
+        ContentAuditAccess? contentAuditAccess)
+        : this(inner, access, documents, catalogs)
+    {
+        _contentAuditAccess = contentAuditAccess;
     }
 }

@@ -11,12 +11,12 @@ namespace NGB.Api.Attachments;
 
 public static class AttachmentsNotesApiExtensions
 {
-    /// <summary>Registers API hosting, validated limits and outbox-driven attachment maintenance.</summary>
+    /// <summary>Registers API hosting, validated limits and pending upload expiration.</summary>
     public static IServiceCollection AddNgbAttachmentsNotesApi(this IServiceCollection services,
         IConfiguration configuration)
         => services.AddNgbAttachmentsNotesApi(configuration, null);
 
-    /// <summary>Configures storage only for enabled attachments or explicitly retained maintenance.</summary>
+    /// <summary>Configures storage only for enabled attachments. Pending upload expiration uses only the database.</summary>
     public static IServiceCollection AddNgbAttachmentsNotesApi(this IServiceCollection services,
         IConfiguration configuration,
         Action<IServiceCollection>? configureStorage)
@@ -30,14 +30,18 @@ public static class AttachmentsNotesApiExtensions
 
         var attachmentsEnabled = configuration.GetValue<bool>($"FeatureManagement:{NgbFeatures.Attachments}");
         var notesEnabled = configuration.GetValue<bool>($"FeatureManagement:{NgbFeatures.Notes}");
-        var maintenanceEnabled = configuration.GetValue<bool>("Attachments:MaintenanceEnabled");
+        var uploadExpirationEnabled = configuration.GetValue<bool>("Attachments:UploadExpirationEnabled");
 
-        if (attachmentsEnabled || maintenanceEnabled)
+        if (attachmentsEnabled)
         {
             configureStorage?.Invoke(services);
-            services.AddOptions<AttachmentOptions>().ValidateOnStart();
             services.AddHostedService<AttachmentStorageStartupValidator>();
-            services.AddHostedService<AttachmentMaintenanceHostedService>();
+        }
+
+        if (attachmentsEnabled || uploadExpirationEnabled)
+        {
+            services.AddOptions<AttachmentOptions>().ValidateOnStart();
+            services.AddHostedService<AttachmentUploadExpirationHostedService>();
         }
 
         if (notesEnabled)

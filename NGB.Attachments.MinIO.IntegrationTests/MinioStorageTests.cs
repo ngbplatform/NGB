@@ -33,7 +33,7 @@ public sealed class MinioStorageTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Presigned_upload_stat_conditional_seal_private_download_and_idempotent_delete()
+    public async Task Presigned_upload_seals_private_bytes_and_application_cannot_delete_them()
     {
         using var http = new HttpClient();
         Assert.Null(await _storage.GetObjectInfoAsync("uploads/missing", default));
@@ -62,8 +62,11 @@ public sealed class MinioStorageTests : IAsyncLifetime
         using var replay = await http.PutAsync(upload.Url, new StringContent("replaced"));
         replay.EnsureSuccessStatusCode();
 
-        // Re-running the Compose bootstrap preserves both objects and application access.
+        // Bootstrap removes the old expiry rule while retaining both stored objects.
+        await _fixture.AddLegacyStagingExpiryAsync();
+        Assert.True(await _fixture.HasLegacyStagingExpiryAsync());
         await _fixture.ProvisionAsync();
+        Assert.False(await _fixture.HasLegacyStagingExpiryAsync());
 
         var download = await _storage.CreateDownloadTargetAsync(
             "attachments/test", "résumé.txt", TimeSpan.FromMinutes(3), default);
@@ -77,10 +80,12 @@ public sealed class MinioStorageTests : IAsyncLifetime
         using var anonymous = await http.GetAsync($"{_fixture.Endpoint}/{_fixture.Bucket}/attachments/test");
         Assert.Equal(HttpStatusCode.Forbidden, anonymous.StatusCode);
 
-        await _storage.DeleteObjectAsync("attachments/test", default);
-        await _storage.DeleteObjectAsync("attachments/test", default);
-        Assert.Null(await _storage.GetObjectInfoAsync("attachments/test", default));
-        await _storage.DeleteObjectAsync("uploads/test", default);
+        await Assert.ThrowsAsync<AttachmentStorageUnavailableException>(() =>
+            _storage.DeleteObjectAsync("attachments/test", default));
+        await Assert.ThrowsAsync<AttachmentStorageUnavailableException>(() =>
+            _storage.DeleteObjectAsync("uploads/test", default));
+        Assert.NotNull(await _storage.GetObjectInfoAsync("attachments/test", default));
+        Assert.NotNull(await _storage.GetObjectInfoAsync("uploads/test", default));
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();

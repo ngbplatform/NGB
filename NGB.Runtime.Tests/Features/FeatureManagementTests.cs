@@ -204,12 +204,12 @@ public sealed class FeatureManagementTests
     }
 
     [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public async Task Storage_is_required_when_attachments_or_maintenance_is_enabled(bool attachments, bool maintenance)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Storage_is_required_when_attachments_are_enabled(bool expirationEnabled)
     {
-        var configuration = Configuration(attachments, false);
-        configuration["Attachments:MaintenanceEnabled"] = maintenance.ToString();
+        var configuration = Configuration(true, false);
+        configuration["Attachments:UploadExpirationEnabled"] = expirationEnabled.ToString();
         using var host = new HostBuilder().ConfigureServices(services =>
             services.AddNgbAttachmentsNotesApi(configuration)).Build();
 
@@ -218,22 +218,22 @@ public sealed class FeatureManagementTests
     }
 
     [Fact]
-    public async Task Maintenance_continues_after_user_features_are_disabled()
+    public async Task Upload_expiration_continues_without_storage_when_user_features_are_disabled()
     {
         var configuration = Configuration(false, false);
-        configuration["Attachments:MaintenanceEnabled"] = "true";
+        configuration["Attachments:UploadExpirationEnabled"] = "true";
         var invoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var maintenance = new Mock<IAttachmentMaintenance>();
-        maintenance.Setup(x => x.ProcessCleanupAsync(It.IsAny<CancellationToken>())).Returns(() =>
+        var expiration = new Mock<IAttachmentUploadExpirationService>();
+        expiration.Setup(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>())).Returns(() =>
         {
             invoked.TrySetResult();
             return Task.FromResult(1);
         });
         using var host = new HostBuilder().ConfigureServices(services =>
         {
-            services.AddSingleton(maintenance.Object);
-            services.AddNgbAttachmentsNotesApi(configuration, storage =>
-                storage.AddSingleton(Mock.Of<IAttachmentObjectStorage>()));
+            services.AddSingleton(expiration.Object);
+            services.AddNgbAttachmentsNotesApi(configuration, _ =>
+                throw new InvalidOperationException("Expiration must not configure object storage."));
         }).Build();
 
         await host.StartAsync();
@@ -241,8 +241,9 @@ public sealed class FeatureManagementTests
         await using var scope = host.Services.CreateAsyncScope();
         (await scope.ServiceProvider.GetRequiredService<INgbFeatureService>()
             .IsEnabledAsync(NgbFeatures.Attachments, default)).Should().BeFalse();
+        scope.ServiceProvider.GetService<IAttachmentObjectStorage>().Should().BeNull();
         await host.StopAsync();
-        maintenance.Verify(x => x.ProcessCleanupAsync(It.IsAny<CancellationToken>()), Times.Once);
+        expiration.Verify(x => x.ExpirePendingAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Theory]

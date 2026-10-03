@@ -35,34 +35,16 @@ mc alias set ngb "$MINIO_ENDPOINT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/d
 mc mb --ignore-existing "ngb/$MINIO_BUCKET" >/dev/null
 mc anonymous set none "ngb/$MINIO_BUCKET" >/dev/null
 
-# A lifecycle rule is a backstop for very slow PUTs finishing after outbox cleanup.
-# Update only our rule on subsequent runs; never replace other lifecycle rules.
+# Retain every uploaded object indefinitely. Remove only the former NGB expiry rule.
 if lifecycle_result="$(mc --json ilm rule ls "ngb/$MINIO_BUCKET" 2>&1)"; then
-  mc ilm rule edit \
-    --id ngb-upload-staging \
-    --enable \
-    --prefix uploads/ \
-    --expire-days 2 \
-    "ngb/$MINIO_BUCKET" >/dev/null
+  case "$lifecycle_result" in
+    *ngb-upload-staging*)
+      mc ilm rule rm --id ngb-upload-staging "ngb/$MINIO_BUCKET" >/dev/null
+      ;;
+  esac
 else
   case "$lifecycle_result" in
     *'"Code": "NoSuchLifecycleConfiguration"'*|*'"Code":"NoSuchLifecycleConfiguration"'*)
-      mc ilm rule import "ngb/$MINIO_BUCKET" >/dev/null <<'LIFECYCLE'
-{
-  "Rules": [
-    {
-      "ID": "ngb-upload-staging",
-      "Status": "Enabled",
-      "Filter": {
-        "Prefix": "uploads/"
-      },
-      "Expiration": {
-        "Days": 2
-      }
-    }
-  ]
-}
-LIFECYCLE
       ;;
     *)
       printf '%s\n' "$lifecycle_result" >&2
@@ -89,8 +71,7 @@ cat > "$bootstrap_dir/attachment-policy.json" <<POLICY
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject"
+        "s3:PutObject"
       ],
       "Resource": [
         "arn:aws:s3:::$MINIO_BUCKET/uploads/*",

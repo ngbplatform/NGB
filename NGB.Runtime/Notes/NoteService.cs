@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Options;
 using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Notes;
-using NGB.Core.AuditLog;
 using NGB.Core.Security;
 using NGB.Notes;
 using NGB.Persistence.Notes;
@@ -53,7 +52,7 @@ internal sealed class NoteService(
                 await access.ActorAsync(token));
 
             await repository.InsertAsync(row, token);
-            await AuditAsync(row, "notes.created", token);
+            await ContentAudit.WriteNoteAsync(audit, row, null, "notes.created", token);
 
             return ToDto(row);
         }, ct);
@@ -67,17 +66,18 @@ internal sealed class NoteService(
         {
             var row = await LoadAsync(id, NgbSystemPermissions.NotesUpdate, token);
             RequireVersion(row, request.Version);
+            var before = row;
 
             row = row with
-            { 
+            {
                 Text = text,
                 Version = row.Version + 1,
                 UpdatedAtUtc = clock.GetUtcNow().UtcDateTime,
-                UpdatedByUserId = await access.ActorAsync(token) 
+                UpdatedByUserId = await access.ActorAsync(token)
             };
 
             await repository.SaveAsync(row, token);
-            await AuditAsync(row, "notes.updated", token);
+            await ContentAudit.WriteNoteAsync(audit, row, before, "notes.updated", token);
 
             return ToDto(row);
         }, ct);
@@ -91,9 +91,10 @@ internal sealed class NoteService(
                 return;
 
             RequireVersion(row, version);
+            var before = row;
 
-            row = row with 
-            { 
+            row = row with
+            {
                 IsDeleted = true,
                 Version = row.Version + 1,
                 DeletedAtUtc = clock.GetUtcNow().UtcDateTime,
@@ -101,7 +102,7 @@ internal sealed class NoteService(
             };
 
             await repository.SaveAsync(row, token);
-            await AuditAsync(row, "notes.deleted", token);
+            await ContentAudit.WriteNoteAsync(audit, row, before, "notes.mark_for_deletion", token);
         }, ct);
 
     private async Task<NoteRecord> LoadAsync(Guid id, NgbPermissionKey permission, CancellationToken ct)
@@ -134,20 +135,7 @@ internal sealed class NoteService(
         return text.Trim();
     }
 
-    private Task AuditAsync(NoteRecord row, string action, CancellationToken ct)
-        => audit.WriteAsync(
-            AuditEntityKind.Note,
-            row.Id,
-            action,
-            metadata: new
-            {
-                row.Target,
-                row.Version,
-                TextLength = row.Text.Length
-            },
-            ct: ct);
-
-    private static NoteDto ToDto(NoteRecord row) 
+    private static NoteDto ToDto(NoteRecord row)
         => new(
             row.Id,
             row.Text,

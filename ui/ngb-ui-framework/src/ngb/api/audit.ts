@@ -1,4 +1,4 @@
-import { httpGet, type HttpRequestOptions } from './http'
+import { httpGet, httpPost, type HttpRequestOptions } from './http'
 import type { AuditLogPageDto } from './contracts'
 
 export type GetEntityAuditLogOptions = {
@@ -22,4 +22,8 @@ export async function getEntityAuditLog(
   return opts?.signal
     ? await httpGet<AuditLogPageDto>(url, query, { signal: opts.signal } satisfies HttpRequestOptions)
     : await httpGet<AuditLogPageDto>(url, query)
+}
+
+export async function downloadAuditAttachment(id: string, signal: AbortSignal): Promise<{ url: string; expiresAtUtc: string }> {
+  return await httpPost(`/api/attachments/${encodeURIComponent(id)}/audit-download`, undefined, { signal })
 }

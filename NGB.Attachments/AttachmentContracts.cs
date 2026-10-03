@@ -66,8 +66,7 @@ public interface IAttachmentService
     Task DeleteAsync(Guid id, CancellationToken ct);
 }
 
-public interface IAttachmentMaintenance
+public interface IAttachmentUploadExpirationService
 {
     Task<int> ExpirePendingAsync(CancellationToken ct);
-    Task<int> ProcessCleanupAsync(CancellationToken ct);
 }

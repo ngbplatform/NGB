@@ -28,11 +28,10 @@ public sealed class AttachmentsNotesTests
         f.AttachmentRows[upload.AttachmentId].CompletedAtUtc.Should().Be(f.Time.Now.UtcDateTime);
         (await f.AttachmentService.DownloadAsync(upload.AttachmentId, default)).Url.Should()
             .Be("https://storage/download");
-        f.Events.Should().ContainSingle();
     }
 
     [Fact]
-    public async Task Delete_is_logical_atomic_with_outbox_and_idempotent_during_storage_outage()
+    public async Task Delete_is_logical_and_idempotent_during_storage_outage()
     {
         var f = new ContentFixture();
         var upload = await f.Upload();
@@ -42,7 +41,6 @@ public sealed class AttachmentsNotesTests
         await f.AttachmentService.DeleteAsync(upload.AttachmentId, default);
         await f.AttachmentService.DeleteAsync(upload.AttachmentId, default);
         f.AttachmentRows[upload.AttachmentId].DeletedByUserId.Should().Be(f.ActorId);
-        f.Events.Should().HaveCount(2);
         f.Storage.Verify(x => x.DeleteObjectAsync(It.IsAny<string>(), default), Times.Never);
         await AssertError(() => f.AttachmentService.DownloadAsync(upload.AttachmentId, default), "attachments.deleted");
         await AssertError(() => f.AttachmentService.CompleteAsync(upload.AttachmentId, default), "attachments.deleted");
@@ -170,7 +168,8 @@ public sealed class AttachmentsNotesTests
         (await f.NoteService.ListAsync(f.Target, 50, null, default)).Items.Should().BeEmpty();
         await AssertNoteError(() => f.NoteService.UpdateAsync(note.Id, new("restore?", 3), default), "notes.deleted");
         f.Audit.Verify(
-            x => x.WriteAsync(AuditEntityKind.Note, note.Id, "notes.updated", null, It.IsAny<object>(), null, default),
+            x => x.WriteAsync(AuditEntityKind.Document, f.Target.Id, "notes.updated",
+                It.IsAny<IReadOnlyList<AuditFieldChange>>(), It.IsAny<object>(), null, default),
             Times.Once);
     }
 
@@ -222,7 +221,6 @@ public sealed class AttachmentsNotesTests
         foreach (var call in calls) await Assert.ThrowsAsync<NgbPermissionDeniedException>(call);
         f.AttachmentRows[upload.AttachmentId].Status.Should().Be(AttachmentStatus.Ready);
         f.NoteRows[note.Id].Text.Should().Be("protected");
-        f.Events.Should().ContainSingle();
     }
 
     [Theory]

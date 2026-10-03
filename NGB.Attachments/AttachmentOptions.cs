@@ -8,7 +8,7 @@ public sealed class AttachmentOptions
     public TimeSpan UploadLifetime { get; set; } = TimeSpan.FromMinutes(10);
     public TimeSpan DownloadLifetime { get; set; } = TimeSpan.FromMinutes(3);
     public TimeSpan PendingStaleAge { get; set; } = TimeSpan.FromHours(24);
-    public int CleanupBatchSize { get; set; } = 25;
+    public int ExpirationBatchSize { get; set; } = 25;
 
     public bool IsValid() => MaxSizeBytes is >= 1 and <= 5L * 1024 * 1024 * 1024
         && MaxActivePerObject is >= 1 and <= 1000
@@ -18,5 +18,5 @@ public sealed class AttachmentOptions
         && DownloadLifetime <= TimeSpan.FromMinutes(15)
         && PendingStaleAge >= UploadLifetime + TimeSpan.FromMinutes(5)
         && PendingStaleAge <= TimeSpan.FromDays(7)
-        && CleanupBatchSize is >= 1 and <= 100;
+        && ExpirationBatchSize is >= 1 and <= 100;
 }

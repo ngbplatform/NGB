@@ -8,6 +8,7 @@ namespace NGB.Api.Controllers;
 public abstract class AuditControllerBase(IAuditLogQueryService service) : ControllerBase
 {
     [HttpGet("~/api/audit/entities/{entityKind}/{entityId:guid}")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public Task<AuditLogPageDto> GetEntityAuditLog(
         [FromRoute] AuditEntityKind entityKind,
         [FromRoute] Guid entityId,

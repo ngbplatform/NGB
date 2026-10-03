@@ -1,10 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using NGB.Application.Abstractions.BusinessObjects;
 using NGB.Application.Abstractions.Features;
 using NGB.Attachments;
 using NGB.Notes;
+using NGB.Persistence.Attachments;
 using NGB.Runtime.Attachments;
 using NGB.Runtime.BusinessObjects;
 using NGB.Runtime.Features;
@@ -36,6 +38,14 @@ public static class AttachmentsNotesServiceCollectionExtensions
 
         services.TryAddScoped<IBusinessObjectResolver, BusinessObjectResolver>();
         services.TryAddScoped<BusinessObjectContentAccess>();
+        services.TryAddScoped<ContentAuditAccess>();
+        services.TryAddScoped<IAttachmentAuditService>(sp => new AttachmentAuditService(
+            sp.GetRequiredService<INgbFeatureService>(),
+            sp.GetRequiredService<IAttachmentRepository>(),
+            sp.GetRequiredService<ContentAuditAccess>(),
+            sp.GetRequiredService<IAttachmentObjectStorage>,
+            sp.GetRequiredService<IOptions<AttachmentOptions>>(),
+            sp.GetRequiredService<TimeProvider>()));
         services.TryAddScoped<IBusinessObjectContentSummaryService>(sp => new FeatureContentSummaryService(
             sp.GetRequiredService<INgbFeatureService>(),
             () => ActivatorUtilities.CreateInstance<BusinessObjectContentSummaryService>(sp)));
@@ -45,8 +55,7 @@ public static class AttachmentsNotesServiceCollectionExtensions
         services.TryAddScoped<INoteService>(sp => new FeatureNoteService(
             sp.GetRequiredService<INgbFeatureService>(),
             () => ActivatorUtilities.CreateInstance<NoteService>(sp)));
-        services.TryAddScoped<AttachmentCleanupQueue>();
-        services.TryAddScoped<IAttachmentMaintenance>(sp => ActivatorUtilities.CreateInstance<AttachmentMaintenance>(sp));
+        services.TryAddScoped<IAttachmentUploadExpirationService>(sp => ActivatorUtilities.CreateInstance<AttachmentUploadExpirationService>(sp));
 
         return services;
     }

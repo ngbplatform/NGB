@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Attachments;
 using NGB.Contracts.Attachments;
+using NGB.Contracts.Audit;
 using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Features;
 using NGB.Contracts.Notes;
@@ -20,10 +21,13 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    [Fact]
-    public async Task Legacy_configuration_starts_without_MinIO_and_content_endpoints_fail_closed()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Legacy_configuration_starts_without_MinIO_and_content_endpoints_fail_closed(bool expirationEnabled)
     {
         var configuration = DisabledStorage();
+        configuration["Attachments:UploadExpirationEnabled"] = expirationEnabled.ToString();
         configuration.Remove("FeatureManagement:Attachments");
         configuration.Remove("FeatureManagement:Notes");
         await using var factory = new PmApiFactory(fixture, configuration);
@@ -42,6 +46,7 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
             () => client.PostAsJsonAsync("/api/attachments/uploads", new CreateAttachmentUploadRequest(target, "file.txt", "text/plain", 3)),
             () => client.PostAsync($"/api/attachments/{id}/complete", null),
             () => client.PostAsync($"/api/attachments/{id}/download", null),
+            () => client.PostAsync($"/api/attachments/{id}/audit-download", null),
             () => client.DeleteAsync($"/api/attachments/{id}"),
             () => client.GetAsync($"/api/notes?{query}"),
             () => client.PostAsJsonAsync("/api/notes", new CreateNoteRequest(target, "text")),
@@ -83,6 +88,13 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
             var summary = await client.GetFromJsonAsync<BusinessObjectContentSummary>(
                 $"/api/business-objects/content-summary?kind=CatalogItem&typeCode=pm.party&objectId={target.Id}");
             summary.Should().Be(new BusinessObjectContentSummary(null, 1));
+            using var auditResponse = await client.GetAsync($"/api/audit/entities/2/{target.Id}");
+            auditResponse.EnsureSuccessStatusCode();
+            auditResponse.Headers.CacheControl!.NoStore.Should().BeTrue();
+            var audit = (await auditResponse.Content.ReadFromJsonAsync<AuditLogPageDto>())!;
+            audit.Items.Count(x => x.ActionCode.StartsWith("notes.")).Should().Be(2);
+            audit.Items.Single(x => x.ActionCode == "notes.updated").Changes
+                .Should().Contain(x => x.FieldPath == "note.text" && x.NewValueJson == "\"Updated note\"");
         }
 
         configuration["FeatureManagement:Notes"] = "false";
@@ -91,6 +103,8 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
         {
             using var denied = await client.DeleteAsync($"/api/notes/{noteId}?version=2");
             denied.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            var audit = await client.GetFromJsonAsync<AuditLogPageDto>($"/api/audit/entities/2/{target.Id}");
+            audit!.Items.Should().NotContain(x => x.ActionCode.StartsWith("notes."));
         }
 
         configuration["FeatureManagement:Notes"] = "true";
@@ -102,6 +116,9 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
             page!.Items.Should().ContainSingle(x => x.Id == noteId && x.Text == "Updated note");
             using var deleted = await client.DeleteAsync($"/api/notes/{noteId}?version=2");
             deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+            var audit = await client.GetFromJsonAsync<AuditLogPageDto>($"/api/audit/entities/2/{target.Id}");
+            audit!.Items.Single(x => x.ActionCode == "notes.mark_for_deletion").Changes
+                .Should().Contain(x => x.FieldPath == "note.text" && x.NewValueJson == "\"Updated note\"");
         }
     }
 
@@ -140,7 +157,7 @@ public sealed class FeatureFlagsHttpTests(PmIntegrationFixture fixture) : IAsync
     {
         ["FeatureManagement:Attachments"] = "false",
         ["FeatureManagement:Notes"] = "false",
-        ["Attachments:MaintenanceEnabled"] = "false",
+        ["Attachments:UploadExpirationEnabled"] = "false",
         ["Attachments:MinIO:InternalEndpoint"] = "",
         ["Attachments:MinIO:PublicEndpoint"] = "",
         ["Attachments:MinIO:AccessKey"] = "",

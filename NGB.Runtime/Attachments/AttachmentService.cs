@@ -5,7 +5,6 @@ using Microsoft.Extensions.Options;
 using NGB.Attachments;
 using NGB.Contracts.Attachments;
 using NGB.Contracts.BusinessObjects;
-using NGB.Core.AuditLog;
 using NGB.Core.Security;
 using NGB.Persistence.Attachments;
 using NGB.Persistence.UnitOfWork;
@@ -22,7 +21,6 @@ internal sealed class AttachmentService(
     BusinessObjectContentAccess access,
     IUnitOfWork uow,
     IAuditLogService audit,
-    AttachmentCleanupQueue cleanup,
     TimeProvider clock,
     IOptions<AttachmentOptions> options,
     ILogger<AttachmentService> logger)
@@ -85,7 +83,12 @@ internal sealed class AttachmentService(
                 options.Value.UploadLifetime,
                 token);
 
-            await AuditAsync(row, "attachments.upload_requested", token);
+            await ContentAudit.WriteAttachmentAsync(
+                audit,
+                row,
+                null,
+                "attachments.upload_requested",
+                token);
 
             return new AttachmentUploadDto(id, target.Url, row.UploadExpiresAtUtc, target.Headers);
         }, ct);
@@ -131,9 +134,12 @@ internal sealed class AttachmentService(
             };
             await repository.SaveAsync(row, token);
 
-            // Delete the upload staging object only after the original PUT can no longer be replayed.
-            await cleanup.EnqueueAsync(row, stagingOnly: true, token);
-            await AuditAsync(row, "attachments.upload_completed", token);
+            await ContentAudit.WriteAttachmentAsync(
+                audit,
+                row,
+                AttachmentStatus.PendingUpload,
+                "attachments.upload_completed",
+                token);
 
             return ToDto(row);
         }, ct);
@@ -165,15 +171,17 @@ internal sealed class AttachmentService(
             if (row.Status == AttachmentStatus.Deleted)
                 return;
 
+            var before = row.Status;
+
             row = row with
             {
-                Status = AttachmentStatus.Deleted, DeletedAtUtc = clock.GetUtcNow().UtcDateTime,
+                Status = AttachmentStatus.Deleted,
+                DeletedAtUtc = clock.GetUtcNow().UtcDateTime,
                 DeletedByUserId = await access.ActorAsync(token)
             };
 
             await repository.SaveAsync(row, token);
-            await cleanup.EnqueueAsync(row, stagingOnly: false, token);
-            await AuditAsync(row, "attachments.deleted", token);
+            await ContentAudit.WriteAttachmentAsync(audit, row, before, "attachments.mark_for_deletion", token);
         }, ct);
 
     private async Task<AttachmentRecord> LoadAsync(Guid id, NgbPermissionKey permission, CancellationToken ct)
@@ -185,19 +193,6 @@ internal sealed class AttachmentService(
 
         return row;
     }
-
-    private Task AuditAsync(AttachmentRecord row, string action, CancellationToken ct)
-        => audit.WriteAsync(
-            AuditEntityKind.Attachment,
-            row.Id,
-            action,
-            metadata: new
-            {
-                row.Target,
-                row.SizeBytes,
-                row.ContentType
-            },
-            ct: ct);
 
     private static void RequireNotDeleted(AttachmentRecord row)
     {

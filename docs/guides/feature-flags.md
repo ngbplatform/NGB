@@ -15,7 +15,7 @@ All registered features default to `false`. Unknown feature codes, incorrect cas
     "Notes": true
   },
   "Attachments": {
-    "MaintenanceEnabled": false
+    "UploadExpirationEnabled": false
   }
 }
 ```
@@ -25,32 +25,32 @@ Equivalent environment keys:
 ```text
 FeatureManagement__Attachments=false
 FeatureManagement__Notes=true
-Attachments__MaintenanceEnabled=false
+Attachments__UploadExpirationEnabled=false
 ```
 
-The four local Compose stacks map these keys from `FEATURE_ATTACHMENTS`, `FEATURE_NOTES` and `ATTACHMENTS_MAINTENANCE_ENABLED` in their respective `.env` files. Those local environments explicitly enable both features and maintenance. API defaults remain off when these values are absent. These flags control API capabilities, not Compose services: the provided full stacks still start MinIO and require its initialization to succeed even when Attachments is disabled.
+The four local Compose stacks map these keys from `FEATURE_ATTACHMENTS`, `FEATURE_NOTES` and `ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED` in their respective `.env` files. Those local environments explicitly enable both features and pending upload expiration. API defaults remain off when these values are absent. These flags control API capabilities, not Compose services: the provided full stacks still start MinIO and require its initialization to succeed even when Attachments is disabled.
 
-| Configuration | User operations | Storage and cleanup |
+| Configuration | User operations | Storage and upload expiration |
 | --- | --- | --- |
-| Both flags absent or false, maintenance false | No attachments or notes | No MinIO registration, validation or attachment worker |
-| Notes true, attachments false, maintenance false | Notes only | No MinIO dependency |
-| Attachments true | Attachments; notes follow their own flag | Configured storage is required; cleanup runs |
-| Attachments false, maintenance true | Attachments blocked; notes follow their own flag | Storage remains configured; pending upload expiry and queued cleanup continue |
+| Both flags absent or false, upload expiration false | No attachments or notes | No MinIO registration, validation or attachment worker |
+| Notes true, attachments false, upload expiration false | Notes only | No MinIO dependency |
+| Attachments true | Attachments; notes follow their own flag | Configured storage is required; pending upload expiry runs |
+| Attachments false, upload expiration true | Attachments blocked; notes follow their own flag | No MinIO registration or validation; pending upload expiry continues using only the database |
 
-Once attachments have been used, leave `Attachments:MaintenanceEnabled=true` and retain the storage configuration when disabling user access to attachments. This maintenance setting is an operational dependency, not a user feature or permission. Disabling both Attachments and maintenance pauses cleanup; queued jobs remain persisted and eligible jobs resume when maintenance is restored. Storage outages trigger retries and can leave dead-lettered jobs requiring operational recovery; see [cleanup behavior](/guides/attachments-and-notes#api-and-lifecycle). Do not decommission storage until outstanding jobs and retention requirements have been handled.
+Use `Attachments:UploadExpirationEnabled=true` to keep expiring abandoned pending uploads when user access to Attachments is disabled. This setting is operational, not a user feature or permission. With Attachments enabled, the worker always runs; with both settings disabled it stops. Expiration needs only the database and standard AuditLog, with no MinIO or Outbox dependency. Keep stored objects indefinitely and disable bucket expiry rules. See [history and retention](/guides/attachments-and-notes#history-in-the-parent-auditlog).
 
-Turning a feature off does not delete its business data or revoke existing role grants. Notes and ready attachment metadata remain available when it is enabled again. Cleanup may still expire abandoned uploads and physically remove files already marked for deletion. Disabling the flag does not revoke previously issued MinIO bearer URLs: upload URLs remain usable until expiry, and download URLs remain usable until expiry or physical deletion of the object. Requests already admitted by an old replica may finish during deployment, so drain and restart all replicas before treating a disable as fully applied.
+Turning a feature off does not delete its business data or revoke existing role grants. Notes and ready attachment metadata remain available when it is enabled again. The expiration worker may still mark abandoned pending uploads as deleted, while retaining all stored files. Disabling the flag does not revoke previously issued MinIO bearer URLs: upload URLs remain usable until expiry, and download URLs remain usable until expiry. Requests already admitted by an old replica may finish during deployment, so drain and restart all replicas before treating a disable as fully applied.
 
 ## Host composition
 
-Use the storage callback so MinIO is registered and validated only when Attachments or retained maintenance requires it:
+Use the storage callback so MinIO is registered and validated only when Attachments is enabled:
 
 ```csharp
 builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration, services =>
     services.AddNgbMinioAttachments(builder.Configuration.GetSection("Attachments:MinIO").Bind));
 ```
 
-The callback runs only when attachments or retained maintenance is enabled. A missing storage provider or invalid storage configuration then fails startup. Startup does not require a successful network request to MinIO. API operations that contact unavailable storage return a sanitized `503`; direct browser uploads and downloads fail at the storage endpoint. Notes and existing application operations remain available. Metadata-only operations and local URL signing do not establish storage availability.
+The callback runs only when Attachments is enabled. A missing storage provider or invalid storage configuration then fails startup. Startup does not require a successful network request to MinIO. API operations that contact unavailable storage return a sanitized `503`; direct browser uploads and downloads fail at the storage endpoint. Notes and existing application operations remain available. Metadata-only operations and local URL signing do not establish storage availability.
 
 For a runtime consumer without API hosting, register `AddNgbFeatureManagement(configuration)` before `AddNgbAttachmentsAndNotes()`. The latter defaults features to disabled if no feature management is registered. Existing attachment/note service interfaces remain unchanged; their registered implementations enforce feature checks before constructing storage-dependent services.
 
@@ -81,4 +81,4 @@ Attachments and Notes appear independently in **More → Attachments & Notes** w
 
 ## Upgrade verification
 
-Upgrade verification covers startup with both flags absent and no MinIO settings, Notes without MinIO, authenticated direct requests to disabled endpoints, persistence across disable/enable, continued maintenance with user features off, and a storage outage while Notes and existing endpoints remain available. These checks supplement package compatibility validation; introducing feature flags alone is not proof that every application can upgrade unchanged.
+Upgrade verification covers startup with both flags absent and no MinIO settings, Notes without MinIO, authenticated direct requests to disabled endpoints, persistence across disable/enable, continued upload expiration with user features off and no MinIO configuration, and a storage outage while Notes and existing endpoints remain available. These checks supplement package compatibility validation; introducing feature flags alone is not proof that every application can upgrade unchanged.

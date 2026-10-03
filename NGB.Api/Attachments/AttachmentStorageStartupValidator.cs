@@ -11,7 +11,7 @@ internal sealed class AttachmentStorageStartupValidator(IServiceScopeFactory sco
     {
         using var scope = scopes.CreateScope();
         if (scope.ServiceProvider.GetService<IAttachmentObjectStorage>() is null)
-            throw new NgbConfigurationViolationException("Attachments or attachment maintenance is enabled. Register and configure an attachment storage provider.");
+            throw new NgbConfigurationViolationException("Attachments is enabled. Register and configure an attachment storage provider.");
 
         return Task.CompletedTask;
     }
