@@ -1,0 +1,2 @@
+# Shell scripts run in Linux containers or POSIX shells, including Windows checkouts.
+*.sh text eol=lf
