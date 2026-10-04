@@ -87,6 +87,16 @@ A good business UI should allow the user to open a business object and inspect i
 
 That is what makes Audit Log useful outside the database.
 
+## Attachments and Notes history
+
+Attachments and Notes use the parent's existing AuditLog. Open **Audit log** on a Catalog, Document or General Journal Entry to see upload, completion, note edit and logical deletion events, including who performed each action and when. Note changes preserve the full old/new plain text.
+
+Content marked for deletion disappears from the normal content drawers and remains visible only through AuditLog. A completed attachment can still be downloaded with **Download attachment** on its audit event. Files remain in MinIO indefinitely; no restoration action is provided.
+
+Content history requires the relevant feature, parent read access, audit access and the content read permission. Download authorization is checked again when the button is clicked. Disabling a feature hides its content events without deleting the audit records.
+
+See [Attachments & Notes history](/guides/attachments-and-notes#history-in-the-parent-auditlog) for action codes, pagination, download availability and retention requirements.
+
 ## What should be audited
 
 As a rule, audit actions should be recorded for changes that matter to the business or to supportability.

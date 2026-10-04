@@ -15,7 +15,21 @@ Administrator roles receive all registered permissions automatically. Grant the 
 | `system.attachments` | `read`, `create`, `delete` |
 | `system.notes` | `read`, `create`, `update`, `delete` |
 
-The trusted Keycloak role `ngb-admin` grants full permissions with or without a pre-existing platform user record. Application administrator roles registered through `NgbAdministratorOptions.ApplicationRoleCodes` receive every registered permission; PM registers `pm-administrator` and CRM registers `crm.administrator`. Administrator identity is determined by trusted role codes, never by editable display names. Inactive accounts remain blocked, and administrator permissions do not enable a disabled deployment feature. Mutations require an active authenticated actor. Audit events record the parent target, attachment/note ID, actor and timestamp. Note text before and after each change is stored in the standard audit field changes. Storage keys, credentials and signed URLs are never included.
+The trusted Keycloak role `ngb-admin` grants full permissions with or without a pre-existing platform user record in all four verticals. Application administrator roles registered through `NgbAdministratorOptions.ApplicationRoleCodes` receive every registered permission; PM registers `pm-administrator` and CRM registers `crm.administrator`. Administrator identity is determined by trusted role codes, never by editable display names. Inactive accounts remain blocked, and administrator permissions do not enable a disabled deployment feature.
+
+Role Management protects registered application administrator roles: their canonical code cannot be changed, they cannot be deactivated, and their effective permission matrix cannot be changed. Their editor displays **Full access to all current and future permissions** with a read-only matrix. Names and descriptions remain editable. Do not manually grant Attachments or Notes permissions to administrators. See [administrator access and role protection](/platform/security-and-permissions#administrators).
+
+Mutations require an active authenticated actor. A platform user identity is created or updated for the actor when needed, including a Keycloak-only administrator. Audit events record the parent target, attachment/note ID, actor and timestamp. Note text before and after each change is stored in the standard audit field changes. Storage keys, credentials and signed URLs are never included.
+
+## Using the drawers
+
+Save the parent object first, then open **More → Attachments & Notes** and select the capability:
+
+- **Attachments:** use **Upload file**, then **Download** or **Mark for deletion** on a completed file. If verification fails after the transfer succeeds, **Retry completion** retries that step without uploading the file again. **Cancel upload** aborts the browser request; an unfinished reservation remains until logical deletion or expiration.
+- **Notes:** enter plain text and select **Add note**. **Edit** loads the current text; **Save note** submits it with the note's version. **Mark for deletion** removes the note from the active list. Leading and trailing whitespace is trimmed; empty notes are rejected.
+- **Audit log:** open the parent's existing audit action to see changes and deleted content. Use **Download attachment** on a completed file's event to download retained bytes. Notes show their text in the Original Value / New Value table.
+
+Content actions do not require editing or unposting the parent. They require normal parent read access and the relevant content permission. A stale note edit or deletion returns `notes.version_conflict`; reload the list and review the current text before retrying.
 
 ## Package and host composition
 
@@ -28,7 +42,7 @@ builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration, services =>
     services.AddNgbMinioAttachments(builder.Configuration.GetSection("Attachments:MinIO").Bind));
 ```
 
-The host registers the platform runtime, PostgreSQL, audit and actor services. Storage is registered and validated only when Attachments is enabled. `AttachmentUploadExpirationService` uses only database metadata and the standard AuditLog; it has no object-storage or Outbox dependency. Its hosted worker runs immediately, then waits 30 seconds between cycles, using scoped services and cancellation. Multiple replicas coordinate through PostgreSQL row locks with `SKIP LOCKED`. Enable `Attachments:UploadExpirationEnabled` to continue expiring abandoned uploads while the Attachments feature is disabled; this requires no MinIO configuration.
+The host registers the platform runtime, PostgreSQL, audit and actor services. Storage is registered and validated only when Attachments is enabled. `AttachmentUploadExpirationService` uses only database metadata and the standard AuditLog; it has no object-storage or Outbox dependency. Its worker runs inside the API host, independently of Hangfire. It runs immediately, then waits 30 seconds between cycles, using scoped services and cancellation. Multiple replicas coordinate through PostgreSQL row locks with `SKIP LOCKED`. Enable `Attachments:UploadExpirationEnabled` to continue expiring abandoned uploads while the Attachments feature is disabled; this requires no MinIO configuration.
 
 ## API and lifecycle
 
@@ -48,9 +62,11 @@ The host registers the platform runtime, PostgreSQL, audit and actor services. S
 
 Authenticated `GET /api/features` exposes feature availability. Disabled attachment/note operations return `404` with `feature.disabled`; the summary endpoint does the same when both features are disabled. Authentication and permissions remain separate requirements.
 
-Lists/summary accept `kind`, `typeCode`, `objectId`; lists also accept `limit` (1–100, default 50) and an optional resource-ID `cursor`. Pagination uses descending immutable UUIDv7 IDs and indexes scoped to the parent. Lists fetch one extra row; author names are joined in the same query. File bytes never pass through the NGB API.
+Lists/summary accept `kind`, `typeCode`, `objectId`; lists also accept `limit` (1–100, default 50) and an optional resource-ID `cursor`. Request bodies use `{ kind, typeCode, id }` inside `target`, not `objectId`. Lists return `{ items, nextCursor }`; pass `nextCursor` as the next request's `cursor`. Pagination uses descending immutable UUIDv7 IDs and indexes scoped to the parent. Lists fetch one extra row; author names are joined in the same query. File bytes never pass through the NGB API.
 
 Upload creation takes `{ target, fileName, contentType, sizeBytes }`. The client PUTs the file using exactly the returned storage headers, without NGB Authorization or cookies. Completion HEADs the staging object, verifies declared size and media type, then conditionally copies by ETag from `uploads/{id}` to `attachments/{id}`. A changed staging object cannot pass that copy. Ready objects cannot be changed by replaying the PUT URL. Completion can be safely retried after a lost response. Failed transfers remain pending until deletion or expiry; clients may start a fresh attempt.
+
+The PUT URL lifetime and the completion deadline are different. `UploadLifetime` limits when bytes can be uploaded; an already uploaded object can still be completed before `CreatedAtUtc + PendingStaleAge`. At that deadline completion returns `attachments.upload_expired`, even if the expiration worker has not processed the metadata yet. Creating a note takes `{ target, text }`; updating it takes `{ text, version }`, using the version returned by the API.
 
 Filename normalization strips paths, control characters and Unicode format controls; storage keys never contain filenames. Media type is informational, not proof of safe file contents. Downloads force attachment disposition, UTF-8 filename, octet-stream and no-store. No previews or HTML/Markdown rendering are supported.
 
@@ -58,13 +74,25 @@ Pending uploads reserve the count quota. A transaction-scoped advisory lock seri
 
 Marking for deletion commits metadata and audit in the same database transaction. Deleted attachments and notes immediately disappear from normal lists and counts. The standard attachment download endpoint rejects deleted attachments; AuditLog can issue a short-lived download URL for a completed retained file after checking current permissions. Previously issued URLs remain valid until expiry.
 
-NGB does not delete objects from MinIO, including staging uploads. The upload expiration worker marks abandoned pending uploads as deleted, releases their reserved quota and records the expiry in the parent audit. It does not create or process Outbox jobs. The application MinIO policy allows reading and writing but does not grant `s3:DeleteObject`. No automatic expiry rule should apply to the attachment bucket, including `uploads/` and `attachments/`.
+The attachment lifecycle does not delete objects from MinIO, including staging uploads. The upload expiration worker marks abandoned pending uploads as deleted, releases their reserved quota and records the expiry in the parent audit. It does not create or process Outbox jobs. The application MinIO policy allows reading and writing but does not grant `s3:DeleteObject`. No automatic expiry rule should apply to the attachment bucket, including `uploads/` and `attachments/`.
 
 ## History in the parent AuditLog
 
 Open the **Audit log** action on the Catalog, Document or General Journal Entry. Its existing timeline contains attachment upload/completion/deletion events and note creation/edit/deletion events alongside the parent's own changes. Each event shows who performed the action and when. The standard Original Value / New Value table preserves the full plain text of notes, including line breaks; marking a note for deletion keeps its last text visible in that event. Attachment events include the original filename, content type, size and status. Completed attachment events offer **Download attachment**, including after logical deletion.
 
-The timeline uses seek pagination; **Load older events** loads the next page without discarding already loaded history. It does not stop at the first 100 events. Audit access alone does not grant access to content: the relevant feature must be enabled and the reader must have the parent's normal read access, audit access and `system.attachments.read` or `system.notes.read`. Administrators receive these permissions automatically; inactive users remain blocked. Download authorization is checked again when the user clicks the button.
+| Action code | Event |
+| --- | --- |
+| `attachments.upload_requested` | Pending upload reserved |
+| `attachments.upload_completed` | File verified and available for download |
+| `attachments.mark_for_deletion` | Attachment logically deleted; completed file remains downloadable from audit |
+| `attachments.upload_expired` | Abandoned pending upload logically deleted by the worker |
+| `notes.created` | Note created |
+| `notes.updated` | Note edited, with old/new text and version |
+| `notes.mark_for_deletion` | Note logically deleted, with its last text preserved |
+
+Upload-request and expiration events have no download action because the file was not completed at that event. Marking an unfinished upload for deletion does not make its staging bytes downloadable. This timeline records lifecycle changes, not individual download clicks.
+
+The timeline uses seek pagination; **Load older events** loads the next page without discarding already loaded history. It does not stop at the first 100 events. Audit access alone does not grant access to content: the relevant feature must be enabled and the reader must have the parent's normal read access, audit access and `system.attachments.read` or `system.notes.read`. Audit access is either `system.audit.view` or the parent's `catalog.<typeCode>.view_audit` / `document.<typeCode>.view_audit` permission. Administrators receive these permissions automatically; inactive users remain blocked. Download authorization is checked again when the user clicks the button.
 
 Deleted content is visible only through AuditLog. There is no recycle bin, separate version store, restoration or revert action. History uses the existing audit tables and append-only protections. This history change requires no new database migration and does not backfill older attachment/note events. Parent payload, document version, workflow and ledger effects remain unchanged; only the parent's audit timeline gains the content events.
 
@@ -88,7 +116,7 @@ Use environment variables or a secret manager for credentials. MinIO settings ar
 | `Notes__MaxTextLength` | 10000; allowed 1–100000 |
 | `Attachments__MinIO__InternalEndpoint` | Required absolute service endpoint |
 | `Attachments__MinIO__PublicEndpoint` | Required browser-reachable signing endpoint |
-| `Attachments__MinIO__Bucket` | `ngb-attachments`; private, dedicated |
+| `Attachments__MinIO__Bucket` | `ngb-attachments`; private, dedicated; 3–63 lowercase letters, digits or hyphens, no leading/trailing hyphen |
 | `Attachments__MinIO__Region` | `us-east-1`; must match deployment |
 | `Attachments__MinIO__AccessKey`, `SecretKey` | Required application credentials, not root credentials |
 | `Attachments__MinIO__RequestTimeoutSeconds` | 30; allowed 1–120 |
@@ -123,7 +151,7 @@ docker compose --env-file .env.pm -f docker-compose.pm.yml up -d --build
 
 The API waits for successful initialization. The provided full Compose stacks retain this dependency even when the API feature flags are disabled. Bootstrap creates a private bucket, provisions an application account and attaches a bucket-specific policy. The account has bucket-location/list permission only for its dedicated bucket (ListBucket lets HEAD distinguish missing objects from access denial), and object access only to uploads and attachments prefixes. Administrative credentials are passed only to the server and bootstrap service.
 
-Bootstrap removes the former `ngb-upload-staging` expiry rule if present and creates no expiry rules. It preserves unrelated lifecycle configuration and all stored objects. Ensure any externally configured rules also retain this bucket indefinitely. Re-run the bootstrap service after deploying this change to update its policy and remove the old rule. Temporary client credentials and policy files are removed when bootstrap exits.
+Bootstrap removes the former `ngb-upload-staging` expiry rule if present and creates no expiry rules. It preserves unrelated lifecycle configuration and all stored objects. Ensure any externally configured rules also retain this bucket indefinitely. When updating an existing local stack, re-run the bootstrap service to apply the current policy and remove that legacy rule. Temporary client credentials and policy files are removed when bootstrap exits.
 
 ### Shared production MinIO
 
@@ -145,14 +173,26 @@ Supply the actual bucket name and its application credentials through deployment
 ## Enablement and rollback
 
 1. Back up PostgreSQL as part of the normal upgrade. If enabling Attachments, also back up existing object storage and provision a supported private store, CORS, application policy without delete permission, indefinite retention and secrets. Notes alone does not require object storage.
-2. On a first installation, the normal vertical migrator applies the existing `V2026_10_01_0100__ngb_attachments_notes.sql` to create attachment/note tables and indexes. The parent-audit history change adds no migration and performs no transfer or backfill of old content.
+2. Run the normal vertical migrator on both new installations and upgrades. It applies `V2026_10_01_0100__ngb_attachments_notes.sql` if not already applied, creating attachment/note tables and indexes. Feature flags do not control migration execution. Parent-audit history uses the existing audit tables and performs no transfer or backfill of old content.
 3. Deploy matching platform and UI package versions. With feature flags absent or false and upload expiration disabled, content services stay inactive and the API does not require MinIO configuration.
-4. Explicitly enable `FeatureManagement__Attachments` and/or `FeatureManagement__Notes` in deployment configuration. Retain `Attachments__UploadExpirationEnabled=true` for an installation that uses attachments. Restart all API replicas, reload the browser and assign the new role permissions. Check upload→complete→download→delete and note create→edit→delete for each enabled object kind. Confirm anonymous bucket access is denied and browser PUT has no NGB token.
+4. Explicitly enable `FeatureManagement__Attachments` and/or `FeatureManagement__Notes` in deployment configuration. Retain `Attachments__UploadExpirationEnabled=true` for an installation that uses attachments. Restart all API replicas with the updated configuration and reload the browser. For Compose `.env` changes, recreate the API containers with `docker compose ... up -d`; `docker compose restart` does not update their environment. Assign content permissions to nonadministrator roles that need them; administrators already have full access. Check upload→complete→download→mark for deletion and note create→edit→mark for deletion for each enabled object kind. Confirm anonymous bucket access is denied and browser PUT has no NGB token.
 5. Check the parent AuditLog for all content actions, including complete note text and retained-file downloads. Verify that parent version, payload and ledger effects are unchanged.
 
-To disable user access, turn off the affected feature flags, restart all API replicas and reload the browser. Keep `Attachments__UploadExpirationEnabled=true` so pending metadata expiry continues. The API no longer needs MinIO configuration while Attachments is disabled; retain the actual stored files indefinitely. Disabling features preserves data and role grants; enabling them again restores access subject to the same permissions.
+To disable user access, turn off the affected feature flags, restart or recreate all API replicas with the updated configuration and reload the browser. Keep `Attachments__UploadExpirationEnabled=true` so pending metadata expiry continues. The API no longer needs MinIO configuration while Attachments is disabled; retain the actual stored files indefinitely. Disabling features preserves data and role grants; enabling them again restores access subject to the same permissions.
 
 For an application rollback, use a previously verified API/UI package set and its supported database schema. Retain the additive tables, audit records and bucket data. Do not roll back to an application that physically deletes attachment objects or installs expiry rules. Do not drop metadata or delete objects as part of application rollback. Preserve indefinite retention in the deployment's backup and recovery procedures.
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Attachments or Notes is absent from More | Save the parent first, then inspect authenticated `GET /api/features`. Check the API's effective flag values, recreate containers after `.env` changes and reload the browser. Failed discovery can be retried with **Retry available features**. |
+| A menu item is visible but disabled | Check the current account is active and the UI has loaded its access snapshot. Nonadministrators need the relevant read permission. An active administrator already has it; investigate role recognition or stale access state instead of adding manual grants. |
+| `Failed to fetch` while opening a list | Identify the failed request in browser Network tools. List and summary requests go to the API, so inspect API reachability, TLS/CORS and server logs. They do not transfer bytes from MinIO. |
+| Upload PUT fails | Check `PublicEndpoint` is browser-reachable, the signed URL has not expired and MinIO permits the exact UI origin. `localhost` and `127.0.0.1` are distinct origins. Use the returned headers without NGB credentials. |
+| Completion returns `503` / `attachments.storage_unavailable` | Check API-to-MinIO connectivity through `InternalEndpoint`, application policy, bucket and credentials. A successfully started API or issued signed URL does not prove storage is reachable. |
+| A deleted attachment is absent from the drawer | This is expected. Open the parent's AuditLog and download it from a completion or deletion event. Pending uploads and older events without download metadata do not expose a download action. |
+| Note save/delete returns `409` / `notes.version_conflict` | Reload the note list and review the latest text before retrying with the current version. |
 
 ## Validation
 

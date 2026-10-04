@@ -30,10 +30,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Added
 
 - Added independent, authorized attachments and plain-text notes for Catalog Items, Documents and General Journal Entries.
-- Added private MinIO direct upload/download, verified completion, logical deletion and transactional outbox cleanup.
-- Added shared editor drawers, counts, pagination and note concurrency.
-- Added PostgreSQL metadata migrations and local single-node MinIO source builds.
-- See [Attachments & Notes guide](docs/guides/attachments-and-notes.md) for upgrade and operating requirements.
+- Added separate deployment-wide Attachments and Notes flags backed by `Microsoft.FeatureManagement`, disabled by default and applied at API startup.
+- Added private MinIO direct upload/download, verified completion and logical deletion with indefinite object retention.
+- Added attachment and note history to the parent AuditLog, including note text changes and downloads of retained completed files after logical deletion. No restoration action is provided.
+- Added shared editor drawers under More → Attachments & Notes, counts, pagination and note concurrency.
+- Added database-only expiration of abandoned pending uploads.
+- Added PostgreSQL metadata migrations, local MinIO services based on a digest-pinned prebuilt image, and `Testcontainers.Minio` integration coverage.
+- See the [Attachments & Notes guide](docs/guides/attachments-and-notes.md) and [Feature Flags guide](docs/guides/feature-flags.md) for upgrade and operating requirements.
 
 ## [3.0.0] - 2026-09-29
 
