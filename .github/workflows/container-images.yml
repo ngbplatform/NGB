@@ -196,12 +196,12 @@ jobs:
       - name: Restore CRM UI from npm
         if: steps.registry.outputs.available == 'true'
         working-directory: ui/ngb-crm-web
-        run: npm ci
+        run: npm ci --workspaces=false
 
       - name: Build CRM UI
         if: steps.registry.outputs.available == 'true'
         working-directory: ui/ngb-crm-web
-        run: npm run build
+        run: npm run build --workspaces=false
 
       - name: Set up .NET
         if: steps.registry.outputs.available == 'true'
