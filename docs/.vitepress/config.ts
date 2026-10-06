@@ -38,10 +38,18 @@ export default defineConfig({
     nav: [
       { text: 'Overview', link: '/' },
       { text: 'Start Here', link: '/start-here/overview' },
-      { text: 'Architecture', link: '/architecture/architecture-brief' },
+      {
+        text: 'Architecture',
+        link: '/architecture/architecture-brief',
+        activeMatch: '^/architecture/'
+      },
       { text: 'Ecosystem', link: '/ecosystem/erp-accounting-software-teams' },
       { text: 'Platform Modules', link: '/platform/core-and-tools' },
-      { text: 'Guides', link: '/guides/developer-workflows' },
+      {
+        text: 'Guides',
+        link: '/guides/developer-workflows',
+        activeMatch: '^/guides/'
+      },
       { text: 'Reference', link: '/reference/documentation-map' },
       { text: 'Website', link: 'https://ngbplatform.com' }
     ],
@@ -85,7 +93,9 @@ export default defineConfig({
         ], true),
         section('Cross-Cutting Capabilities', [
           page('Work Center', '/architecture/work-center'),
-          page('Idempotency and Concurrency', '/architecture/idempotency-and-concurrency')
+          page('Idempotency and Concurrency', '/architecture/idempotency-and-concurrency'),
+          page('Feature Flags', '/architecture/feature-flags'),
+          page('Attachments & Notes', '/architecture/attachments-and-notes')
         ], true)
       ],
       '/ecosystem/': [

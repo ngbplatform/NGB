@@ -49,6 +49,8 @@ For the migrator CLI, command-line flags are primary and selected environment va
 | PostgreSQL | `POSTGRES_HOST_PORT`, `POSTGRES_ADMIN_USER`, `PM_DB_NAME`, `PM_DB_USER`, `PM_DB_PASSWORD` | Database server, admin, and app-database credentials |
 | Demo bootstrap | `PM_DEMO_SEED_ENABLED`, `PM_DEMO_DATASET`, `PM_DEMO_SEED_FROM`, `PM_DEMO_SEED_TO` | Local demo seeding behavior for PM |
 | Keycloak | `KEYCLOAK_PUBLIC_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_PM_API_CLIENT_ID`, `KEYCLOAK_PM_WEB_CLIENT_ID` | Realm, client ids, admin bootstrap, and public URLs |
+| Content features | `FEATURE_ATTACHMENTS`, `FEATURE_NOTES`, `ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED` | API feature availability and database-only expiration of pending uploads |
+| MinIO | `MINIO_IMAGE_REPOSITORY`, `MINIO_IMAGE_TAG`, `MINIO_IMAGE_DIGEST`, `MINIO_BUCKET`, `MINIO_INTERNAL_ENDPOINT`, `MINIO_PUBLIC_ENDPOINT`, `MINIO_CORS_ORIGINS` | Local storage image, bucket, service/browser endpoints and permitted browser origins |
 | Supporting tools | `PGADMIN_HTTP_HOST_PORT`, `PGADMIN_DEFAULT_EMAIL` | Optional local support tools |
 
 ## API host
@@ -79,6 +81,30 @@ The PM API host uses the following configuration keys in the verified developmen
 | `KeycloakSettings:ClientIds[]` | `ngb-pm-api`, `ngb-pm-web-client`, `ngb-tester` |
 | `ExternalLinksSettings:HealthUiUrl` | `https://localhost:7075/health-ui` |
 | `ExternalLinksSettings:BackgroundJobsUiUrl` | `https://localhost:7074/hangfire` |
+
+### Attachments, Notes and feature flags
+
+The same keys are used by all four API hosts. Environment-variable equivalents use double underscores, for example `FeatureManagement__Attachments` and `Attachments__MinIO__Bucket`.
+
+| API key | Compose `.env` key | Meaning |
+|---|---|---|
+| `FeatureManagement:Attachments` | `FEATURE_ATTACHMENTS` | Enable attachment operations; defaults to `false` |
+| `FeatureManagement:Notes` | `FEATURE_NOTES` | Enable notes independently of storage; defaults to `false` |
+| `Attachments:UploadExpirationEnabled` | `ATTACHMENTS_UPLOAD_EXPIRATION_ENABLED` | Keep pending upload expiration active when Attachments is disabled; defaults to `false` |
+| `Attachments:MinIO:InternalEndpoint` | `MINIO_INTERNAL_ENDPOINT` | S3 endpoint reached by the API for verification and server-side copy |
+| `Attachments:MinIO:PublicEndpoint` | `MINIO_PUBLIC_ENDPOINT` | Browser-reachable S3 endpoint used to sign upload/download URLs |
+| `Attachments:MinIO:Bucket` | `MINIO_BUCKET` | Private attachment bucket for this vertical |
+| `Attachments:MinIO:AccessKey` | `MINIO_APP_ACCESS_KEY` | Application storage account, separate from the MinIO root account |
+| `Attachments:MinIO:SecretKey` | `MINIO_APP_SECRET_KEY` | Application storage secret |
+| `Attachments:MinIO:AllowInsecureHttp` | `MINIO_ALLOW_INSECURE_HTTP` | Local-development HTTP opt-in; defaults to `false` |
+
+The checked-in local `.env` files explicitly enable both features and upload expiration. MinIO credentials are injected through Compose; they are not stored in API `appsettings.Development.json`. An IDE launch needs equivalent environment variables or .NET User Secrets because ASP.NET Core does not read Compose `.env` files automatically.
+
+Feature state is fixed at API startup. After changing `.env`, recreate the API container with `docker compose ... up -d`; restarting an existing container does not replace its environment. Reload the browser after updating all replicas. Administrator permissions do not override a disabled feature.
+
+Upload expiration runs inside the API host, not Hangfire. It changes database metadata and writes AuditLog events; it never deletes MinIO objects. MinIO configuration is required only when the Attachments feature is enabled, although the provided full Compose stacks still start storage.
+
+See [Feature Flags](/architecture/feature-flags) for rollout and registration, and [Attachments & Notes configuration](/architecture/attachments-and-notes#configuration) for all limits, lifetimes, storage requirements and production configuration.
 
 ### Reporting
 
@@ -191,6 +217,8 @@ The shared migrator runner supports both command-line flags and environment-vari
 
 ## Related pages
 
+- [Feature Flags](/architecture/feature-flags)
+- [Attachments & Notes](/architecture/attachments-and-notes)
 - [Manual local runbook](/start-here/manual-local-runbook)
 - [Security and SSO](/platform/security-and-sso)
 - [Migrator CLI](/reference/migrator-cli)

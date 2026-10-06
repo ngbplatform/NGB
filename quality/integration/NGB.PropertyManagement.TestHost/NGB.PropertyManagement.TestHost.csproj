@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>false</IsTestProject>
+        <DisableTransitiveProjectReferences>false</DisableTransitiveProjectReferences>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App"/>
+        <ProjectReference Include="../../../NGB.PropertyManagement.Api.IntegrationTests/NGB.PropertyManagement.Api.IntegrationTests.csproj"/>
+        <PackageReference Include="Testcontainers.Minio" Version="4.15.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="../MinioIntegrationFixture.cs" Link="Infrastructure/MinioIntegrationFixture.cs"/>
+        <Compile Include="../TestcontainerStartupGate.cs" Link="Infrastructure/TestcontainerStartupGate.cs"/>
+        <None Include="../../../docker/minio/init.sh" Link="Infrastructure/minio-init.sh" CopyToOutputDirectory="PreserveNewest"/>
+        <None Include="../../../NGB.PropertyManagement.Api.IntegrationTests/Infrastructure/Keycloak/ngb-pm-tests-realm.json"
+              Link="Infrastructure/Keycloak/ngb-pm-tests-realm.json" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
+</Project>

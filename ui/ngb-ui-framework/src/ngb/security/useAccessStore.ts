@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { toErrorMessage } from '../utils/errorMessage'
+import { useFeatureStore } from '../features/useFeatureStore'
 import { getCurrentAccess } from './api'
 import { buildPermissionKey, hasPermission, SYSTEM_PERMISSIONS, toPermissionKeySet, type PermissionKeyLike } from './permissions'
 import type { CurrentAccessDto } from './types'
@@ -59,6 +60,7 @@ export const useAccessStore = defineStore('access', {
       return this.permissionKeys.has(buildPermissionKey(permission))
     },
     reset(): void {
+      useFeatureStore().reset()
       this.current = null
       this.permissionKeys = new Set()
       this.error = null

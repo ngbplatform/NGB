@@ -1,6 +1,11 @@
 using System.Net;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using NGB.Application.Abstractions.Features;
+using NGB.Attachments;
+using NGB.Core.Features;
+using NGB.IntegrationTests.Security;
 using Xunit;
 
 namespace NGB.Trade.Api.IntegrationTests.Infrastructure;
@@ -14,6 +19,23 @@ public sealed class TradeApiProgramEnvironmentCollection
 [Collection(TradeApiProgramEnvironmentCollection.Name)]
 public sealed class TradeApiProgramFullCoverageTests
 {
+    [Theory]
+    [InlineData(false, true, "ngb-admin")]
+    [InlineData(true, true, "ngb-admin")]
+    [InlineData(true, false, "ngb-admin")]
+    [InlineData(false, true, "Administrator")]
+    [InlineData(true, true, "ngb-user")]
+    public async Task Program_CurrentAccess_UsesAuthenticatedAdministratorRoleAndAccountStatus(
+        bool platformUserExists,
+        bool accountActive,
+        string role)
+    {
+        using var environment = new EnvironmentVariableScope(ValidConfiguration("Production"));
+        await using var factory = new WebApplicationFactory<Program>();
+
+        await CurrentAccessHttpAssertions.VerifyAsync(factory, platformUserExists, accountActive, role);
+    }
+
     [Theory]
     [InlineData("Development", HttpStatusCode.OK)]
     [InlineData("Production", HttpStatusCode.NotFound)]
@@ -32,6 +54,33 @@ public sealed class TradeApiProgramFullCoverageTests
         var response = await client.GetAsync("/swagger/index.html");
 
         response.StatusCode.Should().Be(expectedStatusCode);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Program_RegistersStorageOnlyForEnabledAttachments(bool attachments, bool notes)
+    {
+        var configuration = ValidConfiguration("Production");
+        configuration["FeatureManagement__Attachments"] = attachments.ToString();
+        configuration["FeatureManagement__Notes"] = notes.ToString();
+        configuration["Attachments__UploadExpirationEnabled"] = bool.FalseString;
+        if (!attachments)
+        {
+            configuration["Attachments__MinIO__AccessKey"] = "";
+            configuration["Attachments__MinIO__SecretKey"] = "";
+        }
+
+        using var environment = new EnvironmentVariableScope(configuration);
+        await using var factory = new WebApplicationFactory<Program>();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var features = scope.ServiceProvider.GetRequiredService<INgbFeatureService>();
+
+        (await features.IsEnabledAsync(NgbFeatures.Attachments, default)).Should().Be(attachments);
+        (await features.IsEnabledAsync(NgbFeatures.Notes, default)).Should().Be(notes);
+        (scope.ServiceProvider.GetService<IAttachmentObjectStorage>() is not null).Should().Be(attachments);
     }
 
     [Theory]
@@ -57,6 +106,10 @@ public sealed class TradeApiProgramFullCoverageTests
         ["DOTNET_ENVIRONMENT"] = environmentName,
         ["ConnectionStrings__DefaultConnection"] =
             "Host=127.0.0.1;Port=1;Database=ngb_program_test;Username=postgres;Password=postgres;Timeout=1;Command Timeout=1;Pooling=false",
+        ["Attachments__MinIO__InternalEndpoint"] = "https://storage.example.test",
+        ["Attachments__MinIO__PublicEndpoint"] = "https://storage.example.test",
+        ["Attachments__MinIO__AccessKey"] = "test-access",
+        ["Attachments__MinIO__SecretKey"] = "test-secret",
         ["KeycloakSettings__Issuer"] = "https://example.invalid/realms/ngb",
         ["KeycloakSettings__RequireHttpsMetadata"] = bool.FalseString,
         ["KeycloakSettings__ClientIds__0"] = "ngb-api-tests",

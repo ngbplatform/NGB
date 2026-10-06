@@ -35,5 +35,7 @@ export function forwardEntityEditorHandle<TDocumentEffects>(
     getIsDirty: () => current().getIsDirty(),
     getCanSave: () => current().getCanSave(),
     getFlags: () => current().getFlags(),
+    getContentActionGroups: () => editor.value?.getContentActionGroups?.() ?? [],
+    handleContentAction: (action: string) => editor.value?.handleContentAction?.(action) ?? false,
   }
 }

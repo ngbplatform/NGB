@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NGB.AgencyBilling.DependencyInjection;
@@ -10,7 +11,7 @@ namespace NGB.AgencyBilling.Api.IntegrationTests.Infrastructure;
 
 internal static class AgencyBillingHostFactory
 {
-    public static IHost Create(string connectionString)
+    public static IHost Create(string connectionString, Action<IServiceCollection>? configureServices = null)
     {
         return Host.CreateDefaultBuilder()
             .ConfigureLogging(logging =>
@@ -27,6 +28,7 @@ internal static class AgencyBillingHostFactory
                     .AddAgencyBillingModule()
                     .AddAgencyBillingRuntimeModule()
                     .AddAgencyBillingPostgresModule();
+                configureServices?.Invoke(services);
             })
             .UseDefaultServiceProvider(options =>
             {

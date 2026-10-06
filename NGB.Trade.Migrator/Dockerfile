@@ -24,6 +24,9 @@ COPY ["NGB.Definitions/NGB.Definitions.csproj", "NGB.Definitions/"]
 COPY ["NGB.Metadata/NGB.Metadata.csproj", "NGB.Metadata/"]
 COPY ["NGB.OperationalRegisters/NGB.OperationalRegisters.csproj", "NGB.OperationalRegisters/"]
 COPY ["NGB.ReferenceRegisters/NGB.ReferenceRegisters.csproj", "NGB.ReferenceRegisters/"]
+COPY ["NGB.Attachments/NGB.Attachments.csproj", "NGB.Attachments/"]
+COPY ["NGB.Notes/NGB.Notes.csproj", "NGB.Notes/"]
+COPY ["NGB.Attachments.MinIO/NGB.Attachments.MinIO.csproj", "NGB.Attachments.MinIO/"]
 COPY ["NGB.Persistence/NGB.Persistence.csproj", "NGB.Persistence/"]
 RUN dotnet restore "NGB.Trade.Migrator/NGB.Trade.Migrator.csproj"
 COPY . .

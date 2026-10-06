@@ -1,3 +1,6 @@
+NGB.Attachments/NGB.Attachments.csproj
+NGB.Notes/NGB.Notes.csproj
+NGB.Attachments.MinIO/NGB.Attachments.MinIO.csproj
 NGB.Accounting/NGB.Accounting.csproj
 NGB.Application.Abstractions/NGB.Application.Abstractions.csproj
 NGB.Runtime.Hosting/NGB.Runtime.Hosting.csproj

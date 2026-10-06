@@ -12,6 +12,7 @@ using NGB.Persistence.Security;
 using NGB.Persistence.UnitOfWork;
 using NGB.ReferenceRegisters;
 using NGB.ReferenceRegisters.Contracts;
+using NGB.Runtime.AuditLog;
 using NGB.Runtime.ReferenceRegisters;
 using NGB.Runtime.Security;
 using NGB.Tools.Extensions;
@@ -36,15 +37,16 @@ public sealed class CrmSetupServiceFullCoverageTests
         state.EnsuredSchemas.Should().HaveCount(4);
         state.CatalogCreates.Should().HaveCount(8);
         state.RoleCreates.Select(request => request.Code)
-            .Should().Equal("crm.administrator", "crm.manager", "crm.sales_rep");
+            .Should().Equal("crm.manager", "crm.sales_rep");
+        state.Roles.Single(role => role.Code == "crm.administrator").IsSystem.Should().BeTrue();
         state.UserUpserts.Should().ContainSingle().Which.Should().Be((
             "6d49204b-867c-4180-a30d-a5e290e13c73",
             "alex.carter@demo.ngbplatform.com",
             "Alex Carter"));
         state.AssignedRoles.Should().ContainSingle();
         state.AccessVersionUsers.Should().ContainSingle();
-        state.BeginCount.Should().Be(1);
-        state.CommitCount.Should().Be(1);
+        state.BeginCount.Should().Be(2);
+        state.CommitCount.Should().Be(2);
     }
 
     [Fact]
@@ -61,7 +63,7 @@ public sealed class CrmSetupServiceFullCoverageTests
         result.OpportunityStagesEnsured.Should().Be(0);
         result.ProductsEnsured.Should().Be(0);
         state.CatalogUpdates.Should().HaveCount(8);
-        state.RoleReplacements.Should().HaveCount(3);
+        state.RoleReplacements.Should().HaveCount(2);
         state.RoleReplacements.Should().OnlyContain(item => item.Permissions.Count > 0);
     }
 
@@ -217,10 +219,25 @@ public sealed class CrmSetupServiceFullCoverageTests
             .ReturnsAsync((Guid userId, CancellationToken _) =>
                 new PlatformUserAccessVersion(userId, 1, DateTime.UnixEpoch));
 
+        var platformRoles = new Mock<IPlatformRoleRepository>(MockBehavior.Strict);
+        platformRoles.Setup(x => x.UpsertAsync(
+                It.IsAny<Guid>(), "crm.administrator", "CRM Administrator", It.IsAny<string?>(), true, true,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid id, string code, string name, string? description, bool system, bool active, CancellationToken _) =>
+            {
+                var now = DateTime.UnixEpoch;
+                state.Roles.Add(new RoleListItemDto(id, code, name, description, system, active, 0, now, now));
+                state.RoleDetails[id] = new RoleDetailsDto(id, code, name, description, system, active, [], [], now, now)
+                {
+                    HasFullAccess = true
+                };
+                return new PlatformRole(id, code, name, description, system, active, now, now);
+            });
+
         return new CrmSetupService(
             registers.Object, maintenance.Object, catalogs.Object, roles.Object, uow.Object,
             users.Object, userRoles.Object, versions.Object,
-            demoAdministrator ?? new CrmDemoAdministratorOptions());
+            demoAdministrator ?? new CrmDemoAdministratorOptions(), platformRoles.Object, Mock.Of<IAuditLogService>());
     }
 
     private static CatalogItemDto Catalog(string display, RecordPayload payload) =>

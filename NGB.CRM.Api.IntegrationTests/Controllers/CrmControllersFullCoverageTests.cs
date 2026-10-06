@@ -69,10 +69,31 @@ public sealed class CrmControllersFullCoverageTests : IDisposable
         var sut = new AdminController(new PermissionAwareAdminService(
             null!, Mock.Of<INgbAccessChecker>(), CreateSecurityCache()));
 
-        var result = await sut.ApplyDefaults(setup.Object, cancellation.Token);
+        var access = new Mock<INgbAccessChecker>(MockBehavior.Strict);
+        access.Setup(x => x.RequireAsync("system", "roles", "manage", cancellation.Token)).Returns(Task.CompletedTask);
+        access.Setup(x => x.RequireAsync("system", "users", "manage", cancellation.Token)).Returns(Task.CompletedTask);
+
+        var result = await sut.ApplyDefaults(setup.Object, access.Object, cancellation.Token);
 
         result.Should().BeSameAs(expected);
         setup.VerifyAll();
+        access.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData("roles")]
+    [InlineData("users")]
+    public async Task AdminApplyDefaults_DeniesSetupWithoutRoleAndUserManagement(string deniedResource)
+    {
+        var access = new Mock<INgbAccessChecker>();
+        access.Setup(x => x.RequireAsync("system", deniedResource, "manage", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new NgbPermissionDeniedException(new("system", deniedResource, "manage")));
+        var setup = new Mock<ICrmSetupService>(MockBehavior.Strict);
+        var sut = new AdminController(new PermissionAwareAdminService(null!, access.Object, CreateSecurityCache()));
+
+        await Assert.ThrowsAsync<NgbPermissionDeniedException>(() => sut.ApplyDefaults(setup.Object, access.Object, default));
+
+        setup.VerifyNoOtherCalls();
     }
 
     [Fact]

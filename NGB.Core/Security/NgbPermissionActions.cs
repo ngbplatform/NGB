@@ -6,7 +6,10 @@ public static class NgbPermissionActions
 {
     public const string View = "view";
     public const string Manage = "manage";
+    public const string Read = "read";
     public const string Create = "create";
+    public const string Update = "update";
+    public const string Delete = "delete";
     public const string Edit = "edit";
     public const string Deactivate = "deactivate";
     public const string Reactivate = "reactivate";

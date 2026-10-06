@@ -6,7 +6,7 @@ on:
       version:
         description: Exact NGB.Platform package version to publish
         required: true
-        default: 3.0.0
+        default: 3.1.0
         type: string
 
 permissions:
@@ -54,6 +54,9 @@ jobs:
           packages=(
             NGB.Platform.Tools
             NGB.Platform.Core
+            NGB.Platform.Attachments
+            NGB.Platform.Notes
+            NGB.Platform.Attachments.MinIO
             NGB.Platform.Contracts
             NGB.Platform.Accounting
             NGB.Platform.Metadata

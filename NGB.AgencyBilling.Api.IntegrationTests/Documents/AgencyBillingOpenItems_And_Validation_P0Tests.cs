@@ -8,8 +8,10 @@ using NGB.AgencyBilling.Runtime;
 using NGB.AgencyBilling.Runtime.Policy;
 using NGB.Application.Abstractions.Services;
 using NGB.Contracts.Common;
+using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Services;
 using NGB.Core.Dimensions;
+using NGB.IntegrationTests.Content;
 using NGB.Persistence.OperationalRegisters;
 using NGB.Tools.Exceptions;
 using NGB.Tools.Extensions;
@@ -26,7 +28,7 @@ public sealed class AgencyBillingOpenItems_And_Validation_P0Tests(AgencyBillingP
     [Fact]
     public async Task SalesInvoice_And_CustomerPayment_Maintain_Ar_Open_Items_Balance()
     {
-        using var host = AgencyBillingHostFactory.Create(fixture.ConnectionString);
+        using var host = AgencyBillingHostFactory.Create(fixture.ConnectionString, ContentIntegrationAssertions.Configure);
         await using var scope = host.Services.CreateAsyncScope();
 
         var setup = scope.ServiceProvider.GetRequiredService<IAgencyBillingSetupService>();
@@ -40,8 +42,11 @@ public sealed class AgencyBillingOpenItems_And_Validation_P0Tests(AgencyBillingP
 
         var contract = await CreateContractAsync(documents, refs);
         var timesheet = await CreateTimesheetAsync(documents, refs, 8m, 1280m, 520m);
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.CatalogItem, AgencyBillingCodes.Client, refs.ClientId);
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.Document, AgencyBillingCodes.ClientContract, contract.Id);
         await documents.PostAsync(AgencyBillingCodes.ClientContract, contract.Id, CancellationToken.None);
         timesheet = await documents.PostAsync(AgencyBillingCodes.Timesheet, timesheet.Id, CancellationToken.None);
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.Document, AgencyBillingCodes.ClientContract, contract.Id);
 
         var invoice = await documents.CreateDraftAsync(
             AgencyBillingCodes.SalesInvoice,

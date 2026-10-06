@@ -10,6 +10,10 @@ const packageRoot = dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   root: packageRoot,
   plugins: [vue()],
+  resolve: {
+    // Shared test helpers and CRM must use the same installed UI package and Vue state.
+    dedupe: ['@ngbplatform/ui', 'vue', 'pinia', 'vue-router', '@headlessui/vue'],
+  },
   define: {
     'import.meta.env.VITE_KEYCLOAK_URL': JSON.stringify('http://localhost:8080'),
     'import.meta.env.VITE_KEYCLOAK_REALM': JSON.stringify('ngb-demo'),

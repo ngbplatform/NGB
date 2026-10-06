@@ -110,6 +110,10 @@ public class PmApiFactory : WebApplicationFactory<Program>
         var overrides = new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] = _connectionString,
+            ["Attachments:MinIO:InternalEndpoint"] = "https://storage.example.test",
+            ["Attachments:MinIO:PublicEndpoint"] = "https://storage.example.test",
+            ["Attachments:MinIO:AccessKey"] = "integration-test-access",
+            ["Attachments:MinIO:SecretKey"] = "integration-test-secret",
             ["KeycloakSettings:Issuer"] = _fixture.Keycloak.Issuer,
             ["KeycloakSettings:RequireHttpsMetadata"] = bool.FalseString,
             ["Serilog:WriteTo:1:Args:serverUrl"] = TestSeqServerUrl,

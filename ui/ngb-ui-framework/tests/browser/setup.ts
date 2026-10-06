@@ -1,5 +1,12 @@
 import '../../src/styles/tailwind.css'
 
+import { vi } from 'vitest'
+
+// Component tests start with deployment features disabled; content tests opt in explicitly.
+vi.mock('../../src/ngb/features/api', () => ({
+  getFeatures: async () => [],
+}))
+
 import { configureNgbWorkCenter } from '../../src/ngb/work-center/config'
 
 configureNgbWorkCenter({

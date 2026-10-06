@@ -64,6 +64,7 @@ const form = ref<RoleForm>({
 const roleId = computed(() => String(route.params.roleId ?? 'new'))
 const isNew = computed(() => roleId.value === 'new')
 const canEdit = computed(() => access.canManageRoles)
+const hasFullAccess = computed(() => role.value?.hasFullAccess === true)
 const canOpenAudit = computed(() => !isNew.value && !!role.value)
 const title = computed(() => isNew.value ? 'New role' : role.value?.name ?? 'Role')
 const auditEntityTitle = computed(() => title.value)
@@ -159,7 +160,7 @@ async function save(): Promise<void> {
       name: form.value.name,
       description: form.value.description || null,
       isActive: role.value!.isActive,
-      permissions: permissions.value,
+      permissions: hasFullAccess.value ? undefined : permissions.value,
     })
     applyRole(updated)
     toasts?.push({ title: 'Role saved', message: 'Changes were saved.', tone: 'success' })
@@ -229,7 +230,7 @@ onBeforeUnmount(() => {
           <NgbIcon name="history" />
         </button>
         <button
-          v-if="role && canEdit && role.isActive"
+          v-if="role && canEdit && role.isActive && !hasFullAccess"
           type="button"
           class="ngb-iconbtn"
           title="Deactivate"
@@ -269,7 +270,7 @@ onBeforeUnmount(() => {
       <div v-else class="space-y-6">
         <section class="rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card p-4 shadow-card">
           <div class="grid gap-4 md:grid-cols-2">
-            <NgbInput v-model="form.code" label="Code" :disabled="!canEdit || role?.isSystem === true" />
+            <NgbInput v-model="form.code" label="Code" :disabled="!canEdit || role?.isSystem === true || hasFullAccess" />
             <NgbInput v-model="form.name" label="Name" :disabled="!canEdit" />
             <div class="md:col-span-2">
               <NgbInput v-model="form.description" label="Description" :disabled="!canEdit" />
@@ -286,12 +287,16 @@ onBeforeUnmount(() => {
 
         <NgbTabs v-model="activeTab" :tabs="roleTabs" full-width-bar>
           <template #default="{ active }">
-            <NgbPermissionMatrix
-              v-if="active === 'permissions'"
-              v-model="permissions"
-              :definitions="definitions"
-              :disabled="!canEdit"
-            />
+            <div v-if="active === 'permissions'" class="space-y-4">
+              <p v-if="hasFullAccess" class="text-sm text-ngb-muted">
+                Full access to all current and future permissions. These permissions are managed automatically.
+              </p>
+              <NgbPermissionMatrix
+                v-model="permissions"
+                :definitions="definitions"
+                :disabled="!canEdit || hasFullAccess"
+              />
+            </div>
 
             <section v-else-if="role" class="rounded-[var(--ngb-radius)] border border-ngb-border bg-ngb-card shadow-card">
               <div class="divide-y divide-ngb-border">

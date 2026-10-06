@@ -111,8 +111,10 @@ export async function discoverFrontendFiles(repositoryRoot, workspaceRoot) {
         testProjects.push(normalizePath(relative(repositoryRoot, resolve(packageRoot, config))))
       }
     }
-    if (await pathExists(resolve(packageRoot, 'playwright.config.ts'))) {
-      e2eProjects.push(normalizePath(relative(repositoryRoot, resolve(packageRoot, 'playwright.config.ts'))))
+    for (const config of ['playwright.config.ts', 'playwright.content.config.ts']) {
+      if (await pathExists(resolve(packageRoot, config))) {
+        e2eProjects.push(normalizePath(relative(repositoryRoot, resolve(packageRoot, config))))
+      }
     }
   }
 

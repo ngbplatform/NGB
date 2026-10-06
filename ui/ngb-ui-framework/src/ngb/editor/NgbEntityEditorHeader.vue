@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import NgbHeaderActionCluster from '../components/NgbHeaderActionCluster.vue';
+import NgbMoreActionsMenu from '../components/NgbMoreActionsMenu.vue';
 import NgbBadge from '../primitives/NgbBadge.vue';
 import NgbIcon from '../primitives/NgbIcon.vue';
 import NgbPageHeader from '../layout/NgbPageHeader.vue';
@@ -48,6 +49,7 @@ const emit = defineEmits<{
         </template>
 
         <template #actions>
+          <slot name="content-actions" />
           <NgbHeaderActionCluster
             :primary-actions="documentPrimaryActions"
             :more-groups="documentMoreActionGroups"
@@ -72,6 +74,7 @@ const emit = defineEmits<{
         </div>
 
         <div class="flex shrink-0 items-center gap-2">
+          <slot name="content-actions" />
           <NgbHeaderActionCluster
             :primary-actions="documentPrimaryActions"
             :more-groups="documentMoreActionGroups"
@@ -95,6 +98,7 @@ const emit = defineEmits<{
     </template>
 
     <template #actions>
+      <slot name="content-actions" />
       <button
         v-for="item in pageActions"
         :key="item.key"
@@ -106,9 +110,12 @@ const emit = defineEmits<{
         <NgbIcon :name="item.icon" />
       </button>
 
+      <NgbMoreActionsMenu :groups="documentMoreActionGroups" @action="(action) => emit('action', action)" />
+
       <button class="ngb-iconbtn" :disabled="loading || saving" title="Close" @click="emit('close')">
         <NgbIcon name="x" />
       </button>
     </template>
   </NgbPageHeader>
+  <slot v-else name="content-actions" />
 </template>

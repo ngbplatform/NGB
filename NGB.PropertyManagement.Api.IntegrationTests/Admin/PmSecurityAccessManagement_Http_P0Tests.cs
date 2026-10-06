@@ -34,6 +34,113 @@ public sealed class PmSecurityAccessManagement_Http_P0Tests(PmIntegrationFixture
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task CanonicalAdministrator_RejectsDirectProtectedMutationsAndKeepsFullAccess()
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await SeedSecurityDefaultsAsync(factory);
+        using var client = CreateHttpsClient(factory);
+        var administrator = (await GetRolesAsync(client)).Single(role => role.Code == "pm-administrator");
+        var path = $"/api/security/roles/{administrator.RoleId}";
+        var original = (await client.GetFromJsonAsync<RoleDetailsDto>(path))!;
+        original.HasFullAccess.Should().BeTrue();
+        var definitions = (await client.GetFromJsonAsync<PermissionDefinitionDto[]>("/api/security/permissions/definitions"))!;
+        original.Permissions.Should().BeEquivalentTo(definitions.Select(definition =>
+            new PermissionAssignmentDto(definition.ResourceKind, definition.ResourceCode, definition.ActionCode)));
+        var (email, password, _) = await CreateUserAsync(client, "protected-admin", "Application admin", [administrator.RoleId]);
+        using var applicationAdmin = CreateHttpsClient(factory, new PmKeycloakTestUser(email, password));
+        var before = await GetCurrentAccessAsync(applicationAdmin);
+        before.IsBootstrapAdmin.Should().BeFalse();
+        before.Permissions.Should().BeEquivalentTo(original.Permissions);
+        original = (await client.GetFromJsonAsync<RoleDetailsDto>(path))!;
+        var auditActions = new[]
+        {
+            AuditActionCodes.SecurityRoleUpdate,
+            AuditActionCodes.SecurityRoleDeactivate,
+            AuditActionCodes.SecurityRolePermissionsReplace
+        };
+        var auditBefore = new Dictionary<string, IReadOnlyList<AuditEvent>>();
+        foreach (var action in auditActions)
+        {
+            auditBefore[action] = await ReadAuditEventsAsync(factory, AuditEntityKind.SecurityRole, administrator.RoleId, action);
+        }
+
+        var requests = new UpdateRoleRequestDto[]
+        {
+            new("renamed-admin", "Changed", null, true, original.Permissions),
+            new(original.Code, "Changed", null, false, original.Permissions),
+            new(original.Code, "Changed", null, true, [])
+        };
+        foreach (var request in requests)
+        {
+            using var response = await applicationAdmin.PutAsJsonAsync(path, request);
+            await AssertProtectedAdministratorAsync(response);
+        }
+
+        using var deactivate = await applicationAdmin.PostAsync($"{path}/deactivate", null);
+        await AssertProtectedAdministratorAsync(deactivate);
+        using var permissions = await applicationAdmin.PutAsJsonAsync($"{path}/permissions", new ReplaceRolePermissionsRequestDto([]));
+        await AssertProtectedAdministratorAsync(permissions);
+        using var create = await applicationAdmin.PostAsJsonAsync("/api/security/roles",
+            new CreateRoleRequestDto(" PM-ADMINISTRATOR ", "Replacement", null, []));
+        await AssertProtectedAdministratorAsync(create);
+        var ordinary = await CreateRoleAsync(client, "ordinary-protected-code-test", "Ordinary", []);
+        using var claimCode = await applicationAdmin.PutAsJsonAsync($"/api/security/roles/{ordinary.RoleId}",
+            new UpdateRoleRequestDto(" PM-ADMINISTRATOR ", "Replacement", null, true, []));
+        await AssertProtectedAdministratorAsync(claimCode);
+
+        (await client.GetFromJsonAsync<RoleDetailsDto>(path)).Should().BeEquivalentTo(original);
+        var after = await GetCurrentAccessAsync(applicationAdmin);
+        after.AccessVersion.Should().Be(before.AccessVersion);
+        after.Permissions.Should().BeEquivalentTo(before.Permissions);
+        foreach (var action in auditActions)
+        {
+            (await ReadAuditEventsAsync(factory, AuditEntityKind.SecurityRole, administrator.RoleId, action))
+                .Should().BeEquivalentTo(auditBefore[action]);
+        }
+    }
+
+    [Fact]
+    public async Task CanonicalAdministrator_ProfileUpdatesWorkWithOmittedOrUnchangedPermissions()
+    {
+        await using var factory = new PmApiFactory(fixture);
+        await SeedSecurityDefaultsAsync(factory);
+        using var client = CreateHttpsClient(factory);
+        var administrator = (await GetRolesAsync(client)).Single(role => role.Code == "pm-administrator");
+        var path = $"/api/security/roles/{administrator.RoleId}";
+
+        using var profile = await client.PutAsJsonAsync(path, new
+        {
+            code = administrator.Code,
+            name = "Platform administrators",
+            description = "Full application access",
+            isActive = true
+        });
+        await profile.ShouldHaveStatusAsync(HttpStatusCode.OK);
+        var updated = (await profile.Content.ReadFromJsonAsync<RoleDetailsDto>())!;
+        updated.HasFullAccess.Should().BeTrue();
+        updated.Name.Should().Be("Platform administrators");
+        updated.Permissions.Should().NotBeEmpty();
+
+        using var unchangedMatrix = await client.PutAsJsonAsync(path,
+            new UpdateRoleRequestDto(updated.Code, updated.Name, "Updated description", true, updated.Permissions));
+        await unchangedMatrix.ShouldHaveStatusAsync(HttpStatusCode.OK);
+        var final = (await unchangedMatrix.Content.ReadFromJsonAsync<RoleDetailsDto>())!;
+        final.Permissions.Should().BeEquivalentTo(updated.Permissions);
+        final.Description.Should().Be("Updated description");
+        var events = await ReadAuditEventsAsync(factory, AuditEntityKind.SecurityRole, administrator.RoleId, AuditActionCodes.SecurityRoleUpdate);
+        events.Should().HaveCount(2);
+        events.SelectMany(entry => entry.Changes)
+            .Where(change => change.FieldPath == "permissions")
+            .Should().OnlyContain(change => change.OldValueJson == change.NewValueJson);
+    }
+
+    private static async Task AssertProtectedAdministratorAsync(HttpResponseMessage response)
+    {
+        await response.ShouldHaveStatusAsync(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("ngb.security.administrator_role_protected");
+    }
+
+    [Fact]
     public async Task SecurityEndpoints_UseNgbDatabaseRolesAndDenyDirectAdminRoutesForLimitedUsers()
     {
         await using var factory = new PmApiFactory(fixture);

@@ -81,26 +81,36 @@ public sealed class PermissionSnapshotProvider(
 
         var accessVersion = platformUser.AccessVersion <= 0 ? 1 : platformUser.AccessVersion;
 
-        var snapshot = await cache.GetOrCreatePermissionSnapshotAsync(
-            platformUser.UserId,
-            accessVersion,
-            async token =>
-            {
-                var effectivePermissions = isBootstrapAdmin
-                    ? []
-                    : await permissions.GetEffectivePermissionsAsync(platformUser.UserId, token);
+        var grantedPermissions = isBootstrapAdmin
+            ? []
+            : await cache.GetOrCreatePermissionSnapshotAsync(
+                platformUser.UserId,
+                accessVersion,
+                token => _effectivePermissions is null
+                    ? permissions.GetEffectivePermissionsAsync(platformUser.UserId, token)
+                    : _effectivePermissions.GetAsync(platformUser.UserId, token),
+                ct);
 
-                return new PermissionSnapshot(
-                    userId: platformUser.UserId,
-                    authSubject: actor.AuthSubject,
-                    isAuthenticated: true,
-                    isActive: true,
-                    isBootstrapAdmin: isBootstrapAdmin,
-                    accessVersion: accessVersion,
-                    permissions: effectivePermissions);
-            },
-            ct);
+        return new PermissionSnapshot(
+            userId: platformUser.UserId,
+            authSubject: actor.AuthSubject,
+            isAuthenticated: true,
+            isActive: true,
+            isBootstrapAdmin: isBootstrapAdmin,
+            accessVersion: accessVersion,
+            permissions: grantedPermissions ?? []);
+    }
 
-        return snapshot!;
+    // Additive members follow the existing methods to preserve compiler-generated async metadata.
+    private readonly EffectivePermissionService? _effectivePermissions;
+
+    public PermissionSnapshotProvider(
+        ICurrentActorContext currentActor,
+        IPermissionSnapshotRepository permissions,
+        NgbSecurityCache cache,
+        EffectivePermissionService effectivePermissions)
+        : this(currentActor, permissions, cache)
+    {
+        _effectivePermissions = effectivePermissions;
     }
 }

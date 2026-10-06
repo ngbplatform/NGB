@@ -59,6 +59,8 @@ export type DocumentHeaderActionItem = {
   title: string;
   icon: NgbIconName;
   disabled?: boolean;
+  badge?: number | null;
+  ariaLabel?: string;
 };
 
 export type DocumentHeaderActionGroup = {
@@ -192,6 +194,8 @@ export type EntityEditorHandle<TDocumentEffects = DocumentEffects | null> = {
   getIsDirty: () => boolean;
   getCanSave: () => boolean;
   getFlags: () => EntityEditorFlags;
+  getContentActionGroups?: () => DocumentHeaderActionGroup[];
+  handleContentAction?: (action: string) => boolean;
 };
 
 export type AuditFieldChange = {

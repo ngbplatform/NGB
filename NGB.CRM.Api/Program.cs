@@ -1,26 +1,28 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Serilog;
 using NGB.Api;
-using NGB.Hosting.AspNetCore;
-using NGB.Hosting.AspNetCore.ErrorHandling;
+using NGB.Api.Attachments;
 using NGB.Api.Reporting;
-using NGB.Hosting.AspNetCore.Identity;
 using NGB.Api.WorkCenter;
 using NGB.Application.Abstractions.Services;
+using NGB.Attachments.MinIO;
+using NGB.Hosting.AspNetCore;
+using NGB.Hosting.AspNetCore.ErrorHandling;
+using NGB.Hosting.AspNetCore.Identity;
 using NGB.CRM.Api.Services;
 using NGB.CRM.DependencyInjection;
 using NGB.CRM.PostgreSql.DependencyInjection;
 using NGB.CRM.Runtime.DependencyInjection;
 using NGB.CRM.Security;
-using NGB.Runtime.Reporting.Datasets;
-using NGB.Runtime.Reporting.Definitions;
 using NGB.PostgreSql.AspNetCore.DependencyInjection;
 using NGB.PostgreSql.DependencyInjection;
 using NGB.Runtime.DependencyInjection;
 using NGB.Runtime.Hosting;
+using NGB.Runtime.Reporting.Datasets;
+using NGB.Runtime.Reporting.Definitions;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
-using Serilog;
 
 const string projectName = "NGB: CRM - API";
 
@@ -71,6 +73,8 @@ builder.Services.AddExternalLinks(builder.Configuration);
 builder.Services.AddGlobalErrorHandling();
 builder.Services.AddNgbWorkCenterRealtime();
 builder.Services.AddNgbWorkCenterOutboxProcessing(builder.Configuration);
+builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration, services =>
+    services.AddNgbMinioAttachments(builder.Configuration.GetSection("Attachments:MinIO").Bind));
 builder.Services.Configure<MvcOptions>(options => options.Conventions.Add(new CrmApplicationSurfaceConvention()));
 
 builder.Services.AddScoped<IMainMenuContributor, CrmMainMenuContributor>();

@@ -2,17 +2,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const httpMocks = vi.hoisted(() => ({
   httpGet: vi.fn(),
+  httpPost: vi.fn(),
 }))
 
 vi.mock('../../../../src/ngb/api/http', () => ({
   httpGet: httpMocks.httpGet,
+  httpPost: httpMocks.httpPost,
 }))
 
-import { getEntityAuditLog } from '../../../../src/ngb/api/audit'
+import { downloadAuditAttachment, getEntityAuditLog } from '../../../../src/ngb/api/audit'
 
 describe('audit api', () => {
   beforeEach(() => {
     httpMocks.httpGet.mockReset()
+  })
+
+  it('requests retained downloads through the audit endpoint with cancellation', async () => {
+    const signal = new AbortController().signal
+    const result = { url: 'https://storage.test/retained', expiresAtUtc: '2026-10-02T12:00:00Z' }
+    httpMocks.httpPost.mockResolvedValueOnce(result)
+
+    expect(await downloadAuditAttachment('attachment/id', signal)).toEqual(result)
+    expect(httpMocks.httpPost).toHaveBeenCalledWith(
+      '/api/attachments/attachment%2Fid/audit-download', undefined, { signal },
+    )
   })
 
   it('encodes entity identifiers and forwards paging options', async () => {

@@ -25,6 +25,8 @@ async function renderCatalog({ typeCode, editor }: { typeCode: string; editor: C
     const url = new URL(input instanceof Request ? input.url : String(input))
     const method = init?.method ?? 'GET'
     const path = url.pathname
+    if (method === 'GET' && path === '/api/features') return Response.json([])
+    if (method === 'GET' && path === '/api/business-objects/content-summary') return Response.json({ attachments: 0, notes: 0 })
     if (method === 'GET' && path === recordPath) return Response.json(item)
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     writes.push({ method, path, body })

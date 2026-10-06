@@ -47,3 +47,5 @@ export type {
   NotificationPreference,
   WorkCenterItem,
 } from './ngb/work-center/types'
+
+export type { BusinessObjectKind, BusinessObjectRef, ContentSummary, ContentPage, Attachment, Note } from './ngb/business-objects/types'

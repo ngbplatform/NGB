@@ -256,7 +256,7 @@ public sealed class CoreFullCoverageEdgeCaseTests
     [Fact]
     public void SystemPermissions_AllGetterReturnsEveryDeclaredPermission()
     {
-        NgbSystemPermissions.All.Should().HaveCount(15).And.OnlyHaveUniqueItems();
+        NgbSystemPermissions.All.Should().HaveCount(22).And.OnlyHaveUniqueItems();
     }
 
     [Fact]

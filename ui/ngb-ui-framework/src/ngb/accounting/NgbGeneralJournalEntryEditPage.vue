@@ -19,6 +19,8 @@ import NgbInput from '../primitives/NgbInput.vue'
 import NgbTabs from '../primitives/NgbTabs.vue'
 import NgbSelect from '../primitives/NgbSelect.vue'
 import { useToasts } from '../primitives/toast'
+import NgbObjectContent from '../business-objects/NgbObjectContent.vue'
+import NgbMoreActionsMenu from '../components/NgbMoreActionsMenu.vue'
 import NgbPageHeader from '../layout/NgbPageHeader.vue'
 import { navigateBack } from '../router/backNavigation'
 import { copyAppLink } from '../router/shareLink'
@@ -68,6 +70,7 @@ const toasts = useToasts()
 const auth = useAuthStore()
 
 const loading = ref(false)
+const contentRef = ref<InstanceType<typeof NgbObjectContent> | null>(null)
 const saving = ref(false)
 const details = ref<GeneralJournalEntryDetailsDto | null>(null)
 const errorMessages = ref<string[]>([])
@@ -535,6 +538,13 @@ function extractErrorMessages(error: unknown): string[] {
       </template>
 
       <template #actions>
+        <NgbObjectContent
+          v-if="currentId"
+          :key="currentId"
+          ref="contentRef"
+          :target="{ kind: 'GeneralJournalEntry', typeCode: 'general_journal_entry', id: currentId }"
+          :show-actions="false"
+        />
         <button
           v-if="canShareLink"
           class="ngb-iconbtn"
@@ -623,6 +633,11 @@ function extractErrorMessages(error: unknown): string[] {
         >
           <NgbIcon name="undo" />
         </button>
+
+        <NgbMoreActionsMenu
+          :groups="contentRef?.actionGroups ?? []"
+          @action="(action) => contentRef?.handleAction(action)"
+        />
 
         <button class="ngb-iconbtn" :disabled="loading || saving" title="Close" @click="closePage">
           <NgbIcon name="x" />

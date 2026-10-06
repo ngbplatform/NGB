@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import NgbObjectContent from '../business-objects/NgbObjectContent.vue';
 
 import NgbConfirmDialog from '../components/NgbConfirmDialog.vue';
 import NgbDrawer from '../components/NgbDrawer.vue';
@@ -99,6 +100,27 @@ const emit = defineEmits<{
 }>();
 
 const formRef = ref<InstanceType<typeof NgbEntityForm> | null>(null);
+const contentRef = ref<InstanceType<typeof NgbObjectContent> | null>(null);
+
+const moreActionGroups = computed(() => {
+  const groups = [...props.documentMoreActionGroups];
+  const contentGroups = getContentActionGroups();
+  const trailingActions = groups.findIndex(group => group.key === 'actions' || group.key === 'danger-zone');
+  groups.splice(trailingActions < 0 ? groups.length : trailingActions, 0, ...contentGroups);
+  return groups;
+});
+
+function getContentActionGroups(): DocumentHeaderActionGroup[] {
+  return contentRef.value?.actionGroups ?? [];
+}
+
+function handleContentAction(action: string): boolean {
+  return contentRef.value?.handleAction(action) ?? false;
+}
+
+function handleHeaderAction(action: string): void {
+  if (!handleContentAction(action)) emit('action', action);
+}
 
 const visibleBannerIssues = computed(() => {
   const summary = normalizeBannerText(props.displayedError?.summary);
@@ -120,6 +142,8 @@ function focusFirstError(keys: string[]): boolean {
 defineExpose({
   focusField,
   focusFirstError,
+  getContentActionGroups,
+  handleContentAction,
 });
 
 function normalizeBannerText(value: string | null | undefined): string {
@@ -144,10 +168,18 @@ function normalizeBannerText(value: string | null | undefined): string {
       :saving="saving"
       :page-actions="pageActions"
       :document-primary-actions="documentPrimaryActions"
-      :document-more-action-groups="documentMoreActionGroups"
+      :document-more-action-groups="moreActionGroups"
       @back="emit('back')"
       @close="emit('close')"
-      @action="(action) => emit('action', action)"
+      @action="handleHeaderAction"
+    />
+
+    <NgbObjectContent
+      v-if="!isNew && auditEntityId"
+      :key="`${entityTypeCode}:${auditEntityId}`"
+      ref="contentRef"
+      :target="{ kind: kind === 'catalog' ? 'CatalogItem' : 'Document', typeCode: entityTypeCode, id: auditEntityId }"
+      :show-actions="false"
     />
 
     <div :class="mode === 'page' ? 'min-h-0 flex-1 overflow-auto p-6' : 'px-5 py-4'">

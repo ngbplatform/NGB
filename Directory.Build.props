@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <!-- Product / release version -->
-    <Version>3.0.0</Version>
+    <Version>3.1.0</Version>
     <NgbPlatformAssemblyVersion>3.0.0.0</NgbPlatformAssemblyVersion>
     <AssemblyVersion>$(NgbPlatformAssemblyVersion)</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
@@ -12,11 +12,9 @@
     <PackageVersion>$(NgbPlatformPackageVersion)</PackageVersion>
     <NgbPlatformApiCompatibilityBaselineVersion>3.0.0</NgbPlatformApiCompatibilityBaselineVersion>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion
-      Condition="'$(Version)' != '$(NgbPlatformApiCompatibilityBaselineVersion)'">$(NgbPlatformApiCompatibilityBaselineVersion)</PackageValidationBaselineVersion>
     <ApiCompatEnableRuleAttributesMustMatch>true</ApiCompatEnableRuleAttributesMustMatch>
     <ApiCompatEnableRuleCannotChangeParameterName>true</ApiCompatEnableRuleCannotChangeParameterName>
-    <EnableStrictModeForBaselineValidation>true</EnableStrictModeForBaselineValidation>
+    <EnableStrictModeForBaselineValidation>false</EnableStrictModeForBaselineValidation>
     <Authors>NGB Platform</Authors>
     <Company>NGB Platform</Company>
     <Product>NGB Platform</Product>
@@ -27,7 +25,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>NGB;NGB Platform;.NET;PostgreSQL;business applications</PackageTags>
-    <PackageReleaseNotes>Major release: explicit hosting and PostgreSQL adapters, backend and frontend fixes, batched data access and streamed reporting, full-coverage gates, and restructured performance tests. Breaking changes and migration: https://docs.ngbplatform.com/guides/migrating-to-3.0</PackageReleaseNotes>
+    <PackageReleaseNotes>Attachments and plain-text Notes for catalogs, documents and general journal entries, with private object storage, direct uploads, authorization, parent audit history and indefinite file retention. Upgrade: https://docs.ngbplatform.com/architecture/attachments-and-notes</PackageReleaseNotes>
     <Copyright>Copyright (c) NGB Platform 2026</Copyright>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

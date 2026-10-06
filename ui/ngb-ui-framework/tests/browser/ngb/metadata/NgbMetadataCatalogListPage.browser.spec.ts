@@ -31,6 +31,8 @@ const catalogMocks = vi.hoisted(() => ({
   },
   navigateBack: vi.fn(),
   editorHandle: {
+    getContentActionGroups: vi.fn(),
+    handleContentAction: vi.fn(),
     openFullPage: vi.fn(),
     copyShareLink: vi.fn(),
     openAuditLog: vi.fn(),
@@ -269,6 +271,8 @@ async function renderCatalogPage(
 
 beforeEach(() => {
   vi.clearAllMocks()
+  catalogMocks.editorHandle.getContentActionGroups.mockReturnValue([])
+  catalogMocks.editorHandle.handleContentAction.mockReturnValue(false)
   catalogMocks.registerData.loading = false
   catalogMocks.registerData.error = null
   catalogMocks.registerData.page = {
@@ -338,6 +342,21 @@ test('forwards standard and extra drawer actions to the current editor handle', 
     action: 'archive',
     editor: expect.any(Object),
   })
+})
+
+test('routes content menu actions to the editor without running extra actions or closing the drawer', async () => {
+  catalogMocks.editorHandle.getContentActionGroups.mockReturnValue([
+    { key: 'content', label: 'Attachments & Notes', items: [{ key: 'content.notes', title: 'Notes' }] },
+  ])
+  catalogMocks.editorHandle.handleContentAction.mockImplementation(action => action === 'content.notes')
+  const { view } = await renderCatalogPage('/catalogs/pm.property?panel=edit&id=prop-1')
+
+  await view.getByRole('button', { name: 'Drawer action:content.notes' }).click()
+
+  expect(catalogMocks.editorHandle.handleContentAction).toHaveBeenCalledWith('content.notes')
+  expect(catalogMocks.extraActionHandler).not.toHaveBeenCalled()
+  expect(catalogMocks.editorHandle.save).not.toHaveBeenCalled()
+  await expect.element(view.getByText('drawer-open:true')).toBeVisible()
 })
 
 test('applies the generic commit policy by closing drawers after create, save, change, and delete commits', async () => {

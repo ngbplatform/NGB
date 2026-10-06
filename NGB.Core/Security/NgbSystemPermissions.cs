@@ -9,6 +9,14 @@ public static class NgbSystemPermissions
     public static readonly NgbPermissionKey PermissionsView = new(NgbResourceKinds.System, NgbPermissionResources.Permissions, NgbPermissionActions.View);
     public static readonly NgbPermissionKey AuditView = new(NgbResourceKinds.System, NgbPermissionResources.Audit, NgbPermissionActions.View);
 
+    public static readonly NgbPermissionKey AttachmentsRead = new(NgbResourceKinds.System, NgbPermissionResources.Attachments, NgbPermissionActions.Read);
+    public static readonly NgbPermissionKey AttachmentsCreate = new(NgbResourceKinds.System, NgbPermissionResources.Attachments, NgbPermissionActions.Create);
+    public static readonly NgbPermissionKey AttachmentsDelete = new(NgbResourceKinds.System, NgbPermissionResources.Attachments, NgbPermissionActions.Delete);
+    public static readonly NgbPermissionKey NotesRead = new(NgbResourceKinds.System, NgbPermissionResources.Notes, NgbPermissionActions.Read);
+    public static readonly NgbPermissionKey NotesCreate = new(NgbResourceKinds.System, NgbPermissionResources.Notes, NgbPermissionActions.Create);
+    public static readonly NgbPermissionKey NotesUpdate = new(NgbResourceKinds.System, NgbPermissionResources.Notes, NgbPermissionActions.Update);
+    public static readonly NgbPermissionKey NotesDelete = new(NgbResourceKinds.System, NgbPermissionResources.Notes, NgbPermissionActions.Delete);
+
     public static readonly NgbPermissionKey ChartOfAccountsView = new(NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.View);
     public static readonly NgbPermissionKey ChartOfAccountsManage = new(NgbResourceKinds.Admin, NgbPermissionResources.ChartOfAccounts, NgbPermissionActions.Manage);
     public static readonly NgbPermissionKey PeriodClosingView = new(NgbResourceKinds.Admin, NgbPermissionResources.PeriodClosing, NgbPermissionActions.View);
@@ -27,6 +35,13 @@ public static class NgbSystemPermissions
         RolesManage,
         PermissionsView,
         AuditView,
+        AttachmentsRead,
+        AttachmentsCreate,
+        AttachmentsDelete,
+        NotesRead,
+        NotesCreate,
+        NotesUpdate,
+        NotesDelete,
         ChartOfAccountsView,
         ChartOfAccountsManage,
         PeriodClosingView,

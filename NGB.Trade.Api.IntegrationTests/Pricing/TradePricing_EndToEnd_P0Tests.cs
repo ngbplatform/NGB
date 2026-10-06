@@ -1,13 +1,15 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Common;
 using NGB.Contracts.Metadata;
 using NGB.Contracts.Reporting;
+using NGB.IntegrationTests.Content;
 using NGB.Trade.Api.IntegrationTests.Infrastructure;
 using NGB.Trade.Api.IntegrationTests.Support;
-using NGB.Trade.Runtime;
 using NGB.Trade.Reporting;
+using NGB.Trade.Runtime;
 using NGB.Tools.Exceptions;
 using Xunit;
 
@@ -56,7 +58,7 @@ public sealed class TradePricing_EndToEnd_P0Tests(TradePostgresFixture fixture) 
     [Fact]
     public async Task ItemPriceUpdate_Post_Unpost_UpdatesCurrentPricesReport()
     {
-        using var host = TradeHostFactory.Create(fixture.ConnectionString);
+        using var host = TradeHostFactory.Create(fixture.ConnectionString, ContentIntegrationAssertions.Configure);
         await using var scope = host.Services.CreateAsyncScope();
 
         var setup = scope.ServiceProvider.GetRequiredService<ITradeSetupService>();
@@ -103,8 +105,11 @@ public sealed class TradePricing_EndToEnd_P0Tests(TradePostgresFixture fixture) 
 
         draft.Number.Should().NotBeNullOrWhiteSpace();
 
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.CatalogItem, TradeCodes.Item, item.Id);
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.Document, TradeCodes.ItemPriceUpdate, draft.Id);
         var posted = await documents.PostAsync(TradeCodes.ItemPriceUpdate, draft.Id, CancellationToken.None);
         posted.Status.Should().Be(DocumentStatus.Posted);
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.Document, TradeCodes.ItemPriceUpdate, draft.Id);
 
         var definition = await definitions.GetDefinitionAsync(TradeCodes.CurrentItemPricesReport, CancellationToken.None);
         var response = await reports.ExecuteAsync(

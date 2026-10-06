@@ -65,10 +65,15 @@ current major line. For 3.x it is `3.0.0`.
 
 Every `dotnet pack` enables the .NET SDK package-validation and ApiCompat rules. Packing `3.0.0`
 validates the package itself; packing a later `3.x` release also downloads the published `3.0.0`
-package with the same ID and rejects binary/source contract breaks. Do not add ApiCompat
-suppressions for a minor or patch release. An intentional incompatible change requires a new major
-version, an updated compatibility baseline, changelog breaking-change entries, and a migration
-guide.
+package with the same ID and rejects binary/source contract breaks. Baseline strict mode is
+disabled so compatible API additions in minor releases are accepted; package validation and
+the attribute and parameter-name compatibility rules remain enabled. Strict mode requires
+API equality and would reject additions as well as removals
+([Microsoft documentation](https://learn.microsoft.com/dotnet/fundamentals/apicompat/overview#strict-mode)).
+
+Do not add ApiCompat suppressions for a minor or patch release. An intentional incompatible change
+requires a new major version, an updated compatibility baseline, changelog breaking-change entries,
+and a migration guide.
 
 `NgbPlatformAssemblyVersion` remains `3.0.0.0` for the complete 3.x line so minor and patch package
 updates preserve assembly identity. `FileVersion` and `InformationalVersion` continue to identify

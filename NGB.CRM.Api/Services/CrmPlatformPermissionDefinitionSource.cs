@@ -19,6 +19,13 @@ internal sealed class CrmPlatformPermissionDefinitionSource : INgbPermissionDefi
             Def(NgbSystemPermissions.RolesManage, "Manage roles", systemGroup),
             Def(NgbSystemPermissions.PermissionsView, "View permission definitions", systemGroup),
             Def(NgbSystemPermissions.AuditView, "View audit log", systemGroup),
+            Def(NgbResourceKinds.System, "attachments", "read", "Read attachments", systemGroup),
+            Def(NgbResourceKinds.System, "attachments", "create", "Upload attachments", systemGroup),
+            Def(NgbResourceKinds.System, "attachments", "delete", "Delete attachments", systemGroup),
+            Def(NgbResourceKinds.System, "notes", "read", "Read notes", systemGroup),
+            Def(NgbResourceKinds.System, "notes", "create", "Create notes", systemGroup),
+            Def(NgbResourceKinds.System, "notes", "update", "Update notes", systemGroup),
+            Def(NgbResourceKinds.System, "notes", "delete", "Delete notes", systemGroup),
             Def(NgbResourceKinds.Page, CrmCodes.Dashboard, NgbPermissionActions.View, "View CRM dashboard", operationsGroup),
             Def(NgbResourceKinds.External, CrmCodes.Watchdog, NgbPermissionActions.View, "View CRM health", operationsGroup),
             Def(NgbResourceKinds.External, CrmCodes.BackgroundJobs, NgbPermissionActions.View, "View CRM background jobs", operationsGroup)

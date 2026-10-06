@@ -169,3 +169,11 @@ test('omits the optional catalog subtitle when it is blank', async () => {
   await expect.element(view.getByRole('heading', { name: 'Property record' })).toBeVisible()
   expect(document.body.textContent?.includes('Portfolio setup')).toBe(false)
 })
+
+test('catalog drawer exposes the shared content actions slot', async () => {
+  const view = render(NgbEntityEditorHeader, {
+    props: { kind: 'catalog', mode: 'drawer', title: 'Catalog', canBack: false, documentStatusLabel: '', documentStatusTone: 'neutral', loading: false, saving: false, documentPrimaryActions: [], documentMoreActionGroups: [] },
+    slots: { 'content-actions': () => h('button', 'Catalog attachments') },
+  })
+  await expect.element(view.getByRole('button', { name: 'Catalog attachments' })).toBeVisible()
+})

@@ -8,25 +8,29 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\NGB.CRM\NGB.CRM.csproj" />
-        <ProjectReference Include="..\NGB.CRM.Runtime\NGB.CRM.Runtime.csproj" />
+        <ProjectReference Include="..\NGB.CRM\NGB.CRM.csproj"/>
+        <ProjectReference Include="..\NGB.CRM.Runtime\NGB.CRM.Runtime.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-        <Compile Include="..\quality\coverage\ContractSurfaceExercise.cs" Link="Coverage\ContractSurfaceExercise.cs" />
+        <Compile Include="..\quality\coverage\ContractSurfaceExercise.cs" Link="Coverage\ContractSurfaceExercise.cs"/>
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="NGB.Platform.Definitions" Version="$(NgbPlatformPackageVersion)" />
-        <PackageReference Include="NGB.Platform.Metadata" Version="$(NgbPlatformPackageVersion)" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="NGB.Platform.Definitions" Version="$(NgbPlatformPackageVersion)"/>
+        <PackageReference Include="NGB.Platform.Metadata" Version="$(NgbPlatformPackageVersion)"/>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1"/>
+        <PackageReference Include="xunit" Version="2.9.3"/>
         <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="FluentAssertions" Version="8.11.0" />
-        <PackageReference Include="Moq" Version="4.21.0" />
+        <PackageReference Include="FluentAssertions" Version="8.11.0"/>
+        <PackageReference Include="Moq" Version="4.21.0"/>
+        <PackageReference Update="coverlet.collector" Version="10.1.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
     </ItemGroup>
 
 </Project>

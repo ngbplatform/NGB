@@ -1,4 +1,6 @@
 export const NGB_ICON_NAMES = [
+  'paperclip',
+  'sticky-note',
   'arrow-left',
   'arrow-right',
   'plus',

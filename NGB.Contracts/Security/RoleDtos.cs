@@ -28,7 +28,10 @@ public sealed record RoleDetailsDto(
     IReadOnlyList<PermissionAssignmentDto> Permissions,
     IReadOnlyList<UserBadgeDto> AssignedUsers,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc)
+{
+    public bool HasFullAccess { get; init; }
+}
 
 public sealed record CreateRoleRequestDto(
     string Code,
@@ -41,6 +44,6 @@ public sealed record UpdateRoleRequestDto(
     string Name,
     string? Description,
     bool IsActive,
-    IReadOnlyList<PermissionAssignmentDto> Permissions);
+    IReadOnlyList<PermissionAssignmentDto>? Permissions);
 
 public sealed record ReplaceRolePermissionsRequestDto(IReadOnlyList<PermissionAssignmentDto> Permissions);

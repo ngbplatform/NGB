@@ -25,6 +25,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Security
 - N/A
 
+## [3.1.0] - 2026-10-06
+
+### Added
+
+- Added independent, authorized attachments and plain-text notes for Catalog Items, Documents and General Journal Entries.
+- Added separate deployment-wide Attachments and Notes flags backed by `Microsoft.FeatureManagement`, disabled by default and applied at API startup.
+- Added private MinIO direct upload/download, verified completion and logical deletion with indefinite object retention.
+- Added attachment and note history to the parent AuditLog, including note text changes and downloads of retained completed files after logical deletion. No restoration action is provided.
+- Added shared editor drawers under More → Attachments & Notes, counts, pagination and note concurrency.
+- Added database-only expiration of abandoned pending uploads.
+- Added PostgreSQL metadata migrations, local MinIO services based on a digest-pinned prebuilt image, and `Testcontainers.Minio` integration coverage.
+- See the [Attachments & Notes guide](docs/architecture/attachments-and-notes.md) and [Feature Flags guide](docs/architecture/feature-flags.md) for upgrade and operating requirements.
+
 ## [3.0.0] - 2026-09-29
 
 ### Breaking changes
@@ -201,7 +214,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Notes
 - This release establishes the first public baseline of the NGB Platform repository.
 
-[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/ngbplatform/ngb/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/ngbplatform/ngb/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/ngbplatform/ngb/compare/v1.3.1...v2.0.0
 [1.3.1]: https://github.com/ngbplatform/ngb/compare/v1.2.0...v1.3.1

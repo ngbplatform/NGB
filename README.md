@@ -24,8 +24,8 @@
 </p>
 
 <p align="center">
-  Current release: <strong>3.0.0</strong> ·
-  <a href="docs/guides/migrating-to-3.0.md">Migration guide from 2.0.0</a>
+  Current release: <strong>3.1.0</strong> ·
+  <a href="docs/architecture/attachments-and-notes.md">Attachments &amp; Notes upgrade guide</a>
 </p>
 
 <p align="center">

@@ -7,6 +7,16 @@ import { StubIcon } from '../accounting/stubs'
 
 const auditSidebarMocks = vi.hoisted(() => ({
   loadEntityAuditLog: vi.fn(),
+  downloadAuditAttachment: vi.fn(),
+  startAttachmentDownload: vi.fn(),
+}))
+
+vi.mock('../../../../src/ngb/api/audit', () => ({
+  downloadAuditAttachment: auditSidebarMocks.downloadAuditAttachment,
+}))
+
+vi.mock('../../../../src/ngb/business-objects/api', () => ({
+  startAttachmentDownload: auditSidebarMocks.startAttachmentDownload,
 }))
 
 vi.mock('../../../../src/ngb/editor/config', () => ({
@@ -44,6 +54,7 @@ async function flushUi() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  auditSidebarMocks.downloadAuditAttachment.mockReset()
 })
 
 const AuditSidebarHarness = defineComponent({
@@ -523,4 +534,158 @@ test('ignores a stale audit failure after another entity has loaded', async () =
   await flushUi()
   expect(document.body.textContent).not.toContain('stale audit failure')
   await expect.element(view.getByText('Updated by Current actor', { exact: true })).toBeVisible()
+})
+
+test('preserves literal note text and deleted content while paging through the parent audit', async () => {
+  const text = '2026-10-02\n<script>plain_text</script>\n  true'
+  const cursor = { occurredAtUtc: '2026-10-02T10:00:00Z', auditEventId: 'deleted-note' }
+  const event = {
+    auditEventId: 'deleted-note', entityKind: 1, entityId: 'parent',
+    actionCode: 'notes.mark_for_deletion', actor: { displayName: 'Alex Carter' },
+    occurredAtUtc: cursor.occurredAtUtc,
+    changes: [{ fieldPath: 'note.text', oldValueJson: JSON.stringify(text), newValueJson: JSON.stringify(text) }],
+  }
+  auditSidebarMocks.loadEntityAuditLog
+    .mockResolvedValueOnce({ items: [event], nextCursor: cursor, limit: 25 })
+    .mockRejectedValueOnce(new Error('Temporary failure'))
+    .mockResolvedValueOnce({
+      items: [{ ...event, auditEventId: 'original-note', actionCode: 'notes.created' }], nextCursor: null, limit: 25,
+    })
+
+  const view = await render(AuditSidebarHarness)
+  await expect.element(view.getByText('Note marked for deletion by Alex Carter', { exact: true })).toBeVisible()
+  const values = Array.from(document.querySelectorAll('td')).filter((cell) => cell.textContent === text)
+  expect(values).toHaveLength(2)
+  expect(values[0]?.querySelector('script')).toBeNull()
+  expect(getComputedStyle(values[0]!).whiteSpace).toBe('pre-wrap')
+
+  await view.getByRole('button', { name: 'Load older events' }).click()
+  await expect.element(view.getByRole('alert')).toHaveTextContent('Temporary failure')
+  await expect.element(view.getByText('Note marked for deletion by Alex Carter', { exact: true })).toBeVisible()
+  await view.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect.element(view.getByText('Note added by Alex Carter', { exact: true })).toBeVisible()
+  expect(auditSidebarMocks.loadEntityAuditLog).toHaveBeenLastCalledWith(3, 'coa-1', expect.objectContaining({
+    afterOccurredAtUtc: cursor.occurredAtUtc, afterAuditEventId: cursor.auditEventId, limit: 25,
+  }))
+  await expect.element(view.getByRole('button', { name: 'Load older events' })).not.toBeInTheDocument()
+})
+
+test('advances past a page whose content events were filtered by permissions', async () => {
+  auditSidebarMocks.loadEntityAuditLog
+    .mockResolvedValueOnce({ items: [], nextCursor: { occurredAtUtc: '2026-10-02T10:00:00Z', auditEventId: 'hidden' }, limit: 25 })
+    .mockResolvedValueOnce({ items: [], nextCursor: null, limit: 25 })
+  const view = await render(AuditSidebarHarness)
+  await view.getByRole('button', { name: 'Load older events' }).click()
+  await expect.element(view.getByText('No history yet.', { exact: true })).toBeVisible()
+  expect(auditSidebarMocks.loadEntityAuditLog).toHaveBeenLastCalledWith(3, 'coa-1', expect.objectContaining({ afterAuditEventId: 'hidden' }))
+})
+
+test('downloads a retained attachment through the audit endpoint and cancels stale downloads on navigation', async () => {
+  const id = '019ba24b-458b-7009-b186-000000000001'
+  const event = {
+    auditEventId: 'deleted-attachment', entityKind: 1, entityId: 'parent',
+    actionCode: 'attachments.mark_for_deletion', actor: null, occurredAtUtc: '2026-10-02T10:00:00Z',
+    metadataJson: JSON.stringify({ attachmentId: id, downloadAvailable: true }),
+    changes: [{ fieldPath: 'attachment.file_name', oldValueJson: null, newValueJson: JSON.stringify('my_file.txt') }],
+  }
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({ items: [event], nextCursor: null, limit: 25 })
+  auditSidebarMocks.downloadAuditAttachment.mockResolvedValueOnce({ url: 'https://storage.test/retained' })
+  const view = await render(AuditSidebarStatefulHarness)
+  await expect.element(view.getByText('my_file.txt', { exact: true })).toBeVisible()
+  await view.getByRole('button', { name: 'Download attachment' }).click()
+  expect(auditSidebarMocks.downloadAuditAttachment).toHaveBeenCalledWith(id, expect.any(AbortSignal))
+  expect(auditSidebarMocks.startAttachmentDownload).toHaveBeenCalledWith('https://storage.test/retained')
+
+  const pending = createDeferred<{ url: string }>()
+  auditSidebarMocks.downloadAuditAttachment.mockReturnValueOnce(pending.promise)
+  await view.getByRole('button', { name: 'Download attachment' }).click()
+  const signal = auditSidebarMocks.downloadAuditAttachment.mock.calls.at(-1)![1] as AbortSignal
+  await view.getByRole('button', { name: 'Switch entity' }).click()
+  expect(signal.aborted).toBe(true)
+  pending.resolve({ url: 'https://storage.test/stale' })
+  await flushUi()
+  expect(auditSidebarMocks.startAttachmentDownload).toHaveBeenCalledTimes(1)
+})
+
+function attachmentAuditEvent(metadata: unknown) {
+  return {
+    auditEventId: 'attachment-event',
+    entityKind: 3,
+    entityId: 'coa-1',
+    actionCode: 'attachments.mark_for_deletion',
+    actor: null,
+    occurredAtUtc: '2026-10-02T10:00:00Z',
+    metadataJson: JSON.stringify(metadata),
+    changes: [],
+  }
+}
+
+test.each([
+  null,
+  'unavailable',
+  [],
+  {},
+  { attachmentId: '019ba24b-458b-7009-b186-000000000001', downloadAvailable: false },
+  { attachmentId: 42, downloadAvailable: true },
+  { attachmentId: '../another-file', downloadAvailable: true },
+])('hides attachment downloads for invalid or unavailable metadata: %j', async metadata => {
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({
+    items: [attachmentAuditEvent(metadata)], nextCursor: null, limit: 25,
+  })
+  const view = await render(AuditSidebarHarness)
+
+  await expect.element(view.getByText('Attachment marked for deletion by System', { exact: true })).toBeVisible()
+  await expect.element(view.getByRole('button', { name: 'Download attachment' })).not.toBeInTheDocument()
+  expect(auditSidebarMocks.downloadAuditAttachment).not.toHaveBeenCalled()
+})
+
+test('prevents duplicate downloads, shows a failed download, and allows a successful retry', async () => {
+  const id = '019ba24b-458b-7009-b186-000000000001'
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({
+    items: [attachmentAuditEvent({ attachmentId: id, downloadAvailable: true })], nextCursor: null, limit: 25,
+  })
+  const pending = createDeferred<{ url: string }>()
+  auditSidebarMocks.downloadAuditAttachment
+    .mockReturnValueOnce(pending.promise)
+    .mockResolvedValueOnce({ url: 'https://storage.test/retried' })
+  const view = await render(AuditSidebarHarness)
+  const download = view.getByRole('button', { name: 'Download attachment' })
+  await expect.element(download).toBeEnabled()
+
+  const button = download.element() as HTMLButtonElement
+  button.click()
+  button.click()
+  await expect.element(view.getByRole('button', { name: 'Preparing download…' })).toBeDisabled()
+  expect(auditSidebarMocks.downloadAuditAttachment).toHaveBeenCalledOnce()
+
+  pending.reject(new Error('Storage unavailable'))
+  await expect.element(view.getByRole('alert')).toHaveTextContent('Storage unavailable')
+  await expect.element(download).toBeEnabled()
+  expect(auditSidebarMocks.startAttachmentDownload).not.toHaveBeenCalled()
+
+  await download.click()
+  await expect.element(view.getByRole('alert')).not.toBeInTheDocument()
+  expect(auditSidebarMocks.downloadAuditAttachment).toHaveBeenCalledTimes(2)
+  expect(auditSidebarMocks.startAttachmentDownload).toHaveBeenCalledWith('https://storage.test/retried')
+})
+
+test('ignores download failures after switching to another entity', async () => {
+  const id = '019ba24b-458b-7009-b186-000000000001'
+  auditSidebarMocks.loadEntityAuditLog.mockResolvedValue({
+    items: [attachmentAuditEvent({ attachmentId: id, downloadAvailable: true })], nextCursor: null, limit: 25,
+  })
+  const pending = createDeferred<{ url: string }>()
+  auditSidebarMocks.downloadAuditAttachment.mockReturnValueOnce(pending.promise)
+  const view = await render(AuditSidebarStatefulHarness)
+
+  await view.getByRole('button', { name: 'Download attachment' }).click()
+  const signal = auditSidebarMocks.downloadAuditAttachment.mock.calls[0]![1] as AbortSignal
+  await view.getByRole('button', { name: 'Switch entity' }).click()
+  expect(signal.aborted).toBe(true)
+
+  pending.reject(new Error('Previous download failed'))
+  await flushUi()
+  await expect.element(view.getByTestId('audit-entity-id')).toHaveTextContent('coa-2')
+  await expect.element(view.getByRole('alert')).not.toBeInTheDocument()
+  expect(auditSidebarMocks.startAttachmentDownload).not.toHaveBeenCalled()
 })

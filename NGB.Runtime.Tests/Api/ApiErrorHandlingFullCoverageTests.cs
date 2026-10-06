@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Moq;
 using NGB.Hosting.AspNetCore.ErrorHandling;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -158,6 +159,29 @@ public sealed class ApiErrorHandlingFullCoverageTests
             "external.unavailable",
             noDetailLeak: true,
             exceptionMappers: [new ExternalInfrastructureExceptionMapper()]);
+
+    [Fact]
+    public void Infrastructure_mapping_preserves_ngb_error_contract_and_uses_the_first_matching_status()
+    {
+        var unavailable = new Mock<INgbExceptionHttpMapper>();
+        unavailable.Setup(x => x.TryMap(It.IsAny<Exception>()))
+            .Returns(new NgbExceptionHttpMapping(503, "provider.error", NgbErrorKind.Infrastructure));
+        var unexpected = new Mock<INgbExceptionHttpMapper>(MockBehavior.Strict);
+        var exception = new TestNgbException(NgbErrorKind.Infrastructure);
+
+        var problem = exception.ToProblemDetails(
+            [new ExternalInfrastructureExceptionMapper(), unavailable.Object, unexpected.Object]);
+
+        problem.Status.Should().Be(503);
+        problem.Detail.Should().NotContain("test message");
+        Error(problem).Code.Should().Be("test.error");
+        Error(problem).Context.Should().BeAssignableTo<IReadOnlyDictionary<string, object?>>()
+            .Which.Should().ContainKey("value").WhoseValue.Should().Be(1);
+        unexpected.VerifyNoOtherCalls();
+
+        AssertProblem(exception, 500, "test.error", noDetailLeak: true,
+            exceptionMappers: [new ExternalInfrastructureExceptionMapper()]);
+    }
 
     private static void AssertProblem(
         Exception exception,

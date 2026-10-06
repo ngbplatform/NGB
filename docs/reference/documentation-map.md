@@ -14,7 +14,7 @@ const readingChart = String.raw`flowchart TB
     Home --> Reference["Reference"]
 
     StartHere --> StartHereDetail["Onboarding, runbooks, reading order"]
-    Architecture --> ArchitectureDetail["Layering, execution, business concepts"]
+    Architecture --> ArchitectureDetail["Layering, execution, business concepts, cross-cutting capabilities"]
     Ecosystem --> EcosystemDetail["External evaluation, integration, ecosystem fit"]
     Platform --> PlatformDetail["Modules, source maps, deep dives, collaborator maps"]
     DocumentWorkflows --> DocumentWorkflowsDetail["Actions, Work Center, API, migration"]
@@ -49,6 +49,8 @@ This page is the complete navigation hub for the NGB Platform documentation site
 | I need to trace reporting execution | [Reporting Execution Map](/platform/reporting-execution-map) |
 | I need the curated deep-dive set | [Topic Chapters Index](/platform/topic-chapters-index) |
 | I need to implement Document Actions or Work Center | [Document Actions and Work Center](/guides/document-actions-and-work-center) |
+| I need to configure or extend deployment-wide feature flags | [Feature Flags](/architecture/feature-flags) |
+| I need to enable attachments and notes or configure their storage | [Attachments & Notes](/architecture/attachments-and-notes) |
 | I am upgrading an existing 2.x solution to 3.0.0 | [Migration 2.0.0 → 3.0.0](/guides/migrating-to-3.0) |
 | I am upgrading an existing solution to 2.0.0 | [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0) |
 | I need the Document Actions or Work Center HTTP contract | [Document Actions and Work Center API](/reference/document-actions-work-center-api) |
@@ -95,7 +97,6 @@ Use Start Here before deep-diving into individual modules.
 - [Documents](/architecture/documents)
 - [Document Flow](/architecture/document-flow)
 - [Document Actions](/architecture/document-actions)
-- [Work Center](/architecture/work-center)
 - [Accounting Effects](/architecture/accounting-effects)
 - [Reporting: Canonical and Composable](/architecture/reporting)
 - [Report Browsing and Direct Downloads](/architecture/report-execution-results)
@@ -105,7 +106,13 @@ Use Start Here before deep-diving into individual modules.
 - [Reference Registers](/architecture/reference-registers)
 - [Derive](/architecture/derive)
 - [Append-only and Storno](/architecture/append-only-and-storno)
+
+### Cross-cutting capabilities
+
+- [Work Center](/architecture/work-center)
 - [Idempotency and Concurrency](/architecture/idempotency-and-concurrency)
+- [Feature Flags](/architecture/feature-flags)
+- [Attachments & Notes](/architecture/attachments-and-notes)
 
 Use Architecture when the question is “how the platform works” rather than “where a file lives”.
 

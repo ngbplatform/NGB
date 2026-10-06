@@ -2,13 +2,15 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NGB.Application.Abstractions.Services;
+using NGB.Contracts.BusinessObjects;
 using NGB.Contracts.Documents;
+using NGB.Contracts.Metadata;
+using NGB.Core.Documents.Actions;
 using NGB.CRM.Api.IntegrationTests.Infrastructure;
 using NGB.CRM.Api.IntegrationTests.Support;
 using NGB.CRM.Runtime;
 using NGB.CRM.Runtime.DocumentActions;
-using NGB.Contracts.Metadata;
-using NGB.Core.Documents.Actions;
+using NGB.IntegrationTests.Content;
 using NGB.Runtime.Security;
 using NGB.Tools.Exceptions;
 using Xunit;
@@ -24,7 +26,7 @@ public sealed class CrmDocuments_Lifecycle_And_Validation_P0Tests(CrmPostgresFix
     [Fact]
     public async Task Lead_To_Quote_Workflow_Posts_Documents_Mirrors_Relationships_And_Refreshes_Quote_Amount()
     {
-        using var host = CrmHostFactory.Create(fixture.ConnectionString);
+        using var host = CrmHostFactory.Create(fixture.ConnectionString, ContentIntegrationAssertions.Configure);
         await using var scope = host.Services.CreateAsyncScope();
 
         var setup = scope.ServiceProvider.GetRequiredService<ICrmSetupService>();
@@ -68,8 +70,11 @@ public sealed class CrmDocuments_Lifecycle_And_Validation_P0Tests(CrmPostgresFix
             estimated_value = 25000m,
             currency = CrmCodes.DefaultCurrency
         }), CancellationToken.None);
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.CatalogItem, CrmCodes.Account, account.Id);
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.Document, CrmCodes.LeadIntake, lead.Id);
         lead = await documents.PostAsync(CrmCodes.LeadIntake, lead.Id, CancellationToken.None);
         lead.Status.Should().Be(DocumentStatus.Posted);
+        await ContentIntegrationAssertions.VerifyAsync(scope.ServiceProvider, BusinessObjectKind.Document, CrmCodes.LeadIntake, lead.Id);
         lead.Number.Should().NotBeNullOrWhiteSpace();
 
         var qualification = await documents.CreateDraftAsync(CrmCodes.LeadQualification, CrmIntegrationTestHelpers.Payload(new

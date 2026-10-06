@@ -2,16 +2,19 @@
 import { computed } from 'vue';
 
 import NgbIcon from '../primitives/NgbIcon.vue';
+import NgbMoreActionsMenu from '../components/NgbMoreActionsMenu.vue';
 
-import type { EntityEditorFlags, EntityHeaderIconAction } from './types';
+import type { DocumentHeaderActionGroup, EntityEditorFlags, EntityHeaderIconAction } from './types';
 
 const props = withDefaults(defineProps<{
   flags: EntityEditorFlags;
   extraActions?: EntityHeaderIconAction[];
+  moreGroups?: DocumentHeaderActionGroup[];
   restoreTitle?: string;
   markForDeletionTitle?: string;
 }>(), {
   extraActions: () => [],
+  moreGroups: () => [],
   restoreTitle: 'Unmark for deletion',
   markForDeletionTitle: 'Mark for deletion',
 });
@@ -85,4 +88,6 @@ const markIcon = computed(() => props.flags.canUnmarkForDeletion ? 'trash-restor
   >
     <NgbIcon name="save" />
   </button>
+
+  <NgbMoreActionsMenu :groups="moreGroups" @action="(action) => emit('action', action)" />
 </template>

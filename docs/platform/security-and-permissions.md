@@ -66,9 +66,19 @@ Roles and permissions are stored in NGB tables. Property Management seeds defaul
 
 Seeders are additive: existing roles are not overwritten.
 
-## Bootstrap Admin
+## Administrators
 
-The Keycloak role `ngb-admin` is treated as a bootstrap application administrator. It can access all permissions while the first NGB application roles are created or repaired.
+An active administrator has all application permissions. The trusted Keycloak role `ngb-admin` grants this access without requiring a pre-existing NGB user record. A platform identity is created when an audited mutation needs it.
+
+Application administrator roles in the database also receive all permissions from the platform definition registry. Property Management registers `pm-administrator`; CRM registers `crm.administrator`. Other verticals can register their canonical application administrator role codes through `NgbAdministratorOptions.ApplicationRoleCodes`. This uses exact role codes with case-insensitive comparison, not editable display names. Nonadministrator roles continue to use their explicit grants.
+
+Canonical administrator roles are protected by the Role Management API. Their code cannot be changed, they cannot be deactivated, and their permission matrix cannot be replaced. Registered administrator codes are reserved: ordinary roles cannot be created or renamed to use them. Names and descriptions remain editable, and an existing inactive administrator role can be reactivated.
+
+CRM bootstrap provisions its canonical administrator role as a system role without explicit permission grants and preserves an existing role. The HTTP endpoint for applying CRM defaults requires both `system.roles.manage` and `system.users.manage`.
+
+Role details return `hasFullAccess: true` and the current registered permissions for these roles. The editor displays “Full access to all current and future permissions” and makes the matrix read-only. When updating an administrator's name or description, omit `permissions` or send `null`; an unchanged full permission set is also accepted without persisting it. Attempts to change protected properties return HTTP `409` with error code `ngb.security.administrator_role_protected`. These restrictions apply to direct API requests, including requests made by administrators.
+
+Inactive users and inactive role assignments do not gain administrator access. Feature flags control deployment availability independently of permissions. Permission caches retain database grants by access version; the trusted Keycloak administrator claim is evaluated for each request and is not inherited from a previous request's cached snapshot.
 
 For regular users, Keycloak roles are not the source of application authorization. Use NGB roles and permissions.
 

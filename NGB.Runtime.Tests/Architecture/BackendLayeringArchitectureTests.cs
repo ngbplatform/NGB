@@ -308,6 +308,22 @@ public sealed class BackendLayeringArchitectureTests
             && descriptor.ImplementationType == typeof(DefinitionsStartupValidatorHostedService));
     }
 
+    [Fact]
+    public void Attachment_and_note_capabilities_preserve_provider_and_vertical_boundaries()
+    {
+        var root = FindRepositoryRoot();
+        foreach (var name in new[] { "NGB.Attachments", "NGB.Notes", "NGB.Application.Abstractions" })
+        {
+            var references = ReadReferences(root, $"{name}/{name}.csproj");
+            references.Should().NotContain(reference => new[] { "Minio", "Npgsql", "Dapper", "PostgreSql", "AspNetCore", "NGB.Runtime" }
+                .Any(marker => reference.Contains(marker, StringComparison.OrdinalIgnoreCase)));
+            ReadSources(root, name).Should().NotContain(source => source.Contains("BackgroundService", StringComparison.Ordinal));
+        }
+        ReadReferences(root, "NGB.Runtime/NGB.Runtime.csproj").Should().NotContain(reference => reference.Contains("MinIO", StringComparison.OrdinalIgnoreCase));
+        ReadSources(root, "NGB.Runtime/BusinessObjects").Should().NotContain(source =>
+            new[] { "pm.", "trade.", "ab.", "crm." }.Any(marker => source.Contains(marker, StringComparison.OrdinalIgnoreCase)));
+    }
+
     private static IReadOnlyList<string> ReadReferences(string root, string relativeProject)
         => XDocument.Load(Path.Combine(root, relativeProject))
             .Descendants()

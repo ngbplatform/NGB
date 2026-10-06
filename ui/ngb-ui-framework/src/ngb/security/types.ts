@@ -102,6 +102,7 @@ export type RoleDetailsDto = {
   description?: string | null
   isSystem: boolean
   isActive: boolean
+  hasFullAccess?: boolean
   permissions: PermissionAssignmentDto[]
   assignedUsers: UserBadgeDto[]
   createdAtUtc: string
@@ -120,7 +121,7 @@ export type UpdateRoleRequestDto = {
   name: string
   description?: string | null
   isActive: boolean
-  permissions: PermissionAssignmentDto[]
+  permissions?: PermissionAssignmentDto[] | null
 }
 
 export type ReplaceRolePermissionsRequestDto = {

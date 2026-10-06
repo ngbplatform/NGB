@@ -20,6 +20,70 @@ public sealed class PostgresSeekPageLifecycleTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
+    public async Task Successful_page_waits_for_asynchronous_cleanup_and_propagates_cleanup_failure(
+        bool document,
+        bool disposalFails)
+    {
+        var disposalError = new InvalidOperationException("Injected reader disposal failure");
+        var disposeStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseDispose = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reader = new Mock<DbDataReader>();
+        var reads = 0;
+
+        reader.SetupGet(x => x.FieldCount).Returns(1);
+        reader.Setup(x => x.GetName(0)).Returns("Total");
+        reader.Setup(x => x.GetFieldType(0)).Returns(typeof(long));
+        reader.Setup(x => x.GetValue(0)).Returns(0L);
+        reader.Setup(x => x.ReadAsync(It.IsAny<CancellationToken>())).Returns(() => Task.FromResult(++reads == 1));
+        // Leave a trailing result to be disposed by the reader's await-using scope.
+        reader.Setup(x => x.NextResultAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        reader.Setup(x => x.DisposeAsync()).Returns(() =>
+        {
+            disposeStarted.TrySetResult();
+            return new ValueTask(releaseDispose.Task);
+        });
+
+        var connection = new RecordingDbConnection(readerFactory: _ => reader.Object);
+        var uow = new RecordingUnitOfWork(connection);
+
+        Task operation = document
+            ? new PostgresDocumentReader(uow, []).GetSeekPageAsync(
+                new("invoice", "doc_invoice", "name", []), new("Alpha", []), null, null, 10, true)
+            : new PostgresCatalogReader(uow).GetSeekPageAsync(
+                new("customers", "cat_customers", "name", []), new("Alpha", []), null, null, 10, true);
+
+        try
+        {
+            await disposeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            operation.IsCompleted.Should().BeFalse("the connection must not be reused before cleanup completes");
+        }
+        finally
+        {
+            if (disposalFails)
+                releaseDispose.TrySetException(disposalError);
+            else
+                releaseDispose.TrySetResult();
+        }
+
+        if (disposalFails)
+        {
+            var error = await ((Func<Task>)(() => operation)).Should().ThrowAsync<InvalidOperationException>();
+            error.Which.Should().BeSameAs(disposalError);
+        }
+        else
+        {
+            await operation;
+        }
+
+        reader.Verify(x => x.DisposeAsync(), Times.Once);
+        connection.Commands.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
     public async Task Filtered_page_returns_total_and_materialized_rows_after_disposing_both_result_sets(bool document, bool hasRows)
     {
         var id = Guid.NewGuid();

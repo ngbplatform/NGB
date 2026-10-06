@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
@@ -8,7 +9,7 @@ using NGB.Testing.Containers;
 
 namespace NGB.PropertyManagement.Api.IntegrationTests.Infrastructure;
 
-public sealed class PmKeycloakFixture : IAsyncDisposable
+public sealed class PmKeycloakFixture(string? browserOrigin = null) : IAsyncDisposable
 {
     private const string RealmName = "ngb-pm-tests";
     private const int HttpPort = 8080;
@@ -33,6 +34,15 @@ public sealed class PmKeycloakFixture : IAsyncDisposable
     public async Task InitializeAsync()
     {
         var realmImportFile = ResolveRealmImportFile();
+        var realm = JsonNode.Parse(await File.ReadAllTextAsync(realmImportFile.FullName))!;
+
+        if (browserOrigin is not null)
+        {
+            var webClient = realm["clients"]!.AsArray()
+                .Single(client => client!["clientId"]!.GetValue<string>() == PmKeycloakTestClients.WebClient)!;
+            webClient["redirectUris"]!.AsArray().Add($"{browserOrigin}/*");
+            webClient["webOrigins"]!.AsArray().Add(browserOrigin);
+        }
 
         _container = new ContainerBuilder("quay.io/keycloak/keycloak:26.5.6")
             .WithName($"ngb-pm-keycloak-{Guid.NewGuid():N}")
@@ -40,7 +50,9 @@ public sealed class PmKeycloakFixture : IAsyncDisposable
             .WithEnvironment("KEYCLOAK_ADMIN", "admin")
             .WithEnvironment("KEYCLOAK_ADMIN_PASSWORD", "admin")
             .WithCommand("start-dev", "--hostname-strict=false", "--import-realm")
-            .WithResourceMapping(realmImportFile, new FileInfo("/opt/keycloak/data/import/ngb-pm-tests-realm.json"))
+            .WithResourceMapping(
+                System.Text.Encoding.UTF8.GetBytes(realm.ToJsonString()),
+                "/opt/keycloak/data/import/ngb-pm-tests-realm.json")
             .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(request => request
                 .ForPort(HttpPort)
                 .ForPath($"/realms/{RealmName}/.well-known/openid-configuration")))

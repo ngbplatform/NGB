@@ -5,6 +5,7 @@ import {
   NgbCommandPaletteDialog,
   NgbSiteShell,
   normalizeNgbRouteAliasPath,
+  useAccessStore,
   useAuthStore,
   useCommandPaletteHotkeys,
   useCommandPaletteStore,
@@ -15,6 +16,7 @@ import type { SiteNavNode, SiteQuickLink } from '@ngbplatform/ui'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const access = useAccessStore()
 const menu = useMainMenuStore()
 const palette = useCommandPaletteStore()
 
@@ -24,11 +26,13 @@ watch(
   () => auth.authenticated,
   async (authenticated) => {
     if (!authenticated) {
+      access.reset()
       menu.reset()
       return
     }
 
     await Promise.all([
+      access.load(true),
       menu.load(),
       palette.hydrate(),
     ])

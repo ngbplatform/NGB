@@ -1,4 +1,8 @@
 <Project>
+  <!-- Baselines exist only for previously published platform packages, not hosts or new capabilities. -->
+  <PropertyGroup Condition="'$(Version)' != '$(NgbPlatformApiCompatibilityBaselineVersion)' and '$(NgbPlatformHasApiBaseline)' != 'false' and $([System.String]::Copy('$(PackageId)').StartsWith('NGB.Platform.'))">
+    <PackageValidationBaselineVersion>$(NgbPlatformApiCompatibilityBaselineVersion)</PackageValidationBaselineVersion>
+  </PropertyGroup>
   <ItemGroup Condition="'$(IsPackable)' != 'false' and '$(PackageId)' != ''">
     <None Include="$(MSBuildThisFileDirectory)packaging/nuget/readme/$(PackageId).md"
           Pack="true"
