@@ -25,7 +25,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Security
 - N/A
 
-## [3.1.0] - 2026-10-01
+## [3.1.0] - 2026-10-06
 
 ### Added
 
