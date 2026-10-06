@@ -25,7 +25,7 @@
 
 <p align="center">
   Current release: <strong>3.1.0</strong> ·
-  <a href="docs/guides/attachments-and-notes.md">Attachments &amp; Notes upgrade guide</a>
+  <a href="docs/architecture/attachments-and-notes.md">Attachments &amp; Notes upgrade guide</a>
 </p>
 
 <p align="center">

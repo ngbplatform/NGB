@@ -104,7 +104,7 @@ Feature state is fixed at API startup. After changing `.env`, recreate the API c
 
 Upload expiration runs inside the API host, not Hangfire. It changes database metadata and writes AuditLog events; it never deletes MinIO objects. MinIO configuration is required only when the Attachments feature is enabled, although the provided full Compose stacks still start storage.
 
-See [Feature Flags](/guides/feature-flags) for rollout and registration, and [Attachments & Notes configuration](/guides/attachments-and-notes#configuration) for all limits, lifetimes, storage requirements and production configuration.
+See [Feature Flags](/architecture/feature-flags) for rollout and registration, and [Attachments & Notes configuration](/architecture/attachments-and-notes#configuration) for all limits, lifetimes, storage requirements and production configuration.
 
 ### Reporting
 
@@ -217,8 +217,8 @@ The shared migrator runner supports both command-line flags and environment-vari
 
 ## Related pages
 
-- [Feature Flags](/guides/feature-flags)
-- [Attachments & Notes](/guides/attachments-and-notes)
+- [Feature Flags](/architecture/feature-flags)
+- [Attachments & Notes](/architecture/attachments-and-notes)
 - [Manual local runbook](/start-here/manual-local-runbook)
 - [Security and SSO](/platform/security-and-sso)
 - [Migrator CLI](/reference/migrator-cli)

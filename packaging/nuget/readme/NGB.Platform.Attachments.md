@@ -4,4 +4,4 @@ Provider-neutral attachment service and object-storage contracts, metadata recor
 
 Runtime and API hosting enforce the Attachments feature flag, parent access and content permissions. Logical deletion retains stored files, and completed attachments remain downloadable through the parent AuditLog when authorized.
 
-See the [Attachments & Notes guide](https://github.com/ngbplatform/NGB/blob/main/docs/guides/attachments-and-notes.md) for configuration, lifecycle, permissions and operations.
+See the [Attachments & Notes guide](https://github.com/ngbplatform/NGB/blob/main/docs/architecture/attachments-and-notes.md) for configuration, lifecycle, permissions and operations.

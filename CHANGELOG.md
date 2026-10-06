@@ -36,7 +36,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Added shared editor drawers under More → Attachments & Notes, counts, pagination and note concurrency.
 - Added database-only expiration of abandoned pending uploads.
 - Added PostgreSQL metadata migrations, local MinIO services based on a digest-pinned prebuilt image, and `Testcontainers.Minio` integration coverage.
-- See the [Attachments & Notes guide](docs/guides/attachments-and-notes.md) and [Feature Flags guide](docs/guides/feature-flags.md) for upgrade and operating requirements.
+- See the [Attachments & Notes guide](docs/architecture/attachments-and-notes.md) and [Feature Flags guide](docs/architecture/feature-flags.md) for upgrade and operating requirements.
 
 ## [3.0.0] - 2026-09-29
 

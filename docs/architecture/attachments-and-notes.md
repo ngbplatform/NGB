@@ -35,7 +35,7 @@ Content actions do not require editing or unposting the parent. They require nor
 
 `NGB.Platform.Attachments` and `NGB.Platform.Notes` define separate capabilities; Runtime orchestrates them; PostgreSql persists metadata; `NGB.Platform.Attachments.MinIO` alone references the MinIO SDK. Contracts are provider neutral. Notes do not depend on storage. CRM consumes released platform NuGet and npm packages, with no production platform ProjectReference.
 
-Both features default to disabled. See [Feature Flags](/guides/feature-flags) for independent enablement, startup behavior and pending upload expiration. API hosts configure storage through the conditional registration callback:
+Both features default to disabled. See [Feature Flags](/architecture/feature-flags) for independent enablement, startup behavior and pending upload expiration. API hosts configure storage through the conditional registration callback:
 
 ```csharp
 builder.Services.AddNgbAttachmentsNotesApi(builder.Configuration, services =>

@@ -95,7 +95,7 @@ Content marked for deletion disappears from the normal content drawers and remai
 
 Content history requires the relevant feature, parent read access, audit access and the content read permission. Download authorization is checked again when the button is clicked. Disabling a feature hides its content events without deleting the audit records.
 
-See [Attachments & Notes history](/guides/attachments-and-notes#history-in-the-parent-auditlog) for action codes, pagination, download availability and retention requirements.
+See [Attachments & Notes history](/architecture/attachments-and-notes#history-in-the-parent-auditlog) for action codes, pagination, download availability and retention requirements.
 
 ## What should be audited
 

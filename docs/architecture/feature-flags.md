@@ -1,6 +1,6 @@
 # Feature flags
 
-NGB supports deployment-wide feature flags backed by `Microsoft.FeatureManagement`. The platform owns feature codes and discovery; permissions continue to authorize individual users. Neither a trusted Keycloak administrator nor an application Administrator role bypasses a disabled feature. [Attachments and Notes](/guides/attachments-and-notes) are independent features built on this mechanism.
+NGB supports deployment-wide feature flags backed by `Microsoft.FeatureManagement`. The platform owns feature codes and discovery; permissions continue to authorize individual users. Neither a trusted Keycloak administrator nor an application Administrator role bypasses a disabled feature. [Attachments and Notes](/architecture/attachments-and-notes) are independent features built on this mechanism.
 
 ## Configuration and rollout
 
@@ -45,7 +45,7 @@ The four local Compose stacks map these keys from `FEATURE_ATTACHMENTS`, `FEATUR
 | Attachments true | Attachments; notes follow their own flag | Configured storage is required; pending upload expiry runs |
 | Attachments false, upload expiration true | Attachments blocked; notes follow their own flag | No MinIO registration or validation; pending upload expiry continues using only the database |
 
-Use `Attachments:UploadExpirationEnabled=true` to keep expiring abandoned pending uploads when user access to Attachments is disabled. This setting is operational, not a user feature or permission. With Attachments enabled, the worker always runs; with both settings disabled it stops. Expiration needs only the database and standard AuditLog, with no MinIO or Outbox dependency. Keep stored objects indefinitely and disable bucket expiry rules. See [history and retention](/guides/attachments-and-notes#history-in-the-parent-auditlog).
+Use `Attachments:UploadExpirationEnabled=true` to keep expiring abandoned pending uploads when user access to Attachments is disabled. This setting is operational, not a user feature or permission. With Attachments enabled, the worker always runs; with both settings disabled it stops. Expiration needs only the database and standard AuditLog, with no MinIO or Outbox dependency. Keep stored objects indefinitely and disable bucket expiry rules. See [history and retention](/architecture/attachments-and-notes#history-in-the-parent-auditlog).
 
 Turning a feature off does not delete its business data or revoke existing role grants. Notes and ready attachment metadata remain available when it is enabled again. The expiration worker may still mark abandoned pending uploads as deleted, while retaining all stored files. Disabling the flag does not revoke previously issued MinIO bearer URLs: upload URLs remain usable until expiry, and download URLs remain usable until expiry. Requests already admitted by an old replica may finish during deployment, so drain and restart all replicas before treating a disable as fully applied.
 
