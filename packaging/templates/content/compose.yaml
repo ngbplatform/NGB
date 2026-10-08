@@ -1,0 +1,109 @@
+x-application-environment: &application-environment
+  ConnectionStrings__DefaultConnection: Host=postgres;Database=application;Username=postgres;Password=${POSTGRES_PASSWORD:?Initialize private configuration}
+  KeycloakSettings__Issuer: http://localhost:5180/realms/ngb-app
+  KeycloakSettings__MetadataAddress: http://keycloak:8080/realms/ngb-app/.well-known/openid-configuration
+  KeycloakSettings__RequireHttpsMetadata: "false"
+
+services:
+  postgres:
+    image: postgres:18.3-alpine
+    environment:
+      POSTGRES_DB: application
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Initialize private configuration}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./infrastructure/init.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d application"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.6
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?Initialize private configuration}
+      KC_HOSTNAME: http://localhost:5180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+      BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:?Initialize private configuration}
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:?Initialize private configuration}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:?Initialize private configuration}
+    ports:
+      - "127.0.0.1:5180:8080"
+    volumes:
+      - ./infrastructure/realm.json:/opt/keycloak/data/import/ngb-app.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/9000; printf \"GET /health/ready HTTP/1.0\\r\\n\\r\\n\" >&3; cat <&3' | grep -q '\"status\": \"UP\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+
+  migrator:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      args:
+        PROJECT: NgbApplication.Migrator
+    entrypoint: ["/bin/sh", "/app/migrate.sh"]
+    environment:
+      NGB_CONNECTION_STRING: Host=postgres;Database=application;Username=postgres;Password=${POSTGRES_PASSWORD:?Initialize private configuration}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      args:
+        PROJECT: NgbApplication.Api
+    environment:
+      <<: *application-environment
+      KeycloakSettings__ClientIds__0: ngb-web
+      KeycloakAdminClientSettings__BaseUrl: http://keycloak:8080
+      KeycloakAdminClientSettings__Realm: ngb-app
+      KeycloakAdminClientSettings__ClientId: ngb-admin-client
+      KeycloakAdminClientSettings__ClientSecret: ${KEYCLOAK_ADMIN_CLIENT_SECRET:?Initialize private configuration}
+    ports:
+      - "127.0.0.1:5181:8080"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+
+  jobs:
+    build:
+      context: .
+      dockerfile: infrastructure/Dockerfile
+      args:
+        PROJECT: NgbApplication.BackgroundJobs
+    environment:
+      <<: *application-environment
+      KeycloakSettings__ClientIds__0: ngb-jobs
+    ports:
+      - "127.0.0.1:5184:8080"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    ports:
+      - "127.0.0.1:5182:8080"
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:

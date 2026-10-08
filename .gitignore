@@ -19,3 +19,7 @@ NGB.sln.DotSettings.user
 
 # Local .NET test runner output
 TestResults/
+
+# Isolated release certification tooling
+/quality/node_modules/
+/node_modules/

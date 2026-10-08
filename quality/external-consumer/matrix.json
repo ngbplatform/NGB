@@ -1,0 +1,350 @@
+{
+  "schemaVersion": 1,
+  "source": "3.1.0",
+  "target": "3.2.0",
+  "sourceFixture": "quality/upgrade-certification/fixtures/3.1.0",
+  "sourceManifest": "quality/upgrade-certification/source-3.1.0.json",
+  "baselines": "packaging/nuget/baselines.json",
+  "infrastructure": {
+    "postgres": "postgres:18.3-alpine",
+    "keycloak": "quay.io/keycloak/keycloak:26.5.6",
+    "minio": "ghcr.io/coollabsio/minio:RELEASE.2025-10-15T17-29-55Z@sha256:69b55a1c1c5dc285ce04db96689f5b2102317fc77a50680a1874ca6efd1c87f9"
+  },
+  "scope": {
+    "externalUpgrade": [
+      "users",
+      "roles",
+      "permissions",
+      "identity-links",
+      "audit",
+      "custom-catalog",
+      "custom-runtime",
+      "postgres-provider",
+      "migrations",
+      "hangfire",
+      "notes",
+      "attachments"
+    ],
+    "regressionOnly": [
+      "document-lifecycle",
+      "document-relationships",
+      "accounting",
+      "operational-registers",
+      "reference-registers",
+      "reports",
+      "projections"
+    ]
+  },
+  "profiles": {
+    "clean-starter": {
+      "source": null,
+      "target": "3.2.0",
+      "minio": false,
+      "assertions": [
+        "isolation",
+        "registeredPlatformJob",
+        "realBrowserRoleLifecycle",
+        "administratorContract",
+        "repeatedMigrationPreservesState",
+        "failedMigrationBlocksStartup",
+        "layering",
+        "healthAndLogs"
+      ]
+    },
+    "generated-extension": {
+      "source": null,
+      "target": "3.2.0",
+      "minio": false,
+      "assertions": [
+        "isolation",
+        "registeredPlatformJob",
+        "realBrowserRoleLifecycle",
+        "administratorContract",
+        "repeatedMigrationPreservesState",
+        "failedMigrationBlocksStartup",
+        "customHandlerAndProvider",
+        "layering",
+        "healthAndLogs"
+      ]
+    },
+    "core-upgrade": {
+      "source": "3.1.0",
+      "target": "3.2.0",
+      "minio": false,
+      "assertions": [
+        "isolation",
+        "registeredPlatformJob",
+        "realBrowserRoleLifecycle",
+        "administratorContract",
+        "repeatedMigrationPreservesState",
+        "failedMigrationBlocksStartup",
+        "migrationHistoryPreserved",
+        "preservationAndContinuation",
+        "pendingJobAndIdempotentEffect",
+        "targetBrowserSmoke",
+        "layering",
+        "healthAndLogs"
+      ]
+    },
+    "notes-upgrade": {
+      "source": "3.1.0",
+      "target": "3.2.0",
+      "minio": false,
+      "assertions": [
+        "isolation",
+        "registeredPlatformJob",
+        "realBrowserRoleLifecycle",
+        "administratorContract",
+        "repeatedMigrationPreservesState",
+        "failedMigrationBlocksStartup",
+        "migrationHistoryPreserved",
+        "preservationAndContinuation",
+        "pendingJobAndIdempotentEffect",
+        "targetBrowserSmoke",
+        "contentPreserved",
+        "contentAuthorization",
+        "layering",
+        "healthAndLogs"
+      ]
+    },
+    "attachments-upgrade": {
+      "source": "3.1.0",
+      "target": "3.2.0",
+      "minio": true,
+      "assertions": [
+        "isolation",
+        "registeredPlatformJob",
+        "realBrowserRoleLifecycle",
+        "administratorContract",
+        "repeatedMigrationPreservesState",
+        "failedMigrationBlocksStartup",
+        "migrationHistoryPreserved",
+        "preservationAndContinuation",
+        "pendingJobAndIdempotentEffect",
+        "targetBrowserSmoke",
+        "contentPreserved",
+        "contentAuthorization",
+        "layering",
+        "healthAndLogs"
+      ]
+    }
+  },
+  "gates": [
+    {
+      "id": "template-artifact",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs clean-starter",
+      "assertions": [
+        "installed-template",
+        "substitution",
+        "exact-dependencies"
+      ]
+    },
+    {
+      "id": "external-isolation",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/test-tooling.mjs",
+      "assertions": [
+        "outside-repository",
+        "fresh-caches",
+        "no-fallback",
+        "negative-tests"
+      ]
+    },
+    {
+      "id": "clean-starter",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs clean-starter",
+      "assertions": [
+        "clean-starter"
+      ]
+    },
+    {
+      "id": "starter-job",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs clean-starter",
+      "assertions": [
+        "registeredPlatformJob"
+      ]
+    },
+    {
+      "id": "administrator-contract",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs clean-starter",
+      "assertions": [
+        "administratorContract"
+      ]
+    },
+    {
+      "id": "generated-extension",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs generated-extension",
+      "assertions": [
+        "generated-extension"
+      ]
+    },
+    {
+      "id": "frontend-artifact",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/verify-template.mjs",
+      "assertions": [
+        "entry-points",
+        "assets",
+        "css",
+        "tailwind",
+        "postcss",
+        "vite"
+      ]
+    },
+    {
+      "id": "nuget-compatibility",
+      "blocks": "candidate",
+      "command": "node packaging/nuget/verify-api-compatibility.mjs",
+      "assertions": [
+        "all-first-major-and-previous-baselines"
+      ]
+    },
+    {
+      "id": "npm-compatibility",
+      "blocks": "candidate",
+      "command": "node ui/scripts/verify-platform-ui-contracts.mjs",
+      "assertions": [
+        "public-contracts",
+        "old-consumer",
+        "negative-checker-tests"
+      ]
+    },
+    {
+      "id": "source-fixture",
+      "blocks": "candidate",
+      "command": "node quality/upgrade-certification/verify-source.mjs",
+      "assertions": [
+        "frozen-files",
+        "registry-provenance",
+        "source-runtime"
+      ]
+    },
+    {
+      "id": "core-upgrade",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs core-upgrade",
+      "assertions": [
+        "core-upgrade"
+      ]
+    },
+    {
+      "id": "upgrade-job",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs core-upgrade",
+      "assertions": [
+        "pendingJobAndIdempotentEffect"
+      ]
+    },
+    {
+      "id": "migration-sequencing",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs core-upgrade",
+      "assertions": [
+        "migrationHistoryPreserved",
+        "repeatedMigrationPreservesState",
+        "failedMigrationBlocksStartup"
+      ]
+    },
+    {
+      "id": "notes-upgrade",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs notes-upgrade",
+      "assertions": [
+        "notes-upgrade"
+      ]
+    },
+    {
+      "id": "attachments-upgrade",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/certify.mjs attachments-upgrade",
+      "assertions": [
+        "attachments-upgrade"
+      ]
+    },
+    {
+      "id": "backend-quality",
+      "blocks": "candidate",
+      "command": "bash run-backend-full-coverage.sh",
+      "assertions": [
+        "all-projects-pass",
+        "lines-100",
+        "branches-100",
+        "methods-100"
+      ]
+    },
+    {
+      "id": "frontend-quality",
+      "blocks": "candidate",
+      "command": "bash run-frontend-full-coverage.sh",
+      "assertions": [
+        "all-projects-pass",
+        "lines-100",
+        "branches-100",
+        "functions-100",
+        "statements-100",
+        "all-browsers"
+      ]
+    },
+    {
+      "id": "regression-quality",
+      "blocks": "candidate",
+      "command": "bash run-full-quality.sh",
+      "assertions": [
+        "platform",
+        "pm",
+        "trade",
+        "agency-billing",
+        "crm",
+        "performance"
+      ]
+    },
+    {
+      "id": "tooling-quality",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/test-tooling.mjs",
+      "assertions": [
+        "explicit-inventory",
+        "measured-helper-coverage-100",
+        "process-negative-tests",
+        "generated-helpers"
+      ]
+    },
+    {
+      "id": "candidate-evidence",
+      "blocks": "candidate",
+      "command": "node quality/external-consumer/release.mjs verify-candidate",
+      "assertions": [
+        "immutable-manifest",
+        "artifact-hashes",
+        "all-candidate-gates"
+      ]
+    },
+    {
+      "id": "publish-identity",
+      "blocks": "publication",
+      "command": "node quality/external-consumer/release.mjs verify-publication",
+      "assertions": [
+        "certified-artifacts-only",
+        "no-repack",
+        "uploaded-identities"
+      ]
+    },
+    {
+      "id": "registry-verification",
+      "blocks": "promotion",
+      "command": "node quality/external-consumer/verify-registry.mjs",
+      "assertions": [
+        "registry-only",
+        "nuget-signatures",
+        "canonical-payload",
+        "npm-integrity",
+        "clean-runtime-smoke"
+      ]
+    }
+  ]
+}

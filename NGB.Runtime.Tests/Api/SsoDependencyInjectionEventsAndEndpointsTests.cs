@@ -28,6 +28,42 @@ namespace NGB.Runtime.Tests.Api;
 public sealed class SsoDependencyInjectionEventsAndEndpointsTests
 {
     [Fact]
+    public void Private_discovery_preserves_public_authority_and_strict_issuer_validation()
+    {
+        const string issuer = "https://identity.example/realms/app";
+        const string metadata = "http://identity.internal/realms/app/.well-known/openid-configuration";
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["KeycloakSettings:Issuer"] = issuer,
+            ["KeycloakSettings:MetadataAddress"] = metadata,
+            ["KeycloakSettings:ClientIds:0"] = "app-web",
+            ["KeycloakSettings:RequireHttpsMetadata"] = "false"
+        }).Build();
+        var api = new ServiceCollection();
+        api.AddLogging();
+        api.AddKeycloak(configuration);
+        using var apiProvider = api.BuildServiceProvider();
+        var jwt = apiProvider.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>()
+            .Get(JwtBearerDefaults.AuthenticationScheme);
+
+        jwt.Authority.Should().Be(issuer);
+        jwt.MetadataAddress.Should().Be(metadata);
+        jwt.TokenValidationParameters.ValidIssuer.Should().Be(issuer);
+        jwt.TokenValidationParameters.ValidateIssuer.Should().BeTrue();
+
+        var console = new ServiceCollection();
+        console.AddLogging();
+        console.AddKeycloakForAdminConsole(configuration);
+        using var consoleProvider = console.BuildServiceProvider();
+        var oidc = OidcOptions(consoleProvider);
+
+        oidc.Authority.Should().Be(issuer);
+        oidc.MetadataAddress.Should().Be(metadata);
+        oidc.TokenValidationParameters.ValidIssuer.Should().Be(issuer);
+        oidc.TokenValidationParameters.ValidateIssuer.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Jwt_events_cover_signalr_token_extraction_logging_and_role_enrichment_guards()
     {
         using var provider = JwtServices();

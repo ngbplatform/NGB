@@ -359,6 +359,8 @@ public sealed class PmWorkCenter_HttpAndPersistence_P0Tests : IAsyncLifetime
         const string consumerCode = "work-center-integration-test";
         await using var factory = new PmApiFactory(_fixture);
         var now = DateTime.UtcNow;
+        // PostgreSQL timestamps retain microseconds, so keep exact round-trip assertions portable.
+        now = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
         var retryEvent = OutboxEvent("test.retry", now);
 
         await using (var scope = factory.Services.CreateAsyncScope())

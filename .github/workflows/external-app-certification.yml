@@ -1,0 +1,66 @@
+name: external-app-certification
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-app-certification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - name: Install the metric contract probe runtime
+        uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '1.2.2'
+      - name: Install verification tools
+        run: |
+          npm --prefix ui ci
+          npm --prefix quality ci
+          cd ui
+          npx playwright install --with-deps chromium firefox webkit
+      - name: Build the candidate once
+        run: |
+          node quality/upgrade-certification/verify-source.mjs
+          node ui/scripts/pack-platform-ui.mjs --local-candidate
+          bash packaging/nuget/pack-platform.sh
+          bash packaging/nuget/verify-platform-packages.sh
+          node quality/external-consumer/release.mjs seal
+      - name: Certify the immutable candidate
+        env:
+          NGB_FRONTEND_COVERAGE_NO_INSTALL: 'true'
+        run: node quality/external-consumer/release.mjs certify
+      - name: Upload the certified package set and evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: ngb-certified-release
+          path: artifacts/release-candidate/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ngb-certification-diagnostics
+          path: |
+            artifacts/certification/
+            artifacts/coverage/
+            artifacts/release-candidate/certification/
+          retention-days: 7

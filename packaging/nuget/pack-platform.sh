@@ -28,6 +28,11 @@ mkdir -p "${local_feed_directory}"
 while IFS= read -r project; do
   [[ -z "${project}" ]] && continue
 
+  package_kind="$(dotnet msbuild "${repository_root}/${project}" -nologo -getProperty:NgbPlatformPackageKind)"
+  if [[ "${package_kind}" == "template" ]]; then
+    node "${repository_root}/packaging/templates/prepare-locks.mjs" "${output_directory}" "${version}"
+  fi
+
   dotnet pack "${repository_root}/${project}" \
     --configuration Release \
     --output "${output_directory}" \
@@ -40,10 +45,11 @@ done < "${project_list}"
 
 expected_count="$(grep -cve '^[[:space:]]*$' "${project_list}")"
 package_count="$(find "${output_directory}" -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' | wc -l | tr -d ' ')"
+expected_symbol_count="$(node -p 'require(process.argv[1]).packages.filter(item => item.kind === "runtime").length' "${repository_root}/packaging/nuget/baselines.json")"
 symbol_count="$(find "${output_directory}" -maxdepth 1 -type f -name '*.snupkg' | wc -l | tr -d ' ')"
 
-if [[ "${package_count}" != "${expected_count}" || "${symbol_count}" != "${expected_count}" ]]; then
-  echo "Expected ${expected_count} packages and symbols, found ${package_count} packages and ${symbol_count} symbols." >&2
+if [[ "${package_count}" != "${expected_count}" || "${symbol_count}" != "${expected_symbol_count}" ]]; then
+  echo "Expected ${expected_count} packages and ${expected_symbol_count} symbol packages, found ${package_count} packages and ${symbol_count} symbols." >&2
   exit 1
 fi
 

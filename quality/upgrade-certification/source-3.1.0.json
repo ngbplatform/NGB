@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "fixture": "3.1.0",
+  "platformVersion": "3.1.0",
+  "authoredFromCommit": "62708a3f703696b0da506c2514c56673a06df1ed",
+  "frozenAtUtc": "2026-10-07T15:59:11.421807+00:00",
+  "files": {
+    ".gitignore": "656788b3390557aad9ce0b9c64ab0142b9fe4f45258b9a0f3ccf6d9f9d1cf090",
+    "CertificationApp.Api/ApplicationMenu.cs": "e9a44ee4e452f37180270546d2e56440d22df5cadf3f1dc3d55cf54081466514",
+    "CertificationApp.Api/CertificationApp.Api.csproj": "cbe98b535dee01a4016eed71835fd093ab6977dfe3b4d44ffa3ffbef9e522449",
+    "CertificationApp.Api/Controllers/AuditController.cs": "a276a3e26f98549c30463b38a9099e6b035f3f57de0f31533a9dd5b4a4fb74bf",
+    "CertificationApp.Api/Controllers/CatalogController.cs": "f6ab670b9c8425d07a2c93bdaf45d3cbd0f524d3d0a541c59787aa9865ca6a73",
+    "CertificationApp.Api/Controllers/MenuController.cs": "d0c34847b199e69c06a1baf577f284d249121a05cf3967434eb6463f051f8d83",
+    "CertificationApp.Api/Controllers/SecurityController.cs": "d3e079e0d25b231fb1ac0cfd88201127d31ffed8b5e06cbec0b31112f84b6915",
+    "CertificationApp.Api/Controllers/WorkCenterController.cs": "c7c83b3bd8390aa779358a9e6364bae2da5ccbd212bb55d690adfd7c55ce6cae",
+    "CertificationApp.Api/Program.cs": "3214a2c402969d2888c21c542949a4ceebaa64401745fa16a4d7ccf6500d6615",
+    "CertificationApp.Api/appsettings.json": "80220ab81fa77005172e5e3861c631d66473a8b30fc9f05d2042c26e578804b1",
+    "CertificationApp.Api/packages.lock.json": "ae3d29039daf5b3c96e88b1b48f6818c48da108ca24fc5ac671d8502070209f3",
+    "CertificationApp.BackgroundJobs/CertificationApp.BackgroundJobs.csproj": "66d6330eb8c3f865e4200923a9c49477189b8764d7078570c34a197f173b5948",
+    "CertificationApp.BackgroundJobs/Program.cs": "0f76820e6cde9de3cd8b9312d6a6ed2c40055ce8a20921df887f364a5e3360b2",
+    "CertificationApp.BackgroundJobs/appsettings.json": "fc3ab06dee84f38d553025122aeb4bbc0a310c91bcc0c5afd9e3d8b25a79fdbb",
+    "CertificationApp.BackgroundJobs/packages.lock.json": "47e31989c73fe6f8dbbab4fba888a710d855934dfde14bee9b560aac615b4232",
+    "CertificationApp.Definitions/CertificationApp.Definitions.csproj": "a3c4f7c654a9220900e1779621e9502b339fc0529c3f60080066ea3e3ee2d6f3",
+    "CertificationApp.Definitions/CheckpointDefinitions.cs": "44675d3a9cadecd2ac52743402f3ede31b3820276b0430a9726a568aa31bbcb8",
+    "CertificationApp.Definitions/ICheckpointStore.cs": "f66f16bece23ebce9f000c0cb24b91e32730cb14ccbd04af0b17c5d3a93119ab",
+    "CertificationApp.Definitions/packages.lock.json": "741d06b61b149ba716ed329e4c7810694e9fe8c6a359292d9127efe735e3004d",
+    "CertificationApp.Migrator/CertificationApp.Migrator.csproj": "a6a23d414241022fd5f6fd097f1d91a17c9ea9385e690965c07ea27113828e7d",
+    "CertificationApp.Migrator/Program.cs": "30ff4f16cdd7f2e4f5e9d390678d3398353ce5017882dd2b7f3e52625b299c14",
+    "CertificationApp.Migrator/packages.lock.json": "d3d62af39b05c93b7664ebc815a1042983bd629e29cd6c0a478f36deba86d751",
+    "CertificationApp.PostgreSql/CertificationApp.PostgreSql.csproj": "8c4f4a9e39c21141d03699879576cc73f7810fbdf703726f917919eddb84d94b",
+    "CertificationApp.PostgreSql/CheckpointMigrationPack.cs": "7ff4340260feee95918e1b3333125bf4ce1c7e2fac039320d69e6b0f2439aef9",
+    "CertificationApp.PostgreSql/CheckpointStore.cs": "cae0e965de2227e7b9cfeb9be93ab4f91eb3c6e1bb5e4d6b87763f2f3a67cc98",
+    "CertificationApp.PostgreSql/db/migrations/V2026_10_06_0100__certification_checkpoint.sql": "e88aff578bcb3a07db85142186e9f0fd80a553dfa4e174f5c5bbd058a2a33fe1",
+    "CertificationApp.PostgreSql/packages.lock.json": "0566d366a9fa554ec5747f1c59f42b16156582600e918a35a0ed0fecd5ec48c1",
+    "CertificationApp.Probe/CertificationApp.Probe.csproj": "9fe1811f7585dd03c121fa8043ee364623cb6ba95c451ae78a8d7fc7d5766498",
+    "CertificationApp.Probe/Program.cs": "2eb4c9445f35d4db5c7afe617155809508d5a4dce38560f6667d0445ec9aca0f",
+    "CertificationApp.Probe/packages.lock.json": "4122498cb2295a531542dd664f566a484ede39b6a56a42f3612db10e8ed58ee9",
+    "CertificationApp.Runtime/CertificationApp.Runtime.csproj": "33294bba0eaf5ffba7637f58c59c0da2bdfd42ffb5f19ffc13fdb3fd23614891",
+    "CertificationApp.Runtime/CheckpointRuntimeDefinitions.cs": "1d022001a3f6bf4183aa7fdb6407103152c29cab43b720f91bff44bb24428f6b",
+    "CertificationApp.Runtime/CheckpointService.cs": "8128074d0ebe96c54217abeb870b0f610827f4747d16e2f5979bc347737ab2e8",
+    "CertificationApp.Runtime/packages.lock.json": "0f75f24fd1ae599c69bf42a5658d297e9915f4a6717703e1b176f4f24dd932d0",
+    "CertificationApp.slnx": "22e9088c6eb6c7183ad70b2431959aaa929fb042835c67611b78a0299efa8f59",
+    "Directory.Build.props": "8b2e5196aa1481725b01bbac5e133ca5600e05af0a7ceef1a512d3b01c0aaf72",
+    "Directory.Build.targets": "17284cb74605517cbec8a8153505da71a685b28694b67b5ef80608cd79b1c0ea",
+    "NuGet.Config": "cb93c65e28718aa9075fce221e9f9cea9e72d3fe1b30462383448a591f5b3aa1",
+    "README.md": "35032349a3376db71ff669d4838ca9482eb504bb6b5e5c72830fc20503da84e2",
+    "infrastructure/compose.yaml": "ff505c5212fd9ccb73503e93df2d6d7b41fd7f2622e18588b7242fddf21cc036",
+    "infrastructure/init.sql": "6adfafbc0b70c4852660417665aa62a1ebacaa20151c7329aa7a4fdecddac0a9",
+    "infrastructure/realm.json": "745c44d255202d78848ac3db3c8156c124d9a47a19ef9e65ef96790fb6b4df0a",
+    "web/index.html": "2763cd62d5078faf3bc2d84aade10800acd630758555c6c39c741ce2bce0e317",
+    "web/package-lock.json": "b9f1c6e2ccac08bc07ac41dbe48c1f4394b888d303f3b65afca15e4528d8fe88",
+    "web/package.json": "6fb836d236bb640c58d5bef52bb695888f99d7c880b5dbd1590f9f2245d5c89d",
+    "web/postcss.config.js": "190c877db466995bf1482f4a16abd06e04a89ede3119341e2a86ff96e1737b27",
+    "web/public/runtime-config.js": "6b08eb02625c017083cb5fa06a1963b8c54c9617b353043bf50dc73c7aade13d",
+    "web/src/App.vue": "886b9bf7f30daf48eda9e58ff688b3576955a32d15b53a2064e7517d161a888b",
+    "web/src/main.ts": "29e3548551a14383a2bda286d6f5f4d08d6f1b80f23352d572f1040fa5eb7836",
+    "web/src/router.ts": "748c4f092285941db2581d10fe1496a57e49ff7de9b1dea3761a6e8c6ac7b154",
+    "web/tailwind.base.js": "7f5468bc424fbbf502ab415d54c3ad0c81b5012c559fc5c1d15f91ef3f3619d6",
+    "web/tailwind.config.js": "15664a046078653b2f3c6d9e4bba900ec56576e6ca068b9b8b58d596bcc70ce5",
+    "web/tsconfig.json": "07de7754dea490d894db4651ca4ff3127e422cab398a96343e6a5615a1f47ff8",
+    "web/vite.config.ts": "2aa1a14e35b08e7a29d5c14387134ff493fdb13e3142b53a9906f557d1a400cc"
+  },
+  "nuget": [
+    {
+      "id": "ngb.platform.accounting",
+      "version": "3.1.0",
+      "sha256": "14bb294b4a674ad3c57f19eb5969b43cb90fe1a037397da5a8ab0dbaf64b85ec",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.api",
+      "version": "3.1.0",
+      "sha256": "19d6f0af5ca89afc829a46476653c9f7671021ebe9f261feb8b364a29a808834",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.application.abstractions",
+      "version": "3.1.0",
+      "sha256": "99c11b2f1d99d106b550a53837a9d483bb728c8687576081870e1b7d47b3d5e8",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.attachments",
+      "version": "3.1.0",
+      "sha256": "4f12f81865a48c42b3a670a6e1743f7c80fdaac09f938f789d8bab0d53142ba6",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.attachments.minio",
+      "version": "3.1.0",
+      "sha256": "118701969a7c6c6e438f8caa9358c5dca2e0f525b713b2e8996da822ffa209c6",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.backgroundjobs",
+      "version": "3.1.0",
+      "sha256": "3bbbe8606972e4386d92cf122fe0a5a07f6100e32eff1d90156745fc157b32df",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.backgroundjobs.postgresql",
+      "version": "3.1.0",
+      "sha256": "0d7c8b2936136a461e19463e10ca2102a899651dfda823725a3407a6991db418",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.contracts",
+      "version": "3.1.0",
+      "sha256": "5d85f226d382bbea25f9373d76adf9350846d6d939ed692ca7dc4a0cf06a3abc",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.core",
+      "version": "3.1.0",
+      "sha256": "251adf248370f8b34ae5fecaa726b98e9a5a9732ccf4fd6605a40475ff3a74e2",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.definitions",
+      "version": "3.1.0",
+      "sha256": "2075adb0c4f2dda1b30075293298632dd65e64c69d5bcaf8bcb3733bd16aebaf",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.hosting.aspnetcore",
+      "version": "3.1.0",
+      "sha256": "23a0fdf7d59aa925a6b4ed6d2d000b95b567fe28d7fffa67430b618cae4e5921",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.metadata",
+      "version": "3.1.0",
+      "sha256": "ebf358a0b6ca163de9d35c9b768b96af7076432037e73375605384a98ab3846b",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.migrator.core",
+      "version": "3.1.0",
+      "sha256": "28fc191cf47b534950ce6be1af1bdc8ce8ec92a568c2443e5d2795d09e542bf8",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.notes",
+      "version": "3.1.0",
+      "sha256": "c43a40d2ef2cad6d8b4d8828e96b595043becd7c25704f17d8e8f6f95a08df04",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.operationalregisters",
+      "version": "3.1.0",
+      "sha256": "bf241ac98d067ec60eeb6af48d65856afc5d44c9ebc820dd8e3f2ce2bddb59d0",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.persistence",
+      "version": "3.1.0",
+      "sha256": "61dee2846c97c4dd6ca00861f73eacce827a17b02996620bba8a82fae85cb0b5",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.postgresql",
+      "version": "3.1.0",
+      "sha256": "9e301d7c9899681c6be8339ea2cb976a5bdb2fcc9fdc8ea2a3c339d160664ed1",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.postgresql.aspnetcore",
+      "version": "3.1.0",
+      "sha256": "21002f78ac8eef65001fa5f46f1359809fa38c6f0b313fbb49b11e0aa55f36c0",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.referenceregisters",
+      "version": "3.1.0",
+      "sha256": "980d46eb720d9cef1e31b5c2f71d15243f92720771e0f948421da0928abf4307",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.runtime",
+      "version": "3.1.0",
+      "sha256": "a25af27d2526e72a54461479886ea6c0085a6c76c89045ebad1478a6183d8180",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.runtime.hosting",
+      "version": "3.1.0",
+      "sha256": "67206e5427e1037342fd57c8a7b41e1d49cf64a421d7423b8a0a051bac91943a",
+      "source": "https://api.nuget.org/v3/index.json"
+    },
+    {
+      "id": "ngb.platform.tools",
+      "version": "3.1.0",
+      "sha256": "e8684b0391c63b2c40249f6892d25a4d3424278457f908386b45f0412d325b19",
+      "source": "https://api.nuget.org/v3/index.json"
+    }
+  ],
+  "npm": {
+    "name": "@ngbplatform/ui",
+    "version": "3.1.0",
+    "resolved": "https://registry.npmjs.org/@ngbplatform/ui/-/ui-3.1.0.tgz",
+    "integrity": "sha512-iNijeUq5gD5nTnh2elCTQONeP7/yyidyq/rMx6hbuhVL0cRCYF9qvQKw9Fe59AFLYpHH7Q7Uk8Yd6uxsfCqzUg=="
+  },
+  "infrastructure": {
+    "postgres": "postgres:18.3-alpine",
+    "keycloak": "quay.io/keycloak/keycloak:26.5.6",
+    "hangfireStorage": "application database, hangfire schema"
+  },
+  "evidence": {
+    "isolatedWorkDirectory": "outside repository",
+    "dotnetSdk": "10.0.101",
+    "node": "25.5.0",
+    "nugetRestore": "passed, empty dedicated cache and public registry",
+    "backendBuild": "passed, 0 warnings and 0 errors",
+    "frontendBuild": "passed, vue-tsc and Vite production build",
+    "migration": "passed, platform and certification packs",
+    "realKeycloakLogin": "passed",
+    "shellAndRolesList": "passed",
+    "userLinkAndAdministratorRole": "passed",
+    "roleCreateUpdateReopenAudit": "passed",
+    "catalogCreateUpdateReopenValidation": "passed",
+    "workCenter": "passed after linking the platform user",
+    "platformSchemaJob": "Succeeded",
+    "customJobEffect": "exactly once, including duplicate retry",
+    "notesProfile": "not yet run",
+    "attachmentsProfile": "not yet run"
+  },
+  "scope": {
+    "external": [
+      "identity",
+      "users",
+      "roles",
+      "permissions",
+      "audit",
+      "custom catalog",
+      "custom validation",
+      "custom runtime orchestration",
+      "PostgreSQL provider",
+      "application migrations",
+      "background jobs"
+    ],
+    "regressionOnly": [
+      "document posting/lifecycle",
+      "document relationships",
+      "Accounting",
+      "operational registers",
+      "reference registers",
+      "reports/projections"
+    ]
+  }
+}

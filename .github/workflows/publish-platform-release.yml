@@ -1,0 +1,97 @@
+name: publish-certified-platform-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      certification_run_id:
+        description: Successful external-app-certification run on main
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      certification_run_id:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: publish-certified-platform-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: platform-release
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - name: Verify the certification run provenance
+        id: source
+        uses: actions/github-script@v8
+        env:
+          CERTIFICATION_RUN_ID: ${{ inputs.certification_run_id }}
+        with:
+          script: |
+            const id = process.env.CERTIFICATION_RUN_ID;
+            if (!/^[1-9][0-9]*$/.test(id)) throw new Error('An exact certification run ID is required.');
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: Number(id)
+            });
+            if (run.conclusion !== 'success' || run.head_branch !== 'main'
+                || run.path !== '.github/workflows/external-app-certification.yml'
+                || !['push', 'workflow_dispatch'].includes(run.event)) {
+              throw new Error('Publication requires a successful trusted main-branch certification.');
+            }
+            core.setOutput('sha', run.head_sha);
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: ngb-certified-release
+          path: artifacts/release-candidate
+          run-id: ${{ inputs.certification_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify certification and the exact artifact identities
+        run: |
+          npm --prefix quality ci
+          node quality/external-consumer/release.mjs verify-candidate
+      - name: Request short-lived NuGet credential
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER || 'ngb_platform' }}
+      - name: Publish the certified bytes without rebuilding
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: node quality/external-consumer/publish.mjs
+      - name: Verify registry identity and runtime before promotion
+        run: |
+          cd quality
+          npx playwright install --with-deps chromium
+          cd ..
+          node quality/external-consumer/verify-registry.mjs
+          node quality/external-consumer/release.mjs verify-publication
+          node quality/external-consumer/release.mjs verify-promotion
+      - name: Record publication and promotion evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ngb-publication-evidence
+          path: artifacts/release-candidate/
+          if-no-files-found: error
+          retention-days: 90

@@ -1,6 +1,6 @@
 {
   "name": "ngb-ui-workspace",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -57,7 +57,8 @@
     "typescript": "^5.7.3",
     "vitest": "^4.1.10",
     "vitest-browser-vue": "^2.1.0",
-    "vue-tsc": "^3.3.9"
+    "vue-tsc": "^3.3.9",
+    "semver": "7.7.4"
   },
   "overrides": {
     "js-beautify": {

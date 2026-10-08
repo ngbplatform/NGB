@@ -31,6 +31,8 @@ public sealed class PostingLog_Takeover_RollbackOnValidationFailure_P5_1_Tests(P
         var periodUtc = new DateTime(2026, 1, 17, 12, 0, 0, DateTimeKind.Utc);
 
         var staleStartedAtUtc = DateTime.UtcNow.AddHours(-2);
+        // PostgreSQL timestamps retain microseconds, so keep exact round-trip assertions portable.
+        staleStartedAtUtc = staleStartedAtUtc.AddTicks(-(staleStartedAtUtc.Ticks % TimeSpan.TicksPerMicrosecond));
         await InsertInProgressPostingLogRowAsync(
             Fixture.ConnectionString,
             documentId,
@@ -82,6 +84,8 @@ public sealed class PostingLog_Takeover_RollbackOnValidationFailure_P5_1_Tests(P
         var periodUtc = new DateTime(2026, 1, 17, 13, 0, 0, DateTimeKind.Utc);
 
         var staleStartedAtUtc = DateTime.UtcNow.AddHours(-2);
+        // PostgreSQL timestamps retain microseconds, so keep exact round-trip assertions portable.
+        staleStartedAtUtc = staleStartedAtUtc.AddTicks(-(staleStartedAtUtc.Ticks % TimeSpan.TicksPerMicrosecond));
         await InsertInProgressPostingLogRowAsync(
             Fixture.ConnectionString,
             documentId,

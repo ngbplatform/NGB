@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../CertificationApp.Definitions/CertificationApp.Definitions.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NGB.Platform.Definitions" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Tools" Version="$(NgbPlatformVersion)" />
+    </ItemGroup>
+
+</Project>

@@ -3,87 +3,19 @@ name: publish-platform-nuget
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Exact NGB.Platform package version to publish
+      certification_run_id:
+        description: Publish the complete certified NuGet/npm release from this successful main-branch run
         required: true
-        default: 3.1.0
         type: string
 
 permissions:
   contents: read
-
-concurrency:
-  group: publish-platform-nuget
-  cancel-in-progress: false
+  actions: read
+  id-token: write
 
 jobs:
-  publish:
-    name: publish NGB.Platform packages
-    runs-on: ubuntu-latest
-    environment: nuget
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Pack platform packages
-        run: bash packaging/nuget/pack-platform.sh "${{ inputs.version }}"
-
-      - name: Verify package set
-        run: bash packaging/nuget/verify-platform-packages.sh "${{ inputs.version }}"
-
-      - name: Request short-lived NuGet credential
-        id: nuget-login
-        uses: NuGet/login@v1
-        with:
-          user: ${{ vars.NUGET_USER || 'ngb_platform' }}
-
-      - name: Publish packages and symbols
-        env:
-          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
-        run: |
-          set -euo pipefail
-
-          packages=(
-            NGB.Platform.Tools
-            NGB.Platform.Core
-            NGB.Platform.Attachments
-            NGB.Platform.Notes
-            NGB.Platform.Attachments.MinIO
-            NGB.Platform.Contracts
-            NGB.Platform.Accounting
-            NGB.Platform.Metadata
-            NGB.Platform.OperationalRegisters
-            NGB.Platform.Application.Abstractions
-            NGB.Platform.ReferenceRegisters
-            NGB.Platform.Persistence
-            NGB.Platform.Definitions
-            NGB.Platform.PostgreSql
-            NGB.Platform.PostgreSql.AspNetCore
-            NGB.Platform.Runtime
-            NGB.Platform.Runtime.Hosting
-            NGB.Platform.Hosting.AspNetCore
-            NGB.Platform.Api
-            NGB.Platform.BackgroundJobs
-            NGB.Platform.BackgroundJobs.PostgreSql
-            NGB.Platform.Migrator.Core
-            NGB.Platform.Watchdog
-          )
-
-          for package in "${packages[@]}"; do
-            dotnet nuget push "artifacts/nuget-release/${package}.${{ inputs.version }}.nupkg" \
-              --api-key "${NUGET_API_KEY}" \
-              --source https://api.nuget.org/v3/index.json \
-              --symbol-api-key "${NUGET_API_KEY}" \
-              --symbol-source https://api.nuget.org/v3/index.json \
-              --skip-duplicate \
-              --timeout 600 \
-              --configfile NuGet.Registry.Config
-          done
+  publish-certified-release:
+    uses: ./.github/workflows/publish-platform-release.yml
+    with:
+      certification_run_id: ${{ inputs.certification_run_id }}
+    secrets: inherit

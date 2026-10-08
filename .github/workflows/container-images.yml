@@ -406,15 +406,73 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
+  release-promotion:
+    name: verify publication before deployment
+    needs:
+      - build-platform
+      - build-crm
+    if: always() && (needs.build-platform.result == 'success' || needs.build-crm.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      authorized: ${{ steps.verify.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Find successful publication for this source commit
+        id: publication
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const workflows = new Set([
+              '.github/workflows/publish-platform-release.yml',
+              '.github/workflows/publish-platform-nuget.yml',
+              '.github/workflows/publish-platform-ui.yml'
+            ]);
+            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+              ...context.repo, head_sha: context.sha, status: 'success', per_page: 100
+            });
+            const run = data.workflow_runs.find(item => workflows.has(item.path)
+              && item.head_branch === 'main' && item.event === 'workflow_dispatch');
+            if (run) core.setOutput('run-id', String(run.id));
+            else core.notice('Deployment is blocked until registry verification succeeds for this commit.');
+      - uses: actions/setup-node@v6
+        if: steps.publication.outputs.run-id != ''
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
+        if: steps.publication.outputs.run-id != ''
+        with:
+          name: ngb-publication-evidence
+          path: artifacts/release-candidate
+          run-id: ${{ steps.publication.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Verify exact source, candidate and registry evidence
+        if: steps.publication.outputs.run-id != ''
+        id: verify
+        run: |
+          npm --prefix quality ci
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict'
+          import { readFile } from 'node:fs/promises'
+          const manifest = JSON.parse(await readFile('artifacts/release-candidate/release-manifest.json', 'utf8'))
+          assert.equal(manifest.sourceCommit, process.env.GITHUB_SHA)
+          JS
+          node quality/external-consumer/release.mjs verify-promotion
+          echo "authorized=true" >> "$GITHUB_OUTPUT"
+
   propose-infra-deploy:
     name: propose infra deploy
     needs:
+      - release-promotion
       - build-platform
       - build-crm
     if: >-
       ${{
         always() &&
-        github.event_name == 'push' &&
+        needs.release-promotion.outputs.authorized == 'true' &&
         github.ref == 'refs/heads/main' &&
         (needs.build-platform.result == 'success' || needs.build-crm.result == 'success')
       }}

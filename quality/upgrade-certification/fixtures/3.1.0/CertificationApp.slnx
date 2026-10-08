@@ -1,0 +1,9 @@
+<Solution>
+    <Project Path="CertificationApp.Api/CertificationApp.Api.csproj" />
+    <Project Path="CertificationApp.BackgroundJobs/CertificationApp.BackgroundJobs.csproj" />
+    <Project Path="CertificationApp.Migrator/CertificationApp.Migrator.csproj" />
+    <Project Path="CertificationApp.Definitions/CertificationApp.Definitions.csproj" />
+    <Project Path="CertificationApp.Runtime/CertificationApp.Runtime.csproj" />
+    <Project Path="CertificationApp.PostgreSql/CertificationApp.PostgreSql.csproj" />
+  <Project Path="CertificationApp.Probe/CertificationApp.Probe.csproj" />
+</Solution>

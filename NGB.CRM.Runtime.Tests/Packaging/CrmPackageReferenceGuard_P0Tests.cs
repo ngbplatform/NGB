@@ -46,7 +46,7 @@ public sealed class CrmPackageReferenceGuard_P0Tests
         var releaseVersion = buildProps.Descendants("Version").Single().Value;
         var platformVersion = buildProps.Descendants("NgbPlatformPackageVersion").Single().Value;
 
-        releaseVersion.Should().Be("3.1.0");
+        releaseVersion.Should().Be("3.2.0");
         platformVersion.Should().Be("$(Version)");
         buildProps.Descendants("NgbPlatformApiCompatibilityBaselineVersion")
             .Single()

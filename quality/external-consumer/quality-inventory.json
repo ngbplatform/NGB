@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "measuredJavaScript": [
+    "quality/external-consumer/contracts.mjs",
+    "quality/external-consumer/release-contracts.mjs",
+    "quality/external-consumer/registry-fetch.mjs",
+    "quality/external-consumer/sequencing.mjs",
+    "quality/upgrade-certification/scenarios.mjs",
+    "packaging/templates/content/infrastructure/configuration.mjs",
+    "ui/scripts/platform-ui-compatibility.mjs",
+    "quality/external-consumer/layering.mjs"
+  ],
+  "measuredGeneratedDotNet": [
+    "packaging/templates/content/NgbApplication.Migrator/AdministratorBootstrap.cs",
+    "packaging/templates/content/NgbApplication.Api/ApplicationMenu.cs",
+    "quality/upgrade-certification/fixtures/3.1.0/CertificationApp.Definitions/CheckpointDefinitions.cs",
+    "quality/upgrade-certification/fixtures/3.1.0/CertificationApp.Runtime/CheckpointRuntimeDefinitions.cs",
+    "quality/upgrade-certification/fixtures/3.1.0/CertificationApp.Runtime/CheckpointService.cs",
+    "quality/upgrade-certification/fixtures/3.1.0/CertificationApp.PostgreSql/CheckpointMigrationPack.cs",
+    "quality/upgrade-certification/fixtures/3.1.0/CertificationApp.PostgreSql/CheckpointStore.cs"
+  ],
+  "measuredGeneratedFrontend": [
+    "packaging/templates/content/web/src/main.ts",
+    "packaging/templates/content/web/src/router.ts",
+    "packaging/templates/content/web/src/App.vue",
+    "ui/ngb-ui-framework/tailwind-preset.js"
+  ],
+  "orchestration": {
+    "files": [
+      "quality/external-consumer/certify.mjs",
+      "quality/external-consumer/release.mjs",
+      "quality/external-consumer/verify-registry.mjs",
+      "quality/external-consumer/verify-template.mjs",
+      "quality/external-consumer/test-tooling.mjs",
+      "quality/external-consumer/runtime-probe",
+      "quality/upgrade-certification/verify-source.mjs",
+      "packaging/templates/prepare-locks.mjs",
+      "packaging/nuget/verify-api-compatibility.mjs",
+      "ui/scripts/verify-platform-ui-contracts.mjs",
+      "packaging/templates/content/infrastructure/configure.mjs",
+      "packaging/templates/content/infrastructure/migrate.sh",
+      "packaging/templates/content/NgbApplication.Api/Program.cs",
+      "packaging/templates/content/NgbApplication.BackgroundJobs/Program.cs",
+      "packaging/templates/content/NgbApplication.Migrator/Program.cs",
+      "quality/external-consumer/publish.mjs",
+      "quality/external-consumer/verify-compose.mjs",
+      "quality/external-consumer/full-quality.mjs",
+      "run-full-quality.sh"
+    ],
+    "verification": [
+      "node --test quality/external-consumer/process-contracts.test.mjs",
+      "node quality/external-consumer/verify-template.mjs",
+      "node quality/external-consumer/release.mjs certify",
+      "node quality/external-consumer/verify-registry.mjs"
+    ],
+    "coveragePolicy": "Process, restore/build, exit-code, failure sequencing, immutable-input and registry behavior checks; no fabricated numeric process coverage."
+  },
+  "staticAndComposition": {
+    "files": [
+      "packaging/templates/content",
+      "quality/upgrade-certification/fixtures/3.1.0"
+    ],
+    "verification": [
+      "template-artifact",
+      "external-isolation",
+      "generated-extension",
+      "source-fixture",
+      "core-upgrade"
+    ],
+    "coveragePolicy": "Generation, source hashes, compilation, runtime and layer-boundary checks. Frozen source remains immutable. Declaration-only types, route/controller composition and SQL DDL are not reported as uncovered executable helpers. Frozen executable extension helpers are measured through linked source without modifying the fixture."
+  },
+  "existingPlatform": {
+    "backend": "bash run-backend-full-coverage.sh",
+    "frontend": "bash run-frontend-full-coverage.sh",
+    "threshold": 100
+  }
+}

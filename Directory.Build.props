@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <!-- Product / release version -->
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <NgbPlatformAssemblyVersion>3.0.0.0</NgbPlatformAssemblyVersion>
     <AssemblyVersion>$(NgbPlatformAssemblyVersion)</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
@@ -25,7 +25,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>NGB;NGB Platform;.NET;PostgreSQL;business applications</PackageTags>
-    <PackageReleaseNotes>Attachments and plain-text Notes for catalogs, documents and general journal entries, with private object storage, direct uploads, authorization, parent audit history and indefinite file retention. Upgrade: https://docs.ngbplatform.com/architecture/attachments-and-notes</PackageReleaseNotes>
+    <PackageReleaseNotes>External application template, public frontend tooling, artifact consumption and verified upgrade contracts. Upgrade: https://docs.ngbplatform.com/architecture/external-app-upgrades</PackageReleaseNotes>
     <Copyright>Copyright (c) NGB Platform 2026</Copyright>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>

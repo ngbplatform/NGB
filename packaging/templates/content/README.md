@@ -1,0 +1,141 @@
+# NgbApplication
+
+An independent NGB 3.2.0 application: API, one-shot Migrator, Background Jobs and
+Vue. It uses official NuGet/npm packages. No NGB repository checkout is required.
+The initial UI provides users, roles, permission editing, role audit history and
+Work Center. Notes and Attachments are disabled by default.
+
+## Start locally
+
+Prerequisites: Docker with Compose v2, Node.js 24.19 or later in the 24.x line,
+and .NET 10 SDK for host development. The generated lockfiles pin dependencies.
+
+```sh
+node infrastructure/configure.mjs administrator@example.com
+docker compose up --build -d
+docker compose ps -a
+docker compose logs migrator
+```
+
+The initializer generates random secrets into a private, ignored `.env` file and
+refuses to overwrite it. Read `BOOTSTRAP_PASSWORD` locally; secrets are not printed
+or checked in. Open http://localhost:5182 and log in using the configured email
+and password. The local Keycloak realm uses PKCE for the browser and a separate,
+limited service client for user administration.
+
+The first identity has the trusted Keycloak role `ngb-admin`, so it can administer
+the application before a platform user exists. On **Users**, create/link the same
+email and assign the **Administrator** role. This enables personal Work Center
+features as well. Active users assigned the registered `application.administrator`
+role receive all registered capabilities, including new ones, without manual grants.
+An inactive platform user stays blocked, even with `ngb-admin`. Renaming an ordinary
+role to Administrator grants no additional access. Deployment flags remain independent.
+
+Create an ordinary role, assign permissions, save, reopen and edit it, then inspect
+its audit tab. These are real platform operations backed by PostgreSQL and Keycloak.
+
+API readiness is at http://localhost:5181/health. The worker dashboard uses
+http://localhost:5184; sign in with the bootstrap administrator. Run the registered
+`platform.schema.validate` job and inspect its outcome. API and worker write
+structured JSON logs to stdout. No Seq or separate logging service is required.
+
+Compose starts API and worker only after the Migrator exits successfully. A failed
+migration blocks both hosts. The Migrator applies platform migration packs, then
+idempotently creates the registered Administrator role. It never seeds business
+records. PostgreSQL stores the application, Keycloak realm, and Hangfire state.
+
+## Develop on the host
+
+```sh
+dotnet restore NgbApplication.slnx --locked-mode --configfile NuGet.Config
+dotnet build NgbApplication.slnx --no-restore -c Release
+cd web
+npm ci --workspaces=false
+npm run build
+```
+
+Configure host connection strings, Keycloak issuer/client IDs and the API's
+Keycloak admin-client settings through environment variables or user secrets.
+`NGB_CONNECTION_STRING` configures the Migrator. Run the following before hosts:
+
+```sh
+dotnet run --project NgbApplication.Migrator --
+dotnet run --project NgbApplication.Migrator -- seed-administrator
+```
+
+The API and worker never run migrations on startup. The platform CLI's `--dry-run`,
+`--list-modules`, `--info` and other documented commands do not seed the role.
+
+## Grow the application
+
+Add projects only when they have work to do:
+
+- `NgbApplication.Definitions`: metadata, definitions and application contracts;
+  no SQL, provider implementations, HTTP hosting or runtime orchestration.
+- `NgbApplication.Runtime`: handlers, validators and orchestration; references
+  Definitions and provider-neutral NGB contracts/persistence abstractions.
+- `NgbApplication.PostgreSql`: SQL, embedded migrations and persistence adapters;
+  references Definitions/contracts plus NGB PostgreSql, Dapper or Npgsql as needed.
+- API and worker compose the modules. Migrator references the provider migration
+  assembly and anchors it with `typeof(YourMigrationPackContributor).Assembly`.
+
+Runtime must not reference PostgreSql, Dapper or Npgsql. The provider must not
+reference Runtime. Move shared interfaces to Definitions or a small abstractions
+project, not into an orchestration assembly. Declare direct project dependencies.
+Register definition-bound handlers with `AddDefinitionBoundScoped<TContract, T>()`.
+Keep `AddNgbRuntimeStartupValidation()` enabled to reject incomplete registrations.
+Use immutable, versioned application migrations with a pack depending on `platform`.
+
+The complete runnable extension walkthrough is published at
+https://docs.ngbplatform.com/guides/extend-external-application.
+
+## Frontend contract
+
+Use `@ngbplatform/ui/tailwind-preset` and keep PostCSS configuration in this app.
+The supported starter toolchain is Tailwind 3.4, PostCSS 8, Vite 7 and Vue 3.5.
+Tailwind 4 is not introduced by this release. Include packaged UI sources in
+Tailwind content discovery and use the public Vite asset plugin. All imports must
+use documented package entry points; do not copy platform components or reference
+workspace files. `web/public/runtime-config.js` contains public browser configuration,
+never service credentials. Update it for your deployment URLs.
+
+## Optional content capabilities
+
+Notes need PostgreSQL and an enabled `FeatureManagement:Notes` flag. They do not
+need MinIO. To enable Attachments, reference `NGB.Platform.Attachments.MinIO` 3.2.0,
+configure private object storage, and pass the storage registration callback to
+`AddNgbAttachmentsNotesApi`. Configure CORS for the exact web origin and private
+presigned upload/download endpoints. Enable `FeatureManagement:Attachments` only
+after storage validation passes. Use the platform parent-object authorization;
+do not expose buckets publicly or implement a separate application ACL.
+
+## Upgrade and deploy
+
+Read the published migration guide for the exact supported transition. Update
+NuGet/npm dependencies and lockfiles and apply its source/configuration changes.
+Template installation is for new applications; never regenerate over an existing app.
+
+Before an upgrade, take consistent backups of PostgreSQL, Keycloak and optional
+object storage. Stop API and worker writers. Run the target Migrator against the
+same state, then start the matching API, worker and frontend. On migration failure,
+keep target hosts stopped, inspect the error and follow the migration guide's
+retry/recovery steps. Do not downgrade a migrated database in place.
+
+```sh
+docker compose stop api jobs web
+docker compose build
+docker compose run --rm migrator
+docker compose up -d --no-deps api jobs web
+```
+
+Run those commands sequentially and stop on any error. Preserve database and
+storage volumes. Do not use `down --volumes` on application data. Repeating the
+Migrator must not duplicate data or reactivate/rename an existing Administrator role.
+
+This Compose file is a loopback-only development environment, including Keycloak
+`start-dev` and HTTP metadata. For production, use a managed deployment with TLS,
+production Keycloak, secrets management, least-privilege database accounts,
+backup/recovery and explicit ingress. Keep JWT issuer validation enabled; the optional
+`KeycloakSettings:MetadataAddress` changes only the private discovery address.
+Production metadata requires HTTPS unless an explicitly trusted internal transport
+is configured. Apply the same deployment controls to the jobs dashboard.

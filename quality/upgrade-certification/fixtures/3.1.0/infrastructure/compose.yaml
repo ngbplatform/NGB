@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:18.3-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a private test password}
+      POSTGRES_DB: certification
+    ports:
+      - "127.0.0.1:5183:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./init.sql:/docker-entrypoint-initdb.d/10-keycloak.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d certification"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5.6
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set a private test password}
+      KC_HOSTNAME: http://localhost:5180
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:?Set a private test password}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_ADMIN_CLIENT_SECRET:?Set a private client secret}
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "127.0.0.1:5180:8080"
+    volumes:
+      - ./realm.json:/opt/keycloak/data/import/certification.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  postgres-data:

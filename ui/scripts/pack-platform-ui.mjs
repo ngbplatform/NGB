@@ -106,19 +106,20 @@ async function verifyCrmConsumerLock(tarballPath, version) {
   if (crmManifest.dependencies?.['@ngbplatform/ui'] !== version) {
     throw new Error(`CRM must reference @ngbplatform/ui ${version} exactly.`)
   }
+  if (localCandidate) {
+    console.log('Candidate built; registry lock integrity is verified after candidate locks are generated.')
+    return
+  }
   if (
     crmLock.packages?.['']?.dependencies?.['@ngbplatform/ui'] !== version
     || locked?.version !== version
     || locked?.resolved !== expectedResolved
-    || (!localCandidate && locked?.integrity !== expectedIntegrity)
+    || locked?.integrity !== expectedIntegrity
   ) {
     throw new Error(
       `CRM package-lock must reference the exact @ngbplatform/ui ${version} release candidate `
         + 'including its registry URL and SHA-512 integrity.',
     )
-  }
-  if (localCandidate) {
-    console.log('Local candidate only; the published CRM lockfile remains unchanged.')
   }
 }
 

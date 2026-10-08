@@ -65,6 +65,7 @@ public static class DependencyInjection
             .AddJwtBearer(options =>
             {
                 options.Authority = keycloakSettings.Issuer;
+                options.MetadataAddress = keycloakSettings.MetadataAddress ?? string.Empty;
                 options.RequireHttpsMetadata = keycloakSettings.RequireHttpsMetadata;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
@@ -177,6 +178,7 @@ public static class DependencyInjection
                 options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
                 
                 options.Authority = keycloakSettings.Issuer;
+                options.MetadataAddress = keycloakSettings.MetadataAddress;
                 options.ClientId = primaryClientId;
                 options.CallbackPath= callbackPath;
                 options.SignedOutCallbackPath = "/logout-callback";
