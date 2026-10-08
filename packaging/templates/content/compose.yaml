@@ -52,6 +52,7 @@ services:
       dockerfile: infrastructure/Dockerfile
       args:
         PROJECT: NgbApplication.Migrator
+        NUGET_CONFIG: ${NGB_NUGET_CONFIG:-NuGet.Config}
     entrypoint: ["/bin/sh", "/app/migrate.sh"]
     environment:
       NGB_CONNECTION_STRING: Host=postgres;Database=application;Username=postgres;Password=${POSTGRES_PASSWORD:?Initialize private configuration}
@@ -66,6 +67,7 @@ services:
       dockerfile: infrastructure/Dockerfile
       args:
         PROJECT: NgbApplication.Api
+        NUGET_CONFIG: ${NGB_NUGET_CONFIG:-NuGet.Config}
     environment:
       <<: *application-environment
       KeycloakSettings__ClientIds__0: ngb-web
@@ -87,6 +89,7 @@ services:
       dockerfile: infrastructure/Dockerfile
       args:
         PROJECT: NgbApplication.BackgroundJobs
+        NUGET_CONFIG: ${NGB_NUGET_CONFIG:-NuGet.Config}
     environment:
       <<: *application-environment
       KeycloakSettings__ClientIds__0: ngb-jobs

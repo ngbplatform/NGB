@@ -1,7 +1,9 @@
 FROM node:24.19.0 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --workspaces=false
+COPY .ngb-packages/ /tmp/ngb-packages/
+RUN if [ -f /tmp/ngb-packages/ui.tgz ]; then npm cache add /tmp/ngb-packages/ui.tgz; fi \
+    && npm ci --workspaces=false
 COPY . .
 RUN npm run build
 

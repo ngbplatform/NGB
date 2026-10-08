@@ -28,10 +28,12 @@ For diagnosis before sealing, the individual `certify.mjs <profile>` commands ac
 `artifacts` by default. Such unsealed results do not authorize publication.
 
 `verify-template.mjs` installs the packed template, checks substitutions, minimal
-projects and all frontend entries/assets/classes. `verify-compose.mjs` builds the
+projects and all frontend entries/assets/classes. `verify-compose.mjs` creates the
+app through the public `ngb.mjs create --packages` command and builds the
 generated Dockerfiles and exercises failure ordering, private Keycloak discovery,
-non-root hosts, health and browser login. Its only consumer changes are candidate
-package acquisition (isolated NuGet feed and exact npm archive cache).
+non-root hosts, health and browser login. The generated Dockerfiles are used unchanged;
+local package acquisition is part of the public app tool. Upgrade profiles use the
+public `ngb.mjs upgrade --apply` command against the frozen consumer copy.
 
 `release.mjs certify` runs compatibility, all profiles and the complete existing
 backend/frontend/performance gates, including the framework component matrix in
@@ -43,7 +45,10 @@ On macOS, the release runner uses `Dockerfile.quality` and a fresh source copy t
 the same complete quality commands on Linux. It copies only source and candidate
 packages, never host `node_modules`, `bin`, `obj` or registry caches.
 
-After a successful trusted-main certification, publication uses the saved artifacts.
+After successful trusted-main certification, publication automatically selects the
+exact upstream run and artifact ID, waits for environment approval and uses the saved
+artifacts. Configure required reviewers on `platform-release`; a missing review rule
+blocks publication. Manual dispatch needs no run ID and matches the dispatch commit.
 `verify-registry.mjs` is a post-publication gate, so it cannot pass for an unpublished
 candidate. It never reuses the candidate feed for its registry-only consumer.
 `release.mjs verify-promotion` requires the registry receipt in addition to the

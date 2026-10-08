@@ -9,7 +9,8 @@ public sealed class CheckpointRuntimeDefinitions : IDefinitionsContributor
 {
     public void Contribute(DefinitionsBuilder builder)
     {
-        builder.ExtendCatalog(CheckpointDefinitions.CatalogCode, catalog => catalog.AddValidator<CheckpointValidator>());
+        builder.ExtendCatalog(CheckpointDefinitions.CatalogCode,
+            catalog => catalog.AddValidator<CheckpointValidator>());
     }
 }
 
@@ -20,7 +21,6 @@ public sealed class CheckpointValidator : ICatalogUpsertValidator
     public Task ValidateUpsertAsync(CatalogUpsertValidationContext context, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-
         if (string.IsNullOrWhiteSpace(context.Fields.GetValueOrDefault("display")?.ToString()))
             throw new InvalidCheckpointException();
 

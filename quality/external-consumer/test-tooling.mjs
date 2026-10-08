@@ -18,8 +18,9 @@ run('node', [
   'quality/external-consumer/registry-fetch.test.mjs', 'quality/external-consumer/sequencing.test.mjs',
   'quality/external-consumer/configuration.test.mjs', 'quality/upgrade-certification/scenarios.test.mjs',
   'ui/scripts/platform-ui-compatibility.test.mjs',
+  'quality/external-consumer/application-contracts.test.mjs', 'quality/external-consumer/release-source.test.mjs',
 ])
-run('node', ['--test', 'quality/external-consumer/process-contracts.test.mjs'])
+run('node', ['--test', 'quality/external-consumer/process-contracts.test.mjs', 'quality/external-consumer/application-process.test.mjs'])
 await mkdir(join(repository, 'artifacts/coverage'), { recursive: true })
 const reports = await mkdtemp(join(repository, 'artifacts/coverage/generated-helpers-'))
 run('dotnet', [

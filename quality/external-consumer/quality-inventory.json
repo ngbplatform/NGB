@@ -8,7 +8,9 @@
     "quality/upgrade-certification/scenarios.mjs",
     "packaging/templates/content/infrastructure/configuration.mjs",
     "ui/scripts/platform-ui-compatibility.mjs",
-    "quality/external-consumer/layering.mjs"
+    "quality/external-consumer/layering.mjs",
+    "packaging/templates/content/infrastructure/ngb/contracts.mjs",
+    ".github/scripts/release-source.cjs"
   ],
   "measuredGeneratedDotNet": [
     "packaging/templates/content/NgbApplication.Migrator/AdministratorBootstrap.cs",
@@ -45,10 +47,15 @@
       "quality/external-consumer/publish.mjs",
       "quality/external-consumer/verify-compose.mjs",
       "quality/external-consumer/full-quality.mjs",
+      "ngb.mjs",
+      "packaging/templates/content/infrastructure/ngb.mjs",
+      "packaging/templates/content/infrastructure/ngb/cli.mjs",
+      "packaging/templates/content/infrastructure/ngb/application.mjs",
       "run-full-quality.sh"
     ],
     "verification": [
       "node --test quality/external-consumer/process-contracts.test.mjs",
+      "node --test quality/external-consumer/application-process.test.mjs",
       "node quality/external-consumer/verify-template.mjs",
       "node quality/external-consumer/release.mjs certify",
       "node quality/external-consumer/verify-registry.mjs"

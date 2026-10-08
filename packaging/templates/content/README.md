@@ -12,7 +12,7 @@ and .NET 10 SDK for host development. The generated lockfiles pin dependencies.
 
 ```sh
 node infrastructure/configure.mjs administrator@example.com
-docker compose up --build -d
+node infrastructure/ngb.mjs start
 docker compose ps -a
 docker compose logs migrator
 ```
@@ -22,6 +22,28 @@ refuses to overwrite it. Read `BOOTSTRAP_PASSWORD` locally; secrets are not prin
 or checked in. Open http://localhost:5182 and log in using the configured email
 and password. The local Keycloak realm uses PKCE for the browser and a separate,
 limited service client for user administration.
+
+The `start` command builds and starts a new Compose deployment. If containers already
+exist, use `docker compose start` to resume them, or the explicit `deploy` command
+below to rebuild and migrate.
+
+Before package publication, run this one command from the NGB checkout:
+
+```sh
+node ngb.mjs create MyApplication --local --start --email administrator@example.com
+```
+
+It creates a sibling application directory, installs the packed template in an
+isolated template cache and verifies the release manifest and package hashes.
+`--packages /path/to/candidate` selects another local set; `--output /path/to/MyApplication`
+selects a nonexistent destination. No Dockerfile edits are needed. The application
+owns package copies and has no references to NGB source projects.
+
+Local package state is ignored by Git. `NuGet.Config` retains registry consumption;
+`NuGet.Local.Config` adds the local NGB feed while preserving other sources. For host
+development with local packages, restore with `--configfile NuGet.Local.Config` and
+run `npm cache add .ngb-packages/ui.tgz` from `web` before `npm ci`. The application
+command configures these automatically for Compose.
 
 The first identity has the trusted Keycloak role `ngb-admin`, so it can administer
 the application before a platform user exists. On **Users**, create/link the same
@@ -111,9 +133,26 @@ do not expose buckets publicly or implement a separate application ACL.
 
 ## Upgrade and deploy
 
-Read the published migration guide for the exact supported transition. Update
-NuGet/npm dependencies and lockfiles and apply its source/configuration changes.
-Template installation is for new applications; never regenerate over an existing app.
+The NGB 3.2.0 tool registers the 3.1.0 → 3.2.0 transition. Preview and apply from
+the NGB checkout without copying or regenerating application source:
+
+```sh
+node ngb.mjs upgrade --app ../MyApplication --to 3.2.0
+node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --apply
+```
+
+Before publication, add `--local`; other artifact locations use `--packages /path/to/candidate`.
+Preview writes nothing. Apply updates NGB versions and lockfiles and validates both
+builds in a private temporary copy. Only after success are dependency files applied.
+Source files, secrets, data and running services remain untouched. Originals are
+saved in `.ngb/upgrades`. Concurrent edits, mixed versions, conditional platform
+versions and unsupported transitions stop the upgrade. Dependency-file backups are
+not database backups.
+
+New apps carry the tool at `infrastructure/ngb.mjs`. Future releases must register
+their transitions and document any required tool update. Read the migration guide
+for application-specific configuration and tests. Installing a template never
+rewrites an existing app.
 
 Before an upgrade, take consistent backups of PostgreSQL, Keycloak and optional
 object storage. Stop API and worker writers. Run the target Migrator against the
@@ -122,14 +161,16 @@ keep target hosts stopped, inspect the error and follow the migration guide's
 retry/recovery steps. Do not downgrade a migrated database in place.
 
 ```sh
-docker compose stop api jobs web
-docker compose build
-docker compose run --rm migrator
-docker compose up -d --no-deps api jobs web
+node infrastructure/ngb.mjs deploy --backup-confirmed
 ```
 
-Run those commands sequentially and stop on any error. Preserve database and
-storage volumes. Do not use `down --volumes` on application data. Repeating the
+The command validates the Compose topology, builds images, stops writers, runs
+Migrator and starts hosts only after successful migration. `--backup-confirmed`
+confirms that you took and tested the consistent backup; it does not create one.
+Existing apps without the bundled tool can run `node /path/to/NGB/ngb.mjs deploy
+--app /path/to/MyApplication --backup-confirmed`. Custom deployment topologies keep
+their own deployment pipeline. Preserve database and storage volumes.
+Do not use `down --volumes` on application data. Repeating the
 Migrator must not duplicate data or reactivate/rename an existing Administrator role.
 
 This Compose file is a loopback-only development environment, including Keycloak

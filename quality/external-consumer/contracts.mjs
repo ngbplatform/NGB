@@ -54,7 +54,7 @@ export async function assertConsumerIsolation(directory, repository) {
   for (const filename of Object.keys(files)) {
     if (!/\.(?:csproj|props|targets|json|[cm]?[jt]s|vue)$/.test(filename)) continue
     const content = await readFile(resolve(directory, filename), 'utf8')
-    if (content.includes(resolve(repository)) || /(?:workspace:|link:)/.test(content)) {
+    if (content.includes(resolve(repository)) || /["'`](?:workspace:|link:)/.test(content)) {
       throw new Error(`Repository/workspace dependency in consumer: ${filename}`)
     }
     if (/\.csproj$/.test(filename)) {

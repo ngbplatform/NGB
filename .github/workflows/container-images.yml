@@ -430,11 +430,13 @@ jobs:
               '.github/workflows/publish-platform-nuget.yml',
               '.github/workflows/publish-platform-ui.yml'
             ]);
-            const { data } = await github.rest.actions.listWorkflowRunsForRepo({
-              ...context.repo, head_sha: context.sha, status: 'success', per_page: 100
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              ...context.repo, branch: 'main', status: 'success', per_page: 100
             });
-            const run = data.workflow_runs.find(item => workflows.has(item.path)
-              && item.head_branch === 'main' && item.event === 'workflow_dispatch');
+            const run = runs.find(item => workflows.has(item.path)
+              && item.head_branch === 'main'
+              && ['workflow_dispatch', 'workflow_run'].includes(item.event)
+              && item.display_title === `Publish NGB ${context.sha}`);
             if (run) core.setOutput('run-id', String(run.id));
             else core.notice('Deployment is blocked until registry verification succeeds for this commit.');
       - uses: actions/setup-node@v6

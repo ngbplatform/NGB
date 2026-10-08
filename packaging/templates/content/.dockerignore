@@ -5,3 +5,6 @@
 .git
 .env
 .local
+.ngb/cache
+.ngb/upgrades
+.ngb/operation.lock

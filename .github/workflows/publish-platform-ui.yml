@@ -1,12 +1,8 @@
 name: publish-platform-ui
+run-name: Publish NGB ${{ github.sha }}
 
 on:
   workflow_dispatch:
-    inputs:
-      certification_run_id:
-        description: Publish the complete certified NuGet/npm release from this successful main-branch run
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -16,6 +12,4 @@ permissions:
 jobs:
   publish-certified-release:
     uses: ./.github/workflows/publish-platform-release.yml
-    with:
-      certification_run_id: ${{ inputs.certification_run_id }}
     secrets: inherit

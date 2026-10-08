@@ -68,7 +68,10 @@ test('isolated source rejects every repository, project and package fallback', a
     await assert.rejects(assertConsumerIsolation(consumer, repository))
   }
   await writeFile(join(consumer, 'package.json'), '{}')
+  await writeFile(join(consumer, 'tool.mjs'), 'throw new Error("Refusing symbolic link: filename")\n')
   await assertConsumerIsolation(consumer, repository)
+  await writeFile(join(consumer, 'tool.mjs'), 'const dependency = "link:../repository"\n')
+  await assert.rejects(assertConsumerIsolation(consumer, repository), /Repository/)
 })
 
 test('release evidence fails closed for missing commands, assertions or identity', () => {

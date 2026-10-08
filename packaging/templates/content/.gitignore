@@ -4,4 +4,7 @@
 **/dist/
 .env
 .local/
+.ngb/
+NuGet.Local.Config
+web/.ngb-packages/*.tgz
 *.user

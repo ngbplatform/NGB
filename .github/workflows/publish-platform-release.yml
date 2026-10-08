@@ -1,17 +1,13 @@
 name: publish-certified-platform-release
+run-name: Publish NGB ${{ github.event.workflow_run.head_sha || github.sha }}
 
 on:
+  workflow_run:
+    workflows: [external-app-certification]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      certification_run_id:
-        description: Successful external-app-certification run on main
-        required: true
-        type: string
   workflow_call:
-    inputs:
-      certification_run_id:
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -22,7 +18,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  select:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      run-id: ${{ steps.source.outputs.run-id }}
+      sha: ${{ steps.source.outputs.sha }}
+      artifact-id: ${{ steps.source.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select certified artifacts for the exact release commit
+        id: source
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { selectReleaseSource } = require('./.github/scripts/release-source.cjs');
+            const source = await selectReleaseSource(github, context);
+            core.setOutput('run-id', source.runId);
+            core.setOutput('sha', source.sha);
+            core.setOutput('artifact-id', source.artifactId);
+            await core.summary
+              .addHeading('Release awaiting approval')
+              .addTable([
+                ['Commit', source.sha],
+                ['Certification', source.runId],
+                ['Artifact', source.artifactId]
+              ])
+              .addRaw('Approve the platform-release environment to publish these exact packages.')
+              .write();
+
   publish:
+    needs: select
+    name: Approve release of ${{ needs.select.outputs.sha }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: platform-release
@@ -31,27 +58,9 @@ jobs:
       actions: read
       id-token: write
     steps:
-      - name: Verify the certification run provenance
-        id: source
-        uses: actions/github-script@v8
-        env:
-          CERTIFICATION_RUN_ID: ${{ inputs.certification_run_id }}
-        with:
-          script: |
-            const id = process.env.CERTIFICATION_RUN_ID;
-            if (!/^[1-9][0-9]*$/.test(id)) throw new Error('An exact certification run ID is required.');
-            const { data: run } = await github.rest.actions.getWorkflowRun({
-              ...context.repo, run_id: Number(id)
-            });
-            if (run.conclusion !== 'success' || run.head_branch !== 'main'
-                || run.path !== '.github/workflows/external-app-certification.yml'
-                || !['push', 'workflow_dispatch'].includes(run.event)) {
-              throw new Error('Publication requires a successful trusted main-branch certification.');
-            }
-            core.setOutput('sha', run.head_sha);
       - uses: actions/checkout@v6
         with:
-          ref: ${{ steps.source.outputs.sha }}
+          ref: ${{ needs.select.outputs.sha }}
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
@@ -62,13 +71,22 @@ jobs:
           package-manager-cache: false
       - uses: actions/download-artifact@v8
         with:
-          name: ngb-certified-release
+          artifact-ids: ${{ needs.select.outputs.artifact-id }}
+          merge-multiple: true
           path: artifacts/release-candidate
-          run-id: ${{ inputs.certification_run_id }}
+          run-id: ${{ needs.select.outputs.run-id }}
           github-token: ${{ github.token }}
       - name: Verify certification and the exact artifact identities
+        env:
+          NGB_RELEASE_COMMIT: ${{ needs.select.outputs.sha }}
         run: |
           npm --prefix quality ci
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict'
+          import { readFile } from 'node:fs/promises'
+          const manifest = JSON.parse(await readFile('artifacts/release-candidate/release-manifest.json', 'utf8'))
+          assert.equal(manifest.sourceCommit, process.env.NGB_RELEASE_COMMIT)
+          JS
           node quality/external-consumer/release.mjs verify-candidate
       - name: Request short-lived NuGet credential
         id: nuget-login

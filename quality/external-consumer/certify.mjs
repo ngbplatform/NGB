@@ -11,6 +11,7 @@ import { assertLayering } from './layering.mjs'
 import { validateMatrix } from './release-contracts.mjs'
 import { startAfterSuccessfulMigration } from './sequencing.mjs'
 import { assertConsumerIsolation, verifyFrozenFixture } from './contracts.mjs'
+import { withManagedIgnores } from '../../packaging/templates/content/infrastructure/ngb/contracts.mjs'
 import {
   authenticatedApi, createCoreState, createContentState,
   verifyCorePreservation, verifyCoreContinuation, verifyContentPreservation, verifyContentContinuation,
@@ -224,9 +225,12 @@ async function verifySourceCopy(upgraded = false) {
   for (const [path, expected] of Object.entries(sourceManifest.files)) {
     const actual = createHash('sha256').update(await readFile(join(application, path))).digest('hex')
     if (actual === expected) continue
-    const allowed = path === 'Directory.Build.props' || path === 'NuGet.Config' || path.endsWith('packages.lock.json')
+    const allowed = path === 'Directory.Build.props' || path === 'NuGet.Config' || path === '.gitignore' || path.endsWith('packages.lock.json')
       || path === 'web/package.json' || path === 'web/package-lock.json'
     assert.ok(upgraded && allowed, `Unexpected source fixture change: ${path}`)
+    if (path === '.gitignore') {
+      assert.equal(await readFile(join(application, path), 'utf8'), withManagedIgnores(await readFile(join(source, path), 'utf8')))
+    }
     patch[path] = { sourceSha256: expected, targetSha256: actual }
   }
   if (upgraded) {
@@ -467,20 +471,8 @@ volumes:
     runtimeProbe('SnapshotPersistentApplicationState', join(root, 'source-state.json'))
     const pending = join(root, 'pending-jobs.json')
     dotnetHost('Probe', ['enqueue', pending])
-    const props = join(application, 'Directory.Build.props')
-    await writeFile(props, (await readFile(props, 'utf8')).replace(`>${sourceVersion}<`, `>${targetVersion}<`))
-    const manifestPath = join(application, 'web/package.json')
-    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-    manifest.dependencies['@ngbplatform/ui'] = targetVersion
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
-    const lockPath = join(application, 'web/package-lock.json')
-    const lock = JSON.parse(await readFile(lockPath, 'utf8'))
-    lock.packages[''].dependencies['@ngbplatform/ui'] = targetVersion
-    const uiLock = lock.packages['node_modules/@ngbplatform/ui']
-    uiLock.version = targetVersion
-    uiLock.resolved = `https://registry.npmjs.org/@ngbplatform/ui/-/ui-${targetVersion}.tgz`
-    uiLock.integrity = `sha512-${createHash('sha512').update(await readFile(join(feed, `ngbplatform-ui-${targetVersion}.tgz`))).digest('base64')}`
-    await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`)
+    run('node', [join(repository, 'ngb.mjs'), 'upgrade', '--app', application,
+      '--to', targetVersion, '--packages', artifacts, '--apply'])
     await candidateConfiguration()
     await build(targetVersion)
     await verifySourceCopy(true)

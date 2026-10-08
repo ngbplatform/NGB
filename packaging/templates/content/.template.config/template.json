@@ -25,7 +25,10 @@
             "**/node_modules/**",
             "**/dist/**",
             ".env",
-            ".local/**"
+            ".local/**",
+            ".ngb/**",
+            "NuGet.Local.Config",
+            "web/.ngb-packages/*.tgz"
           ]
         }
       ]
