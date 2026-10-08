@@ -10,7 +10,8 @@
     "ui/scripts/platform-ui-compatibility.mjs",
     "quality/external-consumer/layering.mjs",
     "packaging/templates/content/infrastructure/ngb/contracts.mjs",
-    ".github/scripts/release-source.cjs"
+    ".github/scripts/release-source.cjs",
+    ".github/scripts/container-source.cjs"
   ],
   "measuredGeneratedDotNet": [
     "packaging/templates/content/NgbApplication.Migrator/AdministratorBootstrap.cs",

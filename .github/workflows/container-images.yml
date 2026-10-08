@@ -1,25 +1,19 @@
 name: container-images
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - '.dockerignore'
-      - '.github/workflows/container-images.yml'
-      - 'Directory.Build.props'
-      - 'Directory.Build.targets'
-      - 'NuGet.Registry.Config'
-      - 'NGB.*/**'
-      - 'ui/**'
+  workflow_run:
+    workflows: [publish-certified-platform-release, publish-platform-nuget, publish-platform-ui]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
+  actions: read
 
 concurrency:
-  group: container-images-${{ github.ref }}
-  cancel-in-progress: true
+  group: container-images-${{ github.event.workflow_run.display_title || format('Publish NGB {0}', github.sha) }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -27,97 +21,85 @@ env:
   BUILD_CONFIGURATION: Release
 
 jobs:
-  changes:
-    name: detect changed workloads
+  release-source:
+    name: verify published release before building images
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    timeout-minutes: 15
     outputs:
-      platform: ${{ steps.filter.outputs.platform }}
-      crm: ${{ steps.filter.outputs.crm }}
+      sha: ${{ steps.source.outputs.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+      - name: Select the exact successful publication
+        id: source
+        uses: actions/github-script@v8
         with:
+          script: |
+            const { selectContainerSource } = require('./.github/scripts/container-source.cjs');
+            const source = await selectContainerSource(github, context);
+            core.setOutput('sha', source.sha);
+            core.setOutput('run-id', source.runId);
+            core.setOutput('artifact-id', source.artifactId);
+      - name: Checkout the published source commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
           fetch-depth: 0
-
-      - name: Detect changed workload groups
-        id: filter
+      - name: Require the published commit to belong to main
+        env:
+          NGB_RELEASE_COMMIT: ${{ steps.source.outputs.sha }}
+        run: git merge-base --is-ancestor "$NGB_RELEASE_COMMIT" origin/main
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - name: Download evidence from the selected publication
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ steps.source.outputs.artifact-id }}
+          merge-multiple: true
+          path: artifacts/release-candidate
+          run-id: ${{ steps.source.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Verify source, package versions and registry evidence
+        env:
+          NGB_RELEASE_COMMIT: ${{ steps.source.outputs.sha }}
         run: |
-          set -euo pipefail
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "platform=true" >> "${GITHUB_OUTPUT}"
-            echo "crm=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          before="${{ github.event.before }}"
-          after="${{ github.sha }}"
-          if [ -z "${before}" ] || [[ "${before}" =~ ^0+$ ]]; then
-            git diff-tree --no-commit-id --name-only -r "${after}" > changed-files.txt
-          else
-            git diff --name-only "${before}" "${after}" > changed-files.txt
-          fi
-
-          platform=false
-          crm=false
-
-          while IFS= read -r path; do
-            case "${path}" in
-              .dockerignore|.github/workflows/container-images.yml|Directory.Build.props)
-                platform=true
-                crm=true
-                ;;
-              Directory.Build.targets|NuGet.Registry.Config)
-                crm=true
-                ;;
-              NGB.CRM*)
-                crm=true
-                ;;
-              ui/ngb-crm-web/*)
-                crm=true
-                ;;
-              ui/postcss.shared.config.js|ui/tailwind.shared.config.js)
-                platform=true
-                crm=true
-                ;;
-              NGB.*)
-                platform=true
-                ;;
-              ui/*)
-                platform=true
-                ;;
-            esac
-          done < changed-files.txt
-
-          echo "Changed workload groups: platform=${platform}, crm=${crm}"
-          echo "platform=${platform}" >> "${GITHUB_OUTPUT}"
-          echo "crm=${crm}" >> "${GITHUB_OUTPUT}"
+          npm --prefix quality ci
+          node --input-type=module <<'JS'
+          import { readFile } from 'node:fs/promises'
+          import { createRequire } from 'node:module'
+          const { assertContainerManifest } = createRequire(import.meta.url)('./.github/scripts/container-source.cjs')
+          const manifest = JSON.parse(await readFile('artifacts/release-candidate/release-manifest.json', 'utf8'))
+          const props = await readFile('Directory.Build.props', 'utf8')
+          const ui = JSON.parse(await readFile('ui/ngb-crm-web/package.json', 'utf8'))
+          assertContainerManifest(manifest, process.env.NGB_RELEASE_COMMIT, props, ui)
+          JS
+          node quality/external-consumer/release.mjs verify-publication
+          node quality/external-consumer/release.mjs verify-promotion
 
   crm-registry-dependencies:
     name: verify CRM registry dependencies
-    needs: changes
-    if: needs.changes.outputs.crm == 'true'
+    needs: release-source
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-    outputs:
-      registries_available: ${{ steps.registry.outputs.available }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-source.outputs.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22.14.0
+          node-version: 24.19.0
           registry-url: https://registry.npmjs.org
           cache: npm
           cache-dependency-path: ui/ngb-crm-web/package-lock.json
 
       - name: Check CRM registry package availability
-        id: registry
         run: |
           set -euo pipefail
 
@@ -161,7 +143,6 @@ jobs:
           )
 
           missing=()
-          missing_nuget=0
 
           if ! npm view "@ngbplatform/ui@${ui_version}" version --silent >/dev/null 2>&1; then
             missing+=("@ngbplatform/ui@${ui_version}")
@@ -170,47 +151,35 @@ jobs:
           for package in "${packages[@]}"; do
             package_path="$(printf '%s' "${package}" | tr '[:upper:]' '[:lower:]')"
             package_url="https://api.nuget.org/v3-flatcontainer/${package_path}/${platform_version}/${package_path}.${platform_version}.nupkg"
-            if ! curl --fail --silent --show-error --location --output /dev/null "${package_url}"; then
+            if ! curl --fail --silent --show-error --location --connect-timeout 10 --max-time 60 --output /dev/null "${package_url}"; then
               missing+=("${package}@${platform_version}")
-              missing_nuget=$((missing_nuget + 1))
             fi
           done
 
           if [ "${#missing[@]}" -eq 0 ]; then
-            echo "available=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
           printf 'Missing CRM registry packages:\n'
           printf ' - %s\n' "${missing[@]}"
 
-          if [ "${missing_nuget}" -eq "${#packages[@]}" ]; then
-            echo "::notice::NGB.Platform NuGet packages ${platform_version} are not published yet. Skipping CRM image build for this run; publish NuGet packages from main and rerun container-images."
-            echo "available=false" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          echo "::error::CRM registry dependency set is partially available. Finish publishing all packages before building CRM images."
+          echo "::error::Verified release packages are unavailable. Retry this container run after registry access is restored."
           exit 1
 
       - name: Restore CRM UI from npm
-        if: steps.registry.outputs.available == 'true'
         working-directory: ui/ngb-crm-web
         run: npm ci --workspaces=false
 
       - name: Build CRM UI
-        if: steps.registry.outputs.available == 'true'
         working-directory: ui/ngb-crm-web
         run: npm run build --workspaces=false
 
       - name: Set up .NET
-        if: steps.registry.outputs.available == 'true'
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
       - name: Restore CRM backend from nuget.org
-        if: steps.registry.outputs.available == 'true'
         run: |
           dotnet restore NGB.CRM.Api/NGB.CRM.Api.csproj --configfile NuGet.Registry.Config
           dotnet restore NGB.CRM.BackgroundJobs/NGB.CRM.BackgroundJobs.csproj --configfile NuGet.Registry.Config
@@ -219,9 +188,14 @@ jobs:
 
   build-platform:
     name: build ${{ matrix.image }}
-    needs: changes
-    if: needs.changes.outputs.platform == 'true'
+    needs:
+      - release-source
+      - crm-registry-dependencies
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -301,7 +275,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-source.outputs.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -322,26 +298,23 @@ jobs:
           push: true
           build-args: ${{ matrix.build_args }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:sha-${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:sha-${{ needs.release-source.outputs.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.release-source.outputs.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
   build-crm:
     name: build ${{ matrix.image }}
     needs:
-      - changes
+      - release-source
       - crm-registry-dependencies
-    if: >-
-      ${{
-        needs.changes.outputs.crm == 'true' &&
-        needs.crm-registry-dependencies.result == 'success' &&
-        needs.crm-registry-dependencies.outputs.registries_available == 'true'
-      }}
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -377,7 +350,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-source.outputs.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -398,91 +373,30 @@ jobs:
           push: true
           build-args: ${{ matrix.build_args }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:sha-${{ github.sha }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}:sha-${{ needs.release-source.outputs.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.release-source.outputs.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
-
-  release-promotion:
-    name: verify publication before deployment
-    needs:
-      - build-platform
-      - build-crm
-    if: always() && (needs.build-platform.result == 'success' || needs.build-crm.result == 'success')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      authorized: ${{ steps.verify.outputs.authorized }}
-    steps:
-      - uses: actions/checkout@v6
-      - name: Find successful publication for this source commit
-        id: publication
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const workflows = new Set([
-              '.github/workflows/publish-platform-release.yml',
-              '.github/workflows/publish-platform-nuget.yml',
-              '.github/workflows/publish-platform-ui.yml'
-            ]);
-            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-              ...context.repo, branch: 'main', status: 'success', per_page: 100
-            });
-            const run = runs.find(item => workflows.has(item.path)
-              && item.head_branch === 'main'
-              && ['workflow_dispatch', 'workflow_run'].includes(item.event)
-              && item.display_title === `Publish NGB ${context.sha}`);
-            if (run) core.setOutput('run-id', String(run.id));
-            else core.notice('Deployment is blocked until registry verification succeeds for this commit.');
-      - uses: actions/setup-node@v6
-        if: steps.publication.outputs.run-id != ''
-        with:
-          node-version: 24.19.0
-          package-manager-cache: false
-      - uses: actions/download-artifact@v8
-        if: steps.publication.outputs.run-id != ''
-        with:
-          name: ngb-publication-evidence
-          path: artifacts/release-candidate
-          run-id: ${{ steps.publication.outputs.run-id }}
-          github-token: ${{ github.token }}
-      - name: Verify exact source, candidate and registry evidence
-        if: steps.publication.outputs.run-id != ''
-        id: verify
-        run: |
-          npm --prefix quality ci
-          node --input-type=module <<'JS'
-          import assert from 'node:assert/strict'
-          import { readFile } from 'node:fs/promises'
-          const manifest = JSON.parse(await readFile('artifacts/release-candidate/release-manifest.json', 'utf8'))
-          assert.equal(manifest.sourceCommit, process.env.GITHUB_SHA)
-          JS
-          node quality/external-consumer/release.mjs verify-promotion
-          echo "authorized=true" >> "$GITHUB_OUTPUT"
 
   propose-infra-deploy:
     name: propose infra deploy
     needs:
-      - release-promotion
+      - release-source
       - build-platform
       - build-crm
     if: >-
       ${{
-        always() &&
-        needs.release-promotion.outputs.authorized == 'true' &&
-        github.ref == 'refs/heads/main' &&
-        (needs.build-platform.result == 'success' || needs.build-crm.result == 'success')
+        needs.build-platform.result == 'success' &&
+        needs.build-crm.result == 'success'
       }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       INFRA_REPOSITORY: ngbplatform/ngb-platform-infra
-      NGB_SOURCE_SHA: ${{ github.sha }}
-      IMAGE_TAG: sha-${{ github.sha }}
+      NGB_SOURCE_SHA: ${{ needs.release-source.outputs.sha }}
+      IMAGE_TAG: sha-${{ needs.release-source.outputs.sha }}
       PLATFORM_BUILD_RESULT: ${{ needs.build-platform.result }}
       CRM_BUILD_RESULT: ${{ needs.build-crm.result }}
 

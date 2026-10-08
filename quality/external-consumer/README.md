@@ -49,6 +49,12 @@ After successful trusted-main certification, publication automatically selects t
 exact upstream run and artifact ID, waits for environment approval and uses the saved
 artifacts. Configure required reviewers on `platform-release`; a missing review rule
 blocks publication. Manual dispatch needs no run ID and matches the dispatch commit.
+Successful publication automatically triggers `container-images`. That workflow
+verifies publication/promotion evidence before building the complete image set,
+and uses the manifest source commit for checkout, image tags and the deployment PR.
+Failed publication or any failed image build blocks the deployment PR. Ordinary
+pushes do not race package publication. Container retries use the original release
+run; a manual dispatch from `main` requires evidence for that exact commit.
 `verify-registry.mjs` is a post-publication gate, so it cannot pass for an unpublished
 candidate. It never reuses the candidate feed for its registry-only consumer.
 `release.mjs verify-promotion` requires the registry receipt in addition to the

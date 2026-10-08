@@ -19,6 +19,7 @@ run('node', [
   'quality/external-consumer/configuration.test.mjs', 'quality/upgrade-certification/scenarios.test.mjs',
   'ui/scripts/platform-ui-compatibility.test.mjs',
   'quality/external-consumer/application-contracts.test.mjs', 'quality/external-consumer/release-source.test.mjs',
+  'quality/external-consumer/container-source.test.mjs',
 ])
 run('node', ['--test', 'quality/external-consumer/process-contracts.test.mjs', 'quality/external-consumer/application-process.test.mjs'])
 await mkdir(join(repository, 'artifacts/coverage'), { recursive: true })
