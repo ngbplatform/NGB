@@ -24,11 +24,6 @@
 </p>
 
 <p align="center">
-  Current release: <strong>3.1.0</strong> ·
-  <a href="docs/architecture/attachments-and-notes.md">Attachments &amp; Notes upgrade guide</a>
-</p>
-
-<p align="center">
   <a href="https://ngbplatform.com">Website</a>
   ·
   <a href="https://docs.ngbplatform.com">Docs</a>
@@ -487,6 +482,8 @@ See:
 ---
 
 ## Getting started
+
+[Create your own application](docs/architecture/external-app-upgrades.md#create-an-application) using the official NGB template.
 
 ### 🔑 Demo access
 

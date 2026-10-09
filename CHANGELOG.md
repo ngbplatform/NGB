@@ -8,10 +8,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ## [Unreleased]
 
 ### Added
-- N/A
+- Added the independent `NGB.Platform.Templates` application starter with API, Migrator,
+  Background Jobs, Vue, Keycloak and PostgreSQL, including working platform administration.
+- Added application tooling for creation from local packages, upgrade preview/application
+  and migration-aware deployment.
+- Added the public frontend Tailwind preset and external-consumer checks for npm entry
+  points, template startup and upgrades from a frozen published application fixture.
+- See the [External applications and upgrades guide](docs/architecture/external-app-upgrades.md)
+  for supported version transitions and certification requirements.
 
 ### Changed
-- N/A
+- Unified NuGet/npm publication around certified artifacts and required release approval,
+  with automatic selection of the matching certification run and registry verification.
+- Start container builds, including CRM, after verified publication and use the released
+  source commit for image tags and the deployment PR.
 
 ### Deprecated
 - N/A

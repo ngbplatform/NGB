@@ -4,8 +4,10 @@ Reusable Vue UI building blocks for NGB Platform vertical applications.
 
 ## Install
 
+Replace `PLATFORM_VERSION` with the exact published NGB version used by your backend:
+
 ```bash
-npm install --save-exact @ngbplatform/ui@3.2.0
+npm install --save-exact @ngbplatform/ui@PLATFORM_VERSION
 ```
 
 Applications must provide the Vue runtime peers:
@@ -42,7 +44,7 @@ and do not add the package to `optimizeDeps.include`.
 ## Tailwind
 
 Use the public preset with Tailwind 3.4. Keep PostCSS configuration in the
-consuming application. Tailwind 4 is outside this release's supported toolchain.
+consuming application. Tailwind 4 is outside the supported toolchain.
 
 ```js
 // tailwind.config.js

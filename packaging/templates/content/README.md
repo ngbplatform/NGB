@@ -1,6 +1,6 @@
 # NgbApplication
 
-An independent NGB 3.2.0 application: API, one-shot Migrator, Background Jobs and
+An independent NGB application: API, one-shot Migrator, Background Jobs and
 Vue. It uses official NuGet/npm packages. No NGB repository checkout is required.
 The initial UI provides users, roles, permission editing, role audit history and
 Work Center. Notes and Attachments are disabled by default.
@@ -115,7 +115,7 @@ https://docs.ngbplatform.com/guides/extend-external-application.
 
 Use `@ngbplatform/ui/tailwind-preset` and keep PostCSS configuration in this app.
 The supported starter toolchain is Tailwind 3.4, PostCSS 8, Vite 7 and Vue 3.5.
-Tailwind 4 is not introduced by this release. Include packaged UI sources in
+Tailwind 4 is outside the supported starter toolchain. Include packaged UI sources in
 Tailwind content discovery and use the public Vite asset plugin. All imports must
 use documented package entry points; do not copy platform components or reference
 workspace files. `web/public/runtime-config.js` contains public browser configuration,
@@ -124,8 +124,9 @@ never service credentials. Update it for your deployment URLs.
 ## Optional content capabilities
 
 Notes need PostgreSQL and an enabled `FeatureManagement:Notes` flag. They do not
-need MinIO. To enable Attachments, reference `NGB.Platform.Attachments.MinIO` 3.2.0,
-configure private object storage, and pass the storage registration callback to
+need MinIO. To enable Attachments, reference `NGB.Platform.Attachments.MinIO` at the
+same `NgbPlatformVersion` defined in `Directory.Build.props`, configure private
+object storage, and pass the storage registration callback to
 `AddNgbAttachmentsNotesApi`. Configure CORS for the exact web origin and private
 presigned upload/download endpoints. Enable `FeatureManagement:Attachments` only
 after storage validation passes. Use the platform parent-object authorization;
@@ -133,12 +134,13 @@ do not expose buckets publicly or implement a separate application ACL.
 
 ## Upgrade and deploy
 
-The NGB 3.2.0 tool registers the 3.1.0 → 3.2.0 transition. Preview and apply from
-the NGB checkout without copying or regenerating application source:
+Select a supported transition from the [upgrade guide](https://docs.ngbplatform.com/architecture/external-app-upgrades)
+and replace `TARGET_VERSION` below with its exact target version. Preview and apply
+from the NGB checkout without copying or regenerating application source:
 
 ```sh
-node ngb.mjs upgrade --app ../MyApplication --to 3.2.0
-node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --apply
+node ngb.mjs upgrade --app ../MyApplication --to TARGET_VERSION
+node ngb.mjs upgrade --app ../MyApplication --to TARGET_VERSION --apply
 ```
 
 Before publication, add `--local`; other artifact locations use `--packages /path/to/candidate`.
