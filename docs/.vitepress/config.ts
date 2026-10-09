@@ -70,6 +70,7 @@ export default defineConfig({
         section('Core Architecture', [
           page('Architecture Brief', '/architecture/architecture-brief'),
           page('Architecture Overview', '/architecture/overview'),
+          page('External Applications and Upgrades', '/architecture/external-app-upgrades'),
           page('Layering and Dependencies', '/architecture/layering-and-dependencies'),
           page('Definitions and Metadata', '/architecture/definitions-and-metadata'),
           page('Runtime Request Flow', '/architecture/runtime-request-flow'),
@@ -178,6 +179,7 @@ export default defineConfig({
         section('Core Workflows', [
           page('Developer Workflows', '/guides/developer-workflows'),
           page('Platform Extension Points', '/guides/platform-extension-points'),
+          page('Extend an External Application', '/guides/extend-external-application'),
           page('Document Actions and Work Center', '/guides/document-actions-and-work-center'),
           page('Add a Document with Accounting and Registers', '/guides/add-document-with-accounting-and-registers'),
           page('Add a Canonical Report', '/guides/add-canonical-report-workflow'),

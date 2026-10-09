@@ -23,11 +23,15 @@ or checked in. Open http://localhost:5182 and log in using the configured email
 and password. The local Keycloak realm uses PKCE for the browser and a separate,
 limited service client for user administration.
 
+If the NGB `create` command created this app, `.env` is already initialized. Skip
+`configure.mjs` and run only `start` if creation did not include `--start`.
+
 The `start` command builds and starts a new Compose deployment. If containers already
 exist, use `docker compose start` to resume them, or the explicit `deploy` command
 below to rebuild and migrate.
 
-Before package publication, run this one command from the NGB checkout:
+Before package publication, first [prepare local packages](https://docs.ngbplatform.com/architecture/external-app-upgrades#before-publication).
+Then run this command from the NGB checkout:
 
 ```sh
 node ngb.mjs create MyApplication --local --start --email administrator@example.com
@@ -38,6 +42,8 @@ isolated template cache and verifies the release manifest and package hashes.
 `--packages /path/to/candidate` selects another local set; `--output /path/to/MyApplication`
 selects a nonexistent destination. No Dockerfile edits are needed. The application
 owns package copies and has no references to NGB source projects.
+`--local` requires an existing `artifacts/release-candidate/release-manifest.json`;
+it does not package the platform or run release certification.
 
 Local package state is ignored by Git. `NuGet.Config` retains registry consumption;
 `NuGet.Local.Config` adds the local NGB feed while preserving other sources. For host
@@ -57,7 +63,7 @@ Create an ordinary role, assign permissions, save, reopen and edit it, then insp
 its audit tab. These are real platform operations backed by PostgreSQL and Keycloak.
 
 API readiness is at http://localhost:5181/health. The worker dashboard uses
-http://localhost:5184; sign in with the bootstrap administrator. Run the registered
+http://localhost:5184/hangfire; sign in with the bootstrap administrator. Run the registered
 `platform.schema.validate` job and inspect its outcome. API and worker write
 structured JSON logs to stdout. No Seq or separate logging service is required.
 
@@ -74,10 +80,14 @@ dotnet build NgbApplication.slnx --no-restore -c Release
 cd web
 npm ci --workspaces=false
 npm run build
+cd ..
 ```
 
 Configure host connection strings, Keycloak issuer/client IDs and the API's
 Keycloak admin-client settings through environment variables or user secrets.
+Compose does not expose PostgreSQL to the host by default; a host development
+configuration must provide a reachable database endpoint. Use `NuGet.Local.Config`
+and the npm cache step above when developing with unpublished local packages.
 `NGB_CONNECTION_STRING` configures the Migrator. Run the following before hosts:
 
 ```sh
@@ -104,7 +114,8 @@ Add projects only when they have work to do:
 Runtime must not reference PostgreSql, Dapper or Npgsql. The provider must not
 reference Runtime. Move shared interfaces to Definitions or a small abstractions
 project, not into an orchestration assembly. Declare direct project dependencies.
-Register definition-bound handlers with `AddDefinitionBoundScoped<TContract, T>()`.
+Register definition-bound handlers by their concrete type and their contract, as
+shown in the extension walkthrough below.
 Keep `AddNgbRuntimeStartupValidation()` enabled to reject incomplete registrations.
 Use immutable, versioned application migrations with a pack depending on `platform`.
 
@@ -144,9 +155,13 @@ node ngb.mjs upgrade --app ../MyApplication --to TARGET_VERSION --apply
 ```
 
 Before publication, add `--local`; other artifact locations use `--packages /path/to/candidate`.
+The currently registered transition is listed in the guide. The tool requires one
+root solution, `NgbPlatformVersion` in `Directory.Build.props`, a mapped
+`NuGet.Config`, and the `web` frontend. Other layouts require manual migration.
 Preview writes nothing. Apply updates NGB versions and lockfiles and validates both
-builds in a private temporary copy. Only after success are dependency files applied.
-Source files, secrets, data and running services remain untouched. Originals are
+builds in a private temporary copy. It also manages ignored local packages, their
+configuration and `.gitignore` entries. Changes are applied only after both builds pass.
+Application source, secrets, data and running services remain untouched. Originals are
 saved in `.ngb/upgrades`. Concurrent edits, mixed versions, conditional platform
 versions and unsupported transitions stop the upgrade. Dependency-file backups are
 not database backups.
@@ -167,10 +182,12 @@ node infrastructure/ngb.mjs deploy --backup-confirmed
 ```
 
 The command validates the Compose topology, builds images, stops writers, runs
-Migrator and starts hosts only after successful migration. `--backup-confirmed`
+Migrator and starts hosts only after successful migration. PostgreSQL and Keycloak
+must already be running. `--backup-confirmed`
 confirms that you took and tested the consistent backup; it does not create one.
 Existing apps without the bundled tool can run `node /path/to/NGB/ngb.mjs deploy
---app /path/to/MyApplication --backup-confirmed`. Custom deployment topologies keep
+--app /path/to/MyApplication --backup-confirmed` if they have the compatible Compose
+services `api`, `jobs`, `web` and `migrator`. Custom deployment topologies keep
 their own deployment pipeline. Preserve database and storage volumes.
 Do not use `down --volumes` on application data. Repeating the
 Migrator must not duplicate data or reactivate/rename an existing Administrator role.

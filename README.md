@@ -503,8 +503,8 @@ You should have the following installed:
 
 - .NET 10 SDK for local backend builds
 - Docker with Linux containers and Docker Compose v2
-- Node.js 22.14+ and npm for local frontend development (the Dockerfiles use Node.js 22.17)
-- Bash for the repository's shell scripts; Windows PowerShell alternatives are linked below
+- Node.js 24.19.x and npm for platform package tooling and local frontend development
+- Bash for package tooling (WSL2 on Windows); PowerShell certificate setup is shown below
 
 ### Clone the repository
 
@@ -549,17 +549,17 @@ Generated packages are ignored by Git and are absent after a fresh clone.
 On macOS/Linux, from the repository root:
 
 ```bash
-bash packaging/nuget/pack-platform.sh
 npm --prefix ui ci
 npm --prefix ui run pack:platform-ui -- --local-candidate
+bash packaging/nuget/pack-platform.sh
 ```
 
-The NuGet script packs all platform projects, refreshes `artifacts/nuget`, invalidates replaced
-cache entries, and restores the solution. The UI command creates
-`artifacts/npm/ngbplatform-ui-local.tgz` without changing the published CRM lockfile.
+The npm archive must be created first because template packing uses it to generate lockfiles.
+The NuGet script packs all platform projects, regenerates template and CRM lockfiles,
+refreshes `artifacts/nuget`, invalidates replaced cache entries, and restores the solution.
+The UI command creates `artifacts/npm/ngbplatform-ui-local.tgz`.
 
-On Windows, follow the [PowerShell package preparation instructions](docs/start-here/run-locally.md#prepare-local-platform-packages).
-They include a Linux-container UI packaging command for the current script's Windows launcher limitation.
+On Windows, follow the [WSL2 package preparation instructions](docs/start-here/run-locally.md#prepare-local-platform-packages).
 
 ### Run the Property Management demo locally
 

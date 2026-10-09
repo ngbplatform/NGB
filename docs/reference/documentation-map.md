@@ -41,6 +41,8 @@ This page is the complete navigation hub for the NGB Platform documentation site
 |---|---|
 | I am new to NGB and need the shortest onboarding path | [Reading Path](/start-here/reading-path) |
 | I need local startup instructions | [Run Locally](/start-here/run-locally) |
+| I need to create or upgrade an independent application | [External Applications and Upgrades](/architecture/external-app-upgrades) |
+| I need to add application definitions, runtime behavior or PostgreSQL storage | [Extend an External Application](/guides/extend-external-application) |
 | I need a short architecture entry point | [NGB Platform Architecture Brief](/architecture/architecture-brief) |
 | I am evaluating NGB from an ERP/accounting ecosystem angle | [NGB for ERP and Accounting Software Ecosystem Teams](/ecosystem/erp-accounting-software-teams) |
 | I need the high-level architecture | [Architecture Overview](/architecture/overview) |
@@ -85,6 +87,7 @@ Use Start Here before deep-diving into individual modules.
 
 - [NGB Platform Architecture Brief](/architecture/architecture-brief)
 - [Architecture Overview](/architecture/overview)
+- [External Applications and Upgrades](/architecture/external-app-upgrades)
 - [Layering and Dependencies](/architecture/layering-and-dependencies)
 - [Definitions and Metadata](/architecture/definitions-and-metadata)
 - [Runtime Request Flow](/architecture/runtime-request-flow)
@@ -206,6 +209,7 @@ Use Platform when you need responsibility boundaries, verified anchors, executio
 ### Core workflows
 
 - [Developer Workflows](/guides/developer-workflows)
+- [Extend an External Application](/guides/extend-external-application)
 - [Platform Extension Points](/guides/platform-extension-points)
 - [Add a Document with Accounting and Registers](/guides/add-document-with-accounting-and-registers)
 - [Add a Canonical Report](/guides/add-canonical-report-workflow)

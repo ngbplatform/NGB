@@ -9,6 +9,8 @@ This site is the consolidated platform documentation for <strong>NGB Platform</s
 - [Platform overview](/start-here/overview)
 - [Repository structure](/start-here/repository-structure)
 - [Run locally](/start-here/run-locally)
+- [Create and upgrade an external application](/architecture/external-app-upgrades)
+- [Extend an external application](/guides/extend-external-application)
 - [Manual local runbook](/start-here/manual-local-runbook)
 - [Host composition](/start-here/host-composition)
 - [Reading path](/start-here/reading-path)

@@ -1,10 +1,14 @@
 # External consumer certification
 
-The normative release plan is [implementation-brief.md](implementation-brief.md).
+The agreed design and acceptance requirements are in [implementation-brief.md](implementation-brief.md).
+Use the [platform publishing runbook](../../packaging/PUBLISHING.md) for operator steps,
+external account configuration and release requirements. Application users
+start with [External applications and upgrades](../../docs/architecture/external-app-upgrades.md).
 The executable matrix is [matrix.json](matrix.json); it contains exact versions,
 five profiles, 22 required gates, infrastructure images and subsystem scope.
 
-Run with .NET 10, Node 24.19.x, k6 1.2.2, Docker Compose and installed Playwright browsers.
+Run from the NGB repository root on macOS/Linux or in WSL2, with .NET 10, Node
+24.19.x, k6 1.2.2, Docker Compose and installed Playwright browsers.
 Profiles use ports 5180–5185 and must run sequentially on an otherwise unused host.
 Every run creates a new temporary consumer, private secrets and isolated caches.
 Disposable profile infrastructure is removed in `finally`; private diagnostics stay
@@ -13,6 +17,9 @@ in the reported temporary directory. Never upload those secrets or complete dire
 ```sh
 npm --prefix ui ci
 npm --prefix quality ci
+cd ui
+npx playwright install --with-deps chromium firefox webkit
+cd ..
 node quality/upgrade-certification/verify-source.mjs
 node ui/scripts/pack-platform-ui.mjs --local-candidate
 bash packaging/nuget/pack-platform.sh
@@ -22,8 +29,18 @@ node quality/external-consumer/release.mjs certify
 node quality/external-consumer/release.mjs verify-candidate
 ```
 
+The npm archive must exist before NuGet template packing. `pack-platform.sh`
+generates the template and CRM lockfiles from the candidate; review and commit
+those changes before a release PR. In `platform-packages`, the NuGet job waits for
+the npm job and downloads its validated archive by artifact ID before packing.
+
 Sealing refuses to reuse an existing destination. Changing source, matrix, frozen
 fixture or package bytes invalidates it. Start a new candidate after any repair.
+For another attempt, pass a new, nonexistent directory as the final argument to
+`release.mjs seal`, then pass that same directory to `certify` and `verify-candidate`.
+Do not edit an old candidate or re-seal it under the same identity. A failed
+certification can leave write-once evidence, so use a fresh directory when retrying
+the complete local sequence. Documentation is included in source identity too.
 For diagnosis before sealing, the individual `certify.mjs <profile>` commands accept
 `artifacts` by default. Such unsealed results do not authorize publication.
 
@@ -55,6 +72,8 @@ and uses the manifest source commit for checkout, image tags and the deployment 
 Failed publication or any failed image build blocks the deployment PR. Ordinary
 pushes do not race package publication. Container retries use the original release
 run; a manual dispatch from `main` requires evidence for that exact commit.
+The old NuGet/UI workflow names are wrappers around the full unified publication,
+not independently runnable package-family stages.
 `verify-registry.mjs` is a post-publication gate, so it cannot pass for an unpublished
 candidate. It never reuses the candidate feed for its registry-only consumer.
 `release.mjs verify-promotion` requires the registry receipt in addition to the
@@ -77,7 +96,21 @@ complete candidate evidence. See the [upgrade guide](../../docs/architecture/ext
 - Previous publication workflows rebuilt packages independently. The unified
   pipeline now publishes only the certified bytes and verifies registry identity.
 - Tailwind 3 build dependencies have outstanding upstream advisories, recorded in
-  the upgrade guide. Their audit is not silently waived or reported as clean.
+  [Build dependency advisory](#build-dependency-advisory). Their audit is not
+  silently waived or reported as clean.
+
+## Build dependency advisory
+
+The 2026-10-07 starter audit reports the Tailwind 3 dependency chain affected by
+[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), with no patched
+`braces` release. The starter pins selector parsing to 7.1.6 to address
+[GHSA-rj75-hqrm-r3gf](https://github.com/advisories/GHSA-rj75-hqrm-r3gf); its production
+build is exercised by certification. Existing consumers must assess their own
+lockfiles. These tools run during builds; the runtime image contains
+only compiled assets. Build only trusted repository content/configuration in isolated
+jobs with resource limits. Do not accept user-supplied glob patterns or styles as
+build configuration. The audit is not described as clean. Reassess upstream fixes
+before publication; moving to Tailwind 4 is a separate architecture change.
 
 ## Maintaining the next release
 

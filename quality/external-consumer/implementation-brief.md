@@ -1,6 +1,14 @@
 # NGB v3.2.0 — External App Template & Upgrade Certification
 ## Production Implementation Brief for Codex (GPT-6 Astra Extra High)
 
+This document records the agreed design and acceptance requirements. It is not an
+operator runbook or evidence that a release has passed. Current commands and
+implementation limitations are documented in
+[External applications and upgrades](../../docs/architecture/external-app-upgrades.md),
+the [platform publishing runbook](../../packaging/PUBLISHING.md) and the
+[certification maintainer runbook](README.md). The paths in Section 27 are a suggested
+layout; the implemented gate bindings are in [matrix.json](matrix.json).
+
 > **Target:** implement NGB v3.2.0 feature **External App Template & Upgrade Certification** as a production-ready, externally consumable application lifecycle contract for NGB.
 >
 > **Repository:** `ngbplatform/NGB`
