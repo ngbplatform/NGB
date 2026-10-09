@@ -1,6 +1,6 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS dotnet
 FROM node:24.19.0 AS node
-FROM grafana/k6:1.2.2 AS k6
+FROM ghcr.io/grafana/k6:1.2.2@sha256:a98db15eb83dfc4dbded9653a15f53557c011400019eba715a9cd15b0ab709d9 AS k6
 FROM mcr.microsoft.com/playwright:v1.59.1-noble
 COPY --from=dotnet /usr/share/dotnet /usr/share/dotnet
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
