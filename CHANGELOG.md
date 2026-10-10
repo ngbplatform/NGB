@@ -7,6 +7,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+No changes yet.
+
+## [3.2.0] - 2026-10-13
+
 ### Added
 - Added the independent `NGB.Platform.Templates` application starter with API, Migrator,
   Background Jobs, Vue, Keycloak and PostgreSQL, including working platform administration.
@@ -224,7 +228,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Notes
 - This release establishes the first public baseline of the NGB Platform repository.
 
-[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/ngbplatform/ngb/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/ngbplatform/ngb/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/ngbplatform/ngb/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/ngbplatform/ngb/compare/v1.3.1...v2.0.0
