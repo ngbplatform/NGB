@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import { compareCssTokens, comparePackageContracts, compareTypeContracts } from './platform-ui-compatibility.mjs'
+import { dependencyCache } from '../../quality/external-consumer/dependency-cache.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const matrix = JSON.parse(await readFile(join(repository, 'quality/external-consumer/matrix.json'), 'utf8'))
@@ -29,7 +30,7 @@ const manifest = {
   },
 }
 await writeFile(join(root, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
-execFileSync('npm', ['install', '--ignore-scripts', '--workspaces=false', '--cache', join(root, 'npm-cache'), '--registry', 'https://registry.npmjs.org'], { cwd: root, stdio: 'inherit' })
+execFileSync('npm', ['install', '--ignore-scripts', '--workspaces=false', '--cache', dependencyCache(root, matrix.target).npm, '--registry', 'https://registry.npmjs.org'], { cwd: root, stdio: 'inherit' })
 const oldRoot = join(root, 'node_modules/@ngbplatform/ui-baseline')
 const nextRoot = join(root, 'node_modules/@ngbplatform/ui')
 const json = async filename => JSON.parse(await readFile(filename, 'utf8'))

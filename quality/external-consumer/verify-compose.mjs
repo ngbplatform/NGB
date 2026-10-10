@@ -22,6 +22,14 @@ const template = join(artifacts, 'nuget-release', `NGB.Platform.Templates.${matr
 let browser
 let started = false
 try {
+  // Remove only this certification project's leftovers after an interrupted run.
+  const cleanup = join(root, 'cleanup.json')
+  await writeFile(cleanup, JSON.stringify({
+    services: { postgres: { image: matrix.infrastructure.postgres, volumes: ['postgres-data:/var/lib/postgresql'] } },
+    volumes: { 'postgres-data': {} },
+  }))
+  run('docker', ['compose', '--project-name', 'ngb-template-compose', '--file', cleanup,
+    'down', '--volumes', '--remove-orphans'], root)
   started = true
   run('node', [join(repository, 'ngb.mjs'), 'create', 'ContainerApp', '--packages', artifacts,
     '--output', application, '--email', 'administrator@compose.test', '--start'], root)

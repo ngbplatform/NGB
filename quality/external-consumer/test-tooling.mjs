@@ -21,7 +21,11 @@ run('node', [
   'quality/external-consumer/application-contracts.test.mjs', 'quality/external-consumer/release-source.test.mjs',
   'quality/external-consumer/container-source.test.mjs',
 ])
-run('node', ['--test', 'quality/external-consumer/process-contracts.test.mjs', 'quality/external-consumer/application-process.test.mjs'])
+run('node', ['--test',
+  'quality/external-consumer/process-contracts.test.mjs', 'quality/external-consumer/application-process.test.mjs',
+  'quality/external-consumer/checkpoints.test.mjs', 'quality/external-consumer/execution.test.mjs',
+  'quality/external-consumer/environment-contracts.test.mjs',
+])
 await mkdir(join(repository, 'artifacts/coverage'), { recursive: true })
 const reports = await mkdtemp(join(repository, 'artifacts/coverage/generated-helpers-'))
 run('dotnet', [

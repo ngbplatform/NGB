@@ -19,6 +19,17 @@ test('invalid profile and release commands fail before infrastructure or publica
   }
 })
 
+test('direct full quality refuses a missing k6 before starting expensive stages', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngb-quality-prerequisites-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const result = spawnSync(process.execPath, ['quality/external-consumer/quality-suite.mjs'], {
+    cwd: repository, env: { ...process.env, PATH: root }, encoding: 'utf8',
+  })
+  assert.notEqual(result.status, 0)
+  assert.match(result.stderr, /spawn k6 ENOENT/)
+  assert.ok(!result.stdout.includes('[start]'))
+})
+
 test('the generated migration entrypoint propagates failure and never seeds after failure', async t => {
   const root = await mkdtemp(join(tmpdir(), 'ngb-migration-entrypoint-'))
   t.after(() => rm(root, { recursive: true, force: true }))

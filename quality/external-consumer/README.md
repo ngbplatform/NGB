@@ -7,19 +7,24 @@ start with [External applications and upgrades](../../docs/architecture/external
 The executable matrix is [matrix.json](matrix.json); it contains exact versions,
 five profiles, 22 required gates, infrastructure images and subsystem scope.
 
-Run from the NGB repository root on macOS/Linux or in WSL2, with .NET 10, Node
-24.19.x, k6 1.2.2, Docker Compose and installed Playwright browsers.
+Run from the NGB repository root on macOS/Linux or in WSL2, with Node and local
+Docker Compose available. Packaging also needs .NET 10. Certification uses the
+exact versions in [toolchain.json](toolchain.json): Node 24.19.0 and .NET 10.0.401.
+When a host version differs, the runner downloads official archives, verifies their
+published checksums and installs private copies under `artifacts/certification-tools`.
+It does not replace system tools. k6 and the complete browser matrix run in the
+prepared Linux quality image on both macOS and Linux.
 Profiles use ports 5180–5185 and must run sequentially on an otherwise unused host.
-Every run creates a new temporary consumer, private secrets and isolated caches.
+Every profile creates a new temporary consumer, private secrets and package extraction
+directories. Download caches may be reused only within the same sealed candidate;
+lockfile integrity checks and source mapping remain enabled. The clean-starter and
+post-publication registry smoke always use fresh download caches too.
 Disposable profile infrastructure is removed in `finally`; private diagnostics stay
 in the reported temporary directory. Never upload those secrets or complete directories.
 
 ```sh
 npm --prefix ui ci
 npm --prefix quality ci
-cd ui
-npx playwright install --with-deps chromium firefox webkit
-cd ..
 node quality/upgrade-certification/verify-source.mjs
 node ui/scripts/pack-platform-ui.mjs --local-candidate
 bash packaging/nuget/pack-platform.sh
@@ -35,12 +40,32 @@ those changes before a release PR. In `platform-packages`, the NuGet job waits f
 the npm job and downloads its validated archive by artifact ID before packing.
 
 Sealing refuses to reuse an existing destination. Changing source, matrix, frozen
-fixture or package bytes invalidates it. Start a new candidate after any repair.
-For another attempt, pass a new, nonexistent directory as the final argument to
+fixture or package bytes invalidates it. Start a new candidate after a source repair.
+For a different candidate, pass a new, nonexistent directory as the final argument to
 `release.mjs seal`, then pass that same directory to `certify` and `verify-candidate`.
-Do not edit an old candidate or re-seal it under the same identity. A failed
-certification can leave write-once evidence, so use a fresh directory when retrying
-the complete local sequence. Documentation is included in source identity too.
+Do not edit an old candidate or re-seal it under the same identity. After a transient
+failure, rerun **the same command with the same directory**:
+
+```sh
+node quality/external-consumer/release.mjs certify artifacts/release-candidate
+```
+
+The runner prepares required container images and Chromium before any certification
+stage. Docker pulls and tool downloads have at most three attempts with backoff;
+package managers retry HTTP acquisition internally. Build, migration and test failures
+are not retried automatically. The quality container runs in CI mode; Vitest and
+Playwright gates reject focused tests and explicitly disable failure retries.
+A `[resume]` line identifies a reused successful stage;
+`[start]` and `[passed]`/`[failed]` show execution and elapsed time.
+
+`run-state.json` records atomic checkpoints bound to the sealed manifest, exact tools,
+OS/architecture, Docker engine/images, browser and relevant environment settings.
+Before skipping a stage, the runner verifies its output hashes and predecessor.
+Missing or changed evidence reruns that stage and everything after it. Changed input
+or environment rejects resume and requires a new candidate. Failed or interrupted
+stages never count as passed. Concurrent runs in one checkout are refused.
+Documentation is included in source identity too. Old runs without these checkpoints
+cannot be imported as successful stages.
 For diagnosis before sealing, the individual `certify.mjs <profile>` commands accept
 `artifacts` by default. Such unsealed results do not authorize publication.
 
@@ -56,11 +81,17 @@ public `ngb.mjs upgrade --apply` command against the frozen consumer copy.
 backend/frontend/performance gates, including the framework component matrix in
 Chromium, Firefox and WebKit. `test-tooling.mjs` adds measured 100% coverage
 for the explicit helper inventory plus negative process tests. A numeric result
-for process launching is never manufactured. Run the full browser gate on a host
-supporting Chromium, Firefox and WebKit; CI installs all required browser dependencies.
-On macOS, the release runner uses `Dockerfile.quality` and a fresh source copy to run
-the same complete quality commands on Linux. It copies only source and candidate
-packages, never host `node_modules`, `bin`, `obj` or registry caches.
+for process launching is never manufactured. The prepared Linux image supplies
+Chromium, Firefox, WebKit and their operating-system dependencies.
+The release runner uses `Dockerfile.quality` and a private source copy to run the
+complete aggregate on Linux. Tooling runs once, inside that aggregate. Tooling,
+backend coverage, frontend coverage, the browser matrix and performance contracts
+have separate checkpoints, so a later failure does not repeat earlier gates.
+It never copies host `node_modules`, `bin`, `obj` or registry caches. The private Linux
+workspace and its own caches are retained for the same candidate's retries. Its path
+is in `quality-workspace.json`; deleting it is safe but repeats the aggregate.
+Final evidence is written only after all profiles and aggregate stages pass; neither
+a partial checkpoint nor a cached package is sufficient to authorize publication.
 
 After successful trusted-main certification, publication automatically selects the
 exact upstream run and artifact ID, waits for environment approval and uses the saved

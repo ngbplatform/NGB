@@ -12,6 +12,7 @@ import { validateMatrix } from './release-contracts.mjs'
 import { startAfterSuccessfulMigration } from './sequencing.mjs'
 import { assertConsumerIsolation, verifyFrozenFixture } from './contracts.mjs'
 import { withManagedIgnores } from '../../packaging/templates/content/infrastructure/ngb/contracts.mjs'
+import { dependencyCache } from './dependency-cache.mjs'
 import {
   authenticatedApi, createCoreState, createContentState,
   verifyCorePreservation, verifyCoreContinuation, verifyContentPreservation, verifyContentContinuation,
@@ -160,9 +161,12 @@ function persistentInfrastructure() {
 async function build(version) {
   await verifyLayers()
   const cache = join(root, `nuget-${version}`)
-  run('dotnet', ['restore', `${project}.slnx`, '--configfile', 'NuGet.Config', '--packages', cache, ...(version === sourceVersion || (!extension && !upgrade) ? ['--locked-mode'] : ['--force-evaluate']), '--no-http-cache', '--verbosity', 'minimal'])
+  const downloads = dependencyCache(root, version, registryOnly || profile === 'clean-starter')
+  run('dotnet', ['restore', `${project}.slnx`, '--configfile', 'NuGet.Config', '--packages', cache,
+    ...(version === sourceVersion || (!extension && !upgrade) ? ['--locked-mode'] : ['--force-evaluate']), '--verbosity', 'minimal'], application,
+    { NUGET_HTTP_CACHE_PATH: downloads.nugetHttp })
   run('dotnet', ['build', `${project}.slnx`, '--no-restore', '-c', 'Release', '-m:1', '-nodeReuse:false', '-p:UseSharedCompilation=false', '--verbosity', 'minimal'])
-  const npmCache = join(root, `npm-${version}`)
+  const npmCache = downloads.npm
   if (version === targetVersion && !registryOnly) run('npm', ['cache', 'add', join(feed, `ngbplatform-ui-${targetVersion}.tgz`), '--cache', npmCache])
   run('npm', ['ci', '--workspaces=false', '--cache', npmCache, '--registry', 'https://registry.npmjs.org'], join(application, 'web'))
   run('npm', ['run', 'build'], join(application, 'web'))
@@ -405,6 +409,8 @@ volumes:
   }
   await writeFile(join(infrastructure, 'compose.yaml'), composeFile)
   infrastructureStarted = true
+  // A process killed before finally may leave this disposable profile's volumes.
+  compose(['down', '--volumes', '--remove-orphans'])
   compose(['up', '-d'])
   await ready(`http://localhost:5180/realms/${realmName}/.well-known/openid-configuration`)
   if (attachments) {

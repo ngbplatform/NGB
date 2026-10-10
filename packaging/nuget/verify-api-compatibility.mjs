@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { dependencyCache } from '../../quality/external-consumer/dependency-cache.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const inventory = JSON.parse(await readFile(new URL('./baselines.json', import.meta.url), 'utf8'))
@@ -41,8 +42,8 @@ ${packages.map(item => `    <PackageReference Include="${item.id}" Version="[${v
   </packageSourceMapping>
   <fallbackPackageFolders><clear /></fallbackPackageFolders>
 </configuration>\n`)
-  const env = { ...process.env, NUGET_PACKAGES: join(directory, 'packages'), NUGET_HTTP_CACHE_PATH: join(directory, 'http-cache') }
-  execFileSync('dotnet', ['restore', 'ReferenceGraph.csproj', '--configfile', 'NuGet.Config', '--no-http-cache', '--verbosity', 'quiet'], { cwd: directory, env, stdio: 'inherit' })
+  const env = { ...process.env, NUGET_PACKAGES: join(directory, 'packages'), NUGET_HTTP_CACHE_PATH: dependencyCache(directory, version).nugetHttp }
+  execFileSync('dotnet', ['restore', 'ReferenceGraph.csproj', '--configfile', 'NuGet.Config', '--verbosity', 'quiet'], { cwd: directory, env, stdio: 'inherit' })
   const resolved = JSON.parse(execFileSync('dotnet', ['msbuild', 'ReferenceGraph.csproj', '-nologo', '-target:ResolveReferences', '-getItem:ReferencePath', '-nodeReuse:false'], { cwd: directory, env, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }))
   return { directory, references: resolved.Items.ReferencePath.map(item => item.FullPath).join(',') }
 }

@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { unzipSync } from 'fflate'
 import { assertConsumerIsolation, hashDirectory } from './contracts.mjs'
+import { dependencyCache } from './dependency-cache.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const artifacts = resolve(process.argv[2] ?? join(repository, 'artifacts'))
@@ -46,7 +47,7 @@ assert.deepEqual(Object.keys(compose.services).sort(), ['api', 'jobs', 'keycloak
 for (const name of ['api', 'jobs']) assert.equal(compose.services[name].depends_on.migrator.condition, 'service_completed_successfully')
 assert.throws(() => run('node', ['infrastructure/configure.mjs', 'replacement@example.test']))
 const web = join(application, 'web')
-const npmCache = join(root, 'npm-cache')
+const npmCache = dependencyCache(root, matrix.target).npm
 run('npm', ['cache', 'add', join(artifacts, 'npm', `ngbplatform-ui-${matrix.target}.tgz`), '--cache', npmCache], web)
 run('npm', ['ci', '--workspaces=false', '--cache', npmCache, '--registry', 'https://registry.npmjs.org'], web)
 const packageRoot = join(web, 'node_modules/@ngbplatform/ui')

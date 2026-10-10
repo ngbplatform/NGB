@@ -152,7 +152,7 @@ release pipelines are outside this workflow's scope.
 
 | Failure | Action |
 | --- | --- |
-| PR or main certification failed | Inspect the failed step. Fix source/test failures in a PR; rerun a transient failure for the same commit. Nothing has been published yet. |
+| PR or main certification failed | Inspect the failed step. Fix source/test failures in a PR; rerun a transient failure for the same commit. A fresh hosted runner certifies again; local retries reuse verified checkpoints for the same candidate and environment. Nothing has been published yet. |
 | Release selection reports no reviewer or an OIDC policy mismatch | Correct the external settings, then rerun the failed publication job. Check workflow filename and environment first. |
 | Upload or registry verification failed transiently | Rerun the original publication run, retaining the same certified artifact. Existing npm integrity must match; NuGet duplicates are checked during registry verification. |
 | Published contents are wrong or differ from the certified package | Prepare a corrected new version. Published versions cannot be overwritten. |
@@ -191,10 +191,17 @@ existing CRM lockfile to match the packed archive exactly. Do not hand-edit its
 integrity or introduce a second manual npm installation procedure.
 
 Artifacts are ignored by Git. The default sealed directory is
-`artifacts/release-candidate`; it must not exist before `seal`. For another attempt,
+`artifacts/release-candidate`; it must not exist before `seal`. For a new candidate,
 use a new path, for example `release.mjs seal artifacts/release-candidate-next`,
 and pass that path to subsequent commands. Source changes after sealing, including
 documentation changes, invalidate source identity for certification.
+
+For a transient certification failure, retain that directory and rerun
+`node quality/external-consumer/release.mjs certify artifacts/release-candidate`.
+Successful stages resume only after input, environment and evidence hashes match.
+Do not repack or reseal merely to retry a failed download. The runner prepares exact
+private host tools and required images first; see the maintainer runbook for its
+checkpoint and cache rules.
 
 For application creation from these files, see
 [Before publication](../docs/architecture/external-app-upgrades.md#before-publication).
@@ -224,14 +231,17 @@ cd ..
 bash run-full-quality.sh
 ```
 
-On macOS with a local Unix Docker socket, the wrapper runs the same aggregate in Linux:
+On macOS or Linux with a local Unix Docker socket, the wrapper runs the aggregate
+in the pinned Linux environment and can resume its completed stages:
 
 ```sh
 node quality/external-consumer/full-quality.mjs artifacts/release-candidate
 ```
 
-The wrapper requires the candidate NuGet/npm directories; it does not package them.
-It copies source and artifacts into a temporary workspace without host caches.
+The wrapper requires a sealed candidate; it does not package one. It verifies its
+inputs and copies source and artifacts into a private workspace without host caches.
+That workspace is retained for retries. Tooling is run once per unchanged aggregate,
+with separate checkpoints for backend, frontend, browser and performance gates.
 For the complete local certification sequence, see the
 [certification maintainer runbook](../quality/external-consumer/README.md).
 

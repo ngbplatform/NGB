@@ -52,14 +52,20 @@
       "packaging/templates/content/infrastructure/ngb.mjs",
       "packaging/templates/content/infrastructure/ngb/cli.mjs",
       "packaging/templates/content/infrastructure/ngb/application.mjs",
-      "run-full-quality.sh"
+      "run-full-quality.sh",
+      "quality/external-consumer/checkpoints.mjs",
+      "quality/external-consumer/execution.mjs",
+      "quality/external-consumer/environment.mjs",
+      "quality/external-consumer/dependency-cache.mjs",
+      "quality/external-consumer/quality-suite.mjs"
     ],
     "verification": [
       "node --test quality/external-consumer/process-contracts.test.mjs",
       "node --test quality/external-consumer/application-process.test.mjs",
       "node quality/external-consumer/verify-template.mjs",
       "node quality/external-consumer/release.mjs certify",
-      "node quality/external-consumer/verify-registry.mjs"
+      "node quality/external-consumer/verify-registry.mjs",
+      "node --test quality/external-consumer/checkpoints.test.mjs quality/external-consumer/execution.test.mjs"
     ],
     "coveragePolicy": "Process, restore/build, exit-code, failure sequencing, immutable-input and registry behavior checks; no fabricated numeric process coverage."
   },
