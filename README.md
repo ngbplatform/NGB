@@ -483,7 +483,29 @@ See:
 
 ## Getting started
 
-[Create your own application](docs/architecture/external-app-upgrades.md#create-an-application) using the official NGB template.
+### Create a new application
+
+Use .NET 10 SDK, Node.js 24.19.x and Docker with Compose v2. Once the template and its matching NuGet/npm packages are published, run these commands in the directory that should contain your new application. No NGB repository checkout is required:
+
+```bash
+dotnet new install NGB.Platform.Templates
+dotnet new ngb -n MyApplication
+cd MyApplication
+node infrastructure/configure.mjs administrator@example.com
+node infrastructure/ngb.mjs start
+```
+
+This installs the latest published stable template and starts the application's local development stack. Open http://localhost:5182 and sign in with the configured email and `BOOTSTRAP_PASSWORD` from the generated `.env` file. Run `configure.mjs` only once.
+
+See the [application guide](docs/architecture/external-app-upgrades.md#create-an-application) for setup and next steps. Before publication, use its [local package instructions](docs/architecture/external-app-upgrades.md#before-publication).
+
+### Upgrade an existing application
+
+Follow the [upgrade guide](docs/architecture/external-app-upgrades.md#migrate-310-to-320) for supported transitions, preview/apply commands, application validation, backups and database migration. Installing a newer template does not update an existing application.
+
+The upgrade command uses published NuGet/npm packages by default. For an older application without the bundled `infrastructure/ngb.mjs`, run the CLI from an NGB checkout for the target release; a standalone installable CLI package is not currently provided.
+
+The following sections cover the bundled demos and development in this repository.
 
 ### 🔑 Demo access
 
