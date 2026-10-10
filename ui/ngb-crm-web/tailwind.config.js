@@ -1,4 +1,4 @@
-import { ngbTailwindBaseConfig } from '../tailwind.shared.config.js'
+import { ngbTailwindBaseConfig } from '@ngbplatform/ui/tailwind-preset'
 
 /** @type {import('tailwindcss').Config} */
 export default {
