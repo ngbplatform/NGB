@@ -5,7 +5,8 @@ Use the [platform publishing runbook](../../packaging/PUBLISHING.md) for operato
 external account configuration and release requirements. Application users
 start with [External applications and upgrades](../../docs/architecture/external-app-upgrades.md).
 The executable matrix is [matrix.json](matrix.json); it contains exact versions,
-five profiles, 22 required gates, infrastructure images and subsystem scope.
+five profiles, 20 candidate gates and two post-publication gates, infrastructure
+images and subsystem scope.
 
 Run from the NGB repository root on macOS/Linux or in WSL2, with Node and local
 Docker Compose available. Packaging also needs .NET 10. Certification uses the
@@ -22,32 +23,60 @@ post-publication registry smoke always use fresh download caches too.
 Disposable profile infrastructure is removed in `finally`; private diagnostics stay
 in the reported temporary directory. Never upload those secrets or complete directories.
 
+## Run a new candidate
+
+Stop any manually started starter that occupies ports 5180–5185 before running.
+Keep source and configuration unchanged from sealing until certification finishes.
+The following block creates a new candidate and stops at the first failed command:
+
 ```sh
-npm --prefix ui ci
-npm --prefix quality ci
-node quality/upgrade-certification/verify-source.mjs
-node ui/scripts/pack-platform-ui.mjs --local-candidate
-bash packaging/nuget/pack-platform.sh
-bash packaging/nuget/verify-platform-packages.sh
-node quality/external-consumer/release.mjs seal
-node quality/external-consumer/release.mjs certify
-node quality/external-consumer/release.mjs verify-candidate
+ngb_candidate="artifacts/release-candidate-local-$(date +%Y%m%d-%H%M%S)"
+
+(
+  set -e
+  set -o pipefail
+
+  npm --prefix ui ci
+  npm --prefix quality ci
+  node quality/upgrade-certification/verify-source.mjs
+  node ui/scripts/pack-platform-ui.mjs --local-candidate
+  bash packaging/nuget/pack-platform.sh
+  bash packaging/nuget/verify-platform-packages.sh
+  node quality/external-consumer/release.mjs seal "$ngb_candidate"
+  node quality/external-consumer/release.mjs certify "$ngb_candidate" \
+    2>&1 | tee "${ngb_candidate}.log"
+  node quality/external-consumer/release.mjs verify-candidate "$ngb_candidate"
+)
 ```
+
+Success ends with both `Release certify: passed` and `Release verify-candidate: passed`.
+The complete quality aggregate already runs inside certification; do not launch
+`run-full-quality.sh` a second time for the same verification.
 
 The npm archive must exist before NuGet template packing. `pack-platform.sh`
 generates the template and CRM lockfiles from the candidate; review and commit
 those changes before a release PR. In `platform-packages`, the NuGet job waits for
 the npm job and downloads its validated archive by artifact ID before packing.
 
+## Resume after a failure
+
 Sealing refuses to reuse an existing destination. Changing source, matrix, frozen
 fixture or package bytes invalidates it. Start a new candidate after a source repair.
 For a different candidate, pass a new, nonexistent directory as the final argument to
 `release.mjs seal`, then pass that same directory to `certify` and `verify-candidate`.
 Do not edit an old candidate or re-seal it under the same identity. After a transient
-failure, rerun **the same command with the same directory**:
+failure during certification, keep `ngb_candidate` set to that existing directory
+and run the following. In a new terminal, set it to the path printed by the failed
+run first. Do not rerun the packaging/sealing block to retry certification:
 
 ```sh
-node quality/external-consumer/release.mjs certify artifacts/release-candidate
+(
+  set -e
+  : "${ngb_candidate:?Set ngb_candidate to the existing candidate directory}"
+
+  node quality/external-consumer/release.mjs certify "$ngb_candidate"
+  node quality/external-consumer/release.mjs verify-candidate "$ngb_candidate"
+)
 ```
 
 The runner prepares required container images and Chromium before any certification
@@ -66,8 +95,14 @@ or environment rejects resume and requires a new candidate. Failed or interrupte
 stages never count as passed. Concurrent runs in one checkout are refused.
 Documentation is included in source identity too. Old runs without these checkpoints
 cannot be imported as successful stages.
+For source-only changes outside packaged files, unchanged package bytes can be sealed
+into a new candidate, but its certification starts again. Changes to platform or
+template package contents require repacking first. The template's README is packaged
+content too. A checkpoint is never evidence for a later source revision.
 For diagnosis before sealing, the individual `certify.mjs <profile>` commands accept
 `artifacts` by default. Such unsealed results do not authorize publication.
+
+## What certification covers
 
 `verify-template.mjs` installs the packed template, checks substitutions, minimal
 projects and all frontend entries/assets/classes. `verify-compose.mjs` creates the
@@ -89,9 +124,19 @@ backend coverage, frontend coverage, the browser matrix and performance contract
 have separate checkpoints, so a later failure does not repeat earlier gates.
 It never copies host `node_modules`, `bin`, `obj` or registry caches. The private Linux
 workspace and its own caches are retained for the same candidate's retries. Its path
-is in `quality-workspace.json`; deleting it is safe but repeats the aggregate.
+is in `quality-workspace.json`. If an unfinished aggregate must run again after
+that workspace was deleted, it starts its stages from scratch.
 Final evidence is written only after all profiles and aggregate stages pass; neither
 a partial checkpoint nor a cached package is sufficient to authorize publication.
+
+The Compose gate builds the generated starter, not CRM or the other existing
+vertical Dockerfiles. Backend/frontend tests cover those verticals, but a passing
+aggregate does not prove their Docker build contexts or packed-package imports.
+Run the separate [local container checks](../../packaging/PUBLISHING.md#check-local-containers-before-publication)
+when changing those paths. Performance coverage here consists of existing regression,
+diagnostic-tooling and metric-contract checks; it does not run every live k6 load profile.
+
+## Publication boundary
 
 After successful trusted-main certification, publication automatically selects the
 exact upstream run and artifact ID, waits for environment approval and uses the saved
@@ -109,6 +154,30 @@ not independently runnable package-family stages.
 candidate. It never reuses the candidate feed for its registry-only consumer.
 `release.mjs verify-promotion` requires the registry receipt in addition to the
 complete candidate evidence. See the [upgrade guide](../../docs/architecture/external-app-upgrades.md).
+
+## Diagnostics and cleanup
+
+| Observation | Meaning / action |
+| --- | --- |
+| `EEXIST` for the template's `.env`, followed by `[passed] template` | Expected negative test: initialization must refuse to overwrite secrets. |
+| `[failed]` or a nonzero final exit status | The run has not certified the candidate; inspect the failed stage and its diagnostics. |
+| A nonzero Migrator exit in the intentional Compose failure scenario | Expected only if the enclosing Compose gate then passes; it verifies that hosts stay stopped. |
+| `npm audit` vulnerabilities | Separate dependency findings; passing functional gates do not mean a clean security audit. |
+| `Sources differ from the sealed candidate` | Use a new candidate for the changed source; do not edit old evidence. |
+| `Certification inputs or environment changed` | The saved results cannot be reused for the changed tools, Docker images/resources or settings. |
+
+Preserve the candidate directory and Linux workspace while investigating a failure.
+Diagnostics may contain private configuration; do not upload complete workspaces.
+The runner removes its disposable Compose services/volumes and Linux runner container
+on normal completion. After abrupt termination, retrying that candidate also cleans
+up its own labelled runner container and profile resources.
+
+Unused `ngb-template-compose-*` images are rebuildable test application images.
+`ngb-certification-quality:local` is the reusable quality environment. Removing it
+does not delete source, database volumes or saved reports, but rebuilding costs time;
+if the resulting image ID changes, existing checkpoints cannot be resumed. Avoid
+deleting images or workspaces during an active run. A fresh hosted GitHub runner
+does not inherit a previous runner's local checkpoints.
 
 ## Audit findings that drive this release
 

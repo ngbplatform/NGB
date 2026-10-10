@@ -361,9 +361,9 @@ dotnet run --project MyApplication.Migrator -c Release --no-build -- --list-modu
 dotnet run --project MyApplication.Migrator -c Release --no-build -- --dry-run --modules certification --show-scripts
 ```
 
-The output must include the `certification` pack after its `platform` dependency
-in the migration plan and the embedded checkpoint SQL script. These commands do
-not apply migrations.
+The module list must include `certification`. The dry-run plan must place it after
+its `platform` dependency and include the embedded checkpoint SQL script. These
+commands do not require a database connection and do not apply migrations.
 
 For an existing generated Compose deployment, keep PostgreSQL and Keycloak running,
 take and test a backup, then apply the new migration with:
@@ -372,11 +372,16 @@ take and test a backup, then apply the new migration with:
 node infrastructure/ngb.mjs deploy --backup-confirmed
 ```
 
-This stops API/worker/web before migration and restarts them only after it succeeds.
+This builds the images, stops API/worker/web before migration and starts the target
+hosts only after it succeeds. The deploy command streams Migrator output from a
+temporary container and removes that container afterwards. Check its exit status
+and terminal output; `docker compose logs migrator` can show an older startup run.
+
 For a newly configured app with no existing containers, use
-`node infrastructure/ngb.mjs start` instead. Check `docker compose ps -a` and
-`docker compose logs migrator`; Migrator must exit with code 0 and API/jobs must
-be healthy.
+`node infrastructure/ngb.mjs start` instead. For that initial start, check
+`docker compose ps -a` and `docker compose logs migrator`: Migrator must exit with
+code 0. After either operation, verify API and worker readiness at
+`http://localhost:5181/health` and `http://localhost:5184/health`.
 
 Use an authenticated administrator access token for the application API
 (`http://localhost:5181` in the starter). Send this request from your HTTP client:

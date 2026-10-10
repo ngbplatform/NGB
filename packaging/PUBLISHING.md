@@ -134,6 +134,10 @@ In `platform-packages`, the NuGet job waits for successful npm validation and
 downloads that job's archive by artifact ID into `artifacts/npm` before packing.
 Template lockfile generation consumes the same archive; it does not repack the UI.
 `external-app-certification` packs npm before NuGet within its single job.
+Its Compose check builds the generated starter. The 20 existing vertical images
+are built by `container-images` after publication; their Docker builds are not part
+of the candidate quality aggregate. A local candidate has 20 required gates; the
+remaining two matrix gates require published packages and promotion evidence.
 
 The certified artifact is retained for 30 days and publication evidence for 90 days
 under the checked-in workflow settings. Downloads select the exact artifact ID,
@@ -156,7 +160,7 @@ release pipelines are outside this workflow's scope.
 | Release selection reports no reviewer or an OIDC policy mismatch | Correct the external settings, then rerun the failed publication job. Check workflow filename and environment first. |
 | Upload or registry verification failed transiently | Rerun the original publication run, retaining the same certified artifact. Existing npm integrity must match; NuGet duplicates are checked during registry verification. |
 | Published contents are wrong or differ from the certified package | Prepare a corrected new version. Published versions cannot be overwritten. |
-| Container build or infrastructure PR creation failed | Repair external credentials/infrastructure as needed and rerun that release's container run. It continues to use the verified release commit. |
+| Container build or infrastructure PR creation failed | For transient registry, runner or credential failures, repair the environment and rerun that release's container run. It uses the same verified commit. A source/Dockerfile fix needs a new commit and certification; rerunning the old run cannot consume the fix. |
 | Certification artifact expired | Re-certification is required. Do not replace a partially published candidate with newly packed bytes of the same version. |
 
 For manual dispatch, select **Run workflow → main**. Publication requires successful
@@ -209,6 +213,56 @@ For complete local certification, follow the
 [maintainer runbook](../quality/external-consumer/README.md). Local packaging alone
 does not certify or publish the candidate.
 
+## Check local containers before publication
+
+Use these checks after preparing the local package set above, especially when
+changing Dockerfiles, shared UI configuration or `.dockerignore`. They cover a
+different boundary from the generated starter's Compose certification.
+
+From the repository root, with the corresponding `.env` files configured:
+
+```sh
+(
+  set -e
+
+  for vertical in crm pm trade ab; do
+    docker compose \
+      --env-file ".env.${vertical}" \
+      -f "docker-compose.${vertical}.yml" \
+      build
+  done
+)
+```
+
+This builds images without starting services or applying migrations. Local CRM
+builds use `artifacts/nuget` and `artifacts/npm/ngbplatform-ui-local.tgz`; release
+CRM builds restore from public registries. CRM's Tailwind configuration imports
+`@ngbplatform/ui/tailwind-preset` from the package, so its image does not need the
+platform source directory or `tailwind.shared.config.js`.
+The root `.dockerignore` retains the two package feeds while excluding other root
+`artifacts` contents and `.env` files from the build context.
+
+For a configured development CRM database, start the stack and inspect readiness:
+
+```sh
+docker compose --env-file .env.crm -f docker-compose.crm.yml -p ngb-crm up -d
+docker compose --env-file .env.crm -f docker-compose.crm.yml -p ngb-crm ps -a
+docker compose --env-file .env.crm -f docker-compose.crm.yml -p ngb-crm logs ngb.crm.migrator
+```
+
+Unlike `build`, `up` runs the configured Migrator. Expect its exit code to be zero,
+then use the web/API ports from `.env.crm` to check login, a saved business record,
+roles/access, audit and Work Center. Exercise Notes and Attachments when enabled.
+Use the [application creation flow](../docs/architecture/external-app-upgrades.md#before-publication)
+to check the starter separately. Stop a manually started starter before certification
+so its ports 5180–5185 are available.
+
+After the final source change, certify a new candidate using the
+[complete local sequence](../quality/external-consumer/README.md#run-a-new-candidate).
+Do not reuse a previous pass as evidence for changed source. Local checks cannot
+verify OIDC approval, registry publication, GHCR push or the infrastructure PR;
+those must succeed in the release workflows.
+
 ## When to run full quality locally
 
 `run-full-quality.sh` runs backend/frontend coverage, the framework browser matrix,
@@ -216,6 +270,7 @@ tooling tests and performance-tooling/metric regression checks. It does not publ
 packages, run every live k6 load profile or independently perform the complete
 five-profile external upgrade certification. Release certification includes this
 aggregate and the external profiles.
+If running `release.mjs certify`, do not run the aggregate separately as well.
 
 Application developers run their own application's tests. Platform contributors can
 run the aggregate before opening a PR to catch failures sooner. Use prepared local
@@ -231,8 +286,10 @@ cd ..
 bash run-full-quality.sh
 ```
 
-On macOS or Linux with a local Unix Docker socket, the wrapper runs the aggregate
-in the pinned Linux environment and can resume its completed stages:
+The direct shell command uses host tools and does not prepare the pinned environment
+or resume completed stages. On macOS or Linux with a local Unix Docker socket,
+the wrapper runs the aggregate in the pinned Linux environment and can resume its
+completed stages:
 
 ```sh
 node quality/external-consumer/full-quality.mjs artifacts/release-candidate

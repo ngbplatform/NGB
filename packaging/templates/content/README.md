@@ -44,6 +44,14 @@ selects a nonexistent destination. No Dockerfile edits are needed. The applicati
 owns package copies and has no references to NGB source projects.
 `--local` requires an existing `artifacts/release-candidate/release-manifest.json`;
 it does not package the platform or run release certification.
+If the package set is already prepared in another directory, use it directly:
+
+```sh
+node ngb.mjs create MyApplication --packages artifacts/release-candidate-next --start --email administrator@example.com
+```
+
+Replace `artifacts/release-candidate-next` with your existing candidate directory.
+One package set can create multiple independent applications without being repacked.
 
 Local package state is ignored by Git. `NuGet.Config` retains registry consumption;
 `NuGet.Local.Config` adds the local NGB feed while preserving other sources. For host
@@ -74,6 +82,8 @@ records. PostgreSQL stores the application, Keycloak realm, and Hangfire state.
 
 ## Develop on the host
 
+For published packages, run from the application directory:
+
 ```sh
 dotnet restore NgbApplication.slnx --locked-mode --configfile NuGet.Config
 dotnet build NgbApplication.slnx --no-restore -c Release
@@ -83,11 +93,22 @@ npm run build
 cd ..
 ```
 
+For an app created with unpublished local packages, use this sequence instead:
+
+```sh
+dotnet restore NgbApplication.slnx --locked-mode --configfile NuGet.Local.Config
+dotnet build NgbApplication.slnx --no-restore -c Release
+cd web
+npm cache add .ngb-packages/ui.tgz
+npm ci --workspaces=false
+npm run build
+cd ..
+```
+
 Configure host connection strings, Keycloak issuer/client IDs and the API's
 Keycloak admin-client settings through environment variables or user secrets.
 Compose does not expose PostgreSQL to the host by default; a host development
-configuration must provide a reachable database endpoint. Use `NuGet.Local.Config`
-and the npm cache step above when developing with unpublished local packages.
+configuration must provide a reachable database endpoint.
 `NGB_CONNECTION_STRING` configures the Migrator. Run the following before hosts:
 
 ```sh
@@ -189,6 +210,10 @@ Existing apps without the bundled tool can run `node /path/to/NGB/ngb.mjs deploy
 --app /path/to/MyApplication --backup-confirmed` if they have the compatible Compose
 services `api`, `jobs`, `web` and `migrator`. Custom deployment topologies keep
 their own deployment pipeline. Preserve database and storage volumes.
+The deploy command streams migration output from a temporary container that it
+removes afterwards. Retain that output and check the command's exit status;
+`docker compose logs migrator` may show an older initial startup. Check API and
+worker readiness at `/health` after deployment.
 Do not use `down --volumes` on application data. Repeating the
 Migrator must not duplicate data or reactivate/rename an existing Administrator role.
 

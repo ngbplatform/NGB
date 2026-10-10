@@ -7,9 +7,9 @@ application creation, extension boundaries and the upgrade contract.
 The version-specific examples below target **3.2.0**, with **3.1.0 → 3.2.0** as the
 registered upgrade transition. Registry commands require that target to be published;
 use local packages before publication. A transition is certified only when its
-candidate evidence passes and
-registry verification subsequently permits promotion. Merely updating a version in
-this repository does not establish a published or certified release.
+candidate evidence passes and registry verification subsequently permits promotion.
+Merely updating a version in this repository does not establish a published or
+certified release.
 
 ## Create an application
 
@@ -38,7 +38,9 @@ exit with code 0. Keycloak is on port 5180 and the worker dashboard is at
 
 Run from the NGB repository root on macOS/Linux or in WSL2, using .NET 10, Node
 24.19.x and Docker Compose. `--local` consumes an existing package set; it does not
-build packages. On a fresh checkout, prepare that set first:
+build packages. If you already prepared a candidate, reuse it for application
+creation; packaging and certification are not required for every new application.
+On a fresh checkout, prepare the package set first:
 
 ```sh
 npm --prefix ui ci
@@ -62,15 +64,25 @@ node ngb.mjs create MyApplication --local --start --email administrator@example.
 
 The CLI initializes `.env` itself; do not run `configure.mjs` again in this app.
 After publication, replace `--local` with `--version 3.2.0`. Output defaults to a
-sibling of the NGB checkout. `--output` selects another nonexistent directory;
-`--packages /path/to/candidate` selects another local artifact set. Local mode checks
-package hashes and configures the feed and npm archive. Generated Dockerfiles need
-no edits. A sealed directory cannot be overwritten. After source/package changes,
-repeat packaging and seal into a new, nonexistent directory, for example:
+sibling of the NGB checkout. `--output` selects another nonexistent directory outside
+the checkout. Application names contain 2–64 letters/digits and start with a letter.
+
+`--local` selects `artifacts/release-candidate`. If your candidate has another name,
+pass the directory containing its `release-manifest.json` explicitly. For example,
+to consume an already prepared `artifacts/release-candidate-next`:
 
 ```sh
-node quality/external-consumer/release.mjs seal artifacts/release-candidate-next
-node ngb.mjs create MyNextApplication --packages artifacts/release-candidate-next --start --email administrator@example.com
+node ngb.mjs create MyApplication --packages artifacts/release-candidate-next --start --email administrator@example.com
+```
+
+Local mode verifies package hashes and copies the feed and npm archive into the
+application. Generated Dockerfiles need no edits. A sealed directory cannot be
+overwritten. When changing the packaged platform or template, repeat packaging,
+then seal into a new, nonexistent directory, for example:
+
+```sh
+node quality/external-consumer/release.mjs seal artifacts/release-candidate-updated
+node ngb.mjs create MyNextApplication --packages artifacts/release-candidate-updated --start --email administrator@example.com
 ```
 
 Keep previous candidates for diagnosis. Each candidate identifies one source and
@@ -86,6 +98,10 @@ audit history, Work Center, health endpoints and a real worker. It includes no
 business vertical, empty extension projects, Watchdog, Seq, MinIO or pgAdmin.
 `platform.schema.validate` is the initial registered job. Logs go to stdout.
 Notes and Attachments are disabled by default; Notes do not require object storage.
+
+From the application directory, `docker compose stop` stops the local services and
+`docker compose start` resumes the existing containers with their saved data. To
+rebuild and migrate an existing deployment, use the `deploy` procedure below.
 
 The bootstrap identity has trusted Keycloak role `ngb-admin`. It works before a
 platform user exists. Create/link its platform user by email and assign the
@@ -193,8 +209,15 @@ node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --local
 node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --local --apply
 ```
 
-Use `--packages /path/to/candidate` for another local set. Generated apps also carry
-`infrastructure/ngb.mjs`; run it from the application root and use an explicit
+Use `--packages` instead of `--local` for another local set, for example:
+
+```sh
+node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --packages artifacts/release-candidate-next
+node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --packages artifacts/release-candidate-next --apply
+```
+
+The selected directory must already contain a sealed candidate. Generated apps
+also carry `infrastructure/ngb.mjs`; run it from the application root and use an explicit
 `--packages` path for local packages outside that application. Preview is read-only.
 Apply validates both builds in an isolated copy before updating dependency files
 and lockfiles. It also manages ignored local package copies, `NuGet.Local.Config`,
@@ -236,6 +259,10 @@ running; `deploy` does not start dependencies. The command builds images, stops
 writers, runs Migrator and starts hosts only after successful migration. Custom
 Compose/Kubernetes topologies retain their deployment procedure. An ordinary
 `start` refuses existing containers; use `docker compose start` to resume them.
+During `deploy`, Migrator output is streamed to the terminal from a temporary
+container that is removed afterwards. The `migrator` service's old logs are not
+evidence of this deployment; retain the deploy output and check current API/worker
+health before reopening traffic.
 
 New apps generated at 3.2.0 are already on the target; the 3.1.0 → 3.2.0 upgrade
 command is not a refresh command for those apps. A future target requires a
@@ -250,7 +277,9 @@ workers, rolling deployments and zero-downtime upgrades are not certified in 3.2
 ## Certification scope and evidence
 
 Five mandatory profiles run outside the repository, using exact packed artifacts,
-fresh caches, explicit package sources and no workspace/source fallback:
+fresh application/package extraction directories, explicit package sources and no
+workspace/source fallback. Download caches may be shared within the same candidate;
+the clean-starter profile and registry smoke also use fresh download caches.
 
 | Profile | Evidence |
 | --- | --- |
@@ -278,11 +307,14 @@ Documents, relationships, accounting, operational/reference registers, reporting
 projections retain the complete existing regression gates. They are not newly
 claimed external upgrade scenarios in this release. PM, Trade, Agency Billing and
 CRM remain covered by their complete backend/frontend aggregates and stable volume
-and performance-tooling tests.
+and performance-tooling tests. The candidate's Compose gate builds the generated
+starter. It does not build the existing vertical Docker images, including CRM;
+those have a separate container-build gate after package publication.
 
-`quality/external-consumer/matrix.json` binds all 22 required gates to commands and
-assertions. `quality-inventory.json` classifies measured executable helpers, generated
-code, static content and process orchestration. Coverage thresholds remain 100%.
+`quality/external-consumer/matrix.json` binds 20 candidate gates and two
+post-publication gates to commands and assertions. `quality-inventory.json`
+classifies measured executable helpers, generated code, static content and process
+orchestration. Coverage thresholds remain 100%.
 Process orchestration uses real behavior and failure tests, not synthetic coverage.
 
 ## Certified package identity
