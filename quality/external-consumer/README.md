@@ -60,6 +60,12 @@ the npm job and downloads its validated archive by artifact ID before packing.
 
 ## Resume after a failure
 
+Before creating a candidate, `seal` compares the template package's complete content
+file list and SHA-256 hashes with the current template sources, including README,
+hidden files and lockfiles. It applies the template project's packaging exclusions.
+A mismatch reports the affected paths and stops before creating the destination;
+repack with `bash packaging/nuget/pack-platform.sh`, then retry sealing.
+
 Sealing refuses to reuse an existing destination. Changing source, matrix, frozen
 fixture or package bytes invalidates it. Start a new candidate after a source repair.
 For a different candidate, pass a new, nonexistent directory as the final argument to
@@ -163,6 +169,7 @@ complete candidate evidence. See the [upgrade guide](../../docs/architecture/ext
 | `[failed]` or a nonzero final exit status | The run has not certified the candidate; inspect the failed stage and its diagnostics. |
 | A nonzero Migrator exit in the intentional Compose failure scenario | Expected only if the enclosing Compose gate then passes; it verifies that hosts stay stopped. |
 | `npm audit` vulnerabilities | Separate dependency findings; passing functional gates do not mean a clean security audit. |
+| `Template package does not match current sources` | Repack the template before sealing; the error lists stale, missing or extra files. No candidate directory was created. |
 | `Sources differ from the sealed candidate` | Use a new candidate for the changed source; do not edit old evidence. |
 | `Certification inputs or environment changed` | The saved results cannot be reused for the changed tools, Docker images/resources or settings. |
 

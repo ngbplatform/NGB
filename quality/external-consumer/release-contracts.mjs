@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { posix } from 'node:path'
 import { unzipSync } from 'fflate'
-import { assertExactVersion } from './contracts.mjs'
+import { assertExactVersion, hashDirectory } from './contracts.mjs'
+
+export const templateContentExcludes = ['**/bin/**', '**/obj/**', '**/node_modules/**', '**/dist/**', '.env', '.local/**']
 
 export const requiredProfiles = ['clean-starter', 'generated-extension', 'core-upgrade', 'notes-upgrade', 'attachments-upgrade']
 export const requiredGates = [
@@ -50,6 +53,27 @@ export function canonicalNugetPayload(archive) {
     assert.ok(!name.startsWith('/') && !name.includes('\\') && !name.split('/').includes('..'), `Unsafe package path: ${name}`)
   }
   return digest(JSON.stringify(payload.map(name => [name, digest(entries[name])])))
+}
+
+export async function assertTemplatePackage(archive, directory) {
+  const expected = await hashDirectory(directory, templateContentExcludes)
+  assert.ok(Object.keys(expected).length > 0, 'Template source directory is empty.')
+  const seen = new Set()
+  const entries = unzipSync(archive, {
+    filter: ({ name }) => {
+      if (!name.startsWith('content/') || name.endsWith('/')) return false
+      assert.ok(!name.includes('\\') && !name.split('/').includes('..') && posix.normalize(name) === name,
+        `Unsafe template package path: ${name}`)
+      assert.ok(!seen.has(name), `Duplicate template package path: ${name}`)
+      seen.add(name)
+      return true
+    },
+  })
+  const actual = Object.fromEntries(Object.entries(entries).map(([name, bytes]) => [name.slice('content/'.length), digest(bytes)]))
+  const paths = new Set([...Object.keys(expected), ...Object.keys(actual)])
+  const differences = [...paths].filter(path => expected[path] !== actual[path]).sort()
+  assert.equal(differences.length, 0,
+    `Template package does not match current sources: ${differences.join(', ')}. Run bash packaging/nuget/pack-platform.sh before sealing a new candidate.`)
 }
 
 export function artifactIdentity(path, bytes) {

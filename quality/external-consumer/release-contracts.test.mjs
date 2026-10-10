@@ -1,12 +1,91 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import { strToU8, zipSync } from 'fflate'
 import {
-  artifactIdentity, assertArtifactIdentity, assertArtifactInventory, canonicalNugetPayload, digest, validateMatrix,
+  artifactIdentity, assertArtifactIdentity, assertArtifactInventory, assertTemplatePackage, canonicalNugetPayload,
+  digest, templateContentExcludes, validateMatrix,
 } from './release-contracts.mjs'
 
 const zip = entries => zipSync(Object.fromEntries(Object.entries(entries).map(([name, text]) => [name, strToU8(text)])))
+
+async function templateFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), 'ngb-template-payload-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const files = {
+    'README.md': 'Current instructions\n',
+    '.gitignore': '.env\n',
+    '.template.config/template.json': '{"identity":"NGB"}',
+    'web/package-lock.json': '{"lockfileVersion":3}',
+    'Api/packages.lock.json': '{"version":1}',
+    'Api/Program.cs': 'Console.WriteLine("Application");\n',
+  }
+  for (const [path, text] of Object.entries(files)) {
+    await mkdir(dirname(join(root, path)), { recursive: true })
+    await writeFile(join(root, path), text)
+  }
+  const entries = Object.fromEntries(Object.entries(files).map(([path, text]) => [`content/${path}`, text]))
+  entries['NGB.Platform.Templates.nuspec'] = '<package />'
+  entries['content/'] = ''
+  return { root, entries }
+}
+
+test('template package comparison uses the pack exclusions and includes hidden files and lockfiles', async t => {
+  const { root, entries } = await templateFixture(t)
+  const project = await readFile(new URL('../../packaging/templates/NGB.Platform.Templates.csproj', import.meta.url), 'utf8')
+  assert.match(project, /<Content Include="content\/\*\*\/\*"/)
+  assert.match(project, /<NoDefaultExcludes>true<\/NoDefaultExcludes>/)
+  assert.deepEqual(project.match(/Exclude="([^"]+)"/)[1].split(';'), templateContentExcludes.map(path => `content/${path}`))
+  for (const path of ['bin/output', 'Api/obj/output', 'web/node_modules/dependency', 'web/dist/output', '.env', '.local/config']) {
+    await mkdir(dirname(join(root, path)), { recursive: true })
+    await writeFile(join(root, path), 'not packed')
+  }
+  await assertTemplatePackage(zip(entries), root)
+  await assertTemplatePackage(zip({ ...entries, '.signature.p7s': 'signature', '[Content_Types].xml': '<Types />' }), root)
+})
+
+test('template packages reject stale README, source, lockfiles and missing or extra content', async t => {
+  const { root, entries } = await templateFixture(t)
+  for (const path of ['README.md', 'Api/Program.cs', 'web/package-lock.json', 'Api/packages.lock.json']) {
+    await assert.rejects(assertTemplatePackage(zip({ ...entries, [`content/${path}`]: 'old' }), root), error => {
+      assert.ok(error.message.includes(path))
+      assert.match(error.message, /pack-platform\.sh/)
+      return true
+    })
+  }
+  for (const path of ['.gitignore', '.template.config/template.json']) {
+    const missing = { ...entries }
+    delete missing[`content/${path}`]
+    await assert.rejects(assertTemplatePackage(zip(missing), root), /does not match current sources/)
+  }
+  for (const path of ['deleted.txt', '.env', 'web/node_modules/dependency']) {
+    await assert.rejects(assertTemplatePackage(zip({ ...entries, [`content/${path}`]: 'unexpected' }), root), /does not match current sources/)
+  }
+  await assert.rejects(assertTemplatePackage(zip({ 'A.nuspec': '<package />' }), root), /does not match current sources/)
+  await assert.rejects(assertTemplatePackage(Buffer.from('invalid archive'), root))
+})
+
+test('template verification refuses unsafe and duplicate archive paths and linked sources', async t => {
+  const { root, entries } = await templateFixture(t)
+  for (const path of ['content/../README.md', 'content/Api\\Program.cs', 'content/./README.md', 'content//README.md']) {
+    await assert.rejects(assertTemplatePackage(zip({ ...entries, [path]: 'unexpected' }), root), /Unsafe/)
+  }
+  const duplicate = Buffer.from(zip({ ...entries, 'content/README.xx': 'different bytes' }))
+  const alias = Buffer.from('content/README.xx')
+  let offset = duplicate.indexOf(alias)
+  while (offset !== -1) {
+    Buffer.from('content/README.md').copy(duplicate, offset)
+    offset = duplicate.indexOf(alias, offset + alias.length)
+  }
+  await assert.rejects(assertTemplatePackage(duplicate, root), /Duplicate/)
+  await symlink(join(root, 'README.md'), join(root, 'linked.md'))
+  await assert.rejects(assertTemplatePackage(zip(entries), root), /Symbolic links/)
+  const empty = await mkdtemp(join(tmpdir(), 'ngb-template-empty-'))
+  t.after(() => rm(empty, { recursive: true, force: true }))
+  await assert.rejects(assertTemplatePackage(zip(entries), empty), /source directory is empty/)
+})
 
 test('signed NuGet identity ignores only the signature and archive representation', () => {
   const original = zip({ 'A.nuspec': '<package />', 'lib/net10.0/A.dll': 'assembly', 'empty/': '' })

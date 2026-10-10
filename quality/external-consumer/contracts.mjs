@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { lstat, readFile, readdir, realpath } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { isAbsolute, matchesGlob, relative, resolve, sep } from 'node:path'
 
 export function assertExactVersion(version) {
   if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
@@ -15,19 +15,22 @@ export function assertOutsideRepository(repository, consumer) {
   }
 }
 
-export async function hashDirectory(directory) {
+export async function hashDirectory(directory, excludedPaths = []) {
   const result = {}
   async function visit(path) {
     for (const entry of (await readdir(path)).sort()) {
       const filename = resolve(path, entry)
       const stat = await lstat(filename)
+      const relativePath = relative(directory, filename).split(sep).join('/')
+      const matchPath = stat.isDirectory() ? `${relativePath}/` : relativePath
+      if (excludedPaths.some(pattern => matchesGlob(matchPath, pattern))) continue
       if (stat.isSymbolicLink()) {
         throw new Error(`Symbolic links are forbidden in certified inputs: ${filename}`)
       }
       if (stat.isDirectory()) {
         await visit(filename)
       } else {
-        result[relative(directory, filename).split(sep).join('/')] = createHash('sha256')
+        result[relativePath] = createHash('sha256')
           .update(await readFile(filename)).digest('hex')
       }
     }

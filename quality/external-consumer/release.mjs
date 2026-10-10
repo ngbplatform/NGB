@@ -4,7 +4,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertGateResults } from './contracts.mjs'
-import { artifactIdentity, assertArtifactIdentity, assertArtifactInventory, digest, validateMatrix } from './release-contracts.mjs'
+import {
+  artifactIdentity, assertArtifactIdentity, assertArtifactInventory, assertTemplatePackage, digest, validateMatrix,
+} from './release-contracts.mjs'
 import { atomicJson, checkpointRunner, lockRun } from './checkpoints.mjs'
 import { command } from './execution.mjs'
 import { prepareEnvironment, prepareToolchain } from './environment.mjs'
@@ -67,6 +69,10 @@ if (action === 'certify' && !process.argv.includes('--prepared-toolchain')) {
 }
 
 if (action === 'seal') {
+  const sourceTreeSha256 = await sourceIdentity()
+  const templatePath = `nuget-release/NGB.Platform.Templates.${matrix.target}.nupkg`
+  const templateBytes = await readFile(join(repository, 'artifacts', templatePath))
+  await assertTemplatePackage(templateBytes, join(repository, 'packaging/templates/content'))
   await mkdir(root)
   await mkdir(join(root, 'nuget-release'))
   await mkdir(join(root, 'npm'))
@@ -77,7 +83,7 @@ if (action === 'seal') {
   paths.push(`npm/ngbplatform-ui-${matrix.target}.tgz`)
   const artifacts = []
   for (const path of paths) {
-    const bytes = await readFile(join(repository, 'artifacts', path))
+    const bytes = path === templatePath ? templateBytes : await readFile(join(repository, 'artifacts', path))
     artifacts.push(artifactIdentity(path, bytes))
     await writeFile(join(root, path), bytes, { flag: 'wx', mode: 0o444 })
   }
@@ -92,7 +98,7 @@ if (action === 'seal') {
   await save(manifestPath, {
     schemaVersion: 1, version: matrix.target,
     sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8' }).trim(),
-    sourceTreeSha256: await sourceIdentity(),
+    sourceTreeSha256,
     derivedInputs: inputs,
     matrixSha256: digest(await readFile(new URL('./matrix.json', import.meta.url))),
     sourceFixtureSha256: digest(await readFile(join(repository, matrix.sourceManifest))),

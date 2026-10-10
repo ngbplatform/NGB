@@ -40,6 +40,17 @@ test('frozen source rejects edited, missing, added and linked inputs', async t =
   await assert.rejects(hashDirectory(root), /Symbolic links/)
 })
 
+test('directory hashing excludes matching files and prunes matching directories', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ngb-hash-exclusions-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(join(root, 'nested', 'bin'), { recursive: true })
+  await writeFile(join(root, 'nested', 'source.txt'), 'source')
+  await writeFile(join(root, '.env'), 'private')
+  await symlink(join(root, 'missing'), join(root, 'nested', 'bin', 'link'))
+  const files = await hashDirectory(root, ['**/bin/**', '.env'])
+  assert.deepEqual(Object.keys(files), ['nested/source.txt'])
+})
+
 test('isolated source rejects every repository, project and package fallback', async t => {
   const root = await mkdtemp(join(tmpdir(), 'ngb-isolation-test-'))
   t.after(() => rm(root, { recursive: true, force: true }))
