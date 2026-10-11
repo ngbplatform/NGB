@@ -46,14 +46,19 @@ for project in "${projects[@]}"; do
   project_file="${repository_root}/${project}"
   package_id="$(dotnet msbuild "${project_file}" -nologo -getProperty:PackageId)"
   test -f "${output_directory}/${package_id}.${version}.nupkg"
-  test -f "${output_directory}/${package_id}.${version}.snupkg"
+  package_kind="$(dotnet msbuild "${project_file}" -nologo -getProperty:NgbPlatformPackageKind)"
+  if [[ "${package_kind}" != "template" ]]; then
+    test -f "${output_directory}/${package_id}.${version}.snupkg"
+  fi
 done
 
 package_count="$(find "${output_directory}" -maxdepth 1 -type f -name '*.nupkg' ! -name '*.snupkg' | wc -l | tr -d ' ')"
 symbol_count="$(find "${output_directory}" -maxdepth 1 -type f -name '*.snupkg' | wc -l | tr -d ' ')"
 
-if [[ "${package_count}" != "${#projects[@]}" || "${symbol_count}" != "${#projects[@]}" ]]; then
-  echo "Expected ${#projects[@]} packages and symbols, found ${package_count} packages and ${symbol_count} symbols." >&2
+expected_symbol_count="$(node -p 'require(process.argv[1]).packages.filter(item => item.kind === "runtime").length' "${repository_root}/packaging/nuget/baselines.json")"
+
+if [[ "${package_count}" != "${#projects[@]}" || "${symbol_count}" != "${expected_symbol_count}" ]]; then
+  echo "Expected ${#projects[@]} packages and ${expected_symbol_count} symbol packages, found ${package_count} packages and ${symbol_count} symbols." >&2
   exit 1
 fi
 
@@ -75,5 +80,8 @@ assert_package_entry \
 assert_package_entry \
   "${output_directory}/NGB.Platform.Watchdog.${version}.nupkg" \
   "contentFiles/any/any/dashboard.css"
+assert_package_entry \
+  "${output_directory}/NGB.Platform.Templates.${version}.nupkg" \
+  "content/.template.config/template.json"
 
 echo "Verified ${package_count} NGB.Platform ${version} packages, API compatibility configuration, and required content assets."

@@ -21,3 +21,4 @@ NGB.ReferenceRegisters/NGB.ReferenceRegisters.csproj
 NGB.Runtime/NGB.Runtime.csproj
 NGB.Tools/NGB.Tools.csproj
 NGB.Watchdog/NGB.Watchdog.csproj
+packaging/templates/NGB.Platform.Templates.csproj

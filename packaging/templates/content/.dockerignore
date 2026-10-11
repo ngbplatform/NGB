@@ -1,0 +1,10 @@
+**/bin
+**/obj
+**/node_modules
+**/dist
+.git
+.env
+.local
+.ngb/cache
+.ngb/upgrades
+.ngb/operation.lock

@@ -36,6 +36,8 @@ public sealed class PostingLog_TakeoverConcurrency_ExternalTransactionModeTests(
 
         // Simulate a crashed process: started long ago, not completed.
         var staleStartedAtUtc = DateTime.UtcNow.AddHours(-3);
+        // PostgreSQL timestamps retain microseconds, so keep exact round-trip assertions portable.
+        staleStartedAtUtc = staleStartedAtUtc.AddTicks(-(staleStartedAtUtc.Ticks % TimeSpan.TicksPerMicrosecond));
         await InsertInProgressPostingLogRowAsync(
             Fixture.ConnectionString,
             documentId,
@@ -102,6 +104,8 @@ public sealed class PostingLog_TakeoverConcurrency_ExternalTransactionModeTests(
         var periodUtc = new DateTime(2026, 1, 13, 12, 0, 0, DateTimeKind.Utc);
 
         var staleStartedAtUtc = DateTime.UtcNow.AddHours(-3);
+        // PostgreSQL timestamps retain microseconds, so keep exact round-trip assertions portable.
+        staleStartedAtUtc = staleStartedAtUtc.AddTicks(-(staleStartedAtUtc.Ticks % TimeSpan.TicksPerMicrosecond));
         await InsertInProgressPostingLogRowAsync(
             Fixture.ConnectionString,
             documentId,

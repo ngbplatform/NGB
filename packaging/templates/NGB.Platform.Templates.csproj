@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <PackageId>NGB.Platform.Templates</PackageId>
+        <PackageType>Template</PackageType>
+        <Description>Official independently buildable NGB application template with API, Migrator, Background Jobs and Vue.</Description>
+        <NgbPlatformPackageKind>template</NgbPlatformPackageKind>
+        <EnableDefaultItems>false</EnableDefaultItems>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+        <IncludeSymbols>false</IncludeSymbols>
+        <EnablePackageValidation>false</EnablePackageValidation>
+        <NoDefaultExcludes>true</NoDefaultExcludes>
+        <NoBuild>true</NoBuild>
+        <IsPackable>true</IsPackable>
+        <IsPublishable>false</IsPublishable>
+        <ContentTargetFolders>content</ContentTargetFolders>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Content Include="content/**/*"
+                 Exclude="content/**/bin/**;content/**/obj/**;content/**/node_modules/**;content/**/dist/**;content/.env;content/.local/**"
+                 PackagePath="content/"
+                 Pack="true" />
+    </ItemGroup>
+</Project>

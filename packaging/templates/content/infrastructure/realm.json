@@ -1,0 +1,89 @@
+{
+  "realm": "ngb-app",
+  "enabled": true,
+  "sslRequired": "none",
+  "editUsernameAllowed": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "ngb-admin"
+      },
+      {
+        "name": "ngb-user"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "ngb-web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:5182/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5182"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    },
+    {
+      "clientId": "ngb-jobs",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:5184/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5184"
+      ]
+    },
+    {
+      "clientId": "ngb-admin-client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${KEYCLOAK_ADMIN_CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "${BOOTSTRAP_EMAIL}",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "${BOOTSTRAP_EMAIL}",
+      "firstName": "External",
+      "lastName": "Administrator",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${BOOTSTRAP_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ngb-admin"
+      ]
+    },
+    {
+      "username": "service-account-ngb-admin-client",
+      "enabled": true,
+      "serviceAccountClientId": "ngb-admin-client",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "query-users",
+          "view-users"
+        ]
+      }
+    }
+  ]
+}

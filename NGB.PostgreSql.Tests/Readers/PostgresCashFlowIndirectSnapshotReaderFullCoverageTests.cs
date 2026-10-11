@@ -121,12 +121,9 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
         var scenario = new CashFlowScenario(
             LatestClosed(null, new DateOnly(2026, 9, 1)),
             LineDefinitions(),
-            inceptionRows:
-            [
-                BalanceRows(
-                    (working, "1100", CashFlowRole.WorkingCapital, "wc", 10m),
-                    (working, "1100", CashFlowRole.WorkingCapital, "wc", 5m))
-            ],
+            endpointRows: EndpointBalanceRows(
+                (working, "1100", CashFlowRole.WorkingCapital, "wc", 10m, 10m),
+                (working, "1100", CashFlowRole.WorkingCapital, "wc", 5m, 5m)),
             snapshotRows:
             [
                 BalanceRows(
@@ -144,8 +141,12 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
             new CashFlowIndirectSnapshotLine(CashFlowSection.Operating, "wc", "Working capital", 2, 3m));
         result.BeginningLatestClosedPeriod.Should().BeNull();
         result.EndingLatestClosedPeriod.Should().Be(new DateOnly(2026, 9, 1));
-        scenario.Commands.Should().ContainSingle(command =>
-            command.CommandText.Contains("WITH ledger_rows", StringComparison.Ordinal));
+        var inception = scenario.Commands.Should().ContainSingle(command =>
+            command.CommandText.Contains("WITH endpoint_ledger_rows", StringComparison.Ordinal)).Subject;
+        var opening = inception.ParametersSnapshot.Single(parameter => parameter.ParameterName == "OpeningToExclusiveUtc");
+        var closing = inception.ParametersSnapshot.Single(parameter => parameter.ParameterName == "ClosingToExclusiveUtc");
+        opening.Value.Should().Be(new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
+        closing.Value.Should().Be(opening.Value);
         scenario.Commands.Should().ContainSingle(command =>
             command.CommandText.Contains("FROM accounting_balances b", StringComparison.Ordinal));
     }
@@ -169,7 +170,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
 
     private sealed class CashFlowScenario
     {
-        private readonly Queue<DataTable> _inceptionRows;
         private readonly DataTable _endpointRows;
         private readonly Queue<DataTable> _snapshotRows;
         private readonly Queue<DataTable> _deltaRows;
@@ -183,7 +183,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
             DataTable latestClosed,
             DataTable lineDefinitions,
             DataTable? endpointRows = null,
-            IEnumerable<DataTable>? inceptionRows = null,
             IEnumerable<DataTable>? snapshotRows = null,
             IEnumerable<DataTable>? deltaRows = null,
             DataTable? pnlRows = null,
@@ -193,7 +192,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
             _latestClosed = latestClosed;
             _lineDefinitions = lineDefinitions;
             _endpointRows = endpointRows ?? EndpointBalanceRows();
-            _inceptionRows = new Queue<DataTable>(inceptionRows ?? []);
             _snapshotRows = new Queue<DataTable>(snapshotRows ?? []);
             _deltaRows = new Queue<DataTable>(deltaRows ?? []);
             _pnlRows = pnlRows ?? ProfitAndLossRows();
@@ -216,8 +214,6 @@ public sealed class PostgresCashFlowIndirectSnapshotReaderFullCoverageTests
                 return _lineDefinitions;
             if (sql.Contains("WITH endpoint_ledger_rows", StringComparison.Ordinal))
                 return _endpointRows;
-            if (sql.Contains("WITH ledger_rows", StringComparison.Ordinal))
-                return _inceptionRows.Dequeue();
             if (sql.Contains("WITH snapshot_rows", StringComparison.Ordinal))
                 return _deltaRows.Dequeue();
             if (sql.Contains("FROM accounting_balances b", StringComparison.Ordinal))

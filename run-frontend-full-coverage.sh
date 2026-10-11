@@ -72,6 +72,8 @@ run_vitest_project() {
 
   if NGB_UI_FRAMEWORK_BROWSER_MATRIX=chromium npx vitest run \
     --config "${package_name}/${config_name}" \
+    --allowOnly=false \
+    --retry=0 \
     --coverage \
     --coverage.provider v8 \
     --coverage.allowExternal \
@@ -174,7 +176,8 @@ else
   for project in "${e2e_projects[@]}"; do
     IFS='|' read -r package_name config_name project_kind <<< "${project}"
     project_name="${package_name}-${project_kind}"
-    if env -u NO_COLOR npx playwright test --config "${package_name}/${config_name}" > "${log_root}/${project_name}.log" 2>&1; then
+    if env -u NO_COLOR npx playwright test --config "${package_name}/${config_name}" \
+      --forbid-only --retries=0 > "${log_root}/${project_name}.log" 2>&1; then
       echo "Passed: ${project_name}"
     else
       echo "Failed: ${project_name}" >&2

@@ -24,11 +24,6 @@
 </p>
 
 <p align="center">
-  Current release: <strong>3.1.0</strong> ·
-  <a href="docs/architecture/attachments-and-notes.md">Attachments &amp; Notes upgrade guide</a>
-</p>
-
-<p align="center">
   <a href="https://ngbplatform.com">Website</a>
   ·
   <a href="https://docs.ngbplatform.com">Docs</a>
@@ -488,6 +483,30 @@ See:
 
 ## Getting started
 
+### Create a new application
+
+Use .NET 10 SDK, Node.js 24.19.x and Docker with Compose v2. Once the template and its matching NuGet/npm packages are published, run these commands in the directory that should contain your new application. No NGB repository checkout is required:
+
+```bash
+dotnet new install NGB.Platform.Templates
+dotnet new ngb -n MyApplication
+cd MyApplication
+node infrastructure/configure.mjs administrator@example.com
+node infrastructure/ngb.mjs start
+```
+
+This installs the latest published stable template and starts the application's local development stack. Open http://localhost:5182 and sign in with the configured email and `BOOTSTRAP_PASSWORD` from the generated `.env` file. Run `configure.mjs` only once.
+
+See the [application guide](docs/architecture/external-app-upgrades.md#create-an-application) for setup and next steps. Before publication, use its [local package instructions](docs/architecture/external-app-upgrades.md#before-publication).
+
+### Upgrade an existing application
+
+Follow the [upgrade guide](docs/architecture/external-app-upgrades.md#migrate-310-to-320) for supported transitions, preview/apply commands, application validation, backups and database migration. Installing a newer template does not update an existing application.
+
+The upgrade command uses published NuGet/npm packages by default. For an older application without the bundled `infrastructure/ngb.mjs`, run the CLI from an NGB checkout for the target release; a standalone installable CLI package is not currently provided.
+
+The following sections cover the bundled demos and development in this repository.
+
 ### 🔑 Demo access
 
 The demo applications include a preconfigured administrator account for evaluation purposes.
@@ -506,8 +525,8 @@ You should have the following installed:
 
 - .NET 10 SDK for local backend builds
 - Docker with Linux containers and Docker Compose v2
-- Node.js 22.14+ and npm for local frontend development (the Dockerfiles use Node.js 22.17)
-- Bash for the repository's shell scripts; Windows PowerShell alternatives are linked below
+- Node.js 24.19.x and npm for platform package tooling and local frontend development
+- Bash for package tooling (WSL2 on Windows); PowerShell certificate setup is shown below
 
 ### Clone the repository
 
@@ -552,17 +571,17 @@ Generated packages are ignored by Git and are absent after a fresh clone.
 On macOS/Linux, from the repository root:
 
 ```bash
-bash packaging/nuget/pack-platform.sh
 npm --prefix ui ci
 npm --prefix ui run pack:platform-ui -- --local-candidate
+bash packaging/nuget/pack-platform.sh
 ```
 
-The NuGet script packs all platform projects, refreshes `artifacts/nuget`, invalidates replaced
-cache entries, and restores the solution. The UI command creates
-`artifacts/npm/ngbplatform-ui-local.tgz` without changing the published CRM lockfile.
+The npm archive must be created first because template packing uses it to generate lockfiles.
+The NuGet script packs all platform projects, regenerates template and CRM lockfiles,
+refreshes `artifacts/nuget`, invalidates replaced cache entries, and restores the solution.
+The UI command creates `artifacts/npm/ngbplatform-ui-local.tgz`.
 
-On Windows, follow the [PowerShell package preparation instructions](docs/start-here/run-locally.md#prepare-local-platform-packages).
-They include a Linux-container UI packaging command for the current script's Windows launcher limitation.
+On Windows, follow the [WSL2 package preparation instructions](docs/start-here/run-locally.md#prepare-local-platform-packages).
 
 ### Run the Property Management demo locally
 

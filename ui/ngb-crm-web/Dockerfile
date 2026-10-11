@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.npm \
       npm ci; \
     fi
 
-COPY ui/postcss.shared.config.js ui/tailwind.shared.config.js /workspace/ui/
+COPY ui/postcss.shared.config.js /workspace/ui/
 COPY ui/ngb-crm-web ./
 
 RUN npm run build

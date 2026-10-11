@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="NgbApplication.Api/NgbApplication.Api.csproj" />
+  <Project Path="NgbApplication.Migrator/NgbApplication.Migrator.csproj" />
+  <Project Path="NgbApplication.BackgroundJobs/NgbApplication.BackgroundJobs.csproj" />
+</Solution>

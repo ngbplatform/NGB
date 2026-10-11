@@ -1,0 +1,16 @@
+{
+  "name": "ngb-release-certification",
+  "version": "3.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.19.0"
+  },
+  "scripts": {
+    "test:contracts": "node --test --experimental-test-coverage --test-coverage-include='external-consumer/contracts.mjs' --test-coverage-lines=100 --test-coverage-functions=100 --test-coverage-branches=100 external-consumer/contracts.test.mjs"
+  },
+  "dependencies": {
+    "@playwright/test": "1.59.1",
+    "fflate": "0.8.2"
+  }
+}

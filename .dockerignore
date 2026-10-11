@@ -1,5 +1,6 @@
 ﻿**/.dockerignore
 **/.env
+**/.env.*
 **/.git
 **/.gitignore
 **/.project
@@ -17,6 +18,10 @@
 **/docker-compose*
 **/Dockerfile*
 **/node_modules
+# Exclude certification workspaces and caches; CRM builds consume only these feeds.
+artifacts/*
+!artifacts/nuget/
+!artifacts/npm/
 # Load samples and local database checkpoints
 performance-tests/artifacts/
 **/npm-debug.log

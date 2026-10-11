@@ -98,7 +98,10 @@ public sealed partial class OperationalRegisterCumulativeBalances_DefaultProject
     public async Task Boundary_capture_timeout_rolls_back_savepoint_and_exhausts_three_attempts_without_false_success()
     {
         var gate = new PreparationGate();
-        using var host = GatedHost(gate, services => services.Configure<PostgresOptions>(o => o.OperationalRegisterPublicationTimeoutSeconds = 1));
+        using var host = GatedHost(gate, services => services.Configure<PostgresOptions>(options =>
+        {
+            options.OperationalRegisterPublicationTimeoutSeconds = 1;
+        }));
         var (id, document) = await SeedProjectionAsync(host);
         await ApplyRepostAsync(host, id, document, CreateMovement(document, JanuaryDate, 120m));
         await using var blocker = host.Services.CreateAsyncScope();
@@ -106,14 +109,28 @@ public sealed partial class OperationalRegisterCumulativeBalances_DefaultProject
         await blockerUow.BeginTransactionAsync();
         await blocker.ServiceProvider.GetRequiredService<IAdvisoryLockManager>().LockOperationalRegisterAsync(id);
         var attempts = gate.PrepareCount;
+        using var cancellation = new CancellationTokenSource();
+        var running = FinalizeDirtyAsync(host, id, cancellation.Token);
         try
         {
-            await ((Func<Task>)(async () => await FinalizeDirtyAsync(host, id).WaitAsync(TimeSpan.FromSeconds(10))))
+            await ((Func<Task>)(async () => await running.WaitAsync(PublicationExhaustionTestTimeout)))
                 .Should().ThrowAsync<OperationalRegisterFinalizationBusyException>();
             gate.PrepareCount.Should().Be(attempts + 3);
             await AssertPublishedPairAsync(host, id, 100m, finalized: false);
         }
-        finally { await blockerUow.RollbackAsync(); }
+        finally
+        {
+            await cancellation.CancelAsync();
+            try
+            {
+                await ObserveFinalizationCleanupAsync(running, cancellation.Token);
+            }
+            finally
+            {
+                await blockerUow.RollbackAsync();
+            }
+        }
+
         (await FinalizeDirtyAsync(host, id)).Should().Be(1);
         await AssertPublishedPairAsync(host, id, 120m, finalized: true);
     }

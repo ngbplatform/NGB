@@ -80,6 +80,25 @@ public sealed class ApiInfrastructureFullCoverageTests
     }
 
     [Fact]
+    public async Task Keycloak_health_check_uses_the_configured_private_discovery_endpoint()
+    {
+        var factory = new RecordingHttpClientFactory(request =>
+        {
+            request.RequestUri.Should().Be("http://identity.internal/realms/app/.well-known/openid-configuration");
+            return Response(HttpStatusCode.OK);
+        });
+        var sut = new KeycloakHealthCheck(factory, new KeycloakSettings
+        {
+            Issuer = "https://identity.example/realms/app",
+            MetadataAddress = "http://identity.internal/realms/app/.well-known/openid-configuration"
+        });
+
+        var result = await sut.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
+
+        result.Status.Should().Be(HealthStatus.Healthy);
+    }
+
+    [Fact]
     public void QueryParsing_covers_defaults_invalid_numbers_reserved_keys_and_filters()
     {
         QueryParsing.ToPageRequest(new QueryCollection()).Should().BeEquivalentTo(new

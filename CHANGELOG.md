@@ -7,11 +7,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+No changes yet.
+
+## [3.2.0] - 2026-10-11
+
 ### Added
-- N/A
+- Added the independent `NGB.Platform.Templates` application starter with API, Migrator,
+  Background Jobs, Vue, Keycloak and PostgreSQL, including working platform administration.
+- Added application tooling for creation from local packages, upgrade preview/application
+  and migration-aware deployment.
+- Added the public frontend Tailwind preset and external-consumer checks for npm entry
+  points, template startup and upgrades from a frozen published application fixture.
+- See the [External applications and upgrades guide](docs/architecture/external-app-upgrades.md)
+  for supported version transitions and certification requirements.
 
 ### Changed
-- N/A
+- Unified NuGet/npm publication around certified artifacts and required release approval,
+  with automatic selection of the matching certification run and registry verification.
+- Start container builds, including CRM, after verified publication and use the released
+  source commit for image tags and the deployment PR.
 
 ### Deprecated
 - N/A
@@ -20,7 +34,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - N/A
 
 ### Fixed
-- N/A
+- Avoided slow indirect Cash Flow balance aggregation when account classification statistics are stale, without increasing database command timeouts.
+- Made concurrent month-closing tests establish their required January activity before racing January and February operations.
 
 ### Security
 - N/A
@@ -214,7 +229,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 ### Notes
 - This release establishes the first public baseline of the NGB Platform repository.
 
-[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.1.0...HEAD
+[Unreleased]: https://github.com/ngbplatform/ngb/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/ngbplatform/ngb/compare/v3.1.0...v3.2.0
 [3.1.0]: https://github.com/ngbplatform/ngb/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/ngbplatform/ngb/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/ngbplatform/ngb/compare/v1.3.1...v2.0.0

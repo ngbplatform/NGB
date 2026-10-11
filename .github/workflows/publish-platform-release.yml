@@ -1,0 +1,115 @@
+name: publish-certified-platform-release
+run-name: Publish NGB ${{ github.event.workflow_run.head_sha || github.sha }}
+
+on:
+  workflow_run:
+    workflows: [external-app-certification]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: publish-certified-platform-release
+  cancel-in-progress: false
+
+jobs:
+  select:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      run-id: ${{ steps.source.outputs.run-id }}
+      sha: ${{ steps.source.outputs.sha }}
+      artifact-id: ${{ steps.source.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Select certified artifacts for the exact release commit
+        id: source
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { selectReleaseSource } = require('./.github/scripts/release-source.cjs');
+            const source = await selectReleaseSource(github, context);
+            core.setOutput('run-id', source.runId);
+            core.setOutput('sha', source.sha);
+            core.setOutput('artifact-id', source.artifactId);
+            await core.summary
+              .addHeading('Release awaiting approval')
+              .addTable([
+                ['Commit', source.sha],
+                ['Certification', source.runId],
+                ['Artifact', source.artifactId]
+              ])
+              .addRaw('Approve the platform-release environment to publish these exact packages.')
+              .write();
+
+  publish:
+    needs: select
+    name: Approve release of ${{ needs.select.outputs.sha }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: platform-release
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.select.outputs.sha }}
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.select.outputs.artifact-id }}
+          merge-multiple: true
+          path: artifacts/release-candidate
+          run-id: ${{ needs.select.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Verify certification and the exact artifact identities
+        env:
+          NGB_RELEASE_COMMIT: ${{ needs.select.outputs.sha }}
+        run: |
+          npm --prefix quality ci
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict'
+          import { readFile } from 'node:fs/promises'
+          const manifest = JSON.parse(await readFile('artifacts/release-candidate/release-manifest.json', 'utf8'))
+          assert.equal(manifest.sourceCommit, process.env.NGB_RELEASE_COMMIT)
+          JS
+          node quality/external-consumer/release.mjs verify-candidate
+      - name: Request short-lived NuGet credential
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER || 'ngb_platform' }}
+      - name: Publish the certified bytes without rebuilding
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: node quality/external-consumer/publish.mjs
+      - name: Verify registry identity and runtime before promotion
+        run: |
+          cd quality
+          npx playwright install --with-deps chromium
+          cd ..
+          node quality/external-consumer/verify-registry.mjs
+          node quality/external-consumer/release.mjs verify-publication
+          node quality/external-consumer/release.mjs verify-promotion
+      - name: Record publication and promotion evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ngb-publication-evidence
+          path: artifacts/release-candidate/
+          if-no-files-found: error
+          retention-days: 90

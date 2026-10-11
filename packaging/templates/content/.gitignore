@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+.env
+.local/
+.ngb/
+NuGet.Local.Config
+web/.ngb-packages/*.tgz
+*.user

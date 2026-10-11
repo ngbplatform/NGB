@@ -58,8 +58,13 @@ export function createPlatformUiPackageManifest(sourceManifest, version = source
       },
       './styles': './src/styles/tailwind.css',
       './vite-public-assets': './vite-public-assets.js',
+      './tailwind-preset': {
+        types: './tailwind-preset.d.ts',
+        import: './tailwind-preset.js',
+        default: './tailwind-preset.js',
+      },
     },
-    files: ['LICENSE', 'README.md', 'public', 'src', 'vite-public-assets.js'],
+    files: ['LICENSE', 'README.md', 'public', 'src', 'vite-public-assets.js', 'vite-public-assets.d.ts', 'tailwind-preset.js', 'tailwind-preset.d.ts'],
     publishConfig: {
       access: 'public',
       registry: 'https://registry.npmjs.org/',
@@ -73,6 +78,12 @@ export function createPlatformUiPackageManifest(sourceManifest, version = source
       pinia: sourceManifest.dependencies.pinia,
       vue: sourceManifest.dependencies.vue,
       'vue-router': sourceManifest.dependencies['vue-router'],
+      vite: '>=5.0.0',
+      tailwindcss: '>=3.4.0',
+    },
+    peerDependenciesMeta: {
+      vite: { optional: true },
+      tailwindcss: { optional: true },
     },
   }
 }

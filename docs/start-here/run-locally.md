@@ -13,9 +13,10 @@ The examples below use **Property Management**. Trade and Agency Billing follow 
 with their own compose and environment files. CRM additionally consumes local platform packages;
 follow [Prepare local platform packages](#prepare-local-platform-packages) before starting it.
 
-Use .NET 10 SDK, Docker Compose v2 with Linux containers, and Node.js 22.14+ for local UI work.
-Bash examples run from the repository root unless stated otherwise; PowerShell alternatives are
-provided for package preparation and certificate setup.
+Use .NET 10 SDK, Docker Compose v2 with Linux containers, and Node.js 24.19.x for
+platform package tooling. Bash examples run from the repository root unless stated
+otherwise. On Windows, run package tooling in WSL2; certificate setup also has a
+PowerShell example below.
 
 ## Option 1: Full Docker Compose bootstrap
 
@@ -115,71 +116,34 @@ The full solution includes CRM, which consumes `NGB.Platform.*` through NuGet. P
 use project references. Before building CRM or the complete solution against unpublished/local
 platform code, populate the local feed configured in `NuGet.config`.
 
-### NuGet on macOS/Linux or Git Bash
+### Package npm before NuGet
 
-```bash
-bash packaging/nuget/pack-platform.sh
-```
-
-The script packages the complete set from `packaging/nuget/projects.txt`, refreshes
-`artifacts/nuget`, removes replaced versions from `artifacts/nuget-cache`, and restores `NGB.sln`.
-
-### NuGet in PowerShell
-
-From the repository root, with .NET 10 SDK available:
-
-```powershell
-$packageVersion = dotnet msbuild .\NGB.Tools\NGB.Tools.csproj -nologo -getProperty:PackageVersion
-if ($LASTEXITCODE -ne 0) { throw "Could not resolve the platform version" }
-$packageVersion = $packageVersion.Trim()
-New-Item -ItemType Directory -Force .\artifacts\nuget | Out-Null
-
-Get-Content .\packaging\nuget\projects.txt | ForEach-Object {
-    if ($_.Trim()) {
-        dotnet pack $_ -c Release -o .\artifacts\nuget
-        if ($LASTEXITCODE -ne 0) { throw "Failed to pack $_" }
-    }
-}
-
-# Invalidate only this version of local platform packages after repacking.
-Get-ChildItem .\artifacts\nuget-cache -Directory -Filter 'ngb.platform.*' | ForEach-Object {
-    $cachedVersion = Join-Path $_.FullName $packageVersion
-    if (Test-Path $cachedVersion) { Remove-Item $cachedVersion -Recurse -Force }
-}
-
-dotnet restore .\NGB.sln --configfile .\NuGet.config --force-evaluate
-if ($LASTEXITCODE -ne 0) { throw "Solution restore failed" }
-```
-
-### CRM UI on macOS/Linux
-
-The CRM Compose file requires `artifacts/npm/ngbplatform-ui-local.tgz`. Create it before building
-the web image, and recreate it after changing `ui/ngb-ui-framework`:
+From the repository root on macOS/Linux or in WSL2:
 
 ```bash
 npm --prefix ui ci
 npm --prefix ui run pack:platform-ui -- --local-candidate
+bash packaging/nuget/pack-platform.sh
 ```
 
-The flag allows unpublished local content while keeping the dedicated CRM lockfile unchanged.
-For release validation, follow the strict packaging instructions in `packaging/PUBLISHING.md`.
+The UI archive must exist first. NuGet packing includes the application template,
+whose lockfile preparation reads that archive. `pack-platform.sh` packages the
+complete set from `packaging/nuget/projects.txt`, refreshes `artifacts/nuget`,
+invalidates replaced versions in `artifacts/nuget-cache`, and restores `NGB.sln`.
+It also regenerates template and CRM lockfile data against the package set.
 
-### CRM UI in PowerShell
+CRM's local web image uses `artifacts/npm/ngbplatform-ui-local.tgz`. Re-run package
+preparation after changing the platform. `--local-candidate` permits npm packing
+before its matching lockfiles exist; subsequent NuGet packing prepares them.
 
-The current packaging script launches `npm.cmd` directly through `execFileSync`, which does not
-work on native Windows. Run the packaging step in a temporary Linux container instead. This also
-avoids requiring a host Node.js installation; dependencies live in a disposable Docker volume:
+### Windows package tooling
 
-```powershell
-docker run --rm `
-  --mount "type=bind,source=$($PWD.Path),target=/workspace" `
-  --mount "type=volume,target=/workspace/ui/node_modules" `
-  -w /workspace/ui `
-  node:22.17-alpine `
-  sh -c "npm ci --workspaces=false --ignore-scripts && npm run pack:platform-ui -- --local-candidate"
-
-if ($LASTEXITCODE -ne 0) { throw "UI package creation failed" }
-```
+Use a WSL2 checkout and install .NET 10, Node 24.19.x and npm inside that distribution.
+Enable Docker Desktop integration for it, then run the same Bash commands above.
+The current Node packaging/application scripts launch subprocesses that are not
+supported by this runbook on native Windows. The former standalone PowerShell
+`dotnet pack` loop did not generate the template lockfiles and is not equivalent
+to the complete package-preparation sequence.
 
 ### Start CRM
 

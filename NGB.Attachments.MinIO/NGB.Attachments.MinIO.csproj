@@ -7,7 +7,7 @@
         <IsPublishable>false</IsPublishable>
         <PackageId>NGB.Platform.Attachments.MinIO</PackageId>
         <Description>NGB Platform Attachments.MinIO capability.</Description>
-        <NgbPlatformHasApiBaseline>false</NgbPlatformHasApiBaseline>
+        <NgbPlatformFirstStableInMajorVersion>3.1.0</NgbPlatformFirstStableInMajorVersion>
     </PropertyGroup>
 
     <ItemGroup>

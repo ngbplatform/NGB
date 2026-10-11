@@ -89,6 +89,8 @@ jobs:
   npm:
     name: validate @ngbplatform/ui
     runs-on: ubuntu-latest
+    outputs:
+      artifact-id: ${{ steps.npm-artifact.outputs.artifact-id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -121,6 +123,7 @@ jobs:
         run: npm run pack:platform-ui
 
       - name: Upload npm package
+        id: npm-artifact
         uses: actions/upload-artifact@v7
         with:
           name: ngbplatform-ui-${{ steps.npm-version.outputs.version }}
@@ -130,15 +133,29 @@ jobs:
 
   nuget:
     name: validate NGB.Platform NuGet packages
+    needs: npm
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
+
+      - name: Download the validated npm package
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.npm.outputs.artifact-id }}
+          merge-multiple: true
+          path: artifacts/npm
 
       - name: Pack platform packages
         run: bash packaging/nuget/pack-platform.sh

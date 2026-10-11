@@ -343,9 +343,8 @@ test('filters local menu items and navigates on Enter', async () => {
   ;(payablesOption.element() as HTMLElement).dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }))
   dispatchKey(input.element() as HTMLElement, 'Enter')
 
-  await wait(180)
-  expect(view.getByTestId('current-route').element().textContent).toBe('/payables/open-items')
-  expect(document.querySelector('[data-testid=\"command-palette-dialog\"]')).toBeNull()
+  await expect.poll(() => view.getByTestId('current-route').element().textContent).toBe('/payables/open-items')
+  await expect.poll(() => document.querySelector('[data-testid="command-palette-dialog"]'), { timeout: 5_000 }).toBeNull()
 })
 
 test('renders every scoped-query badge and both empty-state announcements', async () => {
@@ -425,10 +424,9 @@ test('navigates local results using only the keyboard after opening from the glo
   expect(String((input.element() as HTMLInputElement).getAttribute('aria-activedescendant') ?? '')).toContain('ngb-command-palette-option-')
 
   dispatchKey(input.element() as HTMLElement, 'Enter')
-  await wait(180)
 
-  expect(view.getByTestId('current-route').element().textContent).toBe('/payables/open-items')
-  expect(document.querySelector('[data-testid="command-palette-dialog"]')).toBeNull()
+  await expect.poll(() => view.getByTestId('current-route').element().textContent).toBe('/payables/open-items')
+  await expect.poll(() => document.querySelector('[data-testid="command-palette-dialog"]'), { timeout: 5_000 }).toBeNull()
 })
 
 test('closes on Escape after opening from the keyboard shortcut', async () => {
@@ -443,8 +441,7 @@ test('closes on Escape after opening from the keyboard shortcut', async () => {
 
   dispatchKey(view.getByTestId('command-palette-input').element() as HTMLElement, 'Escape')
 
-  await wait(180)
-  expect(document.querySelector('[data-testid=\"command-palette-dialog\"]')).toBeNull()
+  await expect.poll(() => document.querySelector('[data-testid="command-palette-dialog"]'), { timeout: 5_000 }).toBeNull()
 })
 
 test('clears the previous query when reopened after Escape', async () => {
@@ -461,8 +458,7 @@ test('clears the previous query when reopened after Escape', async () => {
   await input.fill('payables')
   dispatchKey(input.element() as HTMLElement, 'Escape')
 
-  await wait(180)
-  expect(document.querySelector('[data-testid=\"command-palette-dialog\"]')).toBeNull()
+  await expect.poll(() => document.querySelector('[data-testid="command-palette-dialog"]'), { timeout: 5_000 }).toBeNull()
 
   dispatchShortcut(window)
   await expect.element(view.getByTestId('command-palette-dialog')).toBeVisible()

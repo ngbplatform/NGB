@@ -181,6 +181,8 @@ public sealed class PostgresWorkCenterRepositoryCoverageTests(PmIntegrationFixtu
         var reads = scope.ServiceProvider.GetRequiredService<IWorkCenterReadRepository>();
         var users = scope.ServiceProvider.GetRequiredService<IPlatformUserRepository>();
         var now = DateTime.UtcNow;
+        // PostgreSQL timestamps retain microseconds, so keep exact round-trip assertions portable.
+        now = now.AddTicks(-(now.Ticks % TimeSpan.TicksPerMicrosecond));
         var recipientId = await uow.ExecuteInUowTransactionAsync(
             ct => users.UpsertAsync(
                 $"work-center-repository-coverage-{Guid.NewGuid():N}",

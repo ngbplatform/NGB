@@ -229,109 +229,63 @@ public sealed class PostgresCashFlowIndirectSnapshotReader(IUnitOfWork uow)
             { } snapshotPeriod => LoadBalanceStateSnapshotPlusDeltaRowsAsync(snapshotPeriod, asOfDate, ct)
         };
 
-    private async Task<IReadOnlyList<BalanceStateRow>> LoadBalanceStateInceptionToDateRowsAsync(
+    private Task<IReadOnlyList<BalanceStateRow>> LoadBalanceStateInceptionToDateRowsAsync(
         DateOnly asOfDate,
         CancellationToken ct)
-    {
-        var sql = """
-                  WITH ledger_rows AS (
-                      SELECT
-                          r.debit_account_id AS AccountId,
-                          SUM(r.amount) AS ClosingBalance
-                      FROM accounting_register_main r
-                      WHERE r.period < @ToExclusiveUtc
-                      GROUP BY r.debit_account_id
-
-                      UNION ALL
-
-                      SELECT
-                          r.credit_account_id AS AccountId,
-                          SUM(-r.amount) AS ClosingBalance
-                      FROM accounting_register_main r
-                      WHERE r.period < @ToExclusiveUtc
-                      GROUP BY r.credit_account_id
-                  ),
-                  final_rows AS (
-                      SELECT
-                          AccountId,
-                          SUM(ClosingBalance) AS ClosingBalance
-                      FROM ledger_rows
-                      GROUP BY AccountId
-                  )
-                  SELECT
-                      MIN(a.code) AS AccountCode,
-                      a.cash_flow_role AS CashFlowRole,
-                      a.cash_flow_line_code AS CashFlowLineCode,
-                      SUM(fr.ClosingBalance) AS ClosingBalance
-                  FROM final_rows fr
-                  JOIN accounting_accounts a
-                    ON a.account_id = fr.AccountId
-                   AND a.is_deleted = FALSE
-                  WHERE a.cash_flow_role = ANY(@RelevantRoles::smallint[])
-                  GROUP BY a.cash_flow_role, a.cash_flow_line_code;
-                  """;
-
-        return await QueryRowsAsync<BalanceStateRow>(
-            sql,
-            new
-            {
-                ToExclusiveUtc = ToExclusiveUtc(asOfDate),
-                RelevantRoles = BalanceRoles
-            },
-            ct);
-    }
+        => LoadBalanceStateInceptionEndpointsAsync(asOfDate, asOfDate, ct);
 
     private async Task<IReadOnlyList<BalanceStateRow>> LoadBalanceStateInceptionEndpointsAsync(
         DateOnly openingAsOfDate,
         DateOnly closingAsOfDate,
         CancellationToken ct)
     {
+        // Join indexed account/ledger rows before aggregating by statement line.
+        // An account-level aggregate has no lookup index and can be rescanned for
+        // every matching account when classification statistics are stale.
         const string sql = """
                            WITH endpoint_ledger_rows AS (
                                SELECT
-                                   r.debit_account_id AS AccountId,
+                                   MIN(a.code) AS AccountCode,
+                                   a.cash_flow_role AS CashFlowRole,
+                                   a.cash_flow_line_code AS CashFlowLineCode,
                                    SUM(CASE
                                        WHEN r.period < @OpeningToExclusiveUtc THEN r.amount
                                        ELSE 0::numeric
                                    END) AS OpeningBalance,
                                    SUM(r.amount) AS ClosingBalance
                                FROM accounting_register_main r
+                               JOIN accounting_accounts a ON a.account_id = r.debit_account_id
                                WHERE r.period < @ClosingToExclusiveUtc
-                               GROUP BY r.debit_account_id
+                                 AND a.is_deleted = FALSE
+                                 AND a.cash_flow_role = ANY(@RelevantRoles::smallint[])
+                               GROUP BY a.cash_flow_role, a.cash_flow_line_code
 
                                UNION ALL
 
                                SELECT
-                                   r.credit_account_id AS AccountId,
+                                   MIN(a.code) AS AccountCode,
+                                   a.cash_flow_role AS CashFlowRole,
+                                   a.cash_flow_line_code AS CashFlowLineCode,
                                    SUM(CASE
                                        WHEN r.period < @OpeningToExclusiveUtc THEN -r.amount
                                        ELSE 0::numeric
                                    END) AS OpeningBalance,
                                    SUM(-r.amount) AS ClosingBalance
                                FROM accounting_register_main r
+                               JOIN accounting_accounts a ON a.account_id = r.credit_account_id
                                WHERE r.period < @ClosingToExclusiveUtc
-                               GROUP BY r.credit_account_id
-                           ),
-                           final_rows AS (
-                               SELECT
-                                   AccountId,
-                                   SUM(OpeningBalance) AS OpeningBalance,
-                                   SUM(ClosingBalance) AS ClosingBalance
-                               FROM endpoint_ledger_rows
-                               GROUP BY AccountId
+                                 AND a.is_deleted = FALSE
+                                 AND a.cash_flow_role = ANY(@RelevantRoles::smallint[])
+                               GROUP BY a.cash_flow_role, a.cash_flow_line_code
                            )
                            SELECT
-                               MIN(a.code) AS AccountCode,
-                               a.cash_flow_role AS CashFlowRole,
-                               a.cash_flow_line_code AS CashFlowLineCode,
-                               SUM(fr.OpeningBalance) AS OpeningBalance,
-                               SUM(fr.ClosingBalance) AS ClosingBalance
-                           FROM final_rows fr
-                           JOIN accounting_accounts a
-                             ON a.account_id = fr.AccountId
-                            AND a.is_deleted = FALSE
-                           WHERE a.cash_flow_role = ANY(@RelevantRoles::smallint[])
-                           GROUP BY a.cash_flow_role, a.cash_flow_line_code;
+                               MIN(AccountCode) AS AccountCode,
+                               CashFlowRole,
+                               CashFlowLineCode,
+                               SUM(OpeningBalance) AS OpeningBalance,
+                               SUM(ClosingBalance) AS ClosingBalance
+                           FROM endpoint_ledger_rows
+                           GROUP BY CashFlowRole, CashFlowLineCode;
                            """;
 
         return await QueryRowsAsync<BalanceStateRow>(

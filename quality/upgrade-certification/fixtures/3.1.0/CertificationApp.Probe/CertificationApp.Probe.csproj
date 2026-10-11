@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="NGB.Platform.BackgroundJobs" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.BackgroundJobs.PostgreSql" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.PostgreSql" Version="$(NgbPlatformVersion)" />
+        <PackageReference Include="NGB.Platform.Runtime" Version="$(NgbPlatformVersion)" />
+        <ProjectReference Include="../CertificationApp.Runtime/CertificationApp.Runtime.csproj" />
+        <ProjectReference Include="../CertificationApp.PostgreSql/CertificationApp.PostgreSql.csproj" />
+    </ItemGroup>
+</Project>
