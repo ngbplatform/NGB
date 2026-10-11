@@ -85,15 +85,30 @@ export async function verifyCoreContinuation(api, state) {
 
 export async function createContentState(api, checkpoint, attachments) {
   const target = { kind: 'CatalogItem', typeCode: 'certification.checkpoint', id: checkpoint.id }
+  const query = new URLSearchParams({ kind: target.kind, typeCode: target.typeCode, objectId: target.id })
   const created = await api('notes', 'POST', { target, text: 'A note created before upgrade.' })
-  const note = await api(`notes/${created.id}`, 'PUT', { text: 'The preserved note text.', version: created.version })
+  const updated = await api(`notes/${created.id}`, 'PUT', { text: 'The preserved note text.', version: created.version })
+  // Capture persisted values before upgrading. Write responses can retain .NET timestamp
+  // precision that PostgreSQL does not store; preservation compares reads on both versions.
+  const notes = await api(`notes?${query}`)
+  const note = notes.items.find(item => item.id === created.id)
+  assert.ok(note, 'The source note must be readable before upgrade.')
+  assert.equal(note.text, 'The preserved note text.')
+  assert.equal(note.version, updated.version)
   const state = { target, note }
   if (attachments) {
     const bytes = Buffer.from(`Preserve original bytes across upgrade: ${randomUUID()}\n`, 'utf8')
     const upload = await api('attachments/uploads', 'POST', { target, fileName: 'checkpoint.txt', contentType: 'text/plain', sizeBytes: bytes.length })
     const response = await fetch(upload.url, { method: 'PUT', headers: upload.headers, body: bytes })
     assert.ok(response.ok, `Presigned upload failed: ${response.status}`)
-    state.attachment = await api(`attachments/${upload.attachmentId}/complete`, 'POST')
+    const completed = await api(`attachments/${upload.attachmentId}/complete`, 'POST')
+    assert.equal(completed.id, upload.attachmentId)
+    const listed = await api(`attachments?${query}`)
+    state.attachment = listed.items.find(item => item.id === upload.attachmentId)
+    assert.ok(state.attachment, 'The source attachment must be readable before upgrade.')
+    assert.equal(state.attachment.fileName, 'checkpoint.txt')
+    assert.equal(state.attachment.contentType, 'text/plain')
+    assert.equal(state.attachment.sizeBytes, bytes.length)
     state.sha256 = createHash('sha256').update(bytes).digest('hex')
     await verifyAttachment(api, state.attachment.id, state.sha256)
   }

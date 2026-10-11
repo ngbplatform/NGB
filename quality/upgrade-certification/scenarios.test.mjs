@@ -77,15 +77,24 @@ test('content contracts preserve metadata, original bytes, audit and authorizati
     return new Response(uploaded, { status: 200 })
   })
   const note = { id: 'note-1', version: 1, text: 'The preserved note text.' }
-  const attachment = { id: 'attachment-1', fileName: 'checkpoint.txt' }
+  const attachment = {
+    id: 'attachment-1', fileName: 'checkpoint.txt', contentType: 'text/plain',
+    sizeBytes: Buffer.byteLength('Preserve original bytes across upgrade: ') + 36 + 1,
+    createdAtUtc: '2026-10-11T20:20:53.960136Z',
+  }
+  const completed = { ...attachment, createdAtUtc: '2026-10-11T20:20:53.9601367Z' }
   const upload = { url: 'https://storage.test/upload', headers: {}, attachmentId: attachment.id }
   const download = { url: 'https://storage.test/download' }
-  const setup = responses([note, note, upload, attachment, download, audit])
+  const listedNotes = { items: [{ id: 'other' }, note] }
+  const listedAttachments = { items: [{ id: 'other' }, attachment] }
+  const setup = responses([note, note, listedNotes, upload, completed, listedAttachments, download, audit])
   const state = await createContentState(setup.api, checkpoint, true)
   setup.complete()
   assert.equal(state.attachment, attachment)
   assert.match(state.sha256, /^[a-f0-9]{64}$/)
-  const notesOnly = await createContentState(responses([note, note, audit]).api, checkpoint, false)
+  assert.match(setup.calls[2][0], /^notes\?kind=CatalogItem&typeCode=certification.checkpoint&objectId=catalog-1$/)
+  assert.match(setup.calls[5][0], /^attachments\?kind=CatalogItem&typeCode=certification.checkpoint&objectId=catalog-1$/)
+  const notesOnly = await createContentState(responses([note, note, listedNotes, audit]).api, checkpoint, false)
   await verifyContentPreservation(responses([
     { items: [{ id: 'other' }, note] }, { items: [{ id: 'other' }, attachment] }, download, audit,
   ]).api, state)
@@ -94,10 +103,55 @@ test('content contracts preserve metadata, original bytes, audit and authorizati
   assert.equal(disabled.calls[1][3], 404)
   await assert.rejects(verifyContentPreservation(responses([{ items: [{ ...note, text: 'lost' }] }]).api, state))
   await assert.rejects(verifyAttachment(responses([download]).api, attachment.id, 'wrong-hash'))
-  await verifyContentContinuation(responses([{ ...note, version: 2 }, note, note, upload, attachment, download, audit]).api, state)
-  await verifyContentContinuation(responses([{ ...note, version: 2 }, note, note, audit]).api, notesOnly)
+  await verifyContentContinuation(responses([
+    { ...note, version: 2 }, note, note, listedNotes, upload, completed, listedAttachments, download, audit,
+  ]).api, state)
+  await verifyContentContinuation(responses([{ ...note, version: 2 }, note, note, listedNotes, audit]).api, notesOnly)
   await assert.rejects(verifyContentContinuation(responses([note]).api, state))
+  await assert.rejects(createContentState(responses([note, note, listedNotes, upload, completed, { items: [] }]).api, checkpoint, true), /source attachment/)
+  for (const change of [{ fileName: 'lost.txt' }, { contentType: 'other' }, { sizeBytes: 0 }]) {
+    await assert.rejects(createContentState(responses([
+      note, note, listedNotes, upload, completed, { items: [{ ...attachment, ...change }] },
+    ]).api, checkpoint, true))
+  }
+  await assert.rejects(verifyContentPreservation(responses([
+    listedNotes, { items: [{ ...attachment, createdAtUtc: '2026-10-11T20:20:53.960137Z' }] },
+  ]).api, state))
   fetch.mock.mockImplementation(async () => new Response(null, { status: 403 }))
   await assert.rejects(verifyAttachment(responses([download]).api, attachment.id, state.sha256), /download failed/)
-  await assert.rejects(createContentState(responses([note, note, upload]).api, checkpoint, true), /upload failed/)
+  await assert.rejects(createContentState(responses([note, note, listedNotes, upload]).api, checkpoint, true), /upload failed/)
+})
+
+test('note preservation uses the source database read and still rejects any timestamp or metadata change', async () => {
+  const created = { id: 'note-precision', version: 1 }
+  const updated = {
+    id: created.id, version: 2, text: 'The preserved note text.',
+    createdAtUtc: '2026-10-11T20:20:53.960136Z', createdByUserId: 'author',
+    createdByDisplayName: 'External Administrator', updatedByUserId: 'author',
+    updatedAtUtc: '2026-10-11T20:20:54.0181437Z',
+  }
+  const persisted = { ...updated, updatedAtUtc: '2026-10-11T20:20:54.018143Z' }
+  const setup = responses([created, updated, { items: [persisted] }, audit])
+  const state = await createContentState(setup.api, checkpoint, false)
+  setup.complete()
+  assert.deepEqual(state.note, persisted)
+  assert.notDeepEqual(state.note, updated)
+  await verifyContentPreservation(responses([{ items: [persisted] }, null, audit]).api, state)
+  for (const change of [
+    { updatedAtUtc: '2026-10-11T20:20:54.018144Z' },
+    { updatedAtUtc: '2026-10-11T20:20:54.0181431Z' },
+    { createdAtUtc: '2026-10-11T20:20:53.960137Z' },
+    { text: 'Changed' }, { version: 3 }, { createdByUserId: 'different-author' },
+    { updatedByUserId: 'different-editor' }, { createdByDisplayName: 'Different name' },
+  ]) {
+    await assert.rejects(verifyContentPreservation(responses([{ items: [{ ...persisted, ...change }] }]).api, state))
+  }
+  await assert.rejects(verifyContentPreservation(responses([{ items: [] }]).api, state))
+})
+
+test('source note setup rejects missing records, lost text and a persisted version mismatch', async () => {
+  const note = { id: 'note-1', version: 2, text: 'The preserved note text.' }
+  for (const items of [[], [{ ...note, text: 'Lost update' }], [{ ...note, version: 1 }]]) {
+    await assert.rejects(createContentState(responses([note, note, { items }]).api, checkpoint, false))
+  }
 })
