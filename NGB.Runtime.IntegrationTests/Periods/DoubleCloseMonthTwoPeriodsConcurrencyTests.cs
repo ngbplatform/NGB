@@ -39,6 +39,21 @@ public sealed class DoubleCloseMonthTwoPeriodsConcurrencyTests(PostgresTestFixtu
 
         await SeedMinimalCoaAsync(host);
 
+        // Drafts do not establish accounting activity. Seed January so February
+        // cannot legitimately become the first closed month before either post.
+        await using (var seedScope = host.Services.CreateAsyncScope())
+        {
+            var posting = seedScope.ServiceProvider.GetRequiredService<PostingEngine>();
+            var seedDocumentId = Guid.CreateVersion7();
+            await posting.PostAsync(
+                postingAction: async (ctx, ct) =>
+                {
+                    var chart = await ctx.GetChartOfAccountsAsync(ct);
+                    ctx.Post(seedDocumentId, janUtc, chart.Get("50"), chart.Get("90.1"), 1m);
+                },
+                ct: CancellationToken.None);
+        }
+
         Guid janDocId;
         Guid febDocId;
 

@@ -18,8 +18,11 @@ namespace NGB.Runtime.IntegrationTests.Periods;
 [Collection(AccountingPostgresCollection.Name)]
 public sealed class ThreePeriodRace_CloseMonthVsMultiPeriodPost_P3Tests(PostgresTestFixture fixture)
 {
-    [Fact]
-    public async Task CloseMonth_Jan_And_CloseMonth_Feb_Concurrent_With_Post_Jan_NoDeadlock_NoPartialWrites()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CloseMonth_Jan_And_CloseMonth_Feb_Concurrent_With_Post_Jan_NoDeadlock_NoPartialWrites(
+        bool februaryFirst)
     {
         await fixture.ResetDatabaseAsync();
         using var host = IntegrationHostFactory.Create(fixture.ConnectionString);
@@ -33,12 +36,28 @@ public sealed class ThreePeriodRace_CloseMonthVsMultiPeriodPost_P3Tests(Postgres
 
         await SeedMinimalCoaAsync(host);
 
+        // Establish January as the chain start before racing the operations.
+        // With no ledger activity, closing February first is valid.
+        await using (var seedScope = host.Services.CreateAsyncScope())
+        {
+            var posting = seedScope.ServiceProvider.GetRequiredService<PostingEngine>();
+            var seedDocumentId = Guid.CreateVersion7();
+            await posting.PostAsync(
+                postingAction: async (ctx, ct) =>
+                {
+                    var chart = await ctx.GetChartOfAccountsAsync(ct);
+                    ctx.Post(seedDocumentId, janUtc, chart.Get("50"), chart.Get("90.1"), 1m);
+                },
+                ct: CancellationToken.None);
+        }
+
         var docId = Guid.CreateVersion7();
         var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var closeJanTask = RunCloseMonthOutcomeAsync(host, jan, gate);
-        var closeFebTask = RunCloseMonthOutcomeAsync(host, feb, gate);
-        var postTask = RunPostOutcomeAsync(host, docId, janUtc, gate);
+        var closeFebTask = RunCloseMonthOutcomeAsync(host, feb, gate.Task);
+        Task januaryGate = februaryFirst ? closeFebTask : gate.Task;
+        var closeJanTask = RunCloseMonthOutcomeAsync(host, jan, januaryGate);
+        var postTask = RunPostOutcomeAsync(host, docId, janUtc, januaryGate);
 
         gate.SetResult(true);
 
@@ -48,6 +67,12 @@ public sealed class ThreePeriodRace_CloseMonthVsMultiPeriodPost_P3Tests(Postgres
         var closeJan = outcomes[0];
         var closeFeb = outcomes[1];
         var post = outcomes[2];
+
+        if (februaryFirst)
+        {
+            closeFeb.Error.Should().BeOfType<MonthClosingPrerequisiteNotMetException>()
+                .Which.NextClosablePeriod.Should().Be(jan);
+        }
 
         closeJan.Error.Should().BeNull($"CloseMonth(Jan) must succeed. Error: {closeJan.Error}");
 
@@ -129,9 +154,9 @@ public sealed class ThreePeriodRace_CloseMonthVsMultiPeriodPost_P3Tests(Postgres
         ), CancellationToken.None);
     }
 
-    private static async Task<Outcome> RunCloseMonthOutcomeAsync(IHost host, DateOnly period, TaskCompletionSource<bool> gate)
+    private static async Task<Outcome> RunCloseMonthOutcomeAsync(IHost host, DateOnly period, Task gate)
     {
-        await gate.Task;
+        await gate;
         try
         {
             await using var scope = host.Services.CreateAsyncScope();
@@ -149,9 +174,9 @@ public sealed class ThreePeriodRace_CloseMonthVsMultiPeriodPost_P3Tests(Postgres
         IHost host,
         Guid documentId,
         DateTime janUtc,
-        TaskCompletionSource<bool> gate)
+        Task gate)
     {
-        await gate.Task;
+        await gate;
 
         try
         {

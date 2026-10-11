@@ -8,6 +8,7 @@ using NGB.Persistence.Readers.Reports;
 using NGB.Persistence.UnitOfWork;
 using NGB.Runtime.Accounts;
 using NGB.Runtime.IntegrationTests.Infrastructure;
+using NGB.Runtime.Periods;
 using NGB.Runtime.Posting;
 using NGB.Runtime.Reporting.Exceptions;
 using Xunit;
@@ -19,38 +20,106 @@ public sealed class CashFlowIndirect_Semantics_P1Tests(PostgresTestFixture fixtu
     : IntegrationTestBase(fixture)
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Many_accounts_are_aggregated_into_statement_lines_and_unclassified_diagnostics_stay_bounded(bool unclassified)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Many_accounts_are_aggregated_into_statement_lines_and_unclassified_diagnostics_stay_bounded(
+        bool unclassified,
+        bool staleStatistics)
     {
         using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
         await using var scope = host.Services.CreateAsyncScope();
         var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
         await uow.EnsureConnectionOpenAsync();
+        var accountCount = staleStatistics ? 50001 : 10001;
+        var initiallyUnclassified = unclassified || staleStatistics;
+
         await uow.Connection.ExecuteAsync("""
             INSERT INTO accounting_accounts(account_id,code,name,account_type,statement_section,negative_balance_policy,cash_flow_role,cash_flow_line_code)
               VALUES (md5('scale-cash')::uuid,'CASH','Cash',0,1,0,1,NULL);
             INSERT INTO accounting_accounts(account_id,code,name,account_type,statement_section,negative_balance_policy,cash_flow_role,cash_flow_line_code)
-              SELECT md5('scale-wc-'||g)::uuid,'WC'||lpad(g::text,5,'0'),'Receivable '||g,0,1,0,@role,@line FROM generate_series(1,10001) g;
+              SELECT md5('scale-wc-'||g)::uuid,'WC'||lpad(g::text,5,'0'),'Receivable '||g,0,1,0,@role,@line FROM generate_series(1,@accountCount) g;
             INSERT INTO accounting_register_main(document_id,period,debit_account_id,credit_account_id,amount)
-              SELECT md5('scale-cf-'||g)::uuid,'2035-01-15'::timestamptz,md5('scale-wc-'||g)::uuid,md5('scale-cash')::uuid,1 FROM generate_series(1,10001) g;
-            """, new { role = unclassified ? (short)0 : (short)CashFlowRole.WorkingCapital,
-                line = unclassified ? null : CashFlowSystemLineCodes.WorkingCapitalAccountsReceivable });
-        using var probe = new NGB.Testing.Reporting.ReportPerformanceProbe("accounting.cash_flow_statement_indirect", "10001-accounts");
-        var snapshot = await scope.ServiceProvider.GetRequiredService<ICashFlowIndirectSnapshotReader>().GetAsync(new(2035, 1, 1), new(2035, 1, 31));
+              SELECT md5('scale-cf-'||g)::uuid,'2035-01-15'::timestamptz,md5('scale-wc-'||g)::uuid,md5('scale-cash')::uuid,1 FROM generate_series(1,@accountCount) g;
+            """, new
+            {
+                accountCount,
+                role = initiallyUnclassified ? (short)CashFlowRole.None : (short)CashFlowRole.WorkingCapital,
+                line = initiallyUnclassified ? null : CashFlowSystemLineCodes.WorkingCapitalAccountsReceivable
+            });
+
+        if (staleStatistics)
+        {
+            // A bulk classification change can leave the planner expecting only the cash
+            // account to match. Reporting must stay bounded before autoanalyze catches up.
+            // Keep the ANALYZE lock until the report finishes so autovacuum cannot
+            // refresh the intentionally stale statistics midway through this test.
+            await uow.BeginTransactionAsync();
+            await uow.Connection.ExecuteAsync("""
+                ANALYZE accounting_accounts;
+                ANALYZE accounting_register_main;
+                UPDATE accounting_accounts
+                SET cash_flow_role = @role, cash_flow_line_code = @line
+                WHERE code LIKE 'WC%';
+                """, new
+                {
+                    role = (short)CashFlowRole.WorkingCapital,
+                    line = CashFlowSystemLineCodes.WorkingCapitalAccountsReceivable
+                }, transaction: uow.Transaction);
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var probe = new NGB.Testing.Reporting.ReportPerformanceProbe(
+            "accounting.cash_flow_statement_indirect",
+            staleStatistics ? "50001-accounts-stale-statistics" : "10001-accounts");
+        var snapshot = await scope.ServiceProvider.GetRequiredService<ICashFlowIndirectSnapshotReader>()
+            .GetAsync(new(2035, 1, 1), new(2035, 1, 31), timeout.Token);
         snapshot.BeginningCash.Should().Be(0);
-        snapshot.EndingCash.Should().Be(-10001);
+        snapshot.EndingCash.Should().Be(-accountCount);
         probe.CommandCount.Should().BeLessThanOrEqualTo(8);
         if (unclassified)
         {
-            snapshot.UnclassifiedCashRowCount.Should().Be(10001);
+            snapshot.UnclassifiedCashRowCount.Should().Be(accountCount);
             snapshot.UnclassifiedCashRows.Should().HaveCount(50);
         }
         else
         {
             snapshot.UnclassifiedCashRows.Should().BeEmpty();
-            snapshot.OperatingLines.Should().ContainSingle().Which.Amount.Should().Be(-10001);
+            snapshot.OperatingLines.Should().ContainSingle().Which.Amount.Should().Be(-accountCount);
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Opening_and_closing_cash_preserve_both_posting_sides_and_date_boundaries(bool closeMonth)
+    {
+        using var host = IntegrationHostFactory.Create(Fixture.ConnectionString);
+        await using var scope = host.Services.CreateAsyncScope();
+        var sp = scope.ServiceProvider;
+        await SeedCashFlowCoAAsync(sp);
+
+        await PostAsync(sp, Guid.CreateVersion7(), Utc(new(2035, 1, 1)), "1100", "1000", 75m);
+        await PostAsync(sp, Guid.CreateVersion7(), Utc(new(2035, 1, 15)), "1000", "1100", 20m);
+        await PostAsync(sp, Guid.CreateVersion7(), Utc(new(2035, 1, 31)), "1100", "1000", 30m);
+        await PostAsync(sp, Guid.CreateVersion7(), Utc(new(2035, 2, 1)), "1100", "1000", 500m);
+
+        if (closeMonth)
+        {
+            await sp.GetRequiredService<IPeriodClosingService>()
+                .CloseMonthAsync(new(2035, 1, 1), "test");
+        }
+
+        var snapshot = await sp.GetRequiredService<ICashFlowIndirectSnapshotReader>()
+            .GetAsync(new(2035, 1, 15), new(2035, 1, 31));
+
+        snapshot.BeginningCash.Should().Be(-75m);
+        snapshot.EndingCash.Should().Be(-85m);
+        snapshot.NetIncome.Should().Be(0m);
+        snapshot.OperatingLines.Should().ContainSingle().Which.Amount.Should().Be(-10m);
+        snapshot.UnclassifiedCashRows.Should().BeEmpty();
+        snapshot.BeginningLatestClosedPeriod.Should().BeNull();
+        snapshot.EndingLatestClosedPeriod.Should().Be(closeMonth ? new DateOnly(2035, 1, 1) : null);
     }
 
     [Fact]

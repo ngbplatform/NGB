@@ -34,7 +34,8 @@ No changes yet.
 - N/A
 
 ### Fixed
-- N/A
+- Avoided slow indirect Cash Flow balance aggregation when account classification statistics are stale, without increasing database command timeouts.
+- Made concurrent month-closing tests establish their required January activity before racing January and February operations.
 
 ### Security
 - N/A
