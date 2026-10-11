@@ -21,6 +21,7 @@ run('node', [
   'ui/scripts/npm-command.test.mjs',
   'quality/external-consumer/application-contracts.test.mjs', 'quality/external-consumer/release-source.test.mjs',
   'quality/external-consumer/container-source.test.mjs',
+  'quality/external-consumer/infrastructure.test.mjs',
 ])
 run('node', ['--test',
   'quality/external-consumer/process-contracts.test.mjs', 'quality/external-consumer/application-process.test.mjs',

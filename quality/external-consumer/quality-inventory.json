@@ -5,6 +5,7 @@
     "quality/external-consumer/release-contracts.mjs",
     "quality/external-consumer/registry-fetch.mjs",
     "quality/external-consumer/sequencing.mjs",
+    "quality/external-consumer/infrastructure.mjs",
     "quality/upgrade-certification/scenarios.mjs",
     "packaging/templates/content/infrastructure/configuration.mjs",
     "ui/scripts/platform-ui-compatibility.mjs",

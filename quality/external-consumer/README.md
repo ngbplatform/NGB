@@ -22,6 +22,11 @@ lockfile integrity checks and source mapping remain enabled. The clean-starter a
 post-publication registry smoke always use fresh download caches too.
 Disposable profile infrastructure is removed in `finally`; private diagnostics stay
 in the reported temporary directory. Never upload those secrets or complete directories.
+On failure, bounded container logs and status are saved before teardown under
+`certification/diagnostics/<profile>/` in the candidate. Generated secrets are redacted;
+CI includes these files in its failure diagnostics artifact. Realm import files contain
+environment placeholders and are readable by the container user on Linux. Secret values
+remain in the private `.env` file.
 
 ## Run a new candidate
 

@@ -13,6 +13,7 @@ import { startAfterSuccessfulMigration } from './sequencing.mjs'
 import { assertConsumerIsolation, verifyFrozenFixture } from './contracts.mjs'
 import { withManagedIgnores } from '../../packaging/templates/content/infrastructure/ngb/contracts.mjs'
 import { dependencyCache } from './dependency-cache.mjs'
+import { saveInfrastructureDiagnostics, writeInfrastructureConfiguration } from './infrastructure.mjs'
 import {
   authenticatedApi, createCoreState, createContentState,
   verifyCorePreservation, verifyCoreContinuation, verifyContentPreservation, verifyContentContinuation,
@@ -83,7 +84,11 @@ async function ready(url) {
   }
   throw new Error(`Readiness deadline exceeded: ${url}`)
 }
-const compose = args => run('docker', ['compose', '--project-name', `ngb-cert-${profile}`, '--file', join(infrastructure, 'compose.yaml'), ...args], infrastructure)
+const composeArguments = [
+  'compose', '--project-name', `ngb-cert-${profile}`,
+  '--env-file', join(infrastructure, '.env'), '--file', join(infrastructure, 'compose.yaml'),
+]
+const compose = args => run('docker', [...composeArguments, ...args], infrastructure)
 const connectionString = `Host=localhost;Port=5183;Database=certification;Username=postgres;Password=${secrets.postgres}`
 function hostEnvironment(host) {
   return {
@@ -372,18 +377,12 @@ try {
   await build(upgrade ? sourceVersion : targetVersion)
   if (upgrade) await verifySourceCopy()
   const realm = JSON.parse(await readFile(join(application, 'infrastructure/realm.json'), 'utf8'))
-  realm.users[0].username = email
-  realm.users[0].email = email
-  realm.users[0].credentials[0].value = secrets.administrator
-  realm.clients[2].secret = secrets.client
-  realm.clients.push({ clientId: 'certification-harness', enabled: true, publicClient: false, secret: secrets.harness, directAccessGrantsEnabled: true, standardFlowEnabled: false, protocol: 'openid-connect' })
-  await writeFile(join(infrastructure, 'realm.json'), JSON.stringify(realm), { mode: 0o600 })
-  await writeFile(join(infrastructure, 'init.sql'), 'CREATE DATABASE keycloak;\n')
-  await writeFile(join(infrastructure, '.env'), `POSTGRES_PASSWORD=${secrets.postgres}\nMINIO_ROOT_PASSWORD=${secrets.minioRoot}\nMINIO_APP_SECRET_KEY=${secrets.minioApp}\n`, { mode: 0o600 })
+  await writeInfrastructureConfiguration(infrastructure, realm, email, secrets)
   let composeFile = await readFile(join(source, 'infrastructure/compose.yaml'), 'utf8')
   composeFile = composeFile.replace(/image: postgres:[^\n]+/, `image: ${matrix.infrastructure.postgres}`)
     .replace(/image: quay.io\/keycloak\/keycloak:[^\n]+/, `image: ${matrix.infrastructure.keycloak}`)
-  composeFile = composeFile.replace(/^      (?:BOOTSTRAP_PASSWORD|KEYCLOAK_ADMIN_CLIENT_SECRET):.*\n/gm, '')
+  composeFile = composeFile.replace(/^(      KEYCLOAK_ADMIN_CLIENT_SECRET:.*)$/m,
+    '$1\n      CERTIFICATION_HARNESS_SECRET: ${CERTIFICATION_HARNESS_SECRET:?Set a private harness secret}')
   if (attachments) {
     const image = matrix.infrastructure.minio
     composeFile = composeFile.replace('volumes:\n  postgres-data:', `  minio:
@@ -560,12 +559,21 @@ volumes:
   evidence.status = 'passed'
   evidence.state = { userId: state.user.userId, authSubject: state.user.authSubject, roleId: state.role.roleId, catalogId: state.checkpoint?.id, attachmentSha256: content?.sha256 }
 } catch (error) {
+  evidence.status = 'failed'
+  evidence.error = error.message
+  if (infrastructureStarted) {
+    try {
+      const directory = join(artifacts, 'certification/diagnostics', `${registryOnly ? 'registry-' : ''}${profile}`)
+      evidence.infrastructureDiagnostics = await saveInfrastructureDiagnostics(directory, composeArguments, secrets)
+      console.error(`Infrastructure diagnostics: ${evidence.infrastructureDiagnostics}`)
+    } catch {
+      console.error('Could not save infrastructure diagnostics; preserving the original certification failure.')
+    }
+  }
   if (page && !page.isClosed()) {
     await page.screenshot({ path: join(root, 'failure.png'), fullPage: true })
     await writeFile(join(root, 'failure.html'), await page.content())
   }
-  evidence.status = 'failed'
-  evidence.error = error.message
   throw error
 } finally {
   if (browser) await browser.close()
