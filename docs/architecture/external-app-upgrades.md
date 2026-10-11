@@ -304,17 +304,19 @@ Normal template creation does not create either checkpoint table. Following the
 extension tutorial intentionally adds them to that application's own database.
 
 Documents, relationships, accounting, operational/reference registers, reporting and
-projections retain the complete existing regression gates. They are not newly
-claimed external upgrade scenarios in this release. PM, Trade, Agency Billing and
-CRM remain covered by their complete backend/frontend aggregates and stable volume
-and performance-tooling tests. The candidate's Compose gate builds the generated
-starter. It does not build the existing vertical Docker images, including CRM;
+projections retain their existing regression suites, run locally before release.
+They are not newly claimed external upgrade scenarios in this release. Full
+backend/frontend tests and coverage for the platform, PM, Trade, Agency Billing and
+CRM are separate local checks, outside release certification. The candidate's Compose
+gate builds the generated starter. It does not build the existing vertical Docker images, including CRM;
 those have a separate container-build gate after package publication.
 
-`quality/external-consumer/matrix.json` binds 20 candidate gates and two
+`quality/external-consumer/matrix.json` binds 19 candidate gates and two
 post-publication gates to commands and assertions. `quality-inventory.json`
 classifies measured executable helpers, generated code, static content and process
-orchestration. Coverage thresholds remain 100%.
+orchestration. Certification retains helper tests, the framework browser matrix and
+performance-tooling contracts. Full backend/frontend coverage thresholds remain 100%
+in the separate local suites; a certification pass does not attest to those results.
 Process orchestration uses real behavior and failure tests, not synthetic coverage.
 
 ## Certified package identity

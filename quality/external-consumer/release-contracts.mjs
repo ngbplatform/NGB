@@ -11,7 +11,7 @@ export const requiredGates = [
   'template-artifact', 'external-isolation', 'clean-starter', 'starter-job', 'administrator-contract',
   'generated-extension', 'frontend-artifact', 'nuget-compatibility', 'npm-compatibility', 'source-fixture',
   'core-upgrade', 'upgrade-job', 'migration-sequencing', 'notes-upgrade', 'attachments-upgrade',
-  'backend-quality', 'frontend-quality', 'regression-quality', 'tooling-quality', 'candidate-evidence',
+  'browser-quality', 'performance-tooling', 'tooling-quality', 'candidate-evidence',
   'publish-identity', 'registry-verification',
 ]
 

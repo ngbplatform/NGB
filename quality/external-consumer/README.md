@@ -5,7 +5,7 @@ Use the [platform publishing runbook](../../packaging/PUBLISHING.md) for operato
 external account configuration and release requirements. Application users
 start with [External applications and upgrades](../../docs/architecture/external-app-upgrades.md).
 The executable matrix is [matrix.json](matrix.json); it contains exact versions,
-five profiles, 20 candidate gates and two post-publication gates, infrastructure
+five profiles, 19 candidate gates and two post-publication gates, infrastructure
 images and subsystem scope.
 
 Run from the NGB repository root on macOS/Linux or in WSL2, with Node and local
@@ -55,8 +55,10 @@ ngb_candidate="artifacts/release-candidate-local-$(date +%Y%m%d-%H%M%S)"
 ```
 
 Success ends with both `Release certify: passed` and `Release verify-candidate: passed`.
-The complete quality aggregate already runs inside certification; do not launch
-`run-full-quality.sh` a second time for the same verification.
+Certification does not run the complete backend/frontend coverage suites. Run
+`run-full-quality.sh` separately, locally before release, for the existing platform
+and vertical tests at their unchanged 100% thresholds. A certification pass does
+not certify those local results.
 
 The npm archive must exist before NuGet template packing. `pack-platform.sh`
 generates the template and CRM lockfiles from the candidate; review and commit
@@ -123,29 +125,33 @@ non-root hosts, health and browser login. The generated Dockerfiles are used unc
 local package acquisition is part of the public app tool. Upgrade profiles use the
 public `ngb.mjs upgrade --apply` command against the frozen consumer copy.
 
-`release.mjs certify` runs compatibility, all profiles and the complete existing
-backend/frontend/performance gates, including the framework component matrix in
-Chromium, Firefox and WebKit. `test-tooling.mjs` adds measured 100% coverage
+`release.mjs certify` runs compatibility, all five profiles, performance-tooling
+contracts and the framework component matrix in Chromium, Firefox and WebKit.
+It does not invoke `run-backend-full-coverage.sh` or `run-frontend-full-coverage.sh`.
+`test-tooling.mjs` adds measured 100% coverage
 for the explicit helper inventory plus negative process tests. A numeric result
 for process launching is never manufactured. The prepared Linux image supplies
 Chromium, Firefox, WebKit and their operating-system dependencies.
 The release runner uses `Dockerfile.quality` and a private source copy to run the
-complete aggregate on Linux. Tooling runs once, inside that aggregate. Tooling,
-backend coverage, frontend coverage, the browser matrix and performance contracts
-have separate checkpoints, so a later failure does not repeat earlier gates.
+certification checks on Linux through `full-quality.mjs --certification`.
+Tooling, the browser matrix and performance contracts have separate checkpoints,
+so a later failure does not repeat earlier gates. Their report is
+`certification/certification-quality.json`; it contains no backend/frontend aggregate
+coverage claims. The wrapper without `--certification` still runs full local quality.
 It never copies host `node_modules`, `bin`, `obj` or registry caches. The private Linux
 workspace and its own caches are retained for the same candidate's retries. Its path
-is in `quality-workspace.json`. If an unfinished aggregate must run again after
+is in `certification-quality-workspace.json`. If unfinished checks must run again after
 that workspace was deleted, it starts its stages from scratch.
-Final evidence is written only after all profiles and aggregate stages pass; neither
+Final evidence is written only after all profiles and required stages pass; neither
 a partial checkpoint nor a cached package is sufficient to authorize publication.
 
 The Compose gate builds the generated starter, not CRM or the other existing
-vertical Dockerfiles. Backend/frontend tests cover those verticals, but a passing
-aggregate does not prove their Docker build contexts or packed-package imports.
+vertical Dockerfiles. The separate local backend/frontend suites cover those verticals;
+certification does not claim their complete regression coverage or Docker builds.
 Run the separate [local container checks](../../packaging/PUBLISHING.md#check-local-containers-before-publication)
-when changing those paths. Performance coverage here consists of existing regression,
-diagnostic-tooling and metric-contract checks; it does not run every live k6 load profile.
+when changing those paths. Performance checks here cover diagnostic tooling and metric
+contracts; volume regression tests remain in the local backend suite. Certification
+does not run live k6 load profiles.
 
 ## Publication boundary
 

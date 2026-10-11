@@ -113,7 +113,9 @@ if (action === 'seal') {
     const sealed = await verify()
     await mkdir(join(root, 'certification'), { recursive: true })
     console.log('[prepare] Checking tools, browser and every required container image before certification.')
+    const preparationStarted = performance.now()
     const environment = await prepareEnvironment(root)
+    console.log(`[passed] prepare: ${((performance.now() - preparationStarted) / 1000).toFixed(1)}s`)
     const identity = { artifactManifestSha256: sealed.sha256, environment }
     const stage = await checkpointRunner(root, identity)
     await atomicJson(join(root, 'certification/environment.json'), environment)
@@ -133,8 +135,12 @@ if (action === 'seal') {
     for (const profile of Object.keys(matrix.profiles)) {
       await stage(profile, checked(() => execute('quality/external-consumer/certify.mjs', [profile, root])), [`certification/${profile}.json`])
     }
-    await stage('full-quality', checked(() => execute('quality/external-consumer/full-quality.mjs', [root, '--prepared-toolchain', '--prepared-environment'])),
-      ['certification/full-quality.json', 'certification/tooling.json', 'certification/quality-stages.json'])
+    await stage('certification-quality', checked(() => execute('quality/external-consumer/full-quality.mjs', [
+      root, '--certification', '--prepared-toolchain', '--prepared-environment',
+    ])), [
+      'certification/certification-quality.json', 'certification/tooling.json',
+      'certification/cross-browser.json', 'certification/performance.json', 'certification/certification-quality-stages.json',
+    ])
     const results = {}
     const bind = async (gates, path) => {
       const evidenceSha256 = digest(await readFile(join(root, path)))
@@ -159,7 +165,8 @@ if (action === 'seal') {
     await bind(['external-isolation', 'tooling-quality'], 'certification/tooling.json')
     await bind(['nuget-compatibility'], 'nuget-release/api-compatibility.json')
     await bind(['npm-compatibility'], 'npm/npm-compatibility.json')
-    await bind(['backend-quality', 'frontend-quality', 'regression-quality'], 'certification/full-quality.json')
+    await bind(['browser-quality'], 'certification/cross-browser.json')
+    await bind(['performance-tooling'], 'certification/performance.json')
     await atomicJson(join(root, 'certification/candidate-identity.json'), {
       artifactManifestSha256: sealed.sha256, scope: matrix.scope, source: matrix.source, target: matrix.target,
       baselines: inventory, status: 'passed', environmentSha256: digest(JSON.stringify(environment)),

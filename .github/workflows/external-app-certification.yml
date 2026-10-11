@@ -40,8 +40,6 @@ jobs:
           bash packaging/nuget/verify-platform-packages.sh
           node quality/external-consumer/release.mjs seal
       - name: Certify the immutable candidate
-        env:
-          NGB_FRONTEND_COVERAGE_NO_INSTALL: 'true'
         run: node quality/external-consumer/release.mjs certify
       - name: Upload the certified package set and evidence
         uses: actions/upload-artifact@v7

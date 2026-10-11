@@ -25,7 +25,7 @@
       "notes",
       "attachments"
     ],
-    "regressionOnly": [
+    "localRegressionOnly": [
       "document-lifecycle",
       "document-relationships",
       "accounting",
@@ -267,40 +267,23 @@
       ]
     },
     {
-      "id": "backend-quality",
+      "id": "browser-quality",
       "blocks": "candidate",
-      "command": "bash run-backend-full-coverage.sh",
+      "command": "npm --prefix ui run test:browser:framework:cross-browser -- --allowOnly=false --retry=0",
       "assertions": [
-        "all-projects-pass",
-        "lines-100",
-        "branches-100",
-        "methods-100"
+        "framework-chromium",
+        "framework-firefox",
+        "framework-webkit"
       ]
     },
     {
-      "id": "frontend-quality",
+      "id": "performance-tooling",
       "blocks": "candidate",
-      "command": "bash run-frontend-full-coverage.sh",
+      "command": "node quality/external-consumer/quality-suite.mjs --certification",
       "assertions": [
-        "all-projects-pass",
-        "lines-100",
-        "branches-100",
-        "functions-100",
-        "statements-100",
-        "all-browsers"
-      ]
-    },
-    {
-      "id": "regression-quality",
-      "blocks": "candidate",
-      "command": "bash run-full-quality.sh",
-      "assertions": [
-        "platform",
-        "pm",
-        "trade",
-        "agency-billing",
-        "crm",
-        "performance"
+        "typecheck",
+        "diagnostic-tooling",
+        "metric-grouping"
       ]
     },
     {

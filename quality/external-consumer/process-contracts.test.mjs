@@ -117,6 +117,114 @@ test('direct full quality refuses a missing k6 before starting expensive stages'
   assert.ok(!result.stdout.includes('[start]'))
 })
 
+test('unknown quality modes fail before preparing tools or running tests', () => {
+  for (const script of ['quality-suite.mjs', 'full-quality.mjs']) {
+    const result = spawnSync(process.execPath, [`quality/external-consumer/${script}`, '--certfication'], {
+      cwd: repository, encoding: 'utf8',
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /Usage:/)
+    assert.equal(result.stdout, '')
+  }
+})
+
+async function qualitySuiteFixture(t) {
+  const root = await mkdtemp(join(tmpdir(), 'ngb-quality-scope-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await mkdir(join(root, 'quality/external-consumer'), { recursive: true })
+  for (const name of ['quality-suite.mjs', 'checkpoints.mjs', 'execution.mjs', 'release-contracts.mjs', 'contracts.mjs']) {
+    await cp(join(repository, 'quality/external-consumer', name), join(root, 'quality/external-consumer', name))
+  }
+  await symlink(join(repository, 'quality/node_modules'), join(root, 'quality/node_modules'))
+  await mkdir(join(root, 'bin'))
+  const calls = join(root, 'calls.jsonl')
+  const stub = `#!${process.execPath}
+const { appendFileSync, mkdirSync, writeFileSync } = require('node:fs')
+const { basename, dirname, join } = require('node:path')
+const executable = basename(process.argv[1])
+const args = process.argv.slice(2)
+appendFileSync(process.env.NGB_TEST_CALLS, JSON.stringify({ executable, args }) + '\\n')
+if (args.includes(process.env.NGB_TEST_FAIL)) process.exit(23)
+let report
+if (executable === 'node') report = 'certification/tooling.json'
+if (executable === 'bash') {
+  report = args[0].includes('backend')
+    ? 'coverage/backend-full/coverage-summary.json'
+    : 'coverage/frontend-full/coverage-summary.json'
+}
+if (report) {
+  const path = join('artifacts', report)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, JSON.stringify({ status: 'passed' }))
+}
+`
+  for (const name of ['node', 'bash', 'npm', 'k6']) {
+    const path = join(root, 'bin', name)
+    await writeFile(path, stub, { mode: 0o700 })
+  }
+  await writeFile(join(root, 'identity.json'), JSON.stringify({ candidate: 'test-candidate' }))
+  const run = (args = [], fail = '') => spawnSync(process.execPath, ['quality/external-consumer/quality-suite.mjs', ...args], {
+    cwd: root, encoding: 'utf8',
+    env: { ...process.env, PATH: join(root, 'bin'), NGB_TEST_CALLS: calls, NGB_TEST_FAIL: fail },
+  })
+  const readCalls = async () => (await readFile(calls, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+  return { root, run, readCalls }
+}
+
+test('certification omits full coverage commands and evidence and resumes only its own scope', async t => {
+  const { root, run, readCalls } = await qualitySuiteFixture(t)
+  const result = run(['--certification', 'identity.json'])
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(!(await readCalls()).some(call => call.executable === 'bash'))
+  await assert.rejects(readdir(join(root, 'artifacts/coverage')), { code: 'ENOENT' })
+  const report = JSON.parse(await readFile(join(root, 'artifacts/certification/certification-quality.json'), 'utf8'))
+  assert.equal(report.scope, 'external-app-certification')
+  assert.deepEqual(Object.keys(report.reports).sort(), ['browsers', 'performance', 'tooling'])
+  for (const evidence of Object.values(report.reports)) {
+    assert.equal(evidence.sha256, digest(await readFile(join(root, evidence.path))))
+  }
+  await assert.rejects(readFile(join(root, 'artifacts/certification/full-quality.json')), { code: 'ENOENT' })
+  const resumed = run(['--certification', 'identity.json'])
+  assert.equal(resumed.status, 0, resumed.stderr)
+  for (const stage of ['tooling', 'cross-browser', 'performance']) assert.match(resumed.stdout, new RegExp(`\\[resume\\] ${stage}`))
+  const full = run(['identity.json'])
+  assert.notEqual(full.status, 0)
+  assert.match(full.stderr, /inputs or environment changed/)
+})
+
+test('local full quality still runs both complete coverage scripts and includes their reports', async t => {
+  const { root, run, readCalls } = await qualitySuiteFixture(t)
+  const result = run()
+  assert.equal(result.status, 0, result.stderr)
+  const coverage = (await readCalls()).filter(call => call.executable === 'bash').map(call => call.args)
+  assert.deepEqual(coverage, [['run-backend-full-coverage.sh'], ['run-frontend-full-coverage.sh']])
+  const report = JSON.parse(await readFile(join(root, 'artifacts/certification/full-quality.json'), 'utf8'))
+  assert.equal(report.scope, 'full-platform-quality')
+  assert.deepEqual(Object.keys(report.reports).sort(), ['backend', 'browsers', 'frontend', 'performance', 'tooling'])
+  await assert.rejects(readFile(join(root, 'artifacts/certification/certification-quality.json')), { code: 'ENOENT' })
+})
+
+test('certification and local quality fail on the first failed required command without a success report', async t => {
+  for (const [args, commands] of [
+    [['--certification'], ['quality/external-consumer/test-tooling.mjs', 'test:browser:framework:cross-browser', 'test:metric-grouping']],
+    [[], ['run-backend-full-coverage.sh', 'run-frontend-full-coverage.sh']],
+  ]) {
+    for (const failed of commands) {
+      const { root, run, readCalls } = await qualitySuiteFixture(t)
+      const result = run(args, failed)
+      assert.notEqual(result.status, 0)
+      assert.match(result.stderr, /failed \(23\)/)
+      assert.ok((await readCalls()).at(-1).args.includes(failed))
+      const reports = await readdir(join(root, 'artifacts/certification')).catch(error => {
+        if (error.code !== 'ENOENT') throw error
+        return []
+      })
+      assert.ok(!reports.includes('full-quality.json'))
+      assert.ok(!reports.includes('certification-quality.json'))
+    }
+  }
+})
+
 test('the generated migration entrypoint propagates failure and never seeds after failure', async t => {
   const root = await mkdtemp(join(tmpdir(), 'ngb-migration-entrypoint-'))
   t.after(() => rm(root, { recursive: true, force: true }))

@@ -128,6 +128,13 @@ test('artifact inventory classifies templates separately and rejects missing or 
 test('matrix binds all mandatory gates, stages, exact versions and profiles', async () => {
   const matrix = JSON.parse(await readFile(new URL('./matrix.json', import.meta.url), 'utf8'))
   validateMatrix(matrix)
+  assert.equal(matrix.gates.filter(gate => gate.blocks === 'candidate').length, 19)
+  for (const id of ['backend-quality', 'frontend-quality', 'regression-quality']) {
+    assert.ok(!matrix.gates.some(gate => gate.id === id))
+    const stale = structuredClone(matrix)
+    stale.gates.push({ id, blocks: 'candidate', command: 'bash run-full-quality.sh', assertions: ['passed'] })
+    assert.throws(() => validateMatrix(stale))
+  }
   for (const mutate of [
     value => { value.source = '^3.1.0' },
     value => { value.source = value.target },

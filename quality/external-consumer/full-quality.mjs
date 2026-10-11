@@ -10,10 +10,20 @@ import { prepareEnvironment, prepareToolchain } from './environment.mjs'
 import { digest } from './release-contracts.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const candidate = resolve(process.argv[2] ?? join(repository, 'artifacts/release-candidate'))
+const args = process.argv.slice(2)
+const paths = args.filter(arg => !arg.startsWith('--'))
+const options = args.filter(arg => arg.startsWith('--'))
+assert.ok(paths.length <= 1 && options.every(option => [
+  '--certification', '--prepared-toolchain', '--prepared-environment',
+].includes(option)), 'Usage: full-quality.mjs [candidate-directory] [--certification]')
+const candidate = resolve(paths[0] ?? join(repository, 'artifacts/release-candidate'))
+const certification = process.argv.includes('--certification')
+const modeArgs = certification ? ['--certification'] : []
+const workspaceName = certification ? 'certification-quality' : 'quality'
+const reportName = certification ? 'certification-quality.json' : 'full-quality.json'
 if (!process.argv.includes('--prepared-toolchain')) {
   const prepared = await prepareToolchain()
-  await command(prepared.node, [fileURLToPath(import.meta.url), candidate, '--prepared-toolchain'], { cwd: repository, env: prepared.env })
+  await command(prepared.node, [fileURLToPath(import.meta.url), candidate, '--prepared-toolchain', ...modeArgs], { cwd: repository, env: prepared.env })
   process.exit(0)
 }
 // The release runner already owns this lock when it supplies the environment.
@@ -22,15 +32,15 @@ const unlockCheckout = process.argv.includes('--prepared-environment')
   : await lockRun(join(repository, 'artifacts/certification-run.lock'))
 let unlockWorkspace
 try {
-  unlockWorkspace = await lockRun(join(candidate, 'quality-workspace.lock'))
+  unlockWorkspace = await lockRun(join(candidate, `${workspaceName}-workspace.lock`))
   await command('node', ['quality/external-consumer/release.mjs', 'verify', candidate], { cwd: repository })
   const environment = process.argv.includes('--prepared-environment')
     ? JSON.parse(await readFile(join(candidate, 'certification/environment.json'), 'utf8'))
     : await prepareEnvironment(candidate)
   const manifestBytes = await readFile(join(candidate, 'release-manifest.json'))
   const manifest = JSON.parse(manifestBytes)
-  const identity = { artifactManifestSha256: digest(manifestBytes), environment }
-  const locationFile = join(candidate, 'quality-workspace.json')
+  const identity = { artifactManifestSha256: digest(manifestBytes), environment, certification }
+  const locationFile = join(candidate, `${workspaceName}-workspace.json`)
   let workspace = await readOptionalJson(locationFile)
   if (workspace) {
     assert.equal(workspace.identitySha256, digest(JSON.stringify(identity)), 'Quality environment changed; seal a new candidate.')
@@ -42,7 +52,7 @@ try {
     }
   }
   if (!workspace) {
-    workspace = { path: await mkdtemp(join(tmpdir(), 'ngb-full-quality-')), identitySha256: digest(JSON.stringify(identity)) }
+    workspace = { path: await mkdtemp(join(tmpdir(), `ngb-${workspaceName}-`)), identitySha256: digest(JSON.stringify(identity)) }
     await atomicJson(locationFile, workspace)
   }
   const root = workspace.path
@@ -55,9 +65,9 @@ try {
   // The CLI can die while Docker keeps running. Stop only this candidate's
   // labelled container before touching its persistent workspace or checkpoints.
   await stopContainer()
-  const paths = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: repository, encoding: 'utf8' })
+  const sourcePaths = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], { cwd: repository, encoding: 'utf8' })
     .split('\0').filter(path => path && path !== 'AGENTS.md' && !path.endsWith('.DS_Store'))
-  for (const path of paths) {
+  for (const path of sourcePaths) {
     await mkdir(dirname(join(root, path)), { recursive: true })
     // Re-copy tracked inputs on resume; retain only this candidate's build and dependency caches.
     await cp(join(repository, path), join(root, path))
@@ -80,9 +90,11 @@ try {
       '--user', `${process.getuid()}:${process.getgid()}`, '--group-add', environment.dockerSocketGroup,
       '-e', 'TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal',
       '-e', 'CI=true',
-      '-e', 'NGB_FRONTEND_COVERAGE_NO_INSTALL=true',
-      '-e', `NGB_BACKEND_COVERAGE_JOBS=${process.env.NGB_BACKEND_COVERAGE_JOBS ?? '2'}`,
-      '-e', `NGB_FRONTEND_COVERAGE_JOBS=${process.env.NGB_FRONTEND_COVERAGE_JOBS ?? '1'}`,
+      ...(!certification ? [
+        '-e', 'NGB_FRONTEND_COVERAGE_NO_INSTALL=true',
+        '-e', `NGB_BACKEND_COVERAGE_JOBS=${process.env.NGB_BACKEND_COVERAGE_JOBS ?? '2'}`,
+        '-e', `NGB_FRONTEND_COVERAGE_JOBS=${process.env.NGB_FRONTEND_COVERAGE_JOBS ?? '1'}`,
+      ] : []),
       '-e', 'NUGET_ENHANCED_MAX_NETWORK_TRY_COUNT=3',
       '-e', 'NUGET_ENHANCED_NETWORK_RETRY_DELAY_MILLISECONDS=1000',
       '-e', 'npm_config_fetch_retries=2', '-e', 'npm_config_fetch_retry_mintimeout=1000',
@@ -98,7 +110,7 @@ try {
         'npm cache add artifacts/npm/*.tgz',
         'npm --prefix ui ci',
         'npm --prefix quality ci',
-        'bash run-full-quality.sh /workspace/quality-identity.json',
+        `node quality/external-consumer/quality-suite.mjs ${certification ? '--certification ' : ''}/workspace/quality-identity.json`,
       ].join('\n'),
     ], { cwd: repository })
   } finally {
@@ -111,10 +123,10 @@ try {
   }
   await command('node', ['quality/external-consumer/release.mjs', 'verify', candidate], { cwd: repository })
   await mkdir(join(candidate, 'certification'), { recursive: true })
-  for (const name of ['full-quality.json', 'tooling.json']) {
+  for (const name of [reportName, 'tooling.json', 'cross-browser.json', 'performance.json']) {
     await cp(join(root, 'artifacts/certification', name), join(candidate, 'certification', name))
   }
-  await cp(join(root, 'artifacts/run-state.json'), join(candidate, 'certification/quality-stages.json'))
+  await cp(join(root, 'artifacts/run-state.json'), join(candidate, 'certification', `${workspaceName}-stages.json`))
   console.log(`Complete Linux quality diagnostics: ${root}`)
 } finally {
   try {

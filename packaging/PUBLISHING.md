@@ -268,9 +268,11 @@ those must succeed in the release workflows.
 `run-full-quality.sh` runs backend/frontend coverage, the framework browser matrix,
 tooling tests and performance-tooling/metric regression checks. It does not publish
 packages, run every live k6 load profile or independently perform the complete
-five-profile external upgrade certification. Release certification includes this
-aggregate and the external profiles.
-If running `release.mjs certify`, do not run the aggregate separately as well.
+five-profile external upgrade certification. Run it locally before release;
+`release.mjs certify` no longer runs the complete backend/frontend coverage suites.
+Certification retains its five profiles, compatibility, tooling, framework browser
+matrix and performance-tooling contracts. Its evidence does not attest to local
+platform/vertical regression or coverage results.
 
 Application developers run their own application's tests. Platform contributors can
 run the aggregate before opening a PR to catch failures sooner. Use prepared local
@@ -299,6 +301,9 @@ The wrapper requires a sealed candidate; it does not package one. It verifies it
 inputs and copies source and artifacts into a private workspace without host caches.
 That workspace is retained for retries. Tooling is run once per unchanged aggregate,
 with separate checkpoints for backend, frontend, browser and performance gates.
+Release certification invokes this wrapper with `--certification`, which selects
+only tooling, browser and performance-tooling stages in a separate workspace and
+writes `certification-quality.json` instead of `full-quality.json`.
 For the complete local certification sequence, see the
 [certification maintainer runbook](../quality/external-consumer/README.md).
 

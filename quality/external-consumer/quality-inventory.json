@@ -86,6 +86,7 @@
     "coveragePolicy": "Generation, source hashes, compilation, runtime and layer-boundary checks. Frozen source remains immutable. Declaration-only types, route/controller composition and SQL DDL are not reported as uncovered executable helpers. Frozen executable extension helpers are measured through linked source without modifying the fixture."
   },
   "existingPlatform": {
+    "execution": "local-before-release",
     "backend": "bash run-backend-full-coverage.sh",
     "frontend": "bash run-frontend-full-coverage.sh",
     "threshold": 100
