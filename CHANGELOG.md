@@ -9,7 +9,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 No changes yet.
 
-## [3.2.0] - 2026-10-13
+## [3.2.0] - 2026-10-11
 
 ### Added
 - Added the independent `NGB.Platform.Templates` application starter with API, Migrator,
