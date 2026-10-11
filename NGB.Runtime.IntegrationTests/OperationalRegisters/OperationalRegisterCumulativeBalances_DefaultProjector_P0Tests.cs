@@ -292,11 +292,11 @@ public sealed partial class OperationalRegisterCumulativeBalances_DefaultProject
         }
     }
 
-    private static async Task<int> FinalizeDirtyAsync(IHost host, Guid registerId)
+    private static async Task<int> FinalizeDirtyAsync(IHost host, Guid registerId, CancellationToken ct = default)
     {
         await using var scope = host.Services.CreateAsyncScope();
         var runner = scope.ServiceProvider.GetRequiredService<IOperationalRegisterFinalizationRunner>();
-        return await runner.FinalizeRegisterDirtyAsync(registerId, maxPeriods: 20, manageTransaction: true, ct: CancellationToken.None);
+        return await runner.FinalizeRegisterDirtyAsync(registerId, maxPeriods: 20, manageTransaction: true, ct: ct);
     }
 
     private static async Task<int> FinalizeDirtyAcrossAllAsync(IHost host, int maxItems = 20)

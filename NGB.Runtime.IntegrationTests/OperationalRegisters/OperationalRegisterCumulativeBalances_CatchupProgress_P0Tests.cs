@@ -18,6 +18,10 @@ namespace NGB.Runtime.IntegrationTests.OperationalRegisters;
 
 public sealed partial class OperationalRegisterCumulativeBalances_DefaultProjector_P0Tests
 {
+    // This watchdog includes three attempts, database cancellation/rollback and scheduling
+    // under coverage. Each publication attempt still has its configured one-second deadline.
+    private static readonly TimeSpan PublicationExhaustionTestTimeout = TimeSpan.FromSeconds(30);
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -153,28 +157,46 @@ public sealed partial class OperationalRegisterCumulativeBalances_DefaultProject
     public async Task Publication_exhaustion_is_a_failure_with_three_bounded_attempts_and_no_partial_commit()
     {
         var gate = new PreparationGate();
-        using var host = GatedHost(gate, services => services.Configure<PostgresOptions>(o => o.OperationalRegisterPublicationTimeoutSeconds = 1));
+        using var host = GatedHost(gate, services => services.Configure<PostgresOptions>(options =>
+        {
+            options.OperationalRegisterPublicationTimeoutSeconds = 1;
+        }));
         var (registerId, documentId) = await SeedProjectionAsync(host);
         await ApplyRepostAsync(host, registerId, documentId, CreateMovement(documentId, JanuaryDate, 120m));
         var before = gate.PrepareCount;
-        gate.Arm();
-        var running = FinalizeDirtyAsync(host, registerId);
-        await gate.Prepared.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var cancellation = new CancellationTokenSource();
         await using var blocker = host.Services.CreateAsyncScope();
         var uow = blocker.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        await uow.BeginTransactionAsync();
-        await blocker.ServiceProvider.GetRequiredService<IAdvisoryLockManager>().LockOperationalRegisterAsync(registerId);
-        gate.Release.TrySetResult();
+        gate.Arm();
+        var running = FinalizeDirtyAsync(host, registerId, cancellation.Token);
         try
         {
-            await ((Func<Task>)(async () => await running.WaitAsync(TimeSpan.FromSeconds(10))))
+            await gate.Prepared.Task.WaitAsync(PublicationExhaustionTestTimeout);
+            await uow.BeginTransactionAsync();
+            await blocker.ServiceProvider.GetRequiredService<IAdvisoryLockManager>().LockOperationalRegisterAsync(registerId);
+            gate.Release.TrySetResult();
+
+            await ((Func<Task>)(async () => await running.WaitAsync(PublicationExhaustionTestTimeout)))
                 .Should().ThrowAsync<OperationalRegisterFinalizationBusyException>();
             gate.PrepareCount.Should().Be(before + 3);
-            (await ReadBalanceAsync(host, registerId)).Should().Be(100m);
+            await AssertPublishedPairAsync(host, registerId, 100m, finalized: false);
         }
-        finally { await uow.RollbackAsync(); }
+        finally
+        {
+            await cancellation.CancelAsync();
+            gate.Release.TrySetResult();
+            try
+            {
+                await ObserveFinalizationCleanupAsync(running, cancellation.Token);
+            }
+            finally
+            {
+                await uow.RollbackAsync();
+            }
+        }
+
         (await FinalizeDirtyAsync(host, registerId)).Should().Be(1);
-        (await ReadBalanceAsync(host, registerId)).Should().Be(120m);
+        await AssertPublishedPairAsync(host, registerId, 120m, finalized: true);
     }
 
     [Fact]
@@ -228,6 +250,23 @@ public sealed partial class OperationalRegisterCumulativeBalances_DefaultProject
                 .Status.Should().Be(OperationalRegisterFinalizationStatus.Dirty);
         }
         finally { await uow.Connection.ExecuteAsync($"ALTER SEQUENCE {sequence} CACHE 1"); }
+    }
+
+    private static async Task ObserveFinalizationCleanupAsync(Task running, CancellationToken cancellationToken)
+    {
+        // WaitAsync alone only stops the test's wait. Observe completion before releasing
+        // the blocker or resetting the fixture, so an abandoned finalizer cannot commit later.
+        try
+        {
+            await running.WaitAsync(PublicationExhaustionTestTimeout);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (OperationalRegisterFinalizationBusyException)
+        {
+            // The test assertion above already checked this expected terminal failure.
+        }
     }
 
     private static async Task AssertProjectionMatchesLedgerAsync(IHost host, Guid registerId, DateOnly month)
