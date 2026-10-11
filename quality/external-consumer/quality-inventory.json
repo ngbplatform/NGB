@@ -8,6 +8,7 @@
     "quality/upgrade-certification/scenarios.mjs",
     "packaging/templates/content/infrastructure/configuration.mjs",
     "ui/scripts/platform-ui-compatibility.mjs",
+    "ui/scripts/npm-command.mjs",
     "quality/external-consumer/layering.mjs",
     "packaging/templates/content/infrastructure/ngb/contracts.mjs",
     ".github/scripts/release-source.cjs",

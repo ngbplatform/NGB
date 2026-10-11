@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 import { gzipSync, gunzipSync } from 'fflate'
 
+import { resolveNpmCommand } from './npm-command.mjs'
 import { createPlatformUiPackageManifest } from './platform-ui-package-manifest.mjs'
 
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -31,6 +32,7 @@ const stagingRoot = await mkdtemp(join(tmpdir(), 'ngb-platform-ui-'))
 const packageRoot = join(stagingRoot, 'package')
 
 try {
+  const npm = resolveNpmCommand(['pack', packageRoot, '--pack-destination', outputRoot])
   await mkdir(packageRoot, { recursive: true })
 
   for (const entry of packageManifest.files) {
@@ -54,8 +56,8 @@ try {
   }
 
   execFileSync(
-    process.platform === 'win32' ? 'npm.cmd' : 'npm',
-    ['pack', packageRoot, '--pack-destination', outputRoot],
+    npm.command,
+    npm.args,
     {
       cwd: uiRoot,
       env: {

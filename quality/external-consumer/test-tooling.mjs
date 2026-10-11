@@ -18,6 +18,7 @@ run('node', [
   'quality/external-consumer/registry-fetch.test.mjs', 'quality/external-consumer/sequencing.test.mjs',
   'quality/external-consumer/configuration.test.mjs', 'quality/upgrade-certification/scenarios.test.mjs',
   'ui/scripts/platform-ui-compatibility.test.mjs',
+  'ui/scripts/npm-command.test.mjs',
   'quality/external-consumer/application-contracts.test.mjs', 'quality/external-consumer/release-source.test.mjs',
   'quality/external-consumer/container-source.test.mjs',
 ])
