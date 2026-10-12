@@ -49,11 +49,40 @@ async function selectContainerSource(github, context) {
 
   const { data: run } = await github.rest.actions.getWorkflowRun({ ...context.repo, run_id: runId })
   assert.equal(publicationCommit(run, repository), sha, 'Publication source changed.')
+  assert.ok(Number.isSafeInteger(run.run_attempt) && run.run_attempt > 0, 'Invalid publication attempt.')
   const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
     ...context.repo, run_id: run.id, per_page: 100,
   })
-  const evidence = artifacts.filter(artifact => artifact.name === 'ngb-publication-evidence' && !artifact.expired)
-  assert.equal(evidence.length, 1, 'Exactly one unexpired publication evidence artifact is required.')
+  const attemptName = `ngb-publication-evidence-attempt-${run.run_attempt}`
+  let evidence = artifacts.filter(artifact => artifact.name === attemptName)
+
+  if (evidence.length === 0) {
+    // Older publishers reused one name across attempts, including failed ones.
+    // Match their archives to the successful attempt's actual upload step.
+    const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, {
+      ...context.repo, run_id: run.id, attempt_number: run.run_attempt, per_page: 100,
+    })
+    const uploads = jobs
+      .filter(job => job.run_id === run.id && job.head_sha === run.head_sha
+        && job.status === 'completed' && job.conclusion === 'success')
+      .flatMap(job => job.steps)
+      .filter(step => step.name === 'Record publication and promotion evidence'
+        && step.status === 'completed' && step.conclusion === 'success')
+    assert.equal(uploads.length, 1, 'Exactly one successful evidence upload is required for this publication attempt.')
+    const startedAt = Date.parse(uploads[0].started_at)
+    const completedAt = Date.parse(uploads[0].completed_at)
+    assert.ok(Number.isFinite(startedAt) && Number.isFinite(completedAt) && startedAt <= completedAt,
+      'Publication evidence upload timestamps are missing or invalid.')
+    evidence = artifacts.filter(artifact => {
+      // Job timestamps have second precision; artifact timestamps can be finer.
+      const createdAt = Math.floor(Date.parse(artifact.created_at) / 1_000)
+      return artifact.name === 'ngb-publication-evidence'
+        && createdAt >= Math.floor(startedAt / 1_000) && createdAt <= Math.floor(completedAt / 1_000)
+    })
+  }
+
+  evidence = evidence.filter(artifact => !artifact.expired)
+  assert.equal(evidence.length, 1, 'Exactly one unexpired evidence artifact from the successful publication attempt is required.')
   assert.equal(evidence[0].workflow_run.id, run.id, 'Evidence belongs to another publication run.')
   assert.equal(evidence[0].workflow_run.head_sha, run.head_sha, 'Evidence publication metadata differs.')
 

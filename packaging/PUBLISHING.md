@@ -139,14 +139,31 @@ are built by `container-images` after publication; their Docker builds are not p
 of the candidate quality aggregate. A local candidate has 20 required gates; the
 remaining two matrix gates require published packages and promotion evidence.
 
+Container cache export is optional: both image matrices use `ignore-error=true`
+only for `cache-to`. A GitHub cache write failure does not invalidate a successful
+image build and GHCR push. Build/push errors still fail the job and block the
+deployment PR; the workflow does not use `continue-on-error` for those steps.
+
 The certified artifact is retained for 30 days and publication evidence for 90 days
 under the checked-in workflow settings. Downloads select the exact artifact ID,
 not an arbitrary artifact with the same name.
+Publication evidence names include the workflow attempt number. Container selection
+uses the successful attempt, retaining earlier failed-attempt archives for diagnostics.
+For older runs with the shared `ngb-publication-evidence` name, selection matches the
+archive creation time to that attempt's successful evidence upload step. Missing,
+expired or ambiguous evidence blocks image builds; it never falls back to an older attempt.
 
 The manifest preserves the generated template and CRM lockfiles. They are derived
 from the package bytes during packing; use that generation step before the PR,
 not manual integrity edits. Registry verification checks NuGet content/signatures and npm
 integrity. Source, image tags and deployment PR all identify the released commit.
+Registry downloads share a 20-minute deadline for the entire NuGet/npm package set.
+Available packages proceed immediately; temporary HTTP/connection failures retry
+every 15 seconds, or later when the registry supplies `Retry-After`, within that deadline.
+Logs show the affected URL, retry number and remaining time. Access errors, package
+identity/signature mismatches and runtime failures stop verification without retries.
+The deadline starts when registry verification begins; the subsequent registry-only
+application smoke test remains a separate check within the publication job's timeout.
 
 An ordinary push does not publish images. A vertical-only change needs publication
 evidence for its exact commit to enter this release train; independent vertical
@@ -159,6 +176,7 @@ release pipelines are outside this workflow's scope.
 | PR or main certification failed | Inspect the failed step. Fix source/test failures in a PR; rerun a transient failure for the same commit. A fresh hosted runner certifies again; local retries reuse verified checkpoints for the same candidate and environment. Nothing has been published yet. |
 | Release selection reports no reviewer or an OIDC policy mismatch | Correct the external settings, then rerun the failed publication job. Check workflow filename and environment first. |
 | Upload or registry verification failed transiently | Rerun the original publication run, retaining the same certified artifact. Existing npm integrity must match; NuGet duplicates are checked during registry verification. |
+| An older container run reports multiple `ngb-publication-evidence` artifacts | That run still uses the old selector. Identify the archive IDs in each publication attempt's `Record publication and promotion evidence` log. Preserve the successful attempt's archive; download any failed-attempt archives needed for diagnostics before deleting only those failed-attempt archives. Then rerun the failed container jobs. Do not repack or republish the released version. |
 | Published contents are wrong or differ from the certified package | Prepare a corrected new version. Published versions cannot be overwritten. |
 | Container build or infrastructure PR creation failed | For transient registry, runner or credential failures, repair the environment and rerun that release's container run. It uses the same verified commit. A source/Dockerfile fix needs a new commit and certification; rerunning the old run cannot consume the fix. |
 | Certification artifact expired | Re-certification is required. Do not replace a partially published candidate with newly packed bytes of the same version. |
