@@ -303,7 +303,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.release-source.outputs.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }},ignore-error=true
 
   build-crm:
     name: build ${{ matrix.image }}
@@ -378,7 +378,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.release-source.outputs.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }},ignore-error=true
 
   propose-infra-deploy:
     name: propose infra deploy

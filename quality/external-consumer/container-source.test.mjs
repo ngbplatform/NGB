@@ -12,7 +12,7 @@ const workflowPaths = ['publish-platform-release', 'publish-platform-nuget', 'pu
 
 function fixture(eventName = 'workflow_run') {
   const run = {
-    id: 42, status: 'completed', conclusion: 'success', event: 'workflow_run',
+    id: 42, run_attempt: 2, status: 'completed', conclusion: 'success', event: 'workflow_run',
     head_branch: 'main', head_sha: newerSha, display_title: `Publish NGB ${sha}`,
     path: workflowPaths[0], repository: { full_name: 'owner/NGB' }, head_repository: { full_name: 'owner/NGB' },
   }
@@ -24,7 +24,17 @@ function fixture(eventName = 'workflow_run') {
       { ...run, id: 53, display_title: `Publish NGB ${newerSha}` },
       run,
     ],
-    artifacts: [{ id: 17, name: 'ngb-publication-evidence', expired: false, workflow_run: { id: 42, head_sha: newerSha } }],
+    artifacts: [{
+      id: 17, name: 'ngb-publication-evidence-attempt-2', expired: false,
+      created_at: '2026-10-11T20:10:15Z', workflow_run: { id: 42, head_sha: newerSha },
+    }],
+    jobs: [{
+      run_id: 42, head_sha: newerSha, status: 'completed', conclusion: 'success',
+      steps: [{
+        name: 'Record publication and promotion evidence', status: 'completed', conclusion: 'success',
+        started_at: '2026-10-11T20:10:10Z', completed_at: '2026-10-11T20:10:20Z',
+      }],
+    }],
   }
   const context = {
     eventName, repo: { owner: 'owner', repo: 'NGB' }, ref: 'refs/heads/main',
@@ -42,11 +52,17 @@ function fixture(eventName = 'workflow_run') {
         return state.runs
       }
       assert.equal(parameters.run_id, 42)
+      if (method === 'jobs') {
+        assert.equal(parameters.attempt_number, 2)
+        return state.jobs
+      }
+      assert.equal(method, 'artifacts')
       return state.artifacts
     },
     rest: {
       actions: {
         listWorkflowRunsForRepo: 'runs', listWorkflowRunArtifacts: 'artifacts',
+        listJobsForWorkflowRunAttempt: 'jobs',
         getWorkflowRun: async ({ run_id }) => {
           assert.equal(run_id, 42)
           return { data: run }
@@ -55,6 +71,15 @@ function fixture(eventName = 'workflow_run') {
     },
   }
   return { run, state, github, context }
+}
+
+function legacyFixture(eventName = 'workflow_run') {
+  const value = fixture(eventName)
+  value.state.artifacts[0].name = 'ngb-publication-evidence'
+  value.state.artifacts.unshift({
+    ...value.state.artifacts[0], id: 16, created_at: '2026-10-11T19:50:00Z',
+  })
+  return value
 }
 
 test('automatic container builds retain the published commit when main advances', async () => {
@@ -73,6 +98,67 @@ test('all publication entry points and manual retries select exact successful ev
       value.context.payload.workflow_run = structuredClone(value.run)
       assert.deepEqual(await selectContainerSource(value.github, value.context), { sha, runId: '42', artifactId: '17' })
     }
+  }
+})
+
+test('publication retries select the current attempt and preserve older diagnostics', async () => {
+  const value = fixture()
+  value.state.artifacts.push(
+    { ...value.state.artifacts[0], id: 18, name: 'ngb-publication-evidence-attempt-1' },
+    { ...value.state.artifacts[0], id: 19, name: 'ngb-publication-evidence' },
+  )
+  value.state.jobs = []
+  assert.deepEqual(await selectContainerSource(value.github, value.context), { sha, runId: '42', artifactId: '17' })
+  assert.equal(value.state.artifacts.length, 3)
+})
+
+test('legacy duplicate archives are matched to the successful attempt upload step', async () => {
+  for (const eventName of ['workflow_run', 'workflow_dispatch']) {
+    const value = legacyFixture(eventName)
+    value.state.artifacts.push({
+      ...value.state.artifacts[0], id: 99, created_at: '2026-10-11T20:30:00Z',
+    })
+    assert.deepEqual(await selectContainerSource(value.github, value.context), { sha, runId: '42', artifactId: '17' })
+    value.state.artifacts.reverse()
+    assert.deepEqual(await selectContainerSource(value.github, value.context), { sha, runId: '42', artifactId: '17' })
+  }
+})
+
+test('legacy artifact times respect upload boundaries and GitHub timestamp precision', async () => {
+  for (const createdAt of ['2026-10-11T20:10:10Z', '2026-10-11T20:10:20.999Z']) {
+    const value = legacyFixture()
+    value.state.artifacts[1].created_at = createdAt
+    assert.deepEqual(await selectContainerSource(value.github, value.context), { sha, runId: '42', artifactId: '17' })
+  }
+})
+
+test('legacy evidence cannot fall back to another attempt or ambiguous upload metadata', async () => {
+  for (const change of [
+    value => { value.state.jobs = [] },
+    value => { value.state.jobs.push(value.state.jobs[0]) },
+    value => { value.state.jobs[0].run_id = 43 },
+    value => { value.state.jobs[0].head_sha = sha },
+    value => { value.state.jobs[0].status = 'in_progress' },
+    value => { value.state.jobs[0].conclusion = 'failure' },
+    value => { value.state.jobs[0].steps = [] },
+    value => { value.state.jobs[0].steps[0].name = 'Other upload' },
+    value => { value.state.jobs[0].steps[0].status = 'in_progress' },
+    value => { value.state.jobs[0].steps[0].conclusion = 'failure' },
+    value => { value.state.jobs[0].steps[0].started_at = null },
+    value => { value.state.jobs[0].steps[0].completed_at = null },
+    value => { value.state.jobs[0].steps[0].started_at = '2026-10-11T20:11:00Z' },
+    value => { value.state.artifacts[1].created_at = 'invalid' },
+    value => { value.state.artifacts[1].created_at = '2026-10-11T20:10:09.999Z' },
+    value => { value.state.artifacts[1].created_at = '2026-10-11T20:10:21Z' },
+    value => { value.state.artifacts[1].expired = true },
+    value => { value.state.artifacts[1].workflow_run.id = 43 },
+    value => { value.state.artifacts[1].workflow_run.head_sha = sha },
+    value => { value.state.artifacts.push({ ...value.state.artifacts[1], id: 18 }) },
+    value => { value.state.artifacts.push({ ...value.state.artifacts[1], name: 'ngb-publication-evidence-attempt-2', expired: true }) },
+  ]) {
+    const value = legacyFixture()
+    change(value)
+    await assert.rejects(selectContainerSource(value.github, value.context))
   }
 })
 
@@ -99,9 +185,13 @@ test('wrong or unavailable publication evidence and unsupported dispatches fail 
     value => { value.context.eventName = 'workflow_dispatch'; value.context.sha = 'invalid' },
     value => { value.context.eventName = 'workflow_dispatch'; value.state.runs = [] },
     value => { value.run.display_title = `Publish NGB ${newerSha}` },
+    value => { value.run.run_attempt = undefined },
+    value => { value.run.run_attempt = 0 },
+    value => { value.run.run_attempt = 1.5 },
     value => { value.state.artifacts = [] },
     value => { value.state.artifacts[0].expired = true },
     value => { value.state.artifacts[0].name = 'ngb-certified-release' },
+    value => { value.state.artifacts[0].name = 'ngb-publication-evidence-attempt-1' },
     value => { value.state.artifacts.push(value.state.artifacts[0]) },
     value => { value.state.artifacts[0].workflow_run.id = 43 },
     value => { value.state.artifacts[0].workflow_run.head_sha = sha },
@@ -110,6 +200,13 @@ test('wrong or unavailable publication evidence and unsupported dispatches fail 
     change(value)
     await assert.rejects(selectContainerSource(value.github, value.context))
   }
+})
+
+test('publication archives identify the attempt even when saved after a failure', async () => {
+  const workflow = await readFile(new URL('../../.github/workflows/publish-platform-release.yml', import.meta.url), 'utf8')
+  const upload = workflow.slice(workflow.indexOf('      - name: Record publication and promotion evidence'))
+  assert.match(upload, /if: always\(\)/)
+  assert.match(upload, /name: ngb-publication-evidence-attempt-\$\{\{ github.run_attempt \}\}/)
 })
 
 test('release manifest, backend and CRM UI must agree on source and exact version', () => {
@@ -153,6 +250,10 @@ test('workflow orders evidence before every image and uses that source for deplo
     assert.match(job, /ref: \$\{\{ needs.release-source.outputs.sha \}\}/)
     assert.match(job, /:sha-\$\{\{ needs.release-source.outputs.sha \}\}/)
     assert.match(job, /org.opencontainers.image.revision=\$\{\{ needs.release-source.outputs.sha \}\}/)
+    assert.match(job, /push: true/)
+    assert.match(job, /cache-from: type=gha,scope=\$\{\{ matrix.image \}\}/)
+    assert.match(job, /cache-to: type=gha,mode=max,scope=\$\{\{ matrix.image \}\},ignore-error=true/)
+    assert.doesNotMatch(job, /continue-on-error:/)
     assert.doesNotMatch(job, /github.sha|github.ref_name|always\(\)/)
   }
   const deployment = jobs['propose-infra-deploy']

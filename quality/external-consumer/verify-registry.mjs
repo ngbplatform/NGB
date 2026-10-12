@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertArtifactIdentity, digest } from './release-contracts.mjs'
-import { fetchRegistryBytes } from './registry-fetch.mjs'
+import { fetchRegistryBytes, registryTimeoutMs } from './registry-fetch.mjs'
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const root = resolve(process.argv[2] ?? join(repository, 'artifacts/release-candidate'))
@@ -13,12 +13,15 @@ execFileSync(process.execPath, ['quality/external-consumer/release.mjs', 'verify
 const manifestBytes = await readFile(join(root, 'release-manifest.json'))
 const manifest = JSON.parse(manifestBytes)
 const downloads = await mkdtemp(join(tmpdir(), 'ngb-registry-verification-'))
+// All NuGet and npm downloads share one budget; each package must not restart it.
+const registryOptions = { deadline: performance.now() + registryTimeoutMs }
+console.log(`[registry] Verifying published packages with a shared ${registryTimeoutMs / 60_000}-minute download deadline.`)
 const results = []
 for (const artifact of manifest.artifacts.filter(item => !item.path.endsWith('.snupkg'))) {
   const npm = artifact.path.endsWith('.tgz')
   let url
   if (npm) {
-    const metadata = JSON.parse(await fetchRegistryBytes(`https://registry.npmjs.org/@ngbplatform%2fui/${manifest.version}`))
+    const metadata = JSON.parse(await fetchRegistryBytes(`https://registry.npmjs.org/@ngbplatform%2fui/${manifest.version}`, registryOptions))
     assert.equal(metadata.version, manifest.version)
     assert.equal(metadata.dist.integrity, artifact.integrity, 'npm registry integrity differs from the certified archive.')
     url = metadata.dist.tarball
@@ -27,12 +30,13 @@ for (const artifact of manifest.artifacts.filter(item => !item.path.endsWith('.s
     const id = basename(artifact.path).slice(0, -`.${manifest.version}.nupkg`.length).toLowerCase()
     url = `https://api.nuget.org/v3-flatcontainer/${id}/${manifest.version}/${id}.${manifest.version}.nupkg`
   }
-  const bytes = await fetchRegistryBytes(url)
+  const bytes = await fetchRegistryBytes(url, registryOptions)
   assertArtifactIdentity(artifact, bytes, true)
   const path = join(downloads, basename(artifact.path))
   await writeFile(path, bytes)
   if (!npm) execFileSync('dotnet', ['nuget', 'verify', path, '--all'], { cwd: downloads, stdio: 'inherit' })
   results.push({ path: artifact.path, registrySha256: digest(bytes), payloadSha256: artifact.payloadSha256, integrity: artifact.integrity, status: 'passed' })
+  console.log(`[registry] Verified ${artifact.path}`)
 }
 // The consumer restores directly from registries with fresh caches. Downloaded
 // archives above are used only for identity/signature verification, never as feeds.

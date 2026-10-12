@@ -162,6 +162,10 @@ blocks publication. Manual dispatch needs no run ID and matches the dispatch com
 Successful publication automatically triggers `container-images`. That workflow
 verifies publication/promotion evidence before building the complete image set,
 and uses the manifest source commit for checkout, image tags and the deployment PR.
+Evidence is archived as `ngb-publication-evidence-attempt-<run_attempt>`. Selection
+uses the successful publication attempt, so diagnostics from failed attempts cannot
+authorize images or make a retry ambiguous. Legacy archives with the shared name
+are matched to the successful attempt's upload-step timestamps before content verification.
 Failed publication or any failed image build blocks the deployment PR. Ordinary
 pushes do not race package publication. Container retries use the original release
 run; a manual dispatch from `main` requires evidence for that exact commit.
@@ -169,6 +173,13 @@ The old NuGet/UI workflow names are wrappers around the full unified publication
 not independently runnable package-family stages.
 `verify-registry.mjs` is a post-publication gate, so it cannot pass for an unpublished
 candidate. It never reuses the candidate feed for its registry-only consumer.
+NuGet/npm downloads share a 20-minute propagation deadline for the whole package set,
+including npm metadata and archives. Retryable HTTP/connection failures wait 15 seconds
+between requests and honor longer `Retry-After` values without extending the deadline.
+Each request is limited to 30 seconds or the remaining budget. Progress identifies
+the URL, retry and remaining time; ready packages do not incur a fixed wait.
+Identity, signature and runtime checks are not retried. A timeout leaves promotion
+blocked and requires a retry with the same certified artifacts after registry recovery.
 `release.mjs verify-promotion` requires the registry receipt in addition to the
 complete candidate evidence. See the [upgrade guide](../../docs/architecture/external-app-upgrades.md).
 

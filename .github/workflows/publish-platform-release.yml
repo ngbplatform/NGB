@@ -109,7 +109,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: ngb-publication-evidence
+          name: ngb-publication-evidence-attempt-${{ github.run_attempt }}
           path: artifacts/release-candidate/
           if-no-files-found: error
           retention-days: 90
