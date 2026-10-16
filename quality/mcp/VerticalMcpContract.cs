@@ -44,7 +44,7 @@ internal static class VerticalMcpContract
             ["ConnectionStrings__DefaultConnection"] = connectionString,
             ["KeycloakSettings__Issuer"] = identity.Issuer,
             ["KeycloakSettings__RequireHttpsMetadata"] = "false",
-            ["KeycloakSettings__ClientIds__0"] = KeycloakFixture.Audience,
+            ["KeycloakSettings__ClientIds__0"] = KeycloakFixture.ClientId,
             ["FeatureManagement__Notes"] = contentEnabled.ToString(),
             ["FeatureManagement__Attachments"] = contentEnabled.ToString(),
             ["Attachments__MinIO__InternalEndpoint"] = origin,
@@ -57,7 +57,6 @@ internal static class VerticalMcpContract
             ["ExternalLinksSettings__BackgroundJobsUiUrl"] = "https://example.invalid/jobs",
             ["FeatureManagement__Mcp"] = "true",
             ["Ngb__Hosting__PublicApiUrl"] = origin,
-            ["Mcp__Audience"] = KeycloakFixture.Audience,
             ["Mcp__AllowLocalhostHttp"] = "true",
             ["Mcp__RequestsPerMinute"] = "10000"
         });

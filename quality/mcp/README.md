@@ -26,7 +26,9 @@ branch paths exercised by separate test projects. It still publishes the usual
 combined Cobertura report for the coverage gate.
 
 The external fixture covers an empty host and a custom installed catalog/tool,
-real user authorization-code/PKCE authentication, bootstrap administrators,
+real user authorization-code/PKCE authentication through an ordinary API client
+without an MCP audience mapper, the same access token and subject in REST/MCP,
+bootstrap administrators,
 linked users, revocation with the same token, inactive accounts and persistent
 state snapshots around reads. The custom catalog is measured at 101 and 10,001
 additional records; cursor traversal checks every identity exactly once at each

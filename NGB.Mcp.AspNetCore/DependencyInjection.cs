@@ -1,6 +1,6 @@
 using System.Globalization;
+using System.Net.Http.Headers;
 using System.Security.Claims;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Http;
@@ -23,13 +23,15 @@ namespace NGB.Mcp.AspNetCore;
 public static class DependencyInjection
 {
     internal const string Scheme = "NgbMcp";
-    internal const string BearerScheme = "NgbMcp.Bearer";
     private const string Policy = "NgbMcp.CurrentUser";
 
     public static IServiceCollection AddNgbMcp(this IServiceCollection services, IConfiguration configuration)
     {
         if (configuration.GetSection("Mcp:Enabled").Exists())
             throw new NgbConfigurationViolationException("Mcp:Enabled has been replaced by FeatureManagement:Mcp. Configure only the registered feature flag.");
+
+        if (configuration.GetSection("Mcp:Audience").Exists())
+            throw new NgbConfigurationViolationException("Mcp:Audience is no longer supported. MCP uses the existing API bearer authentication scheme and its token validation. Remove Mcp:Audience.");
 
         services.AddNgbFeatureManagement(configuration);
         if (!configuration.GetValue<bool>($"FeatureManagement:{NgbFeatures.Mcp}"))
@@ -55,9 +57,9 @@ public static class DependencyInjection
         services.AddHostedService<McpStartupValidator>();
         services.AddHttpContextAccessor();
 
-        services.AddAuthentication().AddJwtBearer(BearerScheme).AddMcp(Scheme, "NGB MCP", options =>
+        services.AddAuthentication().AddMcp(Scheme, "NGB MCP", options =>
         {
-            options.ForwardAuthenticate = BearerScheme;
+            options.ForwardAuthenticate = settings.AuthenticationScheme;
             options.ResourceMetadataUri = endpoint.MetadataUri;
         });
 
@@ -74,45 +76,6 @@ public static class DependencyInjection
             };
         });
 
-        services.AddOptions<JwtBearerOptions>(BearerScheme).Configure<IServiceProvider>((options, provider) =>
-        {
-            var existing = provider.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>().Get(settings.AuthenticationScheme);
-            if (existing.EventsType is not null)
-                throw new InvalidOperationException("MCP requires the existing bearer scheme to configure JwtBearerEvents directly.");
-
-            options.Authority = existing.Authority;
-            options.MetadataAddress = existing.MetadataAddress;
-            options.RequireHttpsMetadata = existing.RequireHttpsMetadata;
-            options.Configuration = existing.Configuration;
-            options.ConfigurationManager = existing.ConfigurationManager;
-            options.Backchannel = existing.Backchannel;
-            options.BackchannelHttpHandler = existing.BackchannelHttpHandler;
-            options.BackchannelTimeout = existing.BackchannelTimeout;
-            options.RefreshOnIssuerKeyNotFound = existing.RefreshOnIssuerKeyNotFound;
-            options.MapInboundClaims = existing.MapInboundClaims;
-            options.IncludeErrorDetails = false;
-            options.TokenValidationParameters = existing.TokenValidationParameters.Clone();
-            options.TokenValidationParameters.ValidateIssuer = true;
-            options.TokenValidationParameters.ValidateLifetime = true;
-            options.TokenValidationParameters.ValidateIssuerSigningKey = true;
-            options.TokenValidationParameters.RequireSignedTokens = true;
-            options.TokenValidationParameters.RequireExpirationTime = true;
-            options.TokenValidationParameters.ValidateAudience = true;
-            options.TokenValidationParameters.RequireAudience = true;
-            var audience = ResolveAudience(settings, endpoint);
-            options.TokenValidationParameters.AudienceValidator = (audiences, _, _) => audiences.Contains(audience, StringComparer.Ordinal);
-            options.Events = new JwtBearerEvents
-            {
-                OnTokenValidated = async context =>
-                {
-                    await existing.Events.OnTokenValidated(context);
-
-                    if (context.Principal is null || !IsUserResourceToken(context.Principal, audience))
-                        context.Fail("The token is not valid for this MCP resource and user flow.");
-                }
-            };
-        });
-
         services.AddCors();
         services.AddOptions<CorsOptions>().Configure(options => options.AddPolicy(Policy, policy => policy
             .WithOrigins(settings.AllowedOrigins.Append(endpoint.Resource.GetLeftPart(UriPartial.Authority)).Distinct().ToArray())
@@ -124,7 +87,12 @@ public static class DependencyInjection
         {
             policy.AddAuthenticationSchemes(Scheme);
             policy.RequireAuthenticatedUser();
-            policy.RequireAssertion(context => IsUserResourceToken(context.User, ResolveAudience(settings, endpoint)));
+            policy.RequireAssertion(context => context.Resource is HttpContext http
+                && !http.Request.Query.ContainsKey("access_token")
+                && AuthenticationHeaderValue.TryParse(http.Request.Headers.Authorization, out var authorization)
+                && string.Equals(authorization.Scheme, "Bearer", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(authorization.Parameter)
+                && IsUserAccessToken(context.User));
         }));
 
         services.AddMcpServer()
@@ -155,15 +123,12 @@ public static class DependencyInjection
         return endpoints;
     }
 
-    private static string ResolveAudience(NgbMcpOptions settings, McpEndpointAddress endpoint)
-        => string.IsNullOrWhiteSpace(settings.Audience) ? endpoint.Resource.AbsoluteUri : settings.Audience;
-
-    private static bool IsUserResourceToken(ClaimsPrincipal principal, string audience)
+    private static bool IsUserAccessToken(ClaimsPrincipal principal)
     {
         var subject = principal.FindFirst("sub")?.Value ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
         return !string.IsNullOrWhiteSpace(subject)
-            && principal.FindAll("aud").Any(claim => string.Equals(claim.Value, audience, StringComparison.Ordinal))
+            && principal.HasClaim("typ", "Bearer")
             && long.TryParse(principal.FindFirst("auth_time")?.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var authenticatedAt)
             && authenticatedAt > 0
             && !principal.HasClaim("grant_type", "client_credentials")
@@ -177,7 +142,6 @@ public static class DependencyInjection
 
         if (string.IsNullOrWhiteSpace(options.AuthenticationScheme)
             || options.AuthenticationScheme == Scheme
-            || options.AuthenticationScheme == BearerScheme
             || options.ConcurrentRequests is < 1 or > 256
             || options.RequestsPerMinute is < 1 or > 100_000
             || options.RequestTimeoutSeconds is < 1 or > 300

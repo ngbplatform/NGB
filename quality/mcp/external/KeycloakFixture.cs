@@ -13,7 +13,7 @@ namespace ExternalMcp.Tests;
 internal sealed class KeycloakFixture : IAsyncDisposable
 {
     private const string Realm = "ngb-mcp-contracts";
-    internal const string Audience = "ngb-mcp-tests";
+    internal const string ClientId = "ngb-web-tests";
     private readonly IContainer _container;
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly CancellationTokenSource _stopping = new();
@@ -33,29 +33,14 @@ internal sealed class KeycloakFixture : IAsyncDisposable
             {
                 new
                 {
-                    clientId = "mcp-user-client",
+                    clientId = ClientId,
                     protocol = "openid-connect",
                     publicClient = true,
                     standardFlowEnabled = true,
                     directAccessGrantsEnabled = false,
                     serviceAccountsEnabled = false,
                     redirectUris = new[] { "http://127.0.0.1:51111/callback" },
-                    attributes = new Dictionary<string, string> { ["pkce.code.challenge.method"] = "S256" },
-                    protocolMappers = new[]
-                    {
-                        new
-                        {
-                            name = "NGB MCP audience",
-                            protocol = "openid-connect",
-                            protocolMapper = "oidc-audience-mapper",
-                            config = new Dictionary<string, string>
-                            {
-                                ["included.custom.audience"] = Audience,
-                                ["access.token.claim"] = "true",
-                                ["id.token.claim"] = "false"
-                            }
-                        }
-                    }
+                    attributes = new Dictionary<string, string> { ["pkce.code.challenge.method"] = "S256" }
                 }
             },
             users = new[]
@@ -148,7 +133,7 @@ internal sealed class KeycloakFixture : IAsyncDisposable
         var challenge = Base64Url(SHA256.HashData(Encoding.ASCII.GetBytes(verifier)));
         var state = Base64Url(RandomNumberGenerator.GetBytes(24));
         const string redirect = "http://127.0.0.1:51111/callback";
-        var authorization = $"{Issuer}/protocol/openid-connect/auth?client_id=mcp-user-client&response_type=code"
+        var authorization = $"{Issuer}/protocol/openid-connect/auth?client_id={ClientId}&response_type=code"
             + $"&scope=openid%20profile&redirect_uri={Uri.EscapeDataString(redirect)}&state={state}"
             + $"&code_challenge={challenge}&code_challenge_method=S256";
         using var login = await client.GetAsync(authorization);
@@ -193,7 +178,7 @@ internal sealed class KeycloakFixture : IAsyncDisposable
             new FormUrlEncodedContent(new Dictionary<string, string>
             {
                 ["grant_type"] = "authorization_code",
-                ["client_id"] = "mcp-user-client",
+                ["client_id"] = ClientId,
                 ["redirect_uri"] = redirect,
                 ["code"] = code.ToString(),
                 ["code_verifier"] = verifier

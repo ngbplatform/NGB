@@ -10,15 +10,16 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 using ModelContextProtocol;
-using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using NGB.Api.CurrentUser;
@@ -75,11 +76,15 @@ public sealed class McpHttpTests
     [InlineData("issuer", 401)]
     [InlineData("signature", 401)]
     [InlineData("future", 401)]
-    [InlineData("subject", 401)]
-    [InlineData("service-account", 401)]
-    [InlineData("service", 401)]
-    [InlineData("grant", 401)]
-    [InlineData("auth-time", 401)]
+    [InlineData("subject", 403)]
+    [InlineData("service-account", 403)]
+    [InlineData("service", 403)]
+    [InlineData("grant", 403)]
+    [InlineData("auth-time", 403)]
+    [InlineData("id-token", 403)]
+    [InlineData("refresh-token", 403)]
+    [InlineData("missing-type", 403)]
+    [InlineData("unknown-client", 401)]
     [InlineData("inactive", 403)]
     [InlineData("origin", 403)]
     [InlineData("duplicate", 400)]
@@ -157,7 +162,7 @@ public sealed class McpHttpTests
     [InlineData(true, false, "")]
     [InlineData(true, true, "")]
     [InlineData(true, false, "/ngb")]
-    public async Task PublicAddressAndAudienceRemainCanonicalBehindATrustedProxy(bool trustProxy, bool resourceOverride, string prefix)
+    public async Task PublicAddressAndApiTokenValidationRemainCanonicalBehindATrustedProxy(bool trustProxy, bool resourceOverride, string prefix)
     {
         const string publicOrigin = "https://api.example";
         var resource = publicOrigin + prefix + "/mcp";
@@ -253,9 +258,11 @@ public sealed class McpHttpTests
         var user = new ClaimsPrincipal(new ClaimsIdentity(
         [
             new Claim("sub", "alex-carter"),
-            new Claim("aud", host.Resource),
+            new Claim("typ", "Bearer"),
             new Claim("auth_time", "1")
         ], "Bearer"));
+        var http = new DefaultHttpContext();
+        http.Request.Headers.Authorization = "Bearer test-token";
         for (var index = 0; index < 2; index++)
         {
             var cors = host.Services.GetRequiredService<IOptionsFactory<CorsOptions>>().Create(Options.DefaultName);
@@ -265,7 +272,7 @@ public sealed class McpHttpTests
             var authorization = host.Services.GetRequiredService<IOptionsFactory<AuthorizationOptions>>().Create(Options.DefaultName);
             var requirement = authorization.GetPolicy("NgbMcp.CurrentUser")!;
             var service = host.Services.GetRequiredService<IAuthorizationService>();
-            Assert.True((await service.AuthorizeAsync(user, null, requirement)).Succeeded);
+            Assert.True((await service.AuthorizeAsync(user, http, requirement)).Succeeded);
             Assert.False((await service.AuthorizeAsync(new ClaimsPrincipal(), null, requirement)).Succeeded);
         }
     }
@@ -430,18 +437,27 @@ public sealed class McpHttpTests
     }
 
     [Fact]
-    public async Task UnsupportedBearerEventTypeFailsAtStartup()
+    public async Task ExistingBearerEventTypeCanRejectThePrincipal()
     {
-        await Assert.ThrowsAsync<InvalidOperationException>(() => TestHost.StartAsync(configure: services =>
-            services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options => options.EventsType = typeof(JwtBearerEvents))));
+        await using var host = await TestHost.StartAsync(configure: services =>
+        {
+            services.AddScoped<RejectingBearerEvents>();
+            services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme,
+                options => options.EventsType = typeof(RejectingBearerEvents));
+        });
+        using var http = new HttpClient();
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", host.Token());
+        using var request = ToolRequest(host, "ngb_get_capabilities");
+        using var response = await http.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains("resource_metadata", response.Headers.WwwAuthenticate.ToString());
     }
 
     [Fact]
-    public async Task ConfiguredAudienceAndUiOriginSupportTheExistingMappedUserIdentity()
+    public async Task ConfiguredUiOriginSupportsTheExistingMappedUserIdentity()
     {
         await using var host = await TestHost.StartAsync(settings: new Dictionary<string, string?>
         {
-            ["Mcp:Audience"] = "ngb-mcp-audience",
             ["Mcp:PublicUiOrigin"] = "https://ui.example",
             ["Mcp:UiRoutes:report"] = "/reports/{typeCode}"
         });
@@ -452,6 +468,135 @@ public sealed class McpHttpTests
         }));
         var result = await client.CallToolAsync("ngb_get_capabilities");
         Assert.NotEqual(true, result.IsError);
+    }
+
+    [Theory]
+    [InlineData("valid")]
+    [InlineData("azp")]
+    [InlineData("client-id")]
+    public async Task ExistingApiUserTokenWorksForRestAndMcp(string scenario)
+    {
+        await using var host = await TestHost.StartAsync();
+        using var http = ProtocolHttp(host);
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", host.Token(scenario));
+        Assert.Equal("alex-carter", await http.GetStringAsync(host.Origin + "/api/current-user"));
+        using var request = ToolRequest(host, "ngb_get_capabilities");
+        using var response = await http.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Basic test-token")]
+    [InlineData("Bearer")]
+    [InlineData("not a header")]
+    [InlineData("Bearer test-token")]
+    public async Task ApiQueryTokenAuthenticationDoesNotAuthorizeMcp(string? header)
+    {
+        await using var host = await TestHost.StartAsync(configure: services =>
+            services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+            {
+                options.Events.OnMessageReceived = context =>
+                {
+                    context.Token = context.Request.Query["access_token"];
+                    return Task.CompletedTask;
+                };
+            }));
+        using var http = new HttpClient();
+        using var request = ToolRequest(host, "ngb_get_capabilities");
+        request.RequestUri = new Uri(host.Resource + "?access_token=" + Uri.EscapeDataString(host.Token()));
+        if (header is not null)
+            request.Headers.TryAddWithoutValidation("Authorization", header);
+        using var response = await http.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CustomApiBearerSchemeUsesItsRegisteredValidationAndEvents()
+    {
+        await using var host = await TestHost.StartAsync(settings: new Dictionary<string, string?>
+        {
+            ["Mcp:AuthenticationScheme"] = "CustomApi"
+        }, configure: services =>
+        {
+            services.AddAuthentication().AddJwtBearer("CustomApi");
+            services.AddOptions<JwtBearerOptions>("CustomApi").Configure<IServiceProvider>((options, provider) =>
+            {
+                var existing = provider.GetRequiredService<IOptionsMonitor<JwtBearerOptions>>().Get(JwtBearerDefaults.AuthenticationScheme);
+                options.Configuration = existing.Configuration;
+                options.MapInboundClaims = existing.MapInboundClaims;
+                options.TokenValidationParameters = existing.TokenValidationParameters.Clone();
+                options.Events = existing.Events;
+            });
+        });
+        using var http = ProtocolHttp(host);
+        using var request = ToolRequest(host, "ngb_get_capabilities");
+        using var response = await http.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("cookie")]
+    public async Task NonBearerSchemeFailsAtStartup(string scheme)
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => TestHost.StartAsync(settings: new Dictionary<string, string?>
+        {
+            ["Mcp:AuthenticationScheme"] = scheme
+        }, configure: services => services.AddAuthentication().AddCookie("cookie")));
+    }
+
+    [Theory]
+    [InlineData("issuer")]
+    [InlineData("lifetime")]
+    [InlineData("signature")]
+    [InlineData("audience")]
+    [InlineData("require-audience")]
+    [InlineData("signed")]
+    [InlineData("expiration")]
+    [InlineData("forward-authenticate")]
+    [InlineData("forward-default")]
+    [InlineData("forward-selector")]
+    public async Task UnsafeApiBearerConfigurationFailsAtStartup(string setting)
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => TestHost.StartAsync(configure: services =>
+            services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+            {
+                var validation = options.TokenValidationParameters;
+                switch (setting)
+                {
+                    case "issuer":
+                        validation.ValidateIssuer = false;
+                        break;
+                    case "lifetime":
+                        validation.ValidateLifetime = false;
+                        break;
+                    case "signature":
+                        validation.ValidateIssuerSigningKey = false;
+                        break;
+                    case "audience":
+                        validation.ValidateAudience = false;
+                        break;
+                    case "require-audience":
+                        validation.RequireAudience = false;
+                        break;
+                    case "signed":
+                        validation.RequireSignedTokens = false;
+                        break;
+                    case "expiration":
+                        validation.RequireExpirationTime = false;
+                        break;
+                    case "forward-authenticate":
+                        options.ForwardAuthenticate = "cookie";
+                        break;
+                    case "forward-default":
+                        options.ForwardDefault = "cookie";
+                        break;
+                    case "forward-selector":
+                        options.ForwardDefaultSelector = _ => "cookie";
+                        break;
+                }
+            })));
     }
 
     [Theory]
@@ -570,6 +715,15 @@ public sealed class McpHttpTests
     public sealed record TransportResult(bool Completed, string? Payload = null);
     public sealed record WaitRequest;
 
+    public sealed class RejectingBearerEvents : JwtBearerEvents
+    {
+        public override Task TokenValidated(TokenValidatedContext context)
+        {
+            context.Fail("Host policy rejected the token without removing its principal.");
+            return Task.CompletedTask;
+        }
+    }
+
     public sealed class WaitState
     {
         public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -647,22 +801,23 @@ public sealed class McpHttpTests
             {
                 ["FeatureManagement:Mcp"] = enabled.ToString(),
                 ["Ngb:Hosting:PublicApiUrl"] = origin,
+                ["KeycloakSettings:Issuer"] = origin + "/issuer",
+                ["KeycloakSettings:RequireHttpsMetadata"] = "false",
+                ["KeycloakSettings:ClientIds:0"] = "ngb-api",
+                ["KeycloakSettings:ClientIds:1"] = "ngb-web",
                 ["Mcp:AllowLocalhostHttp"] = "true"
             });
             if (settings is not null)
                 builder.Configuration.AddInMemoryCollection(settings);
-            builder.Services.AddSingleton(new KeycloakSettings { Issuer = origin + "/issuer" });
-            builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
+            builder.Services.AddKeycloak(builder.Configuration);
+            builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
             {
                 options.MapInboundClaims = false;
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidIssuer = origin + "/issuer",
-                    IssuerSigningKey = Key,
-                    ValidateLifetime = true,
-                    ClockSkew = TimeSpan.Zero,
-                    AudienceValidator = (_, _, _) => true
-                };
+                options.Configuration = new OpenIdConnectConfiguration { Issuer = origin + "/issuer" };
+                options.Configuration.SigningKeys.Add(Key);
+                options.ConfigurationManager = null;
+                options.TokenValidationParameters.IssuerSigningKey = Key;
+                options.TokenValidationParameters.ClockSkew = TimeSpan.Zero;
             });
             builder.Services.AddAuthorization();
             builder.Services.AddCors();
@@ -712,6 +867,7 @@ public sealed class McpHttpTests
             app.UseCors();
             app.UseAuthentication();
             app.UseAuthorization();
+            app.MapGet("/api/current-user", (ClaimsPrincipal user) => user.FindFirst("sub")!.Value).RequireAuthorization();
             app.MapNgbMcp(pattern);
             await app.StartAsync();
             return new TestHost(app, origin, pathBase + pattern);
@@ -738,10 +894,15 @@ public sealed class McpHttpTests
                 claims.RemoveAll(claim => claim.Type == "sub");
             if (scenario == "service-account")
                 claims.Add(new Claim("preferred_username", "service-account-client"));
+            if (scenario != "missing-type")
+                claims.Add(new Claim("typ", scenario == "id-token" ? "ID" : scenario == "refresh-token" ? "Refresh" : "Bearer"));
+            if (scenario is "azp" or "unknown-client")
+                claims.Add(new Claim("azp", scenario == "azp" ? "ngb-web" : "other-web"));
+            if (scenario == "client-id")
+                claims.Add(new Claim("client_id", "ngb-web"));
             var token = new JwtSecurityToken(
                 issuer: Origin + (scenario == "issuer" ? "/wrong-issuer" : "/issuer"),
-                audience: scenario == "audience" ? "other-api" : app.Configuration["Mcp:Audience"]
-                    ?? app.Services.GetRequiredService<IOptionsMonitor<McpAuthenticationOptions>>().Get("NgbMcp").ResourceMetadata!.Resource,
+                audience: scenario is "audience" or "azp" or "client-id" or "unknown-client" ? "account" : "ngb-api",
                 claims: claims,
                 notBefore: DateTime.UtcNow.AddMinutes(scenario == "future" ? 2 : -10),
                 expires: scenario == "expired" ? DateTime.UtcNow.AddMinutes(-1) : DateTime.UtcNow.AddMinutes(5),

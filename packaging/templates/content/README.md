@@ -182,12 +182,17 @@ Production sets the common public HTTPS URL and
 keeps `Mcp__AllowLocalhostHttp=false`. `Mcp__Resource` is an optional full URL
 override for a separately exposed endpoint, not a required second API address.
 
-Register your MCP client in the existing Keycloak realm, enable Authorization
-Code with PKCE S256, register the client's exact callback URI, and assign an
-access-token audience mapper for `http://localhost:5181/mcp`. Sign in as the
-existing application user. No new platform user, service account or LLM key is
-needed. A token issued only for this audience does not become a REST API token.
-The normal Administrator and inactive-user policies remain effective.
+Use the existing user's API access token. MCP forwards authentication to the
+same API JWT bearer handler, including its issuer, signature, lifetime and
+configured audience/client checks. In Postman choose **Bearer Token** and paste
+the access token without the `Bearer ` prefix. No new Keycloak user, client or
+MCP audience mapper is needed to reuse that token. ID/refresh tokens, service
+accounts and inactive users are rejected. The normal Administrator policy
+remains effective. Remove obsolete `Mcp:Audience` settings.
+
+To obtain tokens through a client's interactive OAuth flow, use Authorization
+Code with PKCE S256 and an existing registration that allows its callback URI.
+This is separate from connecting with an already issued API access token.
 
 Connect a Streamable HTTP client to that URI. Protected Resource Metadata is
 available at `http://localhost:5181/.well-known/oauth-protected-resource/mcp`.

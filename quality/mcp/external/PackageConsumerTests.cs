@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -62,10 +63,9 @@ public sealed class PackageConsumerTests
         {
             ["KeycloakSettings:Issuer"] = identity.Issuer,
             ["KeycloakSettings:RequireHttpsMetadata"] = "false",
-            ["KeycloakSettings:ClientIds:0"] = "ngb-rest-tests",
+            ["KeycloakSettings:ClientIds:0"] = KeycloakFixture.ClientId,
             ["FeatureManagement:Mcp"] = "true",
             ["Ngb:Hosting:PublicApiUrl"] = origin,
-            ["Mcp:Audience"] = KeycloakFixture.Audience,
             ["Mcp:RequestsPerMinute"] = "10000",
             ["Mcp:AllowLocalhostHttp"] = "true"
         });
@@ -82,13 +82,12 @@ public sealed class PackageConsumerTests
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapNgbMcp();
-        app.MapGet("/api/current-user", () => "REST audience accepted").RequireAuthorization();
+        app.MapGet("/api/current-user", (ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier)).RequireAuthorization();
         await app.StartAsync();
 
         using var http = new HttpClient();
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        using var rest = await http.GetAsync(origin + "/api/current-user");
-        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, rest.StatusCode);
+        Assert.Equal(subject, await http.GetStringAsync(origin + "/api/current-user"));
         await using var client = await McpClient.CreateAsync(new HttpClientTransport(
             new HttpClientTransportOptions { Endpoint = new Uri(origin + "/mcp") }, http));
         var tools = await client.ListToolsAsync();

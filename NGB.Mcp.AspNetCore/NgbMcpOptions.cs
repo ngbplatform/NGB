@@ -5,7 +5,7 @@ public sealed class NgbMcpOptions
     /// <summary>Optional canonical endpoint override; otherwise uses Ngb:Hosting:PublicApiUrl and the mapped MCP route.</summary>
     public string Resource { get; set; } = string.Empty;
 
-    public string Audience { get; set; } = string.Empty;
+    /// <summary>Existing API JWT bearer scheme used to authenticate the current user.</summary>
     public string AuthenticationScheme { get; set; } = "Bearer";
     public string[] AllowedOrigins { get; set; } = [];
     public bool AllowLocalhostHttp { get; set; }

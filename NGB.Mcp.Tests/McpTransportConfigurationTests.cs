@@ -19,7 +19,6 @@ public sealed class McpTransportConfigurationTests
     [InlineData("Mcp:Resource", "https://ngb.example/mcp#fragment")]
     [InlineData("Mcp:AuthenticationScheme", "")]
     [InlineData("Mcp:AuthenticationScheme", "NgbMcp")]
-    [InlineData("Mcp:AuthenticationScheme", "NgbMcp.Bearer")]
     [InlineData("Mcp:ConcurrentRequests", "0")]
     [InlineData("Mcp:ConcurrentRequests", "257")]
     [InlineData("Mcp:RequestsPerMinute", "0")]
@@ -51,6 +50,19 @@ public sealed class McpTransportConfigurationTests
         Assert.True(provider.GetRequiredService<NgbFeatureRegistry>().Contains(NgbFeatures.Mcp));
         Assert.Null(provider.GetService<McpEndpointAddress>());
         Assert.Null(provider.GetService<McpReadToolRegistry>());
+    }
+
+    [Fact]
+    public void ObsoleteAudienceSettingFailsWithMigrationGuidance()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Mcp:Audience"] = "legacy-mcp-audience"
+        }).Build();
+
+        var error = Assert.Throws<NgbConfigurationViolationException>(() => new ServiceCollection().AddNgbMcp(configuration));
+
+        Assert.Contains("Remove Mcp:Audience", error.Message);
     }
 
     [Theory]

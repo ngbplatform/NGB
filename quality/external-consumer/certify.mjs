@@ -373,7 +373,8 @@ async function verifyMcpUpgrade(state, content) {
 
   const verifier = randomBytes(32).toString('base64url')
   const oauthState = randomBytes(24).toString('base64url')
-  const redirect = 'http://127.0.0.1:5182/mcp-callback'
+  const redirect = 'http://localhost:5182/mcp-callback'
+  const clientId = upgrade ? 'certification-web' : 'ngb-web'
   const issuer = `http://localhost:5180/realms/${realmName}`
   const receiver = createServer((request, response) => {
     response.writeHead(request.url.startsWith('/mcp-callback?') ? 200 : 404, {
@@ -383,11 +384,11 @@ async function verifyMcpUpgrade(state, content) {
   })
   let callback
   try {
-    await new Promise((resolveListen, reject) => receiver.once('error', reject).listen(5182, '127.0.0.1', resolveListen))
+    await new Promise((resolveListen, reject) => receiver.once('error', reject).listen(5182, 'localhost', resolveListen))
     browser = await chromium.launch({ headless: true })
     page = await browser.newPage()
     await page.goto(`${issuer}/protocol/openid-connect/auth?${new URLSearchParams({
-      client_id: 'certification-mcp', response_type: 'code', scope: 'openid', redirect_uri: redirect,
+      client_id: clientId, response_type: 'code', scope: 'openid', redirect_uri: redirect,
       state: oauthState, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
     })}`)
     await page.locator('input[name="username"]').fill(email)
@@ -403,7 +404,7 @@ async function verifyMcpUpgrade(state, content) {
   assert.ok(callback.searchParams.get('code'))
   const response = await fetch(`${issuer}/protocol/openid-connect/token`, {
     method: 'POST', signal: AbortSignal.timeout(30_000), body: new URLSearchParams({
-      grant_type: 'authorization_code', client_id: 'certification-mcp', redirect_uri: redirect,
+      grant_type: 'authorization_code', client_id: clientId, redirect_uri: redirect,
       code: callback.searchParams.get('code'), code_verifier: verifier,
     }),
   })
@@ -486,15 +487,6 @@ try {
   await build(upgrade ? sourceVersion : targetVersion)
   if (upgrade) await verifySourceCopy()
   const realm = JSON.parse(await readFile(join(application, 'infrastructure/realm.json'), 'utf8'))
-  if (upgrade && targetVersion === '3.3.0') {
-    realm.clients.push({
-      clientId: 'certification-mcp', protocol: 'openid-connect', enabled: true, publicClient: true,
-      standardFlowEnabled: true, directAccessGrantsEnabled: false, serviceAccountsEnabled: false,
-      redirectUris: ['http://127.0.0.1:5182/mcp-callback'], attributes: { 'pkce.code.challenge.method': 'S256' },
-      protocolMappers: [{ name: 'MCP resource', protocol: 'openid-connect', protocolMapper: 'oidc-audience-mapper',
-        config: { 'included.custom.audience': 'http://localhost:5181/mcp', 'access.token.claim': 'true', 'id.token.claim': 'false' } }],
-    })
-  }
   await writeInfrastructureConfiguration(infrastructure, realm, email, secrets)
   let composeFile = await readFile(join(source, 'infrastructure/compose.yaml'), 'utf8')
   composeFile = composeFile.replace(/image: postgres:[^\n]+/, `image: ${matrix.infrastructure.postgres}`)
