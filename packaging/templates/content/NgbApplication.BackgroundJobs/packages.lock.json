@@ -38,7 +38,7 @@
         "type": "Direct",
         "requested": "[3.3.0, 3.3.0]",
         "resolved": "3.3.0",
-        "contentHash": "aB8bp2tBBggdYJXD64GAWgmHae90n/Tp8wpVd0PAnBP7KSuFGQUrbBPFVe6wOz+vkwbhnRk+0H7wIAXlQoIv/Q==",
+        "contentHash": "L8YxNcJiQUP/ti96YQPg6wVM0lTOQ2zFjV7acomExeW0wL2e2fo3VfRZiPn1yrPRiRC9IiXJIFEUCSvjlSSBFw==",
         "dependencies": {
           "Dapper": "2.1.89",
           "Evolve": "3.2.0",
@@ -72,7 +72,7 @@
         "type": "Direct",
         "requested": "[3.3.0, 3.3.0]",
         "resolved": "3.3.0",
-        "contentHash": "LlwEmg3CPGIxCn0KF12GL+9mBIfNaB1k0Aj+jR8p0xsLhofYJER7q/5AHHIyOQokA9HeIZjTmK6p34xzUsXbHQ==",
+        "contentHash": "mrkt3Mv7O5/diAvKMlSRybgILhmaMu0GwZ2djSn2MxmQ3KalaPE2a/SOYkkx84HszOq9/hPm+5V+LLVpMRkqog==",
         "dependencies": {
           "Microsoft.FeatureManagement": "4.8.0",
           "NGB.Platform.Accounting": "3.3.0",
@@ -205,16 +205,16 @@
       },
       "Microsoft.AspNetCore.Authentication.JwtBearer": {
         "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "DeE+Bq2OqB3FikFkZk+7gFBeLOQhkSolejLrbi+a9zpfvXtW1Ff6Nd6DIvHXIm+pc4aM4+52vDy3jnuau0qoUQ==",
+        "resolved": "10.0.13",
+        "contentHash": "cEPhQWsaUKymSdQ+NB2rF4GnWtjofAcRrzr2aGPzbjSFyeDtIlBzrbX1Qeh/OAHjvdwBe05SbsukoSbz27AD6g==",
         "dependencies": {
           "Microsoft.IdentityModel.Protocols.OpenIdConnect": "8.19.2"
         }
       },
       "Microsoft.AspNetCore.Authentication.OpenIdConnect": {
         "type": "Transitive",
-        "resolved": "10.0.12",
-        "contentHash": "UfkKr9EP+LBgnFfxwkfnZzta7XkalCroZWoxg2yW9dt8iPXO7bJYpcmyFIeM+FLcAlOKZeduP93XhuCcfWaYIQ==",
+        "resolved": "10.0.13",
+        "contentHash": "dlyqhtVS6t6IeVvpxV8RuTQzrAFedkKbDoIbKbwjSmTimR4X/OxKvt+jwKLk8Qw/lqvoSQUl8iHLCO9CUCCH8A==",
         "dependencies": {
           "Microsoft.IdentityModel.Protocols.OpenIdConnect": "8.19.2"
         }
@@ -324,7 +324,7 @@
       "NGB.Platform.Core": {
         "type": "Transitive",
         "resolved": "3.3.0",
-        "contentHash": "z+EC+oxwEZJ2ysj2rg3CDdipD52WRXxSzPnJeSPO07hWu9fZA1Q4Jyy4FX+uOlrRvsaInhWvukcTe4F4UR2Ccg==",
+        "contentHash": "U5rH0Rb/if7j3vHeCNGQZ0qVLG9ptyH3ZydB6FUcOahoi2m62rOT5mVtncZkASotLvUEbKSP6hsRegqdxSCizQ==",
         "dependencies": {
           "NGB.Platform.Tools": "3.3.0"
         }
@@ -345,12 +345,12 @@
       "NGB.Platform.Hosting.AspNetCore": {
         "type": "Transitive",
         "resolved": "3.3.0",
-        "contentHash": "0Lxk1bAI/Tnc+vNUw1mGCFOqPo1SxCDZ74tzbnXZfAEWmg8GPjeqhVK/zUdzOkSHXYr5An+sulRMfErUdTflgA==",
+        "contentHash": "mRHZgMErgnK7ps7xXBm6XfDiSrhtHnhLExGYGRAxF6Sps6t7rg7h10gZUTE3kbirtRwysbBzl4hdvFWTaOTnVg==",
         "dependencies": {
           "AspNetCore.HealthChecks.UI.Client": "9.0.0",
           "IdentityModel": "5.2.0",
-          "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.12",
-          "Microsoft.AspNetCore.Authentication.OpenIdConnect": "10.0.12",
+          "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.13",
+          "Microsoft.AspNetCore.Authentication.OpenIdConnect": "10.0.13",
           "NGB.Platform.Tools": "3.3.0",
           "Serilog.AspNetCore": "10.0.0"
         }
@@ -411,7 +411,7 @@
       "NGB.Platform.Tools": {
         "type": "Transitive",
         "resolved": "3.3.0",
-        "contentHash": "wdv70N6yVb/1sg5hpDLU0chj8RJx2JDsYFaiP31676QHcYINd+XCwxHOyUoW8v8ez994lyMmXi0cgq+oykRV8w==",
+        "contentHash": "AlqbIwMPmtAhU3T7OKH7HoL4+IoJQ3jXpUnhL4lIH+SjJtvmZcw0v4BwlGC+Td2TWAZ4bNv/e+IaUsM62SDtGg==",
         "dependencies": {
           "FastEnum": "2.0.8"
         }

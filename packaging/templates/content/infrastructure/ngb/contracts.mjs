@@ -13,7 +13,7 @@ export function withManagedIgnores(original) {
 }
 
 export function exactVersion(value) {
-  assert.match(value, /^\d+\.\d+\.\d+$/, 'Use an exact stable version, for example 3.2.0.')
+  assert.match(value, /^\d+\.\d+\.\d+$/, `Use an exact stable version, for example ${toolVersion}.`)
   return value
 }
 

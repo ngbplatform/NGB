@@ -36,6 +36,7 @@ description: "How NGB.Api and vertical API hosts expose the platform through ASP
 - PostgreSQL provider registration
 - vertical module registration
 - controller mapping
+- optional `AddNgbMcp` / `MapNgbMcp` composition, controlled by `FeatureManagement:Mcp`
 - auth/cors/exception pipeline
 
 Authentication, branding, CORS, health responses, and global error handling are owned by
@@ -63,6 +64,7 @@ Do not describe host startup code as if it were runtime logic, and do not descri
 
 ## Continue with
 
+- [MCP Server setup and tool reference](/guides/mcp-server)
 - [Host Composition and DI Map](/architecture/host-composition-and-di-map)
 - [Runtime](/platform/runtime)
 - [Host composition](/start-here/host-composition)

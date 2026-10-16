@@ -81,11 +81,11 @@ enables these additional load measurements for candidate certification.
 
 The three upgrade profiles run the existing preservation/continuation matrix
 before explicitly opting the upgraded external API into MCP. The opt-in adds
-the public package and host calls, uses a dedicated OAuth client for the same
-existing user, then reads preserved custom data and enabled content through
-MCP and checks that application tables remain unchanged. The frozen 3.2 source
-and ordinary upgrade behavior stay unchanged; upgrading alone does not enable
-MCP.
+the public package and host calls, uses the existing application's OAuth client
+and user with Authorization Code + PKCE, then reads preserved custom data and
+enabled content through MCP and checks that application tables remain unchanged.
+The frozen 3.2 source and ordinary upgrade behavior stay unchanged; upgrading
+alone does not enable MCP.
 
 Unsealed local runs are diagnostic evidence. The release runner reruns these
 gates against a sealed candidate and binds results to its package hashes.

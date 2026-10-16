@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "NGB MCP 3.3.0",
-    "description": "Use Authorization Code + PKCE against the existing Keycloak realm. Set access_token locally; never export a live token. MCP must be explicitly enabled. source_id comes from search; report_code comes from list_reports. Business reads run as the token user.",
+    "description": "Reuse the existing user's API access token with the collection's Bearer authentication. Set base_url to the canonical API origin without /mcp and access_token locally; never export a live token. Obtaining a new token through interactive OAuth requires an existing client registration supporting Authorization Code + PKCE and the callback URI. MCP must be explicitly enabled. source_id comes from search; report_code comes from list_reports. Business reads run as the token user.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -17,7 +17,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "http://127.0.0.1:5181"
+      "value": "https://localhost:7071"
     },
     {
       "key": "access_token",

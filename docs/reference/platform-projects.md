@@ -23,6 +23,7 @@ This page is the project catalog for the reusable platform.
 ## Execution core
 
 - `NGB.Runtime` — orchestration center for documents, reporting, derivations, graph/effects, and validation.
+- `NGB.Mcp` — transport-neutral read-tool registry, typed contracts and adapters over existing authorized reads. Publishes as `NGB.Platform.Mcp`.
 
 ## Business engines
 
@@ -37,12 +38,20 @@ This page is the project catalog for the reusable platform.
 - `NGB.Hosting.AspNetCore` — provider-neutral ASP.NET Core authentication, branding, health, CORS, and error handling.
 - `NGB.Runtime.Hosting` — explicit generic-host lifecycle adapters for Runtime, including fail-fast startup validation.
 - `NGB.Api` — reusable API controllers, endpoints, and application-facing HTTP composition.
+- `NGB.Mcp.AspNetCore` — opt-in stateless MCP HTTP endpoint, shared API authentication, discovery and request budgets. Publishes as `NGB.Platform.Mcp.AspNetCore`.
 - `NGB.BackgroundJobs` — provider-neutral background-jobs scheduling and hosting support.
 - `NGB.BackgroundJobs.PostgreSql` — PostgreSQL-specific Hangfire storage adapter; keeps scheduler dependencies out of the generic PostgreSQL provider.
 - `NGB.Watchdog` — reusable watchdog hosting support.
 - `NGB.Migrator.Core` — reusable migrator CLI core.
 
+## MCP tests
+
+- `NGB.Mcp.Tests` — unit and schema-contract checks, including direct transport-handler and configuration tests.
+- `NGB.Mcp.AspNetCore.IntegrationTests` — real Kestrel HTTP and official MCP SDK integration.
+- `quality/mcp/external` and the four vertical integration projects — package-only and actual-host scenarios with PostgreSQL and Keycloak.
+
 ## See also
 
+- [MCP Server](/guides/mcp-server)
 - [Layering and Dependencies](/architecture/layering-and-dependencies)
 - [Layering rules](/reference/layering-rules)

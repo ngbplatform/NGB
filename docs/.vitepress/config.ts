@@ -10,6 +10,18 @@ const docsHostname = (process.env.VITEPRESS_HOSTNAME?.trim() || 'https://docs.ng
 const asset = (relativePath: string) => `${base}${relativePath}`
 const page = (text: string, link: string) => ({ text, link })
 const section = (text: string, items: Array<ReturnType<typeof page>>, collapsed = false) => ({ text, items, collapsed })
+const mcpSidebar = [
+  section('MCP Server', [
+    page('Setup and Tool Reference', '/guides/mcp-server'),
+    page('Design Decisions and Verification', '/architecture/mcp-design-decisions'),
+    page('Specification and Acceptance Criteria', '/architecture/mcp-server-specification')
+  ]),
+  section('Related Guides', [
+    page('Feature Flags', '/architecture/feature-flags'),
+    page('Security and Permissions', '/platform/security-and-permissions'),
+    page('External Applications and Upgrades', '/architecture/external-app-upgrades')
+  ])
+]
 const sitemapHostname = base === '/' ? `${docsHostname}/` : `${docsHostname}${base}`
 const gtmContainerId = 'GTM-WFZ2RMM7'
 const gtmHeadSnippet = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -41,14 +53,19 @@ export default defineConfig({
       {
         text: 'Architecture',
         link: '/architecture/architecture-brief',
-        activeMatch: '^/architecture/'
+        activeMatch: '^/architecture/(?!mcp-)'
       },
       { text: 'Ecosystem', link: '/ecosystem/erp-accounting-software-teams' },
       { text: 'Platform Modules', link: '/platform/core-and-tools' },
       {
         text: 'Guides',
         link: '/guides/developer-workflows',
-        activeMatch: '^/guides/'
+        activeMatch: '^/guides/(?!mcp-server)'
+      },
+      {
+        text: 'MCP Server',
+        link: '/guides/mcp-server',
+        activeMatch: '^/(guides/mcp-server|architecture/mcp-)'
       },
       { text: 'Reference', link: '/reference/documentation-map' },
       { text: 'Website', link: 'https://ngbplatform.com' }
@@ -56,6 +73,9 @@ export default defineConfig({
     outline: [2, 3],
     search: { provider: 'local' },
     sidebar: {
+      '/guides/mcp-server': mcpSidebar,
+      '/architecture/mcp-design-decisions': mcpSidebar,
+      '/architecture/mcp-server-specification': mcpSidebar,
       '/start-here/': [
         section('Start Here', [
           page('Platform Overview', '/start-here/overview'),
@@ -96,7 +116,9 @@ export default defineConfig({
           page('Work Center', '/architecture/work-center'),
           page('Idempotency and Concurrency', '/architecture/idempotency-and-concurrency'),
           page('Feature Flags', '/architecture/feature-flags'),
-          page('Attachments & Notes', '/architecture/attachments-and-notes')
+          page('Attachments & Notes', '/architecture/attachments-and-notes'),
+          page('MCP Design Decisions', '/architecture/mcp-design-decisions'),
+          page('MCP Server Specification', '/architecture/mcp-server-specification')
         ], true)
       ],
       '/ecosystem/': [
@@ -113,6 +135,7 @@ export default defineConfig({
           page('Definitions', '/platform/definitions'),
           page('Runtime', '/platform/runtime'),
           page('API', '/platform/api'),
+          page('MCP Server', '/guides/mcp-server'),
           page('Persistence', '/platform/persistence'),
           page('PostgreSQL', '/platform/postgresql'),
           page('Accounting and Registers', '/platform/accounting-and-registers'),
@@ -180,6 +203,7 @@ export default defineConfig({
           page('Developer Workflows', '/guides/developer-workflows'),
           page('Platform Extension Points', '/guides/platform-extension-points'),
           page('Extend an External Application', '/guides/extend-external-application'),
+          page('MCP Server', '/guides/mcp-server'),
           page('Document Actions and Work Center', '/guides/document-actions-and-work-center'),
           page('Add a Document with Accounting and Registers', '/guides/add-document-with-accounting-and-registers'),
           page('Add a Canonical Report', '/guides/add-canonical-report-workflow'),

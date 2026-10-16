@@ -6,7 +6,14 @@ vertical scenario packages. Platform releases are documented in the
 
 ## [Unreleased]
 
-No changes yet.
+Target release: **3.3.0**.
+
+### Changed
+
+- Aligned the private workspace, shared framework, Property Management, Trade and
+  Agency Billing package versions and lockfile metadata with NGB Platform 3.3.0.
+- Updated the current compatibility statement to the 3.3 release line. Existing
+  workloads and historical performance results retain their original semantics.
 
 ## [3.0.0] - 2026-09-29
 

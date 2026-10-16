@@ -7,7 +7,32 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
-No changes yet.
+Target release: **3.3.0**. Publication and candidate certification remain separate release steps.
+
+### Added
+
+- Added `NGB.Platform.Mcp` and `NGB.Platform.Mcp.AspNetCore` for read-only MCP access
+  to existing authorized business reads, reports, document flow and Effects, audit,
+  Work Center, Notes and attachment metadata.
+- Added stateless Streamable HTTP transport, OAuth resource discovery, bounded requests
+  and responses, and public contracts for trusted application-specific read tools.
+- Added the registered `FeatureManagement:Mcp` deployment flag and MCP composition
+  in Property Management, Trade, Agency Billing, CRM and the external application template.
+- Added separate unit/contract and HTTP/SDK integration test projects, external
+  package-consumer checks and four-vertical MCP release gates.
+- Registered the 3.2.0 → 3.3.0 external application upgrade path with a frozen
+  published 3.2.0 source fixture. See the [MCP guide](docs/guides/mcp-server.md)
+  for opt-in, current-user authentication and deployment settings.
+
+### Changed
+
+- MCP uses the existing API JWT bearer handler and NGB permissions for the current
+  user. Its canonical endpoint derives from `Ngb:Hosting:PublicApiUrl` and the mapped
+  route, with an optional `Mcp:Resource` override.
+- Aligned platform, UI, template, documentation, release-tooling and performance
+  workspace versions with 3.3.0. CLI examples use the application tool's version.
+- Updated current creation and upgrade instructions for 3.3.0 while retaining
+  historical release fixtures, compatibility baselines and the 3.1.0 → 3.2.0 path.
 
 ## [3.2.0] - 2026-10-11
 

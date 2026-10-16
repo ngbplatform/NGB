@@ -1,22 +1,23 @@
 import { resolve } from 'node:path'
-import { argumentsFor } from './contracts.mjs'
+import { argumentsFor, toolVersion } from './contracts.mjs'
 import { createApplication, startApplication, upgradeApplication } from './application.mjs'
 
 const help = `NGB application commands:
 
   node ngb.mjs create MyApp --local --start --email administrator@example.com
-  node ngb.mjs create MyApp --version 3.2.0 --start
-  node ngb.mjs upgrade --app ../MyApp --to 3.2.0
-  node ngb.mjs upgrade --app ../MyApp --to 3.2.0 --local --apply
+  node ngb.mjs create MyApp --version ${toolVersion} --start
+  node ngb.mjs upgrade --app ../MyApp --to ${toolVersion}
+  node ngb.mjs upgrade --app ../MyApp --to ${toolVersion} --local --apply
 
 Inside a generated application:
   node infrastructure/ngb.mjs start
-  node infrastructure/ngb.mjs upgrade --to 3.2.0 --apply
+  node infrastructure/ngb.mjs upgrade --to ${toolVersion} --apply
   node infrastructure/ngb.mjs deploy --backup-confirmed
 
 --local uses the repository's artifacts/release-candidate by default.
 --packages /path/to/candidate selects another manifest-bound local package set.
 --output /path/to/MyApp selects a new, nonexistent destination for create.
+Registry commands require the target release to be published; use local packages before publication.
 Upgrade without --apply only displays the plan. Applying validates in an isolated
 copy and changes dependency files only after both builds pass. Database migration
 is a separate deploy operation and requires a consistent, tested backup.
