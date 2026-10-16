@@ -12,9 +12,7 @@ const page = (text: string, link: string) => ({ text, link })
 const section = (text: string, items: Array<ReturnType<typeof page>>, collapsed = false) => ({ text, items, collapsed })
 const mcpSidebar = [
   section('MCP Server', [
-    page('Setup and Tool Reference', '/guides/mcp-server'),
-    page('Design Decisions and Verification', '/architecture/mcp-design-decisions'),
-    page('Specification and Acceptance Criteria', '/architecture/mcp-server-specification')
+    page('MCP Server Guide', '/guides/mcp-server')
   ]),
   section('Related Guides', [
     page('Feature Flags', '/architecture/feature-flags'),
@@ -53,7 +51,7 @@ export default defineConfig({
       {
         text: 'Architecture',
         link: '/architecture/architecture-brief',
-        activeMatch: '^/architecture/(?!mcp-)'
+        activeMatch: '^/architecture/'
       },
       { text: 'Ecosystem', link: '/ecosystem/erp-accounting-software-teams' },
       { text: 'Platform Modules', link: '/platform/core-and-tools' },
@@ -65,7 +63,7 @@ export default defineConfig({
       {
         text: 'MCP Server',
         link: '/guides/mcp-server',
-        activeMatch: '^/(guides/mcp-server|architecture/mcp-)'
+        activeMatch: '^/guides/mcp-server'
       },
       { text: 'Reference', link: '/reference/documentation-map' },
       { text: 'Website', link: 'https://ngbplatform.com' }
@@ -74,8 +72,6 @@ export default defineConfig({
     search: { provider: 'local' },
     sidebar: {
       '/guides/mcp-server': mcpSidebar,
-      '/architecture/mcp-design-decisions': mcpSidebar,
-      '/architecture/mcp-server-specification': mcpSidebar,
       '/start-here/': [
         section('Start Here', [
           page('Platform Overview', '/start-here/overview'),
@@ -117,8 +113,7 @@ export default defineConfig({
           page('Idempotency and Concurrency', '/architecture/idempotency-and-concurrency'),
           page('Feature Flags', '/architecture/feature-flags'),
           page('Attachments & Notes', '/architecture/attachments-and-notes'),
-          page('MCP Design Decisions', '/architecture/mcp-design-decisions'),
-          page('MCP Server Specification', '/architecture/mcp-server-specification')
+          page('MCP Server', '/guides/mcp-server')
         ], true)
       ],
       '/ecosystem/': [

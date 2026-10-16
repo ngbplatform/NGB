@@ -21,8 +21,7 @@ MCP exposes the hosting application's authorized business reads as the current u
 
 - [Enable MCP and connect a client](/guides/mcp-server)
 - [Tools, limits and continuation](/guides/mcp-server#tools)
-- [Design decisions and verification evidence](/architecture/mcp-design-decisions)
-- [Specification and acceptance criteria](/architecture/mcp-server-specification)
+- [Architecture and project boundaries](/guides/mcp-server#architecture)
 
 ## Previous 3.0 migration
 

@@ -117,20 +117,24 @@ Use Start Here before deep-diving into individual modules.
 - [Idempotency and Concurrency](/architecture/idempotency-and-concurrency)
 - [Feature Flags](/architecture/feature-flags)
 - [Attachments & Notes](/architecture/attachments-and-notes)
-- [MCP Design Decisions](/architecture/mcp-design-decisions)
-- [MCP Server Specification](/architecture/mcp-server-specification)
+- [MCP Server architecture](/guides/mcp-server#architecture)
 
 Use Architecture when the question is “how the platform works” rather than “where a file lives”.
 
 ## MCP Server
 
-The **MCP Server** top-level menu opens a dedicated sidebar shared by these pages:
+The **MCP Server** top-level menu opens the [MCP Server guide](/guides/mcp-server),
+which covers:
 
-- [Setup, authentication and tool reference](/guides/mcp-server)
-- [Design decisions and dated verification evidence](/architecture/mcp-design-decisions)
-- [Specification and release acceptance criteria](/architecture/mcp-server-specification)
+- [Architecture and project boundaries](/guides/mcp-server#architecture)
+- [Host setup](/guides/mcp-server#enable-an-existing-host)
+- [Authentication and client connection](/guides/mcp-server#authentication-and-client-connection)
+- [Tools](/guides/mcp-server#tools)
+- [Limits and continuation](/guides/mcp-server#bounds-and-continuation)
+- [Custom read contributors](/guides/mcp-server#custom-read-contributors)
 
-MCP exposes authorized business reads to application users. These developer and operator pages belong to this documentation site and are not served by MCP tools.
+MCP exposes authorized business reads to application users. The guide belongs to
+this documentation site and is not served by MCP tools.
 
 ## Ecosystem
 
