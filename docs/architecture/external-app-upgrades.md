@@ -4,8 +4,8 @@ Use the official template to create an independent application, then update its
 NuGet/npm dependencies through supported upgrade transitions. This page covers
 application creation, extension boundaries and the upgrade contract.
 
-The version-specific examples below target **3.2.0**, with **3.1.0 → 3.2.0** as the
-registered upgrade transition. Registry commands require that target to be published;
+The version-specific examples below target **3.3.0**, with **3.2.0 → 3.3.0** as the
+current registered upgrade transition. Registry commands require that target to be published;
 use local packages before publication. A transition is certified only when its
 candidate evidence passes and registry verification subsequently permits promotion.
 Merely updating a version in this repository does not establish a published or
@@ -19,7 +19,7 @@ Run these commands in the directory that should contain your new application,
 after the target release is published. No NGB checkout is required:
 
 ```sh
-dotnet new install NGB.Platform.Templates::3.2.0
+dotnet new install NGB.Platform.Templates::3.3.0
 dotnet new ngb -n MyApplication
 cd MyApplication
 node infrastructure/configure.mjs administrator@example.com
@@ -63,7 +63,7 @@ node ngb.mjs create MyApplication --local --start --email administrator@example.
 ```
 
 The CLI initializes `.env` itself; do not run `configure.mjs` again in this app.
-After publication, replace `--local` with `--version 3.2.0`. Output defaults to a
+After publication, replace `--local` with `--version 3.3.0`. Output defaults to a
 sibling of the NGB checkout. `--output` selects another nonexistent directory outside
 the checkout. Application names contain 2–64 letters/digits and start with a letter.
 
@@ -178,46 +178,55 @@ patch in that minor. Major upgrades require an explicit source range and migrati
 guide, including manual changes. No promise covers automatic compatibility of every
 historical application.
 
-The checked-in matrix selects **3.1.0 → 3.2.0**. Most runtime
+The checked-in matrix selects **3.2.0 → 3.3.0**. Most runtime
 packages have 3.0.0 as their major baseline. Attachments, Notes and Attachments.MinIO
-were first published at 3.1.0. `NGB.Platform.Templates` is a new content package;
-assembly compatibility and symbols do not apply. These exceptions are explicit in
+were first published at 3.1.0. The new MCP packages start at 3.3.0 and have no prior
+runtime baseline. `NGB.Platform.Templates` was first published at 3.2.0;
+assembly compatibility and symbols do not apply to that content package. These exceptions are explicit in
 `packaging/nuget/baselines.json`; there are no blanket runtime exemptions.
 
-## Migrate 3.1.0 to 3.2.0
+The tool also retains the registered **3.1.0 → 3.2.0** path. Historical matrices,
+baselines and both frozen source fixtures remain unchanged. This does not register
+a direct 3.1.0 → 3.3.0 upgrade.
 
-The automated tool currently supports this exact transition only. It expects one
-root `.sln`/`.slnx`, a root `Directory.Build.props` with one unconditional
+## Migrate 3.2.0 to 3.3.0
+
+Use the 3.3.0 application tool for this transition, such as `ngb.mjs` from the
+matching NGB checkout. An existing application's bundled 3.2.0 tool is not updated
+by installing a new template or changing package references.
+
+The automated tool expects one root `.sln`/`.slnx`, a root `Directory.Build.props` with one unconditional
 `NgbPlatformVersion`, `NuGet.Config` with explicit sources and source mapping, and
 `web/package.json` with an exact `@ngbplatform/ui` dependency. Backend and frontend
-must both start at 3.1.0. Explicit and centrally managed NGB package versions are
+must both start at 3.2.0. Explicit and centrally managed NGB package versions are
 supported within that layout. Other layouts, conditional versions and custom
 version expressions require a reviewed manual migration; the tool refuses them.
 
 From the NGB checkout, preview and apply the supported dependency update:
 
 ```sh
-node ngb.mjs upgrade --app ../MyApplication --to 3.2.0
-node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --apply
+node ngb.mjs upgrade --app ../MyApplication --to 3.3.0
+node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --apply
 ```
 
 Before publication, prepare the package set as described [above](#before-publication)
 and use:
 
 ```sh
-node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --local
-node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --local --apply
+node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --local
+node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --local --apply
 ```
 
 Use `--packages` instead of `--local` for another local set, for example:
 
 ```sh
-node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --packages artifacts/release-candidate-next
-node ngb.mjs upgrade --app ../MyApplication --to 3.2.0 --packages artifacts/release-candidate-next --apply
+node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --packages artifacts/release-candidate-next
+node ngb.mjs upgrade --app ../MyApplication --to 3.3.0 --packages artifacts/release-candidate-next --apply
 ```
 
 The selected directory must already contain a sealed candidate. Generated apps
-also carry `infrastructure/ngb.mjs`; run it from the application root and use an explicit
+also carry `infrastructure/ngb.mjs`; if its version supports the selected transition,
+run it from the application root and use an explicit
 `--packages` path for local packages outside that application. Preview is read-only.
 Apply validates both builds in an isolated copy before updating dependency files
 and lockfiles. It also manages ignored local package copies, `NuGet.Local.Config`,
@@ -231,12 +240,13 @@ the application's business tests. Applying does not stop services or run migrati
    Test restore before the maintenance window. Record the current app/configuration
    and package versions. Stop API and worker writers before target migration.
 2. Review the command's changes: `NgbPlatformVersion`, direct NGB dependencies
-   and `@ngbplatform/ui` must resolve to exact `3.2.0`. Commit the dependency files
+   and `@ngbplatform/ui` must resolve to exact `3.3.0`. Commit the dependency files
    and regenerated lockfiles. Preserve application code, data and storage volumes.
-3. Keep existing local Tailwind configuration or adopt the public preset. For an
+3. Keep existing application configuration and source. For an
    API container using a public localhost issuer during development, configure the
    internal `MetadataAddress`; production still requires a valid trusted issuer.
-   No other application source change is required by the frozen core consumer.
+   MCP remains opt-in: dependency upgrades alone do not add MCP host composition
+   or enable the endpoint. Follow the MCP opt-in steps below when it is needed.
 4. Build the matching hosts/frontend and run the target Migrator once. Keep API
    and workers stopped if it fails. Resolve the reported issue and follow the
    migration's documented retry procedure. Repeating successful migrations must
@@ -264,7 +274,7 @@ container that is removed afterwards. The `migrator` service's old logs are not
 evidence of this deployment; retain the deploy output and check current API/worker
 health before reopening traffic.
 
-New apps generated at 3.2.0 are already on the target; the 3.1.0 → 3.2.0 upgrade
+New apps generated at 3.3.0 are already on the target; the 3.2.0 → 3.3.0 upgrade
 command is not a refresh command for those apps. A future target requires a
 registered transition and, where specified, a newer CLI. Template installation or
 dependency upgrade does not replace an existing app's bundled tool or source files.
@@ -272,7 +282,31 @@ dependency upgrade does not replace an existing app's bundled tool or source fil
 Do not use `down --volumes` against application data. Downgrading binaries does not
 undo database migration. Recovery restores the complete consistent backup set unless
 the transition publishes and validates a more specific recovery path. Mixed-version
-workers, rolling deployments and zero-downtime upgrades are not certified in 3.2.0.
+workers, rolling deployments and zero-downtime upgrades are outside this upgrade contract.
+
+### Opt in to MCP after upgrading
+
+An existing application must reference `NGB.Platform.Mcp.AspNetCore` at the same
+exact 3.3.0 version as its other platform packages. Add `AddNgbMcp(configuration)`
+to the API's service registration and `MapNgbMcp()` to its endpoint mapping, using
+the existing authentication and authorization middleware. Set the common
+`Ngb:Hosting:PublicApiUrl` and explicitly enable `FeatureManagement:Mcp` in the API
+environment. New 3.3.0 templates already contain this composition and default the
+feature to disabled.
+
+MCP executes authorized reads as the existing user through the API's bearer
+authentication scheme. See the [MCP guide](/guides/mcp-server) for host composition,
+user access tokens, HTTPS, local-development settings and supported read tools.
+The upgrade tool preserves user source and configuration; apply this opt-in
+explicitly rather than expecting a dependency update to rewrite them.
+
+## Migrate 3.1.0 to 3.2.0
+
+This historical transition remains registered in the application tool. Use the
+[3.2.0 release guide](https://github.com/ngbplatform/NGB/blob/v3.2.0/docs/architecture/external-app-upgrades.md)
+and the corresponding published packages and evidence. Apps starting at 3.1.0
+must complete that step before following the 3.2.0 → 3.3.0 instructions above.
+Historical source fixtures and certification results are not relabelled as 3.3.0.
 
 ## Certification scope and evidence
 
@@ -285,7 +319,7 @@ the clean-starter profile and registry smoke also use fresh download caches.
 | --- | --- |
 | clean-starter | Installed template, real login/role lifecycle/audit, admin contract, worker job, health/logs, migration sequencing; no MinIO |
 | generated-extension | Fresh generated app plus custom catalog, Runtime validator/handler, PostgreSQL provider and app migration |
-| core-upgrade | Frozen published 3.1.0 app, maintenance stop, target migration on the same state, preserved data/grants/audit/history, continued custom behavior and queued-job idempotence |
+| core-upgrade | Frozen published 3.2.0 app, maintenance stop, target migration on the same state, preserved data/grants/audit/history, continued custom behavior and queued-job idempotence |
 | notes-upgrade | Existing and new Notes, history and authorization; Attachments disabled and no MinIO |
 | attachments-upgrade | Existing/new attachment metadata and objects, matching download SHA-256, authorization and private MinIO |
 
@@ -303,15 +337,21 @@ checks. The generated-extension profile installs the example's DDL separately.
 Normal template creation does not create either checkpoint table. Following the
 extension tutorial intentionally adds them to that application's own database.
 
+The 3.3.0 matrix also adds mandatory `mcp-contract`, `mcp-external` and
+`mcp-verticals` candidate gates. They check protocol/schema behavior, an independent
+package-only consumer with real Keycloak, and the actual four vertical API hosts.
+Upgrade profiles verify explicit MCP opt-in on the preserved application state;
+their assertions do not turn every existing business feature into a certified
+external upgrade scenario.
+
 Documents, relationships, accounting, operational/reference registers, reporting and
-projections retain their existing regression suites, run locally before release.
-They are not newly claimed external upgrade scenarios in this release. Full
+projections retain their broader regression suites, run locally before release. Full
 backend/frontend tests and coverage for the platform, PM, Trade, Agency Billing and
 CRM are separate local checks, outside release certification. The candidate's Compose
 gate builds the generated starter. It does not build the existing vertical Docker images, including CRM;
 those have a separate container-build gate after package publication.
 
-`quality/external-consumer/matrix.json` binds 19 candidate gates and two
+`quality/external-consumer/matrix.json` binds 22 candidate gates and two
 post-publication gates to commands and assertions. `quality-inventory.json`
 classifies measured executable helpers, generated code, static content and process
 orchestration. Certification retains helper tests, the framework browser matrix and

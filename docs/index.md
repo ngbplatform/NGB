@@ -15,7 +15,16 @@ This site is the consolidated platform documentation for <strong>NGB Platform</s
 - [Host composition](/start-here/host-composition)
 - [Reading path](/start-here/reading-path)
 
-## What's new in 3.0
+## MCP Server in 3.3.0
+
+MCP exposes the hosting application's authorized business reads as the current user. It runs in the existing API process and is enabled with `FeatureManagement:Mcp`.
+
+- [Enable MCP and connect a client](/guides/mcp-server)
+- [Tools, limits and continuation](/guides/mcp-server#tools)
+- [Design decisions and verification evidence](/architecture/mcp-design-decisions)
+- [Specification and acceptance criteria](/architecture/mcp-server-specification)
+
+## Previous 3.0 migration
 
 - [Migration from 2.0.0 to 3.0.0](/guides/migrating-to-3.0)
 - [Platform projects and adapter ownership](/reference/platform-projects)

@@ -53,6 +53,7 @@ This page is the complete navigation hub for the NGB Platform documentation site
 | I need to implement Document Actions or Work Center | [Document Actions and Work Center](/guides/document-actions-and-work-center) |
 | I need to configure or extend deployment-wide feature flags | [Feature Flags](/architecture/feature-flags) |
 | I need to enable attachments and notes or configure their storage | [Attachments & Notes](/architecture/attachments-and-notes) |
+| I need to connect an MCP client as the current application user | [MCP Server](/guides/mcp-server) |
 | I am upgrading an existing 2.x solution to 3.0.0 | [Migration 2.0.0 → 3.0.0](/guides/migrating-to-3.0) |
 | I am upgrading an existing solution to 2.0.0 | [Migration 1.3.1 → 2.0.0](/guides/migrating-to-2.0) |
 | I need the Document Actions or Work Center HTTP contract | [Document Actions and Work Center API](/reference/document-actions-work-center-api) |
@@ -116,8 +117,20 @@ Use Start Here before deep-diving into individual modules.
 - [Idempotency and Concurrency](/architecture/idempotency-and-concurrency)
 - [Feature Flags](/architecture/feature-flags)
 - [Attachments & Notes](/architecture/attachments-and-notes)
+- [MCP Design Decisions](/architecture/mcp-design-decisions)
+- [MCP Server Specification](/architecture/mcp-server-specification)
 
 Use Architecture when the question is “how the platform works” rather than “where a file lives”.
+
+## MCP Server
+
+The **MCP Server** top-level menu opens a dedicated sidebar shared by these pages:
+
+- [Setup, authentication and tool reference](/guides/mcp-server)
+- [Design decisions and dated verification evidence](/architecture/mcp-design-decisions)
+- [Specification and release acceptance criteria](/architecture/mcp-server-specification)
+
+MCP exposes authorized business reads to application users. These developer and operator pages belong to this documentation site and are not served by MCP tools.
 
 ## Ecosystem
 
@@ -210,6 +223,7 @@ Use Platform when you need responsibility boundaries, verified anchors, executio
 
 - [Developer Workflows](/guides/developer-workflows)
 - [Extend an External Application](/guides/extend-external-application)
+- [MCP Server](/guides/mcp-server)
 - [Platform Extension Points](/guides/platform-extension-points)
 - [Add a Document with Accounting and Registers](/guides/add-document-with-accounting-and-registers)
 - [Add a Canonical Report](/guides/add-canonical-report-workflow)
